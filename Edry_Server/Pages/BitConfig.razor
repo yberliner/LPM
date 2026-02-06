@@ -1,0 +1,577 @@
+﻿@page "/BitConfig"
+@inject Microsoft.AspNetCore.Components.NavigationManager NavigationManager // This line is used to generate URLs dynamically //
+@inherits BaseComponent<MSGS.RKS2RC_Control, MSGS.RC2RKS_Status>
+@inject MSGS.ClientManager udpData
+@inject IFileStore _fileStore
+@inject DevTableVisibilityService DevTableVisibility
+@using ForsightTester.Data
+@inject AllScriptResServices AllScriptResServices
+@inject IJSRuntime JS
+@inject OutgoingMsgsManager outMsgsManager
+@inject AgentsRepository AgentsRepository
+@inject ClientManager ClientManager
+@using CardModel
+@using System.Text.RegularExpressions;
+@using ApexSeries
+
+@using FSMSGS
+@using MSGS
+@using ForsightTester
+@using ForsightTester._Spk
+@using Microsoft.AspNetCore.Components.Forms;
+@using System.Text
+
+<!-- Page Header -->
+<SpkPageHeader PageItems="PageItems" />
+<!-- Page Header Close -->
+
+
+<div class="row">
+    <div class="col-12">
+        <div class="card custom-card">
+            <div class="card-body">
+                <ul class="nav nav-pills justify-content-center nav-style-2 mb-3" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-bs-toggle="tab" role="tab" aria-current="page"
+                           href="#BitConfig" aria-selected="true">Bit Config</a>
+                    </li>
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane show active text-muted" id="BitConfig" role="tabpanel">
+                        <div class="row">
+                            <div class="col-xxl-9 col-xl-10 col-lg-12">
+                                <div class="row">
+                                    <table>
+                                        <tr class="h-50">
+                                            <td class="w-75">
+                                                <p class="fs-3 mx-5 mb-4 text-break"></p>
+                                            </td>
+                                            <td class="w-25" rowspan="2">
+                                                <div id="orders" class="my-2">
+                                                    <SpkApex TItem="IniStat" ApexHeight="200" ChartOptions="IniStatChartOptions" Items="IniStatData" Series="IniStatConfigs" @key="_chartInstanceKey" />
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <tr class="h-50">
+                                            <td>
+                                                <div class="btn-list flex-fill mx-5">
+                                                    <label class="btn btn-primary btn-wave" data-bs-toggle="tooltip" data-bs-placement="top" title="Send Bit Config to the device" style="margin: 0 0.375rem 0.375rem 0;">
+                                                        Set
+                                                        <InputFile OnChange="SetBitConfigAsync" @ref="setInput" accept=".ini" style="display:none;" />
+                                                    </label>
+                                                    <label class="btn btn-primary btn-wave" data-bs-toggle="tooltip" data-bs-placement="top" title="Get Bit Config from the device" style="margin: 0 0.375rem 0.375rem 0;">
+                                                        Get
+                                                        <InputFile OnChange="GetBitConfigAsync" @ref="getInput" accept=".ini" style="display:none;" />
+                                                    </label>
+                                                    <span data-bs-toggle="tooltip" data-bs-placement="top" title="Save Bit Config to Ini file">
+                                                        <button type="button" class="btn btn-primary btn-wave" @onclick="SaveBitConfig">Save</button>
+                                                    </span>
+                                                    <label class="btn btn-primary btn-wave" data-bs-toggle="tooltip" data-bs-placement="top" title="Load Bit Config to screen" style="margin: 0 0.375rem 0.375rem 0;">
+                                                        Load
+                                                        <InputFile OnChange="LoadBitConfigAsync" @ref="loadInput" accept=".ini" style="display:none;" />
+                                                    </label>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-xxl-9 col-xl-10 col-lg-12">
+                                <!-- Card body: native scrollbar -->
+                                <div class="card-body">
+                                    <SpkIniFile RulesList="RulesList" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<SpkStopDialog @ref="_dlg" DialogText="@DialogText" DialogHeader="@DialogHeader" OnStopProcess="StopProcess" />
+
+
+@code {
+
+    public class IniStat
+    {
+        public string? Source { get; set; }
+        public int SourceValue { get; set; }
+    };
+
+    private List<SpkPageHeader.PageItem> PageItems = new List<SpkPageHeader.PageItem> {
+        new SpkPageHeader.PageItem { PageTitle = "Bit Config" },
+    };
+
+    private List<IniRule> RulesList { get; set; } = new();
+    private string RuleHeader { get; set; }=string.Empty;
+    
+    private List<IniStat> IniStatData { get; set; } = new List<IniStat>();
+    private ApexChartOptions<IniStat> IniStatChartOptions { get; set; } = new();
+    private List<SeriesConfig<IniStat>>? IniStatConfigs { get; set; }
+    private string _chartInstanceKey = Guid.NewGuid().ToString();
+
+    private String DialogHeader = "Passing Bit Config";// String.Empty;
+    private String DialogText = "Communication in progress";// String.Empty;
+    private SpkStopDialog? _dlg;
+    private bool _isInProgress = false;
+
+    private InputFile loadInput = default!;          // ref target
+    private InputFile getInput = default!;          // ref target
+    private InputFile setInput = default!;          // ref target
+
+    private async Task LoadBitConfigAsync(InputFileChangeEventArgs e)
+    {
+        if (e.FileCount == 0) 
+            return;                // nothing picked
+        var file = e.File;         // first / only
+
+        await using var read = file.OpenReadStream(maxAllowedSize: 1024 * 1024); // 1MB
+        await LoadIniRulesAsync(read, file.Name);
+    }
+
+    private async Task GetBitConfigAsync(InputFileChangeEventArgs e)
+    {
+        if (e.FileCount == 0)
+            return;                // nothing picked
+        var file = e.File;         // first / only
+
+        await using var read = file.OpenReadStream(maxAllowedSize: 1024 * 1024); // 1MB
+        await LoadIniRulesAsync(read, file.Name);
+        await GetBitConfig();
+    }
+
+    private async Task SetBitConfigAsync(InputFileChangeEventArgs e)
+    {
+        if (e.FileCount == 0)
+            return;                // nothing picked
+        var file = e.File;         // first / only
+
+        await using var read = file.OpenReadStream(maxAllowedSize: 1024 * 1024); // 1MB
+        await LoadIniRulesAsync(read, file.Name);
+        await SetBitConfig();
+    }
+
+    public override void Dispose()
+    {
+        base.Dispose(); // optional, but usually needed
+    }
+
+    protected override void OnInitialized()
+    {
+        IniStatData = GetIniStat();
+
+        IniStatChartOptions = new ApexChartOptions<IniStat>
+        {
+            DataLabels = new DataLabels
+            {
+                Enabled = false,
+            },
+            Stroke = new Stroke
+            {
+                Show = true,
+                Curve = Curve.Smooth,
+                LineCap = ApexCharts.LineCap.Round,
+                Width = 0,
+                Colors = new Color(new List<string> { "#fff" }),
+            },
+            Legend = new Legend
+            {
+                Show = true,
+                Position = LegendPosition.Bottom,
+                HorizontalAlign = Align.Center,
+                Height = 52,
+                Markers = new()
+                {
+                    Width = 8,
+                    Height = 8,
+                    Radius = 2,
+                    StrokeWidth = 0
+                },
+                OffsetY = 10,
+            },
+            Grid = new Grid
+            {
+                Padding = new()
+                {
+                    Bottom = -100
+                }
+            },
+            Colors = new Color(new List<string> { "rgba(160, 160, 160, 1)", "rgba(84, 227, 84, 1)", "rgba(255, 84, 84, 1)", "var(--primary-color)" }),
+            PlotOptions = new PlotOptions
+            {
+                Pie = new PlotOptionsPie
+                {
+                    StartAngle = -90,
+                    EndAngle = 90,
+                    OffsetY = 10,
+                    ExpandOnClick = false,
+                    Donut = new PlotOptionsDonut
+                    {
+                        Size = "80%",
+                        Background = "transparent",
+                        Labels = new()
+                        {
+                            Show = true,
+                            Name = new()
+                            {
+                                Show = true,
+                                FontSize = "20px",
+                                Color = "#495057",
+                                OffsetY = -25
+                            },
+                            Value = new()
+                            {
+                                Show = true,
+                                FontSize = "15px",
+                                OffsetY = -20,
+                                Formatter = @"function (val) {
+                                    return val + '%'
+                                }"
+                            },
+                            Total = new()
+                            {
+                                Show = true,
+                                ShowAlways = true,
+                                Label = "Total",
+                                FontSize = "22px",
+                                FontWeight = 600,
+                                Color = "#495057",
+                            }
+                        }
+                    },
+                }
+            },
+        };
+
+        IniStatConfigs = new List<SeriesConfig<IniStat>>
+        {
+            new SeriesConfig<IniStat>
+            {
+                SeriesType = SeriesType.Donut,
+                Name = "Growth",
+                XValueSelector = e => e.Source ?? "unknown",
+                YAggregateSelector = items => (decimal?)items.Sum(e => e.SourceValue)
+            },
+        };
+        //base.OnInitialized();
+        InvokeAsync(UpdateGUIValuesLogic);
+    }
+
+    private Task StopProcess()
+    {
+        _isInProgress = false;
+        DialogText = "Process stopped by user";
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Parses an INI-rules stream that was already opened in the caller
+    /// with <c>file.OpenReadStream()</c>.
+    /// </summary>
+    private async Task LoadIniRulesAsync(Stream read, string file_name)
+    {
+        Console.WriteLine($"Processing bit config file: {file_name}.");
+        var work = new Dictionary<int, IniRule>();
+
+        // ➊ reset current view-model
+        RulesList.Clear();
+        RuleHeader = string.Empty;
+
+        // p\<id>\<key>=value   (slash or back-slash)
+        var lineRx = new Regex(
+            @"^p[\\/](?<id>\d+)[\\/](?<key>[^=]+)=(?<val>.*)$",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        using var sr = new StreamReader(read);
+
+        string? rawLine;
+        while ((rawLine = await sr.ReadLineAsync()) is not null)
+        {
+            var line = rawLine.Trim();
+            if (string.IsNullOrEmpty(line))               // skip blanks
+                continue;
+
+            // header
+            if (line.StartsWith('[') && line.EndsWith(']'))
+            {
+                RuleHeader = line;
+                continue;
+            }
+
+            // data line
+            var m = lineRx.Match(line);
+            if (!m.Success)                               // garbage ⇒ ignore
+                continue;
+
+            int id = int.Parse(m.Groups["id"].Value);
+            string k = m.Groups["key"].Value;
+            string v = m.Groups["val"].Value;
+
+            // ensure rule object
+            if (!work.TryGetValue(id, out var rule))
+            {
+                rule = new IniRule
+                {
+                    RuleID = id,
+                    Params = new[]
+                    {
+                    new IniRuleParam(), new IniRuleParam(),
+                    new IniRuleParam(), new IniRuleParam()
+                },
+                    Status = "Loaded"
+                };
+                work[id] = rule;
+            }
+
+            // helper that marks rule as failed if parse fails
+            bool TryParseInt(string s, out int result)
+            {
+                bool ok = int.TryParse(s, out result);
+                if (!ok) rule.Status = "Fail";
+                return ok;
+            }
+            bool TryParseDouble(string s, out double result)
+            {
+                bool ok = double.TryParse(s, out result);
+                if (!ok) rule.Status = "Fail";
+                return ok;
+            }
+
+            // ➍ map keys – every parse guarded
+            switch (k)
+            {
+                case "subsystem_id":
+                    if (TryParseInt(v, out var ss)) rule.SubSystemID = ss;
+                    break;
+                case "subtest_id":
+                    if (TryParseInt(v, out var st)) rule.SubTestID = st;
+                    break;
+                case "unit_id":
+                    if (TryParseInt(v, out var un)) rule.UnitID = un;
+                    break;
+                case "module_id":
+                    if (TryParseInt(v, out var md)) rule.ModuleID = md;
+                    break;
+                case "error_id":
+                    if (TryParseInt(v, out var er)) rule.ErrorID = er;
+                    break;
+                case "active":
+                    if (TryParseInt(v, out var ac)) rule.Active = ac;
+                    break;
+                case "num_of_errors":
+                    if (TryParseInt(v, out var ne)) rule.NumOfErrors = ne;
+                    break;
+                case "severity":
+                    if (TryParseInt(v, out var sv)) rule.Severity = sv;
+                    break;
+                case "window_size":
+                    if (TryParseInt(v, out var ws)) rule.WindowSize = ws;
+                    break;
+
+                // param values
+                case "param_1":
+                    if (TryParseDouble(v, out var p1)) rule.Params[0].Param = p1;
+                    break;
+                case "param_2":
+                    if (TryParseDouble(v, out var p2)) rule.Params[1].Param = p2;
+                    break;
+                case "param_3":
+                    if (TryParseDouble(v, out var p3)) rule.Params[2].Param = p3;
+                    break;
+                case "param_4":
+                    if (TryParseDouble(v, out var p4)) rule.Params[3].Param = p4;
+                    break;
+
+                // param types
+                case "param_type_1":
+                    if (TryParseInt(v, out var pt1)) rule.Params[0].ParamType = (eConfigParamType)pt1;
+                    break;
+                case "param_type_2":
+                    if (TryParseInt(v, out var pt2)) rule.Params[1].ParamType = (eConfigParamType)pt2;
+                    break;
+                case "param_type_3":
+                    if (TryParseInt(v, out var pt3)) rule.Params[2].ParamType = (eConfigParamType)pt3;
+                    break;
+                case "param_type_4":
+                    if (TryParseInt(v, out var pt4)) rule.Params[3].ParamType = (eConfigParamType)pt4;
+                    break;
+
+                    // unknown keys are silently ignored
+            }
+        }
+        if (string.IsNullOrEmpty(RuleHeader))
+        {
+            Console.WriteLine($"BitConfig Error - Rule Header is empty or null. Invalid file selected: {file_name}");
+            RulesList.Clear();
+
+            //TODO: Notify the user file chosen is bad
+            return;
+        }
+        // ➎ finalise
+        RulesList = work.Values
+                        .OrderBy(r => r.RuleID)
+                        .ToList();
+
+        await RefreshIniChartAsync();
+    }
+
+    private async Task SetBitConfig()
+    {
+        await _dlg!.ShowAsync();
+        await SendConfig(1);
+        await _dlg!.HideAsync();
+    }
+
+    private async Task GetBitConfig()
+    {
+        await _dlg!.ShowAsync();
+        await SendConfig(0);
+        await _dlg!.HideAsync();
+    }
+
+    private async Task SendConfig(byte getSetFlag)
+    {
+
+        List<IniRule> rulesToSend = RulesList.ToList();
+        RulesList.Clear();
+
+        if (rulesToSend.Count == 0)
+        {
+            Console.WriteLine("No rules to send.");
+            return;
+        }
+
+        _isInProgress = true;
+        BitConfigManager bitConfigManager = new BitConfigManager(
+            outMsgsManager,
+            ClientManager.UserData.AgentName,
+            udpData.UserData);
+
+        bitConfigManager.Init();
+
+        DialogText = "Starting...";
+
+        int counter = 1;
+        foreach (var iniRule in rulesToSend)
+        {
+            var reply = await Task.Run(() => bitConfigManager.SendToAgentBits(iniRule, getSetFlag, RuleHeader));
+            //reply.Item2.RuleID = ruleId++;
+
+            //Todo: color the line according to the reply status
+            bool success = reply.Item1;
+            reply.Item2.Status = success ? "Pass" : "Fail";
+            RulesList.Add(reply.Item2);
+
+            DialogText = $"Pass {counter++} out of {rulesToSend.Count}";
+            await InvokeAsync(StateHasChanged);
+
+            if (!_isInProgress)
+            {
+                DialogText = "Process stopped by user";
+                break;
+            }
+        }
+        _isInProgress = false;
+        await RefreshIniChartAsync();
+        bitConfigManager.Dispose();
+    }
+
+    private async Task SaveBitConfig()
+    {
+        // Build the INI file content
+        var sb = new StringBuilder();
+        sb.AppendLine(RuleHeader);
+
+        foreach (var rule in RulesList.OrderBy(r => r.RuleID))
+        {
+            // Write each property as an INI line, matching your parsing logic
+            string prefix = $"p\\{rule.RuleID}\\";
+
+            sb.AppendLine($"{prefix}subsystem_id={rule.SubSystemID}");
+            sb.AppendLine($"{prefix}subtest_id={rule.SubTestID}");
+            sb.AppendLine($"{prefix}unit_id={rule.UnitID}");
+            sb.AppendLine($"{prefix}module_id={rule.ModuleID}");
+            sb.AppendLine($"{prefix}error_id={rule.ErrorID}");
+            sb.AppendLine($"{prefix}active={rule.Active}");
+            sb.AppendLine($"{prefix}num_of_errors={rule.NumOfErrors}");
+            sb.AppendLine($"{prefix}severity={rule.Severity}");
+            sb.AppendLine($"{prefix}window_size={rule.WindowSize}");
+
+            // Params
+            for (int i = 0; i < rule.Params.Length; i++)
+            {
+                sb.AppendLine($"{prefix}param_{i + 1}={rule.Params[i].Param}");
+                sb.AppendLine($"{prefix}param_type_{i + 1}={(int)rule.Params[i].ParamType}");
+            }
+        }
+
+        // Save the INI file using IFileStore (if you want to use Blazor's file abstraction)
+        using var ms = new MemoryStream(Encoding.UTF8.GetBytes(sb.ToString()));
+        await DownloadTextAsync(ms,"BitConfig.ini");
+    }
+
+    public async Task DownloadTextAsync(
+        MemoryStream ms,
+        string downloadName = "file.txt",
+        string mime = "text/plain")
+    {
+        if (ms is null || ms.Length == 0)            // nothing to send
+            return;
+
+        // rewind and read UTF-8 text
+        ms.Position = 0;
+        string text = await new StreamReader(ms, Encoding.UTF8)
+                             .ReadToEndAsync()
+                             .ConfigureAwait(false);
+
+        // call the helper you added to wwwroot/js/forsight.js
+        await JS.InvokeVoidAsync(
+            "downloadTextFile",          // global function name
+            downloadName,
+            mime,
+            text);
+    }
+
+    public List<IniStat> GetIniStat()
+    {
+        var IniStatData = new List<IniStat>();
+
+        int Loaded = RulesList.Count(r =>
+            string.Equals(r.Status, "Loaded", StringComparison.OrdinalIgnoreCase));
+
+        int pass = RulesList.Count(r =>
+            string.Equals(r.Status, "Pass", StringComparison.OrdinalIgnoreCase));
+
+        int fail = RulesList.Count(r =>
+            string.Equals(r.Status, "Fail", StringComparison.OrdinalIgnoreCase));
+
+        IniStatData.Add(new IniStat { Source = "Loaded", SourceValue = Loaded });
+        IniStatData.Add(new IniStat { Source = "Pass", SourceValue = pass });
+        IniStatData.Add(new IniStat { Source = "Fail", SourceValue = fail });
+
+        return IniStatData;
+    }
+
+    private async Task RefreshIniChartAsync()
+    {
+        // 🔁 rebuild / mutate your list
+        IniStatData = GetIniStat();          // or mutate the current list
+
+        // 🔑 give the component a *new* key so Blazor recreates it
+        _chartInstanceKey = Guid.NewGuid().ToString();
+
+        await InvokeAsync(StateHasChanged);  // trigger a render pass
+    }
+
+    protected override void UpdateGUIValuesLogic()
+    {
+        //GenerateStateMachineTableInfo(); //update the state machine table info
+    }
+
+}

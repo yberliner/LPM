@@ -1,0 +1,108 @@
+﻿@using ForsightTester.Data
+@inject IJSRuntime JS
+
+<div class="modal fade" id="ModalSpinner_@IdPrefix"
+     tabindex="-1"
+     aria-labelledby="StopModalLabel_@IdPrefix"
+     aria-hidden="true"
+     data-bs-backdrop="static"
+     data-bs-keyboard="false"
+     @ref="_modalEl">
+
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background-color: var(--table-back);">
+            <div class="modal-header">
+                <h5 class="modal-title" id="StopModalLabel_@IdPrefix">Please wait&hellip;</h5>
+
+                @if (_showClose)
+                {
+                    <button type="button"
+                            class="btn p-0 border-0 bg-transparent"
+                            style="font-size:1.4rem;line-height:1;"
+                            @onclick="HideAsync">
+                        <i class="bi bi-x-circle text-default"></i>
+                    </button>
+                }
+            </div>
+
+            <div class="modal-body">
+                <div class="text-center">
+                    <div class="spinner-border me-4" style="width:6rem;height:6rem;" role="status"></div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <p>Processing&hellip;</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    /* ------------------------------------------------------------------ */
+    /*   modal bootstrap handle                                           */
+    /* ------------------------------------------------------------------ */
+    private IJSObjectReference? _bootstrapModal;
+    private ElementReference _modalEl;
+
+    /* ------------------------------------------------------------------ */
+    /*   close-icon timing state                                          */
+    /* ------------------------------------------------------------------ */
+    private CancellationTokenSource? _cts;
+    private bool _showClose;               // bound to the button above
+
+    /* --------- initialise bootstrap.Modal once ------------------------ */
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _bootstrapModal = await JS.InvokeAsync<IJSObjectReference>(
+                                   "initBootstrapModal", _modalEl);
+        }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*   public helpers                                                   */
+    /* ------------------------------------------------------------------ */
+    public async Task ShowAsync()
+    {
+        _cts?.Cancel();
+        _cts = new CancellationTokenSource();
+
+        _showClose = false;
+        await InvokeAsync(StateHasChanged);   // rerender header without icon
+
+        await _bootstrapModal!.InvokeVoidAsync("show");
+
+        // 4-second delayed reveal
+        _ = ShowCloseWithDelayAsync(_cts.Token);
+    }
+
+    public async Task HideAsync()
+    {
+        _cts?.Cancel();                       // stop any pending timer
+        await _bootstrapModal!.InvokeVoidAsync("hide");
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*   private helpers                                                  */
+    /* ------------------------------------------------------------------ */
+    private async Task ShowCloseWithDelayAsync(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(4), token);
+            if (!token.IsCancellationRequested)
+            {
+                _showClose = true;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (TaskCanceledException) { /* ignore */ }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*   parameters                                                       */
+    /* ------------------------------------------------------------------ */
+    [Parameter] public string IdPrefix { get; set; } = Guid.NewGuid().ToString("N");
+}

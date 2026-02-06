@@ -1,0 +1,85 @@
+@using ApexCharts
+@using ApexSeries
+
+@typeparam TItem where TItem : class
+
+@code {
+    [Parameter] public ApexChartOptions<TItem>? ChartOptions { get; set; }
+    [Parameter] public List<TItem> Items { get; set; } = new List<TItem>();  // Data items for the chart
+    [Parameter] public List<SeriesConfig<TItem>> Series { get; set; } = new List<SeriesConfig<TItem>>();  // Dynamic series list
+    [Parameter] public decimal? ApexHeight { get; set; }
+    [Parameter] public ApexCharts.XAxisType? XAxisType { get; set; }
+    [Parameter] public bool Debug { get; set; } = false;
+    [Parameter]  public string Title { get; set; } = "";
+    [Parameter] public bool RangeSeries { get; set; } = false;
+
+}
+
+<ApexChart TItem="TItem" Height="@ApexHeight" Options="ChartOptions" XAxisType ="@XAxisType" Title="@Title" Debug="@Debug" >
+    @if (RangeSeries == true)
+    {
+        @foreach (var seriesConfig in Series)
+        {
+            @if (seriesConfig.YMinValueSelector != null && seriesConfig.YMaxValueSelector != null)
+            {
+                <ApexRangeSeries TItem="TItem" 
+                Items="Items"
+                Name="@seriesConfig.Name"
+                XValue="seriesConfig.XValueSelector"
+                YMinValue="seriesConfig.YMinValueSelector"
+                YMaxValue="seriesConfig.YMaxValueSelector" PointColor="seriesConfig.PointColor"
+                ShowDataLabels=seriesConfig.ShowDataLabels />
+            }
+        }
+    }
+    else {
+        @foreach (var seriesConfig in Series)
+        {
+            
+            @if (seriesConfig.OpenSelector != null && seriesConfig.HighSelector != null && seriesConfig.CloseSelector != null && seriesConfig.LowSelector != null)
+            {
+                <ApexCandleSeries TItem="TItem" 
+                Items="Items"
+                Name="@seriesConfig.Name"
+                XValue="seriesConfig.XValueSelector"
+                Open="seriesConfig.OpenSelector"
+                High="seriesConfig.HighSelector"
+                Low="seriesConfig.LowSelector"
+                Close="seriesConfig.CloseSelector"
+                OrderByDescending="seriesConfig.OrderByDescending" />
+            }
+            @if (seriesConfig.TopSelector != null && seriesConfig.BottomSelector != null)
+            {
+                <ApexRangeAreaSeries TItem="TItem" 
+                Items="Items" Name="@seriesConfig.Name"
+                XValue="seriesConfig.XValueSelector"
+                Top="seriesConfig.TopSelector"
+                Bottom="seriesConfig.BottomSelector" />
+            }
+            @if (seriesConfig.MinSelector != null && seriesConfig.MaxSelector != null&& seriesConfig.Quantile1Selector != null&& seriesConfig.Quantile3Selector != null && seriesConfig.MedianSelector != null)
+            {
+                <ApexBoxPlotSeries TItem="TItem"
+                    Items="Items" 
+                    Name="@seriesConfig.Name" 
+                    XValue="seriesConfig.XValueSelector"
+                    Max="seriesConfig.MaxSelector" 
+                    Min="seriesConfig.MinSelector"
+                    Quantile1="seriesConfig.Quantile1Selector" 
+                    Quantile3="seriesConfig.Quantile3Selector"
+                    Median="seriesConfig.MedianSelector" />
+            }
+            else{
+                <ApexPointSeries TItem="TItem"
+                    Items="Items"
+                    SeriesType="seriesConfig.SeriesType"
+                    Name="@seriesConfig.Name"
+                    XValue="seriesConfig.XValueSelector"
+                    YValue="seriesConfig.YValueSelector"
+                    YAggregate="seriesConfig.YAggregateSelector" 
+                    DataPointMutator="seriesConfig.DataPointMutator"
+                    PointColor="seriesConfig.PointColor"
+                    ShowDataLabels=seriesConfig.ShowDataLabels  />
+            }
+        }
+    }
+</ApexChart>

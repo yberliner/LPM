@@ -1,0 +1,18 @@
+@page "/Help"
+@using ForsightTester._Spk
+
+<!-- Page Header -->
+<SpkPageHeader PageItems="PageItems" />
+<!-- Page Header Close -->
+
+<div class="row">
+    <div class="col-xxl-4 col-md-4 col-12">
+        <SpkDownloadAgent />
+    </div>
+</div>
+
+@code {
+    private List<SpkPageHeader.PageItem> PageItems = new List<SpkPageHeader.PageItem> {
+        new SpkPageHeader.PageItem { PageTitle = "Help" },
+    };
+}

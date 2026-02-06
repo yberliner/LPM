@@ -1,0 +1,109 @@
+﻿@inherits LayoutComponentBase
+@inject IHttpContextAccessor HttpContextAccessor
+@using Microsoft.JSInterop
+@inject IJSRuntime JSRuntime
+@using System.Text.Json
+@inject StateService stateService
+@inject SessionService _sessionService
+
+<Switcher />
+
+<div class="page">
+
+        <MainHeader ShowMenuToggle="true" />
+
+        <NavMenu @ref="navMenuRef" />
+
+        <div class="main-content app-content" @onclick="() => icontextCloseFn()">
+            <div class="container-fluid">
+                @Body
+            </div>
+        </div>
+
+        <Footer />
+
+        @if (ShowButton)
+        {
+            <!-- Scroll To Top -->
+            <div class="scrollToTop"  @onclick="ScrollToTop">
+                <span class="arrow lh-1"><i class="ti ti-arrow-narrow-up fs-20"></i></span>
+            </div>
+            <!-- Scroll To Top -->
+        }
+
+</div>
+
+@code {
+
+    NavMenu? navMenuRef;
+    bool ShowButton { get; set; } = false;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await stateService.retrieveFromLocalStorage();
+            await JSRuntime.InvokeVoidAsync("interop.updateScrollVisibility", DotNetObjectReference.Create(this));
+            
+            var dataNavLayout = await JSRuntime.InvokeAsync<string>("interop.getAttributeToHtml", "data-nav-layout");
+            var inner = await JSRuntime.InvokeAsync<int>("interop.inner", "innerWidth");
+            if(dataNavLayout == "horizontal" && inner >= 992){
+                navMenuRef?.closeMenuFn();
+            }
+        }
+    }
+    [JSInvokable]
+    public void UpdateScrollVisibility(int scrollHeight)
+    {
+        ShowButton = scrollHeight >= 100;
+        StateHasChanged();
+    }
+    async Task ScrollToTop()
+    {
+        await JSRuntime.InvokeVoidAsync("interop.scrollToTop");
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var currentState = new AppState();
+        var newState = stateService.GetAppState(); 
+        if(!currentState.Equals(newState)){
+            @* await stateService.retrieveFromLocalStorage(); *@
+        }
+        StateHasChanged();
+        await base.OnInitializedAsync();
+    }
+
+    // Icon ClickOpen Start
+    private async void icontextCloseFn()
+    {
+        try
+        {
+            var dataToggled = await JSRuntime.InvokeAsync<string>("interop.getAttributeToHtml", "data-toggled");
+            var dataNavLayout = await JSRuntime.InvokeAsync<string>("interop.getAttributeToHtml", "data-nav-layout");
+            var inner = await JSRuntime.InvokeAsync<int>("interop.inner", "innerWidth");
+            if (dataToggled == "icon-text-close") {
+                await JSRuntime.InvokeAsync<string>("interop.removeAttributeFromHtml", "data-icon-text");
+            }
+            if (dataNavLayout == "horizontal" && inner >= 992)
+            {
+                navMenuRef?.closeMenuFn();
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            // Suppress expected cancellation exceptions (circuit shutdown, etc.)
+            Console.WriteLine("[MainLayout] Task was canceled, likely due to circuit shutdown.");
+        }
+        catch (JSException)
+        {
+            Console.WriteLine("[MainLayout] JS interop error in icontextCloseFn, likely due to missing JS function or attribute.");
+            // Optionally suppress or log JS interop errors
+        }
+        catch (Exception ex)
+        {
+            // Optionally log unexpected exceptions
+            Console.WriteLine($"[MainLayout] Exception in icontextCloseFn: {ex}");
+        }
+    }
+    // Icon Clickopen End
+}

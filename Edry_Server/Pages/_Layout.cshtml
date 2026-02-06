@@ -1,0 +1,227 @@
+﻿@using Microsoft.AspNetCore.Components.Web
+@namespace Xintra.Pages
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+@inject Microsoft.AspNetCore.Components.NavigationManager NavigationManager // This line is used to generate URLs dynamically //
+@inject StateService stateService
+@using System.Text.Json;
+@inject IHttpContextAccessor HttpContextAccessor
+@{ 
+    var appState = stateService.GetAppState();
+
+}
+
+<!DOCTYPE html>
+<html lang="en" data-toggled="close"
+    @if (!string.IsNullOrEmpty(appState?.Direction))
+    {
+        <text>dir="@appState.Direction"</text>
+    }
+    @if (!string.IsNullOrEmpty(appState?.NavigationStyles))
+    {
+        <text>data-nav-layout="@appState.NavigationStyles"</text>
+    }
+    @if (!string.IsNullOrEmpty(appState?.ColorTheme))
+    {
+        <text>data-theme-mode="@appState.ColorTheme"</text>
+    }
+    @if (!string.IsNullOrEmpty(appState?.HeaderColor))
+    {
+        <text>data-header-styles="@appState.HeaderColor"</text>
+    }
+    @if (!string.IsNullOrEmpty(appState?.MenuColor))
+    {
+        <text>data-menu-styles="@appState.MenuColor"</text>
+    }
+    @if (!string.IsNullOrEmpty(appState?.MenuStyles))
+    {
+        <text>data-nav-style="@appState.MenuStyles"</text>
+    }
+    @if (!string.IsNullOrEmpty(appState?.PageStyles))
+    {
+        <text>data-page-style="@appState.PageStyles"</text>
+    }
+    @if (!string.IsNullOrEmpty(appState?.WidthStyles))
+    {
+        <text>data-width="@appState.WidthStyles"</text>
+    }
+    @if (!string.IsNullOrEmpty(appState?.MenuPosition))
+    {
+        <text>data-menu-position="@appState.MenuPosition"</text>
+    }
+    @if (!string.IsNullOrEmpty(appState?.HeaderPosition))
+    {
+        <text>data-header-position="@appState.HeaderPosition"</text>
+    }
+    @if (!string.IsNullOrEmpty(appState?.BackgroundImage))
+    {
+        <text>data-bg-img="@appState.BackgroundImage"</text>
+    }
+    @{
+        string style = "";
+
+        if (!string.IsNullOrEmpty(appState?.ThemePrimary))
+        {
+            style += $"--primary-rgb: {appState.ThemePrimary}; ";
+        }
+        if (!string.IsNullOrEmpty(appState?.ThemeBackground))
+        {
+            style += $"--body-bg-rgb: {appState.ThemeBackground}; ";
+            style += $"--body-bg-rgb2: {appState.ThemeBackground1}; ";
+            style += $"--light-rgb: {appState.ThemeBackground1}; ";
+            style += $"--form-control-bg: rgb({appState.ThemeBackground1}); ";
+            style += $"--gray-3: rgb({appState.ThemeBackground1}); ";
+            style += $"--light-rgb: rgba(255,255,255,0.1); ";
+        }
+    }
+    style="@style">
+        
+    <head>
+
+        <!-- Meta Data -->
+		<meta charset="UTF-8">
+        <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="Description" content="Ederi Ltd. All rights reserved">
+        <meta name="Author" content="Yaniv Berliner Ltd">
+        <meta name="keywords" content="Ederi,Aluminium,online,hprofile">
+
+        <link rel="manifest" href="/manifest.webmanifest">
+        <meta name="theme-color" content="#ffffff">
+
+        <!-- iOS home screen support -->
+        <link rel="apple-touch-icon" href="/icons/icon-192.png">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="default">
+
+    
+        <!-- TITLE -->
+        <title>Ederi.Online</title>
+
+        <!-- FAVICON -->
+        <link rel="icon" href="@($"{NavigationManager.BaseUri}assets/images/brand-logos/toggle-dark.png")" type="image/x-icon">
+
+        <!-- Style Css -->
+        <link href="@($"{NavigationManager.BaseUri}assets/css/styles.css")" rel="stylesheet" >
+        
+        <!-- ICONS CSS -->
+        <link href="@($"{NavigationManager.BaseUri}assets/css/icons.css")" rel="stylesheet">
+@*
+        <!-- node waves CSS -->
+        <link rel="stylesheet" href="@($"{NavigationManager.BaseUri}assets/libs/node-waves/dist/waves.min.css")">
+
+        <!-- Tom Select CSS -->
+        <link rel="stylesheet" href="@($"{NavigationManager.BaseUri}assets/libs/tom-select/dist/css/tom-select.bootstrap5.min.css")">
+*@
+        <!-- ColorPicker CSS -->
+        <link href="_content/BlazorColorPicker/colorpicker.css" rel="stylesheet" />
+        <link href="_content/BlazorColorPicker/BlazorColorPicker.bundle.scp.css" rel="stylesheet" />
+@*        
+        <!-- AUTO COMPLETE CSS -->
+        <link rel="stylesheet" href="@($"{NavigationManager.BaseUri}assets/libs/@tarekraafat/autocomplete.js/dist/css/autoComplete.css")">
+
+        <!--  YOUR component / site overrides (MUST be after Bootstrap) -->
+        <link href="css/site.css" rel="stylesheet" asp-append-version="true" />
+*@
+         <!--  this is FORSIGHT CUSTOM css file -->
+        <link href="css/forsight-custom.css" rel="stylesheet" asp-append-version="true" />
+        
+        <component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
+
+	</head>
+
+        <body>
+
+        @RenderBody()
+@*
+        <!-- POPPER JS -->
+        <script src="@($"{NavigationManager.BaseUri}assets/libs/@popperjs/core/dist/umd/popper.min.js")"></script>
+*@
+        <!-- BOOTSTRAP JS -->
+        <script src="@($"{NavigationManager.BaseUri}assets/libs/bootstrap/dist/js/bootstrap.bundle.min.js")"></script>
+@*
+        <!-- AUTO COMPLETE JS -->
+        <script src="@($"{NavigationManager.BaseUri}assets/libs/@tarekraafat/autocomplete.js/dist/autoComplete.min.js")"></script>
+
+        <!-- node-waves JS -->
+        <script src="@($"{NavigationManager.BaseUri}assets/libs/node-waves/dist/waves.min.js")"></script>
+
+        <!-- TomSelect JS -->
+        <script src="@($"{NavigationManager.BaseUri}assets/libs/tom-select/dist/js/tom-select.complete.min.js")"></script>
+        <!-- FlatpickrBlazor and plugins -->
+        <script src="_content/FlatpickrBlazor/flatpickr.min.js"></script>
+        <script src="_content/FlatpickrBlazor/flatpickr.blazor.js"></script>
+        <script src="_content/FlatpickrBlazor/l10n/de.js"></script>
+        <script src="_content/FlatpickrBlazor/plugins/monthSelect/index.js"></script>
+        <script src="_content/FlatpickrBlazor/plugins/minMaxTimePlugin.js"></script>
+
+        <!-- Filepond and plugins -->
+        <script src="../assets/libs/filepond/dist/filepond.min.js"></script>
+        <script src="../assets/libs/filepond-plugin-image-preview/dist/filepond-plugin-image-preview.min.js"></script>
+        <script src="../assets/libs/filepond-plugin-image-exif-orientation/dist/filepond-plugin-image-exif-orientation.min.js"></script>
+        <script src="../assets/libs/filepond-plugin-file-validate-size/dist/filepond-plugin-file-validate-size.min.js"></script>
+        <script src="../assets/libs/filepond-plugin-file-encode/dist/filepond-plugin-file-encode.min.js"></script>
+        <script src="../assets/libs/filepond-plugin-image-edit/dist/filepond-plugin-image-edit.min.js"></script>
+        <script src="../assets/libs/filepond-plugin-file-validate-type/dist/filepond-plugin-file-validate-type.min.js"></script>
+        <script src="../assets/libs/filepond-plugin-image-crop/dist/filepond-plugin-image-crop.min.js"></script>
+        <script src="../assets/libs/filepond-plugin-image-resize/dist/filepond-plugin-image-resize.min.js"></script>
+        <script src="../assets/libs/filepond-plugin-image-transform/dist/filepond-plugin-image-transform.min.js"></script>
+
+        <!-- Other libraries -->
+        <script src="../assets/libs/dropzone/dist/dropzone-min.js"></script>
+        <script src="../assets/libs/rater-js/index.js"></script>
+        <script src="../assets/libs/glightbox/dist/js/glightbox.min.js"></script>
+        <script src="../assets/libs/jsvectormap/dist/jsvectormap.min.js"></script>
+        <script src="../assets/libs/jsvectormap/dist/maps/world-merc.js"></script>
+        <script src="../assets/libs/gmaps/gmaps.min.js"></script>
+        <script src="../assets/libs/plyr/dist/plyr.min.js"></script>
+        <script src="../assets/libs/shepherd.js/dist/js/shepherd.min.js"></script>
+        <script src="../assets/libs/moment/moment.js"></script>
+        <script src="../assets/libs/animejs/lib/anime.min.js"></script>
+        <script src="../assets/libs/fullcalendar/index.global.min.js"></script>
+        <script src="../assets/libs/dragula/dist/dragula.min.js"></script>
+        <script src="../assets/libs/vanilla-wizard/dist/js/wizard.min.js"></script>
+        <script src="../assets/libs/intl-tel-input/build/js/intlTelInput.min.js"></script>
+        <script src="../assets/libs/dual-listbox/dist/dual-listbox.js"></script>
+        <script src="../assets/libs/@@yaireo/tagify/dist/tagify.js"></script>
+        <script src="../assets/libs/gridjs/dist/gridjs.umd.js"></script>
+        <script src="../assets/libs/chart.js/dist/chart.umd.js"></script>
+        <script src="../assets/libs/fg-emoji-picker/fgEmojiPicker.js"></script>
+        <script src="../assets/js/form-wizard.js"></script>
+        <script src="../assets/libs/quill/dist/quill.js"></script>
+
+        <!-- Dropzone JS -->
+        <script src="../assets/libs/dropzone/dist/dropzone-min.js"></script>
+
+        <!-- Fileupload JS -->
+        <script src="_content/Soenneker.Blazor.FilePond/filepondinterop.js"></script>
+        <script src="../assets/js/fileupload.js"></script>
+
+        <!-- Custom JS -->
+        <script src="/assets/js/custom.js"></script>
+*@
+        <script src="js/forsight.js"></script>
+        <script src="js/javaScriptInterop.js"></script>
+        <script src="js/resizeInterop.js"></script>
+
+        <script src="_framework/blazor.server.js"></script>
+
+        <script>
+        function CaptureElementAndCallBlazorFunction(event, menuData) {
+            var element = event.currentTarget;
+            var menuId = element.dataset.menuId;
+            window.DotNet.invokeMethodAsync("Xintra.SubNavMenu", "TriggerFunction", element, menuData, null);
+        }
+        </script>
+
+        <script>
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.register('/service-worker.js');
+        }
+        </script>
+
+
+        <script src="/js/pwa-install.js"></script>
+
+    </body>
+
+</html>

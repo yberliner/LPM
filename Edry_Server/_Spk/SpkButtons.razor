@@ -1,0 +1,40 @@
+@code {
+    [Parameter] public string Tag { get; set; } = "button"; // HTML tag to render
+    [Parameter] public string? ButtonClass { get; set; } = "btn-primary"; // CSS class for button styling
+    [Parameter] public string? ButtonType { get; set; } = "button";// Type for button
+    [Parameter] public bool IsRounded { get; set; } = false;// Flag to make button rounded
+    [Parameter] public string? ButtonSize { get; set; } // CSS class for button size
+    [Parameter] public string? ButtonWidth { get; set; } // CSS class for button width
+    [Parameter] public RenderFragment? ChildContent { get; set; } // Allows rendering of nested content
+
+    // Capture additional attributes passed to the component
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+}
+@{
+    // Determine the HTML tag to use
+    var tagName = Tag.ToLower();
+}
+ @if (tagName == "button") {
+    <button type="@ButtonType" @attributes="AdditionalAttributes" class="btn @ButtonSize @ButtonWidth @ButtonClass @(IsRounded ? "rounded-pill" : "") btn-wave ">
+        @if (ChildContent != null)
+        {
+            @ChildContent 
+        }
+    </button>
+}
+else if (tagName == "a")
+{
+    <a href="javascript:void(0);" class="btn @ButtonSize @ButtonWidth @ButtonClass @(IsRounded ? "rounded-pill" : "") btn-wave "
+        @attributes="AdditionalAttributes">
+        @if (ChildContent != null)
+        {
+            @ChildContent
+        }
+    </a>
+}
+else if (tagName == "input")
+{
+    <input type="@ButtonType" class="btn @ButtonSize @ButtonWidth @ButtonClass @(IsRounded ? "rounded-pill" : "")" @attributes="AdditionalAttributes"/>
+}

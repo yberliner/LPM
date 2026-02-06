@@ -1,0 +1,99 @@
+@using CardModel
+@*Remark
+The tooltops are generic yellow since Bootstrap tooltips needs to be defined before initalizing the control.
+Or updated using javascript (initNewTooltips defined in forsight.js)
+
+protected override async Task OnAfterRenderAsync(bool firstRender)
+{
+    await JS.InvokeVoidAsync("initNewTooltips");
+}
+
+But since Yellow tooltip is very nice, it is left like that.
+
+*@
+
+<li class="btn-group mx-1 @(Info?.Visible == true ? "" : "invisible")"
+    data-bs-toggle="@(HasSoloTooltip ? "tooltip" : null)"
+    data-bs-custom-class="@(HasSoloTooltip? GetTooltipClass()    : null)"
+    data-bs-placement="@(HasSoloTooltip ? "right" : null)"
+    data-bs-html="true"
+    title="@(HasSoloTooltip ? (MarkupString)Info!.Tooltip : null)">
+
+    @if (Info!.Enabled)
+    {
+        <button type="button"
+                class="btn @(Info!.ErrorExists ? "btn-warning-light" : "btn-success-light") dropdown-toggle btn-wave keep-caret"
+                data-bs-toggle="dropdown" aria-expanded="false">
+            @Info!.Caption
+            @if (Info!.ErrorTag != "")
+            {
+                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+                      data-bs-toggle="@(Info!.Tooltip != "" ? "tooltip" : null)"
+                      data-bs-custom-class="@(Info!.Tooltip != "" ? "tooltip-danger" : null)"
+                      data-bs-placement="@(Info!.Tooltip != "" ? "right" : null)"
+                      data-bs-html="true"
+                      title="@(Info!.Tooltip != "" ? (MarkupString)Info!.Tooltip : null)">
+                    @Info!.ErrorTag
+                </span>
+            }
+        </button>
+
+        <ul class="dropdown-menu dropmenu-light-success">
+            @for (int i = 0; i < Options!.Length; i++)
+            {
+                int Locali = i;
+                <li>
+                    <a class="dropdown-item" href="#"
+                       @onclick="() => SelectInitAsync(Locali)">
+                        <i class="bi bi-caret-right-fill me-2 @(Locali == _currentSelect ? "" : "invisible")"></i>
+                        @Options[Locali]
+                    </a>
+                </li>
+            }
+        </ul>
+    }
+    else
+    {
+        <button type="button"
+                class="btn btn-danger-light fail-icon"
+                aria-expanded="false">
+            @Info!.Caption
+        </button>
+    }
+</li>
+
+@code {
+    /* ---------- parameters (unchanged + new) ---------- */
+    [Parameter] public HeaderDropdownState? Info { get; set; }
+    [Parameter] public EventCallback<int> DropdownClicked { get; set; }
+    [Parameter] public String[]? Options { get; set; }
+
+    /* ---------- local state ---------- */
+    private int _currentSelect;     // what the UI is showing right now
+
+    private bool HasSoloTooltip =>
+           !string.IsNullOrEmpty(Info?.Tooltip) && string.IsNullOrEmpty(Info?.ErrorTag);
+
+    private string GetTooltipClass() =>
+        Info!.Enabled
+            ? (Info.ErrorExists ? "tooltip-warning" : "tooltip-success")
+            : "tooltip-danger";
+
+    protected override void OnParametersSet()
+    {
+        // whenever the parent updates IsInit we refresh our local copy
+        _currentSelect = Info!.CurrentSelect;
+    }
+
+    /* ---------- click handlers ---------- */
+    private async Task SelectInitAsync(int value)
+    {
+        if (value == _currentSelect)          // no change ? no callback
+            return;
+
+        _currentSelect = value;               // reflect in UI
+        // inform parent *only* when state really changed
+        if (DropdownClicked.HasDelegate)
+            await DropdownClicked.InvokeAsync(value);
+    }
+}

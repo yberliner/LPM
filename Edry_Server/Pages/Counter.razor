@@ -1,0 +1,54 @@
+﻿@page "/Counter"
+@inject Microsoft.AspNetCore.Components.NavigationManager NavigationManager // This line is used to generate URLs dynamically //
+@using ForsightTester._Spk
+
+<!-- Page Header -->
+<SpkPageHeader PageItems="PageItems" />
+<!-- Page Header Close -->
+<!-- Start::row-1 -->
+<div class="row">
+    <div class="col-xl-6">
+        <div class="card custom-card">
+            <div class="card-header justify-content-between">
+                <div class="card-title">
+                    Blazor Counter's Increment
+                </div>
+            </div>
+            <div class="card-body py-4">
+                <p role="status">Current count: @currentCount</p>
+                <SpkButtons ButtonClass="btn-primary" @onclick="IncrementCount">Click Me</SpkButtons>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-6">
+        <div class="card custom-card">
+            <div class="card-header justify-content-between">
+                <div class="card-title">
+                    Blazor Counter's Decrement
+                </div>
+            </div>
+            <div class="card-body py-4">
+                <p role="status">Current count: @currentCount1</p>
+                <SpkButtons ButtonClass="btn-primary" @onclick="DecrementCount">Click Me</SpkButtons>
+            </div>
+        </div>
+    </div>
+</div>
+<!--End::row-1 -->
+@code {
+    private List<SpkPageHeader.PageItem> PageItems = new List<SpkPageHeader.PageItem> {
+        new SpkPageHeader.PageItem { PageTitle = "Pages" },
+        new SpkPageHeader.PageItem { PageTitle = "Counters" },
+    };
+    private int currentCount = 0;
+    private int currentCount1 = 10;
+
+    private void IncrementCount()
+    {
+        currentCount++;
+    }
+    private void DecrementCount()
+    {
+        currentCount1--;
+    }
+}

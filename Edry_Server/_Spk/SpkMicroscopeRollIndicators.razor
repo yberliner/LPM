@@ -1,0 +1,87 @@
+﻿
+@code {
+
+}
+@inherits ForsightTester.Shared.AccordionInputBase
+
+<div class="motor-wrapper my-2 mx-2">
+    <div class="accordion accordion-primary" id="@ParentId">
+        <div class="accordion-item motor-card">
+            <h2 class="accordion-header" id="@HeadingId">
+                <button class="accordion-button"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#@CollapseId"
+                        aria-controls="@CollapseId"
+                        aria-expanded="true"
+                        style="background: transparent;">
+                    Roll Axis Sensors
+                </button>
+            </h2>
+
+            <div id="@CollapseId"
+                 class="accordion-collapse collapse show"
+                 aria-labelledby="@HeadingId"
+                 data-bs-parent="#@ParentId">
+
+                <div class="accordion-body" style="padding:0;">
+
+                    <table class="table table-sm motor-table mb-0" style="@TableStyle">
+                        <thead>
+                            <tr>
+                                <th></th>
+                                <th class="text-center">reach max sensor</th>
+                                <th class="text-center">did not reach max sensor</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            <tr>
+                                <td class="text-primary text-bold">Clockwise</td>
+                                <td class="text-center">
+                                    <span class="@GetSensorBadgeClass(Sensors?[0] ?? false)">
+                                        @(Sensors?[0] == true ? "True" : "False")
+                                    </span>
+                                </td>
+                                <td class="text-center">
+                                    <span class="@GetSensorBadgeClass(Sensors?[1] ?? false)">
+                                        @(Sensors?[1] == true ? "True" : "False")
+                                    </span>
+                                </td>
+                            </tr>
+
+                            <tr>
+                                <td class="text-primary text-bold">Counter-Clockwise</td>
+                                <td class="text-center">
+                                    <span class="@GetSensorBadgeClass(Sensors?[2] ?? false)">
+                                        @(Sensors?[2] == true ? "True" : "False")
+                                    </span>
+                                </td>
+                                <td class="text-center">
+                                    <span class="@GetSensorBadgeClass(Sensors?[3] ?? false)">
+                                        @(Sensors?[3] == true ? "True" : "False")
+                                    </span>
+                                </td>
+                            </tr>
+                        </tbody>
+
+                    </table>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string IdPrefix { get; set; } = Guid.NewGuid().ToString("N");
+    private string ParentId => $"accordion_RA_{IdPrefix}";
+    private string HeadingId => $"heading_RA_{IdPrefix}";
+    private string CollapseId => $"collapse_RA_{IdPrefix}";
+
+    [Parameter] public bool[]? Sensors { get; set; }  // must be size 4
+    [Parameter] public string? TableStyle { get; set; }
+
+    protected string GetSensorBadgeClass(bool value)
+        => value ? "badge bg-success" : "badge bg-secondary";
+}

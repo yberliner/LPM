@@ -1,0 +1,368 @@
+﻿@page "/Scripts"
+@inject Microsoft.AspNetCore.Components.NavigationManager NavigationManager // This line is used to generate URLs dynamically //
+@inherits BaseComponent<MSGS.VC2MicB_Control, MSGS.MicB2VC_Status>
+@inject MSGS.ClientManager udpData
+@using ForsightTester.Data
+@inject AllScriptResServices AllScriptResServices
+@inject IFileStore _fileStore
+@inject IJSRuntime JS
+@using ApexSeries
+
+@using FSMSGS
+@using MSGS
+@using ForsightTester
+@using ForsightTester._Spk
+@using Microsoft.AspNetCore.Components.Forms;
+
+<!-- No File Selected Modal -->
+<div class="modal fade @(ShowNoFileModal ? "show d-block" : "")" tabindex="-1" style="background:rgba(0,0,0,0.5);" aria-labelledby="noFileSelectedLabel" aria-modal="true" role="dialog">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background-color: var(--table-back);">
+
+            <div class="modal-header">
+                <h5 class="modal-title" id="noFileSelectedLabel">No File Selected</h5>
+                <button type="button" class="btn-close" @onclick="CloseNoFileModal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                Please select a file before clicking Play.
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" @onclick="CloseNoFileModal">OK</button>
+            </div>
+
+        </div>
+    </div>
+</div>
+<!-- Page Header -->
+<SpkPageHeader PageItems="PageItems" />
+<!-- Page Header Close -->
+
+<div class="row">
+    <div class="col-xxl-6">
+        <div class="card custom-card file-list-table-margin-5" style="height: 500px;">
+            <div class="card-header justify-content-between" style="background-color: var(--gray-4) !important;padding-top:0; padding-bottom:0;">
+                <div class="card-title fs-4 fw-bold">Scripts list</div>
+            </div>
+
+            <!-- Card body: native scrollbar -->
+            <div class="card-body p-0 file-list overflow-y-scroll overflow-x-auto">
+                <SpkFileSelect Files="AllScriptResServices.FullScripts!.Scripts"
+                SelectedFileName="@_fileSupport!._selectedFileName"
+                DownloadFile="DownloadFile"
+                OnFileNameClicked="OnFileNameClicked"
+                RegisterDeleteFile="RegisterDeleteFile" />
+
+            </div>
+            <div class="card-footer justify-content-between" style="background-color: var(--gray-4) !important;padding-top:0; padding-bottom:0; border-radius: 0 0 8px 8px">
+                <div class="card-body">
+                    <label class="btn btn-primary btn-wave" data-bs-toggle="tooltip" data-bs-placement="top" title="Send Bit Config to the device" style="margin: 0 0.375rem 0.375rem 0;">
+                        Upload script
+                        <InputFile OnChange="_fileSupport.OnUploadFile" @ref="UploadInput" accept=".*" style="display:none;" />
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xxl-6">
+        <div class="card custom-card file-list-table-margin-5" style="height: 500px;">
+            <div class="card-header justify-content-between" style="background-color: var(--gray-4) !important;padding-top:0; padding-bottom:0;">
+                <div class="card-title fs-4 fw-bold">Results list</div>
+            </div>
+
+            <!-- Card body: native scrollbar -->
+            <div class="card-body p-0 file-list overflow-y-scroll overflow-x-auto" style="border-bottom-left-radius: 10px;border-bottom-right-radius: 10px;margin-bottom: 5px;">
+                <SpkFileSelect Files="AllScriptResServices.FullScripts!.Results"
+                DownloadFile="DownloadFile"
+                RegisterDeleteFile="RegisterDeleteFile" />
+            </div>
+            <div class="card-footer" style="background-color: var(--gray-4) !important;padding-top:0; padding-bottom:0; border-radius: 0 0 8px 8px">
+                <SpkResultsFooter FreeSpaceGBFormatted="@_fileSupport!.FreeSpaceGBFormatted"
+                ToggleSaveChecked="@ToggleSaveChecked" />
+            </div>
+        </div>
+    </div>
+</div>
+<div class="row">
+    <div class="col-xxl-4 col-xl-5 col-lg-6">
+        <div class="card custom-card overflow-hidden">
+            <div class="card-body p-4">
+                <div class="mb-4">
+                    <h6 class="fw-semibold mb-1">@_fileSupport!._selectedFileName</h6>
+                    <span class="op-8 fs-12">@_numOfLines</span>
+                </div>
+                <div class="d-flex gap-3 align-items-center mb-4 pb-4">
+                    <div class="fs-12">0</div>
+                    <SpkProgress ProgressClass="progress-custom podcast-playing-progress" ProgressSize="progress-xs" ProgressValue="@ProgressValue">
+                        <div class="progress-bar bg-primary transition-off" style="width:@($"{ProgressValue}%")"></div>
+                    </SpkProgress>
+                    <div class="fs-12">100</div>
+                </div>
+
+                <div id="playerControls"
+                class="d-flex align-items-center justify-content-between flex-wrap gap-2 lh-1
+                            px-4 py-3 rounded-pill player-skin">
+
+                    <!-- radio-style buttons -->
+                    <button class="icon-btn @(RepeatActive ? "active" : null)"
+                    @onclick="ToggleRepeat"     aria-label="Repeat">
+                        <i class="ri-repeat-2-line fs-5"></i>
+                    </button>
+
+                    <button class="icon-btn @(LoopActive ? "active" : null)"
+                    @onclick="ToggleLoop"       aria-label="Loop All">
+                        <i class="ri-infinity-line fs-5"></i>
+                    </button>
+
+                    <!-- ordinary buttons -->
+                    <button class="icon-btn" @onclick="OnBack"  aria-label="Back">
+                        <i class="ri-skip-back-line fs-5"></i>
+                    </button>
+
+                    @* <button class="icon-btn" @onclick="OnPlay" aria-label="Play">
+                        <i class="ri-play-line fs-5"></i>
+                    </button> *@
+
+                    <label class="icon-btn" title="Play" style="cursor:pointer;">
+                        <i class="ri-play-line fs-5"></i>
+                        <InputFile OnChange="OnPlayJsonSelected"
+                                   accept=".json"
+                                   style="display:none;" />
+                    </label>
+
+
+                    <button class="icon-btn" @onclick="OnStop" aria-label="Stop">
+                        <i class="ri-stop-line fs-5"></i>
+                    </button>
+                </div>
+                <div class="d-flex">
+                    <p class="fs-5 mt-2 mb-2">
+                        <span class="op-8 fs-15">Loop counter:</span>
+                        <input class="form-control motor-input @GetInputClass(LoopValue)" 
+                        style="width:100px" 
+                        value="@LoopDisplayValue"
+                        @oninput="OnLoopInput"
+                        disabled="@LoopActive"
+                        readonly="@LoopActive" />
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Delete Confirmation Modal -->
+<SpkDeleteFileDialog FileSupport="_fileSupport" DeleteFile="ConfirmDelete" />
+
+
+@code {
+    private List<SpkPageHeader.PageItem> PageItems = new List<SpkPageHeader.PageItem> {
+        new SpkPageHeader.PageItem { PageTitle = "Scrips" },
+    };
+
+    private string? _numOfLines;    
+    private string _resultFileName = string.Empty;
+    private bool ToggleSaveChecked = true; // default to checked
+
+    /* ---------- state flags for the two toggle buttons ---------- */
+    private FileSupport? _fileSupport;
+
+    private bool RepeatActive;
+    private bool LoopActive;
+    private string LoopValue = string.Empty;
+    private string ProgressValue = "0";
+    private string LoopDisplayValue => LoopActive ? "∞" : LoopValue;
+
+    private InputFile UploadInput = default!;          // ref target
+
+    private int LoopCount
+    {
+        get
+        {
+            if (LoopActive)
+                return int.MaxValue;
+            if (int.TryParse(LoopValue, out var count) && count > 0)
+                return count;
+            return 0; // or your default
+        }
+    }
+
+    private bool ShowNoFileModal { get; set; }
+    private void CloseNoFileModal() => ShowNoFileModal = false;
+
+    protected override void OnInitialized()
+    {
+        Console.WriteLine("Scripts OnInitialized");
+        // Set initial state as needed:
+        // For example, enable Repeat by default:
+        RepeatActive = true;
+        LoopActive = false;
+        LoopValue = "1"; // Default loop count
+        _fileSupport = new FileSupport(JS, AllScriptResServices.FullScripts!.Scripts, _fileStore);
+    }
+
+    public override void Dispose()
+    {
+        Console.WriteLine("Scripts Dispose");
+        //stop the script if it's running
+        udpData.CancelScript();
+
+        base.Dispose(); // optional, but usually needed
+    }
+    // Only basic options are required when you read locally
+
+    private async Task ConfirmDelete()
+    {
+        if (_fileSupport!.ConfirmDelete())
+        {
+            StateHasChanged();
+            await JS.InvokeVoidAsync("unfocusButtons");
+        }
+    }
+    private void OnScriptProgress(ScriptProcessed e)
+    {
+        //if (e.JobId != _currentJobId) return;
+        ProgressValue = ((e.currentMsg / e.totalMsgs) * 100.0).ToString();
+        _resultFileName = Path.GetFileName(e.ResultPath);
+        //Console.WriteLine($"Progress is: {ProgressValue}. {e.currentMsg}-{e.totalMsgs}");
+        if (e.num_of_times_to_repeat > int.MaxValue / 2) // avoid overflow
+        {
+            _numOfLines = string.Format($"∞: {e.currentMsg}/{e.totalMsgs}"); // or some other indication of infinity
+        }
+        else if (e.num_of_times_to_repeat > 0)
+        {
+            _numOfLines = string.Format($"{e.num_of_times_to_repeat}: {e.currentMsg}/{e.totalMsgs}");
+        }
+
+        if (e.isDone)
+        {
+            Console.WriteLine($"Script completed: {e.ResultPath}");
+            udpData.CancelScript();
+            _numOfLines = "Script completed successfully.";
+            InvokeAsync(StateHasChanged);
+        }
+        if (e.currentMsg % 20 == 0)
+        {
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /* ---------- toggle handlers (radio-like behaviour) ---------- */
+    private void ToggleRepeat()
+    {
+        // clicking a pressed button releases it
+        RepeatActive = !RepeatActive;
+
+        if (RepeatActive)
+            LoopActive = false;     // ensure exclusivity
+
+        OnRepeatClicked(RepeatActive);  // notify with state
+    }
+
+    private void ToggleLoop()
+    {
+        LoopActive = !LoopActive;
+
+        if (LoopActive)
+            RepeatActive = false;
+
+        OnLoopClicked(LoopActive);      // notify with state
+    }
+
+    /* ---------- ordinary button handlers ---------- */
+    private Task OnBack()
+    {
+        Console.WriteLine("Back clicked");
+        ProgressValue = "0";
+        _numOfLines = string.Format($"OnBack pressed");
+        return OnPlay(); // Reuse the play logic to start from the beginning
+    }
+    private async Task OnPlay(string jsonTextUserVariables = "")
+    {
+        if (string.IsNullOrEmpty(_fileSupport!._selectedFileFullPath))
+        {
+            ShowNoFileModal = true;
+            return;
+        }
+        Console.WriteLine($"OnPlay clicked. File name: {_fileSupport!._selectedFileFullPath}");
+
+        udpData.CancelScript(); // Stop any previous script before starting a new one
+
+        ShowNoFileModal = false;
+        ProgressValue = "0";
+        _numOfLines = "Initializing script...";
+        await InvokeAsync(StateHasChanged); // 1. Request UI update
+        await Task.Yield();                 // 2. Yield to renderer
+
+        if (LoopCount > 0)
+        {
+            //UserSaveVariableInput.
+            udpData.StartMotionScriptHandling(2, _fileSupport!._selectedFileFullPath, LoopCount, ToggleSaveChecked, "Results", jsonTextUserVariables);
+            udpData.UserData.motion_engine?.RegisterScriptProcessedCallback(OnScriptProgress); // Register the callback for progress updates)
+        }
+        _numOfLines = "Done Initializing script...";
+        await InvokeAsync(StateHasChanged); // 1. Request UI update
+    }
+    private void OnStop()
+    {
+        Console.WriteLine("Stop clicked");
+        ProgressValue = "0";
+        _numOfLines = string.Format($"Stop pressed");
+        udpData.CancelScript();
+    }
+    /* ---------- callbacks you can wire elsewhere ---------- */
+    private void OnRepeatClicked(bool isActive) =>
+        Console.WriteLine($"Repeat now {(isActive ? "ON" : "OFF")}");
+
+    private void OnLoopClicked(bool isActive)   =>
+        Console.WriteLine($"Loop   now {(isActive ? "ON" : "OFF")}");
+
+    private string GetInputClass(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "empty";
+        return int.TryParse(value, out _) ? "valid" : "invalid";
+    }
+
+    private void OnLoopInput(ChangeEventArgs e)
+    {
+        LoopValue = e.Value?.ToString() ?? string.Empty;
+    }
+
+    public async Task DownloadFile((string FileName, string FullPath) fileInfo)
+    {
+        await _fileSupport!.DownloadFile(fileInfo);
+    }
+
+    private void OnFileNameClicked((string FileName, string FullPath) fileInfo)
+    {
+        _fileSupport!.OnFileNameClicked(fileInfo);
+    }
+    private void RegisterDeleteFile((string DirectoryPath, string FileName) fileInfo)
+    {
+        _fileSupport!.RegisterDeleteFile(fileInfo);
+    }
+
+    private async Task OnPlayJsonSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null)
+        {
+            ShowNoFileModal = true;
+            return;
+        }
+
+        // --- Read the JSON file ---
+        using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+        using var reader = new StreamReader(stream);
+        string jsonTextUserVariables = await reader.ReadToEndAsync();
+
+        Console.WriteLine($"User selected JSON: {file.Name}");
+        // Optionally store it
+        //UserSaveVariableInput!._selectedFileFullPath = file.Name;
+        // If needed, parse JSON:
+        // var config = JsonSerializer.Deserialize<YourConfigType>(jsonText);
+
+        // Now just run your OnPlay logic
+        await OnPlay(jsonTextUserVariables);
+    }
+}

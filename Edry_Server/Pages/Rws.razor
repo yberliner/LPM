@@ -1,0 +1,1396 @@
+﻿@page "/Rws"
+@inject Microsoft.AspNetCore.Components.NavigationManager NavigationManager // This line is used to generate URLs dynamically //
+@inherits BaseComponent<MSGS.RKS2RC_Control, MSGS.RC2RKS_Status> 
+@inject MSGS.ClientManager udpData
+@inject IFileStore _fileStore
+@inject DevTableVisibilityService DevTableVisibility
+@using ForsightTester.Data
+@inject AllScriptResServices AllScriptResServices
+@inject IJSRuntime JS
+@inject MSGS.AgentsRepository _agentsRepository
+@inject MSGS.ClientSessionData sessionData
+@using CardModel
+
+@using FSMSGS
+@using MSGS
+@using ForsightTester
+@using ForsightTester._Spk
+@using Microsoft.AspNetCore.Components.Forms;
+@using System.Text
+
+<!-- No File Selected Modal -->
+<div class="modal fade @(ShowNoFileModal ? "show d-block" : "")" tabindex="-1" style="background:rgba(0,0,0,0.5);" aria-labelledby="noFileSelectedLabel" aria-modal="true" role="dialog">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background-color: var(--table-back);">
+
+            <div class="modal-header">
+                <h5 class="modal-title" id="noFileSelectedLabel">No File Selected</h5>
+                <button type="button" class="btn-close" @onclick="CloseNoFileModal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                Please select a file before clicking Play.
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" @onclick="CloseNoFileModal">OK</button>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Page Header -->
+<SpkPageHeader PageItems="PageItems" AdvancedEnabled="true"
+    AdvancedToggled="OnAdvancedToggled" ResetClick="OnResetClicked" 
+    SecureRobotLimits="OnSecureRobotLimitsToggled" 
+    MotionProfileToggled="OnMotionProfileToggled"
+    RWSSpecific ="true"/>
+<!-- Page Header Close -->
+
+<!-- Horizontal Row for Two Tables -->
+
+<div class="row">
+    <div class="col-12">
+        <div class="card custom-card">
+            <div class="card-body">
+                <ul class="nav nav-pills justify-content-center nav-style-2 mb-3" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-bs-toggle="tab" role="tab" aria-current="page"
+                           href="#RoboticControl" aria-selected="true" @onclick='() => OnTabSelected("RWS")'>Robotic Control</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" role="tab" aria-current="page"
+                        href="#MotionScript" aria-selected="false">Motion Script</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" role="tab" aria-current="page"
+                        href="#PressureControl" aria-selected="false">Pressure Control</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" role="tab" aria-current="page"
+                        href="#MotionControlParameters" aria-selected="false">Motion Control Parameters</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" role="tab" aria-current="page"
+                        href="#RCBAdditionalInformation" aria-selected="false">RCB Additional Information</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" role="tab" aria-current="page"
+                        href="#Settings" aria-selected="false">Settings</a>
+                    </li>
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane show active text-muted" id="RoboticControl" role="tabpanel">
+                        <div class="d-flex flex-wrap">
+                            <div style="width: @(isAdvanced ? "830px" : "720px")">
+                                <!-- Left Arm -->
+                                <SpkMotorControl Name="Left arm"
+                                MotorsValues="@MotorValue1"
+                                SendAbsolute="@SendAbsolute1"
+                                SendRelative="@SendRelative1"
+                                MotionSwitchChanged="OnMotionToggle1"
+                                ButtonEnabled="@true"
+                                AbsoluteDefaults="AbsoluteDefaults_0"
+                                Advanced="@isAdvanced"
+                                FastMode="@fastModeLeft"
+                                FastModeChanged="@FastModeLeft"
+                                />
+                            </div>
+                            <div style="width: @(isAdvanced ? "830px" : "720px")">
+                                <!-- Right Arm -->
+                                <SpkMotorControl Name="Right arm"
+                                MotorsValues="@MotorValue2"
+                                SendAbsolute="@SendAbsolute2"
+                                SendRelative="@SendRelative2"
+                                MotionSwitchChanged="OnMotionToggle2"
+                                ButtonEnabled="@true" 
+                                AbsoluteDefaults="AbsoluteDefaults_1"
+                                Advanced="@isAdvanced"
+                                FastMode="@fastModeRight"
+                                FastModeChanged="@FastModeRight" />
+                            </div>
+                            <div style="width: 720px">
+                                <SpkMotorWizard Name="Motion Control"
+                                 Params="WizardParams"
+                                 RunClicked="MotorWizardRun"
+                                 />
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-pane text-muted" id="MotionScript" role="tabpanel">
+                        <div class="row">
+                            <div class="col-xxl-6">
+                                <div class="card custom-card file-list-table-margin-5" style="height: 500px;">
+                                    <div class="card-header justify-content-between" style="background-color: var(--gray-4) !important;padding-top:0; padding-bottom:0;">
+                                        <div class="card-title fs-4 fw-bold">Scripts list</div>
+                                    </div>
+                                    <!-- Card body: native scrollbar -->
+                                    <div class="card-body p-0 file-list overflow-y-scroll overflow-x-auto">
+                                        <SpkFileSelect Files="AllScriptResServices.RwsScripts!.Scripts"
+                                        SelectedFileName="@_fileSupport!._selectedFileName"
+                                        DownloadFile="DownloadFile"
+                                        OnFileNameClicked="OnFileNameClicked"
+                                        RegisterDeleteFile="RegisterDeleteFile" />
+                                    </div>
+                                    <div class="card-footer justify-content-between" style="background-color: var(--gray-4) !important;padding-top:0; padding-bottom:0; border-radius: 0 0 8px 8px">
+                                        <div class="card-body">
+                                            <label class="btn btn-primary btn-wave" data-bs-toggle="tooltip" data-bs-placement="top" title="Send Bit Config to the device" style="margin: 0 0.375rem 0.375rem 0;">
+                                                Upload script
+                                                <InputFile OnChange="_fileSupport.OnUploadFile" @ref="UploadInput" accept=".*" style="display:none;" />
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-xxl-6">
+                                <div class="card custom-card file-list-table-margin-5" style="height: 500px;">
+                                    <div class="card-header justify-content-between" style="background-color: var(--gray-4) !important;padding-top:0; padding-bottom:0;">
+                                        <div class="card-title fs-4 fw-bold">Results list</div>
+                                    </div>
+
+                                    <!-- Card body: native scrollbar -->
+                                    <div class="card-body p-0 file-list overflow-y-scroll overflow-x-auto" style="border-bottom-left-radius: 10px;border-bottom-right-radius: 10px;margin-bottom: 5px;">
+                                        <SpkFileSelect Files="AllScriptResServices.RwsScripts!.Results"
+                                        DownloadFile="DownloadFile"
+                                        RegisterDeleteFile="RegisterDeleteFile" />
+                                    </div>
+                                    <div class="card-footer" style="background-color: var(--gray-4) !important;padding-top:0; padding-bottom:0; border-radius: 0 0 8px 8px">
+                                        <SpkResultsFooter FreeSpaceGBFormatted="@_fileSupport!.FreeSpaceGBFormatted"
+                                        ToggleSaveChecked="@ToggleSaveChecked" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-xxl-4 col-xl-5 col-lg-6">
+                                <div class="card custom-card overflow-hidden">
+                                    <div class="card-body p-4">
+                                        <div class="mb-4">
+                                            <h6 class="fw-semibold mb-1">@_fileSupport!._selectedFileName</h6>
+                                            <span class="op-8 fs-12">@_numOfLines</span>
+                                        </div>
+                                        <div class="d-flex gap-3 align-items-center mb-4 pb-4">
+                                            <div class="fs-12">0</div>
+                                            <SpkProgress ProgressClass="progress-custom podcast-playing-progress" ProgressSize="progress-xs" ProgressValue="@ProgressValue">
+                                                <div class="progress-bar bg-primary transition-off" style="width:@($"{ProgressValue}%")"></div>
+                                            </SpkProgress>
+                                            <div class="fs-12">100</div>
+                                        </div>
+
+                                        <div id="playerControls"
+                                             class="d-flex align-items-center justify-content-between flex-wrap gap-2 lh-1 px-4 py-3 rounded-pill player-skin">
+                                            <!-- radio-style buttons -->
+                                            <button class="icon-btn @(RepeatActive ? "active" : null)"
+                                                    @onclick="ToggleRepeat" aria-label="Repeat">
+                                                <i class="ri-repeat-2-line fs-5"></i>
+                                            </button>
+
+                                            <button class="icon-btn @(LoopActive ? "active" : null)"
+                                                    @onclick="ToggleLoop" aria-label="Loop All">
+                                                <i class="ri-infinity-line fs-5"></i>
+                                            </button>
+
+                                            <!-- ordinary buttons -->
+                                            <button class="icon-btn" @onclick="OnBack" aria-label="Back">
+                                                <i class="ri-skip-back-line fs-5"></i>
+                                            </button>
+
+                                            <button class="icon-btn" @onclick="OnPlay" aria-label="Play">
+                                                <i class="ri-play-line fs-5"></i>
+                                            </button>
+
+                                            <button class="icon-btn" @onclick="OnStop" aria-label="Stop">
+                                                <i class="ri-stop-line fs-5"></i>
+                                            </button>
+                                        </div>
+                                        <div class="d-flex">
+                                            <p class="fs-5 mt-2 mb-2">
+                                                <span class="op-8 fs-15">Loop counter:</span>
+                                                <input class="form-control motor-input @GetInputClass(LoopValue)"
+                                                       style="width:100px"
+                                                       value="@LoopDisplayValue"
+                                                       @oninput="OnLoopInput"
+                                                       disabled="@LoopActive"
+                                                       readonly="@LoopActive" />
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-pane text-muted" id="PressureControl" role="tabpanel">
+                        <p>TBD!</p>
+                        <p>_TBD!</p>
+                        <p>__TBD!</p>
+                        <p>___TBD!</p>
+                        <p>____TBD!</p>
+                        <p>_____TBD!</p>
+                    </div>
+                    <div class="tab-pane text-muted" id="MotionControlParameters" role="tabpanel">
+                        <p>TBD2!</p>
+                        <p>_TBD2!</p>
+                        <p>__TBD2!</p>
+                        <p>___TBD2!</p>
+                        <p>____TBD2!</p>
+                        <p>_____TBD2!</p>
+                    </div>
+                    <div class="tab-pane text-muted" id="RCBAdditionalInformation" role="tabpanel">
+                        <div class="d-flex flex-wrap">
+                            <div style="width: 700px">
+                                <SpkDecorationLightConfig TableStyle="height:650px;"
+                                ColorValues="@DecorationLightColorValues"
+                                IntervalValues="@DecorationLightIntervalValues"
+                                CyclePatternsClicked="@CyclePatternLedConfig"
+                                LightConfigHeaders="@LightConfigHeaders"
+                                StartStopCaption="@DecorationLightCaption"
+                                StartStopClicked="@DecorationStartStopClicked" 
+                                />
+                            </div>
+                            <div style="width: 700px">
+                                <SpkBoardInfo TableStyle="height:240px;"
+                                                LeftID="@LeftID"
+                                                LeftVersion="@LeftVersion"
+                                                RightID="@RightID"
+                                                RightVersion="@RightVersion" />
+                            </div>
+                            @* <div style="width: 600px">
+                                <SpkFlaSetup TableStyle="height:540px;"
+                                CurrentValues="@flaData" />
+                            </div> *@
+                            <div style="width: 700px">
+                                <SpkVoltage TableStyle="height:300;"
+                                CurrentValues="@voltageData" />
+                            </div>
+                            <divstyle="width: 500px">
+                                <SpkRWSTopPic WheelLock="@WheelLock"/>
+                            </divstyle>
+             @*               <div style="width: 300px;">
+                                <SpkEStop TableStyle="height:350px;" Values="@LeftRobotsWheel" TableName="Left Robots Wheel" />
+                            </div>
+                            <div style="width: 300px;">
+                                <SpkEStop TableStyle="height:350px;" Values="@RightRobotsWheel" TableName="Right Robots Wheel" />
+                            </div>  removed these tables because Liran asked but I left them here because I think we might use them again*@
+                        </div>
+                    </div>
+                    <div class="tab-pane text-muted" id="Settings" role="tabpanel">
+                        <div class="d-flex flex-wrap">
+                            <label class="btn btn-primary btn-wave" data-bs-toggle="tooltip" data-bs-placement="top" title="Load Bit Config to screen" style="margin: 0 0.375rem 0.375rem 0;">
+                                UpLoad Json File
+                                <InputFile OnChange="UpLoadJsonAsync" @ref="loadInput" accept=".json" style="display:none;" />
+                            </label>
+                            <span data-bs-toggle="tooltip" data-bs-placement="top" title="Save Bit Config to Ini file">
+                                <button type="button" class="btn btn-primary btn-wave" @onclick="DownloadJson">Download Json File</button>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<SpkDeleteFileDialog FileSupport="_fileSupport" DeleteFile="ConfirmDelete" />
+<SpkYesNoDialog @ref="YesNoDlg" Header="@YesNoHeader" Message="@YesNoMessage" />
+<SpkModalSpinner @ref="_SpinnerDlg" />
+
+@code {
+
+   
+    private bool[] WheelLock = {false, false, false, false};
+    private SpkModalSpinner? _SpinnerDlg;
+
+    private FileSupport? _fileSupport;
+    private bool ToggleSaveChecked = true; // default to checked
+
+    private SpkYesNoDialog? YesNoDlg;
+    private String YesNoHeader = "Header";
+    private String YesNoMessage = "Message";
+
+    private int _numOfGuiRefreshes = 0; // Counter for GUI refreshes
+    cRcPose[]? engine_low_border = null;//  new cRcPose[2];
+    cRcPose[]? engine_high_border = null; // new cRcPose[2];
+
+    private string[] LightConfigHeaders { get; set; } = new[] { "ESTOP Button", "Left T.E. Button", "Right T.E. Button", "Left Plunger Button", "Right Plunger Button", "Left Logo", "Right Logo", "Table", "Left Robot", "Center Robot", "Right Robot", "Left Plunger Strip", "Right Plunger Strip" };
+    private string[] DecorationLightColorValues = Enumerable.Repeat(Utils.LedIniLoader.LedColorPatternNames[0], 13).ToArray(); 
+    private string[] DecorationLightIntervalValues = Enumerable.Repeat(Utils.LedIniLoader.LedIntervalPatternNames[0], 13).ToArray();
+    private string DecorationLightCaption = "Start";
+
+    private string[] LeftID = new string[] { "0x00000000", "0x00000000", "0x00000000", "0x00000000" };
+    private string[] LeftVersion = new string[] { "0x00000000", "0x00000000", "0x00000000", "0x00000000" };
+    private string[] RightID = new string[] { "0x00000000", "0x00000000", "0x00000000", "0x00000000" };
+    private string[] RightVersion = new string[] { "0x00000000", "0x00000000", "0x00000000", "0x00000000" };
+
+    private InputFile UploadInput = default!;          // ref target
+
+    private string? _numOfLines=string.Empty;
+    private bool RepeatActive;
+    private bool LoopActive;
+    private string LoopValue = string.Empty;
+    private string ProgressValue = "0";
+    private string LoopDisplayValue => LoopActive ? "∞" : LoopValue;
+
+    private bool isAdvanced=false;
+    private bool fastModeLeft = true;
+    private bool fastModeRight = true;
+    private bool isSecureRobotLimit = true;
+    private bool isMotionProfile = true;
+
+    private InputFile loadInput = default!;          // ref target
+    private async Task UpLoadJsonAsync(InputFileChangeEventArgs e)
+    {
+        if (e.FileCount == 0)
+            return;                // nothing picked
+        var file = e.File;         // first / only
+
+        // Choose the output path relative to the app
+        var baseDir = AppContext.BaseDirectory;
+        var pagesDir = Path.Combine(baseDir, "Pages");
+        Directory.CreateDirectory(pagesDir); // ensure the folder exists
+
+        var targetPath = Path.Combine(pagesDir, "absolute_defaults.json");
+
+        Console.WriteLine($"Saving file to: {targetPath}");
+
+        await using var read = file.OpenReadStream(maxAllowedSize: 1024 * 1024); // 1 MB limit
+        await using var write = File.Create(targetPath);
+        await read.CopyToAsync(write);
+
+        var provider = new AbsoluteDefaultsProvider();
+        provider.LoadFromJson(Path.Combine("Pages", "absolute_defaults.json"));
+
+        Console.WriteLine("✅ JSON file saved successfully.");
+    }
+
+    private void OnTabSelected(string id)
+    {
+        if (id == "RWS")
+        {
+            LoadDefaultValues();
+        }
+    }
+
+    private Task OnAdvancedToggled(bool on)
+    {
+        isAdvanced = on;
+        return Task.CompletedTask;
+    }
+    private Task OnSecureRobotLimitsToggled(bool on)
+    {
+        isSecureRobotLimit = on;
+        return Task.CompletedTask;
+    }
+    private Task OnMotionProfileToggled(bool on)
+    {
+        isMotionProfile = on;
+        return Task.CompletedTask;
+    }
+
+
+
+    private Task OnResetClicked()
+    {
+        Console.WriteLine("RWS Reset values clicked");
+        fastModeLeft = fastModeRight = true;
+        for (int j = 0; j < MotorValue1.Motors.Length; j++)
+        {
+            MotorValue1.Motors[j].AbsoluteValue = string.Empty;
+            MotorValue1.Motors[j].RelativeValue = string.Empty;
+            MotorValue2.Motors[j].AbsoluteValue = string.Empty;
+            MotorValue2.Motors[j].RelativeValue = string.Empty;
+            MotorValue1.SpeedLimit = MotorValue2.SpeedLimit = "35";
+        }
+        return Task.CompletedTask;
+    }
+
+    private Dictionary<string, string?[]> AbsoluteDefaults_0;
+
+
+    //this is a copy of AbsoluteDefaults_0, but for the second arm
+    //it is initialized in the constructor
+    private Dictionary<string, string?[]> AbsoluteDefaults_1;
+    private MotorWizardParams WizardParams = new MotorWizardParams
+        {
+            selectedArm = string.Empty,
+            selectedMotor = string.Empty,
+            selectedAlgo = string.Empty,
+            selectedPressure = string.Empty,
+            selectedVelocity = string.Empty,
+            selectedPWM = string.Empty,
+            selectedTimeout = string.Empty,
+        };
+
+    private string WizardArm = new("");
+    private string WizardMotor = new("");
+    private string WizardAlgo = new("");
+    private string WizardPressure = new("");
+    private string WizardVelocity = new("");
+    private string WizardPWM = new("");
+    private string WizardTimeout = new("");
+
+    private System.Timers.Timer? wizardTimer;
+
+    MotorsInfo MotorValue1 = new()
+    {
+        MotorState = true,                       // keep if you still need it
+        Motors = Enumerable.Range(0, 7)          // 0 … 6  →  7 items
+                    .Select(_ => new MotorInfo
+                    {
+                        PositionAbs = { Position = 0.0, LimitLow = 0.0, LimitHigh = 0.0 },
+                        PositionInc = { Position = 0.0, LimitLow = 0.0, LimitHigh = 0.0 },
+                        Decoder = { Position = 0.0, LimitLow = -1000000000.0, LimitHigh = 1000000000.0 },
+                        AbsoluteValue = string.Empty,
+                        RelativeValue = string.Empty,
+                        BrakesCurrent = 0
+                    })
+                    .ToArray()
+/*
+        Motors = new[]
+        {
+            new MotorInfo { PositionAbs = 0.2 , PositionInc = 220.2 , AbsoluteValue = "" , RelativeValue = "" , Brakes = false },
+            new MotorInfo { PositionAbs = 1.5 , PositionInc =  43.23, AbsoluteValue = "" , RelativeValue = "" , Brakes = false },
+            new MotorInfo { PositionAbs = 3.8 , PositionInc = 388.82, AbsoluteValue = "" , RelativeValue = "" , Brakes = false },
+            new MotorInfo { PositionAbs = 2.6 , PositionInc =  12.16, AbsoluteValue = "" , RelativeValue = "" , Brakes = false },
+            new MotorInfo { PositionAbs = 5.9 , PositionInc =  85.90, AbsoluteValue = "" , RelativeValue = "" , Brakes = false },
+            new MotorInfo { PositionAbs = 4.1 , PositionInc = 488.10, AbsoluteValue = "" , RelativeValue = "" , Brakes = false },
+            new MotorInfo { PositionAbs = 6.7 , PositionInc =  60.70, AbsoluteValue = "" , RelativeValue = "" , Brakes = false },
+        }
+*/
+    };
+
+    MotorsInfo MotorValue2 = new()
+    {
+        MotorState = true,
+        Motors = Enumerable.Range(0, 7)          // 0 … 6  →  7 items
+                    .Select(_ => new MotorInfo
+                    {
+                        PositionAbs = { Position = 0.0, LimitLow = -1.0, LimitHigh = 1.0 },
+                        PositionInc = { Position = 0.0, LimitLow = -1.0, LimitHigh = 1.0 },
+                        Decoder = { Position = 0.0, LimitLow = 0.0, LimitHigh = 0.0 },
+                        AbsoluteValue = string.Empty,
+                        RelativeValue = string.Empty,
+                        BrakesCurrent = 0
+                    })
+                    .ToArray()
+/*        
+        Motors = new[]
+        {
+            new MotorInfo { PositionAbs = 110.2 , PositionInc = 0.2   , AbsoluteValue = "" , RelativeValue = "" , Brakes = false },
+            new MotorInfo { PositionAbs = 312.25, PositionInc = 1.5   , AbsoluteValue = "" , RelativeValue = "" , Brakes = false },
+            new MotorInfo { PositionAbs =  35.8 , PositionInc = 3.8   , AbsoluteValue = "" , RelativeValue = "" , Brakes = false },
+            new MotorInfo { PositionAbs =   2.6 , PositionInc = 2.6   , AbsoluteValue = "" , RelativeValue = "" , Brakes = false },
+            new MotorInfo { PositionAbs =  51.9 , PositionInc = 5.9   , AbsoluteValue = "" , RelativeValue = "" , Brakes = false },
+            new MotorInfo { PositionAbs =  14.1 , PositionInc = 4.1   , AbsoluteValue = "" , RelativeValue = "" , Brakes = false },
+            new MotorInfo { PositionAbs =  63.37, PositionInc = 6.7   , AbsoluteValue = "" , RelativeValue = "" , Brakes = false },
+        }
+*/
+    };
+
+    private EStopInfo[]? LeftRobotsWheel = new EStopInfo[]
+        {
+            new EStopInfo {Header="", ParameterName="Transportation (1)", Value="0", IconSet="Bin"},
+            new EStopInfo {Header="", ParameterName="Surgery (2)", Value="0", IconSet="Bin"},
+            new EStopInfo {Header="", ParameterName="Emergency (3)", Value="0", IconSet="Bin"},
+            new EStopInfo {Header="", ParameterName="Locked (4)", Value="0", IconSet="Bin"},
+            new EStopInfo {Header="", ParameterName="Locked (5)", Value="0", IconSet="Bin"},
+            new EStopInfo {Header="", ParameterName="Error (1)", Value="0", IconSet="Bin"},
+            new EStopInfo {Header="", ParameterName="Error (2)", Value="0", IconSet="Bin"},
+            new EStopInfo {Header="", ParameterName="Error (3)", Value="0", IconSet="Bin"},
+            new EStopInfo {Header="", ParameterName="Error (4)", Value="0", IconSet="Bin"},
+            new EStopInfo {Header="", ParameterName="Error (5)", Value="0", IconSet="Bin"},
+        };
+
+    private EStopInfo[]? RightRobotsWheel = new EStopInfo[]
+        {
+            new EStopInfo {Header="", ParameterName="Transportation (1)", Value="0", IconSet="Bin"},
+            new EStopInfo {Header="", ParameterName="Surgery (2)", Value="0", IconSet="Bin"},
+            new EStopInfo {Header="", ParameterName="Emergency (3)", Value="0", IconSet="Bin"},
+            new EStopInfo {Header="", ParameterName="Locked (4)", Value="0", IconSet="Bin"},
+            new EStopInfo {Header="", ParameterName="Locked (5)", Value="0", IconSet="Bin"},
+            new EStopInfo {Header="", ParameterName="Error (1)", Value="0", IconSet="Bin"},
+            new EStopInfo {Header="", ParameterName="Error (2)", Value="0", IconSet="Bin"},
+            new EStopInfo {Header="", ParameterName="Error (3)", Value="0", IconSet="Bin"},
+            new EStopInfo {Header="", ParameterName="Error (4)", Value="0", IconSet="Bin"},
+            new EStopInfo {Header="", ParameterName="Error (5)", Value="0", IconSet="Bin"},
+        };
+
+    private enum ArmSide { Left, Right }
+
+    void OnMotionToggle1(bool State)
+    {
+        Console.WriteLine($"Set Enable/Disable robot left {State}");
+        MotorValue1.MotorState = State;
+        float[] poseArr = CopyValuesFromStatusToCmd(ArmSide.Left, true);
+
+        controlInstance.subsystem_cmd[(int)eRcSubsystems.eRcSubsystemManipulatorLeft] =
+            State ? eSysState.eActive : eSysState.eInactive;
+
+        udpData.SendServerForwardCmdGeneric(DeviceID, 2, 1, ref controlInstance);
+    }
+
+    /*
+    void OnBrakeToggle1((int RowIndex, bool State) info)
+    {
+        Console.WriteLine($"Brake row 1 {info.RowIndex}  → {info.State}");
+        MotorValue1.Motors[info.RowIndex].Brakes = info.State;
+        }
+    */
+
+    void OnMotionToggle2(bool State)
+    {
+        Console.WriteLine($"Set Enable/Disable robot right {State}");
+        MotorValue2.MotorState = State;
+        float[] poseArr = CopyValuesFromStatusToCmd(ArmSide.Right, true);
+
+        controlInstance.subsystem_cmd[(int)eRcSubsystems.eRcSubsystemManipulatorRight] =
+           State ? eSysState.eActive : eSysState.eInactive;
+
+        udpData.SendServerForwardCmdGeneric(DeviceID, 2, 1, ref controlInstance); // for inetgration
+    }
+
+    /*
+    void OnBrakeToggle2((int RowIndex, bool State) info)
+    {
+        Console.WriteLine($"Brake row 2 {info.RowIndex}  → {info.State}");
+        MotorValue2.Motors[info.RowIndex].Brakes = info.State;
+        }
+    */
+
+    private float[] CopyValuesFromStatusToCmd(ArmSide side, bool checkInBoundaries = false)
+    {
+        Console.WriteLine($"CopyValuesFromStatusToCmd");
+        float[] cmdPoseArr = GetPoseArrRef(side);
+
+        int statusIdx = side == ArmSide.Left ? 0 : 1;
+        for (int i = 0; i < 7; i++)
+        {
+            cmdPoseArr[i] = statusWrapper!.StructData.manipulator_status[statusIdx].pose.poseArr[i];
+            if (checkInBoundaries)
+            {
+                if (cmdPoseArr[i] > engine_high_border?[statusIdx].poseArr[i])
+                {
+                    cmdPoseArr[i] = engine_high_border[statusIdx].poseArr[i] -0.5f;
+                }
+                else if (cmdPoseArr[i] < engine_low_border?[statusIdx].poseArr[i])
+                {
+                    cmdPoseArr[i] = engine_low_border[statusIdx].poseArr[i] + 0.5f;
+                }
+            }
+
+            //set algo type for position loop
+            controlInstance.manipulator_cmd_left.algo_type[i] = (byte)eRcAlgoType.eRcAlgoTypePositionLoop;
+            controlInstance.manipulator_cmd_right.algo_type[i] = (byte)eRcAlgoType.eRcAlgoTypePositionLoop;
+        }
+        return cmdPoseArr;
+    }
+    private async Task SendMotorCommand(ArmSide side, bool isAbsolute)
+    {
+        Console.WriteLine($"SendMotorCommand: {side} arm, isAbsolute: {isAbsolute}");
+        MotorsInfo? values = side == ArmSide.Left ? MotorValue1 : MotorValue2;
+        float[] poseArr = CopyValuesFromStatusToCmd(side);
+
+        Console.WriteLine($"SendMotorCommand: poseArr: {string.Join(", ", poseArr)}");
+
+        controlInstance.subsystem_cmd[(int)eRcSubsystems.eRcSubsystemManipulatorLeft] =
+            MotorValue1.MotorState ? eSysState.eActive : eSysState.eInactive;
+
+        controlInstance.subsystem_cmd[(int)eRcSubsystems.eRcSubsystemManipulatorRight] =
+            MotorValue2.MotorState ? eSysState.eActive : eSysState.eInactive;
+
+        //TODO: Update breaks for engine 2-4 (0 based index)
+        for (int i = 2; i < 4; i++)
+        {
+            // your code here
+        }
+
+        UpdatePoseArr(ref poseArr, values, isAbsolute);
+
+        //check that poseArr is within borders
+        (bool success, List<string>? error) = CheckPoseArrBoundaries(ref poseArr, side);
+
+        if (!success)
+        {
+            Console.WriteLine($"Pose array for {side} arm is out of bounds. Errors: {string.Join(", ", error ?? Enumerable.Empty<string>())}");
+
+            YesNoHeader = "Warning!!!";
+            var errorList = error ?? new List<string>();
+            YesNoMessage = "<p><Strong>Warning</Strong> You are about to send the Robot outside motor boundaries</p>"
+                + "<p>Are you sure you want to continue?</p>"
+                + "<p></p><p><strong>Additional data:</strong></p>"
+                + string.Join("", errorList.Select(e => $"<p>{e}</p>"));
+
+            bool ok = await YesNoDlg!.Show();
+            if (ok == false)
+            {
+                return;
+            }
+        }
+        Console.WriteLine($"SendMotorCommand: Updated poseArr: {string.Join(", ", poseArr)}");
+        int speed_limit = 35;
+        if (int.TryParse(values.SpeedLimit, out int parsed))
+        {
+            speed_limit = parsed;
+        }
+        if (isMotionProfile)
+        {
+            udpData.GoToEngines(ref controlInstance, speed_limit);
+        }
+        else
+        {
+            Console.WriteLine("Sending Direct robot RWS command to agent");
+            udpData.SendServerForwardCmdGeneric(DeviceID, 2, 1, ref controlInstance);
+        }
+        Console.WriteLine($"SendMotorCommand: Command sent for {side} arm. isAbsolute: {isAbsolute}");
+    }
+
+
+    (bool, List<string>?) CheckPoseArrBoundaries(ref float[] poseArr, ArmSide side)
+    {
+        try
+        {
+            List<string> errors = new List<string>();
+            bool retValue = true;
+            cRcPose lowBorder = side == ArmSide.Left ? engine_low_border![0] : engine_low_border![1];
+            cRcPose highBorder = side == ArmSide.Left ? engine_high_border![0] : engine_high_border![1];
+            for (int i = 0; i < 7; i++)
+            {
+                //change to borders only if secure robot limit toggle is on.
+                if (isSecureRobotLimit)
+                {
+                    if (poseArr[i] < lowBorder.poseArr[i])
+                    {
+                        poseArr[i] = lowBorder.poseArr[i] + 0.5f;
+                    }
+                    else if (poseArr[i] > highBorder.poseArr[i])
+                    {
+                        poseArr[i] = highBorder.poseArr[i] - 0.5f;
+                    }
+                }
+
+                if (poseArr[i] < lowBorder.poseArr[i] || poseArr[i] > highBorder.poseArr[i])
+                {
+                    string err = ($"Motor[{i}] is out of bounds: {poseArr[i]} not in [{lowBorder.poseArr[i]}, {highBorder.poseArr[i]}]");
+                    errors.Add(err);
+                    Console.WriteLine(err);
+                    retValue = false;
+                }
+            }
+            return (retValue, errors);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"Error checking pose array boundaries. Exception: {e.ToString()}");
+            return (true, null);
+        }
+
+    }
+
+    private float[] GetPoseArrRef(ArmSide side)
+    {
+        if (side == ArmSide.Left)
+            return controlInstance.manipulator_cmd_left.target.poseArr;
+        else
+            return controlInstance.manipulator_cmd_right.target.poseArr;
+    }
+
+    private void UpdatePoseArr(ref float[] poseArr, MotorsInfo values, bool isAbsolute)
+    {
+        for (int i = 0; i < 7; i++)
+        {
+            if (isAbsolute)
+            {
+                if (float.TryParse(values.Motors[i].AbsoluteValue, out float parsedValue))
+                    poseArr[i] = parsedValue;
+            }
+            else
+            {
+                if (float.TryParse(values.Motors[i].RelativeValue, out float parsedValue))
+                    poseArr[i] += parsedValue;
+            }
+        }
+    }
+
+
+    private async Task SendAbsolute1()
+    {
+        await SendMotorCommand(ArmSide.Left, true);
+    }
+    private async Task FastModeLeft(bool val)
+    {
+        fastModeLeft = val;
+        controlInstance.manipulator_cmd_left.slow_mode = val == true ? eRcOperationMode.eRcOperationModeFast : eRcOperationMode.eRcOperationModeSlow;
+        await InvokeAsync(StateHasChanged);
+    }
+    private async Task FastModeRight(bool val)
+    {
+        fastModeRight = val;
+        controlInstance.manipulator_cmd_right.slow_mode = val == true ? eRcOperationMode.eRcOperationModeFast : eRcOperationMode.eRcOperationModeSlow;
+        await InvokeAsync(StateHasChanged);
+    }
+
+
+
+
+    private async Task SendRelative1() => await SendMotorCommand(ArmSide.Left, false);
+    private async Task SendAbsolute2() => await SendMotorCommand(ArmSide.Right, true);
+    private async Task SendRelative2() => await SendMotorCommand(ArmSide.Right, false);
+
+
+    private void CyclePatternLedConfig()
+    {
+        Utils.IncrementPatterns(DecorationLightColorValues);
+        Utils.IncrementPatterns(DecorationLightIntervalValues);
+    }
+
+    protected void DecorationStartStopClicked()
+    {
+        Console.WriteLine("RWS - SendLedConfig for robot 11 values called");
+        CopyValuesFromStatusToCmd(ArmSide.Left, true);
+        CopyValuesFromStatusToCmd(ArmSide.Right, true);
+
+        controlInstance.led_patterns.led_estop =                MSGS.Utils.GetLedPattern(DecorationLightColorValues[0], DecorationLightIntervalValues[0], DecorationLightCaption);
+
+        controlInstance.led_patterns.led_tool_exchange[0] =     MSGS.Utils.GetLedPattern(DecorationLightColorValues[1], DecorationLightIntervalValues[1], DecorationLightCaption);
+        controlInstance.led_patterns.led_tool_exchange[1] =     MSGS.Utils.GetLedPattern(DecorationLightColorValues[2], DecorationLightIntervalValues[2], DecorationLightCaption);
+        controlInstance.led_patterns.led_plunger_button[0] =    MSGS.Utils.GetLedPattern(DecorationLightColorValues[3], DecorationLightIntervalValues[3], DecorationLightCaption);
+        controlInstance.led_patterns.led_plunger_button[1] =    MSGS.Utils.GetLedPattern(DecorationLightColorValues[4], DecorationLightIntervalValues[4], DecorationLightCaption);
+        controlInstance.led_patterns.led_logo[0] =              MSGS.Utils.GetLedPattern(DecorationLightColorValues[5], DecorationLightIntervalValues[5], DecorationLightCaption);
+        controlInstance.led_patterns.led_logo[1] =              MSGS.Utils.GetLedPattern(DecorationLightColorValues[6], DecorationLightIntervalValues[6], DecorationLightCaption);
+
+        controlInstance.led_patterns.led_table =                MSGS.Utils.GetLedPattern(DecorationLightColorValues[7], DecorationLightIntervalValues[7], DecorationLightCaption);
+
+        controlInstance.led_patterns.led_robot_decoration[0] =  MSGS.Utils.GetLedPattern(DecorationLightColorValues[8], DecorationLightIntervalValues[8], DecorationLightCaption);
+        controlInstance.led_patterns.led_robot_decoration[1] =  MSGS.Utils.GetLedPattern(DecorationLightColorValues[9], DecorationLightIntervalValues[9], DecorationLightCaption);
+        controlInstance.led_patterns.led_robot_decoration[2] =  MSGS.Utils.GetLedPattern(DecorationLightColorValues[10], DecorationLightIntervalValues[10], DecorationLightCaption);
+
+        controlInstance.led_patterns.led_plunger_strip[0] =     MSGS.Utils.GetLedPattern(DecorationLightColorValues[11], DecorationLightIntervalValues[11], DecorationLightCaption);
+        controlInstance.led_patterns.led_plunger_strip[1] =     MSGS.Utils.GetLedPattern(DecorationLightColorValues[12], DecorationLightIntervalValues[12], DecorationLightCaption);
+
+        //just to verify.
+        controlInstance.led_patterns.spare[0] = MSGS.Utils.GetLedPattern(DecorationLightColorValues[0], DecorationLightIntervalValues[0], DecorationLightCaption);
+        controlInstance.led_patterns.spare[1] = MSGS.Utils.GetLedPattern(DecorationLightColorValues[0], DecorationLightIntervalValues[0], DecorationLightCaption);
+        controlInstance.led_patterns.spare[2] = MSGS.Utils.GetLedPattern(DecorationLightColorValues[0], DecorationLightIntervalValues[0], DecorationLightCaption);
+
+        udpData.UserData.rc_periodic_msg = controlInstance;
+
+        udpData.SendServerForwardCmdGeneric(DeviceID, 2, 1, ref controlInstance);
+        MSGS.Utils.ToggleLedCaption(ref DecorationLightCaption);
+    }
+
+    private readonly FlaData[] flaData = new FlaData[]
+    {
+        new FlaData { EncoderPosition = 123.45, CurrentR = 678.90, Status = 234.56, ErrorCode = 0x1A2B3C4D },
+        new FlaData { EncoderPosition = 987.65, CurrentR = 432.10, Status = 876.54, ErrorCode = 0xFFFFFFFF },
+        new FlaData { EncoderPosition = 555.55, CurrentR = 111.11, Status = 999.99, ErrorCode = 0xABCDEF01 },
+        new FlaData { EncoderPosition = 321.00, CurrentR = 654.32, Status = 789.01, ErrorCode = 0x12345678 },
+        new FlaData { EncoderPosition = 888.88, CurrentR = 222.22, Status = 333.33, ErrorCode = 0x0 },
+        new FlaData { EncoderPosition = 444.44, CurrentR = 777.77, Status = 555.55, ErrorCode = 0xDEADBEEF },
+        new FlaData { EncoderPosition = 1000.00, CurrentR = 0.01, Status = 500.50, ErrorCode = 0xCAFEBABE },
+        new FlaData { EncoderPosition = 250.25, CurrentR = 750.75, Status = 125.12, ErrorCode = 0x80000000 }
+    };
+
+    private readonly VoltageData[] voltageData = new VoltageData[]
+    {
+        new VoltageData {RCB=32.0,_4MBLeft=32.10,_5MBLeft=31.99,EEFLeft=30.11,_4MBRight=32.22,_5MBRight=33.91,EEFRight=32.01 },
+        new VoltageData {RCB=12.11,_4MBLeft=12.20,_5MBLeft=12.89,EEFLeft=11.31,_4MBRight=11.22,_5MBRight=12.91,EEFRight=12.01 },
+        new VoltageData {RCB=24.82,_4MBLeft=22.11,_5MBLeft=23.19,EEFLeft=23.77,_4MBRight=23.4,_5MBRight=24.21,EEFRight=24.01 },
+        new VoltageData {RCB=6.13,_4MBLeft=5.83,_5MBLeft=5.00,EEFLeft=4.93,_4MBRight=4.44,_5MBRight=5.36,EEFRight=5.06 },
+        new VoltageData {RCB=3.39,_4MBLeft=3.13,_5MBLeft=2.96,EEFLeft=3.12,_4MBRight=3.67,_5MBRight=3.16,EEFRight=3.63 },
+        new VoltageData {RCB=-1,_4MBLeft=-1,_5MBLeft=-1,EEFLeft=-1,_4MBRight=-1,_5MBRight=-1,EEFRight=-1 }
+    };
+
+    private List<SpkPageHeader.PageItem> PageItems = new List<SpkPageHeader.PageItem> {
+        new SpkPageHeader.PageItem { PageTitle = "RWS" },
+    };
+
+    MSGS.StructWrapper<MSGS.SRcControlMetry>? metryWrapper;
+    MSGS.StructWrapper<MSGS.SRcDebugMetry>? metryDebugWrapper;
+
+    protected override void OnInitialized()
+    {
+        Console.WriteLine("RSW OnInitialized");
+        base.InitializeComponent(
+            deviceID: (int)MSGS.DevicesScreen.RC,
+            controlInstance: udpData.UserData.rc_periodic_msg,
+            initialStatus: udpData.UserData.rc_periodic_status
+        );
+
+        //send rc init only if init was not sent before.
+        if (udpData.UserData.rc_init_reply.pos_low_limit[0].poseArr[0] == 0)
+        {
+            //send init cmd to get motors borders
+            RKS2RC_Init rc_init = udpData.UserData.rc_init;
+
+            udpData.SendServerForwardCmdGeneric(DeviceID, 1, 1, ref rc_init);
+        }
+
+        this.metryWrapper = new MSGS.StructWrapper<MSGS.SRcControlMetry>(udpData.UserData.rc_metry_oper_reply);
+        this.metryDebugWrapper = new MSGS.StructWrapper<MSGS.SRcDebugMetry>(udpData.UserData.rc_metry_init_reply);
+        //udpData.SendServerForwardCmdGeneric(DeviceID, 2, 1, ref controlInstance);
+
+        //scripts
+        RepeatActive = true;
+        LoopActive = false;
+        LoopValue = "1"; // Default loop count
+        _fileSupport = new FileSupport(JS, AllScriptResServices.RwsScripts!.Scripts, _fileStore);
+
+
+        base.OnInitialized();
+
+
+        DecorationLightColorValues[0] = Utils.LedIniLoader.LedColorPatternNames[(int)controlInstance.led_patterns.led_estop.LedColorPattern];
+
+        DecorationLightColorValues[1] = Utils.LedIniLoader.LedColorPatternNames[(int)controlInstance.led_patterns.led_tool_exchange[0].LedColorPattern];
+        DecorationLightColorValues[2] = Utils.LedIniLoader.LedColorPatternNames[(int)controlInstance.led_patterns.led_tool_exchange[1].LedColorPattern]; 
+        DecorationLightColorValues[3] = Utils.LedIniLoader.LedColorPatternNames[(int)controlInstance.led_patterns.led_plunger_button[0].LedColorPattern];
+        DecorationLightColorValues[4] = Utils.LedIniLoader.LedColorPatternNames[(int)controlInstance.led_patterns.led_plunger_button[1].LedColorPattern];
+        DecorationLightColorValues[5] = Utils.LedIniLoader.LedColorPatternNames[(int)controlInstance.led_patterns.led_logo[0].LedColorPattern];
+        DecorationLightColorValues[6] = Utils.LedIniLoader.LedColorPatternNames[(int)controlInstance.led_patterns.led_logo[1].LedColorPattern]; 
+
+        DecorationLightColorValues[7] = Utils.LedIniLoader.LedColorPatternNames[(int)controlInstance.led_patterns.led_table.LedColorPattern];
+
+        DecorationLightColorValues[8] = Utils.LedIniLoader.LedColorPatternNames[(int)controlInstance.led_patterns.led_robot_decoration[0].LedColorPattern];
+        DecorationLightColorValues[9] = Utils.LedIniLoader.LedColorPatternNames[(int)controlInstance.led_patterns.led_robot_decoration[1].LedColorPattern];
+        DecorationLightColorValues[10] = Utils.LedIniLoader.LedColorPatternNames[(int)controlInstance.led_patterns.led_robot_decoration[2].LedColorPattern];
+
+        DecorationLightColorValues[11] = Utils.LedIniLoader.LedColorPatternNames[(int)controlInstance.led_patterns.led_plunger_strip[0].LedColorPattern];
+        DecorationLightColorValues[12] = Utils.LedIniLoader.LedColorPatternNames[(int)controlInstance.led_patterns.led_plunger_strip[1].LedColorPattern];
+
+        DecorationLightIntervalValues[0] = Utils.LedIniLoader.LedIntervalPatternNames[(int)controlInstance.led_patterns.led_estop.LedIntervalPattern];
+
+        DecorationLightIntervalValues[1] = Utils.LedIniLoader.LedIntervalPatternNames[(int)controlInstance.led_patterns.led_tool_exchange[0].LedIntervalPattern];
+        DecorationLightIntervalValues[2] = Utils.LedIniLoader.LedIntervalPatternNames[(int)controlInstance.led_patterns.led_tool_exchange[1].LedIntervalPattern];
+        DecorationLightIntervalValues[3] = Utils.LedIniLoader.LedIntervalPatternNames[(int)controlInstance.led_patterns.led_plunger_button[0].LedIntervalPattern];
+        DecorationLightIntervalValues[4] = Utils.LedIniLoader.LedIntervalPatternNames[(int)controlInstance.led_patterns.led_plunger_button[1].LedIntervalPattern];
+        DecorationLightIntervalValues[5] = Utils.LedIniLoader.LedIntervalPatternNames[(int)controlInstance.led_patterns.led_logo[0].LedIntervalPattern];
+        DecorationLightIntervalValues[6] = Utils.LedIniLoader.LedIntervalPatternNames[(int)controlInstance.led_patterns.led_logo[1].LedIntervalPattern];
+
+        DecorationLightIntervalValues[7] = Utils.LedIniLoader.LedIntervalPatternNames[(int)controlInstance.led_patterns.led_table.LedIntervalPattern];
+
+        DecorationLightIntervalValues[8] = Utils.LedIniLoader.LedIntervalPatternNames[(int)controlInstance.led_patterns.led_robot_decoration[0].LedIntervalPattern];
+        DecorationLightIntervalValues[9] = Utils.LedIniLoader.LedIntervalPatternNames[(int)controlInstance.led_patterns.led_robot_decoration[1].LedIntervalPattern];
+        DecorationLightIntervalValues[10] = Utils.LedIniLoader.LedIntervalPatternNames[(int)controlInstance.led_patterns.led_robot_decoration[2].LedIntervalPattern];
+
+        DecorationLightIntervalValues[11] = Utils.LedIniLoader.LedIntervalPatternNames[(int)controlInstance.led_patterns.led_plunger_strip[0].LedIntervalPattern];
+        DecorationLightIntervalValues[12] = Utils.LedIniLoader.LedIntervalPatternNames[(int)controlInstance.led_patterns.led_plunger_strip[1].LedIntervalPattern];
+
+        InvokeAsync(UpdateGUIValuesLogic);
+    }
+    private async Task DownloadJson()
+    {
+        Console.WriteLine("Download json file clicked");
+        var provider = new AbsoluteDefaultsProvider();
+        string vals = provider.LoadFromJson(Path.Combine("Pages", "absolute_defaults.json"));
+
+        using var ms = new MemoryStream(Encoding.UTF8.GetBytes(vals));
+        await DownloadTextAsync(ms, "absolute_defaults.json");
+
+    }
+    
+
+    public async Task DownloadTextAsync(
+        MemoryStream ms,
+        string downloadName = "file.txt",
+        string mime = "text/plain")
+    {
+        if (ms is null || ms.Length == 0)            // nothing to send
+            return;
+
+        // rewind and read UTF-8 text
+        ms.Position = 0;
+        string text = await new StreamReader(ms, Encoding.UTF8)
+                             .ReadToEndAsync()
+                             .ConfigureAwait(false);
+
+        // call the helper you added to wwwroot/js/forsight.js
+        await JS.InvokeVoidAsync(
+            "downloadTextFile",          // global function name
+            downloadName,
+            mime,
+            text);
+    }
+    // In your Rws class
+    public override void Dispose()
+    {
+        Console.WriteLine("RWS Dispose");
+        udpData.UserData.rc_periodic_msg = controlInstance;
+        base.Dispose(); // optional, but usually needed
+    }
+
+    private void LoadDefaultValues()
+    {
+        var provider = new AbsoluteDefaultsProvider();
+        provider.LoadFromJson(Path.Combine("Pages", "absolute_defaults.json"));
+
+        AbsoluteDefaults_0 = provider.AbsoluteDefaults_0;
+
+        AbsoluteDefaults_1 = AbsoluteDefaults_0.ToDictionary(
+        kvp => kvp.Key,
+        kvp => kvp.Value.ToArray());
+    }
+    public Rws() : base()
+    {
+        LoadDefaultValues();
+    }
+
+    protected override void UpdateGUIValuesLogic()
+    {
+        try
+        {
+            if (_isDisposed) return;
+
+            if (string.IsNullOrEmpty(sessionData.AgentName) ||
+                    _agentsRepository.GetClientAgentData(sessionData.AgentName) == null)
+            {
+                return;
+            }
+
+            statusWrapper!.UpdateFromStruct(udpData.UserData.rc_periodic_status);
+            metryWrapper!.UpdateFromStruct(udpData.UserData.rc_metry_oper_reply);
+            metryDebugWrapper!.UpdateFromStruct(udpData.UserData.rc_metry_init_reply);
+
+            //get motors limits only once after init was sent.
+            if(_numOfGuiRefreshes++ == 1)
+            {
+                Console.WriteLine("UpdateGUIValuesLogic: Getting motors limits after init was sent.");
+
+                CopyValuesFromStatusToCmd(ArmSide.Left,  true);
+                CopyValuesFromStatusToCmd(ArmSide.Right, true);
+
+                //Send again oper msg (we need init only for motors borders
+                udpData.SendServerForwardCmdGeneric(DeviceID, 2, 1, ref controlInstance);
+
+                //update the low and high limits and rc motors according to the status.
+                UpdateLowHighLimits();
+            }
+
+            UpdateMotorValues(MotorValue1, 0);
+            UpdateMotorValues(MotorValue2, 1);
+
+            UpdateBoardsInformation();
+
+            UpdateVoltage();
+            UpdateWheelsSensors();
+        }
+
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error updating PositionAbs: {ex.Message}");
+        }
+    }
+    private void UpdateWheelsSensors()
+    {
+        UInt16 info_left = statusWrapper!.StructData.wheel_sensors[0];
+        UInt16 info_right = statusWrapper.StructData.wheel_sensors[1];
+        for (int row = 0; row < 10; row++)
+        {
+            LeftRobotsWheel![row].Value = ((int)((info_left >> row) & 1u)).ToString();
+            RightRobotsWheel![row].Value = ((int)((info_right >> row) & 1u)).ToString();
+        }
+        WheelLock[0] = (((int)((info_right >> 4) & 1u)) != 0);
+        WheelLock[1] = (((int)((info_left >> 3) & 1u)) != 0);
+        WheelLock[2] = (((int)((info_right >> 3) & 1u)) != 0);
+        WheelLock[3] = (((int)((info_left >> 4) & 1u)) != 0);
+    }
+    private void UpdateVoltage()
+    {
+        MSGS.PowerStatusBlock power = udpData.UserData.rc_metry_oper_reply.sRcbMetry.sPowerStatus;
+        MSGS.ManipulatorMetryBlock[] asManipulatorMetry = udpData.UserData.rc_metry_oper_reply.asManipulatorMetry;
+
+        voltageData[0].RCB = power.sPower35v.Value(); //Check in GUI it is 32V
+        voltageData[1].RCB = power.sPower12v.Value(); //There is also 12V Monitor in IDD
+        voltageData[2].RCB = power.sPower24v.Value();
+        voltageData[3].RCB = power.sPower5v.Value();
+        voltageData[4].RCB = power.sPower3_3v.Value();
+        voltageData[5].RCB = power.sPower2_5v.Value();
+
+        // Loop for both the left and right sets (asManipulatorMetry[0] and asManipulatorMetry[1])
+        for (int i = 0; i < 2; i++)
+        {
+            // Reference to the current set (left or right)
+            var currentBoardData = asManipulatorMetry[i].asBoardData;
+
+            // Loop through the 5 voltage data entries for each set
+            for (int j = 0; j < 5; j++)
+            {
+                var s0 = currentBoardData[0].u16VoltageSample;
+                var s1 = currentBoardData[1].u16VoltageSample;
+                var s2 = currentBoardData[2].u16VoltageSample;
+
+                if (i == 0) // Left side
+                {
+                    if (s0 != null && s0.Length > j) voltageData[j]._4MBLeft = Utils.ConvertU16ToDouble(s0[j]);
+                    if (s1 != null && s1.Length > j) voltageData[j]._5MBLeft = Utils.ConvertU16ToDouble(s1[j]);
+                    if (s2 != null && s2.Length > j) voltageData[j].EEFLeft =  Utils.ConvertU16ToDouble(s2[j]);
+                }
+                else // Right side
+                {
+                    if (s0 != null && s0.Length > j) voltageData[j]._4MBRight = Utils.ConvertU16ToDouble(s0[j]);
+                    if (s1 != null && s1.Length > j) voltageData[j]._5MBRight = Utils.ConvertU16ToDouble(s1[j]);
+                    if (s2 != null && s2.Length > j) voltageData[j].EEFRight =  Utils.ConvertU16ToDouble(s2[j]);
+                }
+            }
+        }
+    }
+    private void UpdateBoardsInformation()
+    {
+        LeftID[1]  = udpData.UserData.rc_init_reply.rcc_version[0].serial_number.ToString("X8");
+        LeftID[2]  = udpData.UserData.rc_init_reply.rcc_version[1].serial_number.ToString("X8");
+        LeftID[3]  = udpData.UserData.rc_init_reply.rcc_version[2].serial_number.ToString("X8");
+        RightID[1] = udpData.UserData.rc_init_reply.rcc_version[3].serial_number.ToString("X8");
+        RightID[2] = udpData.UserData.rc_init_reply.rcc_version[4].serial_number.ToString("X8");
+        RightID[3] = udpData.UserData.rc_init_reply.rcc_version[5].serial_number.ToString("X8");
+
+        LeftVersion[1]  = udpData.UserData.rc_init_reply.rcc_version[0].version.ToString();
+        LeftVersion[2]  = udpData.UserData.rc_init_reply.rcc_version[1].version.ToString();
+        LeftVersion[3]  = udpData.UserData.rc_init_reply.rcc_version[2].version.ToString();
+        RightVersion[1] = udpData.UserData.rc_init_reply.rcc_version[3].version.ToString();
+        RightVersion[2] = udpData.UserData.rc_init_reply.rcc_version[4].version.ToString();
+        RightVersion[3] = udpData.UserData.rc_init_reply.rcc_version[5].version.ToString();
+
+        LeftID[0]       = udpData.UserData.rc_init_reply.rcb_version.serial_number.ToString("X8");
+        RightID[0]      = udpData.UserData.rc_init_reply.rcb_version.serial_number.ToString("X8");
+        LeftVersion[0]  = udpData.UserData.rc_init_reply.rcb_version.version.ToString();
+        RightVersion[0] = udpData.UserData.rc_init_reply.rcb_version.version.ToString();
+
+    }
+    private void UpdateLowHighLimits()
+    {
+        Console.WriteLine("UpdateLowHighLimits: Updating low and high limits for motors.");
+
+        engine_low_border = udpData.UserData.rc_init_reply.pos_low_limit;
+        engine_high_border = udpData.UserData.rc_init_reply.pos_high_limit;
+
+        // Alon aksed to remove this for the mean while.
+        // AbsoluteDefaults_0.Add("Low Limit", engine_low_border![0].poseArr.Select(x => x.ToString()).ToArray());
+        // AbsoluteDefaults_0.Add("High Limit", engine_high_border![0].poseArr.Select(x => x.ToString()).ToArray());
+        // AbsoluteDefaults_1.Add("Low Limit", engine_low_border![1].poseArr.Select(x => x.ToString()).ToArray());
+        // AbsoluteDefaults_1.Add("High Limit", engine_high_border![1].poseArr.Select(x => x.ToString()).ToArray());
+
+        //update the position to go to according to the status.
+        for (int i = 0; i < 7; i++)
+        {
+            udpData.UserData.rc_periodic_msg.manipulator_cmd_left.target.poseArr[i] = statusWrapper!.StructData.manipulator_status[0].pose.poseArr[i];
+            udpData.UserData.rc_periodic_msg.manipulator_cmd_right.target.poseArr[i] = statusWrapper!.StructData.manipulator_status[1].pose.poseArr[i];
+
+            controlInstance.manipulator_cmd_left.target.poseArr[i] = statusWrapper!.StructData.manipulator_status[0].pose.poseArr[i];
+            controlInstance.manipulator_cmd_right.target.poseArr[i] = statusWrapper!.StructData.manipulator_status[1].pose.poseArr[i];
+        }
+    }
+
+    private void UpdateMotorValues(MotorsInfo motorValue, int side)
+    {
+        SRcControlMetry metry = udpData.UserData.rc_metry_oper_reply;
+
+        for (int i = 0; i < 7; i++)
+        {
+            // Update positions
+            motorValue.Motors[i].PositionInc.Position = statusWrapper!.StructData.manipulator_status[side].pose.poseArr[i];
+            motorValue.Motors[i].PositionAbs.Position = metry.asManipulatorMetry[side].asAxisMetryData[i].Encoders[1].f32Phys;
+            motorValue.Motors[i].Decoder.Position = metry.asManipulatorMetry[side].asAxisMetryData[i].Encoders[1].i32Raw;
+
+            // Update brakes 
+            //Yanis!!!! change this. motorValue.Motors[i].Brakes = statusWrapper.StructData.manipulator_status[side].drape_lock_status != 0;
+            motorValue.Motors[i].BrakesCurrent = Utils.ConvertU16ToDouble(metry.asManipulatorMetry[side].asAxisMetryData[i].u16BrakeCurrentLoad);
+
+            // Update motor limits if borders are available
+            if (_numOfGuiRefreshes >= 2 &&
+                engine_high_border != null && engine_low_border != null &&
+                engine_high_border[side].poseArr != null && engine_low_border[side].poseArr != null)
+            {
+                UpdateMotorLimits(motorValue.Motors[i],
+                                  engine_low_border[side].poseArr[i],
+                                  engine_high_border[side].poseArr[i]);
+            }
+        }
+
+        // Update motor state
+        motorValue.MotorState =
+            statusWrapper!.StructData.subsystem_state[(int)(side == 0 ? eRcSubsystems.eRcSubsystemManipulatorLeft
+                                                                      : eRcSubsystems.eRcSubsystemManipulatorRight)]
+            == eSysState.eActive;
+
+        motorValue.MotorStatus = motorValue.MotorState ? "Active" : "Inactive";
+    }
+
+    // Helper method for updating motor limits
+    void UpdateMotorLimits(MotorInfo motor, float low, float high)
+    {
+        motor.PositionAbs.LimitLow = low;
+        motor.PositionAbs.LimitHigh = high;
+        motor.PositionInc.LimitLow = low;
+        motor.PositionInc.LimitHigh = high;
+    }
+    protected override void SonDispose()
+    {
+        udpData.SendServerForwardCmdGeneric(DeviceID, 2, 1, ref controlInstance);
+        udpData.UserData.rc_periodic_msg = controlInstance;
+        //treeViewRef.UserData = controlInstance;
+    }
+
+    public async Task DownloadFile((string FileName, string FullPath) fileInfo)
+    {
+        await _fileSupport!.DownloadFile(fileInfo);
+    }
+
+    private void OnFileNameClicked((string FileName, string FullPath) fileInfo)
+    {
+        _fileSupport!.OnFileNameClicked(fileInfo);
+    }
+    private void RegisterDeleteFile((string DirectoryPath, string FileName) fileInfo)
+    {
+        _fileSupport!.RegisterDeleteFile(fileInfo);
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (_fileSupport!.ConfirmDelete())
+        {
+            StateHasChanged();
+            await JS.InvokeVoidAsync("unfocusButtons");
+        }
+    }
+
+    private async Task MotorWizardRun()
+    {
+        try
+        {
+            YesNoHeader = "ARE YOU SURE?";
+            YesNoMessage = "<p><Strong>Axis may cause mechanical damage.</Strong>"
+                + "<p>Are you sure you want to continue?</p>";
+            bool ok = await YesNoDlg!.Show();
+            if (ok == false)
+            {
+                return;
+            }
+
+            int timeSeconds = Convert.ToInt32(WizardParams.selectedTimeout);
+            int motor = (int)char.GetNumericValue(WizardParams.selectedMotor[1]) - 1;
+
+            var algo = GetAlgoAndValue();
+            Console.WriteLine($"Motor Wizard Run: Algo {algo.Item1} for motor {motor} with value {algo.Item2} and timeout {timeSeconds} seconds. Arms: {WizardParams.selectedArm}. Algo: {WizardParams.selectedAlgo}");
+            if (algo.Item2 < -100)
+            {
+                Console.WriteLine($"Algo {algo.Item1} for motor {motor} is not set properly. Value is {algo.Item2}");
+                return;
+            }
+            if (WizardParams.selectedArm == "LeftArm")
+            {
+                controlInstance.manipulator_cmd_left.algo_type[motor] = (byte)algo.Item1;
+                controlInstance.manipulator_cmd_left.target.poseArr[motor] = algo.Item2;
+            }
+            else if (WizardParams.selectedArm == "RightArm")
+            {
+                controlInstance.manipulator_cmd_right.algo_type[motor] = (byte)algo.Item1;
+                controlInstance.manipulator_cmd_right.target.poseArr[motor] = algo.Item2;
+            }
+            else
+            {
+                Console.WriteLine($"Unknown arm {WizardParams.selectedArm} for motor {motor}");
+                return;
+            }
+            // Start timer with the value of 'time' (milliseconds)
+            wizardTimer?.Dispose();
+            wizardTimer = new System.Timers.Timer(timeSeconds * 1000);
+            wizardTimer.Elapsed += WizardTimerElapsed;
+            wizardTimer.AutoReset = false; // Only fire once
+            wizardTimer.Start();
+
+            udpData.SendServerForwardCmdGeneric(DeviceID, 2, 1, ref controlInstance);
+            await _SpinnerDlg!.ShowAsync();
+
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error Exception in MotorWizardRun: {ex.Message}");
+        }
+    }
+    private void WizardTimerElapsed(object? sender, System.Timers.ElapsedEventArgs e)
+    {
+        // Stop and dispose the timer
+        wizardTimer?.Stop();
+        wizardTimer?.Dispose();
+        wizardTimer = null;
+
+        // Timer finished, perform your action here
+        InvokeAsync(async () =>
+        {
+            Console.WriteLine("Wizard timer elapsed!");
+            statusWrapper!.UpdateFromStruct(udpData.UserData.rc_periodic_status);
+
+            // int motor = (int)char.GetNumericValue(WizardParams.selectedMotor[1]) - 1;
+
+            // if (WizardParams.selectedArm == "LeftArm")
+            // {
+            //     controlInstance.manipulator_cmd_left.target.poseArr[motor] = 0;
+            // }
+            // else if (WizardParams.selectedArm == "RightArm")
+            // {
+            //     controlInstance.manipulator_cmd_right.target.poseArr[motor] = 0;
+            // }
+
+            //return to position loop and copy all values from the status
+            CopyValuesFromStatusToCmd(ArmSide.Left);
+            CopyValuesFromStatusToCmd(ArmSide.Right);
+
+            udpData.SendServerForwardCmdGeneric(DeviceID, 2, 1, ref controlInstance);
+
+            await _SpinnerDlg!.HideAsync();
+
+        });
+    }
+    private (eRcAlgoType, int) GetAlgoAndValue()
+    {
+        var algoMap = new Dictionary<string, (eRcAlgoType type, Func<string> valueSelector)>
+        {
+            { "Pressure", (eRcAlgoType.eRcAlgoTypePressureLoop, () => WizardParams.selectedPressure) },
+            { "PWM",      (eRcAlgoType.eRcAlgoTypeDirectPower,   () => WizardParams.selectedPWM) },
+            { "Velocity", (eRcAlgoType.eRcAlgoTypeVelocityLoop,   () => WizardParams.selectedVelocity) }
+        };
+
+        if (WizardParams != null && algoMap.TryGetValue(WizardParams.selectedAlgo, out var algoInfo))
+        {
+            var valueStr = algoInfo.valueSelector();
+            if (!string.IsNullOrEmpty(valueStr) && int.TryParse(valueStr, out int value))
+            {
+                return (algoInfo.type, value);
+            }
+        }
+
+        return (eRcAlgoType.eRcAlgoTypePositionLoop, -1);
+    }
+
+    // private async Task UploadScript(InputFileChangeEventArgs e)
+    // {
+    //     if (e.FileCount == 0)
+    //         return;                // nothing picked
+    //     var file = e.File;         // first / only
+
+    //     await using var read = file.OpenReadStream(maxAllowedSize: 1024 * 1024); // 1MB
+    // }
+
+    private bool ShowNoFileModal { get; set; }
+    private void CloseNoFileModal() => ShowNoFileModal = false;
+
+    private int LoopCount
+    {
+        get
+        {
+            if (LoopActive)
+                return int.MaxValue;
+            if (int.TryParse(LoopValue, out var count) && count > 0)
+                return count;
+            return 0; // or your default
+        }
+    }
+
+    private void ToggleRepeat()
+    {
+        // clicking a pressed button releases it
+        RepeatActive = !RepeatActive;
+
+        if (RepeatActive)
+            LoopActive = false;     // ensure exclusivity
+
+        OnRepeatClicked(RepeatActive);  // notify with state
+    }
+    private void ToggleLoop()
+    {
+        LoopActive = !LoopActive;
+
+        if (LoopActive)
+            RepeatActive = false;
+
+        OnLoopClicked(LoopActive);      // notify with state
+    }
+
+    private void OnBack()
+    {
+        Console.WriteLine("Back clicked");
+        ProgressValue = "0";
+        _numOfLines = string.Format($"OnBack pressed");
+        OnPlay(); // Reuse the play logic to start from the beginning
+    }
+    private async void OnPlay()
+    {
+        if (string.IsNullOrEmpty(_fileSupport!._selectedFileFullPath))
+        {
+            ShowNoFileModal = true;
+            return;
+        }
+        Console.WriteLine($"OnPlay clicked. File name: {_fileSupport!._selectedFileFullPath}");
+
+        udpData.CancelScript(); // Stop any previous script before starting a new one
+
+        ShowNoFileModal = false;
+        ProgressValue = "0";
+        _numOfLines = "Initializing script...";
+        await InvokeAsync(StateHasChanged); // 1. Request UI update
+        await Task.Yield();                 // 2. Yield to renderer
+
+        if (LoopCount > 0)
+        {
+            udpData.StartMotionScriptHandling(2, _fileSupport!._selectedFileFullPath, LoopCount, ToggleSaveChecked, "RwsResults");
+            udpData.UserData.motion_engine?.RegisterScriptProcessedCallback(OnScriptProgress); // Register the callback for progress updates)
+        }
+        _numOfLines = "Done Initializing script...";
+        await InvokeAsync(StateHasChanged); // 1. Request UI update
+    }
+    private void OnStop()
+    {
+        Console.WriteLine("Stop clicked");
+        ProgressValue = "0";
+        _numOfLines = string.Format($"Stop pressed");
+        udpData.CancelScript();
+    }
+
+    private void OnScriptProgress(ScriptProcessed e)
+    {
+        ProgressValue = ((e.currentMsg / e.totalMsgs) * 100.0).ToString();
+        //_resultFileName = Path.GetFileName(e.ResultPath);
+        
+        if (e.num_of_times_to_repeat > int.MaxValue / 2) // avoid overflow
+        {
+            _numOfLines = string.Format($"∞: {e.currentMsg}/{e.totalMsgs}"); // or some other indication of infinity
+        }
+        else if (e.num_of_times_to_repeat > 0)
+        {
+            _numOfLines = string.Format($"{e.num_of_times_to_repeat}: {e.currentMsg}/{e.totalMsgs}");
+        }
+
+        if (e.isDone)
+        {
+            Console.WriteLine($"Script completed: {e.ResultPath}");
+            udpData.CancelScript();
+            _numOfLines = "Script completed successfully.";
+            InvokeAsync(StateHasChanged);
+        }
+        if (e.currentMsg % 20 == 0)
+        {
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+
+
+    private void OnRepeatClicked(bool isActive) =>
+        Console.WriteLine($"Repeat now {(isActive ? "ON" : "OFF")}");
+
+    private void OnLoopClicked(bool isActive) =>
+        Console.WriteLine($"Loop   now {(isActive ? "ON" : "OFF")}");
+
+    private string GetInputClass(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "empty";
+        return int.TryParse(value, out _) ? "valid" : "invalid";
+    }
+    private void OnLoopInput(ChangeEventArgs e)
+    {
+        LoopValue = e.Value?.ToString() ?? string.Empty;
+    }
+
+    
+
+}

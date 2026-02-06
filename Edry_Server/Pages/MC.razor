@@ -1,0 +1,123 @@
+﻿@page "/Mc"
+@inject Microsoft.AspNetCore.Components.NavigationManager NavigationManager // This line is used to generate URLs dynamically //
+@inherits BaseComponent<MSGS.RKS2MC_Control, MSGS.MC2RKS_Status>
+@inject MSGS.ClientManager udpData
+@using ForsightTester._Spk
+
+<!-- Page Header -->
+<SpkPageHeader PageItems="PageItems" />
+<!-- Page Header Close -->
+
+<div class="row">
+    <div class="col-xxl-12 col-xl-12 col-lg-12 col-md-12 col-sm-12">
+        <div class="accordion customized-accordion accordions-items-seperate" id="customizedAccordion">
+            <div class="accordion-item custom-accordion-primary">
+                <h2 class="accordion-header" id="customizedAccordionOne">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#customized-AccordionOne" aria-expanded="false"
+                            aria-controls="customized-AccordionOne">
+                        MC Periodic Status MSG
+                    </button>
+                </h2>
+                <div id="customized-AccordionOne" class="accordion-collapse collapse"
+                     aria-labelledby="customizedAccordionOne">
+                    <div class="accordion-body">
+                        <AccordionView Data="statusWrapper?.StructData" Hide_Apply_button="true" />
+                    </div>
+                </div>
+            </div>
+            <div class="accordion-item custom-accordion-secondary">
+                <h2 class="accordion-header" id="customizedAccordionTwo">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#customized-AccordionTwo" aria-expanded="false"
+                            aria-controls="customized-AccordionTwo">
+                        MC Periodic Command MSG
+                    </button>
+                </h2>
+                <div id="customized-AccordionTwo" class="accordion-collapse collapse"
+                     aria-labelledby="customizedAccordionTwo">
+                    <div class="accordion-body">
+                        <AccordionView Data="controlInstance" Hide_Apply_button="false" OnUpdate="HandleApplyUpdates" />
+                    </div>
+                </div>
+            </div>
+            <div class="accordion-item custom-accordion-danger">
+                <h2 class="accordion-header" id="customizedAccordionThree">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#customized-AccordionThree" aria-expanded="false"
+                            aria-controls="customized-AccordionThree">
+                        MC FAST Metry MSG
+                    </button>
+                </h2>
+                <div id="customized-AccordionThree" class="accordion-collapse collapse"
+                     aria-labelledby="customizedAccordionThree">
+                    <div class="accordion-body">
+                        <AccordionView Data="udpData.UserData.mc_metry_fast_reply" Hide_Apply_button="true" />
+                    </div>
+                </div>
+            </div>
+            <div class="accordion-item custom-accordion-warning">
+                <h2 class="accordion-header" id="customizedAccordionFour">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#customized-AccordionFour" aria-expanded="false"
+                            aria-controls="customized-AccordionFour">
+                        MC SLOW Metry MSG
+                    </button>
+                </h2>
+                <div id="customized-AccordionFour" class="accordion-collapse collapse"
+                     aria-labelledby="customizedAccordionThree">
+                    <div class="accordion-body">
+                        <AccordionView Data="udpData.UserData.mc_metry_slow_reply" Hide_Apply_button="true" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+@code {
+    private List<SpkPageHeader.PageItem> PageItems = new List<SpkPageHeader.PageItem> {
+        new SpkPageHeader.PageItem { PageTitle = "IDD" },
+        new SpkPageHeader.PageItem { PageTitle = "MC" },
+    };
+
+    MSGS.StructWrapper<MSGS.SMcFastDiagnostics>? metryFastWrapper;
+    MSGS.StructWrapper<MSGS.SMcDisgnostics>? metrySlowWrapper;
+
+    protected override void OnInitialized()
+    {
+        base.InitializeComponent(
+            deviceID: (int)MSGS.DevicesScreen.MC_FAST,
+            controlInstance: udpData.UserData.mc_periodic_msg,
+            initialStatus: udpData.UserData.mc_periodic_status
+        );
+        this.metryFastWrapper = new MSGS.StructWrapper<MSGS.SMcFastDiagnostics>(udpData.UserData.mc_metry_fast_reply);
+        this.metrySlowWrapper = new MSGS.StructWrapper<MSGS.SMcDisgnostics>(udpData.UserData.mc_metry_slow_reply);
+        udpData.SendServerForwardCmdGeneric(DeviceID, 2, 1, ref controlInstance);
+        base.OnInitialized();
+    }
+    
+    // ✅ Call base constructor explicitly with DeviceID = 3
+    // public MC()
+    //     : base(deviceID: (int)MSGS.DevicesScreen.MC_FAST, MSGS.ClientManager.mc_periodic_msg, MSGS.ClientManager.mc_periodic_status)
+    // {
+    //     this.metryFastWrapper = new MSGS.StructWrapper<MSGS.SMcFastDiagnostics>(MSGS.ClientManager.mc_metry_fast_reply);
+    //     this.metrySlowWrapper = new MSGS.StructWrapper<MSGS.SMcDisgnostics>(MSGS.ClientManager.mc_metry_slow_reply);
+    //     MSGS.ClientManager.SendServerForwardCmdGeneric(DeviceID, 2, 1, ref controlInstance);
+    // }
+
+
+    protected override void UpdateGUIValuesLogic()
+    {
+        statusWrapper!.UpdateFromStruct(udpData.UserData.mc_periodic_status);
+        metryFastWrapper!.UpdateFromStruct(udpData.UserData.mc_metry_fast_reply);
+        metrySlowWrapper!.UpdateFromStruct(udpData.UserData.mc_metry_slow_reply);
+    }
+    protected override void SonDispose()
+    {
+        udpData.SendServerForwardCmdGeneric(DeviceID, 2, 1, ref controlInstance);
+        udpData.UserData.mc_periodic_msg = controlInstance;
+        //treeViewRef.UserData = controlInstance;
+    }
+}

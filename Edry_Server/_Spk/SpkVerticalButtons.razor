@@ -1,0 +1,67 @@
+﻿@inherits ForsightTester.Shared.AccordionInputBase
+@using CardModel
+
+@* ---------- markup ---------- *@
+<div class="motor-wrapper my-2 mx-2">
+    <div class="accordion accordion-primary" id="@ParentId">
+        <div class="accordion-item motor-card">
+            <h2 class="accordion-header" id="@HeadingId">
+                <button class="accordion-button"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#@CollapseId"
+                        aria-controls="@CollapseId"
+                        aria-expanded="true"
+                        style="background: transparent;">
+                    @Name
+                </button>
+            </h2>
+
+            <div id="@CollapseId"
+                 class="accordion-collapse collapse show"
+                 aria-labelledby="@HeadingId"
+                 data-bs-parent="#@ParentId">
+
+                <div class="accordion-body" style="padding:0;">
+                    <table class="table table-sm motor-table mb-0" style="@TableStyle">
+                        <tbody>
+                            @foreach (var b in Buttons)
+                            {
+                                <tr>
+                                    <td class="text-center" style="width:100%;">
+                                        <div class="d-flex justify-content-center">
+                                            <button class="btn @(b.IsOK ? "btn-success" : "btn-danger") w-auto"
+                                                    style="min-width:170px"
+                                                    @onclick="b.OnClick"
+                                                    disabled="@(b.OnClick == null)" >
+                                                @((MarkupString)b.Caption)
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                            <tr>
+                                <td class="text-center h-100">
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    /* ---------- unique IDs via IdPrefix ---------- */
+    [Parameter] public string Name { get; set; } = new("");
+    [Parameter] public string IdPrefix { get; set; } = Guid.NewGuid().ToString("N");
+    [Parameter] public string? TableStyle { get; set; }
+    [Parameter] public ButtonSpec[] Buttons { get; set; } = default!;
+
+    private string ParentId => $"accordion_FanConfig_{IdPrefix}";
+    private string HeadingId => $"heading_FanConfig_{IdPrefix}";
+    private string CollapseId => $"collapse_FanConfig_{IdPrefix}";
+
+}
+

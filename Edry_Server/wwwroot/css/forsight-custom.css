@@ -1,0 +1,287 @@
+﻿
+
+/* ───── wrapper ────────────────────────────────────────────── */
+
+.motor-wrapper {
+    /*    width: 25%;*/
+    background-color: transparent;
+}
+
+/* Add background only when the inner collapse is open */
+.motor-wrapper .accordion-collapse.show {
+    background-color: var(--table-back);
+    border-radius: 0px 0px 16px 16px;
+}
+
+/* ───── card / panel ───────────────────────────────────────── */
+.motor-card {
+    background-color: transparent;
+    border: 2px solid var(--default-text-color);
+    border-radius: 16px !important;
+    overflow: hidden; /* force clipping */
+    padding-bottom: 0;
+    margin-bottom: 0;
+}
+
+.motor-card > .card-body {
+    padding-bottom: 0 !important; /* override Bootstrap p-1 */
+    margin-bottom: 0;
+}
+
+/* ───── table & dividers ───────────────────────────────────── */
+.motor-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 0;
+    border-spacing: 0; /* keep current tight grid */
+    background-color: transparent;
+    /*    border-radius: 16px;*/
+}
+
+.motor-table thead tr:not(:last-child) {
+    border-bottom: 2px solid var(--default-border);
+}
+
+.motor-table th,
+.motor-table td {
+    padding: 2px;
+    font-size: 14px;
+    color: var(--default-text-color);
+    background-color: transparent;
+}
+
+.motor-table th:not(:first-child)
+{
+    border-left: 2px solid var(--default-border);
+}
+
+.motor-table td:not(:first-child) {
+    border-left: 2px solid var(--default-border);
+}
+
+.motor-table tr:last-child td {
+    padding-bottom: 0;
+    margin-bottom: 0;
+}
+
+
+/* ───── inputs & buttons ───────────────────────────────────── */
+.motor-input {
+    height: 24px;
+    padding: 4px 6px;
+    font-size: 14px;
+    border-radius: 6px;
+    line-height: 1;
+    color: var(--default-text-color);
+    outline: 0px;
+}
+
+.motor-input.empty {
+    background-color: var(--table-back);
+    border: 2px solid var(--default-text-color);
+}
+
+.motor-input.valid {
+    background-color: var(--table-green);
+    border: 2px solid var(--default-text-color);
+}
+
+.motor-input.invalid {
+    background-color: var(--table-red);
+    border: 2px solid var(--default-text-color);
+}
+
+.motor-input:focus {
+    /*    box-shadow: none;*/
+    border: 2px solid var(--default-text-color);
+}
+
+/* ── buttons (small, green) ─────────────────────────────── */
+/* ───── invisible-until-hover button ───────────────────────── */
+/* idle = plain text */
+.btn.motor-btn {
+    background: var(--table-green);
+    border: 1px solid var(--table-green);
+    color: var(--table-light-green);
+    font-weight: 600;
+    padding: 0;
+    transition: all .15s ease;
+    cursor: pointer;
+    margin-block-end: 0.25rem !important;
+}
+
+/* green only while the mouse is on it */
+.btn.motor-btn:hover,
+.btn.motor-btn:active { /* during the click */
+    background: var(--table-light-green);
+    border-color: #5eba63;
+    color: #fff;
+    transform: scale(1.05);
+}
+
+.motor-check:not(:checked) {
+    --motor-check-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='rgba%280, 0, 0, 0.25%29'/%3e%3c/svg%3e"); 
+    border-color: var(--gray-2);
+    background-color: var(--gray-2);
+    background-image: var(--motor-check-bg);
+}
+
+.motor-div {
+    background-color: transparent;
+    border: 2px solid var(--default-border);
+    border-radius: 16px !important;
+    overflow: hidden; /* force clipping */
+    padding-bottom: 0;
+    margin-bottom: 0;
+}
+
+/* file-list scrollbar */
+.file-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.file-list::-webkit-scrollbar-track {
+    background: var(--table-back);
+}
+
+.file-list::-webkit-scrollbar-thumb {
+    background: #808080;
+    border-radius: 4px;
+}
+
+.file-list { /* Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: #808080 var(--table-back);
+}
+
+.file-list-table-margin-5 {
+    padding: 0 0 0 0; /* top 0, right 5px, bottom 5px, left 5px */
+}
+
+.file-list table td:first-child,
+.file-list table th:first-child {
+    width: 70%;
+}
+
+.player-skin {
+    background: var(--table-back);
+}
+
+/* base look */
+.icon-btn {
+    background: transparent;
+    border: 0;
+    padding: .25rem;
+    color: #0071c1; /* normal blue */
+    transition: color .15s;
+}
+
+/* default hover tint for ALL buttons */
+.icon-btn:hover {
+    color: #005d9f;
+}
+
+/* white hover only for the three right buttons (not .radio-btn) */
+.icon-btn:not(.radio-btn):hover {
+    color: #ffffff;
+}
+
+/* radio buttons stay white while selected */
+.icon-btn.active {
+    color: #ffffff;
+}
+
+.transition-off {
+    transition:none !important
+}
+
+.rot-180 {
+    transform: rotate(180deg);
+    transition: transform .25s ease;
+}
+
+.rot-0 {
+    transform: rotate(0deg);
+    transition: transform .25s ease;
+}
+
+.avatar-sm {
+    cursor: pointer;
+}
+
+/* keep the caret only when .keep-caret is added */
+.main-header-container .keep-caret.dropdown-toggle::after {
+    content: "\f282";
+    font-family: "bootstrap-icons";
+}
+
+.main-header-container .fail-icon::after {
+    content: "  \f623";
+    font-family: "bootstrap-icons";
+}
+
+.selected-row {
+    font-weight: bold;
+}
+
+.selected-filename {
+    font-weight: bold !important;
+}
+
+.table-sticky thead th {
+    position: sticky; /* activate the magic                 */
+    top: calc(67px + .25rem); /* sit just below header */
+    z-index: 10; /* keep it on top of table rows       */
+    background: var(--bs-table-bg, #fff); /* readable while scrolling    */
+}
+
+.w-20 {
+    width: 20% !important;
+}
+
+.w-15 {
+    width: 15% !important;
+}
+
+
+
+/* makes it obvious it’s clickable   */
+
+/* no special :active rule → click colour = hover colour */
+
+
+/* any fixed height you prefer */
+
+
+
+/* ── neutralise Chrome / Edge auto-fill yellow ─────────────── */
+/*.motor-input:-webkit-autofill,
+.motor-input:-webkit-autofill:hover,
+.motor-input:-webkit-autofill:focus {
+    
+    box-shadow: 0 0 0 1000px #1a1a1a inset; 
+    -webkit-box-shadow: 0 0 0 1000px #1a1a1a inset;
+   
+    -webkit-text-fill-color: #ffffff;
+}*/
+
+/* you can also set the default colour explicitly */
+/*.motor-input {
+    background: #1a1a1a; 
+    color: #ffffff;
+}*/
+
+
+
+/*.btn.motor-btn {
+    background-color: #f6f0da;
+    border: 1px solid #bdb6a2;
+    border-radius: 4px;
+    font-size: 15px;
+    font-weight: 500;
+    color: #534f46;
+}
+
+    .btn.motor-btn:hover {
+        background-color: #eee7d0;
+    }*/

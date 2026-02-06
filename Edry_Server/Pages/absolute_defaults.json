@@ -1,0 +1,7 @@
+{
+  "Tool Exchange": [ "0", "-120", "0", "0", "-70", "0", "50" ],
+  "Pickup": [ "30", "120", "0", "30", "-10", "0", "50" ],
+  "Zero": [ "0", "0", "0", "0", "-45", "0", "50" ],
+  "Priming": [ null, null, null, null, null, null, "1" ],
+  "Pressure": [ null, null, null, null, null, null, "2" ]
+}

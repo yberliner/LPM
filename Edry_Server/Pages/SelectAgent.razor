@@ -1,0 +1,366 @@
+﻿@page "/"
+@page "/index"
+
+@layout NoMenu 
+@* @layout CustomLayout *@
+
+@using ForsightTester._Spk
+@inject Microsoft.AspNetCore.Components.NavigationManager NavigationManager // This line is used to generate URLs dynamically //
+@using FSMSGS
+@using MSGS
+@using ForsightTester.Data
+@inject AgentList AgentList
+@inject MSGS.ClientSessionData SessionData
+@inject MSGS.ClientManager client
+@inject MSGS.CommRepository _commRepository
+@inject MSGS.AgentsRepository _agents
+@inject Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage.ProtectedSessionStorage sessionStorage
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@inject CustomerReservationsProvider customerReservationsProvider
+
+
+@implements IDisposable
+
+<div class="authentication-background">
+    <div class="container">
+        <div class="row justify-content-center align-items-center authentication authentication- h-100">
+            <div class="col-xxl-5 col-xl-5 col-lg-5 col-md-6 col-sm-8 col-12">
+                <div class="card custom-card my-4">
+                    <div class="card-body p-5">
+                        <div class="mb-3 d-flex justify-content-center">
+                            <a href="/index">
+                                <img src="../assets/images/brand-logos/desktop-logo.png" alt="logo" class="desktop-logo">
+                                @* <img src="../assets/images/brand-logos/desktop-white.png" alt="logo" class="desktop-white"> *@
+                            </a>
+                        </div>
+
+                        <p class="h5 mb-2 text-center">Sign In</p>
+                        <p class="mb-4 text-muted op-7 fw-normal text-center">Welcome back to Ederi !</p>
+
+                        <div class="row gy-3">
+                            <div class="col-xl-12">
+                                <label for="signin-username" class="form-label text-default">
+                                    User Name<sup class="fs-12 text-danger">*</sup>
+                                </label>
+                                <input type="text"
+                                       class="form-control"
+                                       id="signin-username"
+                                       placeholder="user name"
+                                       @bind="UserName" />
+                            </div>
+
+                            <div class="col-xl-12 mb-2">
+                                <label for="signin-password" class="form-label text-default d-block">
+                                    Password<sup class="fs-12 text-danger">*</sup>
+                                    <a href="/resetpassword-basic" class="float-end fw-normal text-muted">Forget password ?</a>
+                                </label>
+
+                                <div @onkeydown="OnPasswordKeyDown">
+                                    <SpkPasswordToggle @bind-Password="password" />
+                                </div>
+                                
+                                <div class="mt-2">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" value="" id="defaultCheck1">
+                                        <label class="form-check-label text-muted fw-normal" for="defaultCheck1">
+                                            Remember password ?
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        @* ✅ Failure message *@
+                        @if (ShowSignInError)
+                        {
+                            <div class="alert alert-danger text-center mt-3 @(ShakeError ? "shake" : "")" role="alert">
+                                @SignInErrorMessage
+                            </div>
+                        }
+
+                        <div class="d-grid mt-4">
+                            <SpkButtons ButtonClass="btn-primary" Tag="a" @onclick="OnSignInClicked">
+                                Sign In
+                            </SpkButtons>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    @@keyframes shake {
+        0% {
+            transform: translateX(0);
+        }
+
+        25% {
+            transform: translateX(-5px);
+        }
+
+        50% {
+            transform: translateX(5px);
+        }
+
+        75% {
+            transform: translateX(-5px);
+        }
+
+        100% {
+            transform: translateX(0);
+        }
+    }
+
+    .shake {
+        animation: shake 0.3s;
+    }
+</style>
+
+
+@code {
+    // ✅ error UI state
+    private string? SignInErrorMessage;
+    private bool ShowSignInError => !string.IsNullOrWhiteSpace(SignInErrorMessage);
+
+    // ✅ optional shake
+    private bool ShakeError;
+
+
+    private string? password = "";
+    private string? UserName;
+
+    private System.Threading.Timer? refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Console.WriteLine("Exit pressed or First time initialized.");
+        _commRepository.OnAgentAdded += (agentName, msgType) =>
+            {
+                // When a new agent is added, send the startup messages
+                RefreshAgentsList(agentName);
+            };
+        _commRepository.OnAgentRemoved += (agentName) =>
+            {
+                // When a new agent is removed, send the startup messages
+                RefreshAgentsList(agentName);
+            };
+
+        client.OnSessionEnd();
+        //SessionData.AgentName = string.Empty;
+
+        // Store in browser's session storage (await now allowed)
+        await sessionStorage.SetAsync("machineName", string.Empty);// SessionData.AgentName);
+
+        // refreshTimer = new Timer(_ =>
+        // {
+        //     InvokeAsync(StateHasChanged);
+        // }, null, 5000, 5000);
+    }
+    public void RefreshAgentsList(string agentName)
+    {
+        // This method can be called to refresh the agents list manually
+        //InvokeAsync(StateHasChanged);
+    }
+
+
+    public void Dispose()
+    {
+        _dotnetRef?.Dispose();
+
+        _commRepository.OnAgentAdded -= (agentName, msgType) =>
+            {
+                RefreshAgentsList(agentName);
+            };
+        _commRepository.OnAgentRemoved -= (agentName) =>
+        {
+            RefreshAgentsList(agentName);
+        };
+        refreshTimer?.Dispose();
+    }
+
+    private async Task OnSignInClicked()
+    {
+        // Reset UI state for new attempt
+        SignInErrorMessage = null;
+        ShakeError = false;
+
+        var user = Normalize(UserName);
+        var pass = Normalize(password);
+
+        // Basic validation
+        if (string.IsNullOrEmpty(user) || string.IsNullOrEmpty(pass))
+        {
+            await ShowErrorAsync("User name and password are required.");
+            return;
+        }
+
+        try
+        {
+            if (IsAdmin(user, pass))
+            {
+                await sessionStorage.SetAsync("machineName", SessionData.AgentName);
+                NavigationManager.NavigateTo("/Admin");
+                return;
+            }
+
+            var customerNumber = await TrySignInCustomerAsync(user, pass);
+            if (!string.IsNullOrWhiteSpace(customerNumber))
+            {
+                await sessionStorage.SetAsync("machineName", SessionData.AgentName);
+                client.OnSessionStart(customerNumber);
+                NavigationManager.NavigateTo("/Customer");
+                return;
+            }
+
+            // ❌ SIGN IN FAILED
+            await ShowErrorAsync("Invalid user name or password.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            await ShowErrorAsync("Sign in failed due to an unexpected error. Please try again.");
+        }
+    }
+
+    private async Task ShowErrorAsync(string message)
+    {
+        SignInErrorMessage = message;
+
+        // trigger shake animation (toggle class)
+        ShakeError = true;
+        await InvokeAsync(StateHasChanged);
+
+        // remove shake class so next failure can re-trigger animation
+        await Task.Delay(350);
+        ShakeError = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static string? Normalize(string? s) =>
+        string.IsNullOrWhiteSpace(s) ? null : s.Trim().ToLower();
+
+
+
+    private async Task<(string? Route, string? CustomerNumber)> ResolveLoginAsync(string? user, string? pass)
+    {
+        if (IsAdmin(user, pass))
+            return ("/Admin", null);
+
+        var customerNumber = await TrySignInCustomerAsync(user, pass);
+        if (!string.IsNullOrWhiteSpace(customerNumber))
+            return ("/Customer", customerNumber);
+
+        return (null, null);
+    }
+
+    
+    private static bool IsAdmin(string? user, string? pass) =>
+        user == "ederi" && pass == "ederi111!!!";
+
+    private async Task<string?> TrySignInCustomerAsync(string? user, string? pass)
+    {
+        // Rule: password must equal username
+        if (string.IsNullOrWhiteSpace(user) || pass != user)
+            return null;
+
+        // Try last 90 days, then all time (0)
+        var orders90 = await customerReservationsProvider.GetCustomerReservationsFromExcelAsync(user, 90);
+        var customerNumber = orders90?.FirstOrDefault()?.CustomerNumber;
+        if (!string.IsNullOrWhiteSpace(customerNumber))
+            return customerNumber;
+
+        var ordersAll = await customerReservationsProvider.GetCustomerReservationsFromExcelAsync(user, 0);
+        return ordersAll?.FirstOrDefault()?.CustomerNumber;
+    }
+
+
+    private async Task OnRowClicked(AgentInfo agent)
+    {
+        // Navigate or perform any logic
+        //        NavigationManager.NavigateTo($"/agent-details/{agent.ID}");
+
+        client.OnSessionStart(agent.Name);
+
+        Console.WriteLine($"Machine selected: {SessionData.AgentName}");
+
+        _agents.AddAgent(SessionData.AgentName);
+        _commRepository.AddAgentByName(SessionData.AgentName, null);
+        
+        
+        // Store in browser's session storage
+        await sessionStorage.SetAsync("machineName", SessionData.AgentName);
+
+        NavigationManager.NavigateTo("/Dashboard");
+    }
+
+    private bool _showInstallHelp;
+    private bool _isIOS;
+
+    private async Task InstallPwaOrHelp()
+    {
+        _isIOS = await JS.InvokeAsync<bool>("pwa.isIOS");
+
+        var can = await JS.InvokeAsync<bool>("pwa.canInstall");
+        if (can)
+        {
+            await JS.InvokeAsync<bool>("pwa.install");
+            _showInstallHelp = false;
+        }
+        else
+        {
+            _showInstallHelp = true; // show instructions instead of hiding everything
+        }
+    }
+
+    private DotNetObjectReference<SelectAgent>? _dotnetRef;
+    private bool _canInstall;
+    private bool _showHelp;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        _dotnetRef = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("pwa.init", _dotnetRef);
+
+        _isIOS = await JS.InvokeAsync<bool>("pwa.isIOS");
+        _canInstall = await JS.InvokeAsync<bool>("pwa.canInstall");
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public Task SetCanInstall(bool value)
+    {
+        _canInstall = value;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    
+    private async Task InstallClicked()
+    {
+        _isIOS = await JS.InvokeAsync<bool>("pwa.isIOS");
+
+        if (!_isIOS && await JS.InvokeAsync<bool>("pwa.canInstall"))
+        {
+            await JS.InvokeAsync<bool>("pwa.install");
+            _showHelp = false;
+        }
+        else
+        {
+            _showHelp = true;
+        }
+    }
+
+    private async Task OnPasswordKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await OnSignInClicked();
+    }
+
+
+}

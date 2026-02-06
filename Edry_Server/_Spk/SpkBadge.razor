@@ -1,0 +1,31 @@
+@code {
+    [Parameter] public string Tag { get; set; } = "span"; // HTML tag to render
+    [Parameter] public string? BadgeClass { get; set; } = "btn-primary"; 
+    [Parameter] public bool IsRounded { get; set; } = false;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    // Capture additional attributes passed to the component
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+}
+
+@{
+    // Determine the HTML tag to use
+    var tagName = Tag.ToLower();
+}
+@if (tagName == "a") {
+    <a href="javascript:void(0);" class="@BadgeClass badge @(IsRounded ? "rounded-pill" : "")" @attributes="AdditionalAttributes">
+        @if (ChildContent != null)
+        {
+            @ChildContent 
+        }
+    </a>
+}
+else {
+    
+<span class="badge @BadgeClass @(IsRounded ? "rounded-pill" : "")">
+    @if (ChildContent != null)
+    {
+        @ChildContent 
+    }
+</span>
+}

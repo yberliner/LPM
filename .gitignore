@@ -1,0 +1,58 @@
+# Ignore bin and obj folders (compiled code)
+bin/
+obj/
+.vs/
+
+# Ignore build artifacts
+*.dll
+*.exe
+*.pdb
+*.o
+
+# Ignore user-specific settings
+.vscode/
+.idea/
+*.suo
+*.user
+*.sln.cache
+**/ScriptFIles/*
+**/ResultFiles/*
+**/UserFiles/*
+
+# Windows system files
+desktop.ini
+**/desktop.ini
+
+# Ignore dependencies
+node_modules/
+packages/
+
+# Igonre upload/download files
+App_Data/
+app_errors.log
+
+
+# Ignore publish/output directories
+dist/
+out/
+Documentation/
+Service/forsight
+build/
+build-VM/
+Log/
+
+*.bak
+
+# Ignore C++ project files
+*.tlog
+*.obj
+*.idb
+*.lastbuildstate
+*.ilk
+*.pch
+*.log
+glibc*
+RKS
+
+!/Forsight_Server/wwwroot/
+!/Forsight_Server/wwwroot/**

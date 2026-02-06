@@ -1,0 +1,74 @@
+﻿@using CardModel
+@inherits ForsightTester.Shared.AccordionInputBase
+
+@* ---------- markup ---------- *@
+
+<div class="motor-wrapper my-2 mx-2">
+    <div class="accordion accordion-primary" id="@ParentId">
+        <div class="accordion-item motor-card">
+            <h2 class="accordion-header" id="@HeadingId">
+                <button class="accordion-button"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#@CollapseId"
+                        aria-controls="@CollapseId"
+                        aria-expanded="true"
+                        style="background: transparent;">
+                    SCB Voltage
+                </button>
+            </h2>
+
+            <div id="@CollapseId"
+                 class="accordion-collapse collapse show"
+                 aria-labelledby="@HeadingId"
+                 data-bs-parent="#@ParentId">
+
+                <div class="accordion-body" style="padding:0;">
+                    <table class="table table-sm motor-table mb-0" style="@TableStyle">
+                        <thead>
+                            <tr>
+                                <th class="text-center" style="width:60%;">Voltage</th>
+                                <th class="text-center" style="width:40%;">SCB</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (int i = 0; i < Voltages.Count; i++)
+                            {
+                                int Locali = i;
+                                <tr>
+                                    <td class="text-left">@Voltages[Locali]</td>
+                                    <td class="text-center">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span>@(VoltagesValues[Locali].ToString("F2") ?? "-")</span>
+                                            <span>(V)</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                            <tr>
+                                <td colspan="2" class="text-center h-100">
+                                    <div class="d-flex flex-column justify-content-end align-items-center h-100">
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    /* ---------- unique IDs via IdPrefix ---------- */
+    [Parameter] public string IdPrefix { get; set; } = Guid.NewGuid().ToString("N");
+    [Parameter] public string? TableStyle { get; set; }
+    [Parameter] public double[] VoltagesValues { get; set; } = Array.Empty<double>();
+
+    private string ParentId => $"accordion_SCBVoltage_{IdPrefix}";
+    private string HeadingId => $"heading_SCBVoltage_{IdPrefix}";
+    private string CollapseId => $"collapse_SCBVoltage_{IdPrefix}";
+
+    /* ---------- original component logic ---------- */
+    private List<string> Voltages { get; } = new() { "24V", "12V", "Driver Voltage", "5V", "3.3V" };
+}

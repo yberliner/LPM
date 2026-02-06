@@ -1,0 +1,91 @@
+﻿@inject MSGS.ClientManager udpClient
+@inject MSGS.ClientSessionData SessionData
+@inject NavigationManager Navigation
+@inject MSGS.AgentsRepository _agentsRepository
+@inject Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage.ProtectedSessionStorage sessionStorage
+@implements IDisposable
+
+@if (!_initialized)
+{
+    <div class="p-4 text-danger">Initializing...</div>
+}
+else
+{
+    {
+        Console.WriteLine($"Routing to app");// with agent: {SessionData.AgentName}");
+        <Router AppAssembly="@typeof(App).Assembly">
+            <Found Context="routeData">
+                <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+                <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+            </Found>
+            <NotFound>
+                <LayoutView Layout="@typeof(MainLayout)">
+                    <p>Page not found.</p>
+                </LayoutView>
+            </NotFound>
+        </Router>
+    }
+}
+
+@code {
+    private bool _initialized = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _initialized)
+            return;
+
+        Console.WriteLine("App.razor - OnAfterRenderAsync START");
+
+        var result = await sessionStorage.GetAsync<string>("machineName");
+        var currentPath = Navigation.ToBaseRelativePath(Navigation.Uri).ToLowerInvariant().Trim('/');
+
+        // Define what counts as "main page"
+        bool isOnMainPage = string.IsNullOrEmpty(currentPath) || currentPath == "index";
+
+        
+        if (result.Success && !string.IsNullOrEmpty(result.Value))
+        {
+            //make sure agent really exists. If server was restarted, agent might not exist anymore
+            bool isAgentExists = _agentsRepository.GetClientAgentData(result.Value) != null;
+            if (!isAgentExists)
+            {
+                Console.WriteLine($"App.razor - Agent '{result.Value}' does not exist. Redirecting to /index.");
+                
+                // Remove the session key from browser storage
+                await sessionStorage.DeleteAsync("machineName");
+                
+                Navigation.NavigateTo("/index", forceLoad: true);
+                return; // Stop execution after redirect
+            }
+            udpClient.ClientRefresh(result.Value);
+            Console.WriteLine("App.razor - Initialization complete");
+        }
+        else if (!isOnMainPage)
+        {
+            Console.WriteLine($"App.razor - machineName missing. CurrentPath: '{currentPath}'. Redirecting to /index.");
+            Navigation.NavigateTo("/index", forceLoad: true);
+            return; // Stop execution after redirect
+        }
+        else
+        {
+            Console.WriteLine("App.razor - On main page. Skipping redirect.");
+        }
+
+        _initialized = true;
+        StateHasChanged();
+    }
+
+    
+    void OnAgentSelected(string agentName)
+    {
+        Console.WriteLine($"App.razor - Agent selected: {agentName}");
+        //SessionData.AgentName = agentName;
+        StateHasChanged(); // now show Router
+    }
+
+    public void Dispose()
+    {
+        udpClient?.Dispose();
+    }
+}

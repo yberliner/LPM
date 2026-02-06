@@ -1,0 +1,74 @@
+﻿@using CardModel
+@inherits ForsightTester.Shared.AccordionInputBase
+
+<div class="motor-wrapper my-2 mx-2">
+    <div class="accordion accordion-primary" id="accordion_@IdPrefix">
+        <div class="accordion-item motor-card">
+            <h2 class="accordion-header" id="heading_@IdPrefix">
+                <button class="accordion-button"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#collapse_@IdPrefix"
+                        aria-controls="collapse_@IdPrefix"
+                        aria-expanded="true"
+                        style="background: transparent;">
+                    Voltage
+                </button>
+            </h2>
+
+            <div id="collapse_@IdPrefix"
+                 class="accordion-collapse collapse show"
+                 aria-labelledby="heading_@IdPrefix"
+                 data-bs-parent="#accordion_@IdPrefix">
+
+                <div class="accordion-body" style="padding:0;">
+                    <table class="table table-sm motor-table mb-0" style="@TableStyle">
+                        <thead>
+                            <tr>
+                                <th class="text-center" style="width:9%;">Voltage</th>
+                                <th class="text-center" style="width:13%;">Rcb</th>
+                                <th class="text-center" style="width:13%;">4.M.B Left</th>
+                                <th class="text-center" style="width:13%;">5.M.B Left</th>
+                                <th class="text-center" style="width:13%;">EEF Left</th>
+                                <th class="text-center" style="width:13%;">4.M.B Right</th>
+                                <th class="text-center" style="width:13%;">5.M.B Right</th>
+                                <th class="text-center" style="width:13%;">EEF Right</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (int i = 0; i < VoltageNames.Count; i++)
+                            {
+                                int Locali = i;
+                                <tr>
+                                    <td class="text-left">@VoltageNames[Locali]</td>
+                                    <td class="text-left">@CurrentValues[Locali].RCB.ToString("F2")</td>
+                                    <td class="text-left">@CurrentValues[Locali]._4MBLeft.ToString("F2")</td>
+                                    <td class="text-left">@CurrentValues[Locali]._5MBLeft.ToString("F2")</td>
+                                    <td class="text-left">@CurrentValues[Locali].EEFLeft.ToString("F2")</td>
+                                    <td class="text-left">@CurrentValues[Locali]._4MBRight.ToString("F2")</td>
+                                    <td class="text-left">@CurrentValues[Locali]._5MBRight.ToString("F2")</td>
+                                    <td class="text-left">@CurrentValues[Locali].EEFRight.ToString("F2")</td>
+                                </tr>
+                            }
+                            <tr>
+                                <td colspan="8" class="text-center h-100">
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+@code {
+    //private List<string> VoltageNames { get; } = ["32v Drive", "12v", "24v Drive", "5v", "3.3v", "2.5v"];
+    private List<string> VoltageNames { get; } = ["3.3v", "5v", "12v", "24v Drive", "32v Drive", "2.5v"];
+
+    [Parameter] public string IdPrefix { get; set; } = Guid.NewGuid().ToString("N");
+    [Parameter] public string? TableStyle { get; set; }
+    [Parameter] public VoltageData[] CurrentValues { get; set; } = Array.Empty<VoltageData>();
+
+}

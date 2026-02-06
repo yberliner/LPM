@@ -1,0 +1,645 @@
+@inject StateService stateService
+@inject IJSRuntime JSRuntime
+@inject Microsoft.AspNetCore.Components.NavigationManager NavigationManager // This line is used to generate URLs dynamically //
+@inject MSGS.ClientSessionData session_data
+@inject MSGS.ClientManager client
+@inject MSGS.AgentsRepository _agents
+@using ForsightTester._Spk
+@implements IDisposable
+@using CardModel
+@* @inject PageCommandService Cmd *@
+
+            <header class="app-header sticky @headerClass" id="header">
+                <!-- Start::main-header-container -->
+                <div class="main-header-container container-fluid">
+
+                    <!-- Start::header-content-left -->
+                    <div class="header-content-left">
+
+                        <!-- Start::header-element -->
+                        <div class="header-element">
+                            <div class="horizontal-logo">
+                                <a href="/index" class="header-logo">
+                                    <img src="@($"{NavigationManager.BaseUri}assets/images/brand-logos/desktop-logo.png")" alt="logo" class="desktop-logo">
+                                    <img src="@($"{NavigationManager.BaseUri}assets/images/brand-logos/toggle-dark.png")" alt="logo" class="toggle-dark">
+                                    <img src="@($"{NavigationManager.BaseUri}assets/images/brand-logos/desktop-dark.png")" alt="logo" class="desktop-dark">
+                                    <img src="@($"{NavigationManager.BaseUri}assets/images/brand-logos/toggle-logo.png")" alt="logo" class="toggle-logo">
+                                    <img src="@($"{NavigationManager.BaseUri}assets/images/brand-logos/toggle-white.png")" alt="logo" class="toggle-white">
+                                    <img src="@($"{NavigationManager.BaseUri}assets/images/brand-logos/desktop-white.png")" alt="logo" class="desktop-white">
+                                </a>
+                            </div>
+                        </div>
+                        <!-- End::header-element -->
+
+                        <!-- Start::header-element -->
+                        @if (ShowMenuToggle)
+                        {
+                            <div class="header-element mx-lg-0 mx-2">
+                                <a aria-label="Hide Sidebar"  @onclick="ToggleMenu" class="sidemenu-toggle header-link animated-arrow hor-toggle horizontal-navtoggle" data-bs-toggle="sidebar" href="javascript:void(0);"><span></span></a>
+                            </div>
+                        }
+                        <!-- End::header-element -->    
+
+                        <!-- Start::header-element -->
+                        <div class="header-element btn-list">
+                        
+                        </div>
+                        <!-- End::header-element -->
+
+                        @* <div class="header-element btn-list">
+                            <button class="btn btn-success-light @(EStop.Visible==true ? "" : "invisible")"
+                                @onclick="ResetErrors"
+                                disabled="@(!EStop.Enabled)">
+                                Reset Errors
+                            </button>
+                            <SpkHeaderDropdown Info="@EStop" DropdownClicked="EStopClicked" Options="@DiscOper"/>
+                        </div> *@
+
+                        
+                    </div>
+
+                    <h1 class="d-flex align-items-center text-nowrap">
+                        Ederi.Online @session_data.AgentName
+                    </h1>
+
+                    <!-- End::header-content-left -->
+
+                    <!-- Start::header-content-right -->
+
+                    <ul class="header-content-right list-unstyled">
+
+                        @* <SpkHeaderDropdown Info="@miccb" DropdownClicked="MICCBClicked" Options="@InitOper"/>
+                        <SpkHeaderDropdown Info="@mocb" DropdownClicked="MOCBClicked" Options="@InitOper"/>
+                        <SpkHeaderDropdown Info="@rc" DropdownClicked="RCClicked" Options="@InitOper"/>
+                        <SpkHeaderDropdown Info="@mc" DropdownClicked="MCClicked" Options="@InitOper"/>
+                         *@
+                        <!-- Start::header-element -->
+                        <li class="header-element d-md-none d-block">
+                            <a href="javascript:void(0);" class="header-link" data-bs-toggle="modal" data-bs-target="#header-responsive-search">
+                                <!-- Start::header-link-icon -->
+                                <i class="bi bi-search header-link-icon"></i>
+                                <!-- End::header-link-icon -->
+                            </a>  
+                        </li>
+                        <!-- End::header-element -->
+
+                        <!-- Start::header-element -->
+                        <li class="header-element header-theme-mode" @onclick='() => colorthemeFn()'>
+                            <!-- Start::header-link|layout-setting -->
+                            <a href="javascript:void(0);" class="header-link layout-setting">
+                                <span class="light-layout">
+                                    <!-- Start::header-link-icon -->
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 header-link-icon" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
+                                    </svg>
+                                    <!-- End::header-link-icon -->
+                                </span>
+                                <span class="dark-layout">
+                                    <!-- Start::header-link-icon -->
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 header-link-icon" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+                                    </svg>
+                                    <!-- End::header-link-icon -->
+                                </span>
+                            </a>
+                            <!-- End::header-link|layout-setting -->
+                        </li>
+                        <!-- End::header-element -->
+
+                        <!-- Start::header-element -->
+                        <li class="header-element header-fullscreen">
+                            <!-- Start::header-link -->
+                            <a onclick="openFullscreen();" href="javascript:void(0);" class="header-link">
+                                 <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 full-screen-open header-link-icon" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                                </svg>
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 full-screen-close header-link-icon d-none" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25" />
+                                </svg>
+                            </a>
+                            <!-- End::header-link -->
+                        </li>
+                        <!-- End::header-element -->
+
+                        <!-- Start::header-element -->
+                        <li class="header-element">
+                            <!-- Start::header-link|switcher-icon -->
+                            <a href="javascript:void(0);" class="header-link switcher-icon" data-bs-toggle="offcanvas" data-bs-target="#switcher-canvas">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 header-link-icon" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                                </svg>
+                            </a>
+                            <!-- End::header-link|switcher-icon -->
+                        </li>
+                        <!-- End::header-element -->
+
+                    </ul>
+                    <!-- End::header-content-right -->
+
+                </div>
+                <!-- End::main-header-container -->
+
+            </header>
+
+            <div class="modal fade" id="header-responsive-search" tabindex="-1" aria-labelledby="header-responsive-search" aria-hidden="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-body">
+                            <div class="input-group">
+                                <input type="text" class="form-control border-end-0" placeholder="Search Anything ..."
+                                    aria-label="Search Anything ..." aria-describedby="button-addon2">
+                                    <SpkButtons ButtonClass="btn-primary" id="button-addon2"><i class="bi bi-search"></i></SpkButtons>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <SpkModalSpinner @ref="_SpinnerDlg"/>
+
+@code {
+    private System.Timers.Timer? refreshTimer;
+    private bool _isDisposed = false;
+   
+    protected override void OnInitialized()
+    {
+        Console.WriteLine("MainHeaer OnInitialized called");
+        base.OnInitialized();
+        refreshTimer = new System.Timers.Timer(500); // 0.5 second interval
+        refreshTimer.Elapsed += (sender, e) => InvokeAsync(UpdateGUIValuesLogic);
+        refreshTimer.Start();
+    }
+
+    [Parameter] public bool ShowMenuToggle { get; set; } = true;
+
+    private SpkModalSpinner? _SpinnerDlg;
+    
+    private static readonly string[] InitOper = { "Init", "Oper" };
+    private enum INITOPER
+    {
+        Init = 0,
+        Oper = 1
+    }
+
+    private static readonly string[] DiscOper = { "On", "Off" };
+    private enum DISCOPER
+    {
+        Disc = 0,
+        Oper = 1
+    }
+
+    private HeaderDropdownState miccb = new() { CurrentSelect = (int)INITOPER.Oper, Visible = false, Enabled = false, Caption = "MicCB" };
+    private HeaderDropdownState mocb = new() { CurrentSelect = (int)INITOPER.Oper, Visible = false, Enabled = false, Caption = "MocB" };
+    private HeaderDropdownState rc = new() { CurrentSelect = (int)INITOPER.Oper, Visible = false, Enabled = false, Caption = "RC" };
+    private HeaderDropdownState mc = new() { CurrentSelect = (int)INITOPER.Init, Visible = false, Enabled = false, Caption = "MC" };
+    private HeaderDropdownState EStop = new() { CurrentSelect = 0, Visible = false, Enabled = true, Caption = "EStop off"};
+
+    <!-- cart Data Start-->
+    public class CartList
+    {
+        public int id { get; set; }
+        public string? img { get; set; }
+        public string? imgalt { get; set; }
+        public string? title { get; set; }
+        public string? quantity { get; set; }
+        public string? originalprice { get; set; }
+        public string? desc { get; set; }
+        public string? price { get; set; }
+    }
+    public class Category
+    {
+        public string? value { get; set; }
+        public string? valueBgColor { get; set; }    
+    }
+                   
+    <!-- Notifications Data Start-->
+    public class NotifyList
+    {
+        public int id { get; set; }
+        public string? icon { get; set; }
+        public string? img { get; set; }
+        public string? iconBg { get; set; }
+        public string? title { get; set; }
+        public string? description { get; set; }
+        public string? description2 { get; set; }
+        public string? description2color { get; set; }
+        public string? description3 { get; set; }
+        public string? msgtime { get; set; }
+    }
+
+    List<NotifyList> NotifyListData = new List<NotifyList>()
+    {
+        new NotifyList { id= 1, img= "assets/images/faces/1.jpg", iconBg= "bg-primary", title= "New Messages", description= "Jane Sam sent you a message.",msgtime="Now"},
+        new NotifyList { id= 2, icon= "fe fe-shopping-cart fs-20", iconBg= "bg-primary", title= "Order Updates", description= "Order",description2= "#54321",description2color="text-primary1",description3="has been shipped.",msgtime="2 hours ago"},
+        new NotifyList { id= 3, img= "assets/images/faces/10.jpg", iconBg= "bg-orange", title= "Comment on Post", description= "Reacted: ",description2= "John Richard",description2color="text-primary3",description3=" on your next purchase!.",msgtime="2 hours ago"},
+        new NotifyList { id= 4, img= "assets/images/faces/11.jpg", iconBg= "bg-success", title= "Follow Request",description2= "Kelin Brown",description2color="text-info",description3="has sent you the request.",msgtime="5 hours ago"},
+        new NotifyList { id= 5, icon= "ri-gift-line fs-16", iconBg= "bg-primary2", title= "Exclusive Offers",description= "Enjoy",description2= "20% off",description2color="text-success",description3="on your next purchase!",msgtime="1 Day ago"},
+    };
+
+    void DeleteNotifyList(NotifyList NotifyList)
+    {
+        NotifyListData.Remove(NotifyList);
+    }   
+    <!-- Notifications Data End-->
+
+    <!-- ToggleMenu -->
+    private async void ToggleMenu() {
+        var toggled = await JSRuntime.InvokeAsync<string>("interop.getAttributeToHtml", "data-toggled");
+        var verticalStyle = await JSRuntime.InvokeAsync<string>("interop.getAttributeToHtml", "data-vertical-style");
+        var navStyle = await JSRuntime.InvokeAsync<string>("interop.getAttributeToHtml", "data-nav-style");
+        var isdoubleMenuActive = await JSRuntime.InvokeAsync<bool>("interop.isEleExist", ".double-menu-active");
+        var inner = await JSRuntime.InvokeAsync<int>("interop.inner", "innerWidth");
+
+        if (inner <= 992) {
+            if (toggled == "open") {
+                await JSRuntime.InvokeAsync<string>("interop.addAttributeToHtml", "data-toggled", "close");
+            } else {
+                await JSRuntime.InvokeAsync<string>("interop.addAttributeToHtml", "data-toggled", "open");
+            }
+        } 
+        else {
+            if (navStyle != null) {
+                if (toggled != null) {
+                    await JSRuntime.InvokeAsync<string>("interop.removeAttributeFromHtml", "data-toggled");
+                } 
+                else {
+                    await JSRuntime.InvokeAsync<string>("interop.addAttributeToHtml", "data-toggled", navStyle + "-closed");
+                }
+            } 
+            else if (verticalStyle != null) {
+                if (verticalStyle == "doublemenu") {
+                    if (toggled == "double-menu-open" && isdoubleMenuActive) {
+                        await JSRuntime.InvokeAsync<string>("interop.addAttributeToHtml", "data-toggled", "double-menu-close");
+                    } 
+                    else {
+                        if (isdoubleMenuActive) {
+                            await JSRuntime.InvokeAsync<string>("interop.addAttributeToHtml", "data-toggled", "double-menu-open");
+                        }
+                    }
+                } 
+                else if (toggled != null) {
+                    await JSRuntime.InvokeAsync<string>("interop.removeAttributeFromHtml", "data-toggled");
+                } 
+                else {
+                    switch (verticalStyle) {
+                        case "default-menu":
+                            await JSRuntime.InvokeAsync<string>("interop.addAttributeToHtml", "data-toggled", "close-menu-close");
+                            break;
+                        case "closed":
+                            await JSRuntime.InvokeAsync<string>("interop.addAttributeToHtml", "data-toggled", "close-menu-close");
+                            break;
+                        case "icontext":
+                            await JSRuntime.InvokeAsync<string>("interop.addAttributeToHtml", "data-toggled", "icon-text-close");
+                            break;
+                        case "overlay":
+                            await JSRuntime.InvokeAsync<string>("interop.addAttributeToHtml", "data-toggled", "icon-overlay-close");
+                            break;
+                        case "detached":
+                            await JSRuntime.InvokeAsync<string>("interop.addAttributeToHtml", "data-toggled", "detached-close");
+                            break;
+                    }
+                }
+            }
+        }
+    }
+
+    private AppState currentState => stateService.GetAppState();
+    private async void colorthemeFn()
+    {
+        var val = currentState.ColorTheme == "light" ? "dark" : "light";
+        await JSRuntime.InvokeAsync<string>("interop.setLocalStorageItem", "xintracolortheme", val);
+        await stateService.colorthemeFn(val, true);
+    }
+
+    //sticky-pin //
+    private string headerClass = "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await AttachHeaderScrollListener();
+            if (session_data.AgentName.Length > 0)
+            {
+                HardwareSetTooltip(miccb);
+                miccb.Visible = true;
+                HardwareSetTooltip(mocb);
+                mocb.Visible = true;
+                HardwareSetTooltip(rc);
+                rc.Visible = true;
+                HardwareSetTooltip(mc);
+                mc.Visible = true;
+
+                EStopSetTooltip();
+                EStop.Visible = true;
+                EStop.CurrentSelect = 1;
+
+                StateHasChanged(); // Ensure the UI is updated after setting visibility
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        _isDisposed = true; // Prevent further operations
+
+        Console.WriteLine("1 - Disposing MainHeader component.");
+
+        refreshTimer?.Dispose(); // Cleanup resources
+        refreshTimer = null; // Clear the timer reference
+        GC.SuppressFinalize(this); // prevent unnecessary finalization
+    }
+
+    private async Task AttachHeaderScrollListener()
+    {
+        await JSRuntime.InvokeVoidAsync("interop.registerheaderScrollListener", DotNetObjectReference.Create(this));
+    }
+
+    [JSInvokable]
+    public void SetStickyClass1(int scrollY)
+    {
+        if (scrollY >= 25)
+        {
+            headerClass = "sticky-pin";
+        }
+        else
+        {
+            headerClass = "";
+        }
+
+        StateHasChanged();
+    }
+    //sticky-pin //
+
+    private async Task ResetErrors()
+    {
+        Console.WriteLine("Reset Errors button clicked.");
+        if (client.ResetErrors(OnResetCompleted))
+        {
+            await _SpinnerDlg!.ShowAsync();
+        }
+    }
+
+    private async Task OnResetCompleted()
+    {
+        // Custom logic here
+        Console.WriteLine("ResetErrorManager / Estop finished and callback fired.");
+        await _SpinnerDlg!.HideAsync();
+
+    }
+
+    private void EStopSetTooltip()
+    {
+        if (string.IsNullOrEmpty(EStop.ErrorTag))
+        {
+            EStop.Tooltip = EStop.ErrorExists ? "Disconnected" : "All Ok";
+        } else
+        {
+            EStop.Tooltip = "Hardware Error";
+        }
+    }
+
+    private void HardwareSetTooltip(HeaderDropdownState state)
+    {
+        if (state.Enabled)
+        {
+            if (state.ErrorExists) 
+            {
+                state.Tooltip = "Device in error state.\nPlease press 'reset errors' button";
+            } 
+            else 
+            {
+                state.Tooltip = "All Ok";
+            }
+        } 
+        else
+        {
+            state.Tooltip = "No communication received";
+        }
+    }
+
+    private async Task EStopClicked(int Selection)
+    {
+        Console.WriteLine("Reset Errors button clicked.");
+        bool showSpinner = true;
+
+        if (Selection == (int)DISCOPER.Disc)
+        {
+            Console.WriteLine("Estop Disconnect button clicked.");
+            EStop.CurrentSelect = 0;
+            EStop.ErrorExists = true;
+            EStop.Caption = "EStop on";
+            showSpinner = client.EstopDisconnect(OnResetCompleted);
+        }
+        else 
+        {
+            Console.WriteLine("Estop Operational button clicked.");
+            EStop.CurrentSelect = 1;
+            EStop.ErrorExists = false;
+            EStop.Caption = "EStop off";
+            showSpinner = client.EstopOperational(OnResetCompleted);
+        }
+        if (showSpinner)
+        {
+            await _SpinnerDlg!.ShowAsync();
+            EStopSetTooltip();
+        }
+    }
+
+    /* ---------- caption-specific handlers ---------- */
+    private void OnDropdownClicked(HeaderDropdownState state, MSGS.DevicesScreen device, int Selection)
+    {
+        if (state.CurrentSelect != Selection)
+        {
+            state.CurrentSelect = Selection;
+            Console.WriteLine($"{device} clicked, Selection: {Selection}. Agent name: {session_data.AgentName}");
+            client.OnDeviceClicked(device, (Selection==(int)INITOPER.Init));
+        }
+    }
+
+    // Usage in markup:
+    private void MICCBClicked(int Selection) => OnDropdownClicked(miccb, MSGS.DevicesScreen.MICB, Selection);
+    private void MOCBClicked(int Selection) => OnDropdownClicked(mocb, MSGS.DevicesScreen.MOCB, Selection);
+    private void RCClicked(int Selection) => OnDropdownClicked(rc, MSGS.DevicesScreen.RC, Selection);
+    private void MCClicked(int Selection) => OnDropdownClicked(mc, MSGS.DevicesScreen.MC_FAST, Selection);
+
+    protected void DisableAllDevices()
+    {
+        miccb.Enabled = false;
+        mocb.Enabled = false;
+        rc.Enabled = false;
+        mc.Enabled = false;
+        EStop.Enabled = false;
+
+        InvokeAsync(StateHasChanged);
+    }
+    protected async Task UpdateGUIValuesLogic()
+    {
+        await InvokeAsync(() =>
+        {
+            try
+            {
+                if (_isDisposed || string.IsNullOrEmpty(session_data.AgentName))
+                {
+                    DisableAllDevices();
+                    return;
+                }
+                //Console.WriteLine($"MainHeader - UpdateGUIValuesLogic called. Agent: {session_data.AgentName}");
+
+                MSGS.agentData? data = _agents.GetClientAgentData(session_data.AgentName);
+                if (data == null)
+                {
+                    DisableAllDevices();
+                    return;
+                }
+
+                foreach (var kvp in data.errorState.ErrorMap)
+                {
+                    int key = kvp.Key;
+                    MSGS.E_OPCODES opcode = kvp.Value.opcode;
+                    bool flag = kvp.Value.flag;
+
+                    //Console.WriteLine($"Key: {key}, Opcode: {opcode}, Flag: {flag}");
+                    if (opcode == MSGS.E_OPCODES.OP_NA)
+                    {
+                        continue; // Skip processing for OP_NA
+                    }
+                    UpdateDeviceButton(opcode, key, flag,
+                            data.errorState.estop_sys_status_last, data.errorState.eEstopReady_last);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in UpdateGUIValuesLogic: {ex.Message}");
+                // Optionally log the error or handle it as needed
+            }
+        });
+    }
+
+    private void UpdateDeviceButton(
+                    MSGS.E_OPCODES opcode,
+                    int device,
+                    bool _errorExistsInMsg,
+                    MSGS.eEstopSysStatus estop_sys_status_last,
+                    MSGS.eSystemEstopReadyness eEstopReady_last)
+    {
+
+        if (_isDisposed)
+        {
+            Console.WriteLine("UpdateDeviceButton ignored because the component has been disposed.");
+            return;
+        }
+
+        // Map device to its DropdownState
+        HeaderDropdownState? state = device switch
+        {
+            (int)MSGS.DevicesScreen.MICB => miccb,
+            (int)MSGS.DevicesScreen.MOCB => mocb,
+            (int)MSGS.DevicesScreen.RC => rc,
+            (int)MSGS.DevicesScreen.MC_FAST => mc,
+            _ => null
+        };
+
+        if (state is null)
+        {
+            Console.WriteLine($"Unhandled device: {(MSGS.DevicesScreen)device}, opcode: {opcode}");
+            return;
+        }
+
+
+        bool updateGui = HandleEstopState(estop_sys_status_last, eEstopReady_last);
+
+        //Console.WriteLine($"surgeon_connected: {session_data.micb_periodic_status.surgeon_connected}");
+        //Console.WriteLine($"robot_connected: {session_data.micb_periodic_status.robot_connected}");
+
+        if (state.Enabled == false)
+        {
+            state.Enabled = true; // Enable the dropdown state for the device
+            updateGui = true;
+        }
+
+        //check if rc and mc have been disconnected
+        if (session_data.micb_periodic_status.robot_connected < 3 && rc.Enabled)
+        {
+            rc.Enabled = false;
+            updateGui = true;
+        }
+        if (session_data.micb_periodic_status.surgeon_connected < 3 && mc.Enabled)
+        {
+            mc.Enabled = false;
+            updateGui = true;
+        }
+
+        if (state.ErrorExists != _errorExistsInMsg)
+        {
+            updateGui = true;
+            state.ErrorExists = _errorExistsInMsg; // Update the error state
+        }
+
+        updateGui = updateGui || UpdateSelection(state, opcode);
+
+        if (updateGui)
+        {
+
+            HardwareSetTooltip(state);
+            InvokeAsync(StateHasChanged);
+            return; // No need to update the UI if nothing changed
+        }
+    }
+
+    private bool HandleEstopState(MSGS.eEstopSysStatus estop_sys_status_last,
+                MSGS.eSystemEstopReadyness eEstopReady_last)
+    {
+        bool guiChange = false; 
+        if (EStop.CurrentSelect == 0 && estop_sys_status_last == MSGS.eEstopSysStatus.eEstopHwSysOperational)
+        {
+            guiChange = true; // Indicate that the GUI needs to be updated
+            EStop.CurrentSelect = 1; // Switch to Operational if disconnected
+            EStop.ErrorExists = false; 
+            EStop.ErrorTag = "";
+            EStop.Caption = "EStop off";
+        }
+        else if (EStop.CurrentSelect == 1 && estop_sys_status_last == MSGS.eEstopSysStatus.eEstopHwSysDisconnect)
+        {
+            guiChange = true; // Indicate that the GUI needs to be updated
+            EStop.CurrentSelect = 0; // Switch to Disconnected if connected
+            EStop.ErrorExists = true;
+            EStop.Caption = "EStop on";
+            EStop.ErrorTag = eEstopReady_last == MSGS.eSystemEstopReadyness.eNotReady ? "HW Error" : ""; // Set error tag based on readiness
+        }
+        else if (EStop.ErrorTag.Length > 0 && eEstopReady_last == MSGS.eSystemEstopReadyness.eReady)
+        {
+            guiChange = true;
+            EStop.ErrorTag = string.Empty;
+        }
+        EStopSetTooltip();
+        return guiChange;
+    }
+
+    private static bool UpdateSelection(HeaderDropdownState state, MSGS.E_OPCODES opcode)
+    {
+        switch (opcode)
+        {
+            case MSGS.E_OPCODES.OP_CONTROLLER_PERIODIC_STATUS:
+                if (state.CurrentSelect==(int)INITOPER.Init)
+                {
+                    state.CurrentSelect = (int)INITOPER.Oper;
+                    return true;
+                }
+                break;
+            case MSGS.E_OPCODES.OP_CONTROLLER_INIT_STATUS:
+                if (state.CurrentSelect == (int)INITOPER.Oper)
+                {
+                    state.CurrentSelect = (int)INITOPER.Init;
+                    return true;
+                }
+                break;
+            // Add more opcodes as needed
+            default:
+                break;
+        }
+        return false;
+    }
+    
+}

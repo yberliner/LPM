@@ -1,0 +1,1308 @@
+{
+  "Global": [
+    {
+      "Name": "",
+      "IDDName": "num_of_times_to_repeat"
+    },
+    {
+      "Name": "",
+      "IDDName": "device_id"
+    }
+  ],
+  "RKS2RC_Control": [
+    {
+      "Name": "",
+      "IDDName": "MotorID"
+    },
+    {
+      "Name": "",
+      "IDDName": "AMP"
+    },
+    {
+      "Name": "",
+      "IDDName": "Freq"
+    },
+    {
+      "Name": "",
+      "IDDName": "Cycles"
+    },
+    {
+      "Name": "",
+      "IDDName": "Open"
+    },
+    {
+      "Name": "",
+      "IDDName": "header.Opcode"
+    },
+    {
+      "Name": "",
+      "IDDName": "header.VersionIdd.VersionMajor"
+    },
+    {
+      "Name": "",
+      "IDDName": "header.VersionIdd.VersionMinor"
+    },
+    {
+      "Name": "",
+      "IDDName": "header.VersionIdd.VersionPatch"
+    },
+    {
+      "Name": "",
+      "IDDName": "header.Counter"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare_leds[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare_leds[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare_leds[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare_leds[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare_leds[4]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare_leds[5]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare_leds[6]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare_leds[7]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare_leds[8]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare_leds[9]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare_leds[10]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare_leds[11]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare_leds[12]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare_leds[13]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare_leds[14]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare_leds[15]"
+    },
+    {
+      "Name": "",
+      "IDDName": "reset_errors[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "reset_errors[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "reset_errors[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "reset_errors[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "reset_errors[4]"
+    },
+    {
+      "Name": "",
+      "IDDName": "reset_errors[5]"
+    },
+    {
+      "Name": "",
+      "IDDName": "estop_cmd"
+    },
+    {
+      "Name": "",
+      "IDDName": "board_sync_offset"
+    },
+    {
+      "Name": "",
+      "IDDName": "fla_cmd[0].command"
+    },
+    {
+      "Name": "",
+      "IDDName": "fla_cmd[1].command"
+    },
+    {
+      "Name": "",
+      "IDDName": "fla_cmd[0].spare2"
+    },
+    {
+      "Name": "",
+      "IDDName": "fla_cmd[1].spare2"
+    },
+    {
+      "Name": "",
+      "IDDName": "fla_cmd[0].spare1"
+    },
+    {
+      "Name": "",
+      "IDDName": "fla_cmd[1].spare1"
+    },
+    {
+      "Name": "Left_M1_Position_Setpoint",
+      "IDDName": "manipulator_cmd_left.target.poseArr[0]"
+    },
+    {
+      "Name": "Left_M2_Position_Setpoint",
+      "IDDName": "manipulator_cmd_left.target.poseArr[1]"
+    },
+    {
+      "Name": "Left_M3_Position_Setpoint",
+      "IDDName": "manipulator_cmd_left.target.poseArr[2]"
+    },
+    {
+      "Name": "Left_M4_Position_Setpoint",
+      "IDDName": "manipulator_cmd_left.target.poseArr[3]"
+    },
+    {
+      "Name": "Left_M5_Position_Setpoint",
+      "IDDName": "manipulator_cmd_left.target.poseArr[4]"
+    },
+    {
+      "Name": "Left_M6_Position_Setpoint",
+      "IDDName": "manipulator_cmd_left.target.poseArr[5]"
+    },
+    {
+      "Name": "Left_M7_Position_Setpoint",
+      "IDDName": "manipulator_cmd_left.target.poseArr[6]"
+    },
+    {
+      "Name": "Left_M1_Velocity_Setpoint",
+      "IDDName": "manipulator_cmd_left.target_velocity.poseArr[0]"
+    },
+    {
+      "Name": "Left_M2_Velocity_Setpoint",
+      "IDDName": "manipulator_cmd_left.target_velocity.poseArr[1]"
+    },
+    {
+      "Name": "Left_M3_Velocity_Setpoint",
+      "IDDName": "manipulator_cmd_left.target_velocity.poseArr[2]"
+    },
+    {
+      "Name": "Left_M4_Velocity_Setpoint",
+      "IDDName": "manipulator_cmd_left.target_velocity.poseArr[3]"
+    },
+    {
+      "Name": "Left_M5_Velocity_Setpoint",
+      "IDDName": "manipulator_cmd_left.target_velocity.poseArr[4]"
+    },
+    {
+      "Name": "Left_M6_Velocity_Setpoint",
+      "IDDName": "manipulator_cmd_left.target_velocity.poseArr[5]"
+    },
+    {
+      "Name": "Left_M7_Velocity_Setpoint",
+      "IDDName": "manipulator_cmd_left.target_velocity.poseArr[6]"
+    },
+    {
+      "Name": "",
+      "IDDName": "manipulator_cmd_left.slow_mode"
+    },
+    {
+      "Name": "",
+      "IDDName": "manipulator_cmd_left.spare"
+    },
+    {
+      "Name": "",
+      "IDDName": "manipulator_cmd_left.tool_id"
+    },
+    {
+      "Name": "",
+      "IDDName": "manipulator_cmd_left.brake_bitmap"
+    },
+    {
+      "Name": "Left_M1_Algo_Type",
+      "IDDName": "manipulator_cmd_left.algo_type[0]"
+    },
+    {
+      "Name": "Left_M2_Algo_Type",
+      "IDDName": "manipulator_cmd_left.algo_type[1]"
+    },
+    {
+      "Name": "Left_M3_Algo_Type",
+      "IDDName": "manipulator_cmd_left.algo_type[2]"
+    },
+    {
+      "Name": "Left_M4_Algo_Type",
+      "IDDName": "manipulator_cmd_left.algo_type[3]"
+    },
+    {
+      "Name": "Left_M5_Algo_Type",
+      "IDDName": "manipulator_cmd_left.algo_type[4]"
+    },
+    {
+      "Name": "Left_M6_Algo_Type",
+      "IDDName": "manipulator_cmd_left.algo_type[5]"
+    },
+    {
+      "Name": "Left_M7_Algo_Type",
+      "IDDName": "manipulator_cmd_left.algo_type[6]"
+    },
+    {
+      "Name": "",
+      "IDDName": "manipulator_cmd_left.special_alg_params"
+    },
+    {
+      "Name": "",
+      "IDDName": "manipulator_cmd_left.spares[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "manipulator_cmd_left.spares[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "manipulator_cmd_left.spares[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "manipulator_cmd_left.spares[3]"
+    },
+    {
+      "Name": "Right_M1_Position_Setpoint",
+      "IDDName": "manipulator_cmd_right.target.poseArr[0]"
+    },
+    {
+      "Name": "Right_M2_Position_Setpoint",
+      "IDDName": "manipulator_cmd_right.target.poseArr[1]"
+    },
+    {
+      "Name": "Right_M3_Position_Setpoint",
+      "IDDName": "manipulator_cmd_right.target.poseArr[2]"
+    },
+    {
+      "Name": "Right_M4_Position_Setpoint",
+      "IDDName": "manipulator_cmd_right.target.poseArr[3]"
+    },
+    {
+      "Name": "Right_M5_Position_Setpoint",
+      "IDDName": "manipulator_cmd_right.target.poseArr[4]"
+    },
+    {
+      "Name": "Right_M6_Position_Setpoint",
+      "IDDName": "manipulator_cmd_right.target.poseArr[5]"
+    },
+    {
+      "Name": "Right_M7_Position_Setpoint",
+      "IDDName": "manipulator_cmd_right.target.poseArr[6]"
+    },
+    {
+      "Name": "Right_M2_Velocity_Setpoint",
+      "IDDName": "manipulator_cmd_right.target_velocity.poseArr[0]"
+    },
+    {
+      "Name": "Right_M3_Velocity_Setpoint",
+      "IDDName": "manipulator_cmd_right.target_velocity.poseArr[1]"
+    },
+    {
+      "Name": "Right_M1_Velocity_Setpoint",
+      "IDDName": "manipulator_cmd_right.target_velocity.poseArr[2]"
+    },
+    {
+      "Name": "Right_M4_Velocity_Setpoint",
+      "IDDName": "manipulator_cmd_right.target_velocity.poseArr[3]"
+    },
+    {
+      "Name": "Right_M5_Velocity_Setpoint",
+      "IDDName": "manipulator_cmd_right.target_velocity.poseArr[4]"
+    },
+    {
+      "Name": "Right_M6_Velocity_Setpoint",
+      "IDDName": "manipulator_cmd_right.target_velocity.poseArr[5]"
+    },
+    {
+      "Name": "Right_M7_Velocity_Setpoint",
+      "IDDName": "manipulator_cmd_right.target_velocity.poseArr[6]"
+    },
+    {
+      "Name": "",
+      "IDDName": "manipulator_cmd_right.slow_mode"
+    },
+    {
+      "Name": "",
+      "IDDName": "manipulator_cmd_right.spare"
+    },
+    {
+      "Name": "",
+      "IDDName": "manipulator_cmd_right.tool_id"
+    },
+    {
+      "Name": "",
+      "IDDName": "manipulator_cmd_right.brake_bitmap"
+    },
+    {
+      "Name": "Right_M1_Algo_Type",
+      "IDDName": "manipulator_cmd_right.algo_type[0]"
+    },
+    {
+      "Name": "Right_M2_Algo_Type",
+      "IDDName": "manipulator_cmd_right.algo_type[1]"
+    },
+    {
+      "Name": "Right_M3_Algo_Type",
+      "IDDName": "manipulator_cmd_right.algo_type[2]"
+    },
+    {
+      "Name": "Right_M4_Algo_Type",
+      "IDDName": "manipulator_cmd_right.algo_type[3]"
+    },
+    {
+      "Name": "Right_M5_Algo_Type",
+      "IDDName": "manipulator_cmd_right.algo_type[4]"
+    },
+    {
+      "Name": "Right_M6_Algo_Type",
+      "IDDName": "manipulator_cmd_right.algo_type[5]"
+    },
+    {
+      "Name": "Right_M7_Algo_Type",
+      "IDDName": "manipulator_cmd_right.algo_type[6]"
+    },
+    {
+      "Name": "",
+      "IDDName": "manipulator_cmd_right.special_alg_params"
+    },
+    {
+      "Name": "",
+      "IDDName": "manipulator_cmd_right.spares[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "manipulator_cmd_right.spares[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "manipulator_cmd_right.spares[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "manipulator_cmd_right.spares[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "subsystem_cmd[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "subsystem_cmd[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "subsystem_cmd[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "subsystem_cmd[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "subsystem_cmd[4]"
+    },
+    {
+      "Name": "",
+      "IDDName": "subsystem_cmd[5]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare_align[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare_align[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_robot_decoration[0].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_robot_decoration[1].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_robot_decoration[2].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_robot_decoration[0].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_robot_decoration[1].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_robot_decoration[2].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_plunger_strip[0].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_plunger_strip[1].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_plunger_strip[0].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_plunger_strip[1].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_plunger_button[0].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_plunger_button[1].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_plunger_button[0].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_plunger_button[1].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_tool_exchange[0].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_tool_exchange[1].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_tool_exchange[0].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_tool_exchange[1].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_logo[0].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_logo[1].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_logo[0].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_logo[1].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_table.LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_table.LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_estop.LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.led_estop.LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.spare[0].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.spare[1].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.spare[2].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.spare[0].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.spare[1].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.spare[2].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "fpga_diagnostic_header"
+    },
+    {
+      "Name": "",
+      "IDDName": "lock_status"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare1[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare1[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare1[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare1[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare1[4]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare1[5]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare1[6]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare1[7]"
+    },
+    {
+      "Name": "",
+      "IDDName": "checksum"
+    }
+  ],
+  "VC2MicB_Control": [
+    {
+      "Name": "",
+      "IDDName": "header.Opcode"
+    },
+    {
+      "Name": "",
+      "IDDName": "header.VersionIdd.VersionMajor"
+    },
+    {
+      "Name": "",
+      "IDDName": "header.VersionIdd.VersionMinor"
+    },
+    {
+      "Name": "",
+      "IDDName": "header.VersionIdd.VersionPatch"
+    },
+    {
+      "Name": "",
+      "IDDName": "header.Counter"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare4"
+    },
+    {
+      "Name": "",
+      "IDDName": "estop_state_cmd"
+    },
+    {
+      "Name": "",
+      "IDDName": "u8spare5"
+    },
+    {
+      "Name": "",
+      "IDDName": "elo_cmd"
+    },
+    {
+      "Name": "",
+      "IDDName": "fan_cmd[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "fan_cmd[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "fan_cmd[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "fan_cmd[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "cam_sync_offset"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "camera_trigger"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare6"
+    },
+    {
+      "Name": "",
+      "IDDName": "board_sync_offset"
+    },
+    {
+      "Name": "",
+      "IDDName": "leds.io_led.LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "leds.io_led.LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "leds.stripes_led.LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "leds.stripes_led.LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "leds.estop_led.LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "leds.estop_led.LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare3[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare3[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare3[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare3[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare3[4]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare3[5]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare3[6]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare3[7]"
+    },
+    {
+      "Name": "",
+      "IDDName": "subsystem_cmd[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "subsystem_cmd[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "reset_errors[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "reset_errors[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare_align"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare2[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare2[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare2[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare2[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare2[4]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare2[5]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare2[6]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare2[7]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare2[8]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare2[9]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare2[10]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare2[11]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare1[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare1[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare1[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare1[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "checksum"
+    }
+  ],
+  "VC2MocB_Control": [
+    {
+      "Name": "",
+      "IDDName": "header.Opcode"
+    },
+    {
+      "Name": "",
+      "IDDName": "header.VersionIdd.VersionMajor"
+    },
+    {
+      "Name": "",
+      "IDDName": "header.VersionIdd.VersionMinor"
+    },
+    {
+      "Name": "",
+      "IDDName": "header.VersionIdd.VersionPatch"
+    },
+    {
+      "Name": "",
+      "IDDName": "header.Counter"
+    },
+    {
+      "Name": "",
+      "IDDName": "chu_led.LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "chu_led.LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_intensity[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_intensity[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_intensity[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_intensity[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_sync_bitmap"
+    },
+    {
+      "Name": "",
+      "IDDName": "motor_iris_l"
+    },
+    {
+      "Name": "",
+      "IDDName": "motor_iris_r"
+    },
+    {
+      "Name": "",
+      "IDDName": "motor_roll"
+    },
+    {
+      "Name": "",
+      "IDDName": "board_sync_offset"
+    },
+    {
+      "Name": "",
+      "IDDName": "reset_errors[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "reset_errors[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "reset_errors[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "reset_errors[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "reset_errors[4]"
+    },
+    {
+      "Name": "",
+      "IDDName": "reset_errors[5]"
+    },
+    {
+      "Name": "",
+      "IDDName": "perform_self_calib"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare3[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare3[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare3[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare3[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare6[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare6[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "subsystem_cmd[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "subsystem_cmd[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "subsystem_cmd[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "subsystem_cmd[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "subsystem_cmd[4]"
+    },
+    {
+      "Name": "",
+      "IDDName": "subsystem_cmd[5]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare4[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare4[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare2[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare2[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare2[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare2[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare1[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare1[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare1[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare1[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "checksum"
+    }
+  ],
+  "RKS2MC_Control": [
+    {
+      "Name": "",
+      "IDDName": "header.Opcode"
+    },
+    {
+      "Name": "",
+      "IDDName": "header.VersionIdd.VersionMajor"
+    },
+    {
+      "Name": "",
+      "IDDName": "header.VersionIdd.VersionMinor"
+    },
+    {
+      "Name": "",
+      "IDDName": "header.VersionIdd.VersionPatch"
+    },
+    {
+      "Name": "",
+      "IDDName": "header.Counter"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare4[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare4[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare4[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare4[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare4[4]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare4[5]"
+    },
+    {
+      "Name": "",
+      "IDDName": "haptic_enable[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "haptic_enable[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "vibration_mode[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "vibration_mode[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "estop_cmd"
+    },
+    {
+      "Name": "",
+      "IDDName": "elo_cmd"
+    },
+    {
+      "Name": "",
+      "IDDName": "monitor_config_cmd[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "monitor_config_cmd[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "haptic_forces[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "haptic_forces[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "haptic_forces[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "haptic_forces[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "haptic_forces[4]"
+    },
+    {
+      "Name": "",
+      "IDDName": "haptic_forces[5]"
+    },
+    {
+      "Name": "",
+      "IDDName": "board_sync_offset"
+    },
+    {
+      "Name": "",
+      "IDDName": "reset_errors[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "reset_errors[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "reset_errors[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "reset_errors[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "reset_errors[4]"
+    },
+    {
+      "Name": "",
+      "IDDName": "subsystem_cmd[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "subsystem_cmd[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "subsystem_cmd[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "subsystem_cmd[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "subsystem_cmd[4]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare2"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare3[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare3[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare3[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare3[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "fan_control_cmd[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "fan_control_cmd[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "fan_control_cmd[2]"
+    },
+    {
+      "Name": "",
+      "IDDName": "fan_control_cmd[3]"
+    },
+    {
+      "Name": "",
+      "IDDName": "fan_control_cmd[4]"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.joystick_led_patterns[0].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.joystick_led_patterns[1].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.joystick_led_patterns[2].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.joystick_led_patterns[3].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.joystick_led_patterns[4].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.joystick_led_patterns[5].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.joystick_led_patterns[6].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.joystick_led_patterns[7].LedIntervalPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.joystick_led_patterns[0].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.joystick_led_patterns[1].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.joystick_led_patterns[2].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.joystick_led_patterns[3].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.joystick_led_patterns[4].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.joystick_led_patterns[5].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.joystick_led_patterns[6].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "led_patterns.joystick_led_patterns[7].LedColorPattern"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare5[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare5[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare1[0]"
+    },
+    {
+      "Name": "",
+      "IDDName": "spare1[1]"
+    },
+    {
+      "Name": "",
+      "IDDName": "pad_tmp"
+    },
+    {
+      "Name": "",
+      "IDDName": "checksum"
+    }
+  ]
+}

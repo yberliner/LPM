@@ -1,0 +1,83 @@
+﻿@using ForsightTester.Data
+@inject IJSRuntime JS
+
+<div class="modal fade" id="YesNoDialog"
+     tabindex="-1"
+     data-bs-backdrop="static" data-bs-keyboard="false"
+     @ref="_modalEl">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background-color: var(--table-back);">
+
+            <div class="modal-header">
+                <h5 class="modal-title">@Header</h5>
+                <button class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">@((MarkupString)Message!)</div>
+
+            <div class="modal-footer">
+                <button class="btn btn-danger-light"
+                        @onclick="() => OnButton(false)">
+                    No
+                </button>
+                <button class="btn btn-success-light"
+                        @onclick="() => OnButton(true)">
+                    Yes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    /* ---------- parameters ---------- */
+    [Parameter] public string? Header { get; set; } = "Confirm";
+    [Parameter] public string? Message { get; set; }
+    [Parameter] public EventCallback<bool> Clicked { get; set; }
+
+    /* ---------- Bootstrap modal handle ---------- */
+    private IJSObjectReference? _bsModal;
+    private ElementReference _modalEl;
+
+    /* ---------- wait-handle for the new Show() ---------- */
+    private TaskCompletionSource<bool>? _tcs;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // global helper in forsight.js
+            _bsModal = await JS.InvokeAsync<IJSObjectReference>("initBootstrapModal", _modalEl);
+        }
+    }
+
+    /* ------------------ existing API (unchanged) ------------------ */
+    public async Task ShowAsync() => await _bsModal!.InvokeVoidAsync("show");
+    public async Task HideAsync() => await _bsModal!.InvokeVoidAsync("hide");
+
+    /* ------------------ NEW blocking helper ------------------ */
+    public async Task<bool> Show(string? header = null, string? message = null)
+    {
+        if (header is not null) 
+            Header = header;
+        if (message is not null) 
+            Message = message;
+
+        _tcs = new TaskCompletionSource<bool>();
+        await ShowAsync();            // use the old show
+        return await _tcs.Task;       // wait for user choice
+    }
+
+    /* ------------------ button handler ------------------ */
+    private async Task OnButton(bool result)
+    {
+        // complete awaiting Show()
+        _tcs?.TrySetResult(result);
+
+        // fire optional callback if the state changed
+        if (Clicked.HasDelegate)
+            await Clicked.InvokeAsync(result);
+
+        await HideAsync();
+    }
+}

@@ -1,0 +1,189 @@
+﻿@page "/Customer"
+@inject Microsoft.AspNetCore.Components.NavigationManager NavigationManager // This line is used to generate URLs dynamically //
+@inherits BaseComponent<MSGS.RKS2RC_Control, MSGS.RC2RKS_Status>
+@inject MSGS.ClientManager udpData
+@inject IFileStore _fileStore
+@inject DevTableVisibilityService DevTableVisibility
+@using ForsightTester.Data
+@inject AllScriptResServices AllScriptResServices
+@inject IJSRuntime JS
+@inject OutgoingMsgsManager outMsgsManager
+@inject AgentsRepository AgentsRepository
+@inject ClientManager ClientManager
+@inject CustomerReservationsProvider customerReservationsProvider
+@using CardModel
+@using System.Text.RegularExpressions;
+@using ApexSeries
+
+@using FSMSGS
+@using MSGS
+@using ForsightTester
+@using ForsightTester._Spk
+@using Microsoft.AspNetCore.Components.Forms;
+@using System.Text
+
+<!-- Page Header -->
+ <SpkPageHeader PageItems="PageItems" /> 
+<!-- Page Header Close -->
+
+<div class="row">
+    <div class="col-12">
+        <div class="card custom-card">
+            <div class="card-body">
+                @* <ul class="nav nav-pills justify-content-center nav-style-2 mb-3" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-bs-toggle="tab" role="tab" aria-current="page"
+                           href="#Customer" aria-selected="true">Customer resevations</a>
+                    </li>
+                </ul> 
+                <div class="tab-content">
+                    <div class="tab-pane show active text-muted" id="Customer" role="tabpanel">*@
+                        <div class="row">
+                            <div class="col-xxl-9 col-xl-10 col-lg-12">
+                               
+                                <div style="width:900px">
+                                    <SpkCustomer name="Customer Orders Last 90 days" Orders=@customerOrders TableStyle="height:400px;" />
+                                </div>
+                                
+
+                               @*  <div class="table-responsive">
+                                    <table class="table text-nowrap table-striped table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th scope="col">Invoice</th>
+                                                <th scope="col">Customer</th>
+                                                <th scope="col">Status</th>
+                                                <th scope="col">Date</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <th scope="row">IN-2032</th>
+                                                <td>
+                                                    <div class="d-flex align-items-center">
+                                                        <div class="avatar avatar-sm me-2 avatar-rounded">
+                                                            <img src="../assets/images/faces/15.jpg" alt="img">
+                                                        </div>
+                                                        <div>
+                                                            <div class="lh-1">
+                                                                <span>Mark Cruise</span>
+                                                            </div>
+                                                            <div class="lh-1">
+                                                                <span class="fs-11 text-muted">markcruise24@gmail.com</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-success-transparent">
+                                                        <i class="ri-check-fill align-middle me-1"></i>Paid
+                                                    </span>
+                                                </td>
+                                                <td>Jul 26,2022</td>
+                                            </tr>
+                                            <tr>
+                                                <th scope="row">IN-2022</th>
+                                                <td>
+                                                    <div class="d-flex align-items-center">
+                                                        <div class="avatar avatar-sm me-2 avatar-rounded">
+                                                            <img src="../assets/images/faces/12.jpg" alt="img">
+                                                        </div>
+                                                        <div>
+                                                            <div class="lh-1">
+                                                                <span>Charanjeep</span>
+                                                            </div>
+                                                            <div class="lh-1">
+                                                                <span class="fs-11 text-muted">charanjeep@gmail.in</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-success-transparent">
+                                                        <i class="ri-check-fill align-middle me-1"></i>Paid
+                                                    </span>
+                                                </td>
+                                                <td>Mar 14,2022</td>
+                                            </tr>
+                                            <tr>
+                                                <th scope="row">IN-2014</th>
+                                                <td>
+                                                    <div class="d-flex align-items-center">
+                                                        <div class="avatar avatar-sm me-2 avatar-rounded">
+                                                            <img src="../assets/images/faces/5.jpg" alt="img">
+                                                        </div>
+                                                        <div>
+                                                            <div class="lh-1">
+                                                                <span>Samantha Julie</span>
+                                                            </div>
+                                                            <div class="lh-1">
+                                                                <span class="fs-11 text-muted">julie453@gmail.com</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-danger-transparent">
+                                                        <i class="ri-close-fill align-middle me-1"></i>Cancelled
+                                                    </span>
+                                                </td>
+                                                <td>Feb 1,2022</td>
+                                            </tr>
+                                            <tr>
+                                                <th scope="row">IN-2036</th>
+                                                <td>
+                                                    <div class="d-flex align-items-center">
+                                                        <div class="avatar avatar-sm me-2 avatar-rounded">
+                                                            <img src="../assets/images/faces/11.jpg" alt="img">
+                                                        </div>
+                                                        <div>
+                                                            <div class="lh-1">
+                                                                <span>Simon Cohen</span>
+                                                            </div>
+                                                            <div class="lh-1">
+                                                                <span class="fs-11 text-muted">simon@gmail.com</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-light text-dark">
+                                                        <i class="ri-reply-line align-middle me-1"></i>Refunded
+                                                    </span>
+                                                </td>
+                                                <td>Apr 24,2022</td>
+                                            </tr>
+                                            <tr>
+                                                <div style="width:800px">
+                                                    <SpkCustomer name="Customer Settings" Orders=@customerOrders TableStyle="height:400px;" />
+                                                </div>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+ *@
+
+                            </div>
+                        </div>
+
+                    @* </div>
+                </div> *@
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<SpkPageHeader.PageItem> PageItems = new List<SpkPageHeader.PageItem> {
+        new SpkPageHeader.PageItem { PageTitle = "Customer" },
+    };
+
+    List<OrderRow>? customerOrders = new List<OrderRow>();
+
+    protected async override void OnInitialized()
+    {
+       Console.WriteLine("Customer page initialized");
+       customerOrders = await customerReservationsProvider.GetCustomerReservationsFromExcelAsync(udpData.UserData.AgentName, 90);
+       await InvokeAsync(StateHasChanged);
+    }        
+}

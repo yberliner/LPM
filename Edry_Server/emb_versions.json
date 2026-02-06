@@ -1,0 +1,24 @@
+{
+  "Dummy for testing": {
+    "MICB": {
+      "VersionMajor": 3,
+      "VersionMinor": 3,
+      "VersionPatch": 0
+    },
+    "MOCB": {
+      "VersionMajor": 3,
+      "VersionMinor": 2,
+      "VersionPatch": 1
+    },
+    "RC": {
+      "VersionMajor": 3,
+      "VersionMinor": 3,
+      "VersionPatch": 1
+    },
+    "MC_FAST": {
+      "VersionMajor": 3,
+      "VersionMinor": 5,
+      "VersionPatch": 2
+    }
+  }
+}

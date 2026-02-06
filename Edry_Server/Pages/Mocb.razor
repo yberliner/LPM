@@ -1,0 +1,109 @@
+﻿@page "/Mocb"
+@inject Microsoft.AspNetCore.Components.NavigationManager NavigationManager // This line is used to generate URLs dynamically //
+@inherits BaseComponent<MSGS.VC2MocB_Control, MSGS.MocB2VC_Status>
+@inject MSGS.ClientManager udpData
+
+@using ForsightTester._Spk
+
+<!-- Page Header -->
+<SpkPageHeader PageItems="PageItems" />
+<!-- Page Header Close -->
+
+<div class="row">
+    <div class="col-xxl-12 col-xl-12 col-lg-12 col-md-12 col-sm-12">
+        <div class="accordion customized-accordion accordions-items-seperate" id="customizedAccordion">
+            <div class="accordion-item custom-accordion-primary">
+                <h2 class="accordion-header" id="customizedAccordionOne">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#customized-AccordionOne" aria-expanded="false"
+                            aria-controls="customized-AccordionOne">
+                        MOCB Periodic Status MSG!
+                    </button>
+                </h2>
+                <div id="customized-AccordionOne" class="accordion-collapse collapse"
+                     aria-labelledby="customizedAccordionOne">
+                    <div class="accordion-body">
+                        <AccordionView Data="statusWrapper!.StructData" Hide_Apply_button="true" />
+                    </div>
+                </div>
+            </div>
+            <div class="accordion-item custom-accordion-secondary">
+                <h2 class="accordion-header" id="customizedAccordionTwo">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#customized-AccordionTwo" aria-expanded="false"
+                            aria-controls="customized-AccordionTwo">
+                        MOCB Periodic Command MSG!
+                    </button>
+                </h2>
+                <div id="customized-AccordionTwo" class="accordion-collapse collapse"
+                     aria-labelledby="customizedAccordionTwo">
+                    <div class="accordion-body">
+                        <AccordionView Data="controlInstance" Hide_Apply_button="false" OnUpdate="HandleApplyUpdates" />
+                    </div>
+                </div>
+            </div>
+            <div class="accordion-item custom-accordion-danger">
+                <h2 class="accordion-header" id="customizedAccordionThree">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#customized-AccordionThree" aria-expanded="false"
+                            aria-controls="customized-AccordionThree">
+                        MOCB Metry MSG!
+                    </button>
+                </h2>
+                <div id="customized-AccordionThree" class="accordion-collapse collapse"
+                     aria-labelledby="customizedAccordionThree">
+                    <div class="accordion-body">
+                        <AccordionView Data="udpData.UserData.mocb_metry_reply" Hide_Apply_button="true" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<SpkPageHeader.PageItem> PageItems = new List<SpkPageHeader.PageItem> {
+        new SpkPageHeader.PageItem { PageTitle = "IDD" },
+        new SpkPageHeader.PageItem { PageTitle = "MOCB" },
+    };
+
+    private int[] commands = new int[3] { 0, 40, 50 };
+    private bool[] isInvalid = new bool[3];
+    private Dictionary<int, string> fanButtonTexts = new();
+    MSGS.StructWrapper<MSGS.SMocBMetryMsg>? metryWrapper;
+
+    protected override void OnInitialized()
+    {
+        base.InitializeComponent(
+            deviceID: (int)MSGS.DevicesScreen.MOCB,
+            controlInstance: udpData.UserData.mocb_periodic_msg,
+            initialStatus: udpData.UserData.mocb_periodic_status
+        );
+        this.metryWrapper = new MSGS.StructWrapper<MSGS.SMocBMetryMsg>(udpData.UserData.mocb_metry_reply);
+        udpData.SendServerForwardCmdGeneric(DeviceID, 2, 1, ref controlInstance); 
+        base.OnInitialized();
+    }
+    public Mocb() : base()
+    {
+    }
+    // ✅ Call base constructor explicitly with DeviceID = 3
+    // public MOCB() 
+    // : base(deviceID: (int)MSGS.DevicesScreen.MOCB, udpData.mocb_periodic_msg, udpData.mocb_periodic_status)
+    // {
+    //     this.metryWrapper = new MSGS.StructWrapper<MSGS.SMocBMetryMsg>(udpData.mocb_metry_reply);
+    //     udpData.SendServerForwardCmdGeneric(DeviceID, 2, 1, ref controlInstance);
+    // }
+
+
+    protected override void UpdateGUIValuesLogic()
+    {
+        statusWrapper!.UpdateFromStruct(udpData.UserData.mocb_periodic_status);
+        metryWrapper!.UpdateFromStruct(udpData.UserData.mocb_metry_reply);
+    }
+    protected override void SonDispose()
+    {
+        udpData.SendServerForwardCmdGeneric(DeviceID, 2, 1, ref controlInstance);
+        udpData.UserData.mocb_periodic_msg = controlInstance;
+        //treeViewRef.UserData = controlInstance;
+    }
+}

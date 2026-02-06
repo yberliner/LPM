@@ -1,0 +1,48 @@
+@code {
+    [Parameter] public string Tag { get; set; } = "button";
+    [Parameter] public string? PopoverClass { get; set; } = "btn-primary";
+    [Parameter] public string? PopoverTitle { get; set; }
+    [Parameter] public string? PopoverPlacement { get; set; }
+    [Parameter] public string? PopoverContent { get; set; }
+    [Parameter] public string? PopoverCustomClass { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    // Capture additional attributes passed to the component
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+}
+
+@{
+    // Determine the HTML tag to use
+    var tagName = Tag.ToLower();
+}
+
+@if (tagName == "a") {
+    <a tabindex="0" href="javascript:void(0);" @attributes="AdditionalAttributes" class="@PopoverClass"
+        data-bs-toggle="popover" data-bs-placement="@PopoverPlacement" data-bs-custom-class="@PopoverCustomClass" title="@PopoverTitle"
+        data-bs-content="@PopoverContent">
+        @if (ChildContent != null)
+        {
+            @ChildContent
+        }
+    </a>
+}
+ else if (tagName == "button") {
+    <SpkButtons @attributes="AdditionalAttributes" ButtonClass="@PopoverClass" data-bs-toggle="popover" data-bs-placement="@PopoverPlacement" data-bs-custom-class="@PopoverCustomClass" data-bs-original-title="@PopoverTitle"  data-bs-content="@PopoverContent">
+        @if (ChildContent != null)
+        {
+
+            @ChildContent
+        }
+    </SpkButtons>
+}
+ else if (tagName == "span") {
+    <span @attributes="AdditionalAttributes" class="@PopoverClass" data-bs-toggle="popover"
+        data-bs-placement="@PopoverPlacement" data-bs-custom-class="@PopoverCustomClass"
+        title="@PopoverTitle" data-bs-content="@PopoverContent">
+        @if (ChildContent != null)
+        {
+            @ChildContent
+        }
+    </span>
+}

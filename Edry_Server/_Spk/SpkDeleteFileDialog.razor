@@ -1,0 +1,28 @@
+﻿@using ForsightTester.Data
+
+@code {
+    [Parameter] public FileSupport? FileSupport { get; set; }
+    [Parameter] public EventCallback DeleteFile { get; set; }
+}
+
+<div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-labelledby="confirmDeleteLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background-color: var(--table-back);">
+
+            <div class="modal-header">
+                <h5 class="modal-title" id="confirmDeleteLabel">Confirm Deletion</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <p>Are you sure you want to delete:</p>
+                <p class="fw-bold">@Path.GetFileName(FileSupport!._pendingDeleteFile) ?</p>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger-light" data-bs-dismiss="modal">No</button>
+                <button type="button" class="btn btn-success-light" data-bs-dismiss="modal" @onclick="DeleteFile">Yes</button>
+            </div>
+        </div>
+    </div>
+</div>

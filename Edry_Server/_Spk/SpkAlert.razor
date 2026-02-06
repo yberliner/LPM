@@ -1,0 +1,28 @@
+@code {
+    [Parameter] public string? AlertClass { get; set; } = "btn-primary";
+    [Parameter] public bool IsRounded { get; set; } = false;
+    [Parameter] public bool IsDismissible { get; set; } = false;
+    [Parameter] public string? AlertImage { get; set; } 
+    [Parameter] public string? AlertImageSize { get; set; }
+    [Parameter] public string? Alertsvg { get; set; }
+    [Parameter] public bool IsAvatarRounded { get; set; } = true;
+    [Parameter] public string? AlertCloseClass { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; } // To allow nested content inside the alert
+
+    // Capture additional attributes passed to the component
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+}
+
+<div class="alert  @AlertClass  @(IsRounded ? "rounded-pill" : "") @(IsDismissible ? "alert-dismissible fade show" : "")"  role="alert"  @attributes="AdditionalAttributes">
+    @if (ChildContent != null)
+    {
+        @ChildContent
+    }
+
+    @if (IsDismissible)
+    {
+        <button type="button" class="btn-close @AlertCloseClass" data-bs-dismiss="alert" aria-label="Close"><i class="bi bi-x"></i></button>
+    }
+</div>

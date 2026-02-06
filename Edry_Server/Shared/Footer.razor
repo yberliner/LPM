@@ -1,0 +1,31 @@
+@inject Microsoft.Extensions.Options.IOptions<FSMSGS.TCPSettings> TcpSettings
+
+<footer class="footer mt-auto py-3 bg-white text-center">
+    <div class="position-relative">
+        <span class="text-muted">
+            Copyright © @currentYear
+            <a href="https://www.ederi.online/" class="text-dark fw-medium">Ederi Ltd</a>.
+            All rights reserved
+        </span>
+
+        <!-- pinned on the right, vertically centered in the footer -->
+        <span class="text-dark position-absolute end-0 top-50 translate-middle-y pe-5 fw-medium">
+            @ProgramVersion
+        </span>
+    </div>
+</footer>
+
+@code {
+    private string ProgramVersion = "Version 1.0"; //fallback
+    private int currentYear;
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        currentYear = DateTime.Now.Year;
+
+        if (!string.IsNullOrWhiteSpace(TcpSettings.Value.ProgramVersion))
+        {
+            ProgramVersion = TcpSettings.Value.ProgramVersion;
+        }
+    }
+}

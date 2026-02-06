@@ -1,0 +1,333 @@
+﻿@page "/Sws"
+@inject Microsoft.AspNetCore.Components.NavigationManager NavigationManager // This line is used to generate URLs dynamically //
+
+@implements IDisposable
+@inject DevTableVisibilityService DevTableVisibility
+@inject MSGS.ClientSessionData sessionData
+@inject MSGS.ClientManager client
+@inject MSGS.AgentsRepository _agentsRepository
+@using ForsightTester._Spk
+@using CardModel
+@using MSGS
+
+<!-- Page Header -->
+<SpkPageHeader PageItems="PageItems" />
+<!-- Page Header Close -->
+
+@if (DevTableVisibility.ShowDevTables)
+{
+    <div class="row">
+        <div class="col-12">
+            <div class="card custom-card">
+                <div class="card-body">
+                    <ul class="nav nav-pills justify-content-center nav-style-2 mb-3" role="tablist">
+                        <li class="nav-item">
+                            <a class="nav-link active" data-bs-toggle="tab" role="tab" aria-current="page"
+                            href="#MCStatusAndControl" aria-selected="true">MC Status And Control</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" data-bs-toggle="tab" role="tab" aria-current="page"
+                            href="#ErgonomicMotionControl" aria-selected="false">Ergonomic Motion Control</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" data-bs-toggle="tab" role="tab" aria-current="page"
+                            href="#SCBAdditionalInformation" aria-selected="false">SCB Additional Information</a>
+                        </li>
+                    </ul>
+                    <div class="tab-content">
+                        <div class="tab-pane show active text-muted" id="MCStatusAndControl" role="tabpanel">
+                            <div class="d-flex flex-wrap">
+                                <div class="overflow-x-auto">
+                                    <div style="width: 600px;">
+                                        <SpkJoystick Header="Left Joystick" IMUInfo="LeftIMUInfo" JoystickValues="LeftJoystickInfo" JoystickForceValues="LeftJoystickForceInfo" SendConfig="@SendHapticLeft" />
+                                    </div>
+                                </div>
+                                <div class="overflow-x-auto">
+                                    <div style="width: 600px;">
+                                        <SpkJoystick Header="Right Joystick" IMUInfo="RightIMUInfo" JoystickValues="RightJoystickInfo" JoystickForceValues="RightJoystickForceInfo" SendConfig="@SendHapticRight" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane text-muted" id="ErgonomicMotionControl" role="tabpanel">
+                        </div>
+                        <div class="tab-pane text-muted" id="SCBAdditionalInformation" role="tabpanel">
+                            <div class="d-flex flex-wrap">
+                                <div class="d-flex flex-column">
+                                    <div style="width: 350px;">
+                                        <SpkSCBVoltages VoltagesValues="SCBVoltagesInfo" TableStyle="height:210px;" />
+                                    </div>
+                                    <div style="width: 350px;">
+                                        <SpkFanConfig TableStyle="height:220px;"
+                                                      FanValues="@FanValues"
+                                                      Headers="@FanHeaders"
+                                                      SendConfig="@SendFanConfig"
+                                                      DefaultPressed="@FanDefaultPressed"/>
+                                    </div>
+                                </div>
+                                <div style="width: 700px;">
+                                    <SpkDecorationLightConfig TableStyle="height:540px;"
+                                    ColorValues="@DecorationLightColorValues"
+                                    IntervalValues="@DecorationLightIntervalValues"
+                                    CyclePatternsClicked="@CyclePatternLedConfig"
+                                    LightConfigHeaders="@LightConfigHeaders"
+                                    StartStopCaption="@DecorationLightCaption"
+                                    StartStopClicked="@DecorationStartStopClicked" />
+                                    <!--SpkSCBDecorationLightConfig LedConfigValues="LedConfigValues" TableStyle="height:300px;" /-->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+
+@code {
+    private System.Timers.Timer? refreshTimer;
+    private bool _isDisposed = false;
+
+    private System.Timers.Timer? fanTimer = null;
+
+    protected override void OnInitialized()
+    {
+        Console.WriteLine("SWS OnInitialized called");
+        base.OnInitialized();
+
+        for (int i = 0; i < 8; i++)
+        {
+            DecorationLightColorValues[i] = Utils.LedIniLoader.LedColorPatternNames[(int)sessionData.mc_periodic_msg.led_patterns.joystick_led_patterns[i].LedColorPattern];
+            DecorationLightIntervalValues[i] = Utils.LedIniLoader.LedIntervalPatternNames[(int)sessionData.mc_periodic_msg.led_patterns.joystick_led_patterns[i].LedIntervalPattern];
+        }
+
+
+        InvokeAsync(UpdateGUIValuesLogic);
+        refreshTimer = new System.Timers.Timer(500); // 0.5 second interval
+        refreshTimer.Elapsed += (sender, e) => InvokeAsync(UpdateGUIValuesLogic);
+        refreshTimer.Start();
+    }
+
+    private List<SpkPageHeader.PageItem> PageItems = new List<SpkPageHeader.PageItem> {
+        new SpkPageHeader.PageItem { PageTitle = "SWS" },
+    };
+
+    private string[] LightConfigHeaders { get; set; } = new[] { "Handle Led Left", "Handle Led Right", "Homing Led Left", "Homing Led Right", "EStop Led", "SWS Up Down Led", "Table Up Down Led", "Base Led" };
+    private string[] DecorationLightColorValues = Enumerable.Repeat(Utils.LedIniLoader.LedColorPatternNames[0], 8).ToArray();
+    private string[] DecorationLightIntervalValues = Enumerable.Repeat(Utils.LedIniLoader.LedIntervalPatternNames[0], 8).ToArray();
+    private string DecorationLightCaption = "Start";
+
+    private string[] FanHeaders { get; } = new string[] { "Fan 1", "Fan 2", "Fan 3", "Fan 4", "Fan 5" };
+
+    private FanInfo[] FanValues =
+        Enumerable.Range(0, 5)
+                  .Select(_ => new FanInfo { Tacho = 0, PWM = "80" })
+                  .ToArray();
+
+    private JoystickInfo[] LeftJoystickInfo =
+        Enumerable.Range(0, 9)
+                  .Select(_ => new JoystickInfo())
+                  .ToArray();
+
+    private readonly JoystickForceInfo[] LeftJoystickForceInfo =
+        Enumerable.Range(0, 3)
+                  .Select(_ => new JoystickForceInfo { Force = "0.00" }) // VcmCurrent stays null by default
+                  .ToArray();
+
+    private readonly JoystickInfo[] RightJoystickInfo =
+        Enumerable.Range(0, 9)
+                  .Select(_ => new JoystickInfo())
+                  .ToArray();
+
+    private JoystickForceInfo[] RightJoystickForceInfo = 
+            Enumerable.Range(0, 3)
+                  .Select(_ => new JoystickForceInfo { Force = "0.00" }) // VcmCurrent stays null by default
+                  .ToArray();
+
+
+    private double[] LeftIMUInfo = {0, 0 ,0};
+    private double[] RightIMUInfo = {0, 0 ,0};
+    private readonly double[] SCBVoltagesInfo = new double[5];
+
+    private string[] LedConfigValues = new string[] { "0", "0", "0", "0", "0" }; // or initialize as you want
+
+    private void SendHapticLeft()
+    {
+        SendHaptic(true);  // Left joystick
+    }
+
+    private void SendHapticRight()
+    {
+        SendHaptic(false); // Right joystick
+    }
+
+    private void SendHaptic(bool isLeft)
+    {
+        var source = isLeft ? LeftJoystickForceInfo : RightJoystickForceInfo;
+        int offset = isLeft ? 0 : 3;
+        Console.WriteLine($"Sending haptic feedback for {(isLeft ? "left" : "right")} joystick.");
+
+        for (int i = 0; i <= 2; i++)
+        {
+            if (float.TryParse(source[i].Force, out float forceValue))
+            {
+                sessionData.mc_periodic_msg.haptic_forces[i + offset] = forceValue;
+            }
+        }
+
+        RKS2MC_Control control = sessionData.mc_periodic_msg;
+        client.SendServerForwardCmdGeneric((int)MSGS.DevicesScreen.MC_FAST, 2, 1, ref control); // for integration
+    }
+
+    protected async Task UpdateGUIValuesLogic()
+    {
+                await InvokeAsync(() =>
+       {
+       try
+       {
+           if (_isDisposed) return;
+           if (string.IsNullOrEmpty(sessionData.AgentName) ||
+            _agentsRepository.GetClientAgentData(sessionData.AgentName) == null)
+           {
+               return;
+           }
+
+
+           for(int i = 0; i < 3; i++)
+               {
+                   LeftIMUInfo[i] = sessionData.mc_metry_slow_reply.ar32ImuQuaternion[i];
+                   RightIMUInfo[i] = sessionData.mc_metry_slow_reply.ar32ImuQuaternion[3 + i];
+               }
+
+               for (int i = 0; i < 3; i++)
+               {
+                   LeftJoystickForceInfo[i].VcmCurrent  = sessionData.mc_metry_slow_reply.ar32motorsCurrent[i]; //sessionData.mc_periodic_status.haptic_forces_echo[i];
+                   RightJoystickForceInfo[i].VcmCurrent = sessionData.mc_metry_slow_reply.ar32motorsCurrent[3 + i]; //sessionData.mc_periodic_status.haptic_forces_echo[i + 3];
+               }
+               for (int i = 0; i < 3; i++)
+               {
+                   LeftJoystickInfo[i].AbdEncA = sessionData.mc_metry_fast_reply.asEncoderDiagDataArr[i].r32filteredDegrees;
+                   LeftJoystickInfo[i].AbdEncB = sessionData.mc_metry_fast_reply.asEncoderDiagDataArr[3 + i].r32filteredDegrees;
+                   LeftJoystickInfo[3 + i].AbdEncA = sessionData.mc_metry_fast_reply.asEncoderDiagDataArr[6 + i].r32filteredDegrees;
+                   RightJoystickInfo[i].AbdEncA = sessionData.mc_metry_fast_reply.asEncoderDiagDataArr[9 + i].r32filteredDegrees;
+                   RightJoystickInfo[i].AbdEncB = sessionData.mc_metry_fast_reply.asEncoderDiagDataArr[12 + i].r32filteredDegrees;
+                   RightJoystickInfo[3 + i].AbdEncA= sessionData.mc_metry_fast_reply.asEncoderDiagDataArr[15 + i].r32filteredDegrees;
+               }
+
+               //from dataMARS
+               const double E_MC_DEVICE_ADC_3V3_VOLTAGE_FACTOR = 1.5;
+               const double E_MC_DEVICE_ADC_5V_VOLTAGE_FACTOR = 2.33333333;
+               const double E_MC_DEVICE_ADC_DRV_VOLTAGE_FACTOR = 4.57;
+               const double E_MC_DEVICE_ADC_12V_VOLTAGE_FACTOR = 5.54;
+               const double E_MC_DEVICE_ADC_24V_VOLTAGE_FACTOR = 11;
+               SCBVoltagesInfo[0] = E_MC_DEVICE_ADC_24V_VOLTAGE_FACTOR * sessionData.mc_metry_slow_reply.ar32adcSensorsVoltage[10];
+               SCBVoltagesInfo[1] = E_MC_DEVICE_ADC_12V_VOLTAGE_FACTOR * sessionData.mc_metry_slow_reply.ar32adcSensorsVoltage[9];
+               SCBVoltagesInfo[2] = E_MC_DEVICE_ADC_DRV_VOLTAGE_FACTOR * sessionData.mc_metry_slow_reply.ar32adcSensorsVoltage[8];
+               SCBVoltagesInfo[3] = E_MC_DEVICE_ADC_5V_VOLTAGE_FACTOR * sessionData.mc_metry_slow_reply.ar32adcSensorsVoltage[7];
+               SCBVoltagesInfo[4] = E_MC_DEVICE_ADC_3V3_VOLTAGE_FACTOR * sessionData.mc_metry_slow_reply.ar32adcSensorsVoltage[6];
+
+               //update fan values
+               for (int i = 0; i < 5; i++)
+               {
+                   FanValues[i].Tacho = sessionData.mc_periodic_status.fan_speed[i];
+               }
+
+               InvokeAsync(StateHasChanged);
+           }        
+           catch (Exception ex)
+           {
+               Console.WriteLine($"Error exception SWS updating GUI values: {ex.Message}");
+           }
+       });
+    }
+
+    public virtual void Dispose()
+    {
+        Console.WriteLine("SWS component disposed.");
+
+        if (_isDisposed) return; // Prevent multiple disposals
+        _isDisposed = true; // Mark as disposed
+
+        refreshTimer?.Dispose(); // Cleanup resources
+        refreshTimer = null; // Clear the timer reference
+
+        if (fanTimer != null)
+        {
+            FanDefaultPressed(); 
+            fanTimer?.Dispose();
+            fanTimer = null;     
+        }
+
+        GC.SuppressFinalize(this); // prevent unnecessary finalization
+    }
+
+    private void CyclePatternLedConfig()
+    {
+        Utils.IncrementPatterns(DecorationLightColorValues);
+        Utils.IncrementPatterns(DecorationLightIntervalValues);
+    }
+
+    protected void DecorationStartStopClicked()
+    {
+        Console.WriteLine("SWS SendLedConfig called");
+        for (int i = 0; i < 8; i++)
+        {
+            sessionData.mc_periodic_msg.led_patterns.joystick_led_patterns[i] = MSGS.Utils.GetLedPattern(DecorationLightColorValues[i], DecorationLightIntervalValues[i], DecorationLightCaption);
+        }
+        RKS2MC_Control control = sessionData.mc_periodic_msg;
+        client.SendServerForwardCmdGeneric((int)MSGS.DevicesScreen.MC_FAST, 2, 1, ref control);
+        MSGS.Utils.ToggleLedCaption(ref DecorationLightCaption);
+    }
+
+    private void SendFanConfig()
+    {
+        Console.WriteLine("SWS SendFanConfig called");
+        fanTimer?.Dispose();
+        fanTimer = null;
+
+        bool startTimer = false;
+        for (int i = 0; i < 5; i++)
+        {
+            if (byte.TryParse(FanValues[i].PWM, out byte pwmValue) )
+            {
+                // Assuming sessionData.mc_periodic_msg.fan_control_cmd is an array of byte
+                sessionData.mc_periodic_msg.fan_control_cmd[i] = pwmValue;
+                if(pwmValue != 80)
+                {
+                    startTimer = true;
+                }
+            }
+        }
+        RKS2MC_Control control = sessionData.mc_periodic_msg;
+        client.SendServerForwardCmdGeneric((int)MSGS.DevicesScreen.MC_FAST, 2, 1, ref control);
+
+        if (startTimer)
+        {
+            Console.WriteLine("Starting fan timer");
+            
+            //start the timer to reset back to default values.
+            fanTimer = new System.Timers.Timer(20 * 1000) { AutoReset = false }; // 20 second interval
+            fanTimer.Elapsed += (sender, e) => InvokeAsync(FanDefaultPressed);
+            fanTimer.Start();
+        }
+    }
+
+    private void FanDefaultPressed()
+    {
+        Console.WriteLine($"FanDefaultPressed. Is Timer null: {fanTimer == null}");
+        fanTimer?.Dispose(); //to make sure
+        fanTimer = null;
+
+        for (int i = 0; i < 5; i++)
+        {
+            FanValues[i].PWM = "80"; // Reset to default value
+        }
+        SendFanConfig();
+       
+        //Turn off the timer - just to be sure.
+        fanTimer?.Dispose();
+        fanTimer = null;
+    }
+    
+}

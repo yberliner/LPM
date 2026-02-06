@@ -1,0 +1,145 @@
+﻿@inherits ForsightTester.Shared.AccordionInputBase
+@using CardModel
+
+@* ---------- markup ---------- *@
+<div class="motor-wrapper my-2 mx-2">
+    <div class="accordion accordion-primary" id="@ParentId">
+        <div class="accordion-item motor-card">
+            <h2 class="accordion-header" id="@HeadingId">
+                <button class="accordion-button"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#@CollapseId"
+                        aria-controls="@CollapseId"
+                        aria-expanded="true"
+                        style="background: transparent;">
+                    @Name
+                </button>
+            </h2>
+
+            <div id="@CollapseId"
+                 class="accordion-collapse collapse show"
+                 aria-labelledby="@HeadingId"
+                 data-bs-parent="#@ParentId">
+
+                <div class="accordion-body" style="padding:0;">
+                    
+
+                            <div class="row">
+                                
+                                    <div class="table-responsive">
+                                        <table class="table text-nowrap table-striped table-hover">
+                                        <thead class="table-success">
+                                                <tr>
+                                                    <th scope="col">Name</th>
+                                                    <th scope="col">Order Date</th>
+                                                    <th scope="col">Color</th>
+                                                    <th scope="col">Supplier</th>
+                                                    <th scope="col">Color Date</th>
+                                                    <th scope="col">Sup. #</th>
+                                                    <th scope="col">Weight</th>
+                                                    <th scope="col">Supply Date</th>
+                                                    <th scope="col">Status</th>
+
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @for (int i = 0; i < Orders.Count; i++)
+                                                {
+                                                    int Locali = i; // capture the current index for the lambda expression
+
+                                                    <tr>
+                                                        <th scope="row">@Orders[Locali].CustomerName</th>
+                                                        <td>
+                                                            <div class="lh-1">
+                                                                <span>@Orders[Locali].ReservationDate?.ToString("dd-MM-yyyy")</span>
+                                                            </div>                                                         
+                                                        </td>
+                                                        <td>
+                                                            <div class="lh-1">
+                                                                <span>
+                                                                    @Truncate(Orders[Locali].Colour, 5)
+                                                                </span>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <div class="lh-1">
+                                                                <span>@Orders[Locali].Supplier</span>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <div class="lh-1">
+                                                                <span>@Orders[Locali].DatePaint?.ToString("dd-MM-yyyy")</span>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <div class="lh-1">
+                                                                <span>@Orders[Locali].OrderNumber</span>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <div class="lh-1">
+                                                                <span>@Orders[Locali].Weight</span>
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <div class="lh-1">
+                                                                <span>@Orders[Locali].SupplyDate?.ToString("dd-MM-yyyy")</span>
+                                                            </div>
+                                                        </td>
+
+
+                                                        <td>
+                                                            <span class="badge bg-success-transparent">
+                                                                <i class="ri-check-fill align-middle me-1"></i>@Orders[Locali].Status
+                                                            </span>
+                                                        </td>
+                                                        
+                                                    </tr>
+                                                    
+                                                } 
+                                </tbody>
+                                        </table>
+                                    </div>
+
+
+                              </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    /* ---------- unique IDs via IdPrefix ---------- */
+    [Parameter] public string Name { get; set; } = new("");
+    [Parameter] public string IdPrefix { get; set; } = Guid.NewGuid().ToString("N");
+    [Parameter] public string? TableStyle { get; set; }
+    [Parameter] public List<OrderRow> Orders { get; set; }
+    
+    private string ParentId => $"accordion_FanConfig_{IdPrefix}";
+    private string HeadingId => $"heading_FanConfig_{IdPrefix}";
+    private string CollapseId => $"collapse_FanConfig_{IdPrefix}";
+
+
+    private string _currentSelect = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        
+    }
+    public static string Truncate(string? value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value))
+            return string.Empty;
+
+        return value.Length <= maxLength
+            ? value
+            : value.Substring(0, maxLength);
+    }
+
+
+   
+
+}
+

@@ -1,0 +1,111 @@
+﻿@using MSGS
+@inject AgentsRepository agentsRep
+@inject CommRepository commRepository
+@implements IDisposable
+
+@code {
+    [Parameter] public EventCallback<string> OnAgentSelected { get; set; }
+
+    private List<string> clientNames = new();
+    private string? selectedClient;
+    private System.Threading.Timer? refreshTimer;
+
+    protected override void OnInitialized()
+    {
+        RefreshClientList();
+
+        refreshTimer = new Timer(_ =>
+        {
+            RefreshClientList();
+            InvokeAsync(StateHasChanged);
+        }, null, 2000, 2000);
+    }
+
+    private void RefreshClientList()
+    {
+        var current = commRepository.GetAllAgentsNames();
+        if (!current.SequenceEqual(clientNames))
+        {
+            clientNames = current;
+            
+            // Set default selected client (first one)
+            if (clientNames.Count > 0 && string.IsNullOrEmpty(selectedClient))
+            {
+                selectedClient = clientNames[0];
+            }
+
+            Console.WriteLine($"[ClientSelector] Refreshed clients: {clientNames.Count}");
+        }
+    }
+
+    private void ConfirmSelection()
+    {
+        if (!string.IsNullOrEmpty(selectedClient))
+        {
+            Console.WriteLine($"[ClientSelector] Confirmed: {selectedClient}");
+            OnAgentSelected.InvokeAsync(selectedClient);
+        }
+    }
+
+    public void Dispose()
+    {
+        refreshTimer?.Dispose();
+    }
+}
+
+
+@if (clientNames.Count == 0)
+{
+        <p class="text-danger">No clients available. Waiting for agents to connect...</p>
+}
+else
+{
+    <div style="max-width: 800px; overflow-x: auto;">
+        <div class="table-responsive ps-2 pe-2">
+            <table class="table table-sm table-striped table-bordered align-middle"
+                   style="table-layout: fixed; min-width: 600px;">
+                <colgroup>
+                    <col style="width: 10%;">
+                    <col style="width: 25%;">
+                    <col style="width: 25%;">
+                </colgroup>
+                <thead class="table-primary">
+                    <tr>
+                        <th>Select</th>
+                        <th>Agent Name</th>
+                        <th>IDD</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in clientNames)
+                    {
+                        var client = c;
+                        var idd = agentsRep.GetClientIDD(client);
+                        <tr>
+                            <td>
+                                <input type="radio"
+                                       name="selectedAgent"
+                                       value="@client"
+                                       checked="@(selectedClient == client)"
+                                       @onchange="() => selectedClient = client" />
+                            </td>
+                            <td class="text-truncate">@client</td>
+                            <td class="text-truncate">@idd</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- ✅ Confirm button is now back inside the else block -->
+        <div class="mt-2">
+            <button class="btn btn-primary"
+                    style="min-width: 120px;"
+                    @onclick="ConfirmSelection"
+                    disabled="@string.IsNullOrEmpty(selectedClient)">
+                Confirm
+            </button>
+        </div>
+    </div>
+}
+

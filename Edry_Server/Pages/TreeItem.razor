@@ -1,0 +1,97 @@
+﻿@code {
+    [Parameter] public string Key { get; set; } = "";
+    [Parameter] public object? Value { get; set; }
+    [Parameter] public EventCallback<(string Key, object Value)> OnValueChanged { get; set; }
+    [Parameter] public EventCallback<string> OnUserModified { get; set; }
+    [Parameter] public bool AllowEditVar { get; set; }  // <-- Added
+
+    private bool isExpanded = false;
+    private string? newValue;
+
+    private void ToggleExpand() => isExpanded = !isExpanded;
+
+    private async Task HandleInput(ChangeEventArgs e)
+    {
+        newValue = e.Value?.ToString();
+        if (newValue != null && Value != null)
+        {
+            object convertedValue;
+
+            Type valueType = Value.GetType();
+
+            if (valueType.IsEnum)
+            {
+                if (Enum.TryParse(valueType, newValue, out object? enumValue))
+                {
+                    convertedValue = enumValue;
+                }
+                else
+                {
+                    convertedValue = Value;
+                    Console.WriteLine($"❌ Invalid enum value: {newValue}");
+                    return;
+                }
+            }
+            else
+            {
+                try
+                {
+                    convertedValue = Convert.ChangeType(newValue, valueType);
+                }
+                catch (Exception ex)
+                {
+                    convertedValue = Value;
+                    Console.WriteLine($"❌ Conversion failed for value '{newValue}' to type '{valueType}': {ex.Message}");
+                    return;
+                }
+            }
+
+            await OnValueChanged.InvokeAsync((Key, convertedValue));
+            await OnUserModified.InvokeAsync(Key);
+        }
+    }
+}
+
+<li>
+    @if (Value is Array array)
+    {
+        <span @onclick="ToggleExpand" style="cursor: pointer;">
+            <b>@(isExpanded ? "▼" : "▶")</b> @Key (@array.Length)
+        </span>
+        @if (isExpanded)
+        {
+            <ul>
+                @for (int i = 0; i < array.Length; i++)
+                {
+                    <TreeItem Key="@($"{Key}[{i}]")" Value="@array.GetValue(i)"
+                              OnValueChanged="OnValueChanged"
+                              OnUserModified="OnUserModified"
+                              AllowEditVar="@AllowEditVar" /> <!-- Pass Enabled recursively -->
+                }
+            </ul>
+        }
+    }
+    else if (Value is not null && MSGS.ReflectionHelper.IsComplexType(Value))
+    {
+        <span @onclick="ToggleExpand" style="cursor: pointer;">
+            <b>@(isExpanded ? "▼" : "▶")</b> @Key
+        </span>
+        @if (isExpanded)
+        {
+            <ul>
+                @foreach (var subItem in MSGS.ReflectionHelper.GetPropertiesRecursive(Value, Key))
+                {
+                    <TreeItem Key="@subItem.Key" Value="@subItem.Value"
+                              OnValueChanged="OnValueChanged"
+                              OnUserModified="OnUserModified"
+                              AllowEditVar="@AllowEditVar" /> <!-- Pass Enabled recursively -->
+                }
+            </ul>
+        }
+    }
+    else
+    {
+        <span>@Key: </span>
+        <input type="text" value="@Value" @onchange="HandleInput" disabled="@(AllowEditVar)" /> <!-- Bind disabled -->
+    }
+</li>

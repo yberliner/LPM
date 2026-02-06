@@ -1,0 +1,82 @@
+@code {
+    [Parameter] public string Tag { get; set; } = "button"; // HTML tag to render
+    [Parameter] public string? DropdownClass { get; set; } = "btn-primary"; 
+    [Parameter] public string? DropdownMainClass { get; set; } ="";
+    [Parameter] public string? DropdownId { get; set; }
+    [Parameter] public string? DropdownText { get; set; }
+    [Parameter] public string? DropdownDrop { get; set; }
+    [Parameter] public bool DropdownToggle { get; set; } = true;
+    [Parameter] public bool IsRounded { get; set; } = false;
+    [Parameter] public bool IncludeWrapper { get; set; } = true;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? ChildContent2 { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+}
+@{
+    // Determine the HTML tag to use
+    var tagName = Tag.ToLower();
+}
+
+@if (tagName == "a") {
+    @if ( IncludeWrapper == true){
+        <div class="dropdown @DropdownDrop @DropdownMainClass">
+            <a href="javascript:void(0);" role="button" class="@DropdownClass @(IsRounded == true ? "rounded-pill" : "") @(DropdownToggle ? "dropdown-toggle" : "")"  id="@DropdownId" data-bs-toggle="dropdown" aria-expanded="false" @attributes="AdditionalAttributes">
+                @((MarkupString)(DropdownText ?? string.Empty))
+                @if (ChildContent != null)
+                {
+                    @ChildContent
+                }
+            </a>
+            @if (ChildContent2 != null)
+            {
+                @ChildContent2
+            }
+        </div>
+    }
+    else {
+        <a href="javascript:void(0);" role="button" class="@DropdownClass @(IsRounded == true ? "rounded-pill" : "") @(DropdownToggle ? "dropdown-toggle" : "")"  id="@DropdownId" data-bs-toggle="dropdown" aria-expanded="false" @attributes="AdditionalAttributes">
+            @((MarkupString)(DropdownText ?? string.Empty))
+            @if (ChildContent != null)
+            {
+                @ChildContent
+            }
+        </a>
+        @if (ChildContent2 != null)
+        {
+            @ChildContent2
+        }
+    }
+}
+else {
+    
+    @if ( IncludeWrapper == true){
+    <div class=" @DropdownDrop @DropdownMainClass">
+        <SpkButtons  ButtonClass="@($"{DropdownClass} {(IsRounded == true ? "rounded-pill" : "")} {(DropdownToggle ? "dropdown-toggle" : "")}")"  id="@DropdownId" data-bs-toggle="dropdown" aria-expanded="false" @attributes="AdditionalAttributes">
+             @((MarkupString)(DropdownText ?? string.Empty))
+             @if (ChildContent != null)
+            {
+                @ChildContent
+            }
+        </SpkButtons>
+         @if (ChildContent2 != null)
+        {
+            @ChildContent2
+        }
+    </div>
+    }
+    else {
+        <SpkButtons  ButtonClass="@($"{DropdownClass} {(IsRounded == true ? "rounded-pill" : "")} {(DropdownToggle ? "dropdown-toggle" : "")}")"  id="@DropdownId" data-bs-toggle="dropdown" aria-expanded="false" @attributes="AdditionalAttributes">
+             @((MarkupString)(DropdownText ?? string.Empty))
+             @if (ChildContent != null)
+            {
+                @ChildContent
+            }
+        </SpkButtons>
+         @if (ChildContent2 != null)
+        {
+            @ChildContent2
+        }
+    }
+}

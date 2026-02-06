@@ -1,0 +1,49 @@
+@code {
+    [Parameter] public string Tag { get; set; } = "button";
+    [Parameter] public string? TooltipClass { get; set; } = "btn-primary";
+    [Parameter] public string? TooltipPlacement { get; set; }
+    [Parameter] public string? TooltipTitle { get; set; }
+    [Parameter] public string? TooltipCustomClass { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    // Capture additional attributes passed to the component
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+}
+
+@{
+    // Determine the HTML tag to use
+    var tagName = Tag.ToLower();
+}
+
+@if (tagName == "a") {
+    <a tabindex="0" href="javascript:void(0);" @attributes="AdditionalAttributes" class="@TooltipClass"
+        data-bs-toggle="tooltip" data-bs-placement="@TooltipPlacement" data-bs-custom-class="@TooltipCustomClass"
+        data-bs-original-title="@TooltipTitle">
+        @if (ChildContent != null)
+        {
+            @ChildContent
+        }
+    </a>
+}
+ else if (tagName == "button") {
+    <SpkButtons @attributes="AdditionalAttributes" ButtonClass="@TooltipClass" data-bs-toggle="tooltip" data-bs-placement="@TooltipPlacement" data-bs-custom-class="@TooltipCustomClass" data-bs-original-title="@TooltipTitle">
+        @if (ChildContent != null)
+        {
+
+            @ChildContent
+        }
+    </SpkButtons>
+}
+ else if (tagName == "span") {
+    <span @attributes="AdditionalAttributes" class="@TooltipClass" data-bs-toggle="tooltip" data-bs-placement="@TooltipPlacement" data-bs-custom-class="@TooltipCustomClass" data-bs-original-title="@TooltipTitle">
+        @if (ChildContent != null)
+        {
+
+            @ChildContent
+        }
+    </span>
+}
+ else if (tagName == "input") {
+    <input class="@TooltipClass" data-bs-toggle="tooltip" data-bs-placement="@TooltipPlacement" data-bs-custom-class="@TooltipCustomClass" data-bs-original-title="@TooltipTitle" @attributes="AdditionalAttributes">
+}

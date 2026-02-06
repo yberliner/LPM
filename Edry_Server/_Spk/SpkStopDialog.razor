@@ -1,0 +1,62 @@
+﻿@using ForsightTester.Data
+@inject IJSRuntime JS
+
+<div class="modal fade" 
+     id="StopModal" 
+     tabindex="-1" 
+     aria-labelledby="StopModalLabel" 
+     aria-hidden="true" 
+     data-bs-backdrop="static" 
+     data-bs-keyboard="false" 
+     @ref="_modalEl">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="background-color: var(--table-back);">
+            <div class="modal-header">
+                <h5 class="modal-title" id="StopModalLabel">@DialogHeader</h5>
+            </div>
+            <div class="modal-body">
+                <p class="fs-4 mb-2 fw-bold">@DialogText</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger-light" data-bs-dismiss="modal" @onclick="OnStopProcess">Stop Process</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public String? DialogText { get; set; }
+    [Parameter] public String? DialogHeader { get; set; }
+    [Parameter] public EventCallback OnStopProcess { get; set; }
+
+    /* ------------------------------------------------------------------ */
+    /*   modal bootstrap handle                                           */
+    /* ------------------------------------------------------------------ */
+    private IJSObjectReference? _bootstrapModal;
+    private ElementReference _modalEl;
+
+    /* --------- initialise bootstrap.Modal once ------------------------ */
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _bootstrapModal = await JS.InvokeAsync<IJSObjectReference>(
+                                   "initBootstrapModal", _modalEl);
+        }
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*   public helpers                                                   */
+    /* ------------------------------------------------------------------ */
+    public async Task ShowAsync()
+    {
+        await InvokeAsync(StateHasChanged);
+        await _bootstrapModal!.InvokeVoidAsync("show");
+    }
+
+    public async Task HideAsync()
+    {
+        await _bootstrapModal!.InvokeVoidAsync("hide");
+    }
+
+}

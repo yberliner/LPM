@@ -1,0 +1,116 @@
+@code {
+    [Parameter] public List<PageItem>? PageItems { get; set; }
+    [Parameter] public bool AdvancedEnabled { get; set; } = false;
+    [Parameter] public bool Advanced { get; set; }
+    [Parameter] public EventCallback<bool> AdvancedToggled { get; set; }
+    [Parameter] public EventCallback ResetClick { get; set; }
+
+    [Parameter] public bool SecureEnabled { get; set; } = true;
+    [Parameter] public EventCallback<bool> SecureRobotLimits { get; set; }
+
+    [Parameter] public bool MotionProfileEnabled { get; set; } = true;
+    [Parameter] public EventCallback<bool> MotionProfileToggled { get; set; }
+    [Parameter] public bool RWSSpecific { get; set; } = false;
+    
+    public class PageItem
+    {
+        public string? PageTitle { get; set; }
+    }
+
+    private readonly string _toggleId = $"toggleswitch_{Guid.NewGuid():N}";
+    private readonly string _toggleRobotId = $"_toggleRobotId{Guid.NewGuid():N}";
+    private readonly string _toggleMotionId = $"_toggleMotionId{Guid.NewGuid():N}";
+
+}
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center justify-content-between page-header-breadcrumb flex-wrap gap-2">
+        <div>
+            <ol class="breadcrumb mb-1">
+                @if (PageItems != null)
+                {
+                    for (int i = 0; i < PageItems.Count; i++)
+                    {
+                        int Locali = i;
+                        if (PageItems[Locali] != null) // Ensure PageItems[Locali] is not null
+                        {
+                            <li class="breadcrumb-item active" aria-current="page">@PageItems[Locali]?.PageTitle</li>
+                        /*
+                            if (i == PageItems.Count - 1)
+                            {
+                                <li class="breadcrumb-item active" aria-current="page">@PageItems[Locali]?.PageTitle</li>
+                            }
+                            else
+                            {
+                                <li class="breadcrumb-item"><a href="javascript:void(0);">@PageItems[Locali]?.PageTitle</a></li>
+                            }
+                        */
+                        }
+                    }
+                }
+            </ol>
+        <h1 style="display: none;" class="page-title fw-medium fs-18 mb-0">@PageItems?.LastOrDefault()?.PageTitle</h1>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            @if (PageItems != null && PageItems.Any(item => item?.PageTitle?.Contains("Sales") == true))
+            {
+                <div class="form-group">
+                    <div class="input-group">
+                        <div class="input-group-text bg-white border"> <i class="ri-calendar-line"></i> </div>
+                    </div>
+                </div>
+            }
+            @if (AdvancedEnabled)
+            {
+                <div class="custom-toggle-switch d-flex align-items-center mb-4">
+                    <input id="@_toggleId"
+                           name="toggleswitch001"
+                           type="checkbox"
+                           @bind="Advanced"
+                           @bind:event="onchange"
+                           @bind:after="async () => { if (AdvancedToggled.HasDelegate) await AdvancedToggled.InvokeAsync(Advanced); }" />
+                    <label for="@_toggleId" class="label-primary"></label>
+                    <span class="ms-3">Advanced</span>
+                </div>
+                @if (RWSSpecific)
+                {
+                    <div class="custom-toggle-switch d-flex align-items-center mb-4">
+                        <input id="@_toggleRobotId"
+                        name="toggleswitch002"
+                        type="checkbox"
+                        @bind="SecureEnabled"
+                        @bind:event="onchange"
+                        @bind:after="async () => { if (SecureRobotLimits.HasDelegate) await SecureRobotLimits.InvokeAsync(SecureEnabled); }" />
+                        <label for="@_toggleRobotId" class="label-primary"></label>
+                        <span class="ms-3">Secure Robot Limits</span>
+                    </div>
+
+                    <div class="custom-toggle-switch d-flex align-items-center mb-4">
+                        <input id="@_toggleMotionId"
+                        name="toggleswitch003"
+                        type="checkbox"
+                        @bind="MotionProfileEnabled"
+                        @bind:event="onchange"
+                        @bind:after="async () => { if (MotionProfileToggled.HasDelegate) await MotionProfileToggled.InvokeAsync(MotionProfileEnabled); }" />
+                        <label for="@_toggleMotionId" class="label-primary"></label>
+                        <span class="ms-3">Motion Profile</span>
+                    </div>
+
+                    <div class="custom-toggle-switch d-flex align-items-center mb-4">
+                        <button class="btn btn-sm motor-btn w-100"
+                                title="Send"
+                                @onclick="async () => {if(ResetClick.HasDelegate) await ResetClick.InvokeAsync(); }">
+                                    Clear
+                        </button>
+                    </div>
+                    }
+                }
+            @*
+            <div class="btn-list">
+                <SpkButtons ButtonClass="btn-white"><i class="ri-filter-3-line align-middle me-1 lh-1"></i> Filter</SpkButtons>
+                <SpkButtons ButtonClass="btn-primary me-0"><i class="ri-share-forward-line me-1"></i> Share</SpkButtons>
+            </div>
+            *@
+        </div>
+    </div>
+    <!-- Page Header Close -->

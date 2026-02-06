@@ -1,0 +1,184 @@
+﻿@page "/Miccb"
+@inject Microsoft.AspNetCore.Components.NavigationManager NavigationManager // This line is used to generate URLs dynamically //
+@inherits BaseComponent<MSGS.VC2MicB_Control, MSGS.MicB2VC_Status>
+@inject MSGS.ClientManager udpData
+@using MSGS;
+
+@using ForsightTester._Spk
+
+<!-- Page Header -->
+<SpkPageHeader PageItems="PageItems" />
+<!-- Page Header Close -->
+
+
+<div class="row">
+    <div class="col-xxl-12 col-xl-12 col-lg-12 col-md-12 col-sm-12">
+        <div class="accordion customized-accordion accordions-items-seperate" id="customizedAccordion">
+            <div class="accordion-item custom-accordion-primary">
+                <h2 class="accordion-header" id="customizedAccordionOne">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#customized-AccordionOne" aria-expanded="false"
+                            aria-controls="customized-AccordionOne">
+                        MICCB Periodic Status MSG!
+                    </button>
+                </h2>
+                <div id="customized-AccordionOne" class="accordion-collapse collapse"
+                     aria-labelledby="customizedAccordionOne">
+                    <div class="accordion-body">
+                         <AccordionView Data="statusWrapper!.StructData" Hide_Apply_button="true" />
+                    </div>
+                </div>
+            </div>
+            <div class="accordion-item custom-accordion-secondary">
+                <h2 class="accordion-header" id="customizedAccordionTwo">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#customized-AccordionTwo" aria-expanded="false"
+                            aria-controls="customized-AccordionTwo">
+                        MICCB Periodic Command MSG!
+                    </button>
+                </h2>
+                <div id="customized-AccordionTwo" class="accordion-collapse collapse"
+                     aria-labelledby="customizedAccordionTwo">
+                    <div class="accordion-body">
+                        <AccordionView Data="controlInstance" Hide_Apply_button="false" OnUpdate="HandleApplyUpdates" />
+                    </div>
+                </div>
+            </div>
+            <div class="accordion-item custom-accordion-danger">
+                <h2 class="accordion-header" id="customizedAccordionThree">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#customized-AccordionThree" aria-expanded="false"
+                            aria-controls="customized-AccordionThree">
+                        MICCB Metry MSG!
+                    </button>
+                </h2>
+                <div id="customized-AccordionThree" class="accordion-collapse collapse"
+                     aria-labelledby="customizedAccordionThree">
+                    <div class="accordion-body">
+                        <AccordionView Data="udpData.UserData.micb_metry_reply" Hide_Apply_button="true" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+@* <div class="row">
+    <div class="table-responsive">
+        <table class="table text-nowrap table-primary" style="max-width: 600px;">
+            <thead>
+                <tr>
+                    <th scope="col">Fan #</th>
+                    <th scope="col">RPM Status</th>
+                    <th scope="col">Command</th>
+                    <th scope="col">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (int i = 0; i < 3; i++)
+                {
+                    int fanIndex = i;
+
+                    <tr>
+                        <th scope="row">@(fanIndex + 1)</th>
+                        <td>@statusWrapper?.StructData.fan_rpm[fanIndex]</td>
+                        <td>
+                            <input type="number" class="form-control"
+                            min="0" max="100"
+                            @bind="commands[fanIndex]"
+                            @oninput="e => ValidateInput(fanIndex, e.Value?.ToString())" />
+                        </td>
+                        <td>
+                            <button class="btn btn-primary"
+                            @onclick="() => SubmitFan(fanIndex, commands[fanIndex])"
+                            disabled="@isInvalid[fanIndex]">
+                                @(fanButtonTexts.ContainsKey(fanIndex) ? fanButtonTexts[fanIndex] : "Submit")
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div> *@
+
+<!-- Prism JS -->
+@*
+<script src="@($"{NavigationManager.BaseUri}assets/libs/prismjs/prism.js")"></script>
+<script src="@($"{NavigationManager.BaseUri}assets/js/prism-custom.js")"></script>
+*@
+
+@code {
+    private List<SpkPageHeader.PageItem> PageItems = new List<SpkPageHeader.PageItem> {
+        new SpkPageHeader.PageItem { PageTitle = "IDD" },
+        new SpkPageHeader.PageItem { PageTitle = "MICCB" },
+    };
+
+    private int[] commands = new int[3] { 0, 5, 10 };
+    private bool[] isInvalid = new bool[3];
+    private Dictionary<int, string> fanButtonTexts = new();
+    MSGS.StructWrapper<MSGS.SMicBMetryMsg>? metryWrapper;
+
+    protected override void OnInitialized()
+    {
+        base.InitializeComponent(
+            deviceID: (int)MSGS.DevicesScreen.MICB,
+            controlInstance: udpData.UserData.micb_periodic_msg,
+            initialStatus: udpData.UserData.micb_periodic_status
+        );
+        this.metryWrapper = new MSGS.StructWrapper<MSGS.SMicBMetryMsg>(udpData.UserData.micb_metry_reply);
+        udpData.SendServerForwardCmdGeneric(DeviceID, 2, 1, ref controlInstance);
+        base.OnInitialized();
+    }
+    public Miccb() : base()
+    {
+    }
+    // ✅ Call base constructor explicitly with DeviceID = 2
+    // public MICCB()
+    //     : base(deviceID: (int)MSGS.DevicesScreen.MICCB, MSGS.ClientManager.miccb_periodic_msg, MSGS.ClientManager.miccb_periodic_status)
+    // {
+    //     this.metryWrapper = new MSGS.StructWrapper<MSGS.SMiccBMetryMsg>(MSGS.ClientManager.miccb_metry_reply);
+    //     MSGS.ClientManager.SendServerForwardCmdGeneric(DeviceID, 2, 1, ref controlInstance);
+    // }
+
+
+
+    private void ValidateInput(int index, string? value)
+    {
+        if (int.TryParse(value, out int number) && number >= 0 && number <= 100)
+        {
+            commands[index] = number;
+            isInvalid[index] = false;
+        }
+        else
+        {
+            isInvalid[index] = true;
+        }
+        StateHasChanged();
+    }
+
+    private void SubmitFan(int fanIndex, int commandValue)
+    {
+        if (commandValue < 0 || commandValue > 100) return;
+        controlInstance.fan_cmd[fanIndex] = (byte)commandValue;
+        udpData.UserData.micb_periodic_msg = controlInstance;
+        udpData.SendServerForwardCmdGeneric(DeviceID, 2, 1, ref controlInstance);
+
+        fanButtonTexts[fanIndex] = "Pressed";
+        StateHasChanged();
+    }
+
+    protected override void UpdateGUIValuesLogic()
+    {
+        statusWrapper!.UpdateFromStruct(udpData.UserData.micb_periodic_status);
+        metryWrapper!.UpdateFromStruct(udpData.UserData.micb_metry_reply);
+    }
+    protected override void SonDispose()
+    {
+        udpData.SendServerForwardCmdGeneric(DeviceID, 2, 1, ref controlInstance);
+        udpData.UserData.micb_periodic_msg = controlInstance;
+        InvokeAsync(StateHasChanged);
+        //treeViewRef.UserData = controlInstance;
+    }
+}
