@@ -5,7 +5,9 @@
       "Bash(ls:*)",
       "Bash(gh auth:*)",
       "Bash(git remote:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git mv:*)",
+      "Bash(git:*)"
     ]
   }
 }
