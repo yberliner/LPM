@@ -129,8 +129,6 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
     });
 
-builder.Services.AddScoped<PageCommandService>();
-
 var app = builder.Build();
 Globals.ServiceProvider = app.Services;  // ✅ Set global access here
 
