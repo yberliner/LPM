@@ -178,10 +178,10 @@ app.UseRouting();
 app.MapControllers();
 
 // Forsight - start TcpEngine and outgoingMsgs
-var tcpEngine = app.Services.GetRequiredService<TCPEngine>();
-tcpEngine.Start();
-var outgoingMsgs = app.Services.GetRequiredService<OutgoingMsgsManager>();
-outgoingMsgs.Start();
+//var tcpEngine = app.Services.GetRequiredService<TCPEngine>();
+//tcpEngine.Start();
+//var outgoingMsgs = app.Services.GetRequiredService<OutgoingMsgsManager>();
+//outgoingMsgs.Start();
 
 app.MapBlazorHub();
 app.UseAuthentication();
