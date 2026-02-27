@@ -64,7 +64,7 @@
                                             int Locali = i;
                                             <tr>
                                                 <td class="text-left">@HandleNames[6 + Locali]</td>
-                                                <td class="text-left">@(IMUInfo[Locali].ToString("F2") ?? "-")</td>
+                                                <td class="text-left">@(IMUInfo != null ? IMUInfo[Locali].ToString("F2") : "-")</td>
                                             </tr>
                                         }
                                         <tr>

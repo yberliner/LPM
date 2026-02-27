@@ -471,11 +471,10 @@
 
 @code {
     string[] colors = new string[] { "#FFFFFF", "#000000", "#999999","#845adf" };
-    bool isPrimaryOpened = false;
     string primarycolor = "84, 109, 254";
 
 
-    void PrimaryModal() => isPrimaryOpened = true;
+    void PrimaryModal() { }
     
     public static (int R, int G, int B) HexToRgb(string hex)
     {
@@ -501,15 +500,13 @@
         await JSRuntime.InvokeAsync<string>("interop.setLocalStorageItem", "xintraprimaryRGB", val);
         await stateService.themePrimaryFn(val);
         primarycolor = val;
-        isPrimaryOpened = false;
         StateHasChanged(); // Force re-render
     }
     
-    bool isBackgroundOpened = false;
     string Backgroundcolor = "84, 109, 254";
 
 
-    void BackgroundModal() => isBackgroundOpened = true;
+    void BackgroundModal() { }
     
     async void BackgroundClosedEvent(string value)
     {
@@ -519,7 +516,6 @@
         var val2 = $"{rgbValue.R + 14}, {rgbValue.G + 14}, {rgbValue.B + 14}";        
         await stateService.themeBackgroundFn(val, val2,true);
         Backgroundcolor = val;
-        isBackgroundOpened = false;
     }
 
     private AppState currentState => stateService.GetAppState();

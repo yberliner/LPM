@@ -133,8 +133,6 @@
     private string? password = "";
     private string? UserName;
 
-    private System.Threading.Timer? refreshTimer;
-
     protected override async Task OnInitializedAsync()
     {
         Console.WriteLine("Exit pressed or First time initialized.");
@@ -179,7 +177,6 @@
         {
             RefreshAgentsList(agentName);
         };
-        refreshTimer?.Dispose();
     }
 
     private async Task OnSignInClicked()
@@ -297,7 +294,6 @@
         NavigationManager.NavigateTo("/Dashboard");
     }
 
-    private bool _showInstallHelp;
     private bool _isIOS;
 
     private async Task InstallPwaOrHelp()
@@ -306,20 +302,11 @@
 
         var can = await JS.InvokeAsync<bool>("pwa.canInstall");
         if (can)
-        {
             await JS.InvokeAsync<bool>("pwa.install");
-            _showInstallHelp = false;
-        }
-        else
-        {
-            _showInstallHelp = true; // show instructions instead of hiding everything
-        }
     }
 
     private DotNetObjectReference<SelectAgent>? _dotnetRef;
     private bool _canInstall;
-    private bool _showHelp;
-
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
@@ -346,14 +333,7 @@
         _isIOS = await JS.InvokeAsync<bool>("pwa.isIOS");
 
         if (!_isIOS && await JS.InvokeAsync<bool>("pwa.canInstall"))
-        {
             await JS.InvokeAsync<bool>("pwa.install");
-            _showHelp = false;
-        }
-        else
-        {
-            _showHelp = true;
-        }
     }
 
     private async Task OnPasswordKeyDown(KeyboardEventArgs e)

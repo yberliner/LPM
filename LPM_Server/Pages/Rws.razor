@@ -405,12 +405,12 @@
         return Task.CompletedTask;
     }
 
-    private Dictionary<string, string?[]> AbsoluteDefaults_0;
+    private Dictionary<string, string?[]> AbsoluteDefaults_0 = null!;
 
 
     //this is a copy of AbsoluteDefaults_0, but for the second arm
     //it is initialized in the constructor
-    private Dictionary<string, string?[]> AbsoluteDefaults_1;
+    private Dictionary<string, string?[]> AbsoluteDefaults_1 = null!;
     private MotorWizardParams WizardParams = new MotorWizardParams
         {
             selectedArm = string.Empty,

@@ -115,7 +115,7 @@
     [Parameter] public string Name { get; set; } = new("");
     [Parameter] public string IdPrefix { get; set; } = Guid.NewGuid().ToString("N");
     [Parameter] public string? TableStyle { get; set; }
-    [Parameter] public List<OrderRow> Orders { get; set; }
+    [Parameter] public List<OrderRow> Orders { get; set; } = new();
     
     private string ParentId => $"accordion_FanConfig_{IdPrefix}";
     private string HeadingId => $"heading_FanConfig_{IdPrefix}";

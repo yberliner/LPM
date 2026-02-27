@@ -32,7 +32,7 @@
                                         <div class="d-flex justify-content-center">
                                             <button class="btn @(b.IsOK ? "btn-success" : "btn-danger") w-auto"
                                                     style="min-width:170px"
-                                                    @onclick="b.OnClick"
+                                                    @onclick="@(() => b.OnClick != null ? b.OnClick() : Task.CompletedTask)"
                                                     disabled="@(b.OnClick == null)" >
                                                 @((MarkupString)b.Caption)
                                             </button>
