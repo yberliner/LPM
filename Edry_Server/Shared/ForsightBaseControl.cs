@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Components;
 
-namespace ForsightTester.Shared
+namespace LPM.Shared
 {
     /// <summary>
     ///  Functionality that all accordion-style controls (Motor, LED …) need.

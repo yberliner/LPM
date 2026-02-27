@@ -1,7 +1,7 @@
 ﻿using CardModel;
 using System.Text;
 
-namespace ForsightTester.Data
+namespace LPM.Data
 {
     public class FileEntry
     {

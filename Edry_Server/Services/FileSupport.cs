@@ -1,9 +1,9 @@
-﻿using ForsightTester.Data;
+﻿using LPM.Data;
 using FSMSGS;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.JSInterop;
 
-namespace ForsightTester
+namespace LPM
 {
     public class FileSupport
     {

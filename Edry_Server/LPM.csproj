@@ -3,8 +3,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>ForsightTester</RootNamespace>
-    <AssemblyName>ForsightTester</AssemblyName>
+    <RootNamespace>LPM</RootNamespace>
+    <AssemblyName>LPM</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.105.0" />

@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.10.35013.160
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Edry", "Edry.csproj", "{60A9D313-025F-47A5-8BC8-48A51D790A18}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LPM", "LPM.csproj", "{60A9D313-025F-47A5-8BC8-48A51D790A18}"
 	ProjectSection(ProjectDependencies) = postProject
 		{52173D72-4C31-56CD-FAAC-60C79D597D7E} = {52173D72-4C31-56CD-FAAC-60C79D597D7E}
 	EndProjectSection

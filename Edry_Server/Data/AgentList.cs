@@ -11,7 +11,7 @@ using System.Reflection.Metadata.Ecma335;
 using System.Security.Permissions;
 using static System.Net.Mime.MediaTypeNames;
 
-namespace ForsightTester.Data
+namespace LPM.Data
 {
     public class AgentInfo
     {

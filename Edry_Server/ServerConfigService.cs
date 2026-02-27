@@ -1,4 +1,4 @@
-﻿namespace ForsightTester
+﻿namespace LPM
 {
     public class ServerConfigService
     {

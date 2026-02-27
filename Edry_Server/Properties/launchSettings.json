@@ -1,4 +1,4 @@
-{
+﻿{
   "iisSettings": {
     "windowsAuthentication": false,
     "anonymousAuthentication": true,
@@ -8,7 +8,7 @@
     }
   },
   "profiles": {
-    "ForsightTester": {
+    "LPM": {
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": true,

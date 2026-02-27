@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
-using ForsightTester.Data;
+using LPM.Data;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -77,7 +77,7 @@ builder.Services.AddSingleton<TCPEngine>();
 builder.Services.AddSingleton<CommRepository>();
 builder.Services.AddSingleton<OutgoingMsgsManager>();
 builder.Services.AddSingleton<AgentsRepository>();
-builder.Services.AddSingleton<ForsightTester.ServerConfigService>(); // Register as Singleton
+builder.Services.AddSingleton<LPM.ServerConfigService>(); // Register as Singleton
 builder.Services.AddSingleton<DevTableVisibilityService>();
 builder.Services.AddSingleton<EMBVersionStorage>();
 builder.Services.AddSingleton<OrdersExcelToJson>();
