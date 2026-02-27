@@ -58,3 +58,4 @@ RKS
 !/Forsight_Server/wwwroot/**
 
 .claude/
+LPM_Server/users.db
