@@ -56,3 +56,5 @@ RKS
 
 !/Forsight_Server/wwwroot/
 !/Forsight_Server/wwwroot/**
+
+.claude/
