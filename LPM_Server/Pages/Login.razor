@@ -1,0 +1,89 @@
+@page "/"
+@page "/index"
+@page "/login"
+@layout CustomLayout
+@using LPM._Spk
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<div class="authentication-basic container-fluid">
+    <div class="row h-100">
+        <div class="col-xxl-4 col-xl-5 col-lg-5 col-md-6 col-sm-8 col-12 d-flex flex-column justify-content-center mx-auto">
+            <div class="my-4 d-flex justify-content-center">
+                <a href="/">
+                    <img src="/assets/images/brand-logos/desktop-logo.png" alt="logo" class="desktop-logo authentication-logo" style="height:48px;">
+                    <img src="/assets/images/brand-logos/desktop-dark.png"  alt="logo" class="desktop-dark  authentication-logo" style="height:48px;">
+                </a>
+            </div>
+            <div class="card custom-card shadow">
+                <div class="card-body p-5">
+                    <p class="h5 fw-semibold mb-1 text-center">Sign In</p>
+                    <p class="mb-4 text-muted fw-normal text-center fs-13">Welcome back</p>
+
+                    @if (_error)
+                    {
+                        <div class="alert alert-danger py-2" role="alert">
+                            <i class="ri-error-warning-line me-1"></i> Invalid username or password.
+                        </div>
+                    }
+
+                    <div class="mb-3">
+                        <label class="form-label">Username</label>
+                        <input type="text"
+                               class="form-control"
+                               placeholder="Enter username"
+                               @bind="_username"
+                               @bind:event="oninput"
+                               @onkeydown="HandleKeyDown" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Password</label>
+                        <SpkPasswordToggle @bind-Password="_password" />
+                    </div>
+
+                    <div class="d-grid mt-4">
+                        <button class="btn btn-primary btn-wave"
+                                @onclick="HandleLogin"
+                                disabled="@_loading">
+                            @if (_loading)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                            }
+                            Sign In
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _username = "";
+    private string _password = "";
+    private bool _error;
+    private bool _loading;
+
+    protected override void OnInitialized()
+    {
+        var uri = new Uri(Nav.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        _error = query["error"] == "1";
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await HandleLogin();
+    }
+
+    private async Task HandleLogin()
+    {
+        if (string.IsNullOrWhiteSpace(_username) || string.IsNullOrWhiteSpace(_password))
+            return;
+
+        _loading = true;
+        await InvokeAsync(StateHasChanged);
+        await JS.InvokeVoidAsync("submitLoginForm", _username, _password);
+    }
+}

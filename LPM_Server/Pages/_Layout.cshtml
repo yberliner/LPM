@@ -199,6 +199,21 @@
         <!-- Custom JS -->
         <script src="/assets/js/custom.js"></script>
 *@
+        <script>
+        window.submitLoginForm = function (username, password) {
+            var form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/loginpost';
+            var u = document.createElement('input');
+            u.type = 'hidden'; u.name = 'username'; u.value = username;
+            var p = document.createElement('input');
+            p.type = 'hidden'; p.name = 'password'; p.value = password;
+            form.appendChild(u); form.appendChild(p);
+            document.body.appendChild(form);
+            form.submit();
+        };
+        </script>
+
         <script src="js/forsight.js"></script>
         <script src="js/javaScriptInterop.js"></script>
         <script src="js/resizeInterop.js"></script>

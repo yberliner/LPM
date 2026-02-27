@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using LPM.Data;
 using Microsoft.Extensions.Configuration;
@@ -9,12 +9,15 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Http;
 using ApexCharts;
 using Index1;
-using Microsoft.AspNetCore.HttpOverrides;  // Add this namespace
+using Microsoft.AspNetCore.HttpOverrides;
 using MSGS;
 using FSMSGS;
 using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 using System.IO;
 using System.Text;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
+using LPM.Auth;
 
 // Save the original console output
 var originalConsoleOut = Console.Out;
@@ -32,19 +35,14 @@ AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
     logWriter.Flush();
 };
 
-// ... rest of your Program.cs ...
 var builder = WebApplication.CreateBuilder(args);
 
-//builder.Services.AddControllers();
-
 builder.Services.Configure<FSMSGS.TCPSettings>(builder.Configuration.GetSection("TCPSettings"));
-
 
 builder.WebHost.ConfigureKestrel((context, options) =>
 {
     options.Configure(context.Configuration.GetSection("Kestrel"));
 });
-
 
 // Add services to the container.
 builder.Services.AddRazorPages();
@@ -64,8 +62,6 @@ builder.Services.AddScoped<Index1Service>();
 builder.Services.AddWMBOS();
 builder.Services.AddSession();
 
-//builder.Services.AddFilePond();
-
 //Forsight Scoped classes:
 builder.Services.AddScoped<ClientSessionData>();
 builder.Services.AddScoped<ClientManager>();
@@ -77,7 +73,7 @@ builder.Services.AddSingleton<TCPEngine>();
 builder.Services.AddSingleton<CommRepository>();
 builder.Services.AddSingleton<OutgoingMsgsManager>();
 builder.Services.AddSingleton<AgentsRepository>();
-builder.Services.AddSingleton<LPM.ServerConfigService>(); // Register as Singleton
+builder.Services.AddSingleton<LPM.ServerConfigService>();
 builder.Services.AddSingleton<DevTableVisibilityService>();
 builder.Services.AddSingleton<EMBVersionStorage>();
 builder.Services.AddSingleton<OrdersExcelToJson>();
@@ -87,36 +83,36 @@ builder.Services.AddSingleton<AllScriptResServices>(sp =>
     AllScriptResServices AllScripts = new AllScriptResServices();
     var env = sp.GetRequiredService<IWebHostEnvironment>();
 
-    var ScriptPath = Path.Combine(env.ContentRootPath, "UserFiles","Scripts");
-    var ResultPath = Path.Combine(env.ContentRootPath, "UserFiles","Results");
-    var RwsScriptPath = Path.Combine(env.ContentRootPath, "UserFiles","RwsScripts");
-    var RwsResultPath = Path.Combine(env.ContentRootPath, "UserFiles","RwsResults");
+    var ScriptPath = Path.Combine(env.ContentRootPath, "UserFiles", "Scripts");
+    var ResultPath = Path.Combine(env.ContentRootPath, "UserFiles", "Results");
+    var RwsScriptPath = Path.Combine(env.ContentRootPath, "UserFiles", "RwsScripts");
+    var RwsResultPath = Path.Combine(env.ContentRootPath, "UserFiles", "RwsResults");
     var IniPath = Path.Combine(env.ContentRootPath, "UserFiles", "BitConfigs");
     AllScripts.FullScripts = new ScriptResServices(ScriptPath, ResultPath);
     AllScripts.RwsScripts = new ScriptResServices(RwsScriptPath, RwsResultPath);
-    AllScripts.IniFileServices = new FileService(IniPath,true);
+    AllScripts.IniFileServices = new FileService(IniPath, true);
     return AllScripts;
 });
 
 builder.Services.AddSingleton<IFileStore>(sp =>
 {
-    var env = sp.GetRequiredService<IWebHostEnvironment>();   // available here
+    var env = sp.GetRequiredService<IWebHostEnvironment>();
     return new FileStore(env.ContentRootPath);
 });
-// choose lifetime that fits your engine (no mutable shared state → Transient)
-//builder.Services.AddTransient<MotionScriptEngine>();
+
+// SQLite user database
+builder.Services.AddSingleton<UserDb>();
 
 // Add session services
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>
 {
-    options.IdleTimeout = TimeSpan.FromMinutes(30); // Adjust timeout as needed
+    options.IdleTimeout = TimeSpan.FromMinutes(30);
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
 });
 
 builder.Services.AddHttpContextAccessor();
-
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
@@ -127,10 +123,16 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.Cookie.HttpOnly = true;
         options.Cookie.SameSite = SameSiteMode.Strict;
         options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+        options.ExpireTimeSpan = TimeSpan.FromHours(12);
+        options.SlidingExpiration = true;
     });
 
 var app = builder.Build();
-Globals.ServiceProvider = app.Services;  // ✅ Set global access here
+Globals.ServiceProvider = app.Services;
+
+// Seed admin user
+var userDb = app.Services.GetRequiredService<UserDb>();
+userDb.EnsureSeedUser("edri", "ederi111!!!", "Admin");
 
 // Configure forwarded headers middleware early in the pipeline
 app.UseForwardedHeaders(new ForwardedHeadersOptions
@@ -142,58 +144,71 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
 app.UseSession();
 
-
-//always use devepolment mode until we finish the whole project
-if (true) //app.Environment.IsDevelopment())
+if (true)
 {
-    // Serve static assets with "no-cache" headers in DEV
     app.UseStaticFiles(new StaticFileOptions
     {
         OnPrepareResponse = ctx =>
         {
-            ctx.Context.Response.Headers["Cache-Control"] =
-                "no-cache, no-store, must-revalidate";
+            ctx.Context.Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
             ctx.Context.Response.Headers["Pragma"] = "no-cache";
             ctx.Context.Response.Headers["Expires"] = "0";
         }
     });
 }
-//else
-//{
-//    // normal caching for production
-//    app.UseStaticFiles();
-//}
-
 
 app.UseRouting();
-app.MapControllers();
-
-// Forsight - start TcpEngine and outgoingMsgs
-//var tcpEngine = app.Services.GetRequiredService<TCPEngine>();
-//tcpEngine.Start();
-//var outgoingMsgs = app.Services.GetRequiredService<OutgoingMsgsManager>();
-//outgoingMsgs.Start();
-
-app.MapBlazorHub();
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapControllers();
+
+// Login endpoint — validates credentials and sets auth cookie
+app.MapPost("/loginpost", async (HttpContext ctx, UserDb db) =>
+{
+    var form = await ctx.Request.ReadFormAsync();
+    var username = form["username"].ToString();
+    var password = form["password"].ToString();
+
+    if (db.ValidateUser(username, password, out var role))
+    {
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.Name, username),
+            new Claim(ClaimTypes.Role, role),
+        };
+        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+        await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
+            new ClaimsPrincipal(identity));
+
+        Console.WriteLine($"[Login] '{username}' signed in as {role}");
+        return role == "Admin"
+            ? Results.Redirect("/Admin")
+            : Results.Redirect("/Customer");
+    }
+
+    Console.WriteLine($"[Login] Failed attempt for '{username}'");
+    return Results.Redirect("/login?error=1");
+}).DisableAntiforgery();
+
+// Logout endpoint — clears auth cookie and redirects to login
+app.Map("/logout", async (HttpContext ctx) =>
+{
+    await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    return Results.Redirect("/login");
+});
+
+app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 
 // -----------------------------------------------------------
-//  DOWNLOAD END-POINTS  (Minimal-API style)
-//  /download/Scripts/{fileName}
-//  /download/Results/{fileName}
-//  /download/RwsScripts/{fileName}
-//  /download/RwsResults/{fileName}
+//  DOWNLOAD END-POINTS
 // -----------------------------------------------------------
-
 app.MapGet("/download/Scripts/{fileName}", DownloadHandler("Scripts"));
 app.MapGet("/download/Results/{fileName}", DownloadHandler("Results"));
 app.MapGet("/download/RwsScripts/{fileName}", DownloadHandler("RwsScripts"));
@@ -210,12 +225,12 @@ Func<HttpContext, string, Task<IResult>> DownloadHandler(string bucket) =>
 
         var fullPath = bucket switch
         {
-            "Scripts" => Path.Combine(store.FullScripts!.Scripts.DirectoryPath, fileName),
-            "Results" => Path.Combine(store.FullScripts!.Results.DirectoryPath, fileName),
+            "Scripts"    => Path.Combine(store.FullScripts!.Scripts.DirectoryPath, fileName),
+            "Results"    => Path.Combine(store.FullScripts!.Results.DirectoryPath, fileName),
             "RwsScripts" => Path.Combine(store.RwsScripts!.Scripts.DirectoryPath, fileName),
             "RwsResults" => Path.Combine(store.RwsScripts!.Results.DirectoryPath, fileName),
             "BitConfigs" => Path.Combine(store.IniFileServices!.DirectoryPath, fileName),
-            _ => null
+            _            => null
         };
 
         if (fullPath is null || !System.IO.File.Exists(fullPath))
@@ -226,4 +241,3 @@ Func<HttpContext, string, Task<IResult>> DownloadHandler(string bucket) =>
     };
 
 app.Run();
-
