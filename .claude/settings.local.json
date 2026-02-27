@@ -10,7 +10,11 @@
       "Bash(git:*)",
       "Bash(dotnet build:*)",
       "Bash(dotnet clean:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(xargs wc:*)",
+      "Bash(find .:*)",
+      "Bash(find:*)",
+      "Bash(rm:*)"
     ]
   }
 }
