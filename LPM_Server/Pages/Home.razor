@@ -13,7 +13,10 @@
         <span class="fw-semibold fs-14">
             Week: @DayLabel(_weekStart) – @DayLabel(_weekStart.AddDays(6))
         </span>
-        <button class="btn btn-sm btn-outline-secondary" @onclick="NextWeek">Next →</button>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="NextWeek"
+                disabled="@(_weekStart >= DashboardService.GetWeekStart(MaxAllowedDate()))">
+            Next →
+        </button>
         <button class="btn btn-sm btn-outline-primary ms-auto" @onclick="ShowAddPcModal">+ Add PC</button>
     </div>
 
@@ -28,7 +31,7 @@
     else
     {
         @* ── Grid ── *@
-        <div class="table-responsive px-3">
+        <div class="table-responsive px-3 thick-scroll">
             <table class="table table-bordered table-hover table-sm mb-0" style="min-width:300px;">
                 <thead class="table-light">
                     <tr>
@@ -84,10 +87,11 @@
                     @* ── Day rows ── *@
                     @for (int d = 0; d < 7; d++)
                     {
-                        var day    = _weekStart.AddDays(d);
-                        var dayIdx = d;
+                        var day      = _weekStart.AddDays(d);
+                        var dayIdx   = d;
+                        var isFuture = day > MaxAllowedDate();
                         <tr>
-                            <td class="text-nowrap">@DayLabel(day)</td>
+                            <td class="text-nowrap @(isFuture ? "text-muted" : "")">@DayLabel(day)</td>
                             @if (_myPcs.Count == 0)
                             {
                                 <td class="text-muted text-center small">—</td>
@@ -98,9 +102,9 @@
                                 {
                                     var secs       = _grid.GetValueOrDefault((pc.PcId, dayIdx));
                                     var isSelected = _selPcId == pc.PcId && _selDay == dayIdx;
-                                    <td class="text-center @(isSelected ? "table-primary fw-semibold" : "")"
-                                        style="cursor:pointer;"
-                                        @onclick="() => SelectCell(pc.PcId, dayIdx)">
+                                    <td class="text-center @(isSelected ? "table-primary fw-semibold" : isFuture ? "text-muted" : "")"
+                                        style="@(isFuture ? "cursor:default; background:#f8f9fa; opacity:.55;" : "cursor:pointer;")"
+                                        @onclick="() => TrySelectCell(pc.PcId, dayIdx)">
                                         @DashboardService.Fmt(secs)
                                     </td>
                                 }
@@ -580,7 +584,30 @@
     }
 
     async Task PrevWeek() { _weekStart = _weekStart.AddDays(-7); await RefreshAsync(); }
-    async Task NextWeek() { _weekStart = _weekStart.AddDays(7);  await RefreshAsync(); }
+    async Task NextWeek()
+    {
+        var next = _weekStart.AddDays(7);
+        if (next > DashboardService.GetWeekStart(MaxAllowedDate())) return;
+        _weekStart = next;
+        await RefreshAsync();
+    }
+
+    // ── Future-date guard ──
+    /// Server date + 1 day if server clock is past 14:00 (covers ≤10h timezone difference)
+    static DateOnly MaxAllowedDate()
+    {
+        var now = DateTime.Now;
+        var d   = DateOnly.FromDateTime(now);
+        return now.Hour >= 14 ? d.AddDays(1) : d;
+    }
+
+    static bool IsFutureDate(DateOnly d) => d > MaxAllowedDate();
+
+    void TrySelectCell(int pcId, int dayIdx)
+    {
+        if (IsFutureDate(_weekStart.AddDays(dayIdx))) return;
+        SelectCell(pcId, dayIdx);
+    }
 
     // ── Role toggle ──
     void SetPcRoleAud(int pcId) => SetPcRole(pcId, "Auditor");

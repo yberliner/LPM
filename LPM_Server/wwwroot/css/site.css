@@ -63,3 +63,26 @@ a, .btn-link {
         content: "An error has occurred."
     }
 
+
+/* ── Thick scrollbar for the grid table ── */
+.thick-scroll::-webkit-scrollbar {
+    height: 14px;
+    width:  14px;
+}
+.thick-scroll::-webkit-scrollbar-track {
+    background: #e8eaf6;
+    border-radius: 7px;
+}
+.thick-scroll::-webkit-scrollbar-thumb {
+    background: #3949ab;
+    border-radius: 7px;
+    border: 2px solid #e8eaf6;
+}
+.thick-scroll::-webkit-scrollbar-thumb:hover {
+    background: #1a237e;
+}
+/* Firefox */
+.thick-scroll {
+    scrollbar-width: auto;
+    scrollbar-color: #3949ab #e8eaf6;
+}
