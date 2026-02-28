@@ -122,10 +122,12 @@
                                 </td>
                             }
                         </tr>
-                        <tr>
-                            <td><strong>Grand Total</strong></td>
+                        <tr style="background:linear-gradient(90deg,#1a237e 0%,#283593 100%); color:#fff;">
+                            <td class="fw-bold" style="letter-spacing:.03em;">Grand Total</td>
                             <td colspan="@_myPcs.Count" class="text-center">
-                                <strong>@DashboardService.Fmt(_grid.Values.Sum())</strong>
+                                <span style="font-size:1.25rem; font-weight:700; letter-spacing:.04em;">
+                                    @DashboardService.Fmt(_grid.Values.Sum())
+                                </span>
                             </td>
                         </tr>
                     </tfoot>
@@ -418,6 +420,32 @@
             </div>
         }
 
+        @* ── Weekly History Chart ── *@
+        @if (_weeklyTotals.Count > 0)
+        {
+            <div class="card mx-3 mt-4 mb-3">
+                <div class="card-header py-2 d-flex align-items-center gap-2"
+                     style="background:linear-gradient(90deg,#1a237e 0%,#283593 100%); color:#fff;">
+                    <strong class="fs-14">Weekly Hours — Last 20 Weeks</strong>
+                    <span class="ms-auto small opacity-75">
+                        Total: @DashboardService.Fmt(_weeklyTotals.Sum(w => w.TotalSeconds))
+                    </span>
+                </div>
+                <div class="card-body py-1 px-2">
+                    <ApexChart TItem="WeekTotal"
+                               Options="@_chartOptions"
+                               Height="220">
+                        <ApexPointSeries TItem="WeekTotal"
+                                         Items="@_weeklyTotals"
+                                         Name="Hours"
+                                         SeriesType="SeriesType.Bar"
+                                         XValue="@(w => w.WeekLabel)"
+                                         YValue="@(w => Math.Round((decimal)w.TotalSeconds / 3600m, 2))" />
+                    </ApexChart>
+                </div>
+            </div>
+        }
+
         @* ── Add-PC modal ── *@
         @if (_showAddPcModal)
         {
@@ -512,6 +540,17 @@
     bool   _showAddPcModal;
     string _pcSearch = "";
 
+    // Weekly history chart
+    List<WeekTotal> _weeklyTotals = [];
+    ApexChartOptions<WeekTotal> _chartOptions = new()
+    {
+        Chart = new Chart { Toolbar = new Toolbar { Show = false }, Background = "transparent" },
+        PlotOptions = new PlotOptions { Bar = new PlotOptionsBar { ColumnWidth = "65%", BorderRadius = 4 } },
+        Colors = new List<string> { "#3949ab" },
+        Xaxis = new XAxis { Labels = new XAxisLabels { Rotate = -45, Style = new AxisLabelStyle { FontSize = "11px" } } },
+        Grid = new Grid { BorderColor = "#e0e0e0" },
+    };
+
     protected override async Task OnInitializedAsync()
     {
         var auth     = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -532,7 +571,10 @@
         if (!_userId.HasValue) return;
         _myPcs  = DashSvc.GetUserPcs(_userId.Value);
         _allPcs = DashSvc.GetAllPcs();
-        _grid   = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+        _grid          = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+        _weeklyTotals  = DashSvc.GetWeeklyTotals(_userId.Value,
+                             DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today)),
+                             20, _myPcs);
         _detail = null; _selPcId = null; _selDay = null;
         await InvokeAsync(StateHasChanged);
     }

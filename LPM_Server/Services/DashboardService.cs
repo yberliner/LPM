@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
+using System.Globalization;
 
 namespace LPM.Services;
 
@@ -7,6 +8,10 @@ public record PcInfo(int PcId, string FullName, string Role);
 public record SessionRow(int SessionId, int LengthSec, int AdminSec, bool IsFree, string? Summary, string CreatedAt, string AuditorName);
 public record CsReviewRow(int CsReviewId, int SessionId, int ReviewSec, string Status, string? Notes);
 public record CsWorkRow(int CsWorkLogId, int LengthSec, string? Notes, string CreatedAt);
+public record WeekTotal(DateOnly WeekStart, int TotalSeconds)
+{
+    public string WeekLabel => WeekStart.ToString("dd/MM", CultureInfo.InvariantCulture);
+}
 public record DayDetail(List<SessionRow> Sessions, List<CsReviewRow> Reviews, List<CsWorkRow>? GeneralWork = null);
 
 public class DashboardService
@@ -437,6 +442,81 @@ public class DashboardService
         using var rowIdCmd = conn.CreateCommand();
         rowIdCmd.CommandText = "SELECT last_insert_rowid()";
         return (int)(long)rowIdCmd.ExecuteScalar()!;
+    }
+
+    /// <summary>
+    /// Returns total seconds worked per week for the last <paramref name="weekCount"/> weeks,
+    /// ending with <paramref name="latestWeekStart"/>. Respects each PC's role.
+    /// </summary>
+    public List<WeekTotal> GetWeeklyTotals(
+        int userId, DateOnly latestWeekStart, int weekCount, List<PcInfo> userPcs)
+    {
+        var weeks = Enumerable.Range(0, weekCount)
+            .Select(i => latestWeekStart.AddDays(-(weekCount - 1 - i) * 7))
+            .ToList();
+        var result = weeks.ToDictionary(w => w, _ => 0);
+
+        if (userPcs.Count == 0)
+            return weeks.Select(w => new WeekTotal(w, 0)).ToList();
+
+        var startStr = weeks[0].ToString("yyyy-MM-dd");
+        var auditorPcIds = userPcs.Where(p => p.Role == "Auditor").Select(p => p.PcId).ToList();
+        var csPcIds      = userPcs.Where(p => p.Role == "CS").Select(p => p.PcId).ToList();
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        void Accumulate(string dateStr, int secs)
+        {
+            if (!DateOnly.TryParse(dateStr, out var d)) return;
+            var ws = GetWeekStart(d);
+            if (result.ContainsKey(ws)) result[ws] += secs;
+        }
+
+        if (auditorPcIds.Count > 0)
+        {
+            var pcList = string.Join(",", auditorPcIds);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                SELECT SessionDate, SUM(LengthSeconds + AdminSeconds)
+                FROM Sessions
+                WHERE AuditorId = @uid AND PcId IN ({pcList}) AND SessionDate >= @start
+                GROUP BY SessionDate";
+            cmd.Parameters.AddWithValue("@uid",   userId);
+            cmd.Parameters.AddWithValue("@start", startStr);
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) Accumulate(r.GetString(0), r.GetInt32(1));
+        }
+
+        if (csPcIds.Count > 0)
+        {
+            var pcList = string.Join(",", csPcIds);
+
+            using var revCmd = conn.CreateCommand();
+            revCmd.CommandText = $@"
+                SELECT s.SessionDate, SUM(cr.ReviewLengthSeconds)
+                FROM CsReviews cr
+                JOIN Sessions s ON s.SessionId = cr.SessionId
+                WHERE cr.CsId = @uid AND s.PcId IN ({pcList}) AND s.SessionDate >= @start
+                GROUP BY s.SessionDate";
+            revCmd.Parameters.AddWithValue("@uid",   userId);
+            revCmd.Parameters.AddWithValue("@start", startStr);
+            using var rr = revCmd.ExecuteReader();
+            while (rr.Read()) Accumulate(rr.GetString(0), rr.GetInt32(1));
+
+            using var wCmd = conn.CreateCommand();
+            wCmd.CommandText = $@"
+                SELECT WorkDate, SUM(LengthSeconds)
+                FROM CsWorkLog
+                WHERE CsId = @uid AND PcId IN ({pcList}) AND WorkDate >= @start
+                GROUP BY WorkDate";
+            wCmd.Parameters.AddWithValue("@uid",   userId);
+            wCmd.Parameters.AddWithValue("@start", startStr);
+            using var wr = wCmd.ExecuteReader();
+            while (wr.Read()) Accumulate(wr.GetString(0), wr.GetInt32(1));
+        }
+
+        return weeks.Select(w => new WeekTotal(w, result[w])).ToList();
     }
 
     public int AddCsWork(int csId, int pcId, DateOnly date, int lengthSec, string? notes)
