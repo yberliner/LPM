@@ -1,8 +1,706 @@
 @page "/Home"
-@using Microsoft.AspNetCore.Authorization
+@using System.Globalization
+@using LPM.Services
 @attribute [Authorize]
+@inject DashboardService DashSvc
+@inject AuthenticationStateProvider AuthStateProvider
 
-<div class="p-4">
-    <h3>Welcome</h3>
-    <p class="text-muted">Home page — content coming soon.</p>
+<div @onclick="DismissMenu">
+
+    @* ── Week navigation bar ── *@
+    <div class="d-flex align-items-center flex-wrap gap-2 px-3 py-2 border-bottom mb-3">
+        <button class="btn btn-sm btn-outline-secondary" @onclick="PrevWeek">← Prev</button>
+        <span class="fw-semibold fs-14">
+            Week: @DayLabel(_weekStart) – @DayLabel(_weekStart.AddDays(6))
+        </span>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="NextWeek">Next →</button>
+        <button class="btn btn-sm btn-outline-primary ms-auto" @onclick="ShowAddPcModal">+ Add PC</button>
+    </div>
+
+    @if (_userId == null)
+    {
+        <div class="px-3 text-danger">User record not found in database.</div>
+    }
+    else if (!_isAuditor && !_isCS)
+    {
+        <div class="px-3 text-muted">No Auditor or CS role found for this account.</div>
+    }
+    else
+    {
+        @* ── Grid ── *@
+        <div class="table-responsive px-3">
+            <table class="table table-bordered table-hover table-sm mb-0" style="min-width:300px;">
+                <thead class="table-light">
+                    <tr>
+                        <th style="min-width:110px;">Day</th>
+                        @foreach (var pc in _myPcs)
+                        {
+                            <th class="text-center user-select-none"
+                                style="cursor:context-menu; white-space:nowrap; min-width:90px;"
+                                @oncontextmenu="e => ShowCtxMenu(e, pc.PcId)"
+                                @oncontextmenu:preventDefault="true">
+                                @pc.FullName
+                            </th>
+                        }
+                        @if (_myPcs.Count == 0)
+                        {
+                            <th class="text-muted fst-italic fw-normal">
+                                Click <strong>+ Add PC</strong> to begin
+                            </th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @* ── Role row ── *@
+                    @if (_myPcs.Count > 0)
+                    {
+                        <tr class="table-light">
+                            <td class="fw-semibold small text-muted py-1">Role</td>
+                            @foreach (var pc in _myPcs)
+                            {
+                                <td class="text-center py-1">
+                                    @if (_isCS)
+                                    {
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <button type="button" class="btn @AudBtnClass(pc)"
+                                                    @onclick="() => SetPcRoleAud(pc.PcId)">
+                                                Aud
+                                            </button>
+                                            <button type="button" class="btn @CsBtnClass(pc)"
+                                                    @onclick="() => SetPcRoleCs(pc.PcId)">
+                                                CS
+                                            </button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-primary-transparent">Auditor</span>
+                                    }
+                                </td>
+                            }
+                        </tr>
+                    }
+
+                    @* ── Day rows ── *@
+                    @for (int d = 0; d < 7; d++)
+                    {
+                        var day    = _weekStart.AddDays(d);
+                        var dayIdx = d;
+                        <tr>
+                            <td class="text-nowrap">@DayLabel(day)</td>
+                            @if (_myPcs.Count == 0)
+                            {
+                                <td class="text-muted text-center small">—</td>
+                            }
+                            else
+                            {
+                                @foreach (var pc in _myPcs)
+                                {
+                                    var secs       = _grid.GetValueOrDefault((pc.PcId, dayIdx));
+                                    var isSelected = _selPcId == pc.PcId && _selDay == dayIdx;
+                                    <td class="text-center @(isSelected ? "table-primary fw-semibold" : "")"
+                                        style="cursor:pointer;"
+                                        @onclick="() => SelectCell(pc.PcId, dayIdx)">
+                                        @DashboardService.Fmt(secs)
+                                    </td>
+                                }
+                            }
+                        </tr>
+                    }
+                </tbody>
+                @if (_myPcs.Count > 0)
+                {
+                    <tfoot class="table-light">
+                        <tr>
+                            <td><strong>Σ Week</strong></td>
+                            @foreach (var pc in _myPcs)
+                            {
+                                var total = Enumerable.Range(0, 7)
+                                    .Sum(d => _grid.GetValueOrDefault((pc.PcId, d)));
+                                <td class="text-center">
+                                    <strong>@DashboardService.Fmt(total)</strong>
+                                </td>
+                            }
+                        </tr>
+                        <tr>
+                            <td><strong>Grand Total</strong></td>
+                            <td colspan="@_myPcs.Count" class="text-center">
+                                <strong>@DashboardService.Fmt(_grid.Values.Sum())</strong>
+                            </td>
+                        </tr>
+                    </tfoot>
+                }
+            </table>
+        </div>
+
+        @* ── Context menu ── *@
+        @if (_showCtxMenu)
+        {
+            <div class="card shadow-sm border"
+                 style="position:fixed; top:@(_ctxY)px; left:@(_ctxX)px; z-index:9999; min-width:150px;"
+                 @onclick:stopPropagation="true">
+                <div class="list-group list-group-flush">
+                    <button class="list-group-item list-group-item-action text-danger py-2"
+                            @onclick="RemovePc">
+                        <i class="ri-delete-bin-line me-2"></i>Remove PC
+                    </button>
+                </div>
+            </div>
+        }
+
+        @* ── Detail panel ── *@
+        @if (_selPcId.HasValue && _selDay.HasValue && _detail != null)
+        {
+            var selPcName = _myPcs.FirstOrDefault(p => p.PcId == _selPcId.Value)?.FullName ?? "";
+            var selDate   = _weekStart.AddDays(_selDay.Value);
+            var roleLabel = _selRole == "CS" ? "CS" : "Auditor";
+
+            <div class="card mx-3 mt-3 mb-3" @onclick:stopPropagation="true">
+                <div class="card-header d-flex align-items-center gap-2 py-2">
+                    <strong>@selPcName — @DayLabel(selDate)</strong>
+                    <span class="badge @(_selRole == "CS" ? "bg-success-transparent" : "bg-primary-transparent") ms-1">
+                        @roleLabel
+                    </span>
+                    <button class="btn-close ms-auto" title="Close" @onclick="ClearSelection"></button>
+                </div>
+                <div class="card-body py-2">
+
+                    @if (_selRole == "Auditor")
+                    {
+                        @* ── Auditor view: own sessions ── *@
+                        @if (_detail.Sessions.Count == 0)
+                        {
+                            <p class="text-muted mb-2 small">No sessions recorded for this day.</p>
+                        }
+                        else
+                        {
+                            <ul class="list-unstyled mb-2">
+                                @foreach (var s in _detail.Sessions)
+                                {
+                                    <li class="mb-1 d-flex align-items-center flex-wrap gap-2">
+                                        <span class="badge bg-primary-transparent fs-12">
+                                            @DashboardService.Fmt(s.LengthSec)
+                                        </span>
+                                        @if (s.AdminSec > 0)
+                                        {
+                                            <span class="text-muted small">
+                                                (Admin: @DashboardService.Fmt(s.AdminSec))
+                                            </span>
+                                        }
+                                        @if (s.IsFree)
+                                        {
+                                            <span class="badge bg-warning-transparent">Free</span>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(s.Summary))
+                                        {
+                                            <em class="text-muted small">"@s.Summary"</em>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        }
+
+                        @* Add Session button / form *@
+                        @if (!_showAddSession)
+                        {
+                            <button class="btn btn-sm btn-outline-primary"
+                                    @onclick="OpenAddSession">
+                                + Add Session
+                            </button>
+                        }
+                        else
+                        {
+                            <div class="border rounded p-3 mt-2 bg-light">
+                                <h6 class="mb-2">Add Session</h6>
+                                <div class="row g-2 align-items-end">
+                                    <div class="col-auto">
+                                        <label class="form-label mb-0 small">Duration (H:MM)</label>
+                                        <input class="form-control form-control-sm"
+                                               style="width:90px;" placeholder="1:30"
+                                               @bind="_addDuration" @bind:event="oninput" />
+                                    </div>
+                                    <div class="col-auto">
+                                        <label class="form-label mb-0 small">Admin min</label>
+                                        <input class="form-control form-control-sm"
+                                               style="width:70px;" type="number" min="0"
+                                               @bind="_addAdminMin" />
+                                    </div>
+                                    <div class="col-auto d-flex align-items-end pb-1">
+                                        <div class="form-check mb-0">
+                                            <input class="form-check-input" type="checkbox"
+                                                   id="chkFree" @bind="_addIsFree" />
+                                            <label class="form-check-label small" for="chkFree">Free</label>
+                                        </div>
+                                    </div>
+                                    <div class="col">
+                                        <label class="form-label mb-0 small">Summary</label>
+                                        <input class="form-control form-control-sm"
+                                               placeholder="Notes..."
+                                               @bind="_addSummary" />
+                                    </div>
+                                    <div class="col-auto">
+                                        <button class="btn btn-sm btn-primary" @onclick="SaveSession">Save</button>
+                                        <button class="btn btn-sm btn-link text-danger"
+                                                @onclick="CancelAddSession">Cancel</button>
+                                    </div>
+                                </div>
+                                @if (!string.IsNullOrEmpty(_addError))
+                                {
+                                    <div class="text-danger small mt-1">@_addError</div>
+                                }
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        @* ── CS view: all sessions (read-only) with review status ── *@
+                        @if (_detail.Sessions.Count == 0)
+                        {
+                            <p class="text-muted mb-2 small">No sessions recorded for this day.</p>
+                        }
+                        else
+                        {
+                            <ul class="list-unstyled mb-2">
+                                @foreach (var s in _detail.Sessions)
+                                {
+                                    var rev = _detail.Reviews.FirstOrDefault(r => r.SessionId == s.SessionId);
+                                    <li class="mb-2 border rounded p-2">
+                                        <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
+                                            <span class="fw-semibold small">@s.AuditorName</span>
+                                            <span class="badge bg-primary-transparent fs-12">
+                                                @DashboardService.Fmt(s.LengthSec)
+                                            </span>
+                                            @if (s.AdminSec > 0)
+                                            {
+                                                <span class="text-muted small">
+                                                    (Admin: @DashboardService.Fmt(s.AdminSec))
+                                                </span>
+                                            }
+                                            @if (s.IsFree)
+                                            {
+                                                <span class="badge bg-warning-transparent">Free</span>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(s.Summary))
+                                            {
+                                                <em class="text-muted small">"@s.Summary"</em>
+                                            }
+                                        </div>
+                                        @if (rev != null)
+                                        {
+                                            <div class="d-flex align-items-center gap-2 small">
+                                                <i class="ri-checkbox-circle-line text-success"></i>
+                                                <span class="badge bg-success-transparent">
+                                                    @DashboardService.Fmt(rev.ReviewSec)
+                                                </span>
+                                                <span>@rev.Status</span>
+                                                @if (!string.IsNullOrWhiteSpace(rev.Notes))
+                                                {
+                                                    <em class="text-muted">"@rev.Notes"</em>
+                                                }
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-outline-success py-0 mt-1"
+                                                    @onclick="() => StartAddReview(s.SessionId)">
+                                                + CS Review
+                                            </button>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        }
+
+                        @* Add CS Review form *@
+                        @if (_showAddReview)
+                        {
+                            <div class="border rounded p-3 mt-2 bg-light">
+                                <h6 class="mb-2">Add CS Review (Session #@_addReviewSessionId)</h6>
+                                <div class="row g-2 align-items-end">
+                                    <div class="col-auto">
+                                        <label class="form-label mb-0 small">Duration (H:MM)</label>
+                                        <input class="form-control form-control-sm"
+                                               style="width:90px;" placeholder="0:30"
+                                               @bind="_addReviewDuration" @bind:event="oninput" />
+                                    </div>
+                                    <div class="col-auto">
+                                        <label class="form-label mb-0 small">Status</label>
+                                        <select class="form-select form-select-sm"
+                                                @bind="_addReviewStatus">
+                                            <option value="Approved">Approved</option>
+                                            <option value="NeedsCorrection">Needs Correction</option>
+                                            <option value="Rejected">Rejected</option>
+                                        </select>
+                                    </div>
+                                    <div class="col">
+                                        <label class="form-label mb-0 small">Notes</label>
+                                        <input class="form-control form-control-sm"
+                                               placeholder="Notes..."
+                                               @bind="_addReviewNotes" />
+                                    </div>
+                                    <div class="col-auto">
+                                        <button class="btn btn-sm btn-primary" @onclick="SaveReview">Save</button>
+                                        <button class="btn btn-sm btn-link text-danger"
+                                                @onclick="CancelAddReview">Cancel</button>
+                                    </div>
+                                </div>
+                                @if (!string.IsNullOrEmpty(_reviewError))
+                                {
+                                    <div class="text-danger small mt-1">@_reviewError</div>
+                                }
+                            </div>
+                        }
+
+                        @* ── General CS Work ── *@
+                        <hr class="my-2" />
+                        <div class="fw-semibold small text-muted mb-1">General CS Work</div>
+                        @if (_detail.GeneralWork != null && _detail.GeneralWork.Count > 0)
+                        {
+                            <ul class="list-unstyled mb-2">
+                                @foreach (var w in _detail.GeneralWork)
+                                {
+                                    <li class="mb-1 d-flex align-items-center gap-2">
+                                        <span class="badge bg-info-transparent fs-12">
+                                            @DashboardService.Fmt(w.LengthSec)
+                                        </span>
+                                        @if (!string.IsNullOrWhiteSpace(w.Notes))
+                                        {
+                                            <em class="text-muted small">"@w.Notes"</em>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        }
+                        else
+                        {
+                            <p class="text-muted small mb-1">No general CS work recorded.</p>
+                        }
+
+                        @if (!_showAddGeneralCs)
+                        {
+                            <button class="btn btn-sm btn-outline-info"
+                                    @onclick="OpenAddGeneralCs">
+                                + General CS
+                            </button>
+                        }
+                        else
+                        {
+                            <div class="border rounded p-3 mt-2 bg-light">
+                                <h6 class="mb-2">Add General CS Work</h6>
+                                <div class="row g-2 align-items-end">
+                                    <div class="col-auto">
+                                        <label class="form-label mb-0 small">Duration (H:MM)</label>
+                                        <input class="form-control form-control-sm"
+                                               style="width:90px;" placeholder="0:30"
+                                               @bind="_addGeneralCsDuration" @bind:event="oninput" />
+                                    </div>
+                                    <div class="col">
+                                        <label class="form-label mb-0 small">Notes</label>
+                                        <input class="form-control form-control-sm"
+                                               placeholder="Notes..."
+                                               @bind="_addGeneralCsNotes" />
+                                    </div>
+                                    <div class="col-auto">
+                                        <button class="btn btn-sm btn-primary" @onclick="SaveGeneralCs">Save</button>
+                                        <button class="btn btn-sm btn-link text-danger"
+                                                @onclick="CancelAddGeneralCs">Cancel</button>
+                                    </div>
+                                </div>
+                                @if (!string.IsNullOrEmpty(_generalCsError))
+                                {
+                                    <div class="text-danger small mt-1">@_generalCsError</div>
+                                }
+                            </div>
+                        }
+                    }
+
+                </div>
+            </div>
+        }
+
+        @* ── Add-PC modal ── *@
+        @if (_showAddPcModal)
+        {
+            <div class="modal show d-block" tabindex="-1"
+                 style="background:rgba(0,0,0,.4);"
+                 @onclick="() => _showAddPcModal = false">
+                <div class="modal-dialog modal-dialog-centered"
+                     @onclick:stopPropagation="true">
+                    <div class="modal-content">
+                        <div class="modal-header py-2">
+                            <h5 class="modal-title fs-15">Add PC to Dashboard</h5>
+                            <button type="button" class="btn-close"
+                                    @onclick="() => _showAddPcModal = false"></button>
+                        </div>
+                        <div class="modal-body">
+                            <input class="form-control mb-3" placeholder="Search..."
+                                   @bind="_pcSearch" @bind:event="oninput" />
+                            <div style="max-height:320px; overflow-y:auto;">
+                                @{
+                                    var myPcIds   = _myPcs.Select(p => p.PcId).ToHashSet();
+                                    var available = _allPcs
+                                        .Where(p => !myPcIds.Contains(p.PcId))
+                                        .Where(p => string.IsNullOrEmpty(_pcSearch)
+                                                    || p.FullName.Contains(_pcSearch,
+                                                           StringComparison.OrdinalIgnoreCase))
+                                        .ToList();
+                                }
+                                @if (available.Count == 0)
+                                {
+                                    <p class="text-muted text-center">No PCs available to add.</p>
+                                }
+                                @foreach (var pc in available)
+                                {
+                                    <div class="list-group-item list-group-item-action"
+                                         style="cursor:pointer;"
+                                         @onclick="() => AddPc(pc.PcId)">
+                                        @pc.FullName
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+
 </div>
+
+@code {
+
+    int?          _userId;
+    bool          _isAuditor, _isCS;
+    DateOnly      _weekStart;
+    List<PcInfo>  _myPcs  = [];
+    List<PcInfo>  _allPcs = [];
+    Dictionary<(int, int), int> _grid = [];
+
+    int?       _selPcId;
+    int?       _selDay;
+    string     _selRole = "Auditor";
+    DayDetail? _detail;
+
+    // Add Session form
+    bool   _showAddSession;
+    string _addDuration = "";
+    string _addAdminMin = "0";
+    bool   _addIsFree;
+    string _addSummary  = "";
+    string _addError    = "";
+
+    // Add CS Review form
+    bool   _showAddReview;
+    int    _addReviewSessionId;
+    string _addReviewDuration = "";
+    string _addReviewStatus   = "Approved";
+    string _addReviewNotes    = "";
+    string _reviewError       = "";
+
+    // Add General CS form
+    bool   _showAddGeneralCs;
+    string _addGeneralCsDuration = "";
+    string _addGeneralCsNotes    = "";
+    string _generalCsError       = "";
+
+    // Context menu
+    bool   _showCtxMenu;
+    int    _ctxPcId;
+    double _ctxX, _ctxY;
+
+    // Add-PC modal
+    bool   _showAddPcModal;
+    string _pcSearch = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth     = await AuthStateProvider.GetAuthenticationStateAsync();
+        var username = auth.User.Identity?.Name ?? "";
+
+        _userId = DashSvc.GetUserIdByUsername(username);
+        if (_userId.HasValue)
+        {
+            _isAuditor = DashSvc.IsAuditor(_userId.Value);
+            _isCS      = DashSvc.IsCS(_userId.Value);
+        }
+        _weekStart = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
+        await RefreshAsync();
+    }
+
+    async Task RefreshAsync()
+    {
+        if (!_userId.HasValue) return;
+        _myPcs  = DashSvc.GetUserPcs(_userId.Value);
+        _allPcs = DashSvc.GetAllPcs();
+        _grid   = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+        _detail = null; _selPcId = null; _selDay = null;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task PrevWeek() { _weekStart = _weekStart.AddDays(-7); await RefreshAsync(); }
+    async Task NextWeek() { _weekStart = _weekStart.AddDays(7);  await RefreshAsync(); }
+
+    // ── Role toggle ──
+    void SetPcRoleAud(int pcId) => SetPcRole(pcId, "Auditor");
+    void SetPcRoleCs(int pcId)  => SetPcRole(pcId, "CS");
+
+    void SetPcRole(int pcId, string role)
+    {
+        DashSvc.SetUserPcRole(_userId!.Value, pcId, role);
+        _myPcs = DashSvc.GetUserPcs(_userId.Value);
+        _grid  = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+        if (_selPcId == pcId) ClearSelection();
+    }
+
+    string AudBtnClass(PcInfo pc) =>
+        pc.Role == "Auditor" ? "btn-sm btn-primary" : "btn-sm btn-outline-secondary";
+    string CsBtnClass(PcInfo pc) =>
+        pc.Role == "CS" ? "btn-sm btn-success" : "btn-sm btn-outline-secondary";
+
+    // ── Context menu ──
+    void ShowCtxMenu(MouseEventArgs e, int pcId)
+    {
+        _showCtxMenu = true;
+        _ctxPcId = pcId;
+        _ctxX = e.ClientX;
+        _ctxY = e.ClientY;
+    }
+
+    void DismissMenu() => _showCtxMenu = false;
+
+    async Task RemovePc()
+    {
+        DashSvc.RemoveUserPc(_userId!.Value, _ctxPcId);
+        _showCtxMenu = false;
+        await RefreshAsync();
+    }
+
+    // ── Add-PC modal ──
+    void ShowAddPcModal() { _showAddPcModal = true; _pcSearch = ""; }
+
+    async Task AddPc(int pcId)
+    {
+        DashSvc.AddUserPc(_userId!.Value, pcId);
+        _showAddPcModal = false;
+        _pcSearch = "";
+        await RefreshAsync();
+    }
+
+    // ── Cell selection ──
+    void SelectCell(int pcId, int dayIdx)
+    {
+        _selPcId = pcId;
+        _selDay  = dayIdx;
+        _selRole = _myPcs.FirstOrDefault(p => p.PcId == pcId)?.Role ?? "Auditor";
+        _detail  = DashSvc.GetDayDetail(_userId!.Value, pcId, _weekStart.AddDays(dayIdx), _selRole);
+        _showAddSession  = false;
+        _showAddReview   = false;
+        _showAddGeneralCs = false;
+        _addError        = "";
+        _reviewError     = "";
+        _generalCsError  = "";
+    }
+
+    void ClearSelection() { _selPcId = null; _selDay = null; _detail = null; }
+
+    // ── Add Session ──
+    void OpenAddSession()   { _showAddSession = true;  _addError = ""; }
+    void CancelAddSession() { _showAddSession = false; _addError = ""; }
+
+    void SaveSession()
+    {
+        int secs = ParseTime(_addDuration);
+        if (secs <= 0) { _addError = "Invalid duration — use H:MM (e.g. 1:30)."; return; }
+        if (!int.TryParse(_addAdminMin, out int adminMin) || adminMin < 0)
+        {
+            _addError = "Invalid admin time.";
+            return;
+        }
+
+        DashSvc.AddSession(
+            _userId!.Value, _selPcId!.Value,
+            _weekStart.AddDays(_selDay!.Value),
+            secs, adminMin * 60, _addIsFree,
+            string.IsNullOrWhiteSpace(_addSummary) ? null : _addSummary);
+
+        _showAddSession = false;
+        _addDuration = ""; _addAdminMin = "0"; _addIsFree = false;
+        _addSummary = ""; _addError = "";
+
+        _detail = DashSvc.GetDayDetail(_userId.Value, _selPcId.Value,
+            _weekStart.AddDays(_selDay.Value), _selRole);
+        _grid = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+    }
+
+    // ── Add CS Review ──
+    void StartAddReview(int sessionId)
+    {
+        _addReviewSessionId = sessionId;
+        _showAddReview      = true;
+        _reviewError        = "";
+    }
+
+    void CancelAddReview() { _showAddReview = false; _reviewError = ""; }
+
+    // ── Add General CS ──
+    void OpenAddGeneralCs()   { _showAddGeneralCs = true;  _generalCsError = ""; }
+    void CancelAddGeneralCs() { _showAddGeneralCs = false; _generalCsError = ""; }
+
+    void SaveGeneralCs()
+    {
+        int secs = ParseTime(_addGeneralCsDuration);
+        if (secs <= 0) { _generalCsError = "Invalid duration — use H:MM (e.g. 0:30)."; return; }
+
+        DashSvc.AddCsWork(
+            _userId!.Value, _selPcId!.Value,
+            _weekStart.AddDays(_selDay!.Value),
+            secs,
+            string.IsNullOrWhiteSpace(_addGeneralCsNotes) ? null : _addGeneralCsNotes);
+
+        _showAddGeneralCs = false;
+        _addGeneralCsDuration = ""; _addGeneralCsNotes = ""; _generalCsError = "";
+
+        _detail = DashSvc.GetDayDetail(_userId.Value, _selPcId.Value,
+            _weekStart.AddDays(_selDay.Value), _selRole);
+        _grid = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+    }
+
+    void SaveReview()
+    {
+        int secs = ParseTime(_addReviewDuration);
+        if (secs <= 0) { _reviewError = "Invalid duration — use H:MM (e.g. 0:30)."; return; }
+
+        try
+        {
+            DashSvc.AddCsReview(
+                _userId!.Value, _addReviewSessionId, secs, _addReviewStatus,
+                string.IsNullOrWhiteSpace(_addReviewNotes) ? null : _addReviewNotes);
+        }
+        catch (Exception ex) when (ex.Message.Contains("UNIQUE"))
+        {
+            _reviewError = "A CS review already exists for this session.";
+            return;
+        }
+
+        _showAddReview = false;
+        _addReviewDuration = ""; _addReviewStatus = "Approved";
+        _addReviewNotes = ""; _reviewError = "";
+
+        _detail = DashSvc.GetDayDetail(_userId!.Value, _selPcId!.Value,
+            _weekStart.AddDays(_selDay!.Value), _selRole);
+        _grid = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+    }
+
+    // ── Helpers ──
+    static int ParseTime(string hhmm)
+    {
+        if (string.IsNullOrWhiteSpace(hhmm)) return 0;
+        var parts = hhmm.Trim().Split(':');
+        if (parts.Length != 2) return 0;
+        if (!int.TryParse(parts[0], out int h) || !int.TryParse(parts[1], out int m)) return 0;
+        return h * 3600 + m * 60;
+    }
+
+    static string DayLabel(DateOnly d) =>
+        d.ToString("ddd dd/MM", CultureInfo.InvariantCulture);
+}
