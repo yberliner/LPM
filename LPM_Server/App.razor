@@ -62,25 +62,7 @@ else
         var role     = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
         Console.WriteLine($"[App] Authenticated: '{username}' role='{role}'");
 
-        if (role == "Admin")
-        {
-            // Admins don't need a TCP agent
-            _initialized = true;
-            StateHasChanged();
-            return;
-        }
-
-        // Customer — verify agent exists in TCP system
-        bool isAgentExists = _agentsRepository.GetClientAgentData(username) != null;
-        if (!isAgentExists)
-        {
-            Console.WriteLine($"[App] Agent '{username}' not found (server restart?). Redirecting to /logout");
-            Navigation.NavigateTo("/logout", forceLoad: true);
-            return;
-        }
-
-        udpClient.ClientRefresh(username);
-        Console.WriteLine($"[App] ClientRefresh done for '{username}'");
+        // All authenticated users proceed — TCP agent check not required
         _initialized = true;
         StateHasChanged();
     }

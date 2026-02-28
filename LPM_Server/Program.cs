@@ -132,10 +132,6 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 var app = builder.Build();
 Globals.ServiceProvider = app.Services;
 
-// Seed admin user
-var userDb = app.Services.GetRequiredService<UserDb>();
-userDb.EnsureSeedUser("edri", "ederi111!!!", "Admin");
-
 // Configure forwarded headers middleware early in the pipeline
 app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
@@ -177,25 +173,24 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db) =>
     var username = form["username"].ToString();
     var password = form["password"].ToString();
 
-    if (db.ValidateUser(username, password, out var role))
+    if (db.ValidateUser(username, password, out var roles))
     {
-        var claims = new[]
-        {
-            new Claim(ClaimTypes.Name, username),
-            new Claim(ClaimTypes.Role, role),
-        };
+        var claims = new List<Claim> { new Claim(ClaimTypes.Name, username) };
+        foreach (var r in roles)
+            claims.Add(new Claim(ClaimTypes.Role, r));
+
         var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
         await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
             new ClaimsPrincipal(identity));
 
-        Console.WriteLine($"[Login] '{username}' signed in as {role}");
-        return role == "Admin"
+        Console.WriteLine($"[Login] '{username}' signed in as [{string.Join(", ", roles)}]");
+        return roles.Contains("Admin")
             ? Results.Redirect("/Admin")
-            : Results.Redirect("/Customer");
+            : Results.Redirect("/Home");
     }
 
     Console.WriteLine($"[Login] Failed attempt for '{username}'");
-    return Results.Redirect("/login?error=1");
+    return Results.Redirect($"/login?error=1&username={Uri.EscapeDataString(username)}");
 }).DisableAntiforgery();
 
 // Logout endpoint — clears auth cookie and redirects to login
