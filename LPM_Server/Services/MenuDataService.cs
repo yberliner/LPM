@@ -5,16 +5,16 @@ public class MenuDataService
         new MainMenuItems(
             menuTitle: "Main"
         ),
-        new MainMenuItems (
-            path: "/Customer",
-            type: "link",
-            title: "Customer",
-            icon: "",
-            svg: "<svg id='fi_8901603' enable-background='new 0 0 66 66' height='24pt' viewBox='0 0 66 66' width='30pt' xmlns='http://www.w3.org/2000/svg'><g><path d='m24.86 51.13h16.27l3.78 7.52h-23.82z' fill='#5d5b68'></path><path d='m16.4 58.65h33.19v4h-33.19z' fill='#848792'></path><path d='m60.52 3.35h-55.04c-1.92 0-3.48 1.56-3.48 3.48v36.23h62v-36.23c0-1.92-1.56-3.48-3.48-3.48z' fill='#e6e9ee'></path><path d='m60.95 3.39c.02.15.05.29.05.44 0 20.01-16.22 36.23-36.23 36.23h-22.77v3h62v-36.23c0-1.77-1.33-3.22-3.05-3.44z' fill='#c8ced6'></path><path d='m2 43.06v4.6c0 1.92 1.56 3.48 3.48 3.48h55.04c1.92 0 3.48-1.56 3.48-3.48v-4.6z' fill='#848792'></path><path d='m46.11 15.05h4.81v23.01h-4.81z' fill='#2c92bf'></path><path d='m30.02 25.06h4.81v13h-4.81z' fill='#2c92bf' transform='matrix(-1 0 0 -1 64.85 63.117)'></path><path d='m54.15 25.06h4.81v13h-4.81z' fill='#4ec4a5'></path><path d='m56.95 25.06h2v13h-2z' fill='#30aa87' transform='matrix(-1 0 0 -1 115.909 63.117)'></path><path d='m38.06 31.06h4.81v6.99h-4.81z' fill='#4ec4a5' transform='matrix(-1 0 0 -1 80.934 69.122)'></path><path d='m17.4 8.36c-.08 0-.15-.01-.23-.01-5.61 0-10.17 4.56-10.17 10.18 0 2.87 1.19 5.45 3.1 7.3l7.3-7.3z' fill='#e1533b'></path><path d='m10.1 25.83c1.83 1.78 4.32 2.87 7.08 2.87 5.62 0 10.18-4.56 10.18-10.18h-9.96z' fill='#f8ce01'></path><path d='m17.4 8.36v10.17h9.95c0-5.55-4.43-10.05-9.95-10.17z' fill='#5f6fe7'></path><circle cx='33' cy='47.1' fill='#c8ced6' r='1'></circle><g><path d='m24.09 35.56h-17.09c-.55 0-1-.45-1-1s.45-1 1-1h17.09c.55 0 1 .45 1 1s-.45 1-1 1z' fill='#6e7fed'></path></g><g><path d='m17.4 39.06h-10.4c-.55 0-1-.45-1-1s.45-1 1-1h10.4c.55 0 1 .45 1 1s-.44 1-1 1z' fill='#6e7fed'></path></g><path d='m40.87 31.06h2v6.99h-2z' fill='#30aa87' transform='matrix(-1 0 0 -1 83.74 69.122)'></path><g fill='#1f81a3'><path d='m48.91 15.05h2v23.01h-2z' transform='matrix(-1 0 0 -1 99.824 53.109)'></path><path d='m32.83 25.06h2v13h-2z' transform='matrix(-1 0 0 -1 67.655 63.117)'></path></g></g></svg>",
-            selected: false,
-            active: false,
-            dirChange: false
-        ),
+        //new MainMenuItems (
+        //    path: "/Customer",
+        //    type: "link",
+        //    title: "Customer",
+        //    icon: "",
+        //    svg: "<svg id='fi_8901603' enable-background='new 0 0 66 66' height='24pt' viewBox='0 0 66 66' width='30pt' xmlns='http://www.w3.org/2000/svg'><g><path d='m24.86 51.13h16.27l3.78 7.52h-23.82z' fill='#5d5b68'></path><path d='m16.4 58.65h33.19v4h-33.19z' fill='#848792'></path><path d='m60.52 3.35h-55.04c-1.92 0-3.48 1.56-3.48 3.48v36.23h62v-36.23c0-1.92-1.56-3.48-3.48-3.48z' fill='#e6e9ee'></path><path d='m60.95 3.39c.02.15.05.29.05.44 0 20.01-16.22 36.23-36.23 36.23h-22.77v3h62v-36.23c0-1.77-1.33-3.22-3.05-3.44z' fill='#c8ced6'></path><path d='m2 43.06v4.6c0 1.92 1.56 3.48 3.48 3.48h55.04c1.92 0 3.48-1.56 3.48-3.48v-4.6z' fill='#848792'></path><path d='m46.11 15.05h4.81v23.01h-4.81z' fill='#2c92bf'></path><path d='m30.02 25.06h4.81v13h-4.81z' fill='#2c92bf' transform='matrix(-1 0 0 -1 64.85 63.117)'></path><path d='m54.15 25.06h4.81v13h-4.81z' fill='#4ec4a5'></path><path d='m56.95 25.06h2v13h-2z' fill='#30aa87' transform='matrix(-1 0 0 -1 115.909 63.117)'></path><path d='m38.06 31.06h4.81v6.99h-4.81z' fill='#4ec4a5' transform='matrix(-1 0 0 -1 80.934 69.122)'></path><path d='m17.4 8.36c-.08 0-.15-.01-.23-.01-5.61 0-10.17 4.56-10.17 10.18 0 2.87 1.19 5.45 3.1 7.3l7.3-7.3z' fill='#e1533b'></path><path d='m10.1 25.83c1.83 1.78 4.32 2.87 7.08 2.87 5.62 0 10.18-4.56 10.18-10.18h-9.96z' fill='#f8ce01'></path><path d='m17.4 8.36v10.17h9.95c0-5.55-4.43-10.05-9.95-10.17z' fill='#5f6fe7'></path><circle cx='33' cy='47.1' fill='#c8ced6' r='1'></circle><g><path d='m24.09 35.56h-17.09c-.55 0-1-.45-1-1s.45-1 1-1h17.09c.55 0 1 .45 1 1s-.45 1-1 1z' fill='#6e7fed'></path></g><g><path d='m17.4 39.06h-10.4c-.55 0-1-.45-1-1s.45-1 1-1h10.4c.55 0 1 .45 1 1s-.44 1-1 1z' fill='#6e7fed'></path></g><path d='m40.87 31.06h2v6.99h-2z' fill='#30aa87' transform='matrix(-1 0 0 -1 83.74 69.122)'></path><g fill='#1f81a3'><path d='m48.91 15.05h2v23.01h-2z' transform='matrix(-1 0 0 -1 99.824 53.109)'></path><path d='m32.83 25.06h2v13h-2z' transform='matrix(-1 0 0 -1 67.655 63.117)'></path></g></g></svg>",
+        //    selected: false,
+        //    active: false,
+        //    dirChange: false
+        //),
         new MainMenuItems (
             path: "/",
             type: "link",
