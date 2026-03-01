@@ -24,6 +24,7 @@ public class DashboardService
         _connectionString = $"Data Source={dbPath}";
         EnsureStaffPcListTable();
         EnsureCsWorkLogTable();
+        EnsureMiscChargeTable();
     }
 
     private void EnsureStaffPcListTable()
@@ -69,6 +70,29 @@ public class DashboardService
               CreatedAt     TEXT    NOT NULL DEFAULT (datetime('now')),
               FOREIGN KEY (CsId) REFERENCES CaseSupervisors(CsId),
               FOREIGN KEY (PcId) REFERENCES PCs(PcId)
+            )";
+        cmd.ExecuteNonQuery();
+    }
+
+    private void EnsureMiscChargeTable()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            CREATE TABLE IF NOT EXISTS MiscCharge (
+              MiscChargeId  INTEGER PRIMARY KEY AUTOINCREMENT,
+              AuditorId     INTEGER NOT NULL,
+              PcId          INTEGER NOT NULL,
+              ChargeDate    TEXT    NOT NULL,
+              SequenceInDay INTEGER NOT NULL DEFAULT 1,
+              LengthSeconds INTEGER NOT NULL DEFAULT 0,
+              AdminSeconds  INTEGER NOT NULL DEFAULT 0,
+              IsFree        INTEGER NOT NULL DEFAULT 0,
+              Summary       TEXT,
+              CreatedAt     TEXT    NOT NULL DEFAULT (datetime('now')),
+              FOREIGN KEY (AuditorId) REFERENCES Persons(PersonId),
+              FOREIGN KEY (PcId)      REFERENCES PCs(PcId)
             )";
         cmd.ExecuteNonQuery();
     }
@@ -197,6 +221,7 @@ public class DashboardService
 
         var auditorPcIds = userPcs.Where(p => p.Role == "Auditor").Select(p => p.PcId).ToList();
         var csPcIds      = userPcs.Where(p => p.Role == "CS").Select(p => p.PcId).ToList();
+        var miscPcIds    = userPcs.Where(p => p.Role == "Miscellaneous").Select(p => p.PcId).ToList();
 
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -268,6 +293,29 @@ public class DashboardService
             }
         }
 
+        if (miscPcIds.Count > 0)
+        {
+            var pcList = string.Join(",", miscPcIds);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                SELECT PcId, ChargeDate, SUM(LengthSeconds + AdminSeconds)
+                FROM MiscCharge
+                WHERE AuditorId = @uid AND PcId IN ({pcList}) AND ChargeDate IN ({dateList})
+                GROUP BY PcId, ChargeDate";
+            cmd.Parameters.AddWithValue("@uid", userId);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var pcId   = r.GetInt32(0);
+                var date   = DateOnly.Parse(r.GetString(1));
+                var secs   = r.GetInt32(2);
+                var dayIdx = dates.IndexOf(date);
+                if (dayIdx < 0) continue;
+                var key = (pcId, dayIdx);
+                result[key] = result.GetValueOrDefault(key) + secs;
+            }
+        }
+
         return result;
     }
 
@@ -293,6 +341,30 @@ public class DashboardService
                        IsFreeSession, SessionSummaryHtml, CreatedAt
                 FROM Sessions
                 WHERE AuditorId = @uid AND PcId = @pcId AND SessionDate = @date
+                ORDER BY SequenceInDay";
+            cmd.Parameters.AddWithValue("@uid",  userId);
+            cmd.Parameters.AddWithValue("@pcId", pcId);
+            cmd.Parameters.AddWithValue("@date", dateStr);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                sessions.Add(new SessionRow(
+                    r.GetInt32(0), r.GetInt32(1), r.GetInt32(2),
+                    r.GetInt32(3) == 1,
+                    r.IsDBNull(4) ? null : r.GetString(4),
+                    r.IsDBNull(5) ? ""   : r.GetString(5),
+                    ""));
+            }
+        }
+        else if (role == "Miscellaneous")
+        {
+            // MiscCharge entries are per-auditor — each auditor sees only their own rows
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT MiscChargeId, LengthSeconds, AdminSeconds,
+                       IsFree, Summary, CreatedAt
+                FROM MiscCharge
+                WHERE AuditorId = @uid AND PcId = @pcId AND ChargeDate = @date
                 ORDER BY SequenceInDay";
             cmd.Parameters.AddWithValue("@uid",  userId);
             cmd.Parameters.AddWithValue("@pcId", pcId);
@@ -420,6 +492,47 @@ public class DashboardService
         return (int)(long)rowIdCmd.ExecuteScalar()!;
     }
 
+    public int AddMiscCharge(
+        int auditorId, int pcId, DateOnly date,
+        int lengthSec, int adminSec, bool isFree, string? summary)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        var dateStr = date.ToString("yyyy-MM-dd");
+
+        using var seqCmd = conn.CreateCommand();
+        seqCmd.CommandText = @"
+            SELECT COALESCE(MAX(SequenceInDay), 0) + 1
+            FROM MiscCharge
+            WHERE AuditorId = @uid AND PcId = @pcId AND ChargeDate = @date";
+        seqCmd.Parameters.AddWithValue("@uid",  auditorId);
+        seqCmd.Parameters.AddWithValue("@pcId", pcId);
+        seqCmd.Parameters.AddWithValue("@date", dateStr);
+        var seq = (long)(seqCmd.ExecuteScalar() ?? 1L);
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO MiscCharge
+              (AuditorId, PcId, ChargeDate, SequenceInDay,
+               LengthSeconds, AdminSeconds, IsFree, Summary, CreatedAt)
+            VALUES
+              (@audId, @pcId, @date, @seq,
+               @len, @adm, @free, @sum, datetime('now'))";
+        cmd.Parameters.AddWithValue("@audId", auditorId);
+        cmd.Parameters.AddWithValue("@pcId",  pcId);
+        cmd.Parameters.AddWithValue("@date",  dateStr);
+        cmd.Parameters.AddWithValue("@seq",   seq);
+        cmd.Parameters.AddWithValue("@len",   lengthSec);
+        cmd.Parameters.AddWithValue("@adm",   adminSec);
+        cmd.Parameters.AddWithValue("@free",  isFree ? 1 : 0);
+        cmd.Parameters.AddWithValue("@sum",   (object?)summary ?? DBNull.Value);
+        cmd.ExecuteNonQuery();
+
+        using var rowIdCmd = conn.CreateCommand();
+        rowIdCmd.CommandText = "SELECT last_insert_rowid()";
+        return (int)(long)rowIdCmd.ExecuteScalar()!;
+    }
+
     public int AddCsReview(
         int csId, int sessionId, int reviewSec, string status, string? notes)
     {
@@ -462,6 +575,7 @@ public class DashboardService
         var startStr = weeks[0].ToString("yyyy-MM-dd");
         var auditorPcIds = userPcs.Where(p => p.Role == "Auditor").Select(p => p.PcId).ToList();
         var csPcIds      = userPcs.Where(p => p.Role == "CS").Select(p => p.PcId).ToList();
+        var miscPcIds    = userPcs.Where(p => p.Role == "Miscellaneous").Select(p => p.PcId).ToList();
 
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -514,6 +628,21 @@ public class DashboardService
             wCmd.Parameters.AddWithValue("@start", startStr);
             using var wr = wCmd.ExecuteReader();
             while (wr.Read()) Accumulate(wr.GetString(0), wr.GetInt32(1));
+        }
+
+        if (miscPcIds.Count > 0)
+        {
+            var pcList = string.Join(",", miscPcIds);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                SELECT ChargeDate, SUM(LengthSeconds + AdminSeconds)
+                FROM MiscCharge
+                WHERE AuditorId = @uid AND PcId IN ({pcList}) AND ChargeDate >= @start
+                GROUP BY ChargeDate";
+            cmd.Parameters.AddWithValue("@uid",   userId);
+            cmd.Parameters.AddWithValue("@start", startStr);
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) Accumulate(r.GetString(0), r.GetInt32(1));
         }
 
         return weeks.Select(w => new WeekTotal(w, result[w])).ToList();

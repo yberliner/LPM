@@ -231,18 +231,18 @@
                             </ul>
                         }
 
-                        @* Add Session button / form *@
+                        @* Add Session / Misc Entry button and form *@
                         @if (!_showAddSession)
                         {
                             <button class="btn btn-sm btn-outline-primary"
                                     @onclick="OpenAddSession">
-                                + Add Session
+                                @(_selRole == "Miscellaneous" ? "+ Add Misc Entry" : "+ Add Session")
                             </button>
                         }
                         else
                         {
                             <div class="border rounded p-3 mt-2 bg-light">
-                                <h6 class="mb-2">Add Session</h6>
+                                <h6 class="mb-2">@(_selRole == "Miscellaneous" ? "Add Misc Entry" : "Add Session")</h6>
                                 <div class="row g-2 align-items-end">
                                     <div class="col-auto">
                                         <label class="form-label mb-0 small">Duration (H:MM)</label>
@@ -769,11 +769,18 @@
             return;
         }
 
-        DashSvc.AddSession(
-            _userId!.Value, _selPcId!.Value,
-            _weekStart.AddDays(_selDay!.Value),
-            secs, adminMin * 60, _addIsFree,
-            string.IsNullOrWhiteSpace(_addSummary) ? null : _addSummary);
+        if (_selRole == "Miscellaneous")
+            DashSvc.AddMiscCharge(
+                _userId!.Value, _selPcId!.Value,
+                _weekStart.AddDays(_selDay!.Value),
+                secs, adminMin * 60, _addIsFree,
+                string.IsNullOrWhiteSpace(_addSummary) ? null : _addSummary);
+        else
+            DashSvc.AddSession(
+                _userId!.Value, _selPcId!.Value,
+                _weekStart.AddDays(_selDay!.Value),
+                secs, adminMin * 60, _addIsFree,
+                string.IsNullOrWhiteSpace(_addSummary) ? null : _addSummary);
 
         _showAddSession = false;
         _addDuration = ""; _addAdminMin = "0"; _addIsFree = false;
