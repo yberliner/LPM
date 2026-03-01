@@ -839,13 +839,27 @@
     }
 
     // ── Helpers ──
-    static int ParseTime(string hhmm)
+    static int ParseTime(string input)
     {
-        if (string.IsNullOrWhiteSpace(hhmm)) return 0;
-        var parts = hhmm.Trim().Split(':');
+        if (string.IsNullOrWhiteSpace(input)) return 0;
+
+        input = input.Trim();
+
+        // If user typed only minutes (e.g. "45")
+        if (!input.Contains(':'))
+        {
+            if (!int.TryParse(input, out int minutes) || minutes < 0) return 0;
+            return minutes * 60;
+        }
+
+        // If user typed H:MM or HH:MM
+        var parts = input.Split(':', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (parts.Length != 2) return 0;
-        if (!int.TryParse(parts[0], out int h) || !int.TryParse(parts[1], out int m)) return 0;
-        return h * 3600 + m * 60;
+
+        if (!int.TryParse(parts[0], out int hours) || hours < 0) return 0;
+        if (!int.TryParse(parts[1], out int minutesPart) || minutesPart < 0 || minutesPart > 59) return 0;
+
+        return (hours * 3600) + (minutesPart * 60);
     }
 
     static string DayLabel(DateOnly d) =>
