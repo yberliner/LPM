@@ -1,7 +1,7 @@
 ﻿using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
-using LPM.Services;   // <-- CHANGE if PcInfo is elsewhere
+using LPM.Services;   // PcInfo lives here in your project
 
 public class PdfService
 {
@@ -13,16 +13,17 @@ public class PdfService
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
+        // Remove columns that are all-zero for the week
         var pcsToPrint = pcs
             .Where(pc => Enumerable.Range(0, 7)
-            .Sum(d => grid.GetValueOrDefault((pc.PcId, d))) > 0)
+                .Sum(d => grid.GetValueOrDefault((pc.PcId, d))) > 0)
             .ToList();
 
         var weekEnd = weekStart.AddDays(6);
 
         int grandTotal = pcsToPrint.Sum(pc =>
             Enumerable.Range(0, 7)
-            .Sum(d => grid.GetValueOrDefault((pc.PcId, d))));
+                .Sum(d => grid.GetValueOrDefault((pc.PcId, d))));
 
         return Document.Create(container =>
         {
@@ -34,9 +35,10 @@ public class PdfService
 
                 page.Content().Column(col =>
                 {
+                    // ── Top row ──
                     col.Item().Row(r =>
                     {
-                        r.RelativeItem().Text("");
+                        r.RelativeItem().Text(""); // left spacer
                         r.RelativeItem().AlignCenter()
                             .Text(userDisplayName)
                             .SemiBold().FontSize(16);
@@ -47,11 +49,12 @@ public class PdfService
 
                     col.Item().PaddingTop(10);
 
+                    // ── Table ──
                     col.Item().Table(table =>
                     {
                         table.ColumnsDefinition(columns =>
                         {
-                            columns.ConstantColumn(90);
+                            columns.ConstantColumn(90); // Day
                             for (int i = 0; i < Math.Max(1, pcsToPrint.Count); i++)
                                 columns.RelativeColumn();
                         });
@@ -72,7 +75,7 @@ public class PdfService
                                 return;
                             }
 
-                            // ── Row 1: Role (subtle styling + slight indent look) ──
+                            // Row 1: Role (subtle + indent)
                             foreach (var pc in pcsToPrint)
                             {
                                 header.Cell()
@@ -84,7 +87,7 @@ public class PdfService
                                     .FontColor(Colors.Grey.Darken1);
                             }
 
-                            // ── Row 2: PC Names (bold & stronger) ──
+                            // Row 2: PC Names (bold)
                             foreach (var pc in pcsToPrint)
                             {
                                 header.Cell()
@@ -96,35 +99,41 @@ public class PdfService
                             }
                         });
 
+                        // Day rows
                         for (int d = 0; d < 7; d++)
                         {
                             var date = weekStart.AddDays(d);
 
-                            table.Cell().Border(1).Padding(4)
+                            table.Cell().Element(CellStyle)
                                 .Text(date.ToString("ddd dd/MM"));
 
                             if (pcsToPrint.Count == 0)
                             {
-                                table.Cell().Border(1).Padding(4).Text("");
+                                table.Cell().Element(CellStyle).Text("");
                             }
                             else
                             {
                                 foreach (var pc in pcsToPrint)
                                 {
                                     int secs = grid.GetValueOrDefault((pc.PcId, d));
-                                    table.Cell().Border(1).Padding(4)
+                                    table.Cell().Element(CellStyle)
                                         .AlignCenter()
-                                        .Text(FmtOrBlank(secs));
+                                        .Text(FmtOrBlank(secs));   // blank instead of 0:00
                                 }
                             }
                         }
 
-                        table.Cell().Border(1).Padding(4)
-                            .Text("Σ Week");
+                        // ── Σ Week row (BOLD) ──
+                        table.Cell().Element(WeekTotalCell)
+                            .Text("Σ Week")
+                            .SemiBold();
 
                         if (pcsToPrint.Count == 0)
                         {
-                            table.Cell().Border(1).Padding(4).Text("");
+                            table.Cell().Element(WeekTotalCell)
+                                .AlignCenter()
+                                .Text("")
+                                .SemiBold();
                         }
                         else
                         {
@@ -133,13 +142,15 @@ public class PdfService
                                 int total = Enumerable.Range(0, 7)
                                     .Sum(d => grid.GetValueOrDefault((pc.PcId, d)));
 
-                                table.Cell().Border(1).Padding(4)
+                                table.Cell().Element(WeekTotalCell)
                                     .AlignCenter()
-                                    .Text(FmtOrBlank(total));
+                                    .Text(FmtOrBlank(total))
+                                    .SemiBold();
                             }
                         }
                     });
 
+                    // ── Grand Total ──
                     col.Item().PaddingTop(12);
 
                     col.Item().Background(Colors.Grey.Lighten4)
@@ -160,19 +171,26 @@ public class PdfService
         }).GeneratePdf();
     }
 
+    // ── Styles ──
+
+    static IContainer CellStyle(IContainer c) =>
+        c.Border(1)
+         .BorderColor(Colors.Grey.Lighten2)
+         .Padding(4);
+
     static IContainer HeaderCell(IContainer c) =>
-    c.Border(1)
-     .BorderColor(Colors.Grey.Lighten2)
-     .Background(Colors.Grey.Lighten3)
-     .PaddingVertical(4)
-     .PaddingHorizontal(4);
+        c.Border(1)
+         .BorderColor(Colors.Grey.Lighten2)
+         .Background(Colors.Grey.Lighten3)
+         .PaddingVertical(4)
+         .PaddingHorizontal(4);
 
     static IContainer NameHeaderCell(IContainer c) =>
-    c.Border(1)
-     .BorderColor(Colors.Grey.Lighten2)
-     .Background(Colors.Grey.Lighten3)
-     .PaddingVertical(5)
-     .PaddingHorizontal(4);
+        c.Border(1)
+         .BorderColor(Colors.Grey.Lighten2)
+         .Background(Colors.Grey.Lighten3)
+         .PaddingVertical(5)
+         .PaddingHorizontal(4);
 
     static IContainer RoleHeaderCell(IContainer c) =>
         c.Border(1)
@@ -180,6 +198,15 @@ public class PdfService
          .Background(Colors.Grey.Lighten4)
          .PaddingHorizontal(4)
          .PaddingLeft(6);   // small indent effect
+
+    static IContainer WeekTotalCell(IContainer c) =>
+        c.Border(1)
+         .BorderColor(Colors.Grey.Lighten2)
+         .Background(Colors.Grey.Lighten2)  // slightly darker summary row
+         .PaddingVertical(5)
+         .PaddingHorizontal(4);
+
+    // ── Helpers ──
 
     static string RoleLabel(string? role)
     {
