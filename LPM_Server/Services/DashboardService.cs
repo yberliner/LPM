@@ -681,4 +681,47 @@ public class DashboardService
 
     public static string Fmt(int s) =>
         s == 0 ? "-" : $"{s / 3600}:{(s % 3600) / 60:D2}";
+
+    public HashSet<(int pcId, int dayIndex)> GetPendingCsMarkers(
+    int csId, DateOnly weekStart, List<PcInfo> userPcs)
+    {
+        var result = new HashSet<(int pcId, int dayIndex)>();
+
+        var csPcIds = userPcs
+            .Where(p => p.Role == "CS")
+            .Select(p => p.PcId)
+            .ToList();
+
+        if (csPcIds.Count == 0)
+            return result;
+
+        var dates = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
+        var dateList = string.Join(",", dates.Select(d => $"'{d:yyyy-MM-dd}'"));
+        var pcList = string.Join(",", csPcIds);
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $@"
+        SELECT s.PcId, s.SessionDate
+        FROM Sessions s
+        LEFT JOIN CsReviews cr ON cr.SessionId = s.SessionId
+        WHERE s.PcId IN ({pcList})
+          AND s.SessionDate IN ({dateList})
+          AND cr.CsReviewId IS NULL
+        GROUP BY s.PcId, s.SessionDate";
+
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            var pcId = r.GetInt32(0);
+            var date = DateOnly.Parse(r.GetString(1));
+            var dayIdx = dates.IndexOf(date);
+            if (dayIdx >= 0 && dayIdx < 7)
+                result.Add((pcId, dayIdx));
+        }
+
+        return result;
+    }
 }

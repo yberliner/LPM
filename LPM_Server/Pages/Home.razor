@@ -115,7 +115,18 @@
                                     <td class="text-center @(isSelected ? "table-primary fw-semibold" : isFuture ? "text-muted" : "")"
                                         style="@(isFuture ? "cursor:default; background:#f8f9fa; opacity:.55;" : "cursor:pointer;")"
                                         @onclick="() => TrySelectCell(pc.PcId, dayIdx)">
-                                        @DashboardService.Fmt(secs)
+                                        @if (secs > 0)
+                                        {
+                                            @DashboardService.Fmt(secs)
+                                        }
+                                        else if (pc.Role == "CS" && _pendingCs.Contains((pc.PcId, dayIdx)))
+                                        {
+                                            <span class="text-danger fw-bold">*</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
+                                        }
                                     </td>
                                 }
                             }
@@ -536,6 +547,7 @@
     List<PcInfo>  _myPcs  = [];
     List<PcInfo>  _allPcs = [];
     Dictionary<(int, int), int> _grid = [];
+    HashSet<(int, int)> _pendingCs = [];
 
     int?       _selPcId;
     int?       _selDay;
@@ -613,6 +625,9 @@
                              DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today)),
                              20, _myPcs);
         _detail = null; _selPcId = null; _selDay = null;
+
+        _pendingCs = DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
+
         await InvokeAsync(StateHasChanged);
     }
 
@@ -643,15 +658,21 @@
     }
 
     // ── Role toggle ──
-    void SetPcRoleAud(int pcId) => SetPcRole(pcId, "Auditor");
-    void SetPcRoleCs(int pcId)  => SetPcRole(pcId, "CS");
+    Task SetPcRoleAud(int pcId) => SetPcRole(pcId, "Auditor");
+    Task SetPcRoleCs(int pcId) => SetPcRole(pcId, "CS");
 
-    void SetPcRole(int pcId, string role)
+    async Task SetPcRole(int pcId, string role)
     {
         DashSvc.SetUserPcRole(_userId!.Value, pcId, role);
         _myPcs = DashSvc.GetUserPcs(_userId.Value);
         _grid  = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+
+        // NEW: recompute pending markers so "*" appears immediately
+        _pendingCs = DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
+
         if (_selPcId == pcId) ClearSelection();
+
+        await InvokeAsync(StateHasChanged);
     }
 
     string AudBtnClass(PcInfo pc) =>
@@ -683,6 +704,7 @@
         _showCtxMenu = false;
         _myPcs = DashSvc.GetUserPcs(_userId.Value);
         _grid  = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+        _pendingCs = DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
         if (_selPcId == _ctxPcId) ClearSelection();
     }
 
@@ -692,6 +714,8 @@
         _showCtxMenu = false;
         _myPcs = DashSvc.GetUserPcs(_userId.Value);
         _grid  = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+        _pendingCs = DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
+
         if (_selPcId == _ctxPcId) ClearSelection();
     }
 
