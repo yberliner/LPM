@@ -78,6 +78,12 @@ public class DashboardService
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
+
+        // Drop the orphan plural-name table if it was ever created by mistake
+        using var drop = conn.CreateCommand();
+        drop.CommandText = "DROP TABLE IF EXISTS MiscCharges";
+        drop.ExecuteNonQuery();
+
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             CREATE TABLE IF NOT EXISTS MiscCharge (
