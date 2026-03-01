@@ -473,3 +473,11 @@ function isElementVisible(element) {
   const computedStyle = window.getComputedStyle(element);
   return computedStyle.display != "none";
 }
+
+window.scrollToEdge = (elementId, dir) => {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+
+    const left = (dir === "left") ? 0 : el.scrollWidth;
+    el.scrollTo({ left, behavior: "smooth" });
+};

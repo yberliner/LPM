@@ -37,7 +37,7 @@
     {
         @* ── Grid ── *@
         <div id="print-zone">
-        <div class="table-responsive px-3 thick-scroll">
+            <div id="week-table-scroll" class="table-responsive px-3 thick-scroll">
             <table class="table table-bordered table-hover table-sm mb-0" style="min-width:300px;">
                 <thead class="table-light">
                     <tr>
@@ -159,11 +159,34 @@
                         </tr>
                         <tr style="background:linear-gradient(90deg,#1a237e 0%,#283593 100%); color:#fff;">
                             <td class="fw-bold" style="letter-spacing:.03em;">Grand Total</td>
-                            <td colspan="@_myPcs.Count" class="text-center">
-                                <span style="font-size:1.25rem; font-weight:700; letter-spacing:.04em;">
-                                    @DashboardService.Fmt(_grid.Values.Sum())
-                                </span>
-                            </td>
+                                <td colspan="@_myPcs.Count">
+                                    <div class="d-flex align-items-center">
+
+                                        <!-- LEFT SIDE: scroll RIGHT button -->
+                                        <button type="button"
+                                                class="btn btn-sm btn-light py-0 px-1 me-2"
+                                                title="Scroll right"
+                                                @onclick='() => ScrollWeekTable("right")'>
+                                            <i class="ri-arrow-right-s-line"></i>
+                                        </button>
+
+                                        <!-- CENTER: total -->
+                                        <div class="flex-grow-1 text-center">
+                                            <span style="font-size:1.25rem; font-weight:700; letter-spacing:.04em;">
+                                                @DashboardService.Fmt(_grid.Values.Sum())
+                                            </span>
+                                        </div>
+
+                                        <!-- RIGHT SIDE: scroll LEFT button -->
+                                        <button type="button"
+                                                class="btn btn-sm btn-light py-0 px-1"
+                                                title="Scroll left"
+                                                @onclick='() => ScrollWeekTable("left")'>
+                                            <i class="ri-arrow-left-s-line"></i>
+                                        </button>
+
+                                    </div>
+                                </td>
                         </tr>
                     </tfoot>
                 }
@@ -905,4 +928,9 @@
 
     static string DayLabel(DateOnly d) =>
         d.ToString("ddd dd/MM", CultureInfo.InvariantCulture);
+
+    async Task ScrollWeekTable(string dir)
+    {
+        await JS.InvokeVoidAsync("scrollToEdge", "week-table-scroll", dir);
+    }
 }
