@@ -66,8 +66,8 @@ a, .btn-link {
 
 /* ── Thick scrollbar for the grid table ── */
 .thick-scroll::-webkit-scrollbar {
-    height: 14px;
-    width:  14px;
+    height: 22px;
+    width:  22px;
 }
 .thick-scroll::-webkit-scrollbar-track {
     background: #e8eaf6;
@@ -85,4 +85,33 @@ a, .btn-link {
 .thick-scroll {
     scrollbar-width: auto;
     scrollbar-color: #3949ab #e8eaf6;
+}
+
+/* ── Print styles ── */
+@media print {
+    @page { size: A4 landscape; margin: 8mm; }
+
+    /* Hide everything on the page */
+    body * { visibility: hidden; }
+
+    /* Show only the table zone */
+    #print-zone,
+    #print-zone * { visibility: visible; }
+
+    #print-zone {
+        position: absolute;
+        left: 0;
+        top: 0;
+    }
+
+    /* Allow the full table to render (no clipping from scroll container) */
+    #print-zone .table-responsive {
+        overflow: visible !important;
+    }
+
+    /* Hide role-toggle buttons — badges still show */
+    #print-zone .btn-group { display: none !important; }
+
+    /* Hide scrollbar in print */
+    #print-zone .thick-scroll::-webkit-scrollbar { display: none; }
 }

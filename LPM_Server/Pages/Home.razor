@@ -4,6 +4,7 @@
 @attribute [Authorize]
 @inject DashboardService DashSvc
 @inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JS
 
 <div @onclick="DismissMenu">
 
@@ -17,7 +18,10 @@
                 disabled="@(_weekStart >= DashboardService.GetWeekStart(MaxAllowedDate()))">
             Next →
         </button>
-        <button class="btn btn-sm btn-outline-primary ms-auto" @onclick="ShowAddPcModal">+ Add PC</button>
+        <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="PrintTable">
+            <i class="ri-printer-line me-1"></i>Print
+        </button>
+        <button class="btn btn-sm btn-outline-primary" @onclick="ShowAddPcModal">+ Add PC</button>
     </div>
 
     @if (_userId == null)
@@ -31,6 +35,7 @@
     else
     {
         @* ── Grid ── *@
+        <div id="print-zone">
         <div class="table-responsive px-3 thick-scroll">
             <table class="table table-bordered table-hover table-sm mb-0" style="min-width:300px;">
                 <thead class="table-light">
@@ -62,7 +67,11 @@
                             @foreach (var pc in _myPcs)
                             {
                                 <td class="text-center py-1">
-                                    @if (_isCS)
+                                    @if (pc.Role == "Miscellaneous")
+                                    {
+                                        <span class="badge bg-secondary-transparent">Other</span>
+                                    }
+                                    else if (_isCS)
                                     {
                                         <div class="btn-group btn-group-sm" role="group">
                                             <button type="button" class="btn @AudBtnClass(pc)"
@@ -138,14 +147,30 @@
                 }
             </table>
         </div>
+        </div>
 
         @* ── Context menu ── *@
         @if (_showCtxMenu)
         {
+            var ctxPc = _myPcs.FirstOrDefault(p => p.PcId == _ctxPcId);
             <div class="card shadow-sm border"
-                 style="position:fixed; top:@(_ctxY)px; left:@(_ctxX)px; z-index:9999; min-width:150px;"
+                 style="position:fixed; top:@(_ctxY)px; left:@(_ctxX)px; z-index:9999; min-width:160px;"
                  @onclick:stopPropagation="true">
                 <div class="list-group list-group-flush">
+                    @if (ctxPc?.Role == "Miscellaneous")
+                    {
+                        <button class="list-group-item list-group-item-action py-2"
+                                @onclick="RemoveFromOthers">
+                            <i class="ri-corner-up-left-line me-2"></i>Remove from Others
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="list-group-item list-group-item-action py-2"
+                                @onclick="SetAsOther">
+                            <i class="ri-shuffle-line me-2"></i>Set as Other
+                        </button>
+                    }
                     <button class="list-group-item list-group-item-action text-danger py-2"
                             @onclick="RemovePc">
                         <i class="ri-delete-bin-line me-2"></i>Remove PC
@@ -159,21 +184,21 @@
         {
             var selPcName = _myPcs.FirstOrDefault(p => p.PcId == _selPcId.Value)?.FullName ?? "";
             var selDate   = _weekStart.AddDays(_selDay.Value);
-            var roleLabel = _selRole == "CS" ? "CS" : "Auditor";
+            var roleLabel = _selRole == "CS" ? "CS" : _selRole == "Miscellaneous" ? "Other" : "Auditor";
 
             <div class="card mx-3 mt-3 mb-3" @onclick:stopPropagation="true">
                 <div class="card-header d-flex align-items-center gap-2 py-2">
                     <strong>@selPcName — @DayLabel(selDate)</strong>
-                    <span class="badge @(_selRole == "CS" ? "bg-success-transparent" : "bg-primary-transparent") ms-1">
+                    <span class="badge @(_selRole == "CS" ? "bg-success-transparent" : _selRole == "Miscellaneous" ? "bg-secondary-transparent" : "bg-primary-transparent") ms-1">
                         @roleLabel
                     </span>
                     <button class="btn-close ms-auto" title="Close" @onclick="ClearSelection"></button>
                 </div>
                 <div class="card-body py-2">
 
-                    @if (_selRole == "Auditor")
+                    @if (_selRole != "CS")
                     {
-                        @* ── Auditor view: own sessions ── *@
+                        @* ── Auditor view: own sessions (also used for Miscellaneous/Other role) ── *@
                         @if (_detail.Sessions.Count == 0)
                         {
                             <p class="text-muted mb-2 small">No sessions recorded for this day.</p>
@@ -642,6 +667,64 @@
         DashSvc.RemoveUserPc(_userId!.Value, _ctxPcId);
         _showCtxMenu = false;
         await RefreshAsync();
+    }
+
+    void SetAsOther()
+    {
+        DashSvc.SetUserPcRole(_userId!.Value, _ctxPcId, "Miscellaneous");
+        _showCtxMenu = false;
+        _myPcs = DashSvc.GetUserPcs(_userId.Value);
+        _grid  = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+        if (_selPcId == _ctxPcId) ClearSelection();
+    }
+
+    void RemoveFromOthers()
+    {
+        DashSvc.SetUserPcRole(_userId!.Value, _ctxPcId, "Auditor");
+        _showCtxMenu = false;
+        _myPcs = DashSvc.GetUserPcs(_userId.Value);
+        _grid  = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+        if (_selPcId == _ctxPcId) ClearSelection();
+    }
+
+    async Task PrintTable()
+    {
+        // Measure the table at its natural (unscrolled) size, then apply CSS zoom
+        // so every column fits on exactly one A4 landscape page before calling print.
+        await JS.InvokeVoidAsync("eval", @"
+            (function () {
+                var zone      = document.getElementById('print-zone');
+                var scrollDiv = zone ? zone.querySelector('.table-responsive') : null;
+                var table     = zone ? zone.querySelector('table') : null;
+                if (!zone || !table) { window.print(); return; }
+
+                // Temporarily make the scroll container fully visible so we can
+                // measure the table's true (unclipped) width and height.
+                var origOverflow = scrollDiv ? scrollDiv.style.overflow : '';
+                if (scrollDiv) scrollDiv.style.overflow = 'visible';
+                table.offsetHeight; // force reflow
+
+                var tableW = table.scrollWidth;
+                var tableH = table.scrollHeight;
+
+                // A4 landscape printable area with 8 mm margins each side:
+                //   width  = 297 - 16 = 281 mm
+                //   height = 210 - 16 = 194 mm
+                // At 96 dpi: 1 mm = 96/25.4 px
+                var px = 96 / 25.4;
+                var printW = 281 * px;   // ~1063 px
+                var printH = 194 * px;   // ~733 px
+
+                var scale = Math.min(printW / tableW, printH / tableH, 1.0);
+                zone.style.zoom = scale;
+
+                window.print();
+
+                // Reset so the page looks normal after the dialog closes.
+                zone.style.zoom = '';
+                if (scrollDiv) scrollDiv.style.overflow = origOverflow;
+            })();
+        ");
     }
 
     // ── Add-PC modal ──
