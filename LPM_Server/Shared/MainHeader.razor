@@ -59,9 +59,16 @@
                         
                     </div>
 
-                    <h1 class="d-flex align-items-center text-nowrap">
-                        @_displayName
-                    </h1>
+                    <div class="d-flex align-items-center gap-2 text-nowrap text-white">
+                        <span style="width:34px; height:34px; border-radius:50%;
+                                     background:rgba(255,255,255,0.18);
+                                     border:2px solid rgba(255,255,255,0.35);
+                                     display:inline-flex; align-items:center; justify-content:center;
+                                     font-weight:700; font-size:15px; flex-shrink:0; letter-spacing:0;">
+                            @(_displayName.Length > 0 ? _displayName[0].ToString() : "")
+                        </span>
+                        <span style="font-size:2.3rem; font-weight:000; letter-spacing:0.03em; color:#3949ab;">@_displayName</span>
+                    </div>
 
                     <!-- End::header-content-left -->
 
