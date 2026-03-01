@@ -463,7 +463,8 @@
                 <div class="card-body py-1 px-2">
                     <ApexChart TItem="WeekTotal"
                                Options="@_chartOptions"
-                               Height="220">
+                               Height="220"
+                               @key="_chartKey">
                         <ApexPointSeries TItem="WeekTotal"
                                          Items="@_weeklyTotals"
                                          Name="Hours"
@@ -571,6 +572,7 @@
 
     // Weekly history chart
     List<WeekTotal> _weeklyTotals = [];
+    int _chartKey;
     ApexChartOptions<WeekTotal> _chartOptions = new()
     {
         Chart = new Chart { Toolbar = new Toolbar { Show = false }, Background = "transparent" },
@@ -789,6 +791,7 @@
         _detail = DashSvc.GetDayDetail(_userId.Value, _selPcId.Value,
             _weekStart.AddDays(_selDay.Value), _selRole);
         _grid = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+        RefreshWeeklyTotals();
     }
 
     // ── Add CS Review ──
@@ -822,6 +825,7 @@
         _detail = DashSvc.GetDayDetail(_userId.Value, _selPcId.Value,
             _weekStart.AddDays(_selDay.Value), _selRole);
         _grid = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+        RefreshWeeklyTotals();
     }
 
     void SaveReview()
@@ -848,6 +852,16 @@
         _detail = DashSvc.GetDayDetail(_userId!.Value, _selPcId!.Value,
             _weekStart.AddDays(_selDay!.Value), _selRole);
         _grid = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+        RefreshWeeklyTotals();
+    }
+
+    void RefreshWeeklyTotals()
+    {
+        _weeklyTotals = DashSvc.GetWeeklyTotals(
+            _userId!.Value,
+            DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today)),
+            20, _myPcs);
+        _chartKey++;
     }
 
     // ── Helpers ──
