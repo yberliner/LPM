@@ -5,6 +5,7 @@
 @inject DashboardService DashSvc
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
+@inject PdfService PdfService
 
 <div @onclick="DismissMenu">
 
@@ -527,6 +528,8 @@
 
 @code {
 
+    string _displayName = "LP Management";
+
     int?          _userId;
     bool          _isAuditor, _isCS;
     DateOnly      _weekStart;
@@ -586,6 +589,9 @@
     {
         var auth     = await AuthStateProvider.GetAuthenticationStateAsync();
         var username = auth.User.Identity?.Name ?? "";
+        _displayName = username.Length > 0
+            ? char.ToUpper(username[0]) + username[1..]
+            : "LP Management";
 
         _userId = DashSvc.GetUserIdByUsername(username);
         if (_userId.HasValue)
@@ -691,42 +697,10 @@
 
     async Task PrintTable()
     {
-        // Measure the table at its natural (unscrolled) size, then apply CSS zoom
-        // so every column fits on exactly one A4 landscape page before calling print.
-        await JS.InvokeVoidAsync("eval", @"
-            (function () {
-                var zone      = document.getElementById('print-zone');
-                var scrollDiv = zone ? zone.querySelector('.table-responsive') : null;
-                var table     = zone ? zone.querySelector('table') : null;
-                if (!zone || !table) { window.print(); return; }
+        var pdfBytes = PdfService.GenerateWeeklyTablePdf(_displayName, _weekStart, _myPcs, _grid);
 
-                // Temporarily make the scroll container fully visible so we can
-                // measure the table's true (unclipped) width and height.
-                var origOverflow = scrollDiv ? scrollDiv.style.overflow : '';
-                if (scrollDiv) scrollDiv.style.overflow = 'visible';
-                table.offsetHeight; // force reflow
-
-                var tableW = table.scrollWidth;
-                var tableH = table.scrollHeight;
-
-                // A4 landscape printable area with 8 mm margins each side:
-                //   width  = 297 - 16 = 281 mm
-                //   height = 210 - 16 = 194 mm
-                // At 96 dpi: 1 mm = 96/25.4 px
-                var px = 96 / 25.4;
-                var printW = 281 * px;   // ~1063 px
-                var printH = 194 * px;   // ~733 px
-
-                var scale = Math.min(printW / tableW, printH / tableH, 1.0);
-                zone.style.zoom = scale;
-
-                window.print();
-
-                // Reset so the page looks normal after the dialog closes.
-                zone.style.zoom = '';
-                if (scrollDiv) scrollDiv.style.overflow = origOverflow;
-            })();
-        ");
+        var fileName = $"Week_{_weekStart:yyyy_MM_dd}.pdf";
+        await JS.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(pdfBytes));
     }
 
     // ── Add-PC modal ──

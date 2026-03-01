@@ -67,6 +67,7 @@ builder.Services.AddScoped<ClientSessionData>();
 builder.Services.AddScoped<ClientManager>();
 builder.Services.AddScoped<AgentList>();
 builder.Services.AddScoped<ProtectedSessionStorage>();
+builder.Services.AddScoped<PdfService>();
 
 //Forsight Singleton Classes:
 builder.Services.AddSingleton<TCPEngine>();

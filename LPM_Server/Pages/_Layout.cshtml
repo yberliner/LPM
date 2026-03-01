@@ -237,6 +237,32 @@
 
         <script src="/js/pwa-install.js"></script>
 
+        <script>
+          window.downloadFile = (fileName, base64Data) => {
+            // Never throw back into Blazor circuit
+            try {
+              const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+              const blob = new Blob([bytes], { type: "application/pdf" });
+              const url = URL.createObjectURL(blob);
+
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = fileName;
+
+              // Do NOT append to body; just click it
+              a.click();
+
+              // Cleanup (no removeChild)
+              setTimeout(() => {
+                try { URL.revokeObjectURL(url); } catch { }
+                try { a.remove(); } catch { }
+              }, 0);
+            } catch (e) {
+              console.error("downloadFile failed:", e);
+            }
+          };
+        </script>
+
     </body>
 
 </html>

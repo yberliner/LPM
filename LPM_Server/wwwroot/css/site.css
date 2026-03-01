@@ -87,31 +87,39 @@ a, .btn-link {
     scrollbar-color: #3949ab #e8eaf6;
 }
 
-/* ── Print styles ── */
 @media print {
-    @page { size: A4 landscape; margin: 8mm; }
 
-    /* Hide everything on the page */
-    body * { visibility: hidden; }
+    @page {
+        size: 297mm 210mm;
+        margin: 8mm;
+    }
 
-    /* Show only the table zone */
-    #print-zone,
-    #print-zone * { visibility: visible; }
+    /* Hide everything completely */
+    body > *:not(#print-zone) {
+        display: none !important;
+    }
 
+    /* Make sure print zone is visible */
     #print-zone {
-        position: absolute;
-        left: 0;
-        top: 0;
+        display: block !important;
+        position: relative;
+        transform-origin: top left;
+        background: white;
     }
 
-    /* Allow the full table to render (no clipping from scroll container) */
-    #print-zone .table-responsive {
-        overflow: visible !important;
+        /* Remove scroll clipping */
+        #print-zone .table-responsive {
+            overflow: visible !important;
+        }
+
+    /* Avoid row splitting */
+    table, tr, td, th {
+        break-inside: avoid;
+        page-break-inside: avoid;
     }
 
-    /* Hide role-toggle buttons — badges still show */
-    #print-zone .btn-group { display: none !important; }
-
-    /* Hide scrollbar in print */
-    #print-zone .thick-scroll::-webkit-scrollbar { display: none; }
+    /* Hide role buttons */
+    #print-zone .btn-group {
+        display: none !important;
+    }
 }

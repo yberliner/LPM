@@ -10,6 +10,7 @@
 <PackageReference Include="ClosedXML" Version="0.105.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.4" />
+    <PackageReference Include="QuestPDF" Version="2026.2.2" />
     <PackageReference Include="WMBlazorOverlayScrollbars" Version="1.0.0" />
     <PackageReference Include="Blazor-ApexCharts" Version="3.4.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.Cookies" Version="2.2.0" />
