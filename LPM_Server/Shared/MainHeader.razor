@@ -4,6 +4,7 @@
 @inject MSGS.ClientSessionData session_data
 @inject MSGS.ClientManager client
 @inject MSGS.AgentsRepository _agents
+@inject AuthenticationStateProvider AuthStateProvider
 @using LPM._Spk
 @implements IDisposable
 @using CardModel
@@ -59,7 +60,7 @@
                     </div>
 
                     <h1 class="d-flex align-items-center text-nowrap">
-                        LP Management @session_data.AgentName
+                        @_displayName
                     </h1>
 
                     <!-- End::header-content-left -->
@@ -169,7 +170,17 @@
 @code {
     private System.Timers.Timer? refreshTimer;
     private bool _isDisposed = false;
-   
+    private string _displayName = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var name = auth.User.Identity?.Name ?? "";
+        _displayName = name.Length > 0
+            ? char.ToUpper(name[0]) + name[1..]
+            : "LP Management";
+    }
+
     protected override void OnInitialized()
     {
         Console.WriteLine("MainHeaer OnInitialized called");
