@@ -115,13 +115,23 @@
                                     <td class="text-center @(isSelected ? "table-primary fw-semibold" : isFuture ? "text-muted" : "")"
                                         style="@(isFuture ? "cursor:default; background:#f8f9fa; opacity:.55;" : "cursor:pointer;")"
                                         @onclick="() => TrySelectCell(pc.PcId, dayIdx)">
+                                        @{
+                                            var isPendingCs = pc.Role == "CS" && _pendingCs.Contains((pc.PcId, dayIdx));
+                                        }
+
                                         @if (secs > 0)
                                         {
-                                            @DashboardService.Fmt(secs)
+                                            <span>
+                                                @DashboardService.Fmt(secs)
+                                                @if (isPendingCs)
+                                                {
+                                                    <span class="text-danger fw-bold ms-1" title="Pending CS review">*</span>
+                                                }
+                                            </span>
                                         }
-                                        else if (pc.Role == "CS" && _pendingCs.Contains((pc.PcId, dayIdx)))
+                                        else if (isPendingCs)
                                         {
-                                            <span class="text-danger fw-bold">*</span>
+                                            <span class="text-danger fw-bold" title="Pending CS review">*</span>
                                         }
                                         else
                                         {
@@ -789,6 +799,7 @@
         _detail = DashSvc.GetDayDetail(_userId.Value, _selPcId.Value,
             _weekStart.AddDays(_selDay.Value), _selRole);
         _grid = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+        _pendingCs = DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
         RefreshWeeklyTotals();
     }
 
@@ -848,9 +859,15 @@
         _addReviewNotes = ""; _reviewError = "";
 
         _detail = DashSvc.GetDayDetail(_userId!.Value, _selPcId!.Value,
-            _weekStart.AddDays(_selDay!.Value), _selRole);
+                _weekStart.AddDays(_selDay!.Value), _selRole);
+
         _grid = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+
+        // ✅ NEW: recompute pending markers so "*" disappears immediately when done
+        _pendingCs = DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
+
         RefreshWeeklyTotals();
+        StateHasChanged();
     }
 
     void RefreshWeeklyTotals()
