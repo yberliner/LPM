@@ -181,10 +181,22 @@
                                 var total = Enumerable.Range(0, 7)
                                     .Sum(d => _grid.GetValueOrDefault((pc.PcId, d)));
                                 <td class="text-center">
-                                    <strong>@DashboardService.Fmt(total)</strong>
+                                    @if (pc.Role == "CS")
+                                    {
+                                        <span style="color:#aaa; font-size:.78em;">@DashboardService.Fmt(total)</span>
+                                    }
+                                    else
+                                    {
+                                        <strong>@DashboardService.Fmt(total)</strong>
+                                    }
                                 </td>
                             }
                         </tr>
+                        @{
+                            var csPcIdSet  = _myPcs.Where(p => p.Role == "CS").Select(p => p.PcId).ToHashSet();
+                            var nonCsTotal = _grid.Where(kv => !csPcIdSet.Contains(kv.Key.Item1)).Sum(kv => kv.Value);
+                            var csTotal    = _grid.Where(kv =>  csPcIdSet.Contains(kv.Key.Item1)).Sum(kv => kv.Value);
+                        }
                         <tr style="background:linear-gradient(90deg,#1a237e 0%,#283593 100%); color:#fff;">
                             <td class="fw-bold" style="letter-spacing:.03em;">Grand Total</td>
                                 <td colspan="@_myPcs.Count">
@@ -198,11 +210,17 @@
                                             <i class="ri-arrow-right-s-line"></i>
                                         </button>
 
-                                        <!-- CENTER: total -->
+                                        <!-- CENTER: total + CS line -->
                                         <div class="flex-grow-1 text-center">
                                             <span style="font-size:1.25rem; font-weight:700; letter-spacing:.04em;">
-                                                @DashboardService.Fmt(_grid.Values.Sum())
+                                                @DashboardService.Fmt(nonCsTotal)
                                             </span>
+                                            @if (csTotal > 0)
+                                            {
+                                                <div style="font-size:.75rem; opacity:.75; margin-top:1px;">
+                                                    CS time: (@DashboardService.Fmt(csTotal))
+                                                </div>
+                                            }
                                         </div>
 
                                         <!-- RIGHT SIDE: scroll LEFT button -->

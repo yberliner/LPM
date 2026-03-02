@@ -610,33 +610,7 @@ public class DashboardService
             while (r.Read()) Accumulate(r.GetString(0), r.GetInt32(1));
         }
 
-        if (csPcIds.Count > 0)
-        {
-            var pcList = string.Join(",", csPcIds);
-
-            using var revCmd = conn.CreateCommand();
-            revCmd.CommandText = $@"
-                SELECT s.SessionDate, SUM(cr.ReviewLengthSeconds)
-                FROM CsReviews cr
-                JOIN Sessions s ON s.SessionId = cr.SessionId
-                WHERE cr.CsId = @uid AND s.PcId IN ({pcList}) AND s.SessionDate >= @start
-                GROUP BY s.SessionDate";
-            revCmd.Parameters.AddWithValue("@uid",   userId);
-            revCmd.Parameters.AddWithValue("@start", startStr);
-            using var rr = revCmd.ExecuteReader();
-            while (rr.Read()) Accumulate(rr.GetString(0), rr.GetInt32(1));
-
-            using var wCmd = conn.CreateCommand();
-            wCmd.CommandText = $@"
-                SELECT WorkDate, SUM(LengthSeconds)
-                FROM CsWorkLog
-                WHERE CsId = @uid AND PcId IN ({pcList}) AND WorkDate >= @start
-                GROUP BY WorkDate";
-            wCmd.Parameters.AddWithValue("@uid",   userId);
-            wCmd.Parameters.AddWithValue("@start", startStr);
-            using var wr = wCmd.ExecuteReader();
-            while (wr.Read()) Accumulate(wr.GetString(0), wr.GetInt32(1));
-        }
+        // CS columns intentionally excluded from weekly totals graph
 
         if (miscPcIds.Count > 0)
         {
