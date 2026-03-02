@@ -44,7 +44,7 @@
                         <th style="min-width:110px;">Day</th>
                         @foreach (var pc in _myPcs)
                         {
-                            var hasPendingCs = pc.Role == "CS" && Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((pc.PcId, d)));
+                            var hasPendingCs = Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((pc.PcId, d)));
                             <th class="text-center user-select-none"
                                 style="cursor:context-menu; white-space:nowrap; min-width:90px;"
                                 @oncontextmenu="e => ShowCtxMenu(e, pc.PcId)"
@@ -260,7 +260,22 @@
                             <ul class="list-unstyled mb-2">
                                 @foreach (var s in _detail.Sessions)
                                 {
+                                    var audSessionTime = !string.IsNullOrEmpty(s.CreatedAt) && s.CreatedAt.Contains(' ')
+                                        ? s.CreatedAt.Split(' ')[1][..5]
+                                        : "";
                                     <li class="mb-1 d-flex align-items-center flex-wrap gap-2">
+                                        @if (!string.IsNullOrEmpty(audSessionTime))
+                                        {
+                                            <span class="text-muted small">
+                                                <i class="ri-time-line"></i> @audSessionTime
+                                            </span>
+                                        }
+                                        @if (!string.IsNullOrEmpty(s.AuditorName))
+                                        {
+                                            <span class="fw-semibold small" style="color:#7c3aed;">
+                                                <i class="ri-user-line me-1"></i>@s.AuditorName
+                                            </span>
+                                        }
                                         <span class="badge bg-primary-transparent fs-12">
                                             @DashboardService.Fmt(s.LengthSec)
                                         </span>
@@ -347,9 +362,20 @@
                                 @foreach (var s in _detail.Sessions)
                                 {
                                     var rev = _detail.Reviews.FirstOrDefault(r => r.SessionId == s.SessionId);
+                                    var sessionTime = !string.IsNullOrEmpty(s.CreatedAt) && s.CreatedAt.Contains(' ')
+                                        ? s.CreatedAt.Split(' ')[1][..5]
+                                        : "";
                                     <li class="mb-2 border rounded p-2">
                                         <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
-                                            <span class="fw-semibold small">@s.AuditorName</span>
+                                            @if (!string.IsNullOrEmpty(sessionTime))
+                                            {
+                                                <span class="text-muted small">
+                                                    <i class="ri-time-line"></i> @sessionTime
+                                                </span>
+                                            }
+                                            <span class="fw-semibold small" style="color:#7c3aed;">
+                                                <i class="ri-user-line me-1"></i>@s.AuditorName
+                                            </span>
                                             <span class="badge bg-primary-transparent fs-12">
                                                 @DashboardService.Fmt(s.LengthSec)
                                             </span>

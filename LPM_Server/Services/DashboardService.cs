@@ -343,11 +343,13 @@ public class DashboardService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT SessionId, LengthSeconds, AdminSeconds,
-                       IsFreeSession, SessionSummaryHtml, CreatedAt
-                FROM Sessions
-                WHERE AuditorId = @uid AND PcId = @pcId AND SessionDate = @date
-                ORDER BY SequenceInDay";
+                SELECT s.SessionId, s.LengthSeconds, s.AdminSeconds,
+                       s.IsFreeSession, s.SessionSummaryHtml, s.CreatedAt,
+                       p.FirstName
+                FROM Sessions s
+                JOIN Persons p ON p.PersonId = s.AuditorId
+                WHERE s.AuditorId = @uid AND s.PcId = @pcId AND s.SessionDate = @date
+                ORDER BY s.SequenceInDay";
             cmd.Parameters.AddWithValue("@uid",  userId);
             cmd.Parameters.AddWithValue("@pcId", pcId);
             cmd.Parameters.AddWithValue("@date", dateStr);
@@ -359,7 +361,7 @@ public class DashboardService
                     r.GetInt32(3) == 1,
                     r.IsDBNull(4) ? null : r.GetString(4),
                     r.IsDBNull(5) ? ""   : r.GetString(5),
-                    ""));
+                    r.IsDBNull(6) ? ""   : r.GetString(6)));
             }
         }
         else if (role == "Miscellaneous")
