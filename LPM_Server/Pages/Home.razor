@@ -812,7 +812,7 @@
 
     async Task PrintTable()
     {
-        var pdfBytes = PdfService.GenerateWeeklyTablePdf(_displayName, _weekStart, _myPcs, _grid);
+        var pdfBytes = PdfService.GenerateWeeklyTablePdf(_displayName, _weekStart, _myPcs, _grid, _pcCsNames);
 
         var fileName = $"Week_{_weekStart:yyyy_MM_dd}.pdf";
         await JS.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(pdfBytes));

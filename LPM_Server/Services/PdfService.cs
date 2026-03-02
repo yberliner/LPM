@@ -9,7 +9,8 @@ public class PdfService
         string userDisplayName,
         DateOnly weekStart,
         List<PcInfo> pcs,
-        Dictionary<(int pcId, int dayIdx), int> grid)
+        Dictionary<(int pcId, int dayIdx), int> grid,
+        Dictionary<int, string> pcCsNames)
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
@@ -61,21 +62,47 @@ public class PdfService
 
                         table.Header(header =>
                         {
-                            // Day spans 2 header rows
+                            // Row 1: CS row
+                            header.Cell()
+                                .Element(CsHeaderCell)
+                                .AlignLeft()
+                                .Text("CS:")
+                                .SemiBold()
+                                .FontSize(9);
+
+                            if (pcsToPrint.Count == 0)
+                            {
+                                header.Cell().Element(CsHeaderCell).Text("");
+                                // Day spans rows 2-3
+                                header.Cell().RowSpan(2).Element(HeaderCell).AlignMiddle().Text("Day").SemiBold();
+                                header.Cell().Element(RoleHeaderCell).AlignCenter().Text("Role");
+                                header.Cell().Element(NameHeaderCell).AlignCenter().Text("No data");
+                                return;
+                            }
+
+                            foreach (var pc in pcsToPrint)
+                            {
+                                var csFullName  = pcCsNames.TryGetValue(pc.PcId, out var cn) ? cn : "";
+                                var csDisplay   = pc.Role == "CS" ? "CS"
+                                                : csFullName.Length > 0 ? csFullName.Split(' ')[0]
+                                                : pc.Role == "Auditor" ? "NA" : "";
+                                header.Cell()
+                                    .Element(CsHeaderCell)
+                                    .AlignCenter()
+                                    .Text(t =>
+                                    {
+                                        t.Span(csDisplay).FontSize(9).FontColor(Colors.Grey.Darken2);
+                                    });
+                            }
+
+                            // Day spans rows 2-3
                             header.Cell().RowSpan(2)
                                 .Element(HeaderCell)
                                 .AlignMiddle()
                                 .Text("Day")
                                 .SemiBold();
 
-                            if (pcsToPrint.Count == 0)
-                            {
-                                header.Cell().Element(RoleHeaderCell).AlignCenter().Text("Role");
-                                header.Cell().Element(NameHeaderCell).AlignCenter().Text("No data");
-                                return;
-                            }
-
-                            // Row 1: Role (subtle + indent)
+                            // Row 2: Role
                             foreach (var pc in pcsToPrint)
                             {
                                 header.Cell()
@@ -87,7 +114,7 @@ public class PdfService
                                     .FontColor(Colors.Grey.Darken1);
                             }
 
-                            // Row 2: PC Names (bold)
+                            // Row 3: PC Names (bold)
                             foreach (var pc in pcsToPrint)
                             {
                                 header.Cell()
@@ -190,6 +217,13 @@ public class PdfService
          .BorderColor(Colors.Grey.Lighten2)
          .Background(Colors.Grey.Lighten3)
          .PaddingVertical(5)
+         .PaddingHorizontal(4);
+
+    static IContainer CsHeaderCell(IContainer c) =>
+        c.Border(1)
+         .BorderColor(Colors.Grey.Lighten2)
+         .Background(Colors.Blue.Lighten5)
+         .PaddingVertical(3)
          .PaddingHorizontal(4);
 
     static IContainer RoleHeaderCell(IContainer c) =>
