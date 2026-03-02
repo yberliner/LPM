@@ -149,7 +149,7 @@
 
                                         @if (secs > 0)
                                         {
-                                            <span>
+                                            <span style="@(pc.Role == "CS" ? "color:#aaa; font-size:.78em;" : "")">
                                                 @DashboardService.Fmt(secs)
                                                 @if (isPendingCs)
                                                 {
@@ -432,7 +432,7 @@
                                         else
                                         {
                                             <button class="btn btn-sm btn-outline-success py-0 mt-1"
-                                                    @onclick="() => StartAddReview(s.SessionId)">
+                                                    @onclick="() => StartAddReview(s.SessionId, s.LengthSec + s.AdminSec)">
                                                 + CS Review
                                             </button>
                                         }
@@ -885,11 +885,14 @@
     }
 
     // ── Add CS Review ──
-    void StartAddReview(int sessionId)
+    void StartAddReview(int sessionId, int sessionLengthSec)
     {
-        _addReviewSessionId = sessionId;
-        _showAddReview      = true;
-        _reviewError        = "";
+        _addReviewSessionId  = sessionId;
+        _addReviewDuration   = sessionLengthSec > 0
+            ? $"{sessionLengthSec / 3600}:{(sessionLengthSec % 3600) / 60:D2}"
+            : "";
+        _showAddReview       = true;
+        _reviewError         = "";
     }
 
     void CancelAddReview() { _showAddReview = false; _reviewError = ""; }
