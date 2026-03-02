@@ -701,6 +701,23 @@
         Colors = new List<string> { "#3949ab" },
         Xaxis = new XAxis { Labels = new XAxisLabels { Rotate = -45, Style = new AxisLabelStyle { FontSize = "11px" } } },
         Grid = new Grid { BorderColor = "#e0e0e0" },
+        Yaxis = new List<YAxis>
+        {
+            new YAxis
+            {
+                Labels = new YAxisLabels
+                {
+                    Formatter = "function(val){ var h=Math.floor(val); var m=Math.round((val-h)*60); return h+':'+String(m).padStart(2,'0'); }"
+                }
+            }
+        },
+        Tooltip = new Tooltip
+        {
+            Y = new TooltipY
+            {
+                Formatter = "function(val){ var h=Math.floor(val); var m=Math.round((val-h)*60); return h+':'+String(m).padStart(2,'0'); }"
+            }
+        }
     };
 
     protected override async Task OnInitializedAsync()
