@@ -54,7 +54,7 @@
                                           ? "background:#fff3e0; color:#e65100; border:1px solid #ff9800;"
                                           : "background:#e8f5e9; color:#2e7d32; border:1px solid #4caf50;")
                                              font-weight:600; font-size:.85em; padding:.3em .75em;">
-                                    @pc.FullName
+                                    @pc.FullName@if (pc.Role == "CS") {<text> (@(_pcCsNames.TryGetValue(pc.PcId, out var csName) ? csName : "NA"))</text>}
                                 </span>
                             </th>
                         }
@@ -613,7 +613,8 @@
     List<PcInfo>  _myPcs  = [];
     List<PcInfo>  _allPcs = [];
     Dictionary<(int, int), int> _grid = [];
-    HashSet<(int, int)> _pendingCs = [];
+    HashSet<(int, int)>      _pendingCs   = [];
+    Dictionary<int, string>  _pcCsNames   = [];
 
     int?       _selPcId;
     int?       _selDay;
@@ -693,6 +694,8 @@
         _detail = null; _selPcId = null; _selDay = null;
 
         _pendingCs = DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
+        _pcCsNames = DashSvc.GetLastCsNamesByPc(
+            _myPcs.Where(p => p.Role == "CS").Select(p => p.PcId).ToList());
 
         await InvokeAsync(StateHasChanged);
     }
@@ -733,8 +736,9 @@
         _myPcs = DashSvc.GetUserPcs(_userId.Value);
         _grid  = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
 
-        // NEW: recompute pending markers so "*" appears immediately
         _pendingCs = DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
+        _pcCsNames = DashSvc.GetLastCsNamesByPc(
+            _myPcs.Where(p => p.Role == "CS").Select(p => p.PcId).ToList());
 
         if (_selPcId == pcId) ClearSelection();
 

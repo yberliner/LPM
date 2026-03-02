@@ -726,4 +726,35 @@ public class DashboardService
 
         return result;
     }
+
+    /// Returns a map of pcId → first name of the CS who last reviewed a session for that PC.
+    public Dictionary<int, string> GetLastCsNamesByPc(List<int> pcIds)
+    {
+        var result = new Dictionary<int, string>();
+        if (pcIds.Count == 0) return result;
+
+        var pcList = string.Join(",", pcIds);
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $@"
+            SELECT s.PcId, p.FirstName
+            FROM (
+                SELECT s2.PcId, MAX(cr2.CsReviewId) AS MaxId
+                FROM CsReviews cr2
+                JOIN Sessions s2 ON s2.SessionId = cr2.SessionId
+                WHERE s2.PcId IN ({pcList})
+                GROUP BY s2.PcId
+            ) latest
+            JOIN CsReviews cr ON cr.CsReviewId = latest.MaxId
+            JOIN Sessions s   ON s.SessionId   = cr.SessionId
+            JOIN Persons p    ON p.PersonId    = cr.CsId";
+
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            result[r.GetInt32(0)] = r.GetString(1);
+
+        return result;
+    }
 }
