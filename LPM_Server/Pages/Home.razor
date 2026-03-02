@@ -40,6 +40,24 @@
             <div id="week-table-scroll" class="table-responsive px-3 thick-scroll">
             <table class="table table-bordered table-hover table-sm mb-0" style="min-width:300px;">
                 <thead class="table-light">
+                    @* ── CS row ── *@
+                    <tr class="small" style="color:#555;">
+                        <th style="min-width:110px;">CS:</th>
+                        @foreach (var pc in _myPcs)
+                        {
+                            <th class="text-center fw-normal">
+                                @if (pc.Role == "CS")
+                                {
+                                    <span>CS</span>
+                                }
+                                else if (pc.Role == "Auditor")
+                                {
+                                    <span>@(_pcCsNames.TryGetValue(pc.PcId, out var csN) ? csN : "NA")</span>
+                                }
+                            </th>
+                        }
+                    </tr>
+                    @* ── PC name row ── *@
                     <tr>
                         <th style="min-width:110px;">Day</th>
                         @foreach (var pc in _myPcs)
@@ -54,7 +72,7 @@
                                           ? "background:#fff3e0; color:#e65100; border:1px solid #ff9800;"
                                           : "background:#e8f5e9; color:#2e7d32; border:1px solid #4caf50;")
                                              font-weight:600; font-size:.85em; padding:.3em .75em;">
-                                    @pc.FullName@if (pc.Role == "CS") {<text> (@(_pcCsNames.TryGetValue(pc.PcId, out var csName) ? csName : "NA"))</text>}
+                                    @pc.FullName
                                 </span>
                             </th>
                         }
@@ -695,7 +713,7 @@
 
         _pendingCs = DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
         _pcCsNames = DashSvc.GetLastCsNamesByPc(
-            _myPcs.Where(p => p.Role == "CS").Select(p => p.PcId).ToList());
+            _myPcs.Where(p => p.Role != "Miscellaneous").Select(p => p.PcId).ToList());
 
         await InvokeAsync(StateHasChanged);
     }
@@ -738,7 +756,7 @@
 
         _pendingCs = DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
         _pcCsNames = DashSvc.GetLastCsNamesByPc(
-            _myPcs.Where(p => p.Role == "CS").Select(p => p.PcId).ToList());
+            _myPcs.Where(p => p.Role != "Miscellaneous").Select(p => p.PcId).ToList());
 
         if (_selPcId == pcId) ClearSelection();
 
