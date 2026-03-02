@@ -44,11 +44,18 @@
                         <th style="min-width:110px;">Day</th>
                         @foreach (var pc in _myPcs)
                         {
+                            var hasPendingCs = pc.Role == "CS" && Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((pc.PcId, d)));
                             <th class="text-center user-select-none"
                                 style="cursor:context-menu; white-space:nowrap; min-width:90px;"
                                 @oncontextmenu="e => ShowCtxMenu(e, pc.PcId)"
                                 @oncontextmenu:preventDefault="true">
-                                @pc.FullName
+                                <span class="badge rounded-pill"
+                                      style="@(hasPendingCs
+                                          ? "background:#fff3e0; color:#e65100; border:1px solid #ff9800;"
+                                          : "background:#e8f5e9; color:#2e7d32; border:1px solid #4caf50;")
+                                             font-weight:600; font-size:.85em; padding:.3em .75em;">
+                                    @pc.FullName
+                                </span>
                             </th>
                         }
                         @if (_myPcs.Count == 0)
