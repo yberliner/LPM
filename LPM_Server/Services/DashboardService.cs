@@ -689,17 +689,17 @@ public class DashboardService
     {
         var result = new HashSet<(int pcId, int dayIndex)>();
 
-        var csPcIds = userPcs
-            .Where(p => p.Role == "CS")
+        var allPcIds = userPcs
+            .Where(p => p.Role != "Miscellaneous")
             .Select(p => p.PcId)
             .ToList();
 
-        if (csPcIds.Count == 0)
+        if (allPcIds.Count == 0)
             return result;
 
         var dates = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
         var dateList = string.Join(",", dates.Select(d => $"'{d:yyyy-MM-dd}'"));
-        var pcList = string.Join(",", csPcIds);
+        var pcList = string.Join(",", allPcIds);
 
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
