@@ -22,9 +22,12 @@ public class PdfService
 
         var weekEnd = weekStart.AddDays(6);
 
-        int grandTotal = pcsToPrint.Sum(pc =>
-            Enumerable.Range(0, 7)
-                .Sum(d => grid.GetValueOrDefault((pc.PcId, d))));
+        int nonCsTotal = pcsToPrint
+            .Where(pc => pc.Role != "CS")
+            .Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.GetValueOrDefault((pc.PcId, d))));
+        int csTotal = pcsToPrint
+            .Where(pc => pc.Role == "CS")
+            .Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.GetValueOrDefault((pc.PcId, d))));
 
         return Document.Create(container =>
         {
@@ -143,9 +146,12 @@ public class PdfService
                                 foreach (var pc in pcsToPrint)
                                 {
                                     int secs = grid.GetValueOrDefault((pc.PcId, d));
-                                    table.Cell().Element(CellStyle)
-                                        .AlignCenter()
-                                        .Text(FmtOrBlank(secs));   // blank instead of 0:00
+                                    if (pc.Role == "CS")
+                                        table.Cell().Element(CellStyle).AlignCenter()
+                                            .Text(t => t.Span(FmtOrBlank(secs)).FontSize(8).FontColor("#aaaaaa"));
+                                    else
+                                        table.Cell().Element(CellStyle).AlignCenter()
+                                            .Text(FmtOrBlank(secs));
                                 }
                             }
                         }
@@ -169,10 +175,12 @@ public class PdfService
                                 int total = Enumerable.Range(0, 7)
                                     .Sum(d => grid.GetValueOrDefault((pc.PcId, d)));
 
-                                table.Cell().Element(WeekTotalCell)
-                                    .AlignCenter()
-                                    .Text(FmtOrBlank(total))
-                                    .SemiBold();
+                                if (pc.Role == "CS")
+                                    table.Cell().Element(WeekTotalCell).AlignCenter()
+                                        .Text(t => t.Span(FmtOrBlank(total)).FontSize(8).FontColor("#aaaaaa"));
+                                else
+                                    table.Cell().Element(WeekTotalCell).AlignCenter()
+                                        .Text(FmtOrBlank(total)).SemiBold();
                             }
                         }
                     });
@@ -188,10 +196,16 @@ public class PdfService
                                 .Text("Grand Total")
                                 .SemiBold().FontSize(16);
 
-                            r.ConstantItem(200)
-                                .AlignRight()
-                                .Text(FmtOrBlank(grandTotal))
-                                .SemiBold().FontSize(22);
+                            r.ConstantItem(200).AlignRight().Column(c =>
+                            {
+                                c.Item().AlignRight()
+                                    .Text(FmtOrBlank(nonCsTotal))
+                                    .SemiBold().FontSize(22);
+                                if (csTotal > 0)
+                                    c.Item().AlignRight()
+                                        .Text($"CS time: ({FmtOrBlank(csTotal)})")
+                                        .FontSize(8).FontColor("#aaaaaa");
+                            });
                         });
                 });
             });
