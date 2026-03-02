@@ -739,7 +739,8 @@ public class DashboardService
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $@"
-            SELECT s.PcId, p.FirstName
+            SELECT s.PcId,
+                   TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName
             FROM (
                 SELECT s2.PcId, MAX(cr2.CsReviewId) AS MaxId
                 FROM CsReviews cr2

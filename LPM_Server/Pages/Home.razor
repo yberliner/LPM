@@ -45,6 +45,8 @@
                         <th style="min-width:110px;">CS:</th>
                         @foreach (var pc in _myPcs)
                         {
+                            var csFullName  = _pcCsNames.TryGetValue(pc.PcId, out var cn) ? cn : "";
+                            var csFirstName = csFullName.Length > 0 ? csFullName.Split(' ')[0] : "NA";
                             <th class="text-center fw-normal">
                                 @if (pc.Role == "CS")
                                 {
@@ -52,7 +54,7 @@
                                 }
                                 else if (pc.Role == "Auditor")
                                 {
-                                    <span>@(_pcCsNames.TryGetValue(pc.PcId, out var csN) ? csN : "NA")</span>
+                                    <span title="@(csFullName.Length > 0 ? csFullName : "Unknown")">@csFirstName</span>
                                 }
                             </th>
                         }
@@ -68,6 +70,7 @@
                                 @oncontextmenu="e => ShowCtxMenu(e, pc.PcId)"
                                 @oncontextmenu:preventDefault="true">
                                 <span class="badge rounded-pill"
+                                      title="@pc.FullName"
                                       style="@(hasPendingCs
                                           ? "background:#fff3e0; color:#e65100; border:1px solid #ff9800;"
                                           : "background:#e8f5e9; color:#2e7d32; border:1px solid #4caf50;")
