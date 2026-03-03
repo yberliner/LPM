@@ -23,10 +23,10 @@ public class PdfService
         var weekEnd = weekStart.AddDays(6);
 
         int nonCsTotal = pcsToPrint
-            .Where(pc => pc.Role != "CS")
+            .Where(pc => pc.WorkCapacity != "CS")
             .Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.GetValueOrDefault((pc.PcId, d))));
         int csTotal = pcsToPrint
-            .Where(pc => pc.Role == "CS")
+            .Where(pc => pc.WorkCapacity == "CS")
             .Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.GetValueOrDefault((pc.PcId, d))));
 
         return Document.Create(container =>
@@ -86,9 +86,9 @@ public class PdfService
                             foreach (var pc in pcsToPrint)
                             {
                                 var csFullName  = pcCsNames.TryGetValue(pc.PcId, out var cn) ? cn : "";
-                                var csDisplay   = pc.Role == "CS" ? "CS"
+                                var csDisplay   = pc.WorkCapacity == "CS" ? "CS"
                                                 : csFullName.Length > 0 ? csFullName.Split(' ')[0]
-                                                : pc.Role == "Auditor" ? "NA" : "";
+                                                : pc.WorkCapacity == "Auditor" ? "NA" : "";
                                 header.Cell()
                                     .Element(CsHeaderCell)
                                     .AlignCenter()
@@ -112,7 +112,7 @@ public class PdfService
                                     .Element(RoleHeaderCell)
                                     .AlignCenter()
                                     .PaddingVertical(2)
-                                    .Text(RoleLabel(pc.Role))
+                                    .Text(RoleLabel(pc.WorkCapacity))
                                     .FontSize(9)
                                     .FontColor(Colors.Grey.Darken1);
                             }
@@ -146,7 +146,7 @@ public class PdfService
                                 foreach (var pc in pcsToPrint)
                                 {
                                     int secs = grid.GetValueOrDefault((pc.PcId, d));
-                                    if (pc.Role == "CS")
+                                    if (pc.WorkCapacity == "CS")
                                         table.Cell().Element(CellStyle).AlignCenter()
                                             .Text(t => t.Span(FmtOrBlank(secs)).FontSize(8).FontColor("#aaaaaa"));
                                     else
@@ -175,7 +175,7 @@ public class PdfService
                                 int total = Enumerable.Range(0, 7)
                                     .Sum(d => grid.GetValueOrDefault((pc.PcId, d)));
 
-                                if (pc.Role == "CS")
+                                if (pc.WorkCapacity == "CS")
                                     table.Cell().Element(WeekTotalCell).AlignCenter()
                                         .Text(t => t.Span(FmtOrBlank(total)).FontSize(8).FontColor("#aaaaaa"));
                                 else

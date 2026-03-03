@@ -4,7 +4,7 @@ using System.Globalization;
 
 namespace LPM.Services;
 
-public record PcInfo(int PcId, string FullName, string Role);
+public record PcInfo(int PcId, string FullName, string WorkCapacity);
 public record SessionRow(int SessionId, int LengthSec, int AdminSec, bool IsFree, string? Summary, string CreatedAt, string AuditorName);
 public record CsReviewRow(int CsReviewId, int SessionId, int ReviewSec, string Status, string? Notes);
 public record CsWorkRow(int CsWorkLogId, int LengthSec, string? Notes, string CreatedAt);
@@ -22,85 +22,6 @@ public class DashboardService
     {
         var dbPath = config["Database:Path"] ?? "lifepower.db";
         _connectionString = $"Data Source={dbPath}";
-        EnsureStaffPcListTable();
-        EnsureCsWorkLogTable();
-        EnsureMiscChargeTable();
-    }
-
-    private void EnsureStaffPcListTable()
-    {
-        using var conn = new SqliteConnection(_connectionString);
-        conn.Open();
-
-        using var create = conn.CreateCommand();
-        create.CommandText = @"
-            CREATE TABLE IF NOT EXISTS StaffPcList (
-              Id     INTEGER PRIMARY KEY AUTOINCREMENT,
-              UserId INTEGER NOT NULL,
-              PcId   INTEGER NOT NULL,
-              UNIQUE (UserId, PcId),
-              FOREIGN KEY (UserId) REFERENCES Persons(PersonId) ON DELETE CASCADE,
-              FOREIGN KEY (PcId)   REFERENCES PCs(PcId)         ON DELETE CASCADE
-            )";
-        create.ExecuteNonQuery();
-
-        // Migrate: add Role column to existing tables that don't yet have it
-        try
-        {
-            using var alter = conn.CreateCommand();
-            alter.CommandText = "ALTER TABLE StaffPcList ADD COLUMN Role TEXT NOT NULL DEFAULT 'Auditor'";
-            alter.ExecuteNonQuery();
-        }
-        catch { /* column already exists */ }
-    }
-
-    private void EnsureCsWorkLogTable()
-    {
-        using var conn = new SqliteConnection(_connectionString);
-        conn.Open();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
-            CREATE TABLE IF NOT EXISTS CsWorkLog (
-              CsWorkLogId   INTEGER PRIMARY KEY AUTOINCREMENT,
-              CsId          INTEGER NOT NULL,
-              PcId          INTEGER NOT NULL,
-              WorkDate      TEXT    NOT NULL,
-              LengthSeconds INTEGER NOT NULL DEFAULT 0,
-              Notes         TEXT,
-              CreatedAt     TEXT    NOT NULL DEFAULT (datetime('now')),
-              FOREIGN KEY (CsId) REFERENCES CaseSupervisors(CsId),
-              FOREIGN KEY (PcId) REFERENCES PCs(PcId)
-            )";
-        cmd.ExecuteNonQuery();
-    }
-
-    private void EnsureMiscChargeTable()
-    {
-        using var conn = new SqliteConnection(_connectionString);
-        conn.Open();
-
-        // Drop the orphan plural-name table if it was ever created by mistake
-        using var drop = conn.CreateCommand();
-        drop.CommandText = "DROP TABLE IF EXISTS MiscCharges";
-        drop.ExecuteNonQuery();
-
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
-            CREATE TABLE IF NOT EXISTS MiscCharge (
-              MiscChargeId  INTEGER PRIMARY KEY AUTOINCREMENT,
-              AuditorId     INTEGER NOT NULL,
-              PcId          INTEGER NOT NULL,
-              ChargeDate    TEXT    NOT NULL,
-              SequenceInDay INTEGER NOT NULL DEFAULT 1,
-              LengthSeconds INTEGER NOT NULL DEFAULT 0,
-              AdminSeconds  INTEGER NOT NULL DEFAULT 0,
-              IsFree        INTEGER NOT NULL DEFAULT 0,
-              Summary       TEXT,
-              CreatedAt     TEXT    NOT NULL DEFAULT (datetime('now')),
-              FOREIGN KEY (AuditorId) REFERENCES Persons(PersonId),
-              FOREIGN KEY (PcId)      REFERENCES PCs(PcId)
-            )";
-        cmd.ExecuteNonQuery();
     }
 
     /// <summary>
@@ -145,7 +66,7 @@ public class DashboardService
         cmd.CommandText = @"
             SELECT pc.PcId,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
-                   spl.Role
+                   spl.WorkCapacity
             FROM StaffPcList spl
             JOIN PCs     pc ON pc.PcId    = spl.PcId
             JOIN Persons p  ON p.PersonId = pc.PcId
@@ -183,7 +104,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT OR IGNORE INTO StaffPcList (UserId, PcId, Role) VALUES (@uid, @pcId, 'Auditor')";
+        cmd.CommandText = "INSERT OR IGNORE INTO StaffPcList (UserId, PcId, WorkCapacity) VALUES (@uid, @pcId, 'Auditor')";
         cmd.Parameters.AddWithValue("@uid",  userId);
         cmd.Parameters.AddWithValue("@pcId", pcId);
         cmd.ExecuteNonQuery();
@@ -205,7 +126,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE StaffPcList SET Role = @role WHERE UserId = @uid AND PcId = @pcId";
+        cmd.CommandText = "UPDATE StaffPcList SET WorkCapacity = @role WHERE UserId = @uid AND PcId = @pcId";
         cmd.Parameters.AddWithValue("@role", role);
         cmd.Parameters.AddWithValue("@uid",  userId);
         cmd.Parameters.AddWithValue("@pcId", pcId);
@@ -225,9 +146,9 @@ public class DashboardService
         var dates    = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
         var dateList = string.Join(",", dates.Select(d => $"'{d:yyyy-MM-dd}'"));
 
-        var auditorPcIds = userPcs.Where(p => p.Role == "Auditor").Select(p => p.PcId).ToList();
-        var csPcIds      = userPcs.Where(p => p.Role == "CS").Select(p => p.PcId).ToList();
-        var miscPcIds    = userPcs.Where(p => p.Role == "Miscellaneous").Select(p => p.PcId).ToList();
+        var auditorPcIds = userPcs.Where(p => p.WorkCapacity == "Auditor").Select(p => p.PcId).ToList();
+        var csPcIds      = userPcs.Where(p => p.WorkCapacity == "CS").Select(p => p.PcId).ToList();
+        var miscPcIds    = userPcs.Where(p => p.WorkCapacity == "Miscellaneous").Select(p => p.PcId).ToList();
 
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -581,9 +502,9 @@ public class DashboardService
             return weeks.Select(w => new WeekTotal(w, 0)).ToList();
 
         var startStr = weeks[0].ToString("yyyy-MM-dd");
-        var auditorPcIds = userPcs.Where(p => p.Role == "Auditor").Select(p => p.PcId).ToList();
-        var csPcIds      = userPcs.Where(p => p.Role == "CS").Select(p => p.PcId).ToList();
-        var miscPcIds    = userPcs.Where(p => p.Role == "Miscellaneous").Select(p => p.PcId).ToList();
+        var auditorPcIds = userPcs.Where(p => p.WorkCapacity == "Auditor").Select(p => p.PcId).ToList();
+        var csPcIds      = userPcs.Where(p => p.WorkCapacity == "CS").Select(p => p.PcId).ToList();
+        var miscPcIds    = userPcs.Where(p => p.WorkCapacity == "Miscellaneous").Select(p => p.PcId).ToList();
 
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -664,7 +585,7 @@ public class DashboardService
         var result = new HashSet<(int pcId, int dayIndex)>();
 
         var allPcIds = userPcs
-            .Where(p => p.Role != "Miscellaneous")
+            .Where(p => p.WorkCapacity != "Miscellaneous")
             .Select(p => p.PcId)
             .ToList();
 

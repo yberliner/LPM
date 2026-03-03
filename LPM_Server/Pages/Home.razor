@@ -48,11 +48,11 @@
                             var csFullName  = _pcCsNames.TryGetValue(pc.PcId, out var cn) ? cn : "";
                             var csFirstName = csFullName.Length > 0 ? csFullName.Split(' ')[0] : "NA";
                             <th class="text-center fw-normal">
-                                @if (pc.Role == "CS")
+                                @if (pc.WorkCapacity == "CS")
                                 {
                                     <span>CS</span>
                                 }
-                                else if (pc.Role == "Auditor")
+                                else if (pc.WorkCapacity == "Auditor")
                                 {
                                     <span title="@(csFullName.Length > 0 ? csFullName : "Unknown")">@csFirstName</span>
                                 }
@@ -96,7 +96,7 @@
                             @foreach (var pc in _myPcs)
                             {
                                 <td class="text-center py-1">
-                                    @if (pc.Role == "Miscellaneous")
+                                    @if (pc.WorkCapacity == "Miscellaneous")
                                     {
                                         <span class="badge bg-secondary-transparent">Other</span>
                                     }
@@ -144,12 +144,12 @@
                                         style="@(isFuture ? "cursor:default; background:#f8f9fa; opacity:.55;" : "cursor:pointer;")"
                                         @onclick="() => TrySelectCell(pc.PcId, dayIdx)">
                                         @{
-                                            var isPendingCs = pc.Role == "CS" && _pendingCs.Contains((pc.PcId, dayIdx));
+                                            var isPendingCs = pc.WorkCapacity == "CS" && _pendingCs.Contains((pc.PcId, dayIdx));
                                         }
 
                                         @if (secs > 0)
                                         {
-                                            <span style="@(pc.Role == "CS" ? "color:#aaa; font-size:.78em;" : "")">
+                                            <span style="@(pc.WorkCapacity == "CS" ? "color:#aaa; font-size:.78em;" : "")">
                                                 @DashboardService.Fmt(secs)
                                                 @if (isPendingCs)
                                                 {
@@ -181,7 +181,7 @@
                                 var total = Enumerable.Range(0, 7)
                                     .Sum(d => _grid.GetValueOrDefault((pc.PcId, d)));
                                 <td class="text-center">
-                                    @if (pc.Role == "CS")
+                                    @if (pc.WorkCapacity == "CS")
                                     {
                                         <span style="color:#aaa; font-size:.78em;">@DashboardService.Fmt(total)</span>
                                     }
@@ -193,7 +193,7 @@
                             }
                         </tr>
                         @{
-                            var csPcIdSet  = _myPcs.Where(p => p.Role == "CS").Select(p => p.PcId).ToHashSet();
+                            var csPcIdSet  = _myPcs.Where(p => p.WorkCapacity == "CS").Select(p => p.PcId).ToHashSet();
                             var nonCsTotal = _grid.Where(kv => !csPcIdSet.Contains(kv.Key.Item1)).Sum(kv => kv.Value);
                             var csTotal    = _grid.Where(kv =>  csPcIdSet.Contains(kv.Key.Item1)).Sum(kv => kv.Value);
                         }
@@ -248,7 +248,7 @@
                  style="position:fixed; top:@(_ctxY)px; left:@(_ctxX)px; z-index:9999; min-width:160px;"
                  @onclick:stopPropagation="true">
                 <div class="list-group list-group-flush">
-                    @if (ctxPc?.Role == "Miscellaneous")
+                    @if (ctxPc?.WorkCapacity == "Miscellaneous")
                     {
                         <button class="list-group-item list-group-item-action py-2"
                                 @onclick="RemoveFromOthers">
@@ -751,7 +751,7 @@
 
         _pendingCs = DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
         _pcCsNames = DashSvc.GetLastCsNamesByPc(
-            _myPcs.Where(p => p.Role != "Miscellaneous").Select(p => p.PcId).ToList());
+            _myPcs.Where(p => p.WorkCapacity != "Miscellaneous").Select(p => p.PcId).ToList());
 
         await InvokeAsync(StateHasChanged);
     }
@@ -794,7 +794,7 @@
 
         _pendingCs = DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
         _pcCsNames = DashSvc.GetLastCsNamesByPc(
-            _myPcs.Where(p => p.Role != "Miscellaneous").Select(p => p.PcId).ToList());
+            _myPcs.Where(p => p.WorkCapacity != "Miscellaneous").Select(p => p.PcId).ToList());
 
         if (_selPcId == pcId) ClearSelection();
 
@@ -802,9 +802,9 @@
     }
 
     string AudBtnClass(PcInfo pc) =>
-        pc.Role == "Auditor" ? "btn-sm btn-primary" : "btn-sm btn-outline-secondary";
+        pc.WorkCapacity == "Auditor" ? "btn-sm btn-primary" : "btn-sm btn-outline-secondary";
     string CsBtnClass(PcInfo pc) =>
-        pc.Role == "CS" ? "btn-sm btn-success" : "btn-sm btn-outline-secondary";
+        pc.WorkCapacity == "CS" ? "btn-sm btn-success" : "btn-sm btn-outline-secondary";
 
     // ── Context menu ──
     void ShowCtxMenu(MouseEventArgs e, int pcId)
@@ -869,7 +869,7 @@
     {
         _selPcId = pcId;
         _selDay  = dayIdx;
-        _selRole = _myPcs.FirstOrDefault(p => p.PcId == pcId)?.Role ?? "Auditor";
+        _selRole = _myPcs.FirstOrDefault(p => p.PcId == pcId)?.WorkCapacity ?? "Auditor";
         _detail  = DashSvc.GetDayDetail(_userId!.Value, pcId, _weekStart.AddDays(dayIdx), _selRole);
         _showAddSession  = false;
         _showAddReview   = false;
