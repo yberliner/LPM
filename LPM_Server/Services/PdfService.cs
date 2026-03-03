@@ -1,4 +1,4 @@
-﻿using QuestPDF.Fluent;
+using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using LPM.Services;   // PcInfo lives here in your project
@@ -14,20 +14,24 @@ public class PdfService
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
+        // Solo CS columns use -PcId as grid key; solo auditor mode uses PcId normally
+        static int GKey(PcInfo pc) => pc.IsSolo ? -(pc.PcId) : pc.PcId;
+
         // Remove columns that are all-zero for the week
         var pcsToPrint = pcs
             .Where(pc => Enumerable.Range(0, 7)
-                .Sum(d => grid.GetValueOrDefault((pc.PcId, d))) > 0)
+                .Sum(d => grid.GetValueOrDefault((GKey(pc), d))) > 0)
             .ToList();
 
         var weekEnd = weekStart.AddDays(6);
 
+        // Solo CS columns count as regular time, not CS time
         int nonCsTotal = pcsToPrint
-            .Where(pc => pc.WorkCapacity != "CS")
-            .Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.GetValueOrDefault((pc.PcId, d))));
+            .Where(pc => pc.WorkCapacity != "CS" || pc.IsSolo)
+            .Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.GetValueOrDefault((GKey(pc), d))));
         int csTotal = pcsToPrint
-            .Where(pc => pc.WorkCapacity == "CS")
-            .Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.GetValueOrDefault((pc.PcId, d))));
+            .Where(pc => pc.WorkCapacity == "CS" && !pc.IsSolo)
+            .Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.GetValueOrDefault((GKey(pc), d))));
 
         return Document.Create(container =>
         {
@@ -85,10 +89,18 @@ public class PdfService
 
                             foreach (var pc in pcsToPrint)
                             {
-                                var csFullName  = pcCsNames.TryGetValue(pc.PcId, out var cn) ? cn : "";
-                                var csDisplay   = pc.WorkCapacity == "CS" ? "CS"
-                                                : csFullName.Length > 0 ? csFullName.Split(' ')[0]
-                                                : pc.WorkCapacity == "Auditor" ? "NA" : "";
+                                string csDisplay;
+                                if (pc.IsSolo)
+                                    csDisplay = "Solo";
+                                else if (pc.WorkCapacity == "CS")
+                                    csDisplay = "CS";
+                                else
+                                {
+                                    var csFullName = pcCsNames.TryGetValue(pc.PcId, out var cn) ? cn : "";
+                                    csDisplay = csFullName.Length > 0 ? csFullName.Split(' ')[0]
+                                              : pc.WorkCapacity == "Auditor" ? "NA" : "";
+                                }
+
                                 header.Cell()
                                     .Element(CsHeaderCell)
                                     .AlignCenter()
@@ -112,7 +124,7 @@ public class PdfService
                                     .Element(RoleHeaderCell)
                                     .AlignCenter()
                                     .PaddingVertical(2)
-                                    .Text(RoleLabel(pc.WorkCapacity))
+                                    .Text(RoleLabel(pc))
                                     .FontSize(9)
                                     .FontColor(Colors.Grey.Darken1);
                             }
@@ -145,8 +157,9 @@ public class PdfService
                             {
                                 foreach (var pc in pcsToPrint)
                                 {
-                                    int secs = grid.GetValueOrDefault((pc.PcId, d));
-                                    if (pc.WorkCapacity == "CS")
+                                    int secs = grid.GetValueOrDefault((GKey(pc), d));
+                                    // Regular CS columns: grayed small; everything else: normal
+                                    if (pc.WorkCapacity == "CS" && !pc.IsSolo)
                                         table.Cell().Element(CellStyle).AlignCenter()
                                             .Text(t => t.Span(FmtOrBlank(secs)).FontSize(8).FontColor("#aaaaaa"));
                                     else
@@ -173,9 +186,9 @@ public class PdfService
                             foreach (var pc in pcsToPrint)
                             {
                                 int total = Enumerable.Range(0, 7)
-                                    .Sum(d => grid.GetValueOrDefault((pc.PcId, d)));
+                                    .Sum(d => grid.GetValueOrDefault((GKey(pc), d)));
 
-                                if (pc.WorkCapacity == "CS")
+                                if (pc.WorkCapacity == "CS" && !pc.IsSolo)
                                     table.Cell().Element(WeekTotalCell).AlignCenter()
                                         .Text(t => t.Span(FmtOrBlank(total)).FontSize(8).FontColor("#aaaaaa"));
                                 else
@@ -256,13 +269,13 @@ public class PdfService
 
     // ── Helpers ──
 
-    static string RoleLabel(string? role)
+    static string RoleLabel(PcInfo pc)
     {
-        return role == "CS"
-            ? "CS"
-            : role == "Miscellaneous"
-                ? "Other"
-                : "Auditor";
+        if (pc.IsSolo)            return "Solo";
+        if (pc.WorkCapacity == "CS")            return "CS";
+        if (pc.WorkCapacity == "Miscellaneous") return "Other";
+        if (pc.WorkCapacity == "SoloAuditor")   return "Solo";
+        return "Auditor";
     }
 
     static string FmtOrBlank(int sec)
