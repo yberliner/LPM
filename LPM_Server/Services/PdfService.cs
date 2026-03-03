@@ -14,13 +14,10 @@ public class PdfService
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
-        // Solo CS columns use -PcId as grid key; solo auditor mode uses PcId normally
-        static int GKey(PcInfo pc) => pc.IsSolo ? -(pc.PcId) : pc.PcId;
-
         // Remove columns that are all-zero for the week
         var pcsToPrint = pcs
             .Where(pc => Enumerable.Range(0, 7)
-                .Sum(d => grid.GetValueOrDefault((GKey(pc), d))) > 0)
+                .Sum(d => grid.GetValueOrDefault((DashboardService.GKey(pc), d))) > 0)
             .ToList();
 
         var weekEnd = weekStart.AddDays(6);
@@ -28,10 +25,10 @@ public class PdfService
         // Solo CS columns count as regular time, not CS time
         int nonCsTotal = pcsToPrint
             .Where(pc => pc.WorkCapacity != "CS" || pc.IsSolo)
-            .Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.GetValueOrDefault((GKey(pc), d))));
+            .Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
         int csTotal = pcsToPrint
             .Where(pc => pc.WorkCapacity == "CS" && !pc.IsSolo)
-            .Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.GetValueOrDefault((GKey(pc), d))));
+            .Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
 
         return Document.Create(container =>
         {
@@ -157,14 +154,14 @@ public class PdfService
                             {
                                 foreach (var pc in pcsToPrint)
                                 {
-                                    int secs = grid.GetValueOrDefault((GKey(pc), d));
+                                    int secs = grid.GetValueOrDefault((DashboardService.GKey(pc), d));
                                     // Regular CS columns: grayed small; everything else: normal
                                     if (pc.WorkCapacity == "CS" && !pc.IsSolo)
                                         table.Cell().Element(CellStyle).AlignCenter()
-                                            .Text(t => t.Span(FmtOrBlank(secs)).FontSize(8).FontColor("#aaaaaa"));
+                                            .Text(t => t.Span(DashboardService.FmtOrBlank(secs)).FontSize(8).FontColor("#aaaaaa"));
                                     else
                                         table.Cell().Element(CellStyle).AlignCenter()
-                                            .Text(FmtOrBlank(secs));
+                                            .Text(DashboardService.FmtOrBlank(secs));
                                 }
                             }
                         }
@@ -186,14 +183,14 @@ public class PdfService
                             foreach (var pc in pcsToPrint)
                             {
                                 int total = Enumerable.Range(0, 7)
-                                    .Sum(d => grid.GetValueOrDefault((GKey(pc), d)));
+                                    .Sum(d => grid.GetValueOrDefault((DashboardService.GKey(pc), d)));
 
                                 if (pc.WorkCapacity == "CS" && !pc.IsSolo)
                                     table.Cell().Element(WeekTotalCell).AlignCenter()
-                                        .Text(t => t.Span(FmtOrBlank(total)).FontSize(8).FontColor("#aaaaaa"));
+                                        .Text(t => t.Span(DashboardService.FmtOrBlank(total)).FontSize(8).FontColor("#aaaaaa"));
                                 else
                                     table.Cell().Element(WeekTotalCell).AlignCenter()
-                                        .Text(FmtOrBlank(total)).SemiBold();
+                                        .Text(DashboardService.FmtOrBlank(total)).SemiBold();
                             }
                         }
                     });
@@ -212,11 +209,11 @@ public class PdfService
                             r.ConstantItem(200).AlignRight().Column(c =>
                             {
                                 c.Item().AlignRight()
-                                    .Text(FmtOrBlank(nonCsTotal))
+                                    .Text(DashboardService.FmtOrBlank(nonCsTotal))
                                     .SemiBold().FontSize(22);
                                 if (csTotal > 0)
                                     c.Item().AlignRight()
-                                        .Text($"CS time: ({FmtOrBlank(csTotal)})")
+                                        .Text($"CS time: ({DashboardService.FmtOrBlank(csTotal)})")
                                         .FontSize(8).FontColor("#aaaaaa");
                             });
                         });
@@ -278,10 +275,4 @@ public class PdfService
         return "Auditor";
     }
 
-    static string FmtOrBlank(int sec)
-    {
-        if (sec <= 0) return "";
-        var ts = TimeSpan.FromSeconds(sec);
-        return $"{(int)ts.TotalHours}:{ts.Minutes:D2}";
-    }
 }

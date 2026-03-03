@@ -78,7 +78,7 @@
                         <th style="min-width:110px;">Day</th>
                         @foreach (var pc in _myPcs)
                         {
-                            var hasPendingCs = Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((GKey(pc), d)));
+                            var hasPendingCs = Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((DashboardService.GKey(pc), d)));
                             <th class="text-center user-select-none"
                                 style="cursor:context-menu; white-space:nowrap; min-width:90px;"
                                 @oncontextmenu="e => ShowCtxMenu(e, pc)"
@@ -160,13 +160,13 @@
                             {
                                 @foreach (var pc in _myPcs)
                                 {
-                                    var secs       = _grid.GetValueOrDefault((GKey(pc), dayIdx));
+                                    var secs       = _grid.GetValueOrDefault((DashboardService.GKey(pc), dayIdx));
                                     var isSelected = _selPcId == pc.PcId && _selDay == dayIdx && _selIsSolo == pc.IsSolo;
                                     <td class="text-center @(isSelected ? "table-primary fw-semibold" : isFuture ? "text-muted" : "")"
                                         style="@(isFuture ? "cursor:default; background:#f8f9fa; opacity:.55;" : "cursor:pointer;")"
                                         @onclick="() => TrySelectCell(pc, dayIdx)">
                                         @{
-                                            var isPendingCs = pc.WorkCapacity == "CS" && _pendingCs.Contains((GKey(pc), dayIdx));
+                                            var isPendingCs = pc.WorkCapacity == "CS" && _pendingCs.Contains((DashboardService.GKey(pc), dayIdx));
                                         }
 
                                         @if (secs > 0)
@@ -201,7 +201,7 @@
                             @foreach (var pc in _myPcs)
                             {
                                 var total = Enumerable.Range(0, 7)
-                                    .Sum(d => _grid.GetValueOrDefault((GKey(pc), d)));
+                                    .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d)));
                                 <td class="text-center">
                                     @if (pc.WorkCapacity == "CS" && !pc.IsSolo)
                                     {
@@ -215,7 +215,7 @@
                             }
                         </tr>
                         @{
-                            var csPcKeySet = _myPcs.Where(p => p.WorkCapacity == "CS" && !p.IsSolo).Select(GKey).ToHashSet();
+                            var csPcKeySet = _myPcs.Where(p => p.WorkCapacity == "CS" && !p.IsSolo).Select(DashboardService.GKey).ToHashSet();
                             var nonCsTotal = _grid.Where(kv => !csPcKeySet.Contains(kv.Key.Item1)).Sum(kv => kv.Value);
                             var csTotal    = _grid.Where(kv =>  csPcKeySet.Contains(kv.Key.Item1)).Sum(kv => kv.Value);
                         }
@@ -775,7 +775,7 @@
             // Solo-only users auto-enter solo mode; mixed users start in regular mode
             _soloMode = _isSoloAuditor && !(_isAuditor || _isCS);
         }
-        _weekStart = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
+        _weekStart = TodayWeekStart;
         await RefreshAsync();
     }
 
@@ -788,7 +788,7 @@
             _allPcs       = [];
             _grid         = DashSvc.GetWeekGridSolo(_userId.Value, _weekStart);
             _weeklyTotals = DashSvc.GetWeeklyTotalsSolo(_userId.Value,
-                                DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today)), 20);
+                                TodayWeekStart, 20);
             _detail = null; _selPcId = null; _selDay = null;
             _pendingCs = []; _pcCsNames = [];
         }
@@ -798,13 +798,11 @@
             _allPcs = DashSvc.GetAllPcs();
             _grid          = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
             _weeklyTotals  = DashSvc.GetWeeklyTotals(_userId.Value,
-                                 DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today)),
+                                 TodayWeekStart,
                                  20, _myPcs);
             _detail = null; _selPcId = null; _selDay = null;
 
-            _pendingCs = DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
-            _pcCsNames = DashSvc.GetLastCsNamesByPc(
-                _myPcs.Where(p => p.WorkCapacity != "Miscellaneous" && !p.IsSolo).Select(p => p.PcId).ToList());
+            RefreshCsMetadata();
         }
 
         _chartKey++;
@@ -847,9 +845,7 @@
         _myPcs = DashSvc.GetUserPcs(_userId.Value);
         _grid  = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
 
-        _pendingCs = DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
-        _pcCsNames = DashSvc.GetLastCsNamesByPc(
-            _myPcs.Where(p => p.WorkCapacity != "Miscellaneous" && !p.IsSolo).Select(p => p.PcId).ToList());
+        RefreshCsMetadata();
 
         if (_selPcId == pcId && !_selIsSolo) ClearSelection();
 
@@ -863,8 +859,14 @@
         await RefreshAsync();
     }
 
-    // Grid key: solo CS columns use -PcId to avoid clashing with the same person's regular column
-    static int GKey(PcInfo pc) => pc.IsSolo ? -(pc.PcId) : pc.PcId;
+    void RefreshCsMetadata()
+    {
+        _pendingCs = DashSvc.GetPendingCsMarkers(_userId!.Value, _weekStart, _myPcs);
+        _pcCsNames = DashSvc.GetLastCsNamesByPc(
+            _myPcs.Where(p => p.WorkCapacity != "Miscellaneous" && !p.IsSolo).Select(p => p.PcId).ToList());
+    }
+
+    static DateOnly TodayWeekStart => DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
 
     string AudBtnClass(PcInfo pc) =>
         pc.WorkCapacity == "Auditor" ? "btn-sm btn-primary" : "btn-sm btn-outline-secondary";
@@ -898,7 +900,7 @@
         _showCtxMenu = false;
         _myPcs = DashSvc.GetUserPcs(_userId.Value);
         _grid  = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
-        _pendingCs = DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
+        RefreshCsMetadata();
         if (_selPcId == _ctxPcId && !_selIsSolo) ClearSelection();
     }
 
@@ -908,7 +910,7 @@
         _showCtxMenu = false;
         _myPcs = DashSvc.GetUserPcs(_userId.Value);
         _grid  = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
-        _pendingCs = DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
+        RefreshCsMetadata();
         if (_selPcId == _ctxPcId && !_selIsSolo) ClearSelection();
     }
 
@@ -999,9 +1001,7 @@
     void StartAddReview(int sessionId, int sessionLengthSec)
     {
         _addReviewSessionId  = sessionId;
-        _addReviewDuration   = sessionLengthSec > 0
-            ? $"{sessionLengthSec / 3600}:{(sessionLengthSec % 3600) / 60:D2}"
-            : "";
+        _addReviewDuration   = DashboardService.FmtOrBlank(sessionLengthSec);
         _showAddReview       = true;
         _reviewError         = "";
     }
@@ -1069,9 +1069,9 @@
     {
         _weeklyTotals = _soloMode
             ? DashSvc.GetWeeklyTotalsSolo(_userId!.Value,
-                  DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today)), 20)
+                  TodayWeekStart, 20)
             : DashSvc.GetWeeklyTotals(_userId!.Value,
-                  DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today)), 20, _myPcs);
+                  TodayWeekStart, 20, _myPcs);
         _chartKey++;
     }
 

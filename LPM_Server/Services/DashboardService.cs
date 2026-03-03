@@ -18,6 +18,10 @@ public class DashboardService
 {
     private readonly string _connectionString;
 
+    // Reusable SQL expression for a person's display name (requires alias p for Persons)
+    private const string FullNameExpr =
+        "TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), ''))";
+
     public DashboardService(IConfiguration config)
     {
         var dbPath = config["Database:Path"] ?? "lifepower.db";
@@ -63,9 +67,9 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
+        cmd.CommandText = $@"
             SELECT pc.PcId,
-                   TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
+                   {FullNameExpr} AS FullName,
                    spl.WorkCapacity,
                    spl.IsSolo
             FROM StaffPcList spl
@@ -88,9 +92,9 @@ public class DashboardService
 
         // Regular entries for all PCs
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
+        cmd.CommandText = $@"
             SELECT pc.PcId,
-                   TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName
+                   {FullNameExpr} AS FullName
             FROM PCs     pc
             JOIN Persons p ON p.PersonId = pc.PcId
             ORDER BY p.FirstName, p.LastName";
@@ -101,9 +105,9 @@ public class DashboardService
 
         // Extra solo entries for PCs that are also solo auditors (IsSolo=1 in Auditors)
         using var soloCmd = conn.CreateCommand();
-        soloCmd.CommandText = @"
+        soloCmd.CommandText = $@"
             SELECT pc.PcId,
-                   TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName
+                   {FullNameExpr} AS FullName
             FROM Auditors a
             JOIN PCs      pc ON pc.PcId    = a.AuditorId
             JOIN Persons  p  ON p.PersonId = a.AuditorId
@@ -573,9 +577,9 @@ public class DashboardService
             return weeks.Select(w => new WeekTotal(w, 0)).ToList();
 
         var startStr = weeks[0].ToString("yyyy-MM-dd");
-        var auditorPcIds = userPcs.Where(p => p.WorkCapacity == "Auditor").Select(p => p.PcId).ToList();
-        var csPcIds      = userPcs.Where(p => p.WorkCapacity == "CS").Select(p => p.PcId).ToList();
-        var miscPcIds    = userPcs.Where(p => p.WorkCapacity == "Miscellaneous").Select(p => p.PcId).ToList();
+        var auditorPcIds = userPcs.Where(p => p.WorkCapacity == "Auditor"       && !p.IsSolo).Select(p => p.PcId).ToList();
+        var csPcIds      = userPcs.Where(p => p.WorkCapacity == "CS"            && !p.IsSolo).Select(p => p.PcId).ToList();
+        var miscPcIds    = userPcs.Where(p => p.WorkCapacity == "Miscellaneous" && !p.IsSolo).Select(p => p.PcId).ToList();
 
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -649,6 +653,13 @@ public class DashboardService
 
     public static string Fmt(int s) =>
         s == 0 ? "-" : $"{s / 3600}:{(s % 3600) / 60:D2}";
+
+    /// Returns a formatted H:MM string, or "" for zero/negative values (suitable for input pre-fill).
+    public static string FmtOrBlank(int s) =>
+        s <= 0 ? "" : $"{s / 3600}:{(s % 3600) / 60:D2}";
+
+    /// Grid-key convention: solo-CS columns use -PcId so same person can appear in both columns.
+    public static int GKey(PcInfo pc) => pc.IsSolo ? -(pc.PcId) : pc.PcId;
 
     public HashSet<(int pcId, int dayIndex)> GetPendingCsMarkers(
     int csId, DateOnly weekStart, List<PcInfo> userPcs)
@@ -850,7 +861,7 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $@"
             SELECT s.PcId,
-                   TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName
+                   {FullNameExpr} AS FullName
             FROM (
                 SELECT s2.PcId, MAX(cr2.CsReviewId) AS MaxId
                 FROM CsReviews cr2
