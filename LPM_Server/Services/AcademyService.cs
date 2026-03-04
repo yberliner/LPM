@@ -6,7 +6,8 @@ namespace LPM.Services;
 
 public record PersonItem(int PersonId, string FullName);
 public record VisitRecord(int VisitId, int PersonId, string FullName);
-public record WeekVisitCount(string WeekLabel, int TotalVisits);
+public record TopStudent(string FullName, int VisitCount);
+public record WeekVisitCount(string WeekLabel, int TotalVisits, List<TopStudent> TopStudents);
 
 public class AcademyService
 {
@@ -178,29 +179,42 @@ public class AcademyService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT VisitDate FROM Students
-            WHERE VisitDate >= @start AND VisitDate < @end";
+            SELECT s.VisitDate,
+                   TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName
+            FROM Students s
+            JOIN Persons p ON p.PersonId = s.PersonId
+            WHERE s.VisitDate >= @start AND s.VisitDate < @end";
         cmd.Parameters.AddWithValue("@start", rangeStart.ToString("yyyy-MM-dd"));
         cmd.Parameters.AddWithValue("@end",   rangeEnd.ToString("yyyy-MM-dd"));
 
-        var counts = new Dictionary<DateOnly, int>();
-        foreach (var ws in weekStarts) counts[ws] = 0;
+        var totalCounts  = weekStarts.ToDictionary(ws => ws, _ => 0);
+        var personCounts = weekStarts.ToDictionary(ws => ws, _ => new Dictionary<string, int>());
 
         using var r = cmd.ExecuteReader();
         while (r.Read())
         {
             var visitDate = DateOnly.Parse(r.GetString(0));
+            var name      = r.GetString(1);
             foreach (var ws in weekStarts)
             {
                 if (visitDate >= ws && visitDate < ws.AddDays(7))
-                { counts[ws]++; break; }
+                {
+                    totalCounts[ws]++;
+                    personCounts[ws].TryGetValue(name, out var c);
+                    personCounts[ws][name] = c + 1;
+                    break;
+                }
             }
         }
 
         return weekStarts
             .Select(ws => new WeekVisitCount(
                 ws.ToString("dd/MM", CultureInfo.InvariantCulture),
-                counts[ws]))
+                totalCounts[ws],
+                personCounts[ws]
+                    .OrderByDescending(kv => kv.Value)
+                    .Select(kv => new TopStudent(kv.Key, kv.Value))
+                    .ToList()))
             .ToList();
     }
 
