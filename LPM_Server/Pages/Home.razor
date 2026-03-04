@@ -789,6 +789,8 @@
         await RefreshAsync();
     }
 
+    DateOnly AllowedWeekStart => DashboardService.GetWeekStart(MaxAllowedDate());
+
     async Task RefreshAsync()
     {
         if (!_userId.HasValue) return;
@@ -798,7 +800,7 @@
             _allPcs       = [];
             _grid         = DashSvc.GetWeekGridSolo(_userId.Value, _weekStart);
             _weeklyTotals = DashSvc.GetWeeklyTotalsSolo(_userId.Value,
-                                TodayWeekStart, 20);
+                                ChartLatestWeekStart(), 20);
             _detail = null; _selPcId = null; _selDay = null;
             _pendingCs = []; _pcCsNames = [];
         }
@@ -808,7 +810,7 @@
             _allPcs = DashSvc.GetAllPcs();
             _grid          = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
             _weeklyTotals  = DashSvc.GetWeeklyTotals(_userId.Value,
-                                 TodayWeekStart,
+                                 ChartLatestWeekStart(),
                                  20, _myPcs);
             _detail = null; _selPcId = null; _selDay = null;
 
@@ -1079,9 +1081,9 @@
     {
         _weeklyTotals = _soloMode
             ? DashSvc.GetWeeklyTotalsSolo(_userId!.Value,
-                  TodayWeekStart, 20)
+                  ChartLatestWeekStart(), 20)
             : DashSvc.GetWeeklyTotals(_userId!.Value,
-                  TodayWeekStart, 20, _myPcs);
+                  ChartLatestWeekStart(), 20, _myPcs);
         _chartKey++;
     }
 
@@ -1115,5 +1117,19 @@
     async Task ScrollWeekTable(string dir)
     {
         await JS.InvokeVoidAsync("scrollToEdge", "week-table-scroll", dir);
+    }
+
+    DateOnly ChartLatestWeekStart()
+    {
+        var thisWeek = TodayWeekStart;
+        var nextWeek = thisWeek.AddDays(7);
+
+        // Only show next week if something exists there
+        var hasNextWeek =
+            _soloMode
+                ? DashSvc.HasAnyWorkInWeek(_userId!.Value, nextWeek, _myPcs, soloMode: true)
+                : DashSvc.HasAnyWorkInWeek(_userId!.Value, nextWeek, _myPcs, soloMode: false);
+
+        return hasNextWeek ? nextWeek : thisWeek;
     }
 }

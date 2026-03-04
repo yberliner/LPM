@@ -930,4 +930,58 @@ public class DashboardService
 
         return result;
     }
+
+    public bool HasAnyWorkInWeek(int userId, DateOnly weekStart, List<PcInfo> userPcs, bool soloMode = false)
+    {
+        var dates = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
+        var dateList = string.Join(",", dates.Select(d => $"'{d:yyyy-MM-dd}'"));
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Solo mode: only solo sessions
+        if (soloMode)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+            SELECT 1
+            FROM Sessions
+            WHERE AuditorId = @uid AND IsSolo = 1 AND SessionDate IN ({dateList})
+            LIMIT 1";
+            cmd.Parameters.AddWithValue("@uid", userId);
+            return cmd.ExecuteScalar() is not null;
+        }
+
+        // Regular mode: sessions + misc (CS excluded anyway from graph)
+        var auditorPcIds = userPcs.Where(p => p.WorkCapacity == "Auditor" && !p.IsSolo).Select(p => p.PcId).ToList();
+        var miscPcIds = userPcs.Where(p => p.WorkCapacity == "Miscellaneous" && !p.IsSolo).Select(p => p.PcId).ToList();
+
+        if (auditorPcIds.Count > 0)
+        {
+            var pcList = string.Join(",", auditorPcIds);
+            using var sCmd = conn.CreateCommand();
+            sCmd.CommandText = $@"
+            SELECT 1
+            FROM Sessions
+            WHERE AuditorId = @uid AND IsSolo = 0 AND PcId IN ({pcList}) AND SessionDate IN ({dateList})
+            LIMIT 1";
+            sCmd.Parameters.AddWithValue("@uid", userId);
+            if (sCmd.ExecuteScalar() is not null) return true;
+        }
+
+        if (miscPcIds.Count > 0)
+        {
+            var pcList = string.Join(",", miscPcIds);
+            using var mCmd = conn.CreateCommand();
+            mCmd.CommandText = $@"
+            SELECT 1
+            FROM MiscCharge
+            WHERE AuditorId = @uid AND PcId IN ({pcList}) AND ChargeDate IN ({dateList})
+            LIMIT 1";
+            mCmd.Parameters.AddWithValue("@uid", userId);
+            if (mCmd.ExecuteScalar() is not null) return true;
+        }
+
+        return false;
+    }
 }
