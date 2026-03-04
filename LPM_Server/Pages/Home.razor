@@ -22,16 +22,17 @@
         <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="PrintTable">
             <i class="ri-printer-line me-1"></i>Print
         </button>
+        @if (!_soloMode)
+        {
+            <button class="btn btn-sm btn-outline-primary" @onclick="ShowAddPcModal">+ Add PC</button>
+        }
+
         @if (_auditorType == 3)
         {
             <button class="btn btn-sm @(_soloMode ? "btn-warning" : "btn-outline-warning")"
                     @onclick="ToggleSoloMode">
                 @(_soloMode ? "Solo ✓" : "Solo")
             </button>
-        }
-        @if (!_soloMode)
-        {
-            <button class="btn btn-sm btn-outline-primary" @onclick="ShowAddPcModal">+ Add PC</button>
         }
     </div>
 
