@@ -5,7 +5,7 @@ using System.Globalization;
 namespace LPM.Services;
 
 public record PcInfo(int PcId, string FullName, string WorkCapacity, bool IsSolo = false);
-public record SessionRow(int SessionId, int LengthSec, int AdminSec, bool IsFree, string? Summary, string CreatedAt, string AuditorName);
+public record SessionRow(int SessionId, int LengthSec, int AdminSec, bool IsFree, string? Summary, string CreatedAt, string AuditorName, string VerifiedStatus = "Draft");
 public record CsReviewRow(int CsReviewId, int SessionId, int ReviewSec, string Status, string? Notes);
 public record CsWorkRow(int CsWorkLogId, int LengthSec, string? Notes, string CreatedAt);
 public record WeekTotal(DateOnly WeekStart, int TotalSeconds)
@@ -65,6 +65,40 @@ public class DashboardService
             using var inactCmd = conn.CreateCommand();
             inactCmd.CommandText = "UPDATE Auditors SET Type = 0 WHERE IsActive = 0";
             inactCmd.ExecuteNonQuery();
+        }
+
+        // Add 'Draft' to CsReviews.Status CHECK constraint if not already present
+        // SQLite requires a full table rebuild to change CHECK constraints
+        using var schemaCmd = conn.CreateCommand();
+        schemaCmd.CommandText = "SELECT sql FROM sqlite_master WHERE type='table' AND name='CsReviews'";
+        var csReviewsSchema = schemaCmd.ExecuteScalar() as string;
+        if (csReviewsSchema != null &&
+            !csReviewsSchema.Contains("'Draft'") &&
+            !csReviewsSchema.Contains("\"Draft\""))
+        {
+            void Exec(string sql) {
+                using var c = conn.CreateCommand();
+                c.CommandText = sql;
+                c.ExecuteNonQuery();
+            }
+            Exec("PRAGMA foreign_keys = OFF");
+            Exec(@"CREATE TABLE CsReviews_new (
+                    CsReviewId          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    SessionId           INTEGER NOT NULL UNIQUE,
+                    CsId                INTEGER NOT NULL,
+                    ReviewLengthSeconds INTEGER NOT NULL DEFAULT 0,
+                    ReviewedAt          TEXT,
+                    Status              TEXT NOT NULL DEFAULT 'Draft'
+                                        CHECK(Status IN ('Draft','Approved','NeedsCorrection','Rejected')),
+                    Notes               TEXT
+                )");
+            Exec(@"INSERT INTO CsReviews_new
+                    (CsReviewId, SessionId, CsId, ReviewLengthSeconds, ReviewedAt, Status, Notes)
+                SELECT CsReviewId, SessionId, CsId, ReviewLengthSeconds, ReviewedAt, Status, Notes
+                FROM CsReviews");
+            Exec("DROP TABLE CsReviews");
+            Exec("ALTER TABLE CsReviews_new RENAME TO CsReviews");
+            Exec("PRAGMA foreign_keys = ON");
         }
     }
 
@@ -358,7 +392,7 @@ public class DashboardService
             cmd.CommandText = @"
                 SELECT s.SessionId, s.LengthSeconds, s.AdminSeconds,
                        s.IsFreeSession, s.SessionSummaryHtml, s.CreatedAt,
-                       p.FirstName
+                       p.FirstName, s.VerifiedStatus
                 FROM Sessions s
                 JOIN Persons p ON p.PersonId = s.AuditorId
                 WHERE s.AuditorId = @uid AND s.PcId = @pcId AND s.SessionDate = @date
@@ -374,7 +408,8 @@ public class DashboardService
                     r.GetInt32(3) == 1,
                     r.IsDBNull(4) ? null : r.GetString(4),
                     r.IsDBNull(5) ? ""   : r.GetString(5),
-                    r.IsDBNull(6) ? ""   : r.GetString(6)));
+                    r.IsDBNull(6) ? ""   : r.GetString(6),
+                    r.IsDBNull(7) ? "Draft" : r.GetString(7)));
             }
         }
         else if (role == "Miscellaneous")
@@ -406,7 +441,8 @@ public class DashboardService
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 SELECT SessionId, LengthSeconds, AdminSeconds,
-                       IsFreeSession, SessionSummaryHtml, CreatedAt
+                       IsFreeSession, SessionSummaryHtml, CreatedAt,
+                       VerifiedStatus
                 FROM Sessions
                 WHERE AuditorId = @uid AND IsSolo = 1 AND SessionDate = @date
                 ORDER BY SequenceInDay";
@@ -420,7 +456,8 @@ public class DashboardService
                     r.GetInt32(3) == 1,
                     r.IsDBNull(4) ? null : r.GetString(4),
                     r.IsDBNull(5) ? ""   : r.GetString(5),
-                    ""));
+                    "",
+                    r.IsDBNull(6) ? "Draft" : r.GetString(6)));
             }
         }
         else  // CS role
@@ -431,7 +468,7 @@ public class DashboardService
             sessCmd.CommandText = $@"
                 SELECT s.SessionId, s.LengthSeconds, s.AdminSeconds,
                        s.IsFreeSession, s.SessionSummaryHtml, s.CreatedAt,
-                       p.FirstName
+                       p.FirstName, s.VerifiedStatus
                 FROM Sessions s
                 JOIN Persons p ON p.PersonId = s.AuditorId
                 WHERE s.PcId = @pcId AND s.SessionDate = @date AND s.IsSolo = {(isSolo ? 1 : 0)}
@@ -446,7 +483,8 @@ public class DashboardService
                     rs.GetInt32(3) == 1,
                     rs.IsDBNull(4) ? null : rs.GetString(4),
                     rs.IsDBNull(5) ? ""   : rs.GetString(5),
-                    rs.GetString(6)));
+                    rs.IsDBNull(6) ? ""   : rs.GetString(6),
+                    rs.IsDBNull(7) ? "Draft" : rs.GetString(7)));
             }
 
             // All reviews for those sessions (by any CS worker — UNIQUE per session anyway)
@@ -599,6 +637,39 @@ public class DashboardService
         using var rowIdCmd = conn.CreateCommand();
         rowIdCmd.CommandText = "SELECT last_insert_rowid()";
         return (int)(long)rowIdCmd.ExecuteScalar()!;
+    }
+
+    public void UpdateSession(int sessionId, int lengthSec, int adminSec, bool isFree, string? summary)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE Sessions
+            SET LengthSeconds=@len, AdminSeconds=@adm, IsFreeSession=@free, SessionSummaryHtml=@sum
+            WHERE SessionId=@id";
+        cmd.Parameters.AddWithValue("@len",  lengthSec);
+        cmd.Parameters.AddWithValue("@adm",  adminSec);
+        cmd.Parameters.AddWithValue("@free", isFree ? 1 : 0);
+        cmd.Parameters.AddWithValue("@sum",  (object?)summary ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@id",   sessionId);
+        cmd.ExecuteNonQuery();
+    }
+
+    public void UpdateCsReview(int csReviewId, int reviewSec, string status, string? notes)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE CsReviews
+            SET ReviewLengthSeconds=@rev, Status=@status, Notes=@notes
+            WHERE CsReviewId=@id";
+        cmd.Parameters.AddWithValue("@rev",    reviewSec);
+        cmd.Parameters.AddWithValue("@status", status);
+        cmd.Parameters.AddWithValue("@notes",  (object?)notes ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@id",     csReviewId);
+        cmd.ExecuteNonQuery();
     }
 
     /// <summary>

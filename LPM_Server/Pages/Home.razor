@@ -358,35 +358,82 @@
                                     var audSessionTime = !string.IsNullOrEmpty(s.CreatedAt) && s.CreatedAt.Contains(' ')
                                         ? s.CreatedAt.Split(' ')[1][..5]
                                         : "";
-                                    <li class="mb-1 d-flex align-items-center flex-wrap gap-2">
-                                        @if (!string.IsNullOrEmpty(audSessionTime))
+                                    <li class="mb-1">
+                                        @if (_editSessionId == s.SessionId)
                                         {
-                                            <span class="text-muted small">
-                                                <i class="ri-time-line"></i> @audSessionTime
-                                            </span>
+                                            <div class="border rounded p-2 bg-light">
+                                                <div class="row g-2 align-items-center mb-2">
+                                                    <div class="col-auto">
+                                                        <label class="form-label mb-0 small">Duration (H:MM)</label>
+                                                        <input class="form-control form-control-sm" style="width:90px;"
+                                                               @bind="_editDuration" @bind:event="oninput" />
+                                                    </div>
+                                                    <div class="col-auto">
+                                                        <label class="form-label mb-0 small">Admin min</label>
+                                                        <input class="form-control form-control-sm" style="width:70px;" type="number" min="0"
+                                                               @bind="_editAdminMin" />
+                                                    </div>
+                                                    <div class="col-auto d-flex align-items-end pb-1">
+                                                        <div class="form-check mb-0">
+                                                            <input class="form-check-input" type="checkbox" id="chkEditFree" @bind="_editIsFree" />
+                                                            <label class="form-check-label small" for="chkEditFree">Free</label>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-auto ms-auto">
+                                                        <button class="btn btn-sm btn-primary" @onclick="SaveEditSession">Save</button>
+                                                        <button class="btn btn-sm btn-link text-danger" @onclick="CancelEditSession">Cancel</button>
+                                                    </div>
+                                                </div>
+                                                <div class="mb-1">
+                                                    <label class="form-label mb-1 small">Summary</label>
+                                                    <SpkRichEditor Value="@_editSummary" ValueChanged="@(v => _editSummary = v)" />
+                                                </div>
+                                                @if (!string.IsNullOrEmpty(_editError))
+                                                {
+                                                    <div class="text-danger small mt-1">@_editError</div>
+                                                }
+                                            </div>
                                         }
-                                        @if (!string.IsNullOrEmpty(s.AuditorName))
+                                        else
                                         {
-                                            <span class="fw-semibold small" style="color:#7c3aed;">
-                                                <i class="ri-user-line me-1"></i>@s.AuditorName
-                                            </span>
-                                        }
-                                        <span class="badge bg-primary-transparent fs-12">
-                                            @DashboardService.Fmt(s.LengthSec)
-                                        </span>
-                                        @if (s.AdminSec > 0)
-                                        {
-                                            <span class="text-muted small">
-                                                (Admin: @DashboardService.Fmt(s.AdminSec))
-                                            </span>
-                                        }
-                                        @if (s.IsFree)
-                                        {
-                                            <span class="badge bg-warning-transparent">Free</span>
-                                        }
-                                        @if (!string.IsNullOrWhiteSpace(s.Summary))
-                                        {
-                                            <div class="text-muted small mt-1">@((MarkupString)s.Summary)</div>
+                                            <div class="d-flex align-items-center flex-wrap gap-2">
+                                                @if (!string.IsNullOrEmpty(audSessionTime))
+                                                {
+                                                    <span class="text-muted small">
+                                                        <i class="ri-time-line"></i> @audSessionTime
+                                                    </span>
+                                                }
+                                                @if (!string.IsNullOrEmpty(s.AuditorName))
+                                                {
+                                                    <span class="fw-semibold small" style="color:#7c3aed;">
+                                                        <i class="ri-user-line me-1"></i>@s.AuditorName
+                                                    </span>
+                                                }
+                                                <span class="badge bg-primary-transparent fs-12">
+                                                    @DashboardService.Fmt(s.LengthSec)
+                                                </span>
+                                                @if (s.AdminSec > 0)
+                                                {
+                                                    <span class="text-muted small">
+                                                        (Admin: @DashboardService.Fmt(s.AdminSec))
+                                                    </span>
+                                                }
+                                                @if (s.IsFree)
+                                                {
+                                                    <span class="badge bg-warning-transparent">Free</span>
+                                                }
+                                                @{ var sessionApproved = s.VerifiedStatus == "Approved"; }
+                                                <button class="btn btn-link btn-sm py-0 px-1 ms-auto" style="font-size:0.75rem;"
+                                                        title="@(sessionApproved ? "Cannot edit — session is approved" : "Edit session")"
+                                                        disabled="@sessionApproved"
+                                                        @onclick="() => OpenEditSession(s)">
+                                                    <i class="ri-edit-line"></i> Edit
+                                                </button>
+                                            </div>
+                                            @if (!string.IsNullOrWhiteSpace(s.Summary))
+                                            {
+                                                <div class="text-muted small mt-1">@((MarkupString)s.Summary)</div>
+                                            }
                                         }
                                     </li>
                                 }
@@ -489,20 +536,53 @@
                                         </div>
                                         @if (rev != null)
                                         {
-                                            <div class="d-flex align-items-center gap-2 small">
-                                                <i class="ri-checkbox-circle-line text-success"></i>
-                                                <span class="fw-semibold small" style="color:#2e7d32;">
-                                                    <i class="ri-user-star-line me-1"></i>@_displayName
-                                                </span>
-                                                <span class="badge bg-success-transparent">
-                                                    @DashboardService.Fmt(rev.ReviewSec)
-                                                </span>
-                                                <span>@rev.Status</span>
+                                            @if (_editReviewId == rev.CsReviewId)
+                                            {
+                                                <div class="border rounded p-2 bg-light mt-1">
+                                                    <div class="row g-2 align-items-center mb-2">
+                                                        <div class="col-auto">
+                                                            <label class="form-label mb-0 small">Duration (H:MM)</label>
+                                                            <input class="form-control form-control-sm" style="width:90px;"
+                                                                   @bind="_editRevDuration" @bind:event="oninput" />
+                                                        </div>
+                                                        <div class="col-auto ms-auto">
+                                                            <button class="btn btn-sm btn-primary" @onclick="SaveEditReview">Save</button>
+                                                            <button class="btn btn-sm btn-link text-danger" @onclick="CancelEditReview">Cancel</button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="mb-1">
+                                                        <label class="form-label mb-1 small">Notes</label>
+                                                        <SpkRichEditor Value="@_editRevNotes" ValueChanged="@(v => _editRevNotes = v)" />
+                                                    </div>
+                                                    @if (!string.IsNullOrEmpty(_editRevError))
+                                                    {
+                                                        <div class="text-danger small mt-1">@_editRevError</div>
+                                                    }
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <div class="d-flex align-items-center flex-wrap gap-2 small">
+                                                    <i class="ri-checkbox-circle-line text-success"></i>
+                                                    <span class="fw-semibold small" style="color:#2e7d32;">
+                                                        <i class="ri-user-star-line me-1"></i>@_displayName
+                                                    </span>
+                                                    <span class="badge bg-success-transparent">
+                                                        @DashboardService.Fmt(rev.ReviewSec)
+                                                    </span>
+                                                    <span>@rev.Status</span>
+                                                    <button class="btn btn-link btn-sm py-0 px-1 ms-auto" style="font-size:0.75rem;"
+                                                            title="@(rev.Status == "Approved" ? "Cannot edit — review is approved" : "Edit review")"
+                                                            disabled="@(rev.Status == "Approved")"
+                                                            @onclick="() => OpenEditReview(rev)">
+                                                        <i class="ri-edit-line"></i> Edit
+                                                    </button>
+                                                </div>
                                                 @if (!string.IsNullOrWhiteSpace(rev.Notes))
                                                 {
                                                     <div class="text-muted small mt-1">@((MarkupString)rev.Notes)</div>
                                                 }
-                                            </div>
+                                            }
                                         }
                                         else
                                         {
@@ -527,15 +607,6 @@
                                         <input class="form-control form-control-sm"
                                                style="width:90px;" placeholder="0:30"
                                                @bind="_addReviewDuration" @bind:event="oninput" />
-                                    </div>
-                                    <div class="col-auto">
-                                        <label class="form-label mb-0 small">Status</label>
-                                        <select class="form-select form-select-sm"
-                                                @bind="_addReviewStatus">
-                                            <option value="Approved">Approved</option>
-                                            <option value="NeedsCorrection">Needs Correction</option>
-                                            <option value="Rejected">Rejected</option>
-                                        </select>
                                     </div>
                                     <div class="col-auto ms-auto">
                                         <button class="btn btn-sm btn-primary" @onclick="SaveReview">Save</button>
@@ -731,7 +802,6 @@
     bool   _showAddReview;
     int    _addReviewSessionId;
     string _addReviewDuration = "";
-    string _addReviewStatus   = "Approved";
     string _addReviewNotes    = "";
     string _reviewError       = "";
 
@@ -740,6 +810,20 @@
     string _addGeneralCsDuration = "";
     string _addGeneralCsNotes    = "";
     string _generalCsError       = "";
+
+    // Edit Session form
+    int?   _editSessionId;
+    string _editDuration = "";
+    string _editAdminMin = "0";
+    bool   _editIsFree;
+    string _editSummary  = "";
+    string _editError    = "";
+
+    // Edit CS Review form
+    int?   _editReviewId;
+    string _editRevDuration = "";
+    string _editRevNotes    = "";
+    string _editRevError    = "";
 
     // Context menu
     bool   _showCtxMenu;
@@ -925,6 +1009,71 @@
         await RefreshAsync();
     }
 
+    // ── Edit Session ──
+    void OpenEditSession(SessionRow s)
+    {
+        _editSessionId = s.SessionId;
+        _editDuration  = SecsToHMM(s.LengthSec);
+        _editAdminMin  = (s.AdminSec / 60).ToString();
+        _editIsFree    = s.IsFree;
+        _editSummary   = s.Summary ?? "";
+        _editError     = "";
+    }
+
+    void CancelEditSession() { _editSessionId = null; _editError = ""; }
+
+    void SaveEditSession()
+    {
+        int secs = ParseTime(_editDuration);
+        if (secs <= 0) { _editError = "Invalid duration — use H:MM (e.g. 1:30)."; return; }
+        if (!int.TryParse(_editAdminMin, out int adminMin) || adminMin < 0) { _editError = "Invalid admin time."; return; }
+        DashSvc.UpdateSession(_editSessionId!.Value, secs, adminMin * 60, _editIsFree,
+            string.IsNullOrWhiteSpace(_editSummary) ? null : _editSummary);
+        _editSessionId = null;
+        _detail = DashSvc.GetDayDetail(_userId!.Value, _selPcId!.Value,
+            _weekStart.AddDays(_selDay!.Value), _selRole, _selIsSolo);
+        _grid = _soloMode
+            ? DashSvc.GetWeekGridSolo(_userId.Value, _weekStart)
+            : DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+        _pendingCs = _soloMode ? [] : DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
+        _weeklyTotals = _soloMode
+            ? DashSvc.GetWeeklyTotalsSolo(_userId.Value, ChartLatestWeekStart(), 20)
+            : DashSvc.GetWeeklyTotals(_userId.Value, ChartLatestWeekStart(), 20, _myPcs);
+        _chartKey++;
+    }
+
+    // ── Edit CS Review ──
+    void OpenEditReview(CsReviewRow rev)
+    {
+        _editReviewId    = rev.CsReviewId;
+        _editRevDuration = SecsToHMM(rev.ReviewSec);
+        _editRevNotes    = rev.Notes ?? "";
+        _editRevError    = "";
+    }
+
+    void CancelEditReview() { _editReviewId = null; _editRevError = ""; }
+
+    void SaveEditReview()
+    {
+        int secs = ParseTime(_editRevDuration);
+        if (secs <= 0) { _editRevError = "Invalid duration — use H:MM (e.g. 0:30)."; return; }
+        DashSvc.UpdateCsReview(_editReviewId!.Value, secs, "Draft",
+            string.IsNullOrWhiteSpace(_editRevNotes) ? null : _editRevNotes);
+        _editReviewId = null;
+        _detail = DashSvc.GetDayDetail(_userId!.Value, _selPcId!.Value,
+            _weekStart.AddDays(_selDay!.Value), _selRole, _selIsSolo);
+        _grid = _soloMode
+            ? DashSvc.GetWeekGridSolo(_userId.Value, _weekStart)
+            : DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+        _pendingCs = _soloMode ? [] : DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
+        _weeklyTotals = _soloMode
+            ? DashSvc.GetWeeklyTotalsSolo(_userId.Value, ChartLatestWeekStart(), 20)
+            : DashSvc.GetWeeklyTotals(_userId.Value, ChartLatestWeekStart(), 20, _myPcs);
+        _chartKey++;
+    }
+
+    static string SecsToHMM(int secs) => $"{secs / 3600}:{(secs % 3600) / 60:00}";
+
     void SetAsOther()
     {
         // Solo columns cannot be set to Other — they are always CS
@@ -980,6 +1129,8 @@
         _addError         = "";
         _reviewError      = "";
         _generalCsError   = "";
+        _editSessionId    = null;
+        _editReviewId     = null;
     }
 
     void ClearSelection() { _selPcId = null; _selDay = null; _detail = null; }
@@ -1073,7 +1224,7 @@
         try
         {
             DashSvc.AddCsReview(
-                _userId!.Value, _addReviewSessionId, secs, _addReviewStatus,
+                _userId!.Value, _addReviewSessionId, secs, "Draft",
                 string.IsNullOrWhiteSpace(_addReviewNotes) ? null : _addReviewNotes);
         }
         catch (Exception ex) when (ex.Message.Contains("UNIQUE"))
@@ -1083,7 +1234,7 @@
         }
 
         _showAddReview = false;
-        _addReviewDuration = ""; _addReviewStatus = "Approved";
+        _addReviewDuration = "";
         _addReviewNotes = ""; _reviewError = "";
 
         _detail = DashSvc.GetDayDetail(_userId!.Value, _selPcId!.Value,
