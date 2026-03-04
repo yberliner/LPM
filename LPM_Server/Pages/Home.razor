@@ -50,6 +50,13 @@
         <div id="print-zone">
             <div id="week-table-scroll" class="table-responsive px-3 thick-scroll">
             <table class="table table-bordered table-hover table-sm mb-0" style="min-width:300px;">
+                <colgroup>
+                    <col style="width:110px;" />
+                    @foreach (var pc in _myPcs)
+                    {
+                        <col />
+                    }
+                </colgroup>
                 <thead class="table-light">
                     @* ── CS row ── *@
                     <tr class="small" style="color:#555;">
