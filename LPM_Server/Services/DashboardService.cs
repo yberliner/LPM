@@ -26,6 +26,46 @@ public class DashboardService
     {
         var dbPath = config["Database:Path"] ?? "lifepower.db";
         _connectionString = $"Data Source={dbPath}";
+        RunMigrations();
+    }
+
+    private void RunMigrations()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Add Type column to Auditors if not yet present
+        // Type: 0=InActive, 1=RegularOnly, 2=SoloOnly, 3=RegularAndSolo
+        using var checkCmd = conn.CreateCommand();
+        checkCmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Auditors') WHERE name='Type'";
+        var typeExists = (long)(checkCmd.ExecuteScalar() ?? 0L) > 0;
+        if (!typeExists)
+        {
+            // Default all auditors to RegularOnly (1)
+            using var addCol = conn.CreateCommand();
+            addCol.CommandText = "ALTER TABLE Auditors ADD COLUMN Type INTEGER NOT NULL DEFAULT 1";
+            addCol.ExecuteNonQuery();
+
+            // Tami (PersonId=1) and Aviv (PersonId=6) → RegularAndSolo
+            using var tavCmd = conn.CreateCommand();
+            tavCmd.CommandText = "UPDATE Auditors SET Type = 3 WHERE AuditorId IN (1, 6)";
+            tavCmd.ExecuteNonQuery();
+
+            // 'Solo' user (matched by Persons.FirstName) → SoloOnly
+            using var soloCmd = conn.CreateCommand();
+            soloCmd.CommandText = @"
+                UPDATE Auditors SET Type = 2
+                WHERE AuditorId = (
+                    SELECT PersonId FROM Persons WHERE LOWER(FirstName) = 'solo' LIMIT 1
+                )
+                AND AuditorId NOT IN (1, 6)";
+            soloCmd.ExecuteNonQuery();
+
+            // Inactive auditors → InActive type
+            using var inactCmd = conn.CreateCommand();
+            inactCmd.CommandText = "UPDATE Auditors SET Type = 0 WHERE IsActive = 0";
+            inactCmd.ExecuteNonQuery();
+        }
     }
 
     /// <summary>
@@ -47,7 +87,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT 1 FROM Auditors WHERE AuditorId = @id AND IsActive = 1";
+        cmd.CommandText = "SELECT 1 FROM Auditors WHERE AuditorId = @id AND IsActive = 1 AND Type IN (1, 3)";
         cmd.Parameters.AddWithValue("@id", userId);
         return cmd.ExecuteScalar() is not null;
     }
@@ -103,7 +143,7 @@ public class DashboardService
         while (r.Read())
             list.Add(new PcInfo(r.GetInt32(0), r.GetString(1), "Auditor", false));
 
-        // Extra solo entries for PCs that are also solo auditors (IsSolo=1 in Auditors)
+        // Extra solo entries for PCs that are also solo auditors (Type IN (2,3) in Auditors)
         using var soloCmd = conn.CreateCommand();
         soloCmd.CommandText = $@"
             SELECT pc.PcId,
@@ -111,7 +151,7 @@ public class DashboardService
             FROM Auditors a
             JOIN PCs      pc ON pc.PcId    = a.AuditorId
             JOIN Persons  p  ON p.PersonId = a.AuditorId
-            WHERE a.IsSolo = 1 AND a.IsActive = 1
+            WHERE a.Type IN (2, 3) AND a.IsActive = 1
             ORDER BY p.FirstName, p.LastName";
         using var rs = soloCmd.ExecuteReader();
         while (rs.Read())
@@ -722,9 +762,20 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT 1 FROM Auditors WHERE AuditorId = @id AND IsSolo = 1 AND IsActive = 1";
+        cmd.CommandText = "SELECT 1 FROM Auditors WHERE AuditorId = @id AND IsActive = 1 AND Type IN (2, 3)";
         cmd.Parameters.AddWithValue("@id", userId);
         return cmd.ExecuteScalar() is not null;
+    }
+
+    public int GetAuditorType(int userId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Type FROM Auditors WHERE AuditorId = @id LIMIT 1";
+        cmd.Parameters.AddWithValue("@id", userId);
+        var result = cmd.ExecuteScalar();
+        return result is long l ? (int)l : 1; // default RegularOnly if not found
     }
 
     public PcInfo? GetSoloAuditorInfo(int userId)

@@ -22,7 +22,7 @@
         <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="PrintTable">
             <i class="ri-printer-line me-1"></i>Print
         </button>
-        @if (_isSoloAuditor && (_isAuditor || _isCS))
+        @if (_auditorType == 3)
         {
             <button class="btn btn-sm @(_soloMode ? "btn-warning" : "btn-outline-warning")"
                     @onclick="ToggleSoloMode">
@@ -680,6 +680,7 @@
     int?          _userId;
     bool          _isAuditor, _isCS;
     bool          _isSoloAuditor;
+    int           _auditorType;   // 0=InActive 1=RegularOnly 2=SoloOnly 3=RegularAndSolo
     bool          _soloMode;
     PcInfo?       _soloSelf;
     DateOnly      _weekStart;
@@ -767,13 +768,14 @@
         _userId = DashSvc.GetUserIdByUsername(username);
         if (_userId.HasValue)
         {
+            _auditorType   = DashSvc.GetAuditorType(_userId.Value);
             _isAuditor     = DashSvc.IsAuditor(_userId.Value);
             _isCS          = DashSvc.IsCS(_userId.Value);
             _isSoloAuditor = DashSvc.IsSoloAuditor(_userId.Value);
             if (_isSoloAuditor)
                 _soloSelf = DashSvc.GetSoloAuditorInfo(_userId.Value);
-            // Solo-only users auto-enter solo mode; mixed users start in regular mode
-            _soloMode = _isSoloAuditor && !(_isAuditor || _isCS);
+            // SoloOnly (2) auto-enters solo mode; RegularAndSolo (3) starts in regular mode with toggle
+            _soloMode = _auditorType == 2;
         }
         _weekStart = TodayWeekStart;
         await RefreshAsync();
