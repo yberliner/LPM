@@ -89,43 +89,14 @@
                             </th>
                         }
                     </tr>
-                    @* ── PC name row ── *@
-                    <tr>
-                        <th style="min-width:110px;">Day</th>
-                        @foreach (var pc in _myPcs)
-                        {
-                            var hasPendingCs = Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((DashboardService.GKey(pc), d)));
-                            <th class="text-center user-select-none"
-                                style="cursor:context-menu; white-space:nowrap; min-width:90px;"
-                                @oncontextmenu="e => ShowCtxMenu(e, pc)"
-                                @oncontextmenu:preventDefault="true">
-                                <span class="badge rounded-pill"
-                                      title="@pc.FullName"
-                                      style="@(hasPendingCs
-                                          ? "background:#fff3e0; color:#e65100; border:1px solid #ff9800;"
-                                          : "background:#e8f5e9; color:#2e7d32; border:1px solid #4caf50;")
-                                             font-weight:600; font-size:.85em; padding:.3em .75em;">
-                                    @pc.FullName
-                                </span>
-                            </th>
-                        }
-                        @if (_myPcs.Count == 0)
-                        {
-                            <th class="text-muted fst-italic fw-normal">
-                                Click <strong>+ Add PC</strong> to begin
-                            </th>
-                        }
-                    </tr>
-                </thead>
-                <tbody>
                     @* ── Role row ── *@
                     @if (_myPcs.Count > 0)
                     {
                         <tr class="table-light">
-                            <td class="fw-semibold small py-1" style="color:#555;">Role</td>
+                            <th class="fw-semibold small py-1" style="color:#555;">Role</th>
                             @foreach (var pc in _myPcs)
                             {
-                                <td class="text-center py-1">
+                                <th class="text-center py-1">
                                     @if (pc.IsSolo)
                                     {
                                         <span class="badge bg-warning-transparent">Solo</span>
@@ -165,11 +136,39 @@
                                     {
                                         <span class="badge bg-primary-transparent">Auditor</span>
                                     }
-                                </td>
+                                </th>
                             }
                         </tr>
                     }
-
+                    @* ── PC name row ── *@
+                    <tr>
+                        <th style="min-width:110px;">Day</th>
+                        @foreach (var pc in _myPcs)
+                        {
+                            var hasPendingCs = Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((DashboardService.GKey(pc), d)));
+                            <th class="text-center user-select-none"
+                                style="cursor:context-menu; white-space:nowrap; min-width:90px;"
+                                @oncontextmenu="e => ShowCtxMenu(e, pc)"
+                                @oncontextmenu:preventDefault="true">
+                                <span class="badge rounded-pill"
+                                      title="@pc.FullName"
+                                      style="@(hasPendingCs
+                                          ? "background:#fff3e0; color:#e65100; border:1px solid #ff9800;"
+                                          : "background:#e8f5e9; color:#2e7d32; border:1px solid #4caf50;")
+                                             font-weight:600; font-size:.85em; padding:.3em .75em;">
+                                    @pc.FullName
+                                </span>
+                            </th>
+                        }
+                        @if (_myPcs.Count == 0)
+                        {
+                            <th class="text-muted fst-italic fw-normal">
+                                Click <strong>+ Add PC</strong> to begin
+                            </th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
                     @* ── Day rows ── *@
                     @for (int d = 0; d < 7; d++)
                     {
