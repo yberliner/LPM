@@ -1,0 +1,339 @@
+@page "/Auditors"
+@attribute [Authorize]
+@inject LPM.Services.AuditorService AuditorSvc
+@using Microsoft.AspNetCore.Authorization
+@using LPM.Services
+
+<div class="d-flex gap-3" style="height:calc(100vh - 130px); overflow:hidden;">
+
+    @* ── LEFT PANEL: Auditor List ── *@
+    <div class="d-flex flex-column border-end pe-2" style="width:240px;min-width:240px;">
+        <div class="d-flex gap-1 mb-2">
+            <input class="form-control form-control-sm" placeholder="Search..."
+                   @bind="_search" @bind:event="oninput" />
+            <button class="btn btn-sm btn-success text-nowrap" title="Add new Auditor" @onclick="ShowAddForm">
+                <i class="ri-user-add-line"></i>
+            </button>
+        </div>
+        <div class="overflow-y-auto flex-grow-1">
+            @if (!FilteredAuditors.Any())
+            {
+                <div class="text-muted small text-center mt-4">No auditors found.</div>
+            }
+            @foreach (var a in FilteredAuditors)
+            {
+                <div class="d-flex align-items-center gap-2 px-2 py-2 rounded mb-1
+                            @(_selId == a.AuditorId ? "bg-primary text-white" : "bg-light")"
+                     style="cursor:pointer;"
+                     @onclick="() => SelectAuditor(a.AuditorId)">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 text-white fw-bold"
+                         style="width:30px;height:30px;font-size:0.8rem;background:@TypeColor(a.Type);">
+                        @(a.FullName.Length > 0 ? a.FullName[0].ToString().ToUpper() : "?")
+                    </div>
+                    <div class="overflow-hidden">
+                        <div class="fw-semibold text-truncate" style="font-size:0.82rem;">@a.FullName</div>
+                        <div class="text-truncate @(_selId == a.AuditorId ? "text-white-50" : "text-muted")"
+                             style="font-size:0.7rem;">
+                            @(a.GradeCode ?? "—") · @TypeLabel(a.Type)
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* ── RIGHT PANEL ── *@
+    <div class="flex-grow-1 overflow-y-auto">
+
+        @if (_showAddForm)
+        {
+            <div class="card shadow-sm">
+                <div class="card-header fw-semibold py-2">
+                    <i class="ri-user-add-line me-1"></i> Add New Auditor
+                </div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label class="form-label small mb-1">First Name <span class="text-danger">*</span></label>
+                            <input class="form-control form-control-sm" @bind="_addFirstName" placeholder="First name" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small mb-1">Last Name</label>
+                            <input class="form-control form-control-sm" @bind="_addLastName" placeholder="Last name" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small mb-1">Grade</label>
+                            <select class="form-select form-select-sm" @bind="_addGradeId">
+                                <option value="">— None —</option>
+                                @foreach (var g in _grades)
+                                {
+                                    <option value="@g.GradeId">@g.Code</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small mb-1">Type</label>
+                            <select class="form-select form-select-sm" @bind="_addType">
+                                <option value="0">Inactive</option>
+                                <option value="1">Regular</option>
+                                <option value="2">Solo</option>
+                                <option value="3">Regular + Solo</option>
+                            </select>
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_addError))
+                    {
+                        <div class="alert alert-danger py-1 px-2 mt-2 small">@_addError</div>
+                    }
+                    <div class="mt-3 d-flex gap-2">
+                        <button class="btn btn-sm btn-primary" @onclick="SaveNewAuditor">
+                            <i class="ri-save-line me-1"></i>Save
+                        </button>
+                        <button class="btn btn-sm btn-link text-muted" @onclick="() => _showAddForm = false">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        }
+        else if (_selId.HasValue && _detail != null)
+        {
+            @* Header card *@
+            <div class="card shadow-sm mb-3">
+                <div class="card-body py-2 px-3">
+                    <div class="d-flex align-items-start gap-3">
+                        <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0"
+                             style="width:60px;height:60px;background:@TypeColor(_detail.Type);font-size:1.5rem;">
+                            @(_detail.FirstName.Length > 0 ? _detail.FirstName[0].ToString().ToUpper() : "?")
+                        </div>
+                        <div class="flex-grow-1">
+                            @if (_editMode)
+                            {
+                                <div class="row g-2">
+                                    <div class="col-auto">
+                                        <label class="form-label small mb-0">First Name</label>
+                                        <input class="form-control form-control-sm" @bind="_editFirstName" style="width:130px;" />
+                                    </div>
+                                    <div class="col-auto">
+                                        <label class="form-label small mb-0">Last Name</label>
+                                        <input class="form-control form-control-sm" @bind="_editLastName" style="width:130px;" />
+                                    </div>
+                                    <div class="col-auto">
+                                        <label class="form-label small mb-0">Grade</label>
+                                        <select class="form-select form-select-sm" @bind="_editGradeId" style="width:140px;">
+                                            <option value="">— None —</option>
+                                            @foreach (var g in _grades)
+                                            {
+                                                <option value="@g.GradeId">@g.Code</option>
+                                            }
+                                        </select>
+                                    </div>
+                                    <div class="col-auto">
+                                        <label class="form-label small mb-0">Type</label>
+                                        <select class="form-select form-select-sm" @bind="_editType" style="width:150px;">
+                                            <option value="0">Inactive</option>
+                                            <option value="1">Regular</option>
+                                            <option value="2">Solo</option>
+                                            <option value="3">Regular + Solo</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-auto d-flex align-items-end pb-1">
+                                        <div class="form-check form-switch mb-0">
+                                            <input class="form-check-input" type="checkbox" @bind="_editIsActive" />
+                                            <label class="form-check-label small">Active</label>
+                                        </div>
+                                    </div>
+                                </div>
+                                @if (!string.IsNullOrEmpty(_editError))
+                                {
+                                    <div class="alert alert-danger py-1 px-2 mt-2 small">@_editError</div>
+                                }
+                            }
+                            else
+                            {
+                                <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                                    <span class="fs-5 fw-semibold" style="color:var(--default-text-color);">
+                                        @(_detail.FirstName + (string.IsNullOrEmpty(_detail.LastName) ? "" : " " + _detail.LastName))
+                                    </span>
+                                    <span class="badge @TypeBadgeClass(_detail.Type)">@TypeLabel(_detail.Type)</span>
+                                    @if (!string.IsNullOrEmpty(_detail.GradeCode))
+                                    {
+                                        <span class="badge bg-info text-dark">Grade: @_detail.GradeCode</span>
+                                    }
+                                    @if (!_detail.IsActive)
+                                    {
+                                        <span class="badge bg-secondary">Inactive</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div class="ms-auto d-flex gap-2 flex-shrink-0">
+                            @if (_editMode)
+                            {
+                                <button class="btn btn-sm btn-primary" @onclick="SaveEdit">
+                                    <i class="ri-save-line me-1"></i>Save Changes
+                                </button>
+                                <button class="btn btn-sm btn-link text-muted" @onclick="CancelEdit">Cancel</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="StartEdit">
+                                    <i class="ri-edit-line me-1"></i>Edit
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* Stats row *@
+            @if (_stats != null)
+            {
+                <div class="row g-2 mb-3">
+                    <div class="col-6 col-md-3">
+                        <div class="card shadow-sm text-center py-3">
+                            <div style="font-size:1.8rem;font-weight:700;color:#3949ab;line-height:1;">
+                                @_stats.TotalSessions
+                            </div>
+                            <div class="text-muted small mt-1">Total Sessions</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="card shadow-sm text-center py-3">
+                            <div style="font-size:1.8rem;font-weight:700;color:#3949ab;line-height:1;">
+                                @Hmm((int)_stats.TotalSec)
+                            </div>
+                            <div class="text-muted small mt-1">Hours Worked</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="card shadow-sm text-center py-3">
+                            <div style="font-size:1.8rem;font-weight:700;color:#3949ab;line-height:1;">
+                                @_stats.FreeSessions
+                            </div>
+                            <div class="text-muted small mt-1">Free Sessions</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="card shadow-sm text-center py-3">
+                            <div style="font-size:1.1rem;font-weight:700;color:#3949ab;line-height:1;">
+                                @(_stats.LastSessionDate ?? "—")
+                            </div>
+                            <div class="text-muted small mt-1">Last Session</div>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+        else if (!_showAddForm)
+        {
+            <div class="d-flex flex-column align-items-center justify-content-center text-muted"
+                 style="height:60vh;">
+                <i class="ri-user-star-line" style="font-size:3.5rem;opacity:0.2;"></i>
+                <p class="mt-2 small">Select an auditor from the list, or click <strong>+</strong> to add one.</p>
+            </div>
+        }
+
+    </div>
+</div>
+
+@code {
+    List<AuditorListItem> _allAuditors = [];
+    List<GradeItem>       _grades      = [];
+    int?                  _selId;
+    string                _search      = "";
+
+    AuditorDetail? _detail;
+    AuditorStats?  _stats;
+
+    // Add form
+    bool   _showAddForm;
+    string _addFirstName = "", _addLastName = "", _addGradeId = "", _addError = "";
+    int    _addType = 1;
+
+    // Edit mode
+    bool   _editMode;
+    string _editFirstName = "", _editLastName = "", _editGradeId = "", _editError = "";
+    int    _editType;
+    bool   _editIsActive;
+
+    IEnumerable<AuditorListItem> FilteredAuditors => string.IsNullOrWhiteSpace(_search)
+        ? _allAuditors
+        : _allAuditors.Where(a =>
+            a.FullName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+            (a.GradeCode ?? "").Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    protected override void OnInitialized()
+    {
+        _allAuditors = AuditorSvc.GetAllAuditors();
+        _grades      = AuditorSvc.GetAllGrades();
+    }
+
+    void SelectAuditor(int id)
+    {
+        _selId       = id;
+        _showAddForm = false;
+        _editMode    = false;
+        _editError   = "";
+        LoadDetail();
+    }
+
+    void LoadDetail()
+    {
+        if (!_selId.HasValue) return;
+        _detail = AuditorSvc.GetAuditorDetail(_selId.Value);
+        _stats  = AuditorSvc.GetAuditorStats(_selId.Value);
+    }
+
+    void ShowAddForm()
+    {
+        _showAddForm  = true;
+        _selId        = null;
+        _editMode     = false;
+        _addFirstName = _addLastName = _addGradeId = _addError = "";
+        _addType      = 1;
+    }
+
+    void SaveNewAuditor()
+    {
+        if (string.IsNullOrWhiteSpace(_addFirstName))
+        { _addError = "First name is required."; return; }
+
+        int? gradeId = int.TryParse(_addGradeId, out var g) ? g : null;
+        var newId = AuditorSvc.AddAuditor(_addFirstName, _addLastName, gradeId, _addType);
+        _allAuditors = AuditorSvc.GetAllAuditors();
+        _showAddForm = false;
+        SelectAuditor(newId);
+    }
+
+    void StartEdit()
+    {
+        if (_detail == null) return;
+        _editMode      = true;
+        _editError     = "";
+        _editFirstName = _detail.FirstName;
+        _editLastName  = _detail.LastName;
+        _editGradeId   = _detail.CurrentGradeId?.ToString() ?? "";
+        _editType      = _detail.Type;
+        _editIsActive  = _detail.IsActive;
+    }
+
+    void CancelEdit() { _editMode = false; _editError = ""; }
+
+    void SaveEdit()
+    {
+        if (string.IsNullOrWhiteSpace(_editFirstName))
+        { _editError = "First name is required."; return; }
+
+        int? gradeId = int.TryParse(_editGradeId, out var g) ? g : null;
+        AuditorSvc.UpdateAuditor(_selId!.Value, _editFirstName, _editLastName,
+            gradeId, _editType, _editIsActive);
+        _editMode    = false;
+        _editError   = "";
+        _allAuditors = AuditorSvc.GetAllAuditors();
+        LoadDetail();
+    }
+
+    static string Hmm(int secs) { int s = Math.Abs(secs); return $"{s / 3600}:{(s % 3600) / 60:00}"; }
+    static string TypeLabel(int t) => t switch { 0 => "Inactive", 1 => "Regular", 2 => "Solo", 3 => "Regular + Solo", _ => "?" };
+    static string TypeColor(int t) => t switch { 0 => "#9e9e9e", 1 => "#3949ab", 2 => "#e65100", 3 => "#2e7d32", _ => "#999" };
+    static string TypeBadgeClass(int t) => t switch { 0 => "bg-secondary", 1 => "bg-primary", 2 => "bg-warning text-dark", 3 => "bg-success", _ => "bg-secondary" };
+}

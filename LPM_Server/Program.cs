@@ -105,6 +105,7 @@ builder.Services.AddSingleton<IFileStore>(sp =>
 builder.Services.AddSingleton<UserDb>();
 builder.Services.AddSingleton<LPM.Services.DashboardService>();
 builder.Services.AddSingleton<LPM.Services.PcService>();
+builder.Services.AddSingleton<LPM.Services.AuditorService>();
 
 // Add session services
 builder.Services.AddDistributedMemoryCache();

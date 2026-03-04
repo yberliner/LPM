@@ -26,6 +26,16 @@ public class MenuDataService
             dirChange: false
         ),
         new MainMenuItems (
+            path: "/Auditors",
+            type: "link",
+            title: "Auditors",
+            icon: "ri-user-star-line",
+            svg: "",
+            selected: false,
+            active: false,
+            dirChange: false
+        ),
+        new MainMenuItems (
             path: "/",
             type: "link",
             title: "Exit",
