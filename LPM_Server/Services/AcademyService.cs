@@ -213,6 +213,7 @@ public class AcademyService
                 totalCounts[ws],
                 personCounts[ws]
                     .OrderByDescending(kv => kv.Value)
+                    .ThenBy(kv => kv.Key)
                     .Select(kv => new TopStudent(kv.Key, kv.Value))
                     .ToList()))
             .ToList();
