@@ -199,7 +199,7 @@ public class AcademyService
 
         return weekStarts
             .Select(ws => new WeekVisitCount(
-                ws.ToString("ddd dd/MM", CultureInfo.InvariantCulture),
+                ws.ToString("dd/MM", CultureInfo.InvariantCulture),
                 counts[ws]))
             .ToList();
     }
