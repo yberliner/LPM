@@ -12,7 +12,7 @@ public record PcDetailInfo(int PcId, string FirstName, string LastName, string E
 public record PcSessionInfo(int SessionId, string Date, string AuditorName,
     int LengthSec, int AdminSec, bool IsFree, string VerifiedStatus);
 public record PcPayment(int PaymentId, string Date, int HoursBought, int AmountPaid, string? Notes);
-public record PcStats(int TotalSessions, int FreeSessions, double HoursUsed,
+public record PcStats(int TotalSessions, int FreeSessions, long UsedSec,
     int TotalHoursPurchased, int TotalAmountPaid, string? LastSessionDate);
 
 public class PcService
@@ -170,7 +170,7 @@ public class PcService
         sCmd.CommandText = @"
             SELECT COUNT(*),
                    COALESCE(SUM(CASE WHEN IsFreeSession=1 THEN 1 ELSE 0 END), 0),
-                   COALESCE(SUM(CASE WHEN IsFreeSession=0 THEN LengthSeconds+AdminSeconds ELSE 0 END), 0),
+                   COALESCE(SUM(CASE WHEN IsFreeSession=0 THEN LengthSeconds ELSE 0 END), 0),
                    MAX(SessionDate)
             FROM Sessions WHERE PcId=@id";
         sCmd.Parameters.AddWithValue("@id", pcId);
@@ -191,7 +191,7 @@ public class PcService
         int hours  = pr.GetInt32(0);
         int amount = pr.GetInt32(1);
 
-        return new PcStats(total, free, Math.Round(usedSec / 3600.0, 1), hours, amount, lastDate);
+        return new PcStats(total, free, usedSec, hours, amount, lastDate);
     }
 
     public List<PcSessionInfo> GetPcSessions(int pcId)

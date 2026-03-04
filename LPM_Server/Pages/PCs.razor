@@ -204,7 +204,7 @@
             @* Stats row *@
             @if (_stats != null)
             {
-                double hoursRemaining = _stats.TotalHoursPurchased - _stats.HoursUsed;
+                long remainSec = (long)_stats.TotalHoursPurchased * 3600 - _stats.UsedSec;
                 <div class="row g-2 mb-3">
                     <div class="col-6 col-md-3">
                         <div class="card shadow-sm text-center py-3">
@@ -221,7 +221,7 @@
                     <div class="col-6 col-md-3">
                         <div class="card shadow-sm text-center py-3">
                             <div style="font-size:1.8rem;font-weight:700;color:#3949ab;line-height:1;">
-                                @Hh(_stats.HoursUsed)
+                                @Hmm((int)_stats.UsedSec)
                             </div>
                             <div class="text-muted small mt-1">Hours Used</div>
                             <div style="font-size:0.7rem;color:#888;">billed sessions</div>
@@ -242,8 +242,8 @@
                     <div class="col-6 col-md-3">
                         <div class="card shadow-sm text-center py-3">
                             <div style="font-size:1.8rem;font-weight:700;line-height:1;
-                                        color:@(hoursRemaining >= 0 ? "#2e7d32" : "#c62828");">
-                                @Hh(hoursRemaining)
+                                        color:@(remainSec >= 0 ? "#2e7d32" : "#c62828");">
+                                @HmmSigned(remainSec)
                             </div>
                             <div class="text-muted small mt-1">Hours Remaining</div>
                             @if (_stats.LastSessionDate != null)
@@ -570,15 +570,17 @@
         LoadDetail();
     }
 
-    // H:MM from seconds
-    static string Hmm(int secs) => $"{secs / 3600}:{(secs % 3600) / 60:00}";
-    // Hours decimal display
-    static string Hh(double h)
+    // H:MM from seconds — integer arithmetic, always exact
+    static string Hmm(int secs)
     {
-        bool neg = h < 0;
-        h = Math.Abs(h);
-        int hh = (int)h;
-        int mm = (int)Math.Round((h - hh) * 60);
-        return neg ? $"-{hh}:{mm:00}" : $"{hh}:{mm:00}";
+        int s = Math.Abs(secs);
+        return $"{s / 3600}:{(s % 3600) / 60:00}";
+    }
+    // H:MM for a signed long (e.g. hours remaining can be negative)
+    static string HmmSigned(long secs)
+    {
+        long s = Math.Abs(secs);
+        string t = $"{s / 3600}:{(s % 3600) / 60:00}";
+        return secs < 0 ? $"-{t}" : t;
     }
 }
