@@ -1,6 +1,7 @@
 @page "/Home"
 @using System.Globalization
 @using LPM.Services
+@using LPM._Spk
 @attribute [Authorize]
 @inject DashboardService DashSvc
 @inject AuthenticationStateProvider AuthStateProvider
@@ -385,7 +386,7 @@
                                         }
                                         @if (!string.IsNullOrWhiteSpace(s.Summary))
                                         {
-                                            <em class="text-muted small">"@s.Summary"</em>
+                                            <div class="text-muted small mt-1">@((MarkupString)s.Summary)</div>
                                         }
                                     </li>
                                 }
@@ -404,7 +405,7 @@
                         {
                             <div class="border rounded p-3 mt-2 bg-light">
                                 <h6 class="mb-2">@(_selRole == "Miscellaneous" ? "Add Misc Entry" : "Add Session")</h6>
-                                <div class="row g-2 align-items-end">
+                                <div class="row g-2 align-items-center mb-2">
                                     <div class="col-auto">
                                         <label class="form-label mb-0 small">Duration (H:MM)</label>
                                         <input class="form-control form-control-sm"
@@ -424,17 +425,15 @@
                                             <label class="form-check-label small" for="chkFree">Free</label>
                                         </div>
                                     </div>
-                                    <div class="col">
-                                        <label class="form-label mb-0 small">Summary</label>
-                                        <input class="form-control form-control-sm"
-                                               placeholder="Notes..."
-                                               @bind="_addSummary" />
-                                    </div>
-                                    <div class="col-auto">
+                                    <div class="col-auto ms-auto">
                                         <button class="btn btn-sm btn-primary" @onclick="SaveSession">Save</button>
                                         <button class="btn btn-sm btn-link text-danger"
                                                 @onclick="CancelAddSession">Cancel</button>
                                     </div>
+                                </div>
+                                <div class="mb-1">
+                                    <label class="form-label mb-1 small">Summary</label>
+                                    <SpkRichEditor Value="@_addSummary" ValueChanged="@(v => _addSummary = v)" />
                                 </div>
                                 @if (!string.IsNullOrEmpty(_addError))
                                 {
@@ -485,20 +484,23 @@
                                             }
                                             @if (!string.IsNullOrWhiteSpace(s.Summary))
                                             {
-                                                <em class="text-muted small">"@s.Summary"</em>
+                                                <div class="text-muted small mt-1">@((MarkupString)s.Summary)</div>
                                             }
                                         </div>
                                         @if (rev != null)
                                         {
                                             <div class="d-flex align-items-center gap-2 small">
                                                 <i class="ri-checkbox-circle-line text-success"></i>
+                                                <span class="fw-semibold small" style="color:#2e7d32;">
+                                                    <i class="ri-user-star-line me-1"></i>@_displayName
+                                                </span>
                                                 <span class="badge bg-success-transparent">
                                                     @DashboardService.Fmt(rev.ReviewSec)
                                                 </span>
                                                 <span>@rev.Status</span>
                                                 @if (!string.IsNullOrWhiteSpace(rev.Notes))
                                                 {
-                                                    <em class="text-muted">"@rev.Notes"</em>
+                                                    <div class="text-muted small mt-1">@((MarkupString)rev.Notes)</div>
                                                 }
                                             </div>
                                         }
@@ -519,7 +521,7 @@
                         {
                             <div class="border rounded p-3 mt-2 bg-light">
                                 <h6 class="mb-2">Add CS Review (Session #@_addReviewSessionId)</h6>
-                                <div class="row g-2 align-items-end">
+                                <div class="row g-2 align-items-center mb-2">
                                     <div class="col-auto">
                                         <label class="form-label mb-0 small">Duration (H:MM)</label>
                                         <input class="form-control form-control-sm"
@@ -535,17 +537,15 @@
                                             <option value="Rejected">Rejected</option>
                                         </select>
                                     </div>
-                                    <div class="col">
-                                        <label class="form-label mb-0 small">Notes</label>
-                                        <input class="form-control form-control-sm"
-                                               placeholder="Notes..."
-                                               @bind="_addReviewNotes" />
-                                    </div>
-                                    <div class="col-auto">
+                                    <div class="col-auto ms-auto">
                                         <button class="btn btn-sm btn-primary" @onclick="SaveReview">Save</button>
                                         <button class="btn btn-sm btn-link text-danger"
                                                 @onclick="CancelAddReview">Cancel</button>
                                     </div>
+                                </div>
+                                <div class="mb-1">
+                                    <label class="form-label mb-1 small">Notes</label>
+                                    <SpkRichEditor Value="@_addReviewNotes" ValueChanged="@(v => _addReviewNotes = v)" />
                                 </div>
                                 @if (!string.IsNullOrEmpty(_reviewError))
                                 {
@@ -568,7 +568,7 @@
                                         </span>
                                         @if (!string.IsNullOrWhiteSpace(w.Notes))
                                         {
-                                            <em class="text-muted small">"@w.Notes"</em>
+                                            <div class="text-muted small mt-1">@((MarkupString)w.Notes)</div>
                                         }
                                     </li>
                                 }
@@ -590,24 +590,22 @@
                         {
                             <div class="border rounded p-3 mt-2 bg-light">
                                 <h6 class="mb-2">Add General CS Work</h6>
-                                <div class="row g-2 align-items-end">
+                                <div class="row g-2 align-items-center mb-2">
                                     <div class="col-auto">
                                         <label class="form-label mb-0 small">Duration (H:MM)</label>
                                         <input class="form-control form-control-sm"
                                                style="width:90px;" placeholder="0:30"
                                                @bind="_addGeneralCsDuration" @bind:event="oninput" />
                                     </div>
-                                    <div class="col">
-                                        <label class="form-label mb-0 small">Notes</label>
-                                        <input class="form-control form-control-sm"
-                                               placeholder="Notes..."
-                                               @bind="_addGeneralCsNotes" />
-                                    </div>
-                                    <div class="col-auto">
+                                    <div class="col-auto ms-auto">
                                         <button class="btn btn-sm btn-primary" @onclick="SaveGeneralCs">Save</button>
                                         <button class="btn btn-sm btn-link text-danger"
                                                 @onclick="CancelAddGeneralCs">Cancel</button>
                                     </div>
+                                </div>
+                                <div class="mb-1">
+                                    <label class="form-label mb-1 small">Notes</label>
+                                    <SpkRichEditor Value="@_addGeneralCsNotes" ValueChanged="@(v => _addGeneralCsNotes = v)" />
                                 </div>
                                 @if (!string.IsNullOrEmpty(_generalCsError))
                                 {

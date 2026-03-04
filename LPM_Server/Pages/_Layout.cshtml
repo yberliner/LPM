@@ -124,6 +124,9 @@
 *@
          <!--  this is FORSIGHT CUSTOM css file -->
         <link href="css/forsight-custom.css" rel="stylesheet" asp-append-version="true" />
+
+        <!-- Quill rich text editor -->
+        <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet" />
         
         <component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
 
@@ -213,6 +216,10 @@
             form.submit();
         };
         </script>
+
+        <!-- Quill rich text editor -->
+        <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+        <script src="js/quill-interop.js"></script>
 
         <script src="js/forsight.js"></script>
         <script src="js/javaScriptInterop.js"></script>
