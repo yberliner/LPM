@@ -36,6 +36,16 @@ public class MenuDataService
             dirChange: false
         ),
         new MainMenuItems (
+            path: "/Academy",
+            type: "link",
+            title: "Academy",
+            icon: "ri-graduation-cap-line",
+            svg: "",
+            selected: false,
+            active: false,
+            dirChange: false
+        ),
+        new MainMenuItems (
             path: "/",
             type: "link",
             title: "Exit",

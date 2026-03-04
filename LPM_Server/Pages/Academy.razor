@@ -1,0 +1,287 @@
+@page "/Academy"
+@attribute [Authorize]
+@inject LPM.Services.AcademyService AcademySvc
+@using LPM.Services
+@using Microsoft.AspNetCore.Authorization
+@using System.Globalization
+@using ApexCharts
+
+@* ── Week navigation bar ── *@
+<div class="d-flex align-items-center flex-wrap gap-2 px-3 py-2 border-bottom mb-3">
+    <button class="btn btn-sm btn-outline-secondary" @onclick="PrevWeek">← Prev</button>
+    <span class="fw-semibold fs-14">
+        Week: @DayLabel(_weekStart) – @DayLabel(_weekStart.AddDays(6))
+    </span>
+    <button class="btn btn-sm btn-outline-secondary" @onclick="NextWeek"
+            disabled="@(_weekStart >= DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today)))">
+        Next →
+    </button>
+    <button class="btn btn-sm btn-success ms-auto" @onclick="() => _addModal.Show()">
+        <i class="ri-user-add-line me-1"></i>New Student
+    </button>
+</div>
+
+@* ── Day button row ── *@
+<div class="d-flex flex-wrap gap-2 px-3 mb-3">
+    @for (int i = 0; i < 7; i++)
+    {
+        var idx      = i;
+        var day      = _weekStart.AddDays(idx);
+        var isFuture = day > DateOnly.FromDateTime(DateTime.Today);
+        var isSel    = idx == _selDay;
+        var cnt      = _dayCounts.GetValueOrDefault(idx, 0);
+
+        <button class="btn btn-sm @(isSel ? "btn-primary" : "btn-outline-secondary") @(isFuture ? "disabled" : "")"
+                @onclick="() => SelectDay(idx)">
+            @DayLabel(day)
+            @if (cnt > 0)
+            {
+                <span class="badge ms-1" style="background-color:#2e7d32; color:#fff;">@cnt</span>
+            }
+        </button>
+    }
+</div>
+
+@* ── Main content: visits + person list ── *@
+<div class="d-flex gap-3 px-3 mb-3" style="align-items:flex-start;">
+
+    @* ── Today's visit list ── *@
+    <div class="card flex-grow-1" style="min-width:0;">
+        <div class="card-header py-2 d-flex align-items-center gap-2">
+            <strong class="fs-14">Visits — @DayLabel(_weekStart.AddDays(_selDay))</strong>
+            <span class="badge bg-secondary ms-1">@_visits.Count</span>
+        </div>
+        <div class="card-body py-2">
+            @if (_visits.Count == 0)
+            {
+                <p class="text-muted small mb-0">No visits recorded for this day yet.</p>
+            }
+            else
+            {
+                <ul class="list-unstyled mb-0">
+                    @foreach (var v in _visits)
+                    {
+                        <li class="d-flex align-items-center justify-content-between py-1 border-bottom">
+                            <span>@v.FullName</span>
+                            <button class="btn btn-sm btn-link text-danger py-0"
+                                    @onclick="() => DoRemoveVisit(v.VisitId)">
+                                <i class="ri-close-line"></i> Remove
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+
+    @* ── All persons panel ── *@
+    <div class="card" style="width:280px;min-width:220px;flex-shrink:0;">
+        <div class="card-header py-2">
+            <strong class="fs-14">All Persons</strong>
+        </div>
+        <div class="card-body py-2 px-2">
+            <input class="form-control form-control-sm mb-2"
+                   placeholder="Filter..."
+                   value="@_searchText"
+                   @oninput="OnSearchInput" />
+            <div style="max-height:300px; overflow-y:auto;">
+                @foreach (var p in FilteredPersons)
+                {
+                    var visited = AlreadyVisited(p.PersonId);
+                    <div class="d-flex align-items-center justify-content-between px-2 py-1 rounded mb-1
+                                @(visited ? "text-muted" : "cursor-pointer")"
+                         style="cursor:@(visited ? "default" : "pointer");
+                                background:@(visited ? "#f8f8f8" : "transparent");"
+                         @onclick="() => { if (!visited) AddVisit(p); }">
+                        <span class="small">@p.FullName</span>
+                        @if (visited)
+                        {
+                            <i class="ri-check-line text-success" style="font-size:0.85rem;"></i>
+                        }
+                    </div>
+                }
+                @if (!FilteredPersons.Any())
+                {
+                    <div class="text-muted small text-center py-2">No persons found.</div>
+                }
+            </div>
+        </div>
+    </div>
+
+</div>
+
+@* ── Statistics card ── *@
+<div class="card mx-3 mb-3">
+    <div class="card-header py-2 d-flex align-items-center gap-2"
+         style="background:linear-gradient(90deg,#1b5e20 0%,#2e7d32 100%); color:#fff;">
+        <strong class="fs-14">Weekly Visit Totals (last 20 weeks)</strong>
+        <span class="ms-auto small opacity-75">
+            Total this period: @_weeklyTotals.Sum(w => w.TotalVisits) visits
+        </span>
+    </div>
+    <div class="card-body py-1 px-2">
+        <ApexChart TItem="WeekVisitCount"
+                   Options="@_chartOptions"
+                   Height="220"
+                   @key="_chartKey">
+            <ApexPointSeries TItem="WeekVisitCount"
+                             Items="@_weeklyTotals"
+                             Name="Visits"
+                             SeriesType="SeriesType.Bar"
+                             XValue="@(w => w.WeekLabel)"
+                             YValue="@(w => (decimal)w.TotalVisits)" />
+        </ApexChart>
+    </div>
+</div>
+
+@* ── New Student modal ── *@
+<SpkNewPersonModal @ref="_addModal" Title="New Student" OnSaved="SaveNewStudent">
+    <ExtraFields>
+        <div class="col-md-6">
+            <label class="form-label small mb-1">Phone</label>
+            <input class="form-control form-control-sm" @bind="_addPhone" placeholder="Phone number" />
+        </div>
+        <div class="col-md-6">
+            <label class="form-label small mb-1">Email</label>
+            <input class="form-control form-control-sm" @bind="_addEmail" placeholder="Email address" />
+        </div>
+        <div class="col-md-6">
+            <label class="form-label small mb-1">Age</label>
+            <input type="number" class="form-control form-control-sm" @bind="_addAge" min="1" max="120" placeholder="Age" />
+        </div>
+        <div class="col-md-6">
+            <label class="form-label small mb-1">Sex</label>
+            <select class="form-select form-select-sm" @bind="_addSex">
+                <option value="">— select —</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+            </select>
+        </div>
+    </ExtraFields>
+</SpkNewPersonModal>
+
+@code {
+
+    SpkNewPersonModal    _addModal     = default!;
+    DateOnly             _weekStart;
+    int                  _selDay;
+    Dictionary<int, int> _dayCounts    = [];
+    List<PersonItem>     _allPersons   = [];
+    List<VisitRecord>    _visits       = [];
+    List<WeekVisitCount> _weeklyTotals = [];
+    int                  _chartKey;
+    string               _searchText   = "";
+
+    // New student extra fields
+    string _addPhone = "", _addEmail = "", _addSex = "";
+    int?   _addAge;
+
+    ApexChartOptions<WeekVisitCount> _chartOptions = new()
+    {
+        Chart       = new Chart { Toolbar = new Toolbar { Show = false }, Background = "transparent" },
+        PlotOptions = new PlotOptions { Bar = new PlotOptionsBar { ColumnWidth = "65%", BorderRadius = 4 } },
+        Colors      = new List<string> { "#2e7d32" },
+        Xaxis       = new XAxis { Labels = new XAxisLabels { Rotate = -45, Style = new AxisLabelStyle { FontSize = "11px" } } },
+        Grid        = new Grid { BorderColor = "#e0e0e0" },
+    };
+
+    DateOnly SelectedDate => _weekStart.AddDays(_selDay);
+
+    static string DayLabel(DateOnly d) =>
+        d.ToString("ddd dd/MM", CultureInfo.InvariantCulture);
+
+    IEnumerable<PersonItem> FilteredPersons => string.IsNullOrWhiteSpace(_searchText)
+        ? _allPersons
+        : _allPersons.Where(p => p.FullName.Contains(_searchText, StringComparison.OrdinalIgnoreCase));
+
+    bool AlreadyVisited(int personId) => _visits.Any(v => v.PersonId == personId);
+
+    protected override void OnInitialized()
+    {
+        _allPersons = AcademySvc.GetAllPersons();
+        _weekStart  = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
+
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        _selDay = 0;
+        for (int i = 6; i >= 0; i--)
+        {
+            if (_weekStart.AddDays(i) <= today)
+            { _selDay = i; break; }
+        }
+
+        LoadWeek();
+    }
+
+    void PrevWeek() { _weekStart = _weekStart.AddDays(-7); LoadWeek(); }
+
+    void NextWeek()
+    {
+        var maxWeek = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
+        if (_weekStart >= maxWeek) return;
+        _weekStart = _weekStart.AddDays(7);
+        LoadWeek();
+    }
+
+    void LoadWeek()
+    {
+        LoadDayCounts();
+        LoadVisits();
+        RefreshChart();
+    }
+
+    void LoadDayCounts()
+    {
+        _dayCounts = [];
+        for (int i = 0; i < 7; i++)
+            _dayCounts[i] = AcademySvc.GetVisitsForDay(_weekStart.AddDays(i)).Count;
+    }
+
+    void LoadVisits() => _visits = AcademySvc.GetVisitsForDay(SelectedDate);
+
+    void RefreshChart()
+    {
+        var latestWeekStart = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
+        _weeklyTotals = AcademySvc.GetWeeklyVisitCounts(latestWeekStart, 20);
+        _chartKey++;
+    }
+
+    void SelectDay(int idx)
+    {
+        _selDay     = idx;
+        _searchText = "";
+        LoadVisits();
+    }
+
+    void OnSearchInput(ChangeEventArgs e) =>
+        _searchText = e.Value?.ToString() ?? "";
+
+    void AddVisit(PersonItem p)
+    {
+        AcademySvc.AddVisit(p.PersonId, SelectedDate);
+        _dayCounts[_selDay] = AcademySvc.GetVisitsForDay(SelectedDate).Count;
+        LoadVisits();
+        RefreshChart();
+    }
+
+    void SaveNewStudent((string fn, string ln) names)
+    {
+        var personId = AcademySvc.AddPersonForAcademy(
+            names.fn, names.ln, _addPhone, _addEmail, _addAge, _addSex);
+        AcademySvc.AddVisit(personId, SelectedDate);
+        _allPersons         = AcademySvc.GetAllPersons();
+        _dayCounts[_selDay] = AcademySvc.GetVisitsForDay(SelectedDate).Count;
+        LoadVisits();
+        RefreshChart();
+        _addPhone = _addEmail = _addSex = "";
+        _addAge   = null;
+    }
+
+    void DoRemoveVisit(int visitId)
+    {
+        AcademySvc.RemoveVisit(visitId);
+        _dayCounts[_selDay] = AcademySvc.GetVisitsForDay(SelectedDate).Count;
+        LoadVisits();
+        RefreshChart();
+    }
+}
