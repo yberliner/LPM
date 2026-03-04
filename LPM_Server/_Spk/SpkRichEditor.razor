@@ -27,6 +27,19 @@
     .spk-rich-editor .ql-toolbar.ql-snow .ql-fill  { fill:   #333 !important; }
     .spk-rich-editor .ql-toolbar.ql-snow .ql-picker-label { color: #333 !important; }
     .spk-rich-editor .ql-editor.ql-blank::before { color: #999 !important; }
+    /* Size picker labels */
+    .spk-rich-editor .ql-snow .ql-picker.ql-size .ql-picker-label::before,
+    .spk-rich-editor .ql-snow .ql-picker.ql-size .ql-picker-item::before { content: 'Normal'; }
+    .spk-rich-editor .ql-snow .ql-picker.ql-size .ql-picker-label[data-value='10px']::before,
+    .spk-rich-editor .ql-snow .ql-picker.ql-size .ql-picker-item[data-value='10px']::before { content: 'Tiny'; }
+    .spk-rich-editor .ql-snow .ql-picker.ql-size .ql-picker-label[data-value='14px']::before,
+    .spk-rich-editor .ql-snow .ql-picker.ql-size .ql-picker-item[data-value='14px']::before { content: 'Small'; }
+    .spk-rich-editor .ql-snow .ql-picker.ql-size .ql-picker-label[data-value='18px']::before,
+    .spk-rich-editor .ql-snow .ql-picker.ql-size .ql-picker-item[data-value='18px']::before { content: 'Medium'; }
+    .spk-rich-editor .ql-snow .ql-picker.ql-size .ql-picker-label[data-value='24px']::before,
+    .spk-rich-editor .ql-snow .ql-picker.ql-size .ql-picker-item[data-value='24px']::before { content: 'Large'; }
+    .spk-rich-editor .ql-snow .ql-picker.ql-size .ql-picker-label[data-value='32px']::before,
+    .spk-rich-editor .ql-snow .ql-picker.ql-size .ql-picker-item[data-value='32px']::before { content: 'Huge'; }
 </style>
 
 @code {
