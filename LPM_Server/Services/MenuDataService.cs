@@ -16,6 +16,16 @@ public class MenuDataService
             dirChange: false
         ),
         new MainMenuItems (
+            path: "/PCs",
+            type: "link",
+            title: "PCs",
+            icon: "ri-contacts-book-2-line",
+            svg: "",
+            selected: false,
+            active: false,
+            dirChange: false
+        ),
+        new MainMenuItems (
             path: "/",
             type: "link",
             title: "Exit",

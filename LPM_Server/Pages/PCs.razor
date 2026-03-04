@@ -1,0 +1,584 @@
+@page "/PCs"
+@attribute [Authorize]
+@inject LPM.Services.PcService PcSvc
+@using Microsoft.AspNetCore.Authorization
+@using LPM.Services
+
+<div class="d-flex gap-3" style="height:calc(100vh - 130px); overflow:hidden;">
+
+    @* ── LEFT PANEL: PC List ── *@
+    <div class="d-flex flex-column border-end pe-2" style="width:240px;min-width:240px;">
+        <div class="d-flex gap-1 mb-2">
+            <input class="form-control form-control-sm" placeholder="Search..."
+                   @bind="_search" @bind:event="oninput" />
+            <button class="btn btn-sm btn-success text-nowrap" title="Add new PC" @onclick="ShowAddForm">
+                <i class="ri-user-add-line"></i>
+            </button>
+        </div>
+        <div class="overflow-y-auto flex-grow-1">
+            @if (!FilteredPcs.Any())
+            {
+                <div class="text-muted small text-center mt-4">No PCs found.</div>
+            }
+            @foreach (var pc in FilteredPcs)
+            {
+                <div class="d-flex align-items-center gap-2 px-2 py-2 rounded mb-1 cursor-pointer
+                            @(_selPcId == pc.PcId ? "bg-primary text-white" : "bg-light")"
+                     style="cursor:pointer;"
+                     @onclick="() => SelectPc(pc.PcId)">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0
+                                @(_selPcId == pc.PcId ? "bg-white text-primary" : "bg-primary text-white")"
+                         style="width:30px;height:30px;font-size:0.8rem;font-weight:700;">
+                        @(pc.FullName.Length > 0 ? pc.FullName[0].ToString().ToUpper() : "?")
+                    </div>
+                    <div class="overflow-hidden">
+                        <div class="fw-semibold text-truncate" style="font-size:0.82rem;">@pc.FullName</div>
+                        @if (!string.IsNullOrEmpty(pc.ExternalId))
+                        {
+                            <div class="text-truncate @(_selPcId == pc.PcId ? "text-white-50" : "text-muted")"
+                                 style="font-size:0.7rem;">ID: @pc.ExternalId</div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* ── RIGHT PANEL ── *@
+    <div class="flex-grow-1 overflow-y-auto">
+
+        @if (_showAddForm)
+        {
+            @* ── ADD NEW PC ── *@
+            <div class="card shadow-sm">
+                <div class="card-header fw-semibold py-2">
+                    <i class="ri-user-add-line me-1"></i> Add New PC
+                </div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label class="form-label small mb-1">First Name <span class="text-danger">*</span></label>
+                            <input class="form-control form-control-sm" @bind="_addFirstName" placeholder="First name" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small mb-1">Last Name</label>
+                            <input class="form-control form-control-sm" @bind="_addLastName" placeholder="Last name" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small mb-1">External ID</label>
+                            <input class="form-control form-control-sm" @bind="_addExternalId" placeholder="File / record number" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small mb-1">Phone</label>
+                            <input class="form-control form-control-sm" @bind="_addPhone" placeholder="Phone number" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small mb-1">Email</label>
+                            <input class="form-control form-control-sm" @bind="_addEmail" placeholder="Email address" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small mb-1">Start Date</label>
+                            <input type="date" class="form-control form-control-sm" @bind="_addStartDate" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small mb-1">Notes</label>
+                            <textarea class="form-control form-control-sm" rows="2"
+                                      @bind="_addNotes" placeholder="Internal notes about this PC..."></textarea>
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_addError))
+                    {
+                        <div class="alert alert-danger py-1 px-2 mt-2 small">@_addError</div>
+                    }
+                    <div class="mt-3 d-flex gap-2">
+                        <button class="btn btn-sm btn-primary" @onclick="SaveNewPc">
+                            <i class="ri-save-line me-1"></i>Save
+                        </button>
+                        <button class="btn btn-sm btn-link text-muted" @onclick="() => _showAddForm = false">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        }
+        else if (_selPcId.HasValue && _detail != null)
+        {
+            @* ── PC DETAIL ── *@
+
+            @* Header card *@
+            <div class="card shadow-sm mb-3">
+                <div class="card-body py-2 px-3">
+                    <div class="d-flex align-items-start gap-3">
+                        <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0"
+                             style="width:48px;height:48px;background:#3949ab;font-size:1.3rem;">
+                            @(_detail.FirstName.Length > 0 ? _detail.FirstName[0].ToString().ToUpper() : "?")
+                        </div>
+                        @if (_editMode)
+                        {
+                            <div class="row g-2 flex-grow-1">
+                                <div class="col-auto">
+                                    <label class="form-label small mb-0">First Name</label>
+                                    <input class="form-control form-control-sm" @bind="_editFirstName" style="width:130px;" />
+                                </div>
+                                <div class="col-auto">
+                                    <label class="form-label small mb-0">Last Name</label>
+                                    <input class="form-control form-control-sm" @bind="_editLastName" style="width:130px;" />
+                                </div>
+                                <div class="col-auto">
+                                    <label class="form-label small mb-0">External ID</label>
+                                    <input class="form-control form-control-sm" @bind="_editExternalId" style="width:120px;" />
+                                </div>
+                                <div class="col-auto">
+                                    <label class="form-label small mb-0">Phone</label>
+                                    <input class="form-control form-control-sm" @bind="_editPhone" style="width:130px;" />
+                                </div>
+                                <div class="col-auto">
+                                    <label class="form-label small mb-0">Email</label>
+                                    <input class="form-control form-control-sm" @bind="_editEmail" style="width:190px;" />
+                                </div>
+                                <div class="col-auto">
+                                    <label class="form-label small mb-0">Start Date</label>
+                                    <input type="date" class="form-control form-control-sm" @bind="_editStartDate" style="width:150px;" />
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label small mb-0">Notes</label>
+                                    <textarea class="form-control form-control-sm" rows="2" @bind="_editNotes"></textarea>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                                    <span class="fs-5 fw-semibold">@_detail.FullName</span>
+                                    @if (!string.IsNullOrEmpty(_detail.ExternalId))
+                                    {
+                                        <span class="badge bg-secondary-transparent text-secondary">
+                                            <i class="ri-hashtag me-1"></i>@_detail.ExternalId
+                                        </span>
+                                    }
+                                    @if (!string.IsNullOrEmpty(_detail.StartDate))
+                                    {
+                                        <span class="text-muted small">
+                                            <i class="ri-calendar-line me-1"></i>Since @_detail.StartDate
+                                        </span>
+                                    }
+                                </div>
+                                <div class="d-flex gap-3 flex-wrap">
+                                    @if (!string.IsNullOrEmpty(_detail.Phone))
+                                    {
+                                        <span class="text-muted small">
+                                            <i class="ri-phone-line me-1"></i>@_detail.Phone
+                                        </span>
+                                    }
+                                    @if (!string.IsNullOrEmpty(_detail.Email))
+                                    {
+                                        <span class="text-muted small">
+                                            <i class="ri-mail-line me-1"></i>@_detail.Email
+                                        </span>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrEmpty(_detail.Notes))
+                                {
+                                    <div class="text-muted small mt-1 fst-italic">@_detail.Notes</div>
+                                }
+                            </div>
+                        }
+                        <div class="ms-auto d-flex gap-2 flex-shrink-0">
+                            @if (_editMode)
+                            {
+                                <button class="btn btn-sm btn-primary" @onclick="SaveEdit">
+                                    <i class="ri-save-line me-1"></i>Save
+                                </button>
+                                <button class="btn btn-sm btn-link text-muted" @onclick="() => _editMode = false">Cancel</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="StartEdit">
+                                    <i class="ri-edit-line me-1"></i>Edit
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* Stats row *@
+            @if (_stats != null)
+            {
+                double hoursRemaining = _stats.TotalHoursPurchased - _stats.HoursUsed;
+                <div class="row g-2 mb-3">
+                    <div class="col-6 col-md-3">
+                        <div class="card shadow-sm text-center py-3">
+                            <div style="font-size:1.8rem;font-weight:700;color:#3949ab;line-height:1;">
+                                @_stats.TotalSessions
+                            </div>
+                            <div class="text-muted small mt-1">Total Sessions</div>
+                            @if (_stats.FreeSessions > 0)
+                            {
+                                <div style="font-size:0.7rem;color:#888;">@_stats.FreeSessions free</div>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="card shadow-sm text-center py-3">
+                            <div style="font-size:1.8rem;font-weight:700;color:#3949ab;line-height:1;">
+                                @Hh(_stats.HoursUsed)
+                            </div>
+                            <div class="text-muted small mt-1">Hours Used</div>
+                            <div style="font-size:0.7rem;color:#888;">billed sessions</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="card shadow-sm text-center py-3">
+                            <div style="font-size:1.8rem;font-weight:700;color:#3949ab;line-height:1;">
+                                @_stats.TotalHoursPurchased<span style="font-size:1rem;">h</span>
+                            </div>
+                            <div class="text-muted small mt-1">Hours Purchased</div>
+                            @if (_stats.TotalAmountPaid > 0)
+                            {
+                                <div style="font-size:0.7rem;color:#888;">₪@_stats.TotalAmountPaid paid</div>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="card shadow-sm text-center py-3">
+                            <div style="font-size:1.8rem;font-weight:700;line-height:1;
+                                        color:@(hoursRemaining >= 0 ? "#2e7d32" : "#c62828");">
+                                @Hh(hoursRemaining)
+                            </div>
+                            <div class="text-muted small mt-1">Hours Remaining</div>
+                            @if (_stats.LastSessionDate != null)
+                            {
+                                <div style="font-size:0.7rem;color:#888;">Last: @_stats.LastSessionDate</div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @* Payments card *@
+            <div class="card shadow-sm mb-3">
+                <div class="card-header d-flex align-items-center justify-content-between py-2">
+                    <span class="fw-semibold small"><i class="ri-bank-card-line me-1"></i>Payments</span>
+                    <button class="btn btn-sm @(_showAddPayment ? "btn-outline-secondary" : "btn-outline-primary") py-0 px-2"
+                            style="font-size:0.75rem;"
+                            @onclick="ToggleAddPayment">
+                        @(_showAddPayment ? "Cancel" : "+ Add Payment")
+                    </button>
+                </div>
+                @if (_showAddPayment)
+                {
+                    <div class="card-body py-2 border-bottom bg-light">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-auto">
+                                <label class="form-label small mb-0">Date</label>
+                                <input type="date" class="form-control form-control-sm"
+                                       @bind="_payDate" style="width:148px;" />
+                            </div>
+                            <div class="col-auto">
+                                <label class="form-label small mb-0">Hours Bought</label>
+                                <input type="number" class="form-control form-control-sm"
+                                       @bind="_payHours" min="0" style="width:95px;" placeholder="0" />
+                            </div>
+                            <div class="col-auto">
+                                <label class="form-label small mb-0">Amount (₪)</label>
+                                <input type="number" class="form-control form-control-sm"
+                                       @bind="_payAmount" min="0" style="width:105px;" placeholder="0" />
+                            </div>
+                            <div class="col">
+                                <label class="form-label small mb-0">Notes</label>
+                                <input class="form-control form-control-sm" @bind="_payNotes" placeholder="Optional..." />
+                            </div>
+                            <div class="col-auto">
+                                <button class="btn btn-sm btn-primary" @onclick="SavePayment">Save</button>
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrEmpty(_payError))
+                        {
+                            <div class="alert alert-danger py-1 px-2 mt-2 small">@_payError</div>
+                        }
+                    </div>
+                }
+                <div class="card-body p-0">
+                    @if (_payments?.Count > 0)
+                    {
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="small ps-3">Date</th>
+                                    <th class="small text-center">Hours</th>
+                                    <th class="small text-end">Amount</th>
+                                    <th class="small">Notes</th>
+                                    <th style="width:36px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var pay in _payments)
+                                {
+                                    <tr>
+                                        <td class="small ps-3">@pay.Date</td>
+                                        <td class="small text-center fw-semibold">@pay.HoursBought h</td>
+                                        <td class="small text-end">
+                                            @(pay.AmountPaid > 0 ? $"₪{pay.AmountPaid}" : "—")
+                                        </td>
+                                        <td class="small text-muted">@pay.Notes</td>
+                                        <td class="text-center">
+                                            <button class="btn btn-link btn-sm text-danger py-0 px-0"
+                                                    title="Delete payment"
+                                                    @onclick="() => DeletePayment(pay.PaymentId)">
+                                                <i class="ri-delete-bin-line" style="font-size:0.85rem;"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot class="table-light">
+                                <tr>
+                                    <td class="small ps-3 fw-semibold">Total</td>
+                                    <td class="small text-center fw-semibold">
+                                        @_payments.Sum(p => p.HoursBought) h
+                                    </td>
+                                    <td class="small text-end fw-semibold">
+                                        @{ var tot = _payments.Sum(p => p.AmountPaid); }
+                                        @(tot > 0 ? $"₪{tot}" : "—")
+                                    </td>
+                                    <td colspan="2"></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    }
+                    else
+                    {
+                        <div class="text-muted small text-center py-3">No payments recorded yet.</div>
+                    }
+                </div>
+            </div>
+
+            @* Session history card *@
+            <div class="card shadow-sm">
+                <div class="card-header d-flex align-items-center justify-content-between py-2">
+                    <span class="fw-semibold small"><i class="ri-time-line me-1"></i>Session History</span>
+                    @if (_sessions?.Count > 0)
+                    {
+                        <span class="badge bg-primary-transparent text-primary">@_sessions.Count sessions</span>
+                    }
+                </div>
+                <div class="card-body p-0">
+                    @if (_sessions?.Count > 0)
+                    {
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="small ps-3">Date</th>
+                                    <th class="small">Auditor</th>
+                                    <th class="small text-center">Duration</th>
+                                    <th class="small text-center">Admin</th>
+                                    <th class="small text-center">Type</th>
+                                    <th class="small text-center">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var s in _sessions)
+                                {
+                                    <tr>
+                                        <td class="small ps-3">@s.Date</td>
+                                        <td class="small">@s.AuditorName</td>
+                                        <td class="small text-center">@Hmm(s.LengthSec)</td>
+                                        <td class="small text-center text-muted">
+                                            @(s.AdminSec > 0 ? Hmm(s.AdminSec) : "—")
+                                        </td>
+                                        <td class="small text-center">
+                                            @if (s.IsFree)
+                                            {
+                                                <span class="badge bg-warning-transparent text-warning">Free</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-success-transparent text-success">Billed</span>
+                                            }
+                                        </td>
+                                        <td class="small text-center">
+                                            @{
+                                                var (cls, lbl) = s.VerifiedStatus switch {
+                                                    "Approved" => ("bg-success-transparent text-success", "Approved"),
+                                                    "Draft"    => ("bg-secondary-transparent text-secondary", "Draft"),
+                                                    _          => ("bg-warning-transparent text-warning", s.VerifiedStatus)
+                                                };
+                                            }
+                                            <span class="badge @cls">@lbl</span>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot class="table-light">
+                                <tr>
+                                    <td colspan="2" class="small ps-3 fw-semibold">Total billed</td>
+                                    <td class="small text-center fw-semibold">
+                                        @Hmm(_sessions.Where(s => !s.IsFree).Sum(s => s.LengthSec))
+                                    </td>
+                                    <td class="small text-center fw-semibold text-muted">
+                                        @{ var adminTot = _sessions.Where(s => !s.IsFree).Sum(s => s.AdminSec); }
+                                        @(adminTot > 0 ? Hmm(adminTot) : "—")
+                                    </td>
+                                    <td colspan="2"></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    }
+                    else
+                    {
+                        <div class="text-muted small text-center py-3">No sessions recorded yet.</div>
+                    }
+                </div>
+            </div>
+        }
+        else if (!_showAddForm)
+        {
+            <div class="d-flex flex-column align-items-center justify-content-center text-muted"
+                 style="height:60vh;">
+                <i class="ri-contacts-book-2-line" style="font-size:3.5rem;opacity:0.2;"></i>
+                <p class="mt-2 small">Select a PC from the list, or click <strong>+</strong> to add one.</p>
+            </div>
+        }
+
+    </div>
+</div>
+
+@code {
+    List<PcListItem> _allPcs    = [];
+    int?             _selPcId;
+    string           _search    = "";
+
+    PcDetailInfo?       _detail;
+    PcStats?            _stats;
+    List<PcPayment>?    _payments;
+    List<PcSessionInfo>? _sessions;
+
+    // Add PC form
+    bool      _showAddForm;
+    string    _addFirstName = "", _addLastName = "", _addExternalId = "";
+    string    _addPhone = "", _addEmail = "", _addNotes = "";
+    DateTime? _addStartDate;
+    string    _addError = "";
+
+    // Edit mode
+    bool      _editMode;
+    string    _editFirstName = "", _editLastName = "", _editExternalId = "";
+    string    _editPhone = "", _editEmail = "", _editNotes = "";
+    DateTime? _editStartDate;
+
+    // Add payment
+    bool     _showAddPayment;
+    DateTime _payDate  = DateTime.Today;
+    int      _payHours, _payAmount;
+    string   _payNotes = "", _payError = "";
+
+    IEnumerable<PcListItem> FilteredPcs => string.IsNullOrWhiteSpace(_search)
+        ? _allPcs
+        : _allPcs.Where(p =>
+            p.FullName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+            p.ExternalId.Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    protected override void OnInitialized() => _allPcs = PcSvc.GetAllPcs();
+
+    void SelectPc(int pcId)
+    {
+        _selPcId        = pcId;
+        _showAddForm    = false;
+        _editMode       = false;
+        _showAddPayment = false;
+        LoadDetail();
+    }
+
+    void LoadDetail()
+    {
+        if (!_selPcId.HasValue) return;
+        _detail   = PcSvc.GetPcDetail(_selPcId.Value);
+        _stats    = PcSvc.GetPcStats(_selPcId.Value);
+        _payments = PcSvc.GetPayments(_selPcId.Value);
+        _sessions = PcSvc.GetPcSessions(_selPcId.Value);
+    }
+
+    void ShowAddForm()
+    {
+        _showAddForm  = true;
+        _selPcId      = null;
+        _editMode     = false;
+        _addFirstName = _addLastName = _addExternalId = "";
+        _addPhone     = _addEmail = _addNotes = _addError = "";
+        _addStartDate = null;
+    }
+
+    void SaveNewPc()
+    {
+        if (string.IsNullOrWhiteSpace(_addFirstName))
+        { _addError = "First name is required."; return; }
+
+        var newId = PcSvc.AddPcWithPerson(
+            _addFirstName, _addLastName, _addExternalId,
+            _addPhone, _addEmail,
+            _addStartDate?.ToString("yyyy-MM-dd") ?? "", _addNotes);
+        _allPcs      = PcSvc.GetAllPcs();
+        _showAddForm = false;
+        SelectPc(newId);
+    }
+
+    void StartEdit()
+    {
+        if (_detail == null) return;
+        _editMode       = true;
+        _editFirstName  = _detail.FirstName;
+        _editLastName   = _detail.LastName;
+        _editExternalId = _detail.ExternalId;
+        _editPhone      = _detail.Phone;
+        _editEmail      = _detail.Email;
+        _editNotes      = _detail.Notes;
+        _editStartDate  = string.IsNullOrEmpty(_detail.StartDate) ? null
+                          : DateTime.TryParse(_detail.StartDate, out var d) ? d : null;
+    }
+
+    void SaveEdit()
+    {
+        if (string.IsNullOrWhiteSpace(_editFirstName)) return;
+        PcSvc.UpdatePcDetail(_selPcId!.Value,
+            _editFirstName, _editLastName, _editExternalId,
+            _editPhone, _editEmail,
+            _editStartDate?.ToString("yyyy-MM-dd") ?? "", _editNotes);
+        _editMode = false;
+        _allPcs   = PcSvc.GetAllPcs();
+        LoadDetail();
+    }
+
+    void SavePayment()
+    {
+        if (_payHours <= 0 && _payAmount <= 0)
+        { _payError = "Enter hours bought or amount paid."; return; }
+
+        PcSvc.AddPayment(_selPcId!.Value, _payDate.ToString("yyyy-MM-dd"), _payHours, _payAmount,
+            string.IsNullOrWhiteSpace(_payNotes) ? null : _payNotes);
+        _showAddPayment = false;
+        _payHours = _payAmount = 0;
+        _payNotes = _payError = "";
+        _payDate  = DateTime.Today;
+        LoadDetail();
+    }
+
+    void ToggleAddPayment() { _showAddPayment = !_showAddPayment; _payError = ""; }
+
+    void DeletePayment(int paymentId)
+    {
+        PcSvc.DeletePayment(paymentId);
+        LoadDetail();
+    }
+
+    // H:MM from seconds
+    static string Hmm(int secs) => $"{secs / 3600}:{(secs % 3600) / 60:00}";
+    // Hours decimal display
+    static string Hh(double h)
+    {
+        bool neg = h < 0;
+        h = Math.Abs(h);
+        int hh = (int)h;
+        int mm = (int)Math.Round((h - hh) * 60);
+        return neg ? $"-{hh}:{mm:00}" : $"{hh}:{mm:00}";
+    }
+}

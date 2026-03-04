@@ -104,6 +104,7 @@ builder.Services.AddSingleton<IFileStore>(sp =>
 // SQLite user database
 builder.Services.AddSingleton<UserDb>();
 builder.Services.AddSingleton<LPM.Services.DashboardService>();
+builder.Services.AddSingleton<LPM.Services.PcService>();
 
 // Add session services
 builder.Services.AddDistributedMemoryCache();
