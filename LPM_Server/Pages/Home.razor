@@ -66,7 +66,7 @@
                             var csFullName  = _pcCsNames.TryGetValue(pc.PcId, out var cn) ? cn : "";
                             var csFirstName = csFullName.Length > 0 ? csFullName.Split(' ')[0] : "NA";
                             <th class="text-center fw-normal user-select-none"
-                                style="cursor:context-menu;"
+                                style="cursor:context-menu; position:relative;"
                                 @oncontextmenu="e => ShowCtxMenu(e, pc)"
                                 @oncontextmenu:preventDefault="true">
                                 @if (pc.IsSolo)
@@ -81,6 +81,11 @@
                                 {
                                     <span title="@(csFullName.Length > 0 ? csFullName : "Unknown")">@csFirstName</span>
                                 }
+                                <span style="position:absolute; top:1px; right:2px; line-height:1; cursor:pointer;
+                                             color:#aaa; font-size:11px; font-weight:700;"
+                                      title="Remove column"
+                                      @onclick="() => RemovePcDirectly(pc)"
+                                      @onclick:stopPropagation="true">✕</span>
                             </th>
                         }
                     </tr>
@@ -117,7 +122,7 @@
                     @if (_myPcs.Count > 0)
                     {
                         <tr class="table-light">
-                            <td class="fw-semibold small text-muted py-1">Role</td>
+                            <td class="fw-semibold small py-1" style="color:#555;">Role</td>
                             @foreach (var pc in _myPcs)
                             {
                                 <td class="text-center py-1">
@@ -137,11 +142,21 @@
                                     {
                                         <div class="btn-group btn-group-sm" role="group">
                                             <button type="button" class="btn @AudBtnClass(pc)"
+                                                    style="padding:1px 5px; font-size:0.7rem;"
                                                     @onclick="() => SetPcRoleAud(pc.PcId)">
+                                                @if (pc.WorkCapacity == "Auditor")
+                                                {
+                                                    <i class="ri-checkbox-circle-fill me-1"></i>
+                                                }
                                                 Aud
                                             </button>
                                             <button type="button" class="btn @CsBtnClass(pc)"
+                                                    style="padding:1px 5px; font-size:0.7rem;"
                                                     @onclick="() => SetPcRoleCs(pc.PcId)">
+                                                @if (pc.WorkCapacity == "CS")
+                                                {
+                                                    <i class="ri-checkbox-circle-fill me-1"></i>
+                                                }
                                                 CS
                                             </button>
                                         </div>
@@ -904,6 +919,12 @@
     {
         DashSvc.RemoveUserPc(_userId!.Value, _ctxPcId, _ctxIsSolo);
         _showCtxMenu = false;
+        await RefreshAsync();
+    }
+
+    async Task RemovePcDirectly(PcInfo pc)
+    {
+        DashSvc.RemoveUserPc(_userId!.Value, pc.PcId, pc.IsSolo);
         await RefreshAsync();
     }
 
