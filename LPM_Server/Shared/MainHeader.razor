@@ -5,6 +5,7 @@
 @inject MSGS.ClientManager client
 @inject MSGS.AgentsRepository _agents
 @inject AuthenticationStateProvider AuthStateProvider
+@inject LPM.Auth.UserDb UserDb
 @using LPM._Spk
 @implements IDisposable
 @using CardModel
@@ -59,16 +60,86 @@
                         
                     </div>
 
-                    <div class="d-flex align-items-center gap-2 text-nowrap text-white">
-                        <span style="width:34px; height:34px; border-radius:50%;
-                                     background:rgba(255,255,255,0.18);
-                                     border:2px solid rgba(255,255,255,0.35);
-                                     display:inline-flex; align-items:center; justify-content:center;
-                                     font-weight:700; font-size:15px; flex-shrink:0; letter-spacing:0;">
-                            @(_displayName.Length > 0 ? _displayName[0].ToString() : "")
-                        </span>
+                    <div class="dropdown d-flex align-items-center gap-2 text-nowrap text-white">
+                        <div class="avatar-trigger" data-bs-toggle="dropdown" aria-expanded="false">
+                            <div class="avatar-circle">
+                                @if (_avatarUrl != null)
+                                {
+                                    <img src="@_avatarUrl" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" alt="avatar" />
+                                }
+                                else
+                                {
+                                    @(_displayName.Length > 0 ? _displayName[0].ToString() : "")
+                                }
+                                <div class="avatar-gear-overlay"><i class="ri-settings-3-line"></i></div>
+                            </div>
+                            <i class="ri-arrow-down-s-fill avatar-caret"></i>
+                        </div>
                         <span style="font-size:2.3rem; font-weight:000; letter-spacing:0.03em; color:#3949ab;">@_displayName</span>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                            <li><h6 class="dropdown-header">@_displayName</h6></li>
+                            <li><a class="dropdown-item" href="/Settings"><i class="ri-settings-3-line me-2"></i>Settings</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-danger" href="/logout"><i class="ri-logout-box-r-line me-2"></i>Sign out</a></li>
+                        </ul>
                     </div>
+
+                    <style>
+                        .avatar-trigger {
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            cursor: pointer;
+                            gap: 0px;
+                        }
+                        .avatar-circle {
+                            position: relative;
+                            width: 44px;
+                            height: 44px;
+                            border-radius: 50%;
+                            background: rgba(255,255,255,0.18);
+                            border: 2px dashed rgba(255,255,255,0.6);
+                            display: inline-flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-weight: 700;
+                            font-size: 19px;
+                            flex-shrink: 0;
+                            overflow: hidden;
+                            transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+                        }
+                        .avatar-trigger:hover .avatar-circle {
+                            transform: scale(1.18);
+                            box-shadow: 0 0 0 4px rgba(255,255,255,0.35), 0 0 12px rgba(255,255,255,0.4);
+                            border-color: rgba(255,255,255,0.95);
+                        }
+                        .avatar-gear-overlay {
+                            position: absolute;
+                            inset: 0;
+                            border-radius: 50%;
+                            background: rgba(0,0,0,0.45);
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 16px;
+                            color: #fff;
+                            opacity: 0;
+                            transition: opacity 0.2s ease;
+                        }
+                        .avatar-trigger:hover .avatar-gear-overlay {
+                            opacity: 1;
+                        }
+                        .avatar-caret {
+                            font-size: 14px;
+                            color: rgba(255,255,255,0.75);
+                            line-height: 1;
+                            margin-top: -2px;
+                            transition: color 0.2s ease;
+                        }
+                        .avatar-trigger:hover .avatar-caret {
+                            color: #fff;
+                        }
+                    </style>
 
                     <!-- End::header-content-left -->
 
@@ -178,6 +249,7 @@
     private System.Timers.Timer? refreshTimer;
     private bool _isDisposed = false;
     private string _displayName = "";
+    private string? _avatarUrl;
 
     protected override async Task OnInitializedAsync()
     {
@@ -186,6 +258,7 @@
         _displayName = name.Length > 0
             ? char.ToUpper(name[0]) + name[1..]
             : "LP Management";
+        _avatarUrl = UserDb.GetAvatarPath(name.ToLower());
     }
 
     protected override void OnInitialized()

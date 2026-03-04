@@ -1,0 +1,184 @@
+@page "/Settings"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using LPM._Spk
+@inject AuthenticationStateProvider AuthStateProvider
+@inject LPM.Auth.UserDb UserDb
+@inject IWebHostEnvironment Env
+@inject NavigationManager Nav
+
+<div class="container-xl py-4">
+    <h4 class="mb-4">Account Settings</h4>
+
+    <div class="row g-4">
+
+        <!-- Card 1: Change Password -->
+        <div class="col-md-6">
+            <div class="card custom-card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0"><i class="ri-lock-password-line me-2"></i>Change Password</h5>
+                </div>
+                <div class="card-body">
+                    @if (_pwMsg is not null)
+                    {
+                        <div class="alert @(_pwOk ? "alert-success" : "alert-danger") alert-dismissible" role="alert">
+                            @_pwMsg
+                            <button type="button" class="btn-close" @onclick="() => _pwMsg = null"></button>
+                        </div>
+                    }
+                    <div class="mb-3">
+                        <label class="form-label">Current Password</label>
+                        <SpkPasswordToggle @bind-Password="_currentPwd" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">New Password</label>
+                        <SpkPasswordToggle @bind-Password="_newPwd" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Confirm New Password</label>
+                        <SpkPasswordToggle @bind-Password="_confirmPwd" />
+                    </div>
+                    <button class="btn btn-primary" @onclick="HandleChangePassword">
+                        Update Password
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 2: Profile Picture -->
+        <div class="col-md-6">
+            <div class="card custom-card h-100">
+                <div class="card-header">
+                    <h5 class="card-title mb-0"><i class="ri-image-line me-2"></i>Profile Picture</h5>
+                </div>
+                <div class="card-body d-flex flex-column align-items-center gap-3">
+                    <div style="width:120px;height:120px;border-radius:50%;overflow:hidden;
+                                background:rgba(100,120,200,0.15);border:2px solid #ddd;
+                                display:flex;align-items:center;justify-content:center;
+                                font-size:3rem;font-weight:700;color:#3949ab;">
+                        @if (_avatarUrl is not null)
+                        {
+                            <img src="@_avatarUrl" style="width:100%;height:100%;object-fit:cover;" alt="avatar" />
+                        }
+                        else
+                        {
+                            @(_username.Length > 0 ? _username[0].ToString().ToUpper() : "?")
+                        }
+                    </div>
+
+                    @if (_picMsg is not null)
+                    {
+                        <div class="alert @(_picOk ? "alert-success" : "alert-danger") w-100 text-center mb-0" role="alert">
+                            @_picMsg
+                        </div>
+                    }
+
+                    <InputFile OnChange="HandleFileUpload" accept="image/*" class="form-control" />
+                    <small class="text-muted">Max 2 MB — JPEG, PNG, GIF, WebP</small>
+
+                    @if (_avatarUrl is not null)
+                    {
+                        <button class="btn btn-outline-danger btn-sm" @onclick="HandleDeleteAvatar">
+                            <i class="ri-delete-bin-line me-1"></i>Remove Photo
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+@code {
+    private string _username = "";
+    private string? _avatarUrl;
+
+    // Password fields
+    private string? _currentPwd;
+    private string? _newPwd;
+    private string? _confirmPwd;
+    private string? _pwMsg;
+    private bool _pwOk;
+
+    // Picture fields
+    private string? _picMsg;
+    private bool _picOk;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        _username = auth.User.Identity?.Name?.ToLower() ?? "";
+        _avatarUrl = UserDb.GetAvatarPath(_username);
+    }
+
+    private void HandleChangePassword()
+    {
+        _pwMsg = null;
+        if (string.IsNullOrWhiteSpace(_currentPwd) || string.IsNullOrWhiteSpace(_newPwd) || string.IsNullOrWhiteSpace(_confirmPwd))
+        {
+            _pwMsg = "All fields are required."; _pwOk = false; return;
+        }
+        if (_newPwd != _confirmPwd)
+        {
+            _pwMsg = "New passwords do not match."; _pwOk = false; return;
+        }
+        if (_newPwd.Length < 8)
+        {
+            _pwMsg = "New password must be at least 8 characters."; _pwOk = false; return;
+        }
+        var error = UserDb.ChangePassword(_username, _currentPwd, _newPwd);
+        if (error is not null)
+        {
+            _pwMsg = error; _pwOk = false;
+        }
+        else
+        {
+            _pwMsg = "Password updated successfully."; _pwOk = true;
+            _currentPwd = _newPwd = _confirmPwd = null;
+        }
+    }
+
+    private static readonly HashSet<string> AllowedMime = new() { "image/jpeg", "image/png", "image/gif", "image/webp" };
+
+    private async Task HandleFileUpload(InputFileChangeEventArgs e)
+    {
+        _picMsg = null;
+        var file = e.File;
+        if (file.Size > 2 * 1024 * 1024)
+        {
+            _picMsg = "File is too large (max 2 MB)."; _picOk = false; return;
+        }
+        if (!AllowedMime.Contains(file.ContentType))
+        {
+            _picMsg = "Only JPEG, PNG, GIF, and WebP images are allowed."; _picOk = false; return;
+        }
+
+        var ext = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (string.IsNullOrEmpty(ext)) ext = ".jpg";
+
+        var avatarsDir = Path.Combine(Env.WebRootPath, "avatars");
+        Directory.CreateDirectory(avatarsDir);
+
+        // Remove any existing avatar for this user
+        foreach (var old in Directory.GetFiles(avatarsDir, $"{_username}.*"))
+            File.Delete(old);
+
+        var filePath = Path.Combine(avatarsDir, $"{_username}{ext}");
+        await using var stream = new FileStream(filePath, FileMode.Create);
+        await file.OpenReadStream(2 * 1024 * 1024).CopyToAsync(stream);
+
+        UserDb.SetAvatarPath(_username, $"/avatars/{_username}{ext}");
+        Nav.NavigateTo("/Settings", forceLoad: true);
+    }
+
+    private void HandleDeleteAvatar()
+    {
+        if (_avatarUrl is null) return;
+        var avatarsDir = Path.Combine(Env.WebRootPath, "avatars");
+        foreach (var old in Directory.GetFiles(avatarsDir, $"{_username}.*"))
+            File.Delete(old);
+        UserDb.SetAvatarPath(_username, null);
+        Nav.NavigateTo("/Settings", forceLoad: true);
+    }
+}

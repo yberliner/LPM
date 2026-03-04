@@ -11,6 +11,78 @@ public class UserDb
     {
         var dbPath = config["Database:Path"] ?? "lifepower.db";
         _connectionString = $"Data Source={dbPath}";
+        EnsureSchema();
+    }
+
+    private void EnsureSchema()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Users') WHERE name='AvatarPath'";
+        var count = (long)cmd.ExecuteScalar()!;
+        if (count == 0)
+        {
+            cmd.CommandText = "ALTER TABLE Users ADD COLUMN AvatarPath TEXT";
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>Returns the relative avatar URL (e.g. "/avatars/tami.png"), or null.</summary>
+    public string? GetAvatarPath(string username)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT AvatarPath FROM Users WHERE Username = @u COLLATE NOCASE";
+        cmd.Parameters.AddWithValue("@u", username);
+        var result = cmd.ExecuteScalar();
+        return result is DBNull || result is null ? null : (string)result;
+    }
+
+    /// <summary>Saves the relative avatar URL to the database.</summary>
+    public void SetAvatarPath(string username, string? path)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE Users SET AvatarPath = @p WHERE Username = @u COLLATE NOCASE";
+        cmd.Parameters.AddWithValue("@p", (object?)path ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@u", username);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Changes the password for the given user.
+    /// Returns null on success, or an error message string on failure.
+    /// </summary>
+    public string? ChangePassword(string username, string currentPwd, string newPwd)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT PasswordHash FROM Users WHERE Username = @u COLLATE NOCASE AND IsActive = 1";
+        cmd.Parameters.AddWithValue("@u", username);
+        var storedHash = cmd.ExecuteScalar() as string;
+        if (storedHash is null) return "User not found.";
+        if (!VerifyPbkdf2(storedHash, currentPwd)) return "Current password is incorrect.";
+
+        var newHash = HashPassword(newPwd);
+        using var updateCmd = conn.CreateCommand();
+        updateCmd.CommandText = "UPDATE Users SET PasswordHash = @h WHERE Username = @u COLLATE NOCASE";
+        updateCmd.Parameters.AddWithValue("@h", newHash);
+        updateCmd.Parameters.AddWithValue("@u", username);
+        updateCmd.ExecuteNonQuery();
+        return null;
+    }
+
+    private static string HashPassword(string password)
+    {
+        const int iterations = 260000;
+        byte[] salt = RandomNumberGenerator.GetBytes(16);
+        using var kdf = new Rfc2898DeriveBytes(password, salt, iterations, HashAlgorithmName.SHA256);
+        byte[] hash = kdf.GetBytes(32);
+        return $"pbkdf2_sha256${iterations}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
     }
 
     /// <summary>
