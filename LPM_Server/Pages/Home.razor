@@ -65,7 +65,10 @@
                         {
                             var csFullName  = _pcCsNames.TryGetValue(pc.PcId, out var cn) ? cn : "";
                             var csFirstName = csFullName.Length > 0 ? csFullName.Split(' ')[0] : "NA";
-                            <th class="text-center fw-normal">
+                            <th class="text-center fw-normal user-select-none"
+                                style="cursor:context-menu;"
+                                @oncontextmenu="e => ShowCtxMenu(e, pc)"
+                                @oncontextmenu:preventDefault="true">
                                 @if (pc.IsSolo)
                                 {
                                     <span title="Solo sessions">Solo</span>
