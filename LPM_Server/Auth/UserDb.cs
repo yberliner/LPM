@@ -18,12 +18,27 @@ public class UserDb
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
+
+        // Add AvatarPath column if missing
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Users') WHERE name='AvatarPath'";
-        var count = (long)cmd.ExecuteScalar()!;
-        if (count == 0)
+        if ((long)cmd.ExecuteScalar()! == 0)
         {
             cmd.CommandText = "ALTER TABLE Users ADD COLUMN AvatarPath TEXT";
+            cmd.ExecuteNonQuery();
+        }
+
+        // One-time fix: rename "camela" → "carmela" with corrected password
+        cmd.CommandText = "SELECT COUNT(*) FROM Users WHERE LOWER(Username)='camela'";
+        if ((long)cmd.ExecuteScalar()! > 0)
+        {
+            cmd.CommandText = "UPDATE Users SET Username='carmela', PasswordHash=@h WHERE LOWER(Username)='camela'";
+            cmd.Parameters.AddWithValue("@h", HashPassword("Carmela1992"));
+            cmd.ExecuteNonQuery();
+            cmd.Parameters.Clear();
+
+            // Fix display name in Persons table as well
+            cmd.CommandText = "UPDATE Persons SET FirstName='Carmela' WHERE LOWER(FirstName)='camela'";
             cmd.ExecuteNonQuery();
         }
     }

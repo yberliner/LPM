@@ -3,7 +3,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace LPM.Services;
 
-public record PcListItem(int PcId, string FullName, string ExternalId);
+public record PcListItem(int PcId, string FullName, string ExternalId, long RemainSec);
 public record PcDetailInfo(int PcId, string FirstName, string LastName, string ExternalId,
     string Phone, string Email, string Notes, string StartDate, string DateOfBirth, string Sex)
 {
@@ -100,14 +100,23 @@ public class PcService
         cmd.CommandText = @"
             SELECT pc.PcId,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
-                   COALESCE(pc.ExternalId, '') AS ExternalId
+                   COALESCE(pc.ExternalId, '') AS ExternalId,
+                   (COALESCE(pay.TotalHours, 0) * 3600 - COALESCE(sess.UsedSec, 0)) AS RemainSec
             FROM PCs pc
             JOIN Persons p ON p.PersonId = pc.PcId
-            ORDER BY p.FirstName, p.LastName";
+            LEFT JOIN (
+                SELECT PcId, SUM(HoursBought) AS TotalHours
+                FROM Payments GROUP BY PcId
+            ) pay ON pay.PcId = pc.PcId
+            LEFT JOIN (
+                SELECT PcId, SUM(LengthSeconds) AS UsedSec
+                FROM Sessions WHERE IsFreeSession = 0 GROUP BY PcId
+            ) sess ON sess.PcId = pc.PcId
+            ORDER BY RemainSec ASC, p.FirstName, p.LastName";
         var list = new List<PcListItem>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add(new PcListItem(r.GetInt32(0), r.GetString(1), r.GetString(2)));
+            list.Add(new PcListItem(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetInt64(3)));
         return list;
     }
 

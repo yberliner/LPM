@@ -22,23 +22,34 @@
             }
             @foreach (var pc in FilteredPcs)
             {
-                <div class="d-flex align-items-center gap-2 px-2 py-2 rounded mb-1 cursor-pointer
-                            @(_selPcId == pc.PcId ? "bg-primary text-white" : "bg-light")"
-                     style="cursor:pointer;"
+                <div class="d-flex align-items-center gap-2 px-2 py-2 rounded mb-1"
+                     style="cursor:pointer; background:@(_selPcId == pc.PcId ? "#3949ab" : "#f5f5f5");"
                      @onclick="() => SelectPc(pc.PcId)">
-                    <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0
-                                @(_selPcId == pc.PcId ? "bg-white text-primary" : "bg-primary text-white")"
-                         style="width:30px;height:30px;font-size:0.8rem;font-weight:700;">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
+                         style="width:30px;height:30px;font-size:0.8rem;font-weight:700;
+                                background:@(_selPcId == pc.PcId ? "#fff" : "#3949ab");
+                                color:@(_selPcId == pc.PcId ? "#3949ab" : "#fff");">
                         @(pc.FullName.Length > 0 ? pc.FullName[0].ToString().ToUpper() : "?")
                     </div>
-                    <div class="overflow-hidden">
-                        <div class="fw-semibold text-truncate" style="font-size:0.82rem;">@pc.FullName</div>
+                    <div class="overflow-hidden flex-grow-1">
+                        <div class="fw-semibold text-truncate"
+                             style="font-size:0.82rem; color:@(_selPcId == pc.PcId ? "#fff" : "#212529");">
+                            @pc.FullName
+                        </div>
                         @if (!string.IsNullOrEmpty(pc.ExternalId))
                         {
-                            <div class="text-truncate @(_selPcId == pc.PcId ? "text-white-50" : "text-muted")"
-                                 style="font-size:0.7rem;">ID: @pc.ExternalId</div>
+                            <div class="text-truncate"
+                                 style="font-size:0.7rem; color:@(_selPcId == pc.PcId ? "rgba(255,255,255,.65)" : "#888");">
+                                ID: @pc.ExternalId
+                            </div>
                         }
                     </div>
+                    <span class="flex-shrink-0 rounded-pill px-2 py-0"
+                          style="font-size:0.7rem; font-weight:700; white-space:nowrap;
+                                 color:@(_selPcId == pc.PcId ? "#fff" : pc.RemainSec >= 0 ? "#2e7d32" : "#c62828");
+                                 background:@(_selPcId == pc.PcId ? "rgba(255,255,255,.18)" : pc.RemainSec >= 0 ? "#e8f5e9" : "#ffebee");">
+                        @HrsLabel(pc.RemainSec)
+                    </span>
                 </div>
             }
         </div>
@@ -525,6 +536,10 @@
         PcSvc.DeletePayment(paymentId);
         LoadDetail();
     }
+
+    // Decimal hours label for PC list (e.g. "3.48 hrs" / "-1.25 hrs")
+    static string HrsLabel(long secs) =>
+        $"{secs / 3600.0:F2} hrs";
 
     // H:MM from seconds — integer arithmetic, always exact
     static string Hmm(int secs)

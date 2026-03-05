@@ -20,21 +20,41 @@
                 disabled="@(_weekStart >= DashboardService.GetWeekStart(MaxAllowedDate()))">
             Next →
         </button>
-        <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="PrintTable">
-            <i class="ri-printer-line me-1"></i>Print
-        </button>
-        @if (!_soloMode)
-        {
-            <button class="btn btn-sm btn-outline-primary" @onclick="ShowAddPcModal">+ Add PC</button>
-        }
-
-        @if (_auditorType == 3)
-        {
-            <button class="btn btn-sm @(_soloMode ? "btn-warning" : "btn-outline-warning")"
-                    @onclick="ToggleSoloMode">
-                @(_soloMode ? "Solo ✓" : "Solo")
+        <div class="d-flex align-items-center gap-2 ms-auto">
+            <button class="btn btn-sm btn-outline-secondary" @onclick="PrintTable">
+                <i class="ri-printer-line me-1"></i>Print
             </button>
-        }
+            @if (_isAuditor && _isCS && !_soloMode)
+            {
+                <div class="btn-group btn-group-sm" role="group" title="Column filter">
+                    <button type="button"
+                            class="btn @(_roleFilter=="Both"?"btn-primary":"btn-outline-primary")"
+                            @onclick='() => _roleFilter="Both"'>Both</button>
+                    <button type="button"
+                            class="btn @(_roleFilter=="Auditor"?"btn-primary":"btn-outline-primary")"
+                            @onclick='() => _roleFilter="Auditor"'>Aud</button>
+                    <button type="button"
+                            class="btn @(_roleFilter=="CS"?"btn-primary":"btn-outline-primary")"
+                            @onclick='() => _roleFilter="CS"'>CS</button>
+                </div>
+                <button class="btn btn-sm @(_hideEmpty?"btn-secondary":"btn-outline-secondary")"
+                        title="@(_hideEmpty?"Show empty columns":"Hide empty columns")"
+                        @onclick="() => _hideEmpty = !_hideEmpty">
+                    <i class="@(_hideEmpty?"ri-eye-line":"ri-eye-off-line")"></i>
+                </button>
+            }
+            @if (!_soloMode)
+            {
+                <button class="btn btn-sm btn-outline-primary" @onclick="ShowAddPcModal">+ Add PC</button>
+            }
+            @if (_auditorType == 3)
+            {
+                <button class="btn btn-sm @(_soloMode ? "btn-warning" : "btn-outline-warning")"
+                        @onclick="ToggleSoloMode">
+                    @(_soloMode ? "Solo ✓" : "Solo")
+                </button>
+            }
+        </div>
     </div>
 
     @if (_userId == null)
@@ -53,7 +73,7 @@
             <table class="table table-bordered table-hover table-sm mb-0" style="min-width:300px;">
                 <colgroup>
                     <col style="width:110px;" />
-                    @foreach (var pc in _myPcs)
+                    @foreach (var pc in VisiblePcs)
                     {
                         <col />
                     }
@@ -62,7 +82,7 @@
                     @* ── CS row ── *@
                     <tr class="small" style="color:#555;">
                         <th style="min-width:110px;">CS:</th>
-                        @foreach (var pc in _myPcs)
+                        @foreach (var pc in VisiblePcs)
                         {
                             var csFullName  = _pcCsNames.TryGetValue(pc.PcId, out var cn) ? cn : "";
                             var csFirstName = csFullName.Length > 0 ? csFullName.Split(' ')[0] : "NA";
@@ -91,11 +111,11 @@
                         }
                     </tr>
                     @* ── Role row ── *@
-                    @if (_myPcs.Count > 0)
+                    @if (VisiblePcs.Any())
                     {
                         <tr class="table-light">
                             <th class="fw-semibold small py-1" style="color:#555;">Role</th>
-                            @foreach (var pc in _myPcs)
+                            @foreach (var pc in VisiblePcs)
                             {
                                 <th class="text-center py-1">
                                     @if (pc.IsSolo)
@@ -144,7 +164,7 @@
                     @* ── PC name row ── *@
                     <tr>
                         <th style="min-width:110px;">Day</th>
-                        @foreach (var pc in _myPcs)
+                        @foreach (var pc in VisiblePcs)
                         {
                             var hasPendingCs = Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((DashboardService.GKey(pc), d)));
                             <th class="text-center user-select-none"
@@ -184,7 +204,7 @@
                             }
                             else
                             {
-                                @foreach (var pc in _myPcs)
+                                @foreach (var pc in VisiblePcs)
                                 {
                                     var secs       = _grid.GetValueOrDefault((DashboardService.GKey(pc), dayIdx));
                                     var isSelected = _selPcId == pc.PcId && _selDay == dayIdx && _selIsSolo == pc.IsSolo;
@@ -219,12 +239,13 @@
                         </tr>
                     }
                 </tbody>
-                @if (_myPcs.Count > 0)
+                @{ var _vp = VisiblePcs; }
+                @if (_vp.Count > 0)
                 {
                     <tfoot class="table-light">
                         <tr>
                             <td><strong>Σ Week</strong></td>
-                            @foreach (var pc in _myPcs)
+                            @foreach (var pc in _vp)
                             {
                                 var total = Enumerable.Range(0, 7)
                                     .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d)));
@@ -241,13 +262,14 @@
                             }
                         </tr>
                         @{
-                            var csPcKeySet = _myPcs.Where(p => p.WorkCapacity == "CS" && !p.IsSolo).Select(DashboardService.GKey).ToHashSet();
-                            var nonCsTotal = _grid.Where(kv => !csPcKeySet.Contains(kv.Key.Item1)).Sum(kv => kv.Value);
-                            var csTotal    = _grid.Where(kv =>  csPcKeySet.Contains(kv.Key.Item1)).Sum(kv => kv.Value);
+                            var csPcKeySet    = _vp.Where(p => p.WorkCapacity == "CS" && !p.IsSolo).Select(DashboardService.GKey).ToHashSet();
+                            var visibleKeySet = _vp.Select(DashboardService.GKey).ToHashSet();
+                            var nonCsTotal    = _grid.Where(kv => visibleKeySet.Contains(kv.Key.Item1) && !csPcKeySet.Contains(kv.Key.Item1)).Sum(kv => kv.Value);
+                            var csTotal       = _grid.Where(kv => csPcKeySet.Contains(kv.Key.Item1)).Sum(kv => kv.Value);
                         }
                         <tr style="background:linear-gradient(90deg,#1a237e 0%,#283593 100%); color:#fff;">
                             <td class="fw-bold" style="letter-spacing:.03em;">Grand Total</td>
-                                <td colspan="@_myPcs.Count">
+                                <td colspan="@_vp.Count">
                                     <div class="d-flex align-items-center">
 
                                         <!-- LEFT SIDE: scroll RIGHT button -->
@@ -781,6 +803,29 @@
     List<PcInfo>  _myPcs  = [];
     List<PcInfo>  _allPcs = [];
     Dictionary<(int, int), int> _grid = [];
+
+    // Column filter (visible when user is both Auditor and CS)
+    string _roleFilter = "Both";
+    bool   _hideEmpty;
+
+    List<PcInfo> VisiblePcs
+    {
+        get
+        {
+            IEnumerable<PcInfo> pcs = _myPcs;
+            if (_isAuditor && _isCS)
+            {
+                if (_roleFilter == "Auditor")
+                    pcs = pcs.Where(pc => pc.IsSolo || pc.WorkCapacity != "CS");
+                else if (_roleFilter == "CS")
+                    pcs = pcs.Where(pc => !pc.IsSolo && pc.WorkCapacity == "CS");
+            }
+            if (_hideEmpty)
+                pcs = pcs.Where(pc => Enumerable.Range(0, 7)
+                    .Any(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d)) > 0));
+            return pcs.ToList();
+        }
+    }
     HashSet<(int, int)>      _pendingCs   = [];
     Dictionary<int, string>  _pcCsNames   = [];
 
