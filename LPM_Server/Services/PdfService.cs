@@ -2,6 +2,7 @@ using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using LPM.Services;   // PcInfo lives here in your project
+using SkiaSharp;
 
 public class PdfService
 {
@@ -405,225 +406,270 @@ public class PdfService
             container.Page(page =>
             {
                 page.Size(PageSizes.A4);
-                page.Margin(18, Unit.Millimetre);
-                page.DefaultTextStyle(x => x.FontSize(10));
+                page.Margin(10, Unit.Millimetre);
+                page.DefaultTextStyle(x => x.FontSize(9));
 
-                page.Content().Column(col =>
+                page.Content().ScaleToFit().Column(col =>
                 {
                     // ── Header ──────────────────────────────────────────────
                     col.Item().Row(r =>
                     {
                         r.RelativeItem().Column(c =>
                         {
-                            c.Item().Text("Statistics Report").SemiBold().FontSize(20).FontColor("#1a1a2e");
+                            c.Item().Text("Statistics Report").SemiBold().FontSize(16).FontColor("#1a1a2e");
                             c.Item().Text($"Week: {weekStart:ddd dd/MM/yyyy} – {weekEnd:ddd dd/MM/yyyy}")
-                                .FontSize(11).FontColor(Colors.Grey.Darken2);
+                                .FontSize(9).FontColor(Colors.Grey.Darken2);
                         });
                     });
 
-                    col.Item().PaddingTop(10).LineHorizontal(1.5f).LineColor("#667eea");
-                    col.Item().PaddingTop(12);
+                    col.Item().PaddingTop(6).LineHorizontal(1.2f).LineColor("#667eea");
+                    col.Item().PaddingTop(8);
 
-                    // ── Week Summary 3-box row ───────────────────────────────
+                    // ── 4-box summary ────────────────────────────────────────
                     col.Item().Row(r =>
                     {
-                        // Box 1: Total Audit+CS
-                        r.RelativeItem().Border(1).BorderColor("#e0e4f0")
-                            .Background("#f0f4ff").CornerRadius(6).Padding(10)
-                            .Column(c =>
-                            {
-                                c.Item().AlignCenter().Text("Total Aud+CS Sold").FontSize(8)
-                                    .FontColor(Colors.Grey.Darken2).SemiBold();
-                                c.Item().PaddingTop(4).AlignCenter()
-                                    .Text(FmtSec(currentWeekSummary?.TotalAuditCsSec ?? 0))
-                                    .FontSize(22).Bold().FontColor("#6366f1");
-                            });
-
-                        r.ConstantItem(10);
-
-                        // Box 2: Academy Students
-                        r.RelativeItem().Border(1).BorderColor("#d1fae5")
-                            .Background("#f0fdf4").CornerRadius(6).Padding(10)
-                            .Column(c =>
-                            {
-                                c.Item().AlignCenter().Text("Academy Students").FontSize(8)
-                                    .FontColor(Colors.Grey.Darken2).SemiBold();
-                                c.Item().PaddingTop(4).AlignCenter()
-                                    .Text((currentWeekSummary?.AcademyCount ?? 0).ToString())
-                                    .FontSize(22).Bold().FontColor("#16a34a");
-                            });
-
-                        r.ConstantItem(10);
-
-                        // Box 3: Body in Shop
-                        r.RelativeItem().Border(1).BorderColor("#fde8d8")
-                            .Background("#fff7ed").CornerRadius(6).Padding(10)
-                            .Column(c =>
-                            {
-                                c.Item().AlignCenter().Text("Body in Shop").FontSize(8)
-                                    .FontColor(Colors.Grey.Darken2).SemiBold();
-                                c.Item().PaddingTop(4).AlignCenter()
-                                    .Text((currentWeekSummary?.BodyInShop ?? 0).ToString())
-                                    .FontSize(22).Bold().FontColor("#ea580c");
-                            });
+                        r.RelativeItem().Border(1).BorderColor("#e0e4f0").Background("#f0f4ff").CornerRadius(4).Padding(7).Column(c =>
+                        {
+                            c.Item().AlignCenter().Text("Aud+CS Sold").FontSize(7).FontColor(Colors.Grey.Darken2).SemiBold();
+                            c.Item().PaddingTop(3).AlignCenter().Text(FmtSec(currentWeekSummary?.TotalAuditCsSec ?? 0)).FontSize(16).Bold().FontColor("#6366f1");
+                        });
+                        r.ConstantItem(6);
+                        r.RelativeItem().Border(1).BorderColor("#dbeafe").Background("#eff6ff").CornerRadius(4).Padding(7).Column(c =>
+                        {
+                            c.Item().AlignCenter().Text("PCs").FontSize(7).FontColor(Colors.Grey.Darken2).SemiBold();
+                            c.Item().PaddingTop(3).AlignCenter().Text((currentWeekSummary?.PcCount ?? 0).ToString()).FontSize(16).Bold().FontColor("#2563eb");
+                        });
+                        r.ConstantItem(6);
+                        r.RelativeItem().Border(1).BorderColor("#d1fae5").Background("#f0fdf4").CornerRadius(4).Padding(7).Column(c =>
+                        {
+                            c.Item().AlignCenter().Text("Academy").FontSize(7).FontColor(Colors.Grey.Darken2).SemiBold();
+                            c.Item().PaddingTop(3).AlignCenter().Text((currentWeekSummary?.AcademyCount ?? 0).ToString()).FontSize(16).Bold().FontColor("#16a34a");
+                        });
+                        r.ConstantItem(6);
+                        r.RelativeItem().Border(1).BorderColor("#fde8d8").Background("#fff7ed").CornerRadius(4).Padding(7).Column(c =>
+                        {
+                            c.Item().AlignCenter().Text("Body in Shop").FontSize(7).FontColor(Colors.Grey.Darken2).SemiBold();
+                            c.Item().PaddingTop(3).AlignCenter().Text((currentWeekSummary?.BodyInShop ?? 0).ToString()).FontSize(16).Bold().FontColor("#ea580c");
+                        });
                     });
 
-                    col.Item().PaddingTop(16);
+                    col.Item().PaddingTop(10);
 
-                    // ── Day-by-day summary ───────────────────────────────────
-                    col.Item().Text("Day-by-Day Breakdown").SemiBold().FontSize(12).FontColor("#1a1a2e");
-                    col.Item().PaddingTop(6);
-
-                    col.Item().Table(table =>
+                    // ── Two-column: Day-by-day | Leaderboard ─────────────────
+                    col.Item().Row(mainRow =>
                     {
-                        table.ColumnsDefinition(cols =>
+                        mainRow.RelativeItem(5).Column(left =>
                         {
-                            cols.RelativeColumn(2);   // Day
-                            cols.RelativeColumn(2);   // Total Time
-                            cols.RelativeColumn(1.2f); // Academy
-                            cols.RelativeColumn(1.2f); // Body/Shop
-                        });
-
-                        // Header
-                        table.Header(h =>
-                        {
-                            h.Cell().Background("#1a1a2e").Padding(5)
-                                .Text("Day").FontSize(9).SemiBold().FontColor(Colors.White);
-                            h.Cell().Background("#1a1a2e").Padding(5).AlignCenter()
-                                .Text("Total Time").FontSize(9).SemiBold().FontColor(Colors.White);
-                            h.Cell().Background("#1a1a2e").Padding(5).AlignCenter()
-                                .Text("Academy").FontSize(9).SemiBold().FontColor(Colors.White);
-                            h.Cell().Background("#1a1a2e").Padding(5).AlignCenter()
-                                .Text("Body/Shop").FontSize(9).SemiBold().FontColor(Colors.White);
-                        });
-
-                        for (int d = 0; d < 7; d++)
-                        {
-                            var ds     = dayStats[d];
-                            var total  = ds.Staff.Sum(s => s.AuditSec + s.SoloCsSec);
-                            var bg     = d % 2 == 0 ? Colors.White : Colors.Grey.Lighten5;
-                            bool today = ds.Date == DateOnly.FromDateTime(DateTime.Today);
-
-                            table.Cell().Background(bg).Padding(5)
-                                .Text(t =>
+                            left.Item().Text("Day-by-Day").SemiBold().FontSize(9).FontColor("#1a1a2e");
+                            left.Item().PaddingTop(3);
+                            left.Item().Table(table =>
+                            {
+                                table.ColumnsDefinition(cols =>
                                 {
-                                    t.Span(ds.Date.ToString("ddd dd/MM")).FontSize(9);
-                                    if (today) t.Span(" ●").FontColor("#6366f1").FontSize(7);
+                                    cols.RelativeColumn(2.2f);
+                                    cols.RelativeColumn(1.8f);
+                                    cols.RelativeColumn(1f);
+                                    cols.RelativeColumn(1f);
+                                    cols.RelativeColumn(1f);
                                 });
-                            table.Cell().Background(bg).AlignCenter().Padding(5)
-                                .Text(total > 0 ? FmtSec(total) : "–").FontSize(9)
-                                .FontColor(total > 0 ? "#6366f1" : Colors.Grey.Medium);
-                            table.Cell().Background(bg).AlignCenter().Padding(5)
-                                .Text(ds.AcademyCount > 0 ? ds.AcademyCount.ToString() : "–").FontSize(9)
-                                .FontColor(ds.AcademyCount > 0 ? "#16a34a" : Colors.Grey.Medium);
-                            table.Cell().Background(bg).AlignCenter().Padding(5)
-                                .Text(ds.BodyInShop > 0 ? ds.BodyInShop.ToString() : "–").FontSize(9)
-                                .FontColor(ds.BodyInShop > 0 ? "#ea580c" : Colors.Grey.Medium);
-                        }
-                    });
+                                table.Header(h =>
+                                {
+                                    foreach (var (lbl, align) in new[] { ("Day","L"), ("Aud+CS","C"), ("PCs","C"), ("Acad","C"), ("BITS","C") })
+                                    {
+                                        var cell = h.Cell().Background("#1a1a2e").Padding(3);
+                                        if (align == "C") cell.AlignCenter().Text(lbl).FontSize(7).SemiBold().FontColor(Colors.White);
+                                        else              cell.Text(lbl).FontSize(7).SemiBold().FontColor(Colors.White);
+                                    }
+                                });
+                                for (int d = 0; d < 7; d++)
+                                {
+                                    var ds    = dayStats[d];
+                                    var total = ds.Staff.Sum(s => s.AuditSec + s.SoloCsSec);
+                                    var bg    = d % 2 == 0 ? Colors.White : Colors.Grey.Lighten5;
+                                    bool tod  = ds.Date == DateOnly.FromDateTime(DateTime.Today);
+                                    table.Cell().Background(bg).Padding(3).Text(t =>
+                                    {
+                                        t.Span(ds.Date.ToString("ddd dd/MM")).FontSize(8);
+                                        if (tod) t.Span(" ●").FontColor("#6366f1").FontSize(6);
+                                    });
+                                    table.Cell().Background(bg).AlignCenter().Padding(3).Text(total > 0 ? FmtSec(total) : "–").FontSize(8).FontColor(total > 0 ? "#6366f1" : Colors.Grey.Medium);
+                                    table.Cell().Background(bg).AlignCenter().Padding(3).Text(ds.PcCount > 0 ? ds.PcCount.ToString() : "–").FontSize(8).FontColor(ds.PcCount > 0 ? "#2563eb" : Colors.Grey.Medium);
+                                    table.Cell().Background(bg).AlignCenter().Padding(3).Text(ds.AcademyCount > 0 ? ds.AcademyCount.ToString() : "–").FontSize(8).FontColor(ds.AcademyCount > 0 ? "#16a34a" : Colors.Grey.Medium);
+                                    table.Cell().Background(bg).AlignCenter().Padding(3).Text(ds.BodyInShop > 0 ? ds.BodyInShop.ToString() : "–").FontSize(8).FontColor(ds.BodyInShop > 0 ? "#ea580c" : Colors.Grey.Medium);
+                                }
+                            });
+                        });
 
-                    col.Item().PaddingTop(16);
+                        mainRow.ConstantItem(12);
 
-                    // ── Staff Leaderboard (full week) ────────────────────────
-                    col.Item().Text("Staff Leaderboard — Full Week").SemiBold().FontSize(12).FontColor("#1a1a2e");
-                    col.Item().PaddingTop(6);
-
-                    if (weekStaff.Count == 0)
-                    {
-                        col.Item().Text("No sessions recorded this week.").FontColor(Colors.Grey.Medium);
-                    }
-                    else
-                    {
-                        col.Item().Table(table =>
+                        mainRow.RelativeItem(4).Column(right =>
                         {
-                            table.ColumnsDefinition(cols =>
+                            right.Item().Text("Staff Leaderboard").SemiBold().FontSize(9).FontColor("#1a1a2e");
+                            right.Item().PaddingTop(3);
+                            if (weekStaff.Count == 0)
                             {
-                                cols.ConstantColumn(26);  // Rank
-                                cols.RelativeColumn(3);   // Name
-                                cols.RelativeColumn(2);   // Auditing
-                                cols.RelativeColumn(2);   // CS Solo
-                                cols.RelativeColumn(2);   // Total
-                            });
-
-                            table.Header(h =>
+                                right.Item().Text("No sessions this week.").FontSize(8).FontColor(Colors.Grey.Medium);
+                            }
+                            else
                             {
-                                h.Cell().Background("#667eea").Padding(5).AlignCenter().Text("#").FontSize(9).SemiBold().FontColor(Colors.White);
-                                h.Cell().Background("#667eea").Padding(5).Text("Staff Member").FontSize(9).SemiBold().FontColor(Colors.White);
-                                h.Cell().Background("#667eea").Padding(5).AlignCenter().Text("Auditing").FontSize(9).SemiBold().FontColor(Colors.White);
-                                h.Cell().Background("#667eea").Padding(5).AlignCenter().Text("CS Solo").FontSize(9).SemiBold().FontColor(Colors.White);
-                                h.Cell().Background("#667eea").Padding(5).AlignCenter().Text("Total").FontSize(9).SemiBold().FontColor(Colors.White);
-                            });
-
-                            int rank = 1;
-                            foreach (var s in weekStaff)
-                            {
-                                var bg = rank % 2 == 0 ? Colors.Grey.Lighten5 : Colors.White;
-                                table.Cell().Background(bg).AlignCenter().Padding(4)
-                                    .Text(rank.ToString()).FontSize(9).FontColor(Colors.Grey.Darken1);
-                                table.Cell().Background(bg).Padding(4)
-                                    .Text(s.Name).FontSize(9).SemiBold();
-                                table.Cell().Background(bg).AlignCenter().Padding(4)
-                                    .Text(s.AuditSec > 0 ? FmtSec(s.AuditSec) : "–").FontSize(9)
-                                    .FontColor(s.AuditSec > 0 ? "#1a73e8" : Colors.Grey.Medium);
-                                table.Cell().Background(bg).AlignCenter().Padding(4)
-                                    .Text(s.SoloCsSec > 0 ? FmtSec(s.SoloCsSec) : "–").FontSize(9)
-                                    .FontColor(s.SoloCsSec > 0 ? "#c5221f" : Colors.Grey.Medium);
-                                table.Cell().Background(bg).AlignCenter().Padding(4)
-                                    .Text(FmtSec(s.TotalSec)).FontSize(9).SemiBold()
-                                    .FontColor("#6366f1");
-                                rank++;
+                                right.Item().Table(table =>
+                                {
+                                    table.ColumnsDefinition(cols =>
+                                    {
+                                        cols.ConstantColumn(18);
+                                        cols.RelativeColumn(3);
+                                        cols.RelativeColumn(2);
+                                        cols.RelativeColumn(2);
+                                        cols.RelativeColumn(2);
+                                    });
+                                    table.Header(h =>
+                                    {
+                                        h.Cell().Background("#667eea").Padding(3).AlignCenter().Text("#").FontSize(7).SemiBold().FontColor(Colors.White);
+                                        h.Cell().Background("#667eea").Padding(3).Text("Name").FontSize(7).SemiBold().FontColor(Colors.White);
+                                        h.Cell().Background("#667eea").Padding(3).AlignCenter().Text("Auditing").FontSize(7).SemiBold().FontColor(Colors.White);
+                                        h.Cell().Background("#667eea").Padding(3).AlignCenter().Text("CS Solo").FontSize(7).SemiBold().FontColor(Colors.White);
+                                        h.Cell().Background("#667eea").Padding(3).AlignCenter().Text("Total").FontSize(7).SemiBold().FontColor(Colors.White);
+                                    });
+                                    int rank = 1;
+                                    foreach (var s in weekStaff)
+                                    {
+                                        var bg = rank % 2 == 0 ? Colors.Grey.Lighten5 : Colors.White;
+                                        table.Cell().Background(bg).AlignCenter().Padding(3).Text(rank.ToString()).FontSize(8).FontColor(Colors.Grey.Darken1);
+                                        table.Cell().Background(bg).Padding(3).Text(s.Name).FontSize(8).SemiBold();
+                                        table.Cell().Background(bg).AlignCenter().Padding(3).Text(s.AuditSec > 0 ? FmtSec(s.AuditSec) : "–").FontSize(8).FontColor(s.AuditSec > 0 ? "#1a73e8" : Colors.Grey.Medium);
+                                        table.Cell().Background(bg).AlignCenter().Padding(3).Text(s.SoloCsSec > 0 ? FmtSec(s.SoloCsSec) : "–").FontSize(8).FontColor(s.SoloCsSec > 0 ? "#c5221f" : Colors.Grey.Medium);
+                                        table.Cell().Background(bg).AlignCenter().Padding(3).Text(FmtSec(s.TotalSec)).FontSize(8).SemiBold().FontColor("#6366f1");
+                                        rank++;
+                                    }
+                                });
                             }
                         });
-                    }
+                    });
 
-                    col.Item().PaddingTop(16);
+                    col.Item().PaddingTop(10);
 
-                    // ── Weekly History Table ─────────────────────────────────
-                    col.Item().Text("Weekly History (last 20 weeks)").SemiBold().FontSize(12).FontColor("#1a1a2e");
-                    col.Item().PaddingTop(6);
-
-                    col.Item().Table(table =>
+                    // ── Weekly History Chart (full width) ────────────────────
+                    col.Item().Text("Weekly History — PCs / Academy / BITS").SemiBold().FontSize(9).FontColor("#1a1a2e");
+                    col.Item().PaddingTop(4);
+                    col.Item().Height(160).Svg(size =>
                     {
-                        table.ColumnsDefinition(cols =>
-                        {
-                            cols.RelativeColumn(2.5f);  // Week
-                            cols.RelativeColumn(2);      // Aud+CS
-                            cols.RelativeColumn(1.5f);   // Academy
-                            cols.RelativeColumn(1.5f);   // Body/Shop
-                        });
-
-                        table.Header(h =>
-                        {
-                            h.Cell().Background("#1a1a2e").Padding(5).Text("Week").FontSize(9).SemiBold().FontColor(Colors.White);
-                            h.Cell().Background("#1a1a2e").Padding(5).AlignCenter().Text("Aud+CS Sold").FontSize(9).SemiBold().FontColor(Colors.White);
-                            h.Cell().Background("#1a1a2e").Padding(5).AlignCenter().Text("Academy").FontSize(9).SemiBold().FontColor(Colors.White);
-                            h.Cell().Background("#1a1a2e").Padding(5).AlignCenter().Text("Body/Shop").FontSize(9).SemiBold().FontColor(Colors.White);
-                        });
-
-                        foreach (var w in Enumerable.Reverse(weekHistory))
-                        {
-                            bool   isCur = w.WeekStart == weekStart;
-                            string bg    = isCur ? "#e8f0fe" : (string)Colors.White;
-                            table.Cell().Background(bg).Padding(4)
-                                .Text(t =>
-                                {
-                                    t.Span(w.WeekRangeLabel).FontSize(9);
-                                    if (isCur) t.Span(" ◄").FontColor("#6366f1").FontSize(8);
-                                });
-                            table.Cell().Background(bg).AlignCenter().Padding(4)
-                                .Text(w.TotalAuditCsSec > 0 ? FmtSec(w.TotalAuditCsSec) : "–")
-                                .FontSize(9).FontColor(w.TotalAuditCsSec > 0 ? "#1a73e8" : Colors.Grey.Medium);
-                            table.Cell().Background(bg).AlignCenter().Padding(4)
-                                .Text(w.AcademyCount > 0 ? w.AcademyCount.ToString() : "–")
-                                .FontSize(9).FontColor(w.AcademyCount > 0 ? "#1e8e3e" : Colors.Grey.Medium);
-                            table.Cell().Background(bg).AlignCenter().Padding(4)
-                                .Text(w.BodyInShop > 0 ? w.BodyInShop.ToString() : "–")
-                                .FontSize(9).FontColor(w.BodyInShop > 0 ? "#c5221f" : Colors.Grey.Medium);
-                        }
+                        using var stream = new MemoryStream();
+                        using (var skCanvas = SKSvgCanvas.Create(new SKRect(0, 0, size.Width, size.Height), stream))
+                            DrawWeeklyChart(skCanvas, new SKSize(size.Width, size.Height), weekHistory, weekStart);
+                        stream.Position = 0;
+                        return new StreamReader(stream).ReadToEnd();
                     });
                 });
             });
         }).GeneratePdf();
+    }
+
+    static void DrawWeeklyChart(SKCanvas canvas, SKSize size, IList<WeekStatSummary> history, DateOnly currentWeekStart)
+    {
+        if (history.Count == 0) return;
+
+        float W = size.Width;
+        float H = size.Height;
+        const float leftM   = 24f;
+        const float rightM  = 6f;
+        const float topM    = 18f;   // room for legend
+        const float bottomM = 26f;   // room for x labels
+
+        float cX = leftM;
+        float cY = topM;
+        float cW = W - leftM - rightM;
+        float cH = H - topM - bottomM;
+
+        // ── Paints ──
+        using var bgPaint   = new SKPaint { Color = new SKColor(248, 250, 252), Style = SKPaintStyle.Fill };
+        using var gridPaint = new SKPaint { Color = new SKColor(218, 222, 232), Style = SKPaintStyle.Stroke, StrokeWidth = 0.4f, PathEffect = SKPathEffect.CreateDash(new[] { 3f, 3f }, 0) };
+        using var axisPaint = new SKPaint { Color = new SKColor(160, 165, 175), Style = SKPaintStyle.Stroke, StrokeWidth = 0.8f };
+        using var hlPaint   = new SKPaint { Color = new SKColor(99, 102, 241, 30), Style = SKPaintStyle.Fill };
+        using var pcPaint   = new SKPaint { Color = SKColor.Parse("#2563eb"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var acPaint   = new SKPaint { Color = SKColor.Parse("#16a34a"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var bpPaint   = new SKPaint { Color = SKColor.Parse("#ea580c"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var yPaint    = new SKPaint { Color = new SKColor(90, 95, 110), TextSize = 7f, IsAntialias = true };
+        using var xPaint    = new SKPaint { Color = new SKColor(90, 95, 110), TextSize = 6.5f, IsAntialias = true };
+
+        // ── Background ──
+        canvas.DrawRect(cX, cY, cW, cH, bgPaint);
+
+        // ── Max value & grid ──
+        int maxVal = 1;
+        foreach (var w in history)
+            maxVal = Math.Max(maxVal, Math.Max(w.PcCount, Math.Max(w.AcademyCount, w.BodyInShop)));
+
+        const int gridLines = 4;
+        int step = (int)Math.Ceiling(maxVal / (double)gridLines);
+        if (step < 1) step = 1;
+        int roundedMax = step * gridLines;
+
+        for (int i = 0; i <= gridLines; i++)
+        {
+            float gy = cY + cH - i * cH / gridLines;
+            canvas.DrawLine(cX, gy, cX + cW, gy, gridPaint);
+            string lbl = (i * step).ToString();
+            float tw = yPaint.MeasureText(lbl);
+            canvas.DrawText(lbl, cX - tw - 3f, gy + 2.5f, yPaint);
+        }
+
+        // ── Axes ──
+        canvas.DrawLine(cX, cY, cX, cY + cH, axisPaint);
+        canvas.DrawLine(cX, cY + cH, cX + cW, cY + cH, axisPaint);
+
+        // ── Bars ──
+        int n = history.Count;
+        float groupW = cW / n;
+        float barsW  = groupW * 0.78f;
+        float barW   = barsW / 3f;
+        float gapW   = (groupW - barsW) / 2f;
+        float base_  = cY + cH;
+
+        for (int i = 0; i < n; i++)
+        {
+            var w  = history[i];
+            float gx = cX + i * groupW;
+
+            if (w.WeekStart == currentWeekStart)
+                canvas.DrawRect(gx, cY, groupW, cH, hlPaint);
+
+            float bx = gx + gapW;
+
+            void DrawBar(float x, int val, SKPaint p)
+            {
+                if (val <= 0) return;
+                float bh = cH * val / roundedMax;
+                canvas.DrawRoundRect(SKRect.Create(x, base_ - bh, barW, bh), 1.2f, 1.2f, p);
+            }
+
+            DrawBar(bx,           w.PcCount,      pcPaint);
+            DrawBar(bx + barW,    w.AcademyCount, acPaint);
+            DrawBar(bx + barW*2f, w.BodyInShop,   bpPaint);
+
+            // X label — rotated –50°
+            string xl = w.WeekStart.ToString("dd/MM");
+            float  lx = gx + groupW / 2f;
+            float  ly = base_ + 4f;
+            canvas.Save();
+            canvas.Translate(lx, ly);
+            canvas.RotateDegrees(-50f);
+            canvas.DrawText(xl, 0, 0, xPaint);
+            canvas.Restore();
+        }
+
+        // ── Legend (top-left inside chart) ──
+        float legY = cY + 11f;
+        DrawLegendItem(canvas, cX + 4f,       legY, SKColor.Parse("#2563eb"), "PCs",     7.5f);
+        DrawLegendItem(canvas, cX + 48f,      legY, SKColor.Parse("#16a34a"), "Academy", 7.5f);
+        DrawLegendItem(canvas, cX + 108f,     legY, SKColor.Parse("#ea580c"), "BITS",    7.5f);
+    }
+
+    static void DrawLegendItem(SKCanvas canvas, float x, float y, SKColor color, string label, float fs)
+    {
+        using var rp = new SKPaint { Color = color, Style = SKPaintStyle.Fill, IsAntialias = true };
+        canvas.DrawRoundRect(SKRect.Create(x, y - fs + 1f, fs - 1f, fs - 1f), 1.5f, 1.5f, rp);
+        using var tp = new SKPaint { Color = new SKColor(55, 65, 81), TextSize = fs, IsAntialias = true };
+        canvas.DrawText(label, x + fs + 2f, y, tp);
     }
 
     static string FmtSec(int s) =>
