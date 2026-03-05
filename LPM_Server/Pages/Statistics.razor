@@ -1,0 +1,501 @@
+@page "/Statistics"
+@using System.Globalization
+@using LPM.Services
+@using ApexCharts
+@attribute [Authorize]
+@inject StatisticsService StatSvc
+@inject DashboardService DashSvc
+@inject PdfService PdfService
+@inject IJSRuntime JS
+
+<style>
+    .stat-card-gradient-purple { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    .stat-card-gradient-dark   { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); }
+    .stat-metric-box {
+        border-radius: 12px; padding: 12px 8px; text-align: center;
+        transition: transform 0.15s; position: relative;
+    }
+    .stat-metric-box:hover { transform: translateY(-2px); }
+    .stat-metric-box .value     { font-size: 1.45rem; font-weight: 700; line-height: 1.15; }
+    .stat-metric-box .main-lbl  { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 2px; color: #374151; }
+    .stat-metric-box .sub-lbl   { font-size: 0.67rem; color: #6b7280; margin-top: 1px; }
+    .leaderboard-row { transition: background 0.1s; }
+    .leaderboard-row:hover { background: rgba(99,102,241,0.05) !important; }
+    .name-pill {
+        display: inline-flex; align-items: center; justify-content: center;
+        border-radius: 20px; padding: 3px 9px; font-size: 0.78rem; font-weight: 700;
+        color: #fff; white-space: nowrap; flex-shrink: 0;
+    }
+    .progress-thin { height: 3px; border-radius: 2px; background: #e9ecef; }
+    .progress-thin .bar { height: 3px; border-radius: 2px; }
+    .badge-time  { background: #e8f0fe; color: #1a73e8; font-size: 0.82rem; font-weight: 600; }
+    .badge-green { background: #e6f4ea; color: #1e8e3e; font-size: 0.82rem; font-weight: 600; }
+    .badge-orange { background: #fff3e0; color: #e65100; font-size: 0.82rem; font-weight: 600; }
+    .day-tab-btn { border-radius: 20px !important; font-size: 0.82rem; padding: 5px 12px; }
+    .panel-period-label {
+        font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+        color: #6b7280; display: flex; align-items: center; gap: 4px; margin-bottom: 8px;
+    }
+    @@media print {
+        .no-print { display: none !important; }
+        .card { box-shadow: none !important; border: 1px solid #dee2e6 !important; }
+    }
+</style>
+
+<div class="px-3 pb-5">
+
+    @* ── Week nav ── *@
+    <div class="d-flex align-items-center flex-wrap gap-2 py-2 border-bottom mb-3 no-print">
+        <button class="btn btn-sm btn-outline-secondary rounded-pill" @onclick="PrevWeek">
+            <i class="ri-arrow-left-s-line"></i> Prev
+        </button>
+        <span class="fw-semibold" style="font-size:0.95rem;">
+            Week: @DayLabel(_weekStart) – @DayLabel(_weekStart.AddDays(6))
+        </span>
+        <button class="btn btn-sm btn-outline-secondary rounded-pill" @onclick="NextWeek"
+                disabled="@(_weekStart >= DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today)))">
+            Next <i class="ri-arrow-right-s-line"></i>
+        </button>
+        <button class="btn btn-sm btn-outline-secondary ms-auto rounded-pill" @onclick="PrintStats">
+            <i class="ri-printer-line me-1"></i>Print PDF
+        </button>
+    </div>
+
+    @* ── Day selector tabs ── *@
+    <div class="d-flex flex-wrap gap-2 mb-4 no-print">
+        @for (int i = 0; i < 7; i++)
+        {
+            var idx      = i;
+            var day      = _weekStart.AddDays(idx);
+            var isFuture = day > DateOnly.FromDateTime(DateTime.Today);
+            var isSel    = idx == _selDay;
+            var dStat    = _dayStats[idx];
+            var hasData  = dStat.Staff.Count > 0 || dStat.AcademyCount > 0;
+
+            <button class="btn btn-sm day-tab-btn @(isSel ? "btn-primary shadow-sm" : (hasData ? "btn-outline-primary" : "btn-outline-secondary")) @(isFuture ? "opacity-40" : "")"
+                    @onclick="() => SelectDay(idx)"
+                    disabled="@isFuture">
+                @day.ToString("ddd dd/MM", CultureInfo.InvariantCulture)
+                @if (hasData)
+                {
+                    <span class="badge rounded-pill ms-1"
+                          style="background:@(isSel?"#fff":"#6366f1");color:@(isSel?"#6366f1":"#fff");font-size:0.7rem;">
+                        @(dStat.Staff.Count > 0 ? Fmt(dStat.Staff.Sum(s => s.TotalSec)) : dStat.AcademyCount.ToString())
+                    </span>
+                }
+            </button>
+        }
+    </div>
+
+    @* ── Two-column layout ── *@
+    <div class="row g-3">
+
+        @* ── LEFT: Staff Leaderboard ── *@
+        <div class="col-xl-7 col-lg-7">
+            <div class="card border-0 shadow-sm h-100" style="border-radius:14px;overflow:hidden;">
+                <div class="card-header border-0 py-3 stat-card-gradient-purple">
+                    <div class="d-flex align-items-start justify-content-between text-white">
+                        <div>
+                            <h6 class="mb-0 fw-bold fs-14">
+                                <i class="ri-trophy-fill me-2"></i>Staff Leaderboard
+                            </h6>
+                            <div class="opacity-75 mt-1" style="font-size:0.8rem;">
+                                @_dayStats[_selDay].Date.ToString("dddd, dd MMMM yyyy", CultureInfo.InvariantCulture)
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <div class="fw-bold fs-4 text-white lh-1">@Fmt(_dayStats[_selDay].Staff.Sum(s => s.TotalSec))</div>
+                            <div class="opacity-75 mt-1" style="font-size:0.75rem;">Day total</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-body p-0">
+                    @{
+                        var selDay = _dayStats[_selDay];
+                        var maxSec = selDay.Staff.Count > 0 ? selDay.Staff[0].TotalSec : 1;
+                        int rank   = 1;
+                    }
+                    @if (selDay.Staff.Count == 0)
+                    {
+                        <div class="text-center py-5 text-muted">
+                            <i class="ri-calendar-event-line d-block mb-2 opacity-40" style="font-size:2.5rem;"></i>
+                            <div class="fw-semibold">No sessions recorded</div>
+                            <div class="small mt-1">for @selDay.Date.ToString("dddd dd/MM", CultureInfo.InvariantCulture)</div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table mb-0" style="font-size:0.9rem;">
+                                <thead style="background:#f8f9fa;">
+                                    <tr class="text-muted" style="font-size:0.75rem;letter-spacing:0.04em;text-transform:uppercase;">
+                                        <th class="ps-3 fw-semibold">Staff Member</th>
+                                        <th class="text-center fw-semibold">Auditing</th>
+                                        <th class="text-center fw-semibold">CS Solo</th>
+                                        <th class="text-center fw-semibold pe-3">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var s in selDay.Staff)
+                                    {
+                                        var pct       = maxSec > 0 ? (int)(s.TotalSec * 100.0 / maxSec) : 0;
+                                        var avColor   = AvatarColor(rank);
+                                        var firstName = s.Name.Split(' ')[0];
+                                        <tr class="leaderboard-row border-bottom">
+                                            <td class="ps-3 align-middle">
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <span class="name-pill" style="background:@avColor;">
+                                                        @if (rank == 1) { <i class="ri-medal-fill me-1" style="font-size:11px;"></i> }
+                                                        @firstName
+                                                    </span>
+                                                    <div>
+                                                        <div class="fw-semibold">@s.Name</div>
+                                                        <div class="progress-thin mt-1" style="width:90px;">
+                                                            <div class="bar" style="width:@pct%;background:@avColor;"></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="text-center align-middle">
+                                                @if (s.AuditSec > 0)
+                                                { <span class="badge rounded-pill badge-time">@Fmt(s.AuditSec)</span> }
+                                                else { <span class="text-muted small">–</span> }
+                                            </td>
+                                            <td class="text-center align-middle">
+                                                @if (s.SoloCsSec > 0)
+                                                { <span class="badge rounded-pill badge-orange">@Fmt(s.SoloCsSec)</span> }
+                                                else { <span class="text-muted small">–</span> }
+                                            </td>
+                                            <td class="text-center align-middle pe-3">
+                                                <span class="fw-bold">@Fmt(s.TotalSec)</span>
+                                            </td>
+                                        </tr>
+                                        rank++;
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        @* ── RIGHT: Day snapshot + Week totals ── *@
+        <div class="col-xl-5 col-lg-5 d-flex flex-column gap-3">
+
+            @* ─ Day snapshot ─ *@
+            <div class="card border-0 shadow-sm" style="border-radius:14px;overflow:hidden;">
+                <div class="card-header border-0 py-2 px-3 bg-white border-bottom">
+                    <div class="panel-period-label">
+                        <i class="ri-sun-line text-warning"></i>
+                        Day snapshot — @_dayStats[_selDay].Date.ToString("dddd dd/MM/yyyy", CultureInfo.InvariantCulture)
+                    </div>
+                </div>
+                <div class="card-body px-3 py-3">
+                    <div class="row g-2">
+                        <div class="col-4">
+                            <div class="stat-metric-box" style="background:#f0f4ff;">
+                                <div class="value" style="color:#6366f1;">@Fmt(_dayStats[_selDay].Staff.Sum(s => s.TotalSec))</div>
+                                <div class="main-lbl">Auditing time</div>
+                                <div class="sub-lbl">hrs worked</div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="stat-metric-box" style="background:#f0fdf4;">
+                                <div class="value" style="color:#16a34a;">@_dayStats[_selDay].AcademyCount</div>
+                                <div class="main-lbl">Students</div>
+                                <div class="sub-lbl">academy visits</div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="stat-metric-box" style="background:#fff7ed;">
+                                <div class="value" style="color:#ea580c;">@_dayStats[_selDay].BodyInShop</div>
+                                <div class="main-lbl">BITS</div>
+                                <div class="sub-lbl">unique visitors</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* ─ Week totals ─ *@
+            <div class="card border-0 shadow-sm" style="border-radius:14px;overflow:hidden;">
+                <div class="card-header border-0 py-2 px-3 bg-white border-bottom">
+                    <div class="panel-period-label">
+                        <i class="ri-calendar-2-line text-primary"></i>
+                        Week totals — @DayLabel(_weekStart) to @DayLabel(_weekStart.AddDays(6))
+                    </div>
+                </div>
+                <div class="card-body px-3 py-3">
+                    @{ var ws = CurrentWeekSummary; }
+                    <div class="row g-2 mb-3">
+                        <div class="col-4">
+                            <div class="stat-metric-box" style="background:#f0f4ff;">
+                                <div class="value" style="color:#6366f1;">@Fmt(ws?.TotalAuditCsSec ?? 0)</div>
+                                <div class="main-lbl">Auditing time</div>
+                                <div class="sub-lbl">all staff, sold</div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="stat-metric-box" style="background:#f0fdf4;">
+                                <div class="value" style="color:#16a34a;">@(ws?.AcademyCount ?? 0)</div>
+                                <div class="main-lbl">Students</div>
+                                <div class="sub-lbl">unique, week</div>
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="stat-metric-box" style="background:#fff7ed;">
+                                <div class="value" style="color:#ea580c;">@(ws?.BodyInShop ?? 0)</div>
+                                <div class="main-lbl">BITS</div>
+                                <div class="sub-lbl">unique, week</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* ─ Week mini leaderboard ─ *@
+            <div class="card border-0 shadow-sm flex-fill" style="border-radius:14px;overflow:hidden;">
+                <div class="card-header border-0 py-2 px-3 bg-white border-bottom">
+                    <div class="panel-period-label">
+                        <i class="ri-list-ordered text-primary"></i>
+                        Week leaderboard — all 7 days combined
+                    </div>
+                </div>
+                <div class="card-body px-3 py-2">
+                    @{
+                        var weekStaff = _dayStats
+                            .SelectMany(d => d.Staff)
+                            .GroupBy(s => s.PersonId)
+                            .Select(g => (Name: g.First().Name, AuditSec: g.Sum(x => x.AuditSec), SoloCsSec: g.Sum(x => x.SoloCsSec)))
+                            .Where(x => x.AuditSec + x.SoloCsSec > 0)
+                            .OrderByDescending(x => x.AuditSec + x.SoloCsSec)
+                            .ToList();
+                        int weekMax = weekStaff.Count > 0 ? weekStaff[0].AuditSec + weekStaff[0].SoloCsSec : 1;
+                        int wrank   = 1;
+                    }
+                    @if (weekStaff.Count == 0)
+                    {
+                        <div class="text-center py-3 text-muted small">No data for this week</div>
+                    }
+                    else
+                    {
+                        @foreach (var ms in weekStaff)
+                        {
+                            var total     = ms.AuditSec + ms.SoloCsSec;
+                            var wPct      = weekMax > 0 ? (int)(total * 100.0 / weekMax) : 0;
+                            var wColor    = AvatarColor(wrank);
+                            var firstName = ms.Name.Split(' ')[0];
+                            <div class="d-flex align-items-center gap-2 py-1 border-bottom">
+                                <span class="name-pill" style="background:@wColor;font-size:0.72rem;padding:2px 8px;">
+                                    @if (wrank == 1) { <i class="ri-medal-fill me-1" style="font-size:10px;"></i> }
+                                    @firstName
+                                </span>
+                                <div class="flex-fill overflow-hidden">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span class="fw-semibold text-truncate" style="font-size:0.85rem;">@ms.Name</span>
+                                        <span class="badge rounded-pill badge-time ms-1 flex-shrink-0">@Fmt(total)</span>
+                                    </div>
+                                    <div class="progress-thin mt-1">
+                                        <div class="bar" style="width:@wPct%;background:@wColor;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            wrank++;
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Weekly History Chart ── *@
+    <div class="card border-0 shadow-sm mt-4" style="border-radius:14px;overflow:hidden;">
+        <div class="card-header border-0 py-3 px-3 stat-card-gradient-dark">
+            <div class="d-flex align-items-center justify-content-between" style="color:#fff;">
+                <div>
+                    <h6 class="mb-0 fw-bold" style="color:#fff;font-size:0.95rem;">
+                        <i class="ri-bar-chart-grouped-fill me-2"></i>Weekly History
+                    </h6>
+                    <div class="mt-1" style="font-size:0.8rem;color:rgba(255,255,255,0.7);">
+                        Last @_weekHistory.Count weeks — hover for full details
+                    </div>
+                </div>
+                <div class="d-flex gap-3" style="font-size:0.75rem;">
+                    <span class="d-flex align-items-center gap-1">
+                        <span style="width:10px;height:10px;border-radius:2px;background:#6366f1;display:inline-block;"></span>
+                        <span style="color:rgba(255,255,255,0.75);">Auditing time (hrs)</span>
+                    </span>
+                    <span class="d-flex align-items-center gap-1">
+                        <span style="width:10px;height:10px;border-radius:2px;background:#22c55e;display:inline-block;"></span>
+                        <span style="color:rgba(255,255,255,0.75);">Students</span>
+                    </span>
+                    <span class="d-flex align-items-center gap-1">
+                        <span style="width:10px;height:10px;border-radius:2px;background:#f97316;display:inline-block;"></span>
+                        <span style="color:rgba(255,255,255,0.75);">BITS</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+        <div class="card-body py-2 px-2" style="background:linear-gradient(180deg,#16213e 0%,#0f1729 100%);">
+
+            <ApexChart TItem="WeekStatSummary"
+                       Options="@_chartOptions"
+                       Height="300"
+                       @key="_chartKey">
+                <ApexPointSeries TItem="WeekStatSummary"
+                                 Items="@_chartHistory"
+                                 Name="Auditing time (hrs)"
+                                 SeriesType="SeriesType.Bar"
+                                 XValue="@(w => w.WeekRangeLabel)"
+                                 YValue="@(w => w.TotalAuditCsSec > 0 ? (decimal)Math.Round(w.TotalAuditCsSec / 3600.0, 2) : 0.1m)" />
+                <ApexPointSeries TItem="WeekStatSummary"
+                                 Items="@_chartHistory"
+                                 Name="Students"
+                                 SeriesType="SeriesType.Bar"
+                                 XValue="@(w => w.WeekRangeLabel)"
+                                 YValue="@(w => w.AcademyCount > 0 ? (decimal)w.AcademyCount : 0.1m)" />
+                <ApexPointSeries TItem="WeekStatSummary"
+                                 Items="@_chartHistory"
+                                 Name="BITS"
+                                 SeriesType="SeriesType.Bar"
+                                 XValue="@(w => w.WeekRangeLabel)"
+                                 YValue="@(w => w.BodyInShop > 0 ? (decimal)w.BodyInShop : 0.1m)" />
+            </ApexChart>
+        </div>
+    </div>
+
+</div>
+
+@code {
+    private DateOnly _weekStart;
+    private int      _selDay;
+    private List<DayStat>         _dayStats     = new();
+    private List<WeekStatSummary> _weekHistory  = new();
+    private List<WeekStatSummary> _chartHistory = new();   // only weeks with any data
+    private int _chartKey;
+
+    private WeekStatSummary? CurrentWeekSummary =>
+        _weekHistory.FirstOrDefault(w => w.WeekStart == _weekStart);
+
+    private readonly ApexChartOptions<WeekStatSummary> _chartOptions = new()
+    {
+        Chart = new Chart
+        {
+            Toolbar    = new Toolbar { Show = false },
+            Background = "transparent",
+        },
+        PlotOptions = new PlotOptions
+        {
+            Bar = new PlotOptionsBar { ColumnWidth = "80%", BorderRadius = 2 }
+        },
+        Colors = new List<string> { "#6366f1", "#22c55e", "#f97316" },
+        Xaxis  = new XAxis
+        {
+            Labels = new XAxisLabels
+            {
+                Rotate = -45,
+                Style  = new AxisLabelStyle { FontSize = "10px", Colors = "#94a3b8" }
+            }
+        },
+        Yaxis = new List<YAxis>
+        {
+            new YAxis
+            {
+                Labels = new YAxisLabels
+                {
+                    Style     = new AxisLabelStyle { Colors = "#94a3b8" },
+                    Formatter = "function(val){ var h=Math.floor(val); var m=Math.round((val-h)*60); return h+':'+String(m).padStart(2,'0'); }"
+                }
+            }
+        },
+        Tooltip = new Tooltip
+        {
+            Shared    = true,
+            Intersect = false,
+            Y = new TooltipY
+            {
+                Formatter = "function(val, opts){ if(opts.seriesIndex===0){ if(val<0.2) return '0'; var h=Math.floor(val); var m=Math.round((val-h)*60); return h+'h '+String(m).padStart(2,'0')+'m'; } return val<0.2?'0':Math.round(val); }"
+            }
+        },
+        Legend = new Legend
+        {
+            Show      = true,
+            Position  = LegendPosition.Top,
+            FontSize  = "12px",
+            Labels    = new LegendLabels { Colors = "#94a3b8" },
+        },
+        Grid = new Grid { BorderColor = "#1e3a5f" },
+    };
+
+    protected override void OnInitialized()
+    {
+        _weekStart = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
+
+        // Select today's slot within the week
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        _selDay = 0;
+        for (int i = 6; i >= 0; i--)
+        {
+            if (_weekStart.AddDays(i) <= today) { _selDay = i; break; }
+        }
+
+        LoadWeek();
+    }
+
+    void LoadWeek()
+    {
+        _dayStats     = StatSvc.GetWeekDayStats(_weekStart);
+        _weekHistory  = StatSvc.GetWeeklySummaries(_weekStart, 20);
+        _chartHistory = _weekHistory.Where(w => w.TotalAuditCsSec > 0 || w.AcademyCount > 0 || w.BodyInShop > 0).ToList();
+        _chartKey++;
+    }
+
+    void SelectDay(int idx) => _selDay = idx;
+
+    void PrevWeek()
+    {
+        _weekStart = _weekStart.AddDays(-7);
+        _selDay    = 0;
+        LoadWeek();
+    }
+
+    void NextWeek()
+    {
+        var maxWeek = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
+        if (_weekStart >= maxWeek) return;
+        _weekStart = _weekStart.AddDays(7);
+        _selDay    = 0;
+        LoadWeek();
+    }
+
+    async Task PrintStats()
+    {
+        var weekStaff = _dayStats
+            .SelectMany(d => d.Staff)
+            .GroupBy(s => s.PersonId)
+            .Select(g => new StaffStatRow(g.Key, g.First().Name, g.Sum(x => x.AuditSec), g.Sum(x => x.SoloCsSec)))
+            .Where(s => s.TotalSec > 0)
+            .OrderByDescending(s => s.TotalSec)
+            .ToList();
+        var pdfBytes = PdfService.GenerateStatisticsPdf(_weekStart, weekStaff, _dayStats, _weekHistory, CurrentWeekSummary);
+        await JS.InvokeVoidAsync("downloadFile", $"Statistics_{_weekStart:yyyy_MM_dd}.pdf", Convert.ToBase64String(pdfBytes));
+    }
+
+    static string DayLabel(DateOnly d) =>
+        d.ToString("ddd dd/MM", CultureInfo.InvariantCulture);
+
+    static string Fmt(int s) =>
+        s <= 0 ? "0:00" : $"{s / 3600}:{(s % 3600) / 60:D2}";
+
+    static string AvatarColor(int rank) => rank switch
+    {
+        1 => "#f59e0b",
+        2 => "#6366f1",
+        3 => "#22c55e",
+        4 => "#ec4899",
+        5 => "#14b8a6",
+        _ => "#94a3b8"
+    };
+}

@@ -46,6 +46,16 @@ public class MenuDataService
             dirChange: false
         ),
         new MainMenuItems (
+            path: "/Statistics",
+            type: "link",
+            title: "Statistics",
+            icon: "ri-bar-chart-2-line",
+            svg: "",
+            selected: false,
+            active: false,
+            dirChange: false
+        ),
+        new MainMenuItems (
             path: "/",
             type: "link",
             title: "Exit",
