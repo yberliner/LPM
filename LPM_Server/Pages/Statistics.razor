@@ -32,6 +32,48 @@
     .badge-green { background: #e6f4ea; color: #1e8e3e; font-size: 0.82rem; font-weight: 600; }
     .badge-orange { background: #fff3e0; color: #e65100; font-size: 0.82rem; font-weight: 600; }
     .day-tab-btn { border-radius: 20px !important; font-size: 0.82rem; padding: 5px 12px; }
+    /* ── Avatar hover popup ── */
+    .name-pill { transition: transform 0.18s ease, filter 0.18s ease; }
+    .avatar-wrap { position: relative; display: inline-flex; cursor: default; }
+    .avatar-wrap:hover .name-pill {
+        transform: scale(1.12);
+        filter: brightness(1.12) drop-shadow(0 4px 10px rgba(0,0,0,0.28));
+    }
+    .avatar-hover-card {
+        position: absolute;
+        top: calc(100% + 10px);
+        left: 50%;
+        transform: translateX(-50%) scale(0.82) translateY(-8px);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.34,1.56,0.64,1);
+        z-index: 9999;
+        background: #fff;
+        border-radius: 16px;
+        padding: 14px 16px 12px;
+        box-shadow: 0 16px 48px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08);
+        text-align: center;
+        min-width: 108px;
+    }
+    .avatar-wrap:hover .avatar-hover-card {
+        opacity: 1;
+        transform: translateX(-50%) scale(1) translateY(0);
+    }
+    .avatar-big-circle {
+        width: 54px; height: 54px; border-radius: 50%;
+        background: var(--av-color);
+        color: #fff; font-size: 1.5rem; font-weight: 800; letter-spacing: -1px;
+        display: flex; align-items: center; justify-content: center;
+        margin: 0 auto 8px;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.22);
+        animation: avatar-pop 0.22s cubic-bezier(0.34,1.56,0.64,1) both;
+    }
+    @@keyframes avatar-pop {
+        from { transform: scale(0.6); opacity: 0; }
+        to   { transform: scale(1);   opacity: 1; }
+    }
+    .av-name { font-size: 0.78rem; font-weight: 700; color: #111827; white-space: nowrap; }
+    .av-sub  { font-size: 0.7rem;  color: #6b7280; margin-top: 3px; white-space: nowrap; }
     .panel-period-label {
         font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
         color: #6b7280; display: flex; align-items: center; gap: 4px; margin-bottom: 8px;
@@ -92,8 +134,8 @@
 
         @* ── LEFT: Staff Leaderboard ── *@
         <div class="col-xl-7 col-lg-7">
-            <div class="card border-0 shadow-sm h-100" style="border-radius:14px;overflow:hidden;">
-                <div class="card-header border-0 py-3 stat-card-gradient-purple">
+            <div class="card border-0 shadow-sm h-100" style="border-radius:14px;overflow:visible;">
+                <div class="card-header border-0 py-3 stat-card-gradient-purple" style="border-radius:14px 14px 0 0;">
                     <div class="d-flex align-items-start justify-content-between text-white">
                         <div>
                             <h6 class="mb-0 fw-bold fs-14">
@@ -126,7 +168,7 @@
                     }
                     else
                     {
-                        <div class="table-responsive">
+                        <div style="overflow:visible;">
                             <table class="table mb-0" style="font-size:0.9rem;">
                                 <thead style="background:#f8f9fa;">
                                     <tr class="text-muted" style="font-size:0.75rem;letter-spacing:0.04em;text-transform:uppercase;">
@@ -145,10 +187,17 @@
                                         <tr class="leaderboard-row border-bottom">
                                             <td class="ps-3 align-middle">
                                                 <div class="d-flex align-items-center gap-2">
-                                                    <span class="name-pill" style="background:@avColor;">
-                                                        @if (rank == 1) { <i class="ri-medal-fill me-1" style="font-size:11px;"></i> }
-                                                        @firstName
-                                                    </span>
+                                                    <div class="avatar-wrap" style="--av-color:@avColor;">
+                                                        <span class="name-pill" style="background:@avColor;">
+                                                            @if (rank == 1) { <i class="ri-medal-fill me-1" style="font-size:11px;"></i> }
+                                                            @firstName
+                                                        </span>
+                                                        <div class="avatar-hover-card">
+                                                            <div class="avatar-big-circle">@(firstName.Length > 0 ? firstName[0].ToString().ToUpper() : "?")</div>
+                                                            <div class="av-name">@s.Name</div>
+                                                            <div class="av-sub">#@rank · @Fmt(s.TotalSec)</div>
+                                                        </div>
+                                                    </div>
                                                     <div>
                                                         <div class="fw-semibold">@s.Name</div>
                                                         <div class="progress-thin mt-1" style="width:90px;">
@@ -256,8 +305,8 @@
             </div>
 
             @* ─ Week mini leaderboard ─ *@
-            <div class="card border-0 shadow-sm flex-fill" style="border-radius:14px;overflow:hidden;">
-                <div class="card-header border-0 py-2 px-3 bg-white border-bottom">
+            <div class="card border-0 shadow-sm flex-fill" style="border-radius:14px;overflow:visible;">
+                <div class="card-header border-0 py-2 px-3 bg-white border-bottom" style="border-radius:14px 14px 0 0;">
                     <div class="panel-period-label">
                         <i class="ri-list-ordered text-primary"></i>
                         Week leaderboard — all 7 days combined
@@ -288,10 +337,17 @@
                             var wColor    = AvatarColor(wrank);
                             var firstName = ms.Name.Split(' ')[0];
                             <div class="d-flex align-items-center gap-2 py-1 border-bottom">
-                                <span class="name-pill" style="background:@wColor;font-size:0.72rem;padding:2px 8px;">
-                                    @if (wrank == 1) { <i class="ri-medal-fill me-1" style="font-size:10px;"></i> }
-                                    @firstName
-                                </span>
+                                <div class="avatar-wrap" style="--av-color:@wColor;">
+                                    <span class="name-pill" style="background:@wColor;font-size:0.72rem;padding:2px 8px;">
+                                        @if (wrank == 1) { <i class="ri-medal-fill me-1" style="font-size:10px;"></i> }
+                                        @firstName
+                                    </span>
+                                    <div class="avatar-hover-card">
+                                        <div class="avatar-big-circle">@(firstName.Length > 0 ? firstName[0].ToString().ToUpper() : "?")</div>
+                                        <div class="av-name">@ms.Name</div>
+                                        <div class="av-sub">#@wrank · @Fmt(total)</div>
+                                    </div>
+                                </div>
                                 <div class="flex-fill overflow-hidden">
                                     <div class="d-flex justify-content-between align-items-center">
                                         <span class="fw-semibold text-truncate" style="font-size:0.85rem;">@ms.Name</span>
