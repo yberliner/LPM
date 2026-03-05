@@ -570,37 +570,38 @@ public class PdfService
 
         float W = size.Width;
         float H = size.Height;
-        const float leftM   = 24f;
+        const float leftM   = 28f;
         const float rightM  = 6f;
-        const float topM    = 18f;   // room for legend
-        const float bottomM = 26f;   // room for x labels
+        const float topM    = 18f;
+        const float bottomM = 26f;
 
         float cX = leftM;
         float cY = topM;
         float cW = W - leftM - rightM;
         float cH = H - topM - bottomM;
 
-        // ── Paints ──
-        using var bgPaint   = new SKPaint { Color = new SKColor(248, 250, 252), Style = SKPaintStyle.Fill };
-        using var gridPaint = new SKPaint { Color = new SKColor(218, 222, 232), Style = SKPaintStyle.Stroke, StrokeWidth = 0.4f, PathEffect = SKPathEffect.CreateDash(new[] { 3f, 3f }, 0) };
-        using var axisPaint = new SKPaint { Color = new SKColor(160, 165, 175), Style = SKPaintStyle.Stroke, StrokeWidth = 0.8f };
-        using var hlPaint   = new SKPaint { Color = new SKColor(99, 102, 241, 30), Style = SKPaintStyle.Fill };
-        using var pcPaint   = new SKPaint { Color = SKColor.Parse("#2563eb"), Style = SKPaintStyle.Fill, IsAntialias = true };
-        using var acPaint   = new SKPaint { Color = SKColor.Parse("#16a34a"), Style = SKPaintStyle.Fill, IsAntialias = true };
-        using var bpPaint   = new SKPaint { Color = SKColor.Parse("#ea580c"), Style = SKPaintStyle.Fill, IsAntialias = true };
-        using var yPaint    = new SKPaint { Color = new SKColor(90, 95, 110), TextSize = 7f, IsAntialias = true };
-        using var xPaint    = new SKPaint { Color = new SKColor(90, 95, 110), TextSize = 6.5f, IsAntialias = true };
+        using var bgPaint    = new SKPaint { Color = new SKColor(248, 250, 252), Style = SKPaintStyle.Fill };
+        using var gridPaint  = new SKPaint { Color = new SKColor(218, 222, 232), Style = SKPaintStyle.Stroke, StrokeWidth = 0.4f, PathEffect = SKPathEffect.CreateDash(new[] { 3f, 3f }, 0) };
+        using var axisPaint  = new SKPaint { Color = new SKColor(160, 165, 175), Style = SKPaintStyle.Stroke, StrokeWidth = 0.8f };
+        using var hlPaint    = new SKPaint { Color = new SKColor(99, 102, 241, 30), Style = SKPaintStyle.Fill };
+        using var auditPaint = new SKPaint { Color = SKColor.Parse("#6366f1"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var pcPaint    = new SKPaint { Color = SKColor.Parse("#3b82f6"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var acPaint    = new SKPaint { Color = SKColor.Parse("#16a34a"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var bpPaint    = new SKPaint { Color = SKColor.Parse("#ea580c"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var yPaint     = new SKPaint { Color = new SKColor(90, 95, 110), TextSize = 7f,   IsAntialias = true };
+        using var xPaint     = new SKPaint { Color = new SKColor(90, 95, 110), TextSize = 6.5f, IsAntialias = true };
 
-        // ── Background ──
         canvas.DrawRect(cX, cY, cW, cH, bgPaint);
 
-        // ── Max value & grid ──
-        int maxVal = 1;
+        // Max value — audit converted to hours, others as counts
+        float maxF = 1f;
         foreach (var w in history)
-            maxVal = Math.Max(maxVal, Math.Max(w.PcCount, Math.Max(w.AcademyCount, w.BodyInShop)));
+            maxF = Math.Max(maxF, Math.Max(
+                (float)(w.TotalAuditCsSec / 3600.0),
+                Math.Max(w.PcCount, Math.Max(w.AcademyCount, w.BodyInShop))));
 
         const int gridLines = 4;
-        int step = (int)Math.Ceiling(maxVal / (double)gridLines);
+        int step = (int)Math.Ceiling(maxF / gridLines);
         if (step < 1) step = 1;
         int roundedMax = step * gridLines;
 
@@ -613,21 +614,20 @@ public class PdfService
             canvas.DrawText(lbl, cX - tw - 3f, gy + 2.5f, yPaint);
         }
 
-        // ── Axes ──
         canvas.DrawLine(cX, cY, cX, cY + cH, axisPaint);
         canvas.DrawLine(cX, cY + cH, cX + cW, cY + cH, axisPaint);
 
-        // ── Bars ──
-        int n = history.Count;
+        int   n      = history.Count;
         float groupW = cW / n;
-        float barsW  = groupW * 0.78f;
-        float barW   = barsW / 3f;
+        float barsW  = groupW * 0.84f;
+        float barW   = barsW / 4f;
         float gapW   = (groupW - barsW) / 2f;
         float base_  = cY + cH;
+        const float minH = 2f;   // stub height for zero values
 
         for (int i = 0; i < n; i++)
         {
-            var w  = history[i];
+            var   w  = history[i];
             float gx = cX + i * groupW;
 
             if (w.WeekStart == currentWeekStart)
@@ -635,33 +635,32 @@ public class PdfService
 
             float bx = gx + gapW;
 
-            void DrawBar(float x, int val, SKPaint p)
+            void DrawBar(float x, float val, SKPaint p)
             {
-                if (val <= 0) return;
-                float bh = cH * val / roundedMax;
+                float bh = val > 0 ? cH * val / roundedMax : minH;
                 canvas.DrawRoundRect(SKRect.Create(x, base_ - bh, barW, bh), 1.2f, 1.2f, p);
             }
 
-            DrawBar(bx,           w.PcCount,      pcPaint);
-            DrawBar(bx + barW,    w.AcademyCount, acPaint);
-            DrawBar(bx + barW*2f, w.BodyInShop,   bpPaint);
+            DrawBar(bx,            (float)(w.TotalAuditCsSec / 3600.0), auditPaint);
+            DrawBar(bx + barW,     w.PcCount,                           pcPaint);
+            DrawBar(bx + barW * 2f, w.AcademyCount,                    acPaint);
+            DrawBar(bx + barW * 3f, w.BodyInShop,                      bpPaint);
 
-            // X label — rotated –50°
             string xl = w.WeekStart.ToString("dd/MM");
             float  lx = gx + groupW / 2f;
-            float  ly = base_ + 4f;
             canvas.Save();
-            canvas.Translate(lx, ly);
+            canvas.Translate(lx, base_ + 4f);
             canvas.RotateDegrees(-50f);
             canvas.DrawText(xl, 0, 0, xPaint);
             canvas.Restore();
         }
 
-        // ── Legend (top-left inside chart) ──
+        // Legend
         float legY = cY + 11f;
-        DrawLegendItem(canvas, cX + 4f,       legY, SKColor.Parse("#2563eb"), "PCs",     7.5f);
-        DrawLegendItem(canvas, cX + 48f,      legY, SKColor.Parse("#16a34a"), "Academy", 7.5f);
-        DrawLegendItem(canvas, cX + 108f,     legY, SKColor.Parse("#ea580c"), "BITS",    7.5f);
+        DrawLegendItem(canvas, cX + 4f,   legY, SKColor.Parse("#6366f1"), "Aud+CS (h)", 7f);
+        DrawLegendItem(canvas, cX + 66f,  legY, SKColor.Parse("#3b82f6"), "PCs",        7f);
+        DrawLegendItem(canvas, cX + 100f, legY, SKColor.Parse("#16a34a"), "Academy",    7f);
+        DrawLegendItem(canvas, cX + 153f, legY, SKColor.Parse("#ea580c"), "BITS",       7f);
     }
 
     static void DrawLegendItem(SKCanvas canvas, float x, float y, SKColor color, string label, float fs)
