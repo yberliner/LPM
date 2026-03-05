@@ -1,6 +1,8 @@
 @page "/Academy"
 @attribute [Authorize]
 @inject LPM.Services.AcademyService AcademySvc
+@inject PdfService PdfService
+@inject IJSRuntime JS
 @using LPM.Services
 @using Microsoft.AspNetCore.Authorization
 @using System.Globalization
@@ -18,6 +20,9 @@
     </button>
     <button class="btn btn-sm btn-success ms-auto" @onclick="() => _addModal.Show()">
         <i class="ri-user-add-line me-1"></i>New Student
+    </button>
+    <button class="btn btn-sm btn-outline-secondary" @onclick="PrintWeek">
+        <i class="ri-printer-line me-1"></i>Print
     </button>
 </div>
 
@@ -309,5 +314,13 @@
         _dayCounts[_selDay] = AcademySvc.GetVisitsForDay(SelectedDate).Count;
         LoadVisits();
         RefreshChart();
+    }
+
+    async Task PrintWeek()
+    {
+        var students = AcademySvc.GetStudentVisitsForWeek(_weekStart);
+        var pdfBytes = PdfService.GenerateAcademyWeekPdf(_weekStart, students);
+        var fileName = $"Academy_{_weekStart:yyyy_MM_dd}.pdf";
+        await JS.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(pdfBytes));
     }
 }

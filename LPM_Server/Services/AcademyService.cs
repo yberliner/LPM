@@ -168,6 +168,30 @@ public class AcademyService
         cmd.ExecuteNonQuery();
     }
 
+    /// <summary>Returns all students who visited during the week, with visit count, sorted by count desc then name asc.</summary>
+    public List<(string FullName, int VisitCount)> GetStudentVisitsForWeek(DateOnly weekStart)
+    {
+        var weekEnd = weekStart.AddDays(6);
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS FullName,
+                   COUNT(*) AS VisitCount
+            FROM Students s
+            JOIN Persons p ON p.PersonId = s.PersonId
+            WHERE s.VisitDate >= @start AND s.VisitDate <= @end
+            GROUP BY s.PersonId
+            ORDER BY VisitCount DESC, FullName ASC";
+        cmd.Parameters.AddWithValue("@start", weekStart.ToString("yyyy-MM-dd"));
+        cmd.Parameters.AddWithValue("@end",   weekEnd.ToString("yyyy-MM-dd"));
+        var list = new List<(string, int)>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add((r.GetString(0), r.GetInt32(1)));
+        return list;
+    }
+
     // ── Statistics ───────────────────────────────────────────────────────────
 
     public List<WeekVisitCount> GetWeeklyVisitCounts(DateOnly latestWeekStart, int numWeeks = 20)

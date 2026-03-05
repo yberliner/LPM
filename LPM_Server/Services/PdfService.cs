@@ -222,6 +222,116 @@ public class PdfService
         }).GeneratePdf();
     }
 
+    public byte[] GenerateAcademyWeekPdf(DateOnly weekStart, List<(string FullName, int VisitCount)> students)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+
+        var weekEnd  = weekStart.AddDays(6);
+        int count    = students.Count;
+        int numCols  = count <= 25 ? 2 : count <= 55 ? 3 : count <= 100 ? 4 : 6;
+        int rows     = (int)Math.Ceiling((double)count / numCols);
+
+        return Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(12, Unit.Millimetre);
+                page.DefaultTextStyle(x => x.FontSize(10));
+
+                page.Content().ScaleToFit().Column(col =>
+                {
+                    // ── Header ──
+                    col.Item().Row(r =>
+                    {
+                        r.RelativeItem()
+                            .Text("Academy")
+                            .SemiBold().FontSize(20).FontColor("#1b5e20");
+
+                        r.RelativeItem().AlignCenter()
+                            .Text($"Week: {weekStart:dd/MM} – {weekEnd:dd/MM}")
+                            .FontSize(13);
+
+                        r.RelativeItem().AlignRight().Column(c =>
+                        {
+                            c.Item().AlignRight()
+                                .Text(t =>
+                                {
+                                    t.Span("Total students: ").FontSize(14);
+                                    t.Span(count.ToString()).FontSize(17).Bold().FontColor("#1b5e20");
+                                });
+                        });
+                    });
+
+                    col.Item().PaddingTop(6).LineHorizontal(1.5f).LineColor("#2e7d32");
+                    col.Item().PaddingTop(8);
+
+                    if (count == 0)
+                    {
+                        col.Item().AlignCenter()
+                            .Text("No visits recorded for this week.")
+                            .FontColor(Colors.Grey.Medium);
+                        return;
+                    }
+
+                    // ── Student columns ──
+                    col.Item().Row(row =>
+                    {
+                        for (int c = 0; c < numCols; c++)
+                        {
+                            var slice = students.Skip(c * rows).Take(rows).ToList();
+                            int colIdx = c;
+
+                            row.RelativeItem().Column(innerCol =>
+                            {
+                                // column header
+                                innerCol.Item()
+                                    .Background("#e8f5e9")
+                                    .PaddingVertical(3).PaddingHorizontal(5)
+                                    .Row(hr =>
+                                    {
+                                        hr.RelativeItem()
+                                            .Text("Student")
+                                            .FontSize(8).FontColor("#555").SemiBold();
+                                        hr.ConstantItem(22).AlignRight()
+                                            .Text("Visits")
+                                            .FontSize(8).FontColor("#555").SemiBold();
+                                    });
+
+                                int rank = colIdx * rows + 1;
+                                foreach (var (name, visits) in slice)
+                                {
+                                    int r2 = rank++;
+                                    innerCol.Item()
+                                        .BorderBottom(0.5f)
+                                        .BorderColor(Colors.Grey.Lighten3)
+                                        .Background(r2 % 2 == 0 ? "#f9fbe7" : Colors.White)
+                                        .PaddingVertical(2).PaddingHorizontal(5)
+                                        .Row(rr =>
+                                        {
+                                            rr.ConstantItem(18)
+                                                .Text($"{r2}.")
+                                                .FontSize(8).FontColor(Colors.Grey.Medium);
+                                            rr.RelativeItem()
+                                                .Text(name)
+                                                .FontSize(9);
+                                            rr.ConstantItem(22).AlignRight()
+                                                .Text(visits.ToString())
+                                                .FontSize(9).FontColor("#2e7d32").SemiBold();
+                                        });
+                                }
+                            });
+
+                            // column divider (except after last)
+                            if (c < numCols - 1)
+                                row.ConstantItem(8).Column(_ => { });
+                        }
+                    });
+                });
+            });
+        }).GeneratePdf();
+    }
+
     // ── Styles ──
 
     static IContainer CellStyle(IContainer c) =>
