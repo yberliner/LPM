@@ -8,7 +8,8 @@ public record PcInfo(int PcId, string FullName, string WorkCapacity, bool IsSolo
 public record SessionRow(int SessionId, int LengthSec, int AdminSec, bool IsFree, string? Summary, string CreatedAt, string AuditorName, string VerifiedStatus = "Draft");
 public record CsReviewRow(int CsReviewId, int SessionId, int ReviewSec, string Status, string? Notes);
 public record CsWorkRow(int CsWorkLogId, int LengthSec, string? Notes, string CreatedAt);
-public record WeekTotal(DateOnly WeekStart, int TotalSeconds)
+public record PcWeekItem(string FullName, int Seconds);
+public record WeekTotal(DateOnly WeekStart, int TotalSeconds, List<PcWeekItem>? TopPcs = null)
 {
     public string WeekLabel => WeekStart.ToString("dd/MM", CultureInfo.InvariantCulture);
 }
@@ -695,11 +696,19 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        void Accumulate(string dateStr, int secs)
+        var pcTotals = weeks.ToDictionary(w => w, _ => new Dictionary<string, int>());
+
+        void Accumulate(string dateStr, int secs, string? pcName = null)
         {
             if (!DateOnly.TryParse(dateStr, out var d)) return;
             var ws = GetWeekStart(d);
-            if (result.ContainsKey(ws)) result[ws] += secs;
+            if (!result.ContainsKey(ws)) return;
+            result[ws] += secs;
+            if (pcName != null)
+            {
+                var dict = pcTotals[ws];
+                dict[pcName] = dict.GetValueOrDefault(pcName) + secs;
+            }
         }
 
         if (auditorPcIds.Count > 0)
@@ -707,14 +716,17 @@ public class DashboardService
             var pcList = string.Join(",", auditorPcIds);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT SessionDate, SUM(LengthSeconds + AdminSeconds)
-                FROM Sessions
-                WHERE AuditorId = @uid AND PcId IN ({pcList}) AND SessionDate >= @start AND IsSolo = 0
-                GROUP BY SessionDate";
+                SELECT s.SessionDate,
+                       TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS FullName,
+                       SUM(s.LengthSeconds + s.AdminSeconds)
+                FROM Sessions s
+                JOIN Persons p ON p.PersonId = s.PcId
+                WHERE s.AuditorId = @uid AND s.PcId IN ({pcList}) AND s.SessionDate >= @start AND s.IsSolo = 0
+                GROUP BY s.SessionDate, s.PcId";
             cmd.Parameters.AddWithValue("@uid",   userId);
             cmd.Parameters.AddWithValue("@start", startStr);
             using var r = cmd.ExecuteReader();
-            while (r.Read()) Accumulate(r.GetString(0), r.GetInt32(1));
+            while (r.Read()) Accumulate(r.GetString(0), r.GetInt32(2), r.GetString(1));
         }
 
         // CS columns intentionally excluded from weekly totals graph
@@ -724,17 +736,27 @@ public class DashboardService
             var pcList = string.Join(",", miscPcIds);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT ChargeDate, SUM(LengthSeconds + AdminSeconds)
-                FROM MiscCharge
-                WHERE AuditorId = @uid AND PcId IN ({pcList}) AND ChargeDate >= @start
-                GROUP BY ChargeDate";
+                SELECT m.ChargeDate,
+                       TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS FullName,
+                       SUM(m.LengthSeconds + m.AdminSeconds)
+                FROM MiscCharge m
+                JOIN Persons p ON p.PersonId = m.PcId
+                WHERE m.AuditorId = @uid AND m.PcId IN ({pcList}) AND m.ChargeDate >= @start
+                GROUP BY m.ChargeDate, m.PcId";
             cmd.Parameters.AddWithValue("@uid",   userId);
             cmd.Parameters.AddWithValue("@start", startStr);
             using var r = cmd.ExecuteReader();
-            while (r.Read()) Accumulate(r.GetString(0), r.GetInt32(1));
+            while (r.Read()) Accumulate(r.GetString(0), r.GetInt32(2), r.GetString(1));
         }
 
-        return weeks.Select(w => new WeekTotal(w, result[w])).ToList();
+        return weeks.Select(w =>
+        {
+            var tops = pcTotals[w]
+                .OrderByDescending(kv => kv.Value)
+                .Select(kv => new PcWeekItem(kv.Key, kv.Value))
+                .ToList();
+            return new WeekTotal(w, result[w], tops);
+        }).ToList();
     }
 
     public int AddCsWork(int csId, int pcId, DateOnly date, int lengthSec, string? notes)
@@ -917,7 +939,7 @@ public class DashboardService
             if (result.ContainsKey(ws)) result[ws] += r.GetInt32(1);
         }
 
-        return weeks.Select(w => new WeekTotal(w, result[w])).ToList();
+        return weeks.Select(w => new WeekTotal(w, result[w], [])).ToList();
     }
 
     public int AddSoloSession(

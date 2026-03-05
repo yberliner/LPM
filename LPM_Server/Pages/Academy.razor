@@ -195,7 +195,13 @@
     {
         var maxWeek = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
         if (_weekStart >= maxWeek) return;
-        _weekStart = _weekStart.AddDays(7);
+        var next = _weekStart.AddDays(7);
+        _weekStart = next > maxWeek ? maxWeek : next;
+        // Snap selected day to latest non-future day in this week
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        for (int i = 6; i >= 0; i--)
+            if (_weekStart.AddDays(i) <= today) { _selDay = i; break; }
+        _searchText = "";
         LoadWeek();
     }
 
