@@ -538,8 +538,14 @@
     }
 
     // Decimal hours label for PC list (e.g. "3.48 hrs" / "-1.25 hrs")
-    static string HrsLabel(long secs) =>
-        $"{secs / 3600.0:F2} hrs";
+    static string HrsLabel(long secs)
+    {
+        var sign = secs < 0 ? "-" : "";
+        var abs  = Math.Abs(secs);
+        var h    = abs / 3600;
+        var m    = (abs % 3600) / 60;
+        return $"{sign}{h}:{m:D2}";
+    }
 
     // H:MM from seconds — integer arithmetic, always exact
     static string Hmm(int secs)

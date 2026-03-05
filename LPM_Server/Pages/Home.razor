@@ -822,7 +822,8 @@
             }
             if (_hideEmpty)
                 pcs = pcs.Where(pc => Enumerable.Range(0, 7)
-                    .Any(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d)) > 0));
+                    .Any(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d)) > 0
+                           || _pendingCs.Contains((DashboardService.GKey(pc), d))));
             return pcs.ToList();
         }
     }
