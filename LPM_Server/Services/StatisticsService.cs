@@ -9,9 +9,9 @@ public record StaffStatRow(int PersonId, string Name, int AuditSec, int SoloCsSe
     public int TotalSec => AuditSec + SoloCsSec;
 }
 
-public record DayStat(DateOnly Date, List<StaffStatRow> Staff, int AcademyCount, int BodyInShop);
+public record DayStat(DateOnly Date, List<StaffStatRow> Staff, int AcademyCount, int BodyInShop, int PcCount);
 
-public record WeekStatSummary(DateOnly WeekStart, int TotalAuditCsSec, int AcademyCount, int BodyInShop)
+public record WeekStatSummary(DateOnly WeekStart, int TotalAuditCsSec, int AcademyCount, int BodyInShop, int PcCount)
 {
     public string WeekRangeLabel =>
         $"{WeekStart:dd/MM} – {WeekStart.AddDays(6):dd/MM}";
@@ -123,6 +123,25 @@ public class StatisticsService
             }
         }
 
+        // ── Distinct PC count per day (unique PcIds in Sessions) ────────────────
+        var pcCounts = new int[7];
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                SELECT SessionDate, COUNT(DISTINCT PcId)
+                FROM Sessions
+                WHERE SessionDate >= @s AND SessionDate <= @e
+                GROUP BY SessionDate";
+            cmd.Parameters.AddWithValue("@s", startStr);
+            cmd.Parameters.AddWithValue("@e", endStr);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                int dayIdx = dates.IndexOf(DateOnly.Parse(r.GetString(0)));
+                if (dayIdx >= 0) pcCounts[dayIdx] = r.GetInt32(1);
+            }
+        }
+
         // ── Body in shop per day (unique persons: PcId from sessions ∪ PersonId from academy) ──
         var bodyInShop = new int[7];
         {
@@ -164,7 +183,7 @@ public class StatisticsService
                 .OrderByDescending(s => s.TotalSec)
                 .ToList();
 
-            return new DayStat(dates[dayIdx], staff, academyCounts[dayIdx], bodyInShop[dayIdx]);
+            return new DayStat(dates[dayIdx], staff, academyCounts[dayIdx], bodyInShop[dayIdx], pcCounts[dayIdx]);
         }).ToList();
     }
 
@@ -184,9 +203,10 @@ public class StatisticsService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        var auditTotals   = weeks.ToDictionary(w => w, _ => 0);
+        var auditTotals    = weeks.ToDictionary(w => w, _ => 0);
         var academyPersons = weeks.ToDictionary(w => w, _ => new HashSet<int>());
         var bodyPersons    = weeks.ToDictionary(w => w, _ => new HashSet<int>());
+        var pcPersons      = weeks.ToDictionary(w => w, _ => new HashSet<int>());
 
         // All session time per date
         {
@@ -258,8 +278,10 @@ public class StatisticsService
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
-                var ws = DashboardService.GetWeekStart(DateOnly.Parse(r.GetString(0)));
-                if (bodyPersons.ContainsKey(ws)) bodyPersons[ws].Add(r.GetInt32(1));
+                var ws  = DashboardService.GetWeekStart(DateOnly.Parse(r.GetString(0)));
+                int pc  = r.GetInt32(1);
+                if (bodyPersons.ContainsKey(ws)) bodyPersons[ws].Add(pc);
+                if (pcPersons.ContainsKey(ws))   pcPersons[ws].Add(pc);
             }
         }
 
@@ -267,7 +289,8 @@ public class StatisticsService
             w,
             auditTotals[w],
             academyPersons[w].Count,
-            bodyPersons[w].Count
+            bodyPersons[w].Count,
+            pcPersons[w].Count
         )).ToList();
     }
 }

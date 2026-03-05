@@ -243,21 +243,28 @@
                 </div>
                 <div class="card-body px-3 py-3">
                     <div class="row g-2">
-                        <div class="col-4">
+                        <div class="col-3">
                             <div class="stat-metric-box" style="background:#f0f4ff;">
                                 <div class="value" style="color:#6366f1;">@Fmt(_dayStats[_selDay].Staff.Sum(s => s.TotalSec))</div>
                                 <div class="main-lbl">Auditing time</div>
                                 <div class="sub-lbl">hrs worked</div>
                             </div>
                         </div>
-                        <div class="col-4">
+                        <div class="col-3">
+                            <div class="stat-metric-box" style="background:#eff6ff;">
+                                <div class="value" style="color:#2563eb;">@_dayStats[_selDay].PcCount</div>
+                                <div class="main-lbl">PCs</div>
+                                <div class="sub-lbl">clients seen</div>
+                            </div>
+                        </div>
+                        <div class="col-3">
                             <div class="stat-metric-box" style="background:#f0fdf4;">
                                 <div class="value" style="color:#16a34a;">@_dayStats[_selDay].AcademyCount</div>
                                 <div class="main-lbl">Students</div>
                                 <div class="sub-lbl">academy visits</div>
                             </div>
                         </div>
-                        <div class="col-4">
+                        <div class="col-3">
                             <div class="stat-metric-box" style="background:#fff7ed;">
                                 <div class="value" style="color:#ea580c;">@_dayStats[_selDay].BodyInShop</div>
                                 <div class="main-lbl">BITS</div>
@@ -279,21 +286,28 @@
                 <div class="card-body px-3 py-3">
                     @{ var ws = CurrentWeekSummary; }
                     <div class="row g-2 mb-3">
-                        <div class="col-4">
+                        <div class="col-3">
                             <div class="stat-metric-box" style="background:#f0f4ff;">
                                 <div class="value" style="color:#6366f1;">@Fmt(ws?.TotalAuditCsSec ?? 0)</div>
                                 <div class="main-lbl">Auditing time</div>
                                 <div class="sub-lbl">all staff, sold</div>
                             </div>
                         </div>
-                        <div class="col-4">
+                        <div class="col-3">
+                            <div class="stat-metric-box" style="background:#eff6ff;">
+                                <div class="value" style="color:#2563eb;">@(ws?.PcCount ?? 0)</div>
+                                <div class="main-lbl">PCs</div>
+                                <div class="sub-lbl">unique, week</div>
+                            </div>
+                        </div>
+                        <div class="col-3">
                             <div class="stat-metric-box" style="background:#f0fdf4;">
                                 <div class="value" style="color:#16a34a;">@(ws?.AcademyCount ?? 0)</div>
                                 <div class="main-lbl">Students</div>
                                 <div class="sub-lbl">unique, week</div>
                             </div>
                         </div>
-                        <div class="col-4">
+                        <div class="col-3">
                             <div class="stat-metric-box" style="background:#fff7ed;">
                                 <div class="value" style="color:#ea580c;">@(ws?.BodyInShop ?? 0)</div>
                                 <div class="main-lbl">BITS</div>
@@ -384,6 +398,10 @@
                         <span style="color:rgba(255,255,255,0.75);">Auditing time (hrs)</span>
                     </span>
                     <span class="d-flex align-items-center gap-1">
+                        <span style="width:10px;height:10px;border-radius:2px;background:#3b82f6;display:inline-block;"></span>
+                        <span style="color:rgba(255,255,255,0.75);">PCs</span>
+                    </span>
+                    <span class="d-flex align-items-center gap-1">
                         <span style="width:10px;height:10px;border-radius:2px;background:#22c55e;display:inline-block;"></span>
                         <span style="color:rgba(255,255,255,0.75);">Students</span>
                     </span>
@@ -406,6 +424,12 @@
                                  SeriesType="SeriesType.Bar"
                                  XValue="@(w => w.WeekRangeLabel)"
                                  YValue="@(w => w.TotalAuditCsSec > 0 ? (decimal)Math.Round(w.TotalAuditCsSec / 3600.0, 2) : 0.1m)" />
+                <ApexPointSeries TItem="WeekStatSummary"
+                                 Items="@_chartHistory"
+                                 Name="PCs"
+                                 SeriesType="SeriesType.Bar"
+                                 XValue="@(w => w.WeekRangeLabel)"
+                                 YValue="@(w => w.PcCount > 0 ? (decimal)w.PcCount : 0.1m)" />
                 <ApexPointSeries TItem="WeekStatSummary"
                                  Items="@_chartHistory"
                                  Name="Students"
@@ -446,7 +470,7 @@
         {
             Bar = new PlotOptionsBar { ColumnWidth = "80%", BorderRadius = 2 }
         },
-        Colors = new List<string> { "#6366f1", "#22c55e", "#f97316" },
+        Colors = new List<string> { "#6366f1", "#3b82f6", "#22c55e", "#f97316" },
         Xaxis  = new XAxis
         {
             Labels = new XAxisLabels
@@ -504,7 +528,7 @@
     {
         _dayStats     = StatSvc.GetWeekDayStats(_weekStart);
         _weekHistory  = StatSvc.GetWeeklySummaries(_weekStart, 20);
-        _chartHistory = _weekHistory.Where(w => w.TotalAuditCsSec > 0 || w.AcademyCount > 0 || w.BodyInShop > 0).ToList();
+        _chartHistory = _weekHistory.Where(w => w.TotalAuditCsSec > 0 || w.PcCount > 0 || w.AcademyCount > 0 || w.BodyInShop > 0).ToList();
         _chartKey++;
     }
 
