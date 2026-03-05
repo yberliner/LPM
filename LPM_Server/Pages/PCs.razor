@@ -71,16 +71,29 @@
                                     <input class="form-control form-control-sm" @bind="_editLastName" style="width:130px;" />
                                 </div>
                                 <div class="col-auto">
-                                    <label class="form-label small mb-0">External ID</label>
-                                    <input class="form-control form-control-sm" @bind="_editExternalId" style="width:120px;" />
-                                </div>
-                                <div class="col-auto">
                                     <label class="form-label small mb-0">Phone</label>
                                     <input class="form-control form-control-sm" @bind="_editPhone" style="width:130px;" />
                                 </div>
                                 <div class="col-auto">
                                     <label class="form-label small mb-0">Email</label>
                                     <input class="form-control form-control-sm" @bind="_editEmail" style="width:190px;" />
+                                </div>
+                                <div class="col-auto">
+                                    <label class="form-label small mb-0">Date of Birth</label>
+                                    <input type="date" class="form-control form-control-sm" @bind="_editDob" style="width:150px;" />
+                                </div>
+                                <div class="col-auto">
+                                    <label class="form-label small mb-0">Sex</label>
+                                    <select class="form-select form-select-sm" @bind="_editSex" style="width:110px;">
+                                        <option value="">—</option>
+                                        <option value="Male">Male</option>
+                                        <option value="Female">Female</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                                <div class="col-auto">
+                                    <label class="form-label small mb-0">External ID</label>
+                                    <input class="form-control form-control-sm" @bind="_editExternalId" style="width:120px;" />
                                 </div>
                                 <div class="col-auto">
                                     <label class="form-label small mb-0">Start Date</label>
@@ -122,6 +135,16 @@
                                         <span class="text-muted small">
                                             <i class="ri-mail-line me-1"></i>@_detail.Email
                                         </span>
+                                    }
+                                    @if (!string.IsNullOrEmpty(_detail.DateOfBirth))
+                                    {
+                                        <span class="text-muted small">
+                                            <i class="ri-cake-line me-1"></i>DOB @_detail.DateOfBirth
+                                        </span>
+                                    }
+                                    @if (!string.IsNullOrEmpty(_detail.Sex))
+                                    {
+                                        <span class="text-muted small">@_detail.Sex</span>
                                     }
                                 </div>
                                 @if (!string.IsNullOrEmpty(_detail.Notes))
@@ -391,31 +414,7 @@
     </div>
 </div>
 
-<SpkNewPersonModal @ref="_addModal" Title="Add New PC" OnSaved="SaveNewPc">
-    <ExtraFields>
-        <div class="col-md-6">
-            <label class="form-label small mb-1">External ID</label>
-            <input class="form-control form-control-sm" @bind="_addExternalId" placeholder="File / record number" />
-        </div>
-        <div class="col-md-6">
-            <label class="form-label small mb-1">Phone</label>
-            <input class="form-control form-control-sm" @bind="_addPhone" placeholder="Phone number" />
-        </div>
-        <div class="col-md-6">
-            <label class="form-label small mb-1">Email</label>
-            <input class="form-control form-control-sm" @bind="_addEmail" placeholder="Email address" />
-        </div>
-        <div class="col-md-6">
-            <label class="form-label small mb-1">Start Date</label>
-            <input type="date" class="form-control form-control-sm" @bind="_addStartDate" />
-        </div>
-        <div class="col-12">
-            <label class="form-label small mb-1">Notes</label>
-            <textarea class="form-control form-control-sm" rows="2"
-                      @bind="_addNotes" placeholder="Internal notes about this PC..."></textarea>
-        </div>
-    </ExtraFields>
-</SpkNewPersonModal>
+<SpkNewPersonModal @ref="_addModal" Title="Add New PC" OnSaved="SaveNewPc" />
 
 @code {
     List<PcListItem> _allPcs    = [];
@@ -429,14 +428,12 @@
 
     // Add PC modal
     SpkNewPersonModal _addModal = default!;
-    string    _addExternalId = "";
-    string    _addPhone = "", _addEmail = "", _addNotes = "";
-    DateTime? _addStartDate;
 
     // Edit mode
     bool      _editMode;
     string    _editFirstName = "", _editLastName = "", _editExternalId = "";
-    string    _editPhone = "", _editEmail = "", _editNotes = "";
+    string    _editPhone = "", _editEmail = "", _editNotes = "", _editSex = "";
+    DateTime? _editDob;
     DateTime? _editStartDate;
 
     // Add payment
@@ -470,14 +467,9 @@
         _sessions = PcSvc.GetPcSessions(_selPcId.Value);
     }
 
-    void SaveNewPc((string fn, string ln) names)
+    void SaveNewPc((string fn, string ln, string phone, string email, string dob, string sex) d)
     {
-        var newId = PcSvc.AddPcWithPerson(
-            names.fn, names.ln, _addExternalId,
-            _addPhone, _addEmail,
-            _addStartDate?.ToString("yyyy-MM-dd") ?? "", _addNotes);
-        _addExternalId = _addPhone = _addEmail = _addNotes = "";
-        _addStartDate  = null;
+        var newId = PcSvc.AddPcWithPerson(d.fn, d.ln, d.phone, d.email, d.dob, d.sex);
         _allPcs = PcSvc.GetAllPcs();
         SelectPc(newId);
     }
@@ -491,6 +483,9 @@
         _editExternalId = _detail.ExternalId;
         _editPhone      = _detail.Phone;
         _editEmail      = _detail.Email;
+        _editDob        = string.IsNullOrEmpty(_detail.DateOfBirth) ? null
+                          : DateTime.TryParse(_detail.DateOfBirth, out var dob) ? dob : null;
+        _editSex        = _detail.Sex;
         _editNotes      = _detail.Notes;
         _editStartDate  = string.IsNullOrEmpty(_detail.StartDate) ? null
                           : DateTime.TryParse(_detail.StartDate, out var d) ? d : null;
@@ -502,7 +497,8 @@
         PcSvc.UpdatePcDetail(_selPcId!.Value,
             _editFirstName, _editLastName, _editExternalId,
             _editPhone, _editEmail,
-            _editStartDate?.ToString("yyyy-MM-dd") ?? "", _editNotes);
+            _editStartDate?.ToString("yyyy-MM-dd") ?? "", _editNotes,
+            _editDob?.ToString("yyyy-MM-dd") ?? "", _editSex);
         _editMode = false;
         _allPcs   = PcSvc.GetAllPcs();
         LoadDetail();

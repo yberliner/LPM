@@ -138,31 +138,7 @@
 </div>
 
 @* ── New Student modal ── *@
-<SpkNewPersonModal @ref="_addModal" Title="New Student" OnSaved="SaveNewStudent">
-    <ExtraFields>
-        <div class="col-md-6">
-            <label class="form-label small mb-1">Phone</label>
-            <input class="form-control form-control-sm" @bind="_addPhone" placeholder="Phone number" />
-        </div>
-        <div class="col-md-6">
-            <label class="form-label small mb-1">Email</label>
-            <input class="form-control form-control-sm" @bind="_addEmail" placeholder="Email address" />
-        </div>
-        <div class="col-md-6">
-            <label class="form-label small mb-1">Age</label>
-            <input type="number" class="form-control form-control-sm" @bind="_addAge" min="1" max="120" placeholder="Age" />
-        </div>
-        <div class="col-md-6">
-            <label class="form-label small mb-1">Sex</label>
-            <select class="form-select form-select-sm" @bind="_addSex">
-                <option value="">— select —</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
-            </select>
-        </div>
-    </ExtraFields>
-</SpkNewPersonModal>
+<SpkNewPersonModal @ref="_addModal" Title="New Student" OnSaved="SaveNewStudent" />
 
 @code {
 
@@ -176,9 +152,6 @@
     int                  _chartKey;
     string               _searchText   = "";
 
-    // New student extra fields
-    string _addPhone = "", _addEmail = "", _addSex = "";
-    int?   _addAge;
 
     ApexChartOptions<WeekVisitCount> _chartOptions = new()
     {
@@ -314,17 +287,14 @@
         RefreshChart();
     }
 
-    void SaveNewStudent((string fn, string ln) names)
+    void SaveNewStudent((string fn, string ln, string phone, string email, string dob, string sex) d)
     {
-        var personId = AcademySvc.AddPersonForAcademy(
-            names.fn, names.ln, _addPhone, _addEmail, _addAge, _addSex);
+        var personId = AcademySvc.AddPersonForAcademy(d.fn, d.ln, d.phone, d.email, d.dob, d.sex);
         AcademySvc.AddVisit(personId, SelectedDate);
         _allPersons         = AcademySvc.GetAllPersons();
         _dayCounts[_selDay] = AcademySvc.GetVisitsForDay(SelectedDate).Count;
         LoadVisits();
         RefreshChart();
-        _addPhone = _addEmail = _addSex = "";
-        _addAge   = null;
     }
 
     void DoRemoveVisit(int visitId)

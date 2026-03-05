@@ -1,13 +1,9 @@
 @* Shared modal for adding a new person.
    Usage:
-     <SpkNewPersonModal @ref="_modal" Title="Add New XYZ" OnSaved="HandleSaved">
-         <ExtraFields>
-             ... extra <div class="col-..."> inputs bound to parent fields ...
-         </ExtraFields>
-     </SpkNewPersonModal>
+     <SpkNewPersonModal @ref="_modal" Title="Add New XYZ" OnSaved="HandleSaved" />
 
-   Then call _modal.Show() to open it.
-   OnSaved fires with (FirstName, LastName) on successful save.
+   Call _modal.Show() to open it.
+   OnSaved fires with (FirstName, LastName, Phone, Email, Age?, Sex) on successful save.
 *@
 
 @if (_visible)
@@ -31,16 +27,36 @@
                                 First Name <span class="text-danger">*</span>
                             </label>
                             <input class="form-control form-control-sm"
-                                   @bind="_firstName"
-                                   placeholder="First name" />
+                                   @bind="_firstName" placeholder="First name" />
                         </div>
                         <div class="col-6">
                             <label class="form-label small mb-1">Last Name</label>
                             <input class="form-control form-control-sm"
-                                   @bind="_lastName"
-                                   placeholder="Last name" />
+                                   @bind="_lastName" placeholder="Last name" />
                         </div>
-                        @ExtraFields
+                        <div class="col-6">
+                            <label class="form-label small mb-1">Phone</label>
+                            <input class="form-control form-control-sm"
+                                   @bind="_phone" placeholder="Phone number" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small mb-1">Email</label>
+                            <input class="form-control form-control-sm"
+                                   @bind="_email" placeholder="Email address" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small mb-1">Date of Birth</label>
+                            <input type="date" class="form-control form-control-sm" @bind="_dob" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small mb-1">Sex</label>
+                            <select class="form-select form-select-sm" @bind="_sex">
+                                <option value="">— select —</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
                     </div>
 
                     @if (!string.IsNullOrEmpty(_error))
@@ -63,20 +79,19 @@
 
 @code {
     [Parameter] public string Title { get; set; } = "Add New Person";
-    [Parameter] public RenderFragment? ExtraFields { get; set; }
-    [Parameter] public EventCallback<(string FirstName, string LastName)> OnSaved { get; set; }
+    [Parameter] public EventCallback<(string FirstName, string LastName, string Phone, string Email, string DateOfBirth, string Sex)> OnSaved { get; set; }
 
-    string _firstName = "";
-    string _lastName  = "";
-    string _error     = "";
-    bool   _visible;
+    string   _firstName = "", _lastName = "";
+    string   _phone = "", _email = "", _sex = "";
+    DateOnly? _dob;
+    string   _error = "";
+    bool     _visible;
 
     public void Show()
     {
-        _firstName = "";
-        _lastName  = "";
-        _error     = "";
-        _visible   = true;
+        _firstName = _lastName = _phone = _email = _sex = _error = "";
+        _dob     = null;
+        _visible = true;
         StateHasChanged();
     }
 
@@ -88,16 +103,13 @@
             return;
         }
         _visible = false;
-        await OnSaved.InvokeAsync((_firstName.Trim(), _lastName.Trim()));
+        await OnSaved.InvokeAsync((
+            _firstName.Trim(), _lastName.Trim(),
+            _phone.Trim(), _email.Trim(),
+            _dob?.ToString("yyyy-MM-dd") ?? "", _sex));
     }
 
-    void Cancel()
-    {
-        _visible = false;
-    }
+    void Cancel() => _visible = false;
 
-    void OnBackdropClick()
-    {
-        _visible = false;
-    }
+    void OnBackdropClick() => _visible = false;
 }

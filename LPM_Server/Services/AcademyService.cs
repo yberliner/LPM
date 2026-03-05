@@ -33,7 +33,11 @@ public class AcademyService
     private static void AddPersonColumns(SqliteConnection conn)
     {
         var cols = GetColumnNames(conn, "Persons");
-        foreach (var (col, type) in new[] { ("Phone", "TEXT"), ("Email", "TEXT"), ("Age", "INTEGER"), ("Sex", "TEXT") })
+        foreach (var (col, type) in new[] {
+            ("Phone", "TEXT"), ("Email", "TEXT"),
+            ("Age", "INTEGER"),      // legacy — kept so existing rows aren't broken
+            ("DateOfBirth", "TEXT"),
+            ("Sex", "TEXT") })
             if (!cols.Contains(col))
                 Execute(conn, $"ALTER TABLE Persons ADD COLUMN {col} {type}");
     }
@@ -97,20 +101,20 @@ public class AcademyService
 
     /// <summary>Creates a new Person record and returns the new PersonId.</summary>
     public int AddPersonForAcademy(string firstName, string lastName,
-        string phone, string email, int? age, string sex)
+        string phone, string email, string dateOfBirth, string sex)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO Persons (FirstName, LastName, Phone, Email, Age, Sex)
-            VALUES (@fn, @ln, @ph, @em, @age, @sex)";
+            INSERT INTO Persons (FirstName, LastName, Phone, Email, DateOfBirth, Sex)
+            VALUES (@fn, @ln, @ph, @em, @dob, @sex)";
         cmd.Parameters.AddWithValue("@fn",  firstName.Trim());
         cmd.Parameters.AddWithValue("@ln",  lastName.Trim());
-        cmd.Parameters.AddWithValue("@ph",  string.IsNullOrWhiteSpace(phone) ? DBNull.Value : (object)phone.Trim());
-        cmd.Parameters.AddWithValue("@em",  string.IsNullOrWhiteSpace(email) ? DBNull.Value : (object)email.Trim());
-        cmd.Parameters.AddWithValue("@age", age.HasValue ? (object)age.Value : DBNull.Value);
-        cmd.Parameters.AddWithValue("@sex", string.IsNullOrWhiteSpace(sex)  ? DBNull.Value : (object)sex);
+        cmd.Parameters.AddWithValue("@ph",  string.IsNullOrWhiteSpace(phone)       ? DBNull.Value : (object)phone.Trim());
+        cmd.Parameters.AddWithValue("@em",  string.IsNullOrWhiteSpace(email)       ? DBNull.Value : (object)email.Trim());
+        cmd.Parameters.AddWithValue("@dob", string.IsNullOrWhiteSpace(dateOfBirth) ? DBNull.Value : (object)dateOfBirth);
+        cmd.Parameters.AddWithValue("@sex", string.IsNullOrWhiteSpace(sex)         ? DBNull.Value : (object)sex);
         cmd.ExecuteNonQuery();
 
         using var idCmd = conn.CreateCommand();
