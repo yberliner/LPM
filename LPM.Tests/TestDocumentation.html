@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>LPM – Unit Test Documentation</title>
+<style>
+  body        { font-family: Calibri, Arial, sans-serif; font-size: 11pt; margin: 2.5cm; color: #222; }
+  h1          { font-size: 20pt; color: #1F3864; border-bottom: 3px solid #1F3864; padding-bottom: 6px; }
+  h2          { font-size: 15pt; color: #2E74B5; margin-top: 24px; border-bottom: 1px solid #B0C4DE; }
+  h3          { font-size: 12pt; color: #2E74B5; margin-top: 16px; }
+  table       { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 10pt; }
+  th          { background-color: #1F3864; color: white; padding: 6px 8px; text-align: left; }
+  tr:nth-child(even) td { background-color: #EDF2FB; }
+  td          { border: 1px solid #B0C4DE; padding: 5px 8px; vertical-align: top; }
+  .pass       { color: #1D6A1D; font-weight: bold; }
+  .tbl-id     { width: 4%;  white-space: nowrap; }
+  .tbl-name   { width: 34%; }
+  .tbl-desc   { width: 42%; }
+  .tbl-expect { width: 20%; }
+  p           { margin: 4px 0 8px; }
+  .intro-box  { background: #F0F4FF; border-left: 4px solid #2E74B5; padding: 10px 14px; margin-bottom: 18px; }
+  .section-note { font-style: italic; color: #555; margin: 0 0 10px; }
+  footer      { margin-top: 40px; font-size: 9pt; color: #888; border-top: 1px solid #ccc; padding-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>LPM – Unit Test Documentation</h1>
+
+<div class="intro-box">
+  <strong>Project:</strong> LPM (Dror Center – LifePower)<br>
+  <strong>Database:</strong> lifepower.db (SQLite)<br>
+  <strong>Test framework:</strong> xUnit (.NET 8)<br>
+  <strong>Isolation strategy:</strong> Each test class creates a fresh temporary SQLite file;
+  the file is deleted after the test class is disposed.<br>
+  <strong>Date prepared:</strong> March 2026
+</div>
+
+<p>This document describes every unit test in the <code>LPM.Tests</code> project,
+organized by the service under test. Tests are written in C# using xUnit and test
+the data-access layer against an in-memory-isolated SQLite database – no live
+<em>lifepower.db</em> is ever touched during test runs.</p>
+
+<!-- ===================================================================== -->
+<h2>1. Test Infrastructure</h2>
+
+<h3>1.1 TestDbHelper</h3>
+<p>Creates a disposable SQLite database at a unique temporary path and populates the full
+schema (Persons, Auditors, CaseSupervisors, PCs, Sessions, CsReviews, CsWorkLog, Payments,
+StaffPcList, MiscCharge, Students, Grades, Users, Roles, UserRoles).
+Seed data: three Grade rows (BA, MA, PHD).</p>
+
+<h3>1.2 TestConfig</h3>
+<p>Builds a minimal <code>IConfiguration</code> that sets <code>Database:Path</code> to the
+temporary file created by TestDbHelper, allowing every service constructor to be instantiated
+without needing a running ASP.NET host.</p>
+
+<!-- ===================================================================== -->
+<h2>2. PcServiceTests – Client/Patient Management</h2>
+<p class="section-note">Service: <code>PcService</code> | File: <code>PcServiceTests.cs</code></p>
+
+<table>
+  <tr>
+    <th class="tbl-id">#</th>
+    <th class="tbl-name">Test Name</th>
+    <th class="tbl-desc">Description</th>
+    <th class="tbl-expect">Expected Result</th>
+  </tr>
+
+  <!-- AddPcWithPerson -->
+  <tr><td>1</td>
+    <td>AddPcWithPerson_CreatesPersonAndPcRecord</td>
+    <td>Calls AddPcWithPerson with full details. Checks both the Persons and PCs tables in the raw DB.</td>
+    <td class="pass">One row each in Persons and PCs with the returned ID.</td>
+  </tr>
+  <tr><td>2</td>
+    <td>AddPcWithPerson_ReturnsUniqueIds_ForMultipleClients</td>
+    <td>Adds three distinct clients. Verifies each receives a different auto-incremented ID.</td>
+    <td class="pass">All three IDs are different.</td>
+  </tr>
+  <tr><td>3</td>
+    <td>AddPcWithPerson_StoresAllPersonFields</td>
+    <td>Adds a client with first name, last name, phone, email, date-of-birth, and sex. Reads back via GetPcDetail.</td>
+    <td class="pass">All six fields match the values passed in.</td>
+  </tr>
+  <tr><td>4</td>
+    <td>AddPcWithPerson_WithOptionalFieldsEmpty_Succeeds</td>
+    <td>Creates a client using only a first name, leaving all optional fields blank.</td>
+    <td class="pass">Inserts without error; GetPcDetail returns empty strings for optional fields.</td>
+  </tr>
+
+  <!-- GetAllPcs -->
+  <tr><td>5</td>
+    <td>GetAllPcs_ReturnsEmptyList_WhenNoPcs</td>
+    <td>Queries a fresh empty database.</td>
+    <td class="pass">Empty list.</td>
+  </tr>
+  <tr><td>6</td>
+    <td>GetAllPcs_ReturnsAllAddedClients</td>
+    <td>Adds three clients and queries the list.</td>
+    <td class="pass">List contains exactly three items.</td>
+  </tr>
+  <tr><td>7</td>
+    <td>GetAllPcs_RemainingSec_IsZero_WhenNoPaymentsAndNoSessions</td>
+    <td>A client with no payments and no sessions should have zero remaining seconds.</td>
+    <td class="pass">RemainSec = 0.</td>
+  </tr>
+  <tr><td>8</td>
+    <td>GetAllPcs_RemainingSec_IsPositive_WhenHoursBoughtExceedUsed</td>
+    <td>Buys 2 hours (7200 sec), then logs a 1-hour session (3600 sec).</td>
+    <td class="pass">RemainSec = 3600.</td>
+  </tr>
+  <tr><td>9</td>
+    <td>GetAllPcs_RemainingSec_IsNegative_WhenUsedExceedsBought</td>
+    <td>Buys 1 hour (3600 sec), uses 1.5 hours via two sessions (5400 sec total).</td>
+    <td class="pass">RemainSec = −1800.</td>
+  </tr>
+  <tr><td>10</td>
+    <td>GetAllPcs_RemainingSec_IgnoresFreeSessions</td>
+    <td>Buys 2 hours, logs a free session of 1 hour. Free sessions must not reduce the balance.</td>
+    <td class="pass">RemainSec = 7200 (unchanged).</td>
+  </tr>
+
+  <!-- GetPcDetail / Update -->
+  <tr><td>11</td>
+    <td>GetPcDetail_ReturnsNull_ForNonExistentPc</td>
+    <td>Queries detail for PcId 9999 (not in DB).</td>
+    <td class="pass">Returns null.</td>
+  </tr>
+  <tr><td>12</td>
+    <td>GetPcDetail_ReturnsCorrectFullName</td>
+    <td>Adds "John Doe", reads back detail.</td>
+    <td class="pass">FullName = "John Doe".</td>
+  </tr>
+  <tr><td>13</td>
+    <td>UpdatePcDetail_UpdatesBothPersonsAndPcsTable</td>
+    <td>Creates a client, then updates all editable fields (name, external ID, phone, email, dates, notes, sex).</td>
+    <td class="pass">GetPcDetail returns all new values.</td>
+  </tr>
+  <tr><td>14</td>
+    <td>UpdatePcDetail_CanClearOptionalFields</td>
+    <td>Creates a client with phone and email, then updates them to empty strings.</td>
+    <td class="pass">Phone and email stored as empty strings.</td>
+  </tr>
+
+  <!-- GetPcStats -->
+  <tr><td>15</td>
+    <td>GetPcStats_AllZero_WhenNoSessionsOrPayments</td>
+    <td>Queries stats for a client with no history.</td>
+    <td class="pass">All counters are zero; LastSessionDate is null.</td>
+  </tr>
+  <tr><td>16</td>
+    <td>GetPcStats_CountsSessionsCorrectly</td>
+    <td>Inserts three sessions (one free). Checks TotalSessions, FreeSessions, UsedSec (free excluded), and LastSessionDate.</td>
+    <td class="pass">Total=3, Free=1, UsedSec=4500, LastDate="2024-01-12".</td>
+  </tr>
+  <tr><td>17</td>
+    <td>GetPcStats_SumsPaymentsCorrectly</td>
+    <td>Adds two payments (3 h + 5 h, amounts 900 + 1500).</td>
+    <td class="pass">TotalHoursPurchased=8, TotalAmountPaid=2400.</td>
+  </tr>
+  <tr><td>18</td>
+    <td>GetPcStats_UsedSec_DoesNotCountFreeSessionTime</td>
+    <td>One paid session (3600 s) + one free session (7200 s).</td>
+    <td class="pass">UsedSec = 3600.</td>
+  </tr>
+
+  <!-- GetPcSessions -->
+  <tr><td>19</td>
+    <td>GetPcSessions_ReturnsEmpty_WhenNoSessions</td>
+    <td>Queries session list for a client with none.</td>
+    <td class="pass">Empty list.</td>
+  </tr>
+  <tr><td>20</td>
+    <td>GetPcSessions_ReturnsAllSessions_OrderedByDateDesc</td>
+    <td>Inserts sessions on three different dates. Reads list and checks order.</td>
+    <td class="pass">Dates in descending order.</td>
+  </tr>
+  <tr><td>21</td>
+    <td>GetPcSessions_ReturnsAuditorFirstName</td>
+    <td>Inserts a session by auditor "Tami Cohen". Reads the session list.</td>
+    <td class="pass">AuditorName = "Tami".</td>
+  </tr>
+
+  <!-- Payments -->
+  <tr><td>22</td>
+    <td>AddPayment_CreatesPaymentRecord</td>
+    <td>Adds a payment with all fields including notes. Reads back via GetPayments.</td>
+    <td class="pass">Single payment with matching HoursBought, AmountPaid, Date, Notes.</td>
+  </tr>
+  <tr><td>23</td>
+    <td>AddPayment_MultiplePayments_AllRetrieved</td>
+    <td>Adds three payments to the same client.</td>
+    <td class="pass">GetPayments returns all three.</td>
+  </tr>
+  <tr><td>24</td>
+    <td>AddPayment_WithNullNotes_Succeeds</td>
+    <td>Adds a payment with null notes.</td>
+    <td class="pass">Notes column is null.</td>
+  </tr>
+  <tr><td>25</td>
+    <td>GetPayments_ReturnsEmpty_WhenNoPayments</td>
+    <td>Queries payments for a client with none.</td>
+    <td class="pass">Empty list.</td>
+  </tr>
+  <tr><td>26</td>
+    <td>GetPayments_OrderedByDateDesc</td>
+    <td>Adds payments with dates Jan, Mar, Feb. Reads list.</td>
+    <td class="pass">Order: Mar → Feb → Jan.</td>
+  </tr>
+  <tr><td>27</td>
+    <td>DeletePayment_RemovesRecord</td>
+    <td>Adds a payment then deletes it by ID.</td>
+    <td class="pass">GetPayments returns empty list.</td>
+  </tr>
+  <tr><td>28</td>
+    <td>DeletePayment_OnlyDeletesSpecifiedRecord</td>
+    <td>Adds two payments, deletes the first one.</td>
+    <td class="pass">Only the second payment remains.</td>
+  </tr>
+
+  <!-- Business-logic scenarios -->
+  <tr><td>29</td>
+    <td>RemainingHours_MatchesTotalBoughtMinusUsed</td>
+    <td>Buys 10 hours, uses 3 hours (5400+5400 sec = 10800). Verifies remaining = 25200 sec (7 h).</td>
+    <td class="pass">RemainSec = 25200.</td>
+  </tr>
+  <tr><td>30</td>
+    <td>RemainingHours_MultiplePayments_SummedCorrectly</td>
+    <td>Two payments of 5 h each (total 10 h), one session of 1 h.</td>
+    <td class="pass">RemainSec = 32400.</td>
+  </tr>
+  <tr><td>31</td>
+    <td>RemainingHours_AdminSecondsCountedTowardUsedTime</td>
+    <td>Session of 3000 sec + 600 admin. Verifies only LengthSeconds (3000) reduces the balance, not admin.</td>
+    <td class="pass">RemainSec = 7200 − 3000 = 4200.</td>
+  </tr>
+</table>
+
+<!-- ===================================================================== -->
+<h2>3. AuditorServiceTests – Auditor Management</h2>
+<p class="section-note">Service: <code>AuditorService</code> | File: <code>AuditorServiceTests.cs</code></p>
+
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>1</td><td>AddAuditor_CreatesPersonAndAuditorRecord</td>
+    <td>Calls AddAuditor. Verifies rows exist in both Persons and Auditors.</td>
+    <td class="pass">One row in each table with returned ID.</td></tr>
+
+  <tr><td>2</td><td>AddAuditor_DefaultsToActive</td>
+    <td>After adding, queries the IsActive column directly.</td>
+    <td class="pass">IsActive = 1.</td></tr>
+
+  <tr><td>3</td><td>AddAuditor_WithGrade_AssignsGradeId</td>
+    <td>Adds auditor with GradeId=2 (MA). Reads detail.</td>
+    <td class="pass">CurrentGradeId=2, GradeCode="MA".</td></tr>
+
+  <tr><td>4</td><td>AddAuditor_WithNullGrade_Succeeds</td>
+    <td>Adds auditor without grade.</td>
+    <td class="pass">CurrentGradeId=null, GradeCode=null.</td></tr>
+
+  <tr><td>5</td><td>AddAuditor_MultipleAuditors_EachGetUniqueId</td>
+    <td>Adds three auditors in sequence.</td>
+    <td class="pass">All three have distinct IDs.</td></tr>
+
+  <tr><td>6</td><td>GetAllAuditors_ReturnsEmpty_WhenNoAuditors</td>
+    <td>Queries empty database.</td>
+    <td class="pass">Empty list.</td></tr>
+
+  <tr><td>7</td><td>GetAllAuditors_ReturnsAllAddedAuditors</td>
+    <td>Adds three auditors.</td>
+    <td class="pass">List count = 3.</td></tr>
+
+  <tr><td>8</td><td>GetAllAuditors_OrderedByFirstName</td>
+    <td>Adds Zara, Alice, Mike. Reads list.</td>
+    <td class="pass">Returns in alphabetical order: Alice, Mike, Zara.</td></tr>
+
+  <tr><td>9</td><td>GetAllAuditors_IncludesTypeAndIsActive</td>
+    <td>Adds auditor with Type=3. Reads from list.</td>
+    <td class="pass">Type=3, IsActive=true.</td></tr>
+
+  <tr><td>10</td><td>GetAuditorDetail_ReturnsNull_ForNonExistentAuditor</td>
+    <td>Queries non-existent ID 9999.</td>
+    <td class="pass">Returns null.</td></tr>
+
+  <tr><td>11</td><td>GetAuditorDetail_ReturnsCorrectFields</td>
+    <td>Adds auditor "Carmela D" with grade BA, type 3. Reads detail.</td>
+    <td class="pass">All fields match.</td></tr>
+
+  <tr><td>12</td><td>UpdateAuditor_ChangesNameAndGrade</td>
+    <td>Creates auditor, then updates first name, last name, and grade.</td>
+    <td class="pass">GetAuditorDetail returns new values.</td></tr>
+
+  <tr><td>13</td><td>UpdateAuditor_CanSetInactive</td>
+    <td>Creates active auditor, sets IsActive=false via update.</td>
+    <td class="pass">IsActive = false.</td></tr>
+
+  <tr><td>14</td><td>UpdateAuditor_CanChangeType</td>
+    <td>Creates auditor type 1, changes to type 2.</td>
+    <td class="pass">Type = 2.</td></tr>
+
+  <tr><td>15</td><td>AuditorType_RegularOnly_Type1_CorrectlySaved</td>
+    <td>Adds auditor with Type=1. Reads back via GetAuditorDetail.</td>
+    <td class="pass">Type = 1.</td></tr>
+
+  <tr><td>16</td><td>AuditorType_SoloOnly_Type2_CorrectlySaved</td>
+    <td>Adds auditor with Type=2.</td>
+    <td class="pass">Type = 2.</td></tr>
+
+  <tr><td>17</td><td>AuditorType_RegularAndSolo_Type3_CorrectlySaved</td>
+    <td>Adds auditor with Type=3.</td>
+    <td class="pass">Type = 3.</td></tr>
+
+  <tr><td>18</td><td>GetAuditorStats_AllZero_WhenNoSessions</td>
+    <td>Queries stats for a newly added auditor with no sessions.</td>
+    <td class="pass">All counts = 0, TotalSec = 0, LastSessionDate = null.</td></tr>
+
+  <tr><td>19</td><td>GetAuditorStats_CountsNonFreeSessionsAndTime</td>
+    <td>Inserts two regular sessions (3600 + 1800 sec).</td>
+    <td class="pass">Total=2, Free=0, TotalSec=5400.</td></tr>
+
+  <tr><td>20</td><td>GetAuditorStats_CountsFreeSessions</td>
+    <td>Inserts one regular and one free session.</td>
+    <td class="pass">Total=2, Free=1.</td></tr>
+
+  <tr><td>21</td><td>GetAuditorStats_ExcludesSoloSessions</td>
+    <td>Inserts one regular (IsSolo=0) and one solo (IsSolo=1) session. AuditorStats should only count IsSolo=0.</td>
+    <td class="pass">Total=1, TotalSec=3600.</td></tr>
+
+  <tr><td>22</td><td>GetAllGrades_ReturnsSeededGrades</td>
+    <td>Queries the grades table (seeded by TestDbHelper with BA, MA, PHD).</td>
+    <td class="pass">Three grades returned.</td></tr>
+
+  <tr><td>23</td><td>GetAllGrades_OrderedBySortOrder</td>
+    <td>Reads all grades. Checks SortOrder-based ordering.</td>
+    <td class="pass">Order: BA, MA, PHD.</td></tr>
+</table>
+
+<!-- ===================================================================== -->
+<h2>4. DashboardServiceTests – Weekly Dashboard Core</h2>
+<p class="section-note">Service: <code>DashboardService</code> | File: <code>DashboardServiceTests.cs</code></p>
+
+<h3>4.1 User Lookup</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>1</td><td>GetUserIdByUsername_ReturnsPersonId_WhenFound</td>
+    <td>Inserts a person "Tami Cohen" and queries by first name.</td>
+    <td class="pass">Returns correct PersonId.</td></tr>
+
+  <tr><td>2</td><td>GetUserIdByUsername_IsCaseInsensitive</td>
+    <td>Queries "TAMI", "tami", "TaMi" after inserting "Tami".</td>
+    <td class="pass">All variations return the same PersonId.</td></tr>
+
+  <tr><td>3</td><td>GetUserIdByUsername_ReturnsNull_WhenNotFound</td>
+    <td>Queries name not in the DB.</td>
+    <td class="pass">Returns null.</td></tr>
+
+  <tr><td>4</td><td>GetUserIdByUsername_ReturnsFirstMatch_WhenDuplicateFirstNames</td>
+    <td>Two persons named "Dana". Query returns a non-null result.</td>
+    <td class="pass">Non-null PersonId.</td></tr>
+</table>
+
+<h3>4.2 IsAuditor / IsSoloAuditor / IsCS Role Checks</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>5</td><td>IsAuditor_ReturnsTrue_ForActiveRegularAuditor</td>
+    <td>Type=1, IsActive=true.</td>
+    <td class="pass">true.</td></tr>
+
+  <tr><td>6</td><td>IsAuditor_ReturnsTrue_ForType3_RegularAndSolo</td>
+    <td>Type=3, IsActive=true.</td>
+    <td class="pass">true.</td></tr>
+
+  <tr><td>7</td><td>IsAuditor_ReturnsFalse_ForType2_SoloOnly</td>
+    <td>Type=2 auditor is NOT a regular auditor.</td>
+    <td class="pass">false.</td></tr>
+
+  <tr><td>8</td><td>IsAuditor_ReturnsFalse_ForInactiveAuditor</td>
+    <td>Type=1, IsActive=false.</td>
+    <td class="pass">false.</td></tr>
+
+  <tr><td>9</td><td>IsAuditor_ReturnsFalse_ForPersonNotInAuditorsTable</td>
+    <td>Person exists in Persons but not in Auditors.</td>
+    <td class="pass">false.</td></tr>
+
+  <tr><td>10</td><td>IsSoloAuditor_ReturnsTrue_ForType2</td>
+    <td>Type=2, IsActive=true.</td>
+    <td class="pass">true.</td></tr>
+
+  <tr><td>11</td><td>IsSoloAuditor_ReturnsTrue_ForType3</td>
+    <td>Type=3, IsActive=true.</td>
+    <td class="pass">true.</td></tr>
+
+  <tr><td>12</td><td>IsSoloAuditor_ReturnsFalse_ForType1</td>
+    <td>Type=1 auditor is not a solo auditor.</td>
+    <td class="pass">false.</td></tr>
+
+  <tr><td>13</td><td>IsSoloAuditor_ReturnsFalse_WhenInactive</td>
+    <td>Type=2, IsActive=false.</td>
+    <td class="pass">false.</td></tr>
+
+  <tr><td>14</td><td>IsCS_ReturnsTrue_ForActiveCS</td>
+    <td>Person in CaseSupervisors with IsActive=1.</td>
+    <td class="pass">true.</td></tr>
+
+  <tr><td>15</td><td>IsCS_ReturnsFalse_ForInactiveCS</td>
+    <td>Person in CaseSupervisors with IsActive=0.</td>
+    <td class="pass">false.</td></tr>
+
+  <tr><td>16</td><td>IsCS_ReturnsFalse_ForPersonNotInCsTable</td>
+    <td>Person exists in Persons but not in CaseSupervisors.</td>
+    <td class="pass">false.</td></tr>
+
+  <tr><td>17</td><td>GetAuditorType_Returns1_ForRegularOnly</td>
+    <td>Type=1 auditor.</td>
+    <td class="pass">Returns 1.</td></tr>
+
+  <tr><td>18</td><td>GetAuditorType_Returns0_ForInactive</td>
+    <td>Type=0 stored in DB.</td>
+    <td class="pass">Returns 0.</td></tr>
+
+  <tr><td>19</td><td>GetAuditorType_Returns1_WhenPersonNotInAuditorsTable</td>
+    <td>Queries non-existent ID 9999.</td>
+    <td class="pass">Returns 1 (default fallback).</td></tr>
+</table>
+
+<h3>4.3 Session Management</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>20</td><td>AddSession_ReturnsPositiveSessionId</td>
+    <td>Adds a standard session.</td>
+    <td class="pass">SessionId &gt; 0.</td></tr>
+
+  <tr><td>21</td><td>AddSession_IncrementsSequenceInDay_ForSamePcAndDate</td>
+    <td>Adds three sessions for the same PC on the same date.</td>
+    <td class="pass">SequenceInDay values are 1, 2, 3.</td></tr>
+
+  <tr><td>22</td><td>AddSession_SequenceRestartsFor_DifferentDate</td>
+    <td>Adds a session on Jan 15, then on Jan 16.</td>
+    <td class="pass">Second session gets SequenceInDay = 1.</td></tr>
+
+  <tr><td>23</td><td>AddSession_StoresFreeSessionFlag</td>
+    <td>Adds session with isFree=true. Queries IsFreeSession column directly.</td>
+    <td class="pass">IsFreeSession = 1.</td></tr>
+
+  <tr><td>24</td><td>AddSession_StoresSummary</td>
+    <td>Adds session with HTML summary. Reads column directly.</td>
+    <td class="pass">SessionSummaryHtml = "&lt;p&gt;Notes here&lt;/p&gt;".</td></tr>
+
+  <tr><td>25</td><td>UpdateSession_ChangesLengthAndFreeFlag</td>
+    <td>Adds then updates a session (new length, adminSec, free flag, summary).</td>
+    <td class="pass">DB shows updated values.</td></tr>
+</table>
+
+<h3>4.4 CS Reviews</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>26</td><td>AddCsReview_ReturnsPositiveId</td>
+    <td>Adds a CS review for an existing session.</td>
+    <td class="pass">CsReviewId &gt; 0.</td></tr>
+
+  <tr><td>27</td><td>AddCsReview_DuplicateSessionId_ThrowsException</td>
+    <td>Adds two reviews for the same session (violates UNIQUE constraint).</td>
+    <td class="pass">SqliteException thrown on second insert.</td></tr>
+
+  <tr><td>28</td><td>AddCsReview_AllStatuses_AreAccepted</td>
+    <td>Adds reviews with each valid status: Draft, Approved, NeedsCorrection, Rejected.</td>
+    <td class="pass">All four inserts succeed, returning positive IDs.</td></tr>
+
+  <tr><td>29</td><td>UpdateCsReview_ChangesReviewSeconds_And_Status</td>
+    <td>Adds a review (1200 s, Draft), updates to (1800 s, Approved).</td>
+    <td class="pass">ReviewLengthSeconds = 1800.</td></tr>
+</table>
+
+<h3>4.5 Day Detail</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>30</td><td>GetDayDetail_Auditor_ReturnsOwnSessions</td>
+    <td>Two auditors each have a session for the same PC on the same day. Auditor 1 calls GetDayDetail with role="Auditor".</td>
+    <td class="pass">Only auditor 1's session is returned.</td></tr>
+
+  <tr><td>31</td><td>GetDayDetail_CS_ReturnsAllSessions_ForThatPcAndDate</td>
+    <td>Same scenario; CS worker calls GetDayDetail with role="CS".</td>
+    <td class="pass">Both sessions returned.</td></tr>
+
+  <tr><td>32</td><td>GetDayDetail_CS_ReturnsReviewsForSessions</td>
+    <td>Session with an associated CS review. CS calls GetDayDetail.</td>
+    <td class="pass">Reviews list contains one item with correct ReviewSec and Status.</td></tr>
+
+  <tr><td>33</td><td>GetDayDetail_Auditor_ReturnsEmpty_WhenNoSessionsForDate</td>
+    <td>Queries a date when the auditor has no sessions.</td>
+    <td class="pass">Sessions list is empty.</td></tr>
+</table>
+
+<h3>4.6 Solo Sessions</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>34</td><td>AddSoloSession_CreatesSessionWithIsSoloFlag</td>
+    <td>Adds a solo session. Queries IsSolo column.</td>
+    <td class="pass">IsSolo = 1.</td></tr>
+
+  <tr><td>35</td><td>AddSoloSession_UsesSamePersonIdForPcIdAndAuditorId</td>
+    <td>Solo session uses auditorId as both AuditorId and PcId.</td>
+    <td class="pass">PcId = AuditorId in the Sessions row.</td></tr>
+
+  <tr><td>36</td><td>AddSoloSession_SequenceIncrements_ForSameDate</td>
+    <td>Adds two solo sessions on the same date.</td>
+    <td class="pass">SequenceInDay = 1, then 2.</td></tr>
+</table>
+
+<h3>4.7 StaffPcList – PC Assignment</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>37</td><td>AddUserPc_AddsEntryToStaffPcList</td>
+    <td>Assigns a PC to a user. Verifies raw DB row.</td>
+    <td class="pass">One row in StaffPcList.</td></tr>
+
+  <tr><td>38</td><td>AddUserPc_IsSolo_SetsCapacityToCS</td>
+    <td>Assigns a PC with isSolo=true.</td>
+    <td class="pass">WorkCapacity = "CS".</td></tr>
+
+  <tr><td>39</td><td>AddUserPc_IsNotSolo_SetsCapacityToAuditor</td>
+    <td>Assigns a PC with isSolo=false.</td>
+    <td class="pass">WorkCapacity = "Auditor".</td></tr>
+
+  <tr><td>40</td><td>AddUserPc_DuplicateIgnored_UNIQUE_Constraint</td>
+    <td>Assigns the same PC to the same user twice.</td>
+    <td class="pass">Only one row; no exception (INSERT OR IGNORE).</td></tr>
+
+  <tr><td>41</td><td>RemoveUserPc_RemovesEntryFromStaffPcList</td>
+    <td>Assigns then removes a PC assignment.</td>
+    <td class="pass">Zero rows in StaffPcList for that user+PC.</td></tr>
+
+  <tr><td>42</td><td>GetUserPcs_ReturnsAssignedPcs</td>
+    <td>Assigns two PCs to one user.</td>
+    <td class="pass">GetUserPcs returns list of 2.</td></tr>
+
+  <tr><td>43</td><td>GetUserPcs_ReturnsEmpty_WhenNoAssignments</td>
+    <td>Queries user with no assignments.</td>
+    <td class="pass">Empty list.</td></tr>
+</table>
+
+<h3>4.8 GetWeekStart – Static Utility</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>44–50</td><td>GetWeekStart_[DayOfWeek] (7 theory cases)</td>
+    <td>Parameterized test passing each day of the week (Thursday–Wednesday) relative to week 2024-01-11. Verifies GetWeekStart returns the correct Thursday.</td>
+    <td class="pass">Each date maps to its enclosing Thursday (week start).</td></tr>
+</table>
+
+<h3>4.9 Fmt / FmtOrBlank – Static Utilities</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>51</td><td>Fmt_ZeroSeconds_ReturnsDash</td>
+    <td>Fmt(0).</td><td class="pass">"−".</td></tr>
+
+  <tr><td>52</td><td>Fmt_OneHour_Returns1Colon00</td>
+    <td>Fmt(3600).</td><td class="pass">"1:00".</td></tr>
+
+  <tr><td>53</td><td>Fmt_OneHourThirtyMinutes</td>
+    <td>Fmt(5400).</td><td class="pass">"1:30".</td></tr>
+
+  <tr><td>54</td><td>Fmt_45Minutes</td>
+    <td>Fmt(2700).</td><td class="pass">"0:45".</td></tr>
+
+  <tr><td>55</td><td>FmtOrBlank_ZeroSeconds_ReturnsEmpty</td>
+    <td>FmtOrBlank(0).</td><td class="pass">"".</td></tr>
+
+  <tr><td>56</td><td>FmtOrBlank_NegativeSeconds_ReturnsEmpty</td>
+    <td>FmtOrBlank(−100).</td><td class="pass">"".</td></tr>
+
+  <tr><td>57</td><td>FmtOrBlank_TwoHours_Returns2Colon00</td>
+    <td>FmtOrBlank(7200).</td><td class="pass">"2:00".</td></tr>
+</table>
+
+<h3>4.10 Week Grid</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>58</td><td>GetWeekGrid_ReturnsEmpty_WhenNoPcs</td>
+    <td>Passes an empty PcInfo list.</td>
+    <td class="pass">Empty dictionary.</td></tr>
+
+  <tr><td>59</td><td>GetWeekGrid_Auditor_ReturnsSessionSeconds</td>
+    <td>Auditor has a session (3600 + 600 admin) on Thursday of the week. PcInfo role = "Auditor".</td>
+    <td class="pass">Grid[(pcId, 0)] = 4200.</td></tr>
+
+  <tr><td>60</td><td>GetWeekGrid_CS_ReturnsReviewSeconds</td>
+    <td>CS worker reviewed a session (1200 s) on Thursday. PcInfo role = "CS".</td>
+    <td class="pass">Grid[(pcId, 0)] = 1200.</td></tr>
+</table>
+
+<h3>4.11 CsWork &amp; Misc</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>61</td><td>AddCsWork_ReturnsPositiveId</td>
+    <td>Adds a CsWorkLog entry (general CS work not tied to a session).</td>
+    <td class="pass">CsWorkLogId &gt; 0.</td></tr>
+
+  <tr><td>62</td><td>AddCsWork_StoredInCsWorkLogTable</td>
+    <td>Verifies the raw DB row exists after AddCsWork.</td>
+    <td class="pass">One row with the returned ID.</td></tr>
+
+  <tr><td>63</td><td>GetSoloAuditorInfo_ReturnsNull_WhenNotFound</td>
+    <td>Queries PersonId 9999.</td>
+    <td class="pass">null.</td></tr>
+
+  <tr><td>64</td><td>GetSoloAuditorInfo_ReturnsPcInfoWithSoloAuditorRole</td>
+    <td>Inserts "Tami Cohen" and queries by that PersonId.</td>
+    <td class="pass">Non-null PcInfo with WorkCapacity = "SoloAuditor" and name containing "Tami".</td></tr>
+</table>
+
+<!-- ===================================================================== -->
+<h2>5. StatisticsServiceTests – Aggregate Statistics</h2>
+<p class="section-note">Service: <code>StatisticsService</code> | File: <code>StatisticsServiceTests.cs</code></p>
+
+<h3>5.1 GetWeekDayStats</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>1</td><td>GetWeekDayStats_Returns7DayResults_AlwaysExactly</td>
+    <td>Calls GetWeekDayStats on an empty DB.</td>
+    <td class="pass">Exactly 7 DayStat entries.</td></tr>
+
+  <tr><td>2</td><td>GetWeekDayStats_EmptyDb_AllDaysHaveZeroCounts</td>
+    <td>All 7 days should have empty staff, zero academy, zero body-in-shop, zero PC count.</td>
+    <td class="pass">All counters = 0 across all days.</td></tr>
+
+  <tr><td>3</td><td>GetWeekDayStats_DayDates_MatchWeekStartPlusDays</td>
+    <td>Verifies the Date field of each of the 7 DayStat entries equals weekStart + i.</td>
+    <td class="pass">7 consecutive dates starting from the given Thursday.</td></tr>
+
+  <tr><td>4</td><td>GetWeekDayStats_ShowsAuditorWork_ForCorrectDay</td>
+    <td>Inserts "Tami Cohen" as an auditor with a 3600 + 600 admin sec session on Thursday.</td>
+    <td class="pass">Day[0] (Thu) has one staff row: Tami with AuditSec=4200.</td></tr>
+
+  <tr><td>5</td><td>GetWeekDayStats_AuditorOnDifferentDays_AppearsOnCorrectDays</td>
+    <td>Auditor sessions on Thursday and Monday.</td>
+    <td class="pass">Staff list non-empty only for Day[0] and Day[4].</td></tr>
+
+  <tr><td>6</td><td>GetWeekDayStats_MultipleAuditors_AllAppearOnSameDay</td>
+    <td>Two auditors work on Thursday.</td>
+    <td class="pass">Day[0].Staff.Count = 2.</td></tr>
+
+  <tr><td>7</td><td>GetWeekDayStats_StaffOrderedByTotalSecDesc</td>
+    <td>Two auditors on same day: "High" (7200 s) and "Low" (1800 s).</td>
+    <td class="pass">Staff[0].Name = "High" (more seconds first).</td></tr>
+
+  <tr><td>8</td><td>GetWeekDayStats_PcCount_CountsDistinctPcsPerDay</td>
+    <td>Two different PCs each have sessions on Thursday.</td>
+    <td class="pass">PcCount = 2.</td></tr>
+
+  <tr><td>9</td><td>GetWeekDayStats_PcCount_SamePcMultipleSessions_CountedOnce</td>
+    <td>Same PC has two sessions on Thursday.</td>
+    <td class="pass">PcCount = 1.</td></tr>
+
+  <tr><td>10</td><td>GetWeekDayStats_SoloCsSeconds_AppearsInSoloCsSec_Field</td>
+    <td>Solo-type auditor (Type=3) reviews a solo session. Verifies SoloCsSec is populated.</td>
+    <td class="pass">StaffStatRow.SoloCsSec = 1800; TotalSec = 3600 + 1800 = 5400.</td></tr>
+
+  <tr><td>11</td><td>GetWeekDayStats_BodyInShop_IncludesBothSessionsAndAcademyVisits</td>
+    <td>One PC has a session, one student has an academy visit on Thursday.</td>
+    <td class="pass">BodyInShop = 2.</td></tr>
+
+  <tr><td>12</td><td>GetWeekDayStats_BodyInShop_SamePersonAsBothPcAndStudent_CountedOnce</td>
+    <td>Same PersonId appears in both Sessions (as PcId) and Students on the same day.</td>
+    <td class="pass">BodyInShop = 1 (distinct count).</td></tr>
+</table>
+
+<h3>5.2 GetWeeklySummaries</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>13</td><td>GetWeeklySummaries_ReturnsRequestedNumberOfWeeks</td>
+    <td>Calls with numWeeks=5.</td>
+    <td class="pass">Returns exactly 5 items.</td></tr>
+
+  <tr><td>14</td><td>GetWeeklySummaries_DefaultNumWeeks_Is20</td>
+    <td>Calls with no numWeeks parameter.</td>
+    <td class="pass">Returns exactly 20 items.</td></tr>
+
+  <tr><td>15</td><td>GetWeeklySummaries_EmptyDb_AllZeros</td>
+    <td>No sessions, no academy visits.</td>
+    <td class="pass">All four counters (TotalAuditCsSec, AcademyCount, BodyInShop, PcCount) = 0 across all weeks.</td></tr>
+
+  <tr><td>16</td><td>GetWeeklySummaries_LastWeekIsLatestWeekStart</td>
+    <td>The last element of the list should correspond to the latest week.</td>
+    <td class="pass">result.Last().WeekStart = passed latestWeekStart.</td></tr>
+
+  <tr><td>17</td><td>GetWeeklySummaries_TotalAuditCsSec_SumsAllSessionsInWeek</td>
+    <td>Inserts a 3600 s session on Thursday and a 1800 s session on Saturday of the same week.</td>
+    <td class="pass">This week's TotalAuditCsSec = 5400.</td></tr>
+
+  <tr><td>18</td><td>GetWeeklySummaries_WeekLabel_ContainsBothDates</td>
+    <td>Checks the WeekRangeLabel string for week 2024-01-11.</td>
+    <td class="pass">Label contains "11/01" and "17/01".</td></tr>
+</table>
+
+<!-- ===================================================================== -->
+<h2>6. Test Coverage Summary</h2>
+
+<table>
+  <tr>
+    <th>Test Class</th>
+    <th>Number of Tests</th>
+    <th>Primary Scenarios</th>
+  </tr>
+  <tr><td>PcServiceTests</td><td>31</td>
+    <td>Add/read/update clients, payments, remaining-hours calculation, free vs paid sessions.</td></tr>
+  <tr><td>AuditorServiceTests</td><td>23</td>
+    <td>Add/read/update auditors, type semantics (0–3), grade assignment, stats.</td></tr>
+  <tr><td>DashboardServiceTests</td><td>64</td>
+    <td>User lookup, role checks, sessions, CS reviews, solo sessions, week grid, static utilities, StaffPcList.</td></tr>
+  <tr><td>StatisticsServiceTests</td><td>18</td>
+    <td>Per-day auditor stats, PC counts, academy visits, body-in-shop, weekly summaries.</td></tr>
+  <tr><td><strong>Total</strong></td><td><strong>136</strong></td><td></td></tr>
+</table>
+
+<!-- ===================================================================== -->
+<h2>7. How to Run the Tests</h2>
+
+<ol>
+  <li>Open <strong>Visual Studio 2022</strong>.</li>
+  <li>Add the <code>LPM.Tests</code> project to the solution:
+    <em>File → Add → Existing Project → select <code>LPM\LPM.Tests\LPM.Tests.csproj</code></em>.</li>
+  <li>Build the solution (<kbd>Ctrl+Shift+B</kbd>).</li>
+  <li>Open the <strong>Test Explorer</strong> (<em>Test → Test Explorer</em>).</li>
+  <li>Click <strong>Run All Tests</strong>.</li>
+</ol>
+
+<p>Alternatively, from the Developer Command Prompt or terminal:</p>
+<pre style="background:#F4F4F4; padding:8px; font-family:Consolas,monospace; font-size:10pt;">
+cd "C:\Dev\Yaniv-Projects\Dror center\LPM"
+dotnet test LPM.Tests/LPM.Tests.csproj --verbosity normal
+</pre>
+
+<p>Each test creates and destroys its own temporary SQLite file in <code>%TEMP%</code>.
+No network connections, live database, or external services are required.</p>
+
+<footer>
+  LPM – Unit Test Documentation | Dror Center | Generated March 2026
+</footer>
+</body>
+</html>
