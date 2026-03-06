@@ -9,25 +9,32 @@
 @using ApexCharts
 
 @* ── Week navigation bar ── *@
-<div class="d-flex align-items-center flex-wrap gap-2 px-3 py-2 border-bottom mb-3">
-    <button class="btn btn-sm btn-outline-secondary" @onclick="PrevWeek">← Prev</button>
-    <span class="fw-semibold fs-14">
-        Week: @DayLabel(_weekStart) – @DayLabel(_weekStart.AddDays(6))
-    </span>
-    <button class="btn btn-sm btn-outline-secondary" @onclick="NextWeek"
-            disabled="@(_weekStart >= DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today)))">
-        Next →
-    </button>
-    <button class="btn btn-sm btn-success ms-auto" @onclick="() => _addModal.Show()">
-        <i class="ri-user-add-line me-1"></i>New Student
-    </button>
-    <button class="btn btn-sm btn-outline-secondary" @onclick="PrintWeek">
-        <i class="ri-printer-line me-1"></i>Print
-    </button>
+<div class="acad-nav-bar">
+    <div class="d-flex align-items-center gap-2 flex-shrink-0">
+        <button class="btn btn-sm acad-nav-btn" @onclick="PrevWeek">
+            <i class="ri-arrow-left-s-line"></i> Prev
+        </button>
+        <span class="acad-nav-week">
+            <i class="ri-calendar-2-line me-1 opacity-75"></i>
+            @DayLabel(_weekStart) – @DayLabel(_weekStart.AddDays(6))
+        </span>
+        <button class="btn btn-sm acad-nav-btn" @onclick="NextWeek"
+                disabled="@(_weekStart >= DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today)))">
+            Next <i class="ri-arrow-right-s-line"></i>
+        </button>
+    </div>
+    <div class="d-flex gap-2 ms-auto">
+        <button class="btn btn-sm acad-add-btn" @onclick="() => _addModal.Show()">
+            <i class="ri-user-add-line me-1"></i>New Student
+        </button>
+        <button class="btn btn-sm acad-print-btn" @onclick="PrintWeek">
+            <i class="ri-printer-line me-1"></i>Print
+        </button>
+    </div>
 </div>
 
-@* ── Day button row ── *@
-<div class="d-flex flex-wrap gap-2 px-3 mb-3">
+@* ── Day pill tabs ── *@
+<div class="acad-day-bar px-3 mb-3">
     @for (int i = 0; i < 7; i++)
     {
         var idx      = i;
@@ -36,12 +43,12 @@
         var isSel    = idx == _selDay;
         var cnt      = _dayCounts.GetValueOrDefault(idx, 0);
 
-        <button class="btn btn-sm @(isSel ? "btn-primary" : "btn-outline-secondary") @(isFuture ? "disabled" : "")"
-                @onclick="() => SelectDay(idx)">
-            @DayLabel(day)
+        <button class="acad-day-pill @(isSel ? "acad-day-active" : "") @(isFuture ? "acad-day-future" : "")"
+                @onclick="() => SelectDay(idx)" disabled="@isFuture">
+            <span class="acad-day-label">@DayLabel(day)</span>
             @if (cnt > 0)
             {
-                <span class="badge ms-1" style="background-color:#2e7d32; color:#fff;">@cnt</span>
+                <span class="acad-day-badge">@cnt</span>
             }
         </button>
     }
@@ -51,29 +58,35 @@
 <div class="d-flex gap-3 px-3 mb-3" style="align-items:flex-start;">
 
     @* ── Today's visit list ── *@
-    <div class="card flex-grow-1" style="min-width:0;">
-        <div class="card-header py-2 d-flex align-items-center gap-2">
-            <strong class="fs-14">Visits — @DayLabel(_weekStart.AddDays(_selDay))</strong>
-            <span class="badge bg-secondary ms-1">@_visits.Count</span>
+    <div class="card flex-grow-1 shadow-sm acad-visit-card" style="min-width:0;border-radius:14px;border:none;">
+        <div class="card-header acad-visit-header">
+            <div class="d-flex align-items-center gap-2">
+                <i class="ri-user-heart-line"></i>
+                <strong style="font-size:.9rem;">Visits — @DayLabel(_weekStart.AddDays(_selDay))</strong>
+            </div>
+            <span class="badge rounded-pill px-2" style="background:rgba(255,255,255,.25);font-size:.78rem;">
+                @_visits.Count
+            </span>
         </div>
-        <div class="card-body py-2">
+        <div class="card-body py-3 px-3">
             @if (_visits.Count == 0)
             {
-                <p class="text-muted small mb-0">No visits recorded for this day yet.</p>
+                <div class="text-center py-4 text-muted">
+                    <i class="ri-user-search-line d-block mb-2 opacity-30" style="font-size:2.2rem;"></i>
+                    <span class="small">No visits recorded for this day yet.</span>
+                </div>
             }
             else
             {
                 <div class="d-flex flex-wrap gap-2">
                     @foreach (var v in _visits)
                     {
-                        <span class="d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill"
-                              style="background:#e8f5e9; color:#1b5e20; font-size:0.82rem; font-weight:500;">
+                        <span class="acad-visit-chip">
+                            <i class="ri-user-smile-line" style="font-size:.82rem;opacity:.7;"></i>
                             @v.FullName
-                            <button class="btn btn-link p-0 ms-1 lh-1"
-                                    style="color:#2e7d32; font-size:0.8rem;"
-                                    title="Remove"
+                            <button class="acad-chip-remove" title="Remove"
                                     @onclick="() => DoRemoveVisit(v.VisitId)">
-                                <i class="ri-close-circle-fill"></i>
+                                <i class="ri-close-fill"></i>
                             </button>
                         </span>
                     }
@@ -83,34 +96,42 @@
     </div>
 
     @* ── All persons panel ── *@
-    <div class="card" style="width:280px;min-width:220px;flex-shrink:0;">
-        <div class="card-header py-2">
-            <strong class="fs-14">All Persons</strong>
+    <div class="card shadow-sm acad-persons-card" style="width:280px;min-width:220px;flex-shrink:0;border-radius:14px;border:none;">
+        <div class="card-header acad-persons-header">
+            <i class="ri-contacts-book-2-line me-1"></i>
+            <strong style="font-size:.88rem;">All Persons</strong>
         </div>
         <div class="card-body py-2 px-2">
-            <input class="form-control form-control-sm mb-2"
-                   placeholder="Filter..."
-                   value="@_searchText"
-                   @oninput="OnSearchInput" />
-            <div style="max-height:160px; overflow-y:auto;">
+            <div class="input-group input-group-sm mb-2">
+                <span class="input-group-text bg-white border-end-0" style="border-color:#e2e8f0;">
+                    <i class="ri-search-2-line text-muted" style="font-size:.85rem;"></i>
+                </span>
+                <input class="form-control border-start-0" style="border-color:#e2e8f0;font-size:.84rem;"
+                       placeholder="Filter persons..."
+                       value="@_searchText"
+                       @oninput="OnSearchInput" />
+            </div>
+            <div style="max-height:200px; overflow-y:auto;">
                 @foreach (var p in FilteredPersons)
                 {
                     var visited = AlreadyVisited(p.PersonId);
-                    <div class="d-flex align-items-center justify-content-between px-2 py-1 rounded mb-1"
-                         style="cursor:@(visited ? "default" : "pointer");
-                                color:@(visited ? "#999" : "#212529");
-                                background-color:@(visited ? "#f0f0f0" : "#ffffff");"
+                    <div class="acad-person-row @(visited ? "acad-person-visited" : "acad-person-available")"
                          @onclick="() => { if (!visited) AddVisit(p); }">
-                        <span class="small">@p.FullName</span>
+                        <div class="acad-person-dot @(visited ? "acad-dot-visited" : "acad-dot-available")"></div>
+                        <span style="font-size:.83rem;">@p.FullName</span>
                         @if (visited)
                         {
-                            <i class="ri-check-line" style="font-size:0.85rem; color:#2e7d32;"></i>
+                            <i class="ri-check-double-line ms-auto" style="font-size:.88rem;color:#16a34a;"></i>
+                        }
+                        else
+                        {
+                            <i class="ri-add-circle-line ms-auto acad-add-icon" style="font-size:.88rem;"></i>
                         }
                     </div>
                 }
                 @if (!FilteredPersons.Any())
                 {
-                    <div class="text-muted small text-center py-2">No persons found.</div>
+                    <div class="text-muted small text-center py-3">No persons found.</div>
                 }
             </div>
         </div>
@@ -118,13 +139,15 @@
 
 </div>
 
-@* ── Statistics card ── *@
-<div class="card mx-3 mb-3">
-    <div class="card-header py-2 d-flex align-items-center gap-2"
-         style="background:linear-gradient(90deg,#1b5e20 0%,#2e7d32 100%); color:#fff;">
-        <strong class="fs-14">Weekly Visit Totals (last 20 weeks)</strong>
-        <span class="ms-auto small opacity-75">
-            Total this period: @_weeklyTotals.Sum(w => w.TotalVisits) visits
+@* ── Statistics chart card ── *@
+<div class="card mx-3 mb-3 shadow-sm" style="border-radius:14px;border:none;overflow:visible;">
+    <div class="card-header acad-chart-header">
+        <div class="d-flex align-items-center gap-2">
+            <i class="ri-bar-chart-box-fill" style="font-size:1.1rem;"></i>
+            <strong style="font-size:.9rem;">Weekly Visit Totals — last 20 weeks</strong>
+        </div>
+        <span style="font-size:.78rem;opacity:.8;">
+            Total: @_weeklyTotals.Sum(w => w.TotalVisits) visits
         </span>
     </div>
     <div class="card-body py-1 px-2">
@@ -141,6 +164,123 @@
         </ApexChart>
     </div>
 </div>
+
+<style>
+    /* ── Nav bar ── */
+    .acad-nav-bar {
+        display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+        padding: 10px 16px 10px;
+        background: linear-gradient(135deg, #065f46 0%, #059669 60%, #10b981 100%);
+        color: #fff;
+    }
+    .acad-nav-week { font-weight: 600; font-size: .93rem; }
+    .acad-nav-btn {
+        background: rgba(255,255,255,.18); color: #fff; border: 1px solid rgba(255,255,255,.25);
+        border-radius: 20px; font-size: .82rem; padding: 4px 12px;
+        transition: background .18s;
+    }
+    .acad-nav-btn:hover:not(:disabled) { background: rgba(255,255,255,.3); color: #fff; }
+    .acad-nav-btn:disabled { opacity: .4; }
+    .acad-add-btn {
+        background: rgba(255,255,255,.95); color: #065f46; border: none;
+        border-radius: 20px; font-size: .82rem; font-weight: 600; padding: 5px 14px;
+        box-shadow: 0 2px 10px rgba(0,0,0,.12);
+    }
+    .acad-add-btn:hover { background: #fff; color: #047857; }
+    .acad-print-btn {
+        background: transparent; color: rgba(255,255,255,.85); border: 1px solid rgba(255,255,255,.3);
+        border-radius: 20px; font-size: .82rem; padding: 4px 12px;
+    }
+    .acad-print-btn:hover { background: rgba(255,255,255,.15); color: #fff; }
+
+    /* ── Day pills ── */
+    .acad-day-bar { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 12px; }
+    .acad-day-pill {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 5px 13px; border-radius: 20px; border: 1px solid #d1fae5;
+        background: #f0fdf4; color: #374151;
+        font-size: .8rem; font-weight: 500; cursor: pointer;
+        transition: background .15s, border-color .15s, box-shadow .15s;
+    }
+    .acad-day-pill:hover:not(.acad-day-future):not(.acad-day-active) {
+        background: #dcfce7; border-color: #6ee7b7;
+    }
+    .acad-day-active {
+        background: linear-gradient(135deg, #059669, #10b981) !important;
+        border-color: transparent !important; color: #fff !important;
+        box-shadow: 0 3px 12px rgba(5,150,105,.35);
+    }
+    .acad-day-future { opacity: .4; cursor: default; }
+    .acad-day-label { font-size: .8rem; }
+    .acad-day-badge {
+        background: rgba(255,255,255,.35); color: #fff;
+        font-size: .7rem; font-weight: 700;
+        border-radius: 10px; padding: 0 6px; min-width: 18px; text-align: center;
+    }
+    .acad-day-pill:not(.acad-day-active) .acad-day-badge {
+        background: #059669; color: #fff;
+    }
+
+    /* ── Visit card ── */
+    .acad-visit-header {
+        display: flex; align-items: center; justify-content: space-between;
+        background: linear-gradient(135deg, #065f46, #10b981);
+        color: #fff; border-radius: 14px 14px 0 0; padding: 10px 16px; border: none;
+    }
+    .acad-visit-chip {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 5px 10px 5px 8px; border-radius: 20px;
+        background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+        color: #064e3b; font-size: .82rem; font-weight: 600;
+        border: 1px solid #6ee7b7;
+        box-shadow: 0 1px 4px rgba(5,150,105,.12);
+        transition: transform .15s, box-shadow .15s;
+    }
+    .acad-visit-chip:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(5,150,105,.22); }
+    .acad-chip-remove {
+        background: none; border: none; padding: 0; margin-left: 2px;
+        color: #065f46; opacity: .6; line-height: 1; cursor: pointer; font-size: .9rem;
+        display: flex; align-items: center;
+        transition: opacity .15s, color .15s;
+    }
+    .acad-chip-remove:hover { opacity: 1; color: #dc2626; }
+
+    /* ── Persons panel ── */
+    .acad-persons-card { background: #fff !important; }
+    .acad-persons-card .card-body { background: #fff; }
+    .acad-persons-header {
+        display: flex; align-items: center; gap: 6px;
+        background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+        border-radius: 14px 14px 0 0; padding: 9px 12px;
+        color: #374151; border: none;
+    }
+    .acad-person-row {
+        display: flex; align-items: center; gap: 8px;
+        padding: 6px 8px; border-radius: 8px; margin-bottom: 2px;
+        color: #1f2937;
+        transition: background .12s;
+    }
+    .acad-person-available { cursor: pointer; }
+    .acad-person-available:hover { background: #f0fdf4; color: #1f2937; }
+    .acad-person-available:hover .acad-add-icon { color: #16a34a; }
+    .acad-person-visited { cursor: default; opacity: .65; }
+    .acad-person-dot {
+        width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    }
+    .acad-dot-available { background: #d1d5db; }
+    .acad-dot-visited   { background: #16a34a; }
+    .acad-add-icon { color: #9ca3af; transition: color .15s; }
+
+    /* ── Chart header ── */
+    .acad-chart-header {
+        display: flex; align-items: center; justify-content: space-between;
+        background: linear-gradient(135deg, #065f46, #10b981);
+        color: #fff; padding: 10px 16px; border: none;
+        border-radius: 14px 14px 0 0;
+    }
+    /* Allow tooltip to escape the chart card */
+    .apexcharts-tooltip { z-index: 9999 !important; }
+</style>
 
 @* ── New Student modal ── *@
 <SpkNewPersonModal @ref="_addModal" Title="New Student" OnSaved="SaveNewStudent" />

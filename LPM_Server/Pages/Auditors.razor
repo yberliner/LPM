@@ -189,35 +189,33 @@
             {
                 <div class="row g-2 mb-3">
                     <div class="col-6 col-md-3">
-                        <div class="card shadow-sm text-center py-3">
-                            <div style="font-size:1.8rem;font-weight:700;color:#3949ab;line-height:1;">
-                                @_stats.TotalSessions
-                            </div>
-                            <div class="text-muted small mt-1">Total Sessions</div>
+                        <div class="aud-stat-card" style="background:linear-gradient(135deg,#1e40af,#6366f1);">
+                            <div class="aud-stat-icon"><i class="ri-calendar-check-line"></i></div>
+                            <div class="aud-stat-value">@_stats.TotalSessions</div>
+                            <div class="aud-stat-label">Total Sessions</div>
                         </div>
                     </div>
                     <div class="col-6 col-md-3">
-                        <div class="card shadow-sm text-center py-3">
-                            <div style="font-size:1.8rem;font-weight:700;color:#3949ab;line-height:1;">
-                                @Hmm((int)_stats.TotalSec)
-                            </div>
-                            <div class="text-muted small mt-1">Hours Worked</div>
+                        <div class="aud-stat-card" style="background:linear-gradient(135deg,#0d9488,#22c55e);">
+                            <div class="aud-stat-icon"><i class="ri-timer-line"></i></div>
+                            <div class="aud-stat-value">@Hmm((int)_stats.TotalSec)</div>
+                            <div class="aud-stat-label">Hours Worked</div>
                         </div>
                     </div>
                     <div class="col-6 col-md-3">
-                        <div class="card shadow-sm text-center py-3">
-                            <div style="font-size:1.8rem;font-weight:700;color:#3949ab;line-height:1;">
-                                @_stats.FreeSessions
-                            </div>
-                            <div class="text-muted small mt-1">Free Sessions</div>
+                        <div class="aud-stat-card" style="background:linear-gradient(135deg,#d97706,#f59e0b);">
+                            <div class="aud-stat-icon"><i class="ri-gift-line"></i></div>
+                            <div class="aud-stat-value">@_stats.FreeSessions</div>
+                            <div class="aud-stat-label">Free Sessions</div>
                         </div>
                     </div>
                     <div class="col-6 col-md-3">
-                        <div class="card shadow-sm text-center py-3">
-                            <div style="font-size:1.1rem;font-weight:700;color:#3949ab;line-height:1;">
+                        <div class="aud-stat-card" style="background:linear-gradient(135deg,#7c3aed,#a855f7);">
+                            <div class="aud-stat-icon"><i class="ri-history-line"></i></div>
+                            <div class="aud-stat-value" style="font-size:@(_stats.LastSessionDate != null ? "1rem" : "1.6rem");">
                                 @(_stats.LastSessionDate ?? "—")
                             </div>
-                            <div class="text-muted small mt-1">Last Session</div>
+                            <div class="aud-stat-label">Last Session</div>
                         </div>
                     </div>
                 </div>
@@ -234,6 +232,23 @@
 
     </div>
 </div>
+
+<style>
+    .aud-stat-card {
+        border-radius: 14px; padding: 16px 12px; text-align: center; color: #fff;
+        position: relative; overflow: hidden;
+        box-shadow: 0 4px 16px rgba(0,0,0,.14);
+        transition: transform .18s, box-shadow .18s;
+    }
+    .aud-stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+    .aud-stat-card::before {
+        content:''; position:absolute; top:-28px; right:-28px;
+        width:80px; height:80px; border-radius:50%; background:rgba(255,255,255,.1);
+    }
+    .aud-stat-icon { font-size:1.4rem; opacity:.75; margin-bottom:4px; }
+    .aud-stat-value { font-size:1.7rem; font-weight:800; line-height:1.1; }
+    .aud-stat-label { font-size:.72rem; opacity:.82; margin-top:4px; letter-spacing:.03em; text-transform:uppercase; }
+</style>
 
 @code {
     List<AuditorListItem> _allAuditors = [];

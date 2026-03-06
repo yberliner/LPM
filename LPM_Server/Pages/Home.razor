@@ -11,33 +11,35 @@
 <div @onclick="DismissMenu">
 
     @* ── Week navigation bar ── *@
-    <div class="d-flex align-items-center flex-wrap gap-2 px-3 py-2 border-bottom mb-3">
-        <button class="btn btn-sm btn-outline-secondary" @onclick="PrevWeek">← Prev</button>
-        <span class="fw-semibold fs-14">
-            Week: @DayLabel(_weekStart) – @DayLabel(_weekStart.AddDays(6))
+    <div class="home-nav-bar d-flex align-items-center flex-wrap gap-2 px-3 py-2">
+        <button class="btn btn-sm home-nav-btn" @onclick="PrevWeek">
+            <i class="ri-arrow-left-s-line"></i> Prev
+        </button>
+        <span class="home-nav-week">
+            <i class="ri-calendar-2-line me-1 opacity-75"></i>@DayLabel(_weekStart) – @DayLabel(_weekStart.AddDays(6))
         </span>
-        <button class="btn btn-sm btn-outline-secondary" @onclick="NextWeek"
+        <button class="btn btn-sm home-nav-btn" @onclick="NextWeek"
                 disabled="@(_weekStart >= DashboardService.GetWeekStart(MaxAllowedDate()))">
-            Next →
+            Next <i class="ri-arrow-right-s-line"></i>
         </button>
         <div class="d-flex align-items-center gap-2 ms-auto">
-            <button class="btn btn-sm btn-outline-secondary" @onclick="PrintTable">
+            <button class="btn btn-sm home-nav-btn" @onclick="PrintTable">
                 <i class="ri-printer-line me-1"></i>Print
             </button>
             @if (_isAuditor && _isCS && !_soloMode)
             {
                 <div class="btn-group btn-group-sm" role="group" title="Column filter">
                     <button type="button"
-                            class="btn @(_roleFilter=="Both"?"btn-primary":"btn-outline-primary")"
+                            class="btn @(_roleFilter=="Both"?"home-filter-active":"home-filter-btn")"
                             @onclick='() => _roleFilter="Both"'>Both</button>
                     <button type="button"
-                            class="btn @(_roleFilter=="Auditor"?"btn-primary":"btn-outline-primary")"
+                            class="btn @(_roleFilter=="Auditor"?"home-filter-active":"home-filter-btn")"
                             @onclick='() => _roleFilter="Auditor"'>Aud</button>
                     <button type="button"
-                            class="btn @(_roleFilter=="CS"?"btn-primary":"btn-outline-primary")"
+                            class="btn @(_roleFilter=="CS"?"home-filter-active":"home-filter-btn")"
                             @onclick='() => _roleFilter="CS"'>CS</button>
                 </div>
-                <button class="btn btn-sm @(_hideEmpty?"btn-secondary":"btn-outline-secondary")"
+                <button class="btn btn-sm @(_hideEmpty?"home-filter-active":"home-filter-btn")"
                         title="@(_hideEmpty?"Show empty columns":"Hide empty columns")"
                         @onclick="() => _hideEmpty = !_hideEmpty">
                     <i class="@(_hideEmpty?"ri-eye-line":"ri-eye-off-line")"></i>
@@ -45,13 +47,15 @@
             }
             @if (!_soloMode)
             {
-                <button class="btn btn-sm btn-outline-primary" @onclick="ShowAddPcModal">+ Add PC</button>
+                <button class="btn btn-sm home-nav-btn-accent" @onclick="ShowAddPcModal">
+                    <i class="ri-add-line me-1"></i>Add PC
+                </button>
             }
             @if (_auditorType == 3)
             {
-                <button class="btn btn-sm @(_soloMode ? "btn-warning" : "btn-outline-warning")"
+                <button class="btn btn-sm @(_soloMode ? "home-solo-active" : "home-solo-btn")"
                         @onclick="ToggleSoloMode">
-                    @(_soloMode ? "Solo ✓" : "Solo")
+                    <i class="ri-user-line me-1"></i>@(_soloMode ? "Solo ✓" : "Solo")
                 </button>
             }
         </div>
@@ -314,9 +318,10 @@
         @if (_showCtxMenu)
         {
             var ctxPc = _myPcs.FirstOrDefault(p => p.PcId == _ctxPcId && p.IsSolo == _ctxIsSolo);
-            <div class="card shadow-sm border"
-                 style="position:fixed; top:@(_ctxY)px; left:@(_ctxX)px; z-index:9999; min-width:160px;"
+            <div class="home-ctx-menu"
+                 style="position:fixed; top:@(_ctxY)px; left:@(_ctxX)px; z-index:9999; min-width:170px;"
                  @onclick:stopPropagation="true">
+                <div class="home-ctx-header">Options</div>
                 <div class="list-group list-group-flush">
                     @if (!_ctxIsSolo)
                     {
@@ -324,14 +329,14 @@
                         {
                             <button class="list-group-item list-group-item-action py-2"
                                     @onclick="RemoveFromOthers">
-                                <i class="ri-corner-up-left-line me-2"></i>Remove from Others
+                                <i class="ri-corner-up-left-line me-2 text-primary"></i>Remove from Others
                             </button>
                         }
                         else
                         {
                             <button class="list-group-item list-group-item-action py-2"
                                     @onclick="SetAsOther">
-                                <i class="ri-shuffle-line me-2"></i>Set as Other
+                                <i class="ri-shuffle-line me-2 text-secondary"></i>Set as Other
                             </button>
                         }
                     }
@@ -355,13 +360,14 @@
                 _              => "Auditor"
             };
 
-            <div class="card mx-3 mt-3 mb-3" @onclick:stopPropagation="true">
-                <div class="card-header d-flex align-items-center gap-2 py-2">
-                    <strong>@selPcName — @DayLabel(selDate)</strong>
-                    <span class="badge @(_selRole == "CS" ? "bg-success-transparent" : _selRole == "Miscellaneous" ? "bg-secondary-transparent" : "bg-primary-transparent") ms-1">
-                        @roleLabel
-                    </span>
-                    <button class="btn-close ms-auto" title="Close" @onclick="ClearSelection"></button>
+            <div class="card mx-3 mt-3 mb-3 home-detail-card" @onclick:stopPropagation="true">
+                <div class="card-header home-detail-header d-flex align-items-center gap-2 py-2">
+                    <i class="ri-layout-grid-line opacity-75"></i>
+                    <strong>@selPcName</strong>
+                    <span class="opacity-60">—</span>
+                    <span>@DayLabel(selDate)</span>
+                    <span class="badge home-role-badge ms-1">@roleLabel</span>
+                    <button class="btn-close btn-close-white ms-auto" title="Close" @onclick="ClearSelection"></button>
                 </div>
                 <div class="card-body py-2">
 
@@ -383,7 +389,7 @@
                                     <li class="mb-1">
                                         @if (_editSessionId == s.SessionId)
                                         {
-                                            <div class="border rounded p-2 bg-light">
+                                            <div class="home-form-box">
                                                 <div class="row g-2 align-items-center mb-2">
                                                     <div class="col-auto">
                                                         <label class="form-label mb-0 small">Duration (H:MM)</label>
@@ -465,14 +471,14 @@
                         @* Add Session / Misc Entry button and form *@
                         @if (!_showAddSession)
                         {
-                            <button class="btn btn-sm btn-outline-primary"
+                            <button class="btn btn-sm home-nav-btn-accent"
                                     @onclick="OpenAddSession">
-                                @(_selRole == "Miscellaneous" ? "+ Add Misc Entry" : "+ Add Session")
+                                <i class="ri-add-line me-1"></i>@(_selRole == "Miscellaneous" ? "Add Misc Entry" : "Add Session")
                             </button>
                         }
                         else
                         {
-                            <div class="border rounded p-3 mt-2 bg-light">
+                            <div class="home-form-box mt-2">
                                 <h6 class="mb-2">@(_selRole == "Miscellaneous" ? "Add Misc Entry" : "Add Session")</h6>
                                 <div class="row g-2 align-items-center mb-2">
                                     <div class="col-auto">
@@ -560,7 +566,7 @@
                                         {
                                             @if (_editReviewId == rev.CsReviewId)
                                             {
-                                                <div class="border rounded p-2 bg-light mt-1">
+                                                <div class="home-form-box mt-1">
                                                     <div class="row g-2 align-items-center mb-2">
                                                         <div class="col-auto">
                                                             <label class="form-label mb-0 small">Duration (H:MM)</label>
@@ -608,9 +614,9 @@
                                         }
                                         else
                                         {
-                                            <button class="btn btn-sm btn-outline-success py-0 mt-1"
+                                            <button class="btn btn-sm btn-outline-success rounded-pill px-3 py-0 mt-1"
                                                     @onclick="() => StartAddReview(s.SessionId, s.LengthSec + s.AdminSec)">
-                                                + CS Review
+                                                <i class="ri-add-line me-1"></i>CS Review
                                             </button>
                                         }
                                     </li>
@@ -621,7 +627,7 @@
                         @* Add CS Review form *@
                         @if (_showAddReview)
                         {
-                            <div class="border rounded p-3 mt-2 bg-light">
+                            <div class="home-form-box mt-2">
                                 <h6 class="mb-2">Add CS Review (Session #@_addReviewSessionId)</h6>
                                 <div class="row g-2 align-items-center mb-2">
                                     <div class="col-auto">
@@ -648,8 +654,11 @@
                         }
 
                         @* ── General CS Work ── *@
-                        <hr class="my-2" />
-                        <div class="fw-semibold small text-muted mb-1">General CS Work</div>
+                        <hr class="my-3" />
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <i class="ri-briefcase-line text-info"></i>
+                            <span class="fw-semibold small" style="color:#0d9488;">General CS Work</span>
+                        </div>
                         @if (_detail.GeneralWork != null && _detail.GeneralWork.Count > 0)
                         {
                             <ul class="list-unstyled mb-2">
@@ -674,14 +683,14 @@
 
                         @if (!_showAddGeneralCs)
                         {
-                            <button class="btn btn-sm btn-outline-info"
+                            <button class="btn btn-sm btn-outline-info rounded-pill px-3"
                                     @onclick="OpenAddGeneralCs">
-                                + General CS
+                                <i class="ri-add-line me-1"></i>General CS
                             </button>
                         }
                         else
                         {
-                            <div class="border rounded p-3 mt-2 bg-light">
+                            <div class="home-form-box mt-2">
                                 <h6 class="mb-2">Add General CS Work</h6>
                                 <div class="row g-2 align-items-center mb-2">
                                     <div class="col-auto">
@@ -748,9 +757,11 @@
                 <div class="modal-dialog modal-dialog-centered"
                      @onclick:stopPropagation="true">
                     <div class="modal-content">
-                        <div class="modal-header py-2">
-                            <h5 class="modal-title fs-15">Add PC to Dashboard</h5>
-                            <button type="button" class="btn-close"
+                        <div class="modal-header py-2 home-modal-header">
+                            <h5 class="modal-title fs-15 text-white">
+                                <i class="ri-add-circle-line me-2"></i>Add PC to Dashboard
+                            </h5>
+                            <button type="button" class="btn-close btn-close-white"
                                     @onclick="() => _showAddPcModal = false"></button>
                         </div>
                         <div class="modal-body">
@@ -773,10 +784,9 @@
                                 }
                                 @foreach (var pc in available)
                                 {
-                                    <div class="list-group-item list-group-item-action"
-                                         style="cursor:pointer;"
+                                    <div class="home-pc-item"
                                          @onclick="() => AddPc(pc.PcId, pc.IsSolo)">
-                                        @pc.FullName
+                                        <i class="ri-user-line me-2 opacity-50"></i>@pc.FullName
                                     </div>
                                 }
                             </div>
@@ -788,6 +798,100 @@
     }
 
 </div>
+
+<style>
+    /* ── Nav bar ── */
+    .home-nav-bar {
+        background: linear-gradient(135deg, #0f2057 0%, #1a237e 55%, #283593 100%);
+        color: #fff;
+        box-shadow: 0 2px 12px rgba(26,35,126,.28);
+        margin-bottom: 0.75rem;
+    }
+    .home-nav-week {
+        font-weight: 600; font-size: .9rem; color: #fff; letter-spacing: .02em;
+    }
+    .home-nav-btn {
+        background: rgba(255,255,255,.12); color: #fff;
+        border: 1px solid rgba(255,255,255,.25); border-radius: 8px;
+        transition: background .18s;
+    }
+    .home-nav-btn:hover, .home-nav-btn:focus { background: rgba(255,255,255,.22); color: #fff; border-color: rgba(255,255,255,.4); }
+    .home-nav-btn:disabled { opacity: .4; color: #fff; }
+    .home-nav-btn-accent {
+        background: linear-gradient(135deg, #1565c0, #1e88e5);
+        color: #fff; border: none; border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(21,101,192,.4);
+        transition: box-shadow .18s, transform .18s;
+    }
+    .home-nav-btn-accent:hover { box-shadow: 0 4px 14px rgba(21,101,192,.55); transform: translateY(-1px); color: #fff; }
+    .home-filter-btn {
+        background: rgba(255,255,255,.1); color: rgba(255,255,255,.8);
+        border: 1px solid rgba(255,255,255,.2);
+    }
+    .home-filter-btn:hover { background: rgba(255,255,255,.2); color: #fff; }
+    .home-filter-active {
+        background: rgba(255,255,255,.92); color: #1a237e;
+        border: 1px solid rgba(255,255,255,.92); font-weight: 600;
+    }
+    .home-filter-active:hover { background: #fff; color: #1a237e; }
+    .home-solo-btn {
+        background: rgba(251,191,36,.15); color: #fbbf24;
+        border: 1px solid rgba(251,191,36,.35); border-radius: 8px;
+    }
+    .home-solo-btn:hover { background: rgba(251,191,36,.25); color: #fbbf24; }
+    .home-solo-active {
+        background: #f59e0b; color: #fff; border: none; border-radius: 8px;
+    }
+    .home-solo-active:hover { background: #d97706; color: #fff; }
+
+    /* ── Detail panel ── */
+    .home-detail-card {
+        border: none !important; border-radius: 14px !important; overflow: hidden;
+        box-shadow: 0 4px 20px rgba(0,0,0,.10);
+    }
+    .home-detail-header {
+        background: linear-gradient(135deg, #1a237e 0%, #283593 55%, #3949ab 100%);
+        color: #fff; border-bottom: none;
+    }
+    .home-role-badge {
+        background: rgba(255,255,255,.22); color: #fff;
+        font-weight: 600; border-radius: 20px; padding: .25em .7em;
+    }
+
+    /* ── Inline forms ── */
+    .home-form-box {
+        background: #f8faff; border: 1px solid #dde4f5;
+        border-radius: 10px; padding: 12px 14px;
+    }
+
+    /* ── Context menu ── */
+    .home-ctx-menu {
+        background: #fff; border: none; border-radius: 12px; overflow: hidden;
+        box-shadow: 0 8px 28px rgba(0,0,0,.16);
+    }
+    .home-ctx-header {
+        font-size: .7rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: .08em; color: #9ca3af; padding: 8px 14px 4px;
+    }
+    .home-ctx-menu .list-group-item {
+        border: none; padding: 9px 14px; font-size: .88rem; transition: background .15s;
+    }
+    .home-ctx-menu .list-group-item:hover { background: #f3f4f6; }
+    .home-ctx-menu .list-group-item.text-danger:hover { background: #fff5f5; }
+
+    /* ── Add-PC modal ── */
+    .home-modal-header {
+        background: linear-gradient(135deg, #1a237e, #3949ab); border-bottom: none;
+    }
+    .home-pc-item {
+        padding: 10px 14px; cursor: pointer; font-size: .9rem;
+        border-bottom: 1px solid #f3f4f6;
+        transition: background .15s, color .15s;
+        display: flex; align-items: center;
+    }
+    .home-pc-item:last-child { border-bottom: none; }
+    .home-pc-item:hover { background: #eef2ff; color: #3949ab; font-weight: 600; }
+</style>
 
 @code {
 

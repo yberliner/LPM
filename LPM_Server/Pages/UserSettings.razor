@@ -8,39 +8,65 @@
 @inject IWebHostEnvironment Env
 @inject NavigationManager Nav
 
-<div class="container-xl py-4">
-    <h4 class="mb-4">Account Settings</h4>
+@* ── Profile hero banner ── *@
+<div class="settings-hero">
+    <div class="settings-hero-avatar">
+        @if (_avatarUrl is not null)
+        {
+            <img src="@_avatarUrl" class="settings-hero-img" alt="avatar" />
+        }
+        else
+        {
+            <span class="settings-hero-initial">
+                @(_username.Length > 0 ? _username[0].ToString().ToUpper() : "?")
+            </span>
+        }
+    </div>
+    <div>
+        <div class="settings-hero-name">@_username</div>
+        <div class="settings-hero-sub">Account Settings</div>
+    </div>
+</div>
 
+<div class="container-xl py-4">
     <div class="row g-4">
 
         <!-- Card 1: Change Password -->
         <div class="col-md-6">
-            <div class="card custom-card h-100">
-                <div class="card-header">
-                    <h5 class="card-title mb-0"><i class="ri-lock-password-line me-2"></i>Change Password</h5>
+            <div class="card custom-card h-100 shadow-sm" style="border-radius:16px;border:none;">
+                <div class="card-header settings-card-header" style="background:linear-gradient(135deg,#1e40af,#6366f1);">
+                    <div class="settings-card-header-icon">
+                        <i class="ri-lock-password-fill"></i>
+                    </div>
+                    <div>
+                        <div class="settings-card-header-title">Change Password</div>
+                        <div class="settings-card-header-sub">Update your account credentials</div>
+                    </div>
                 </div>
-                <div class="card-body">
+                <div class="card-body p-4">
                     @if (_pwMsg is not null)
                     {
-                        <div class="alert @(_pwOk ? "alert-success" : "alert-danger") alert-dismissible" role="alert">
-                            @_pwMsg
+                        <div class="alert @(_pwOk ? "alert-success" : "alert-danger") alert-dismissible d-flex align-items-center gap-2" role="alert"
+                             style="border-radius:10px;border:none;font-size:.88rem;">
+                            <i class="@(_pwOk ? "ri-checkbox-circle-fill" : "ri-error-warning-fill")"></i>
+                            <span class="flex-grow-1">@_pwMsg</span>
                             <button type="button" class="btn-close" @onclick="() => _pwMsg = null"></button>
                         </div>
                     }
                     <div class="mb-3">
-                        <label class="form-label">Current Password</label>
+                        <label class="form-label settings-label">Current Password</label>
                         <SpkPasswordToggle @bind-Password="_currentPwd" />
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">New Password</label>
+                        <label class="form-label settings-label">New Password</label>
                         <SpkPasswordToggle @bind-Password="_newPwd" />
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Confirm New Password</label>
+                    <div class="mb-4">
+                        <label class="form-label settings-label">Confirm New Password</label>
                         <SpkPasswordToggle @bind-Password="_confirmPwd" />
                     </div>
-                    <button class="btn btn-primary" @onclick="HandleChangePassword">
-                        Update Password
+                    <button class="btn settings-save-btn" @onclick="HandleChangePassword">
+                        <i class="ri-save-line me-2"></i>Update Password
                     </button>
                 </div>
             </div>
@@ -48,38 +74,49 @@
 
         <!-- Card 2: Profile Picture -->
         <div class="col-md-6">
-            <div class="card custom-card h-100">
-                <div class="card-header">
-                    <h5 class="card-title mb-0"><i class="ri-image-line me-2"></i>Profile Picture</h5>
+            <div class="card custom-card h-100 shadow-sm" style="border-radius:16px;border:none;">
+                <div class="card-header settings-card-header" style="background:linear-gradient(135deg,#0d9488,#22c55e);">
+                    <div class="settings-card-header-icon">
+                        <i class="ri-camera-fill"></i>
+                    </div>
+                    <div>
+                        <div class="settings-card-header-title">Profile Picture</div>
+                        <div class="settings-card-header-sub">Upload your photo</div>
+                    </div>
                 </div>
-                <div class="card-body d-flex flex-column align-items-center gap-3">
-                    <div style="width:120px;height:120px;border-radius:50%;overflow:hidden;
-                                background:rgba(100,120,200,0.15);border:2px solid #ddd;
-                                display:flex;align-items:center;justify-content:center;
-                                font-size:3rem;font-weight:700;color:#3949ab;">
+                <div class="card-body p-4 d-flex flex-column align-items-center gap-3">
+                    <div class="settings-avatar-preview">
                         @if (_avatarUrl is not null)
                         {
                             <img src="@_avatarUrl" style="width:100%;height:100%;object-fit:cover;" alt="avatar" />
                         }
                         else
                         {
-                            @(_username.Length > 0 ? _username[0].ToString().ToUpper() : "?")
+                            <span style="font-size:3rem;font-weight:700;color:#3949ab;">
+                                @(_username.Length > 0 ? _username[0].ToString().ToUpper() : "?")
+                            </span>
                         }
                     </div>
 
                     @if (_picMsg is not null)
                     {
-                        <div class="alert @(_picOk ? "alert-success" : "alert-danger") w-100 text-center mb-0" role="alert">
+                        <div class="alert @(_picOk ? "alert-success" : "alert-danger") w-100 text-center mb-0"
+                             style="border-radius:10px;border:none;font-size:.88rem;" role="alert">
                             @_picMsg
                         </div>
                     }
 
-                    <InputFile OnChange="HandleFileUpload" accept="image/*" class="form-control" />
-                    <small class="text-muted">Max 2 MB — JPEG, PNG, GIF, WebP</small>
+                    <div class="settings-upload-zone">
+                        <i class="ri-upload-cloud-2-line settings-upload-icon"></i>
+                        <div class="settings-upload-label">Click to upload image</div>
+                        <div class="settings-upload-sub">JPEG · PNG · GIF · WebP · max 2 MB</div>
+                        <InputFile OnChange="HandleFileUpload" accept="image/*"
+                                   class="settings-upload-input" />
+                    </div>
 
                     @if (_avatarUrl is not null)
                     {
-                        <button class="btn btn-outline-danger btn-sm" @onclick="HandleDeleteAvatar">
+                        <button class="btn btn-outline-danger btn-sm rounded-pill px-3" @onclick="HandleDeleteAvatar">
                             <i class="ri-delete-bin-line me-1"></i>Remove Photo
                         </button>
                     }
@@ -89,6 +126,81 @@
 
     </div>
 </div>
+
+<style>
+    /* ── Hero banner ── */
+    .settings-hero {
+        display: flex; align-items: center; gap: 20px;
+        padding: 24px 32px 20px;
+        background: linear-gradient(135deg, #0f2057 0%, #1e40af 60%, #6366f1 100%);
+        color: #fff;
+    }
+    .settings-hero-avatar {
+        width: 72px; height: 72px; border-radius: 50%; flex-shrink: 0;
+        background: rgba(255,255,255,.18);
+        border: 3px solid rgba(255,255,255,.4);
+        display: flex; align-items: center; justify-content: center;
+        overflow: hidden;
+        box-shadow: 0 4px 18px rgba(0,0,0,.22);
+    }
+    .settings-hero-img { width: 100%; height: 100%; object-fit: cover; }
+    .settings-hero-initial { font-size: 2rem; font-weight: 700; color: #fff; }
+    .settings-hero-name { font-size: 1.35rem; font-weight: 700; letter-spacing: -.2px; }
+    .settings-hero-sub  { font-size: .82rem; opacity: .7; margin-top: 2px; }
+
+    /* ── Card headers ── */
+    .settings-card-header {
+        display: flex; align-items: center; gap: 14px;
+        padding: 14px 20px;
+        border-radius: 16px 16px 0 0 !important;
+        border: none !important;
+        color: #fff;
+    }
+    .settings-card-header-icon {
+        width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+        background: rgba(255,255,255,.2);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.15rem;
+    }
+    .settings-card-header-title { font-weight: 700; font-size: .97rem; }
+    .settings-card-header-sub   { font-size: .78rem; opacity: .78; margin-top: 1px; }
+
+    /* ── Labels & save button ── */
+    .settings-label { font-size: .84rem; font-weight: 600; color: #374151; }
+    .settings-save-btn {
+        background: linear-gradient(135deg, #1e40af, #6366f1);
+        color: #fff; border: none; border-radius: 10px;
+        padding: .5rem 1.4rem; font-size: .9rem; font-weight: 600;
+        box-shadow: 0 3px 14px rgba(99,102,241,.35);
+        transition: box-shadow .2s, transform .18s;
+    }
+    .settings-save-btn:hover { box-shadow: 0 5px 20px rgba(99,102,241,.48); transform: translateY(-1px); color: #fff; }
+
+    /* ── Avatar preview circle ── */
+    .settings-avatar-preview {
+        width: 120px; height: 120px; border-radius: 50%;
+        background: rgba(99,102,241,.1);
+        border: 3px solid #e0e7ff;
+        display: flex; align-items: center; justify-content: center;
+        overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,.10);
+    }
+
+    /* ── Upload zone ── */
+    .settings-upload-zone {
+        position: relative; width: 100%;
+        border: 2px dashed #c7d2fe; border-radius: 12px;
+        padding: 24px 16px; text-align: center; cursor: pointer;
+        background: #f8f9ff;
+        transition: border-color .18s, background .18s;
+    }
+    .settings-upload-zone:hover { border-color: #6366f1; background: #eef2ff; }
+    .settings-upload-icon  { font-size: 2rem; color: #818cf8; display: block; margin-bottom: 6px; }
+    .settings-upload-label { font-size: .88rem; font-weight: 600; color: #374151; }
+    .settings-upload-sub   { font-size: .75rem; color: #94a3b8; margin-top: 4px; }
+    .settings-upload-input {
+        position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+</style>
 
 @code {
     private string _username = "";

@@ -189,48 +189,45 @@
                 long remainSec = (long)_stats.TotalHoursPurchased * 3600 - _stats.UsedSec;
                 <div class="row g-2 mb-3">
                     <div class="col-6 col-md-3">
-                        <div class="card shadow-sm text-center py-3">
-                            <div style="font-size:1.8rem;font-weight:700;color:#3949ab;line-height:1;">
-                                @_stats.TotalSessions
-                            </div>
-                            <div class="text-muted small mt-1">Total Sessions</div>
+                        <div class="pc-stat-card" style="background:linear-gradient(135deg,#1e40af,#6366f1);">
+                            <div class="pc-stat-icon"><i class="ri-calendar-check-line"></i></div>
+                            <div class="pc-stat-value">@_stats.TotalSessions</div>
+                            <div class="pc-stat-label">Total Sessions</div>
                             @if (_stats.FreeSessions > 0)
                             {
-                                <div style="font-size:0.7rem;color:#888;">@_stats.FreeSessions free</div>
+                                <div class="pc-stat-sub">@_stats.FreeSessions free</div>
                             }
                         </div>
                     </div>
                     <div class="col-6 col-md-3">
-                        <div class="card shadow-sm text-center py-3">
-                            <div style="font-size:1.8rem;font-weight:700;color:#3949ab;line-height:1;">
-                                @Hmm((int)_stats.UsedSec)
-                            </div>
-                            <div class="text-muted small mt-1">Hours Used</div>
-                            <div style="font-size:0.7rem;color:#888;">billed sessions</div>
+                        <div class="pc-stat-card" style="background:linear-gradient(135deg,#0d9488,#22c55e);">
+                            <div class="pc-stat-icon"><i class="ri-timer-flash-line"></i></div>
+                            <div class="pc-stat-value">@Hmm((int)_stats.UsedSec)</div>
+                            <div class="pc-stat-label">Hours Used</div>
+                            <div class="pc-stat-sub">billed sessions</div>
                         </div>
                     </div>
                     <div class="col-6 col-md-3">
-                        <div class="card shadow-sm text-center py-3">
-                            <div style="font-size:1.8rem;font-weight:700;color:#3949ab;line-height:1;">
-                                @_stats.TotalHoursPurchased<span style="font-size:1rem;">h</span>
-                            </div>
-                            <div class="text-muted small mt-1">Hours Purchased</div>
+                        <div class="pc-stat-card" style="background:linear-gradient(135deg,#d97706,#f59e0b);">
+                            <div class="pc-stat-icon"><i class="ri-bank-card-2-line"></i></div>
+                            <div class="pc-stat-value">@_stats.TotalHoursPurchased<span style="font-size:1rem;font-weight:500;">h</span></div>
+                            <div class="pc-stat-label">Hours Purchased</div>
                             @if (_stats.TotalAmountPaid > 0)
                             {
-                                <div style="font-size:0.7rem;color:#888;">₪@_stats.TotalAmountPaid paid</div>
+                                <div class="pc-stat-sub">₪@_stats.TotalAmountPaid paid</div>
                             }
                         </div>
                     </div>
                     <div class="col-6 col-md-3">
-                        <div class="card shadow-sm text-center py-3">
-                            <div style="font-size:1.8rem;font-weight:700;line-height:1;
-                                        color:@(remainSec >= 0 ? "#2e7d32" : "#c62828");">
-                                @HmmSigned(remainSec)
+                        <div class="pc-stat-card" style="background:@(remainSec >= 0 ? "linear-gradient(135deg,#065f46,#16a34a)" : "linear-gradient(135deg,#9f1239,#ef4444)");">
+                            <div class="pc-stat-icon">
+                                <i class="@(remainSec >= 0 ? "ri-time-line" : "ri-alarm-warning-line")"></i>
                             </div>
-                            <div class="text-muted small mt-1">Hours Remaining</div>
+                            <div class="pc-stat-value">@HmmSigned(remainSec)</div>
+                            <div class="pc-stat-label">Hours Remaining</div>
                             @if (_stats.LastSessionDate != null)
                             {
-                                <div style="font-size:0.7rem;color:#888;">Last: @_stats.LastSessionDate</div>
+                                <div class="pc-stat-sub">Last: @_stats.LastSessionDate</div>
                             }
                         </div>
                     </div>
@@ -426,6 +423,24 @@
 </div>
 
 <SpkNewPersonModal @ref="_addModal" Title="Add New PC" OnSaved="SaveNewPc" />
+
+<style>
+    .pc-stat-card {
+        border-radius: 14px; padding: 16px 12px; text-align: center; color: #fff;
+        position: relative; overflow: hidden;
+        box-shadow: 0 4px 16px rgba(0,0,0,.15);
+        transition: transform .18s, box-shadow .18s;
+    }
+    .pc-stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.22); }
+    .pc-stat-card::before {
+        content:''; position:absolute; top:-28px; right:-28px;
+        width:80px; height:80px; border-radius:50%; background:rgba(255,255,255,.1);
+    }
+    .pc-stat-icon  { font-size:1.4rem; opacity:.75; margin-bottom:4px; }
+    .pc-stat-value { font-size:1.7rem; font-weight:800; line-height:1.1; position:relative; }
+    .pc-stat-label { font-size:.7rem; opacity:.82; margin-top:4px; letter-spacing:.03em; text-transform:uppercase; }
+    .pc-stat-sub   { font-size:.7rem; opacity:.68; margin-top:2px; }
+</style>
 
 @code {
     List<PcListItem> _allPcs    = [];
