@@ -13,7 +13,7 @@
          @onclick="OnBackdropClick">
         <div class="modal-dialog modal-dialog-centered"
              @onclick:stopPropagation="true">
-            <div class="modal-content shadow" style="background:#fff; color:#212529;">
+            <div class="modal-content shadow spk-new-person-modal" style="background:#fff; color:#212529;">
 
                 <div class="modal-header py-2" style="background:linear-gradient(135deg,#1a237e,#3949ab); border-bottom:none;">
                     <h6 class="modal-title mb-0 text-white">
@@ -22,7 +22,7 @@
                     <button type="button" class="btn-close btn-close-white" @onclick="Cancel"></button>
                 </div>
 
-                <div class="modal-body">
+                <div class="modal-body" style="background:#fff; color:#212529;">
                     <div class="row g-2">
                         <div class="col-6">
                             <label class="form-label small mb-1">
@@ -78,6 +78,15 @@
         </div>
     </div>
 }
+
+<style>
+    .spk-new-person-modal .modal-body .form-label { color: #374151 !important; }
+    .spk-new-person-modal .modal-body .form-control,
+    .spk-new-person-modal .modal-body .form-select {
+        background: #fff !important; color: #212529 !important;
+        border-color: #ced4da !important;
+    }
+</style>
 
 @code {
     [Parameter] public string Title { get; set; } = "Add New Person";
