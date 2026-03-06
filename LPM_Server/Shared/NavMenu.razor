@@ -3,6 +3,7 @@
 @inject IJSRuntime JSRuntime
 @inject StateService stateService
 @inject IActionService ActionService
+@inject AuthenticationStateProvider _authStateProvider
 @using Microsoft.JSInterop;
 @using System.Text.Json;
 @using System.Linq;
@@ -42,7 +43,7 @@
                         </svg>
                     </div>
                     <ul class="main-menu">
-                        @foreach (var MainMenuItems in MenuDataService.GetMenuData())
+                        @foreach (var MainMenuItems in (menuVal ?? new()))
                         {
                             <!-- Start::slide__category -->
                             <li class="@(!string.IsNullOrEmpty(MainMenuItems.MenuTitle) ? "slide__category" : "") @(MainMenuItems.Type == "link"? "slide" : "") 
@@ -425,8 +426,11 @@
 
     protected override async Task OnInitializedAsync()
     {
-        
-        menuVal = MenuDataService.GetMenuData();
+        var authState = await _authStateProvider.GetAuthenticationStateAsync();
+        var isAdmin = authState.User.IsInRole("Admin");
+        menuVal = MenuDataService.GetMenuData()
+            .Where(item => item.RequiredRole == null || isAdmin)
+            .ToList();
         await Random(menuVal);
            
 		configurations = new  WMBOSConfigurations {};

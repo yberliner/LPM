@@ -1,0 +1,593 @@
+@page "/Admin/Sessions"
+@using LPM.Services
+@using LPM.Auth
+@inject DashboardService DashSvc
+@inject UserDb UserDb
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<div class="sa-page p-3 p-md-4">
+
+    @* ── Page Header ── *@
+    <div class="d-flex align-items-center mb-3 gap-3 flex-wrap">
+        <div>
+            <h4 class="mb-0 fw-bold sa-title">Session Approval</h4>
+            <span class="text-muted" style="font-size:0.82rem;">Review and approve sessions — sorted by auditor &amp; PC</span>
+        </div>
+        <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
+            @if (_totalSessions > 0)
+            {
+                @if (_totalDraft > 0)
+                {
+                    <span class="badge rounded-pill text-bg-warning px-3 py-2" style="font-size:0.77rem;">
+                        <i class="ri-time-line me-1"></i>@_totalDraft draft
+                    </span>
+                }
+                @if (_totalApproved > 0)
+                {
+                    <span class="badge rounded-pill text-bg-success px-3 py-2" style="font-size:0.77rem;">
+                        <i class="ri-check-line me-1"></i>@_totalApproved approved
+                    </span>
+                }
+            }
+            <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                    @onclick="LoadData" disabled="@_loading">
+                <i class="ri-refresh-line @(_loading ? "sa-spin" : "")"></i> Refresh
+            </button>
+        </div>
+    </div>
+
+    @* ── Filter bar ── *@
+    <div class="card border-0 shadow-sm mb-4 sa-filter-card">
+        <div class="card-body py-3 px-4">
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+
+                @* Mode selector – segmented control *@
+                <div class="d-flex align-items-center gap-2">
+                    <span class="text-muted fw-semibold" style="font-size:0.8rem;">Show:</span>
+                    <div class="btn-group sa-seg" role="group">
+                        <button type="button"
+                                class="btn btn-sm @(!_includeApproved ? "sa-seg-active" : "sa-seg-inactive")"
+                                @onclick="SwitchToDraftOnly">
+                            <i class="ri-file-list-line me-1"></i>Draft only
+                        </button>
+                        <button type="button"
+                                class="btn btn-sm @(_includeApproved ? "sa-seg-active" : "sa-seg-inactive")"
+                                @onclick="SwitchToIncludeApproved">
+                            <i class="ri-checkbox-circle-line me-1"></i>Include Approved
+                        </button>
+                    </div>
+                </div>
+
+                @* Date range — only shown in "Include Approved" mode *@
+                @if (_includeApproved)
+                {
+                    <div class="sa-filter-divider d-none d-sm-block"></div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="text-muted" style="font-size:0.8rem;">From</span>
+                        <input type="date" class="form-control form-control-sm sa-date-input"
+                               style="width:145px;"
+                               value="@_fromDateStr"
+                               @onchange="e => _fromDateStr = e.Value?.ToString() ?? string.Empty" />
+                        <span class="text-muted" style="font-size:0.8rem;">To</span>
+                        <input type="date" class="form-control form-control-sm sa-date-input"
+                               style="width:145px;"
+                               value="@_toDateStr"
+                               @onchange="e => _toDateStr = e.Value?.ToString() ?? string.Empty" />
+                        <button class="btn btn-sm sa-btn-apply d-flex align-items-center gap-1"
+                                @onclick="ApplyApprovedFilter" disabled="@_loading">
+                            <i class="ri-search-line"></i> Apply
+                        </button>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_filterError))
+                    {
+                        <span class="text-danger small d-flex align-items-center gap-1">
+                            <i class="ri-error-warning-line"></i>@_filterError
+                        </span>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+
+    @* ── Content ── *@
+    @if (_loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary mb-3" style="width:2.5rem;height:2.5rem;" role="status"></div>
+            <div class="text-muted">Loading sessions...</div>
+        </div>
+    }
+    else if (_groups.Count == 0)
+    {
+        <div class="text-center py-5">
+            <div class="rounded-circle d-inline-flex align-items-center justify-content-center mb-3 sa-empty-icon">
+                <i class="ri-check-double-line text-success" style="font-size:2rem;"></i>
+            </div>
+            <div class="fw-semibold fs-5 mb-1">Nothing to show</div>
+            <div class="text-muted" style="font-size:0.88rem;">
+                @if (_includeApproved) { <span>No sessions in the selected date range.</span> }
+                else { <span>No draft sessions pending approval.</span> }
+            </div>
+        </div>
+    }
+    else
+    {
+        @foreach (var group in _groups)
+        {
+            int gDraft    = group.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus == "Draft"));
+            int gApproved = group.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus == "Approved"));
+
+            <div class="card border-0 shadow-sm mb-4 sa-auditor-card">
+
+                @* ── Auditor header ── *@
+                <div class="card-header d-flex align-items-center gap-3 py-3 px-4 border-0 sa-auditor-header">
+                    @{ var audAvatar = _auditorAvatars.GetValueOrDefault(group.AuditorId); }
+                    @if (audAvatar != null)
+                    {
+                        <img src="@audAvatar" class="sa-avatar-img" alt="@group.AuditorName" />
+                    }
+                    else
+                    {
+                        <div class="sa-avatar">
+                            @(group.AuditorName.Length > 0 ? char.ToUpper(group.AuditorName[0]) : '?')
+                        </div>
+                    }
+                    <div class="text-white lh-sm">
+                        <div class="fw-semibold" style="font-size:1rem;">@group.AuditorName</div>
+                        <div style="font-size:0.71rem;opacity:.72;">
+                            @group.PcGroups.Count PC@(group.PcGroups.Count != 1 ? "s" : "")
+                            @if (gDraft > 0)    { <span> · @gDraft draft</span> }
+                            @if (gApproved > 0) { <span> · @gApproved approved</span> }
+                        </div>
+                    </div>
+                </div>
+
+                @* ── PC groups ── *@
+                @{ bool firstPc = true; }
+                @foreach (var pcGroup in group.PcGroups)
+                {
+                    var pcKey     = (group.AuditorId, pcGroup.PcId);
+                    var pcDef     = _pcDefaults[pcKey];
+                    int pcTotal   = pcGroup.Sessions.Count;
+                    int pcDraft   = pcGroup.Sessions.Count(s => s.VerifiedStatus == "Draft");
+                    int pcApproved= pcGroup.Sessions.Count(s => s.VerifiedStatus == "Approved");
+
+                    @if (!firstPc) { <div class="sa-pc-divider"></div> }
+                    firstPc = false;
+
+                    @* PC sub-header: "set all" defaults + Submit All *@
+                    <div class="d-flex align-items-center gap-3 px-4 py-2 sa-pc-header flex-wrap">
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="sa-pc-dot"></div>
+                            <span class="fw-semibold sa-pc-name">@pcGroup.PcName</span>
+                            @if (pcDraft > 0)
+                            {
+                                <span class="badge rounded-pill sa-badge-pending">@pcDraft draft</span>
+                            }
+                            @if (pcApproved > 0)
+                            {
+                                <span class="badge rounded-pill sa-badge-approved-sm">@pcApproved approved</span>
+                            }
+                        </div>
+
+                        <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
+                            <span class="sa-input-label text-muted">Set all:</span>
+                            <div class="input-group input-group-sm sa-rate-input" style="width:125px;">
+                                <span class="input-group-text">₪ Rate</span>
+                                <input type="number" class="form-control" placeholder="0" min="0" step="1"
+                                       value="@pcDef.ChargeRate"
+                                       @onchange="e => PropagateRate(group.AuditorId, pcGroup.PcId,
+                                           int.TryParse(e.Value?.ToString(), out var rv) ? rv : pcDef.ChargeRate,
+                                           pcDef.Salary)" />
+                            </div>
+                            <div class="input-group input-group-sm sa-rate-input" style="width:135px;">
+                                <span class="input-group-text">₪ Sal.</span>
+                                <input type="number" class="form-control" placeholder="0" min="0" step="1"
+                                       value="@pcDef.Salary"
+                                       @onchange="e => PropagateRate(group.AuditorId, pcGroup.PcId,
+                                           pcDef.ChargeRate,
+                                           int.TryParse(e.Value?.ToString(), out var sv) ? sv : pcDef.Salary)" />
+                            </div>
+                            <button class="btn btn-sm sa-btn-approve-all d-flex align-items-center gap-1"
+                                    @onclick="() => SubmitAllForPc(group.AuditorId, pcGroup.PcId)"
+                                    disabled="@_busy">
+                                <i class="ri-check-double-line"></i>Submit All (@pcTotal)
+                            </button>
+                        </div>
+                    </div>
+
+                    @* Sessions table *@
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0 sa-table">
+                            <thead>
+                                <tr class="sa-thead">
+                                    <th class="ps-4">Date</th>
+                                    <th class="text-center">Duration</th>
+                                    <th class="text-center">Admin</th>
+                                    <th class="text-center">Free</th>
+                                    <th style="width:115px;">Rate ₪/hr</th>
+                                    <th style="width:115px;">Salary ₪/hr</th>
+                                    <th style="width:105px;">Status</th>
+                                    <th class="pe-4" style="width:90px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var s in pcGroup.Sessions)
+                                {
+                                    bool isApproved = s.VerifiedStatus == "Approved";
+                                    var edit = _rowEdits[s.SessionId];
+
+                                    <tr class="@(isApproved ? "sa-row-approved" : "sa-row-draft")">
+                                        <td class="ps-4 py-2">
+                                            <span class="fw-semibold sa-date">@FormatDate(s.SessionDate)</span>
+                                        </td>
+                                        <td class="text-center py-2">
+                                            <span class="badge rounded-pill bg-light border text-dark px-2"
+                                                  style="font-size:0.78rem;">@DashboardService.Fmt(s.LengthSec)</span>
+                                        </td>
+                                        <td class="text-center py-2 text-muted" style="font-size:0.83rem;">
+                                            @DashboardService.Fmt(s.AdminSec)
+                                        </td>
+                                        <td class="text-center py-2">
+                                            @if (s.IsFree)
+                                            {
+                                                <span class="badge sa-badge-free">FREE</span>
+                                            }
+                                        </td>
+                                        <td class="py-1">
+                                            <input type="number" class="form-control form-control-sm sa-row-input"
+                                                   @bind="edit.ChargeRate" min="0" step="1" />
+                                        </td>
+                                        <td class="py-1">
+                                            <input type="number" class="form-control form-control-sm sa-row-input"
+                                                   @bind="edit.Salary" min="0" step="1" />
+                                        </td>
+                                        <td class="py-2">
+                                            @if (isApproved)
+                                            {
+                                                <span class="badge sa-badge-status-approved">
+                                                    <i class="ri-check-line me-1"></i>Approved
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge sa-badge-status-draft">Draft</span>
+                                            }
+                                        </td>
+                                        <td class="pe-4 py-1">
+                                            <button class="btn btn-sm d-flex align-items-center gap-1
+                                                           @(isApproved ? "sa-btn-update" : "sa-btn-submit")"
+                                                    @onclick="() => SubmitOne(s.SessionId, group.AuditorId, pcGroup.PcId)"
+                                                    disabled="@_busy">
+                                                <i class="@(isApproved ? "ri-pencil-line" : "ri-check-line")"></i>
+                                                @(isApproved ? "Update" : "Submit")
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        }
+    }
+
+</div>
+
+@* ── Toast ── *@
+@if (!string.IsNullOrEmpty(_msg))
+{
+    <div class="position-fixed bottom-0 end-0 p-4" style="z-index:1200;">
+        <div class="toast show align-items-center border-0 shadow-lg @(_msgIsError ? "text-bg-danger" : "text-bg-success")"
+             role="alert" style="min-width:300px;border-radius:12px;">
+            <div class="d-flex">
+                <div class="toast-body d-flex align-items-center gap-2 fw-semibold">
+                    <i class="@(_msgIsError ? "ri-error-warning-line" : "ri-checkbox-circle-line") fs-5"></i>
+                    @_msg
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto"
+                        @onclick='() => _msg = null'></button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .sa-page  { max-width: 1200px; }
+    .sa-title { color: #1e3a5f; }
+
+    /* Filter card */
+    .sa-filter-card { border-radius: 12px; }
+    .sa-filter-divider { width: 1px; height: 28px; background: #dee2e6; }
+
+    /* Segmented control */
+    .sa-seg { border-radius: 8px; overflow: hidden; border: 1px solid #dee2e6; }
+    .sa-seg .btn { border: none; border-radius: 0; font-size: 0.8rem; font-weight: 600; padding: 5px 14px; }
+    .sa-seg-active   { background: #1e3a5f !important; color: #fff !important; }
+    .sa-seg-inactive { background: #fff !important; color: #6c757d !important; }
+    .sa-seg-inactive:hover { background: #f1f3f9 !important; color: #1e3a5f !important; }
+
+    /* Date input */
+    .sa-date-input { font-size: 0.83rem; border-color: #ced4da; }
+    .sa-date-input:focus { border-color: #2d6a9f; box-shadow: none; }
+
+    /* Apply button */
+    .sa-btn-apply {
+        background: #2d6a9f; color: #fff; border: none;
+        border-radius: 7px; font-size: 0.8rem; font-weight: 600;
+    }
+    .sa-btn-apply:hover:not(:disabled) { background: #1e3a5f; color: #fff; }
+
+    /* Auditor card */
+    .sa-auditor-card { border-radius: 14px; overflow: hidden; }
+    .sa-auditor-card:hover { box-shadow: 0 6px 28px rgba(30,58,95,.13) !important; transition: box-shadow .25s; }
+    .sa-auditor-header { background: linear-gradient(135deg, #1e3a5f 0%, #2d6a9f 100%); }
+    .sa-avatar {
+        width: 40px; height: 40px; border-radius: 50%;
+        background: rgba(255,255,255,.15); border: 2px solid rgba(255,255,255,.3);
+        color: #fff; font-size: 1.1rem; font-weight: 700;
+        display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .sa-avatar-img {
+        width: 40px; height: 40px; border-radius: 50%;
+        border: 2px solid rgba(255,255,255,.45);
+        object-fit: cover; flex-shrink: 0;
+    }
+
+    /* PC sub-section */
+    .sa-pc-divider { height: 1px; background: #e2e8f4; }
+    .sa-pc-header  { background: #f4f7fc; min-height: 54px; }
+    .sa-pc-dot     { width: 8px; height: 8px; border-radius: 50%; background: #2d6a9f; flex-shrink: 0; }
+    .sa-pc-name    { font-size: 0.9rem; color: #1e3a5f; }
+    .sa-input-label{ font-size: 0.72rem; white-space: nowrap; }
+
+    /* "Set all" rate inputs */
+    .sa-rate-input .input-group-text {
+        background: #fff; border-color: #ced4da;
+        font-size: 0.75rem; color: #6c757d; white-space: nowrap;
+    }
+    .sa-rate-input .form-control { font-size: 0.85rem; border-color: #ced4da; }
+    .sa-rate-input:focus-within .input-group-text,
+    .sa-rate-input:focus-within .form-control { border-color: #2d6a9f; box-shadow: none; }
+
+    /* Row-level inputs */
+    .sa-row-input { font-size: 0.83rem; border-color: #dee2e6; border-radius: 6px; padding: 3px 8px; }
+    .sa-row-input:focus { border-color: #2d6a9f; box-shadow: none; }
+
+    /* Table */
+    .sa-table { font-size: 0.85rem; }
+    .sa-thead tr { background: #eef1f8; }
+    .sa-thead th {
+        font-size: 0.69rem; font-weight: 700; letter-spacing: .06em;
+        text-transform: uppercase; color: #6c757d;
+        padding-top: 7px; padding-bottom: 7px;
+        border-bottom: 1px solid #dce3f0; border-top: none;
+    }
+
+    /* Row states */
+    .sa-row-draft td  { border-bottom: 1px solid #f0f2f8; transition: background .12s; }
+    .sa-row-draft:hover td  { background: #f5f7ff; }
+    .sa-row-approved td {
+        border-bottom: 1px solid #bbf7d0;
+        background: #f0fdf4;
+    }
+    .sa-row-approved:hover td { background: #dcfce7; }
+    .sa-date { color: #1e3a5f; }
+
+    /* Badges */
+    .sa-badge-pending      { background: #fef3c7; color: #92400e; font-size: 0.68rem; }
+    .sa-badge-approved-sm  { background: #d1fae5; color: #065f46; font-size: 0.68rem; }
+    .sa-badge-free         { background: #ede9fe; color: #5b21b6; font-size: 0.68rem; }
+    .sa-badge-status-draft    { background: #fef3c7; color: #92400e; font-size: 0.73rem; }
+    .sa-badge-status-approved { background: #d1fae5; color: #065f46; font-size: 0.73rem; }
+
+    /* Action buttons */
+    .sa-btn-approve-all {
+        background: rgba(255,255,255,.92); color: #1e3a5f;
+        border: 1px solid rgba(45,106,159,.4);
+        font-size: 0.78rem; border-radius: 7px; font-weight: 600;
+    }
+    .sa-btn-approve-all:hover:not(:disabled) { background: #fff; border-color: #2d6a9f; }
+    .sa-btn-submit {
+        background: #2d6a9f; color: #fff;
+        border: none; border-radius: 7px;
+        font-size: 0.78rem; padding: 3px 10px; font-weight: 600;
+    }
+    .sa-btn-submit:hover:not(:disabled)  { background: #1e3a5f; color: #fff; }
+    .sa-btn-update {
+        background: transparent; color: #2d6a9f;
+        border: 1px solid #2d6a9f;
+        border-radius: 7px; font-size: 0.78rem; padding: 3px 10px; font-weight: 600;
+    }
+    .sa-btn-update:hover:not(:disabled) { background: #2d6a9f; color: #fff; }
+
+    /* Empty */
+    .sa-empty-icon { width: 72px; height: 72px; background: #dcfce7; border-radius: 50%; }
+
+    /* Spinner */
+    .sa-spin { display: inline-block; animation: sa-spin-anim 1s linear infinite; }
+    @@keyframes sa-spin-anim { to { transform: rotate(360deg); } }
+</style>
+
+@code {
+    // ── Filter state ──────────────────────────────────────────────
+    private bool    _includeApproved = false;
+    private string  _fromDateStr = "";
+    private string  _toDateStr   = "";
+    private string? _filterError;
+
+    // ── Data ──────────────────────────────────────────────────────
+    private List<AuditorSessionGroup> _groups = new();
+    private Dictionary<(int aud, int pc), PcDefaults> _pcDefaults = new();
+    private Dictionary<int, RowEdit> _rowEdits = new();
+    private Dictionary<int, string?> _auditorAvatars = new();   // auditorId → avatar URL or null
+    private bool _loading = true;
+    private bool _busy;
+    private string? _msg;
+    private bool _msgIsError;
+
+    private int _totalSessions => _groups.Sum(g => g.PcGroups.Sum(pg => pg.Sessions.Count));
+    private int _totalDraft    => _groups.Sum(g => g.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus == "Draft")));
+    private int _totalApproved => _groups.Sum(g => g.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus == "Approved")));
+
+    class PcDefaults { public int ChargeRate { get; set; } public int Salary { get; set; } }
+    class RowEdit     { public int ChargeRate { get; set; } public int Salary { get; set; } }
+
+    // ── Lifecycle ─────────────────────────────────────────────────
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (!authState.User.IsInRole("Admin"))
+        {
+            Navigation.NavigateTo("/Home", forceLoad: false);
+            return;
+        }
+        await LoadData();
+    }
+
+    // ── Filter actions ────────────────────────────────────────────
+    private async Task SwitchToDraftOnly()
+    {
+        _includeApproved = false;
+        _filterError = null;
+        await LoadData();
+    }
+
+    private void SwitchToIncludeApproved()
+    {
+        if (_includeApproved) return;   // already in this mode
+        _includeApproved = true;
+
+        // Pre-fill date range to last 4 weeks if empty
+        if (string.IsNullOrEmpty(_fromDateStr))
+            _fromDateStr = DateOnly.FromDateTime(DateTime.Today.AddDays(-28)).ToString("yyyy-MM-dd");
+        if (string.IsNullOrEmpty(_toDateStr))
+            _toDateStr = DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd");
+    }
+
+    private async Task ApplyApprovedFilter()
+    {
+        _filterError = null;
+        if (!DateOnly.TryParse(_fromDateStr, out var from))
+        {
+            _filterError = "Enter a valid From date."; return;
+        }
+        if (!DateOnly.TryParse(_toDateStr, out var to))
+        {
+            _filterError = "Enter a valid To date."; return;
+        }
+        if (from > to)
+        {
+            _filterError = "From date must be on or before To date."; return;
+        }
+        await LoadData();
+    }
+
+    // ── Data load ─────────────────────────────────────────────────
+    private async Task LoadData()
+    {
+        _loading = true;
+        StateHasChanged();
+        await Task.Yield();
+
+        DateOnly? from = null, to = null;
+        if (_includeApproved && DateOnly.TryParse(_fromDateStr, out var f)) from = f;
+        if (_includeApproved && DateOnly.TryParse(_toDateStr,   out var t)) to   = t;
+
+        _groups = DashSvc.GetSessionsGroupedByAuditorAndPc(_includeApproved, from, to);
+        _pcDefaults.Clear();
+        _rowEdits.Clear();
+        _auditorAvatars.Clear();
+
+        // Load avatar for each auditor (username = first word of their name)
+        foreach (var group in _groups)
+        {
+            if (!_auditorAvatars.ContainsKey(group.AuditorId))
+            {
+                var firstName = group.AuditorName.Split(' ')[0].ToLower();
+                _auditorAvatars[group.AuditorId] = UserDb.GetAvatarPath(firstName);
+            }
+        }
+
+        foreach (var group in _groups)
+        {
+            foreach (var pcGroup in group.PcGroups)
+            {
+                var key = (group.AuditorId, pcGroup.PcId);
+                var (defRate, defSalary) = DashSvc.GetLastApprovedDefaultsForPc(group.AuditorId, pcGroup.PcId);
+                _pcDefaults[key] = new PcDefaults { ChargeRate = defRate / 100, Salary = defSalary / 100 };
+
+                foreach (var s in pcGroup.Sessions)
+                {
+                    _rowEdits[s.SessionId] = new RowEdit
+                    {
+                        ChargeRate = s.ChargedRateCentsPerHour  > 0 ? s.ChargedRateCentsPerHour  / 100 : defRate   / 100,
+                        Salary     = s.AuditorSalaryCentsPerHour > 0 ? s.AuditorSalaryCentsPerHour / 100 : defSalary / 100
+                    };
+                }
+            }
+        }
+
+        _loading = false;
+    }
+
+    // ── Rate propagation ─────────────────────────────────────────
+    private void PropagateRate(int auditorId, int pcId, int newRate, int newSalary)
+    {
+        var key = (auditorId, pcId);
+        if (_pcDefaults.TryGetValue(key, out var pcDef))
+        {
+            pcDef.ChargeRate = newRate;
+            pcDef.Salary     = newSalary;
+        }
+        var group   = _groups.FirstOrDefault(g => g.AuditorId == auditorId);
+        var pcGroup = group?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
+        if (pcGroup is null) return;
+
+        foreach (var s in pcGroup.Sessions)
+        {
+            if (_rowEdits.TryGetValue(s.SessionId, out var edit))
+            {
+                edit.ChargeRate = newRate;
+                edit.Salary     = newSalary;
+            }
+        }
+    }
+
+    // ── Submit actions ────────────────────────────────────────────
+    private async Task SubmitOne(int sessionId, int auditorId, int pcId)
+    {
+        if (!_rowEdits.TryGetValue(sessionId, out var edit)) return;
+        _busy = true;
+        DashSvc.ApproveSession(sessionId, edit.ChargeRate * 100, edit.Salary * 100);
+        _busy = false;
+        ShowMsg("Session saved.", false);
+        await LoadData();
+    }
+
+    private async Task SubmitAllForPc(int auditorId, int pcId)
+    {
+        var group   = _groups.FirstOrDefault(g => g.AuditorId == auditorId);
+        var pcGroup = group?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
+        if (pcGroup is null) return;
+
+        _busy = true;
+        int count = 0;
+        foreach (var s in pcGroup.Sessions)
+        {
+            if (!_rowEdits.TryGetValue(s.SessionId, out var edit)) continue;
+            DashSvc.ApproveSession(s.SessionId, edit.ChargeRate * 100, edit.Salary * 100);
+            count++;
+        }
+        _busy = false;
+        ShowMsg($"{count} session{(count != 1 ? "s" : "")} saved for {pcGroup.PcName}.", false);
+        await LoadData();
+    }
+
+    private void ShowMsg(string msg, bool isError) { _msg = msg; _msgIsError = isError; }
+
+    private static string FormatDate(string dateStr) =>
+        DateOnly.TryParse(dateStr, out var d) ? d.ToString("dd/MM/yy") : dateStr;
+}

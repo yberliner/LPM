@@ -55,6 +55,21 @@ public class MenuDataService
             active: false,
             dirChange: false
         ),
+        new MainMenuItems(
+            menuTitle: "Administration",
+            requiredRole: "Admin"
+        ),
+        new MainMenuItems(
+            path: "/Admin/Sessions",
+            type: "link",
+            title: "Sessions",
+            icon: "ri-calendar-check-line",
+            svg: "",
+            selected: false,
+            active: false,
+            dirChange: false,
+            requiredRole: "Admin"
+        ),
         new MainMenuItems (
             path: "/",
             type: "link",

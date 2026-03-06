@@ -15,6 +15,14 @@ public record WeekTotal(DateOnly WeekStart, int TotalSeconds, List<PcWeekItem>? 
 }
 public record DayDetail(List<SessionRow> Sessions, List<CsReviewRow> Reviews, List<CsWorkRow>? GeneralWork = null);
 
+public record AdminSessionRow(
+    int SessionId, int PcId, string PcName, string AuditorName, string SessionDate,
+    int LengthSec, int AdminSec, bool IsFree,
+    int ChargedRateCentsPerHour, int AuditorSalaryCentsPerHour,
+    string VerifiedStatus, bool IsSolo);
+public record PcSessionGroup(int PcId, string PcName, List<AdminSessionRow> Sessions);
+public record AuditorSessionGroup(int AuditorId, string AuditorName, List<PcSessionGroup> PcGroups);
+
 public class DashboardService
 {
     private readonly string _connectionString;
@@ -66,6 +74,17 @@ public class DashboardService
             using var inactCmd = conn.CreateCommand();
             inactCmd.CommandText = "UPDATE Auditors SET Type = 0 WHERE IsActive = 0";
             inactCmd.ExecuteNonQuery();
+        }
+
+        // Add AuditorSalaryCentsPerHour to Sessions if not present
+        using var salCheckCmd = conn.CreateCommand();
+        salCheckCmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Sessions') WHERE name='AuditorSalaryCentsPerHour'";
+        var salaryColExists = (long)(salCheckCmd.ExecuteScalar() ?? 0L) > 0;
+        if (!salaryColExists)
+        {
+            using var addSalCol = conn.CreateCommand();
+            addSalCol.CommandText = "ALTER TABLE Sessions ADD COLUMN AuditorSalaryCentsPerHour INTEGER NOT NULL DEFAULT 0";
+            addSalCol.ExecuteNonQuery();
         }
 
         // Add 'Draft' to CsReviews.Status CHECK constraint if not already present
@@ -1076,5 +1095,142 @@ public class DashboardService
         }
 
         return false;
+    }
+
+    // ── Admin: Session Approval ──
+
+    /// <param name="includeApproved">When true, returns Draft + Approved sessions.</param>
+    /// <param name="from">Inclusive start date. Applied only when includeApproved=true.</param>
+    /// <param name="to">Inclusive end date. Applied only when includeApproved=true.</param>
+    public List<AuditorSessionGroup> GetSessionsGroupedByAuditorAndPc(
+        bool includeApproved = false,
+        DateOnly? from = null,
+        DateOnly? to = null)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+
+        var where = new System.Text.StringBuilder(
+            includeApproved
+                ? "s.VerifiedStatus IN ('Draft','Approved')"
+                : "s.VerifiedStatus = 'Draft'");
+
+        if (includeApproved && from.HasValue)
+        {
+            where.Append(" AND s.SessionDate >= @from");
+            cmd.Parameters.AddWithValue("@from", from.Value.ToString("yyyy-MM-dd"));
+        }
+        if (includeApproved && to.HasValue)
+        {
+            where.Append(" AND s.SessionDate <= @to");
+            cmd.Parameters.AddWithValue("@to", to.Value.ToString("yyyy-MM-dd"));
+        }
+
+        cmd.CommandText = $@"
+            SELECT s.SessionId, s.PcId,
+                   TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS PcName,
+                   TRIM(pa.FirstName || ' ' || COALESCE(NULLIF(pa.LastName,''), '')) AS AuditorName,
+                   s.SessionDate, s.LengthSeconds, s.AdminSeconds, s.IsFreeSession,
+                   s.ChargedRateCentsPerHour, s.AuditorSalaryCentsPerHour,
+                   s.VerifiedStatus, s.IsSolo, s.AuditorId
+            FROM Sessions s
+            JOIN Persons pa ON pa.PersonId = s.AuditorId
+            JOIN Persons pc ON pc.PersonId = s.PcId
+            WHERE {where}
+            ORDER BY pa.FirstName, pa.LastName, pc.FirstName, pc.LastName, s.SessionDate, s.SequenceInDay";
+
+        var auditorNames = new Dictionary<int, string>();
+        var pcNames      = new Dictionary<(int aud, int pc), string>();
+        var sessionLists = new Dictionary<(int aud, int pc), List<AdminSessionRow>>();
+
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            var auditorId   = r.GetInt32(12);
+            var auditorName = r.GetString(3);
+            var pcId        = r.GetInt32(1);
+            var pcName      = r.GetString(2);
+            var key         = (auditorId, pcId);
+
+            var session = new AdminSessionRow(
+                r.GetInt32(0), pcId, pcName, auditorName,
+                r.GetString(4),
+                r.GetInt32(5), r.GetInt32(6),
+                r.GetInt32(7) == 1,
+                r.GetInt32(8), r.GetInt32(9),
+                r.IsDBNull(10) ? "Draft" : r.GetString(10),
+                r.GetInt32(11) == 1);
+
+            auditorNames.TryAdd(auditorId, auditorName);
+            pcNames.TryAdd(key, pcName);
+            if (!sessionLists.ContainsKey(key))
+                sessionLists[key] = new List<AdminSessionRow>();
+            sessionLists[key].Add(session);
+        }
+
+        return auditorNames.Keys.Select(audId =>
+        {
+            var pcGroups = sessionLists.Keys
+                .Where(k => k.aud == audId)
+                .Select(k => new PcSessionGroup(k.pc, pcNames[k], sessionLists[k]))
+                .ToList();
+            return new AuditorSessionGroup(audId, auditorNames[audId], pcGroups);
+        }).ToList();
+    }
+
+    public (int chargeRate, int salary) GetLastApprovedDefaults(int auditorId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT ChargedRateCentsPerHour, AuditorSalaryCentsPerHour
+            FROM Sessions
+            WHERE AuditorId = @id AND VerifiedStatus = 'Approved'
+            ORDER BY SessionDate DESC, SequenceInDay DESC
+            LIMIT 1";
+        cmd.Parameters.AddWithValue("@id", auditorId);
+        using var r = cmd.ExecuteReader();
+        if (r.Read())
+            return (r.GetInt32(0), r.GetInt32(1));
+        return (0, 0);
+    }
+
+    /// Returns defaults for a specific auditor+PC pair, falling back to any auditor-level default.
+    public (int chargeRate, int salary) GetLastApprovedDefaultsForPc(int auditorId, int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT ChargedRateCentsPerHour, AuditorSalaryCentsPerHour
+            FROM Sessions
+            WHERE AuditorId = @aud AND PcId = @pc AND VerifiedStatus = 'Approved'
+            ORDER BY SessionDate DESC, SequenceInDay DESC
+            LIMIT 1";
+        cmd.Parameters.AddWithValue("@aud", auditorId);
+        cmd.Parameters.AddWithValue("@pc",  pcId);
+        using var r = cmd.ExecuteReader();
+        if (r.Read())
+            return (r.GetInt32(0), r.GetInt32(1));
+        return GetLastApprovedDefaults(auditorId);
+    }
+
+    public void ApproveSession(int sessionId, int chargedRateCents, int auditorSalaryCents)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE Sessions
+            SET VerifiedStatus = 'Approved',
+                ChargedRateCentsPerHour = @rate,
+                AuditorSalaryCentsPerHour = @salary
+            WHERE SessionId = @id";
+        cmd.Parameters.AddWithValue("@rate",   chargedRateCents);
+        cmd.Parameters.AddWithValue("@salary", auditorSalaryCents);
+        cmd.Parameters.AddWithValue("@id",     sessionId);
+        cmd.ExecuteNonQuery();
     }
 }
