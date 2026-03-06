@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using System.Security.Cryptography;
 
 namespace LPM.Tests.Helpers;
 
@@ -9,10 +10,10 @@ namespace LPM.Tests.Helpers;
 /// </summary>
 public static class TestDbHelper
 {
-    /// <summary>
-    /// Creates a new temporary SQLite file with all required tables and seed data.
-    /// Returns the absolute path to the file.
-    /// </summary>
+    // -------------------------------------------------------------------------
+    // DB lifecycle
+    // -------------------------------------------------------------------------
+
     public static string CreateTempDb()
     {
         var path = Path.Combine(Path.GetTempPath(), $"lpm_test_{Guid.NewGuid():N}.db");
@@ -21,46 +22,35 @@ public static class TestDbHelper
     }
 
     /// <summary>
-    /// Flushes the SQLite connection pool for the given file and then deletes it.
-    /// Clearing the pool is required on Windows because SQLite keeps file handles
-    /// in its pool even after individual connections are closed.
+    /// Clears the SQLite connection pool for the DB file (required on Windows to
+    /// release file handles) then deletes the file with a short retry loop.
     /// </summary>
     public static void Cleanup(string path)
     {
-        // Force all pooled connections for this DB to be released before deletion
         SqliteConnection.ClearAllPools();
         GC.Collect();
         GC.WaitForPendingFinalizers();
 
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 8; i++)
         {
             try
             {
-                if (File.Exists(path)) File.Delete(path);
-                // Also delete any WAL/SHM side-files
-                foreach (var ext in new[] { "-wal", "-shm" })
-                {
-                    var side = path + ext;
-                    if (File.Exists(side)) File.Delete(side);
-                }
+                foreach (var f in new[] { path, path + "-wal", path + "-shm" })
+                    if (File.Exists(f)) File.Delete(f);
                 return;
             }
-            catch (IOException)
-            {
-                Thread.Sleep(50);
-            }
+            catch (IOException) { Thread.Sleep(50); }
         }
-        // If still locked after retries, ignore – the OS will clean up temp files eventually
+        // If still locked, leave it – OS will clean up %TEMP% eventually
     }
 
     // -------------------------------------------------------------------------
-    // Schema initialisation
+    // Full schema
     // -------------------------------------------------------------------------
 
     private static void InitSchema(string dbPath)
     {
-        var cs = $"Data Source={dbPath}";
-        using var conn = new SqliteConnection(cs);
+        using var conn = new SqliteConnection($"Data Source={dbPath}");
         conn.Open();
 
         Exec(conn, @"
@@ -109,20 +99,20 @@ public static class TestDbHelper
 
         Exec(conn, @"
             CREATE TABLE IF NOT EXISTS Sessions (
-                SessionId                INTEGER PRIMARY KEY AUTOINCREMENT,
-                PcId                     INTEGER NOT NULL,
-                AuditorId                INTEGER NOT NULL,
-                SessionDate              TEXT    NOT NULL,
-                SequenceInDay            INTEGER NOT NULL DEFAULT 1,
-                LengthSeconds            INTEGER NOT NULL DEFAULT 0,
-                AdminSeconds             INTEGER NOT NULL DEFAULT 0,
-                IsFreeSession            INTEGER NOT NULL DEFAULT 0,
-                ChargeSeconds            INTEGER NOT NULL DEFAULT 0,
-                ChargedRateCentsPerHour  INTEGER NOT NULL DEFAULT 0,
-                SessionSummaryHtml       TEXT,
-                CreatedAt                TEXT    NOT NULL DEFAULT (datetime('now')),
-                VerifiedStatus           TEXT    NOT NULL DEFAULT 'Draft',
-                IsSolo                   INTEGER NOT NULL DEFAULT 0
+                SessionId               INTEGER PRIMARY KEY AUTOINCREMENT,
+                PcId                    INTEGER NOT NULL,
+                AuditorId               INTEGER NOT NULL,
+                SessionDate             TEXT    NOT NULL,
+                SequenceInDay           INTEGER NOT NULL DEFAULT 1,
+                LengthSeconds           INTEGER NOT NULL DEFAULT 0,
+                AdminSeconds            INTEGER NOT NULL DEFAULT 0,
+                IsFreeSession           INTEGER NOT NULL DEFAULT 0,
+                ChargeSeconds           INTEGER NOT NULL DEFAULT 0,
+                ChargedRateCentsPerHour INTEGER NOT NULL DEFAULT 0,
+                SessionSummaryHtml      TEXT,
+                CreatedAt               TEXT    NOT NULL DEFAULT (datetime('now')),
+                VerifiedStatus          TEXT    NOT NULL DEFAULT 'Draft',
+                IsSolo                  INTEGER NOT NULL DEFAULT 0
             )");
 
         Exec(conn, @"
@@ -183,11 +173,13 @@ public static class TestDbHelper
                 CreatedAt     TEXT    NOT NULL DEFAULT (datetime('now'))
             )");
 
+        // UNIQUE(PersonId, VisitDate) matches the real schema in AcademyService
         Exec(conn, @"
             CREATE TABLE IF NOT EXISTS Students (
                 StudentId INTEGER PRIMARY KEY AUTOINCREMENT,
                 PersonId  INTEGER NOT NULL,
-                VisitDate TEXT    NOT NULL
+                VisitDate TEXT    NOT NULL,
+                UNIQUE(PersonId, VisitDate)
             )");
 
         Exec(conn, @"
@@ -212,12 +204,15 @@ public static class TestDbHelper
                 PRIMARY KEY (UserId, RoleId)
             )");
 
-        // Seed standard grades
+        // Seed standard grades (BA, MA, PHD)
         Exec(conn, "INSERT INTO Grades (Code, SortOrder) VALUES ('BA',1),('MA',2),('PHD',3)");
+
+        // Seed standard roles
+        Exec(conn, "INSERT INTO Roles (Code) VALUES ('CaseWorker'),('Admin'),('Viewer')");
     }
 
     // -------------------------------------------------------------------------
-    // Helpers
+    // Generic SQL helpers
     // -------------------------------------------------------------------------
 
     public static void Exec(SqliteConnection conn, string sql)
@@ -234,23 +229,47 @@ public static class TestDbHelper
         return (long)(cmd.ExecuteScalar() ?? 0L);
     }
 
-    /// <summary>
-    /// Inserts a Person and returns the new PersonId.
-    /// </summary>
-    public static int InsertPerson(SqliteConnection conn,
-        string firstName, string lastName = "")
+    public static bool TableExists(SqliteConnection conn, string tableName)
     {
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT INTO Persons (FirstName, LastName) VALUES (@fn, @ln)";
-        cmd.Parameters.AddWithValue("@fn", firstName);
-        cmd.Parameters.AddWithValue("@ln", lastName);
+        cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=@n";
+        cmd.Parameters.AddWithValue("@n", tableName);
+        return (long)(cmd.ExecuteScalar() ?? 0L) > 0;
+    }
+
+    public static bool ColumnExists(SqliteConnection conn, string table, string column)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name=@c";
+        cmd.Parameters.AddWithValue("@c", column);
+        return (long)(cmd.ExecuteScalar() ?? 0L) > 0;
+    }
+
+    // -------------------------------------------------------------------------
+    // Entity insert helpers
+    // -------------------------------------------------------------------------
+
+    /// <summary>Inserts a Person and returns the new PersonId.</summary>
+    public static int InsertPerson(SqliteConnection conn,
+        string firstName, string lastName = "",
+        string phone = "", string email = "",
+        string dateOfBirth = "", string sex = "")
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO Persons (FirstName, LastName, Phone, Email, DateOfBirth, Sex)
+            VALUES (@fn, @ln, @ph, @em, @dob, @sex)";
+        cmd.Parameters.AddWithValue("@fn",  firstName);
+        cmd.Parameters.AddWithValue("@ln",  lastName);
+        cmd.Parameters.AddWithValue("@ph",  Nv(phone));
+        cmd.Parameters.AddWithValue("@em",  Nv(email));
+        cmd.Parameters.AddWithValue("@dob", Nv(dateOfBirth));
+        cmd.Parameters.AddWithValue("@sex", Nv(sex));
         cmd.ExecuteNonQuery();
         return (int)Scalar(conn, "SELECT last_insert_rowid()");
     }
 
-    /// <summary>
-    /// Inserts an Auditor row (assumes PersonId already exists).
-    /// </summary>
+    /// <summary>Inserts an Auditor row (assumes PersonId already exists).</summary>
     public static void InsertAuditor(SqliteConnection conn,
         int personId, int type = 1, bool isActive = true, int? gradeId = null)
     {
@@ -265,11 +284,8 @@ public static class TestDbHelper
         cmd.ExecuteNonQuery();
     }
 
-    /// <summary>
-    /// Inserts a CaseSupervisor row (assumes PersonId already exists).
-    /// </summary>
-    public static void InsertCS(SqliteConnection conn,
-        int personId, bool isActive = true)
+    /// <summary>Inserts a CaseSupervisor row (assumes PersonId already exists).</summary>
+    public static void InsertCS(SqliteConnection conn, int personId, bool isActive = true)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "INSERT INTO CaseSupervisors (CsId, IsActive) VALUES (@id, @active)";
@@ -278,9 +294,7 @@ public static class TestDbHelper
         cmd.ExecuteNonQuery();
     }
 
-    /// <summary>
-    /// Inserts a PC row (assumes PersonId already exists).
-    /// </summary>
+    /// <summary>Inserts a PC row (assumes PersonId already exists).</summary>
     public static void InsertPC(SqliteConnection conn, int personId, string? externalId = null)
     {
         using var cmd = conn.CreateCommand();
@@ -290,9 +304,7 @@ public static class TestDbHelper
         cmd.ExecuteNonQuery();
     }
 
-    /// <summary>
-    /// Inserts a Session and returns the new SessionId.
-    /// </summary>
+    /// <summary>Inserts a Session and returns the new SessionId.</summary>
     public static int InsertSession(SqliteConnection conn,
         int pcId, int auditorId, string date,
         int lengthSec, int adminSec = 0,
@@ -324,9 +336,7 @@ public static class TestDbHelper
         return (int)Scalar(conn, "SELECT last_insert_rowid()");
     }
 
-    /// <summary>
-    /// Inserts a Payment and returns the new PaymentId.
-    /// </summary>
+    /// <summary>Inserts a Payment and returns the new PaymentId.</summary>
     public static int InsertPayment(SqliteConnection conn,
         int pcId, string date, int hoursBought, int amountPaid = 0, string? notes = null)
     {
@@ -342,4 +352,95 @@ public static class TestDbHelper
         cmd.ExecuteNonQuery();
         return (int)Scalar(conn, "SELECT last_insert_rowid()");
     }
+
+    /// <summary>Inserts an academy visit (Students row).</summary>
+    public static void InsertVisit(SqliteConnection conn, int personId, string date)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "INSERT OR IGNORE INTO Students (PersonId, VisitDate) VALUES (@pid, @date)";
+        cmd.Parameters.AddWithValue("@pid",  personId);
+        cmd.Parameters.AddWithValue("@date", date);
+        cmd.ExecuteNonQuery();
+    }
+
+    // -------------------------------------------------------------------------
+    // Auth helpers
+    // -------------------------------------------------------------------------
+
+    /// <summary>Inserts a User with PBKDF2-SHA256 hashed password. Returns the new UserId.</summary>
+    public static int InsertUser(SqliteConnection conn,
+        string username, string password, bool isActive = true)
+    {
+        var hash = HashPassword(password);
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO Users (Username, PasswordHash, IsActive)
+            VALUES (@u, @h, @a)";
+        cmd.Parameters.AddWithValue("@u", username);
+        cmd.Parameters.AddWithValue("@h", hash);
+        cmd.Parameters.AddWithValue("@a", isActive ? 1 : 0);
+        cmd.ExecuteNonQuery();
+        return (int)Scalar(conn, "SELECT last_insert_rowid()");
+    }
+
+    /// <summary>Returns the RoleId for the given role code (pre-seeded in test DB).</summary>
+    public static int GetRoleId(SqliteConnection conn, string code)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT RoleId FROM Roles WHERE Code=@c";
+        cmd.Parameters.AddWithValue("@c", code);
+        return (int)(long)(cmd.ExecuteScalar()!);
+    }
+
+    /// <summary>Assigns a role to a user.</summary>
+    public static void AssignRole(SqliteConnection conn, int userId, string roleCode)
+    {
+        var roleId = GetRoleId(conn, roleCode);
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "INSERT OR IGNORE INTO UserRoles (UserId, RoleId) VALUES (@uid, @rid)";
+        cmd.Parameters.AddWithValue("@uid", userId);
+        cmd.Parameters.AddWithValue("@rid", roleId);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Computes a PBKDF2-SHA256 hash in the same format as UserDb.HashPassword.
+    /// Used to pre-insert users with known passwords into test databases.
+    /// </summary>
+    public static string HashPassword(string password)
+    {
+        const int iterations = 260000;
+        byte[] salt = RandomNumberGenerator.GetBytes(16);
+        using var kdf = new Rfc2898DeriveBytes(
+            password, salt, iterations, HashAlgorithmName.SHA256);
+        byte[] hash = kdf.GetBytes(32);
+        return $"pbkdf2_sha256${iterations}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
+    }
+
+    // -------------------------------------------------------------------------
+    // CsWorkLog helper
+    // -------------------------------------------------------------------------
+
+    public static int InsertCsWork(SqliteConnection conn,
+        int csId, int pcId, string date, int lengthSec, string? notes = null)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO CsWorkLog (CsId, PcId, WorkDate, LengthSeconds, Notes, CreatedAt)
+            VALUES (@csId, @pcId, @date, @len, @notes, datetime('now'))";
+        cmd.Parameters.AddWithValue("@csId", csId);
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        cmd.Parameters.AddWithValue("@date", date);
+        cmd.Parameters.AddWithValue("@len",  lengthSec);
+        cmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
+        cmd.ExecuteNonQuery();
+        return (int)Scalar(conn, "SELECT last_insert_rowid()");
+    }
+
+    // -------------------------------------------------------------------------
+    // Private
+    // -------------------------------------------------------------------------
+
+    private static object Nv(string? s) =>
+        string.IsNullOrWhiteSpace(s) ? DBNull.Value : (object)s.Trim();
 }

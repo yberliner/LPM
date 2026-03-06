@@ -708,7 +708,746 @@ without needing a running ASP.NET host.</p>
 </table>
 
 <!-- ===================================================================== -->
-<h2>6. Test Coverage Summary</h2>
+<h2>6. AcademyServiceTests – Academy / Student Management</h2>
+<p class="section-note">Service: <code>AcademyService</code> | File: <code>AcademyServiceTests.cs</code></p>
+
+<h3>6.1 AddPersonForAcademy</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>1</td><td>AddPersonForAcademy_CreatesPersonRecord</td>
+    <td>Calls AddPersonForAcademy and checks Persons table for the returned ID.</td>
+    <td class="pass">One row in Persons with the returned PersonId.</td></tr>
+
+  <tr><td>2</td><td>AddPersonForAcademy_ReturnsUniqueIds</td>
+    <td>Adds Alice and Bob. Verifies they receive different IDs.</td>
+    <td class="pass">id1 ≠ id2.</td></tr>
+
+  <tr><td>3</td><td>AddPersonForAcademy_StoresAllFields</td>
+    <td>Adds a person with first name, last name, phone, email, date-of-birth, and sex. Reads back each column.</td>
+    <td class="pass">All six fields match the values passed in.</td></tr>
+
+  <tr><td>4</td><td>AddPersonForAcademy_WithEmptyOptionals_StoresNull</td>
+    <td>Adds a person with empty optional fields. Reads back the Phone column.</td>
+    <td class="pass">Phone is DBNull or null.</td></tr>
+
+  <tr><td>5</td><td>AddPersonForAcademy_TrimsWhitespace</td>
+    <td>Passes "  Zara  " and "  Lee  " as first and last names.</td>
+    <td class="pass">Stored as "Zara" and "Lee" (trimmed).</td></tr>
+</table>
+
+<h3>6.2 GetAllPersons</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>6</td><td>GetAllPersons_ReturnsEmpty_WhenNoPersons</td>
+    <td>Queries a fresh empty database.</td>
+    <td class="pass">Empty list.</td></tr>
+
+  <tr><td>7</td><td>GetAllPersons_ReturnsAllPersons</td>
+    <td>Adds three persons.</td>
+    <td class="pass">Count = 3.</td></tr>
+
+  <tr><td>8</td><td>GetAllPersons_OrderedByFirstNameThenLastName</td>
+    <td>Adds Zara, Alice, Mike in that order.</td>
+    <td class="pass">List is sorted alphabetically by FullName.</td></tr>
+
+  <tr><td>9</td><td>GetAllPersons_FullName_CombinesFirstAndLast</td>
+    <td>Adds "John Doe".</td>
+    <td class="pass">FullName = "John Doe".</td></tr>
+
+  <tr><td>10</td><td>GetAllPersons_FullName_HandlesEmptyLastName</td>
+    <td>Adds person with no last name.</td>
+    <td class="pass">FullName = "Solo" (no trailing space).</td></tr>
+</table>
+
+<h3>6.3 AddVisit / GetVisitsForDay</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>11</td><td>AddVisit_CreatesStudentRecord</td>
+    <td>Adds a visit and checks via GetVisitsForDay.</td>
+    <td class="pass">One visit; PersonId matches.</td></tr>
+
+  <tr><td>12</td><td>AddVisit_DuplicateOnSameDay_IsIgnored</td>
+    <td>Adds the same person+day twice (INSERT OR IGNORE).</td>
+    <td class="pass">Only one row stored.</td></tr>
+
+  <tr><td>13</td><td>AddVisit_SamePerson_DifferentDays_BothStored</td>
+    <td>Adds Alice on Jan 15 and Jan 16.</td>
+    <td class="pass">Each day has one visit.</td></tr>
+
+  <tr><td>14</td><td>GetVisitsForDay_ReturnsEmpty_WhenNoVisitsOnDate</td>
+    <td>Queries a date with no visits.</td>
+    <td class="pass">Empty list.</td></tr>
+
+  <tr><td>15</td><td>GetVisitsForDay_ReturnsOnlyVisitsForThatDay</td>
+    <td>Alice visits Jan 15, Bob visits Jan 16. Queries Jan 15.</td>
+    <td class="pass">Only Alice's visit returned.</td></tr>
+
+  <tr><td>16</td><td>GetVisitsForDay_MultiplePeople_ReturnsAll</td>
+    <td>Three people visit on the same day.</td>
+    <td class="pass">Count = 3.</td></tr>
+
+  <tr><td>17</td><td>GetVisitsForDay_ReturnsCorrectFullName</td>
+    <td>Adds "Dana Blue" and checks FullName in the result.</td>
+    <td class="pass">FullName = "Dana Blue".</td></tr>
+
+  <tr><td>18</td><td>GetVisitsForDay_ReturnsVisitId_GreaterThanZero</td>
+    <td>Checks that the VisitId (StudentId) is a positive auto-incremented value.</td>
+    <td class="pass">VisitId &gt; 0.</td></tr>
+</table>
+
+<h3>6.4 RemoveVisit</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>19</td><td>RemoveVisit_DeletesVisitRecord</td>
+    <td>Adds then removes a visit by VisitId.</td>
+    <td class="pass">GetVisitsForDay returns empty list.</td></tr>
+
+  <tr><td>20</td><td>RemoveVisit_OnlyRemovesSpecifiedVisit</td>
+    <td>Two visits on same day; removes only Alice's.</td>
+    <td class="pass">Bob's visit remains; Count = 1.</td></tr>
+
+  <tr><td>21</td><td>RemoveVisit_NonExistentId_DoesNotThrow</td>
+    <td>Deletes ID 99999 which does not exist.</td>
+    <td class="pass">No exception thrown.</td></tr>
+</table>
+
+<h3>6.5 GetStudentVisitsForWeek</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>22</td><td>GetStudentVisitsForWeek_ReturnsEmpty_WhenNoVisits</td>
+    <td>Queries empty database.</td>
+    <td class="pass">Empty list.</td></tr>
+
+  <tr><td>23</td><td>GetStudentVisitsForWeek_CountsVisitsCorrectly</td>
+    <td>Alice visits 3 times in the same week (Thu, Sat, Mon).</td>
+    <td class="pass">One row with VisitCount = 3.</td></tr>
+
+  <tr><td>24</td><td>GetStudentVisitsForWeek_ExcludesVisitsOutsideWeek</td>
+    <td>Alice visits once in current week, once next week.</td>
+    <td class="pass">VisitCount = 1 (only current week counted).</td></tr>
+
+  <tr><td>25</td><td>GetStudentVisitsForWeek_MultipleStudents_OrderedByVisitCountDesc</td>
+    <td>Alice visits 3 times, Bob 1 time.</td>
+    <td class="pass">Alice appears first (3 visits before 1).</td></tr>
+
+  <tr><td>26</td><td>GetStudentVisitsForWeek_IncludesAllDaysInWeek_ThuToWed</td>
+    <td>Visit on Wednesday (last day of Thu→Wed week).</td>
+    <td class="pass">VisitCount = 1 (Wednesday is in the week).</td></tr>
+</table>
+
+<h3>6.6 GetWeeklyVisitCounts</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>27</td><td>GetWeeklyVisitCounts_ReturnsRequestedNumberOfWeeks</td>
+    <td>Calls with numWeeks=5.</td>
+    <td class="pass">Returns exactly 5 items.</td></tr>
+
+  <tr><td>28</td><td>GetWeeklyVisitCounts_Default_Returns20Weeks</td>
+    <td>Calls without numWeeks parameter.</td>
+    <td class="pass">Returns exactly 20 items.</td></tr>
+
+  <tr><td>29</td><td>GetWeeklyVisitCounts_EmptyDb_AllZeroCounts</td>
+    <td>No visits in DB.</td>
+    <td class="pass">All TotalVisits = 0.</td></tr>
+
+  <tr><td>30</td><td>GetWeeklyVisitCounts_CorrectWeekLabel_Format_ddMM</td>
+    <td>Week starting 2024-01-11 (Thursday).</td>
+    <td class="pass">WeekLabel = "11/01".</td></tr>
+
+  <tr><td>31</td><td>GetWeeklyVisitCounts_TotalVisits_MatchesVisitsInWeek</td>
+    <td>Two people visit once each + one person visits twice = 4 total visits.</td>
+    <td class="pass">TotalVisits = 3 (individual visit rows).</td></tr>
+
+  <tr><td>32</td><td>GetWeeklyVisitCounts_TopStudents_OrderedByVisitCountDesc</td>
+    <td>Bob visits 2 times, Alice 1 time.</td>
+    <td class="pass">TopStudents[0].FullName = "Bob B".</td></tr>
+
+  <tr><td>33</td><td>GetWeeklyVisitCounts_VisitsInDifferentWeeks_CountedSeparately</td>
+    <td>Alice visits week 1 and week 2.</td>
+    <td class="pass">Each week shows TotalVisits = 1.</td></tr>
+</table>
+
+<h3>6.7 Cross-service Integration</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>34</td><td>PersonAddedViaAcademy_VisibleInDashboardService_GetUserIdByUsername</td>
+    <td>Person added via AcademyService; looked up by first name via DashboardService.</td>
+    <td class="pass">Returns matching PersonId.</td></tr>
+
+  <tr><td>35</td><td>PersonAddedViaAcademy_AppearsInStatisticsService_BodyInShop</td>
+    <td>Academy student visits Thursday; StatisticsService GetWeekDayStats checks Day[0].BodyInShop.</td>
+    <td class="pass">BodyInShop = 1.</td></tr>
+
+  <tr><td>36</td><td>AcademyVisit_AppearsInStatistics_AcademyCount</td>
+    <td>Academy visit on Thursday; checks Day[0].AcademyCount.</td>
+    <td class="pass">AcademyCount = 1.</td></tr>
+</table>
+
+<!-- ===================================================================== -->
+<h2>7. UserDbTests – Authentication &amp; User Management</h2>
+<p class="section-note">Service: <code>UserDb</code> (LPM.Auth) | File: <code>UserDbTests.cs</code></p>
+
+<h3>7.1 ValidateUser – Success Paths</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>1</td><td>ValidateUser_ReturnsTrue_WithCorrectCredentials</td>
+    <td>Pre-inserts "tami"/"Tami1234!" with CaseWorker role.</td>
+    <td class="pass">Returns true.</td></tr>
+
+  <tr><td>2</td><td>ValidateUser_IsCaseInsensitive_ForUsername</td>
+    <td>Queries "GENIA", "genia", "GeNiA" for a user inserted as "Genia".</td>
+    <td class="pass">All three return true.</td></tr>
+
+  <tr><td>3</td><td>ValidateUser_PopulatesRoles_WithAssignedRoles</td>
+    <td>User has Admin role; checks out-param roles.</td>
+    <td class="pass">roles contains "Admin".</td></tr>
+
+  <tr><td>4</td><td>ValidateUser_ReturnsAllAssignedRoles</td>
+    <td>User has both CaseWorker and Viewer roles.</td>
+    <td class="pass">roles.Count = 2, contains both.</td></tr>
+
+  <tr><td>5</td><td>ValidateUser_ReturnsTrue_WithCaseWorkerRole</td>
+    <td>Standard CaseWorker login.</td>
+    <td class="pass">true; roles contains "CaseWorker".</td></tr>
+
+  <tr><td>6</td><td>ValidateUser_ReturnsTrue_WithViewerRole</td>
+    <td>Standard Viewer login.</td>
+    <td class="pass">true; roles contains "Viewer".</td></tr>
+</table>
+
+<h3>7.2 ValidateUser – Failure Paths</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>7</td><td>ValidateUser_ReturnsFalse_WithWrongPassword</td>
+    <td>Correct username, wrong password.</td>
+    <td class="pass">false.</td></tr>
+
+  <tr><td>8</td><td>ValidateUser_ReturnsFalse_ForNonExistentUser</td>
+    <td>Username "nobody" not in DB.</td>
+    <td class="pass">false.</td></tr>
+
+  <tr><td>9</td><td>ValidateUser_ReturnsFalse_ForInactiveUser</td>
+    <td>User exists but IsActive=0.</td>
+    <td class="pass">false.</td></tr>
+
+  <tr><td>10</td><td>ValidateUser_ReturnsFalse_WithEmptyUsername</td>
+    <td>Passes empty string as username.</td>
+    <td class="pass">false.</td></tr>
+
+  <tr><td>11</td><td>ValidateUser_ReturnsFalse_WithEmptyPassword</td>
+    <td>Valid user, empty password string.</td>
+    <td class="pass">false.</td></tr>
+
+  <tr><td>12</td><td>ValidateUser_ReturnsFalse_WithNullUsername</td>
+    <td>Passes null as username.</td>
+    <td class="pass">false (no exception).</td></tr>
+
+  <tr><td>13</td><td>ValidateUser_ReturnsFalse_WithNullPassword</td>
+    <td>Passes null as password.</td>
+    <td class="pass">false (no exception).</td></tr>
+
+  <tr><td>14</td><td>ValidateUser_ReturnsFalse_WhenUserHasNoRoles</td>
+    <td>User exists with correct password but no role assignments.</td>
+    <td class="pass">false (role required).</td></tr>
+
+  <tr><td>15</td><td>ValidateUser_ReturnsEmptyRoles_OnFailure</td>
+    <td>Failed login; checks out-param roles.</td>
+    <td class="pass">roles is empty list.</td></tr>
+
+  <tr><td>16</td><td>ValidateUser_PasswordIsCaseSensitive</td>
+    <td>Tries "secret123!" when password is "Secret123!".</td>
+    <td class="pass">Lowercase attempt returns false; exact case returns true.</td></tr>
+</table>
+
+<h3>7.3 ChangePassword</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>17</td><td>ChangePassword_Succeeds_WithCorrectCurrentPassword</td>
+    <td>Changes from OldPass123! to NewPass456!.</td>
+    <td class="pass">Returns null (success).</td></tr>
+
+  <tr><td>18</td><td>ChangePassword_NewPasswordValidates</td>
+    <td>After changing, validates with new password succeeds and old fails.</td>
+    <td class="pass">ValidateUser(new) = true; ValidateUser(old) = false.</td></tr>
+
+  <tr><td>19</td><td>ChangePassword_ReturnsError_WithWrongCurrentPassword</td>
+    <td>Passes wrong current password.</td>
+    <td class="pass">Returns non-null error message.</td></tr>
+
+  <tr><td>20</td><td>ChangePassword_ReturnsError_ForNonExistentUser</td>
+    <td>Username "nobody" not in DB.</td>
+    <td class="pass">Returns non-null error message.</td></tr>
+
+  <tr><td>21</td><td>ChangePassword_OldPasswordNoLongerValid_AfterChange</td>
+    <td>Changes password; tries old password.</td>
+    <td class="pass">ValidateUser with old password = false.</td></tr>
+</table>
+
+<h3>7.4 GetAvatarPath / SetAvatarPath</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>22</td><td>GetAvatarPath_ReturnsNull_WhenNotSet</td>
+    <td>Queries avatar for a newly created user.</td>
+    <td class="pass">null.</td></tr>
+
+  <tr><td>23</td><td>SetAvatarPath_StoresRelativePath</td>
+    <td>Sets "/avatars/genia.png" and reads back.</td>
+    <td class="pass">Path matches.</td></tr>
+
+  <tr><td>24</td><td>SetAvatarPath_CanClearPath_WithNull</td>
+    <td>Sets a path, then sets null.</td>
+    <td class="pass">GetAvatarPath returns null.</td></tr>
+
+  <tr><td>25</td><td>GetAvatarPath_IsCaseInsensitive_ForUsername</td>
+    <td>Sets for "Yaniv"; queries "yaniv" and "YANIV".</td>
+    <td class="pass">Both return the stored path.</td></tr>
+
+  <tr><td>26</td><td>SetAvatarPath_UpdatesExistingPath</td>
+    <td>Sets old path, then new path. Reads back.</td>
+    <td class="pass">New path returned.</td></tr>
+
+  <tr><td>27</td><td>GetAvatarPath_ReturnsNull_ForNonExistentUser</td>
+    <td>Queries "nobody" not in DB.</td>
+    <td class="pass">null.</td></tr>
+</table>
+
+<h3>7.5 Schema &amp; Multiple Users</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>28</td><td>UserDb_CanBeInstantiatedTwice_WithoutError</td>
+    <td>Creates two UserDb instances pointing to the same file (EnsureSchema idempotency).</td>
+    <td class="pass">No exception.</td></tr>
+
+  <tr><td>29</td><td>UserDb_AvatarPath_ColumnExists_AfterInit</td>
+    <td>Checks the AvatarPath column exists in Users table via PRAGMA.</td>
+    <td class="pass">Column exists.</td></tr>
+
+  <tr><td>30</td><td>MultipleUsers_CanCoexistWithDifferentPasswords</td>
+    <td>user1/Pass111! and user2/Pass222!; verifies cross-authentication fails.</td>
+    <td class="pass">user1 with Pass222! returns false.</td></tr>
+
+  <tr><td>31</td><td>InactiveUser_DoesNotAffectOtherUsersLogin</td>
+    <td>Active user and inactive user both in DB. Active can log in; inactive cannot.</td>
+    <td class="pass">active=true; inactive=false.</td></tr>
+</table>
+
+<!-- ===================================================================== -->
+<h2>8. DashboardExtendedTests – Extended Dashboard Coverage</h2>
+<p class="section-note">Service: <code>DashboardService</code> | File: <code>DashboardExtendedTests.cs</code></p>
+
+<h3>8.1 GetAllPcs (Dashboard Version)</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>1</td><td>GetAllPcs_Dashboard_ReturnsEmpty_WhenNoPcs</td>
+    <td>No PCs in DB.</td>
+    <td class="pass">Empty list.</td></tr>
+
+  <tr><td>2</td><td>GetAllPcs_Dashboard_ReturnsRegularEntry_ForEachPc</td>
+    <td>Two PCs added.</td>
+    <td class="pass">Two non-solo entries.</td></tr>
+
+  <tr><td>3</td><td>GetAllPcs_Dashboard_AddsSoloEntry_ForSoloTypeAuditors</td>
+    <td>PC owner is Type=3 (RegularAndSolo) auditor.</td>
+    <td class="pass">1 regular + 1 solo entry.</td></tr>
+
+  <tr><td>4</td><td>GetAllPcs_Dashboard_SoloEntry_HasSuffix</td>
+    <td>Solo PC entry for "Aviv" (Type=2).</td>
+    <td class="pass">IsSolo=true entry FullName contains "Solo".</td></tr>
+
+  <tr><td>5</td><td>GetAllPcs_Dashboard_SoloEntry_WorkCapacity_IsCS</td>
+    <td>Solo PC entry for a Type=3 auditor.</td>
+    <td class="pass">WorkCapacity = "CS".</td></tr>
+
+  <tr><td>6</td><td>GetAllPcs_Dashboard_NoSoloEntry_ForType1_RegularOnly</td>
+    <td>PC owner is Type=1; no solo entry should be created.</td>
+    <td class="pass">No solo entries in list.</td></tr>
+</table>
+
+<h3>8.2 AddMiscCharge</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>7</td><td>AddMiscCharge_ReturnsPositiveId</td>
+    <td>Adds a miscellaneous charge entry.</td>
+    <td class="pass">MiscChargeId &gt; 0.</td></tr>
+
+  <tr><td>8</td><td>AddMiscCharge_StoredInMiscChargeTable</td>
+    <td>Verifies the raw DB row after insert.</td>
+    <td class="pass">One row with returned ID.</td></tr>
+
+  <tr><td>9</td><td>AddMiscCharge_IncrementsSequence_ForSameAuditorPcAndDate</td>
+    <td>Two misc charges for same auditor, PC, and date.</td>
+    <td class="pass">SequenceInDay = 1, then 2.</td></tr>
+</table>
+
+<h3>8.3 SetUserPcRole</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>10</td><td>SetUserPcRole_ChangesWorkCapacity_ForNonSoloEntry</td>
+    <td>Changes role from "Auditor" to "Miscellaneous" for IsSolo=0 row.</td>
+    <td class="pass">WorkCapacity = "Miscellaneous".</td></tr>
+
+  <tr><td>11</td><td>SetUserPcRole_DoesNotAffectSoloEntry</td>
+    <td>Regular and solo entries exist; SetUserPcRole called for non-solo.</td>
+    <td class="pass">Solo row WorkCapacity still = "CS".</td></tr>
+</table>
+
+<h3>8.4 GetDayDetail – Miscellaneous Role</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>12</td><td>GetDayDetail_Miscellaneous_ReturnsOwnMiscRows</td>
+    <td>Auditor adds a misc charge; calls GetDayDetail with role="Miscellaneous".</td>
+    <td class="pass">Sessions list has 1 item with LengthSec = 3600.</td></tr>
+
+  <tr><td>13</td><td>GetDayDetail_Miscellaneous_OnlyReturnsOwnRows_NotOtherAuditors</td>
+    <td>Two auditors add misc charges for same PC+date; each only sees their own.</td>
+    <td class="pass">Aud1 detail has 1 session (3600 s); Aud2's (1800 s) not included.</td></tr>
+</table>
+
+<h3>8.5 GetDayDetail – SoloAuditor Role</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>14</td><td>GetDayDetail_SoloAuditor_ReturnsSoloSessions_ForThatDay</td>
+    <td>Solo auditor adds a solo session; calls GetDayDetail with role="SoloAuditor".</td>
+    <td class="pass">Sessions[0].LengthSec = 3600.</td></tr>
+
+  <tr><td>15</td><td>GetDayDetail_SoloAuditor_DoesNotReturnRegularSessions</td>
+    <td>Same auditor has both a regular session (IsSolo=0) and a solo session (IsSolo=1).</td>
+    <td class="pass">Only the solo session returned.</td></tr>
+</table>
+
+<h3>8.6 GetWeekGrid – CS with CsWorkLog</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>16</td><td>GetWeekGrid_CS_IncludesCsWorkLog_InTotal</td>
+    <td>CS reviews session (1200 s) and does general CsWork (600 s) on same day.</td>
+    <td class="pass">Grid value = 1800 (combined).</td></tr>
+</table>
+
+<h3>8.7 GetWeekGridSolo</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>17</td><td>GetWeekGridSolo_ReturnsEmpty_WhenNoSoloSessions</td>
+    <td>Solo auditor with no sessions recorded.</td>
+    <td class="pass">Empty dictionary.</td></tr>
+
+  <tr><td>18</td><td>GetWeekGridSolo_ReturnsSoloSessionSeconds</td>
+    <td>Solo auditor adds a solo session (3600 s body + 600 s admin).</td>
+    <td class="pass">Grid value = 4200.</td></tr>
+
+  <tr><td>19</td><td>GetWeekGridSolo_AggregatesTotalForSameDay</td>
+    <td>Two solo sessions on the same day (3600 + 1800 s).</td>
+    <td class="pass">Grid value = 5400.</td></tr>
+</table>
+
+<h3>8.8 GetWeeklyTotals</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>20</td><td>GetWeeklyTotals_ReturnsRequestedWeekCount</td>
+    <td>numWeeks = 6.</td>
+    <td class="pass">Returns 6 items.</td></tr>
+
+  <tr><td>21</td><td>GetWeeklyTotals_AllZero_WhenNoPcs</td>
+    <td>Empty PC list.</td>
+    <td class="pass">All TotalSeconds = 0.</td></tr>
+
+  <tr><td>22</td><td>GetWeeklyTotals_SumsSessionsForAuditorRole</td>
+    <td>Two sessions in same week (3600 + 1800 s) with Auditor role.</td>
+    <td class="pass">Latest week TotalSeconds = 5400.</td></tr>
+
+  <tr><td>23</td><td>GetWeeklyTotals_LastWeekIsLatestWeekStart</td>
+    <td>Checks result.Last().WeekStart matches the passed weekStart.</td>
+    <td class="pass">WeekStart = 2024-01-11.</td></tr>
+
+  <tr><td>24</td><td>GetWeeklyTotals_WeekLabel_Format_ddMM</td>
+    <td>Checks label format.</td>
+    <td class="pass">WeekLabel = "11/01".</td></tr>
+
+  <tr><td>25</td><td>GetWeeklyTotals_TopPcs_ListedByTimeDesc</td>
+    <td>PC1 has 7200 s, PC2 has 1800 s.</td>
+    <td class="pass">TopPcs[0].FullName = "ClientMore".</td></tr>
+</table>
+
+<h3>8.9 GetWeeklyTotalsSolo</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>26</td><td>GetWeeklyTotalsSolo_AllZero_WhenNoSoloSessions</td>
+    <td>No solo sessions recorded.</td>
+    <td class="pass">All TotalSeconds = 0.</td></tr>
+
+  <tr><td>27</td><td>GetWeeklyTotalsSolo_SumsOnlySoloSessions</td>
+    <td>Solo session (3600 s) + regular session (7200 s) both present.</td>
+    <td class="pass">TotalSeconds = 3600 (regular excluded).</td></tr>
+</table>
+
+<h3>8.10 GetLastCsNamesByPc</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>28</td><td>GetLastCsNamesByPc_ReturnsEmpty_ForEmptyList</td>
+    <td>Passes empty list of PC IDs.</td>
+    <td class="pass">Empty dictionary.</td></tr>
+
+  <tr><td>29</td><td>GetLastCsNamesByPc_ReturnsEmpty_WhenNoPcHasReview</td>
+    <td>Session exists but no CS review.</td>
+    <td class="pass">Empty dictionary.</td></tr>
+
+  <tr><td>30</td><td>GetLastCsNamesByPc_ReturnsLatestCsName</td>
+    <td>Two sessions reviewed by CS1 then CS2. CS2 reviewed the later session.</td>
+    <td class="pass">Dictionary[pcId] contains "Genia" (latest CS).</td></tr>
+
+  <tr><td>31</td><td>GetLastCsNamesByPc_ReturnsCorrectCs_ForMultiplePcs</td>
+    <td>PC1 reviewed by Tami, PC2 reviewed by Genia.</td>
+    <td class="pass">result[pc1] contains "Tami"; result[pc2] contains "Genia".</td></tr>
+</table>
+
+<h3>8.11 HasAnyWorkInWeek</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>32</td><td>HasAnyWorkInWeek_ReturnsFalse_WhenNoWork</td>
+    <td>Auditor with no sessions, no PC assignments.</td>
+    <td class="pass">false.</td></tr>
+
+  <tr><td>33</td><td>HasAnyWorkInWeek_ReturnsTrue_WhenAuditorHasSession</td>
+    <td>Auditor has a session in the specified week.</td>
+    <td class="pass">true.</td></tr>
+
+  <tr><td>34</td><td>HasAnyWorkInWeek_ReturnsFalse_WhenSessionIsOutsideWeek</td>
+    <td>Session is on the next Thursday (different week).</td>
+    <td class="pass">false.</td></tr>
+
+  <tr><td>35</td><td>HasAnyWorkInWeek_ReturnsTrue_WhenMiscChargeInWeek</td>
+    <td>Misc charge on Friday of the specified week.</td>
+    <td class="pass">true.</td></tr>
+
+  <tr><td>36</td><td>HasAnyWorkInWeek_SoloMode_ReturnsTrue_ForSoloSession</td>
+    <td>soloMode=true; solo session exists in week.</td>
+    <td class="pass">true.</td></tr>
+
+  <tr><td>37</td><td>HasAnyWorkInWeek_SoloMode_ReturnsFalse_WhenOnlyRegularSessions</td>
+    <td>soloMode=true; only regular (IsSolo=0) sessions exist.</td>
+    <td class="pass">false.</td></tr>
+</table>
+
+<h3>8.12 GetPendingCsMarkers</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>38</td><td>GetPendingCsMarkers_ReturnsEmpty_WhenAllSessionsReviewed</td>
+    <td>Session has a CS review; no pending markers expected.</td>
+    <td class="pass">Empty set.</td></tr>
+
+  <tr><td>39</td><td>GetPendingCsMarkers_ReturnsCells_WhenSessionHasNoReview</td>
+    <td>Session exists without a review.</td>
+    <td class="pass">Set contains (pcId, 0).</td></tr>
+
+  <tr><td>40</td><td>GetPendingCsMarkers_ReturnsEmpty_WhenNoPcs</td>
+    <td>Empty PC list passed.</td>
+    <td class="pass">Empty set.</td></tr>
+</table>
+
+<h3>8.13 Cross-service Workflow Scenarios</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>41</td><td>FullWorkflow_PcAddedThenSessionThenCsReview_IntegratesCorrectly</td>
+    <td>End-to-end: add PC via PcService → add session via DashboardService → add CS review →
+    verify DayDetail shows session + review; PcStats shows correct session count and UsedSec.</td>
+    <td class="pass">Detail has 1 session (3600 s), 1 review (1200 s, "Approved"). PcStats: Total=1, UsedSec=3600.</td></tr>
+
+  <tr><td>42</td><td>FullWorkflow_Payment_ReducesBalance_VisibleInPcService</td>
+    <td>PC buys 5 h; 1 h session logged via DashboardService; PcService.GetAllPcs shows balance.</td>
+    <td class="pass">RemainSec = 14400 (4 hours remaining).</td></tr>
+
+  <tr><td>43</td><td>FullWorkflow_AuditorAddedViaService_IsRecognisedByIsAuditor</td>
+    <td>Auditor added via AuditorService; DashboardService.IsAuditor queried.</td>
+    <td class="pass">true.</td></tr>
+</table>
+
+<!-- ===================================================================== -->
+<h2>9. SchemaIntegrityTests – Database Schema Verification</h2>
+<p class="section-note">File: <code>SchemaIntegrityTests.cs</code> — verifies the raw SQLite schema after initialization.</p>
+
+<h3>9.1 Table Existence (15 theory cases)</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>1–15</td><td>Table_ExistsAfterInit (theory)</td>
+    <td>Parameterized test for all 15 tables: Persons, Grades, Auditors, CaseSupervisors, PCs,
+    Sessions, CsReviews, CsWorkLog, Payments, StaffPcList, MiscCharge, Students, Users, Roles, UserRoles.</td>
+    <td class="pass">Each table exists after TestDbHelper.InitSchema().</td></tr>
+</table>
+
+<h3>9.2 Column Existence (44 theory cases)</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>16–59</td><td>Column_ExistsAfterInit (theory)</td>
+    <td>Parameterized for ~44 critical column/table pairs including: Persons.(PersonId, FirstName, LastName, Phone, Email, DateOfBirth, Sex),
+    Auditors.(AuditorId, IsActive, Type, CurrentGradeId), Sessions.(SessionId, PcId, AuditorId, SessionDate, LengthSeconds, AdminSeconds, IsFreeSession, VerifiedStatus, IsSolo, SequenceInDay),
+    CsReviews.(CsReviewId, SessionId, CsId, ReviewLengthSeconds, Status, Notes), Payments.(PaymentId, PcId, HoursBought, AmountPaid),
+    Students.(StudentId, PersonId, VisitDate), Users.(Id, Username, PasswordHash, IsActive, AvatarPath), Roles.(RoleId, Code),
+    StaffPcList.(UserId, PcId, WorkCapacity, IsSolo).</td>
+    <td class="pass">All columns exist via PRAGMA table_info.</td></tr>
+</table>
+
+<h3>9.3 Seed Data</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>60</td><td>Grades_SeedData_HasThreeRows</td>
+    <td>Counts rows in Grades table.</td>
+    <td class="pass">COUNT(*) = 3.</td></tr>
+
+  <tr><td>61</td><td>Grades_SeedData_Contains_BA_MA_PHD</td>
+    <td>Checks each code exists individually.</td>
+    <td class="pass">BA=1, MA=1, PHD=1.</td></tr>
+
+  <tr><td>62</td><td>Roles_SeedData_Contains_CaseWorker_Admin_Viewer</td>
+    <td>Checks each role code exists.</td>
+    <td class="pass">CaseWorker=1, Admin=1, Viewer=1.</td></tr>
+</table>
+
+<h3>9.4 UNIQUE Constraints</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>63</td><td>CsReviews_UniqueConstraint_OnSessionId_Enforced</td>
+    <td>Inserts two CsReviews for the same SessionId.</td>
+    <td class="pass">SqliteException on second insert.</td></tr>
+
+  <tr><td>64</td><td>Students_UniqueConstraint_OnPersonIdAndVisitDate_Enforced</td>
+    <td>Inserts same PersonId+VisitDate twice.</td>
+    <td class="pass">SqliteException on duplicate.</td></tr>
+
+  <tr><td>65</td><td>Students_UniqueConstraint_AllowsSamePerson_DifferentDays</td>
+    <td>Same PersonId, two different dates.</td>
+    <td class="pass">Both rows inserted; COUNT = 2.</td></tr>
+
+  <tr><td>66</td><td>StaffPcList_UniqueConstraint_OnUserIdPcIdIsSolo_Enforced</td>
+    <td>INSERT OR IGNORE for duplicate; checks count.</td>
+    <td class="pass">COUNT = 1 (duplicate silently ignored).</td></tr>
+
+  <tr><td>67</td><td>StaffPcList_AllowsSamePair_WithDifferentIsSolo</td>
+    <td>Same UserId+PcId but IsSolo=0 and IsSolo=1 inserted.</td>
+    <td class="pass">COUNT = 2 (different IsSolo values are distinct).</td></tr>
+
+  <tr><td>68</td><td>Users_UniqueConstraint_OnUsername_Enforced</td>
+    <td>Two users with same username.</td>
+    <td class="pass">SqliteException on second insert.</td></tr>
+</table>
+
+<h3>9.5 CHECK Constraints</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>69</td><td>CsReviews_CheckConstraint_RejectsInvalidStatus</td>
+    <td>Inserts CsReview with Status='InvalidStatus'.</td>
+    <td class="pass">SqliteException thrown.</td></tr>
+
+  <tr><td>70–73</td><td>CsReviews_CheckConstraint_AcceptsValidStatuses (4 theory cases)</td>
+    <td>Inserts with each valid status: Draft, Approved, NeedsCorrection, Rejected.</td>
+    <td class="pass">All four inserts succeed (no exception).</td></tr>
+</table>
+
+<h3>9.6 DEFAULT Column Values</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>74</td><td>Sessions_DefaultVerifiedStatus_IsDraft</td>
+    <td>Inserts a session without specifying VerifiedStatus.</td>
+    <td class="pass">VerifiedStatus = "Draft".</td></tr>
+
+  <tr><td>75</td><td>Sessions_DefaultIsSolo_IsZero</td>
+    <td>Inserts a session without specifying IsSolo.</td>
+    <td class="pass">IsSolo = 0.</td></tr>
+
+  <tr><td>76</td><td>CsReviews_DefaultStatus_IsDraft</td>
+    <td>Inserts a CsReview without specifying Status.</td>
+    <td class="pass">Status = "Draft".</td></tr>
+
+  <tr><td>77</td><td>Auditors_DefaultIsActive_IsOne</td>
+    <td>Inserts auditor row with only AuditorId.</td>
+    <td class="pass">IsActive = 1.</td></tr>
+
+  <tr><td>78</td><td>Auditors_DefaultType_IsOne</td>
+    <td>Inserts auditor row with only AuditorId.</td>
+    <td class="pass">Type = 1.</td></tr>
+
+  <tr><td>79</td><td>Payments_DefaultHoursBought_IsZero</td>
+    <td>Inserts payment without HoursBought.</td>
+    <td class="pass">HoursBought = 0.</td></tr>
+
+  <tr><td>80</td><td>StaffPcList_DefaultWorkCapacity_IsAuditor</td>
+    <td>Inserts StaffPcList row without WorkCapacity.</td>
+    <td class="pass">WorkCapacity = "Auditor".</td></tr>
+</table>
+
+<h3>9.7 AUTOINCREMENT Behavior</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>81</td><td>Persons_AutoIncrement_AssignsSequentialIds</td>
+    <td>Inserts three persons; checks id1 &lt; id2 &lt; id3.</td>
+    <td class="pass">Monotonically increasing IDs.</td></tr>
+
+  <tr><td>82</td><td>Sessions_AutoIncrement_AssignsSequentialIds</td>
+    <td>Inserts two sessions; checks sid1 &lt; sid2.</td>
+    <td class="pass">Monotonically increasing SessionIds.</td></tr>
+
+  <tr><td>83</td><td>Payments_AutoIncrement_AssignsSequentialIds</td>
+    <td>Inserts two payments; checks p1 &lt; p2.</td>
+    <td class="pass">Monotonically increasing PaymentIds.</td></tr>
+</table>
+
+<h3>9.8 Service Migration Idempotency</h3>
+<table>
+  <tr><th class="tbl-id">#</th><th class="tbl-name">Test Name</th><th class="tbl-desc">Description</th><th class="tbl-expect">Expected Result</th></tr>
+
+  <tr><td>84</td><td>DashboardService_RunMigrations_IsIdempotent</td>
+    <td>Creates DashboardService twice on the same DB file.</td>
+    <td class="pass">No exception thrown.</td></tr>
+
+  <tr><td>85</td><td>PcService_EnsureSchema_IsIdempotent</td>
+    <td>Creates PcService twice on the same DB file.</td>
+    <td class="pass">No exception thrown.</td></tr>
+
+  <tr><td>86</td><td>AcademyService_EnsureSchema_IsIdempotent</td>
+    <td>Creates AcademyService twice on the same DB file.</td>
+    <td class="pass">No exception thrown.</td></tr>
+
+  <tr><td>87</td><td>UserDb_EnsureSchema_IsIdempotent</td>
+    <td>Creates UserDb twice on the same DB file.</td>
+    <td class="pass">No exception thrown.</td></tr>
+
+  <tr><td>88</td><td>AllServices_CanBeInstantiatedTogether_NoConflicts</td>
+    <td>Instantiates all 6 services (DashboardService, PcService, AuditorService, AcademyService, StatisticsService, UserDb) against the same file.</td>
+    <td class="pass">No exception thrown.</td></tr>
+</table>
+
+<!-- ===================================================================== -->
+<h2>10. Test Coverage Summary</h2>
 
 <table>
   <tr>
@@ -724,11 +1463,19 @@ without needing a running ASP.NET host.</p>
     <td>User lookup, role checks, sessions, CS reviews, solo sessions, week grid, static utilities, StaffPcList.</td></tr>
   <tr><td>StatisticsServiceTests</td><td>18</td>
     <td>Per-day auditor stats, PC counts, academy visits, body-in-shop, weekly summaries.</td></tr>
-  <tr><td><strong>Total</strong></td><td><strong>136</strong></td><td></td></tr>
+  <tr><td>AcademyServiceTests</td><td>38</td>
+    <td>Add persons, add/remove visits, weekly visit summaries, top students, cross-service integration.</td></tr>
+  <tr><td>UserDbTests</td><td>37</td>
+    <td>Login validation, case sensitivity, role retrieval, password change, avatar path management, schema idempotency.</td></tr>
+  <tr><td>DashboardExtendedTests</td><td>55</td>
+    <td>MiscCharge, solo grid, weekly totals, CS work log aggregation, SetUserPcRole, GetLastCsNamesByPc, HasAnyWorkInWeek, GetPendingCsMarkers, end-to-end workflows.</td></tr>
+  <tr><td>SchemaIntegrityTests</td><td>70</td>
+    <td>Table existence (15), column existence (44), seed data (3), UNIQUE constraints (6), CHECK constraints (5), DEFAULT values (7), AUTOINCREMENT (3), service migration idempotency (5).</td></tr>
+  <tr><td><strong>Total</strong></td><td><strong>336</strong></td><td><em>All tests pass against an isolated in-memory SQLite file; no live database is touched.</em></td></tr>
 </table>
 
 <!-- ===================================================================== -->
-<h2>7. How to Run the Tests</h2>
+<h2>11. How to Run the Tests</h2>
 
 <ol>
   <li>Open <strong>Visual Studio 2022</strong>.</li>
