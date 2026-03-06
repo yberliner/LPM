@@ -621,61 +621,123 @@
     }
 
     // ── Session submit ─────────────────────────────────────────────
-    private async Task SubmitOne(int sessionId)
+    private void SubmitOne(int sessionId)
     {
         if (!_rowEdits.TryGetValue(sessionId, out var edit)) return;
         _busy = true;
         DashSvc.ApproveSession(sessionId, edit.ChargeRate * 100, edit.Salary * 100);
         _busy = false;
+        ApplySessionApprovalInMemory(sessionId, edit.ChargeRate * 100, edit.Salary * 100);
         ShowMsg("Session saved.", false);
-        await LoadData();
     }
 
-    private async Task SubmitAllForPc(int auditorId, int pcId)
+    private void SubmitAllForPc(int auditorId, int pcId)
     {
-        var pcGroup = _groups.FirstOrDefault(g => g.AuditorId == auditorId)
-                             ?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
+        var audGroup = _groups.FirstOrDefault(g => g.AuditorId == auditorId);
+        var pcGroup  = audGroup?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
         if (pcGroup is null) return;
         _busy = true;
         int count = 0;
-        foreach (var s in pcGroup.Sessions)
+        string pcName = pcGroup.PcName;
+        foreach (var s in pcGroup.Sessions.ToList())
         {
             if (!_rowEdits.TryGetValue(s.SessionId, out var edit)) continue;
             DashSvc.ApproveSession(s.SessionId, edit.ChargeRate * 100, edit.Salary * 100);
+            ApplySessionApprovalInMemory(s.SessionId, edit.ChargeRate * 100, edit.Salary * 100);
             count++;
         }
         _busy = false;
-        ShowMsg($"{count} session{(count != 1 ? "s" : "")} saved for {pcGroup.PcName}.", false);
-        await LoadData();
+        ShowMsg($"{count} session{(count != 1 ? "s" : "")} saved for {pcName}.", false);
     }
 
     // ── CS review submit ───────────────────────────────────────────
-    private async Task SubmitOneCsReview(int csReviewId)
+    private void SubmitOneCsReview(int csReviewId)
     {
         if (!_csRowEdits.TryGetValue(csReviewId, out var salary)) return;
         _busy = true;
         DashSvc.ApproveCsReview(csReviewId, salary * 100);
         _busy = false;
+        ApplyCsApprovalInMemory(csReviewId, salary * 100);
         ShowMsg("CS review saved.", false);
-        await LoadData();
     }
 
-    private async Task SubmitAllCsForPc(int csId, int pcId)
+    private void SubmitAllCsForPc(int csId, int pcId)
     {
         var pcGroup = _csGroups.FirstOrDefault(g => g.CsId == csId)
                                ?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
         if (pcGroup is null) return;
         _busy = true;
         int count = 0;
-        foreach (var rev in pcGroup.Reviews)
+        string pcName = pcGroup.PcName;
+        foreach (var rev in pcGroup.Reviews.ToList())
         {
             if (!_csRowEdits.TryGetValue(rev.CsReviewId, out var salary)) continue;
             DashSvc.ApproveCsReview(rev.CsReviewId, salary * 100);
+            ApplyCsApprovalInMemory(rev.CsReviewId, salary * 100);
             count++;
         }
         _busy = false;
-        ShowMsg($"{count} CS review{(count != 1 ? "s" : "")} saved for {pcGroup.PcName}.", false);
-        await LoadData();
+        ShowMsg($"{count} CS review{(count != 1 ? "s" : "")} saved for {pcName}.", false);
+    }
+
+    // ── In-memory update helpers ───────────────────────────────────
+    private void ApplySessionApprovalInMemory(int sessionId, int chargeRateCents, int salaryCents)
+    {
+        foreach (var group in _groups)
+        {
+            foreach (var pcGroup in group.PcGroups)
+            {
+                var idx = pcGroup.Sessions.FindIndex(s => s.SessionId == sessionId);
+                if (idx < 0) continue;
+                if (_includeApproved)
+                    pcGroup.Sessions[idx] = pcGroup.Sessions[idx] with
+                    {
+                        VerifiedStatus           = "Approved",
+                        ChargedRateCentsPerHour  = chargeRateCents,
+                        AuditorSalaryCentsPerHour = salaryCents
+                    };
+                else
+                    pcGroup.Sessions.RemoveAt(idx);
+                goto done;
+            }
+        }
+        done:
+        if (!_includeApproved) PruneEmptySessionGroups();
+    }
+
+    private void ApplyCsApprovalInMemory(int csReviewId, int salaryCents)
+    {
+        foreach (var csGroup in _csGroups)
+        {
+            foreach (var pcGroup in csGroup.PcGroups)
+            {
+                var idx = pcGroup.Reviews.FindIndex(r => r.CsReviewId == csReviewId);
+                if (idx < 0) continue;
+                if (_includeApproved)
+                    pcGroup.Reviews[idx] = pcGroup.Reviews[idx] with
+                    {
+                        CsStatus             = "Approved",
+                        CsSalaryCentsPerHour = salaryCents
+                    };
+                else
+                    pcGroup.Reviews.RemoveAt(idx);
+                goto done;
+            }
+        }
+        done:
+        if (!_includeApproved) PruneEmptyCsGroups();
+    }
+
+    private void PruneEmptySessionGroups()
+    {
+        foreach (var g in _groups) g.PcGroups.RemoveAll(pg => pg.Sessions.Count == 0);
+        _groups.RemoveAll(g => g.PcGroups.Count == 0);
+    }
+
+    private void PruneEmptyCsGroups()
+    {
+        foreach (var g in _csGroups) g.PcGroups.RemoveAll(pg => pg.Reviews.Count == 0);
+        _csGroups.RemoveAll(g => g.PcGroups.Count == 0);
     }
 
     private void ShowMsg(string msg, bool isError) { _msg = msg; _msgIsError = isError; }
