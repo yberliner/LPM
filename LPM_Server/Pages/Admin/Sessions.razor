@@ -11,24 +11,21 @@
     @* ── Page Header ── *@
     <div class="d-flex align-items-center mb-3 gap-3 flex-wrap">
         <div>
-            <h4 class="mb-0 fw-bold sa-title">Session Approval</h4>
-            <span class="text-muted" style="font-size:0.82rem;">Review and approve sessions — sorted by auditor &amp; PC</span>
+            <h4 class="mb-0 fw-bold sa-title">Session &amp; CS Review Approval</h4>
+            <span class="text-muted" style="font-size:0.82rem;">Sessions and CS reviews are managed separately</span>
         </div>
         <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
-            @if (_totalSessions > 0)
+            @if (_sessDraft > 0)
             {
-                @if (_totalDraft > 0)
-                {
-                    <span class="badge rounded-pill text-bg-warning px-3 py-2" style="font-size:0.77rem;">
-                        <i class="ri-time-line me-1"></i>@_totalDraft draft
-                    </span>
-                }
-                @if (_totalApproved > 0)
-                {
-                    <span class="badge rounded-pill text-bg-success px-3 py-2" style="font-size:0.77rem;">
-                        <i class="ri-check-line me-1"></i>@_totalApproved approved
-                    </span>
-                }
+                <span class="badge rounded-pill text-bg-warning px-3 py-2" style="font-size:0.77rem;">
+                    <i class="ri-time-line me-1"></i>@_sessDraft session draft
+                </span>
+            }
+            @if (_csDraft > 0)
+            {
+                <span class="badge rounded-pill sa-badge-cs-draft px-3 py-2" style="font-size:0.77rem;">
+                    <i class="ri-user-star-line me-1"></i>@_csDraft CS draft
+                </span>
             }
             <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
                     @onclick="LoadData" disabled="@_loading">
@@ -90,49 +87,42 @@
         </div>
     </div>
 
-    @* ── Content ── *@
+    @* ══════════════════════════════════════════════════════════
+       SECTION 1 — SESSIONS
+       ══════════════════════════════════════════════════════════ *@
+    <div class="sa-section-label mb-3">
+        <i class="ri-calendar-check-line me-2"></i>Sessions
+        @if (_sessDraft > 0)    { <span class="badge rounded-pill sa-badge-pending ms-2">@_sessDraft draft</span> }
+        @if (_sessApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm ms-1">@_sessApproved approved</span> }
+    </div>
+
     @if (_loading)
     {
         <div class="text-center py-5">
             <div class="spinner-border text-primary mb-3" style="width:2.5rem;height:2.5rem;" role="status"></div>
-            <div class="text-muted">Loading sessions...</div>
+            <div class="text-muted">Loading...</div>
         </div>
     }
     else if (_groups.Count == 0)
     {
-        <div class="text-center py-5">
-            <div class="rounded-circle d-inline-flex align-items-center justify-content-center mb-3 sa-empty-icon">
-                <i class="ri-check-double-line text-success" style="font-size:2rem;"></i>
-            </div>
-            <div class="fw-semibold fs-5 mb-1">Nothing to show</div>
-            <div class="text-muted" style="font-size:0.88rem;">
-                @if (_includeApproved) { <span>No sessions in the selected date range.</span> }
-                else { <span>No draft sessions pending approval.</span> }
-            </div>
+        <div class="sa-empty-block mb-4">
+            <i class="ri-check-double-line text-success" style="font-size:1.8rem;"></i>
+            <div class="fw-semibold mt-2">No sessions to show</div>
+            <div class="text-muted small">@(_includeApproved ? "No sessions in the selected date range." : "No draft sessions pending approval.")</div>
         </div>
     }
     else
     {
         @foreach (var group in _groups)
         {
-            int gDraft    = group.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus == "Draft"));
+            int gDraft    = group.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus != "Approved"));
             int gApproved = group.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus == "Approved"));
+            var audAvatar = _auditorAvatars.GetValueOrDefault(group.AuditorId);
 
             <div class="card border-0 shadow-sm mb-4 sa-auditor-card">
-
-                @* ── Auditor header ── *@
                 <div class="card-header d-flex align-items-center gap-3 py-3 px-4 border-0 sa-auditor-header">
-                    @{ var audAvatar = _auditorAvatars.GetValueOrDefault(group.AuditorId); }
-                    @if (audAvatar != null)
-                    {
-                        <img src="@audAvatar" class="sa-avatar-img" alt="@group.AuditorName" />
-                    }
-                    else
-                    {
-                        <div class="sa-avatar">
-                            @(group.AuditorName.Length > 0 ? char.ToUpper(group.AuditorName[0]) : '?')
-                        </div>
-                    }
+                    @if (audAvatar != null) { <img src="@audAvatar" class="sa-avatar-img" alt="@group.AuditorName" /> }
+                    else { <div class="sa-avatar">@(group.AuditorName.Length > 0 ? char.ToUpper(group.AuditorName[0]) : '?')</div> }
                     <div class="text-white lh-sm">
                         <div class="fw-semibold" style="font-size:1rem;">@group.AuditorName</div>
                         <div style="font-size:0.71rem;opacity:.72;">
@@ -143,34 +133,25 @@
                     </div>
                 </div>
 
-                @* ── PC groups ── *@
                 @{ bool firstPc = true; }
                 @foreach (var pcGroup in group.PcGroups)
                 {
-                    var pcKey     = (group.AuditorId, pcGroup.PcId);
-                    var pcDef     = _pcDefaults[pcKey];
-                    int pcTotal   = pcGroup.Sessions.Count;
-                    int pcDraft   = pcGroup.Sessions.Count(s => s.VerifiedStatus == "Draft");
-                    int pcApproved= pcGroup.Sessions.Count(s => s.VerifiedStatus == "Approved");
+                    var pcKey      = (group.AuditorId, pcGroup.PcId);
+                    var pcDef      = _pcDefaults[pcKey];
+                    int pcTotal    = pcGroup.Sessions.Count;
+                    int pcDraft    = pcGroup.Sessions.Count(s => s.VerifiedStatus != "Approved");
+                    int pcApproved = pcGroup.Sessions.Count(s => s.VerifiedStatus == "Approved");
 
                     @if (!firstPc) { <div class="sa-pc-divider"></div> }
                     firstPc = false;
 
-                    @* PC sub-header: "set all" defaults + Submit All *@
                     <div class="d-flex align-items-center gap-3 px-4 py-2 sa-pc-header flex-wrap">
                         <div class="d-flex align-items-center gap-2">
                             <div class="sa-pc-dot"></div>
                             <span class="fw-semibold sa-pc-name">@pcGroup.PcName</span>
-                            @if (pcDraft > 0)
-                            {
-                                <span class="badge rounded-pill sa-badge-pending">@pcDraft draft</span>
-                            }
-                            @if (pcApproved > 0)
-                            {
-                                <span class="badge rounded-pill sa-badge-approved-sm">@pcApproved approved</span>
-                            }
+                            @if (pcDraft > 0)    { <span class="badge rounded-pill sa-badge-pending">@pcDraft draft</span> }
+                            @if (pcApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm">@pcApproved approved</span> }
                         </div>
-
                         <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
                             <span class="sa-input-label text-muted">Set all:</span>
                             <div class="input-group input-group-sm sa-rate-input" style="width:125px;">
@@ -190,14 +171,12 @@
                                            int.TryParse(e.Value?.ToString(), out var sv) ? sv : pcDef.Salary)" />
                             </div>
                             <button class="btn btn-sm sa-btn-approve-all d-flex align-items-center gap-1"
-                                    @onclick="() => SubmitAllForPc(group.AuditorId, pcGroup.PcId)"
-                                    disabled="@_busy">
+                                    @onclick="() => SubmitAllForPc(group.AuditorId, pcGroup.PcId)" disabled="@_busy">
                                 <i class="ri-check-double-line"></i>Submit All (@pcTotal)
                             </button>
                         </div>
                     </div>
 
-                    @* Sessions table *@
                     <div class="table-responsive">
                         <table class="table table-sm align-middle mb-0 sa-table">
                             <thead>
@@ -217,51 +196,145 @@
                                 {
                                     bool isApproved = s.VerifiedStatus == "Approved";
                                     var edit = _rowEdits[s.SessionId];
-
                                     <tr class="@(isApproved ? "sa-row-approved" : "sa-row-draft")">
-                                        <td class="ps-4 py-2">
-                                            <span class="fw-semibold sa-date">@FormatDate(s.SessionDate)</span>
-                                        </td>
+                                        <td class="ps-4 py-2"><span class="fw-semibold sa-date">@FormatDate(s.SessionDate)</span></td>
                                         <td class="text-center py-2">
-                                            <span class="badge rounded-pill bg-light border text-dark px-2"
-                                                  style="font-size:0.78rem;">@DashboardService.Fmt(s.LengthSec)</span>
+                                            <span class="badge rounded-pill bg-light border text-dark px-2" style="font-size:0.78rem;">@DashboardService.Fmt(s.LengthSec)</span>
                                         </td>
-                                        <td class="text-center py-2 text-muted" style="font-size:0.83rem;">
-                                            @DashboardService.Fmt(s.AdminSec)
-                                        </td>
-                                        <td class="text-center py-2">
-                                            @if (s.IsFree)
-                                            {
-                                                <span class="badge sa-badge-free">FREE</span>
-                                            }
-                                        </td>
-                                        <td class="py-1">
-                                            <input type="number" class="form-control form-control-sm sa-row-input"
-                                                   @bind="edit.ChargeRate" min="0" step="1" />
-                                        </td>
-                                        <td class="py-1">
-                                            <input type="number" class="form-control form-control-sm sa-row-input"
-                                                   @bind="edit.Salary" min="0" step="1" />
-                                        </td>
+                                        <td class="text-center py-2 text-muted" style="font-size:0.83rem;">@DashboardService.Fmt(s.AdminSec)</td>
+                                        <td class="text-center py-2">@if (s.IsFree) { <span class="badge sa-badge-free">FREE</span> }</td>
+                                        <td class="py-1"><input type="number" class="form-control form-control-sm sa-row-input" @bind="edit.ChargeRate" min="0" step="1" /></td>
+                                        <td class="py-1"><input type="number" class="form-control form-control-sm sa-row-input" @bind="edit.Salary" min="0" step="1" /></td>
                                         <td class="py-2">
-                                            @if (isApproved)
-                                            {
-                                                <span class="badge sa-badge-status-approved">
-                                                    <i class="ri-check-line me-1"></i>Approved
-                                                </span>
-                                            }
-                                            else
-                                            {
-                                                <span class="badge sa-badge-status-draft">Draft</span>
-                                            }
+                                            @if (isApproved) { <span class="badge sa-badge-status-approved"><i class="ri-check-line me-1"></i>Approved</span> }
+                                            else             { <span class="badge sa-badge-status-draft">Draft</span> }
                                         </td>
                                         <td class="pe-4 py-1">
-                                            <button class="btn btn-sm d-flex align-items-center gap-1
-                                                           @(isApproved ? "sa-btn-update" : "sa-btn-submit")"
-                                                    @onclick="() => SubmitOne(s.SessionId, group.AuditorId, pcGroup.PcId)"
-                                                    disabled="@_busy">
+                                            <button class="btn btn-sm d-flex align-items-center gap-1 @(isApproved ? "sa-btn-update" : "sa-btn-submit")"
+                                                    @onclick="() => SubmitOne(s.SessionId)" disabled="@_busy">
                                                 <i class="@(isApproved ? "ri-pencil-line" : "ri-check-line")"></i>
                                                 @(isApproved ? "Update" : "Submit")
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        }
+    }
+
+    @* ══════════════════════════════════════════════════════════
+       SECTION 2 — CS REVIEWS
+       ══════════════════════════════════════════════════════════ *@
+    <div class="sa-section-label sa-section-label-cs mt-5 mb-3">
+        <i class="ri-user-star-line me-2"></i>CS Reviews
+        @if (_csDraft > 0)    { <span class="badge rounded-pill sa-badge-pending ms-2">@_csDraft draft</span> }
+        @if (_csApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm ms-1">@_csApproved approved</span> }
+    </div>
+
+    @if (!_loading && _csGroups.Count == 0)
+    {
+        <div class="sa-empty-block mb-4">
+            <i class="ri-user-star-line" style="font-size:1.8rem;color:#4a7fc1;"></i>
+            <div class="fw-semibold mt-2">No CS reviews to show</div>
+            <div class="text-muted small">@(_includeApproved ? "No CS reviews in the selected date range." : "No draft CS reviews pending approval.")</div>
+        </div>
+    }
+    else if (!_loading)
+    {
+        @foreach (var csGroup in _csGroups)
+        {
+            int cgDraft    = csGroup.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus != "Approved"));
+            int cgApproved = csGroup.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus == "Approved"));
+            var csAvatar   = _csAvatars.GetValueOrDefault(csGroup.CsId);
+
+            <div class="card border-0 shadow-sm mb-4 sa-auditor-card">
+                <div class="card-header d-flex align-items-center gap-3 py-3 px-4 border-0 sa-cs-card-header">
+                    @if (csAvatar != null) { <img src="@csAvatar" class="sa-avatar-img" alt="@csGroup.CsName" /> }
+                    else { <div class="sa-avatar sa-avatar-cs">@(csGroup.CsName.Length > 0 ? char.ToUpper(csGroup.CsName[0]) : '?')</div> }
+                    <div class="text-white lh-sm">
+                        <div class="fw-semibold" style="font-size:1rem;">@csGroup.CsName</div>
+                        <div style="font-size:0.71rem;opacity:.72;">
+                            @csGroup.PcGroups.Count PC@(csGroup.PcGroups.Count != 1 ? "s" : "")
+                            @if (cgDraft > 0)    { <span> · @cgDraft draft</span> }
+                            @if (cgApproved > 0) { <span> · @cgApproved approved</span> }
+                        </div>
+                    </div>
+                </div>
+
+                @{ bool firstCsPc = true; }
+                @foreach (var pcGroup in csGroup.PcGroups)
+                {
+                    var csPcKey    = (csGroup.CsId, pcGroup.PcId);
+                    int csPcDef    = _csPcDefaults.GetValueOrDefault(csPcKey);
+                    int csPcTotal  = pcGroup.Reviews.Count;
+                    int csPcDraft  = pcGroup.Reviews.Count(r => r.CsStatus != "Approved");
+                    int csPcApprv  = pcGroup.Reviews.Count(r => r.CsStatus == "Approved");
+
+                    @if (!firstCsPc) { <div class="sa-pc-divider"></div> }
+                    firstCsPc = false;
+
+                    <div class="d-flex align-items-center gap-3 px-4 py-2 sa-pc-header flex-wrap">
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="sa-pc-dot sa-pc-dot-cs"></div>
+                            <span class="fw-semibold sa-pc-name">@pcGroup.PcName</span>
+                            @if (csPcDraft > 0) { <span class="badge rounded-pill sa-badge-pending">@csPcDraft draft</span> }
+                            @if (csPcApprv > 0) { <span class="badge rounded-pill sa-badge-approved-sm">@csPcApprv approved</span> }
+                        </div>
+                        <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
+                            <span class="sa-input-label text-muted">Set all:</span>
+                            <div class="input-group input-group-sm sa-rate-input" style="width:140px;">
+                                <span class="input-group-text">CS Sal.</span>
+                                <input type="number" class="form-control" placeholder="0" min="0" step="1"
+                                       value="@csPcDef"
+                                       @onchange="e => PropagateCSRate(csGroup.CsId, pcGroup.PcId,
+                                           int.TryParse(e.Value?.ToString(), out var csv) ? csv : csPcDef)" />
+                            </div>
+                            <button class="btn btn-sm sa-btn-cs-all d-flex align-items-center gap-1"
+                                    @onclick="() => SubmitAllCsForPc(csGroup.CsId, pcGroup.PcId)" disabled="@_busy">
+                                <i class="ri-check-double-line"></i>Submit All (@csPcTotal)
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0 sa-table">
+                            <thead>
+                                <tr class="sa-cs-thead">
+                                    <th class="ps-4">Session Date</th>
+                                    <th class="text-center">Review Duration</th>
+                                    <th style="width:115px;">CS Salary ₪/hr</th>
+                                    <th style="width:105px;">Status</th>
+                                    <th class="pe-4" style="width:90px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var rev in pcGroup.Reviews)
+                                {
+                                    bool csApproved = rev.CsStatus == "Approved";
+                                    var csSalary    = _csRowEdits.GetValueOrDefault(rev.CsReviewId);
+                                    <tr class="@(csApproved ? "sa-row-approved" : "sa-row-draft")">
+                                        <td class="ps-4 py-2"><span class="fw-semibold sa-date">@FormatDate(rev.SessionDate)</span></td>
+                                        <td class="text-center py-2">
+                                            <span class="badge rounded-pill bg-light border text-dark px-2" style="font-size:0.78rem;">@DashboardService.Fmt(rev.ReviewLengthSeconds)</span>
+                                        </td>
+                                        <td class="py-1">
+                                            <input type="number" class="form-control form-control-sm sa-row-input"
+                                                   value="@csSalary" min="0" step="1"
+                                                   @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) _csRowEdits[rev.CsReviewId] = v; }" />
+                                        </td>
+                                        <td class="py-2">
+                                            @if (csApproved) { <span class="badge sa-badge-status-approved"><i class="ri-check-line me-1"></i>Approved</span> }
+                                            else             { <span class="badge sa-badge-status-draft">Draft</span> }
+                                        </td>
+                                        <td class="pe-4 py-1">
+                                            <button class="btn btn-sm d-flex align-items-center gap-1 @(csApproved ? "sa-btn-update" : "sa-btn-submit")"
+                                                    @onclick="() => SubmitOneCsReview(rev.CsReviewId)" disabled="@_busy">
+                                                <i class="@(csApproved ? "ri-pencil-line" : "ri-check-line")"></i>
+                                                @(csApproved ? "Update" : "Submit")
                                             </button>
                                         </td>
                                     </tr>
@@ -298,6 +371,14 @@
     .sa-page  { max-width: 1200px; }
     .sa-title { color: #1e3a5f; }
 
+    /* Section labels */
+    .sa-section-label { display: flex; align-items: center; font-size: 0.9rem; font-weight: 700; color: #1e3a5f; text-transform: uppercase; letter-spacing: .08em; border-bottom: 2px solid #dce3f0; padding-bottom: 8px; }
+    .sa-section-label-cs { color: #2a5fa8; border-color: #c7d7f0; }
+    .sa-badge-cs-draft { background: #dbeafe; color: #1e40af; }
+
+    /* Empty block */
+    .sa-empty-block { text-align: center; padding: 36px; background: #f8faff; border-radius: 12px; border: 1px dashed #c7d7f0; }
+
     /* Filter card */
     .sa-filter-card { border-radius: 12px; }
     .sa-filter-divider { width: 1px; height: 28px; background: #dee2e6; }
@@ -309,45 +390,32 @@
     .sa-seg-inactive { background: #fff !important; color: #6c757d !important; }
     .sa-seg-inactive:hover { background: #f1f3f9 !important; color: #1e3a5f !important; }
 
-    /* Date input */
+    /* Date input / Apply */
     .sa-date-input { font-size: 0.83rem; border-color: #ced4da; }
     .sa-date-input:focus { border-color: #2d6a9f; box-shadow: none; }
-
-    /* Apply button */
-    .sa-btn-apply {
-        background: #2d6a9f; color: #fff; border: none;
-        border-radius: 7px; font-size: 0.8rem; font-weight: 600;
-    }
+    .sa-btn-apply { background: #2d6a9f; color: #fff; border: none; border-radius: 7px; font-size: 0.8rem; font-weight: 600; }
     .sa-btn-apply:hover:not(:disabled) { background: #1e3a5f; color: #fff; }
 
-    /* Auditor card */
+    /* Cards */
     .sa-auditor-card { border-radius: 14px; overflow: hidden; }
     .sa-auditor-card:hover { box-shadow: 0 6px 28px rgba(30,58,95,.13) !important; transition: box-shadow .25s; }
-    .sa-auditor-header { background: linear-gradient(135deg, #1e3a5f 0%, #2d6a9f 100%); }
-    .sa-avatar {
-        width: 40px; height: 40px; border-radius: 50%;
-        background: rgba(255,255,255,.15); border: 2px solid rgba(255,255,255,.3);
-        color: #fff; font-size: 1.1rem; font-weight: 700;
-        display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-    }
-    .sa-avatar-img {
-        width: 40px; height: 40px; border-radius: 50%;
-        border: 2px solid rgba(255,255,255,.45);
-        object-fit: cover; flex-shrink: 0;
-    }
+    .sa-auditor-header  { background: linear-gradient(135deg, #1e3a5f 0%, #2d6a9f 100%); }
+    .sa-cs-card-header  { background: linear-gradient(135deg, #2a5fa8 0%, #4a90d9 100%); }
+
+    /* Avatars */
+    .sa-avatar { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,.15); border: 2px solid rgba(255,255,255,.3); color: #fff; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .sa-avatar-img { width: 40px; height: 40px; border-radius: 50%; border: 2px solid rgba(255,255,255,.45); object-fit: cover; flex-shrink: 0; }
 
     /* PC sub-section */
     .sa-pc-divider { height: 1px; background: #e2e8f4; }
     .sa-pc-header  { background: #f4f7fc; min-height: 54px; }
     .sa-pc-dot     { width: 8px; height: 8px; border-radius: 50%; background: #2d6a9f; flex-shrink: 0; }
+    .sa-pc-dot-cs  { background: #4a7fc1; }
     .sa-pc-name    { font-size: 0.9rem; color: #1e3a5f; }
     .sa-input-label{ font-size: 0.72rem; white-space: nowrap; }
 
-    /* "Set all" rate inputs */
-    .sa-rate-input .input-group-text {
-        background: #fff; border-color: #ced4da;
-        font-size: 0.75rem; color: #6c757d; white-space: nowrap;
-    }
+    /* "Set all" inputs */
+    .sa-rate-input .input-group-text { background: #fff; border-color: #ced4da; font-size: 0.75rem; color: #6c757d; white-space: nowrap; }
     .sa-rate-input .form-control { font-size: 0.85rem; border-color: #ced4da; }
     .sa-rate-input:focus-within .input-group-text,
     .sa-rate-input:focus-within .form-control { border-color: #2d6a9f; box-shadow: none; }
@@ -356,23 +424,17 @@
     .sa-row-input { font-size: 0.83rem; border-color: #dee2e6; border-radius: 6px; padding: 3px 8px; }
     .sa-row-input:focus { border-color: #2d6a9f; box-shadow: none; }
 
-    /* Table */
+    /* Table headers */
     .sa-table { font-size: 0.85rem; }
     .sa-thead tr { background: #eef1f8; }
-    .sa-thead th {
-        font-size: 0.69rem; font-weight: 700; letter-spacing: .06em;
-        text-transform: uppercase; color: #6c757d;
-        padding-top: 7px; padding-bottom: 7px;
-        border-bottom: 1px solid #dce3f0; border-top: none;
-    }
+    .sa-thead th { font-size: 0.69rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6c757d; padding-top: 7px; padding-bottom: 7px; border-bottom: 1px solid #dce3f0; border-top: none; }
+    .sa-cs-thead tr { background: #e4ecf8; }
+    .sa-cs-thead th { font-size: 0.69rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #4a7fc1; padding-top: 6px; padding-bottom: 6px; border-bottom: 1px solid #c7d7f0; border-top: none; }
 
     /* Row states */
-    .sa-row-draft td  { border-bottom: 1px solid #f0f2f8; transition: background .12s; }
+    .sa-row-draft td     { border-bottom: 1px solid #f0f2f8; transition: background .12s; }
     .sa-row-draft:hover td  { background: #f5f7ff; }
-    .sa-row-approved td {
-        border-bottom: 1px solid #bbf7d0;
-        background: #f0fdf4;
-    }
+    .sa-row-approved td  { border-bottom: 1px solid #bbf7d0; background: #f0fdf4; }
     .sa-row-approved:hover td { background: #dcfce7; }
     .sa-date { color: #1e3a5f; }
 
@@ -384,27 +446,14 @@
     .sa-badge-status-approved { background: #d1fae5; color: #065f46; font-size: 0.73rem; }
 
     /* Action buttons */
-    .sa-btn-approve-all {
-        background: rgba(255,255,255,.92); color: #1e3a5f;
-        border: 1px solid rgba(45,106,159,.4);
-        font-size: 0.78rem; border-radius: 7px; font-weight: 600;
-    }
+    .sa-btn-approve-all { background: rgba(255,255,255,.92); color: #1e3a5f; border: 1px solid rgba(45,106,159,.4); font-size: 0.78rem; border-radius: 7px; font-weight: 600; }
     .sa-btn-approve-all:hover:not(:disabled) { background: #fff; border-color: #2d6a9f; }
-    .sa-btn-submit {
-        background: #2d6a9f; color: #fff;
-        border: none; border-radius: 7px;
-        font-size: 0.78rem; padding: 3px 10px; font-weight: 600;
-    }
-    .sa-btn-submit:hover:not(:disabled)  { background: #1e3a5f; color: #fff; }
-    .sa-btn-update {
-        background: transparent; color: #2d6a9f;
-        border: 1px solid #2d6a9f;
-        border-radius: 7px; font-size: 0.78rem; padding: 3px 10px; font-weight: 600;
-    }
+    .sa-btn-submit { background: #2d6a9f; color: #fff; border: none; border-radius: 7px; font-size: 0.78rem; padding: 3px 10px; font-weight: 600; }
+    .sa-btn-submit:hover:not(:disabled) { background: #1e3a5f; color: #fff; }
+    .sa-btn-update { background: transparent; color: #2d6a9f; border: 1px solid #2d6a9f; border-radius: 7px; font-size: 0.78rem; padding: 3px 10px; font-weight: 600; }
     .sa-btn-update:hover:not(:disabled) { background: #2d6a9f; color: #fff; }
-
-    /* Empty */
-    .sa-empty-icon { width: 72px; height: 72px; background: #dcfce7; border-radius: 50%; }
+    .sa-btn-cs-all { background: #4a7fc1; color: #fff; border: none; border-radius: 7px; font-size: 0.75rem; font-weight: 600; }
+    .sa-btn-cs-all:hover:not(:disabled) { background: #1e3a5f; color: #fff; }
 
     /* Spinner */
     .sa-spin { display: inline-block; animation: sa-spin-anim 1s linear infinite; }
@@ -418,19 +467,28 @@
     private string  _toDateStr   = "";
     private string? _filterError;
 
-    // ── Data ──────────────────────────────────────────────────────
-    private List<AuditorSessionGroup> _groups = new();
-    private Dictionary<(int aud, int pc), PcDefaults> _pcDefaults = new();
-    private Dictionary<int, RowEdit> _rowEdits = new();
-    private Dictionary<int, string?> _auditorAvatars = new();   // auditorId → avatar URL or null
+    // ── Sessions data ─────────────────────────────────────────────
+    private List<AuditorSessionGroup>              _groups      = new();
+    private Dictionary<(int aud, int pc), PcDefaults> _pcDefaults  = new();
+    private Dictionary<int, RowEdit>               _rowEdits    = new();
+    private Dictionary<int, string?>               _auditorAvatars = new();
+
+    // ── CS data ───────────────────────────────────────────────────
+    private List<CsReviewerGroup>                  _csGroups    = new();
+    private Dictionary<(int cs, int pc), int>      _csPcDefaults = new();   // default CS salary per CS+PC
+    private Dictionary<int, int>                   _csRowEdits  = new();    // CsReviewId → salary
+    private Dictionary<int, string?>               _csAvatars   = new();
+
+    // ── UI state ──────────────────────────────────────────────────
     private bool _loading = true;
     private bool _busy;
     private string? _msg;
     private bool _msgIsError;
 
-    private int _totalSessions => _groups.Sum(g => g.PcGroups.Sum(pg => pg.Sessions.Count));
-    private int _totalDraft    => _groups.Sum(g => g.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus == "Draft")));
-    private int _totalApproved => _groups.Sum(g => g.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus == "Approved")));
+    private int _sessDraft    => _groups.Sum(g => g.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus != "Approved")));
+    private int _sessApproved => _groups.Sum(g => g.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus == "Approved")));
+    private int _csDraft      => _csGroups.Sum(g => g.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus != "Approved")));
+    private int _csApproved   => _csGroups.Sum(g => g.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus == "Approved")));
 
     class PcDefaults { public int ChargeRate { get; set; } public int Salary { get; set; } }
     class RowEdit     { public int ChargeRate { get; set; } public int Salary { get; set; } }
@@ -457,10 +515,8 @@
 
     private void SwitchToIncludeApproved()
     {
-        if (_includeApproved) return;   // already in this mode
+        if (_includeApproved) return;
         _includeApproved = true;
-
-        // Pre-fill date range to last 4 weeks if empty
         if (string.IsNullOrEmpty(_fromDateStr))
             _fromDateStr = DateOnly.FromDateTime(DateTime.Today.AddDays(-28)).ToString("yyyy-MM-dd");
         if (string.IsNullOrEmpty(_toDateStr))
@@ -470,18 +526,9 @@
     private async Task ApplyApprovedFilter()
     {
         _filterError = null;
-        if (!DateOnly.TryParse(_fromDateStr, out var from))
-        {
-            _filterError = "Enter a valid From date."; return;
-        }
-        if (!DateOnly.TryParse(_toDateStr, out var to))
-        {
-            _filterError = "Enter a valid To date."; return;
-        }
-        if (from > to)
-        {
-            _filterError = "From date must be on or before To date."; return;
-        }
+        if (!DateOnly.TryParse(_fromDateStr, out var from)) { _filterError = "Enter a valid From date."; return; }
+        if (!DateOnly.TryParse(_toDateStr,   out var to))   { _filterError = "Enter a valid To date."; return; }
+        if (from > to) { _filterError = "From date must be on or before To date."; return; }
         await LoadData();
     }
 
@@ -496,68 +543,85 @@
         if (_includeApproved && DateOnly.TryParse(_fromDateStr, out var f)) from = f;
         if (_includeApproved && DateOnly.TryParse(_toDateStr,   out var t)) to   = t;
 
+        // ── Sessions ──
         _groups = DashSvc.GetSessionsGroupedByAuditorAndPc(_includeApproved, from, to);
         _pcDefaults.Clear();
         _rowEdits.Clear();
         _auditorAvatars.Clear();
 
-        // Load avatar for each auditor (username = first word of their name)
         foreach (var group in _groups)
         {
             if (!_auditorAvatars.ContainsKey(group.AuditorId))
-            {
-                var firstName = group.AuditorName.Split(' ')[0].ToLower();
-                _auditorAvatars[group.AuditorId] = UserDb.GetAvatarPath(firstName);
-            }
-        }
+                _auditorAvatars[group.AuditorId] = UserDb.GetAvatarPath(group.AuditorName.Split(' ')[0].ToLower());
 
-        foreach (var group in _groups)
-        {
             foreach (var pcGroup in group.PcGroups)
             {
                 var key = (group.AuditorId, pcGroup.PcId);
                 var (defRate, defSalary) = DashSvc.GetLastApprovedDefaultsForPc(group.AuditorId, pcGroup.PcId);
                 _pcDefaults[key] = new PcDefaults { ChargeRate = defRate / 100, Salary = defSalary / 100 };
-
                 foreach (var s in pcGroup.Sessions)
-                {
                     _rowEdits[s.SessionId] = new RowEdit
                     {
                         ChargeRate = s.ChargedRateCentsPerHour  > 0 ? s.ChargedRateCentsPerHour  / 100 : defRate   / 100,
                         Salary     = s.AuditorSalaryCentsPerHour > 0 ? s.AuditorSalaryCentsPerHour / 100 : defSalary / 100
                     };
-                }
+            }
+        }
+
+        // ── CS Reviews ──
+        _csGroups = DashSvc.GetCsReviewsGroupedByCsAndPc(_includeApproved, from, to);
+        _csPcDefaults.Clear();
+        _csRowEdits.Clear();
+        _csAvatars.Clear();
+
+        foreach (var csGroup in _csGroups)
+        {
+            if (!_csAvatars.ContainsKey(csGroup.CsId))
+                _csAvatars[csGroup.CsId] = UserDb.GetAvatarPath(csGroup.CsName.Split(' ')[0].ToLower());
+
+            foreach (var pcGroup in csGroup.PcGroups)
+            {
+                var key = (csGroup.CsId, pcGroup.PcId);
+                var defCsSalary = DashSvc.GetLastApprovedCsSalaryForPc(pcGroup.PcId);
+                _csPcDefaults[key] = defCsSalary / 100;
+                foreach (var rev in pcGroup.Reviews)
+                    _csRowEdits[rev.CsReviewId] = rev.CsSalaryCentsPerHour > 0
+                        ? rev.CsSalaryCentsPerHour / 100
+                        : defCsSalary / 100;
             }
         }
 
         _loading = false;
     }
 
-    // ── Rate propagation ─────────────────────────────────────────
+    // ── Session rate propagation (draft sessions only) ────────────
     private void PropagateRate(int auditorId, int pcId, int newRate, int newSalary)
     {
         var key = (auditorId, pcId);
-        if (_pcDefaults.TryGetValue(key, out var pcDef))
-        {
-            pcDef.ChargeRate = newRate;
-            pcDef.Salary     = newSalary;
-        }
-        var group   = _groups.FirstOrDefault(g => g.AuditorId == auditorId);
-        var pcGroup = group?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
+        if (_pcDefaults.TryGetValue(key, out var pcDef)) { pcDef.ChargeRate = newRate; pcDef.Salary = newSalary; }
+        var pcGroup = _groups.FirstOrDefault(g => g.AuditorId == auditorId)
+                             ?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
         if (pcGroup is null) return;
-
         foreach (var s in pcGroup.Sessions)
         {
-            if (_rowEdits.TryGetValue(s.SessionId, out var edit))
-            {
-                edit.ChargeRate = newRate;
-                edit.Salary     = newSalary;
-            }
+            if (s.VerifiedStatus == "Approved") continue;
+            if (_rowEdits.TryGetValue(s.SessionId, out var edit)) { edit.ChargeRate = newRate; edit.Salary = newSalary; }
         }
     }
 
-    // ── Submit actions ────────────────────────────────────────────
-    private async Task SubmitOne(int sessionId, int auditorId, int pcId)
+    // ── CS salary propagation (draft CS reviews only) ─────────────
+    private void PropagateCSRate(int csId, int pcId, int newCsSalary)
+    {
+        _csPcDefaults[(csId, pcId)] = newCsSalary;
+        var pcGroup = _csGroups.FirstOrDefault(g => g.CsId == csId)
+                               ?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
+        if (pcGroup is null) return;
+        foreach (var rev in pcGroup.Reviews)
+            if (rev.CsStatus != "Approved") _csRowEdits[rev.CsReviewId] = newCsSalary;
+    }
+
+    // ── Session submit ─────────────────────────────────────────────
+    private async Task SubmitOne(int sessionId)
     {
         if (!_rowEdits.TryGetValue(sessionId, out var edit)) return;
         _busy = true;
@@ -569,10 +633,9 @@
 
     private async Task SubmitAllForPc(int auditorId, int pcId)
     {
-        var group   = _groups.FirstOrDefault(g => g.AuditorId == auditorId);
-        var pcGroup = group?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
+        var pcGroup = _groups.FirstOrDefault(g => g.AuditorId == auditorId)
+                             ?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
         if (pcGroup is null) return;
-
         _busy = true;
         int count = 0;
         foreach (var s in pcGroup.Sessions)
@@ -583,6 +646,35 @@
         }
         _busy = false;
         ShowMsg($"{count} session{(count != 1 ? "s" : "")} saved for {pcGroup.PcName}.", false);
+        await LoadData();
+    }
+
+    // ── CS review submit ───────────────────────────────────────────
+    private async Task SubmitOneCsReview(int csReviewId)
+    {
+        if (!_csRowEdits.TryGetValue(csReviewId, out var salary)) return;
+        _busy = true;
+        DashSvc.ApproveCsReview(csReviewId, salary * 100);
+        _busy = false;
+        ShowMsg("CS review saved.", false);
+        await LoadData();
+    }
+
+    private async Task SubmitAllCsForPc(int csId, int pcId)
+    {
+        var pcGroup = _csGroups.FirstOrDefault(g => g.CsId == csId)
+                               ?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
+        if (pcGroup is null) return;
+        _busy = true;
+        int count = 0;
+        foreach (var rev in pcGroup.Reviews)
+        {
+            if (!_csRowEdits.TryGetValue(rev.CsReviewId, out var salary)) continue;
+            DashSvc.ApproveCsReview(rev.CsReviewId, salary * 100);
+            count++;
+        }
+        _busy = false;
+        ShowMsg($"{count} CS review{(count != 1 ? "s" : "")} saved for {pcGroup.PcName}.", false);
         await LoadData();
     }
 

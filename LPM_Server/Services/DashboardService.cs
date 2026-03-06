@@ -23,6 +23,12 @@ public record AdminSessionRow(
 public record PcSessionGroup(int PcId, string PcName, List<AdminSessionRow> Sessions);
 public record AuditorSessionGroup(int AuditorId, string AuditorName, List<PcSessionGroup> PcGroups);
 
+public record AdminCsRow(
+    int CsReviewId, int SessionId, int PcId, string PcName, int CsId, string CsName,
+    string SessionDate, int ReviewLengthSeconds, int CsSalaryCentsPerHour, string CsStatus);
+public record PcCsGroup(int PcId, string PcName, List<AdminCsRow> Reviews);
+public record CsReviewerGroup(int CsId, string CsName, List<PcCsGroup> PcGroups);
+
 public class DashboardService
 {
     private readonly string _connectionString;
@@ -119,6 +125,17 @@ public class DashboardService
             Exec("DROP TABLE CsReviews");
             Exec("ALTER TABLE CsReviews_new RENAME TO CsReviews");
             Exec("PRAGMA foreign_keys = ON");
+        }
+
+        // Add CsSalaryCentsPerHour to CsReviews if not present
+        using var csSalCheckCmd = conn.CreateCommand();
+        csSalCheckCmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('CsReviews') WHERE name='CsSalaryCentsPerHour'";
+        var csSalExists = (long)(csSalCheckCmd.ExecuteScalar() ?? 0L) > 0;
+        if (!csSalExists)
+        {
+            using var addCsSalCol = conn.CreateCommand();
+            addCsSalCol.CommandText = "ALTER TABLE CsReviews ADD COLUMN CsSalaryCentsPerHour INTEGER NOT NULL DEFAULT 0";
+            addCsSalCol.ExecuteNonQuery();
         }
     }
 
@@ -1114,7 +1131,7 @@ public class DashboardService
         var where = new System.Text.StringBuilder(
             includeApproved
                 ? "s.VerifiedStatus IN ('Draft','Approved')"
-                : "s.VerifiedStatus = 'Draft'");
+                : "s.VerifiedStatus != 'Approved'");
 
         if (includeApproved && from.HasValue)
         {
@@ -1179,6 +1196,76 @@ public class DashboardService
         }).ToList();
     }
 
+    public List<CsReviewerGroup> GetCsReviewsGroupedByCsAndPc(
+        bool includeApproved = false,
+        DateOnly? from = null,
+        DateOnly? to = null)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+
+        var where = new System.Text.StringBuilder(
+            includeApproved ? "1=1" : "cr.Status != 'Approved'");
+
+        if (includeApproved && from.HasValue)
+        {
+            where.Append(" AND s.SessionDate >= @from");
+            cmd.Parameters.AddWithValue("@from", from.Value.ToString("yyyy-MM-dd"));
+        }
+        if (includeApproved && to.HasValue)
+        {
+            where.Append(" AND s.SessionDate <= @to");
+            cmd.Parameters.AddWithValue("@to", to.Value.ToString("yyyy-MM-dd"));
+        }
+
+        cmd.CommandText = $@"
+            SELECT cr.CsReviewId, cr.SessionId, s.PcId,
+                   TRIM(pc.FirstName  || ' ' || COALESCE(NULLIF(pc.LastName,''),  '')) AS PcName,
+                   cr.CsId,
+                   TRIM(pcs.FirstName || ' ' || COALESCE(NULLIF(pcs.LastName,''), '')) AS CsName,
+                   s.SessionDate, cr.ReviewLengthSeconds, cr.CsSalaryCentsPerHour, cr.Status
+            FROM CsReviews cr
+            JOIN Sessions  s   ON s.SessionId   = cr.SessionId
+            JOIN Persons   pc  ON pc.PersonId   = s.PcId
+            JOIN Persons   pcs ON pcs.PersonId  = cr.CsId
+            WHERE {where}
+            ORDER BY pcs.FirstName, pcs.LastName, pc.FirstName, pc.LastName, s.SessionDate, s.SequenceInDay";
+
+        var csNames  = new Dictionary<int, string>();
+        var pcNames  = new Dictionary<(int cs, int pc), string>();
+        var revLists = new Dictionary<(int cs, int pc), List<AdminCsRow>>();
+
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            var csId   = r.GetInt32(4);
+            var csName = r.GetString(5);
+            var pcId   = r.GetInt32(2);
+            var pcName = r.GetString(3);
+            var key    = (csId, pcId);
+
+            var row = new AdminCsRow(
+                r.GetInt32(0), r.GetInt32(1), pcId, pcName, csId, csName,
+                r.GetString(6), r.GetInt32(7), r.GetInt32(8),
+                r.IsDBNull(9) ? "Draft" : r.GetString(9));
+
+            csNames.TryAdd(csId, csName);
+            pcNames.TryAdd(key, pcName);
+            if (!revLists.ContainsKey(key)) revLists[key] = new List<AdminCsRow>();
+            revLists[key].Add(row);
+        }
+
+        return csNames.Keys.Select(csId =>
+        {
+            var pcGroups = revLists.Keys
+                .Where(k => k.cs == csId)
+                .Select(k => new PcCsGroup(k.pc, pcNames[k], revLists[k]))
+                .ToList();
+            return new CsReviewerGroup(csId, csNames[csId], pcGroups);
+        }).ToList();
+    }
+
     public (int chargeRate, int salary) GetLastApprovedDefaults(int auditorId)
     {
         using var conn = new SqliteConnection(_connectionString);
@@ -1217,6 +1304,24 @@ public class DashboardService
         return GetLastApprovedDefaults(auditorId);
     }
 
+    /// Returns the CsSalaryCentsPerHour from the last approved CS review for a given PC.
+    public int GetLastApprovedCsSalaryForPc(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT cr.CsSalaryCentsPerHour
+            FROM CsReviews cr
+            JOIN Sessions s ON s.SessionId = cr.SessionId
+            WHERE s.PcId = @pc AND cr.Status = 'Approved'
+            ORDER BY s.SessionDate DESC, s.SequenceInDay DESC
+            LIMIT 1";
+        cmd.Parameters.AddWithValue("@pc", pcId);
+        var result = cmd.ExecuteScalar();
+        return result is long l ? (int)l : 0;
+    }
+
     public void ApproveSession(int sessionId, int chargedRateCents, int auditorSalaryCents)
     {
         using var conn = new SqliteConnection(_connectionString);
@@ -1231,6 +1336,20 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@rate",   chargedRateCents);
         cmd.Parameters.AddWithValue("@salary", auditorSalaryCents);
         cmd.Parameters.AddWithValue("@id",     sessionId);
+        cmd.ExecuteNonQuery();
+    }
+
+    public void ApproveCsReview(int csReviewId, int csSalaryCents)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE CsReviews
+            SET Status = 'Approved', CsSalaryCentsPerHour = @salary
+            WHERE CsReviewId = @id";
+        cmd.Parameters.AddWithValue("@salary", csSalaryCents);
+        cmd.Parameters.AddWithValue("@id",     csReviewId);
         cmd.ExecuteNonQuery();
     }
 }
