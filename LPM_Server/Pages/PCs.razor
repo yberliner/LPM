@@ -522,7 +522,9 @@
     </div>
 </div>
 
-<SpkNewPersonModal @ref="_addModal" Title="Add New PC" ShowPcOriginField="true" OnSaved="SaveNewPc" />
+<SpkNewPersonModal @ref="_addModal" Title="Add New PC" ShowPcOriginField="true"
+                   ExistingFullNames="@(new HashSet<string>(_allPcs.Select(p => p.FullName), StringComparer.OrdinalIgnoreCase))"
+                   OnSaved="SaveNewPc" />
 
 <style>
     .pc-stat-card {
@@ -610,7 +612,7 @@
     }
 
     void SaveNewPc((string fn, string ln, string phone, string email, string dob, string sex,
-                    string org, string referral, string origin) d)
+                    string org, string referral, string origin, int courseId) d)
     {
         var newId = PcSvc.AddPcWithPerson(d.fn, d.ln, d.phone, d.email, d.dob, d.sex, d.origin);
         _allPcs = PcSvc.GetAllPcs();

@@ -8,6 +8,8 @@
    OnSaved fires with (FirstName, LastName, Phone, Email, DateOfBirth, Sex, Org, Referral, Origin) on successful save.
 *@
 
+@using LPM.Services
+
 @if (_visible)
 {
     <div class="modal show d-block" tabindex="-1"
@@ -34,7 +36,9 @@
                                    @bind="_firstName" placeholder="First name" />
                         </div>
                         <div class="col-6">
-                            <label class="form-label small mb-1">Last Name</label>
+                            <label class="form-label small mb-1">
+                                Last Name <span class="text-danger">*</span>
+                            </label>
                             <input class="form-control form-control-sm"
                                    @bind="_lastName" placeholder="Last name" />
                         </div>
@@ -83,6 +87,21 @@
                                     <option value="Other">Other</option>
                                 </select>
                             </div>
+                            @if (Courses != null && Courses.Count > 0)
+                            {
+                                <div class="col-12">
+                                    <label class="form-label small mb-1">
+                                        <i class="ri-book-2-line me-1" style="color:#7c3aed;"></i>Course <span class="text-danger">*</span>
+                                    </label>
+                                    <select class="form-select form-select-sm" @bind="_courseId">
+                                        <option value="0">— select course —</option>
+                                        @foreach (var c in Courses)
+                                        {
+                                            <option value="@c.CourseId">@c.Name</option>
+                                        }
+                                    </select>
+                                </div>
+                            }
                         }
 
                         @* ── PC-only field ── *@
@@ -131,13 +150,16 @@
     [Parameter] public string Title { get; set; } = "Add New Person";
     [Parameter] public bool ShowAcademyFields  { get; set; }
     [Parameter] public bool ShowPcOriginField  { get; set; }
+    [Parameter] public List<CourseItem>? Courses { get; set; }
+    [Parameter] public HashSet<string>? ExistingFullNames { get; set; }
     [Parameter] public EventCallback<(string FirstName, string LastName, string Phone, string Email,
-        string DateOfBirth, string Sex, string Org, string Referral, string Origin)> OnSaved { get; set; }
+        string DateOfBirth, string Sex, string Org, string Referral, string Origin, int CourseId)> OnSaved { get; set; }
 
     string    _firstName = "", _lastName = "";
     string    _phone = "", _email = "", _sex = "";
     string    _org = "", _referral = "", _origin = "";
     DateOnly? _dob;
+    int       _courseId;
     string    _error = "";
     bool      _visible;
 
@@ -145,24 +167,31 @@
     {
         _firstName = _lastName = _phone = _email = _sex = _error = "";
         _org = _referral = _origin = "";
-        _dob     = null;
-        _visible = true;
+        _dob      = null;
+        _courseId = 0;
+        _visible  = true;
         StateHasChanged();
     }
 
     async Task Save()
     {
         if (string.IsNullOrWhiteSpace(_firstName))
-        {
-            _error = "First name is required.";
-            return;
-        }
+            { _error = "First name is required."; return; }
+        if (string.IsNullOrWhiteSpace(_lastName))
+            { _error = "Last name is required."; return; }
+        if (Courses != null && Courses.Count > 0 && _courseId <= 0)
+            { _error = "Please select a course."; return; }
+
+        var fullName = $"{_firstName.Trim()} {_lastName.Trim()}";
+        if (ExistingFullNames != null && ExistingFullNames.Contains(fullName))
+            { _error = $"A person named \"{fullName}\" already exists."; return; }
+
         _visible = false;
         await OnSaved.InvokeAsync((
             _firstName.Trim(), _lastName.Trim(),
             _phone.Trim(), _email.Trim(),
             _dob?.ToString("yyyy-MM-dd") ?? "", _sex,
-            _org, _referral, _origin));
+            _org, _referral, _origin, _courseId));
     }
 
     void Cancel() => _visible = false;

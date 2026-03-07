@@ -638,7 +638,10 @@
 </style>
 
 @* ── New Student modal ── *@
-<SpkNewPersonModal @ref="_addModal" Title="New Student" ShowAcademyFields="true" OnSaved="SaveNewStudent" />
+<SpkNewPersonModal @ref="_addModal" Title="New Student" ShowAcademyFields="true"
+                   Courses="_allCourses"
+                   ExistingFullNames="@(new HashSet<string>(_allPersons.Select(p => p.FullName), StringComparer.OrdinalIgnoreCase))"
+                   OnSaved="SaveNewStudent" />
 
 @code {
 
@@ -854,10 +857,12 @@
     }
 
     void SaveNewStudent((string fn, string ln, string phone, string email, string dob, string sex,
-                         string org, string referral, string origin) d)
+                         string org, string referral, string origin, int courseId) d)
     {
         var personId = AcademySvc.AddPersonForAcademy(d.fn, d.ln, d.phone, d.email, d.dob, d.sex,
                                                        d.org, d.referral);
+        if (d.courseId > 0)
+            CourseSvc.AddStudentCourse(personId, d.courseId, SelectedDate.ToString("yyyy-MM-dd"));
         AcademySvc.AddVisit(personId, SelectedDate);
         _allPersons         = AcademySvc.GetAllPersons();
         _dayCounts[_selDay] = AcademySvc.GetVisitsForDay(SelectedDate).Count;
