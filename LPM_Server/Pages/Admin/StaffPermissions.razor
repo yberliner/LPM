@@ -44,8 +44,8 @@
         {
             <div class="sp-empty-block mb-5">
                 <i class="ri-checkbox-circle-line text-success" style="font-size:1.8rem;"></i>
-                <div class="fw-semibold mt-2">No pending requests</div>
-                <div class="text-muted small">All staff PC additions have been approved.</div>
+                <div class="fw-semibold mt-2" style="color:#1e3a5f;">No pending requests</div>
+                <div class="small" style="color:#6b7280;">All staff PC additions have been approved.</div>
             </div>
         }
         else
@@ -155,9 +155,9 @@
                                 <tbody>
                                     @foreach (var pc in aud.ApprovedPcs)
                                     {
-                                        <tr>
+                                        <tr class="sp-row-approved">
                                             <td class="ps-4 py-2">
-                                                <i class="ri-user-line me-1 text-muted"></i>@pc.PcName
+                                                <i class="ri-user-line me-1" style="color:#6b7280;"></i>@pc.PcName
                                             </td>
                                             <td class="pe-4 py-1 text-end">
                                                 <button class="btn btn-sm sp-btn-remove"
@@ -250,6 +250,10 @@
     /* Pending row */
     .sp-row-pending td { border-bottom: 1px solid #fde68a; background: #fffbeb; color: #212529 !important; }
     .sp-row-pending:hover td { background: #fef3c7; color: #212529 !important; }
+
+    /* Approved PC row */
+    .sp-row-approved td { background: #ffffff; color: #212529 !important; border-bottom: 1px solid #e8edf5; }
+    .sp-row-approved:hover td { background: #f4f7fc; }
     .sp-badge-pending { background: #fef3c7; color: #92400e; font-size: 0.72rem; }
 
     /* Add row */
