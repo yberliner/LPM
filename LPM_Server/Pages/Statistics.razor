@@ -132,9 +132,9 @@
     @* ── Two-column layout ── *@
     <div class="row g-3">
 
-        @* ── LEFT: Staff Leaderboard ── *@
-        <div class="col-xl-7 col-lg-7">
-            <div class="card border-0 shadow-sm h-100" style="border-radius:14px;overflow:visible;">
+        @* ── LEFT: Staff Leaderboard + PC Origin ── *@
+        <div class="col-xl-7 col-lg-7 d-flex flex-column gap-3">
+            <div class="card border-0 shadow-sm" style="border-radius:14px;overflow:visible;">
                 <div class="card-header border-0 py-3 stat-card-gradient-purple" style="border-radius:14px 14px 0 0;">
                     <div class="d-flex align-items-start justify-content-between text-white">
                         <div>
@@ -228,6 +228,39 @@
                     }
                 </div>
             </div>
+
+            @* ── PC Origin Hours card ── *@
+            <div class="card border-0 shadow-sm" style="border-radius:14px;overflow:hidden;">
+                <div class="card-header border-0 py-2 px-3 bg-white border-bottom">
+                    <div class="panel-period-label">
+                        <i class="ri-map-pin-2-line text-primary"></i>
+                        PC Origin — auditing hours this week
+                    </div>
+                </div>
+                <div class="card-body px-3 py-3">
+                    @if (_originHours.Count == 0)
+                    {
+                        <div class="text-muted small text-center py-2">No session data for this week.</div>
+                    }
+                    else
+                    {
+                        <div class="row g-2">
+                            @foreach (var oh in _originHours)
+                            {
+                                var (ohBg, ohColor) = OriginStyle(oh.Origin);
+                                <div class="col">
+                                    <div class="stat-metric-box" style="background:@ohBg;">
+                                        <div class="value" style="color:@ohColor;">@Fmt(oh.Seconds)</div>
+                                        <div class="main-lbl">@oh.Origin</div>
+                                        <div class="sub-lbl">auditing hours</div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+
         </div>
 
         @* ── RIGHT: Day snapshot + Week totals ── *@
@@ -454,6 +487,7 @@
     private List<DayStat>         _dayStats     = new();
     private List<WeekStatSummary> _weekHistory  = new();
     private List<WeekStatSummary> _chartHistory = new();   // only weeks with any data
+    private List<OriginHours>     _originHours  = new();
     private int _chartKey;
 
     private WeekStatSummary? CurrentWeekSummary =>
@@ -529,8 +563,17 @@
         _dayStats     = StatSvc.GetWeekDayStats(_weekStart);
         _weekHistory  = StatSvc.GetWeeklySummaries(_weekStart, 20);
         _chartHistory = _weekHistory.Where(w => w.TotalAuditCsSec > 0 || w.PcCount > 0 || w.AcademyCount > 0 || w.BodyInShop > 0).ToList();
+        _originHours  = StatSvc.GetWeekOriginHours(_weekStart);
         _chartKey++;
     }
+
+    static (string bg, string color) OriginStyle(string origin) => origin switch
+    {
+        "Haifa"       => ("#f5f3ff", "#7c3aed"),
+        "Riga"        => ("#f0fdfa", "#0d9488"),
+        "from Abroad" => ("#fff7ed", "#ea580c"),
+        _             => ("#f9fafb", "#6b7280"),
+    };
 
     void SelectDay(int idx) => _selDay = idx;
 
@@ -559,7 +602,7 @@
             .Where(s => s.TotalSec > 0)
             .OrderByDescending(s => s.TotalSec)
             .ToList();
-        var pdfBytes = PdfService.GenerateStatisticsPdf(_weekStart, weekStaff, _dayStats, _weekHistory, CurrentWeekSummary);
+        var pdfBytes = PdfService.GenerateStatisticsPdf(_weekStart, weekStaff, _dayStats, _weekHistory, CurrentWeekSummary, _originHours);
         await JS.InvokeVoidAsync("downloadFile", $"Statistics_{_weekStart:yyyy_MM_dd}.pdf", Convert.ToBase64String(pdfBytes));
     }
 

@@ -5,7 +5,7 @@ namespace LPM.Services;
 
 public record PcListItem(int PcId, string FullName, string ExternalId, long RemainSec);
 public record PcDetailInfo(int PcId, string FirstName, string LastName, string ExternalId,
-    string Phone, string Email, string Notes, string StartDate, string DateOfBirth, string Sex)
+    string Phone, string Email, string Notes, string StartDate, string DateOfBirth, string Sex, string Origin)
 {
     public string FullName => string.IsNullOrEmpty(LastName) ? FirstName : $"{FirstName} {LastName}";
 }
@@ -45,12 +45,13 @@ public class PcService
             )";
         c1.ExecuteNonQuery();
 
-        // Extra columns on PCs (ExternalId, Notes, StartDate only — Phone/Email/Age/Sex live on Persons)
+        // Extra columns on PCs
         foreach (var (col, type) in new[] {
             ("Phone",     "TEXT"),   // kept for legacy read; new writes go to Persons
             ("Email",     "TEXT"),
             ("Notes",     "TEXT"),
-            ("StartDate", "TEXT") })
+            ("StartDate", "TEXT"),
+            ("Origin",    "TEXT") })
         {
             using var ck = conn.CreateCommand();
             ck.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('PCs') WHERE name='{col}'";
@@ -62,7 +63,7 @@ public class PcService
             }
         }
 
-        // Ensure Persons has Phone/Email/DateOfBirth/Sex columns (AcademyService may have added some already)
+        // Ensure Persons has Phone/Email/DateOfBirth/Sex columns
         foreach (var (col, type) in new[] {
             ("Phone", "TEXT"), ("Email", "TEXT"), ("Age", "INTEGER"), ("DateOfBirth", "TEXT"), ("Sex", "TEXT") })
         {
@@ -76,7 +77,7 @@ public class PcService
             }
         }
 
-        // One-time migration: copy legacy Phone/Email from PCs → Persons (where Persons row is still NULL)
+        // One-time migration: copy legacy Phone/Email from PCs → Persons
         using var migPhone = conn.CreateCommand();
         migPhone.CommandText = @"
             UPDATE Persons SET Phone = (SELECT Phone FROM PCs WHERE PCs.PcId = Persons.PersonId)
@@ -121,7 +122,7 @@ public class PcService
     }
 
     public int AddPcWithPerson(string firstName, string lastName,
-        string phone, string email, string dateOfBirth, string sex)
+        string phone, string email, string dateOfBirth, string sex, string origin = "")
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -143,8 +144,9 @@ public class PcService
         var personId = (int)(long)idCmd.ExecuteScalar()!;
 
         using var pcCmd = conn.CreateCommand();
-        pcCmd.CommandText = "INSERT INTO PCs (PcId) VALUES (@id)";
-        pcCmd.Parameters.AddWithValue("@id", personId);
+        pcCmd.CommandText = "INSERT INTO PCs (PcId, Origin) VALUES (@id, @orig)";
+        pcCmd.Parameters.AddWithValue("@id",   personId);
+        pcCmd.Parameters.AddWithValue("@orig", Nv(origin));
         pcCmd.ExecuteNonQuery();
 
         return personId;
@@ -159,7 +161,8 @@ public class PcService
             SELECT p.FirstName,             COALESCE(p.LastName,''),
                    COALESCE(pc.ExternalId,''), COALESCE(p.Phone,''),
                    COALESCE(p.Email,''),        COALESCE(pc.Notes,''),
-                   COALESCE(pc.StartDate,''),   COALESCE(p.DateOfBirth,''), COALESCE(p.Sex,'')
+                   COALESCE(pc.StartDate,''),   COALESCE(p.DateOfBirth,''), COALESCE(p.Sex,''),
+                   COALESCE(pc.Origin,'')
             FROM PCs pc
             JOIN Persons p ON p.PersonId = pc.PcId
             WHERE pc.PcId = @id";
@@ -169,12 +172,12 @@ public class PcService
         return new PcDetailInfo(pcId,
             r.GetString(0), r.GetString(1), r.GetString(2),
             r.GetString(3), r.GetString(4), r.GetString(5), r.GetString(6),
-            r.GetString(7), r.GetString(8));
+            r.GetString(7), r.GetString(8), r.GetString(9));
     }
 
     public void UpdatePcDetail(int pcId, string firstName, string lastName,
         string externalId, string phone, string email, string startDate, string notes,
-        string dateOfBirth, string sex)
+        string dateOfBirth, string sex, string origin = "")
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -195,12 +198,13 @@ public class PcService
 
         using var pcCmd = conn.CreateCommand();
         pcCmd.CommandText = @"
-            UPDATE PCs SET ExternalId=@ext, StartDate=@sd, Notes=@nt
+            UPDATE PCs SET ExternalId=@ext, StartDate=@sd, Notes=@nt, Origin=@orig
             WHERE PcId=@id";
-        pcCmd.Parameters.AddWithValue("@ext", Nv(externalId));
-        pcCmd.Parameters.AddWithValue("@sd",  Nv(startDate));
-        pcCmd.Parameters.AddWithValue("@nt",  Nv(notes));
-        pcCmd.Parameters.AddWithValue("@id",  pcId);
+        pcCmd.Parameters.AddWithValue("@ext",  Nv(externalId));
+        pcCmd.Parameters.AddWithValue("@sd",   Nv(startDate));
+        pcCmd.Parameters.AddWithValue("@nt",   Nv(notes));
+        pcCmd.Parameters.AddWithValue("@orig", Nv(origin));
+        pcCmd.Parameters.AddWithValue("@id",   pcId);
         pcCmd.ExecuteNonQuery();
     }
 
@@ -219,10 +223,10 @@ public class PcService
         sCmd.Parameters.AddWithValue("@id", pcId);
         using var sr = sCmd.ExecuteReader();
         sr.Read();
-        int    total       = sr.GetInt32(0);
-        int    free        = sr.GetInt32(1);
-        long   usedSec     = sr.GetInt64(2);
-        string? lastDate   = sr.IsDBNull(3) ? null : sr.GetString(3);
+        int    total     = sr.GetInt32(0);
+        int    free      = sr.GetInt32(1);
+        long   usedSec   = sr.GetInt64(2);
+        string? lastDate = sr.IsDBNull(3) ? null : sr.GetString(3);
 
         using var pCmd = conn.CreateCommand();
         pCmd.CommandText = @"

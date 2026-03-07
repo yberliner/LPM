@@ -223,7 +223,10 @@ public class PdfService
         }).GeneratePdf();
     }
 
-    public byte[] GenerateAcademyWeekPdf(DateOnly weekStart, List<(string FullName, int VisitCount)> students)
+    public byte[] GenerateAcademyWeekPdf(DateOnly weekStart,
+        List<(string FullName, int VisitCount, string Referral, string Org)> students,
+        Dictionary<string, int>? byReferral = null,
+        Dictionary<string, int>? byOrg = null)
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
@@ -265,7 +268,74 @@ public class PdfService
                     });
 
                     col.Item().PaddingTop(6).LineHorizontal(1.5f).LineColor("#2e7d32");
-                    col.Item().PaddingTop(8);
+                    col.Item().PaddingTop(6);
+
+                    // ── Weekly breakdown summary ──────────────────────────────
+                    bool hasBreakdown = (byReferral != null && byReferral.Count > 0) ||
+                                        (byOrg      != null && byOrg.Count > 0);
+                    if (hasBreakdown)
+                    {
+                        col.Item().Background("#f0fdf4").CornerRadius(4).Padding(6).Row(br =>
+                        {
+                            // Referral breakdown
+                            if (byReferral != null && byReferral.Count > 0)
+                            {
+                                br.AutoItem().Column(rc =>
+                                {
+                                    rc.Item().Text("By Referral").FontSize(7).FontColor("#065f46").SemiBold();
+                                    rc.Item().PaddingTop(2).Row(rr =>
+                                    {
+                                        foreach (var kv in byReferral.OrderByDescending(x => x.Value))
+                                        {
+                                            var refColor = kv.Key switch
+                                            {
+                                                "Friend"          => "#f59e0b",
+                                                "Social Networks" => "#3b82f6",
+                                                "Other"           => "#94a3b8",
+                                                _                 => "#16a34a",
+                                            };
+                                            rr.AutoItem().PaddingRight(10).Column(bc =>
+                                            {
+                                                bc.Item().Text(t =>
+                                                {
+                                                    t.Span("● ").FontSize(9).FontColor(refColor);
+                                                    t.Span($"{kv.Key}: ").FontSize(8).FontColor("#374151");
+                                                    t.Span(kv.Value.ToString()).FontSize(9).Bold().FontColor("#1b5e20");
+                                                });
+                                            });
+                                        }
+                                    });
+                                });
+                            }
+
+                            // Org breakdown
+                            if (byOrg != null && byOrg.Count > 0)
+                            {
+                                if (byReferral != null && byReferral.Count > 0)
+                                    br.ConstantItem(1).Background("#6ee7b7");  // divider
+                                br.AutoItem().PaddingLeft(byReferral?.Count > 0 ? 10 : 0).Column(oc =>
+                                {
+                                    oc.Item().Text("By Organization").FontSize(7).FontColor("#065f46").SemiBold();
+                                    oc.Item().PaddingTop(2).Row(or =>
+                                    {
+                                        foreach (var kv in byOrg.OrderByDescending(x => x.Value))
+                                        {
+                                            or.AutoItem().PaddingRight(10).Column(bc =>
+                                            {
+                                                bc.Item().Text(t =>
+                                                {
+                                                    t.Span("■ ").FontSize(8).FontColor("#059669");
+                                                    t.Span($"{kv.Key}: ").FontSize(8).FontColor("#374151");
+                                                    t.Span(kv.Value.ToString()).FontSize(9).Bold().FontColor("#1b5e20");
+                                                });
+                                            });
+                                        }
+                                    });
+                                });
+                            }
+                        });
+                        col.Item().PaddingTop(6);
+                    }
 
                     if (count == 0)
                     {
@@ -294,19 +364,33 @@ public class PdfService
                                         hr.RelativeItem()
                                             .Text("Student")
                                             .FontSize(8).FontColor("#555").SemiBold();
-                                        hr.ConstantItem(22).AlignRight()
-                                            .Text("Visits")
+                                        hr.ConstantItem(30)
+                                            .Text("Org")
+                                            .FontSize(8).FontColor("#555").SemiBold();
+                                        hr.ConstantItem(36)
+                                            .Text("Referral")
+                                            .FontSize(8).FontColor("#555").SemiBold();
+                                        hr.ConstantItem(18).AlignRight()
+                                            .Text("Vis.")
                                             .FontSize(8).FontColor("#555").SemiBold();
                                     });
 
                                 int rank = colIdx * rows + 1;
-                                foreach (var (name, visits) in slice)
+                                foreach (var (name, visits, referral, org) in slice)
                                 {
                                     int r2 = rank++;
+                                    var rowBg = ReferralPdfBg(referral, r2);
+                                    var refColor = referral switch
+                                    {
+                                        "Friend"          => "#b45309",
+                                        "Social Networks" => "#1d4ed8",
+                                        "Other"           => "#6b7280",
+                                        _                 => "#15803d",
+                                    };
                                     innerCol.Item()
                                         .BorderBottom(0.5f)
                                         .BorderColor(Colors.Grey.Lighten3)
-                                        .Background(r2 % 2 == 0 ? "#f9fbe7" : Colors.White)
+                                        .Background(rowBg)
                                         .PaddingVertical(2).PaddingHorizontal(5)
                                         .Row(rr =>
                                         {
@@ -316,7 +400,13 @@ public class PdfService
                                             rr.RelativeItem()
                                                 .Text(name)
                                                 .FontSize(9);
-                                            rr.ConstantItem(22).AlignRight()
+                                            rr.ConstantItem(30)
+                                                .Text(org)
+                                                .FontSize(7.5f).FontColor("#4338ca");
+                                            rr.ConstantItem(36)
+                                                .Text(string.IsNullOrEmpty(referral) ? "Don" : referral)
+                                                .FontSize(7.5f).FontColor(refColor);
+                                            rr.ConstantItem(18).AlignRight()
                                                 .Text(visits.ToString())
                                                 .FontSize(9).FontColor("#2e7d32").SemiBold();
                                         });
@@ -395,7 +485,8 @@ public class PdfService
         List<StaffStatRow> weekStaff,
         List<DayStat> dayStats,
         List<WeekStatSummary> weekHistory,
-        WeekStatSummary? currentWeekSummary)
+        WeekStatSummary? currentWeekSummary,
+        List<OriginHours>? originHours = null)
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
@@ -498,6 +589,41 @@ public class PdfService
                                     table.Cell().Background(bg).AlignCenter().Padding(3).Text(ds.BodyInShop > 0 ? ds.BodyInShop.ToString() : "–").FontSize(8).FontColor(ds.BodyInShop > 0 ? "#ea580c" : Colors.Grey.Medium);
                                 }
                             });
+
+                            // ── PC Origin Hours (below day-by-day table) ─────────────
+                            if (originHours != null && originHours.Count > 0)
+                            {
+                                left.Item().PaddingTop(8);
+                                left.Item().Text("PC Origin — Auditing Hours").SemiBold().FontSize(9).FontColor("#1a1a2e");
+                                left.Item().PaddingTop(3);
+                                left.Item().Table(ot =>
+                                {
+                                    ot.ColumnsDefinition(oc =>
+                                    {
+                                        oc.RelativeColumn(3);
+                                        oc.RelativeColumn(2);
+                                    });
+                                    ot.Header(h =>
+                                    {
+                                        h.Cell().Background("#4c1d95").Padding(3).Text("Origin").FontSize(7).SemiBold().FontColor(Colors.White);
+                                        h.Cell().Background("#4c1d95").Padding(3).AlignCenter().Text("Hours").FontSize(7).SemiBold().FontColor(Colors.White);
+                                    });
+                                    int orank = 0;
+                                    foreach (var oh in originHours)
+                                    {
+                                        var (oBg, oColor) = oh.Origin switch
+                                        {
+                                            "Haifa"       => ("#f5f3ff", "#7c3aed"),
+                                            "Riga"        => ("#f0fdfa", "#0d9488"),
+                                            "from Abroad" => ("#fff7ed", "#ea580c"),
+                                            _             => ("#f9fafb", "#6b7280"),
+                                        };
+                                        ot.Cell().Background(oBg).Padding(3).Text(oh.Origin).FontSize(8).FontColor(oColor).SemiBold();
+                                        ot.Cell().Background(oBg).AlignCenter().Padding(3).Text(FmtSec(oh.Seconds)).FontSize(8).FontColor(oColor).SemiBold();
+                                        orank++;
+                                    }
+                                });
+                            }
                         });
 
                         mainRow.ConstantItem(12);
@@ -674,4 +800,12 @@ public class PdfService
     static string FmtSec(int s) =>
         s <= 0 ? "–" : $"{s / 3600}:{(s % 3600) / 60:D2}";
 
+    static string ReferralPdfBg(string referral, int rowNum) => referral switch
+    {
+        "Friend"          => rowNum % 2 == 0 ? "#fef9e7" : "#fef3c7",
+        "Social Networks" => rowNum % 2 == 0 ? "#eff8ff" : "#dbeafe",
+        "Other"           => rowNum % 2 == 0 ? "#f9fafb" : "#f3f4f6",
+        _                 => rowNum % 2 == 0 ? "#f9fbe7" : Colors.White,  // Don / default
+    };
 }
+

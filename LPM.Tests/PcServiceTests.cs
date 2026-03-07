@@ -64,7 +64,7 @@ public class PcServiceTests : IDisposable
     [Fact]
     public void AddPcWithPerson_WithOptionalFieldsEmpty_Succeeds()
     {
-        var id = _svc.AddPcWithPerson("Eli", "", "", "", "", "");
+        var id = _svc.AddPcWithPerson("Eli", "", "", "", "", "", "");
         Assert.True(id > 0);
 
         var detail = _svc.GetPcDetail(id)!;
@@ -86,9 +86,9 @@ public class PcServiceTests : IDisposable
     [Fact]
     public void GetAllPcs_ReturnsAllAddedClients()
     {
-        _svc.AddPcWithPerson("Alice", "A", "", "", "", "");
-        _svc.AddPcWithPerson("Bob",   "B", "", "", "", "");
-        _svc.AddPcWithPerson("Carol", "C", "", "", "", "");
+        _svc.AddPcWithPerson("Alice", "A", "", "", "", "", "");
+        _svc.AddPcWithPerson("Bob",   "B", "", "", "", "", "");
+        _svc.AddPcWithPerson("Carol", "C", "", "", "", "", "");
 
         var list = _svc.GetAllPcs();
         Assert.Equal(3, list.Count);
@@ -97,7 +97,7 @@ public class PcServiceTests : IDisposable
     [Fact]
     public void GetAllPcs_RemainingSec_IsZero_WhenNoPaymentsAndNoSessions()
     {
-        _svc.AddPcWithPerson("Alice", "A", "", "", "", "");
+        _svc.AddPcWithPerson("Alice", "A", "", "", "", "", "");
         var list = _svc.GetAllPcs();
         Assert.Equal(0L, list[0].RemainSec);
     }
@@ -105,7 +105,7 @@ public class PcServiceTests : IDisposable
     [Fact]
     public void GetAllPcs_RemainingSec_IsPositive_WhenHoursBoughtExceedUsed()
     {
-        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "");
+        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "", "");
         // Buy 2 hours = 7200 sec
         _svc.AddPayment(pcId, "2024-01-10", 2, 500, null);
 
@@ -123,7 +123,7 @@ public class PcServiceTests : IDisposable
     [Fact]
     public void GetAllPcs_RemainingSec_IsNegative_WhenUsedExceedsBought()
     {
-        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "");
+        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "", "");
         // Buy only 1 hour
         _svc.AddPayment(pcId, "2024-01-10", 1, 300, null);
 
@@ -142,7 +142,7 @@ public class PcServiceTests : IDisposable
     [Fact]
     public void GetAllPcs_RemainingSec_IgnoresFreeSessions()
     {
-        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "");
+        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "", "");
         _svc.AddPayment(pcId, "2024-01-10", 2, 0, null);   // 7200 sec
 
         using var conn = Open();
@@ -212,7 +212,7 @@ public class PcServiceTests : IDisposable
     [Fact]
     public void GetPcStats_AllZero_WhenNoSessionsOrPayments()
     {
-        var id    = _svc.AddPcWithPerson("Alice", "A", "", "", "", "");
+        var id    = _svc.AddPcWithPerson("Alice", "A", "", "", "", "", "");
         var stats = _svc.GetPcStats(id);
 
         Assert.Equal(0, stats.TotalSessions);
@@ -226,7 +226,7 @@ public class PcServiceTests : IDisposable
     [Fact]
     public void GetPcStats_CountsSessionsCorrectly()
     {
-        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "");
+        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "", "");
 
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "AudX");
@@ -245,7 +245,7 @@ public class PcServiceTests : IDisposable
     [Fact]
     public void GetPcStats_SumsPaymentsCorrectly()
     {
-        var pcId = _svc.AddPcWithPerson("Bob", "B", "", "", "", "");
+        var pcId = _svc.AddPcWithPerson("Bob", "B", "", "", "", "", "");
         _svc.AddPayment(pcId, "2024-01-01", 3, 900, null);
         _svc.AddPayment(pcId, "2024-02-01", 5, 1500, null);
 
@@ -257,7 +257,7 @@ public class PcServiceTests : IDisposable
     [Fact]
     public void GetPcStats_UsedSec_DoesNotCountFreeSessionTime()
     {
-        var pcId = _svc.AddPcWithPerson("Carol", "C", "", "", "", "");
+        var pcId = _svc.AddPcWithPerson("Carol", "C", "", "", "", "", "");
 
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "AudZ");
@@ -277,14 +277,14 @@ public class PcServiceTests : IDisposable
     [Fact]
     public void GetPcSessions_ReturnsEmpty_WhenNoSessions()
     {
-        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "");
+        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "", "");
         Assert.Empty(_svc.GetPcSessions(pcId));
     }
 
     [Fact]
     public void GetPcSessions_ReturnsAllSessions_OrderedByDateDesc()
     {
-        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "");
+        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "", "");
 
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "AudT");
@@ -303,7 +303,7 @@ public class PcServiceTests : IDisposable
     [Fact]
     public void GetPcSessions_ReturnsAuditorFirstName()
     {
-        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "");
+        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "", "");
 
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "Tami", "Cohen");
@@ -321,7 +321,7 @@ public class PcServiceTests : IDisposable
     [Fact]
     public void AddPayment_CreatesPaymentRecord()
     {
-        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "");
+        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "", "");
         _svc.AddPayment(pcId, "2024-05-01", 4, 1200, "Initial payment");
 
         var payments = _svc.GetPayments(pcId);
@@ -335,7 +335,7 @@ public class PcServiceTests : IDisposable
     [Fact]
     public void AddPayment_MultiplePayments_AllRetrieved()
     {
-        var pcId = _svc.AddPcWithPerson("Bob", "B", "", "", "", "");
+        var pcId = _svc.AddPcWithPerson("Bob", "B", "", "", "", "", "");
         _svc.AddPayment(pcId, "2024-01-01", 2, 600, null);
         _svc.AddPayment(pcId, "2024-02-01", 3, 900, null);
         _svc.AddPayment(pcId, "2024-03-01", 5, 1500, "Extra");
@@ -347,7 +347,7 @@ public class PcServiceTests : IDisposable
     [Fact]
     public void AddPayment_WithNullNotes_Succeeds()
     {
-        var pcId = _svc.AddPcWithPerson("Carol", "C", "", "", "", "");
+        var pcId = _svc.AddPcWithPerson("Carol", "C", "", "", "", "", "");
         _svc.AddPayment(pcId, "2024-06-01", 1, 300, null);
 
         var payments = _svc.GetPayments(pcId);
@@ -357,14 +357,14 @@ public class PcServiceTests : IDisposable
     [Fact]
     public void GetPayments_ReturnsEmpty_WhenNoPayments()
     {
-        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "");
+        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "", "");
         Assert.Empty(_svc.GetPayments(pcId));
     }
 
     [Fact]
     public void GetPayments_OrderedByDateDesc()
     {
-        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "");
+        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "", "");
         _svc.AddPayment(pcId, "2024-01-01", 1, 300, null);
         _svc.AddPayment(pcId, "2024-03-01", 2, 600, null);
         _svc.AddPayment(pcId, "2024-02-01", 3, 900, null);
@@ -378,7 +378,7 @@ public class PcServiceTests : IDisposable
     [Fact]
     public void DeletePayment_RemovesRecord()
     {
-        var pcId      = _svc.AddPcWithPerson("Alice", "A", "", "", "", "");
+        var pcId      = _svc.AddPcWithPerson("Alice", "A", "", "", "", "", "");
         _svc.AddPayment(pcId, "2024-01-01", 2, 600, null);
         var paymentId = _svc.GetPayments(pcId)[0].PaymentId;
 
@@ -390,7 +390,7 @@ public class PcServiceTests : IDisposable
     [Fact]
     public void DeletePayment_OnlyDeletesSpecifiedRecord()
     {
-        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "");
+        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "", "");
         _svc.AddPayment(pcId, "2024-01-01", 2, 600, null);
         _svc.AddPayment(pcId, "2024-02-01", 3, 900, null);
 
@@ -410,7 +410,7 @@ public class PcServiceTests : IDisposable
     [Fact]
     public void RemainingHours_MatchesTotalBoughtMinusUsed()
     {
-        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "");
+        var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "", "");
         _svc.AddPayment(pcId, "2024-01-01", 10, 3000, null);  // 10 h = 36000 sec
 
         using var conn = Open();
@@ -428,7 +428,7 @@ public class PcServiceTests : IDisposable
     [Fact]
     public void RemainingHours_MultiplePayments_SummedCorrectly()
     {
-        var pcId = _svc.AddPcWithPerson("Bob", "B", "", "", "", "");
+        var pcId = _svc.AddPcWithPerson("Bob", "B", "", "", "", "", "");
         _svc.AddPayment(pcId, "2024-01-01", 5, 1500, null);  // 5 h
         _svc.AddPayment(pcId, "2024-02-01", 5, 1500, null);  // 5 h → total 10 h = 36000 sec
 
@@ -446,7 +446,7 @@ public class PcServiceTests : IDisposable
     public void RemainingHours_AdminSecondsCountedTowardUsedTime()
     {
         // LengthSeconds + AdminSeconds both count as used time in the remaining-hours query
-        var pcId = _svc.AddPcWithPerson("Carol", "C", "", "", "", "");
+        var pcId = _svc.AddPcWithPerson("Carol", "C", "", "", "", "", "");
         _svc.AddPayment(pcId, "2024-01-01", 2, 0, null);  // 7200 sec
 
         using var conn = Open();

@@ -110,6 +110,15 @@
                                     <label class="form-label small mb-0">Start Date</label>
                                     <input type="date" class="form-control form-control-sm" @bind="_editStartDate" style="width:150px;" />
                                 </div>
+                                <div class="col-auto">
+                                    <label class="form-label small mb-0">Origin</label>
+                                    <select class="form-select form-select-sm" @bind="_editOrigin" style="width:140px;">
+                                        <option value="">— select —</option>
+                                        <option value="Haifa">Haifa</option>
+                                        <option value="Riga">Riga</option>
+                                        <option value="from Abroad">From Abroad</option>
+                                    </select>
+                                </div>
                                 <div class="col-12">
                                     <label class="form-label small mb-0">Notes</label>
                                     <textarea class="form-control form-control-sm" rows="2" @bind="_editNotes"></textarea>
@@ -131,6 +140,12 @@
                                     {
                                         <span class="text-muted small">
                                             <i class="ri-calendar-line me-1"></i>Since @_detail.StartDate
+                                        </span>
+                                    }
+                                    @if (!string.IsNullOrEmpty(_detail.Origin))
+                                    {
+                                        <span class="badge rounded-pill" style="background:#ede9fe;color:#6d28d9;font-size:.73rem;">
+                                            <i class="ri-map-pin-line me-1"></i>@_detail.Origin
                                         </span>
                                     }
                                 </div>
@@ -422,7 +437,7 @@
     </div>
 </div>
 
-<SpkNewPersonModal @ref="_addModal" Title="Add New PC" OnSaved="SaveNewPc" />
+<SpkNewPersonModal @ref="_addModal" Title="Add New PC" ShowPcOriginField="true" OnSaved="SaveNewPc" />
 
 <style>
     .pc-stat-card {
@@ -458,7 +473,7 @@
     // Edit mode
     bool      _editMode;
     string    _editFirstName = "", _editLastName = "", _editExternalId = "";
-    string    _editPhone = "", _editEmail = "", _editNotes = "", _editSex = "";
+    string    _editPhone = "", _editEmail = "", _editNotes = "", _editSex = "", _editOrigin = "";
     DateTime? _editDob;
     DateTime? _editStartDate;
 
@@ -493,9 +508,10 @@
         _sessions = PcSvc.GetPcSessions(_selPcId.Value);
     }
 
-    void SaveNewPc((string fn, string ln, string phone, string email, string dob, string sex) d)
+    void SaveNewPc((string fn, string ln, string phone, string email, string dob, string sex,
+                    string org, string referral, string origin) d)
     {
-        var newId = PcSvc.AddPcWithPerson(d.fn, d.ln, d.phone, d.email, d.dob, d.sex);
+        var newId = PcSvc.AddPcWithPerson(d.fn, d.ln, d.phone, d.email, d.dob, d.sex, d.origin);
         _allPcs = PcSvc.GetAllPcs();
         SelectPc(newId);
     }
@@ -513,6 +529,7 @@
                           : DateTime.TryParse(_detail.DateOfBirth, out var dob) ? dob : null;
         _editSex        = _detail.Sex;
         _editNotes      = _detail.Notes;
+        _editOrigin     = _detail.Origin;
         _editStartDate  = string.IsNullOrEmpty(_detail.StartDate) ? null
                           : DateTime.TryParse(_detail.StartDate, out var d) ? d : null;
     }
@@ -524,7 +541,7 @@
             _editFirstName, _editLastName, _editExternalId,
             _editPhone, _editEmail,
             _editStartDate?.ToString("yyyy-MM-dd") ?? "", _editNotes,
-            _editDob?.ToString("yyyy-MM-dd") ?? "", _editSex);
+            _editDob?.ToString("yyyy-MM-dd") ?? "", _editSex, _editOrigin);
         _editMode = false;
         _allPcs   = PcSvc.GetAllPcs();
         LoadDetail();

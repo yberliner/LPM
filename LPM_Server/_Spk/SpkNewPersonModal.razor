@@ -1,9 +1,11 @@
 @* Shared modal for adding a new person.
    Usage:
      <SpkNewPersonModal @ref="_modal" Title="Add New XYZ" OnSaved="HandleSaved" />
+     <SpkNewPersonModal @ref="_modal" Title="New Student" ShowAcademyFields="true" OnSaved="HandleSaved" />
+     <SpkNewPersonModal @ref="_modal" Title="Add New PC"  ShowPcOriginField="true" OnSaved="HandleSaved" />
 
    Call _modal.Show() to open it.
-   OnSaved fires with (FirstName, LastName, Phone, Email, Age?, Sex) on successful save.
+   OnSaved fires with (FirstName, LastName, Phone, Email, DateOfBirth, Sex, Org, Referral, Origin) on successful save.
 *@
 
 @if (_visible)
@@ -59,6 +61,43 @@
                                 <option value="Other">Other</option>
                             </select>
                         </div>
+
+                        @* ── Academy-only fields ── *@
+                        @if (ShowAcademyFields)
+                        {
+                            <div class="col-6">
+                                <label class="form-label small mb-1">Organization</label>
+                                <select class="form-select form-select-sm" @bind="_org">
+                                    <option value="">— select —</option>
+                                    <option value="Haifa">Haifa</option>
+                                    <option value="Riga">Riga</option>
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small mb-1">Referral</label>
+                                <select class="form-select form-select-sm" @bind="_referral">
+                                    <option value="">— select —</option>
+                                    <option value="Don">Don</option>
+                                    <option value="Friend">Friend / Other Student</option>
+                                    <option value="Social Networks">Social Networks</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                        }
+
+                        @* ── PC-only field ── *@
+                        @if (ShowPcOriginField)
+                        {
+                            <div class="col-6">
+                                <label class="form-label small mb-1">Origin</label>
+                                <select class="form-select form-select-sm" @bind="_origin">
+                                    <option value="">— select —</option>
+                                    <option value="Haifa">Haifa</option>
+                                    <option value="Riga">Riga</option>
+                                    <option value="from Abroad">From Abroad</option>
+                                </select>
+                            </div>
+                        }
                     </div>
 
                     @if (!string.IsNullOrEmpty(_error))
@@ -90,17 +129,22 @@
 
 @code {
     [Parameter] public string Title { get; set; } = "Add New Person";
-    [Parameter] public EventCallback<(string FirstName, string LastName, string Phone, string Email, string DateOfBirth, string Sex)> OnSaved { get; set; }
+    [Parameter] public bool ShowAcademyFields  { get; set; }
+    [Parameter] public bool ShowPcOriginField  { get; set; }
+    [Parameter] public EventCallback<(string FirstName, string LastName, string Phone, string Email,
+        string DateOfBirth, string Sex, string Org, string Referral, string Origin)> OnSaved { get; set; }
 
-    string   _firstName = "", _lastName = "";
-    string   _phone = "", _email = "", _sex = "";
+    string    _firstName = "", _lastName = "";
+    string    _phone = "", _email = "", _sex = "";
+    string    _org = "", _referral = "", _origin = "";
     DateOnly? _dob;
-    string   _error = "";
-    bool     _visible;
+    string    _error = "";
+    bool      _visible;
 
     public void Show()
     {
         _firstName = _lastName = _phone = _email = _sex = _error = "";
+        _org = _referral = _origin = "";
         _dob     = null;
         _visible = true;
         StateHasChanged();
@@ -117,7 +161,8 @@
         await OnSaved.InvokeAsync((
             _firstName.Trim(), _lastName.Trim(),
             _phone.Trim(), _email.Trim(),
-            _dob?.ToString("yyyy-MM-dd") ?? "", _sex));
+            _dob?.ToString("yyyy-MM-dd") ?? "", _sex,
+            _org, _referral, _origin));
     }
 
     void Cancel() => _visible = false;

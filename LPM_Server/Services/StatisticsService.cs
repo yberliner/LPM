@@ -11,6 +11,8 @@ public record StaffStatRow(int PersonId, string Name, int AuditSec, int SoloCsSe
 
 public record DayStat(DateOnly Date, List<StaffStatRow> Staff, int AcademyCount, int BodyInShop, int PcCount);
 
+public record OriginHours(string Origin, int Seconds);
+
 public record WeekStatSummary(DateOnly WeekStart, int TotalAuditCsSec, int AcademyCount, int BodyInShop, int PcCount)
 {
     public string WeekRangeLabel =>
@@ -25,6 +27,22 @@ public class StatisticsService
     {
         var dbPath = config["Database:Path"] ?? "lifepower.db";
         _connectionString = $"Data Source={dbPath}";
+        EnsureSchema();
+    }
+
+    private void EnsureSchema()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        // Ensure PCs.Origin column exists (also added by PcService, but we need it here)
+        using var ck = conn.CreateCommand();
+        ck.CommandText = "SELECT COUNT(*) FROM pragma_table_info('PCs') WHERE name='Origin'";
+        if ((long)(ck.ExecuteScalar() ?? 0L) == 0)
+        {
+            using var alt = conn.CreateCommand();
+            alt.CommandText = "ALTER TABLE PCs ADD COLUMN Origin TEXT";
+            alt.ExecuteNonQuery();
+        }
     }
 
     /// <summary>
@@ -292,5 +310,36 @@ public class StatisticsService
             bodyPersons[w].Count,
             pcPersons[w].Count
         )).ToList();
+    }
+
+    /// <summary>
+    /// Returns auditing hours (LengthSeconds + AdminSeconds) grouped by PC Origin for the given week.
+    /// Ordered by total descending.
+    /// </summary>
+    public List<OriginHours> GetWeekOriginHours(DateOnly weekStart)
+    {
+        var weekEnd  = weekStart.AddDays(6);
+        var startStr = weekStart.ToString("yyyy-MM-dd");
+        var endStr   = weekEnd.ToString("yyyy-MM-dd");
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT COALESCE(NULLIF(pc.Origin,''), 'Unknown') AS Origin,
+                   SUM(s.LengthSeconds + s.AdminSeconds) AS TotalSec
+            FROM Sessions s
+            JOIN PCs pc ON pc.PcId = s.PcId
+            WHERE s.SessionDate >= @s AND s.SessionDate <= @e
+            GROUP BY COALESCE(NULLIF(pc.Origin,''), 'Unknown')
+            ORDER BY TotalSec DESC";
+        cmd.Parameters.AddWithValue("@s", startStr);
+        cmd.Parameters.AddWithValue("@e", endStr);
+
+        var list = new List<OriginHours>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new OriginHours(r.GetString(0), r.GetInt32(1)));
+        return list;
     }
 }

@@ -64,9 +64,18 @@
                 <i class="ri-user-heart-line"></i>
                 <strong style="font-size:.9rem;">Visits — @DayLabel(_weekStart.AddDays(_selDay))</strong>
             </div>
-            <span class="badge rounded-pill px-2" style="background:rgba(255,255,255,.25);font-size:.78rem;">
-                @_visits.Count
-            </span>
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge rounded-pill px-2" style="background:rgba(255,255,255,.25);font-size:.78rem;">
+                    @_visits.Count
+                </span>
+                @* Referral legend *@
+                <div class="d-flex align-items-center gap-2 ms-2" style="font-size:.72rem;">
+                    <span class="acad-legend-dot" style="background:#16a34a;"></span><span class="opacity-80">Don</span>
+                    <span class="acad-legend-dot" style="background:#f59e0b;"></span><span class="opacity-80">Friend</span>
+                    <span class="acad-legend-dot" style="background:#3b82f6;"></span><span class="opacity-80">Social</span>
+                    <span class="acad-legend-dot" style="background:#94a3b8;"></span><span class="opacity-80">Other</span>
+                </div>
+            </div>
         </div>
         <div class="card-body py-3 px-3">
             @if (_visits.Count == 0)
@@ -81,10 +90,18 @@
                 <div class="d-flex flex-wrap gap-2">
                     @foreach (var v in _visits)
                     {
-                        <span class="acad-visit-chip">
+                        var (chipBg, chipBorder, chipColor) = ReferralChipStyle(v.Referral);
+                        <span class="acad-visit-chip" style="background:@chipBg;border-color:@chipBorder;color:@chipColor;">
                             <i class="ri-user-smile-line" style="font-size:.82rem;opacity:.7;"></i>
                             @v.FullName
-                            <button class="acad-chip-remove" title="Remove"
+                            @if (!string.IsNullOrEmpty(v.Org))
+                            {
+                                <span style="font-size:.68rem;padding:1px 5px;border-radius:8px;
+                                             background:rgba(0,0,0,.1);opacity:.85;font-weight:700;">
+                                    @v.Org
+                                </span>
+                            }
+                            <button class="acad-chip-remove" title="Remove" style="color:@chipColor;"
                                     @onclick="() => DoRemoveVisit(v.VisitId)">
                                 <i class="ri-close-fill"></i>
                             </button>
@@ -117,8 +134,15 @@
                     var visited = AlreadyVisited(p.PersonId);
                     <div class="acad-person-row @(visited ? "acad-person-visited" : "acad-person-available")"
                          @onclick="() => { if (!visited) AddVisit(p); }">
-                        <div class="acad-person-dot @(visited ? "acad-dot-visited" : "acad-dot-available")"></div>
+                        <div class="acad-person-dot" style="background:@ReferralDotColor(p.Referral);"></div>
                         <span style="font-size:.83rem;">@p.FullName</span>
+                        @if (!string.IsNullOrEmpty(p.Org))
+                        {
+                            <span style="font-size:.67rem;padding:1px 5px;border-radius:8px;
+                                         background:#e0e7ff;color:#4338ca;font-weight:600;flex-shrink:0;">
+                                @p.Org
+                            </span>
+                        }
                         @if (visited)
                         {
                             <i class="ri-check-double-line ms-auto" style="font-size:.88rem;color:#16a34a;"></i>
@@ -139,6 +163,52 @@
 
 </div>
 
+@* ── Weekly student breakdown summary ── *@
+@if (_weekByReferral.Count > 0 || _weekByOrg.Count > 0)
+{
+    <div class="mx-3 mb-3">
+        <div class="card shadow-sm" style="border-radius:12px;border:none;background:#f8fffe;">
+            <div class="card-body py-2 px-3">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="small fw-semibold" style="color:#065f46;white-space:nowrap;">
+                        <i class="ri-bar-chart-2-line me-1"></i>Week summary:
+                    </span>
+
+                    @* ── Referral breakdown ── *@
+                    @if (_weekByReferral.Count > 0)
+                    {
+                        <span class="small text-muted fw-semibold ms-1">By referral —</span>
+                        @foreach (var kv in _weekByReferral.OrderByDescending(x => x.Value))
+                        {
+                            var dotCol = ReferralDotColor(kv.Key == "Don" ? "Don" : kv.Key);
+                            <span class="d-inline-flex align-items-center gap-1"
+                                  style="font-size:.8rem;font-weight:600;color:#374151;">
+                                <span style="width:8px;height:8px;border-radius:50%;background:@dotCol;display:inline-block;flex-shrink:0;"></span>
+                                @kv.Key: <strong>@kv.Value</strong>
+                            </span>
+                        }
+                    }
+
+                    @* ── Org breakdown ── *@
+                    @if (_weekByOrg.Count > 0)
+                    {
+                        <span class="vr mx-1"></span>
+                        <span class="small text-muted fw-semibold">By org —</span>
+                        @foreach (var kv in _weekByOrg.OrderByDescending(x => x.Value))
+                        {
+                            <span class="d-inline-flex align-items-center gap-1"
+                                  style="font-size:.8rem;font-weight:600;color:#374151;">
+                                <i class="ri-building-2-line" style="font-size:.75rem;color:#059669;"></i>
+                                @kv.Key: <strong>@kv.Value</strong>
+                            </span>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @* ── Statistics chart card ── *@
 <div class="card mx-3 mb-3 shadow-sm" style="border-radius:14px;border:none;overflow:visible;">
     <div class="card-header acad-chart-header">
@@ -146,9 +216,27 @@
             <i class="ri-bar-chart-box-fill" style="font-size:1.1rem;"></i>
             <strong style="font-size:.9rem;">Weekly Visit Totals — last 20 weeks</strong>
         </div>
-        <span style="font-size:.78rem;opacity:.8;">
-            Total: @_weeklyTotals.Sum(w => w.TotalVisits) visits
-        </span>
+        <div class="d-flex align-items-center gap-3" style="font-size:.75rem;">
+            <span class="d-flex align-items-center gap-1">
+                <span style="width:10px;height:10px;border-radius:2px;background:#16a34a;display:inline-block;"></span>
+                <span class="opacity-80">Don</span>
+            </span>
+            <span class="d-flex align-items-center gap-1">
+                <span style="width:10px;height:10px;border-radius:2px;background:#f59e0b;display:inline-block;"></span>
+                <span class="opacity-80">Friend</span>
+            </span>
+            <span class="d-flex align-items-center gap-1">
+                <span style="width:10px;height:10px;border-radius:2px;background:#3b82f6;display:inline-block;"></span>
+                <span class="opacity-80">Social</span>
+            </span>
+            <span class="d-flex align-items-center gap-1">
+                <span style="width:10px;height:10px;border-radius:2px;background:#94a3b8;display:inline-block;"></span>
+                <span class="opacity-80">Other</span>
+            </span>
+            <span style="font-size:.78rem;opacity:.8;">
+                Total: @_weeklyTotals.Sum(w => w.TotalVisits) visits
+            </span>
+        </div>
     </div>
     <div class="card-body py-1 px-2">
         <ApexChart TItem="WeekVisitCount"
@@ -157,10 +245,28 @@
                    @key="_chartKey">
             <ApexPointSeries TItem="WeekVisitCount"
                              Items="@_weeklyTotals"
-                             Name="Visits"
+                             Name="Don / Default"
                              SeriesType="SeriesType.Bar"
                              XValue="@(w => w.WeekLabel)"
-                             YValue="@(w => (decimal)w.TotalVisits)" />
+                             YValue="@(w => (decimal)w.DonCount)" />
+            <ApexPointSeries TItem="WeekVisitCount"
+                             Items="@_weeklyTotals"
+                             Name="Friend"
+                             SeriesType="SeriesType.Bar"
+                             XValue="@(w => w.WeekLabel)"
+                             YValue="@(w => (decimal)w.FriendCount)" />
+            <ApexPointSeries TItem="WeekVisitCount"
+                             Items="@_weeklyTotals"
+                             Name="Social Networks"
+                             SeriesType="SeriesType.Bar"
+                             XValue="@(w => w.WeekLabel)"
+                             YValue="@(w => (decimal)w.SocialCount)" />
+            <ApexPointSeries TItem="WeekVisitCount"
+                             Items="@_weeklyTotals"
+                             Name="Other"
+                             SeriesType="SeriesType.Bar"
+                             XValue="@(w => w.WeekLabel)"
+                             YValue="@(w => (decimal)w.OtherCount)" />
         </ApexChart>
     </div>
 </div>
@@ -230,20 +336,19 @@
     .acad-visit-chip {
         display: inline-flex; align-items: center; gap: 5px;
         padding: 5px 10px 5px 8px; border-radius: 20px;
-        background: linear-gradient(135deg, #d1fae5, #a7f3d0);
-        color: #064e3b; font-size: .82rem; font-weight: 600;
-        border: 1px solid #6ee7b7;
-        box-shadow: 0 1px 4px rgba(5,150,105,.12);
+        font-size: .82rem; font-weight: 600;
+        border-width: 1px; border-style: solid;
+        box-shadow: 0 1px 4px rgba(0,0,0,.1);
         transition: transform .15s, box-shadow .15s;
     }
-    .acad-visit-chip:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(5,150,105,.22); }
+    .acad-visit-chip:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,.15); }
     .acad-chip-remove {
         background: none; border: none; padding: 0; margin-left: 2px;
-        color: #065f46; opacity: .6; line-height: 1; cursor: pointer; font-size: .9rem;
+        opacity: .6; line-height: 1; cursor: pointer; font-size: .9rem;
         display: flex; align-items: center;
-        transition: opacity .15s, color .15s;
+        transition: opacity .15s;
     }
-    .acad-chip-remove:hover { opacity: 1; color: #dc2626; }
+    .acad-chip-remove:hover { opacity: 1; }
 
     /* ── Persons panel ── */
     .acad-persons-card { background: #fff !important; }
@@ -267,9 +372,12 @@
     .acad-person-dot {
         width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
     }
-    .acad-dot-available { background: #d1d5db; }
-    .acad-dot-visited   { background: #16a34a; }
     .acad-add-icon { color: #9ca3af; transition: color .15s; }
+
+    /* ── Legend dot ── */
+    .acad-legend-dot {
+        width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; display: inline-block;
+    }
 
     /* ── Chart header ── */
     .acad-chart-header {
@@ -280,31 +388,43 @@
     }
     /* Allow tooltip to escape the chart card */
     .apexcharts-tooltip { z-index: 9999 !important; }
+
+    @@media print {
+        .acad-nav-bar { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    }
 </style>
 
 @* ── New Student modal ── *@
-<SpkNewPersonModal @ref="_addModal" Title="New Student" OnSaved="SaveNewStudent" />
+<SpkNewPersonModal @ref="_addModal" Title="New Student" ShowAcademyFields="true" OnSaved="SaveNewStudent" />
 
 @code {
 
-    SpkNewPersonModal    _addModal     = default!;
-    DateOnly             _weekStart;
-    int                  _selDay;
-    Dictionary<int, int> _dayCounts    = [];
-    List<PersonItem>     _allPersons   = [];
-    List<VisitRecord>    _visits       = [];
-    List<WeekVisitCount> _weeklyTotals = [];
-    int                  _chartKey;
-    string               _searchText   = "";
+    SpkNewPersonModal       _addModal        = default!;
+    DateOnly                _weekStart;
+    int                     _selDay;
+    Dictionary<int, int>    _dayCounts       = [];
+    List<PersonItem>        _allPersons      = [];
+    List<VisitRecord>       _visits          = [];
+    List<WeekVisitCount>    _weeklyTotals    = [];
+    int                     _chartKey;
+    string                  _searchText      = "";
+    Dictionary<string, int> _weekByReferral  = [];
+    Dictionary<string, int> _weekByOrg       = [];
 
 
     ApexChartOptions<WeekVisitCount> _chartOptions = new()
     {
-        Chart       = new Chart { Toolbar = new Toolbar { Show = false }, Background = "transparent" },
-        PlotOptions = new PlotOptions { Bar = new PlotOptionsBar { ColumnWidth = "65%", BorderRadius = 4 } },
-        Colors      = new List<string> { "#2e7d32" },
+        Chart       = new Chart
+        {
+            Toolbar  = new Toolbar { Show = false },
+            Background = "transparent",
+            Stacked  = true,
+        },
+        PlotOptions = new PlotOptions { Bar = new PlotOptionsBar { ColumnWidth = "65%", BorderRadius = 0 } },
+        Colors      = new List<string> { "#16a34a", "#f59e0b", "#3b82f6", "#94a3b8" },
         Xaxis       = new XAxis { Labels = new XAxisLabels { Rotate = -45, Style = new AxisLabelStyle { FontSize = "11px" } } },
         Grid        = new Grid { BorderColor = "#e0e0e0" },
+        Legend      = new Legend { Show = false },
     };
 
     DateOnly SelectedDate => _weekStart.AddDays(_selDay);
@@ -317,6 +437,24 @@
         : _allPersons.Where(p => p.FullName.Contains(_searchText, StringComparison.OrdinalIgnoreCase));
 
     bool AlreadyVisited(int personId) => _visits.Any(v => v.PersonId == personId);
+
+    // Referral → chip background, border, text color
+    static (string bg, string border, string color) ReferralChipStyle(string referral) => referral switch
+    {
+        "Friend"          => ("linear-gradient(135deg,#fef3c7,#fde68a)", "#fcd34d", "#78350f"),
+        "Social Networks" => ("linear-gradient(135deg,#dbeafe,#bfdbfe)", "#93c5fd", "#1e3a8a"),
+        "Other"           => ("linear-gradient(135deg,#f3f4f6,#e5e7eb)", "#d1d5db", "#374151"),
+        _                 => ("linear-gradient(135deg,#d1fae5,#a7f3d0)", "#6ee7b7", "#064e3b"),  // Don / default
+    };
+
+    // Referral → dot color for person list
+    static string ReferralDotColor(string referral) => referral switch
+    {
+        "Friend"          => "#f59e0b",
+        "Social Networks" => "#3b82f6",
+        "Other"           => "#94a3b8",
+        _                 => "#16a34a",  // Don / default
+    };
 
     protected override void OnInitialized()
     {
@@ -342,7 +480,6 @@
         if (_weekStart >= maxWeek) return;
         var next = _weekStart.AddDays(7);
         _weekStart = next > maxWeek ? maxWeek : next;
-        // Snap selected day to latest non-future day in this week
         var today = DateOnly.FromDateTime(DateTime.Today);
         for (int i = 6; i >= 0; i--)
             if (_weekStart.AddDays(i) <= today) { _selDay = i; break; }
@@ -370,13 +507,14 @@
     {
         var latestWeekStart = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
         _weeklyTotals = AcademySvc.GetWeeklyVisitCounts(latestWeekStart, 20);
+        (_weekByReferral, _weekByOrg) = AcademySvc.GetWeeklyStudentBreakdown(_weekStart);
         UpdateChartTooltip();
         _chartKey++;
     }
 
     void UpdateChartTooltip()
     {
-        // Build a JS array: [ [[name,count],...], ... ] — one entry per week bar
+        // Build a JS array of per-week student data: [ [[name,count,org],...], ... ]
         var sb = new System.Text.StringBuilder("[");
         for (int i = 0; i < _weeklyTotals.Count; i++)
         {
@@ -387,7 +525,8 @@
             {
                 if (j > 0) sb.Append(',');
                 var name = students[j].FullName.Replace("\\", "\\\\").Replace("'", "\\'");
-                sb.Append($"['{name}',{students[j].VisitCount}]");
+                var org  = students[j].Org.Replace("\\", "\\\\").Replace("'", "\\'");
+                sb.Append($"['{name}',{students[j].VisitCount},'{org}']");
             }
             sb.Append(']');
         }
@@ -398,19 +537,31 @@
             "function(opts){" +
             "var d=" + data + ";" +
             "var idx=opts.dataPointIndex;" +
-            "var t=opts.series[0][idx];" +
+            // sum all series for total
+            "var total=0;for(var s=0;s<opts.series.length;s++){total+=(opts.series[s][idx]||0);}" +
+            "var labels=['Don/Default','Friend','Social','Other'];" +
+            "var colors=['#16a34a','#f59e0b','#3b82f6','#94a3b8'];" +
             "var st=d[idx]||[];" +
-            "var r='<div style=\"padding:10px 14px;min-width:200px;font-family:inherit;background:#fff;" +
+            "var r='<div style=\"padding:10px 14px;min-width:210px;font-family:inherit;background:#fff;" +
                     "border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.14)\">';" +
             "r+='<div style=\"font-weight:700;font-size:.93rem;color:#1b5e20;" +
-                    "border-bottom:1px solid #c8e6c9;padding-bottom:5px;margin-bottom:8px\">Visits this week: '+t+'</div>';" +
+                    "border-bottom:1px solid #c8e6c9;padding-bottom:5px;margin-bottom:8px\">Total visits: '+total+'</div>';" +
+            // referral breakdown
+            "for(var i=0;i<labels.length;i++){" +
+            "var cnt=opts.series[i]?opts.series[i][idx]||0:0;" +
+            "if(cnt>0){r+='<div style=\"display:flex;align-items:center;gap:6px;padding:2px 0\">'+" +
+            "'<span style=\"width:9px;height:9px;border-radius:50%;background:'+colors[i]+';display:inline-block;\"></span>'+" +
+            "'<span style=\"font-size:.8rem;color:#374151\">'+labels[i]+': <b>'+cnt+'</b></span></div>';}}" +
+            // student names
             "if(st.length){" +
             "r+='<div style=\"font-size:.7rem;color:#888;text-transform:uppercase;" +
-                    "letter-spacing:.7px;margin-bottom:5px\">Top Students</div>';" +
+                    "letter-spacing:.7px;margin:8px 0 5px\">Top Students</div>';" +
             "for(var i=0;i<st.length;i++){" +
-            "r+='<div style=\"display:flex;justify-content:space-between;gap:20px;padding:3px 6px;" +
+            "var orgLabel=st[i][2]?(' <span style=\"font-size:.7rem;padding:1px 5px;border-radius:8px;" +
+                    "background:#e0e7ff;color:#4338ca;font-weight:600;\">'+st[i][2]+'</span>'):'';"+
+            "r+='<div style=\"display:flex;justify-content:space-between;align-items:center;gap:12px;padding:3px 6px;" +
                     "border-radius:4px;background:'+(i%2===0?'#f1f8f1':'transparent')+'\">';" +
-            "r+='<span style=\"color:#212529;font-size:.82rem\">'+st[i][0]+'</span>';" +
+            "r+='<span style=\"color:#212529;font-size:.82rem\">'+st[i][0]+orgLabel+'</span>';" +
             "r+='<span style=\"color:#2e7d32;font-weight:700;font-size:.82rem\">'+st[i][1]+'</span>';" +
             "r+='</div>';" +
             "}}" +
@@ -438,9 +589,11 @@
         RefreshChart();
     }
 
-    void SaveNewStudent((string fn, string ln, string phone, string email, string dob, string sex) d)
+    void SaveNewStudent((string fn, string ln, string phone, string email, string dob, string sex,
+                         string org, string referral, string origin) d)
     {
-        var personId = AcademySvc.AddPersonForAcademy(d.fn, d.ln, d.phone, d.email, d.dob, d.sex);
+        var personId = AcademySvc.AddPersonForAcademy(d.fn, d.ln, d.phone, d.email, d.dob, d.sex,
+                                                       d.org, d.referral);
         AcademySvc.AddVisit(personId, SelectedDate);
         _allPersons         = AcademySvc.GetAllPersons();
         _dayCounts[_selDay] = AcademySvc.GetVisitsForDay(SelectedDate).Count;
@@ -459,7 +612,8 @@
     async Task PrintWeek()
     {
         var students = AcademySvc.GetStudentVisitsForWeek(_weekStart);
-        var pdfBytes = PdfService.GenerateAcademyWeekPdf(_weekStart, students);
+        var (byRef, byOrg) = AcademySvc.GetWeeklyStudentBreakdown(_weekStart);
+        var pdfBytes = PdfService.GenerateAcademyWeekPdf(_weekStart, students, byRef, byOrg);
         var fileName = $"Academy_{_weekStart:yyyy_MM_dd}.pdf";
         await JS.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(pdfBytes));
     }
