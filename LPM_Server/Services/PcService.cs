@@ -11,7 +11,8 @@ public record PcDetailInfo(int PcId, string FirstName, string LastName, string E
 }
 public record PcSessionInfo(int SessionId, string Date, string AuditorName,
     int LengthSec, int AdminSec, bool IsFree, string VerifiedStatus);
-public record PcPayment(int PaymentId, string Date, int HoursBought, int AmountPaid, string? Notes);
+public record PcPayment(int PaymentId, string Date, int HoursBought, int AmountPaid, string? Notes,
+    string PaymentType, int? CourseId, string? CourseName, int VisitCount);
 public record PcStats(int TotalSessions, int FreeSessions, long UsedSec,
     int TotalHoursPurchased, int TotalAmountPaid, string? LastSessionDate);
 
@@ -44,6 +45,21 @@ public class PcService
                 CreatedAt   TEXT NOT NULL DEFAULT (datetime('now'))
             )";
         c1.ExecuteNonQuery();
+
+        // Extra columns on Payments
+        foreach (var (col, def) in new[] {
+            ("PaymentType", "TEXT DEFAULT 'Auditing'"),
+            ("CourseId",    "INTEGER") })
+        {
+            using var ck = conn.CreateCommand();
+            ck.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('Payments') WHERE name='{col}'";
+            if ((long)(ck.ExecuteScalar() ?? 0L) == 0)
+            {
+                using var alt = conn.CreateCommand();
+                alt.CommandText = $"ALTER TABLE Payments ADD COLUMN {col} {def}";
+                alt.ExecuteNonQuery();
+            }
+        }
 
         // Extra columns on PCs
         foreach (var (col, type) in new[] {
@@ -271,33 +287,64 @@ public class PcService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT PaymentId, PaymentDate, HoursBought, AmountPaid, Notes
-            FROM Payments WHERE PcId=@id
-            ORDER BY PaymentDate DESC";
+            SELECT p.PaymentId, p.PaymentDate, p.HoursBought, p.AmountPaid, p.Notes,
+                   COALESCE(p.PaymentType,'Auditing'), p.CourseId, c.Name,
+                   CASE WHEN COALESCE(p.PaymentType,'Auditing') = 'Course' AND p.CourseId IS NOT NULL
+                        THEN (SELECT COUNT(*) FROM Students s
+                              WHERE s.PersonId = p.PcId AND s.VisitDate >= p.PaymentDate)
+                        ELSE 0 END AS VisitCount
+            FROM Payments p
+            LEFT JOIN Courses c ON c.CourseId = p.CourseId
+            WHERE p.PcId=@id
+            ORDER BY p.PaymentDate DESC";
         cmd.Parameters.AddWithValue("@id", pcId);
         var list = new List<PcPayment>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
             list.Add(new PcPayment(
                 r.GetInt32(0), r.GetString(1), r.GetInt32(2), r.GetInt32(3),
-                r.IsDBNull(4) ? null : r.GetString(4)));
+                r.IsDBNull(4) ? null : r.GetString(4),
+                r.GetString(5),
+                r.IsDBNull(6) ? null : r.GetInt32(6),
+                r.IsDBNull(7) ? null : r.GetString(7),
+                r.GetInt32(8)));
         return list;
     }
 
-    public void AddPayment(int pcId, string date, int hoursBought, int amountPaid, string? notes)
+    public void AddPayment(int pcId, string date, int hoursBought, int amountPaid, string? notes,
+        string paymentType = "Auditing", int? courseId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO Payments (PcId, PaymentDate, HoursBought, AmountPaid, Notes)
-            VALUES (@pcId, @date, @hrs, @amt, @notes)";
+            INSERT INTO Payments (PcId, PaymentDate, HoursBought, AmountPaid, Notes, PaymentType, CourseId)
+            VALUES (@pcId, @date, @hrs, @amt, @notes, @type, @cid)";
         cmd.Parameters.AddWithValue("@pcId",  pcId);
         cmd.Parameters.AddWithValue("@date",  date);
         cmd.Parameters.AddWithValue("@hrs",   hoursBought);
         cmd.Parameters.AddWithValue("@amt",   amountPaid);
         cmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@type",  paymentType);
+        cmd.Parameters.AddWithValue("@cid",   courseId.HasValue ? (object)courseId.Value : DBNull.Value);
         cmd.ExecuteNonQuery();
+
+        // Auto-enroll in Academy StudentCourses when a course is purchased
+        if (paymentType == "Course" && courseId.HasValue)
+        {
+            using var scCmd = conn.CreateCommand();
+            scCmd.CommandText = @"
+                INSERT INTO StudentCourses (PersonId, CourseId, DateStarted)
+                SELECT @pid, @cid, @date
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM StudentCourses
+                    WHERE PersonId=@pid AND CourseId=@cid AND DateFinished IS NULL
+                )";
+            scCmd.Parameters.AddWithValue("@pid",  pcId);
+            scCmd.Parameters.AddWithValue("@cid",  courseId.Value);
+            scCmd.Parameters.AddWithValue("@date", date);
+            scCmd.ExecuteNonQuery();
+        }
     }
 
     public void DeletePayment(int paymentId)

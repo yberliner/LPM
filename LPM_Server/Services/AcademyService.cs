@@ -179,14 +179,15 @@ public class AcademyService
     }
 
     /// <summary>Returns all students who visited during the week, with visit count, referral, and org.</summary>
-    public List<(string FullName, int VisitCount, string Referral, string Org)> GetStudentVisitsForWeek(DateOnly weekStart)
+    public List<(int PersonId, string FullName, int VisitCount, string Referral, string Org)> GetStudentVisitsForWeek(DateOnly weekStart)
     {
         var weekEnd = weekStart.AddDays(6);
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS FullName,
+            SELECT s.PersonId,
+                   TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS FullName,
                    COUNT(*) AS VisitCount,
                    COALESCE(p.Referral,'') AS Referral,
                    COALESCE(p.Org,'')      AS Org
@@ -197,10 +198,10 @@ public class AcademyService
             ORDER BY VisitCount DESC, FullName ASC";
         cmd.Parameters.AddWithValue("@start", weekStart.ToString("yyyy-MM-dd"));
         cmd.Parameters.AddWithValue("@end",   weekEnd.ToString("yyyy-MM-dd"));
-        var list = new List<(string, int, string, string)>();
+        var list = new List<(int, string, int, string, string)>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add((r.GetString(0), r.GetInt32(1), r.GetString(2), r.GetString(3)));
+            list.Add((r.GetInt32(0), r.GetString(1), r.GetInt32(2), r.GetString(3), r.GetString(4)));
         return list;
     }
 

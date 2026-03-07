@@ -1,6 +1,7 @@
 @page "/PCs"
 @attribute [Authorize]
 @inject LPM.Services.PcService PcSvc
+@inject LPM.Services.CourseService CourseSvc
 @using Microsoft.AspNetCore.Authorization
 @using LPM.Services
 
@@ -262,17 +263,47 @@
                 @if (_showAddPayment)
                 {
                     <div class="card-body py-2 border-bottom bg-light">
+                        @* ── Type selector ── *@
+                        <div class="d-flex gap-2 mb-2">
+                            <button class="btn btn-sm @(_payType == "Auditing" ? "btn-primary" : "btn-outline-secondary")"
+                                    @onclick="SetPayAuditing">
+                                <i class="ri-timer-flash-line me-1"></i>Auditing
+                            </button>
+                            <button class="btn btn-sm @(_payType == "Course" ? "btn-info text-white" : "btn-outline-secondary")"
+                                    @onclick="SetPayCourse">
+                                <i class="ri-book-2-line me-1"></i>Course
+                            </button>
+                        </div>
+
                         <div class="row g-2 align-items-end">
                             <div class="col-auto">
                                 <label class="form-label small mb-0">Date</label>
                                 <input type="date" class="form-control form-control-sm"
                                        @bind="_payDate" style="width:148px;" />
                             </div>
-                            <div class="col-auto">
-                                <label class="form-label small mb-0">Hours Bought</label>
-                                <input type="number" class="form-control form-control-sm"
-                                       @bind="_payHours" min="0" style="width:95px;" placeholder="0" />
-                            </div>
+
+                            @if (_payType == "Auditing")
+                            {
+                                <div class="col-auto">
+                                    <label class="form-label small mb-0">Hours Bought</label>
+                                    <input type="number" class="form-control form-control-sm"
+                                           @bind="_payHours" min="0" style="width:95px;" placeholder="0" />
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="col-auto">
+                                    <label class="form-label small mb-0">Course</label>
+                                    <select class="form-select form-select-sm" @bind="_payCourseId" style="width:200px;">
+                                        <option value="0">— select course —</option>
+                                        @foreach (var c in _allCourses)
+                                        {
+                                            <option value="@c.CourseId">@c.Name</option>
+                                        }
+                                    </select>
+                                </div>
+                            }
+
                             <div class="col-auto">
                                 <label class="form-label small mb-0">Amount (₪)</label>
                                 <input type="number" class="form-control form-control-sm"
@@ -299,7 +330,8 @@
                             <thead class="table-light">
                                 <tr>
                                     <th class="small ps-3">Date</th>
-                                    <th class="small text-center">Hours</th>
+                                    <th class="small">Type / Course</th>
+                                    <th class="small text-center">Hrs / Vis.</th>
                                     <th class="small text-end">Amount</th>
                                     <th class="small">Notes</th>
                                     <th style="width:36px;"></th>
@@ -310,7 +342,30 @@
                                 {
                                     <tr>
                                         <td class="small ps-3">@pay.Date</td>
-                                        <td class="small text-center fw-semibold">@pay.HoursBought h</td>
+                                        <td class="small">
+                                            @if (pay.PaymentType == "Course")
+                                            {
+                                                <span class="badge rounded-pill" style="background:#e0f2fe;color:#0369a1;font-size:.72rem;">
+                                                    <i class="ri-book-2-line me-1"></i>@(pay.CourseName ?? "Course")
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge rounded-pill" style="background:#f0fdf4;color:#15803d;font-size:.72rem;">
+                                                    <i class="ri-timer-flash-line me-1"></i>Auditing
+                                                </span>
+                                            }
+                                        </td>
+                                        <td class="small text-center fw-semibold">
+                                            @if (pay.PaymentType == "Course")
+                                            {
+                                                <span style="color:#059669;">@pay.VisitCount vis.</span>
+                                            }
+                                            else
+                                            {
+                                                @($"{pay.HoursBought} h")
+                                            }
+                                        </td>
                                         <td class="small text-end">
                                             @(pay.AmountPaid > 0 ? $"₪{pay.AmountPaid}" : "—")
                                         </td>
@@ -328,8 +383,10 @@
                             <tfoot class="table-light">
                                 <tr>
                                     <td class="small ps-3 fw-semibold">Total</td>
+                                    <td></td>
                                     <td class="small text-center fw-semibold">
-                                        @_payments.Sum(p => p.HoursBought) h
+                                        @{ var auditHrs = _payments.Where(p => p.PaymentType != "Course").Sum(p => p.HoursBought); }
+                                        @(auditHrs > 0 ? $"{auditHrs} h" : "—")
                                     </td>
                                     <td class="small text-end fw-semibold">
                                         @{ var tot = _payments.Sum(p => p.AmountPaid); }
@@ -479,9 +536,12 @@
 
     // Add payment
     bool     _showAddPayment;
+    string   _payType  = "Auditing";
     DateTime _payDate  = DateTime.Today;
-    int      _payHours, _payAmount;
+    int      _payHours, _payAmount, _payCourseId;
     string   _payNotes = "", _payError = "";
+
+    List<CourseItem> _allCourses = [];
 
     IEnumerable<PcListItem> FilteredPcs => string.IsNullOrWhiteSpace(_search)
         ? _allPcs
@@ -489,7 +549,11 @@
             p.FullName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
             p.ExternalId.Contains(_search, StringComparison.OrdinalIgnoreCase));
 
-    protected override void OnInitialized() => _allPcs = PcSvc.GetAllPcs();
+    protected override void OnInitialized()
+    {
+        _allPcs = PcSvc.GetAllPcs();
+        _allCourses = CourseSvc.GetAllCourses();
+    }
 
     void SelectPc(int pcId)
     {
@@ -549,19 +613,35 @@
 
     void SavePayment()
     {
-        if (_payHours <= 0 && _payAmount <= 0)
+        if (_payType == "Course" && _payCourseId <= 0)
+        { _payError = "Select a course."; return; }
+        if (_payType == "Auditing" && _payHours <= 0 && _payAmount <= 0)
         { _payError = "Enter hours bought or amount paid."; return; }
+        if (_payType == "Course" && _payAmount <= 0)
+        { _payError = "Enter amount paid."; return; }
 
-        PcSvc.AddPayment(_selPcId!.Value, _payDate.ToString("yyyy-MM-dd"), _payHours, _payAmount,
-            string.IsNullOrWhiteSpace(_payNotes) ? null : _payNotes);
+        PcSvc.AddPayment(_selPcId!.Value, _payDate.ToString("yyyy-MM-dd"),
+            _payType == "Auditing" ? _payHours : 0, _payAmount,
+            string.IsNullOrWhiteSpace(_payNotes) ? null : _payNotes,
+            _payType, _payType == "Course" ? _payCourseId : null);
         _showAddPayment = false;
-        _payHours = _payAmount = 0;
+        _payHours = _payAmount = _payCourseId = 0;
         _payNotes = _payError = "";
+        _payType  = "Auditing";
         _payDate  = DateTime.Today;
         LoadDetail();
     }
 
-    void ToggleAddPayment() { _showAddPayment = !_showAddPayment; _payError = ""; }
+    void SetPayAuditing() => _payType = "Auditing";
+    void SetPayCourse()   { _payType = "Course"; _payHours = 0; }
+
+    void ToggleAddPayment()
+    {
+        _showAddPayment = !_showAddPayment;
+        _payError = "";
+        _payType  = "Auditing";
+        if (_showAddPayment) _allCourses = CourseSvc.GetAllCourses();
+    }
 
     void DeletePayment(int paymentId)
     {

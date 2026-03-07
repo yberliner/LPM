@@ -108,6 +108,7 @@ builder.Services.AddSingleton<LPM.Services.PcService>();
 builder.Services.AddSingleton<LPM.Services.AuditorService>();
 builder.Services.AddSingleton<LPM.Services.AcademyService>();
 builder.Services.AddSingleton<LPM.Services.StatisticsService>();
+builder.Services.AddSingleton<LPM.Services.CourseService>();
 
 // Add session services
 builder.Services.AddDistributedMemoryCache();

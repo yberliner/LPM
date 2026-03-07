@@ -1,0 +1,160 @@
+@page "/Admin/Courses"
+@attribute [Authorize(Roles = "Admin")]
+@inject LPM.Services.CourseService CourseSvc
+@using Microsoft.AspNetCore.Authorization
+@using LPM.Services
+
+<div class="p-3 p-md-4" style="max-width:680px;">
+
+    <div class="d-flex align-items-center mb-4 gap-3">
+        <div>
+            <h4 class="mb-0 fw-bold" style="color:#1e3a5f;">
+                <i class="ri-book-2-line me-2" style="color:#3949ab;"></i>Courses
+            </h4>
+            <span class="text-muted" style="font-size:0.82rem;">Manage available courses for students</span>
+        </div>
+    </div>
+
+    @* ── Add new course ── *@
+    <div class="card shadow-sm mb-4" style="border-radius:12px;border:none;">
+        <div class="card-header py-2 px-3" style="background:#f0f4ff;border-radius:12px 12px 0 0;border:none;">
+            <span class="fw-semibold small" style="color:#3949ab;">
+                <i class="ri-add-circle-line me-1"></i>Add New Course
+            </span>
+        </div>
+        <div class="card-body py-3 px-3">
+            <div class="d-flex gap-2 align-items-end">
+                <div class="flex-grow-1">
+                    <label class="form-label small mb-1">Course Name</label>
+                    <input class="form-control form-control-sm" placeholder="e.g. Scientology Basics..."
+                           @bind="_newName" @bind:event="oninput"
+                           @onkeydown="OnAddKeyDown" />
+                </div>
+                <button class="btn btn-sm btn-primary" @onclick="AddCourse"
+                        disabled="@string.IsNullOrWhiteSpace(_newName)">
+                    <i class="ri-save-line me-1"></i>Add
+                </button>
+            </div>
+            @if (!string.IsNullOrEmpty(_addError))
+            {
+                <div class="alert alert-danger py-1 px-2 mt-2 small mb-0">@_addError</div>
+            }
+        </div>
+    </div>
+
+    @* ── Courses list ── *@
+    <div class="card shadow-sm" style="border-radius:12px;border:none;">
+        <div class="card-header py-2 px-3 d-flex align-items-center justify-content-between"
+             style="background:#f8fafc;border-radius:12px 12px 0 0;border-bottom:1px solid #e2e8f0;">
+            <span class="fw-semibold small">
+                <i class="ri-list-check me-1"></i>All Courses
+            </span>
+            <span class="badge rounded-pill" style="background:#e0e7ff;color:#3949ab;font-size:.75rem;">
+                @_courses.Count
+            </span>
+        </div>
+        <div class="card-body p-0">
+            @if (_courses.Count == 0)
+            {
+                <div class="text-center py-5 text-muted">
+                    <i class="ri-book-open-line d-block mb-2 opacity-30" style="font-size:2.2rem;"></i>
+                    <span class="small">No courses yet. Add one above.</span>
+                </div>
+            }
+            else
+            {
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-3 small">Course Name</th>
+                            <th style="width:120px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in _courses)
+                        {
+                            <tr>
+                                <td class="ps-3 align-middle">
+                                    @if (_editId == c.CourseId)
+                                    {
+                                        <input class="form-control form-control-sm" style="max-width:320px;"
+                                               @bind="_editName" @bind:event="oninput"
+                                               @onkeydown="OnEditKeyDown" />
+                                    }
+                                    else
+                                    {
+                                        <span class="fw-medium">@c.Name</span>
+                                    }
+                                </td>
+                                <td class="text-end pe-3 align-middle">
+                                    @if (_editId == c.CourseId)
+                                    {
+                                        <button class="btn btn-sm btn-primary py-0 px-2 me-1"
+                                                @onclick="SaveEdit">
+                                            <i class="ri-save-line"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-link text-muted py-0 px-1"
+                                                @onclick="() => _editId = null">Cancel</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-link text-primary py-0 px-1"
+                                                title="Edit" @onclick="() => StartEdit(c)">
+                                            <i class="ri-edit-line"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-link text-danger py-0 px-1"
+                                                title="Delete" @onclick="() => DeleteCourse(c.CourseId)">
+                                            <i class="ri-delete-bin-line"></i>
+                                        </button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+
+</div>
+
+@code {
+    List<CourseItem> _courses = [];
+    string _newName  = "";
+    string _addError = "";
+    int?   _editId;
+    string _editName = "";
+
+    protected override void OnInitialized() => Reload();
+
+    void Reload() => _courses = CourseSvc.GetAllCourses();
+
+    void AddCourse()
+    {
+        if (string.IsNullOrWhiteSpace(_newName)) { _addError = "Name required."; return; }
+        _addError = "";
+        CourseSvc.AddCourse(_newName.Trim());
+        _newName = "";
+        Reload();
+    }
+
+    void OnAddKeyDown(KeyboardEventArgs e) { if (e.Key == "Enter") AddCourse(); }
+
+    void StartEdit(CourseItem c) { _editId = c.CourseId; _editName = c.Name; }
+
+    void SaveEdit()
+    {
+        if (_editId.HasValue && !string.IsNullOrWhiteSpace(_editName))
+            CourseSvc.UpdateCourse(_editId.Value, _editName.Trim());
+        _editId = null;
+        Reload();
+    }
+
+    void OnEditKeyDown(KeyboardEventArgs e) { if (e.Key == "Enter") SaveEdit(); }
+
+    void DeleteCourse(int id)
+    {
+        CourseSvc.DeleteCourse(id);
+        Reload();
+    }
+}

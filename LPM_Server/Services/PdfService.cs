@@ -224,9 +224,10 @@ public class PdfService
     }
 
     public byte[] GenerateAcademyWeekPdf(DateOnly weekStart,
-        List<(string FullName, int VisitCount, string Referral, string Org)> students,
+        List<(int PersonId, string FullName, int VisitCount, string Referral, string Org)> students,
         Dictionary<string, int>? byReferral = null,
-        Dictionary<string, int>? byOrg = null)
+        Dictionary<string, int>? byOrg = null,
+        Dictionary<int, string>? personCourses = null)
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
@@ -355,6 +356,7 @@ public class PdfService
 
                             row.RelativeItem().Column(innerCol =>
                             {
+                                bool showCourse = personCourses != null;
                                 // column header
                                 innerCol.Item()
                                     .Background("#e8f5e9")
@@ -370,13 +372,17 @@ public class PdfService
                                         hr.ConstantItem(36)
                                             .Text("Referral")
                                             .FontSize(8).FontColor("#555").SemiBold();
+                                        if (showCourse)
+                                            hr.ConstantItem(50)
+                                                .Text("Course")
+                                                .FontSize(8).FontColor("#555").SemiBold();
                                         hr.ConstantItem(18).AlignRight()
                                             .Text("Vis.")
                                             .FontSize(8).FontColor("#555").SemiBold();
                                     });
 
                                 int rank = colIdx * rows + 1;
-                                foreach (var (name, visits, referral, org) in slice)
+                                foreach (var (pid, name, visits, referral, org) in slice)
                                 {
                                     int r2 = rank++;
                                     var rowBg = ReferralPdfBg(referral, r2);
@@ -387,6 +393,9 @@ public class PdfService
                                         "Other"           => "#6b7280",
                                         _                 => "#15803d",
                                     };
+                                    var courseLabel = showCourse
+                                        ? (personCourses!.TryGetValue(pid, out var cn) ? cn : "")
+                                        : "";
                                     innerCol.Item()
                                         .BorderBottom(0.5f)
                                         .BorderColor(Colors.Grey.Lighten3)
@@ -406,6 +415,10 @@ public class PdfService
                                             rr.ConstantItem(36)
                                                 .Text(string.IsNullOrEmpty(referral) ? "Don" : referral)
                                                 .FontSize(7.5f).FontColor(refColor);
+                                            if (showCourse)
+                                                rr.ConstantItem(50)
+                                                    .Text(courseLabel)
+                                                    .FontSize(7f).FontColor("#7c3aed");
                                             rr.ConstantItem(18).AlignRight()
                                                 .Text(visits.ToString())
                                                 .FontSize(9).FontColor("#2e7d32").SemiBold();

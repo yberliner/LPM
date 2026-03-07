@@ -1,6 +1,7 @@
 @page "/Academy"
 @attribute [Authorize]
 @inject LPM.Services.AcademyService AcademySvc
+@inject LPM.Services.CourseService CourseSvc
 @inject PdfService PdfService
 @inject IJSRuntime JS
 @using LPM.Services
@@ -101,6 +102,20 @@
                                     @v.Org
                                 </span>
                             }
+                            @{
+                                var openCourse = _personOpenCourses.GetValueOrDefault(v.PersonId, "");
+                            }
+                            @if (!string.IsNullOrEmpty(openCourse))
+                            {
+                                <span style="font-size:.67rem;padding:1px 6px;border-radius:8px;
+                                             background:rgba(124,58,237,.18);color:#5b21b6;font-weight:700;flex-shrink:0;">
+                                    <i class="ri-book-2-line" style="font-size:.65rem;"></i> @openCourse
+                                </span>
+                            }
+                            <button class="acad-chip-remove" title="Manage courses" style="color:@chipColor;opacity:.7;"
+                                    @onclick="() => OpenCourseModal(v.PersonId, v.FullName)">
+                                <i class="ri-book-line"></i>
+                            </button>
                             <button class="acad-chip-remove" title="Remove" style="color:@chipColor;"
                                     @onclick="() => DoRemoveVisit(v.VisitId)">
                                 <i class="ri-close-fill"></i>
@@ -113,7 +128,7 @@
     </div>
 
     @* ── All persons panel ── *@
-    <div class="card shadow-sm acad-persons-card" style="width:280px;min-width:220px;flex-shrink:0;border-radius:14px;border:none;">
+    <div class="card shadow-sm acad-persons-card" style="width:290px;min-width:220px;flex-shrink:0;border-radius:14px;border:none;">
         <div class="card-header acad-persons-header">
             <i class="ri-contacts-book-2-line me-1"></i>
             <strong style="font-size:.88rem;">All Persons</strong>
@@ -128,14 +143,23 @@
                        value="@_searchText"
                        @oninput="OnSearchInput" />
             </div>
-            <div style="max-height:200px; overflow-y:auto;">
+            <div style="max-height:260px; overflow-y:auto;">
                 @foreach (var p in FilteredPersons)
                 {
                     var visited = AlreadyVisited(p.PersonId);
+                    var pCourse = _personOpenCourses.GetValueOrDefault(p.PersonId, "");
                     <div class="acad-person-row @(visited ? "acad-person-visited" : "acad-person-available")"
                          @onclick="() => { if (!visited) AddVisit(p); }">
                         <div class="acad-person-dot" style="background:@ReferralDotColor(p.Referral);"></div>
-                        <span style="font-size:.83rem;">@p.FullName</span>
+                        <div class="overflow-hidden flex-grow-1" style="min-width:0;">
+                            <div style="font-size:.83rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">@p.FullName</div>
+                            @if (!string.IsNullOrEmpty(pCourse))
+                            {
+                                <div style="font-size:.67rem;color:#7c3aed;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                                    <i class="ri-book-2-line"></i> @pCourse
+                                </div>
+                            }
+                        </div>
                         @if (!string.IsNullOrEmpty(p.Org))
                         {
                             <span style="font-size:.67rem;padding:1px 5px;border-radius:8px;
@@ -145,11 +169,11 @@
                         }
                         @if (visited)
                         {
-                            <i class="ri-check-double-line ms-auto" style="font-size:.88rem;color:#16a34a;"></i>
+                            <i class="ri-check-double-line ms-auto" style="font-size:.88rem;color:#16a34a;flex-shrink:0;"></i>
                         }
                         else
                         {
-                            <i class="ri-add-circle-line ms-auto acad-add-icon" style="font-size:.88rem;"></i>
+                            <i class="ri-add-circle-line ms-auto acad-add-icon" style="font-size:.88rem;flex-shrink:0;"></i>
                         }
                     </div>
                 }
@@ -204,6 +228,86 @@
                         }
                     }
                 </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Inline weekly student table ── *@
+@if (_weekStudents.Count > 0)
+{
+    <div class="card mx-3 mb-3 shadow-sm" style="border-radius:14px;border:none;">
+        <div class="card-header acad-chart-header" style="border-radius:14px 14px 0 0;">
+            <div class="d-flex align-items-center gap-2">
+                <i class="ri-table-line" style="font-size:1.1rem;"></i>
+                <strong style="font-size:.9rem;">Weekly Student List — @DayLabel(_weekStart) – @DayLabel(_weekStart.AddDays(6))</strong>
+            </div>
+            <span class="badge rounded-pill" style="background:rgba(255,255,255,.25);font-size:.78rem;">
+                @_weekStudents.Count students
+            </span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-3 small" style="width:32px;">#</th>
+                            <th class="small">Student</th>
+                            <th class="small" style="width:60px;">Org</th>
+                            <th class="small" style="width:120px;">Referral</th>
+                            <th class="small" style="width:130px;">Active Course</th>
+                            <th class="small text-center" style="width:50px;">Visits</th>
+                            <th style="width:36px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @{ int rowNum = 0; }
+                        @foreach (var s in _weekStudents)
+                        {
+                            rowNum++;
+                            var (bg, _, col) = ReferralChipStyle(s.Referral);
+                            var dotColor     = ReferralDotColor(s.Referral);
+                            var refLabel     = string.IsNullOrEmpty(s.Referral) ? "Don" : s.Referral;
+                            var courseStr    = _personOpenCourses.GetValueOrDefault(s.PersonId, "");
+                            <tr style="background:@(rowNum % 2 == 0 ? "#fafafa" : "#fff");">
+                                <td class="ps-3 small text-muted align-middle">@rowNum</td>
+                                <td class="align-middle">
+                                    <span class="fw-medium" style="font-size:.86rem;">@s.FullName</span>
+                                </td>
+                                <td class="align-middle">
+                                    @if (!string.IsNullOrEmpty(s.Org))
+                                    {
+                                        <span class="badge rounded-pill" style="background:#e0e7ff;color:#4338ca;font-size:.72rem;">@s.Org</span>
+                                    }
+                                </td>
+                                <td class="align-middle">
+                                    <span class="d-inline-flex align-items-center gap-1" style="font-size:.8rem;font-weight:600;">
+                                        <span style="width:7px;height:7px;border-radius:50%;background:@dotColor;display:inline-block;flex-shrink:0;"></span>
+                                        @refLabel
+                                    </span>
+                                </td>
+                                <td class="align-middle">
+                                    @if (!string.IsNullOrEmpty(courseStr))
+                                    {
+                                        <span class="badge rounded-pill" style="background:#ede9fe;color:#7c3aed;font-size:.72rem;">
+                                            <i class="ri-book-2-line me-1"></i>@courseStr
+                                        </span>
+                                    }
+                                </td>
+                                <td class="text-center align-middle">
+                                    <span class="fw-bold" style="color:#059669;font-size:.9rem;">@s.VisitCount</span>
+                                </td>
+                                <td class="text-center align-middle">
+                                    <button class="btn btn-link btn-sm py-0 px-1" title="Manage courses"
+                                            style="color:#7c3aed;font-size:.85rem;"
+                                            @onclick="() => OpenCourseModal(s.PersonId, s.FullName)">
+                                        <i class="ri-book-line"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -270,6 +374,145 @@
         </ApexChart>
     </div>
 </div>
+
+@* ── Course Management Modal ── *@
+@if (_courseMgmtPersonId.HasValue)
+{
+    <div class="modal show d-block" tabindex="-1" style="background:rgba(0,0,0,.45);"
+         @onclick="CloseCourseModal">
+        <div class="modal-dialog modal-dialog-centered" style="max-width:520px;"
+             @onclick:stopPropagation="true">
+            <div class="modal-content shadow" style="border-radius:14px;border:none;">
+
+                <div class="modal-header py-2 px-3"
+                     style="background:linear-gradient(135deg,#4c1d95,#7c3aed);border-radius:14px 14px 0 0;border:none;">
+                    <div>
+                        <h6 class="modal-title mb-0 text-white fw-bold">
+                            <i class="ri-book-2-line me-2 opacity-75"></i>@_courseMgmtPersonName
+                        </h6>
+                        <div class="text-white opacity-75" style="font-size:.75rem;">Course Management</div>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CloseCourseModal"></button>
+                </div>
+
+                <div class="modal-body px-3 py-3">
+
+                    @* ── Active courses ── *@
+                    @{
+                        var activeCourses = _personCourseList.Where(c => c.DateFinished == null).ToList();
+                        var doneCourses   = _personCourseList.Where(c => c.DateFinished != null).ToList();
+                    }
+
+                    @if (activeCourses.Count > 0)
+                    {
+                        <div class="fw-semibold mb-2" style="font-size:.83rem;color:#5b21b6;">
+                            <i class="ri-book-open-line me-1"></i>Active Courses
+                        </div>
+                        @foreach (var sc in activeCourses)
+                        {
+                            var visitsSince = CourseSvc.GetVisitCountSince(_courseMgmtPersonId!.Value, sc.DateStarted);
+                            <div class="d-flex align-items-center gap-2 mb-2 p-2 rounded"
+                                 style="background:#f5f3ff;border:1px solid #ddd6fe;">
+                                <div class="flex-grow-1">
+                                    <div class="fw-semibold" style="font-size:.86rem;color:#4c1d95;">@sc.CourseName</div>
+                                    <div class="text-muted" style="font-size:.75rem;">
+                                        Started: @sc.DateStarted &nbsp;·&nbsp;
+                                        <span style="color:#059669;font-weight:600;">@visitsSince visit@(visitsSince == 1 ? "" : "s") since start</span>
+                                    </div>
+                                </div>
+                                @if (_finishingCourseId == sc.StudentCourseId)
+                                {
+                                    <div class="d-flex align-items-center gap-1">
+                                        <input type="date" class="form-control form-control-sm" style="width:145px;"
+                                               @bind="_finishDate" />
+                                        <button class="btn btn-sm btn-success py-0 px-2"
+                                                @onclick="() => ConfirmFinish(sc.StudentCourseId)">✓</button>
+                                        <button class="btn btn-sm btn-link py-0 text-muted"
+                                                @onclick="() => _finishingCourseId = null">✕</button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-outline-success py-0 px-2" style="font-size:.76rem;"
+                                            @onclick="() => StartFinish(sc.StudentCourseId)">
+                                        <i class="ri-check-line me-1"></i>Finish
+                                    </button>
+                                    <button class="btn btn-sm btn-link text-danger py-0 px-1"
+                                            @onclick="() => DeleteStudentCourse(sc.StudentCourseId)">
+                                        <i class="ri-delete-bin-line"></i>
+                                    </button>
+                                }
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="text-muted small mb-3">
+                            <i class="ri-information-line me-1"></i>No active courses.
+                        </div>
+                    }
+
+                    @* ── Add new course ── *@
+                    <div class="border-top pt-3 mt-2">
+                        <div class="fw-semibold mb-2" style="font-size:.83rem;color:#374151;">
+                            <i class="ri-add-circle-line me-1"></i>Enroll in Course
+                        </div>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <select class="form-select form-select-sm" style="width:200px;" @bind="_newEnrollCourseId">
+                                <option value="0">— select course —</option>
+                                @foreach (var c in _allCourses)
+                                {
+                                    <option value="@c.CourseId">@c.Name</option>
+                                }
+                            </select>
+                            <input type="date" class="form-control form-control-sm" style="width:145px;"
+                                   @bind="_newEnrollDate" />
+                            <button class="btn btn-sm btn-primary"
+                                    @onclick="AddStudentCourse"
+                                    disabled="@(_newEnrollCourseId <= 0)">
+                                <i class="ri-save-line me-1"></i>Enroll
+                            </button>
+                        </div>
+                        @if (!string.IsNullOrEmpty(_enrollError))
+                        {
+                            <div class="alert alert-danger py-1 px-2 mt-2 small mb-0">@_enrollError</div>
+                        }
+                    </div>
+
+                    @* ── Past courses ── *@
+                    @if (doneCourses.Count > 0)
+                    {
+                        <div class="border-top pt-3 mt-2">
+                            <div class="fw-semibold mb-2" style="font-size:.83rem;color:#6b7280;">
+                                <i class="ri-history-line me-1"></i>Completed
+                            </div>
+                            @foreach (var sc in doneCourses)
+                            {
+                                <div class="d-flex align-items-center gap-2 mb-1 px-2 py-1 rounded"
+                                     style="background:#f9fafb;border:1px solid #e5e7eb;">
+                                    <div class="flex-grow-1">
+                                        <span class="fw-medium" style="font-size:.83rem;color:#374151;">@sc.CourseName</span>
+                                        <span class="text-muted ms-2" style="font-size:.73rem;">@sc.DateStarted → @sc.DateFinished</span>
+                                    </div>
+                                    <button class="btn btn-sm btn-link text-danger py-0 px-1"
+                                            @onclick="() => DeleteStudentCourse(sc.StudentCourseId)">
+                                        <i class="ri-delete-bin-line"></i>
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                </div>
+
+                <div class="modal-footer py-2 px-3" style="border-top:1px solid #ede9fe;">
+                    <button class="btn btn-sm btn-link text-muted" @onclick="CloseCourseModal">Close</button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+}
 
 <style>
     /* ── Nav bar ── */
@@ -411,6 +654,20 @@
     Dictionary<string, int> _weekByReferral  = [];
     Dictionary<string, int> _weekByOrg       = [];
 
+    List<(int PersonId, string FullName, int VisitCount, string Referral, string Org)> _weekStudents = [];
+    Dictionary<int, string> _personOpenCourses = [];
+    List<CourseItem>        _allCourses        = [];
+
+    // Course management modal state
+    int?   _courseMgmtPersonId;
+    string _courseMgmtPersonName  = "";
+    List<StudentCourseItem> _personCourseList = [];
+    int    _newEnrollCourseId;
+    DateTime _newEnrollDate = DateTime.Today;
+    string _enrollError = "";
+    int?   _finishingCourseId;
+    DateTime _finishDate = DateTime.Today;
+
 
     ApexChartOptions<WeekVisitCount> _chartOptions = new()
     {
@@ -459,6 +716,7 @@
     protected override void OnInitialized()
     {
         _allPersons = AcademySvc.GetAllPersons();
+        _allCourses = CourseSvc.GetAllCourses();
         _weekStart  = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
 
         var today = DateOnly.FromDateTime(DateTime.Today);
@@ -507,14 +765,20 @@
     {
         var latestWeekStart = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
         _weeklyTotals = AcademySvc.GetWeeklyVisitCounts(latestWeekStart, 20);
+        _weekStudents = AcademySvc.GetStudentVisitsForWeek(_weekStart);
         (_weekByReferral, _weekByOrg) = AcademySvc.GetWeeklyStudentBreakdown(_weekStart);
+
+        // Batch-load open courses for all persons
+        var allIds = _allPersons.Select(p => p.PersonId);
+        _personOpenCourses = CourseSvc.GetOpenCoursesForPersons(allIds);
+
         UpdateChartTooltip();
         _chartKey++;
     }
 
     void UpdateChartTooltip()
     {
-        // Build a JS array of per-week student data: [ [[name,count,org],...], ... ]
+        // Build a JS array of per-week student data: [ [[name,count,org], ...], ... ]
         var sb = new System.Text.StringBuilder("[");
         for (int i = 0; i < _weeklyTotals.Count; i++)
         {
@@ -613,8 +877,65 @@
     {
         var students = AcademySvc.GetStudentVisitsForWeek(_weekStart);
         var (byRef, byOrg) = AcademySvc.GetWeeklyStudentBreakdown(_weekStart);
-        var pdfBytes = PdfService.GenerateAcademyWeekPdf(_weekStart, students, byRef, byOrg);
+        var personIds = students.Select(s => s.PersonId);
+        var courses = CourseSvc.GetOpenCoursesForPersons(personIds);
+        var pdfBytes = PdfService.GenerateAcademyWeekPdf(_weekStart, students, byRef, byOrg, courses);
         var fileName = $"Academy_{_weekStart:yyyy_MM_dd}.pdf";
         await JS.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(pdfBytes));
+    }
+
+    // ── Course modal ──────────────────────────────────────────────────────────
+
+    void OpenCourseModal(int personId, string personName)
+    {
+        _courseMgmtPersonId   = personId;
+        _courseMgmtPersonName = personName;
+        _enrollError          = "";
+        _finishingCourseId    = null;
+        _newEnrollCourseId    = 0;
+        _newEnrollDate        = DateTime.Today;
+        _finishDate           = DateTime.Today;
+        _allCourses           = CourseSvc.GetAllCourses();
+        _personCourseList     = CourseSvc.GetStudentCourses(personId);
+    }
+
+    void CloseCourseModal() => _courseMgmtPersonId = null;
+
+    void AddStudentCourse()
+    {
+        if (_newEnrollCourseId <= 0) { _enrollError = "Select a course."; return; }
+        _enrollError = "";
+        CourseSvc.AddStudentCourse(_courseMgmtPersonId!.Value, _newEnrollCourseId,
+            _newEnrollDate.ToString("yyyy-MM-dd"));
+        _newEnrollCourseId = 0;
+        _personCourseList  = CourseSvc.GetStudentCourses(_courseMgmtPersonId.Value);
+        ReloadOpenCourses();
+    }
+
+    void StartFinish(int studentCourseId)
+    {
+        _finishingCourseId = studentCourseId;
+        _finishDate = DateTime.Today;
+    }
+
+    void ConfirmFinish(int studentCourseId)
+    {
+        CourseSvc.FinishStudentCourse(studentCourseId, _finishDate.ToString("yyyy-MM-dd"));
+        _finishingCourseId = null;
+        _personCourseList  = CourseSvc.GetStudentCourses(_courseMgmtPersonId!.Value);
+        ReloadOpenCourses();
+    }
+
+    void DeleteStudentCourse(int studentCourseId)
+    {
+        CourseSvc.DeleteStudentCourse(studentCourseId);
+        _personCourseList = CourseSvc.GetStudentCourses(_courseMgmtPersonId!.Value);
+        ReloadOpenCourses();
+    }
+
+    void ReloadOpenCourses()
+    {
+        var allIds = _allPersons.Select(p => p.PersonId);
+        _personOpenCourses = CourseSvc.GetOpenCoursesForPersons(allIds);
     }
 }

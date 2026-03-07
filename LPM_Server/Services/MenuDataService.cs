@@ -81,6 +81,17 @@ public class MenuDataService
             dirChange: false,
             requiredRole: "Admin"
         ),
+        new MainMenuItems(
+            path: "/Admin/Courses",
+            type: "link",
+            title: "Courses",
+            icon: "ri-book-2-line",
+            svg: "",
+            selected: false,
+            active: false,
+            dirChange: false,
+            requiredRole: "Admin"
+        ),
         new MainMenuItems (
             path: "/",
             type: "link",
