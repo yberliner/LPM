@@ -29,6 +29,10 @@ public record AdminCsRow(
 public record PcCsGroup(int PcId, string PcName, List<AdminCsRow> Reviews);
 public record CsReviewerGroup(int CsId, string CsName, List<PcCsGroup> PcGroups);
 
+public record PermissionRequest(int Id, int AuditorId, string AuditorName, int PcId, string PcName, string RequestedAt);
+public record ApprovedPcEntry(int Id, int PcId, string PcName);
+public record AuditorPermGroup(int AuditorId, string AuditorName, bool AllowAll, List<ApprovedPcEntry> ApprovedPcs);
+
 public class DashboardService
 {
     private readonly string _connectionString;
@@ -48,6 +52,7 @@ public class DashboardService
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
+
 
         // Add Type column to Auditors if not yet present
         // Type: 0=InActive, 1=RegularOnly, 2=SoloOnly, 3=RegularAndSolo
@@ -137,6 +142,239 @@ public class DashboardService
             addCsSalCol.CommandText = "ALTER TABLE CsReviews ADD COLUMN CsSalaryCentsPerHour INTEGER NOT NULL DEFAULT 0";
             addCsSalCol.ExecuteNonQuery();
         }
+
+        // Add AllowAll column to Auditors if not present
+        using var allowAllCheckCmd = conn.CreateCommand();
+        allowAllCheckCmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Auditors') WHERE name='AllowAll'";
+        var allowAllExists = (long)(allowAllCheckCmd.ExecuteScalar() ?? 0L) > 0;
+        if (!allowAllExists)
+        {
+            using var addAllowAll = conn.CreateCommand();
+            addAllowAll.CommandText = "ALTER TABLE Auditors ADD COLUMN AllowAll INTEGER NOT NULL DEFAULT 0";
+            addAllowAll.ExecuteNonQuery();
+        }
+
+        // Create AuditorPcPermissions table
+        using var permCmd = conn.CreateCommand();
+        permCmd.CommandText = @"
+            CREATE TABLE IF NOT EXISTS AuditorPcPermissions (
+                Id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                AuditorId   INTEGER NOT NULL,
+                PcId        INTEGER NOT NULL,
+                IsApproved  INTEGER NOT NULL DEFAULT 0,
+                RequestedAt TEXT NOT NULL DEFAULT (date('now')),
+                UNIQUE(AuditorId, PcId)
+            )";
+        permCmd.ExecuteNonQuery();
+
+    }
+
+    // ── Staff Permissions ─────────────────────────────────────────
+
+    /// <summary>
+    /// Called when an auditor adds a PC to their dashboard. Returns true if the auditor is
+    /// permitted (AllowAll=1 or existing approved permission). Returns false if a pending
+    /// request was created and the PC should appear grayed out.
+    /// </summary>
+    public bool CheckOrRequestPermission(int auditorId, int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Check AllowAll flag
+        using var aaCmd = conn.CreateCommand();
+        aaCmd.CommandText = "SELECT AllowAll FROM Auditors WHERE AuditorId = @id";
+        aaCmd.Parameters.AddWithValue("@id", auditorId);
+        var allowAll = aaCmd.ExecuteScalar() is long aa && aa == 1;
+        if (allowAll) return true;
+
+        // Check existing permission
+        using var chkCmd = conn.CreateCommand();
+        chkCmd.CommandText = "SELECT IsApproved FROM AuditorPcPermissions WHERE AuditorId = @aud AND PcId = @pc";
+        chkCmd.Parameters.AddWithValue("@aud", auditorId);
+        chkCmd.Parameters.AddWithValue("@pc",  pcId);
+        var existing = chkCmd.ExecuteScalar();
+        if (existing is long approved) return approved == 1;
+
+        // No existing record — create a pending request
+        using var insCmd = conn.CreateCommand();
+        insCmd.CommandText = @"
+            INSERT OR IGNORE INTO AuditorPcPermissions (AuditorId, PcId, IsApproved)
+            VALUES (@aud, @pc, 0)";
+        insCmd.Parameters.AddWithValue("@aud", auditorId);
+        insCmd.Parameters.AddWithValue("@pc",  pcId);
+        insCmd.ExecuteNonQuery();
+        return false;
+    }
+
+    /// Returns all PcIds in the auditor's StaffPcList that are NOT explicitly approved.
+    /// Includes PCs added before the permission system existed.
+    public HashSet<int> GetUnapprovedPcIds(int auditorId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // AllowAll=1 → nothing blocked
+        using var aaCmd = conn.CreateCommand();
+        aaCmd.CommandText = "SELECT COALESCE(AllowAll, 0) FROM Auditors WHERE AuditorId = @id";
+        aaCmd.Parameters.AddWithValue("@id", auditorId);
+        if (aaCmd.ExecuteScalar() is long aa && aa == 1) return [];
+
+        // Any PC in StaffPcList without an IsApproved=1 entry is unapproved
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT spl.PcId
+            FROM StaffPcList spl
+            WHERE spl.UserId = @aud AND spl.IsSolo = 0
+              AND NOT EXISTS (
+                  SELECT 1 FROM AuditorPcPermissions ap
+                  WHERE ap.AuditorId = @aud AND ap.PcId = spl.PcId AND ap.IsApproved = 1
+              )";
+        cmd.Parameters.AddWithValue("@aud", auditorId);
+        var set = new HashSet<int>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) set.Add(r.GetInt32(0));
+        return set;
+    }
+
+    public List<PermissionRequest> GetPendingPermissionRequests()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $@"
+            SELECT ap.Id, ap.AuditorId,
+                   TRIM(pa.FirstName || ' ' || COALESCE(NULLIF(pa.LastName,''), '')) AS AuditorName,
+                   ap.PcId,
+                   TRIM(pp.FirstName || ' ' || COALESCE(NULLIF(pp.LastName,''), '')) AS PcName,
+                   ap.RequestedAt
+            FROM AuditorPcPermissions ap
+            JOIN Persons pa ON pa.PersonId = ap.AuditorId
+            JOIN Persons pp ON pp.PersonId = ap.PcId
+            WHERE ap.IsApproved = 0
+            ORDER BY ap.RequestedAt DESC, pa.FirstName";
+        var list = new List<PermissionRequest>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new PermissionRequest(
+                r.GetInt32(0), r.GetInt32(1), r.GetString(2),
+                r.GetInt32(3), r.GetString(4), r.GetString(5)));
+        return list;
+    }
+
+    public void ApprovePermissionRequest(int id)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE AuditorPcPermissions SET IsApproved = 1 WHERE Id = @id";
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.ExecuteNonQuery();
+    }
+
+    public void RejectPermissionRequest(int id)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        // Remove from StaffPcList too so it disappears from the auditor's dashboard
+        using var getCmd = conn.CreateCommand();
+        getCmd.CommandText = "SELECT AuditorId, PcId FROM AuditorPcPermissions WHERE Id = @id";
+        getCmd.Parameters.AddWithValue("@id", id);
+        using var r = getCmd.ExecuteReader();
+        if (!r.Read()) return;
+        int auditorId = r.GetInt32(0);
+        int pcId      = r.GetInt32(1);
+        r.Close();
+
+        using var delPerm = conn.CreateCommand();
+        delPerm.CommandText = "DELETE FROM AuditorPcPermissions WHERE Id = @id";
+        delPerm.Parameters.AddWithValue("@id", id);
+        delPerm.ExecuteNonQuery();
+
+        using var delSpl = conn.CreateCommand();
+        delSpl.CommandText = "DELETE FROM StaffPcList WHERE UserId = @uid AND PcId = @pc AND IsSolo = 0";
+        delSpl.Parameters.AddWithValue("@uid", auditorId);
+        delSpl.Parameters.AddWithValue("@pc",  pcId);
+        delSpl.ExecuteNonQuery();
+    }
+
+    public List<AuditorPermGroup> GetAuditorPermGroups()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Get all active auditors with AllowAll
+        using var audCmd = conn.CreateCommand();
+        audCmd.CommandText = @"
+            SELECT a.AuditorId,
+                   TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS Name,
+                   COALESCE(a.AllowAll, 0)
+            FROM Auditors a
+            JOIN Persons p ON p.PersonId = a.AuditorId
+            WHERE a.IsActive = 1 AND a.Type != 0
+            ORDER BY p.FirstName, p.LastName";
+        var auditors = new List<(int Id, string Name, bool AllowAll)>();
+        using var ar = audCmd.ExecuteReader();
+        while (ar.Read())
+            auditors.Add((ar.GetInt32(0), ar.GetString(1), ar.GetInt32(2) == 1));
+
+        // Get approved permissions per auditor
+        using var permCmd = conn.CreateCommand();
+        permCmd.CommandText = @"
+            SELECT ap.Id, ap.AuditorId, ap.PcId,
+                   TRIM(pp.FirstName || ' ' || COALESCE(NULLIF(pp.LastName,''), '')) AS PcName
+            FROM AuditorPcPermissions ap
+            JOIN Persons pp ON pp.PersonId = ap.PcId
+            WHERE ap.IsApproved = 1
+            ORDER BY pp.FirstName, pp.LastName";
+        var permsByAuditor = new Dictionary<int, List<ApprovedPcEntry>>();
+        using var pr = permCmd.ExecuteReader();
+        while (pr.Read())
+        {
+            int audId = pr.GetInt32(1);
+            if (!permsByAuditor.ContainsKey(audId)) permsByAuditor[audId] = new();
+            permsByAuditor[audId].Add(new ApprovedPcEntry(pr.GetInt32(0), pr.GetInt32(2), pr.GetString(3)));
+        }
+
+        return auditors.Select(a => new AuditorPermGroup(
+            a.Id, a.Name, a.AllowAll,
+            permsByAuditor.GetValueOrDefault(a.Id) ?? new())).ToList();
+    }
+
+    public void SetAuditorAllowAll(int auditorId, bool allow)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE Auditors SET AllowAll = @v WHERE AuditorId = @id";
+        cmd.Parameters.AddWithValue("@v",  allow ? 1 : 0);
+        cmd.Parameters.AddWithValue("@id", auditorId);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// Admin adds a PC permission directly (approved).
+    public void AddApprovedPermission(int auditorId, int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO AuditorPcPermissions (AuditorId, PcId, IsApproved)
+            VALUES (@aud, @pc, 1)
+            ON CONFLICT(AuditorId, PcId) DO UPDATE SET IsApproved = 1";
+        cmd.Parameters.AddWithValue("@aud", auditorId);
+        cmd.Parameters.AddWithValue("@pc",  pcId);
+        cmd.ExecuteNonQuery();
+    }
+
+    public void RemovePermission(int id)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM AuditorPcPermissions WHERE Id = @id";
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.ExecuteNonQuery();
     }
 
     /// <summary>

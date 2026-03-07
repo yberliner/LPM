@@ -1,0 +1,379 @@
+@page "/Admin/StaffPermissions"
+@using LPM.Services
+@inject DashboardService DashSvc
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<div class="sp-page p-3 p-md-4">
+
+    @* ── Page Header ── *@
+    <div class="d-flex align-items-center mb-4 gap-3 flex-wrap">
+        <div>
+            <h4 class="mb-0 fw-bold sp-title">Staff PC Permissions</h4>
+            <span class="text-muted" style="font-size:0.82rem;">Control which PCs each auditor is allowed to work with</span>
+        </div>
+        <div class="ms-auto">
+            <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                    @onclick="LoadData" disabled="@_loading">
+                <i class="ri-refresh-line @(_loading ? "sp-spin" : "")"></i> Refresh
+            </button>
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary mb-3" style="width:2.5rem;height:2.5rem;" role="status"></div>
+            <div class="text-muted">Loading...</div>
+        </div>
+    }
+    else
+    {
+        @* ══════════════════════════════════════════════════════════
+           SECTION 1 — PENDING REQUESTS
+           ══════════════════════════════════════════════════════════ *@
+        <div class="sp-section-label mb-3">
+            <i class="ri-shield-user-line me-2"></i>Pending Approval Requests
+            @if (_pending.Count > 0)
+            {
+                <span class="badge rounded-pill sp-badge-pending ms-2">@_pending.Count pending</span>
+            }
+        </div>
+
+        @if (_pending.Count == 0)
+        {
+            <div class="sp-empty-block mb-5">
+                <i class="ri-checkbox-circle-line text-success" style="font-size:1.8rem;"></i>
+                <div class="fw-semibold mt-2">No pending requests</div>
+                <div class="text-muted small">All staff PC additions have been approved.</div>
+            </div>
+        }
+        else
+        {
+            <div class="card border-0 shadow-sm mb-5 sp-card">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0 sp-table">
+                        <thead>
+                            <tr class="sp-thead">
+                                <th class="ps-4">Auditor</th>
+                                <th>PC / Person</th>
+                                <th class="text-center">Requested</th>
+                                <th class="pe-4 text-end" style="width:200px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var req in _pending)
+                            {
+                                <tr class="sp-row-pending">
+                                    <td class="ps-4 py-2 fw-semibold">
+                                        <div class="sp-avatar-inline">@(req.AuditorName.Length > 0 ? char.ToUpper(req.AuditorName[0]) : '?')</div>
+                                        @req.AuditorName
+                                    </td>
+                                    <td class="py-2">
+                                        <i class="ri-user-line me-1 text-muted"></i>@req.PcName
+                                    </td>
+                                    <td class="text-center py-2 text-muted" style="font-size:0.83rem;">@FormatDate(req.RequestedAt)</td>
+                                    <td class="pe-4 py-1 text-end">
+                                        <div class="d-flex justify-content-end gap-2">
+                                            <button class="btn btn-sm sp-btn-approve d-flex align-items-center gap-1"
+                                                    @onclick="() => Approve(req.Id)" disabled="@_busy">
+                                                <i class="ri-check-line"></i>Approve
+                                            </button>
+                                            <button class="btn btn-sm sp-btn-reject d-flex align-items-center gap-1"
+                                                    @onclick="() => Reject(req.Id)" disabled="@_busy">
+                                                <i class="ri-close-line"></i>Reject
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+
+        @* ══════════════════════════════════════════════════════════
+           SECTION 2 — PER-AUDITOR PERMISSIONS
+           ══════════════════════════════════════════════════════════ *@
+        <div class="sp-section-label mb-3">
+            <i class="ri-team-line me-2"></i>Auditor Permissions
+        </div>
+
+        @foreach (var aud in _auditors)
+        {
+            <div class="card border-0 shadow-sm mb-4 sp-card">
+                @* Card header *@
+                <div class="card-header d-flex align-items-center gap-3 py-3 px-4 border-0 sp-aud-header">
+                    <div class="sp-avatar">@(aud.AuditorName.Length > 0 ? char.ToUpper(aud.AuditorName[0]) : '?')</div>
+                    <div class="text-white lh-sm flex-grow-1">
+                        <div class="fw-semibold" style="font-size:1rem;">@aud.AuditorName</div>
+                        <div style="font-size:0.71rem;opacity:.72;">
+                            @if (aud.AllowAll)
+                            { <span>Allowed all PCs</span> }
+                            else
+                            { <span>@aud.ApprovedPcs.Count approved PC@(aud.ApprovedPcs.Count != 1 ? "s" : "")</span> }
+                        </div>
+                    </div>
+                    @* Allow All toggle *@
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="text-white-50" style="font-size:0.78rem;">Allow All</span>
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input sp-switch" type="checkbox"
+                                   checked="@aud.AllowAll"
+                                   @onchange="e => ToggleAllowAll(aud.AuditorId, (bool)(e.Value ?? false))"
+                                   disabled="@_busy" />
+                        </div>
+                    </div>
+                </div>
+
+                @* Approved PCs list *@
+                <div class="card-body p-0">
+                    @if (aud.AllowAll)
+                    {
+                        <div class="px-4 py-3 text-muted fst-italic" style="font-size:0.87rem;">
+                            <i class="ri-checkbox-circle-line text-success me-1"></i>
+                            This auditor is allowed to add any PC without approval.
+                        </div>
+                    }
+                    else if (aud.ApprovedPcs.Count == 0)
+                    {
+                        <div class="px-4 py-3 text-muted fst-italic" style="font-size:0.87rem;">
+                            No specific PCs approved yet.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0 sp-table">
+                                <thead>
+                                    <tr class="sp-sub-thead">
+                                        <th class="ps-4">PC / Person</th>
+                                        <th class="pe-4 text-end" style="width:80px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var pc in aud.ApprovedPcs)
+                                    {
+                                        <tr>
+                                            <td class="ps-4 py-2">
+                                                <i class="ri-user-line me-1 text-muted"></i>@pc.PcName
+                                            </td>
+                                            <td class="pe-4 py-1 text-end">
+                                                <button class="btn btn-sm sp-btn-remove"
+                                                        @onclick="() => RemovePermission(pc.Id)" disabled="@_busy"
+                                                        title="Remove permission">
+                                                    <i class="ri-delete-bin-line"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+
+                    @* Add PC row *@
+                    @if (!aud.AllowAll)
+                    {
+                        <div class="d-flex align-items-center gap-2 px-4 py-3 sp-add-row">
+                            <select class="form-select form-select-sm sp-pc-select"
+                                    @bind="_addPcSelection[aud.AuditorId]">
+                                <option value="0">— select a PC to add —</option>
+                                @foreach (var pc in _allPcs.Where(p => !aud.ApprovedPcs.Any(ap => ap.PcId == p.PcId)))
+                                {
+                                    <option value="@pc.PcId">@pc.FullName</option>
+                                }
+                            </select>
+                            <button class="btn btn-sm sp-btn-add d-flex align-items-center gap-1"
+                                    @onclick="() => AddPermission(aud.AuditorId)" disabled="@_busy">
+                                <i class="ri-add-line"></i>Add
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+
+</div>
+
+@* ── Toast ── *@
+@if (!string.IsNullOrEmpty(_msg))
+{
+    <div class="position-fixed bottom-0 end-0 p-4" style="z-index:1200;">
+        <div class="toast show align-items-center border-0 shadow-lg @(_msgIsError ? "text-bg-danger" : "text-bg-success")"
+             role="alert" style="min-width:300px;border-radius:12px;">
+            <div class="d-flex">
+                <div class="toast-body d-flex align-items-center gap-2 fw-semibold">
+                    <i class="@(_msgIsError ? "ri-error-warning-line" : "ri-checkbox-circle-line") fs-5"></i>
+                    @_msg
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto"
+                        @onclick='() => _msg = null'></button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .sp-page  { max-width: 900px; }
+    .sp-title { color: #1e3a5f; }
+
+    /* Section labels */
+    .sp-section-label { display: flex; align-items: center; font-size: 0.9rem; font-weight: 700; color: #1e3a5f; text-transform: uppercase; letter-spacing: .08em; border-bottom: 2px solid #dce3f0; padding-bottom: 8px; }
+
+    /* Empty block */
+    .sp-empty-block { text-align: center; padding: 36px; background: #f8faff; border-radius: 12px; border: 1px dashed #c7d7f0; }
+
+    /* Cards */
+    .sp-card { border-radius: 14px; overflow: hidden; }
+    .sp-card:hover { box-shadow: 0 6px 28px rgba(30,58,95,.13) !important; transition: box-shadow .25s; }
+    .sp-aud-header { background: linear-gradient(135deg, #1e3a5f 0%, #2d6a9f 100%); }
+
+    /* Avatar */
+    .sp-avatar { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,.15); border: 2px solid rgba(255,255,255,.3); color: #fff; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .sp-avatar-inline { display: inline-flex; width: 26px; height: 26px; border-radius: 50%; background: #2d6a9f; color: #fff; font-size: 0.75rem; font-weight: 700; align-items: center; justify-content: center; margin-right: 6px; flex-shrink: 0; }
+
+    /* Switch */
+    .sp-switch { width: 2.5em; height: 1.3em; cursor: pointer; }
+    .sp-switch:checked { background-color: #4ade80; border-color: #4ade80; }
+
+    /* Tables */
+    .sp-table { font-size: 0.85rem; color: #212529; }
+    .sp-table td, .sp-table th { color: #212529; }
+    .sp-thead tr { background: #eef1f8; }
+    .sp-thead th { font-size: 0.69rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6c757d !important; padding-top: 7px; padding-bottom: 7px; border-bottom: 1px solid #dce3f0; border-top: none; }
+    .sp-sub-thead tr { background: #f4f7fc; }
+    .sp-sub-thead th { font-size: 0.68rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: #8a99b0 !important; padding-top: 5px; padding-bottom: 5px; border-bottom: 1px solid #e8edf5; border-top: none; }
+
+    /* Pending row */
+    .sp-row-pending td { border-bottom: 1px solid #fde68a; background: #fffbeb; color: #212529 !important; }
+    .sp-row-pending:hover td { background: #fef3c7; color: #212529 !important; }
+    .sp-badge-pending { background: #fef3c7; color: #92400e; font-size: 0.72rem; }
+
+    /* Add row */
+    .sp-add-row { background: #f8faff; border-top: 1px solid #e8edf5; }
+    .sp-pc-select { font-size: 0.83rem; max-width: 320px; border-color: #ced4da; }
+    .sp-pc-select:focus { border-color: #2d6a9f; box-shadow: none; }
+
+    /* Buttons */
+    .sp-btn-approve { background: #2d6a9f; color: #fff; border: none; border-radius: 7px; font-size: 0.78rem; font-weight: 600; }
+    .sp-btn-approve:hover:not(:disabled) { background: #1e3a5f; color: #fff; }
+    .sp-btn-reject  { background: transparent; color: #dc3545; border: 1px solid #dc3545; border-radius: 7px; font-size: 0.78rem; font-weight: 600; }
+    .sp-btn-reject:hover:not(:disabled)  { background: #dc3545; color: #fff; }
+    .sp-btn-remove  { background: transparent; color: #adb5bd; border: 1px solid #dee2e6; border-radius: 6px; font-size: 0.78rem; padding: 2px 7px; }
+    .sp-btn-remove:hover:not(:disabled)  { background: #dc3545; color: #fff; border-color: #dc3545; }
+    .sp-btn-add     { background: #2d6a9f; color: #fff; border: none; border-radius: 7px; font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
+    .sp-btn-add:hover:not(:disabled)     { background: #1e3a5f; color: #fff; }
+
+    /* Spinner */
+    .sp-spin { display: inline-block; animation: sp-spin-anim 1s linear infinite; }
+    @@keyframes sp-spin-anim { to { transform: rotate(360deg); } }
+</style>
+
+@code {
+    private List<PermissionRequest> _pending  = new();
+    private List<AuditorPermGroup>  _auditors = new();
+    private List<PcInfo>            _allPcs   = new();
+    private Dictionary<int, int>    _addPcSelection = new();   // AuditorId → selected PcId
+
+    private bool    _loading = true;
+    private bool    _busy;
+    private string? _msg;
+    private bool    _msgIsError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (!authState.User.IsInRole("Admin"))
+        {
+            Navigation.NavigateTo("/Home", forceLoad: false);
+            return;
+        }
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        StateHasChanged();
+        await Task.Yield();
+
+        _pending  = DashSvc.GetPendingPermissionRequests();
+        _auditors = DashSvc.GetAuditorPermGroups();
+        _allPcs   = DashSvc.GetAllPcs().Where(p => !p.IsSolo).ToList();
+
+        // Init add-PC dropdowns (default 0 = none selected)
+        foreach (var aud in _auditors)
+            _addPcSelection.TryAdd(aud.AuditorId, 0);
+
+        _loading = false;
+    }
+
+    private void Approve(int id)
+    {
+        _busy = true;
+        DashSvc.ApprovePermissionRequest(id);
+        _busy = false;
+        _pending.RemoveAll(r => r.Id == id);
+        // Reload the auditor list so the approved PC appears in their section
+        _auditors = DashSvc.GetAuditorPermGroups();
+        ShowMsg("Permission approved.", false);
+    }
+
+    private void Reject(int id)
+    {
+        _busy = true;
+        DashSvc.RejectPermissionRequest(id);
+        _busy = false;
+        _pending.RemoveAll(r => r.Id == id);
+        ShowMsg("Request rejected and PC removed from dashboard.", false);
+    }
+
+    private void ToggleAllowAll(int auditorId, bool allow)
+    {
+        _busy = true;
+        DashSvc.SetAuditorAllowAll(auditorId, allow);
+        _busy = false;
+        var idx = _auditors.FindIndex(a => a.AuditorId == auditorId);
+        if (idx >= 0)
+            _auditors[idx] = _auditors[idx] with { AllowAll = allow };
+    }
+
+    private void AddPermission(int auditorId)
+    {
+        if (!_addPcSelection.TryGetValue(auditorId, out var pcId) || pcId == 0) return;
+        var pc = _allPcs.FirstOrDefault(p => p.PcId == pcId);
+        if (pc is null) return;
+
+        _busy = true;
+        DashSvc.AddApprovedPermission(auditorId, pcId);
+        _busy = false;
+
+        var idx = _auditors.FindIndex(a => a.AuditorId == auditorId);
+        if (idx >= 0)
+        {
+            var updated = _auditors[idx].ApprovedPcs.ToList();
+            // Re-query to get the new Id
+            _auditors = DashSvc.GetAuditorPermGroups();
+        }
+        _addPcSelection[auditorId] = 0;
+        ShowMsg($"{pc.FullName} added to {_auditors.FirstOrDefault(a => a.AuditorId == auditorId)?.AuditorName}.", false);
+    }
+
+    private void RemovePermission(int id)
+    {
+        _busy = true;
+        DashSvc.RemovePermission(id);
+        _busy = false;
+        foreach (var aud in _auditors)
+            aud.ApprovedPcs.RemoveAll(p => p.Id == id);
+        ShowMsg("Permission removed.", false);
+    }
+
+    private void ShowMsg(string msg, bool isError) { _msg = msg; _msgIsError = isError; }
+
+    private static string FormatDate(string dateStr) =>
+        DateOnly.TryParse(dateStr, out var d) ? d.ToString("dd/MM/yy") : dateStr;
+}

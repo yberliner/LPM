@@ -70,6 +70,17 @@ public class MenuDataService
             dirChange: false,
             requiredRole: "Admin"
         ),
+        new MainMenuItems(
+            path: "/Admin/StaffPermissions",
+            type: "link",
+            title: "Staff Permissions",
+            icon: "ri-shield-user-line",
+            svg: "",
+            selected: false,
+            active: false,
+            dirChange: false,
+            requiredRole: "Admin"
+        ),
         new MainMenuItems (
             path: "/",
             type: "link",

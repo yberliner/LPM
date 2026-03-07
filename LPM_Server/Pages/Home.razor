@@ -88,11 +88,12 @@
                         <th style="min-width:110px;">CS:</th>
                         @foreach (var pc in VisiblePcs)
                         {
-                            var csFullName  = _pcCsNames.TryGetValue(pc.PcId, out var cn) ? cn : "";
-                            var csFirstName = csFullName.Length > 0 ? csFullName.Split(' ')[0] : "NA";
+                            var csFullName       = _pcCsNames.TryGetValue(pc.PcId, out var cn) ? cn : "";
+                            var csFirstName      = csFullName.Length > 0 ? csFullName.Split(' ')[0] : "NA";
+                            var csColBlocked     = !pc.IsSolo && _unapprovedPcIds.Contains(pc.PcId);
                             <th class="text-center fw-normal user-select-none"
-                                style="cursor:context-menu; position:relative;"
-                                @oncontextmenu="e => ShowCtxMenu(e, pc)"
+                                style="@(csColBlocked ? "cursor:default;" : "cursor:context-menu;") position:relative;"
+                                @oncontextmenu="e => { if (!csColBlocked) ShowCtxMenu(e, pc); }"
                                 @oncontextmenu:preventDefault="true">
                                 @if (pc.IsSolo)
                                 {
@@ -121,7 +122,9 @@
                             <th class="fw-semibold small py-1" style="color:#555;">Role</th>
                             @foreach (var pc in VisiblePcs)
                             {
-                                <th class="text-center py-1">
+                                var roleColBlocked = !pc.IsSolo && _unapprovedPcIds.Contains(pc.PcId);
+                                <th class="text-center py-1"
+                                    style="@(roleColBlocked ? "opacity:.35; pointer-events:none;" : "")">
                                     @if (pc.IsSolo)
                                     {
                                         <span class="badge bg-warning-transparent">Solo</span>
@@ -170,17 +173,22 @@
                         <th style="min-width:110px;">Day</th>
                         @foreach (var pc in VisiblePcs)
                         {
-                            var hasPendingCs = Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((DashboardService.GKey(pc), d)));
+                            var hasPendingCs   = Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((DashboardService.GKey(pc), d)));
+                            var isPendingApprv = !pc.IsSolo && _unapprovedPcIds.Contains(pc.PcId);
                             <th class="text-center user-select-none"
-                                style="cursor:context-menu; white-space:nowrap; min-width:90px;"
-                                @oncontextmenu="e => ShowCtxMenu(e, pc)"
+                                style="@(isPendingApprv ? "cursor:not-allowed;" : "cursor:context-menu;") white-space:nowrap; min-width:90px;"
+                                @oncontextmenu="e => { if (!isPendingApprv) ShowCtxMenu(e, pc); }"
                                 @oncontextmenu:preventDefault="true">
                                 <span class="badge rounded-pill"
-                                      title="@pc.FullName"
-                                      style="@(hasPendingCs
-                                          ? "background:#fff3e0; color:#e65100; border:1px solid #ff9800;"
-                                          : "background:#e8f5e9; color:#2e7d32; border:1px solid #4caf50;")
-                                             font-weight:600; font-size:.85em; padding:.3em .75em;">
+                                      title="@(isPendingApprv ? pc.FullName + " — pending admin approval" : pc.FullName)"
+                                      style="@(isPendingApprv
+                                          ? "background:#f1f3f5; color:#868e96; border:1px solid #ced4da;"
+                                          : hasPendingCs
+                                              ? "background:#fff3e0; color:#e65100; border:1px solid #ff9800;"
+                                              : "background:#e8f5e9; color:#2e7d32; border:1px solid #4caf50;")
+                                             font-weight:600; font-size:.85em; padding:.3em .75em;
+                                             @(isPendingApprv ? "opacity:0.6;" : "")">
+                                    @if (isPendingApprv) { <i class="ri-time-line me-1" style="font-size:0.75em;"></i> }
                                     @pc.FullName
                                 </span>
                             </th>
@@ -210,11 +218,12 @@
                             {
                                 @foreach (var pc in VisiblePcs)
                                 {
-                                    var secs       = _grid.GetValueOrDefault((DashboardService.GKey(pc), dayIdx));
-                                    var isSelected = _selPcId == pc.PcId && _selDay == dayIdx && _selIsSolo == pc.IsSolo;
-                                    <td class="text-center @(isSelected ? "table-primary fw-semibold" : isFuture ? "text-muted" : "")"
-                                        style="@(isFuture ? "cursor:default; background:#f8f9fa; opacity:.55;" : "cursor:pointer;")"
-                                        @onclick="() => TrySelectCell(pc, dayIdx)">
+                                    var secs           = _grid.GetValueOrDefault((DashboardService.GKey(pc), dayIdx));
+                                    var isSelected     = _selPcId == pc.PcId && _selDay == dayIdx && _selIsSolo == pc.IsSolo;
+                                    var isPendingApprv = !pc.IsSolo && _unapprovedPcIds.Contains(pc.PcId);
+                                    <td class="text-center @(isSelected && !isPendingApprv ? "table-primary fw-semibold" : isFuture || isPendingApprv ? "text-muted" : "")"
+                                        style="@(isPendingApprv ? "cursor:not-allowed; background:#f5f5f5; opacity:.35; pointer-events:none;" : isFuture ? "cursor:default; background:#f8f9fa; opacity:.55;" : "cursor:pointer;")"
+                                        @onclick="() => { if (!isPendingApprv && !isFuture) TrySelectCell(pc, dayIdx); }">
                                         @{
                                             var isPendingCs = pc.WorkCapacity == "CS" && _pendingCs.Contains((DashboardService.GKey(pc), dayIdx));
                                         }
@@ -904,8 +913,9 @@
     bool          _soloMode;
     PcInfo?       _soloSelf;
     DateOnly      _weekStart;
-    List<PcInfo>  _myPcs  = [];
-    List<PcInfo>  _allPcs = [];
+    List<PcInfo>   _myPcs  = [];
+    List<PcInfo>   _allPcs = [];
+    HashSet<int>   _unapprovedPcIds = [];
     Dictionary<(int, int), int> _grid = [];
 
     // Column filter (visible when user is both Auditor and CS)
@@ -1049,8 +1059,9 @@
         }
         else
         {
-            _myPcs  = DashSvc.GetUserPcs(_userId.Value);
-            _allPcs = DashSvc.GetAllPcs();
+            _myPcs           = DashSvc.GetUserPcs(_userId.Value);
+            _allPcs          = DashSvc.GetAllPcs();
+            _unapprovedPcIds = DashSvc.GetUnapprovedPcIds(_userId.Value);
             _grid          = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
             _weeklyTotals  = DashSvc.GetWeeklyTotals(_userId.Value,
                                  ChartLatestWeekStart(),
@@ -1088,6 +1099,7 @@
     void TrySelectCell(PcInfo pc, int dayIdx)
     {
         if (IsFutureDate(_weekStart.AddDays(dayIdx))) return;
+        if (!pc.IsSolo && _unapprovedPcIds.Contains(pc.PcId)) return;
         SelectCell(pc, dayIdx);
     }
 
@@ -1255,6 +1267,9 @@
     async Task AddPc(int pcId, bool isSolo = false)
     {
         DashSvc.AddUserPc(_userId!.Value, pcId, isSolo);
+        // For regular (non-solo) PCs, check if the auditor has permission.
+        // If not, a pending request is created and the column will be grayed out.
+        if (!isSolo) DashSvc.CheckOrRequestPermission(_userId!.Value, pcId);
         _showAddPcModal = false;
         _pcSearch = "";
         await RefreshAsync();
