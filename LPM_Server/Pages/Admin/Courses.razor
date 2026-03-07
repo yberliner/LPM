@@ -42,64 +42,6 @@
         </div>
     </div>
 
-    @* ── Enrollment report ── *@
-    <div class="card shadow-sm mb-4" style="border-radius:12px;border:none;">
-        <div class="card-header py-2 px-3 d-flex align-items-center justify-content-between"
-             style="background:#f8fafc;border-radius:12px 12px 0 0;border-bottom:1px solid #e2e8f0;">
-            <span class="fw-semibold small">
-                <i class="ri-group-line me-1"></i>Enrollments
-            </span>
-            <span class="badge rounded-pill" style="background:#e0e7ff;color:#3949ab;font-size:.75rem;">
-                @_enrollments.Count
-            </span>
-        </div>
-        <div class="card-body p-0">
-            @if (_enrollments.Count == 0)
-            {
-                <div class="text-center py-4 text-muted small">No enrollments yet.</div>
-            }
-            else
-            {
-                <table class="table table-sm table-hover mb-0" style="font-size:.8rem;">
-                    <thead class="table-light">
-                        <tr>
-                            <th class="ps-3">Course</th>
-                            <th>PC</th>
-                            <th class="text-end">Paid</th>
-                            <th>Registrar</th>
-                            <th>Referral</th>
-                            <th class="text-center">Visits</th>
-                            <th class="text-center">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var e in _enrollments)
-                        {
-                            <tr>
-                                <td class="ps-3 fw-medium">@e.CourseName</td>
-                                <td>@e.PCFullName</td>
-                                <td class="text-end">@(e.PaidAmount > 0 ? $"₪{e.PaidAmount}" : "—")</td>
-                                <td class="text-muted">@(e.RegistrarName ?? "—")</td>
-                                <td class="text-muted">@(e.ReferralName ?? "—")</td>
-                                <td class="text-center fw-semibold" style="color:#059669;">@e.VisitCount</td>
-                                <td class="text-center">
-                                    @if (e.DateFinished == null)
-                                    {
-                                        <span class="badge rounded-pill" style="background:#d1fae5;color:#065f46;font-size:.7rem;">Active</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge rounded-pill" style="background:#f1f5f9;color:#64748b;font-size:.7rem;" title="Finished @e.DateFinished">Done</span>
-                                    }
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            }
-        </div>
-    </div>
-
     @* ── Courses list ── *@
     <div class="card shadow-sm" style="border-radius:12px;border:none;">
         <div class="card-header py-2 px-3 d-flex align-items-center justify-content-between"
@@ -164,6 +106,64 @@
                                                 title="Delete" @onclick="() => DeleteCourse(c.CourseId)">
                                             <i class="ri-delete-bin-line"></i>
                                         </button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+
+    @* ── Enrollment report ── *@
+    <div class="card shadow-sm mt-4" style="border-radius:12px;border:none;">
+        <div class="card-header py-2 px-3 d-flex align-items-center justify-content-between"
+             style="background:#f8fafc;border-radius:12px 12px 0 0;border-bottom:1px solid #e2e8f0;">
+            <span class="fw-semibold small">
+                <i class="ri-group-line me-1"></i>Enrollments
+            </span>
+            <span class="badge rounded-pill" style="background:#e0e7ff;color:#3949ab;font-size:.75rem;">
+                @_enrollments.Count
+            </span>
+        </div>
+        <div class="card-body p-0">
+            @if (_enrollments.Count == 0)
+            {
+                <div class="text-center py-4 text-muted small">No enrollments yet.</div>
+            }
+            else
+            {
+                <table class="table table-sm table-hover mb-0" style="font-size:.8rem;">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-3">PC</th>
+                            <th>Course</th>
+                            <th class="text-end">Paid</th>
+                            <th>Registrar</th>
+                            <th>Referral</th>
+                            <th class="text-center">Visits</th>
+                            <th class="text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var e in _enrollments)
+                        {
+                            <tr>
+                                <td class="ps-3 fw-medium">@e.PCFullName</td>
+                                <td>@e.CourseName</td>
+                                <td class="text-end">@(e.PaidAmount > 0 ? $"₪{e.PaidAmount}" : "—")</td>
+                                <td class="text-muted">@(e.RegistrarName ?? "—")</td>
+                                <td class="text-muted">@(e.ReferralName ?? "—")</td>
+                                <td class="text-center fw-semibold" style="color:#059669;">@e.VisitCount</td>
+                                <td class="text-center">
+                                    @if (e.DateFinished == null)
+                                    {
+                                        <span class="badge rounded-pill" style="background:#d1fae5;color:#065f46;font-size:.7rem;">Active</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge rounded-pill" style="background:#f1f5f9;color:#64748b;font-size:.7rem;" title="Finished @e.DateFinished">Done</span>
                                     }
                                 </td>
                             </tr>
