@@ -1,0 +1,681 @@
+@page "/Guide"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+
+<div class="guide-root">
+
+    @* ── Sidebar ── *@
+    <nav class="guide-sidebar">
+        <div class="guide-sidebar-inner">
+            <div class="guide-sidebar-logo">
+                <i class="ri-book-open-line"></i>
+                <span>User Guide</span>
+            </div>
+            <ul class="guide-nav">
+                <li><a href="#overview"   class="guide-nav-link"><i class="ri-home-4-line"></i>Overview</a></li>
+                <li><a href="#dashboard"  class="guide-nav-link"><i class="ri-dashboard-line"></i>Dashboard</a></li>
+                <li><a href="#pcs"        class="guide-nav-link"><i class="ri-contacts-book-2-line"></i>PCs (Clients)</a></li>
+                <li><a href="#academy"    class="guide-nav-link"><i class="ri-graduation-cap-line"></i>Academy</a></li>
+                <li><a href="#admin"      class="guide-nav-link"><i class="ri-shield-user-line"></i>Admin</a></li>
+                <li><a href="#tips"       class="guide-nav-link"><i class="ri-lightbulb-line"></i>Tips &amp; Tricks</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    @* ── Main content ── *@
+    <main class="guide-main">
+
+        @* ── Hero ── *@
+        <div class="guide-hero">
+            <div class="guide-hero-bg"></div>
+            <div class="guide-hero-content">
+                <div class="guide-hero-badge"><i class="ri-star-line me-1"></i>Welcome</div>
+                <h1 class="guide-hero-title">LPM System Guide</h1>
+                <p class="guide-hero-sub">
+                    Everything you need to manage clients, sessions, academy students and courses —
+                    all in one place. Read through each section below to get up and running quickly.
+                </p>
+                <div class="guide-hero-pills">
+                    <span class="guide-pill" style="background:#e0e7ff;color:#3730a3;"><i class="ri-dashboard-line me-1"></i>Dashboard</span>
+                    <span class="guide-pill" style="background:#dcfce7;color:#166534;"><i class="ri-graduation-cap-line me-1"></i>Academy</span>
+                    <span class="guide-pill" style="background:#fef3c7;color:#92400e;"><i class="ri-contacts-book-2-line me-1"></i>PCs</span>
+                    <span class="guide-pill" style="background:#fce7f3;color:#9d174d;"><i class="ri-shield-user-line me-1"></i>Admin</span>
+                </div>
+            </div>
+        </div>
+
+        @* ══════════════════════════════════════════════════════════
+           SECTION 1 — OVERVIEW
+        ══════════════════════════════════════════════════════════ *@
+        <section id="overview" class="guide-section">
+            <div class="guide-section-header" style="background:linear-gradient(135deg,#1e3a8a,#3b82f6);">
+                <i class="ri-home-4-line guide-section-icon"></i>
+                <div>
+                    <h2 class="guide-section-title">Overview</h2>
+                    <p class="guide-section-sub">How the system is organised</p>
+                </div>
+            </div>
+            <div class="guide-section-body">
+                <p class="guide-lead">
+                    LPM is split into four main areas, each accessible from the <strong>left-hand sidebar</strong>.
+                    Use the navigation menu to move between them at any time.
+                </p>
+
+                <div class="guide-card-grid">
+                    <div class="guide-feature-card" style="border-top:4px solid #6366f1;">
+                        <div class="guide-feature-icon" style="background:#e0e7ff;color:#4338ca;"><i class="ri-dashboard-line"></i></div>
+                        <div class="guide-feature-text">
+                            <strong>Dashboard (Home)</strong>
+                            <p>Your weekly session grid. Track how much auditing time each staff member delivered.</p>
+                        </div>
+                    </div>
+                    <div class="guide-feature-card" style="border-top:4px solid #f59e0b;">
+                        <div class="guide-feature-icon" style="background:#fef3c7;color:#d97706;"><i class="ri-contacts-book-2-line"></i></div>
+                        <div class="guide-feature-text">
+                            <strong>PCs (Clients)</strong>
+                            <p>Manage client profiles, payment history, purchased hours and session records.</p>
+                        </div>
+                    </div>
+                    <div class="guide-feature-card" style="border-top:4px solid #10b981;">
+                        <div class="guide-feature-icon" style="background:#d1fae5;color:#059669;"><i class="ri-graduation-cap-line"></i></div>
+                        <div class="guide-feature-text">
+                            <strong>Academy</strong>
+                            <p>Record daily student visits, enrol students in courses, and print weekly attendance sheets.</p>
+                        </div>
+                    </div>
+                    <div class="guide-feature-card" style="border-top:4px solid #ec4899;">
+                        <div class="guide-feature-icon" style="background:#fce7f3;color:#db2777;"><i class="ri-shield-user-line"></i></div>
+                        <div class="guide-feature-text">
+                            <strong>Admin</strong>
+                            <p>Manage courses, staff permissions, and session approvals. Admin role required.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="guide-tip">
+                    <i class="ri-information-line guide-tip-icon"></i>
+                    <div>Your <strong>role</strong> (Admin or regular staff) determines which pages you can see.
+                    If a page is missing from your menu, contact your administrator.</div>
+                </div>
+            </div>
+        </section>
+
+        @* ══════════════════════════════════════════════════════════
+           SECTION 2 — DASHBOARD
+        ══════════════════════════════════════════════════════════ *@
+        <section id="dashboard" class="guide-section">
+            <div class="guide-section-header" style="background:linear-gradient(135deg,#312e81,#6366f1);">
+                <i class="ri-dashboard-line guide-section-icon"></i>
+                <div>
+                    <h2 class="guide-section-title">Dashboard</h2>
+                    <p class="guide-section-sub">Weekly session tracking for auditors and CS</p>
+                </div>
+            </div>
+            <div class="guide-section-body">
+
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6366f1;">1</div>
+                        <div class="guide-step-content">
+                            <h4>Navigate the week</h4>
+                            <p>Use the <strong>Prev / Next</strong> buttons at the top to move between weeks.
+                            The week always runs <strong>Thursday → Wednesday</strong>. Today's week is shown by default.</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6366f1;">2</div>
+                        <div class="guide-step-content">
+                            <h4>Reading the grid</h4>
+                            <p>Each <strong>column</strong> is a staff member. Each <strong>row</strong> is a day.
+                            The cell shows the total billed session time for that person on that day (h:mm).
+                            CS columns appear greyed — they count separately in the grand total.</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6366f1;">3</div>
+                        <div class="guide-step-content">
+                            <h4>Solo mode (Type 3 auditors)</h4>
+                            <p>If you are both a regular and solo auditor, a <strong>Solo</strong> toggle button appears
+                            at the top of your dashboard. Switch to Solo mode to record solo sessions separately
+                            from your regular auditing time.</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6366f1;">4</div>
+                        <div class="guide-step-content">
+                            <h4>Print the week</h4>
+                            <p>Click the <strong>Print</strong> button to generate a PDF of the weekly grid, including
+                            a staff leaderboard and day-by-day statistics chart.</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6366f1;">5</div>
+                        <div class="guide-step-content">
+                            <h4>My PC list</h4>
+                            <p>Below the grid you can manage the list of PCs assigned to you this week.
+                            Add or remove PCs from your personal list using the selector at the bottom of the card.</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        @* ══════════════════════════════════════════════════════════
+           SECTION 3 — PCs
+        ══════════════════════════════════════════════════════════ *@
+        <section id="pcs" class="guide-section">
+            <div class="guide-section-header" style="background:linear-gradient(135deg,#78350f,#f59e0b);">
+                <i class="ri-contacts-book-2-line guide-section-icon"></i>
+                <div>
+                    <h2 class="guide-section-title">PCs (Clients)</h2>
+                    <p class="guide-section-sub">Profiles, payments and session history</p>
+                </div>
+            </div>
+            <div class="guide-section-body">
+
+                <h3 class="guide-sub-heading">Finding a PC</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#f59e0b;">1</div>
+                        <div class="guide-step-content">
+                            <h4>Search</h4>
+                            <p>Type a name or external ID in the <strong>Search...</strong> box at the top of the left panel.
+                            The list filters instantly.</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#f59e0b;">2</div>
+                        <div class="guide-step-content">
+                            <h4>Remaining hours badge</h4>
+                            <p>Each PC in the list shows a coloured badge — <span style="color:#2e7d32;font-weight:600;">green</span> means
+                            hours remaining, <span style="color:#c62828;font-weight:600;">red</span> means over-used.
+                            The list is sorted with lowest hours at the top so you can spot who needs a top-up quickly.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">Adding a new PC</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#f59e0b;">1</div>
+                        <div class="guide-step-content">
+                            <h4>Click "New PC"</h4>
+                            <p>Press the green <strong>New PC</strong> button. Fill in the required fields —
+                            <strong>First name</strong> and <strong>Last name</strong> are mandatory.
+                            If a person with the same name already exists an error will appear before saving.</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#f59e0b;">2</div>
+                        <div class="guide-step-content">
+                            <h4>Optional details</h4>
+                            <p>Add phone, email, date of birth, sex and origin. These can also be filled in later
+                            by clicking <strong>Edit</strong> on the PC's detail card.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">Recording a payment</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#f59e0b;">1</div>
+                        <div class="guide-step-content">
+                            <h4>Open the Payments card</h4>
+                            <p>Select a PC, then click <strong>+ Add Payment</strong> in the Payments card.</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#f59e0b;">2</div>
+                        <div class="guide-step-content">
+                            <h4>Choose the type</h4>
+                            <p><strong>Auditing</strong> — enter hours bought and amount paid. These hours count toward the
+                            remaining hours balance.<br/>
+                            <strong>Course</strong> — select the course from the dropdown and enter the amount paid.
+                            The PC is automatically enrolled in the Academy course.</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#f59e0b;">3</div>
+                        <div class="guide-step-content">
+                            <h4>Registrar &amp; Referral</h4>
+                            <p><strong>Registrar</strong> defaults to your own name — change it if someone else processed
+                            the payment. <strong>Referral</strong> is optional: set it if the PC was referred by someone.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="guide-tip">
+                    <i class="ri-lightbulb-flash-line guide-tip-icon" style="color:#f59e0b;"></i>
+                    <div>Course payments automatically create an open enrollment in the Academy.
+                    You do not need to enrol the student manually.</div>
+                </div>
+
+            </div>
+        </section>
+
+        @* ══════════════════════════════════════════════════════════
+           SECTION 4 — ACADEMY
+        ══════════════════════════════════════════════════════════ *@
+        <section id="academy" class="guide-section">
+            <div class="guide-section-header" style="background:linear-gradient(135deg,#064e3b,#10b981);">
+                <i class="ri-graduation-cap-line guide-section-icon"></i>
+                <div>
+                    <h2 class="guide-section-title">Academy</h2>
+                    <p class="guide-section-sub">Daily attendance, courses and weekly reports</p>
+                </div>
+            </div>
+            <div class="guide-section-body">
+
+                <h3 class="guide-sub-heading">Recording a visit</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#10b981;">1</div>
+                        <div class="guide-step-content">
+                            <h4>Select the day</h4>
+                            <p>Click the day pill at the top of the page (Mon, Tue, …). The pill turns green when
+                            that day has visits. You cannot add visits to future days.</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#10b981;">2</div>
+                        <div class="guide-step-content">
+                            <h4>Find the student</h4>
+                            <p>Type in the <strong>Search students…</strong> box. Matching names appear as chips below.
+                            Click a chip to add a visit for that student on the selected day.</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#10b981;">3</div>
+                        <div class="guide-step-content">
+                            <h4>Remove a visit</h4>
+                            <p>In the visit list on the right, click the <strong>trash</strong> icon next to a student's
+                            chip to remove their visit for the selected day.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">Adding a new student</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#10b981;">1</div>
+                        <div class="guide-step-content">
+                            <h4>Click "New Student"</h4>
+                            <p>Press the <strong>New Student</strong> button in the top-right of the navigation bar.</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#10b981;">2</div>
+                        <div class="guide-step-content">
+                            <h4>Fill in the form</h4>
+                            <p><strong>First name</strong>, <strong>Last name</strong> and <strong>Course</strong> are all required.
+                            A person with the same full name cannot be added twice — the system will warn you.
+                            Select the Referral and Organization if known.</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#10b981;">3</div>
+                        <div class="guide-step-content">
+                            <h4>First visit is auto-recorded</h4>
+                            <p>Saving the form automatically records a visit for the currently selected day,
+                            so you don't need to add it separately.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">Managing courses per student</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#10b981;">1</div>
+                        <div class="guide-step-content">
+                            <h4>Open the course modal</h4>
+                            <p>In the weekly student table, click the <strong>book icon</strong> on any student row.
+                            A modal opens showing their active and completed courses.</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#10b981;">2</div>
+                        <div class="guide-step-content">
+                            <h4>Finish a course</h4>
+                            <p>Click <strong>Finish</strong> next to an active course, pick the finish date, then confirm.
+                            The course moves to the completed list and the student's active course column clears.</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#10b981;">3</div>
+                        <div class="guide-step-content">
+                            <h4>Enrol in a new course</h4>
+                            <p>Use the <strong>Add Course</strong> dropdown at the bottom of the modal. Choose the course,
+                            set the start date, and click Add.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">Printing the week</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#10b981;">1</div>
+                        <div class="guide-step-content">
+                            <h4>Click "Print"</h4>
+                            <p>The <strong>Print</strong> button (top-right) generates a PDF for the currently displayed week.
+                            The PDF includes the student attendance table, referral &amp; org breakdowns,
+                            each student's active course with visit count, and a per-course summary table.</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#10b981;">2</div>
+                        <div class="guide-step-content">
+                            <h4>Your browser handles the download</h4>
+                            <p>The PDF opens or downloads automatically. No printer is needed — you can save it or
+                            share the file directly.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="guide-tip">
+                    <i class="ri-information-line guide-tip-icon"></i>
+                    <div>The <strong>Active Course</strong> column shows the course name and the total number of
+                    academy visits since enrollment — e.g. <em>Communication (12)</em>.</div>
+                </div>
+
+            </div>
+        </section>
+
+        @* ══════════════════════════════════════════════════════════
+           SECTION 5 — ADMIN
+        ══════════════════════════════════════════════════════════ *@
+        <section id="admin" class="guide-section">
+            <div class="guide-section-header" style="background:linear-gradient(135deg,#6b21a8,#a855f7);">
+                <i class="ri-shield-user-line guide-section-icon"></i>
+                <div>
+                    <h2 class="guide-section-title">Admin</h2>
+                    <p class="guide-section-sub">Courses, permissions and session approvals</p>
+                </div>
+            </div>
+            <div class="guide-section-body">
+
+                <h3 class="guide-sub-heading">Courses</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">1</div>
+                        <div class="guide-step-content">
+                            <h4>Add a course</h4>
+                            <p>Go to <strong>Admin → Courses</strong>. Type the course name in the bottom row of the
+                            Courses table and press <strong>Add</strong> or hit Enter.</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">2</div>
+                        <div class="guide-step-content">
+                            <h4>Edit or delete</h4>
+                            <p>Click the <strong>pencil</strong> icon to rename a course inline, then save with Enter or
+                            the save button. Click the <strong>trash</strong> icon to delete.</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">3</div>
+                        <div class="guide-step-content">
+                            <h4>Enrollments report</h4>
+                            <p>Below the Courses table, the <strong>Enrollments</strong> table shows every student enrolled
+                            in every course — including who registered them, referral, amount paid, and academy visit count.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">Staff Permissions</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">1</div>
+                        <div class="guide-step-content">
+                            <h4>Pending requests</h4>
+                            <p>When a staff member's PC list is updated, a permission request may appear here.
+                            Click <strong>Approve</strong> to grant access or <strong>Reject</strong> to deny it.</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">2</div>
+                        <div class="guide-step-content">
+                            <h4>Allow All vs specific PCs</h4>
+                            <p>Each auditor card has an <strong>Allow All</strong> toggle. When on, the auditor can work
+                            with any PC. When off, you can add individual PCs to their approved list using the
+                            dropdown at the bottom of their card.</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        @* ══════════════════════════════════════════════════════════
+           SECTION 6 — TIPS
+        ══════════════════════════════════════════════════════════ *@
+        <section id="tips" class="guide-section" style="margin-bottom:60px;">
+            <div class="guide-section-header" style="background:linear-gradient(135deg,#0f172a,#475569);">
+                <i class="ri-lightbulb-line guide-section-icon"></i>
+                <div>
+                    <h2 class="guide-section-title">Tips &amp; Tricks</h2>
+                    <p class="guide-section-sub">Work faster, avoid mistakes</p>
+                </div>
+            </div>
+            <div class="guide-section-body">
+                <div class="guide-tips-grid">
+                    <div class="guide-tip-card">
+                        <div class="guide-tip-card-icon" style="color:#6366f1;"><i class="ri-keyboard-line"></i></div>
+                        <h4>Press Enter to save</h4>
+                        <p>In most inline forms (adding a course, editing a name) you can press <kbd>Enter</kbd> instead of clicking the Save button.</p>
+                    </div>
+                    <div class="guide-tip-card">
+                        <div class="guide-tip-card-icon" style="color:#10b981;"><i class="ri-search-line"></i></div>
+                        <h4>Search is instant</h4>
+                        <p>The PC list and Academy student list filter as you type — no need to press search or confirm.</p>
+                    </div>
+                    <div class="guide-tip-card">
+                        <div class="guide-tip-card-icon" style="color:#f59e0b;"><i class="ri-alert-line"></i></div>
+                        <h4>Red badge = attention needed</h4>
+                        <p>A red remaining-hours badge on a PC means they have used more hours than purchased. Follow up on a new payment.</p>
+                    </div>
+                    <div class="guide-tip-card">
+                        <div class="guide-tip-card-icon" style="color:#a855f7;"><i class="ri-book-2-line"></i></div>
+                        <h4>Course visit count</h4>
+                        <p>The number in parentheses next to a course name — e.g. <em>Communication (8)</em> — counts all academy visits since the enrollment start date.</p>
+                    </div>
+                    <div class="guide-tip-card">
+                        <div class="guide-tip-card-icon" style="color:#ef4444;"><i class="ri-logout-box-line"></i></div>
+                        <h4>Logging out</h4>
+                        <p>Click the <strong>logout icon</strong> in the top-right header bar. Your session expires automatically after 12 hours of inactivity.</p>
+                    </div>
+                    <div class="guide-tip-card">
+                        <div class="guide-tip-card-icon" style="color:#0ea5e9;"><i class="ri-printer-line"></i></div>
+                        <h4>PDF reports</h4>
+                        <p>Both the Dashboard and the Academy pages have a <strong>Print</strong> button that generates a polished PDF — great for weekly briefings.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+</div>
+
+<style>
+    /* ── Root layout ── */
+    .guide-root {
+        display: flex;
+        min-height: calc(100vh - 60px);
+        background: #f1f5f9;
+        font-family: inherit;
+    }
+
+    /* ── Sidebar ── */
+    .guide-sidebar {
+        width: 220px;
+        min-width: 220px;
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        overflow-y: auto;
+        background: #0f172a;
+        flex-shrink: 0;
+    }
+    .guide-sidebar-inner { padding: 28px 16px; }
+    .guide-sidebar-logo {
+        display: flex; align-items: center; gap: 10px;
+        color: #e2e8f0; font-size: 1rem; font-weight: 700;
+        margin-bottom: 28px; padding-bottom: 18px;
+        border-bottom: 1px solid rgba(255,255,255,.1);
+    }
+    .guide-sidebar-logo i { font-size: 1.4rem; color: #818cf8; }
+    .guide-nav { list-style: none; margin: 0; padding: 0; }
+    .guide-nav li { margin-bottom: 4px; }
+    .guide-nav-link {
+        display: flex; align-items: center; gap: 10px;
+        padding: 9px 12px; border-radius: 8px;
+        color: #94a3b8; text-decoration: none;
+        font-size: .875rem; font-weight: 500;
+        transition: background .15s, color .15s;
+    }
+    .guide-nav-link i { font-size: 1rem; width: 18px; text-align: center; }
+    .guide-nav-link:hover { background: rgba(255,255,255,.08); color: #e2e8f0; }
+
+    /* ── Main ── */
+    .guide-main {
+        flex: 1;
+        overflow-y: auto;
+        scroll-behavior: smooth;
+        padding: 0;
+    }
+
+    /* ── Hero ── */
+    .guide-hero {
+        position: relative;
+        padding: 64px 48px 48px;
+        overflow: hidden;
+        background: #0f172a;
+    }
+    .guide-hero-bg {
+        position: absolute; inset: 0;
+        background: radial-gradient(ellipse at 30% 60%, rgba(99,102,241,.35) 0%, transparent 60%),
+                    radial-gradient(ellipse at 80% 20%, rgba(16,185,129,.2) 0%, transparent 50%);
+        pointer-events: none;
+    }
+    .guide-hero-content { position: relative; max-width: 680px; }
+    .guide-hero-badge {
+        display: inline-flex; align-items: center;
+        background: rgba(99,102,241,.2); color: #a5b4fc;
+        border: 1px solid rgba(99,102,241,.3);
+        font-size: .75rem; font-weight: 600; letter-spacing: .06em;
+        padding: 4px 12px; border-radius: 999px; margin-bottom: 16px;
+        text-transform: uppercase;
+    }
+    .guide-hero-title {
+        font-size: 2.6rem; font-weight: 800; color: #f8fafc;
+        line-height: 1.15; margin-bottom: 16px;
+    }
+    .guide-hero-sub {
+        font-size: 1.05rem; color: #94a3b8; line-height: 1.65; margin-bottom: 28px;
+    }
+    .guide-hero-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+    .guide-pill {
+        display: inline-flex; align-items: center;
+        padding: 5px 14px; border-radius: 999px;
+        font-size: .8rem; font-weight: 600;
+    }
+
+    /* ── Section ── */
+    .guide-section {
+        max-width: 820px;
+        margin: 36px auto 0;
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 2px 16px rgba(0,0,0,.07);
+        overflow: hidden;
+    }
+    .guide-section-header {
+        display: flex; align-items: center; gap: 20px;
+        padding: 24px 32px; color: #fff;
+    }
+    .guide-section-icon { font-size: 2.2rem; opacity: .9; flex-shrink: 0; }
+    .guide-section-title { font-size: 1.4rem; font-weight: 700; margin: 0 0 2px; }
+    .guide-section-sub { font-size: .85rem; opacity: .8; margin: 0; }
+    .guide-section-body { padding: 28px 32px; }
+
+    /* ── Lead text ── */
+    .guide-lead { font-size: 1rem; color: #475569; line-height: 1.7; margin-bottom: 24px; }
+
+    /* ── Feature cards grid ── */
+    .guide-card-grid {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 24px;
+    }
+    .guide-feature-card {
+        display: flex; align-items: flex-start; gap: 14px;
+        padding: 16px; border-radius: 12px;
+        background: #f8fafc; border: 1px solid #e2e8f0;
+    }
+    .guide-feature-icon {
+        width: 40px; height: 40px; border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.2rem; flex-shrink: 0;
+    }
+    .guide-feature-text strong { display: block; font-size: .9rem; color: #1e293b; margin-bottom: 4px; }
+    .guide-feature-text p { font-size: .82rem; color: #64748b; margin: 0; line-height: 1.55; }
+
+    /* ── Steps ── */
+    .guide-steps { display: flex; flex-direction: column; gap: 0; margin-bottom: 24px; }
+    .guide-step {
+        display: flex; gap: 18px;
+        padding: 18px 0;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .guide-step:last-child { border-bottom: none; }
+    .guide-step-num {
+        width: 30px; height: 30px; border-radius: 50%;
+        color: #fff; font-weight: 800; font-size: .85rem;
+        display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0; margin-top: 2px;
+    }
+    .guide-step-content h4 { font-size: .93rem; color: #1e293b; margin: 0 0 6px; font-weight: 700; }
+    .guide-step-content p  { font-size: .85rem; color: #475569; margin: 0; line-height: 1.65; }
+
+    /* ── Sub-heading ── */
+    .guide-sub-heading {
+        font-size: .78rem; font-weight: 700; letter-spacing: .08em;
+        text-transform: uppercase; color: #94a3b8;
+        margin: 28px 0 4px; padding-bottom: 8px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    /* ── Tip banner ── */
+    .guide-tip {
+        display: flex; align-items: flex-start; gap: 12px;
+        background: #eff6ff; border: 1px solid #bfdbfe;
+        border-radius: 10px; padding: 14px 16px;
+        font-size: .85rem; color: #1e40af; line-height: 1.6;
+        margin-top: 8px;
+    }
+    .guide-tip-icon { font-size: 1.1rem; margin-top: 1px; color: #3b82f6; flex-shrink: 0; }
+
+    /* ── Tips grid ── */
+    .guide-tips-grid {
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+    }
+    .guide-tip-card {
+        background: #f8fafc; border: 1px solid #e2e8f0;
+        border-radius: 12px; padding: 20px 18px;
+    }
+    .guide-tip-card-icon { font-size: 1.6rem; margin-bottom: 10px; }
+    .guide-tip-card h4 { font-size: .9rem; color: #1e293b; margin: 0 0 8px; font-weight: 700; }
+    .guide-tip-card p  { font-size: .82rem; color: #64748b; margin: 0; line-height: 1.6; }
+    .guide-tip-card kbd {
+        background: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 4px;
+        padding: 1px 5px; font-size: .78rem; color: #334155;
+    }
+
+    /* ── Responsive ── */
+    @@media (max-width: 768px) {
+        .guide-sidebar { display: none; }
+        .guide-card-grid { grid-template-columns: 1fr; }
+        .guide-tips-grid { grid-template-columns: 1fr 1fr; }
+        .guide-hero { padding: 36px 20px 28px; }
+        .guide-section-body { padding: 20px; }
+        .guide-hero-title { font-size: 1.8rem; }
+    }
+</style>

@@ -92,6 +92,16 @@ public class MenuDataService
             dirChange: false,
             requiredRole: "Admin"
         ),
+        new MainMenuItems(
+            path: "/Guide",
+            type: "link",
+            title: "User Guide",
+            icon: "ri-book-open-line",
+            svg: "",
+            selected: false,
+            active: false,
+            dirChange: false
+        ),
         new MainMenuItems (
             path: "/",
             type: "link",
