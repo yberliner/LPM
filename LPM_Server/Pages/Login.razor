@@ -28,13 +28,18 @@
                                 <label for="signin-username" class="form-label text-default">
                                     User Name<sup class="fs-12 text-danger">*</sup>
                                 </label>
-                                <input type="text"
-                                       class="form-control"
-                                       id="signin-username"
-                                       placeholder="Enter user name"
-                                       @bind="_username"
-                                       @bind:event="oninput"
-                                       @onkeydown="HandleKeyDown" />
+                                <div class="input-group">
+                                    <span class="input-group-text">
+                                        <i class="ri-user-line"></i>
+                                    </span>
+                                    <input type="text"
+                                           class="form-control"
+                                           id="signin-username"
+                                           placeholder="Enter user name"
+                                           @bind="_username"
+                                           @bind:event="oninput"
+                                           @onkeydown="HandleKeyDown" />
+                                </div>
                             </div>
 
                             <div class="col-xl-12 mb-2">
