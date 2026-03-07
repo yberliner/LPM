@@ -2,7 +2,9 @@
 @attribute [Authorize]
 @inject LPM.Services.PcService PcSvc
 @inject LPM.Services.CourseService CourseSvc
+@inject AuthenticationStateProvider AuthState
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @using LPM.Services
 
 <div class="d-flex gap-3" style="height:calc(100vh - 130px); overflow:hidden;">
@@ -313,7 +315,29 @@
                                 <label class="form-label small mb-0">Notes</label>
                                 <input class="form-control form-control-sm" @bind="_payNotes" placeholder="Optional..." />
                             </div>
+                        </div>
+                        <div class="row g-2 align-items-end mt-1">
                             <div class="col-auto">
+                                <label class="form-label small mb-0">Registrar</label>
+                                <select class="form-select form-select-sm" @bind="_payRegistrarId" style="width:180px;">
+                                    <option value="0">— none —</option>
+                                    @foreach (var s in _staff)
+                                    {
+                                        <option value="@s.PersonId">@s.FullName</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-auto">
+                                <label class="form-label small mb-0">Referral</label>
+                                <select class="form-select form-select-sm" @bind="_payReferralId" style="width:200px;">
+                                    <option value="0">— none —</option>
+                                    @foreach (var p in _allPersons)
+                                    {
+                                        <option value="@p.PersonId">@p.FullName</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-auto ms-auto">
                                 <button class="btn btn-sm btn-primary" @onclick="SavePayment">Save</button>
                             </div>
                         </div>
@@ -334,6 +358,8 @@
                                     <th class="small text-center">Hrs / Vis.</th>
                                     <th class="small text-end">Amount</th>
                                     <th class="small">Notes</th>
+                                    <th class="small">Registrar</th>
+                                    <th class="small">Referral</th>
                                     <th style="width:36px;"></th>
                                 </tr>
                             </thead>
@@ -370,6 +396,8 @@
                                             @(pay.AmountPaid > 0 ? $"₪{pay.AmountPaid}" : "—")
                                         </td>
                                         <td class="small text-muted">@pay.Notes</td>
+                                        <td class="small text-muted">@pay.RegistrarName</td>
+                                        <td class="small text-muted">@pay.ReferralName</td>
                                         <td class="text-center">
                                             <button class="btn btn-link btn-sm text-danger py-0 px-0"
                                                     title="Delete payment"
@@ -392,7 +420,7 @@
                                         @{ var tot = _payments.Sum(p => p.AmountPaid); }
                                         @(tot > 0 ? $"₪{tot}" : "—")
                                     </td>
-                                    <td colspan="2"></td>
+                                    <td colspan="4"></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -536,12 +564,15 @@
 
     // Add payment
     bool     _showAddPayment;
-    string   _payType  = "Auditing";
-    DateTime _payDate  = DateTime.Today;
-    int      _payHours, _payAmount, _payCourseId;
+    string   _payType       = "Auditing";
+    DateTime _payDate       = DateTime.Today;
+    int      _payHours, _payAmount, _payCourseId, _payRegistrarId, _payReferralId;
     string   _payNotes = "", _payError = "";
 
-    List<CourseItem> _allCourses = [];
+    List<CourseItem>             _allCourses  = [];
+    List<(int PersonId, string FullName)> _staff      = [];
+    List<(int PersonId, string FullName)> _allPersons = [];
+    int? _currentPersonId;
 
     IEnumerable<PcListItem> FilteredPcs => string.IsNullOrWhiteSpace(_search)
         ? _allPcs
@@ -549,10 +580,16 @@
             p.FullName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
             p.ExternalId.Contains(_search, StringComparison.OrdinalIgnoreCase));
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        _allPcs = PcSvc.GetAllPcs();
+        _allPcs     = PcSvc.GetAllPcs();
         _allCourses = CourseSvc.GetAllCourses();
+        _staff      = PcSvc.GetStaff();
+        _allPersons = PcSvc.GetAllPersons();
+
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var username = auth.User.Identity?.Name;
+        _currentPersonId = username != null ? PcSvc.GetPersonIdByUsername(username) : null;
     }
 
     void SelectPc(int pcId)
@@ -623,9 +660,13 @@
         PcSvc.AddPayment(_selPcId!.Value, _payDate.ToString("yyyy-MM-dd"),
             _payType == "Auditing" ? _payHours : 0, _payAmount,
             string.IsNullOrWhiteSpace(_payNotes) ? null : _payNotes,
-            _payType, _payType == "Course" ? _payCourseId : null);
+            _payType,
+            _payType == "Course" ? _payCourseId : null,
+            _payRegistrarId > 0 ? _payRegistrarId : null,
+            _payReferralId  > 0 ? _payReferralId  : null);
         _showAddPayment = false;
-        _payHours = _payAmount = _payCourseId = 0;
+        _payHours = _payAmount = _payCourseId = _payReferralId = 0;
+        _payRegistrarId = _currentPersonId ?? 0;
         _payNotes = _payError = "";
         _payType  = "Auditing";
         _payDate  = DateTime.Today;
@@ -640,7 +681,12 @@
         _showAddPayment = !_showAddPayment;
         _payError = "";
         _payType  = "Auditing";
-        if (_showAddPayment) _allCourses = CourseSvc.GetAllCourses();
+        if (_showAddPayment)
+        {
+            _allCourses     = CourseSvc.GetAllCourses();
+            _payRegistrarId = _currentPersonId ?? 0;
+            _payReferralId  = 0;
+        }
     }
 
     void DeletePayment(int paymentId)

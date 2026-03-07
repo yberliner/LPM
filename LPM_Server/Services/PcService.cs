@@ -12,7 +12,8 @@ public record PcDetailInfo(int PcId, string FirstName, string LastName, string E
 public record PcSessionInfo(int SessionId, string Date, string AuditorName,
     int LengthSec, int AdminSec, bool IsFree, string VerifiedStatus);
 public record PcPayment(int PaymentId, string Date, int HoursBought, int AmountPaid, string? Notes,
-    string PaymentType, int? CourseId, string? CourseName, int VisitCount);
+    string PaymentType, int? CourseId, string? CourseName, int VisitCount,
+    int? RegistrarId, string? RegistrarName, int? ReferralId, string? ReferralName);
 public record PcStats(int TotalSessions, int FreeSessions, long UsedSec,
     int TotalHoursPurchased, int TotalAmountPaid, string? LastSessionDate);
 
@@ -48,8 +49,10 @@ public class PcService
 
         // Extra columns on Payments
         foreach (var (col, def) in new[] {
-            ("PaymentType", "TEXT DEFAULT 'Auditing'"),
-            ("CourseId",    "INTEGER") })
+            ("PaymentType",  "TEXT DEFAULT 'Auditing'"),
+            ("CourseId",     "INTEGER"),
+            ("RegistrarId",  "INTEGER"),
+            ("ReferralId",   "INTEGER") })
         {
             using var ck = conn.CreateCommand();
             ck.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('Payments') WHERE name='{col}'";
@@ -292,9 +295,15 @@ public class PcService
                    CASE WHEN COALESCE(p.PaymentType,'Auditing') = 'Course' AND p.CourseId IS NOT NULL
                         THEN (SELECT COUNT(*) FROM Students s
                               WHERE s.PersonId = p.PcId AND s.VisitDate >= p.PaymentDate)
-                        ELSE 0 END AS VisitCount
+                        ELSE 0 END AS VisitCount,
+                   p.RegistrarId,
+                   TRIM(COALESCE(reg.FirstName,'') || ' ' || COALESCE(NULLIF(reg.LastName,''),'')) AS RegistrarName,
+                   p.ReferralId,
+                   TRIM(COALESCE(rf.FirstName,'') || ' ' || COALESCE(NULLIF(rf.LastName,''),'')) AS ReferralName
             FROM Payments p
-            LEFT JOIN Courses c ON c.CourseId = p.CourseId
+            LEFT JOIN Courses c   ON c.CourseId    = p.CourseId
+            LEFT JOIN Persons reg ON reg.PersonId  = p.RegistrarId
+            LEFT JOIN Persons rf  ON rf.PersonId   = p.ReferralId
             WHERE p.PcId=@id
             ORDER BY p.PaymentDate DESC";
         cmd.Parameters.AddWithValue("@id", pcId);
@@ -307,26 +316,32 @@ public class PcService
                 r.GetString(5),
                 r.IsDBNull(6) ? null : r.GetInt32(6),
                 r.IsDBNull(7) ? null : r.GetString(7),
-                r.GetInt32(8)));
+                r.GetInt32(8),
+                r.IsDBNull(9)  ? null : r.GetInt32(9),
+                r.IsDBNull(10) ? null : r.GetString(10).Trim(),
+                r.IsDBNull(11) ? null : r.GetInt32(11),
+                r.IsDBNull(12) ? null : r.GetString(12).Trim()));
         return list;
     }
 
     public void AddPayment(int pcId, string date, int hoursBought, int amountPaid, string? notes,
-        string paymentType = "Auditing", int? courseId = null)
+        string paymentType = "Auditing", int? courseId = null, int? registrarId = null, int? referralId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO Payments (PcId, PaymentDate, HoursBought, AmountPaid, Notes, PaymentType, CourseId)
-            VALUES (@pcId, @date, @hrs, @amt, @notes, @type, @cid)";
+            INSERT INTO Payments (PcId, PaymentDate, HoursBought, AmountPaid, Notes, PaymentType, CourseId, RegistrarId, ReferralId)
+            VALUES (@pcId, @date, @hrs, @amt, @notes, @type, @cid, @regId, @refId)";
         cmd.Parameters.AddWithValue("@pcId",  pcId);
         cmd.Parameters.AddWithValue("@date",  date);
         cmd.Parameters.AddWithValue("@hrs",   hoursBought);
         cmd.Parameters.AddWithValue("@amt",   amountPaid);
         cmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@type",  paymentType);
-        cmd.Parameters.AddWithValue("@cid",   courseId.HasValue ? (object)courseId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@cid",   courseId.HasValue    ? (object)courseId.Value    : DBNull.Value);
+        cmd.Parameters.AddWithValue("@regId", registrarId.HasValue ? (object)registrarId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@refId", referralId.HasValue  ? (object)referralId.Value  : DBNull.Value);
         cmd.ExecuteNonQuery();
 
         // Auto-enroll in Academy StudentCourses when a course is purchased
@@ -355,6 +370,58 @@ public class PcService
         cmd.CommandText = "DELETE FROM Payments WHERE PaymentId=@id";
         cmd.Parameters.AddWithValue("@id", paymentId);
         cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>All active staff (Auditors + CaseSupervisors), ordered by first name.</summary>
+    public List<(int PersonId, string FullName)> GetStaff()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT p.PersonId,
+                   TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS FullName
+            FROM Persons p
+            WHERE p.PersonId IN (
+                SELECT AuditorId FROM Auditors WHERE COALESCE(Type,1) != 0
+                UNION
+                SELECT CsId FROM CaseSupervisors WHERE COALESCE(IsActive,1) = 1
+            )
+            ORDER BY p.FirstName";
+        var list = new List<(int, string)>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add((r.GetInt32(0), r.GetString(1).Trim()));
+        return list;
+    }
+
+    /// <summary>All persons for referral lookup.</summary>
+    public List<(int PersonId, string FullName)> GetAllPersons()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT PersonId, TRIM(FirstName || ' ' || COALESCE(NULLIF(LastName,''),''))
+            FROM Persons ORDER BY FirstName, LastName";
+        var list = new List<(int, string)>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add((r.GetInt32(0), r.GetString(1).Trim()));
+        return list;
+    }
+
+    /// <summary>Look up PersonId by username (matched on FirstName, case-insensitive).</summary>
+    public int? GetPersonIdByUsername(string username)
+    {
+        if (string.IsNullOrWhiteSpace(username)) return null;
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT PersonId FROM Persons WHERE LOWER(FirstName) = LOWER(@u) LIMIT 1";
+        cmd.Parameters.AddWithValue("@u", username.Trim());
+        var result = cmd.ExecuteScalar();
+        return result == null ? null : (int)(long)result;
     }
 
     private static object Nv(string? s) =>

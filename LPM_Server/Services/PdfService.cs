@@ -244,7 +244,7 @@ public class PdfService
                 page.Margin(12, Unit.Millimetre);
                 page.DefaultTextStyle(x => x.FontSize(10));
 
-                page.Content().ScaleToFit().Column(col =>
+                page.Content().Column(col =>
                 {
                     // ── Header ──
                     col.Item().Row(r =>
@@ -346,8 +346,8 @@ public class PdfService
                         return;
                     }
 
-                    // ── Student columns ──
-                    col.Item().Row(row =>
+                    // ── Student columns ── (ScaleToFit so the unpageable Row always fits)
+                    col.Item().ScaleToFit().Row(row =>
                     {
                         for (int c = 0; c < numCols; c++)
                         {
@@ -431,6 +431,59 @@ public class PdfService
                                 row.ConstantItem(8).Column(_ => { });
                         }
                     });
+
+                    // ── Per-course student count table ──
+                    if (personCourses != null)
+                    {
+                        // Aggregate: course name → number of weekly students enrolled
+                        var byCourse = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                        foreach (var (pid, _, _, _, _) in students)
+                        {
+                            if (!personCourses.TryGetValue(pid, out var cs) || string.IsNullOrEmpty(cs))
+                                continue;
+                            foreach (var part in cs.Split(','))
+                            {
+                                // strip trailing " (N)" visit count
+                                var p = part.Trim();
+                                var lastParen = p.LastIndexOf('(');
+                                var courseName = lastParen > 0 ? p[..lastParen].Trim() : p;
+                                if (!string.IsNullOrEmpty(courseName))
+                                    byCourse[courseName] = byCourse.GetValueOrDefault(courseName) + 1;
+                            }
+                        }
+
+                        if (byCourse.Count > 0)
+                        {
+                            col.Item().PaddingTop(8).LineHorizontal(1f).LineColor("#a7f3d0");
+                            col.Item().PaddingTop(6)
+                                .Text("Students per Course — this week")
+                                .FontSize(8).SemiBold().FontColor("#065f46");
+                            col.Item().PaddingTop(3).Table(t =>
+                            {
+                                t.ColumnsDefinition(cd =>
+                                {
+                                    cd.RelativeColumn(4);
+                                    cd.RelativeColumn(1);
+                                });
+                                t.Header(h =>
+                                {
+                                    h.Cell().Background("#d1fae5").Padding(3)
+                                        .Text("Course").FontSize(7.5f).SemiBold().FontColor("#065f46");
+                                    h.Cell().Background("#d1fae5").Padding(3).AlignCenter()
+                                        .Text("Students").FontSize(7.5f).SemiBold().FontColor("#065f46");
+                                });
+                                int ci = 0;
+                                foreach (var kv in byCourse.OrderByDescending(x => x.Value))
+                                {
+                                    string bg = ci++ % 2 == 0 ? "#ffffff" : "#f0fdf4";
+                                    t.Cell().Background(bg).Padding(3)
+                                        .Text(kv.Key).FontSize(8).FontColor("#1a1a2e");
+                                    t.Cell().Background(bg).AlignCenter().Padding(3)
+                                        .Text(kv.Value.ToString()).FontSize(9).SemiBold().FontColor("#059669");
+                                }
+                            });
+                        }
+                    }
                 });
             });
         }).GeneratePdf();

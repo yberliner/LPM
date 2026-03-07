@@ -4,6 +4,11 @@ using Microsoft.Extensions.Configuration;
 namespace LPM.Services;
 
 public record CourseItem(int CourseId, string Name);
+public record CourseEnrollmentItem(
+    int StudentCourseId, int PersonId, string PCFullName,
+    int CourseId, string CourseName, string DateStarted, string? DateFinished,
+    int PaidAmount, int? RegistrarId, string? RegistrarName,
+    int? ReferralId, string? ReferralName, int VisitCount);
 public record StudentCourseItem(int StudentCourseId, int PersonId, int CourseId, string CourseName,
     string DateStarted, string? DateFinished);
 
@@ -218,6 +223,53 @@ public class CourseService
         cmd.CommandText = "DELETE FROM StudentCourses WHERE StudentCourseId=@id";
         cmd.Parameters.AddWithValue("@id", studentCourseId);
         cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>All course enrollments with payment/registrar/referral/visit info for admin report.</summary>
+    public List<CourseEnrollmentItem> GetCourseEnrollmentReport()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT sc.StudentCourseId, sc.PersonId,
+                   TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS PCFullName,
+                   c.CourseId, c.Name AS CourseName,
+                   sc.DateStarted, sc.DateFinished,
+                   COALESCE(pay.AmountPaid, 0),
+                   pay.RegistrarId,
+                   TRIM(COALESCE(reg.FirstName,'') || ' ' || COALESCE(NULLIF(reg.LastName,''),'')) AS RegistrarName,
+                   pay.ReferralId,
+                   TRIM(COALESCE(rf.FirstName,'') || ' ' || COALESCE(NULLIF(rf.LastName,''),'')) AS ReferralName,
+                   (SELECT COUNT(*) FROM Students s
+                    WHERE s.PersonId = sc.PersonId AND s.VisitDate >= sc.DateStarted) AS VisitCount
+            FROM StudentCourses sc
+            JOIN Persons p ON p.PersonId = sc.PersonId
+            JOIN Courses c ON c.CourseId = sc.CourseId
+            LEFT JOIN (
+                SELECT PcId, CourseId, MAX(PaymentId) AS MaxPayId
+                FROM Payments
+                WHERE COALESCE(PaymentType,'Auditing') = 'Course'
+                GROUP BY PcId, CourseId
+            ) latest ON latest.PcId = sc.PersonId AND latest.CourseId = sc.CourseId
+            LEFT JOIN Payments pay ON pay.PaymentId = latest.MaxPayId
+            LEFT JOIN Persons reg ON reg.PersonId = pay.RegistrarId
+            LEFT JOIN Persons rf  ON rf.PersonId  = pay.ReferralId
+            ORDER BY c.Name, p.FirstName, p.LastName";
+        var list = new List<CourseEnrollmentItem>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new CourseEnrollmentItem(
+                r.GetInt32(0), r.GetInt32(1), r.GetString(2).Trim(),
+                r.GetInt32(3), r.GetString(4),
+                r.GetString(5), r.IsDBNull(6) ? null : r.GetString(6),
+                r.GetInt32(7),
+                r.IsDBNull(8)  ? null : r.GetInt32(8),
+                r.IsDBNull(9)  ? null : r.GetString(9).Trim(),
+                r.IsDBNull(10) ? null : r.GetInt32(10),
+                r.IsDBNull(11) ? null : r.GetString(11).Trim(),
+                r.GetInt32(12)));
+        return list;
     }
 
     /// <summary>Count of academy visits for this person on or after sinceDate.</summary>
