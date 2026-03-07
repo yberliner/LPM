@@ -82,9 +82,10 @@ public class PcService
             }
         }
 
-        // Ensure Persons has Phone/Email/DateOfBirth/Sex columns
+        // Ensure Persons has Phone/Email/DateOfBirth/Sex/IsActive/ExternalId columns
         foreach (var (col, type) in new[] {
-            ("Phone", "TEXT"), ("Email", "TEXT"), ("Age", "INTEGER"), ("DateOfBirth", "TEXT"), ("Sex", "TEXT") })
+            ("Phone", "TEXT"), ("Email", "TEXT"), ("Age", "INTEGER"), ("DateOfBirth", "TEXT"), ("Sex", "TEXT"),
+            ("IsActive", "INTEGER NOT NULL DEFAULT 1"), ("ExternalId", "TEXT") })
         {
             using var ck = conn.CreateCommand();
             ck.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('Persons') WHERE name='{col}'";
@@ -132,6 +133,7 @@ public class PcService
                 SELECT PcId, SUM(LengthSeconds) AS UsedSec
                 FROM Sessions WHERE IsFreeSession = 0 GROUP BY PcId
             ) sess ON sess.PcId = pc.PcId
+            WHERE COALESCE(p.IsActive, 1) = 1
             ORDER BY RemainSec ASC, p.FirstName, p.LastName";
         var list = new List<PcListItem>();
         using var r = cmd.ExecuteReader();
@@ -403,7 +405,7 @@ public class PcService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT PersonId, TRIM(FirstName || ' ' || COALESCE(NULLIF(LastName,''),''))
-            FROM Persons ORDER BY FirstName, LastName";
+            FROM Persons WHERE COALESCE(IsActive,1) = 1 ORDER BY FirstName, LastName";
         var list = new List<(int, string)>();
         using var r = cmd.ExecuteReader();
         while (r.Read())

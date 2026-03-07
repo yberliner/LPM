@@ -93,6 +93,17 @@ public class MenuDataService
             requiredRole: "Admin"
         ),
         new MainMenuItems(
+            path: "/Admin/Members",
+            type: "link",
+            title: "Members",
+            icon: "ri-group-line",
+            svg: "",
+            selected: false,
+            active: false,
+            dirChange: false,
+            requiredRole: "Admin"
+        ),
+        new MainMenuItems(
             path: "/Guide",
             type: "link",
             title: "User Guide",

@@ -9,6 +9,9 @@ public record VisitRecord(int VisitId, int PersonId, string FullName, string Ref
 public record TopStudent(string FullName, int VisitCount, string Org);
 public record WeekVisitCount(string WeekLabel, int TotalVisits, List<TopStudent> TopStudents,
     int DonCount, int FriendCount, int SocialCount, int OtherCount);
+public record MemberAdminItem(int PersonId, string FullName, string Phone,
+    bool IsActive, bool IsPC, bool IsAcademyStudent, bool IsStaff,
+    string FirstName, string LastName, string? ExternalId);
 
 public class AcademyService
 {
@@ -40,7 +43,9 @@ public class AcademyService
             ("DateOfBirth", "TEXT"),
             ("Sex", "TEXT"),
             ("Org", "TEXT"),
-            ("Referral", "TEXT") })
+            ("Referral", "TEXT"),
+            ("IsActive", "INTEGER NOT NULL DEFAULT 1"),
+            ("ExternalId", "TEXT") })
             if (!cols.Contains(col))
                 Execute(conn, $"ALTER TABLE Persons ADD COLUMN {col} {type}");
     }
@@ -96,6 +101,7 @@ public class AcademyService
                    COALESCE(Referral,'') AS Referral,
                    COALESCE(Org,'') AS Org
             FROM Persons
+            WHERE COALESCE(IsActive, 1) = 1
             ORDER BY FirstName, LastName";
         var list = new List<PersonItem>();
         using var r = cmd.ExecuteReader();
@@ -144,7 +150,7 @@ public class AcademyService
                    COALESCE(p.Org,'')      AS Org
             FROM Students s
             JOIN Persons p ON p.PersonId = s.PersonId
-            WHERE s.VisitDate = @date
+            WHERE s.VisitDate = @date AND COALESCE(p.IsActive, 1) = 1
             ORDER BY p.FirstName, p.LastName";
         cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
         var list = new List<VisitRecord>();
@@ -194,6 +200,7 @@ public class AcademyService
             FROM Students s
             JOIN Persons p ON p.PersonId = s.PersonId
             WHERE s.VisitDate >= @start AND s.VisitDate <= @end
+              AND COALESCE(p.IsActive, 1) = 1
             GROUP BY s.PersonId
             ORDER BY VisitCount DESC, FullName ASC";
         cmd.Parameters.AddWithValue("@start", weekStart.ToString("yyyy-MM-dd"));
@@ -318,6 +325,68 @@ public class AcademyService
                 socialCounts[ws],
                 otherCounts[ws]))
             .ToList();
+    }
+
+    // ── Members admin ────────────────────────────────────────────────────────
+
+    public List<MemberAdminItem> GetAllMembersForAdmin()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT p.PersonId,
+                   TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS FullName,
+                   COALESCE(p.Phone,'') AS Phone,
+                   COALESCE(p.IsActive, 1) AS IsActive,
+                   CASE WHEN pc.PcId IS NOT NULL THEN 1 ELSE 0 END AS IsPC,
+                   CASE WHEN vis.PersonId IS NOT NULL THEN 1 ELSE 0 END AS IsAcademy,
+                   CASE WHEN aud.AuditorId IS NOT NULL OR cs.CsId IS NOT NULL THEN 1 ELSE 0 END AS IsStaff,
+                   COALESCE(p.FirstName,'') AS FirstName,
+                   COALESCE(p.LastName,'') AS LastName,
+                   p.ExternalId
+            FROM Persons p
+            LEFT JOIN PCs pc ON pc.PcId = p.PersonId
+            LEFT JOIN (SELECT DISTINCT PersonId FROM Students) vis ON vis.PersonId = p.PersonId
+            LEFT JOIN Auditors aud ON aud.AuditorId = p.PersonId
+            LEFT JOIN CaseSupervisors cs ON cs.CsId = p.PersonId
+            ORDER BY COALESCE(p.IsActive,1) DESC, p.FirstName, p.LastName";
+        var list = new List<MemberAdminItem>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new MemberAdminItem(
+                r.GetInt32(0), r.GetString(1).Trim(), r.GetString(2),
+                r.GetInt32(3) == 1,
+                r.GetInt32(4) == 1,
+                r.GetInt32(5) == 1,
+                r.GetInt32(6) == 1,
+                r.GetString(7), r.GetString(8),
+                r.IsDBNull(9) ? null : r.GetString(9)));
+        return list;
+    }
+
+    public void UpdateAndActivatePerson(int personId, string firstName, string lastName, string? externalId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE Persons SET FirstName=@fn, LastName=@ln, ExternalId=@eid, IsActive=1 WHERE PersonId=@id";
+        cmd.Parameters.AddWithValue("@fn", firstName.Trim());
+        cmd.Parameters.AddWithValue("@ln", lastName.Trim());
+        cmd.Parameters.AddWithValue("@eid", (object?)externalId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@id", personId);
+        cmd.ExecuteNonQuery();
+    }
+
+    public void SetPersonActive(int personId, bool active)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE Persons SET IsActive = @v WHERE PersonId = @id";
+        cmd.Parameters.AddWithValue("@v",  active ? 1 : 0);
+        cmd.Parameters.AddWithValue("@id", personId);
+        cmd.ExecuteNonQuery();
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
