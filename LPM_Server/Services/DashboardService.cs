@@ -183,6 +183,20 @@ public class DashboardService
             )";
         permCmd.ExecuteNonQuery();
 
+        // Remove duplicate Persons rows (keep lowest PersonId per FirstName)
+        using var dedupCmd = conn.CreateCommand();
+        dedupCmd.CommandText = @"
+            DELETE FROM Persons
+            WHERE PersonId NOT IN (
+                SELECT MIN(PersonId) FROM Persons GROUP BY LOWER(FirstName)
+            )
+            AND PersonId NOT IN (SELECT AuditorId FROM Auditors)
+            AND PersonId NOT IN (SELECT CsId FROM CaseSupervisors)
+            AND PersonId NOT IN (SELECT PcId FROM PCs)";
+        var removed = dedupCmd.ExecuteNonQuery();
+        if (removed > 0)
+            Console.WriteLine($"[Startup] Removed {removed} duplicate Persons row(s).");
+
         // Ensure every active User has a matching Persons row (matched by Username → FirstName)
         using var ensurePersonsCmd = conn.CreateCommand();
         ensurePersonsCmd.CommandText = @"
@@ -1678,7 +1692,7 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $@"
-            SELECT DISTINCT p.PersonId, {FullNameExpr} AS FullName
+            SELECT p.PersonId, {FullNameExpr} AS FullName
             FROM Persons p
             WHERE EXISTS (SELECT 1 FROM Auditors a WHERE a.AuditorId = p.PersonId AND a.IsActive = 1)
                OR EXISTS (SELECT 1 FROM CaseSupervisors cs WHERE cs.CsId = p.PersonId AND cs.IsActive = 1)
@@ -1687,6 +1701,7 @@ public class DashboardService
                    JOIN UserRoles ur ON ur.UserId = u.Id
                    WHERE LOWER(u.Username) = LOWER(p.FirstName) AND u.IsActive = 1
                )
+            GROUP BY p.PersonId
             ORDER BY p.FirstName, p.LastName";
         var list = new List<StaffMember>();
         using var r = cmd.ExecuteReader();
