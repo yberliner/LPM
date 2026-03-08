@@ -18,6 +18,7 @@ window.quillInterop = (function () {
                     ['bold', 'italic', 'underline', 'strike'],
                     [{ 'color': [] }, { 'background': [] }],
                     [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                    [{ 'direction': 'rtl' }, { 'align': [] }],
                     ['clean']
                 ]
             }
@@ -56,6 +57,10 @@ window.quillInterop = (function () {
         if (bgPicker) bgPicker.title = 'Highlight color';
         const sizePicker = toolbar.querySelector('.ql-size .ql-picker-label');
         if (sizePicker) sizePicker.title = 'Text size';
+        const rtlBtn = toolbar.querySelector('.ql-direction');
+        if (rtlBtn) rtlBtn.title = 'Right to left';
+        const alignPicker = toolbar.querySelector('.ql-align .ql-picker-label');
+        if (alignPicker) alignPicker.title = 'Text alignment';
 
         instances.set(editorEl, quill);
     }

@@ -3,6 +3,7 @@ using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using LPM.Services;   // PcInfo lives here in your project
 using SkiaSharp;
+using System.Text.RegularExpressions;
 
 public class PdfService
 {
@@ -11,7 +12,8 @@ public class PdfService
         DateOnly weekStart,
         List<PcInfo> pcs,
         Dictionary<(int pcId, int dayIdx), int> grid,
-        Dictionary<int, string> pcCsNames)
+        Dictionary<int, string> pcCsNames,
+        string? weeklyRemarks = null)
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
@@ -108,6 +110,15 @@ public class PdfService
                                 .Text(DashboardService.FmtOrBlank(csTotal))
                                 .SemiBold().FontSize(14).FontColor("#ffffff");
                         });
+                    }
+
+                    // ══════ WEEKLY REMARKS ══════
+                    if (!string.IsNullOrWhiteSpace(weeklyRemarks))
+                    {
+                        col.Item().PaddingTop(14);
+                        col.Item().Text("Weekly Remarks / הערות שבועיות").SemiBold().FontSize(11).FontColor("#1a237e");
+                        col.Item().PaddingTop(4);
+                        RenderHtmlBlock(col, weeklyRemarks);
                     }
                 });
             });
@@ -870,5 +881,118 @@ public class PdfService
         "Other"           => rowNum % 2 == 0 ? "#f9fafb" : "#f3f4f6",
         _                 => rowNum % 2 == 0 ? "#f9fbe7" : Colors.White,  // Don / default
     };
+
+    // ── HTML → QuestPDF rich text rendering ──────────────────────────
+
+    private static void RenderHtmlBlock(ColumnDescriptor col, string html)
+    {
+        // Split into paragraphs by <p>, <div>, <br>, <li> boundaries
+        // Quill output: <p>text</p>, <p><br></p> for empty lines, <p class="ql-direction-rtl">...</p>
+        var blocks = Regex.Split(html, @"(?=<p[\s>])|(?=<li[\s>])|(?=<div[\s>])");
+
+        foreach (var block in blocks)
+        {
+            if (string.IsNullOrWhiteSpace(block)) continue;
+
+            // Detect RTL: explicit Quill class/attribute, or auto-detect Hebrew/Arabic characters
+            var blockText = Regex.Replace(block, "<[^>]+>", "");
+            blockText = System.Net.WebUtility.HtmlDecode(blockText);
+            bool isRtl = block.Contains("ql-direction-rtl", StringComparison.OrdinalIgnoreCase)
+                      || Regex.IsMatch(block, @"dir\s*=\s*[""']rtl[""']", RegexOptions.IgnoreCase)
+                      || Regex.IsMatch(blockText, @"[\u0590-\u05FF\u0600-\u06FF\uFB50-\uFDFF\uFE70-\uFEFF]");
+
+            // Check for empty paragraph (<p><br></p>)
+            var innerHtml = Regex.Replace(block, @"^<[^>]+>|</[^>]+>$", "").Trim();
+            if (string.IsNullOrEmpty(innerHtml) || innerHtml == "<br>" || innerHtml == "<br/>")
+            {
+                col.Item().PaddingTop(4);
+                continue;
+            }
+
+            var item = col.Item().Background("#f5f5f5").PaddingHorizontal(8).PaddingVertical(1);
+            if (isRtl)
+                item = item.AlignRight();
+
+            item.Text(text =>
+            {
+                text.DefaultTextStyle(x => x.FontSize(10));
+
+                // Parse inline elements: <strong>, <em>, <u>, <s>, <span style="...">, plain text
+                var parts = Regex.Split(innerHtml, @"(<(?:strong|em|u|s|span|br)\b[^>]*>|</(?:strong|em|u|s|span)>)");
+
+                bool bold = false, italic = false, underline = false, strike = false;
+                string? color = null;
+                string? bgColor = null;
+                float fontSize = 10f;
+
+                foreach (var part in parts)
+                {
+                    if (string.IsNullOrEmpty(part)) continue;
+
+                    if (part == "<strong>" || part == "<b>") { bold = true; continue; }
+                    if (part == "</strong>" || part == "</b>") { bold = false; continue; }
+                    if (part == "<em>" || part == "<i>") { italic = true; continue; }
+                    if (part == "</em>" || part == "</i>") { italic = false; continue; }
+                    if (part == "<u>") { underline = true; continue; }
+                    if (part == "</u>") { underline = false; continue; }
+                    if (part == "<s>") { strike = true; continue; }
+                    if (part == "</s>") { strike = false; continue; }
+                    if (part.StartsWith("<br")) { text.Span("\n"); continue; }
+
+                    if (part.StartsWith("<span"))
+                    {
+                        var styleMatch = Regex.Match(part, @"style=""([^""]*)""");
+                        if (styleMatch.Success)
+                        {
+                            var style = styleMatch.Groups[1].Value;
+                            var colorMatch = Regex.Match(style, @"(?<!background-)color:\s*([^;]+)");
+                            if (colorMatch.Success) color = colorMatch.Groups[1].Value.Trim();
+                            var bgMatch = Regex.Match(style, @"background-color:\s*([^;]+)");
+                            if (bgMatch.Success) bgColor = bgMatch.Groups[1].Value.Trim();
+                            var sizeMatch = Regex.Match(style, @"font-size:\s*(\d+)");
+                            if (sizeMatch.Success) fontSize = float.Parse(sizeMatch.Groups[1].Value);
+                        }
+                        continue;
+                    }
+                    if (part == "</span>") { color = null; bgColor = null; fontSize = 10f; continue; }
+
+                    // Skip other tags
+                    if (part.StartsWith("<")) continue;
+
+                    // Render text span with accumulated styles
+                    var decoded = System.Net.WebUtility.HtmlDecode(part);
+                    var span = text.Span(decoded).FontSize(fontSize);
+                    if (bold) span = span.SemiBold();
+                    if (italic) span = span.Italic();
+                    if (underline) span = span.Underline();
+                    if (strike) span = span.Strikethrough();
+                    if (color != null) span = span.FontColor(ParseColor(color));
+                    if (bgColor != null) span = span.BackgroundColor(ParseColor(bgColor));
+                }
+            });
+        }
+    }
+
+    private static string ParseColor(string cssColor)
+    {
+        cssColor = cssColor.Trim().TrimEnd(';');
+        if (cssColor.StartsWith("#")) return cssColor;
+        // Handle rgb(r,g,b)
+        var rgbMatch = Regex.Match(cssColor, @"rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)");
+        if (rgbMatch.Success)
+        {
+            int r = int.Parse(rgbMatch.Groups[1].Value);
+            int g = int.Parse(rgbMatch.Groups[2].Value);
+            int b = int.Parse(rgbMatch.Groups[3].Value);
+            return $"#{r:X2}{g:X2}{b:X2}";
+        }
+        // Named colors fallback
+        return cssColor switch
+        {
+            "red" => "#FF0000", "blue" => "#0000FF", "green" => "#008000",
+            "yellow" => "#FFFF00", "white" => "#FFFFFF", "black" => "#000000",
+            _ => "#000000"
+        };
+    }
 }
 

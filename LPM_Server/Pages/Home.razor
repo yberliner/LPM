@@ -495,6 +495,29 @@
                 }
             }
 
+            @* ══════ WEEKLY REMARKS ══════ *@
+            <div class="card mx-3 mt-3 mb-2">
+                <div class="card-header py-2" style="background:#e8eaf6; color:#1a237e; font-size:.85rem;">
+                    <i class="ri-edit-line me-1"></i>
+                    <strong>@LS.T("home.weeklyRemarks")</strong>
+                </div>
+                <div class="card-body p-2" dir="auto">
+                    <SpkRichEditor @key="_weekStart" Value="@_weekRemarks"
+                                   ValueChanged="@(v => { _weekRemarks = v; _remarksSaved = false; })" />
+                    <div class="d-flex align-items-center mt-2">
+                        <button class="btn btn-sm btn-primary" @onclick="SaveRemarks">
+                            <i class="ri-save-line me-1"></i>@LS.T("common.save")
+                        </button>
+                        @if (_remarksSaved)
+                        {
+                            <span class="ms-2 text-success small">
+                                <i class="ri-check-line"></i> @LS.T("common.saved")
+                            </span>
+                        }
+                    </div>
+                </div>
+            </div>
+
         </div>
 
         @* ── Context menu ── *@
@@ -840,6 +863,10 @@
     string _addPcCategory = "Auditor"; // "Auditor", "CSSolo", "CS"
 
 
+    // Weekly remarks
+    string _weekRemarks = "";
+    bool   _remarksSaved;
+
     // Weekly history chart
     List<WeekTotal> _weeklyTotals = [];
     int _chartKey;
@@ -915,6 +942,9 @@
 
             RefreshCsMetadata();
         }
+
+        _weekRemarks = DashSvc.GetWeeklyRemarks(_userId.Value, _weekStart.ToString("yyyy-MM-dd")) ?? "";
+        _remarksSaved = false;
 
         UpdateChartTooltip();
         _chartKey++;
@@ -1101,9 +1131,16 @@
         if (_selPcId == _ctxPcId && _selRole != "CSSolo") ClearSelection();
     }
 
+    void SaveRemarks()
+    {
+        if (!_userId.HasValue) return;
+        DashSvc.SaveWeeklyRemarks(_userId.Value, _weekStart.ToString("yyyy-MM-dd"), _weekRemarks);
+        _remarksSaved = true;
+    }
+
     async Task PrintTable()
     {
-        var pdfBytes = PdfService.GenerateWeeklyTablePdf(_displayName, _weekStart, _myPcs, _grid, _pcCsNames);
+        var pdfBytes = PdfService.GenerateWeeklyTablePdf(_displayName, _weekStart, _myPcs, _grid, _pcCsNames, _weekRemarks);
 
         var fileName = $"Week_{_weekStart:yyyy_MM_dd}.pdf";
         await JS.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(pdfBytes));

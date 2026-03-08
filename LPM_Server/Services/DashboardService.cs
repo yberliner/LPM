@@ -222,6 +222,7 @@ public class DashboardService
         if (pcsInserted > 0)
             Console.WriteLine($"[Startup] Added {pcsInserted} staff member(s) to PCs table.");
 
+
     }
 
     // ── Staff Permissions ─────────────────────────────────────────
@@ -1797,6 +1798,35 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "UPDATE StaffMessages SET AcknowledgedAt = datetime('now') WHERE Id = @id";
         cmd.Parameters.AddWithValue("@id", messageId);
+        cmd.ExecuteNonQuery();
+    }
+
+    // ── Weekly Remarks ───────────────────────────────────────────────
+
+    public string? GetWeeklyRemarks(int auditorId, string weekDate)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Remarks FROM WeeklyRemarks WHERE AuditorId = @aud AND WeekDate = @wk";
+        cmd.Parameters.AddWithValue("@aud", auditorId);
+        cmd.Parameters.AddWithValue("@wk", weekDate);
+        return cmd.ExecuteScalar() as string;
+    }
+
+    public void SaveWeeklyRemarks(int auditorId, string weekDate, string remarks)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO WeeklyRemarks (AuditorId, WeekDate, Remarks, SubmittedAt)
+            VALUES (@aud, @wk, @rem, datetime('now'))
+            ON CONFLICT(AuditorId, WeekDate)
+            DO UPDATE SET Remarks = @rem, SubmittedAt = datetime('now')";
+        cmd.Parameters.AddWithValue("@aud", auditorId);
+        cmd.Parameters.AddWithValue("@wk", weekDate);
+        cmd.Parameters.AddWithValue("@rem", remarks ?? "");
         cmd.ExecuteNonQuery();
     }
 }
