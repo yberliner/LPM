@@ -183,6 +183,20 @@ public class DashboardService
             )";
         permCmd.ExecuteNonQuery();
 
+        // Ensure every active User has a matching Persons row (matched by Username → FirstName)
+        using var ensurePersonsCmd = conn.CreateCommand();
+        ensurePersonsCmd.CommandText = @"
+            INSERT INTO Persons (FirstName, LastName)
+            SELECT u.Username, ''
+            FROM Users u
+            WHERE u.IsActive = 1
+              AND NOT EXISTS (
+                  SELECT 1 FROM Persons p WHERE LOWER(p.FirstName) = LOWER(u.Username)
+              )";
+        var inserted = ensurePersonsCmd.ExecuteNonQuery();
+        if (inserted > 0)
+            Console.WriteLine($"[Startup] Created {inserted} missing Persons row(s) for active Users.");
+
     }
 
     // ── Staff Permissions ─────────────────────────────────────────
@@ -454,6 +468,7 @@ public class DashboardService
         var result = cmd.ExecuteScalar();
         return result is long l ? (int)l : null;
     }
+
 
     public bool IsAuditor(int userId)
     {
@@ -1667,11 +1682,17 @@ public class DashboardService
             FROM Persons p
             WHERE EXISTS (SELECT 1 FROM Auditors a WHERE a.AuditorId = p.PersonId AND a.IsActive = 1)
                OR EXISTS (SELECT 1 FROM CaseSupervisors cs WHERE cs.CsId = p.PersonId AND cs.IsActive = 1)
+               OR EXISTS (
+                   SELECT 1 FROM Users u
+                   JOIN UserRoles ur ON ur.UserId = u.Id
+                   WHERE LOWER(u.Username) = LOWER(p.FirstName) AND u.IsActive = 1
+               )
             ORDER BY p.FirstName, p.LastName";
         var list = new List<StaffMember>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
             list.Add(new StaffMember(r.GetInt32(0), r.GetString(1)));
+
         return list;
     }
 
