@@ -119,6 +119,11 @@ public class AuditorService(IConfiguration config)
         aCmd.Parameters.AddWithValue("@type", type);
         aCmd.ExecuteNonQuery();
 
+        using var pcCmd = conn.CreateCommand();
+        pcCmd.CommandText = "INSERT OR IGNORE INTO PCs (PcId) VALUES (@id)";
+        pcCmd.Parameters.AddWithValue("@id", personId);
+        pcCmd.ExecuteNonQuery();
+
         return personId;
     }
 

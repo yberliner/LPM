@@ -211,6 +211,17 @@ public class DashboardService
         if (inserted > 0)
             Console.WriteLine($"[Startup] Created {inserted} missing Persons row(s) for active Users.");
 
+        // Ensure all staff (Auditors + CaseSupervisors) exist in PCs table
+        using var ensurePcsCmd = conn.CreateCommand();
+        ensurePcsCmd.CommandText = @"
+            INSERT OR IGNORE INTO PCs (PcId)
+            SELECT AuditorId FROM Auditors
+            UNION
+            SELECT CsId FROM CaseSupervisors";
+        var pcsInserted = ensurePcsCmd.ExecuteNonQuery();
+        if (pcsInserted > 0)
+            Console.WriteLine($"[Startup] Added {pcsInserted} staff member(s) to PCs table.");
+
     }
 
     // ── Staff Permissions ─────────────────────────────────────────

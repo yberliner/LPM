@@ -133,7 +133,14 @@ public class AcademyService
 
         using var idCmd = conn.CreateCommand();
         idCmd.CommandText = "SELECT last_insert_rowid()";
-        return (int)(long)idCmd.ExecuteScalar()!;
+        var personId = (int)(long)idCmd.ExecuteScalar()!;
+
+        using var pcCmd = conn.CreateCommand();
+        pcCmd.CommandText = "INSERT OR IGNORE INTO PCs (PcId) VALUES (@id)";
+        pcCmd.Parameters.AddWithValue("@id", personId);
+        pcCmd.ExecuteNonQuery();
+
+        return personId;
     }
 
     // ── Visits ───────────────────────────────────────────────────────────────
