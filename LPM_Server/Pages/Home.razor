@@ -13,34 +13,34 @@
     @* ── Week navigation bar ── *@
     <div class="home-nav-bar d-flex align-items-center flex-wrap gap-2 px-3 py-2">
         <button class="btn btn-sm home-nav-btn" @onclick="PrevWeek">
-            <i class="ri-arrow-left-s-line"></i> Prev
+            <i class="ri-arrow-left-s-line"></i> @LS.T("common.prev")
         </button>
         <span class="home-nav-week">
             <i class="ri-calendar-2-line me-1 opacity-75"></i>@DayLabel(_weekStart) – @DayLabel(_weekStart.AddDays(6))
         </span>
         <button class="btn btn-sm home-nav-btn" @onclick="NextWeek"
                 disabled="@(_weekStart >= DashboardService.GetWeekStart(MaxAllowedDate()))">
-            Next <i class="ri-arrow-right-s-line"></i>
+            @LS.T("common.next") <i class="ri-arrow-right-s-line"></i>
         </button>
         <div class="d-flex align-items-center gap-2 ms-auto">
             <button class="btn btn-sm home-nav-btn" @onclick="PrintTable">
-                <i class="ri-printer-line me-1"></i>Print
+                <i class="ri-printer-line me-1"></i>@LS.T("common.print")
             </button>
             @if (_isAuditor && _isCS && !_soloMode)
             {
                 <div class="btn-group btn-group-sm" role="group" title="Column filter">
                     <button type="button"
                             class="btn @(_roleFilter=="Both"?"home-filter-active":"home-filter-btn")"
-                            @onclick='() => _roleFilter="Both"'>Both</button>
+                            @onclick='() => _roleFilter="Both"'>@LS.T("home.both")</button>
                     <button type="button"
                             class="btn @(_roleFilter=="Auditor"?"home-filter-active":"home-filter-btn")"
-                            @onclick='() => _roleFilter="Auditor"'>Aud</button>
+                            @onclick='() => _roleFilter="Auditor"'>@LS.T("home.aud")</button>
                     <button type="button"
                             class="btn @(_roleFilter=="CS"?"home-filter-active":"home-filter-btn")"
                             @onclick='() => _roleFilter="CS"'>CS</button>
                 </div>
                 <button class="btn btn-sm @(_hideEmpty?"home-filter-active":"home-filter-btn")"
-                        title="@(_hideEmpty?"Show empty columns":"Hide empty columns")"
+                        title="@(_hideEmpty?LS.T("home.showEmpty"):LS.T("home.hideEmpty"))"
                         @onclick="() => _hideEmpty = !_hideEmpty">
                     <i class="@(_hideEmpty?"ri-eye-line":"ri-eye-off-line")"></i>
                 </button>
@@ -48,14 +48,14 @@
             @if (!_soloMode)
             {
                 <button class="btn btn-sm home-nav-btn-accent" @onclick="ShowAddPcModal">
-                    <i class="ri-add-line me-1"></i>Add PC
+                    <i class="ri-add-line me-1"></i>@LS.T("home.addPC")
                 </button>
             }
             @if (_auditorType == 3)
             {
                 <button class="btn btn-sm @(_soloMode ? "home-solo-active" : "home-solo-btn")"
                         @onclick="ToggleSoloMode">
-                    <i class="ri-user-line me-1"></i>@(_soloMode ? "Solo ✓" : "Solo")
+                    <i class="ri-user-line me-1"></i>@(_soloMode ? LS.T("home.solo") + " ✓" : LS.T("home.solo"))
                 </button>
             }
         </div>
@@ -63,11 +63,11 @@
 
     @if (_userId == null)
     {
-        <div class="px-3 text-danger">User record not found in database.</div>
+        <div class="px-3 text-danger">@LS.T("home.userNotFound")</div>
     }
     else if (!_isAuditor && !_isCS && !_isSoloAuditor)
     {
-        <div class="px-3 text-muted">No Auditor or CS role found for this account.</div>
+        <div class="px-3 text-muted">@LS.T("home.noRole")</div>
     }
     else
     {
@@ -85,7 +85,7 @@
                 <thead class="table-light">
                     @* ── CS row ── *@
                     <tr class="small" style="color:#555;">
-                        <th style="min-width:110px;">CS:</th>
+                        <th style="min-width:110px;">@LS.T("home.csHeader")</th>
                         @foreach (var pc in VisiblePcs)
                         {
                             var csFullName       = _pcCsNames.TryGetValue(pc.PcId, out var cn) ? cn : "";
@@ -97,7 +97,7 @@
                                 @oncontextmenu:preventDefault="true">
                                 @if (pc.IsSolo)
                                 {
-                                    <span title="Solo sessions">Solo</span>
+                                    <span title="@LS.T("home.soloSessions")">@LS.T("home.solo")</span>
                                 }
                                 else if (pc.WorkCapacity == "CS")
                                 {
@@ -109,7 +109,7 @@
                                 }
                                 <span style="position:absolute; top:1px; right:2px; line-height:1; cursor:pointer;
                                              color:#aaa; font-size:11px; font-weight:700;"
-                                      title="Remove column"
+                                      title="@LS.T("home.removeColumn")"
                                       @onclick="() => RemovePcDirectly(pc)"
                                       @onclick:stopPropagation="true">✕</span>
                             </th>
@@ -119,7 +119,7 @@
                     @if (VisiblePcs.Any())
                     {
                         <tr class="table-light">
-                            <th class="fw-semibold small py-1" style="color:#555;">Role</th>
+                            <th class="fw-semibold small py-1" style="color:#555;">@LS.T("home.role")</th>
                             @foreach (var pc in VisiblePcs)
                             {
                                 var roleColBlocked = !pc.IsSolo && _unapprovedPcIds.Contains(pc.PcId);
@@ -127,15 +127,15 @@
                                     style="@(roleColBlocked ? "opacity:.35; pointer-events:none;" : "")">
                                     @if (pc.IsSolo)
                                     {
-                                        <span class="badge bg-warning-transparent">Solo</span>
+                                        <span class="badge bg-warning-transparent">@LS.T("home.solo")</span>
                                     }
                                     else if (pc.WorkCapacity == "Miscellaneous")
                                     {
-                                        <span class="badge bg-secondary-transparent">Other</span>
+                                        <span class="badge bg-secondary-transparent">@LS.T("home.other")</span>
                                     }
                                     else if (pc.WorkCapacity == "SoloAuditor")
                                     {
-                                        <span class="badge bg-warning-transparent">Solo</span>
+                                        <span class="badge bg-warning-transparent">@LS.T("home.solo")</span>
                                     }
                                     else if (_isCS)
                                     {
@@ -147,7 +147,7 @@
                                                 {
                                                     <i class="ri-checkbox-circle-fill me-1"></i>
                                                 }
-                                                Aud
+                                                @LS.T("home.aud")
                                             </button>
                                             <button type="button" class="btn @CsBtnClass(pc)"
                                                     style="padding:1px 5px; font-size:0.7rem;"
@@ -162,7 +162,7 @@
                                     }
                                     else
                                     {
-                                        <span class="badge bg-primary-transparent">Auditor</span>
+                                        <span class="badge bg-primary-transparent">@LS.T("home.aud")</span>
                                     }
                                 </th>
                             }
@@ -170,7 +170,7 @@
                     }
                     @* ── PC name row ── *@
                     <tr>
-                        <th style="min-width:110px;">Day</th>
+                        <th style="min-width:110px;">@LS.T("home.day")</th>
                         @foreach (var pc in VisiblePcs)
                         {
                             var hasPendingCs   = Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((DashboardService.GKey(pc), d)));
@@ -180,7 +180,7 @@
                                 @oncontextmenu="e => { if (!isPendingApprv) ShowCtxMenu(e, pc); }"
                                 @oncontextmenu:preventDefault="true">
                                 <span class="badge rounded-pill"
-                                      title="@(isPendingApprv ? pc.FullName + " — pending admin approval" : pc.FullName)"
+                                      title="@(isPendingApprv ? pc.FullName + " — " + LS.T("home.pendingApproval") : pc.FullName)"
                                       style="@(isPendingApprv
                                           ? "background:#f1f3f5; color:#868e96; border:1px solid #ced4da;"
                                           : hasPendingCs
@@ -196,7 +196,7 @@
                         @if (_myPcs.Count == 0)
                         {
                             <th class="text-muted fst-italic fw-normal">
-                                Click <strong>+ Add PC</strong> to begin
+                                @LS.T("home.clickToBegin")
                             </th>
                         }
                     </tr>
@@ -401,28 +401,28 @@
                                             <div class="home-form-box">
                                                 <div class="row g-2 align-items-center mb-2">
                                                     <div class="col-auto">
-                                                        <label class="form-label mb-0 small">Duration (H:MM)</label>
+                                                        <label class="form-label mb-0 small">@LS.T("home.duration")</label>
                                                         <input class="form-control form-control-sm" style="width:90px;"
                                                                @bind="_editDuration" @bind:event="oninput" />
                                                     </div>
                                                     <div class="col-auto">
-                                                        <label class="form-label mb-0 small">Admin min</label>
+                                                        <label class="form-label mb-0 small">@LS.T("home.adminMin")</label>
                                                         <input class="form-control form-control-sm" style="width:70px;" type="number" min="0"
                                                                @bind="_editAdminMin" />
                                                     </div>
                                                     <div class="col-auto d-flex align-items-end pb-1">
                                                         <div class="form-check mb-0">
                                                             <input class="form-check-input" type="checkbox" id="chkEditFree" @bind="_editIsFree" />
-                                                            <label class="form-check-label small" for="chkEditFree">Free</label>
+                                                            <label class="form-check-label small" for="chkEditFree">@LS.T("home.free")</label>
                                                         </div>
                                                     </div>
                                                     <div class="col-auto ms-auto">
-                                                        <button class="btn btn-sm btn-primary" @onclick="SaveEditSession">Save</button>
-                                                        <button class="btn btn-sm btn-link text-danger" @onclick="CancelEditSession">Cancel</button>
+                                                        <button class="btn btn-sm btn-primary" @onclick="SaveEditSession">@LS.T("common.save")</button>
+                                                        <button class="btn btn-sm btn-link text-danger" @onclick="CancelEditSession">@LS.T("common.cancel")</button>
                                                     </div>
                                                 </div>
                                                 <div class="mb-1">
-                                                    <label class="form-label mb-1 small">Summary</label>
+                                                    <label class="form-label mb-1 small">@LS.T("home.summary")</label>
                                                     <SpkRichEditor Value="@_editSummary" ValueChanged="@(v => _editSummary = v)" />
                                                 </div>
                                                 @if (!string.IsNullOrEmpty(_editError))
@@ -452,19 +452,19 @@
                                                 @if (s.AdminSec > 0)
                                                 {
                                                     <span class="text-muted small">
-                                                        (Admin: @DashboardService.Fmt(s.AdminSec))
+                                                        (@LS.T("home.admin"): @DashboardService.Fmt(s.AdminSec))
                                                     </span>
                                                 }
                                                 @if (s.IsFree)
                                                 {
-                                                    <span class="badge bg-warning-transparent">Free</span>
+                                                    <span class="badge bg-warning-transparent">@LS.T("home.free")</span>
                                                 }
                                                 @{ var sessionApproved = s.VerifiedStatus == "Approved"; }
                                                 <button class="btn btn-link btn-sm py-0 px-1 ms-auto" style="font-size:0.75rem;"
-                                                        title="@(sessionApproved ? "Cannot edit — session is approved" : "Edit session")"
+                                                        title="@(sessionApproved ? LS.T("home.cannotEditApproved") : LS.T("home.editSession"))"
                                                         disabled="@sessionApproved"
                                                         @onclick="() => OpenEditSession(s)">
-                                                    <i class="ri-edit-line"></i> Edit
+                                                    <i class="ri-edit-line"></i> @LS.T("common.edit")
                                                 </button>
                                             </div>
                                             @if (!string.IsNullOrWhiteSpace(s.Summary))
@@ -482,22 +482,22 @@
                         {
                             <button class="btn btn-sm home-nav-btn-accent"
                                     @onclick="OpenAddSession">
-                                <i class="ri-add-line me-1"></i>@(_selRole == "Miscellaneous" ? "Add Misc Entry" : "Add Session")
+                                <i class="ri-add-line me-1"></i>@(_selRole == "Miscellaneous" ? LS.T("home.addMiscEntry") : LS.T("home.addSession"))
                             </button>
                         }
                         else
                         {
                             <div class="home-form-box mt-2">
-                                <h6 class="mb-2">@(_selRole == "Miscellaneous" ? "Add Misc Entry" : "Add Session")</h6>
+                                <h6 class="mb-2">@(_selRole == "Miscellaneous" ? LS.T("home.addMiscEntry") : LS.T("home.addSession"))</h6>
                                 <div class="row g-2 align-items-center mb-2">
                                     <div class="col-auto">
-                                        <label class="form-label mb-0 small">Duration (H:MM)</label>
+                                        <label class="form-label mb-0 small">@LS.T("home.duration")</label>
                                         <input class="form-control form-control-sm"
                                                style="width:90px;" placeholder="1:30"
                                                @bind="_addDuration" @bind:event="oninput" />
                                     </div>
                                     <div class="col-auto">
-                                        <label class="form-label mb-0 small">Admin min</label>
+                                        <label class="form-label mb-0 small">@LS.T("home.adminMin")</label>
                                         <input class="form-control form-control-sm"
                                                style="width:70px;" type="number" min="0"
                                                @bind="_addAdminMin" />
@@ -506,17 +506,17 @@
                                         <div class="form-check mb-0">
                                             <input class="form-check-input" type="checkbox"
                                                    id="chkFree" @bind="_addIsFree" />
-                                            <label class="form-check-label small" for="chkFree">Free</label>
+                                            <label class="form-check-label small" for="chkFree">@LS.T("home.free")</label>
                                         </div>
                                     </div>
                                     <div class="col-auto ms-auto">
-                                        <button class="btn btn-sm btn-primary" @onclick="SaveSession">Save</button>
+                                        <button class="btn btn-sm btn-primary" @onclick="SaveSession">@LS.T("common.save")</button>
                                         <button class="btn btn-sm btn-link text-danger"
-                                                @onclick="CancelAddSession">Cancel</button>
+                                                @onclick="CancelAddSession">@LS.T("common.cancel")</button>
                                     </div>
                                 </div>
                                 <div class="mb-1">
-                                    <label class="form-label mb-1 small">Summary</label>
+                                    <label class="form-label mb-1 small">@LS.T("home.summary")</label>
                                     <SpkRichEditor Value="@_addSummary" ValueChanged="@(v => _addSummary = v)" />
                                 </div>
                                 @if (!string.IsNullOrEmpty(_addError))
@@ -559,12 +559,12 @@
                                             @if (s.AdminSec > 0)
                                             {
                                                 <span class="text-muted small">
-                                                    (Admin: @DashboardService.Fmt(s.AdminSec))
+                                                    (@LS.T("home.admin"): @DashboardService.Fmt(s.AdminSec))
                                                 </span>
                                             }
                                             @if (s.IsFree)
                                             {
-                                                <span class="badge bg-warning-transparent">Free</span>
+                                                <span class="badge bg-warning-transparent">@LS.T("home.free")</span>
                                             }
                                             @if (!string.IsNullOrWhiteSpace(s.Summary))
                                             {
@@ -578,17 +578,17 @@
                                                 <div class="home-form-box mt-1">
                                                     <div class="row g-2 align-items-center mb-2">
                                                         <div class="col-auto">
-                                                            <label class="form-label mb-0 small">Duration (H:MM)</label>
+                                                            <label class="form-label mb-0 small">@LS.T("home.duration")</label>
                                                             <input class="form-control form-control-sm" style="width:90px;"
                                                                    @bind="_editRevDuration" @bind:event="oninput" />
                                                         </div>
                                                         <div class="col-auto ms-auto">
-                                                            <button class="btn btn-sm btn-primary" @onclick="SaveEditReview">Save</button>
-                                                            <button class="btn btn-sm btn-link text-danger" @onclick="CancelEditReview">Cancel</button>
+                                                            <button class="btn btn-sm btn-primary" @onclick="SaveEditReview">@LS.T("common.save")</button>
+                                                            <button class="btn btn-sm btn-link text-danger" @onclick="CancelEditReview">@LS.T("common.cancel")</button>
                                                         </div>
                                                     </div>
                                                     <div class="mb-1">
-                                                        <label class="form-label mb-1 small">Notes</label>
+                                                        <label class="form-label mb-1 small">@LS.T("home.notes")</label>
                                                         <SpkRichEditor Value="@_editRevNotes" ValueChanged="@(v => _editRevNotes = v)" />
                                                     </div>
                                                     @if (!string.IsNullOrEmpty(_editRevError))
@@ -609,10 +609,10 @@
                                                     </span>
                                                     <span>@rev.Status</span>
                                                     <button class="btn btn-link btn-sm py-0 px-1 ms-auto" style="font-size:0.75rem;"
-                                                            title="@(rev.Status == "Approved" ? "Cannot edit — review is approved" : "Edit review")"
+                                                            title="@(rev.Status == "Approved" ? LS.T("home.cannotEditReviewApproved") : LS.T("home.editReview"))"
                                                             disabled="@(rev.Status == "Approved")"
                                                             @onclick="() => OpenEditReview(rev)">
-                                                        <i class="ri-edit-line"></i> Edit
+                                                        <i class="ri-edit-line"></i> @LS.T("common.edit")
                                                     </button>
                                                 </div>
                                                 @if (!string.IsNullOrWhiteSpace(rev.Notes))
@@ -625,7 +625,7 @@
                                         {
                                             <button class="btn btn-sm btn-outline-success rounded-pill px-3 py-0 mt-1"
                                                     @onclick="() => StartAddReview(s.SessionId, s.LengthSec + s.AdminSec)">
-                                                <i class="ri-add-line me-1"></i>CS Review
+                                                <i class="ri-add-line me-1"></i>@LS.T("home.csReview")
                                             </button>
                                         }
                                     </li>
@@ -637,22 +637,22 @@
                         @if (_showAddReview)
                         {
                             <div class="home-form-box mt-2">
-                                <h6 class="mb-2">Add CS Review (Session #@_addReviewSessionId)</h6>
+                                <h6 class="mb-2">@LS.T("home.addCsReview") (Session #@_addReviewSessionId)</h6>
                                 <div class="row g-2 align-items-center mb-2">
                                     <div class="col-auto">
-                                        <label class="form-label mb-0 small">Duration (H:MM)</label>
+                                        <label class="form-label mb-0 small">@LS.T("home.duration")</label>
                                         <input class="form-control form-control-sm"
                                                style="width:90px;" placeholder="0:30"
                                                @bind="_addReviewDuration" @bind:event="oninput" />
                                     </div>
                                     <div class="col-auto ms-auto">
-                                        <button class="btn btn-sm btn-primary" @onclick="SaveReview">Save</button>
+                                        <button class="btn btn-sm btn-primary" @onclick="SaveReview">@LS.T("common.save")</button>
                                         <button class="btn btn-sm btn-link text-danger"
-                                                @onclick="CancelAddReview">Cancel</button>
+                                                @onclick="CancelAddReview">@LS.T("common.cancel")</button>
                                     </div>
                                 </div>
                                 <div class="mb-1">
-                                    <label class="form-label mb-1 small">Notes</label>
+                                    <label class="form-label mb-1 small">@LS.T("home.notes")</label>
                                     <SpkRichEditor Value="@_addReviewNotes" ValueChanged="@(v => _addReviewNotes = v)" />
                                 </div>
                                 @if (!string.IsNullOrEmpty(_reviewError))
@@ -666,7 +666,7 @@
                         <hr class="my-3" />
                         <div class="d-flex align-items-center gap-2 mb-2">
                             <i class="ri-briefcase-line text-info"></i>
-                            <span class="fw-semibold small" style="color:#0d9488;">General CS Work</span>
+                            <span class="fw-semibold small" style="color:#0d9488;">@LS.T("home.generalCsWork")</span>
                         </div>
                         @if (_detail.GeneralWork != null && _detail.GeneralWork.Count > 0)
                         {
@@ -700,22 +700,22 @@
                         else
                         {
                             <div class="home-form-box mt-2">
-                                <h6 class="mb-2">Add General CS Work</h6>
+                                <h6 class="mb-2">@LS.T("home.addGeneralCsWork")</h6>
                                 <div class="row g-2 align-items-center mb-2">
                                     <div class="col-auto">
-                                        <label class="form-label mb-0 small">Duration (H:MM)</label>
+                                        <label class="form-label mb-0 small">@LS.T("home.duration")</label>
                                         <input class="form-control form-control-sm"
                                                style="width:90px;" placeholder="0:30"
                                                @bind="_addGeneralCsDuration" @bind:event="oninput" />
                                     </div>
                                     <div class="col-auto ms-auto">
-                                        <button class="btn btn-sm btn-primary" @onclick="SaveGeneralCs">Save</button>
+                                        <button class="btn btn-sm btn-primary" @onclick="SaveGeneralCs">@LS.T("common.save")</button>
                                         <button class="btn btn-sm btn-link text-danger"
-                                                @onclick="CancelAddGeneralCs">Cancel</button>
+                                                @onclick="CancelAddGeneralCs">@LS.T("common.cancel")</button>
                                     </div>
                                 </div>
                                 <div class="mb-1">
-                                    <label class="form-label mb-1 small">Notes</label>
+                                    <label class="form-label mb-1 small">@LS.T("home.notes")</label>
                                     <SpkRichEditor Value="@_addGeneralCsNotes" ValueChanged="@(v => _addGeneralCsNotes = v)" />
                                 </div>
                                 @if (!string.IsNullOrEmpty(_generalCsError))
@@ -736,9 +736,9 @@
             <div class="card mx-3 mt-4 mb-3">
                 <div class="card-header py-2 d-flex align-items-center gap-2"
                      style="background:linear-gradient(90deg,#1a237e 0%,#283593 100%); color:#fff;">
-                    <strong class="fs-14">Weekly Hours — Last 20 Weeks</strong>
+                    <strong class="fs-14">@LS.T("home.weeklyHoursTitle")</strong>
                     <span class="ms-auto small opacity-75">
-                        Total: @DashboardService.Fmt(_weeklyTotals.Sum(w => w.TotalSeconds))
+                        @LS.T("home.total"): @DashboardService.Fmt(_weeklyTotals.Sum(w => w.TotalSeconds))
                     </span>
                 </div>
                 <div class="card-body py-1 px-2">
@@ -768,7 +768,7 @@
                     <div class="modal-content">
                         <div class="modal-header py-2 home-modal-header">
                             <h5 class="modal-title fs-15 text-white">
-                                <i class="ri-add-circle-line me-2"></i>Add PC to Dashboard
+                                <i class="ri-add-circle-line me-2"></i>@LS.T("home.addPcToDashboard")
                             </h5>
                             <button type="button" class="btn-close btn-close-white"
                                     @onclick="() => _showAddPcModal = false"></button>

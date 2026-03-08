@@ -89,17 +89,17 @@
     @* ── Week nav ── *@
     <div class="d-flex align-items-center flex-wrap gap-2 py-2 border-bottom mb-3 no-print">
         <button class="btn btn-sm btn-outline-secondary rounded-pill" @onclick="PrevWeek">
-            <i class="ri-arrow-left-s-line"></i> Prev
+            <i class="ri-arrow-left-s-line"></i> @LS.T("common.prev")
         </button>
         <span class="fw-semibold" style="font-size:0.95rem;">
-            Week: @DayLabel(_weekStart) – @DayLabel(_weekStart.AddDays(6))
+            @LS.T("stats.week"): @DayLabel(_weekStart) – @DayLabel(_weekStart.AddDays(6))
         </span>
         <button class="btn btn-sm btn-outline-secondary rounded-pill" @onclick="NextWeek"
                 disabled="@(_weekStart >= DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today)))">
-            Next <i class="ri-arrow-right-s-line"></i>
+            @LS.T("common.next") <i class="ri-arrow-right-s-line"></i>
         </button>
         <button class="btn btn-sm btn-outline-secondary ms-auto rounded-pill" @onclick="PrintStats">
-            <i class="ri-printer-line me-1"></i>Print PDF
+            <i class="ri-printer-line me-1"></i>@LS.T("common.printPDF")
         </button>
     </div>
 
@@ -139,7 +139,7 @@
                     <div class="d-flex align-items-start justify-content-between text-white">
                         <div>
                             <h6 class="mb-0 fw-bold fs-14">
-                                <i class="ri-trophy-fill me-2"></i>Staff Leaderboard
+                                <i class="ri-trophy-fill me-2"></i>@LS.T("stats.staffLeaderboard")
                             </h6>
                             <div class="opacity-75 mt-1" style="font-size:0.8rem;">
                                 @_dayStats[_selDay].Date.ToString("dddd, dd MMMM yyyy", CultureInfo.InvariantCulture)
@@ -147,7 +147,7 @@
                         </div>
                         <div class="text-end">
                             <div class="fw-bold fs-4 text-white lh-1">@Fmt(_dayStats[_selDay].Staff.Sum(s => s.TotalSec))</div>
-                            <div class="opacity-75 mt-1" style="font-size:0.75rem;">Day total</div>
+                            <div class="opacity-75 mt-1" style="font-size:0.75rem;">@LS.T("stats.dayTotal")</div>
                         </div>
                     </div>
                 </div>
@@ -162,8 +162,8 @@
                     {
                         <div class="text-center py-5 text-muted">
                             <i class="ri-calendar-event-line d-block mb-2 opacity-40" style="font-size:2.5rem;"></i>
-                            <div class="fw-semibold">No sessions recorded</div>
-                            <div class="small mt-1">for @selDay.Date.ToString("dddd dd/MM", CultureInfo.InvariantCulture)</div>
+                            <div class="fw-semibold">@LS.T("stats.noSessionsRecorded")</div>
+                            <div class="small mt-1">@LS.T("stats.for") @selDay.Date.ToString("dddd dd/MM", CultureInfo.InvariantCulture)</div>
                         </div>
                     }
                     else
@@ -172,10 +172,10 @@
                             <table class="table mb-0" style="font-size:0.9rem;">
                                 <thead style="background:#f8f9fa;">
                                     <tr class="text-muted" style="font-size:0.75rem;letter-spacing:0.04em;text-transform:uppercase;">
-                                        <th class="ps-3 fw-semibold">Staff Member</th>
-                                        <th class="text-center fw-semibold">Auditing</th>
-                                        <th class="text-center fw-semibold">CS Solo</th>
-                                        <th class="text-center fw-semibold pe-3">Total</th>
+                                        <th class="ps-3 fw-semibold">@LS.T("stats.staffMember")</th>
+                                        <th class="text-center fw-semibold">@LS.T("stats.auditing")</th>
+                                        <th class="text-center fw-semibold">@LS.T("stats.csSolo")</th>
+                                        <th class="text-center fw-semibold pe-3">@LS.T("stats.total")</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -234,13 +234,13 @@
                 <div class="card-header border-0 py-2 px-3 bg-white border-bottom">
                     <div class="panel-period-label">
                         <i class="ri-map-pin-2-line text-primary"></i>
-                        PC Origin — auditing hours this week
+                        @LS.T("stats.pcOriginLabel")
                     </div>
                 </div>
                 <div class="card-body px-3 py-3">
                     @if (_originHours.Count == 0)
                     {
-                        <div class="text-muted small text-center py-2">No session data for this week.</div>
+                        <div class="text-muted small text-center py-2">@LS.T("stats.noSessionDataWeek")</div>
                     }
                     else
                     {
@@ -252,7 +252,7 @@
                                     <div class="stat-metric-box" style="background:@ohBg;">
                                         <div class="value" style="color:@ohColor;">@Fmt(oh.Seconds)</div>
                                         <div class="main-lbl">@oh.Origin</div>
-                                        <div class="sub-lbl">auditing hours</div>
+                                        <div class="sub-lbl">@LS.T("stats.auditingHours")</div>
                                     </div>
                                 </div>
                             }
@@ -271,7 +271,7 @@
                 <div class="card-header border-0 py-2 px-3 bg-white border-bottom">
                     <div class="panel-period-label">
                         <i class="ri-sun-line text-warning"></i>
-                        Day snapshot — @_dayStats[_selDay].Date.ToString("dddd dd/MM/yyyy", CultureInfo.InvariantCulture)
+                        @LS.T("stats.daySnapshot") — @_dayStats[_selDay].Date.ToString("dddd dd/MM/yyyy", CultureInfo.InvariantCulture)
                     </div>
                 </div>
                 <div class="card-body px-3 py-3">
@@ -279,29 +279,29 @@
                         <div class="col-3">
                             <div class="stat-metric-box" style="background:#f0f4ff;">
                                 <div class="value" style="color:#6366f1;">@Fmt(_dayStats[_selDay].Staff.Sum(s => s.TotalSec))</div>
-                                <div class="main-lbl">Auditing time</div>
-                                <div class="sub-lbl">hrs worked</div>
+                                <div class="main-lbl">@LS.T("stats.auditingTime")</div>
+                                <div class="sub-lbl">@LS.T("stats.hrsWorked")</div>
                             </div>
                         </div>
                         <div class="col-3">
                             <div class="stat-metric-box" style="background:#eff6ff;">
                                 <div class="value" style="color:#2563eb;">@_dayStats[_selDay].PcCount</div>
-                                <div class="main-lbl">PCs</div>
-                                <div class="sub-lbl">clients seen</div>
+                                <div class="main-lbl">@LS.T("stats.pcs")</div>
+                                <div class="sub-lbl">@LS.T("stats.clientsSeen")</div>
                             </div>
                         </div>
                         <div class="col-3">
                             <div class="stat-metric-box" style="background:#f0fdf4;">
                                 <div class="value" style="color:#16a34a;">@_dayStats[_selDay].AcademyCount</div>
-                                <div class="main-lbl">Students</div>
-                                <div class="sub-lbl">academy visits</div>
+                                <div class="main-lbl">@LS.T("stats.students")</div>
+                                <div class="sub-lbl">@LS.T("stats.academyVisits")</div>
                             </div>
                         </div>
                         <div class="col-3">
                             <div class="stat-metric-box" style="background:#fff7ed;">
                                 <div class="value" style="color:#ea580c;">@_dayStats[_selDay].BodyInShop</div>
                                 <div class="main-lbl">BITS</div>
-                                <div class="sub-lbl">unique visitors</div>
+                                <div class="sub-lbl">@LS.T("stats.uniqueVisitors")</div>
                             </div>
                         </div>
                     </div>
@@ -313,7 +313,7 @@
                 <div class="card-header border-0 py-2 px-3 bg-white border-bottom">
                     <div class="panel-period-label">
                         <i class="ri-calendar-2-line text-primary"></i>
-                        Week totals — @DayLabel(_weekStart) to @DayLabel(_weekStart.AddDays(6))
+                        @LS.T("stats.weekTotals") — @DayLabel(_weekStart) @LS.T("stats.to") @DayLabel(_weekStart.AddDays(6))
                     </div>
                 </div>
                 <div class="card-body px-3 py-3">
@@ -322,29 +322,29 @@
                         <div class="col-3">
                             <div class="stat-metric-box" style="background:#f0f4ff;">
                                 <div class="value" style="color:#6366f1;">@Fmt(ws?.TotalAuditCsSec ?? 0)</div>
-                                <div class="main-lbl">Auditing time</div>
-                                <div class="sub-lbl">all staff, sold</div>
+                                <div class="main-lbl">@LS.T("stats.auditingTime")</div>
+                                <div class="sub-lbl">@LS.T("stats.allStaffSold")</div>
                             </div>
                         </div>
                         <div class="col-3">
                             <div class="stat-metric-box" style="background:#eff6ff;">
                                 <div class="value" style="color:#2563eb;">@(ws?.PcCount ?? 0)</div>
-                                <div class="main-lbl">PCs</div>
-                                <div class="sub-lbl">unique, week</div>
+                                <div class="main-lbl">@LS.T("stats.pcs")</div>
+                                <div class="sub-lbl">@LS.T("stats.uniqueWeek")</div>
                             </div>
                         </div>
                         <div class="col-3">
                             <div class="stat-metric-box" style="background:#f0fdf4;">
                                 <div class="value" style="color:#16a34a;">@(ws?.AcademyCount ?? 0)</div>
-                                <div class="main-lbl">Students</div>
-                                <div class="sub-lbl">unique, week</div>
+                                <div class="main-lbl">@LS.T("stats.students")</div>
+                                <div class="sub-lbl">@LS.T("stats.uniqueWeek")</div>
                             </div>
                         </div>
                         <div class="col-3">
                             <div class="stat-metric-box" style="background:#fff7ed;">
                                 <div class="value" style="color:#ea580c;">@(ws?.BodyInShop ?? 0)</div>
                                 <div class="main-lbl">BITS</div>
-                                <div class="sub-lbl">unique, week</div>
+                                <div class="sub-lbl">@LS.T("stats.uniqueWeek")</div>
                             </div>
                         </div>
                     </div>
@@ -356,7 +356,7 @@
                 <div class="card-header border-0 py-2 px-3 bg-white border-bottom" style="border-radius:14px 14px 0 0;">
                     <div class="panel-period-label">
                         <i class="ri-list-ordered text-primary"></i>
-                        Week leaderboard — all 7 days combined
+                        @LS.T("stats.weekLeaderboard")
                     </div>
                 </div>
                 <div class="card-body px-3 py-2">
@@ -373,7 +373,7 @@
                     }
                     @if (weekStaff.Count == 0)
                     {
-                        <div class="text-center py-3 text-muted small">No data for this week</div>
+                        <div class="text-center py-3 text-muted small">@LS.T("stats.noDataWeek")</div>
                     }
                     else
                     {
@@ -419,24 +419,24 @@
             <div class="d-flex align-items-center justify-content-between" style="color:#fff;">
                 <div>
                     <h6 class="mb-0 fw-bold" style="color:#fff;font-size:0.95rem;">
-                        <i class="ri-bar-chart-grouped-fill me-2"></i>Weekly History
+                        <i class="ri-bar-chart-grouped-fill me-2"></i>@LS.T("stats.weeklyHistory")
                     </h6>
                     <div class="mt-1" style="font-size:0.8rem;color:rgba(255,255,255,0.7);">
-                        Last @_weekHistory.Count weeks — hover for full details
+                        @LS.T("stats.lastWeeks1") @_weekHistory.Count @LS.T("stats.lastWeeks2")
                     </div>
                 </div>
                 <div class="d-flex gap-3" style="font-size:0.75rem;">
                     <span class="d-flex align-items-center gap-1">
                         <span style="width:10px;height:10px;border-radius:2px;background:#6366f1;display:inline-block;"></span>
-                        <span style="color:rgba(255,255,255,0.75);">Auditing time (hrs)</span>
+                        <span style="color:rgba(255,255,255,0.75);">@LS.T("stats.auditingTimeHrs")</span>
                     </span>
                     <span class="d-flex align-items-center gap-1">
                         <span style="width:10px;height:10px;border-radius:2px;background:#3b82f6;display:inline-block;"></span>
-                        <span style="color:rgba(255,255,255,0.75);">PCs</span>
+                        <span style="color:rgba(255,255,255,0.75);">@LS.T("stats.pcs")</span>
                     </span>
                     <span class="d-flex align-items-center gap-1">
                         <span style="width:10px;height:10px;border-radius:2px;background:#22c55e;display:inline-block;"></span>
-                        <span style="color:rgba(255,255,255,0.75);">Students</span>
+                        <span style="color:rgba(255,255,255,0.75);">@LS.T("stats.students")</span>
                     </span>
                     <span class="d-flex align-items-center gap-1">
                         <span style="width:10px;height:10px;border-radius:2px;background:#f97316;display:inline-block;"></span>

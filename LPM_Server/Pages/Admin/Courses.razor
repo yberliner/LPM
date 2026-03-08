@@ -9,9 +9,9 @@
     <div class="d-flex align-items-center mb-4 gap-3">
         <div>
             <h4 class="mb-0 fw-bold" style="color:#1e3a5f;">
-                <i class="ri-book-2-line me-2" style="color:#3949ab;"></i>Courses
+                <i class="ri-book-2-line me-2" style="color:#3949ab;"></i>@LS.T("courses.title")
             </h4>
-            <span class="text-muted" style="font-size:0.82rem;">Manage available courses for students</span>
+            <span class="text-muted" style="font-size:0.82rem;">@LS.T("courses.subtitle")</span>
         </div>
     </div>
 
@@ -20,7 +20,7 @@
         <div class="card-header py-2 px-3 d-flex align-items-center justify-content-between"
              style="background:#f0f4ff;border-radius:12px 12px 0 0;border-bottom:1px solid #dce6ff;">
             <span class="fw-semibold small" style="color:#3949ab;">
-                <i class="ri-book-2-line me-1"></i>Courses
+                <i class="ri-book-2-line me-1"></i>@LS.T("courses.title")
             </span>
             <span class="badge rounded-pill" style="background:#e0e7ff;color:#3949ab;font-size:.75rem;">
                 @_courses.Count
@@ -30,7 +30,7 @@
             <table class="table table-sm table-hover mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-3 small">Course Name</th>
+                        <th class="ps-3 small">@LS.T("courses.courseName")</th>
                         <th style="width:130px;"></th>
                     </tr>
                 </thead>
@@ -57,7 +57,7 @@
                                         <i class="ri-save-line"></i>
                                     </button>
                                     <button class="btn btn-sm btn-link text-muted py-0 px-1"
-                                            @onclick="() => _editId = null">Cancel</button>
+                                            @onclick="() => _editId = null">@LS.T("common.cancel")</button>
                                 }
                                 else
                                 {
@@ -78,7 +78,7 @@
                     <tr style="background:#f8faff;">
                         <td class="ps-3 py-2">
                             <input class="form-control form-control-sm" style="max-width:320px;"
-                                   placeholder="New course name..."
+                                   placeholder="@LS.T("courses.newCoursePlaceholder")"
                                    @bind="_newName" @bind:event="oninput"
                                    @onkeydown="OnAddKeyDown" />
                             @if (!string.IsNullOrEmpty(_addError))
@@ -89,7 +89,7 @@
                         <td class="text-end pe-3 py-2 align-middle">
                             <button class="btn btn-sm btn-primary" @onclick="AddCourse"
                                     disabled="@string.IsNullOrWhiteSpace(_newName)">
-                                <i class="ri-add-line me-1"></i>Add
+                                <i class="ri-add-line me-1"></i>@LS.T("common.add")
                             </button>
                         </td>
                     </tr>
@@ -103,7 +103,7 @@
         <div class="card-header py-2 px-3 d-flex align-items-center justify-content-between"
              style="background:#f8fafc;border-radius:12px 12px 0 0;border-bottom:1px solid #e2e8f0;">
             <span class="fw-semibold small">
-                <i class="ri-group-line me-1"></i>Enrollments
+                <i class="ri-group-line me-1"></i>@LS.T("courses.enrollments")
             </span>
             <span class="badge rounded-pill" style="background:#e0e7ff;color:#3949ab;font-size:.75rem;">
                 @_enrollments.Count
@@ -112,20 +112,20 @@
         <div class="card-body p-0">
             @if (_enrollments.Count == 0)
             {
-                <div class="text-center py-4 text-muted small">No enrollments yet.</div>
+                <div class="text-center py-4 text-muted small">@LS.T("courses.noEnrollments")</div>
             }
             else
             {
                 <table class="table table-sm table-hover mb-0" style="font-size:.8rem;">
                     <thead class="table-light">
                         <tr>
-                            <th class="ps-3">PC</th>
-                            <th>Course</th>
-                            <th class="text-end">Paid</th>
-                            <th>Registrar</th>
-                            <th>Referral</th>
-                            <th class="text-center">Visits</th>
-                            <th class="text-center">Status</th>
+                            <th class="ps-3">@LS.T("courses.pc")</th>
+                            <th>@LS.T("courses.course")</th>
+                            <th class="text-end">@LS.T("courses.paid")</th>
+                            <th>@LS.T("courses.registrar")</th>
+                            <th>@LS.T("courses.referral")</th>
+                            <th class="text-center">@LS.T("courses.visits")</th>
+                            <th class="text-center">@LS.T("common.status")</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -141,11 +141,11 @@
                                 <td class="text-center">
                                     @if (e.DateFinished == null)
                                     {
-                                        <span class="badge rounded-pill" style="background:#d1fae5;color:#065f46;font-size:.7rem;">Active</span>
+                                        <span class="badge rounded-pill" style="background:#d1fae5;color:#065f46;font-size:.7rem;">@LS.T("common.active")</span>
                                     }
                                     else
                                     {
-                                        <span class="badge rounded-pill" style="background:#f1f5f9;color:#64748b;font-size:.7rem;" title="Finished @e.DateFinished">Done</span>
+                                        <span class="badge rounded-pill" style="background:#f1f5f9;color:#64748b;font-size:.7rem;" title="Finished @e.DateFinished">@LS.T("courses.done")</span>
                                     }
                                 </td>
                             </tr>
@@ -176,7 +176,7 @@
 
     void AddCourse()
     {
-        if (string.IsNullOrWhiteSpace(_newName)) { _addError = "Name required."; return; }
+        if (string.IsNullOrWhiteSpace(_newName)) { _addError = LS.T("courses.nameRequired"); return; }
         _addError = "";
         CourseSvc.AddCourse(_newName.Trim());
         _newName = "";

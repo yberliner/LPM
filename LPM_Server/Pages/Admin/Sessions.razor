@@ -11,25 +11,25 @@
     @* ── Page Header ── *@
     <div class="d-flex align-items-center mb-3 gap-3 flex-wrap">
         <div>
-            <h4 class="mb-0 fw-bold sa-title">Session &amp; CS Review Approval</h4>
-            <span class="text-muted" style="font-size:0.82rem;">Sessions and CS reviews are managed separately</span>
+            <h4 class="mb-0 fw-bold sa-title">@LS.T("sessions.title")</h4>
+            <span class="text-muted" style="font-size:0.82rem;">@LS.T("sessions.subtitle")</span>
         </div>
         <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
             @if (_sessDraft > 0)
             {
                 <span class="badge rounded-pill text-bg-warning px-3 py-2" style="font-size:0.77rem;">
-                    <i class="ri-time-line me-1"></i>@_sessDraft session draft
+                    <i class="ri-time-line me-1"></i>@_sessDraft @LS.T("sessions.sessionDraft")
                 </span>
             }
             @if (_csDraft > 0)
             {
                 <span class="badge rounded-pill sa-badge-cs-draft px-3 py-2" style="font-size:0.77rem;">
-                    <i class="ri-user-star-line me-1"></i>@_csDraft CS draft
+                    <i class="ri-user-star-line me-1"></i>@_csDraft @LS.T("sessions.csDraft")
                 </span>
             }
             <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
                     @onclick="LoadData" disabled="@_loading">
-                <i class="ri-refresh-line @(_loading ? "sa-spin" : "")"></i> Refresh
+                <i class="ri-refresh-line @(_loading ? "sa-spin" : "")"></i> @LS.T("common.refresh")
             </button>
         </div>
     </div>
@@ -41,17 +41,17 @@
 
                 @* Mode selector – segmented control *@
                 <div class="d-flex align-items-center gap-2">
-                    <span class="text-muted fw-semibold" style="font-size:0.8rem;">Show:</span>
+                    <span class="text-muted fw-semibold" style="font-size:0.8rem;">@LS.T("sessions.show")</span>
                     <div class="btn-group sa-seg" role="group">
                         <button type="button"
                                 class="btn btn-sm @(!_includeApproved ? "sa-seg-active" : "sa-seg-inactive")"
                                 @onclick="SwitchToDraftOnly">
-                            <i class="ri-file-list-line me-1"></i>Draft only
+                            <i class="ri-file-list-line me-1"></i>@LS.T("sessions.draftOnly")
                         </button>
                         <button type="button"
                                 class="btn btn-sm @(_includeApproved ? "sa-seg-active" : "sa-seg-inactive")"
                                 @onclick="SwitchToIncludeApproved">
-                            <i class="ri-checkbox-circle-line me-1"></i>Include Approved
+                            <i class="ri-checkbox-circle-line me-1"></i>@LS.T("sessions.includeApproved")
                         </button>
                     </div>
                 </div>
@@ -61,19 +61,19 @@
                 {
                     <div class="sa-filter-divider d-none d-sm-block"></div>
                     <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <span class="text-muted" style="font-size:0.8rem;">From</span>
+                        <span class="text-muted" style="font-size:0.8rem;">@LS.T("common.from")</span>
                         <input type="date" class="form-control form-control-sm sa-date-input"
                                style="width:145px;"
                                value="@_fromDateStr"
                                @onchange="e => _fromDateStr = e.Value?.ToString() ?? string.Empty" />
-                        <span class="text-muted" style="font-size:0.8rem;">To</span>
+                        <span class="text-muted" style="font-size:0.8rem;">@LS.T("common.to")</span>
                         <input type="date" class="form-control form-control-sm sa-date-input"
                                style="width:145px;"
                                value="@_toDateStr"
                                @onchange="e => _toDateStr = e.Value?.ToString() ?? string.Empty" />
                         <button class="btn btn-sm sa-btn-apply d-flex align-items-center gap-1"
                                 @onclick="ApplyApprovedFilter" disabled="@_loading">
-                            <i class="ri-search-line"></i> Apply
+                            <i class="ri-search-line"></i> @LS.T("common.apply")
                         </button>
                     </div>
                     @if (!string.IsNullOrEmpty(_filterError))
@@ -91,23 +91,23 @@
        SECTION 1 — SESSIONS
        ══════════════════════════════════════════════════════════ *@
     <div class="sa-section-label mb-3">
-        <i class="ri-calendar-check-line me-2"></i>Sessions
-        @if (_sessDraft > 0)    { <span class="badge rounded-pill sa-badge-pending ms-2">@_sessDraft draft</span> }
-        @if (_sessApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm ms-1">@_sessApproved approved</span> }
+        <i class="ri-calendar-check-line me-2"></i>@LS.T("sessions.sessions")
+        @if (_sessDraft > 0)    { <span class="badge rounded-pill sa-badge-pending ms-2">@_sessDraft @LS.T("sessions.draft")</span> }
+        @if (_sessApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm ms-1">@_sessApproved @LS.T("sessions.approved")</span> }
     </div>
 
     @if (_loading)
     {
         <div class="text-center py-5">
             <div class="spinner-border text-primary mb-3" style="width:2.5rem;height:2.5rem;" role="status"></div>
-            <div class="text-muted">Loading...</div>
+            <div class="text-muted">@LS.T("common.loading")</div>
         </div>
     }
     else if (_groups.Count == 0)
     {
         <div class="sa-empty-block mb-4">
             <i class="ri-check-double-line text-success" style="font-size:1.8rem;"></i>
-            <div class="fw-semibold mt-2">No sessions to show</div>
+            <div class="fw-semibold mt-2">@LS.T("sessions.noSessions")</div>
             <div class="text-muted small">@(_includeApproved ? "No sessions in the selected date range." : "No draft sessions pending approval.")</div>
         </div>
     }
@@ -127,8 +127,8 @@
                         <div class="fw-semibold" style="font-size:1rem;">@group.AuditorName</div>
                         <div style="font-size:0.71rem;opacity:.72;">
                             @group.PcGroups.Count PC@(group.PcGroups.Count != 1 ? "s" : "")
-                            @if (gDraft > 0)    { <span> · @gDraft draft</span> }
-                            @if (gApproved > 0) { <span> · @gApproved approved</span> }
+                            @if (gDraft > 0)    { <span> · @gDraft @LS.T("sessions.draft")</span> }
+                            @if (gApproved > 0) { <span> · @gApproved @LS.T("sessions.approved")</span> }
                         </div>
                     </div>
                 </div>
@@ -149,8 +149,8 @@
                         <div class="d-flex align-items-center gap-2">
                             <div class="sa-pc-dot"></div>
                             <span class="fw-semibold sa-pc-name">@pcGroup.PcName</span>
-                            @if (pcDraft > 0)    { <span class="badge rounded-pill sa-badge-pending">@pcDraft draft</span> }
-                            @if (pcApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm">@pcApproved approved</span> }
+                            @if (pcDraft > 0)    { <span class="badge rounded-pill sa-badge-pending">@pcDraft @LS.T("sessions.draft")</span> }
+                            @if (pcApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm">@pcApproved @LS.T("sessions.approved")</span> }
                         </div>
                         <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
                             <span class="sa-input-label text-muted">Set all:</span>
@@ -172,7 +172,7 @@
                             </div>
                             <button class="btn btn-sm sa-btn-approve-all d-flex align-items-center gap-1"
                                     @onclick="() => SubmitAllForPc(group.AuditorId, pcGroup.PcId)" disabled="@_busy">
-                                <i class="ri-check-double-line"></i>Submit All (@pcTotal)
+                                <i class="ri-check-double-line"></i>@LS.T("common.submitAll") (@pcTotal)
                             </button>
                         </div>
                     </div>
@@ -181,13 +181,13 @@
                         <table class="table table-sm align-middle mb-0 sa-table">
                             <thead>
                                 <tr class="sa-thead">
-                                    <th class="ps-4">Date</th>
-                                    <th class="text-center">Duration</th>
-                                    <th class="text-center">Admin</th>
-                                    <th class="text-center">Free</th>
-                                    <th style="width:115px;">Rate ₪/hr</th>
-                                    <th style="width:115px;">Salary ₪/hr</th>
-                                    <th style="width:105px;">Status</th>
+                                    <th class="ps-4">@LS.T("common.date")</th>
+                                    <th class="text-center">@LS.T("sessions.duration")</th>
+                                    <th class="text-center">@LS.T("sessions.admin")</th>
+                                    <th class="text-center">@LS.T("sessions.free")</th>
+                                    <th style="width:115px;">@LS.T("sessions.rate")</th>
+                                    <th style="width:115px;">@LS.T("sessions.salary")</th>
+                                    <th style="width:105px;">@LS.T("common.status")</th>
                                     <th class="pe-4" style="width:90px;"></th>
                                 </tr>
                             </thead>
@@ -206,14 +206,14 @@
                                         <td class="py-1"><input type="number" class="form-control form-control-sm sa-row-input" @bind="edit.ChargeRate" min="0" step="1" /></td>
                                         <td class="py-1"><input type="number" class="form-control form-control-sm sa-row-input" @bind="edit.Salary" min="0" step="1" /></td>
                                         <td class="py-2">
-                                            @if (isApproved) { <span class="badge sa-badge-status-approved"><i class="ri-check-line me-1"></i>Approved</span> }
-                                            else             { <span class="badge sa-badge-status-draft">Draft</span> }
+                                            @if (isApproved) { <span class="badge sa-badge-status-approved"><i class="ri-check-line me-1"></i>@LS.T("sessions.approvedStatus")</span> }
+                                            else             { <span class="badge sa-badge-status-draft">@LS.T("sessions.draftStatus")</span> }
                                         </td>
                                         <td class="pe-4 py-1">
                                             <button class="btn btn-sm d-flex align-items-center gap-1 @(isApproved ? "sa-btn-update" : "sa-btn-submit")"
                                                     @onclick="() => SubmitOne(s.SessionId)" disabled="@_busy">
                                                 <i class="@(isApproved ? "ri-pencil-line" : "ri-check-line")"></i>
-                                                @(isApproved ? "Update" : "Submit")
+                                                @(isApproved ? LS.T("common.update") : LS.T("common.submit"))
                                             </button>
                                         </td>
                                     </tr>
@@ -230,16 +230,16 @@
        SECTION 2 — CS REVIEWS
        ══════════════════════════════════════════════════════════ *@
     <div class="sa-section-label sa-section-label-cs mt-5 mb-3">
-        <i class="ri-user-star-line me-2"></i>CS Reviews
-        @if (_csDraft > 0)    { <span class="badge rounded-pill sa-badge-pending ms-2">@_csDraft draft</span> }
-        @if (_csApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm ms-1">@_csApproved approved</span> }
+        <i class="ri-user-star-line me-2"></i>@LS.T("sessions.csReviews")
+        @if (_csDraft > 0)    { <span class="badge rounded-pill sa-badge-pending ms-2">@_csDraft @LS.T("sessions.draft")</span> }
+        @if (_csApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm ms-1">@_csApproved @LS.T("sessions.approved")</span> }
     </div>
 
     @if (!_loading && _csGroups.Count == 0)
     {
         <div class="sa-empty-block mb-4">
             <i class="ri-user-star-line" style="font-size:1.8rem;color:#4a7fc1;"></i>
-            <div class="fw-semibold mt-2">No CS reviews to show</div>
+            <div class="fw-semibold mt-2">@LS.T("sessions.noCSReviews")</div>
             <div class="text-muted small">@(_includeApproved ? "No CS reviews in the selected date range." : "No draft CS reviews pending approval.")</div>
         </div>
     }
@@ -259,8 +259,8 @@
                         <div class="fw-semibold" style="font-size:1rem;">@csGroup.CsName</div>
                         <div style="font-size:0.71rem;opacity:.72;">
                             @csGroup.PcGroups.Count PC@(csGroup.PcGroups.Count != 1 ? "s" : "")
-                            @if (cgDraft > 0)    { <span> · @cgDraft draft</span> }
-                            @if (cgApproved > 0) { <span> · @cgApproved approved</span> }
+                            @if (cgDraft > 0)    { <span> · @cgDraft @LS.T("sessions.draft")</span> }
+                            @if (cgApproved > 0) { <span> · @cgApproved @LS.T("sessions.approved")</span> }
                         </div>
                     </div>
                 </div>
@@ -281,8 +281,8 @@
                         <div class="d-flex align-items-center gap-2">
                             <div class="sa-pc-dot sa-pc-dot-cs"></div>
                             <span class="fw-semibold sa-pc-name">@pcGroup.PcName</span>
-                            @if (csPcDraft > 0) { <span class="badge rounded-pill sa-badge-pending">@csPcDraft draft</span> }
-                            @if (csPcApprv > 0) { <span class="badge rounded-pill sa-badge-approved-sm">@csPcApprv approved</span> }
+                            @if (csPcDraft > 0) { <span class="badge rounded-pill sa-badge-pending">@csPcDraft @LS.T("sessions.draft")</span> }
+                            @if (csPcApprv > 0) { <span class="badge rounded-pill sa-badge-approved-sm">@csPcApprv @LS.T("sessions.approved")</span> }
                         </div>
                         <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
                             <span class="sa-input-label text-muted">Set all:</span>
@@ -295,7 +295,7 @@
                             </div>
                             <button class="btn btn-sm sa-btn-cs-all d-flex align-items-center gap-1"
                                     @onclick="() => SubmitAllCsForPc(csGroup.CsId, pcGroup.PcId)" disabled="@_busy">
-                                <i class="ri-check-double-line"></i>Submit All (@csPcTotal)
+                                <i class="ri-check-double-line"></i>@LS.T("common.submitAll") (@csPcTotal)
                             </button>
                         </div>
                     </div>
@@ -327,14 +327,14 @@
                                                    @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) _csRowEdits[rev.CsReviewId] = v; }" />
                                         </td>
                                         <td class="py-2">
-                                            @if (csApproved) { <span class="badge sa-badge-status-approved"><i class="ri-check-line me-1"></i>Approved</span> }
-                                            else             { <span class="badge sa-badge-status-draft">Draft</span> }
+                                            @if (csApproved) { <span class="badge sa-badge-status-approved"><i class="ri-check-line me-1"></i>@LS.T("sessions.approvedStatus")</span> }
+                                            else             { <span class="badge sa-badge-status-draft">@LS.T("sessions.draftStatus")</span> }
                                         </td>
                                         <td class="pe-4 py-1">
                                             <button class="btn btn-sm d-flex align-items-center gap-1 @(csApproved ? "sa-btn-update" : "sa-btn-submit")"
                                                     @onclick="() => SubmitOneCsReview(rev.CsReviewId)" disabled="@_busy">
                                                 <i class="@(csApproved ? "ri-pencil-line" : "ri-check-line")"></i>
-                                                @(csApproved ? "Update" : "Submit")
+                                                @(csApproved ? LS.T("common.update") : LS.T("common.submit"))
                                             </button>
                                         </td>
                                     </tr>

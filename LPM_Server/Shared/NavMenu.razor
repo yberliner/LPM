@@ -50,7 +50,7 @@
                             @(MainMenuItems.Type == "sub" ? "slide has-sub" : "")  @(MainMenuItems.Active ? "open" : "") @(MainMenuItems.Selected ? "active" : "")">
                                 @if (!string.IsNullOrEmpty(MainMenuItems.MenuTitle))
                                 {
-                                    <span class="category-name">@MainMenuItems.MenuTitle</span>
+                                    <span class="category-name">@LS.T("menu." + MainMenuItems.MenuTitle)</span>
                                 }
                                 @if (MainMenuItems.Type == "link")
                                 {
@@ -61,7 +61,7 @@
                                         @if (!string.IsNullOrEmpty(MainMenuItems.Icon)) {
                                             <i class="@(MainMenuItems.Icon) side-menu__icon"></i>
                                         }
-                                        <span class="side-menu__label">@MainMenuItems.Title
+                                        <span class="side-menu__label">@LS.T("menu." + MainMenuItems.Title)
                                             @if (!string.IsNullOrEmpty(MainMenuItems.BadgeValue))
                                             {
                                                 <SpkBadge BadgeClass="@($"{MainMenuItems.BadgeClass} {"ms-1"}")">@MainMenuItems.BadgeValue</SpkBadge>
@@ -78,7 +78,7 @@
                                         @if (!string.IsNullOrEmpty(MainMenuItems.Icon)) {
                                             <i class="@(MainMenuItems.Icon) side-menu__icon"></i>
                                         }
-                                        <span class="side-menu__label">@MainMenuItems.Title
+                                        <span class="side-menu__label">@LS.T("menu." + MainMenuItems.Title)
                                             @if (!string.IsNullOrEmpty(MainMenuItems.BadgeValue))
                                             {
                                                 <SpkBadge BadgeClass="@($"{MainMenuItems.BadgeClass} {"ms-1"}")">@MainMenuItems.BadgeValue</SpkBadge>
@@ -95,7 +95,7 @@
                                         @if (!string.IsNullOrEmpty(MainMenuItems.Icon)) {
                                             <i class="@(MainMenuItems.Icon) side-menu__icon"></i>
                                         }
-                                        <span class="side-menu__label">@MainMenuItems.Title
+                                        <span class="side-menu__label">@LS.T("menu." + MainMenuItems.Title)
                                             @if (!string.IsNullOrEmpty(MainMenuItems.BadgeValue))
                                             {
                                                 <SpkBadge BadgeClass="@($"{MainMenuItems.BadgeClass} {"ms-1"}")">@MainMenuItems.BadgeValue</SpkBadge>
@@ -247,6 +247,12 @@
     protected override void OnInitialized()
     {
         Navigation.LocationChanged += (sender, args) => HandleLocationChange(sender, args);;
+        LS.OnLanguageChanged += HandleLanguageChanged;
+    }
+
+    private void HandleLanguageChanged()
+    {
+        InvokeAsync(StateHasChanged);
     }
     // Method to handle location changes
    private async void HandleLocationChange(object? sender, LocationChangedEventArgs args)
@@ -813,6 +819,7 @@
 
     
     public void Dispose(){
+        LS.OnLanguageChanged -= HandleLanguageChanged;
         JSRuntime.InvokeVoidAsync("resizeFunctions.detachScrollListener");
     }
 }

@@ -55,6 +55,7 @@ builder.Services.AddSingleton<AppState>();
 builder.Services.AddScoped<StateService>();
 builder.Services.AddScoped<IActionService, ActionService>();
 builder.Services.AddScoped<MenuDataService>();
+builder.Services.AddScoped<LPM.Services.LanguageService>();
 builder.Services.AddScoped<NavScrollService>();
 builder.Services.AddScoped<SessionService>();
 builder.Services.AddScoped<Index1Service>();

@@ -9,13 +9,13 @@
     @* ── Page Header ── *@
     <div class="d-flex align-items-center mb-4 gap-3 flex-wrap">
         <div>
-            <h4 class="mb-0 fw-bold sp-title">Staff PC Permissions</h4>
-            <span class="text-muted" style="font-size:0.82rem;">Control which PCs each auditor is allowed to work with</span>
+            <h4 class="mb-0 fw-bold sp-title">@LS.T("staffperm.title")</h4>
+            <span class="text-muted" style="font-size:0.82rem;">@LS.T("staffperm.subtitle")</span>
         </div>
         <div class="ms-auto">
             <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
                     @onclick="LoadData" disabled="@_loading">
-                <i class="ri-refresh-line @(_loading ? "sp-spin" : "")"></i> Refresh
+                <i class="ri-refresh-line @(_loading ? "sp-spin" : "")"></i> @LS.T("common.refresh")
             </button>
         </div>
     </div>
@@ -24,7 +24,7 @@
     {
         <div class="text-center py-5">
             <div class="spinner-border text-primary mb-3" style="width:2.5rem;height:2.5rem;" role="status"></div>
-            <div class="text-muted">Loading...</div>
+            <div class="text-muted">@LS.T("common.loading")</div>
         </div>
     }
     else
@@ -33,10 +33,10 @@
            SECTION 1 — PENDING REQUESTS
            ══════════════════════════════════════════════════════════ *@
         <div class="sp-section-label mb-3">
-            <i class="ri-shield-user-line me-2"></i>Pending Approval Requests
+            <i class="ri-shield-user-line me-2"></i>@LS.T("staffperm.pendingRequests")
             @if (_pending.Count > 0)
             {
-                <span class="badge rounded-pill sp-badge-pending ms-2">@_pending.Count pending</span>
+                <span class="badge rounded-pill sp-badge-pending ms-2">@_pending.Count @LS.T("staffperm.pending")</span>
             }
         </div>
 
@@ -44,8 +44,8 @@
         {
             <div class="sp-empty-block mb-5">
                 <i class="ri-checkbox-circle-line text-success" style="font-size:1.8rem;"></i>
-                <div class="fw-semibold mt-2" style="color:#1e3a5f;">No pending requests</div>
-                <div class="small" style="color:#6b7280;">All staff PC additions have been approved.</div>
+                <div class="fw-semibold mt-2" style="color:#1e3a5f;">@LS.T("staffperm.noPending")</div>
+                <div class="small" style="color:#6b7280;">@LS.T("staffperm.allApproved")</div>
             </div>
         }
         else
@@ -55,9 +55,9 @@
                     <table class="table table-sm align-middle mb-0 sp-table">
                         <thead>
                             <tr class="sp-thead">
-                                <th class="ps-4">Auditor</th>
-                                <th>PC / Person</th>
-                                <th class="text-center">Requested</th>
+                                <th class="ps-4">@LS.T("staffperm.auditor")</th>
+                                <th>@LS.T("staffperm.pcPerson")</th>
+                                <th class="text-center">@LS.T("staffperm.requested")</th>
                                 <th class="pe-4 text-end" style="width:200px;"></th>
                             </tr>
                         </thead>
@@ -77,11 +77,11 @@
                                         <div class="d-flex justify-content-end gap-2">
                                             <button class="btn btn-sm sp-btn-approve d-flex align-items-center gap-1"
                                                     @onclick="() => Approve(req.Id)" disabled="@_busy">
-                                                <i class="ri-check-line"></i>Approve
+                                                <i class="ri-check-line"></i>@LS.T("common.approve")
                                             </button>
                                             <button class="btn btn-sm sp-btn-reject d-flex align-items-center gap-1"
                                                     @onclick="() => Reject(req.Id)" disabled="@_busy">
-                                                <i class="ri-close-line"></i>Reject
+                                                <i class="ri-close-line"></i>@LS.T("common.reject")
                                             </button>
                                         </div>
                                     </td>
@@ -97,7 +97,7 @@
            SECTION 2 — PER-AUDITOR PERMISSIONS
            ══════════════════════════════════════════════════════════ *@
         <div class="sp-section-label mb-3">
-            <i class="ri-team-line me-2"></i>Auditor Permissions
+            <i class="ri-team-line me-2"></i>@LS.T("staffperm.auditorPermissions")
         </div>
 
         @foreach (var aud in _auditors)
@@ -117,7 +117,7 @@
                     </div>
                     @* Allow All toggle *@
                     <div class="d-flex align-items-center gap-2">
-                        <span class="text-white-50" style="font-size:0.78rem;">Allow All</span>
+                        <span class="text-white-50" style="font-size:0.78rem;">@LS.T("staffperm.allowAll")</span>
                         <div class="form-check form-switch mb-0">
                             <input class="form-check-input sp-switch" type="checkbox"
                                    checked="@aud.AllowAll"
@@ -139,7 +139,7 @@
                     else if (aud.ApprovedPcs.Count == 0)
                     {
                         <div class="px-4 py-3 text-muted fst-italic" style="font-size:0.87rem;">
-                            No specific PCs approved yet.
+                            @LS.T("staffperm.noSpecificPCs")
                         </div>
                     }
                     else
@@ -148,7 +148,7 @@
                             <table class="table table-sm align-middle mb-0 sp-table">
                                 <thead>
                                     <tr class="sp-sub-thead">
-                                        <th class="ps-4">PC / Person</th>
+                                        <th class="ps-4">@LS.T("staffperm.pcPerson")</th>
                                         <th class="pe-4 text-end" style="width:80px;"></th>
                                     </tr>
                                 </thead>
@@ -187,7 +187,7 @@
                             </select>
                             <button class="btn btn-sm sp-btn-add d-flex align-items-center gap-1"
                                     @onclick="() => AddPermission(aud.AuditorId)" disabled="@_busy">
-                                <i class="ri-add-line"></i>Add
+                                <i class="ri-add-line"></i>@LS.T("common.add")
                             </button>
                         </div>
                     }

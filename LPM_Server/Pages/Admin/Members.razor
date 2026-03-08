@@ -9,19 +9,18 @@
     <div class="d-flex align-items-center mb-3 gap-3">
         <div>
             <h4 class="mb-0 fw-bold" style="color:#1e3a5f;">
-                <i class="ri-group-line me-2" style="color:#3949ab;"></i>Members
+                <i class="ri-group-line me-2" style="color:#3949ab;"></i>@LS.T("members.title")
             </h4>
             <span class="text-muted" style="font-size:0.82rem;">
-                Mark people as inactive to hide them across the entire system.
-                They can be reactivated at any time.
+                @LS.T("members.description")
             </span>
         </div>
         <div class="ms-auto d-flex align-items-center gap-2">
             <span class="badge rounded-pill" style="background:#d1fae5;color:#065f46;font-size:.78rem;">
-                @_members.Count(m => m.IsActive) active
+                @_members.Count(m => m.IsActive) @LS.T("members.active")
             </span>
             <span class="badge rounded-pill" style="background:#f1f5f9;color:#64748b;font-size:.78rem;">
-                @_members.Count(m => !m.IsActive) inactive
+                @_members.Count(m => !m.IsActive) @LS.T("members.inactive")
             </span>
         </div>
     </div>
@@ -30,16 +29,16 @@
     <div class="d-flex gap-2 mb-3 align-items-center flex-wrap">
         <div class="input-group input-group-sm" style="max-width:260px;">
             <span class="input-group-text"><i class="ri-search-line"></i></span>
-            <input class="form-control" placeholder="Search name or phone..."
+            <input class="form-control" placeholder="@LS.T("members.searchPlaceholder")"
                    @bind="_search" @bind:event="oninput" />
         </div>
         <div class="btn-group btn-group-sm" role="group">
             <button class="btn @(_filter == "all"      ? "btn-primary" : "btn-outline-secondary")"
-                    @onclick='() => _filter = "all"'>All</button>
+                    @onclick='() => _filter = "all"'>@LS.T("common.all")</button>
             <button class="btn @(_filter == "active"   ? "btn-success" : "btn-outline-secondary")"
-                    @onclick='() => _filter = "active"'>Active</button>
+                    @onclick='() => _filter = "active"'>@LS.T("common.active")</button>
             <button class="btn @(_filter == "inactive" ? "btn-secondary" : "btn-outline-secondary")"
-                    @onclick='() => _filter = "inactive"'>Inactive</button>
+                    @onclick='() => _filter = "inactive"'>@LS.T("common.inactive")</button>
         </div>
     </div>
 
@@ -49,31 +48,30 @@
         <div class="card border-warning mb-3" style="border-radius:10px;">
             <div class="card-body py-3">
                 <h6 class="fw-bold mb-1" style="color:#92400e;">
-                    <i class="ri-error-warning-line me-1"></i>Name Conflict
+                    <i class="ri-error-warning-line me-1"></i>@LS.T("members.nameConflict")
                 </h6>
                 <p class="text-muted small mb-3">
-                    An active member named <strong>@_conflictCurrentName</strong> already exists.
-                    Change the name, or add an External ID to distinguish them.
+                    @((MarkupString)string.Format(LS.T("members.conflictDesc"), $"<strong>{_conflictCurrentName}</strong>"))
                 </p>
                 <div class="row g-2 align-items-end">
                     <div class="col-auto">
-                        <label class="form-label small mb-1">First Name</label>
+                        <label class="form-label small mb-1">@LS.T("members.firstName")</label>
                         <input class="form-control form-control-sm" @bind="_editFirstName" />
                     </div>
                     <div class="col-auto">
-                        <label class="form-label small mb-1">Last Name</label>
+                        <label class="form-label small mb-1">@LS.T("members.lastName")</label>
                         <input class="form-control form-control-sm" @bind="_editLastName" />
                     </div>
                     <div class="col-auto">
-                        <label class="form-label small mb-1">External ID <span class="text-muted">(optional)</span></label>
+                        <label class="form-label small mb-1">@LS.T("members.externalId") <span class="text-muted">@LS.T("members.optional")</span></label>
                         <input class="form-control form-control-sm" style="width:140px;"
-                               placeholder="e.g. file #, ID #" @bind="_editExternalId" />
+                               placeholder="@LS.T("members.extIdPlaceholder")" @bind="_editExternalId" />
                     </div>
                     <div class="col-auto d-flex gap-2">
                         <button class="btn btn-sm btn-success" @onclick="ConfirmReactivate">
-                            <i class="ri-eye-line me-1"></i>Reactivate
+                            <i class="ri-eye-line me-1"></i>@LS.T("members.reactivate")
                         </button>
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="CancelConflict">Cancel</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="CancelConflict">@LS.T("common.cancel")</button>
                     </div>
                 </div>
                 @if (!string.IsNullOrEmpty(_conflictError))
@@ -89,18 +87,18 @@
         <div class="card-body p-0">
             @if (!Filtered.Any())
             {
-                <div class="text-center py-5 text-muted small">No members match your filter.</div>
+                <div class="text-center py-5 text-muted small">@LS.T("members.noMatch")</div>
             }
             else
             {
                 <table class="table table-sm table-hover mb-0" style="font-size:.85rem;">
                     <thead class="table-light">
                         <tr>
-                            <th class="ps-3">Name</th>
-                            <th>Phone</th>
-                            <th>Roles</th>
-                            <th class="text-center">Status</th>
-                            <th class="text-center pe-3">Action</th>
+                            <th class="ps-3">@LS.T("common.name")</th>
+                            <th>@LS.T("members.phone")</th>
+                            <th>@LS.T("members.roles")</th>
+                            <th class="text-center">@LS.T("common.status")</th>
+                            <th class="text-center pe-3">@LS.T("members.action")</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -121,15 +119,15 @@
                                     <div class="d-flex gap-1 flex-wrap">
                                         @if (m.IsPC)
                                         {
-                                            <span class="badge rounded-pill" style="background:#fef3c7;color:#92400e;font-size:.68rem;">PC</span>
+                                            <span class="badge rounded-pill" style="background:#fef3c7;color:#92400e;font-size:.68rem;">@LS.T("members.badgePC")</span>
                                         }
                                         @if (m.IsAcademyStudent)
                                         {
-                                            <span class="badge rounded-pill" style="background:#d1fae5;color:#065f46;font-size:.68rem;">Academy</span>
+                                            <span class="badge rounded-pill" style="background:#d1fae5;color:#065f46;font-size:.68rem;">@LS.T("members.badgeAcademy")</span>
                                         }
                                         @if (m.IsStaff)
                                         {
-                                            <span class="badge rounded-pill" style="background:#e0e7ff;color:#3730a3;font-size:.68rem;">Staff</span>
+                                            <span class="badge rounded-pill" style="background:#e0e7ff;color:#3730a3;font-size:.68rem;">@LS.T("members.badgeStaff")</span>
                                         }
                                     </div>
                                 </td>
@@ -137,13 +135,13 @@
                                     @if (m.IsActive)
                                     {
                                         <span class="badge rounded-pill" style="background:#d1fae5;color:#065f46;font-size:.72rem;">
-                                            <i class="ri-check-line me-1"></i>Active
+                                            <i class="ri-check-line me-1"></i>@LS.T("common.active")
                                         </span>
                                     }
                                     else
                                     {
                                         <span class="badge rounded-pill" style="background:#f1f5f9;color:#64748b;font-size:.72rem;">
-                                            <i class="ri-eye-off-line me-1"></i>Inactive
+                                            <i class="ri-eye-off-line me-1"></i>@LS.T("common.inactive")
                                         </span>
                                     }
                                 </td>
@@ -152,18 +150,18 @@
                                     {
                                         <button class="btn btn-sm btn-outline-danger py-0 px-2"
                                                 style="font-size:.75rem;"
-                                                title="Mark as inactive — hides from all pages"
+                                                title="@LS.T("members.deactivateTitle")"
                                                 @onclick="() => Toggle(m.PersonId, false)">
-                                            <i class="ri-eye-off-line me-1"></i>Deactivate
+                                            <i class="ri-eye-off-line me-1"></i>@LS.T("members.deactivate")
                                         </button>
                                     }
                                     else
                                     {
                                         <button class="btn btn-sm btn-outline-success py-0 px-2"
                                                 style="font-size:.75rem;"
-                                                title="Restore — makes visible again everywhere"
+                                                title="@LS.T("members.reactivateTitle")"
                                                 @onclick="() => Toggle(m.PersonId, true)">
-                                            <i class="ri-eye-line me-1"></i>Reactivate
+                                            <i class="ri-eye-line me-1"></i>@LS.T("members.reactivate")
                                         </button>
                                     }
                                 </td>
@@ -226,13 +224,13 @@
     void ConfirmReactivate()
     {
         if (string.IsNullOrWhiteSpace(_editFirstName))
-        { _conflictError = "First name is required."; return; }
+        { _conflictError = LS.T("members.firstNameRequired"); return; }
 
         var newName = $"{_editFirstName.Trim()} {_editLastName.Trim()}".Trim();
         bool stillConflicts = _members.Any(x => x.PersonId != _conflictPersonId && x.IsActive && x.FullName == newName);
 
         if (stillConflicts && string.IsNullOrWhiteSpace(_editExternalId))
-        { _conflictError = "That name is still taken. Change the name or add an External ID."; return; }
+        { _conflictError = LS.T("members.nameStillTaken"); return; }
 
         AcademySvc.UpdateAndActivatePerson(
             _conflictPersonId,

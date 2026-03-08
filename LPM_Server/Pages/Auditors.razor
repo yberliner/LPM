@@ -9,16 +9,16 @@
     @* ── LEFT PANEL: Auditor List ── *@
     <div class="d-flex flex-column border-end pe-2" style="width:240px;min-width:240px;">
         <div class="d-flex gap-1 mb-2">
-            <input class="form-control form-control-sm" placeholder="Search..."
+            <input class="form-control form-control-sm" placeholder="@LS.T("common.search")"
                    @bind="_search" @bind:event="oninput" />
-            <button class="btn btn-sm btn-success text-nowrap" title="Add new Auditor" @onclick="ShowAddForm">
+            <button class="btn btn-sm btn-success text-nowrap" title="@LS.T("auditors.addNew")" @onclick="ShowAddForm">
                 <i class="ri-user-add-line"></i>
             </button>
         </div>
         <div class="overflow-y-auto flex-grow-1">
             @if (!FilteredAuditors.Any())
             {
-                <div class="text-muted small text-center mt-4">No auditors found.</div>
+                <div class="text-muted small text-center mt-4">@LS.T("auditors.noAuditorsFound")</div>
             }
             @foreach (var a in FilteredAuditors)
             {
@@ -49,22 +49,22 @@
         {
             <div class="card shadow-sm">
                 <div class="card-header fw-semibold py-2">
-                    <i class="ri-user-add-line me-1"></i> Add New Auditor
+                    <i class="ri-user-add-line me-1"></i> @LS.T("auditors.addNewAuditor")
                 </div>
                 <div class="card-body">
                     <div class="row g-2">
                         <div class="col-md-4">
-                            <label class="form-label small mb-1">First Name <span class="text-danger">*</span></label>
-                            <input class="form-control form-control-sm" @bind="_addFirstName" placeholder="First name" />
+                            <label class="form-label small mb-1">@LS.T("members.firstName") <span class="text-danger">*</span></label>
+                            <input class="form-control form-control-sm" @bind="_addFirstName" placeholder="@LS.T("members.firstName")" />
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label small mb-1">Last Name</label>
-                            <input class="form-control form-control-sm" @bind="_addLastName" placeholder="Last name" />
+                            <label class="form-label small mb-1">@LS.T("members.lastName")</label>
+                            <input class="form-control form-control-sm" @bind="_addLastName" placeholder="@LS.T("members.lastName")" />
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label small mb-1">Grade</label>
+                            <label class="form-label small mb-1">@LS.T("auditors.grade")</label>
                             <select class="form-select form-select-sm" @bind="_addGradeId">
-                                <option value="">— None —</option>
+                                <option value="">— @LS.T("common.none") —</option>
                                 @foreach (var g in _grades)
                                 {
                                     <option value="@g.GradeId">@g.Code</option>
@@ -72,12 +72,12 @@
                             </select>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label small mb-1">Type</label>
+                            <label class="form-label small mb-1">@LS.T("auditors.type")</label>
                             <select class="form-select form-select-sm" @bind="_addType">
-                                <option value="0">Inactive</option>
-                                <option value="1">Regular</option>
-                                <option value="2">Solo</option>
-                                <option value="3">Regular + Solo</option>
+                                <option value="0">@LS.T("auditors.typeInactive")</option>
+                                <option value="1">@LS.T("auditors.typeRegular")</option>
+                                <option value="2">@LS.T("auditors.typeSolo")</option>
+                                <option value="3">@LS.T("auditors.typeRegularSolo")</option>
                             </select>
                         </div>
                     </div>
@@ -87,9 +87,9 @@
                     }
                     <div class="mt-3 d-flex gap-2">
                         <button class="btn btn-sm btn-primary" @onclick="SaveNewAuditor">
-                            <i class="ri-save-line me-1"></i>Save
+                            <i class="ri-save-line me-1"></i>@LS.T("common.save")
                         </button>
-                        <button class="btn btn-sm btn-link text-muted" @onclick="() => _showAddForm = false">Cancel</button>
+                        <button class="btn btn-sm btn-link text-muted" @onclick="() => _showAddForm = false">@LS.T("common.cancel")</button>
                     </div>
                 </div>
             </div>
@@ -109,17 +109,17 @@
                             {
                                 <div class="row g-2">
                                     <div class="col-auto">
-                                        <label class="form-label small mb-0">First Name</label>
+                                        <label class="form-label small mb-0">@LS.T("members.firstName")</label>
                                         <input class="form-control form-control-sm" @bind="_editFirstName" style="width:130px;" />
                                     </div>
                                     <div class="col-auto">
-                                        <label class="form-label small mb-0">Last Name</label>
+                                        <label class="form-label small mb-0">@LS.T("members.lastName")</label>
                                         <input class="form-control form-control-sm" @bind="_editLastName" style="width:130px;" />
                                     </div>
                                     <div class="col-auto">
-                                        <label class="form-label small mb-0">Grade</label>
+                                        <label class="form-label small mb-0">@LS.T("auditors.grade")</label>
                                         <select class="form-select form-select-sm" @bind="_editGradeId" style="width:140px;">
-                                            <option value="">— None —</option>
+                                            <option value="">— @LS.T("common.none") —</option>
                                             @foreach (var g in _grades)
                                             {
                                                 <option value="@g.GradeId">@g.Code</option>
@@ -127,18 +127,18 @@
                                         </select>
                                     </div>
                                     <div class="col-auto">
-                                        <label class="form-label small mb-0">Type</label>
+                                        <label class="form-label small mb-0">@LS.T("auditors.type")</label>
                                         <select class="form-select form-select-sm" @bind="_editType" style="width:150px;">
-                                            <option value="0">Inactive</option>
-                                            <option value="1">Regular</option>
-                                            <option value="2">Solo</option>
-                                            <option value="3">Regular + Solo</option>
+                                            <option value="0">@LS.T("auditors.typeInactive")</option>
+                                            <option value="1">@LS.T("auditors.typeRegular")</option>
+                                            <option value="2">@LS.T("auditors.typeSolo")</option>
+                                            <option value="3">@LS.T("auditors.typeRegularSolo")</option>
                                         </select>
                                     </div>
                                     <div class="col-auto d-flex align-items-end pb-1">
                                         <div class="form-check form-switch mb-0">
                                             <input class="form-check-input" type="checkbox" @bind="_editIsActive" />
-                                            <label class="form-check-label small">Active</label>
+                                            <label class="form-check-label small">@LS.T("common.active")</label>
                                         </div>
                                     </div>
                                 </div>
@@ -156,11 +156,11 @@
                                     <span class="badge @TypeBadgeClass(_detail.Type)">@TypeLabel(_detail.Type)</span>
                                     @if (!string.IsNullOrEmpty(_detail.GradeCode))
                                     {
-                                        <span class="badge bg-info text-dark">Grade: @_detail.GradeCode</span>
+                                        <span class="badge bg-info text-dark">@LS.T("auditors.grade"): @_detail.GradeCode</span>
                                     }
                                     @if (!_detail.IsActive)
                                     {
-                                        <span class="badge bg-secondary">Inactive</span>
+                                        <span class="badge bg-secondary">@LS.T("common.inactive")</span>
                                     }
                                 </div>
                             }
@@ -169,14 +169,14 @@
                             @if (_editMode)
                             {
                                 <button class="btn btn-sm btn-primary" @onclick="SaveEdit">
-                                    <i class="ri-save-line me-1"></i>Save Changes
+                                    <i class="ri-save-line me-1"></i>@LS.T("auditors.saveChanges")
                                 </button>
-                                <button class="btn btn-sm btn-link text-muted" @onclick="CancelEdit">Cancel</button>
+                                <button class="btn btn-sm btn-link text-muted" @onclick="CancelEdit">@LS.T("common.cancel")</button>
                             }
                             else
                             {
                                 <button class="btn btn-sm btn-outline-secondary" @onclick="StartEdit">
-                                    <i class="ri-edit-line me-1"></i>Edit
+                                    <i class="ri-edit-line me-1"></i>@LS.T("common.edit")
                                 </button>
                             }
                         </div>
@@ -192,21 +192,21 @@
                         <div class="aud-stat-card" style="background:linear-gradient(135deg,#1e40af,#6366f1);">
                             <div class="aud-stat-icon"><i class="ri-calendar-check-line"></i></div>
                             <div class="aud-stat-value">@_stats.TotalSessions</div>
-                            <div class="aud-stat-label">Total Sessions</div>
+                            <div class="aud-stat-label">@LS.T("auditors.totalSessions")</div>
                         </div>
                     </div>
                     <div class="col-6 col-md-3">
                         <div class="aud-stat-card" style="background:linear-gradient(135deg,#0d9488,#22c55e);">
                             <div class="aud-stat-icon"><i class="ri-timer-line"></i></div>
                             <div class="aud-stat-value">@Hmm((int)_stats.TotalSec)</div>
-                            <div class="aud-stat-label">Hours Worked</div>
+                            <div class="aud-stat-label">@LS.T("auditors.hoursWorked")</div>
                         </div>
                     </div>
                     <div class="col-6 col-md-3">
                         <div class="aud-stat-card" style="background:linear-gradient(135deg,#d97706,#f59e0b);">
                             <div class="aud-stat-icon"><i class="ri-gift-line"></i></div>
                             <div class="aud-stat-value">@_stats.FreeSessions</div>
-                            <div class="aud-stat-label">Free Sessions</div>
+                            <div class="aud-stat-label">@LS.T("auditors.freeSessions")</div>
                         </div>
                     </div>
                     <div class="col-6 col-md-3">
@@ -215,7 +215,7 @@
                             <div class="aud-stat-value" style="font-size:@(_stats.LastSessionDate != null ? "1rem" : "1.6rem");">
                                 @(_stats.LastSessionDate ?? "—")
                             </div>
-                            <div class="aud-stat-label">Last Session</div>
+                            <div class="aud-stat-label">@LS.T("auditors.lastSession")</div>
                         </div>
                     </div>
                 </div>
@@ -226,7 +226,7 @@
             <div class="d-flex flex-column align-items-center justify-content-center text-muted"
                  style="height:60vh;">
                 <i class="ri-user-star-line" style="font-size:3.5rem;opacity:0.2;"></i>
-                <p class="mt-2 small">Select an auditor from the list, or click <strong>+</strong> to add one.</p>
+                <p class="mt-2 small">@LS.T("auditors.selectPrompt")</p>
             </div>
         }
 
@@ -310,7 +310,7 @@
     void SaveNewAuditor()
     {
         if (string.IsNullOrWhiteSpace(_addFirstName))
-        { _addError = "First name is required."; return; }
+        { _addError = LS.T("members.firstNameRequired"); return; }
 
         int? gradeId = int.TryParse(_addGradeId, out var g) ? g : null;
         var newId = AuditorSvc.AddAuditor(_addFirstName, _addLastName, gradeId, _addType);
@@ -336,7 +336,7 @@
     void SaveEdit()
     {
         if (string.IsNullOrWhiteSpace(_editFirstName))
-        { _editError = "First name is required."; return; }
+        { _editError = LS.T("members.firstNameRequired"); return; }
 
         int? gradeId = int.TryParse(_editGradeId, out var g) ? g : null;
         AuditorSvc.UpdateAuditor(_selId!.Value, _editFirstName, _editLastName,
@@ -348,7 +348,7 @@
     }
 
     static string Hmm(int secs) { int s = Math.Abs(secs); return $"{s / 3600}:{(s % 3600) / 60:00}"; }
-    static string TypeLabel(int t) => t switch { 0 => "Inactive", 1 => "Regular", 2 => "Solo", 3 => "Regular + Solo", _ => "?" };
+    string TypeLabel(int t) => t switch { 0 => LS.T("auditors.typeInactive"), 1 => LS.T("auditors.typeRegular"), 2 => LS.T("auditors.typeSolo"), 3 => LS.T("auditors.typeRegularSolo"), _ => "?" };
     static string TypeColor(int t) => t switch { 0 => "#9e9e9e", 1 => "#3949ab", 2 => "#e65100", 3 => "#2e7d32", _ => "#999" };
     static string TypeBadgeClass(int t) => t switch { 0 => "bg-secondary", 1 => "bg-primary", 2 => "bg-warning text-dark", 3 => "bg-success", _ => "bg-secondary" };
 }

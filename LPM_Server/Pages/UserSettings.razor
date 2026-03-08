@@ -24,7 +24,7 @@
     </div>
     <div>
         <div class="settings-hero-name">@_username</div>
-        <div class="settings-hero-sub">Account Settings</div>
+        <div class="settings-hero-sub">@LS.T("settings.accountSettings")</div>
     </div>
 </div>
 
@@ -39,8 +39,8 @@
                         <i class="ri-lock-password-fill"></i>
                     </div>
                     <div>
-                        <div class="settings-card-header-title">Change Password</div>
-                        <div class="settings-card-header-sub">Update your account credentials</div>
+                        <div class="settings-card-header-title">@LS.T("settings.changePassword")</div>
+                        <div class="settings-card-header-sub">@LS.T("settings.updateCredentials")</div>
                     </div>
                 </div>
                 <div class="card-body p-4">
@@ -54,19 +54,19 @@
                         </div>
                     }
                     <div class="mb-3">
-                        <label class="form-label settings-label">Current Password</label>
+                        <label class="form-label settings-label">@LS.T("settings.currentPassword")</label>
                         <SpkPasswordToggle @bind-Password="_currentPwd" />
                     </div>
                     <div class="mb-3">
-                        <label class="form-label settings-label">New Password</label>
+                        <label class="form-label settings-label">@LS.T("settings.newPassword")</label>
                         <SpkPasswordToggle @bind-Password="_newPwd" />
                     </div>
                     <div class="mb-4">
-                        <label class="form-label settings-label">Confirm New Password</label>
+                        <label class="form-label settings-label">@LS.T("settings.confirmNewPassword")</label>
                         <SpkPasswordToggle @bind-Password="_confirmPwd" />
                     </div>
                     <button class="btn settings-save-btn" @onclick="HandleChangePassword">
-                        <i class="ri-save-line me-2"></i>Update Password
+                        <i class="ri-save-line me-2"></i>@LS.T("settings.updatePassword")
                     </button>
                 </div>
             </div>
@@ -80,8 +80,8 @@
                         <i class="ri-camera-fill"></i>
                     </div>
                     <div>
-                        <div class="settings-card-header-title">Profile Picture</div>
-                        <div class="settings-card-header-sub">Upload your photo</div>
+                        <div class="settings-card-header-title">@LS.T("settings.profilePicture")</div>
+                        <div class="settings-card-header-sub">@LS.T("settings.uploadPhoto")</div>
                     </div>
                 </div>
                 <div class="card-body p-4 d-flex flex-column align-items-center gap-3">
@@ -108,7 +108,7 @@
 
                     <div class="settings-upload-zone">
                         <i class="ri-upload-cloud-2-line settings-upload-icon"></i>
-                        <div class="settings-upload-label">Click to upload image</div>
+                        <div class="settings-upload-label">@LS.T("settings.clickToUpload")</div>
                         <div class="settings-upload-sub">JPEG · PNG · GIF · WebP · max 2 MB</div>
                         <InputFile OnChange="HandleFileUpload" accept="image/*"
                                    class="settings-upload-input" />
@@ -117,7 +117,7 @@
                     @if (_avatarUrl is not null)
                     {
                         <button class="btn btn-outline-danger btn-sm rounded-pill px-3" @onclick="HandleDeleteAvatar">
-                            <i class="ri-delete-bin-line me-1"></i>Remove Photo
+                            <i class="ri-delete-bin-line me-1"></i>@LS.T("settings.removePhoto")
                         </button>
                     }
                 </div>
@@ -229,15 +229,15 @@
         _pwMsg = null;
         if (string.IsNullOrWhiteSpace(_currentPwd) || string.IsNullOrWhiteSpace(_newPwd) || string.IsNullOrWhiteSpace(_confirmPwd))
         {
-            _pwMsg = "All fields are required."; _pwOk = false; return;
+            _pwMsg = LS.T("settings.allFieldsRequired"); _pwOk = false; return;
         }
         if (_newPwd != _confirmPwd)
         {
-            _pwMsg = "New passwords do not match."; _pwOk = false; return;
+            _pwMsg = LS.T("settings.passwordsNoMatch"); _pwOk = false; return;
         }
         if (_newPwd.Length < 8)
         {
-            _pwMsg = "New password must be at least 8 characters."; _pwOk = false; return;
+            _pwMsg = LS.T("settings.passwordTooShort"); _pwOk = false; return;
         }
         var error = UserDb.ChangePassword(_username, _currentPwd, _newPwd);
         if (error is not null)
@@ -246,7 +246,7 @@
         }
         else
         {
-            _pwMsg = "Password updated successfully."; _pwOk = true;
+            _pwMsg = LS.T("settings.passwordUpdated"); _pwOk = true;
             _currentPwd = _newPwd = _confirmPwd = null;
         }
     }
@@ -259,11 +259,11 @@
         var file = e.File;
         if (file.Size > 2 * 1024 * 1024)
         {
-            _picMsg = "File is too large (max 2 MB)."; _picOk = false; return;
+            _picMsg = LS.T("settings.fileTooLarge"); _picOk = false; return;
         }
         if (!AllowedMime.Contains(file.ContentType))
         {
-            _picMsg = "Only JPEG, PNG, GIF, and WebP images are allowed."; _picOk = false; return;
+            _picMsg = LS.T("settings.invalidImageType"); _picOk = false; return;
         }
 
         var ext = Path.GetExtension(file.Name).ToLowerInvariant();

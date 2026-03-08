@@ -5,6 +5,8 @@
 @using System.Text.Json
 @inject StateService stateService
 @inject SessionService _sessionService
+@inject NavigationManager NavigationManager
+@implements IDisposable
 
 <Switcher />
 
@@ -15,7 +17,7 @@
         <NavMenu @ref="navMenuRef" />
 
         <div class="main-content app-content" @onclick="() => icontextCloseFn()">
-            <div class="container-fluid">
+            <div class="container-fluid" @key="LS.CurrentLanguage">
                 @Body
             </div>
         </div>
@@ -41,6 +43,12 @@
     {
         if (firstRender)
         {
+            var savedLang = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", "lpm-lang");
+            if (!string.IsNullOrEmpty(savedLang) && savedLang != LS.CurrentLanguage)
+            {
+                LS.SetLanguage(savedLang);
+            }
+            await JSRuntime.InvokeVoidAsync("interop.addAttributeToHtml", "dir", LS.IsRtl ? "rtl" : "ltr");
             await stateService.retrieveFromLocalStorage();
             await JSRuntime.InvokeVoidAsync("interop.updateScrollVisibility", DotNetObjectReference.Create(this));
             
@@ -64,13 +72,30 @@
 
     protected override async Task OnInitializedAsync()
     {
+        LS.OnLanguageChanged += HandleLanguageChanged;
+        NavigationManager.LocationChanged += OnLocationChanged;
         var currentState = new AppState();
-        var newState = stateService.GetAppState(); 
+        var newState = stateService.GetAppState();
         if(!currentState.Equals(newState)){
             @* await stateService.retrieveFromLocalStorage(); *@
         }
         StateHasChanged();
         await base.OnInitializedAsync();
+    }
+
+    private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        try
+        {
+            var savedLang = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", "lpm-lang");
+            if (!string.IsNullOrEmpty(savedLang) && savedLang != LS.CurrentLanguage)
+            {
+                LS.SetLanguage(savedLang);
+            }
+            await JSRuntime.InvokeVoidAsync("interop.addAttributeToHtml", "dir", LS.IsRtl ? "rtl" : "ltr");
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { }
     }
 
     // Icon ClickOpen Start
@@ -106,4 +131,20 @@
         }
     }
     // Icon Clickopen End
+
+    private async void HandleLanguageChanged()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("interop.addAttributeToHtml", "dir", LS.IsRtl ? "rtl" : "ltr");
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { }
+    }
+
+    public void Dispose()
+    {
+        LS.OnLanguageChanged -= HandleLanguageChanged;
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
 }

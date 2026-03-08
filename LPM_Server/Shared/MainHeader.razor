@@ -91,9 +91,9 @@
                         <span style="font-size:2.3rem; font-weight:000; letter-spacing:0.03em; color:#3949ab;">@_displayName</span>
                         <ul class="dropdown-menu dropdown-menu-end shadow-sm">
                             <li><h6 class="dropdown-header">@_displayName</h6></li>
-                            <li><a class="dropdown-item" href="/Settings"><i class="ri-settings-3-line me-2"></i>Settings</a></li>
+                            <li><a class="dropdown-item" href="/Settings"><i class="ri-settings-3-line me-2"></i>@LS.T("header.settings")</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item text-danger" href="/logout"><i class="ri-logout-box-r-line me-2"></i>Sign out</a></li>
+                            <li><a class="dropdown-item text-danger" href="/logout"><i class="ri-logout-box-r-line me-2"></i>@LS.T("header.signout")</a></li>
                         </ul>
                     </div>
 
@@ -201,6 +201,19 @@
                         .avatar-trigger:hover .avatar-caret {
                             color: #fff;
                         }
+                        .lang-switcher-btn {
+                            background: transparent;
+                            border: none;
+                            font-size: 1.25rem;
+                            cursor: pointer;
+                            padding: 2px 4px;
+                            border-radius: 6px;
+                            opacity: 0.5;
+                            transition: opacity 0.2s, transform 0.18s;
+                            line-height: 1;
+                        }
+                        .lang-switcher-btn:hover { opacity: 1; transform: scale(1.18); }
+                        .lang-switcher-active { opacity: 1 !important; }
                     </style>
 
                     <!-- End::header-content-left -->
@@ -208,6 +221,19 @@
                     <!-- Start::header-content-right -->
 
                     <ul class="header-content-right list-unstyled">
+
+                        <!-- Start::header-element language switcher -->
+                        <li class="header-element d-flex align-items-center gap-1">
+                            <button class="lang-switcher-btn @(LS.CurrentLanguage == "en" ? "lang-switcher-active" : "")"
+                                    @onclick='() => SwitchLanguage("en")' title="English">
+                                🇬🇧
+                            </button>
+                            <button class="lang-switcher-btn @(LS.CurrentLanguage == "he" ? "lang-switcher-active" : "")"
+                                    @onclick='() => SwitchLanguage("he")' title="עברית">
+                                🇮🇱
+                            </button>
+                        </li>
+                        <!-- End::header-element language switcher -->
 
                         <!-- Start::header-element logout -->
                         <li class="header-element">
@@ -296,7 +322,7 @@
                     <div class="modal-content">
                         <div class="modal-body">
                             <div class="input-group">
-                                <input type="text" class="form-control border-end-0" placeholder="Search Anything ..."
+                                <input type="text" class="form-control border-end-0" placeholder="@LS.T("header.searchPlaceholder")"
                                     aria-label="Search Anything ..." aria-describedby="button-addon2">
                                     <SpkButtons ButtonClass="btn-primary" id="button-addon2"><i class="bi bi-search"></i></SpkButtons>
                             </div>
@@ -802,5 +828,12 @@
         }
         return false;
     }
-    
+
+    private async Task SwitchLanguage(string lang)
+    {
+        LS.SetLanguage(lang);
+        await JSRuntime.InvokeVoidAsync("localStorage.setItem", "lpm-lang", lang);
+        await JSRuntime.InvokeVoidAsync("interop.addAttributeToHtml", "dir", LS.IsRtl ? "rtl" : "ltr");
+    }
+
 }

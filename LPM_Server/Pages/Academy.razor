@@ -13,7 +13,7 @@
 <div class="acad-nav-bar">
     <div class="d-flex align-items-center gap-2 flex-shrink-0">
         <button class="btn btn-sm acad-nav-btn" @onclick="PrevWeek">
-            <i class="ri-arrow-left-s-line"></i> Prev
+            <i class="ri-arrow-left-s-line"></i> @LS.T("common.prev")
         </button>
         <span class="acad-nav-week">
             <i class="ri-calendar-2-line me-1 opacity-75"></i>
@@ -26,10 +26,10 @@
     </div>
     <div class="d-flex gap-2 ms-auto">
         <button class="btn btn-sm acad-add-btn" @onclick="() => _addModal.Show()">
-            <i class="ri-user-add-line me-1"></i>New Student
+            <i class="ri-user-add-line me-1"></i>@LS.T("academy.newStudent")
         </button>
         <button class="btn btn-sm acad-print-btn" @onclick="PrintWeek">
-            <i class="ri-printer-line me-1"></i>Print
+            <i class="ri-printer-line me-1"></i>@LS.T("common.print")
         </button>
     </div>
 </div>
@@ -63,7 +63,7 @@
         <div class="card-header acad-visit-header">
             <div class="d-flex align-items-center gap-2">
                 <i class="ri-user-heart-line"></i>
-                <strong style="font-size:.9rem;">Visits — @DayLabel(_weekStart.AddDays(_selDay))</strong>
+                <strong style="font-size:.9rem;">@LS.T("academy.visits") — @DayLabel(_weekStart.AddDays(_selDay))</strong>
             </div>
             <div class="d-flex align-items-center gap-2">
                 <span class="badge rounded-pill px-2" style="background:rgba(255,255,255,.25);font-size:.78rem;">
@@ -71,10 +71,10 @@
                 </span>
                 @* Referral legend *@
                 <div class="d-flex align-items-center gap-2 ms-2" style="font-size:.72rem;">
-                    <span class="acad-legend-dot" style="background:#16a34a;"></span><span class="opacity-80">Don</span>
-                    <span class="acad-legend-dot" style="background:#f59e0b;"></span><span class="opacity-80">Friend</span>
-                    <span class="acad-legend-dot" style="background:#3b82f6;"></span><span class="opacity-80">Social</span>
-                    <span class="acad-legend-dot" style="background:#94a3b8;"></span><span class="opacity-80">Other</span>
+                    <span class="acad-legend-dot" style="background:#16a34a;"></span><span class="opacity-80">@LS.T("academy.don")</span>
+                    <span class="acad-legend-dot" style="background:#f59e0b;"></span><span class="opacity-80">@LS.T("academy.friend")</span>
+                    <span class="acad-legend-dot" style="background:#3b82f6;"></span><span class="opacity-80">@LS.T("academy.social")</span>
+                    <span class="acad-legend-dot" style="background:#94a3b8;"></span><span class="opacity-80">@LS.T("academy.other")</span>
                 </div>
             </div>
         </div>
@@ -256,7 +256,7 @@
                             <th class="small" style="width:60px;">Org</th>
                             <th class="small" style="width:120px;">Referral</th>
                             <th class="small" style="width:130px;">Active Course</th>
-                            <th class="small text-center" style="width:50px;">Visits</th>
+                            <th class="small text-center" style="width:50px;">@LS.T("academy.visits")</th>
                             <th style="width:36px;"></th>
                         </tr>
                     </thead>
@@ -318,27 +318,27 @@
     <div class="card-header acad-chart-header">
         <div class="d-flex align-items-center gap-2">
             <i class="ri-bar-chart-box-fill" style="font-size:1.1rem;"></i>
-            <strong style="font-size:.9rem;">Weekly Visit Totals — last 20 weeks</strong>
+            <strong style="font-size:.9rem;">@LS.T("academy.weeklyVisitTotals")</strong>
         </div>
         <div class="d-flex align-items-center gap-3" style="font-size:.75rem;">
             <span class="d-flex align-items-center gap-1">
                 <span style="width:10px;height:10px;border-radius:2px;background:#16a34a;display:inline-block;"></span>
-                <span class="opacity-80">Don</span>
+                <span class="opacity-80">@LS.T("academy.don")</span>
             </span>
             <span class="d-flex align-items-center gap-1">
                 <span style="width:10px;height:10px;border-radius:2px;background:#f59e0b;display:inline-block;"></span>
-                <span class="opacity-80">Friend</span>
+                <span class="opacity-80">@LS.T("academy.friend")</span>
             </span>
             <span class="d-flex align-items-center gap-1">
                 <span style="width:10px;height:10px;border-radius:2px;background:#3b82f6;display:inline-block;"></span>
-                <span class="opacity-80">Social</span>
+                <span class="opacity-80">@LS.T("academy.social")</span>
             </span>
             <span class="d-flex align-items-center gap-1">
                 <span style="width:10px;height:10px;border-radius:2px;background:#94a3b8;display:inline-block;"></span>
-                <span class="opacity-80">Other</span>
+                <span class="opacity-80">@LS.T("academy.other")</span>
             </span>
             <span style="font-size:.78rem;opacity:.8;">
-                Total: @_weeklyTotals.Sum(w => w.TotalVisits) visits
+                @LS.T("home.total"): @_weeklyTotals.Sum(w => w.TotalVisits) @LS.T("academy.visits").ToLower()
             </span>
         </div>
     </div>
@@ -506,7 +506,7 @@
                 </div>
 
                 <div class="modal-footer py-2 px-3" style="border-top:1px solid #ede9fe;">
-                    <button class="btn btn-sm btn-link text-muted" @onclick="CloseCourseModal">Close</button>
+                    <button class="btn btn-sm btn-link text-muted" @onclick="CloseCourseModal">@LS.T("common.close")</button>
                 </div>
 
             </div>
@@ -638,7 +638,7 @@
 </style>
 
 @* ── New Student modal ── *@
-<SpkNewPersonModal @ref="_addModal" Title="New Student" ShowAcademyFields="true"
+<SpkNewPersonModal @ref="_addModal" Title="@LS.T("academy.newStudent")" ShowAcademyFields="true"
                    Courses="_allCourses"
                    ExistingFullNames="@(new HashSet<string>(_allPersons.Select(p => p.FullName), StringComparer.OrdinalIgnoreCase))"
                    OnSaved="SaveNewStudent" />
