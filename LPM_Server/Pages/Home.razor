@@ -26,19 +26,8 @@
             <button class="btn btn-sm home-nav-btn" @onclick="PrintTable">
                 <i class="ri-printer-line me-1"></i>@LS.T("common.print")
             </button>
-            @if (_isAuditor && _isCS && !_soloMode)
+            @if (!_soloMode)
             {
-                <div class="btn-group btn-group-sm" role="group" title="Column filter">
-                    <button type="button"
-                            class="btn @(_roleFilter=="Both"?"home-filter-active":"home-filter-btn")"
-                            @onclick='() => _roleFilter="Both"'>@LS.T("home.both")</button>
-                    <button type="button"
-                            class="btn @(_roleFilter=="Auditor"?"home-filter-active":"home-filter-btn")"
-                            @onclick='() => _roleFilter="Auditor"'>@LS.T("home.aud")</button>
-                    <button type="button"
-                            class="btn @(_roleFilter=="CS"?"home-filter-active":"home-filter-btn")"
-                            @onclick='() => _roleFilter="CS"'>CS</button>
-                </div>
                 <button class="btn btn-sm @(_hideEmpty?"home-filter-active":"home-filter-btn")"
                         title="@(_hideEmpty?LS.T("home.showEmpty"):LS.T("home.hideEmpty"))"
                         @onclick="() => _hideEmpty = !_hideEmpty">
@@ -71,166 +60,240 @@
     }
     else
     {
-        @* ── Grid ── *@
+        @* ── Grids ── *@
         <div id="print-zone">
-            <div id="week-table-scroll" class="table-responsive px-3 thick-scroll">
-            <table class="table table-bordered table-hover table-sm mb-0" style="min-width:300px;">
-                <colgroup>
-                    <col style="width:110px;" />
-                    @foreach (var pc in VisiblePcs)
-                    {
-                        <col />
-                    }
-                </colgroup>
-                <thead class="table-light">
-                    @* ── CS row ── *@
-                    <tr class="small" style="color:#555;">
-                        <th style="min-width:110px;">@LS.T("home.csHeader")</th>
-                        @foreach (var pc in VisiblePcs)
-                        {
-                            var csFullName       = _pcCsNames.TryGetValue(pc.PcId, out var cn) ? cn : "";
-                            var csFirstName      = csFullName.Length > 0 ? csFullName.Split(' ')[0] : "NA";
-                            var csColBlocked     = !pc.IsSolo && _unapprovedPcIds.Contains(pc.PcId);
-                            <th class="text-center fw-normal user-select-none"
-                                style="@(csColBlocked ? "cursor:default;" : "cursor:context-menu;") position:relative;"
-                                @oncontextmenu="e => { if (!csColBlocked) ShowCtxMenu(e, pc); }"
-                                @oncontextmenu:preventDefault="true">
-                                @if (pc.IsSolo)
-                                {
-                                    <span title="@LS.T("home.soloSessions")">@LS.T("home.solo")</span>
-                                }
-                                else if (pc.WorkCapacity == "CS")
-                                {
-                                    <span>CS</span>
-                                }
-                                else if (pc.WorkCapacity == "Auditor")
-                                {
-                                    <span title="@(csFullName.Length > 0 ? csFullName : "Unknown")">@csFirstName</span>
-                                }
-                                <span style="position:absolute; top:1px; right:2px; line-height:1; cursor:pointer;
-                                             color:#aaa; font-size:11px; font-weight:700;"
-                                      title="@LS.T("home.removeColumn")"
-                                      @onclick="() => RemovePcDirectly(pc)"
-                                      @onclick:stopPropagation="true">✕</span>
-                            </th>
-                        }
-                    </tr>
-                    @* ── Role row ── *@
-                    @if (VisiblePcs.Any())
-                    {
-                        <tr class="table-light">
-                            <th class="fw-semibold small py-1" style="color:#555;">@LS.T("home.role")</th>
-                            @foreach (var pc in VisiblePcs)
+
+            @* ══════ AUDITOR TABLE ══════ *@
+            @{ var _audPcs = AuditorPcs; }
+            @if (_audPcs.Count > 0 || _myPcs.Count == 0)
+            {
+                <div class="home-table-label px-3 mt-1 mb-1">
+                    <i class="ri-user-line me-1"></i>@LS.T("home.aud")
+                </div>
+                <div id="week-table-scroll" class="table-responsive px-3 thick-scroll">
+                <table class="table table-bordered table-hover table-sm mb-0" style="min-width:300px;">
+                    <colgroup>
+                        <col style="width:110px;" />
+                        @foreach (var pc in _audPcs) { <col /> }
+                    </colgroup>
+                    <thead class="table-light">
+                        @* ── CS name row ── *@
+                        <tr class="small" style="color:#555;">
+                            <th style="min-width:110px;">@LS.T("home.csHeader")</th>
+                            @foreach (var pc in _audPcs)
                             {
-                                var roleColBlocked = !pc.IsSolo && _unapprovedPcIds.Contains(pc.PcId);
-                                <th class="text-center py-1"
-                                    style="@(roleColBlocked ? "opacity:.35; pointer-events:none;" : "")">
-                                    @if (pc.IsSolo)
-                                    {
-                                        <span class="badge bg-warning-transparent">@LS.T("home.solo")</span>
-                                    }
-                                    else if (pc.WorkCapacity == "Miscellaneous")
-                                    {
-                                        <span class="badge bg-secondary-transparent">@LS.T("home.other")</span>
-                                    }
-                                    else if (pc.WorkCapacity == "SoloAuditor")
-                                    {
-                                        <span class="badge bg-warning-transparent">@LS.T("home.solo")</span>
-                                    }
-                                    else if (_isCS)
-                                    {
-                                        <div class="btn-group btn-group-sm" role="group">
-                                            <button type="button" class="btn @AudBtnClass(pc)"
-                                                    style="padding:1px 5px; font-size:0.7rem;"
-                                                    @onclick="() => SetPcRoleAud(pc.PcId)">
-                                                @if (pc.WorkCapacity == "Auditor")
-                                                {
-                                                    <i class="ri-checkbox-circle-fill me-1"></i>
-                                                }
-                                                @LS.T("home.aud")
-                                            </button>
-                                            <button type="button" class="btn @CsBtnClass(pc)"
-                                                    style="padding:1px 5px; font-size:0.7rem;"
-                                                    @onclick="() => SetPcRoleCs(pc.PcId)">
-                                                @if (pc.WorkCapacity == "CS")
-                                                {
-                                                    <i class="ri-checkbox-circle-fill me-1"></i>
-                                                }
-                                                CS
-                                            </button>
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge bg-primary-transparent">@LS.T("home.aud")</span>
-                                    }
+                                var csFullName   = _pcCsNames.TryGetValue(pc.PcId, out var cn) ? cn : "";
+                                var csFirstName  = csFullName.Length > 0 ? csFullName.Split(' ')[0] : "NA";
+                                var csColBlocked = pc.WorkCapacity != "CSSolo" && _unapprovedPcIds.Contains(pc.PcId);
+                                <th class="text-center fw-normal user-select-none"
+                                    style="@(csColBlocked ? "cursor:default;" : "cursor:context-menu;") position:relative;"
+                                    @oncontextmenu="e => { if (!csColBlocked) ShowCtxMenu(e, pc); }"
+                                    @oncontextmenu:preventDefault="true">
+                                    <span title="@(csFullName.Length > 0 ? csFullName : "Unknown")">@csFirstName</span>
+                                    <span style="position:absolute; top:1px; right:2px; line-height:1; cursor:pointer;
+                                                 color:#aaa; font-size:11px; font-weight:700;"
+                                          title="@LS.T("home.removeColumn")"
+                                          @onclick="() => RemovePcDirectly(pc)"
+                                          @onclick:stopPropagation="true">✕</span>
                                 </th>
                             }
                         </tr>
-                    }
-                    @* ── PC name row ── *@
-                    <tr>
-                        <th style="min-width:110px;">@LS.T("home.day")</th>
-                        @foreach (var pc in VisiblePcs)
+                        @* ── Role row ── *@
+                        @if (_audPcs.Any())
                         {
-                            var hasPendingCs   = Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((DashboardService.GKey(pc), d)));
-                            var isPendingApprv = !pc.IsSolo && _unapprovedPcIds.Contains(pc.PcId);
-                            <th class="text-center user-select-none"
-                                style="@(isPendingApprv ? "cursor:not-allowed;" : "cursor:context-menu;") white-space:nowrap; min-width:90px;"
-                                @oncontextmenu="e => { if (!isPendingApprv) ShowCtxMenu(e, pc); }"
-                                @oncontextmenu:preventDefault="true">
-                                <span class="badge rounded-pill"
-                                      title="@(isPendingApprv ? pc.FullName + " — " + LS.T("home.pendingApproval") : pc.FullName)"
-                                      style="@(isPendingApprv
-                                          ? "background:#f1f3f5; color:#868e96; border:1px solid #ced4da;"
-                                          : hasPendingCs
-                                              ? "background:#fff3e0; color:#e65100; border:1px solid #ff9800;"
-                                              : "background:#e8f5e9; color:#2e7d32; border:1px solid #4caf50;")
-                                             font-weight:600; font-size:.85em; padding:.3em .75em;
-                                             @(isPendingApprv ? "opacity:0.6;" : "")">
-                                    @if (isPendingApprv) { <i class="ri-time-line me-1" style="font-size:0.75em;"></i> }
-                                    @pc.FullName
-                                </span>
-                            </th>
+                            <tr class="table-light">
+                                <th class="fw-semibold small py-1" style="color:#555;">@LS.T("home.role")</th>
+                                @foreach (var pc in _audPcs)
+                                {
+                                    var roleColBlocked = pc.WorkCapacity != "CSSolo" && _unapprovedPcIds.Contains(pc.PcId);
+                                    <th class="text-center py-1"
+                                        style="@(roleColBlocked ? "opacity:.35; pointer-events:none;" : "")">
+                                        @if (pc.WorkCapacity == "Miscellaneous")
+                                        {
+                                            <span class="badge bg-secondary-transparent">@LS.T("home.other")</span>
+                                        }
+                                        else if (pc.WorkCapacity == "SoloAuditor")
+                                        {
+                                            <span class="badge bg-warning-transparent">@LS.T("home.solo")</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-primary-transparent">@LS.T("home.aud")</span>
+                                        }
+                                    </th>
+                                }
+                            </tr>
                         }
-                        @if (_myPcs.Count == 0)
-                        {
-                            <th class="text-muted fst-italic fw-normal">
-                                @LS.T("home.clickToBegin")
-                            </th>
-                        }
-                    </tr>
-                </thead>
-                <tbody>
-                    @* ── Day rows ── *@
-                    @for (int d = 0; d < 7; d++)
-                    {
-                        var day      = _weekStart.AddDays(d);
-                        var dayIdx   = d;
-                        var isFuture = day > MaxAllowedDate();
+                        @* ── PC name row ── *@
                         <tr>
-                            <td class="text-nowrap @(isFuture ? "text-muted" : "")">@DayLabel(day)</td>
+                            <th style="min-width:110px;">@LS.T("home.day")</th>
+                            @foreach (var pc in _audPcs)
+                            {
+                                var hasPendingCs   = Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((DashboardService.GKey(pc), d)));
+                                var isPendingApprv = pc.WorkCapacity != "CSSolo" && _unapprovedPcIds.Contains(pc.PcId);
+                                <th class="text-center user-select-none"
+                                    style="@(isPendingApprv ? "cursor:not-allowed;" : "cursor:context-menu;") white-space:nowrap; min-width:90px;"
+                                    @oncontextmenu="e => { if (!isPendingApprv) ShowCtxMenu(e, pc); }"
+                                    @oncontextmenu:preventDefault="true">
+                                    <span class="badge rounded-pill"
+                                          title="@(isPendingApprv ? pc.FullName + " — " + LS.T("home.pendingApproval") : pc.FullName)"
+                                          style="@(isPendingApprv
+                                              ? "background:#f1f3f5; color:#868e96; border:1px solid #ced4da;"
+                                              : hasPendingCs
+                                                  ? "background:#fff3e0; color:#e65100; border:1px solid #ff9800;"
+                                                  : "background:#e8f5e9; color:#2e7d32; border:1px solid #4caf50;")
+                                                 font-weight:600; font-size:.85em; padding:.3em .75em;
+                                                 @(isPendingApprv ? "opacity:0.6;" : "")">
+                                        @if (isPendingApprv) { <i class="ri-time-line me-1" style="font-size:0.75em;"></i> }
+                                        @pc.FullName
+                                    </span>
+                                </th>
+                            }
                             @if (_myPcs.Count == 0)
                             {
-                                <td class="text-muted text-center small">—</td>
+                                <th class="text-muted fst-italic fw-normal">
+                                    @LS.T("home.clickToBegin")
+                                </th>
                             }
-                            else
-                            {
-                                @foreach (var pc in VisiblePcs)
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (int d = 0; d < 7; d++)
+                        {
+                            var day    = _weekStart.AddDays(d);
+                            var dayIdx = d;
+                            var isFuture = day > MaxAllowedDate();
+                            <tr>
+                                <td class="text-nowrap @(isFuture ? "text-muted" : "")">@DayLabel(day)</td>
+                                @if (_myPcs.Count == 0)
                                 {
-                                    var secs           = _grid.GetValueOrDefault((DashboardService.GKey(pc), dayIdx));
-                                    var isSelected     = _selPcId == pc.PcId && _selDay == dayIdx && _selIsSolo == pc.IsSolo;
-                                    var isPendingApprv = !pc.IsSolo && _unapprovedPcIds.Contains(pc.PcId);
-                                    <td class="text-center @(isSelected && !isPendingApprv ? "table-primary fw-semibold" : isFuture || isPendingApprv ? "text-muted" : "")"
-                                        style="@(isPendingApprv ? "cursor:not-allowed; background:#f5f5f5; opacity:.35; pointer-events:none;" : isFuture ? "cursor:default; background:#f8f9fa; opacity:.55;" : "cursor:pointer;")"
-                                        @onclick="() => { if (!isPendingApprv && !isFuture) TrySelectCell(pc, dayIdx); }">
-                                        @{
-                                            var isPendingCs = pc.WorkCapacity == "CS" && _pendingCs.Contains((DashboardService.GKey(pc), dayIdx));
-                                        }
+                                    <td class="text-muted text-center small">—</td>
+                                }
+                                else
+                                {
+                                    @foreach (var pc in _audPcs)
+                                    {
+                                        var secs           = _grid.GetValueOrDefault((DashboardService.GKey(pc), dayIdx));
+                                        var isSelected     = _selPcId == pc.PcId && _selDay == dayIdx && _selRole == pc.WorkCapacity;
+                                        var isPendingApprv = pc.WorkCapacity != "CSSolo" && _unapprovedPcIds.Contains(pc.PcId);
+                                        <td class="text-center @(isSelected && !isPendingApprv ? "table-primary fw-semibold" : isFuture || isPendingApprv ? "text-muted" : "")"
+                                            style="@(isPendingApprv ? "cursor:not-allowed; background:#f5f5f5; opacity:.35; pointer-events:none;" : isFuture ? "cursor:default; background:#f8f9fa; opacity:.55;" : "cursor:pointer;")"
+                                            @onclick="() => { if (!isPendingApprv && !isFuture) TrySelectCell(pc, dayIdx); }">
+                                            @if (secs > 0)
+                                            {
+                                                <span>@DashboardService.Fmt(secs)</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">-</span>
+                                            }
+                                        </td>
+                                    }
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                    @if (_audPcs.Count > 0)
+                    {
+                        <tfoot class="table-light">
+                            <tr>
+                                <td><strong>Σ Week</strong></td>
+                                @foreach (var pc in _audPcs)
+                                {
+                                    var total = Enumerable.Range(0, 7)
+                                        .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d)));
+                                    <td class="text-center"><strong>@DashboardService.Fmt(total)</strong></td>
+                                }
+                            </tr>
+                            @{
+                                var audGrandTotal = _audPcs.Sum(pc => Enumerable.Range(0, 7)
+                                    .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
+                            }
+                            <tr style="background:linear-gradient(90deg,#1a237e 0%,#283593 100%); color:#fff;">
+                                <td class="fw-bold" style="letter-spacing:.03em;">Grand Total</td>
+                                <td colspan="@_audPcs.Count">
+                                    <div class="d-flex align-items-center">
+                                        <button type="button" class="btn btn-sm btn-light py-0 px-1 me-2"
+                                                title="Scroll right" @onclick='() => ScrollWeekTable("right")'>
+                                            <i class="ri-arrow-right-s-line"></i>
+                                        </button>
+                                        <div class="flex-grow-1 text-center">
+                                            <span style="font-size:1.25rem; font-weight:700; letter-spacing:.04em;">
+                                                @DashboardService.Fmt(audGrandTotal)
+                                            </span>
+                                        </div>
+                                        <button type="button" class="btn btn-sm btn-light py-0 px-1"
+                                                title="Scroll left" @onclick='() => ScrollWeekTable("left")'>
+                                            <i class="ri-arrow-left-s-line"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tfoot>
+                    }
+                </table>
+                </div>
+            }
 
+            @* ══════ CS SOLO TABLE ══════ *@
+            @{ var _csSoloPcs = CsSoloPcs; }
+            @if (_csSoloPcs.Count > 0)
+            {
+                <div class="home-table-label px-3 mt-3 mb-1" style="color:#6a1b9a; font-weight:600; font-size:.85rem;">
+                    <i class="ri-shield-star-line me-1"></i>CS Solo
+                </div>
+                <div class="table-responsive px-3 thick-scroll">
+                <table class="table table-bordered table-hover table-sm mb-0" style="min-width:300px;">
+                    <colgroup>
+                        <col style="width:110px;" />
+                        @foreach (var pc in _csSoloPcs) { <col /> }
+                    </colgroup>
+                    <thead class="table-light">
+                        <tr>
+                            <th style="min-width:110px;">@LS.T("home.day")</th>
+                            @foreach (var pc in _csSoloPcs)
+                            {
+                                var hasPendingCs = Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((DashboardService.GKey(pc), d)));
+                                <th class="text-center user-select-none"
+                                    style="cursor:context-menu; white-space:nowrap; min-width:90px; position:relative;"
+                                    @oncontextmenu="e => ShowCtxMenu(e, pc)"
+                                    @oncontextmenu:preventDefault="true">
+                                    <span class="badge rounded-pill"
+                                          title="@pc.FullName"
+                                          style="@(hasPendingCs
+                                              ? "background:#f3e5f5; color:#6a1b9a; border:1px solid #ab47bc;"
+                                              : "background:#f3e5f5; color:#6a1b9a; border:1px solid #ce93d8;")
+                                             font-weight:600; font-size:.82em; padding:.25em .6em;">
+                                        @pc.FullName
+                                    </span>
+                                    <span style="position:absolute; top:1px; right:2px; line-height:1; cursor:pointer;
+                                                 color:#aaa; font-size:11px; font-weight:700;"
+                                          title="@LS.T("home.removeColumn")"
+                                          @onclick="() => RemovePcDirectly(pc)"
+                                          @onclick:stopPropagation="true">✕</span>
+                                </th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (int d = 0; d < 7; d++)
+                        {
+                            var day    = _weekStart.AddDays(d);
+                            var dayIdx = d;
+                            var isFuture = day > MaxAllowedDate();
+                            <tr>
+                                <td class="text-nowrap @(isFuture ? "text-muted" : "")" style="font-size:.82em; color:#6a1b9a;">@DayLabel(day)</td>
+                                @foreach (var pc in _csSoloPcs)
+                                {
+                                    var secs       = _grid.GetValueOrDefault((DashboardService.GKey(pc), dayIdx));
+                                    var isSelected = _selPcId == pc.PcId && _selDay == dayIdx && _selRole == pc.WorkCapacity;
+                                    var isPendingCs = _pendingCs.Contains((DashboardService.GKey(pc), dayIdx));
+                                    <td class="text-center @(isSelected ? "table-primary fw-semibold" : isFuture ? "text-muted" : "")"
+                                        style="@(isFuture ? "cursor:default; background:#f8f9fa; opacity:.55;" : "cursor:pointer;") color:#6a1b9a; font-size:.82em;"
+                                        @onclick="() => { if (!isFuture) TrySelectCell(pc, dayIdx); }">
                                         @if (secs > 0)
                                         {
-                                            <span style="@(pc.WorkCapacity == "CS" && !pc.IsSolo ? "color:#aaa; font-size:.78em;" : "")">
+                                            <span>
                                                 @DashboardService.Fmt(secs)
                                                 @if (isPendingCs)
                                                 {
@@ -248,91 +311,184 @@
                                         }
                                     </td>
                                 }
-                            }
-                        </tr>
-                    }
-                </tbody>
-                @{ var _vp = VisiblePcs; }
-                @if (_vp.Count > 0)
-                {
+                            </tr>
+                        }
+                    </tbody>
                     <tfoot class="table-light">
                         <tr>
-                            <td><strong>Σ Week</strong></td>
-                            @foreach (var pc in _vp)
+                            <td style="font-size:.82em; color:#6a1b9a;"><strong>Σ Week</strong></td>
+                            @foreach (var pc in _csSoloPcs)
                             {
                                 var total = Enumerable.Range(0, 7)
                                     .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d)));
-                                <td class="text-center">
-                                    @if (pc.WorkCapacity == "CS" && !pc.IsSolo)
-                                    {
-                                        <span style="color:#aaa; font-size:.78em;">@DashboardService.Fmt(total)</span>
-                                    }
-                                    else
-                                    {
-                                        <strong>@DashboardService.Fmt(total)</strong>
-                                    }
+                                <td class="text-center" style="color:#6a1b9a; font-size:.82em;">
+                                    <strong>@DashboardService.Fmt(total)</strong>
                                 </td>
                             }
                         </tr>
                         @{
-                            var csPcKeySet    = _vp.Where(p => p.WorkCapacity == "CS" && !p.IsSolo).Select(DashboardService.GKey).ToHashSet();
-                            var visibleKeySet = _vp.Select(DashboardService.GKey).ToHashSet();
-                            var nonCsTotal    = _grid.Where(kv => visibleKeySet.Contains(kv.Key.Item1) && !csPcKeySet.Contains(kv.Key.Item1)).Sum(kv => kv.Value);
-                            var csTotal       = _grid.Where(kv => csPcKeySet.Contains(kv.Key.Item1)).Sum(kv => kv.Value);
+                            var csSoloGrandTotal = _csSoloPcs.Sum(pc => Enumerable.Range(0, 7)
+                                .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
                         }
-                        <tr style="background:linear-gradient(90deg,#1a237e 0%,#283593 100%); color:#fff;">
-                            <td class="fw-bold" style="letter-spacing:.03em;">Grand Total</td>
-                                <td colspan="@_vp.Count">
-                                    <div class="d-flex align-items-center">
-
-                                        <!-- LEFT SIDE: scroll RIGHT button -->
-                                        <button type="button"
-                                                class="btn btn-sm btn-light py-0 px-1 me-2"
-                                                title="Scroll right"
-                                                @onclick='() => ScrollWeekTable("right")'>
-                                            <i class="ri-arrow-right-s-line"></i>
-                                        </button>
-
-                                        <!-- CENTER: total + CS line -->
-                                        <div class="flex-grow-1 text-center">
-                                            <span style="font-size:1.25rem; font-weight:700; letter-spacing:.04em;">
-                                                @DashboardService.Fmt(nonCsTotal)
-                                            </span>
-                                            @if (csTotal > 0)
-                                            {
-                                                <div style="font-size:.75rem; opacity:.75; margin-top:1px;">
-                                                    CS time: (@DashboardService.Fmt(csTotal))
-                                                </div>
-                                            }
-                                        </div>
-
-                                        <!-- RIGHT SIDE: scroll LEFT button -->
-                                        <button type="button"
-                                                class="btn btn-sm btn-light py-0 px-1"
-                                                title="Scroll left"
-                                                @onclick='() => ScrollWeekTable("left")'>
-                                            <i class="ri-arrow-left-s-line"></i>
-                                        </button>
-
-                                    </div>
-                                </td>
+                        <tr style="background:linear-gradient(90deg,#6a1b9a 0%,#8e24aa 100%); color:#fff;">
+                            <td class="fw-bold" style="letter-spacing:.03em; font-size:.85em;">CS Solo Total</td>
+                            <td colspan="@_csSoloPcs.Count">
+                                <div class="text-center">
+                                    <span style="font-size:1rem; font-weight:700; letter-spacing:.04em;">
+                                        @DashboardService.Fmt(csSoloGrandTotal)
+                                    </span>
+                                </div>
+                            </td>
                         </tr>
                     </tfoot>
-                }
-            </table>
-        </div>
+                </table>
+                </div>
+            }
+
+            @* ══════ COMBINED GRAND TOTAL (Auditor + CS Solo) ══════ *@
+            @{
+                var combinedAudTotal = _audPcs.Sum(pc => Enumerable.Range(0, 7)
+                    .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
+                var combinedSoloTotal = _csSoloPcs.Sum(pc => Enumerable.Range(0, 7)
+                    .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
+                var combinedTotal = combinedAudTotal + combinedSoloTotal;
+            }
+            @if (combinedTotal > 0)
+            {
+                <div class="px-3 mt-2 mb-1">
+                    <div style="background:linear-gradient(90deg,#0d47a1 0%,#1565c0 100%); color:#fff;
+                                padding:10px 16px; border-radius:6px; display:flex; align-items:center;">
+                        <span class="fw-bold" style="letter-spacing:.03em;">Grand Total (Auditor + CS Solo)</span>
+                        <span class="ms-auto" style="font-size:1.3rem; font-weight:700; letter-spacing:.04em;">
+                            @DashboardService.Fmt(combinedTotal)
+                        </span>
+                    </div>
+                </div>
+            }
+
+            @* ══════ CS TABLE ══════ *@
+            @{ var _csPcs = CsPcs; }
+            @if (_csPcs.Count > 0)
+            {
+                <div class="home-table-label home-table-label-cs px-3 mt-3 mb-1">
+                    <i class="ri-briefcase-line me-1"></i>CS
+                </div>
+                <div class="table-responsive px-3 thick-scroll">
+                <table class="table table-bordered table-hover table-sm mb-0" style="min-width:300px;">
+                    <colgroup>
+                        <col style="width:110px;" />
+                        @foreach (var pc in _csPcs) { <col /> }
+                    </colgroup>
+                    <thead class="table-light">
+                        @* ── PC name row (no CS/Role rows needed — all are CS) ── *@
+                        <tr>
+                            <th style="min-width:110px;">@LS.T("home.day")</th>
+                            @foreach (var pc in _csPcs)
+                            {
+                                var hasPendingCs = Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((DashboardService.GKey(pc), d)));
+                                <th class="text-center user-select-none"
+                                    style="cursor:context-menu; white-space:nowrap; min-width:90px; position:relative;"
+                                    @oncontextmenu="e => ShowCtxMenu(e, pc)"
+                                    @oncontextmenu:preventDefault="true">
+                                    <span class="badge rounded-pill"
+                                          title="@pc.FullName"
+                                          style="@(hasPendingCs
+                                              ? "background:#fff3e0; color:#e65100; border:1px solid #ff9800;"
+                                              : "background:#e8f5e9; color:#2e7d32; border:1px solid #4caf50;")
+                                             font-weight:600; font-size:.78em; padding:.25em .6em;">
+                                        @pc.FullName
+                                    </span>
+                                    <span style="position:absolute; top:1px; right:2px; line-height:1; cursor:pointer;
+                                                 color:#aaa; font-size:11px; font-weight:700;"
+                                          title="@LS.T("home.removeColumn")"
+                                          @onclick="() => RemovePcDirectly(pc)"
+                                          @onclick:stopPropagation="true">✕</span>
+                                </th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (int d = 0; d < 7; d++)
+                        {
+                            var day    = _weekStart.AddDays(d);
+                            var dayIdx = d;
+                            var isFuture = day > MaxAllowedDate();
+                            <tr>
+                                <td class="text-nowrap @(isFuture ? "text-muted" : "")" style="font-size:.82em;">@DayLabel(day)</td>
+                                @foreach (var pc in _csPcs)
+                                {
+                                    var secs       = _grid.GetValueOrDefault((DashboardService.GKey(pc), dayIdx));
+                                    var isSelected = _selPcId == pc.PcId && _selDay == dayIdx && _selRole == pc.WorkCapacity;
+                                    var isPendingCs = _pendingCs.Contains((DashboardService.GKey(pc), dayIdx));
+                                    <td class="text-center @(isSelected ? "table-primary fw-semibold" : isFuture ? "text-muted" : "")"
+                                        style="@(isFuture ? "cursor:default; background:#f8f9fa; opacity:.55;" : "cursor:pointer;") color:#888; font-size:.78em;"
+                                        @onclick="() => { if (!isFuture) TrySelectCell(pc, dayIdx); }">
+                                        @if (secs > 0)
+                                        {
+                                            <span>
+                                                @DashboardService.Fmt(secs)
+                                                @if (isPendingCs)
+                                                {
+                                                    <span class="text-danger fw-bold ms-1" title="Pending CS review">*</span>
+                                                }
+                                            </span>
+                                        }
+                                        else if (isPendingCs)
+                                        {
+                                            <span class="text-danger fw-bold" title="Pending CS review">*</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">-</span>
+                                        }
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot class="table-light">
+                        <tr>
+                            <td style="font-size:.82em;"><strong>Σ Week</strong></td>
+                            @foreach (var pc in _csPcs)
+                            {
+                                var total = Enumerable.Range(0, 7)
+                                    .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d)));
+                                <td class="text-center" style="color:#888; font-size:.78em;">
+                                    <strong>@DashboardService.Fmt(total)</strong>
+                                </td>
+                            }
+                        </tr>
+                        @{
+                            var csGrandTotal = _csPcs.Sum(pc => Enumerable.Range(0, 7)
+                                .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
+                        }
+                        <tr style="background:linear-gradient(90deg,#546e7a 0%,#78909c 100%); color:#fff;">
+                            <td class="fw-bold" style="letter-spacing:.03em; font-size:.85em;">CS Total</td>
+                            <td colspan="@_csPcs.Count">
+                                <div class="text-center">
+                                    <span style="font-size:1rem; font-weight:700; letter-spacing:.04em;">
+                                        @DashboardService.Fmt(csGrandTotal)
+                                    </span>
+                                </div>
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+                </div>
+            }
+
         </div>
 
         @* ── Context menu ── *@
         @if (_showCtxMenu)
         {
-            var ctxPc = _myPcs.FirstOrDefault(p => p.PcId == _ctxPcId && p.IsSolo == _ctxIsSolo);
+            var ctxPc = _myPcs.FirstOrDefault(p => p.PcId == _ctxPcId && p.WorkCapacity == _ctxWorkCapacity);
             <div class="home-ctx-menu"
                  style="position:fixed; top:@(_ctxY)px; left:@(_ctxX)px; z-index:9999; min-width:170px;"
                  @onclick:stopPropagation="true">
                 <div class="home-ctx-header">Options</div>
                 <div class="list-group list-group-flush">
-                    @if (!_ctxIsSolo)
+                    @if (_ctxWorkCapacity != "CSSolo")
                     {
                         @if (ctxPc?.WorkCapacity == "Miscellaneous")
                         {
@@ -364,6 +520,7 @@
             var selDate   = _weekStart.AddDays(_selDay.Value);
             var roleLabel = _selRole switch {
                 "CS"           => "CS",
+                "CSSolo"       => "CS Solo",
                 "Miscellaneous"=> "Other",
                 "SoloAuditor"  => "Solo",
                 _              => "Auditor"
@@ -380,7 +537,7 @@
                 </div>
                 <div class="card-body py-2">
 
-                    @if (_selRole != "CS")
+                    @if (_selRole != "CS" && _selRole != "CSSolo")
                     {
                         @* ── Auditor view: own sessions (also used for Miscellaneous/Other role) ── *@
                         @if (_detail.Sessions.Count == 0)
@@ -774,18 +931,47 @@
                                     @onclick="() => _showAddPcModal = false"></button>
                         </div>
                         <div class="modal-body">
+                            @* ── Category selector ── *@
+                            <div class="btn-group w-100 mb-3" role="group">
+                                @if (_isAuditor)
+                                {
+                                    <button type="button"
+                                            class="btn btn-sm @(_addPcCategory == "Auditor" ? "btn-primary" : "btn-outline-secondary")"
+                                            @onclick='() => _addPcCategory = "Auditor"'>
+                                        <i class="ri-user-line me-1"></i>Auditor
+                                    </button>
+                                }
+                                @if (_isCS)
+                                {
+                                    <button type="button"
+                                            class="btn btn-sm @(_addPcCategory == "CSSolo" ? "btn-purple" : "btn-outline-secondary")"
+                                            style="@(_addPcCategory == "CSSolo" ? "background:#6a1b9a; border-color:#6a1b9a; color:#fff;" : "")"
+                                            @onclick='() => _addPcCategory = "CSSolo"'>
+                                        <i class="ri-shield-star-line me-1"></i>CS Solo
+                                    </button>
+                                    <button type="button"
+                                            class="btn btn-sm @(_addPcCategory == "CS" ? "btn-success" : "btn-outline-secondary")"
+                                            @onclick='() => _addPcCategory = "CS"'>
+                                        <i class="ri-briefcase-line me-1"></i>CS
+                                    </button>
+                                }
+                            </div>
                             <input class="form-control mb-3" placeholder="Search..."
                                    @bind="_pcSearch" @bind:event="oninput" />
                             <div style="max-height:320px; overflow-y:auto;">
                                 @{
-                                    var myPcSet   = _myPcs.Select(p => (p.PcId, p.IsSolo)).ToHashSet();
+                                    // Build set of PCs already in the user's list for this category
+                                    var myPcSet   = _myPcs.Select(p => (p.PcId, p.WorkCapacity)).ToHashSet();
                                     var available = _allPcs
-                                        .Where(p => !myPcSet.Contains((p.PcId, p.IsSolo)))
-                                        .Where(p => !p.IsSolo || _isCS)   // solo entries only for CS users
+                                        .Where(p => !myPcSet.Contains((p.PcId, _addPcCategory)))
                                         .Where(p => string.IsNullOrEmpty(_pcSearch)
                                                     || p.FullName.Contains(_pcSearch,
                                                            StringComparison.OrdinalIgnoreCase))
                                         .ToList();
+                                    // Get PCs with pending solo CS reviews (PcId=AuditorId sessions without review)
+                                    var pendingSoloPcIds = _addPcCategory == "CSSolo" ? GetPcIdsWithPendingSoloReviews() : new HashSet<int>();
+                                    // Get PCs with pending regular CS reviews (PcId!=AuditorId sessions without review)
+                                    var pendingRegularPcIds = _addPcCategory == "CS" ? GetPcIdsWithPendingRegularReviews() : new HashSet<int>();
                                 }
                                 @if (available.Count == 0)
                                 {
@@ -793,9 +979,16 @@
                                 }
                                 @foreach (var pc in available)
                                 {
+                                    bool hasPending = (_addPcCategory == "CSSolo" && pendingSoloPcIds.Contains(pc.PcId))
+                                                   || (_addPcCategory == "CS"     && pendingRegularPcIds.Contains(pc.PcId));
                                     <div class="home-pc-item"
-                                         @onclick="() => AddPc(pc.PcId, pc.IsSolo)">
+                                         style="@(hasPending ? "background:#e8f5e9; border-left:3px solid #4caf50;" : "")"
+                                         @onclick="() => AddPc(pc.PcId, _addPcCategory)">
                                         <i class="ri-user-line me-2 opacity-50"></i>@pc.FullName
+                                        @if (hasPending)
+                                        {
+                                            <span class="ms-auto badge bg-success" style="font-size:.7em;">pending</span>
+                                        }
                                     </div>
                                 }
                             </div>
@@ -901,6 +1094,15 @@
     }
     .home-pc-item:last-child { border-bottom: none; }
     .home-pc-item:hover { background: #eef2ff; color: #3949ab; font-weight: 600; }
+
+    /* ── Table section labels ── */
+    .home-table-label {
+        font-size: .85rem; font-weight: 700; color: #1a237e;
+        letter-spacing: .03em;
+    }
+    .home-table-label-cs {
+        color: #546e7a; font-size: .8rem;
+    }
 </style>
 
 @code {
@@ -919,36 +1121,32 @@
     HashSet<int>   _unapprovedPcIds = [];
     Dictionary<(int, int), int> _grid = [];
 
-    // Column filter (visible when user is both Auditor and CS)
-    string _roleFilter = "Both";
     bool   _hideEmpty;
 
-    List<PcInfo> VisiblePcs
-    {
-        get
-        {
-            IEnumerable<PcInfo> pcs = _myPcs;
-            if (_isAuditor && _isCS)
-            {
-                if (_roleFilter == "Auditor")
-                    pcs = pcs.Where(pc => pc.IsSolo || pc.WorkCapacity != "CS");
-                else if (_roleFilter == "CS")
-                    pcs = pcs.Where(pc => !pc.IsSolo && pc.WorkCapacity == "CS");
-            }
-            if (_hideEmpty)
-                pcs = pcs.Where(pc => Enumerable.Range(0, 7)
-                    .Any(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d)) > 0
-                           || _pendingCs.Contains((DashboardService.GKey(pc), d))));
-            return pcs.ToList();
-        }
-    }
+    bool HasWeekData(PcInfo pc) => Enumerable.Range(0, 7)
+        .Any(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d)) > 0
+               || _pendingCs.Contains((DashboardService.GKey(pc), d)));
+
+    List<PcInfo> AuditorPcs => _myPcs
+        .Where(pc => pc.WorkCapacity == "Auditor" || pc.WorkCapacity == "Miscellaneous" || pc.WorkCapacity == "SoloAuditor")
+        .Where(pc => !_hideEmpty || HasWeekData(pc))
+        .ToList();
+
+    List<PcInfo> CsSoloPcs => _myPcs
+        .Where(pc => pc.WorkCapacity == "CSSolo")
+        .Where(pc => !_hideEmpty || HasWeekData(pc))
+        .ToList();
+
+    List<PcInfo> CsPcs => _myPcs
+        .Where(pc => pc.WorkCapacity == "CS")
+        .Where(pc => !_hideEmpty || HasWeekData(pc))
+        .ToList();
     HashSet<(int, int)>      _pendingCs   = [];
     Dictionary<int, string>  _pcCsNames   = [];
 
     int?       _selPcId;
     int?       _selDay;
     string     _selRole   = "Auditor";
-    bool       _selIsSolo;
     DayDetail? _detail;
 
     // Add Session form
@@ -989,12 +1187,13 @@
     // Context menu
     bool   _showCtxMenu;
     int    _ctxPcId;
-    bool   _ctxIsSolo;
+    string _ctxWorkCapacity = "Auditor";
     double _ctxX, _ctxY;
 
     // Add-PC modal
     bool   _showAddPcModal;
     string _pcSearch = "";
+    string _addPcCategory = "Auditor"; // "Auditor", "CSSolo", "CS"
 
 
     // Weekly history chart
@@ -1101,7 +1300,7 @@
     void TrySelectCell(PcInfo pc, int dayIdx)
     {
         if (IsFutureDate(_weekStart.AddDays(dayIdx))) return;
-        if (!pc.IsSolo && _unapprovedPcIds.Contains(pc.PcId)) return;
+        if (pc.WorkCapacity != "CSSolo" && _unapprovedPcIds.Contains(pc.PcId)) return;
         SelectCell(pc, dayIdx);
     }
 
@@ -1117,7 +1316,7 @@
 
         RefreshCsMetadata();
 
-        if (_selPcId == pcId && !_selIsSolo) ClearSelection();
+        if (_selPcId == pcId && _selRole != "CSSolo") ClearSelection();
 
         await InvokeAsync(StateHasChanged);
     }
@@ -1129,11 +1328,14 @@
         await RefreshAsync();
     }
 
+    HashSet<int> GetPcIdsWithPendingSoloReviews() => DashSvc.GetPcIdsWithPendingSoloReviews();
+    HashSet<int> GetPcIdsWithPendingRegularReviews() => DashSvc.GetPcIdsWithPendingRegularReviews();
+
     void RefreshCsMetadata()
     {
         _pendingCs = DashSvc.GetPendingCsMarkers(_userId!.Value, _weekStart, _myPcs);
         _pcCsNames = DashSvc.GetLastCsNamesByPc(
-            _myPcs.Where(p => p.WorkCapacity != "Miscellaneous" && !p.IsSolo).Select(p => p.PcId).ToList());
+            _myPcs.Where(p => p.WorkCapacity != "Miscellaneous" && p.WorkCapacity != "CSSolo").Select(p => p.PcId).ToList());
     }
 
     static DateOnly TodayWeekStart => DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
@@ -1146,25 +1348,25 @@
     // ── Context menu ──
     void ShowCtxMenu(MouseEventArgs e, PcInfo pc)
     {
-        _showCtxMenu  = true;
-        _ctxPcId      = pc.PcId;
-        _ctxIsSolo    = pc.IsSolo;
-        _ctxX         = e.ClientX;
-        _ctxY         = e.ClientY;
+        _showCtxMenu      = true;
+        _ctxPcId          = pc.PcId;
+        _ctxWorkCapacity  = pc.WorkCapacity;
+        _ctxX             = e.ClientX;
+        _ctxY             = e.ClientY;
     }
 
     void DismissMenu() => _showCtxMenu = false;
 
     async Task RemovePc()
     {
-        DashSvc.RemoveUserPc(_userId!.Value, _ctxPcId, _ctxIsSolo);
+        DashSvc.RemoveUserPc(_userId!.Value, _ctxPcId, _ctxWorkCapacity);
         _showCtxMenu = false;
         await RefreshAsync();
     }
 
     async Task RemovePcDirectly(PcInfo pc)
     {
-        DashSvc.RemoveUserPc(_userId!.Value, pc.PcId, pc.IsSolo);
+        DashSvc.RemoveUserPc(_userId!.Value, pc.PcId, pc.WorkCapacity);
         await RefreshAsync();
     }
 
@@ -1190,7 +1392,7 @@
             string.IsNullOrWhiteSpace(_editSummary) ? null : _editSummary);
         _editSessionId = null;
         _detail = DashSvc.GetDayDetail(_userId!.Value, _selPcId!.Value,
-            _weekStart.AddDays(_selDay!.Value), _selRole, _selIsSolo);
+            _weekStart.AddDays(_selDay!.Value), _selRole);
         _grid = _soloMode
             ? DashSvc.GetWeekGridSolo(_userId.Value, _weekStart)
             : DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
@@ -1220,7 +1422,7 @@
             string.IsNullOrWhiteSpace(_editRevNotes) ? null : _editRevNotes);
         _editReviewId = null;
         _detail = DashSvc.GetDayDetail(_userId!.Value, _selPcId!.Value,
-            _weekStart.AddDays(_selDay!.Value), _selRole, _selIsSolo);
+            _weekStart.AddDays(_selDay!.Value), _selRole);
         _grid = _soloMode
             ? DashSvc.GetWeekGridSolo(_userId.Value, _weekStart)
             : DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
@@ -1236,13 +1438,13 @@
     void SetAsOther()
     {
         // Solo columns cannot be set to Other — they are always CS
-        if (_ctxIsSolo) { _showCtxMenu = false; return; }
+        if (_ctxWorkCapacity == "CSSolo") { _showCtxMenu = false; return; }
         DashSvc.SetUserPcRole(_userId!.Value, _ctxPcId, "Miscellaneous");
         _showCtxMenu = false;
         _myPcs = DashSvc.GetUserPcs(_userId.Value);
         _grid  = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
         RefreshCsMetadata();
-        if (_selPcId == _ctxPcId && !_selIsSolo) ClearSelection();
+        if (_selPcId == _ctxPcId && _selRole != "CSSolo") ClearSelection();
     }
 
     void RemoveFromOthers()
@@ -1252,7 +1454,7 @@
         _myPcs = DashSvc.GetUserPcs(_userId.Value);
         _grid  = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
         RefreshCsMetadata();
-        if (_selPcId == _ctxPcId && !_selIsSolo) ClearSelection();
+        if (_selPcId == _ctxPcId && _selRole != "CSSolo") ClearSelection();
     }
 
     async Task PrintTable()
@@ -1264,14 +1466,19 @@
     }
 
     // ── Add-PC modal ──
-    void ShowAddPcModal() { _showAddPcModal = true; _pcSearch = ""; }
-
-    async Task AddPc(int pcId, bool isSolo = false)
+    void ShowAddPcModal()
     {
-        DashSvc.AddUserPc(_userId!.Value, pcId, isSolo);
-        // For regular (non-solo) PCs, check if the auditor has permission.
-        // If not, a pending request is created and the column will be grayed out.
-        if (!isSolo) DashSvc.CheckOrRequestPermission(_userId!.Value, pcId);
+        _showAddPcModal = true;
+        _pcSearch = "";
+        // Default to the first available category the user can use
+        _addPcCategory = _isAuditor ? "Auditor" : _isCS ? "CSSolo" : "Auditor";
+    }
+
+    async Task AddPc(int pcId, string workCapacity = "Auditor")
+    {
+        DashSvc.AddUserPc(_userId!.Value, pcId, workCapacity);
+        // For regular (non-CSSolo) PCs added as Auditor, check permission
+        if (workCapacity == "Auditor") DashSvc.CheckOrRequestPermission(_userId!.Value, pcId);
         _showAddPcModal = false;
         _pcSearch = "";
         await RefreshAsync();
@@ -1283,8 +1490,7 @@
         _selPcId   = pc.PcId;
         _selDay    = dayIdx;
         _selRole   = pc.WorkCapacity;
-        _selIsSolo = pc.IsSolo;
-        _detail    = DashSvc.GetDayDetail(_userId!.Value, pc.PcId, _weekStart.AddDays(dayIdx), _selRole, _selIsSolo);
+        _detail    = DashSvc.GetDayDetail(_userId!.Value, pc.PcId, _weekStart.AddDays(dayIdx), _selRole);
         _showAddSession   = false;
         _showAddReview    = false;
         _showAddGeneralCs = false;
@@ -1335,7 +1541,7 @@
         _addSummary = ""; _addError = "";
 
         _detail = DashSvc.GetDayDetail(_userId.Value, _selPcId.Value,
-            _weekStart.AddDays(_selDay.Value), _selRole, _selIsSolo);
+            _weekStart.AddDays(_selDay.Value), _selRole);
         _grid = _soloMode
             ? DashSvc.GetWeekGridSolo(_userId.Value, _weekStart)
             : DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
@@ -1373,7 +1579,7 @@
         _addGeneralCsDuration = ""; _addGeneralCsNotes = ""; _generalCsError = "";
 
         _detail = DashSvc.GetDayDetail(_userId.Value, _selPcId.Value,
-            _weekStart.AddDays(_selDay.Value), _selRole, _selIsSolo);
+            _weekStart.AddDays(_selDay.Value), _selRole);
         _grid = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
         RefreshWeeklyTotals();
     }
@@ -1400,7 +1606,7 @@
         _addReviewNotes = ""; _reviewError = "";
 
         _detail = DashSvc.GetDayDetail(_userId!.Value, _selPcId!.Value,
-                _weekStart.AddDays(_selDay!.Value), _selRole, _selIsSolo);
+                _weekStart.AddDays(_selDay!.Value), _selRole);
 
         _grid = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
 

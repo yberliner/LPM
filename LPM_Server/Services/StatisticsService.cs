@@ -75,7 +75,7 @@ public class StatisticsService
         }
 
         // ── Auditing seconds per (auditorId, dayIndex) ───────────────────────
-        // Includes both regular (IsSolo=0) and solo (IsSolo=1) sessions
+        // Includes both regular and solo (PcId=AuditorId) sessions
         var auditSecs = new Dictionary<(int pid, int day), int>();
         {
             using var cmd = conn.CreateCommand();
@@ -107,7 +107,7 @@ public class StatisticsService
                 JOIN Sessions s  ON s.SessionId   = cr.SessionId
                 JOIN Auditors a  ON a.AuditorId   = cr.CsId
                 WHERE s.SessionDate >= @s AND s.SessionDate <= @e
-                  AND s.IsSolo = 1
+                  AND s.PcId = s.AuditorId
                   AND a.Type IN (2, 3)
                 GROUP BY cr.CsId, s.SessionDate";
             cmd.Parameters.AddWithValue("@s", startStr);
@@ -253,7 +253,7 @@ public class StatisticsService
                 JOIN Sessions  s ON s.SessionId = cr.SessionId
                 JOIN Auditors  a ON a.AuditorId = cr.CsId
                 WHERE s.SessionDate >= @s AND s.SessionDate <= @e
-                  AND s.IsSolo = 1
+                  AND s.PcId = s.AuditorId
                   AND a.Type IN (2, 3)
                 GROUP BY s.SessionDate";
             cmd.Parameters.AddWithValue("@s", startStr);

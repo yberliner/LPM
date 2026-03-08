@@ -44,7 +44,7 @@ public class DashboardExtendedTests : IDisposable
         TestDbHelper.InsertPC(conn, pid2);
 
         var pcs = _svc.GetAllPcs();
-        Assert.Equal(2, pcs.Count(p => !p.IsSolo));
+        Assert.Equal(2, pcs.Count(p => p.WorkCapacity != "CSSolo"));
     }
 
     [Fact]
@@ -57,8 +57,8 @@ public class DashboardExtendedTests : IDisposable
 
         var pcs = _svc.GetAllPcs();
         // Should have 1 regular entry + 1 solo entry
-        Assert.Equal(1, pcs.Count(p => !p.IsSolo));
-        Assert.Equal(1, pcs.Count(p => p.IsSolo));
+        Assert.Equal(1, pcs.Count(p => p.WorkCapacity != "CSSolo"));
+        Assert.Equal(1, pcs.Count(p => p.WorkCapacity == "CSSolo"));
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public class DashboardExtendedTests : IDisposable
         TestDbHelper.InsertAuditor(conn, pid, type: 2, isActive: true); // SoloOnly
 
         var pcs  = _svc.GetAllPcs();
-        var solo = pcs.Single(p => p.IsSolo);
+        var solo = pcs.Single(p => p.WorkCapacity == "CSSolo");
         Assert.Contains("Solo", solo.FullName);
     }
 
@@ -82,7 +82,7 @@ public class DashboardExtendedTests : IDisposable
         TestDbHelper.InsertPC(conn, pid);
         TestDbHelper.InsertAuditor(conn, pid, type: 3, isActive: true);
 
-        var solo = _svc.GetAllPcs().Single(p => p.IsSolo);
+        var solo = _svc.GetAllPcs().Single(p => p.WorkCapacity == "CSSolo");
         Assert.Equal("CS", solo.WorkCapacity);
     }
 
@@ -95,7 +95,7 @@ public class DashboardExtendedTests : IDisposable
         TestDbHelper.InsertAuditor(conn, pid, type: 1, isActive: true);
 
         var pcs = _svc.GetAllPcs();
-        Assert.Empty(pcs.Where(p => p.IsSolo));
+        Assert.Empty(pcs.Where(p => p.WorkCapacity == "CSSolo"));
     }
 
     // =========================================================================
@@ -160,11 +160,11 @@ public class DashboardExtendedTests : IDisposable
         var pcId  = TestDbHelper.InsertPerson(conn, "Client1");
         TestDbHelper.InsertPC(conn, pcId);
 
-        _svc.AddUserPc(audId, pcId, isSolo: false);
+        _svc.AddUserPc(audId, pcId);
         _svc.SetUserPcRole(audId, pcId, "Miscellaneous");
 
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"SELECT WorkCapacity FROM StaffPcList WHERE UserId={audId} AND PcId={pcId} AND IsSolo=0";
+        cmd.CommandText = $"SELECT WorkCapacity FROM StaffPcList WHERE UserId={audId} AND PcId={pcId} AND WorkCapacity != 'CSSolo'";
         var cap = cmd.ExecuteScalar() as string;
         Assert.Equal("Miscellaneous", cap);
     }
@@ -178,15 +178,15 @@ public class DashboardExtendedTests : IDisposable
         var pcId  = TestDbHelper.InsertPerson(conn, "Client1");
         TestDbHelper.InsertPC(conn, pcId);
 
-        _svc.AddUserPc(audId, pcId, isSolo: false);
-        _svc.AddUserPc(audId, pcId, isSolo: true);
+        _svc.AddUserPc(audId, pcId);
+        _svc.AddUserPc(audId, pcId, "CSSolo");
         _svc.SetUserPcRole(audId, pcId, "Miscellaneous");
 
-        // solo entry should still be "CS"
+        // solo entry should still be "CSSolo"
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"SELECT WorkCapacity FROM StaffPcList WHERE UserId={audId} AND PcId={pcId} AND IsSolo=1";
+        cmd.CommandText = $"SELECT WorkCapacity FROM StaffPcList WHERE UserId={audId} AND PcId={pcId} AND WorkCapacity = 'CSSolo'";
         var cap = cmd.ExecuteScalar() as string;
-        Assert.Equal("CS", cap);
+        Assert.Equal("CSSolo", cap);
     }
 
     // =========================================================================
@@ -291,7 +291,7 @@ public class DashboardExtendedTests : IDisposable
         // General CS work = 600 sec
         _svc.AddCsWork(csId, pcId, new DateOnly(2024, 1, 11), 600, null);
 
-        var pcs  = new List<PcInfo> { new PcInfo(pcId, "Client1", "CS", false) };
+        var pcs  = new List<PcInfo> { new PcInfo(pcId, "Client1", "CS") };
         var grid = _svc.GetWeekGrid(csId, week, pcs);
 
         // Grid should contain review + general work = 1800
@@ -384,7 +384,7 @@ public class DashboardExtendedTests : IDisposable
         TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-11", 3600, adminSec: 0);
         TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-15", 1800, adminSec: 0);
 
-        var pcs    = new List<PcInfo> { new PcInfo(pcId, "Client1", "Auditor", false) };
+        var pcs    = new List<PcInfo> { new PcInfo(pcId, "Client1", "Auditor") };
         var result = _svc.GetWeeklyTotals(audId, week, 2, pcs);
         var latest = result.Last();
         Assert.Equal(3600 + 1800, latest.TotalSeconds);
@@ -428,8 +428,8 @@ public class DashboardExtendedTests : IDisposable
         TestDbHelper.InsertSession(conn, pc2, audId, "2024-01-11", 1800); // less
 
         var pcs = new List<PcInfo> {
-            new PcInfo(pc1, "ClientMore", "Auditor", false),
-            new PcInfo(pc2, "ClientLess", "Auditor", false)
+            new PcInfo(pc1, "ClientMore", "Auditor"),
+            new PcInfo(pc2, "ClientLess", "Auditor")
         };
         var result = _svc.GetWeeklyTotals(audId, week, 1, pcs);
         var tops   = result.Last().TopPcs!;
@@ -568,7 +568,7 @@ public class DashboardExtendedTests : IDisposable
         var week = new DateOnly(2024, 1, 11);
         TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-11", 3600);
 
-        var pcs = new List<PcInfo> { new PcInfo(pcId, "Client1", "Auditor", false) };
+        var pcs = new List<PcInfo> { new PcInfo(pcId, "Client1", "Auditor") };
         Assert.True(_svc.HasAnyWorkInWeek(audId, week, pcs));
     }
 
@@ -585,7 +585,7 @@ public class DashboardExtendedTests : IDisposable
         TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-18", 3600);
 
         var week = new DateOnly(2024, 1, 11);
-        var pcs  = new List<PcInfo> { new PcInfo(pcId, "Client1", "Auditor", false) };
+        var pcs  = new List<PcInfo> { new PcInfo(pcId, "Client1", "Auditor") };
         Assert.False(_svc.HasAnyWorkInWeek(audId, week, pcs));
     }
 
@@ -601,7 +601,7 @@ public class DashboardExtendedTests : IDisposable
         var week = new DateOnly(2024, 1, 11);
         _svc.AddMiscCharge(audId, pcId, new DateOnly(2024, 1, 12), 1800, 0, false, null);
 
-        var pcs = new List<PcInfo> { new PcInfo(pcId, "MiscPc", "Miscellaneous", false) };
+        var pcs = new List<PcInfo> { new PcInfo(pcId, "MiscPc", "Miscellaneous") };
         Assert.True(_svc.HasAnyWorkInWeek(audId, week, pcs));
     }
 
@@ -653,7 +653,7 @@ public class DashboardExtendedTests : IDisposable
         var sid  = TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-11", 3600);
         _svc.AddCsReview(csId, sid, 600, "Draft", null);
 
-        var pcs = new List<PcInfo> { new PcInfo(pcId, "Client1", "CS", false) };
+        var pcs = new List<PcInfo> { new PcInfo(pcId, "Client1", "CS") };
         var markers = _svc.GetPendingCsMarkers(csId, week, pcs);
         Assert.Empty(markers);
     }
@@ -672,7 +672,7 @@ public class DashboardExtendedTests : IDisposable
         var week = new DateOnly(2024, 1, 11); // Thursday
         TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-11", 3600); // unreviewed
 
-        var pcs     = new List<PcInfo> { new PcInfo(pcId, "Client1", "CS", false) };
+        var pcs     = new List<PcInfo> { new PcInfo(pcId, "Client1", "CS") };
         var markers = _svc.GetPendingCsMarkers(csId, week, pcs);
         Assert.Contains((pcId, 0), markers);
     }

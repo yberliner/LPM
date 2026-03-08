@@ -306,7 +306,7 @@
 
         _pending  = DashSvc.GetPendingPermissionRequests();
         _auditors = DashSvc.GetAuditorPermGroups();
-        _allPcs   = DashSvc.GetAllPcs().Where(p => !p.IsSolo).ToList();
+        _allPcs   = DashSvc.GetAllPcs().Where(p => p.WorkCapacity != "CSSolo").ToList();
 
         // Init add-PC dropdowns (default 0 = none selected)
         foreach (var aud in _auditors)

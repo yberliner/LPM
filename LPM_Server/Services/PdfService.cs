@@ -15,21 +15,16 @@ public class PdfService
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
-        // Remove columns that are all-zero for the week
-        var pcsToPrint = pcs
-            .Where(pc => Enumerable.Range(0, 7)
-                .Sum(d => grid.GetValueOrDefault((DashboardService.GKey(pc), d))) > 0)
-            .ToList();
+        var csSoloPcs  = pcs.Where(pc => pc.WorkCapacity == "CSSolo").ToList();
+        var csPcs      = pcs.Where(pc => pc.WorkCapacity == "CS").ToList();
+        var audPcs     = pcs.Where(pc => !csSoloPcs.Contains(pc) && !csPcs.Contains(pc)).ToList();
 
         var weekEnd = weekStart.AddDays(6);
 
-        // Solo CS columns count as regular time, not CS time
-        int nonCsTotal = pcsToPrint
-            .Where(pc => pc.WorkCapacity != "CS" || pc.IsSolo)
-            .Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
-        int csTotal = pcsToPrint
-            .Where(pc => pc.WorkCapacity == "CS" && !pc.IsSolo)
-            .Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
+        int audTotal     = audPcs.Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
+        int csSoloTotal  = csSoloPcs.Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
+        int csTotal      = csPcs.Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
+        int combinedTotal = audTotal + csSoloTotal;
 
         return Document.Create(container =>
         {
@@ -39,12 +34,12 @@ public class PdfService
                 page.Margin(20);
                 page.DefaultTextStyle(x => x.FontSize(10));
 
-                page.Content().Column(col =>
+                page.Content().ScaleToFit().Column(col =>
                 {
                     // ── Top row ──
                     col.Item().Row(r =>
                     {
-                        r.RelativeItem().Text(""); // left spacer
+                        r.RelativeItem().Text("");
                         r.RelativeItem().AlignCenter()
                             .Text(userDisplayName)
                             .SemiBold().FontSize(16);
@@ -53,174 +48,175 @@ public class PdfService
                             .FontSize(11);
                     });
 
-                    col.Item().PaddingTop(10);
-
-                    // ── Table ──
-                    col.Item().Table(table =>
+                    // ══════ AUDITOR TABLE ══════
+                    if (audPcs.Count > 0)
                     {
-                        table.ColumnsDefinition(columns =>
+                        col.Item().PaddingTop(10).Text("Auditor").SemiBold().FontSize(11).FontColor("#1a237e");
+                        col.Item().PaddingTop(4);
+                        RenderPdfTable(col, audPcs, grid, pcCsNames, weekStart, tableType: "Auditor");
+
+                        col.Item().PaddingTop(6);
+                        col.Item().Background("#1a237e").Padding(6).Row(r =>
                         {
-                            columns.ConstantColumn(90); // Day
-                            for (int i = 0; i < Math.Max(1, pcsToPrint.Count); i++)
-                                columns.RelativeColumn();
+                            r.RelativeItem().Text("Auditor Total").SemiBold().FontSize(12).FontColor("#ffffff");
+                            r.ConstantItem(150).AlignRight()
+                                .Text(DashboardService.FmtOrBlank(audTotal))
+                                .SemiBold().FontSize(16).FontColor("#ffffff");
                         });
+                    }
 
-                        table.Header(header =>
+                    // ══════ CS SOLO TABLE ══════
+                    if (csSoloPcs.Count > 0)
+                    {
+                        col.Item().PaddingTop(12).Text("CS Solo").SemiBold().FontSize(10).FontColor("#6a1b9a");
+                        col.Item().PaddingTop(4);
+                        RenderPdfTable(col, csSoloPcs, grid, pcCsNames, weekStart, tableType: "CSSolo");
+
+                        col.Item().PaddingTop(6);
+                        col.Item().Background("#6a1b9a").Padding(6).Row(r =>
                         {
-                            // Row 1: CS row
-                            header.Cell()
-                                .Element(CsHeaderCell)
-                                .AlignLeft()
-                                .Text("CS:")
-                                .SemiBold()
-                                .FontSize(9);
-
-                            if (pcsToPrint.Count == 0)
-                            {
-                                header.Cell().Element(CsHeaderCell).Text("");
-                                // Day spans rows 2-3
-                                header.Cell().RowSpan(2).Element(HeaderCell).AlignMiddle().Text("Day").SemiBold();
-                                header.Cell().Element(RoleHeaderCell).AlignCenter().Text("Role");
-                                header.Cell().Element(NameHeaderCell).AlignCenter().Text("No data");
-                                return;
-                            }
-
-                            foreach (var pc in pcsToPrint)
-                            {
-                                string csDisplay;
-                                if (pc.IsSolo)
-                                    csDisplay = "Solo";
-                                else if (pc.WorkCapacity == "CS")
-                                    csDisplay = "CS";
-                                else
-                                {
-                                    var csFullName = pcCsNames.TryGetValue(pc.PcId, out var cn) ? cn : "";
-                                    csDisplay = csFullName.Length > 0 ? csFullName.Split(' ')[0]
-                                              : pc.WorkCapacity == "Auditor" ? "NA" : "";
-                                }
-
-                                header.Cell()
-                                    .Element(CsHeaderCell)
-                                    .AlignCenter()
-                                    .Text(t =>
-                                    {
-                                        t.Span(csDisplay).FontSize(9).FontColor(Colors.Grey.Darken2);
-                                    });
-                            }
-
-                            // Day spans rows 2-3
-                            header.Cell().RowSpan(2)
-                                .Element(HeaderCell)
-                                .AlignMiddle()
-                                .Text("Day")
-                                .SemiBold();
-
-                            // Row 2: Role
-                            foreach (var pc in pcsToPrint)
-                            {
-                                header.Cell()
-                                    .Element(RoleHeaderCell)
-                                    .AlignCenter()
-                                    .PaddingVertical(2)
-                                    .Text(RoleLabel(pc))
-                                    .FontSize(9)
-                                    .FontColor(Colors.Grey.Darken1);
-                            }
-
-                            // Row 3: PC Names (bold)
-                            foreach (var pc in pcsToPrint)
-                            {
-                                header.Cell()
-                                    .Element(NameHeaderCell)
-                                    .AlignCenter()
-                                    .Text(pc.FullName)
-                                    .SemiBold()
-                                    .FontSize(11);
-                            }
+                            r.RelativeItem().Text("CS Solo Total").SemiBold().FontSize(11).FontColor("#ffffff");
+                            r.ConstantItem(150).AlignRight()
+                                .Text(DashboardService.FmtOrBlank(csSoloTotal))
+                                .SemiBold().FontSize(14).FontColor("#ffffff");
                         });
+                    }
 
-                        // Day rows
-                        for (int d = 0; d < 7; d++)
-                        {
-                            var date = weekStart.AddDays(d);
-
-                            table.Cell().Element(CellStyle)
-                                .Text(date.ToString("ddd dd/MM"));
-
-                            if (pcsToPrint.Count == 0)
-                            {
-                                table.Cell().Element(CellStyle).Text("");
-                            }
-                            else
-                            {
-                                foreach (var pc in pcsToPrint)
-                                {
-                                    int secs = grid.GetValueOrDefault((DashboardService.GKey(pc), d));
-                                    // Regular CS columns: grayed small; everything else: normal
-                                    if (pc.WorkCapacity == "CS" && !pc.IsSolo)
-                                        table.Cell().Element(CellStyle).AlignCenter()
-                                            .Text(t => t.Span(DashboardService.FmtOrBlank(secs)).FontSize(8).FontColor("#aaaaaa"));
-                                    else
-                                        table.Cell().Element(CellStyle).AlignCenter()
-                                            .Text(DashboardService.FmtOrBlank(secs));
-                                }
-                            }
-                        }
-
-                        // ── Σ Week row (BOLD) ──
-                        table.Cell().Element(WeekTotalCell)
-                            .Text("Σ Week")
-                            .SemiBold();
-
-                        if (pcsToPrint.Count == 0)
-                        {
-                            table.Cell().Element(WeekTotalCell)
-                                .AlignCenter()
-                                .Text("")
-                                .SemiBold();
-                        }
-                        else
-                        {
-                            foreach (var pc in pcsToPrint)
-                            {
-                                int total = Enumerable.Range(0, 7)
-                                    .Sum(d => grid.GetValueOrDefault((DashboardService.GKey(pc), d)));
-
-                                if (pc.WorkCapacity == "CS" && !pc.IsSolo)
-                                    table.Cell().Element(WeekTotalCell).AlignCenter()
-                                        .Text(t => t.Span(DashboardService.FmtOrBlank(total)).FontSize(8).FontColor("#aaaaaa"));
-                                else
-                                    table.Cell().Element(WeekTotalCell).AlignCenter()
-                                        .Text(DashboardService.FmtOrBlank(total)).SemiBold();
-                            }
-                        }
+                    // ══════ COMBINED GRAND TOTAL (Auditor + CS Solo) ══════
+                    col.Item().PaddingTop(10);
+                    col.Item().Background("#0d47a1").Padding(10).Row(r =>
+                    {
+                        r.RelativeItem().Text("Grand Total (Auditor + CS Solo)").SemiBold().FontSize(16).FontColor("#ffffff");
+                        r.ConstantItem(160).AlignRight()
+                            .Text(DashboardService.Fmt(combinedTotal))
+                            .SemiBold().FontSize(22).FontColor("#ffffff");
                     });
 
-                    // ── Grand Total ──
-                    col.Item().PaddingTop(12);
+                    // ══════ CS TABLE ══════
+                    if (csPcs.Count > 0)
+                    {
+                        col.Item().PaddingTop(16).Text("CS").SemiBold().FontSize(10).FontColor("#546e7a");
+                        col.Item().PaddingTop(4);
+                        RenderPdfTable(col, csPcs, grid, pcCsNames, weekStart, tableType: "CS");
 
-                    col.Item().Background(Colors.Grey.Lighten4)
-                        .Padding(10)
-                        .Row(r =>
+                        col.Item().PaddingTop(6);
+                        col.Item().Background("#546e7a").Padding(6).Row(r =>
                         {
-                            r.RelativeItem()
-                                .Text("Grand Total")
-                                .SemiBold().FontSize(16);
-
-                            r.ConstantItem(200).AlignRight().Column(c =>
-                            {
-                                c.Item().AlignRight()
-                                    .Text(DashboardService.FmtOrBlank(nonCsTotal))
-                                    .SemiBold().FontSize(22);
-                                if (csTotal > 0)
-                                    c.Item().AlignRight()
-                                        .Text($"CS time: ({DashboardService.FmtOrBlank(csTotal)})")
-                                        .FontSize(8).FontColor("#aaaaaa");
-                            });
+                            r.RelativeItem().Text("CS Total").SemiBold().FontSize(11).FontColor("#ffffff");
+                            r.ConstantItem(150).AlignRight()
+                                .Text(DashboardService.FmtOrBlank(csTotal))
+                                .SemiBold().FontSize(14).FontColor("#ffffff");
                         });
+                    }
                 });
             });
         }).GeneratePdf();
+    }
+
+    private void RenderPdfTable(
+        ColumnDescriptor col,
+        List<PcInfo> pcsList,
+        Dictionary<(int pcId, int dayIdx), int> grid,
+        Dictionary<int, string> pcCsNames,
+        DateOnly weekStart,
+        string tableType)   // "Auditor", "CSSolo", or "CS"
+    {
+        bool isCs     = tableType == "CS";
+        bool isCSSolo = tableType == "CSSolo";
+        bool isAud    = tableType == "Auditor";
+
+        col.Item().Table(table =>
+        {
+            table.ColumnsDefinition(columns =>
+            {
+                columns.ConstantColumn(90);
+                for (int i = 0; i < Math.Max(1, pcsList.Count); i++)
+                    columns.RelativeColumn();
+            });
+
+            table.Header(header =>
+            {
+                if (isAud)
+                {
+                    // Row 1: CS name row (auditor table only)
+                    header.Cell().Element(CsHeaderCell).AlignLeft().Text("CS:").SemiBold().FontSize(9);
+                    foreach (var pc in pcsList)
+                    {
+                        var csFullName = pcCsNames.TryGetValue(pc.PcId, out var cn) ? cn : "";
+                        var csDisplay = csFullName.Length > 0 ? csFullName.Split(' ')[0] : "NA";
+                        header.Cell().Element(CsHeaderCell).AlignCenter()
+                            .Text(t => t.Span(csDisplay).FontSize(9).FontColor(Colors.Grey.Darken2));
+                    }
+
+                    // Row 2-3: Role + PC name
+                    header.Cell().RowSpan(2).Element(HeaderCell).AlignMiddle().Text("Day").SemiBold();
+                    foreach (var pc in pcsList)
+                        header.Cell().Element(RoleHeaderCell).AlignCenter().PaddingVertical(2)
+                            .Text(RoleLabel(pc)).FontSize(9).FontColor(Colors.Grey.Darken1);
+                    foreach (var pc in pcsList)
+                        header.Cell().Element(NameHeaderCell).AlignCenter()
+                            .Text(pc.FullName).SemiBold().FontSize(11);
+                }
+                else if (isCSSolo)
+                {
+                    // CS Solo table: Day + PC names in purple tone
+                    header.Cell().Element(HeaderCell).AlignMiddle().Text("Day").SemiBold().FontSize(9);
+                    foreach (var pc in pcsList)
+                        header.Cell().Element(NameHeaderCell).AlignCenter()
+                            .Text(pc.FullName).SemiBold().FontSize(9).FontColor("#6a1b9a");
+                }
+                else
+                {
+                    // CS table: Day + PC names
+                    header.Cell().Element(HeaderCell).AlignMiddle().Text("Day").SemiBold().FontSize(9);
+                    foreach (var pc in pcsList)
+                        header.Cell().Element(NameHeaderCell).AlignCenter()
+                            .Text(pc.FullName).SemiBold().FontSize(9).FontColor("#546e7a");
+                }
+            });
+
+            bool compact = isCs || isCSSolo;
+            string textColor = isCSSolo ? "#6a1b9a" : isCs ? "#888888" : "#000000";
+
+            // Day rows
+            for (int d = 0; d < 7; d++)
+            {
+                var date = weekStart.AddDays(d);
+                if (compact)
+                    table.Cell().Element(CellStyle).Text(t => t.Span(date.ToString("ddd dd/MM")).FontSize(8).FontColor(textColor));
+                else
+                    table.Cell().Element(CellStyle).Text(date.ToString("ddd dd/MM"));
+
+                foreach (var pc in pcsList)
+                {
+                    int secs = grid.GetValueOrDefault((DashboardService.GKey(pc), d));
+                    if (compact)
+                        table.Cell().Element(CellStyle).AlignCenter()
+                            .Text(t => t.Span(DashboardService.FmtOrBlank(secs)).FontSize(8).FontColor(textColor));
+                    else
+                        table.Cell().Element(CellStyle).AlignCenter()
+                            .Text(DashboardService.FmtOrBlank(secs));
+                }
+            }
+
+            // Σ Week row
+            if (compact)
+                table.Cell().Element(WeekTotalCell).Text(t => t.Span("Σ Week").FontSize(8).SemiBold().FontColor(textColor));
+            else
+                table.Cell().Element(WeekTotalCell).Text("Σ Week").SemiBold();
+
+            foreach (var pc in pcsList)
+            {
+                int total = Enumerable.Range(0, 7)
+                    .Sum(d => grid.GetValueOrDefault((DashboardService.GKey(pc), d)));
+                if (compact)
+                    table.Cell().Element(WeekTotalCell).AlignCenter()
+                        .Text(t => t.Span(DashboardService.FmtOrBlank(total)).FontSize(8).FontColor(textColor).SemiBold());
+                else
+                    table.Cell().Element(WeekTotalCell).AlignCenter()
+                        .Text(DashboardService.FmtOrBlank(total)).SemiBold();
+            }
+        });
     }
 
     public byte[] GenerateAcademyWeekPdf(DateOnly weekStart,
@@ -533,14 +529,14 @@ public class PdfService
 
     // ── Helpers ──
 
-    static string RoleLabel(PcInfo pc)
+    static string RoleLabel(PcInfo pc) => pc.WorkCapacity switch
     {
-        if (pc.IsSolo)            return "Solo";
-        if (pc.WorkCapacity == "CS")            return "CS";
-        if (pc.WorkCapacity == "Miscellaneous") return "Other";
-        if (pc.WorkCapacity == "SoloAuditor")   return "Solo";
-        return "Auditor";
-    }
+        "CSSolo"        => "Solo",
+        "CS"            => "CS",
+        "Miscellaneous" => "Other",
+        "SoloAuditor"   => "Solo",
+        _               => "Auditor",
+    };
 
     // ════════════════════════════════════════════════════════════════════════
     // Statistics PDF

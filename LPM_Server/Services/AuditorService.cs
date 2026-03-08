@@ -133,7 +133,7 @@ public class AuditorService(IConfiguration config)
                    COALESCE(SUM(LengthSeconds), 0),
                    MAX(SessionDate)
             FROM Sessions
-            WHERE AuditorId=@id AND (IsSolo IS NULL OR IsSolo=0)";
+            WHERE AuditorId=@id AND PcId != AuditorId";
         cmd.Parameters.AddWithValue("@id", auditorId);
         using var r = cmd.ExecuteReader();
         r.Read();

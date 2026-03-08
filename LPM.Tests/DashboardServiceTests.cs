@@ -552,7 +552,7 @@ public class DashboardServiceTests : IDisposable
         var pcId  = TestDbHelper.InsertPerson(conn, "Client1");
         TestDbHelper.InsertPC(conn, pcId);
 
-        _svc.AddUserPc(audId, pcId, isSolo: false);
+        _svc.AddUserPc(audId, pcId);
 
         var count = TestDbHelper.Scalar(conn,
             $"SELECT COUNT(*) FROM StaffPcList WHERE UserId={audId} AND PcId={pcId}");
@@ -560,19 +560,19 @@ public class DashboardServiceTests : IDisposable
     }
 
     [Fact]
-    public void AddUserPc_IsSolo_SetsCapacityToCS()
+    public void AddUserPc_CSSolo_SetsCapacityToCSSolo()
     {
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "Aud1");
         var pcId  = TestDbHelper.InsertPerson(conn, "Client1");
         TestDbHelper.InsertPC(conn, pcId);
 
-        _svc.AddUserPc(audId, pcId, isSolo: true);
+        _svc.AddUserPc(audId, pcId, "CSSolo");
 
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"SELECT WorkCapacity FROM StaffPcList WHERE UserId={audId} AND PcId={pcId} AND IsSolo=1";
+        cmd.CommandText = $"SELECT WorkCapacity FROM StaffPcList WHERE UserId={audId} AND PcId={pcId} AND WorkCapacity='CSSolo'";
         var cap = cmd.ExecuteScalar() as string;
-        Assert.Equal("CS", cap);
+        Assert.Equal("CSSolo", cap);
     }
 
     [Fact]
@@ -583,10 +583,10 @@ public class DashboardServiceTests : IDisposable
         var pcId  = TestDbHelper.InsertPerson(conn, "Client1");
         TestDbHelper.InsertPC(conn, pcId);
 
-        _svc.AddUserPc(audId, pcId, isSolo: false);
+        _svc.AddUserPc(audId, pcId);
 
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"SELECT WorkCapacity FROM StaffPcList WHERE UserId={audId} AND PcId={pcId} AND IsSolo=0";
+        cmd.CommandText = $"SELECT WorkCapacity FROM StaffPcList WHERE UserId={audId} AND PcId={pcId}";
         var cap = cmd.ExecuteScalar() as string;
         Assert.Equal("Auditor", cap);
     }
@@ -741,7 +741,7 @@ public class DashboardServiceTests : IDisposable
         // Session on Thursday (dayIndex 0)
         TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-11", 3600, adminSec: 600);
 
-        var pcs  = new List<PcInfo> { new PcInfo(pcId, "Client1", "Auditor", false) };
+        var pcs  = new List<PcInfo> { new PcInfo(pcId, "Client1", "Auditor") };
         var grid = _svc.GetWeekGrid(audId, week, pcs);
 
         Assert.True(grid.TryGetValue((pcId, 0), out var secs));
@@ -763,7 +763,7 @@ public class DashboardServiceTests : IDisposable
         var sid  = TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-11", 3600); // Thursday
         _svc.AddCsReview(csId, sid, 1200, "Draft", null);
 
-        var pcs  = new List<PcInfo> { new PcInfo(pcId, "Client1", "CS", false) };
+        var pcs  = new List<PcInfo> { new PcInfo(pcId, "Client1", "CS") };
         var grid = _svc.GetWeekGrid(csId, week, pcs);
 
         Assert.True(grid.TryGetValue((pcId, 0), out var secs));

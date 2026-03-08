@@ -4,7 +4,7 @@ using System.Globalization;
 
 namespace LPM.Services;
 
-public record PcInfo(int PcId, string FullName, string WorkCapacity, bool IsSolo = false);
+public record PcInfo(int PcId, string FullName, string WorkCapacity);
 public record SessionRow(int SessionId, int LengthSec, int AdminSec, bool IsFree, string? Summary, string CreatedAt, string AuditorName, string VerifiedStatus = "Draft");
 public record CsReviewRow(int CsReviewId, int SessionId, int ReviewSec, string Status, string? Notes);
 public record CsWorkRow(int CsWorkLogId, int LengthSec, string? Notes, string CreatedAt);
@@ -19,7 +19,7 @@ public record AdminSessionRow(
     int SessionId, int PcId, string PcName, string AuditorName, string SessionDate,
     int LengthSec, int AdminSec, bool IsFree,
     int ChargedRateCentsPerHour, int AuditorSalaryCentsPerHour,
-    string VerifiedStatus, bool IsSolo);
+    string VerifiedStatus);
 public record PcSessionGroup(int PcId, string PcName, List<AdminSessionRow> Sessions);
 public record AuditorSessionGroup(int AuditorId, string AuditorName, List<PcSessionGroup> PcGroups);
 
@@ -317,7 +317,7 @@ public class DashboardService
         cmd.CommandText = @"
             SELECT spl.PcId
             FROM StaffPcList spl
-            WHERE spl.UserId = @aud AND spl.IsSolo = 0
+            WHERE spl.UserId = @aud AND spl.WorkCapacity != 'CSSolo'
               AND NOT EXISTS (
                   SELECT 1 FROM AuditorPcPermissions ap
                   WHERE ap.AuditorId = @aud AND ap.PcId = spl.PcId AND ap.IsApproved = 1
@@ -384,7 +384,7 @@ public class DashboardService
         delPerm.ExecuteNonQuery();
 
         using var delSpl = conn.CreateCommand();
-        delSpl.CommandText = "DELETE FROM StaffPcList WHERE UserId = @uid AND PcId = @pc AND IsSolo = 0";
+        delSpl.CommandText = "DELETE FROM StaffPcList WHERE UserId = @uid AND PcId = @pc AND WorkCapacity != 'CSSolo'";
         delSpl.Parameters.AddWithValue("@uid", auditorId);
         delSpl.Parameters.AddWithValue("@pc",  pcId);
         delSpl.ExecuteNonQuery();
@@ -512,18 +512,17 @@ public class DashboardService
         cmd.CommandText = $@"
             SELECT pc.PcId,
                    {FullNameExpr} AS FullName,
-                   spl.WorkCapacity,
-                   spl.IsSolo
+                   spl.WorkCapacity
             FROM StaffPcList spl
             JOIN PCs     pc ON pc.PcId    = spl.PcId
             JOIN Persons p  ON p.PersonId = pc.PcId
             WHERE spl.UserId = @uid
-            ORDER BY p.FirstName, p.LastName, spl.IsSolo";
+            ORDER BY p.FirstName, p.LastName, spl.WorkCapacity";
         cmd.Parameters.AddWithValue("@uid", userId);
         var list = new List<PcInfo>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add(new PcInfo(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetInt32(3) == 1));
+            list.Add(new PcInfo(r.GetInt32(0), r.GetString(1), r.GetString(2)));
         return list;
     }
 
@@ -543,47 +542,32 @@ public class DashboardService
         var list = new List<PcInfo>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add(new PcInfo(r.GetInt32(0), r.GetString(1), "Auditor", false));
-
-        // Extra solo entries for PCs that are also solo auditors (Type IN (2,3) in Auditors)
-        using var soloCmd = conn.CreateCommand();
-        soloCmd.CommandText = $@"
-            SELECT pc.PcId,
-                   {FullNameExpr} AS FullName
-            FROM Auditors a
-            JOIN PCs      pc ON pc.PcId    = a.AuditorId
-            JOIN Persons  p  ON p.PersonId = a.AuditorId
-            WHERE a.Type IN (2, 3) AND a.IsActive = 1
-            ORDER BY p.FirstName, p.LastName";
-        using var rs = soloCmd.ExecuteReader();
-        while (rs.Read())
-            list.Add(new PcInfo(rs.GetInt32(0), rs.GetString(1) + " (Solo)", "CS", true));
+            list.Add(new PcInfo(r.GetInt32(0), r.GetString(1), "Auditor"));
 
         return list;
     }
 
-    public void AddUserPc(int userId, int pcId, bool isSolo = false)
+    public void AddUserPc(int userId, int pcId, string workCapacity = "Auditor")
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT OR IGNORE INTO StaffPcList (UserId, PcId, WorkCapacity, IsSolo) VALUES (@uid, @pcId, @cap, @solo)";
+        cmd.CommandText = "INSERT OR IGNORE INTO StaffPcList (UserId, PcId, WorkCapacity) VALUES (@uid, @pcId, @cap)";
         cmd.Parameters.AddWithValue("@uid",  userId);
         cmd.Parameters.AddWithValue("@pcId", pcId);
-        cmd.Parameters.AddWithValue("@cap",  isSolo ? "CS" : "Auditor");
-        cmd.Parameters.AddWithValue("@solo", isSolo ? 1 : 0);
+        cmd.Parameters.AddWithValue("@cap",  workCapacity);
         cmd.ExecuteNonQuery();
     }
 
-    public void RemoveUserPc(int userId, int pcId, bool isSolo = false)
+    public void RemoveUserPc(int userId, int pcId, string workCapacity = "Auditor")
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM StaffPcList WHERE UserId = @uid AND PcId = @pcId AND IsSolo = @solo";
+        cmd.CommandText = "DELETE FROM StaffPcList WHERE UserId = @uid AND PcId = @pcId AND WorkCapacity = @cap";
         cmd.Parameters.AddWithValue("@uid",  userId);
         cmd.Parameters.AddWithValue("@pcId", pcId);
-        cmd.Parameters.AddWithValue("@solo", isSolo ? 1 : 0);
+        cmd.Parameters.AddWithValue("@cap",  workCapacity);
         cmd.ExecuteNonQuery();
     }
 
@@ -592,8 +576,8 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        // IsSolo=0 guard: solo columns are always CS, their role is not changed here
-        cmd.CommandText = "UPDATE StaffPcList SET WorkCapacity = @role WHERE UserId = @uid AND PcId = @pcId AND IsSolo = 0";
+        // CSSolo columns are not changed here — only Auditor/CS/Miscellaneous columns
+        cmd.CommandText = "UPDATE StaffPcList SET WorkCapacity = @role WHERE UserId = @uid AND PcId = @pcId AND WorkCapacity NOT IN ('CSSolo')";
         cmd.Parameters.AddWithValue("@role", role);
         cmd.Parameters.AddWithValue("@uid",  userId);
         cmd.Parameters.AddWithValue("@pcId", pcId);
@@ -613,10 +597,10 @@ public class DashboardService
         var dates    = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
         var dateList = string.Join(",", dates.Select(d => $"'{d:yyyy-MM-dd}'"));
 
-        var auditorPcIds = userPcs.Where(p => p.WorkCapacity == "Auditor"       && !p.IsSolo).Select(p => p.PcId).ToList();
-        var csPcIds      = userPcs.Where(p => p.WorkCapacity == "CS"            && !p.IsSolo).Select(p => p.PcId).ToList();
-        var soloCSPcIds  = userPcs.Where(p => p.WorkCapacity == "CS"            &&  p.IsSolo).Select(p => p.PcId).ToList();
-        var miscPcIds    = userPcs.Where(p => p.WorkCapacity == "Miscellaneous" && !p.IsSolo).Select(p => p.PcId).ToList();
+        var auditorPcIds = userPcs.Where(p => p.WorkCapacity == "Auditor").Select(p => p.PcId).ToList();
+        var csPcIds      = userPcs.Where(p => p.WorkCapacity == "CS").Select(p => p.PcId).ToList();
+        var soloCSPcIds  = userPcs.Where(p => p.WorkCapacity == "CSSolo").Select(p => p.PcId).ToList();
+        var miscPcIds    = userPcs.Where(p => p.WorkCapacity == "Miscellaneous").Select(p => p.PcId).ToList();
 
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -628,7 +612,7 @@ public class DashboardService
             cmd.CommandText = $@"
                 SELECT PcId, SessionDate, SUM(LengthSeconds + AdminSeconds)
                 FROM Sessions
-                WHERE AuditorId = @uid AND PcId IN ({pcList}) AND SessionDate IN ({dateList}) AND IsSolo = 0
+                WHERE AuditorId = @uid AND PcId IN ({pcList}) AND SessionDate IN ({dateList}) AND PcId != AuditorId
                 GROUP BY PcId, SessionDate";
             cmd.Parameters.AddWithValue("@uid", userId);
             using var r = cmd.ExecuteReader();
@@ -652,7 +636,7 @@ public class DashboardService
                 SELECT s.PcId, s.SessionDate, SUM(cr.ReviewLengthSeconds)
                 FROM CsReviews cr
                 JOIN Sessions s ON s.SessionId = cr.SessionId
-                WHERE cr.CsId = @uid AND s.PcId IN ({pcList}) AND s.SessionDate IN ({dateList}) AND s.IsSolo = 0
+                WHERE cr.CsId = @uid AND s.PcId IN ({pcList}) AND s.SessionDate IN ({dateList}) AND s.PcId != s.AuditorId
                 GROUP BY s.PcId, s.SessionDate";
             cmd.Parameters.AddWithValue("@uid", userId);
             using var r = cmd.ExecuteReader();
@@ -688,7 +672,7 @@ public class DashboardService
             }
         }
 
-        // Solo CS columns: CS reviewing sessions where the PC is the auditor (IsSolo=1)
+        // Solo CS columns: CS reviewing sessions where PcId = AuditorId (solo)
         // Grid key uses -pcId to distinguish from the same person's regular column
         if (soloCSPcIds.Count > 0)
         {
@@ -698,7 +682,7 @@ public class DashboardService
                 SELECT s.PcId, s.SessionDate, SUM(cr.ReviewLengthSeconds)
                 FROM CsReviews cr
                 JOIN Sessions s ON s.SessionId = cr.SessionId
-                WHERE cr.CsId = @uid AND s.PcId IN ({pcList}) AND s.SessionDate IN ({dateList}) AND s.IsSolo = 1
+                WHERE cr.CsId = @uid AND s.PcId IN ({pcList}) AND s.SessionDate IN ({dateList}) AND s.PcId = s.AuditorId
                 GROUP BY s.PcId, s.SessionDate";
             cmd.Parameters.AddWithValue("@uid", userId);
             using var r = cmd.ExecuteReader();
@@ -744,7 +728,7 @@ public class DashboardService
     /// Auditor role → this user's own sessions for the PC+date; no reviews.
     /// CS role → ALL sessions for the PC+date (with auditor name) + ALL reviews for those sessions.
     /// </summary>
-    public DayDetail GetDayDetail(int userId, int pcId, DateOnly date, string role, bool isSolo = false)
+    public DayDetail GetDayDetail(int userId, int pcId, DateOnly date, string role)
     {
         var sessions    = new List<SessionRow>();
         var reviews     = new List<CsReviewRow>();
@@ -812,7 +796,7 @@ public class DashboardService
                        IsFreeSession, SessionSummaryHtml, CreatedAt,
                        VerifiedStatus
                 FROM Sessions
-                WHERE AuditorId = @uid AND IsSolo = 1 AND SessionDate = @date
+                WHERE AuditorId = @uid AND PcId = AuditorId AND SessionDate = @date
                 ORDER BY SequenceInDay";
             cmd.Parameters.AddWithValue("@uid",  userId);
             cmd.Parameters.AddWithValue("@date", dateStr);
@@ -831,7 +815,8 @@ public class DashboardService
         else  // CS role
         {
             // All sessions for this PC+date from any auditor, with auditor's first name
-            // For solo CS column: only IsSolo=1 sessions; for regular CS: only IsSolo=0
+            // For CSSolo column: only sessions where PcId=AuditorId; for regular CS: PcId!=AuditorId
+            bool isCSSolo = role == "CSSolo";
             using var sessCmd = conn.CreateCommand();
             sessCmd.CommandText = $@"
                 SELECT s.SessionId, s.LengthSeconds, s.AdminSeconds,
@@ -839,7 +824,7 @@ public class DashboardService
                        p.FirstName, s.VerifiedStatus
                 FROM Sessions s
                 JOIN Persons p ON p.PersonId = s.AuditorId
-                WHERE s.PcId = @pcId AND s.SessionDate = @date AND s.IsSolo = {(isSolo ? 1 : 0)}
+                WHERE s.PcId = @pcId AND s.SessionDate = @date AND s.PcId {(isCSSolo ? "=" : "!=")} s.AuditorId
                 ORDER BY s.SequenceInDay";
             sessCmd.Parameters.AddWithValue("@pcId", pcId);
             sessCmd.Parameters.AddWithValue("@date", dateStr);
@@ -1056,9 +1041,9 @@ public class DashboardService
             return weeks.Select(w => new WeekTotal(w, 0)).ToList();
 
         var startStr = weeks[0].ToString("yyyy-MM-dd");
-        var auditorPcIds = userPcs.Where(p => p.WorkCapacity == "Auditor"       && !p.IsSolo).Select(p => p.PcId).ToList();
-        var csPcIds      = userPcs.Where(p => p.WorkCapacity == "CS"            && !p.IsSolo).Select(p => p.PcId).ToList();
-        var miscPcIds    = userPcs.Where(p => p.WorkCapacity == "Miscellaneous" && !p.IsSolo).Select(p => p.PcId).ToList();
+        var auditorPcIds = userPcs.Where(p => p.WorkCapacity == "Auditor").Select(p => p.PcId).ToList();
+        var csPcIds      = userPcs.Where(p => p.WorkCapacity == "CS").Select(p => p.PcId).ToList();
+        var miscPcIds    = userPcs.Where(p => p.WorkCapacity == "Miscellaneous").Select(p => p.PcId).ToList();
 
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -1088,7 +1073,7 @@ public class DashboardService
                        SUM(s.LengthSeconds + s.AdminSeconds)
                 FROM Sessions s
                 JOIN Persons p ON p.PersonId = s.PcId
-                WHERE s.AuditorId = @uid AND s.PcId IN ({pcList}) AND s.SessionDate >= @start AND s.IsSolo = 0
+                WHERE s.AuditorId = @uid AND s.PcId IN ({pcList}) AND s.SessionDate >= @start AND s.PcId != s.AuditorId
                 GROUP BY s.SessionDate, s.PcId";
             cmd.Parameters.AddWithValue("@uid",   userId);
             cmd.Parameters.AddWithValue("@start", startStr);
@@ -1158,8 +1143,8 @@ public class DashboardService
     public static string FmtOrBlank(int s) =>
         s <= 0 ? "" : $"{s / 3600}:{(s % 3600) / 60:D2}";
 
-    /// Grid-key convention: solo-CS columns use -PcId so same person can appear in both columns.
-    public static int GKey(PcInfo pc) => pc.IsSolo ? -(pc.PcId) : pc.PcId;
+    /// Grid-key convention: CSSolo columns use -PcId so same person can appear in both columns.
+    public static int GKey(PcInfo pc) => pc.WorkCapacity == "CSSolo" ? -(pc.PcId) : pc.PcId;
 
     public HashSet<(int pcId, int dayIndex)> GetPendingCsMarkers(
     int csId, DateOnly weekStart, List<PcInfo> userPcs)
@@ -1167,11 +1152,11 @@ public class DashboardService
         var result = new HashSet<(int pcId, int dayIndex)>();
 
         var regularPcIds = userPcs
-            .Where(p => p.WorkCapacity != "Miscellaneous" && !p.IsSolo)
+            .Where(p => p.WorkCapacity != "Miscellaneous" && p.WorkCapacity != "CSSolo")
             .Select(p => p.PcId)
             .ToList();
         var soloPcIds = userPcs
-            .Where(p => p.WorkCapacity != "Miscellaneous" && p.IsSolo)
+            .Where(p => p.WorkCapacity == "CSSolo")
             .Select(p => p.PcId)
             .ToList();
 
@@ -1195,7 +1180,7 @@ public class DashboardService
                 LEFT JOIN CsReviews cr ON cr.SessionId = s.SessionId
                 WHERE s.PcId IN ({pcList})
                   AND s.SessionDate IN ({dateList})
-                  AND s.IsSolo = {(solo ? 1 : 0)}
+                  AND s.PcId {(solo ? "=" : "!=")} s.AuditorId
                   AND cr.CsReviewId IS NULL
                 GROUP BY s.PcId, s.SessionDate";
             using var r = cmd.ExecuteReader();
@@ -1213,6 +1198,40 @@ public class DashboardService
         RunQuery(soloPcIds,    true);
 
         return result;
+    }
+
+    /// Returns PcIds that have sessions where PcId=AuditorId (solo) with no CsReview yet.
+    public HashSet<int> GetPcIdsWithPendingSoloReviews()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT DISTINCT s.PcId
+            FROM Sessions s
+            LEFT JOIN CsReviews cr ON cr.SessionId = s.SessionId
+            WHERE s.PcId = s.AuditorId AND cr.CsReviewId IS NULL";
+        var set = new HashSet<int>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) set.Add(r.GetInt32(0));
+        return set;
+    }
+
+    /// Returns PcIds that have sessions where PcId!=AuditorId (regular) with no CsReview yet.
+    public HashSet<int> GetPcIdsWithPendingRegularReviews()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT DISTINCT s.PcId
+            FROM Sessions s
+            LEFT JOIN CsReviews cr ON cr.SessionId = s.SessionId
+            WHERE s.PcId != s.AuditorId AND cr.CsReviewId IS NULL";
+        var set = new HashSet<int>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) set.Add(r.GetInt32(0));
+        return set;
     }
 
     // ── Solo Auditor methods ──
@@ -1263,7 +1282,7 @@ public class DashboardService
         cmd.CommandText = $@"
             SELECT SessionDate, SUM(LengthSeconds + AdminSeconds)
             FROM Sessions
-            WHERE AuditorId = @uid AND IsSolo = 1 AND SessionDate IN ({dateList})
+            WHERE AuditorId = @uid AND PcId = AuditorId AND SessionDate IN ({dateList})
             GROUP BY SessionDate";
         cmd.Parameters.AddWithValue("@uid", userId);
         using var r = cmd.ExecuteReader();
@@ -1294,7 +1313,7 @@ public class DashboardService
         cmd.CommandText = $@"
             SELECT SessionDate, SUM(LengthSeconds + AdminSeconds)
             FROM Sessions
-            WHERE AuditorId = @uid AND IsSolo = 1 AND SessionDate >= @start
+            WHERE AuditorId = @uid AND PcId = AuditorId AND SessionDate >= @start
             GROUP BY SessionDate";
         cmd.Parameters.AddWithValue("@uid",   userId);
         cmd.Parameters.AddWithValue("@start", startStr);
@@ -1327,7 +1346,7 @@ public class DashboardService
         seqCmd.CommandText = @"
             SELECT COALESCE(MAX(SequenceInDay), 0) + 1
             FROM Sessions
-            WHERE AuditorId = @uid AND IsSolo = 1 AND SessionDate = @date";
+            WHERE AuditorId = @uid AND PcId = AuditorId AND SessionDate = @date";
         seqCmd.Parameters.AddWithValue("@uid",  auditorId);
         seqCmd.Parameters.AddWithValue("@date", dateStr);
         var seq = (long)(seqCmd.ExecuteScalar() ?? 1L);
@@ -1338,12 +1357,12 @@ public class DashboardService
               (PcId, AuditorId, SessionDate, SequenceInDay,
                LengthSeconds, AdminSeconds, IsFreeSession,
                ChargeSeconds, ChargedRateCentsPerHour,
-               SessionSummaryHtml, CreatedAt, IsSolo)
+               SessionSummaryHtml, CreatedAt)
             VALUES
               (@pcId, @audId, @date, @seq,
                @len, @adm, @free,
                0, 0,
-               @sum, datetime('now'), 1)";
+               @sum, datetime('now'))";
         cmd.Parameters.AddWithValue("@pcId",  auditorId);  // PcId = AuditorId for solo
         cmd.Parameters.AddWithValue("@audId", auditorId);
         cmd.Parameters.AddWithValue("@date",  dateStr);
@@ -1406,15 +1425,15 @@ public class DashboardService
             cmd.CommandText = $@"
             SELECT 1
             FROM Sessions
-            WHERE AuditorId = @uid AND IsSolo = 1 AND SessionDate IN ({dateList})
+            WHERE AuditorId = @uid AND PcId = AuditorId AND SessionDate IN ({dateList})
             LIMIT 1";
             cmd.Parameters.AddWithValue("@uid", userId);
             return cmd.ExecuteScalar() is not null;
         }
 
         // Regular mode: sessions + misc (CS excluded anyway from graph)
-        var auditorPcIds = userPcs.Where(p => p.WorkCapacity == "Auditor" && !p.IsSolo).Select(p => p.PcId).ToList();
-        var miscPcIds = userPcs.Where(p => p.WorkCapacity == "Miscellaneous" && !p.IsSolo).Select(p => p.PcId).ToList();
+        var auditorPcIds = userPcs.Where(p => p.WorkCapacity == "Auditor").Select(p => p.PcId).ToList();
+        var miscPcIds = userPcs.Where(p => p.WorkCapacity == "Miscellaneous").Select(p => p.PcId).ToList();
 
         if (auditorPcIds.Count > 0)
         {
@@ -1423,7 +1442,7 @@ public class DashboardService
             sCmd.CommandText = $@"
             SELECT 1
             FROM Sessions
-            WHERE AuditorId = @uid AND IsSolo = 0 AND PcId IN ({pcList}) AND SessionDate IN ({dateList})
+            WHERE AuditorId = @uid AND PcId != AuditorId AND PcId IN ({pcList}) AND SessionDate IN ({dateList})
             LIMIT 1";
             sCmd.Parameters.AddWithValue("@uid", userId);
             if (sCmd.ExecuteScalar() is not null) return true;
@@ -1481,7 +1500,7 @@ public class DashboardService
                    TRIM(pa.FirstName || ' ' || COALESCE(NULLIF(pa.LastName,''), '')) AS AuditorName,
                    s.SessionDate, s.LengthSeconds, s.AdminSeconds, s.IsFreeSession,
                    s.ChargedRateCentsPerHour, s.AuditorSalaryCentsPerHour,
-                   s.VerifiedStatus, s.IsSolo, s.AuditorId
+                   s.VerifiedStatus, s.AuditorId
             FROM Sessions s
             JOIN Persons pa ON pa.PersonId = s.AuditorId
             JOIN Persons pc ON pc.PersonId = s.PcId
@@ -1495,7 +1514,7 @@ public class DashboardService
         using var r = cmd.ExecuteReader();
         while (r.Read())
         {
-            var auditorId   = r.GetInt32(12);
+            var auditorId   = r.GetInt32(11);
             var auditorName = r.GetString(3);
             var pcId        = r.GetInt32(1);
             var pcName      = r.GetString(2);
@@ -1507,8 +1526,7 @@ public class DashboardService
                 r.GetInt32(5), r.GetInt32(6),
                 r.GetInt32(7) == 1,
                 r.GetInt32(8), r.GetInt32(9),
-                r.IsDBNull(10) ? "Draft" : r.GetString(10),
-                r.GetInt32(11) == 1);
+                r.IsDBNull(10) ? "Draft" : r.GetString(10));
 
             auditorNames.TryAdd(auditorId, auditorName);
             pcNames.TryAdd(key, pcName);
