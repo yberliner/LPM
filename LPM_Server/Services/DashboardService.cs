@@ -29,6 +29,9 @@ public record AdminCsRow(
 public record PcCsGroup(int PcId, string PcName, List<AdminCsRow> Reviews);
 public record CsReviewerGroup(int CsId, string CsName, List<PcCsGroup> PcGroups);
 
+public record StaffMember(int PersonId, string FullName);
+public record StaffMessage(int Id, int FromId, string FromName, int ToId, string ToName, string MsgText, string CreatedAt, string? AcknowledgedAt);
+
 public record PermissionRequest(int Id, int AuditorId, string AuditorName, int PcId, string PcName, string RequestedAt);
 public record ApprovedPcEntry(int Id, int PcId, string PcName);
 public record AuditorPermGroup(int AuditorId, string AuditorName, bool AllowAll, List<ApprovedPcEntry> ApprovedPcs);
@@ -154,6 +157,19 @@ public class DashboardService
             addAllowAll.ExecuteNonQuery();
         }
 
+        // Create StaffMessages table (idempotent — no migration needed)
+        using var msgCmd = conn.CreateCommand();
+        msgCmd.CommandText = @"
+            CREATE TABLE IF NOT EXISTS StaffMessages (
+                Id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                FromStaffId     INTEGER NOT NULL,
+                ToStaffId       INTEGER NOT NULL,
+                MsgText         TEXT    NOT NULL,
+                CreatedAt       TEXT    NOT NULL DEFAULT (datetime('now')),
+                AcknowledgedAt  TEXT    NULL
+            )";
+        msgCmd.ExecuteNonQuery();
+
         // Create AuditorPcPermissions table
         using var permCmd = conn.CreateCommand();
         permCmd.CommandText = @"
@@ -203,8 +219,56 @@ public class DashboardService
             VALUES (@aud, @pc, 0)";
         insCmd.Parameters.AddWithValue("@aud", auditorId);
         insCmd.Parameters.AddWithValue("@pc",  pcId);
-        insCmd.ExecuteNonQuery();
+        var inserted = insCmd.ExecuteNonQuery();
+
+        // Send automatic message to all Admin-role users about the permission request
+        if (inserted > 0)
+        {
+            var staffName = GetPersonName(conn, auditorId);
+            var pcName    = GetPersonName(conn, pcId);
+            var msgText   = $"Automatic msg: {staffName} request permission to add {pcName}";
+            SendAutoMessageToAdmins(auditorId, msgText);
+        }
+
         return false;
+    }
+
+    private string GetPersonName(SqliteConnection conn, int personId)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"SELECT {FullNameExpr} FROM Persons p WHERE p.PersonId = @id";
+        cmd.Parameters.AddWithValue("@id", personId);
+        return cmd.ExecuteScalar() as string ?? $"Person #{personId}";
+    }
+
+    private void SendAutoMessageToAdmins(int fromStaffId, string msgText)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        // Find Admin-role users → resolve their PersonId via Persons.FirstName match on Username
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT p.PersonId
+            FROM Persons p
+            JOIN Users u ON LOWER(u.Username) = LOWER(p.FirstName)
+            JOIN UserRoles ur ON ur.UserId = u.Id
+            JOIN Roles r ON r.RoleId = ur.RoleId
+            WHERE r.Code = 'Admin'";
+        var adminPersonIds = new List<int>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) adminPersonIds.Add(r.GetInt32(0));
+
+        foreach (var adminId in adminPersonIds)
+        {
+            using var ins = conn.CreateCommand();
+            ins.CommandText = @"
+                INSERT INTO StaffMessages (FromStaffId, ToStaffId, MsgText)
+                VALUES (@from, @to, @msg)";
+            ins.Parameters.AddWithValue("@from", fromStaffId);
+            ins.Parameters.AddWithValue("@to",   adminId);
+            ins.Parameters.AddWithValue("@msg",  msgText);
+            ins.ExecuteNonQuery();
+        }
     }
 
     /// Returns all PcIds in the auditor's StaffPcList that are NOT explicitly approved.
@@ -1588,6 +1652,86 @@ public class DashboardService
             WHERE CsReviewId = @id";
         cmd.Parameters.AddWithValue("@salary", csSalaryCents);
         cmd.Parameters.AddWithValue("@id",     csReviewId);
+        cmd.ExecuteNonQuery();
+    }
+
+    // ── Staff Messaging ─────────────────────────────────────────
+
+    public List<StaffMember> GetActiveStaffMembers()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $@"
+            SELECT DISTINCT p.PersonId, {FullNameExpr} AS FullName
+            FROM Persons p
+            WHERE EXISTS (SELECT 1 FROM Auditors a WHERE a.AuditorId = p.PersonId AND a.IsActive = 1)
+               OR EXISTS (SELECT 1 FROM CaseSupervisors cs WHERE cs.CsId = p.PersonId AND cs.IsActive = 1)
+            ORDER BY p.FirstName, p.LastName";
+        var list = new List<StaffMember>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new StaffMember(r.GetInt32(0), r.GetString(1)));
+        return list;
+    }
+
+    public void SendMessage(int fromStaffId, int toStaffId, string msgText)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO StaffMessages (FromStaffId, ToStaffId, MsgText)
+            VALUES (@from, @to, @msg)";
+        cmd.Parameters.AddWithValue("@from", fromStaffId);
+        cmd.Parameters.AddWithValue("@to",   toStaffId);
+        cmd.Parameters.AddWithValue("@msg",  msgText);
+        cmd.ExecuteNonQuery();
+    }
+
+    public List<StaffMessage> GetPendingMessages(int staffId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $@"
+            SELECT m.Id, m.FromStaffId,
+                   {FullNameExpr.Replace("p.", "pf.")} AS FromName,
+                   m.ToStaffId,
+                   '' AS ToName,
+                   m.MsgText, m.CreatedAt, m.AcknowledgedAt
+            FROM StaffMessages m
+            JOIN Persons pf ON pf.PersonId = m.FromStaffId
+            WHERE m.ToStaffId = @id AND m.AcknowledgedAt IS NULL
+            ORDER BY m.CreatedAt DESC";
+        cmd.Parameters.AddWithValue("@id", staffId);
+        var list = new List<StaffMessage>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new StaffMessage(
+                r.GetInt32(0), r.GetInt32(1), r.GetString(2),
+                r.GetInt32(3), r.GetString(4), r.GetString(5),
+                r.GetString(6), r.IsDBNull(7) ? null : r.GetString(7)));
+        return list;
+    }
+
+    public int GetPendingMessageCount(int staffId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM StaffMessages WHERE ToStaffId = @id AND AcknowledgedAt IS NULL";
+        cmd.Parameters.AddWithValue("@id", staffId);
+        return (int)(long)(cmd.ExecuteScalar() ?? 0L);
+    }
+
+    public void AcknowledgeMessage(int messageId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE StaffMessages SET AcknowledgedAt = datetime('now') WHERE Id = @id";
+        cmd.Parameters.AddWithValue("@id", messageId);
         cmd.ExecuteNonQuery();
     }
 }

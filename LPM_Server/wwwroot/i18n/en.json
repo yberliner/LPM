@@ -427,5 +427,16 @@
   "academy.other": "Other",
   "academy.weeklyVisitTotals": "Weekly Visit Totals — last 20 weeks",
   "common.close": "Close",
-  "common.none": "None"
+  "common.none": "None",
+  "msg.messages": "Messages",
+  "msg.newMessage": "New Message",
+  "msg.sendTo": "Send to",
+  "msg.typeMessage": "Type a short message...",
+  "msg.send": "Send",
+  "msg.inbox": "Inbox",
+  "msg.noMessages": "No pending messages",
+  "msg.from": "From",
+  "msg.sentSuccess": "Message sent!",
+  "msg.selectRecipient": "Select recipient",
+  "msg.messageRequired": "Please type a message"
 }

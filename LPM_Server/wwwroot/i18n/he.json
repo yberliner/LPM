@@ -427,5 +427,16 @@
   "academy.other": "אחר",
   "academy.weeklyVisitTotals": "סה\"כ ביקורים שבועיים — 20 שבועות אחרונים",
   "common.close": "סגור",
-  "common.none": "ללא"
+  "common.none": "ללא",
+  "msg.messages": "הודעות",
+  "msg.newMessage": "הודעה חדשה",
+  "msg.sendTo": "שלח אל",
+  "msg.typeMessage": "כתוב הודעה קצרה...",
+  "msg.send": "שלח",
+  "msg.inbox": "תיבת דואר",
+  "msg.noMessages": "אין הודעות ממתינות",
+  "msg.from": "מאת",
+  "msg.sentSuccess": "ההודעה נשלחה!",
+  "msg.selectRecipient": "בחר נמען",
+  "msg.messageRequired": "נא להקליד הודעה"
 }
