@@ -233,6 +233,12 @@
                     }
                 </table>
                 </div>
+
+                @if (_selPcId.HasValue && _selDay.HasValue && _detail != null
+                     && _selRole != "CS" && _selRole != "CSSolo")
+                {
+                    @DetailPanel
+                }
             }
 
             @* ══════ CS SOLO TABLE ══════ *@
@@ -343,6 +349,12 @@
                     </tfoot>
                 </table>
                 </div>
+
+                @if (_selPcId.HasValue && _selDay.HasValue && _detail != null
+                     && _selRole == "CSSolo")
+                {
+                    @DetailPanel
+                }
             }
 
             @* ══════ COMBINED GRAND TOTAL (Auditor + CS Solo) ══════ *@
@@ -475,6 +487,12 @@
                     </tfoot>
                 </table>
                 </div>
+
+                @if (_selPcId.HasValue && _selDay.HasValue && _detail != null
+                     && _selRole == "CS")
+                {
+                    @DetailPanel
+                }
             }
 
         </div>
@@ -509,380 +527,6 @@
                             @onclick="RemovePc">
                         <i class="ri-delete-bin-line me-2"></i>Remove PC
                     </button>
-                </div>
-            </div>
-        }
-
-        @* ── Detail panel ── *@
-        @if (_selPcId.HasValue && _selDay.HasValue && _detail != null)
-        {
-            var selPcName = _myPcs.FirstOrDefault(p => p.PcId == _selPcId.Value)?.FullName ?? "";
-            var selDate   = _weekStart.AddDays(_selDay.Value);
-            var roleLabel = _selRole switch {
-                "CS"           => "CS",
-                "CSSolo"       => "CS Solo",
-                "Miscellaneous"=> "Other",
-                "SoloAuditor"  => "Solo",
-                _              => "Auditor"
-            };
-
-            <div class="card mx-3 mt-3 mb-3 home-detail-card" @onclick:stopPropagation="true">
-                <div class="card-header home-detail-header d-flex align-items-center gap-2 py-2">
-                    <i class="ri-layout-grid-line opacity-75"></i>
-                    <strong>@selPcName</strong>
-                    <span class="opacity-60">—</span>
-                    <span>@DayLabel(selDate)</span>
-                    <span class="badge home-role-badge ms-1">@roleLabel</span>
-                    <button class="btn-close btn-close-white ms-auto" title="Close" @onclick="ClearSelection"></button>
-                </div>
-                <div class="card-body py-2">
-
-                    @if (_selRole != "CS" && _selRole != "CSSolo")
-                    {
-                        @* ── Auditor view: own sessions (also used for Miscellaneous/Other role) ── *@
-                        @if (_detail.Sessions.Count == 0)
-                        {
-                            <p class="text-muted mb-2 small">No sessions recorded for this day.</p>
-                        }
-                        else
-                        {
-                            <ul class="list-unstyled mb-2">
-                                @foreach (var s in _detail.Sessions)
-                                {
-                                    var audSessionTime = !string.IsNullOrEmpty(s.CreatedAt) && s.CreatedAt.Contains(' ')
-                                        ? s.CreatedAt.Split(' ')[1][..5]
-                                        : "";
-                                    <li class="mb-1">
-                                        @if (_editSessionId == s.SessionId)
-                                        {
-                                            <div class="home-form-box">
-                                                <div class="row g-2 align-items-center mb-2">
-                                                    <div class="col-auto">
-                                                        <label class="form-label mb-0 small">@LS.T("home.duration")</label>
-                                                        <input class="form-control form-control-sm" style="width:90px;"
-                                                               @bind="_editDuration" @bind:event="oninput" />
-                                                    </div>
-                                                    <div class="col-auto">
-                                                        <label class="form-label mb-0 small">@LS.T("home.adminMin")</label>
-                                                        <input class="form-control form-control-sm" style="width:70px;" type="number" min="0"
-                                                               @bind="_editAdminMin" />
-                                                    </div>
-                                                    <div class="col-auto d-flex align-items-end pb-1">
-                                                        <div class="form-check mb-0">
-                                                            <input class="form-check-input" type="checkbox" id="chkEditFree" @bind="_editIsFree" />
-                                                            <label class="form-check-label small" for="chkEditFree">@LS.T("home.free")</label>
-                                                        </div>
-                                                    </div>
-                                                    <div class="col-auto ms-auto">
-                                                        <button class="btn btn-sm btn-primary" @onclick="SaveEditSession">@LS.T("common.save")</button>
-                                                        <button class="btn btn-sm btn-link text-danger" @onclick="CancelEditSession">@LS.T("common.cancel")</button>
-                                                    </div>
-                                                </div>
-                                                <div class="mb-1">
-                                                    <label class="form-label mb-1 small">@LS.T("home.summary")</label>
-                                                    <SpkRichEditor Value="@_editSummary" ValueChanged="@(v => _editSummary = v)" />
-                                                </div>
-                                                @if (!string.IsNullOrEmpty(_editError))
-                                                {
-                                                    <div class="text-danger small mt-1">@_editError</div>
-                                                }
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <div class="d-flex align-items-center flex-wrap gap-2">
-                                                @if (!string.IsNullOrEmpty(audSessionTime))
-                                                {
-                                                    <span class="text-muted small">
-                                                        <i class="ri-time-line"></i> @audSessionTime
-                                                    </span>
-                                                }
-                                                @if (!string.IsNullOrEmpty(s.AuditorName))
-                                                {
-                                                    <span class="fw-semibold small" style="color:#7c3aed;">
-                                                        <i class="ri-user-line me-1"></i>@s.AuditorName
-                                                    </span>
-                                                }
-                                                <span class="badge bg-primary-transparent fs-12">
-                                                    @DashboardService.Fmt(s.LengthSec)
-                                                </span>
-                                                @if (s.AdminSec > 0)
-                                                {
-                                                    <span class="text-muted small">
-                                                        (@LS.T("home.admin"): @DashboardService.Fmt(s.AdminSec))
-                                                    </span>
-                                                }
-                                                @if (s.IsFree)
-                                                {
-                                                    <span class="badge bg-warning-transparent">@LS.T("home.free")</span>
-                                                }
-                                                @{ var sessionApproved = s.VerifiedStatus == "Approved"; }
-                                                <button class="btn btn-link btn-sm py-0 px-1 ms-auto" style="font-size:0.75rem;"
-                                                        title="@(sessionApproved ? LS.T("home.cannotEditApproved") : LS.T("home.editSession"))"
-                                                        disabled="@sessionApproved"
-                                                        @onclick="() => OpenEditSession(s)">
-                                                    <i class="ri-edit-line"></i> @LS.T("common.edit")
-                                                </button>
-                                            </div>
-                                            @if (!string.IsNullOrWhiteSpace(s.Summary))
-                                            {
-                                                <div class="text-muted small mt-1">@((MarkupString)s.Summary)</div>
-                                            }
-                                        }
-                                    </li>
-                                }
-                            </ul>
-                        }
-
-                        @* Add Session / Misc Entry button and form *@
-                        @if (!_showAddSession)
-                        {
-                            <button class="btn btn-sm home-nav-btn-accent"
-                                    @onclick="OpenAddSession">
-                                <i class="ri-add-line me-1"></i>@(_selRole == "Miscellaneous" ? LS.T("home.addMiscEntry") : LS.T("home.addSession"))
-                            </button>
-                        }
-                        else
-                        {
-                            <div class="home-form-box mt-2">
-                                <h6 class="mb-2">@(_selRole == "Miscellaneous" ? LS.T("home.addMiscEntry") : LS.T("home.addSession"))</h6>
-                                <div class="row g-2 align-items-center mb-2">
-                                    <div class="col-auto">
-                                        <label class="form-label mb-0 small">@LS.T("home.duration")</label>
-                                        <input class="form-control form-control-sm"
-                                               style="width:90px;" placeholder="1:30"
-                                               @bind="_addDuration" @bind:event="oninput" />
-                                    </div>
-                                    <div class="col-auto">
-                                        <label class="form-label mb-0 small">@LS.T("home.adminMin")</label>
-                                        <input class="form-control form-control-sm"
-                                               style="width:70px;" type="number" min="0"
-                                               @bind="_addAdminMin" />
-                                    </div>
-                                    <div class="col-auto d-flex align-items-end pb-1">
-                                        <div class="form-check mb-0">
-                                            <input class="form-check-input" type="checkbox"
-                                                   id="chkFree" @bind="_addIsFree" />
-                                            <label class="form-check-label small" for="chkFree">@LS.T("home.free")</label>
-                                        </div>
-                                    </div>
-                                    <div class="col-auto ms-auto">
-                                        <button class="btn btn-sm btn-primary" @onclick="SaveSession">@LS.T("common.save")</button>
-                                        <button class="btn btn-sm btn-link text-danger"
-                                                @onclick="CancelAddSession">@LS.T("common.cancel")</button>
-                                    </div>
-                                </div>
-                                <div class="mb-1">
-                                    <label class="form-label mb-1 small">@LS.T("home.summary")</label>
-                                    <SpkRichEditor Value="@_addSummary" ValueChanged="@(v => _addSummary = v)" />
-                                </div>
-                                @if (!string.IsNullOrEmpty(_addError))
-                                {
-                                    <div class="text-danger small mt-1">@_addError</div>
-                                }
-                            </div>
-                        }
-                    }
-                    else
-                    {
-                        @* ── CS view: all sessions (read-only) with review status ── *@
-                        @if (_detail.Sessions.Count == 0)
-                        {
-                            <p class="text-muted mb-2 small">No sessions recorded for this day.</p>
-                        }
-                        else
-                        {
-                            <ul class="list-unstyled mb-2">
-                                @foreach (var s in _detail.Sessions)
-                                {
-                                    var rev = _detail.Reviews.FirstOrDefault(r => r.SessionId == s.SessionId);
-                                    var sessionTime = !string.IsNullOrEmpty(s.CreatedAt) && s.CreatedAt.Contains(' ')
-                                        ? s.CreatedAt.Split(' ')[1][..5]
-                                        : "";
-                                    <li class="mb-2 border rounded p-2">
-                                        <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
-                                            @if (!string.IsNullOrEmpty(sessionTime))
-                                            {
-                                                <span class="text-muted small">
-                                                    <i class="ri-time-line"></i> @sessionTime
-                                                </span>
-                                            }
-                                            <span class="fw-semibold small" style="color:#7c3aed;">
-                                                <i class="ri-user-line me-1"></i>@s.AuditorName
-                                            </span>
-                                            <span class="badge bg-primary-transparent fs-12">
-                                                @DashboardService.Fmt(s.LengthSec)
-                                            </span>
-                                            @if (s.AdminSec > 0)
-                                            {
-                                                <span class="text-muted small">
-                                                    (@LS.T("home.admin"): @DashboardService.Fmt(s.AdminSec))
-                                                </span>
-                                            }
-                                            @if (s.IsFree)
-                                            {
-                                                <span class="badge bg-warning-transparent">@LS.T("home.free")</span>
-                                            }
-                                            @if (!string.IsNullOrWhiteSpace(s.Summary))
-                                            {
-                                                <div class="text-muted small mt-1">@((MarkupString)s.Summary)</div>
-                                            }
-                                        </div>
-                                        @if (rev != null)
-                                        {
-                                            @if (_editReviewId == rev.CsReviewId)
-                                            {
-                                                <div class="home-form-box mt-1">
-                                                    <div class="row g-2 align-items-center mb-2">
-                                                        <div class="col-auto">
-                                                            <label class="form-label mb-0 small">@LS.T("home.duration")</label>
-                                                            <input class="form-control form-control-sm" style="width:90px;"
-                                                                   @bind="_editRevDuration" @bind:event="oninput" />
-                                                        </div>
-                                                        <div class="col-auto ms-auto">
-                                                            <button class="btn btn-sm btn-primary" @onclick="SaveEditReview">@LS.T("common.save")</button>
-                                                            <button class="btn btn-sm btn-link text-danger" @onclick="CancelEditReview">@LS.T("common.cancel")</button>
-                                                        </div>
-                                                    </div>
-                                                    <div class="mb-1">
-                                                        <label class="form-label mb-1 small">@LS.T("home.notes")</label>
-                                                        <SpkRichEditor Value="@_editRevNotes" ValueChanged="@(v => _editRevNotes = v)" />
-                                                    </div>
-                                                    @if (!string.IsNullOrEmpty(_editRevError))
-                                                    {
-                                                        <div class="text-danger small mt-1">@_editRevError</div>
-                                                    }
-                                                </div>
-                                            }
-                                            else
-                                            {
-                                                <div class="d-flex align-items-center flex-wrap gap-2 small">
-                                                    <i class="ri-checkbox-circle-line text-success"></i>
-                                                    <span class="fw-semibold small" style="color:#2e7d32;">
-                                                        <i class="ri-user-star-line me-1"></i>@_displayName
-                                                    </span>
-                                                    <span class="badge bg-success-transparent">
-                                                        @DashboardService.Fmt(rev.ReviewSec)
-                                                    </span>
-                                                    <span>@rev.Status</span>
-                                                    <button class="btn btn-link btn-sm py-0 px-1 ms-auto" style="font-size:0.75rem;"
-                                                            title="@(rev.Status == "Approved" ? LS.T("home.cannotEditReviewApproved") : LS.T("home.editReview"))"
-                                                            disabled="@(rev.Status == "Approved")"
-                                                            @onclick="() => OpenEditReview(rev)">
-                                                        <i class="ri-edit-line"></i> @LS.T("common.edit")
-                                                    </button>
-                                                </div>
-                                                @if (!string.IsNullOrWhiteSpace(rev.Notes))
-                                                {
-                                                    <div class="text-muted small mt-1">@((MarkupString)rev.Notes)</div>
-                                                }
-                                            }
-                                        }
-                                        else
-                                        {
-                                            <button class="btn btn-sm btn-outline-success rounded-pill px-3 py-0 mt-1"
-                                                    @onclick="() => StartAddReview(s.SessionId, s.LengthSec + s.AdminSec)">
-                                                <i class="ri-add-line me-1"></i>@LS.T("home.csReview")
-                                            </button>
-                                        }
-                                    </li>
-                                }
-                            </ul>
-                        }
-
-                        @* Add CS Review form *@
-                        @if (_showAddReview)
-                        {
-                            <div class="home-form-box mt-2">
-                                <h6 class="mb-2">@LS.T("home.addCsReview") (Session #@_addReviewSessionId)</h6>
-                                <div class="row g-2 align-items-center mb-2">
-                                    <div class="col-auto">
-                                        <label class="form-label mb-0 small">@LS.T("home.duration")</label>
-                                        <input class="form-control form-control-sm"
-                                               style="width:90px;" placeholder="0:30"
-                                               @bind="_addReviewDuration" @bind:event="oninput" />
-                                    </div>
-                                    <div class="col-auto ms-auto">
-                                        <button class="btn btn-sm btn-primary" @onclick="SaveReview">@LS.T("common.save")</button>
-                                        <button class="btn btn-sm btn-link text-danger"
-                                                @onclick="CancelAddReview">@LS.T("common.cancel")</button>
-                                    </div>
-                                </div>
-                                <div class="mb-1">
-                                    <label class="form-label mb-1 small">@LS.T("home.notes")</label>
-                                    <SpkRichEditor Value="@_addReviewNotes" ValueChanged="@(v => _addReviewNotes = v)" />
-                                </div>
-                                @if (!string.IsNullOrEmpty(_reviewError))
-                                {
-                                    <div class="text-danger small mt-1">@_reviewError</div>
-                                }
-                            </div>
-                        }
-
-                        @* ── General CS Work ── *@
-                        <hr class="my-3" />
-                        <div class="d-flex align-items-center gap-2 mb-2">
-                            <i class="ri-briefcase-line text-info"></i>
-                            <span class="fw-semibold small" style="color:#0d9488;">@LS.T("home.generalCsWork")</span>
-                        </div>
-                        @if (_detail.GeneralWork != null && _detail.GeneralWork.Count > 0)
-                        {
-                            <ul class="list-unstyled mb-2">
-                                @foreach (var w in _detail.GeneralWork)
-                                {
-                                    <li class="mb-1 d-flex align-items-center gap-2">
-                                        <span class="badge bg-info-transparent fs-12">
-                                            @DashboardService.Fmt(w.LengthSec)
-                                        </span>
-                                        @if (!string.IsNullOrWhiteSpace(w.Notes))
-                                        {
-                                            <div class="text-muted small mt-1">@((MarkupString)w.Notes)</div>
-                                        }
-                                    </li>
-                                }
-                            </ul>
-                        }
-                        else
-                        {
-                            <p class="text-muted small mb-1">No general CS work recorded.</p>
-                        }
-
-                        @if (!_showAddGeneralCs)
-                        {
-                            <button class="btn btn-sm btn-outline-info rounded-pill px-3"
-                                    @onclick="OpenAddGeneralCs">
-                                <i class="ri-add-line me-1"></i>General CS
-                            </button>
-                        }
-                        else
-                        {
-                            <div class="home-form-box mt-2">
-                                <h6 class="mb-2">@LS.T("home.addGeneralCsWork")</h6>
-                                <div class="row g-2 align-items-center mb-2">
-                                    <div class="col-auto">
-                                        <label class="form-label mb-0 small">@LS.T("home.duration")</label>
-                                        <input class="form-control form-control-sm"
-                                               style="width:90px;" placeholder="0:30"
-                                               @bind="_addGeneralCsDuration" @bind:event="oninput" />
-                                    </div>
-                                    <div class="col-auto ms-auto">
-                                        <button class="btn btn-sm btn-primary" @onclick="SaveGeneralCs">@LS.T("common.save")</button>
-                                        <button class="btn btn-sm btn-link text-danger"
-                                                @onclick="CancelAddGeneralCs">@LS.T("common.cancel")</button>
-                                    </div>
-                                </div>
-                                <div class="mb-1">
-                                    <label class="form-label mb-1 small">@LS.T("home.notes")</label>
-                                    <SpkRichEditor Value="@_addGeneralCsNotes" ValueChanged="@(v => _addGeneralCsNotes = v)" />
-                                </div>
-                                @if (!string.IsNullOrEmpty(_generalCsError))
-                                {
-                                    <div class="text-danger small mt-1">@_generalCsError</div>
-                                }
-                            </div>
-                        }
-                    }
-
                 </div>
             </div>
         }
@@ -1500,6 +1144,379 @@
         _editSessionId    = null;
         _editReviewId     = null;
     }
+
+    RenderFragment DetailPanel => __builder =>
+    {
+        var selPcName = _myPcs.FirstOrDefault(p => p.PcId == _selPcId!.Value)?.FullName ?? "";
+        var selDate   = _weekStart.AddDays(_selDay!.Value);
+        var roleLabel = _selRole switch {
+            "CS"           => "CS",
+            "CSSolo"       => "CS Solo",
+            "Miscellaneous"=> "Other",
+            "SoloAuditor"  => "Solo",
+            _              => "Auditor"
+        };
+
+        <div class="card mx-3 mt-3 mb-3 home-detail-card" @onclick:stopPropagation="true">
+            <div class="card-header home-detail-header d-flex align-items-center gap-2 py-2">
+                <i class="ri-layout-grid-line opacity-75"></i>
+                <strong>@selPcName</strong>
+                <span class="opacity-60">—</span>
+                <span>@DayLabel(selDate)</span>
+                <span class="badge home-role-badge ms-1">@roleLabel</span>
+                <button class="btn-close btn-close-white ms-auto" title="Close" @onclick="ClearSelection"></button>
+            </div>
+            <div class="card-body py-2">
+
+                @if (_selRole != "CS" && _selRole != "CSSolo")
+                {
+                    @* ── Auditor view: own sessions ── *@
+                    @if (_detail!.Sessions.Count == 0)
+                    {
+                        <p class="text-muted mb-2 small">No sessions recorded for this day.</p>
+                    }
+                    else
+                    {
+                        <ul class="list-unstyled mb-2">
+                            @foreach (var s in _detail.Sessions)
+                            {
+                                var audSessionTime = !string.IsNullOrEmpty(s.CreatedAt) && s.CreatedAt.Contains(' ')
+                                    ? s.CreatedAt.Split(' ')[1][..5]
+                                    : "";
+                                <li class="mb-1">
+                                    @if (_editSessionId == s.SessionId)
+                                    {
+                                        <div class="home-form-box">
+                                            <div class="row g-2 align-items-center mb-2">
+                                                <div class="col-auto">
+                                                    <label class="form-label mb-0 small">@LS.T("home.duration")</label>
+                                                    <input class="form-control form-control-sm" style="width:90px;"
+                                                           @bind="_editDuration" @bind:event="oninput" />
+                                                </div>
+                                                <div class="col-auto">
+                                                    <label class="form-label mb-0 small">@LS.T("home.adminMin")</label>
+                                                    <input class="form-control form-control-sm" style="width:70px;" type="number" min="0"
+                                                           @bind="_editAdminMin" />
+                                                </div>
+                                                <div class="col-auto d-flex align-items-end pb-1">
+                                                    <div class="form-check mb-0">
+                                                        <input class="form-check-input" type="checkbox" id="chkEditFree" @bind="_editIsFree" />
+                                                        <label class="form-check-label small" for="chkEditFree">@LS.T("home.free")</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-auto ms-auto">
+                                                    <button class="btn btn-sm btn-primary" @onclick="SaveEditSession">@LS.T("common.save")</button>
+                                                    <button class="btn btn-sm btn-link text-danger" @onclick="CancelEditSession">@LS.T("common.cancel")</button>
+                                                </div>
+                                            </div>
+                                            <div class="mb-1">
+                                                <label class="form-label mb-1 small">@LS.T("home.summary")</label>
+                                                <SpkRichEditor Value="@_editSummary" ValueChanged="@(v => _editSummary = v)" />
+                                            </div>
+                                            @if (!string.IsNullOrEmpty(_editError))
+                                            {
+                                                <div class="text-danger small mt-1">@_editError</div>
+                                            }
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="d-flex align-items-center flex-wrap gap-2">
+                                            @if (!string.IsNullOrEmpty(audSessionTime))
+                                            {
+                                                <span class="text-muted small">
+                                                    <i class="ri-time-line"></i> @audSessionTime
+                                                </span>
+                                            }
+                                            @if (!string.IsNullOrEmpty(s.AuditorName))
+                                            {
+                                                <span class="fw-semibold small" style="color:#7c3aed;">
+                                                    <i class="ri-user-line me-1"></i>@s.AuditorName
+                                                </span>
+                                            }
+                                            <span class="badge bg-primary-transparent fs-12">
+                                                @DashboardService.Fmt(s.LengthSec)
+                                            </span>
+                                            @if (s.AdminSec > 0)
+                                            {
+                                                <span class="text-muted small">
+                                                    (@LS.T("home.admin"): @DashboardService.Fmt(s.AdminSec))
+                                                </span>
+                                            }
+                                            @if (s.IsFree)
+                                            {
+                                                <span class="badge bg-warning-transparent">@LS.T("home.free")</span>
+                                            }
+                                            @{ var sessionApproved = s.VerifiedStatus == "Approved"; }
+                                            <button class="btn btn-link btn-sm py-0 px-1 ms-auto" style="font-size:0.75rem;"
+                                                    title="@(sessionApproved ? LS.T("home.cannotEditApproved") : LS.T("home.editSession"))"
+                                                    disabled="@sessionApproved"
+                                                    @onclick="() => OpenEditSession(s)">
+                                                <i class="ri-edit-line"></i> @LS.T("common.edit")
+                                            </button>
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(s.Summary))
+                                        {
+                                            <div class="text-muted small mt-1">@((MarkupString)s.Summary)</div>
+                                        }
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+
+                    @* Add Session / Misc Entry button and form *@
+                    @if (!_showAddSession)
+                    {
+                        <button class="btn btn-sm home-nav-btn-accent"
+                                @onclick="OpenAddSession">
+                            <i class="ri-add-line me-1"></i>@(_selRole == "Miscellaneous" ? LS.T("home.addMiscEntry") : LS.T("home.addSession"))
+                        </button>
+                    }
+                    else
+                    {
+                        <div class="home-form-box mt-2">
+                            <h6 class="mb-2">@(_selRole == "Miscellaneous" ? LS.T("home.addMiscEntry") : LS.T("home.addSession"))</h6>
+                            <div class="row g-2 align-items-center mb-2">
+                                <div class="col-auto">
+                                    <label class="form-label mb-0 small">@LS.T("home.duration")</label>
+                                    <input class="form-control form-control-sm"
+                                           style="width:90px;" placeholder="1:30"
+                                           @bind="_addDuration" @bind:event="oninput" />
+                                </div>
+                                <div class="col-auto">
+                                    <label class="form-label mb-0 small">@LS.T("home.adminMin")</label>
+                                    <input class="form-control form-control-sm"
+                                           style="width:70px;" type="number" min="0"
+                                           @bind="_addAdminMin" />
+                                </div>
+                                <div class="col-auto d-flex align-items-end pb-1">
+                                    <div class="form-check mb-0">
+                                        <input class="form-check-input" type="checkbox"
+                                               id="chkFree" @bind="_addIsFree" />
+                                        <label class="form-check-label small" for="chkFree">@LS.T("home.free")</label>
+                                    </div>
+                                </div>
+                                <div class="col-auto ms-auto">
+                                    <button class="btn btn-sm btn-primary" @onclick="SaveSession">@LS.T("common.save")</button>
+                                    <button class="btn btn-sm btn-link text-danger"
+                                            @onclick="CancelAddSession">@LS.T("common.cancel")</button>
+                                </div>
+                            </div>
+                            <div class="mb-1">
+                                <label class="form-label mb-1 small">@LS.T("home.summary")</label>
+                                <SpkRichEditor Value="@_addSummary" ValueChanged="@(v => _addSummary = v)" />
+                            </div>
+                            @if (!string.IsNullOrEmpty(_addError))
+                            {
+                                <div class="text-danger small mt-1">@_addError</div>
+                            }
+                        </div>
+                    }
+                }
+                else
+                {
+                    @* ── CS view: all sessions (read-only) with review status ── *@
+                    @if (_detail!.Sessions.Count == 0)
+                    {
+                        <p class="text-muted mb-2 small">No sessions recorded for this day.</p>
+                    }
+                    else
+                    {
+                        <ul class="list-unstyled mb-2">
+                            @foreach (var s in _detail.Sessions)
+                            {
+                                var rev = _detail.Reviews.FirstOrDefault(r => r.SessionId == s.SessionId);
+                                var sessionTime = !string.IsNullOrEmpty(s.CreatedAt) && s.CreatedAt.Contains(' ')
+                                    ? s.CreatedAt.Split(' ')[1][..5]
+                                    : "";
+                                <li class="mb-2 border rounded p-2">
+                                    <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
+                                        @if (!string.IsNullOrEmpty(sessionTime))
+                                        {
+                                            <span class="text-muted small">
+                                                <i class="ri-time-line"></i> @sessionTime
+                                            </span>
+                                        }
+                                        <span class="fw-semibold small" style="color:#7c3aed;">
+                                            <i class="ri-user-line me-1"></i>@s.AuditorName
+                                        </span>
+                                        <span class="badge bg-primary-transparent fs-12">
+                                            @DashboardService.Fmt(s.LengthSec)
+                                        </span>
+                                        @if (s.AdminSec > 0)
+                                        {
+                                            <span class="text-muted small">
+                                                (@LS.T("home.admin"): @DashboardService.Fmt(s.AdminSec))
+                                            </span>
+                                        }
+                                        @if (s.IsFree)
+                                        {
+                                            <span class="badge bg-warning-transparent">@LS.T("home.free")</span>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(s.Summary))
+                                        {
+                                            <div class="text-muted small mt-1">@((MarkupString)s.Summary)</div>
+                                        }
+                                    </div>
+                                    @if (rev != null)
+                                    {
+                                        @if (_editReviewId == rev.CsReviewId)
+                                        {
+                                            <div class="home-form-box mt-1">
+                                                <div class="row g-2 align-items-center mb-2">
+                                                    <div class="col-auto">
+                                                        <label class="form-label mb-0 small">@LS.T("home.duration")</label>
+                                                        <input class="form-control form-control-sm" style="width:90px;"
+                                                               @bind="_editRevDuration" @bind:event="oninput" />
+                                                    </div>
+                                                    <div class="col-auto ms-auto">
+                                                        <button class="btn btn-sm btn-primary" @onclick="SaveEditReview">@LS.T("common.save")</button>
+                                                        <button class="btn btn-sm btn-link text-danger" @onclick="CancelEditReview">@LS.T("common.cancel")</button>
+                                                    </div>
+                                                </div>
+                                                <div class="mb-1">
+                                                    <label class="form-label mb-1 small">@LS.T("home.notes")</label>
+                                                    <SpkRichEditor Value="@_editRevNotes" ValueChanged="@(v => _editRevNotes = v)" />
+                                                </div>
+                                                @if (!string.IsNullOrEmpty(_editRevError))
+                                                {
+                                                    <div class="text-danger small mt-1">@_editRevError</div>
+                                                }
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="d-flex align-items-center flex-wrap gap-2 small">
+                                                <i class="ri-checkbox-circle-line text-success"></i>
+                                                <span class="fw-semibold small" style="color:#2e7d32;">
+                                                    <i class="ri-user-star-line me-1"></i>@_displayName
+                                                </span>
+                                                <span class="badge bg-success-transparent">
+                                                    @DashboardService.Fmt(rev.ReviewSec)
+                                                </span>
+                                                <span>@rev.Status</span>
+                                                <button class="btn btn-link btn-sm py-0 px-1 ms-auto" style="font-size:0.75rem;"
+                                                        title="@(rev.Status == "Approved" ? LS.T("home.cannotEditReviewApproved") : LS.T("home.editReview"))"
+                                                        disabled="@(rev.Status == "Approved")"
+                                                        @onclick="() => OpenEditReview(rev)">
+                                                    <i class="ri-edit-line"></i> @LS.T("common.edit")
+                                                </button>
+                                            </div>
+                                            @if (!string.IsNullOrWhiteSpace(rev.Notes))
+                                            {
+                                                <div class="text-muted small mt-1">@((MarkupString)rev.Notes)</div>
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-outline-success rounded-pill px-3 py-0 mt-1"
+                                                @onclick="() => StartAddReview(s.SessionId, s.LengthSec + s.AdminSec)">
+                                            <i class="ri-add-line me-1"></i>@LS.T("home.csReview")
+                                        </button>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+
+                    @* Add CS Review form *@
+                    @if (_showAddReview)
+                    {
+                        <div class="home-form-box mt-2">
+                            <h6 class="mb-2">@LS.T("home.addCsReview") (Session #@_addReviewSessionId)</h6>
+                            <div class="row g-2 align-items-center mb-2">
+                                <div class="col-auto">
+                                    <label class="form-label mb-0 small">@LS.T("home.duration")</label>
+                                    <input class="form-control form-control-sm"
+                                           style="width:90px;" placeholder="0:30"
+                                           @bind="_addReviewDuration" @bind:event="oninput" />
+                                </div>
+                                <div class="col-auto ms-auto">
+                                    <button class="btn btn-sm btn-primary" @onclick="SaveReview">@LS.T("common.save")</button>
+                                    <button class="btn btn-sm btn-link text-danger"
+                                            @onclick="CancelAddReview">@LS.T("common.cancel")</button>
+                                </div>
+                            </div>
+                            <div class="mb-1">
+                                <label class="form-label mb-1 small">@LS.T("home.notes")</label>
+                                <SpkRichEditor Value="@_addReviewNotes" ValueChanged="@(v => _addReviewNotes = v)" />
+                            </div>
+                            @if (!string.IsNullOrEmpty(_reviewError))
+                            {
+                                <div class="text-danger small mt-1">@_reviewError</div>
+                            }
+                        </div>
+                    }
+
+                    @* ── General CS Work ── *@
+                    <hr class="my-3" />
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <i class="ri-briefcase-line text-info"></i>
+                        <span class="fw-semibold small" style="color:#0d9488;">@LS.T("home.generalCsWork")</span>
+                    </div>
+                    @if (_detail.GeneralWork != null && _detail.GeneralWork.Count > 0)
+                    {
+                        <ul class="list-unstyled mb-2">
+                            @foreach (var w in _detail.GeneralWork)
+                            {
+                                <li class="mb-1 d-flex align-items-center gap-2">
+                                    <span class="badge bg-info-transparent fs-12">
+                                        @DashboardService.Fmt(w.LengthSec)
+                                    </span>
+                                    @if (!string.IsNullOrWhiteSpace(w.Notes))
+                                    {
+                                        <div class="text-muted small mt-1">@((MarkupString)w.Notes)</div>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <p class="text-muted small mb-1">No general CS work recorded.</p>
+                    }
+
+                    @if (!_showAddGeneralCs)
+                    {
+                        <button class="btn btn-sm btn-outline-info rounded-pill px-3"
+                                @onclick="OpenAddGeneralCs">
+                            <i class="ri-add-line me-1"></i>General CS
+                        </button>
+                    }
+                    else
+                    {
+                        <div class="home-form-box mt-2">
+                            <h6 class="mb-2">@LS.T("home.addGeneralCsWork")</h6>
+                            <div class="row g-2 align-items-center mb-2">
+                                <div class="col-auto">
+                                    <label class="form-label mb-0 small">@LS.T("home.duration")</label>
+                                    <input class="form-control form-control-sm"
+                                           style="width:90px;" placeholder="0:30"
+                                           @bind="_addGeneralCsDuration" @bind:event="oninput" />
+                                </div>
+                                <div class="col-auto ms-auto">
+                                    <button class="btn btn-sm btn-primary" @onclick="SaveGeneralCs">@LS.T("common.save")</button>
+                                    <button class="btn btn-sm btn-link text-danger"
+                                            @onclick="CancelAddGeneralCs">@LS.T("common.cancel")</button>
+                                </div>
+                            </div>
+                            <div class="mb-1">
+                                <label class="form-label mb-1 small">@LS.T("home.notes")</label>
+                                <SpkRichEditor Value="@_addGeneralCsNotes" ValueChanged="@(v => _addGeneralCsNotes = v)" />
+                            </div>
+                            @if (!string.IsNullOrEmpty(_generalCsError))
+                            {
+                                <div class="text-danger small mt-1">@_generalCsError</div>
+                            }
+                        </div>
+                    }
+                }
+
+            </div>
+        </div>
+    };
 
     void ClearSelection() { _selPcId = null; _selDay = null; _detail = null; }
 
