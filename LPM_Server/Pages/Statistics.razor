@@ -13,7 +13,7 @@
     .stat-card-gradient-dark   { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); }
     .stat-metric-box {
         border-radius: 12px; padding: 12px 8px; text-align: center;
-        transition: transform 0.15s; position: relative;
+        transition: transform 0.15s; position: relative; color: #212529;
     }
     .stat-metric-box:hover { transform: translateY(-2px); }
     .stat-metric-box .value     { font-size: 1.45rem; font-weight: 700; line-height: 1.15; }
@@ -300,7 +300,7 @@
                         <div class="col-3">
                             <div class="stat-metric-box" style="background:#fff7ed;">
                                 <div class="value" style="color:#ea580c;">@_dayStats[_selDay].BodyInShop</div>
-                                <div class="main-lbl">BITS</div>
+                                <div class="main-lbl">BIS</div>
                                 <div class="sub-lbl">@LS.T("stats.uniqueVisitors")</div>
                             </div>
                         </div>
@@ -343,7 +343,7 @@
                         <div class="col-3">
                             <div class="stat-metric-box" style="background:#fff7ed;">
                                 <div class="value" style="color:#ea580c;">@(ws?.BodyInShop ?? 0)</div>
-                                <div class="main-lbl">BITS</div>
+                                <div class="main-lbl">BIS</div>
                                 <div class="sub-lbl">@LS.T("stats.uniqueWeek")</div>
                             </div>
                         </div>

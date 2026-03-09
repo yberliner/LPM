@@ -90,7 +90,7 @@
                             <div class="ahp-name">@_displayName</div>
                         </div>
                         </div>
-                        <span style="font-size:2.3rem; font-weight:000; letter-spacing:0.03em; color:#3949ab;">@_displayName</span>
+                        <span style="font-size:2.3rem; font-weight:000; letter-spacing:0.03em; color:var(--default-text-color);">@_displayName</span>
                         <ul class="dropdown-menu dropdown-menu-end shadow-sm">
                             <li><h6 class="dropdown-header">@_displayName</h6></li>
                             <li><a class="dropdown-item" href="/Settings"><i class="ri-settings-3-line me-2"></i>@LS.T("header.settings")</a></li>
@@ -161,8 +161,9 @@
                             width: 44px;
                             height: 44px;
                             border-radius: 50%;
-                            background: rgba(255,255,255,0.18);
-                            border: 2px dashed rgba(255,255,255,0.6);
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            border: 2px solid rgba(255,255,255,0.5);
+                            color: #fff;
                             display: inline-flex;
                             align-items: center;
                             justify-content: center;
@@ -195,13 +196,14 @@
                         }
                         .avatar-caret {
                             font-size: 14px;
-                            color: rgba(255,255,255,0.75);
+                            color: var(--default-text-color);
+                            opacity: 0.75;
                             line-height: 1;
                             margin-top: -2px;
-                            transition: color 0.2s ease;
+                            transition: opacity 0.2s ease;
                         }
                         .avatar-trigger:hover .avatar-caret {
-                            color: #fff;
+                            opacity: 1;
                         }
                         .lang-switcher-btn {
                             background: transparent;

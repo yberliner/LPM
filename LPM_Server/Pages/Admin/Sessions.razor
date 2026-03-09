@@ -106,9 +106,9 @@
     else if (_groups.Count == 0)
     {
         <div class="sa-empty-block mb-4">
-            <i class="ri-check-double-line text-success" style="font-size:1.8rem;"></i>
+            <i class="ri-check-double-line" style="font-size:1.8rem;color:#16a34a;"></i>
             <div class="fw-semibold mt-2">@LS.T("sessions.noSessions")</div>
-            <div class="text-muted small">@(_includeApproved ? "No sessions in the selected date range." : "No draft sessions pending approval.")</div>
+            <div class="small" style="color:#6b7280;">@(_includeApproved ? "No sessions in the selected date range." : "No draft sessions pending approval.")</div>
         </div>
     }
     else
@@ -153,7 +153,7 @@
                             @if (pcApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm">@pcApproved @LS.T("sessions.approved")</span> }
                         </div>
                         <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
-                            <span class="sa-input-label text-muted">Set all:</span>
+                            <span class="sa-input-label" style="color:#6b7280;">Set all:</span>
                             <div class="input-group input-group-sm sa-rate-input" style="width:125px;">
                                 <span class="input-group-text">₪ Rate</span>
                                 <input type="number" class="form-control" placeholder="0" min="0" step="1"
@@ -201,7 +201,7 @@
                                         <td class="text-center py-2">
                                             <span class="badge rounded-pill bg-light border text-dark px-2" style="font-size:0.78rem;">@DashboardService.Fmt(s.LengthSec)</span>
                                         </td>
-                                        <td class="text-center py-2 text-muted" style="font-size:0.83rem;">@DashboardService.Fmt(s.AdminSec)</td>
+                                        <td class="text-center py-2" style="font-size:0.83rem;color:#6b7280;">@DashboardService.Fmt(s.AdminSec)</td>
                                         <td class="text-center py-2">@if (s.IsFree) { <span class="badge sa-badge-free">FREE</span> }</td>
                                         <td class="py-1"><input type="number" class="form-control form-control-sm sa-row-input" @bind="edit.ChargeRate" min="0" step="1" /></td>
                                         <td class="py-1"><input type="number" class="form-control form-control-sm sa-row-input" @bind="edit.Salary" min="0" step="1" /></td>
@@ -240,7 +240,7 @@
         <div class="sa-empty-block mb-4">
             <i class="ri-user-star-line" style="font-size:1.8rem;color:#4a7fc1;"></i>
             <div class="fw-semibold mt-2">@LS.T("sessions.noCSReviews")</div>
-            <div class="text-muted small">@(_includeApproved ? "No CS reviews in the selected date range." : "No draft CS reviews pending approval.")</div>
+            <div class="small" style="color:#6b7280;">@(_includeApproved ? "No CS reviews in the selected date range." : "No draft CS reviews pending approval.")</div>
         </div>
     }
     else if (!_loading)
@@ -285,7 +285,7 @@
                             @if (csPcApprv > 0) { <span class="badge rounded-pill sa-badge-approved-sm">@csPcApprv @LS.T("sessions.approved")</span> }
                         </div>
                         <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
-                            <span class="sa-input-label text-muted">Set all:</span>
+                            <span class="sa-input-label" style="color:#6b7280;">Set all:</span>
                             <div class="input-group input-group-sm sa-rate-input" style="width:140px;">
                                 <span class="input-group-text">CS Sal.</span>
                                 <input type="number" class="form-control" placeholder="0" min="0" step="1"
@@ -369,15 +369,15 @@
 
 <style>
     .sa-page  { max-width: 1200px; }
-    .sa-title { color: #1e3a5f; }
+    .sa-title { color: var(--default-text-color); }
 
     /* Section labels */
-    .sa-section-label { display: flex; align-items: center; font-size: 0.9rem; font-weight: 700; color: #1e3a5f; text-transform: uppercase; letter-spacing: .08em; border-bottom: 2px solid #dce3f0; padding-bottom: 8px; }
-    .sa-section-label-cs { color: #2a5fa8; border-color: #c7d7f0; }
+    .sa-section-label { display: flex; align-items: center; font-size: 0.9rem; font-weight: 700; color: var(--default-text-color); text-transform: uppercase; letter-spacing: .08em; border-bottom: 2px solid #dce3f0; padding-bottom: 8px; }
+    .sa-section-label-cs { color: #7cb3f0; border-color: #c7d7f0; }
     .sa-badge-cs-draft { background: #dbeafe; color: #1e40af; }
 
     /* Empty block */
-    .sa-empty-block { text-align: center; padding: 36px; background: #f8faff; border-radius: 12px; border: 1px dashed #c7d7f0; }
+    .sa-empty-block { text-align: center; padding: 36px; background: #f8faff; border-radius: 12px; border: 1px dashed #c7d7f0; color: #212529; }
 
     /* Filter card */
     .sa-filter-card { border-radius: 12px; }
@@ -391,7 +391,7 @@
     .sa-seg-inactive:hover { background: #f1f3f9 !important; color: #1e3a5f !important; }
 
     /* Date input / Apply */
-    .sa-date-input { font-size: 0.83rem; border-color: #ced4da; }
+    .sa-date-input { font-size: 0.83rem; border-color: #ced4da; color: #212529; background-color: #fff; }
     .sa-date-input:focus { border-color: #2d6a9f; box-shadow: none; }
     .sa-btn-apply { background: #2d6a9f; color: #fff; border: none; border-radius: 7px; font-size: 0.8rem; font-weight: 600; }
     .sa-btn-apply:hover:not(:disabled) { background: #1e3a5f; color: #fff; }
@@ -408,7 +408,7 @@
 
     /* PC sub-section */
     .sa-pc-divider { height: 7px; background: linear-gradient(90deg, #2d6a9f 0%, #dce3f0 100%); margin: 0; }
-    .sa-pc-header  { background: #f4f7fc; min-height: 54px; }
+    .sa-pc-header  { background: #f4f7fc; color: #212529; min-height: 54px; }
     .sa-pc-dot     { width: 8px; height: 8px; border-radius: 50%; background: #2d6a9f; flex-shrink: 0; }
     .sa-pc-dot-cs  { background: #4a7fc1; }
     .sa-pc-name    { font-size: 0.9rem; color: #1e3a5f; }
@@ -416,25 +416,25 @@
 
     /* "Set all" inputs */
     .sa-rate-input .input-group-text { background: #fff; border-color: #ced4da; font-size: 0.75rem; color: #6c757d; white-space: nowrap; }
-    .sa-rate-input .form-control { font-size: 0.85rem; border-color: #ced4da; }
+    .sa-rate-input .form-control { font-size: 0.85rem; border-color: #ced4da; color: #212529; background-color: #fff; }
     .sa-rate-input:focus-within .input-group-text,
     .sa-rate-input:focus-within .form-control { border-color: #2d6a9f; box-shadow: none; }
 
     /* Row-level inputs */
-    .sa-row-input { font-size: 0.83rem; border-color: #dee2e6; border-radius: 6px; padding: 3px 8px; }
+    .sa-row-input { font-size: 0.83rem; border-color: #dee2e6; border-radius: 6px; padding: 3px 8px; color: #212529; background-color: #fff; }
     .sa-row-input:focus { border-color: #2d6a9f; box-shadow: none; }
 
     /* Table headers */
     .sa-table { font-size: 0.85rem; }
-    .sa-thead tr { background: #eef1f8; }
+    .sa-thead tr { background: #eef1f8; color: #212529; }
     .sa-thead th { font-size: 0.69rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6c757d; padding-top: 7px; padding-bottom: 7px; border-bottom: 1px solid #dce3f0; border-top: none; }
-    .sa-cs-thead tr { background: #e4ecf8; }
+    .sa-cs-thead tr { background: #e4ecf8; color: #212529; }
     .sa-cs-thead th { font-size: 0.69rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #4a7fc1; padding-top: 6px; padding-bottom: 6px; border-bottom: 1px solid #c7d7f0; border-top: none; }
 
     /* Row states */
-    .sa-row-draft td     { border-bottom: 1px solid #f0f2f8; transition: background .12s; }
+    .sa-row-draft td     { border-bottom: 1px solid #f0f2f8; transition: background .12s; background: #f8f9fa; color: #212529; }
     .sa-row-draft:hover td  { background: #f5f7ff; }
-    .sa-row-approved td  { border-bottom: 1px solid #bbf7d0; background: #f0fdf4; }
+    .sa-row-approved td  { border-bottom: 1px solid #bbf7d0; background: #f0fdf4; color: #212529; }
     .sa-row-approved:hover td { background: #dcfce7; }
     .sa-date { color: #1e3a5f; }
 

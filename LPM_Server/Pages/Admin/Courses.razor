@@ -8,8 +8,8 @@
 
     <div class="d-flex align-items-center mb-4 gap-3">
         <div>
-            <h4 class="mb-0 fw-bold" style="color:#1e3a5f;">
-                <i class="ri-book-2-line me-2" style="color:#3949ab;"></i>@LS.T("courses.title")
+            <h4 class="mb-0 fw-bold" style="color:var(--default-text-color);">
+                <i class="ri-book-2-line me-2" style="color:#7986cb;"></i>@LS.T("courses.title")
             </h4>
             <span class="text-muted" style="font-size:0.82rem;">@LS.T("courses.subtitle")</span>
         </div>
@@ -18,7 +18,7 @@
     @* ── Courses (combined add + list) ── *@
     <div class="card shadow-sm mb-4" style="border-radius:12px;border:none;">
         <div class="card-header py-2 px-3 d-flex align-items-center justify-content-between"
-             style="background:#f0f4ff;border-radius:12px 12px 0 0;border-bottom:1px solid #dce6ff;">
+             style="background:#f0f4ff;color:#212529;border-radius:12px 12px 0 0;border-bottom:1px solid #dce6ff;">
             <span class="fw-semibold small" style="color:#3949ab;">
                 <i class="ri-book-2-line me-1"></i>@LS.T("courses.title")
             </span>
@@ -75,7 +75,7 @@
                     }
                 </tbody>
                 <tfoot>
-                    <tr style="background:#f8faff;">
+                    <tr style="background:#f8faff;color:#212529;">
                         <td class="ps-3 py-2">
                             <input class="form-control form-control-sm" style="max-width:320px;"
                                    placeholder="@LS.T("courses.newCoursePlaceholder")"
@@ -137,7 +137,7 @@
                                 <td class="text-end">@(e.PaidAmount > 0 ? $"₪{e.PaidAmount}" : "—")</td>
                                 <td class="text-muted">@(e.RegistrarName ?? "—")</td>
                                 <td class="text-muted">@(e.ReferralName ?? "—")</td>
-                                <td class="text-center fw-semibold" style="color:#059669;">@e.VisitCount</td>
+                                <td class="text-center fw-semibold" style="color:#34d399;">@e.VisitCount</td>
                                 <td class="text-center">
                                     @if (e.DateFinished == null)
                                     {

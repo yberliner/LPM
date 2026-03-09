@@ -155,7 +155,7 @@
                             <div style="font-size:.83rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">@p.FullName</div>
                             @if (!string.IsNullOrEmpty(pCourse))
                             {
-                                <div style="font-size:.67rem;color:#7c3aed;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                                <div style="font-size:.67rem;color:#a78bfa;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                                     <i class="ri-book-2-line"></i> @pCourse
                                 </div>
                             }
@@ -169,7 +169,7 @@
                         }
                         @if (visited)
                         {
-                            <i class="ri-check-double-line ms-auto" style="font-size:.88rem;color:#16a34a;flex-shrink:0;"></i>
+                            <i class="ri-check-double-line ms-auto" style="font-size:.88rem;color:#4ade80;flex-shrink:0;"></i>
                         }
                         else
                         {
@@ -192,7 +192,7 @@
 {
     <div class="mx-3 mb-3">
         <div class="card shadow-sm" style="border-radius:12px;border:none;background:#f8fffe;">
-            <div class="card-body py-2 px-3">
+            <div class="card-body py-2 px-3" style="color:#212529;">
                 <div class="d-flex align-items-center gap-2 flex-wrap">
                     <span class="small fw-semibold" style="color:#065f46;white-space:nowrap;">
                         <i class="ri-bar-chart-2-line me-1"></i>Week summary:
@@ -382,7 +382,7 @@
          @onclick="CloseCourseModal">
         <div class="modal-dialog modal-dialog-centered" style="max-width:520px;"
              @onclick:stopPropagation="true">
-            <div class="modal-content shadow" style="border-radius:14px;border:none;">
+            <div class="modal-content shadow" style="border-radius:14px;border:none;background:#fff;color:#212529;">
 
                 <div class="modal-header py-2 px-3"
                      style="background:linear-gradient(135deg,#4c1d95,#7c3aed);border-radius:14px 14px 0 0;border:none;">
@@ -405,17 +405,17 @@
 
                     @if (activeCourses.Count > 0)
                     {
-                        <div class="fw-semibold mb-2" style="font-size:.83rem;color:#5b21b6;">
+                        <div class="fw-semibold mb-2" style="font-size:.83rem;color:#a78bfa;">
                             <i class="ri-book-open-line me-1"></i>Active Courses
                         </div>
                         @foreach (var sc in activeCourses)
                         {
                             var visitsSince = CourseSvc.GetVisitCountSince(_courseMgmtPersonId!.Value, sc.DateStarted);
                             <div class="d-flex align-items-center gap-2 mb-2 p-2 rounded"
-                                 style="background:#f5f3ff;border:1px solid #ddd6fe;">
+                                 style="background:#f5f3ff;border:1px solid #ddd6fe;color:#212529;">
                                 <div class="flex-grow-1">
                                     <div class="fw-semibold" style="font-size:.86rem;color:#4c1d95;">@sc.CourseName</div>
-                                    <div class="text-muted" style="font-size:.75rem;">
+                                    <div style="font-size:.75rem;color:#6b7280;">
                                         Started: @sc.DateStarted &nbsp;·&nbsp;
                                         <span style="color:#059669;font-weight:600;">@visitsSince visit@(visitsSince == 1 ? "" : "s") since start</span>
                                     </div>
@@ -427,7 +427,7 @@
                                                @bind="_finishDate" />
                                         <button class="btn btn-sm btn-success py-0 px-2"
                                                 @onclick="() => ConfirmFinish(sc.StudentCourseId)">✓</button>
-                                        <button class="btn btn-sm btn-link py-0 text-muted"
+                                        <button class="btn btn-sm btn-link py-0" style="color:#6b7280;"
                                                 @onclick="() => _finishingCourseId = null">✕</button>
                                     </div>
                                 }
@@ -447,14 +447,14 @@
                     }
                     else
                     {
-                        <div class="text-muted small mb-3">
+                        <div class="small mb-3" style="color:#6b7280;">
                             <i class="ri-information-line me-1"></i>No active courses.
                         </div>
                     }
 
                     @* ── Add new course ── *@
                     <div class="border-top pt-3 mt-2">
-                        <div class="fw-semibold mb-2" style="font-size:.83rem;color:#374151;">
+                        <div class="fw-semibold mb-2" style="font-size:.83rem;color:#1e3a5f;">
                             <i class="ri-add-circle-line me-1"></i>Enroll in Course
                         </div>
                         <div class="d-flex gap-2 flex-wrap">
@@ -483,13 +483,13 @@
                     @if (doneCourses.Count > 0)
                     {
                         <div class="border-top pt-3 mt-2">
-                            <div class="fw-semibold mb-2" style="font-size:.83rem;color:#6b7280;">
+                            <div class="fw-semibold mb-2" style="font-size:.83rem;color:#1e3a5f; opacity:.7;">
                                 <i class="ri-history-line me-1"></i>Completed
                             </div>
                             @foreach (var sc in doneCourses)
                             {
                                 <div class="d-flex align-items-center gap-2 mb-1 px-2 py-1 rounded"
-                                     style="background:#f9fafb;border:1px solid #e5e7eb;">
+                                     style="background:#f9fafb;border:1px solid #e5e7eb;color:#212529;">
                                     <div class="flex-grow-1">
                                         <span class="fw-medium" style="font-size:.83rem;color:#374151;">@sc.CourseName</span>
                                         <span class="text-muted ms-2" style="font-size:.73rem;">@sc.DateStarted → @sc.DateFinished</span>
@@ -635,6 +635,10 @@
     @@media print {
         .acad-nav-bar { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     }
+
+    /* Force dark text inside white-bg course modal */
+    .modal-content .form-select,
+    .modal-content .form-control { color: #212529 !important; background-color: #fff !important; border-color: #dee2e6 !important; }
 </style>
 
 @* ── New Student modal ── *@

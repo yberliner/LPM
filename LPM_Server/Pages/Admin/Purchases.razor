@@ -100,9 +100,9 @@
     else if (_purchases.Count == 0)
     {
         <div class="pu-empty-block mb-4">
-            <i class="ri-check-double-line text-success" style="font-size:1.8rem;"></i>
+            <i class="ri-check-double-line" style="font-size:1.8rem;color:#16a34a;"></i>
             <div class="fw-semibold mt-2">@LS.T("purchases.noPurchases")</div>
-            <div class="text-muted small">@(_includeApproved ? LS.T("purchases.noPurchases") : LS.T("purchases.allApproved"))</div>
+            <div class="small" style="color:#6b7280;">@(_includeApproved ? LS.T("purchases.noPurchases") : LS.T("purchases.allApproved"))</div>
         </div>
     }
     else
@@ -137,38 +137,38 @@
                                 </td>
                                 <td class="py-2"><span class="small">@FormatDate(p.PurchaseDate)</span></td>
                                 <td class="text-center py-2">
-                                    <span class="badge rounded-pill bg-light border text-dark px-2" style="font-size:0.78rem;">
+                                    <span class="badge rounded-pill px-2" style="font-size:0.78rem;background:#f3f4f6;color:#374151;border:1px solid #e5e7eb;">
                                         @GetItemCount(p.PurchaseId)
                                     </span>
                                 </td>
                                 <td class="text-end py-2 small fw-semibold">@(p.TotalHours > 0 ? $"{p.TotalHours}h" : "\u2014")</td>
                                 <td class="text-end py-2 small fw-semibold">@(p.TotalAmount > 0 ? $"\u20AA{p.TotalAmount}" : "\u2014")</td>
-                                <td class="py-2 small text-muted" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@p.Notes">@(p.Notes ?? "\u2014")</td>
-                                <td class="py-2 small text-muted">@p.CreatedByName</td>
+                                <td class="py-2 small" style="color:#6b7280;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@p.Notes">@(p.Notes ?? "\u2014")</td>
+                                <td class="py-2 small" style="color:#6b7280;">@p.CreatedByName</td>
                                 <td class="text-center py-2">
                                     @{ var sig = _signatures.GetValueOrDefault(p.PurchaseId); }
                                     @if (!string.IsNullOrEmpty(sig))
                                     {
-                                        <img src="@sig" style="max-width:50px;max-height:28px;border-radius:3px;" alt="Sig" />
+                                        <img src="@sig" style="max-width:40px;max-height:22px;border-radius:3px;border:1px solid #dee2e6;background:#fff;" alt="Sig" />
                                     }
                                     else
                                     {
-                                        <span class="text-muted" style="font-size:0.7rem;">&mdash;</span>
+                                        <span style="font-size:0.7rem;color:#9ca3af;">&mdash;</span>
                                     }
                                 </td>
                                 <td class="text-center py-2">
                                     @{ var bankStatus = GetBankStatus(p.PurchaseId); }
                                     @if (bankStatus == "all")
                                     {
-                                        <i class="ri-checkbox-circle-fill text-success" style="font-size:1rem;" title="All received"></i>
+                                        <i class="ri-checkbox-circle-fill" style="font-size:1rem;color:#16a34a;" title="All received"></i>
                                     }
                                     else if (bankStatus == "partial")
                                     {
-                                        <i class="ri-indeterminate-circle-line text-warning" style="font-size:1rem;" title="Partial"></i>
+                                        <i class="ri-indeterminate-circle-line" style="font-size:1rem;color:#d97706;" title="Partial"></i>
                                     }
                                     else
                                     {
-                                        <span class="text-muted" style="font-size:0.7rem;">&mdash;</span>
+                                        <span style="font-size:0.7rem;color:#9ca3af;">&mdash;</span>
                                     }
                                 </td>
                                 <td class="text-center py-2">
@@ -226,9 +226,9 @@
 {
     <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5);z-index:1050;">
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
-            <div class="modal-content" style="border-radius:14px;">
-                <div class="modal-header py-2 px-3">
-                    <h5 class="modal-title fw-bold mb-0">
+            <div class="modal-content" style="border-radius:14px;background:#fff;color:#212529;">
+                <div class="modal-header py-2 px-3" style="border-color:#dee2e6;">
+                    <h5 class="modal-title fw-bold mb-0" style="color:#212529;">
                         <i class="ri-shopping-cart-line me-2"></i>@LS.T("purchases.purchaseDetail")
                     </h5>
                     <button type="button" class="btn-close" @onclick="() => _viewDetail = null"></button>
@@ -236,7 +236,7 @@
                 <div class="modal-body p-3">
                     <div class="text-center mb-3">
                         <div style="font-size:1.6rem;font-weight:800;color:#1e3a5f;">@_viewDetail.PcName</div>
-                        <div class="text-muted small">@FormatDate(_viewDetail.PurchaseDate)</div>
+                        <div class="small" style="color:#6b7280;">@FormatDate(_viewDetail.PurchaseDate)</div>
                     </div>
 
                     @if (_viewDetail.Items.Count > 0)
@@ -270,12 +270,12 @@
                                             }
                                         </td>
                                         <td class="small text-center fw-semibold">
-                                            @if (item.ItemType == "Course") { <span style="color:#059669;">Course</span> }
+                                            @if (item.ItemType == "Course") { <span style="color:#34d399;">Course</span> }
                                             else { @($"{item.HoursBought}h") }
                                         </td>
                                         <td class="small text-end">@(item.AmountPaid > 0 ? $"\u20AA{item.AmountPaid}" : "\u2014")</td>
-                                        <td class="small text-muted">@item.RegistrarName</td>
-                                        <td class="small text-muted">@item.ReferralName</td>
+                                        <td class="small" style="color:#6b7280;">@item.RegistrarName</td>
+                                        <td class="small" style="color:#6b7280;">@item.ReferralName</td>
                                     </tr>
                                 }
                             </tbody>
@@ -297,7 +297,7 @@
                     }
                     else
                     {
-                        <div class="text-muted small text-center py-3">@LS.T("purchases.noItems")</div>
+                        <div class="small text-center py-3" style="color:#6b7280;">@LS.T("purchases.noItems")</div>
                     }
 
                     @if (!string.IsNullOrEmpty(_viewDetail.Notes))
@@ -326,7 +326,7 @@
                                 <tbody>
                                     @foreach (var pm in _viewDetail.PaymentMethods)
                                     {
-                                        <tr style="@(pm.IsMoneyInBank ? "background:#f0fdf4;" : "")">
+                                        <tr style="@(pm.IsMoneyInBank ? "background:#f0fdf4;color:#212529;" : "")">
                                             <td class="small">
                                                 @{
                                                     var (pmIcon, pmLabel) = pm.MethodType switch
@@ -346,7 +346,7 @@
                                                        checked="@pm.IsMoneyInBank"
                                                        @onchange="() => ToggleMoneyInBank(pm.PaymentMethodId, !pm.IsMoneyInBank)" />
                                             </td>
-                                            <td class="small text-muted">@(pm.MoneyInBankDate != null ? FormatDate(pm.MoneyInBankDate) : "\u2014")</td>
+                                            <td class="small" style="color:#6b7280;">@(pm.MoneyInBankDate != null ? FormatDate(pm.MoneyInBankDate) : "\u2014")</td>
                                         </tr>
                                     }
                                 </tbody>
@@ -364,7 +364,7 @@
                         </div>
                     }
 
-                    <div class="d-flex gap-3 text-muted small">
+                    <div class="d-flex gap-3 small" style="color:#6b7280;">
                         @if (!string.IsNullOrEmpty(_viewDetail.CreatedByName))
                         {
                             <span><i class="ri-user-line me-1"></i>@LS.T("purchases.createdBy"): @_viewDetail.CreatedByName</span>
@@ -409,9 +409,9 @@
 
 <style>
     .pu-page  { max-width: 1200px; }
-    .pu-title { color: #1e3a5f; }
+    .pu-title { color: var(--default-text-color); }
 
-    .pu-empty-block { text-align: center; padding: 36px; background: #f8faff; border-radius: 12px; border: 1px dashed #c7d7f0; }
+    .pu-empty-block { text-align: center; padding: 36px; background: #f8faff; border-radius: 12px; border: 1px dashed #c7d7f0; color: #212529; }
 
     .pu-filter-card { border-radius: 12px; }
     .pu-filter-divider { width: 1px; height: 28px; background: #dee2e6; }
@@ -428,12 +428,12 @@
     .pu-btn-apply:hover:not(:disabled) { background: #1e3a5f; color: #fff; }
 
     .pu-table { font-size: 0.85rem; }
-    .pu-thead tr { background: #eef1f8; }
+    .pu-thead tr { background: #eef1f8; color: #212529; }
     .pu-thead th { font-size: 0.69rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6c757d; padding-top: 7px; padding-bottom: 7px; border-bottom: 1px solid #dce3f0; border-top: none; }
 
-    .pu-row-pending td  { border-bottom: 1px solid #f0f2f8; transition: background .12s; }
-    .pu-row-pending:hover td { background: #f5f7ff; }
-    .pu-row-approved td { border-bottom: 1px solid #bbf7d0; background: #f0fdf4; }
+    .pu-row-pending td  { border-bottom: 1px solid #f0f2f8; transition: background .12s; background: #fffbeb; color: #212529; }
+    .pu-row-pending:hover td { background: #fef3c7; }
+    .pu-row-approved td { border-bottom: 1px solid #bbf7d0; background: #f0fdf4; color: #212529; }
     .pu-row-approved:hover td { background: #dcfce7; }
 
     .pu-badge-pending  { background: #fef3c7; color: #92400e; font-size: 0.73rem; }
@@ -441,9 +441,9 @@
     .pu-badge-draft    { background: #e2e8f0; color: #475569; font-size: 0.73rem; }
     .pu-badge-deleted  { background: #fecaca; color: #991b1b; font-size: 0.73rem; }
 
-    .pu-row-draft td  { border-bottom: 1px solid #e2e8f0; background: #f8f9fa; }
+    .pu-row-draft td  { border-bottom: 1px solid #e2e8f0; background: #f8f9fa; color: #212529; }
     .pu-row-draft:hover td { background: #eef0f4; }
-    .pu-row-deleted td  { border-bottom: 1px solid #fecaca; background: #fef2f2; opacity: 0.7; }
+    .pu-row-deleted td  { border-bottom: 1px solid #fecaca; background: #fef2f2; opacity: 0.7; color: #212529; }
     .pu-row-deleted:hover td { background: #fee2e2; opacity: 1; }
 
     .pu-btn-view { background: transparent; color: #2d6a9f; border: 1px solid #2d6a9f; border-radius: 7px; font-size: 0.78rem; padding: 3px 10px; font-weight: 600; }
@@ -453,6 +453,15 @@
 
     .pu-spin { display: inline-block; animation: pu-spin-anim 1s linear infinite; }
     @@keyframes pu-spin-anim { to { transform: rotate(360deg); } }
+
+    /* Force dark text inside white-bg detail modal */
+    .modal-content .table,
+    .modal-content .table td,
+    .modal-content .table th { color: #212529; }
+    .modal-content .table-light { background-color: #f8f9fa !important; color: #212529; }
+    .modal-content .form-label { color: #212529; }
+    .modal-content .modal-footer { border-color: #dee2e6; }
+    .modal-content .bg-light { background-color: #f8f9fa !important; color: #212529; }
 </style>
 
 @code {

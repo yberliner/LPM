@@ -78,7 +78,7 @@
                     </colgroup>
                     <thead class="table-light">
                         @* ── CS name row ── *@
-                        <tr class="small" style="color:#555;">
+                        <tr class="small" style="color:#495057; opacity:.85;">
                             <th style="min-width:110px;">@LS.T("home.csHeader")</th>
                             @foreach (var pc in _audPcs)
                             {
@@ -102,7 +102,7 @@
                         @if (_audPcs.Any())
                         {
                             <tr class="table-light">
-                                <th class="fw-semibold small py-1" style="color:#555;">@LS.T("home.role")</th>
+                                <th class="fw-semibold small py-1" style="color:#495057;">@LS.T("home.role")</th>
                                 @foreach (var pc in _audPcs)
                                 {
                                     var roleColBlocked = pc.WorkCapacity != "CSSolo" && _unapprovedPcIds.Contains(pc.PcId);
@@ -126,7 +126,7 @@
                         }
                         @* ── PC name row ── *@
                         <tr>
-                            <th style="min-width:110px;">@LS.T("home.day")</th>
+                            <th style="min-width:110px;color:#212529;">@LS.T("home.day")</th>
                             @foreach (var pc in _audPcs)
                             {
                                 var hasPendingCs   = Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((DashboardService.GKey(pc), d)));
@@ -164,7 +164,7 @@
                             var dayIdx = d;
                             var isFuture = day > MaxAllowedDate();
                             <tr>
-                                <td class="text-nowrap @(isFuture ? "text-muted" : "")">@DayLabel(day)</td>
+                                <td class="text-nowrap" style="@(isFuture ? "opacity:.45;" : "")">@DayLabel(day)</td>
                                 @if (_myPcs.Count == 0)
                                 {
                                     <td class="text-muted text-center small">—</td>
@@ -176,8 +176,8 @@
                                         var secs           = _grid.GetValueOrDefault((DashboardService.GKey(pc), dayIdx));
                                         var isSelected     = _selPcId == pc.PcId && _selDay == dayIdx && _selRole == pc.WorkCapacity;
                                         var isPendingApprv = pc.WorkCapacity != "CSSolo" && _unapprovedPcIds.Contains(pc.PcId);
-                                        <td class="text-center @(isSelected && !isPendingApprv ? "table-primary fw-semibold" : isFuture || isPendingApprv ? "text-muted" : "")"
-                                            style="@(isPendingApprv ? "cursor:not-allowed; background:#f5f5f5; opacity:.35; pointer-events:none;" : isFuture ? "cursor:default; background:#f8f9fa; opacity:.55;" : "cursor:pointer;")"
+                                        <td class="text-center @(isSelected && !isPendingApprv ? "table-primary fw-semibold" : "")"
+                                            style="@(isPendingApprv ? "cursor:not-allowed; opacity:.35; pointer-events:none;" : isFuture ? "cursor:default; opacity:.45;" : "cursor:pointer;")"
                                             @onclick="() => { if (!isPendingApprv && !isFuture) TrySelectCell(pc, dayIdx); }">
                                             @if (secs > 0)
                                             {
@@ -185,7 +185,7 @@
                                             }
                                             else
                                             {
-                                                <span class="text-muted">-</span>
+                                                <span style="opacity:.35;">-</span>
                                             }
                                         </td>
                                     }
@@ -196,7 +196,7 @@
                     @if (_audPcs.Count > 0)
                     {
                         <tfoot class="table-light">
-                            <tr>
+                            <tr style="color:#212529;">
                                 <td><strong>Σ Week</strong></td>
                                 @foreach (var pc in _audPcs)
                                 {
@@ -209,16 +209,16 @@
                                 var audGrandTotal = _audPcs.Sum(pc => Enumerable.Range(0, 7)
                                     .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
                             }
-                            <tr style="background:linear-gradient(90deg,#1a237e 0%,#283593 100%); color:#fff;">
-                                <td class="fw-bold" style="letter-spacing:.03em;">Grand Total</td>
-                                <td colspan="@_audPcs.Count">
+                            <tr style="background:linear-gradient(90deg,#1a237e 0%,#283593 100%) !important; color:#fff !important;">
+                                <td class="fw-bold" style="letter-spacing:.03em;color:#fff;">Grand Total</td>
+                                <td colspan="@_audPcs.Count" style="color:#fff;">
                                     <div class="d-flex align-items-center">
                                         <button type="button" class="btn btn-sm btn-light py-0 px-1 me-2"
                                                 title="Scroll right" @onclick='() => ScrollWeekTable("right")'>
                                             <i class="ri-arrow-right-s-line"></i>
                                         </button>
                                         <div class="flex-grow-1 text-center">
-                                            <span style="font-size:1.25rem; font-weight:700; letter-spacing:.04em;">
+                                            <span style="font-size:1.25rem; font-weight:700; letter-spacing:.04em;color:#fff;">
                                                 @DashboardService.Fmt(audGrandTotal)
                                             </span>
                                         </div>
@@ -245,7 +245,7 @@
             @{ var _csSoloPcs = CsSoloPcs; }
             @if (_csSoloPcs.Count > 0)
             {
-                <div class="home-table-label px-3 mt-3 mb-1" style="color:#6a1b9a; font-weight:600; font-size:.85rem;">
+                <div class="home-table-label px-3 mt-3 mb-1" style="color:#ce93d8; font-weight:600; font-size:.85rem;">
                     <i class="ri-shield-star-line me-1"></i>CS Solo
                 </div>
                 <div class="table-responsive px-3 thick-scroll">
@@ -256,7 +256,7 @@
                     </colgroup>
                     <thead class="table-light">
                         <tr>
-                            <th style="min-width:110px;">@LS.T("home.day")</th>
+                            <th style="min-width:110px;color:#212529;">@LS.T("home.day")</th>
                             @foreach (var pc in _csSoloPcs)
                             {
                                 var hasPendingCs = Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((DashboardService.GKey(pc), d)));
@@ -288,14 +288,14 @@
                             var dayIdx = d;
                             var isFuture = day > MaxAllowedDate();
                             <tr>
-                                <td class="text-nowrap @(isFuture ? "text-muted" : "")" style="font-size:.82em; color:#6a1b9a;">@DayLabel(day)</td>
+                                <td class="text-nowrap" style="font-size:.82em; color:#ce93d8; @(isFuture ? "opacity:.45;" : "")">@DayLabel(day)</td>
                                 @foreach (var pc in _csSoloPcs)
                                 {
                                     var secs       = _grid.GetValueOrDefault((DashboardService.GKey(pc), dayIdx));
                                     var isSelected = _selPcId == pc.PcId && _selDay == dayIdx && _selRole == pc.WorkCapacity;
                                     var isPendingCs = _pendingCs.Contains((DashboardService.GKey(pc), dayIdx));
-                                    <td class="text-center @(isSelected ? "table-primary fw-semibold" : isFuture ? "text-muted" : "")"
-                                        style="@(isFuture ? "cursor:default; background:#f8f9fa; opacity:.55;" : "cursor:pointer;") color:#6a1b9a; font-size:.82em;"
+                                    <td class="text-center @(isSelected ? "table-primary fw-semibold" : "")"
+                                        style="@(isFuture ? "cursor:default; opacity:.45;" : "cursor:pointer;") color:#ce93d8; font-size:.82em;"
                                         @onclick="() => { if (!isFuture) TrySelectCell(pc, dayIdx); }">
                                         @if (secs > 0)
                                         {
@@ -313,7 +313,7 @@
                                         }
                                         else
                                         {
-                                            <span class="text-muted">-</span>
+                                            <span style="opacity:.35;">-</span>
                                         }
                                     </td>
                                 }
@@ -322,12 +322,12 @@
                     </tbody>
                     <tfoot class="table-light">
                         <tr>
-                            <td style="font-size:.82em; color:#6a1b9a;"><strong>Σ Week</strong></td>
+                            <td style="font-size:.82em; color:#ce93d8;"><strong>Σ Week</strong></td>
                             @foreach (var pc in _csSoloPcs)
                             {
                                 var total = Enumerable.Range(0, 7)
                                     .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d)));
-                                <td class="text-center" style="color:#6a1b9a; font-size:.82em;">
+                                <td class="text-center" style="color:#ce93d8; font-size:.82em;">
                                     <strong>@DashboardService.Fmt(total)</strong>
                                 </td>
                             }
@@ -336,11 +336,11 @@
                             var csSoloGrandTotal = _csSoloPcs.Sum(pc => Enumerable.Range(0, 7)
                                 .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
                         }
-                        <tr style="background:linear-gradient(90deg,#6a1b9a 0%,#8e24aa 100%); color:#fff;">
-                            <td class="fw-bold" style="letter-spacing:.03em; font-size:.85em;">CS Solo Total</td>
-                            <td colspan="@_csSoloPcs.Count">
+                        <tr style="background:linear-gradient(90deg,#6a1b9a 0%,#8e24aa 100%) !important; color:#fff !important;">
+                            <td class="fw-bold" style="letter-spacing:.03em; font-size:.85em;color:#fff;">CS Solo Total</td>
+                            <td colspan="@_csSoloPcs.Count" style="color:#fff;">
                                 <div class="text-center">
-                                    <span style="font-size:1rem; font-weight:700; letter-spacing:.04em;">
+                                    <span style="font-size:1rem; font-weight:700; letter-spacing:.04em;color:#fff;">
                                         @DashboardService.Fmt(csSoloGrandTotal)
                                     </span>
                                 </div>
@@ -394,7 +394,7 @@
                     <thead class="table-light">
                         @* ── PC name row (no CS/Role rows needed — all are CS) ── *@
                         <tr>
-                            <th style="min-width:110px;">@LS.T("home.day")</th>
+                            <th style="min-width:110px;color:#212529;">@LS.T("home.day")</th>
                             @foreach (var pc in _csPcs)
                             {
                                 var hasPendingCs = Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((DashboardService.GKey(pc), d)));
@@ -426,14 +426,14 @@
                             var dayIdx = d;
                             var isFuture = day > MaxAllowedDate();
                             <tr>
-                                <td class="text-nowrap @(isFuture ? "text-muted" : "")" style="font-size:.82em;">@DayLabel(day)</td>
+                                <td class="text-nowrap" style="font-size:.82em; @(isFuture ? "opacity:.45;" : "")">@DayLabel(day)</td>
                                 @foreach (var pc in _csPcs)
                                 {
                                     var secs       = _grid.GetValueOrDefault((DashboardService.GKey(pc), dayIdx));
                                     var isSelected = _selPcId == pc.PcId && _selDay == dayIdx && _selRole == pc.WorkCapacity;
                                     var isPendingCs = _pendingCs.Contains((DashboardService.GKey(pc), dayIdx));
-                                    <td class="text-center @(isSelected ? "table-primary fw-semibold" : isFuture ? "text-muted" : "")"
-                                        style="@(isFuture ? "cursor:default; background:#f8f9fa; opacity:.55;" : "cursor:pointer;") color:#888; font-size:.78em;"
+                                    <td class="text-center @(isSelected ? "table-primary fw-semibold" : "")"
+                                        style="@(isFuture ? "cursor:default; opacity:.45;" : "cursor:pointer;") color:#adb5bd; font-size:.78em;"
                                         @onclick="() => { if (!isFuture) TrySelectCell(pc, dayIdx); }">
                                         @if (secs > 0)
                                         {
@@ -451,7 +451,7 @@
                                         }
                                         else
                                         {
-                                            <span class="text-muted">-</span>
+                                            <span style="opacity:.35;">-</span>
                                         }
                                     </td>
                                 }
@@ -459,13 +459,13 @@
                         }
                     </tbody>
                     <tfoot class="table-light">
-                        <tr>
+                        <tr style="color:#212529;">
                             <td style="font-size:.82em;"><strong>Σ Week</strong></td>
                             @foreach (var pc in _csPcs)
                             {
                                 var total = Enumerable.Range(0, 7)
                                     .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d)));
-                                <td class="text-center" style="color:#888; font-size:.78em;">
+                                <td class="text-center" style="color:#adb5bd; font-size:.78em;">
                                     <strong>@DashboardService.Fmt(total)</strong>
                                 </td>
                             }
@@ -474,11 +474,11 @@
                             var csGrandTotal = _csPcs.Sum(pc => Enumerable.Range(0, 7)
                                 .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
                         }
-                        <tr style="background:linear-gradient(90deg,#546e7a 0%,#78909c 100%); color:#fff;">
-                            <td class="fw-bold" style="letter-spacing:.03em; font-size:.85em;">CS Total</td>
-                            <td colspan="@_csPcs.Count">
+                        <tr style="background:linear-gradient(90deg,#546e7a 0%,#78909c 100%) !important; color:#fff !important;">
+                            <td class="fw-bold" style="letter-spacing:.03em; font-size:.85em;color:#fff;">CS Total</td>
+                            <td colspan="@_csPcs.Count" style="color:#fff;">
                                 <div class="text-center">
-                                    <span style="font-size:1rem; font-weight:700; letter-spacing:.04em;">
+                                    <span style="font-size:1rem; font-weight:700; letter-spacing:.04em;color:#fff;">
                                         @DashboardService.Fmt(csGrandTotal)
                                     </span>
                                 </div>
@@ -497,7 +497,7 @@
 
             @* ══════ WEEKLY REMARKS ══════ *@
             <div class="card mx-3 mt-3 mb-2">
-                <div class="card-header py-2" style="background:#e8eaf6; color:#1a237e; font-size:.85rem;">
+                <div class="card-header py-2" style="background:rgba(63,81,181,0.15); color:#7986cb; font-size:.85rem; border-color:rgba(255,255,255,0.1);">
                     <i class="ri-edit-line me-1"></i>
                     <strong>@LS.T("home.weeklyRemarks")</strong>
                 </div>
@@ -510,7 +510,7 @@
                         </button>
                         @if (_remarksSaved)
                         {
-                            <span class="ms-2 text-success small">
+                            <span class="ms-2 small" style="color:#4ade80;">
                                 <i class="ri-check-line"></i> @LS.T("common.saved")
                             </span>
                         }
@@ -589,7 +589,7 @@
                  @onclick="() => _showAddPcModal = false">
                 <div class="modal-dialog modal-dialog-centered"
                      @onclick:stopPropagation="true">
-                    <div class="modal-content">
+                    <div class="modal-content" style="background:#fff;color:#212529;">
                         <div class="modal-header py-2 home-modal-header">
                             <h5 class="modal-title fs-15 text-white">
                                 <i class="ri-add-circle-line me-2"></i>@LS.T("home.addPcToDashboard")
@@ -612,7 +612,7 @@
                                 {
                                     <button type="button"
                                             class="btn btn-sm @(_addPcCategory == "CSSolo" ? "btn-purple" : "btn-outline-secondary")"
-                                            style="@(_addPcCategory == "CSSolo" ? "background:#6a1b9a; border-color:#6a1b9a; color:#fff;" : "")"
+                                            style="@(_addPcCategory == "CSSolo" ? "background:#8e24aa; border-color:#8e24aa; color:#fff;" : "")"
                                             @onclick='() => _addPcCategory = "CSSolo"'>
                                         <i class="ri-shield-star-line me-1"></i>CS Solo
                                     </button>
@@ -642,7 +642,7 @@
                                 }
                                 @if (available.Count == 0)
                                 {
-                                    <p class="text-muted text-center">No PCs available to add.</p>
+                                    <p class="text-center" style="color:#6b7280;">No PCs available to add.</p>
                                 }
                                 @foreach (var pc in available)
                                 {
@@ -720,9 +720,12 @@
         box-shadow: 0 4px 20px rgba(0,0,0,.10);
     }
     .home-detail-header {
-        background: linear-gradient(135deg, #1a237e 0%, #283593 55%, #3949ab 100%);
-        color: #fff; border-bottom: none;
+        background: linear-gradient(135deg, #1a237e 0%, #283593 55%, #3949ab 100%) !important;
+        color: #fff !important; border-bottom: none;
     }
+    .home-detail-header strong,
+    .home-detail-header span,
+    .home-detail-header i { color: #fff !important; }
     .home-role-badge {
         background: rgba(255,255,255,.22); color: #fff;
         font-weight: 600; border-radius: 20px; padding: .25em .7em;
@@ -732,7 +735,14 @@
     .home-form-box {
         background: #f8faff; border: 1px solid #dde4f5;
         border-radius: 10px; padding: 12px 14px;
+        color: #212529;
     }
+    .home-form-box h6,
+    .home-form-box .form-label,
+    .home-form-box .form-check-label { color: #212529; }
+    .home-form-box .form-control,
+    .home-form-box .form-control-sm { color: #212529; background-color: #fff; border-color: #dee2e6; }
+    .home-form-box .form-control::placeholder { color: #6c757d; }
 
     /* ── Context menu ── */
     .home-ctx-menu {
@@ -764,12 +774,19 @@
 
     /* ── Table section labels ── */
     .home-table-label {
-        font-size: .85rem; font-weight: 700; color: #1a237e;
+        font-size: .85rem; font-weight: 700; color: #7986cb;
         letter-spacing: .03em;
     }
     .home-table-label-cs {
-        color: #546e7a; font-size: .8rem;
+        color: #adb5bd; font-size: .8rem;
     }
+
+    /* Dashboard table-light headers/footers have white bg even in dark mode */
+    .table-light th, .table-light td { color: #212529; }
+
+    /* Force dark text inside white-bg add-PC modal */
+    .modal-content .form-control { color: #212529 !important; background-color: #fff !important; border-color: #dee2e6 !important; }
+    .modal-content .home-pc-item { color: #374151; }
 </style>
 
 @code {
@@ -1267,7 +1284,7 @@
                                             }
                                             @if (!string.IsNullOrEmpty(s.AuditorName))
                                             {
-                                                <span class="fw-semibold small" style="color:#7c3aed;">
+                                                <span class="fw-semibold small" style="color:#a78bfa;">
                                                     <i class="ri-user-line me-1"></i>@s.AuditorName
                                                 </span>
                                             }
@@ -1375,7 +1392,7 @@
                                                 <i class="ri-time-line"></i> @sessionTime
                                             </span>
                                         }
-                                        <span class="fw-semibold small" style="color:#7c3aed;">
+                                        <span class="fw-semibold small" style="color:#a78bfa;">
                                             <i class="ri-user-line me-1"></i>@s.AuditorName
                                         </span>
                                         <span class="badge bg-primary-transparent fs-12">
@@ -1426,7 +1443,7 @@
                                         {
                                             <div class="d-flex align-items-center flex-wrap gap-2 small">
                                                 <i class="ri-checkbox-circle-line text-success"></i>
-                                                <span class="fw-semibold small" style="color:#2e7d32;">
+                                                <span class="fw-semibold small" style="color:#4ade80;">
                                                     <i class="ri-user-star-line me-1"></i>@_displayName
                                                 </span>
                                                 <span class="badge bg-success-transparent">
@@ -1491,7 +1508,7 @@
                     <hr class="my-3" />
                     <div class="d-flex align-items-center gap-2 mb-2">
                         <i class="ri-briefcase-line text-info"></i>
-                        <span class="fw-semibold small" style="color:#0d9488;">@LS.T("home.generalCsWork")</span>
+                        <span class="fw-semibold small" style="color:#5eead4;">@LS.T("home.generalCsWork")</span>
                     </div>
                     @if (_detail.GeneralWork != null && _detail.GeneralWork.Count > 0)
                     {
@@ -1704,7 +1721,7 @@
                     "border-bottom:1px solid #c5cae9;padding-bottom:5px;margin-bottom:8px\">" +
                     "Total: '+th+':'+String(tm).padStart(2,'0')+'</div>';" +
             "if(pcs.length){" +
-            "r+='<div style=\"font-size:.7rem;color:#888;text-transform:uppercase;" +
+            "r+='<div style=\"font-size:.7rem;color:#adb5bd;text-transform:uppercase;" +
                     "letter-spacing:.7px;margin-bottom:5px\">Top PCs</div>';" +
             "for(var i=0;i<pcs.length;i++){" +
             "var ph=Math.floor(pcs[i][1]/3600);" +
