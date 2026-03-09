@@ -495,5 +495,8 @@
   "purchases.nothingChanged": "No changes detected",
   "purchases.draft": "Draft",
   "pcs.confirmDeleteTitle": "Delete Purchase?",
-  "pcs.confirmDeleteMsg": "This will permanently remove this purchase and all its items. This cannot be undone."
+  "pcs.confirmDeleteMsg": "This purchase will be marked as deleted. An admin can restore it later.",
+  "purchases.showDeleted": "Show Deleted",
+  "purchases.deleted": "Deleted",
+  "purchases.restore": "Restore"
 }

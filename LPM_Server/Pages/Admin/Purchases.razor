@@ -76,6 +76,15 @@
                         </span>
                     }
                 }
+
+                <div class="pu-filter-divider d-none d-sm-block"></div>
+                <div class="form-check form-switch d-flex align-items-center gap-1 mb-0">
+                    <input class="form-check-input" type="checkbox" id="showDeleted"
+                           checked="@_includeDeleted" @onchange="ToggleDeleted" />
+                    <label class="form-check-label small text-muted" for="showDeleted" style="font-size:0.8rem;">
+                        @LS.T("purchases.showDeleted")
+                    </label>
+                </div>
             </div>
         </div>
     </div>
@@ -121,10 +130,10 @@
                         {
                             bool isApproved = p.ApprovedStatus == "Approved";
                             bool isDraft = p.ApprovedStatus == "Draft";
-                            var rowClass = isApproved ? "pu-row-approved" : isDraft ? "pu-row-draft" : "pu-row-pending";
+                            var rowClass = p.IsDeleted ? "pu-row-deleted" : isApproved ? "pu-row-approved" : isDraft ? "pu-row-draft" : "pu-row-pending";
                             <tr class="@rowClass">
                                 <td class="ps-4 py-2">
-                                    <span class="fw-semibold" style="color:#1e3a5f;">@p.PcName</span>
+                                    <span class="fw-semibold @(p.IsDeleted ? "text-decoration-line-through" : "")" style="color:#1e3a5f;">@p.PcName</span>
                                 </td>
                                 <td class="py-2"><span class="small">@FormatDate(p.PurchaseDate)</span></td>
                                 <td class="text-center py-2">
@@ -163,7 +172,11 @@
                                     }
                                 </td>
                                 <td class="text-center py-2">
-                                    @if (isApproved)
+                                    @if (p.IsDeleted)
+                                    {
+                                        <span class="badge pu-badge-deleted"><i class="ri-delete-bin-line me-1"></i>@LS.T("purchases.deleted")</span>
+                                    }
+                                    else if (isApproved)
                                     {
                                         <span class="badge pu-badge-approved"><i class="ri-check-line me-1"></i>@LS.T("purchases.approved")</span>
                                     }
@@ -182,7 +195,15 @@
                                                 @onclick="() => ViewPurchase(p.PurchaseId)">
                                             <i class="ri-eye-line"></i>@LS.T("purchases.viewDetails")
                                         </button>
-                                        @if (!isApproved)
+                                        @if (p.IsDeleted)
+                                        {
+                                            <button class="btn btn-sm btn-outline-success d-flex align-items-center gap-1"
+                                                    style="font-size:0.78rem;border-radius:7px;padding:3px 10px;font-weight:600;"
+                                                    @onclick="() => RestorePurchase(p.PurchaseId)" disabled="@_busy">
+                                                <i class="ri-arrow-go-back-line"></i>@LS.T("purchases.restore")
+                                            </button>
+                                        }
+                                        else if (!isApproved)
                                         {
                                             <button class="btn btn-sm pu-btn-approve d-flex align-items-center gap-1"
                                                     @onclick="() => ApprovePurchase(p.PurchaseId)" disabled="@_busy">
@@ -418,9 +439,12 @@
     .pu-badge-pending  { background: #fef3c7; color: #92400e; font-size: 0.73rem; }
     .pu-badge-approved { background: #d1fae5; color: #065f46; font-size: 0.73rem; }
     .pu-badge-draft    { background: #e2e8f0; color: #475569; font-size: 0.73rem; }
+    .pu-badge-deleted  { background: #fecaca; color: #991b1b; font-size: 0.73rem; }
 
     .pu-row-draft td  { border-bottom: 1px solid #e2e8f0; background: #f8f9fa; }
     .pu-row-draft:hover td { background: #eef0f4; }
+    .pu-row-deleted td  { border-bottom: 1px solid #fecaca; background: #fef2f2; opacity: 0.7; }
+    .pu-row-deleted:hover td { background: #fee2e2; opacity: 1; }
 
     .pu-btn-view { background: transparent; color: #2d6a9f; border: 1px solid #2d6a9f; border-radius: 7px; font-size: 0.78rem; padding: 3px 10px; font-weight: 600; }
     .pu-btn-view:hover { background: #2d6a9f; color: #fff; }
@@ -433,6 +457,7 @@
 
 @code {
     private bool    _includeApproved = false;
+    private bool    _includeDeleted = false;
     private string  _fromDateStr = "";
     private string  _toDateStr   = "";
     private string? _filterError;
@@ -511,7 +536,7 @@
         if (_includeApproved && DateOnly.TryParse(_fromDateStr, out var f)) from = f;
         if (_includeApproved && DateOnly.TryParse(_toDateStr,   out var t)) to   = t;
 
-        _purchases = PcSvc.GetPurchases(_includeApproved, from, to);
+        _purchases = PcSvc.GetPurchases(_includeApproved, from, to, _includeDeleted);
 
         // Pre-load item counts, signatures, and payment methods
         _itemCounts.Clear();
@@ -526,6 +551,21 @@
         }
 
         _loading = false;
+    }
+
+    private async Task ToggleDeleted()
+    {
+        _includeDeleted = !_includeDeleted;
+        await LoadData();
+    }
+
+    private async Task RestorePurchase(int purchaseId)
+    {
+        _busy = true;
+        PcSvc.RestorePurchase(purchaseId);
+        _busy = false;
+        await LoadData();
+        ShowMsg("Purchase restored.", false);
     }
 
     private void ApprovePurchase(int purchaseId)

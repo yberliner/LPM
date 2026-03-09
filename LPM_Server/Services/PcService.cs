@@ -20,7 +20,7 @@ public record PcListItemEx(int PcId, string FullName, string ExternalId, long Re
     long TotalSessionSec, int TotalSessions, int AcademyVisits, int HoursPurchased);
 public record PurchaseListItem(int PurchaseId, int PcId, string PcName, string PurchaseDate,
     string? Notes, string ApprovedStatus, string? ApprovedByName, string? ApprovedAt,
-    string? CreatedByName, string CreatedAt, int TotalAmount, int TotalHours);
+    string? CreatedByName, string CreatedAt, int TotalAmount, int TotalHours, bool IsDeleted = false);
 public record PurchaseItemInfo(int PurchaseItemId, string ItemType, int? CourseId,
     string? CourseName, int HoursBought, int AmountPaid, int? RegistrarId,
     string? RegistrarName, int? ReferralId, string? ReferralName);
@@ -156,6 +156,18 @@ public class PcService
                 FOREIGN KEY (PurchaseId) REFERENCES Purchases(PurchaseId)
             )";
         c4.ExecuteNonQuery();
+
+        // Add IsDeleted column to Purchases
+        {
+            using var ck = conn.CreateCommand();
+            ck.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Purchases') WHERE name='IsDeleted'";
+            if ((long)(ck.ExecuteScalar() ?? 0L) == 0)
+            {
+                using var alt = conn.CreateCommand();
+                alt.CommandText = "ALTER TABLE Purchases ADD COLUMN IsDeleted INTEGER NOT NULL DEFAULT 0";
+                alt.ExecuteNonQuery();
+            }
+        }
 
         // Add PurchaseId column to Payments for linking
         {
@@ -645,12 +657,14 @@ public class PcService
         return purchaseId;
     }
 
-    public List<PurchaseListItem> GetPurchases(bool includeApproved, DateOnly? from = null, DateOnly? to = null)
+    public List<PurchaseListItem> GetPurchases(bool includeApproved, DateOnly? from = null, DateOnly? to = null, bool includeDeleted = false)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
         var where = new List<string>();
+        if (!includeDeleted)
+            where.Add("COALESCE(p.IsDeleted, 0) = 0");
         if (!includeApproved)
             where.Add("p.ApprovedStatus != 'Approved'");
         if (from.HasValue)
@@ -674,7 +688,8 @@ public class PcService
                    TRIM(COALESCE(cr.FirstName,'') || ' ' || COALESCE(NULLIF(cr.LastName,''),'')) AS CreatedByName,
                    p.CreatedAt,
                    COALESCE(items.TotalAmount, 0),
-                   COALESCE(items.TotalHours, 0)
+                   COALESCE(items.TotalHours, 0),
+                   COALESCE(p.IsDeleted, 0)
             FROM Purchases p
             JOIN Persons per ON per.PersonId = p.PcId
             LEFT JOIN Persons ap ON ap.PersonId = p.ApprovedByPersonId
@@ -697,7 +712,8 @@ public class PcService
                 r.IsDBNull(7) ? null : r.GetString(7),
                 r.IsDBNull(8) ? null : r.GetString(8).Trim(),
                 r.GetString(9),
-                r.GetInt32(10), r.GetInt32(11)));
+                r.GetInt32(10), r.GetInt32(11),
+                r.GetInt32(12) == 1));
         return list;
     }
 
@@ -801,7 +817,7 @@ public class PcService
                 SELECT PurchaseId, SUM(AmountPaid) AS TotalAmount, SUM(HoursBought) AS TotalHours
                 FROM PurchaseItems GROUP BY PurchaseId
             ) items ON items.PurchaseId = p.PurchaseId
-            WHERE p.PcId = @pcId AND p.ApprovedStatus != 'Approved'
+            WHERE p.PcId = @pcId AND p.ApprovedStatus != 'Approved' AND COALESCE(p.IsDeleted, 0) = 0
             ORDER BY p.PurchaseDate DESC";
         cmd.Parameters.AddWithValue("@pcId", pcId);
         var list = new List<PurchaseListItem>();
@@ -842,7 +858,7 @@ public class PcService
                 SELECT PurchaseId, SUM(AmountPaid) AS TotalAmount, SUM(HoursBought) AS TotalHours
                 FROM PurchaseItems GROUP BY PurchaseId
             ) items ON items.PurchaseId = p.PurchaseId
-            WHERE p.PcId = @pcId
+            WHERE p.PcId = @pcId AND COALESCE(p.IsDeleted, 0) = 0
             ORDER BY p.PurchaseDate DESC, p.PurchaseId DESC";
         cmd.Parameters.AddWithValue("@pcId", pcId);
         var list = new List<PurchaseListItem>();
@@ -973,14 +989,20 @@ public class PcService
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
-        using var tx = conn.BeginTransaction();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE Purchases SET IsDeleted = 1 WHERE PurchaseId = @id";
+        cmd.Parameters.AddWithValue("@id", purchaseId);
+        cmd.ExecuteNonQuery();
+    }
 
-        using (var d1 = conn.CreateCommand()) { d1.Transaction = tx; d1.CommandText = "DELETE FROM PurchasePaymentMethods WHERE PurchaseId = @id"; d1.Parameters.AddWithValue("@id", purchaseId); d1.ExecuteNonQuery(); }
-        using (var d2 = conn.CreateCommand()) { d2.Transaction = tx; d2.CommandText = "DELETE FROM PurchaseItems WHERE PurchaseId = @id"; d2.Parameters.AddWithValue("@id", purchaseId); d2.ExecuteNonQuery(); }
-        using (var d3 = conn.CreateCommand()) { d3.Transaction = tx; d3.CommandText = "DELETE FROM Payments WHERE PurchaseId = @id"; d3.Parameters.AddWithValue("@id", purchaseId); d3.ExecuteNonQuery(); }
-        using (var d4 = conn.CreateCommand()) { d4.Transaction = tx; d4.CommandText = "DELETE FROM Purchases WHERE PurchaseId = @id"; d4.Parameters.AddWithValue("@id", purchaseId); d4.ExecuteNonQuery(); }
-
-        tx.Commit();
+    public void RestorePurchase(int purchaseId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE Purchases SET IsDeleted = 0 WHERE PurchaseId = @id";
+        cmd.Parameters.AddWithValue("@id", purchaseId);
+        cmd.ExecuteNonQuery();
     }
 
     public void ApprovePurchase(int purchaseId, int approvedByPersonId)

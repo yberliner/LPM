@@ -495,5 +495,8 @@
   "purchases.nothingChanged": "לא זוהו שינויים",
   "purchases.draft": "טיוטה",
   "pcs.confirmDeleteTitle": "למחוק רכישה?",
-  "pcs.confirmDeleteMsg": "פעולה זו תמחק לצמיתות את הרכישה ואת כל הפריטים שלה. לא ניתן לבטל."
+  "pcs.confirmDeleteMsg": "הרכישה תסומן כמחוקה. מנהל יכול לשחזר אותה מאוחר יותר.",
+  "purchases.showDeleted": "הצג מחוקות",
+  "purchases.deleted": "מחוקה",
+  "purchases.restore": "שחזר"
 }
