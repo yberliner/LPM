@@ -440,7 +440,7 @@
                     </span>
                     <span class="d-flex align-items-center gap-1">
                         <span style="width:10px;height:10px;border-radius:2px;background:#f97316;display:inline-block;"></span>
-                        <span style="color:rgba(255,255,255,0.75);">BITS</span>
+                        <span style="color:rgba(255,255,255,0.75);">BIS</span>
                     </span>
                 </div>
             </div>
@@ -471,7 +471,7 @@
                                  YValue="@(w => w.AcademyCount > 0 ? (decimal)w.AcademyCount : 0.1m)" />
                 <ApexPointSeries TItem="WeekStatSummary"
                                  Items="@_chartHistory"
-                                 Name="BITS"
+                                 Name="BIS"
                                  SeriesType="SeriesType.Bar"
                                  XValue="@(w => w.WeekRangeLabel)"
                                  YValue="@(w => w.BodyInShop > 0 ? (decimal)w.BodyInShop : 0.1m)" />
