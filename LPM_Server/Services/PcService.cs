@@ -16,6 +16,17 @@ public record PcPayment(int PaymentId, string Date, int HoursBought, int AmountP
     int? RegistrarId, string? RegistrarName, int? ReferralId, string? ReferralName);
 public record PcStats(int TotalSessions, int FreeSessions, long UsedSec,
     int TotalHoursPurchased, int TotalAmountPaid, string? LastSessionDate);
+public record PcListItemEx(int PcId, string FullName, string ExternalId, long RemainSec,
+    long TotalSessionSec, int TotalSessions, int AcademyVisits, int HoursPurchased);
+public record PurchaseListItem(int PurchaseId, int PcId, string PcName, string PurchaseDate,
+    string? Notes, string ApprovedStatus, string? ApprovedByName, string? ApprovedAt,
+    string? CreatedByName, string CreatedAt, int TotalAmount, int TotalHours);
+public record PurchaseItemInfo(int PurchaseItemId, string ItemType, int? CourseId,
+    string? CourseName, int HoursBought, int AmountPaid, int? RegistrarId,
+    string? RegistrarName, int? ReferralId, string? ReferralName);
+public record PurchaseDetail(int PurchaseId, int PcId, string PcName, string PurchaseDate,
+    string? Notes, string? SignatureData, string ApprovedStatus, string? ApprovedByName,
+    string? CreatedByName, List<PurchaseItemInfo> Items);
 
 public class PcService
 {
@@ -96,6 +107,38 @@ public class PcService
                 alt.ExecuteNonQuery();
             }
         }
+
+        // Purchases & PurchaseItems tables
+        using var c2 = conn.CreateCommand();
+        c2.CommandText = @"
+            CREATE TABLE IF NOT EXISTS Purchases (
+                PurchaseId         INTEGER PRIMARY KEY AUTOINCREMENT,
+                PcId               INTEGER NOT NULL,
+                PurchaseDate       TEXT NOT NULL,
+                Notes              TEXT,
+                SignatureData      TEXT,
+                ApprovedStatus     TEXT NOT NULL DEFAULT 'Pending',
+                ApprovedByPersonId INTEGER,
+                ApprovedAt         TEXT,
+                CreatedByPersonId  INTEGER,
+                CreatedAt          TEXT NOT NULL DEFAULT (datetime('now'))
+            )";
+        c2.ExecuteNonQuery();
+
+        using var c3 = conn.CreateCommand();
+        c3.CommandText = @"
+            CREATE TABLE IF NOT EXISTS PurchaseItems (
+                PurchaseItemId INTEGER PRIMARY KEY AUTOINCREMENT,
+                PurchaseId     INTEGER NOT NULL,
+                ItemType       TEXT NOT NULL DEFAULT 'Auditing',
+                CourseId       INTEGER,
+                HoursBought    INTEGER NOT NULL DEFAULT 0,
+                AmountPaid     INTEGER NOT NULL DEFAULT 0,
+                RegistrarId    INTEGER,
+                ReferralId     INTEGER,
+                FOREIGN KEY (PurchaseId) REFERENCES Purchases(PurchaseId)
+            )";
+        c3.ExecuteNonQuery();
 
         // One-time migration: copy legacy Phone/Email from PCs → Persons
         using var migPhone = conn.CreateCommand();
@@ -424,6 +467,304 @@ public class PcService
         cmd.Parameters.AddWithValue("@u", username.Trim());
         var result = cmd.ExecuteScalar();
         return result == null ? null : (int)(long)result;
+    }
+
+    // ── Extended PC list with stats for table view ────────────────
+
+    public List<PcListItemEx> GetAllPcsExtended()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT pc.PcId,
+                   TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
+                   COALESCE(pc.ExternalId, '') AS ExternalId,
+                   (COALESCE(pay.TotalHours, 0) * 3600 - COALESCE(sess.UsedSec, 0)) AS RemainSec,
+                   COALESCE(sess.UsedSec, 0) AS TotalSessionSec,
+                   COALESCE(sess.SessionCount, 0) AS TotalSessions,
+                   COALESCE(acad.VisitCount, 0) AS AcademyVisits,
+                   COALESCE(pay.TotalHours, 0) AS HoursPurchased
+            FROM PCs pc
+            JOIN Persons p ON p.PersonId = pc.PcId
+            LEFT JOIN (
+                SELECT PcId, SUM(HoursBought) AS TotalHours
+                FROM Payments GROUP BY PcId
+            ) pay ON pay.PcId = pc.PcId
+            LEFT JOIN (
+                SELECT PcId, SUM(LengthSeconds) AS UsedSec, COUNT(*) AS SessionCount
+                FROM Sessions WHERE IsFreeSession = 0 GROUP BY PcId
+            ) sess ON sess.PcId = pc.PcId
+            LEFT JOIN (
+                SELECT PersonId, COUNT(*) AS VisitCount
+                FROM Students GROUP BY PersonId
+            ) acad ON acad.PersonId = pc.PcId
+            WHERE COALESCE(p.IsActive, 1) = 1
+            ORDER BY RemainSec ASC, p.FirstName, p.LastName";
+        var list = new List<PcListItemEx>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new PcListItemEx(
+                r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetInt64(3),
+                r.GetInt64(4), r.GetInt32(5), r.GetInt32(6), r.GetInt32(7)));
+        return list;
+    }
+
+    // ── Purchase methods ────────────────────────────────────────────
+
+    public int CreatePurchase(int pcId, string date, string? notes, string? signatureData,
+        int? createdByPersonId,
+        List<(string itemType, int? courseId, int hoursBought, int amountPaid, int? registrarId, int? referralId)> items)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var tx = conn.BeginTransaction();
+
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = @"
+            INSERT INTO Purchases (PcId, PurchaseDate, Notes, SignatureData, CreatedByPersonId)
+            VALUES (@pcId, @date, @notes, @sig, @createdBy)";
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        cmd.Parameters.AddWithValue("@date", date);
+        cmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@sig", (object?)signatureData ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@createdBy", createdByPersonId.HasValue ? (object)createdByPersonId.Value : DBNull.Value);
+        cmd.ExecuteNonQuery();
+
+        using var idCmd = conn.CreateCommand();
+        idCmd.Transaction = tx;
+        idCmd.CommandText = "SELECT last_insert_rowid()";
+        var purchaseId = (int)(long)idCmd.ExecuteScalar()!;
+
+        foreach (var item in items)
+        {
+            using var iCmd = conn.CreateCommand();
+            iCmd.Transaction = tx;
+            iCmd.CommandText = @"
+                INSERT INTO PurchaseItems (PurchaseId, ItemType, CourseId, HoursBought, AmountPaid, RegistrarId, ReferralId)
+                VALUES (@pid, @type, @cid, @hrs, @amt, @regId, @refId)";
+            iCmd.Parameters.AddWithValue("@pid", purchaseId);
+            iCmd.Parameters.AddWithValue("@type", item.itemType);
+            iCmd.Parameters.AddWithValue("@cid", item.courseId.HasValue ? (object)item.courseId.Value : DBNull.Value);
+            iCmd.Parameters.AddWithValue("@hrs", item.hoursBought);
+            iCmd.Parameters.AddWithValue("@amt", item.amountPaid);
+            iCmd.Parameters.AddWithValue("@regId", item.registrarId.HasValue ? (object)item.registrarId.Value : DBNull.Value);
+            iCmd.Parameters.AddWithValue("@refId", item.referralId.HasValue ? (object)item.referralId.Value : DBNull.Value);
+            iCmd.ExecuteNonQuery();
+
+            // Auto-enroll in Academy StudentCourses when a course is purchased
+            if (item.itemType == "Course" && item.courseId.HasValue)
+            {
+                using var scCmd = conn.CreateCommand();
+                scCmd.Transaction = tx;
+                scCmd.CommandText = @"
+                    INSERT INTO StudentCourses (PersonId, CourseId, DateStarted)
+                    SELECT @personId, @courseId, @date
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM StudentCourses
+                        WHERE PersonId=@personId AND CourseId=@courseId AND DateFinished IS NULL
+                    )";
+                scCmd.Parameters.AddWithValue("@personId", pcId);
+                scCmd.Parameters.AddWithValue("@courseId", item.courseId.Value);
+                scCmd.Parameters.AddWithValue("@date", date);
+                scCmd.ExecuteNonQuery();
+            }
+        }
+
+        // Also insert into Payments table for backward compatibility (hours tracking)
+        foreach (var item in items)
+        {
+            using var payCmd = conn.CreateCommand();
+            payCmd.Transaction = tx;
+            payCmd.CommandText = @"
+                INSERT INTO Payments (PcId, PaymentDate, HoursBought, AmountPaid, Notes, PaymentType, CourseId, RegistrarId, ReferralId)
+                VALUES (@pcId, @date, @hrs, @amt, @notes, @type, @cid, @regId, @refId)";
+            payCmd.Parameters.AddWithValue("@pcId", pcId);
+            payCmd.Parameters.AddWithValue("@date", date);
+            payCmd.Parameters.AddWithValue("@hrs", item.hoursBought);
+            payCmd.Parameters.AddWithValue("@amt", item.amountPaid);
+            payCmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
+            payCmd.Parameters.AddWithValue("@type", item.itemType);
+            payCmd.Parameters.AddWithValue("@cid", item.courseId.HasValue ? (object)item.courseId.Value : DBNull.Value);
+            payCmd.Parameters.AddWithValue("@regId", item.registrarId.HasValue ? (object)item.registrarId.Value : DBNull.Value);
+            payCmd.Parameters.AddWithValue("@refId", item.referralId.HasValue ? (object)item.referralId.Value : DBNull.Value);
+            payCmd.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+        return purchaseId;
+    }
+
+    public List<PurchaseListItem> GetPurchases(bool includeApproved, DateOnly? from = null, DateOnly? to = null)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        var where = new List<string>();
+        if (!includeApproved)
+            where.Add("p.ApprovedStatus != 'Approved'");
+        if (from.HasValue)
+        {
+            where.Add("p.PurchaseDate >= @from");
+            cmd.Parameters.AddWithValue("@from", from.Value.ToString("yyyy-MM-dd"));
+        }
+        if (to.HasValue)
+        {
+            where.Add("p.PurchaseDate <= @to");
+            cmd.Parameters.AddWithValue("@to", to.Value.ToString("yyyy-MM-dd"));
+        }
+        var whereClause = where.Count > 0 ? "WHERE " + string.Join(" AND ", where) : "";
+
+        cmd.CommandText = $@"
+            SELECT p.PurchaseId, p.PcId,
+                   TRIM(per.FirstName || ' ' || COALESCE(NULLIF(per.LastName,''), '')) AS PcName,
+                   p.PurchaseDate, p.Notes, p.ApprovedStatus,
+                   TRIM(COALESCE(ap.FirstName,'') || ' ' || COALESCE(NULLIF(ap.LastName,''),'')) AS ApprovedByName,
+                   p.ApprovedAt,
+                   TRIM(COALESCE(cr.FirstName,'') || ' ' || COALESCE(NULLIF(cr.LastName,''),'')) AS CreatedByName,
+                   p.CreatedAt,
+                   COALESCE(items.TotalAmount, 0),
+                   COALESCE(items.TotalHours, 0)
+            FROM Purchases p
+            JOIN Persons per ON per.PersonId = p.PcId
+            LEFT JOIN Persons ap ON ap.PersonId = p.ApprovedByPersonId
+            LEFT JOIN Persons cr ON cr.PersonId = p.CreatedByPersonId
+            LEFT JOIN (
+                SELECT PurchaseId, SUM(AmountPaid) AS TotalAmount, SUM(HoursBought) AS TotalHours
+                FROM PurchaseItems GROUP BY PurchaseId
+            ) items ON items.PurchaseId = p.PurchaseId
+            {whereClause}
+            ORDER BY p.PurchaseDate DESC, p.PurchaseId DESC";
+
+        var list = new List<PurchaseListItem>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new PurchaseListItem(
+                r.GetInt32(0), r.GetInt32(1), r.GetString(2).Trim(), r.GetString(3),
+                r.IsDBNull(4) ? null : r.GetString(4),
+                r.GetString(5),
+                r.IsDBNull(6) ? null : r.GetString(6).Trim(),
+                r.IsDBNull(7) ? null : r.GetString(7),
+                r.IsDBNull(8) ? null : r.GetString(8).Trim(),
+                r.GetString(9),
+                r.GetInt32(10), r.GetInt32(11)));
+        return list;
+    }
+
+    public PurchaseDetail? GetPurchaseDetail(int purchaseId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT p.PurchaseId, p.PcId,
+                   TRIM(per.FirstName || ' ' || COALESCE(NULLIF(per.LastName,''), '')) AS PcName,
+                   p.PurchaseDate, p.Notes, p.SignatureData, p.ApprovedStatus,
+                   TRIM(COALESCE(ap.FirstName,'') || ' ' || COALESCE(NULLIF(ap.LastName,''),'')) AS ApprovedByName,
+                   TRIM(COALESCE(cr.FirstName,'') || ' ' || COALESCE(NULLIF(cr.LastName,''),'')) AS CreatedByName
+            FROM Purchases p
+            JOIN Persons per ON per.PersonId = p.PcId
+            LEFT JOIN Persons ap ON ap.PersonId = p.ApprovedByPersonId
+            LEFT JOIN Persons cr ON cr.PersonId = p.CreatedByPersonId
+            WHERE p.PurchaseId = @id";
+        cmd.Parameters.AddWithValue("@id", purchaseId);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return null;
+
+        var detail = new PurchaseDetail(
+            r.GetInt32(0), r.GetInt32(1), r.GetString(2).Trim(), r.GetString(3),
+            r.IsDBNull(4) ? null : r.GetString(4),
+            r.IsDBNull(5) ? null : r.GetString(5),
+            r.GetString(6),
+            r.IsDBNull(7) ? null : r.GetString(7).Trim(),
+            r.IsDBNull(8) ? null : r.GetString(8).Trim(),
+            new List<PurchaseItemInfo>());
+        r.Close();
+
+        using var iCmd = conn.CreateCommand();
+        iCmd.CommandText = @"
+            SELECT pi.PurchaseItemId, pi.ItemType, pi.CourseId, c.Name,
+                   pi.HoursBought, pi.AmountPaid,
+                   pi.RegistrarId,
+                   TRIM(COALESCE(reg.FirstName,'') || ' ' || COALESCE(NULLIF(reg.LastName,''),'')) AS RegistrarName,
+                   pi.ReferralId,
+                   TRIM(COALESCE(rf.FirstName,'') || ' ' || COALESCE(NULLIF(rf.LastName,''),'')) AS ReferralName
+            FROM PurchaseItems pi
+            LEFT JOIN Courses c ON c.CourseId = pi.CourseId
+            LEFT JOIN Persons reg ON reg.PersonId = pi.RegistrarId
+            LEFT JOIN Persons rf ON rf.PersonId = pi.ReferralId
+            WHERE pi.PurchaseId = @id
+            ORDER BY pi.PurchaseItemId";
+        iCmd.Parameters.AddWithValue("@id", purchaseId);
+        using var ir = iCmd.ExecuteReader();
+        while (ir.Read())
+            detail.Items.Add(new PurchaseItemInfo(
+                ir.GetInt32(0), ir.GetString(1),
+                ir.IsDBNull(2) ? null : ir.GetInt32(2),
+                ir.IsDBNull(3) ? null : ir.GetString(3),
+                ir.GetInt32(4), ir.GetInt32(5),
+                ir.IsDBNull(6) ? null : ir.GetInt32(6),
+                ir.IsDBNull(7) ? null : ir.GetString(7).Trim(),
+                ir.IsDBNull(8) ? null : ir.GetInt32(8),
+                ir.IsDBNull(9) ? null : ir.GetString(9).Trim()));
+
+        return detail;
+    }
+
+    public List<PurchaseListItem> GetPendingPurchasesForPc(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT p.PurchaseId, p.PcId,
+                   TRIM(per.FirstName || ' ' || COALESCE(NULLIF(per.LastName,''), '')) AS PcName,
+                   p.PurchaseDate, p.Notes, p.ApprovedStatus,
+                   NULL AS ApprovedByName, p.ApprovedAt,
+                   TRIM(COALESCE(cr.FirstName,'') || ' ' || COALESCE(NULLIF(cr.LastName,''),'')) AS CreatedByName,
+                   p.CreatedAt,
+                   COALESCE(items.TotalAmount, 0),
+                   COALESCE(items.TotalHours, 0)
+            FROM Purchases p
+            JOIN Persons per ON per.PersonId = p.PcId
+            LEFT JOIN Persons cr ON cr.PersonId = p.CreatedByPersonId
+            LEFT JOIN (
+                SELECT PurchaseId, SUM(AmountPaid) AS TotalAmount, SUM(HoursBought) AS TotalHours
+                FROM PurchaseItems GROUP BY PurchaseId
+            ) items ON items.PurchaseId = p.PurchaseId
+            WHERE p.PcId = @pcId AND p.ApprovedStatus != 'Approved'
+            ORDER BY p.PurchaseDate DESC";
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        var list = new List<PurchaseListItem>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new PurchaseListItem(
+                r.GetInt32(0), r.GetInt32(1), r.GetString(2).Trim(), r.GetString(3),
+                r.IsDBNull(4) ? null : r.GetString(4),
+                r.GetString(5),
+                r.IsDBNull(6) ? null : r.GetString(6).Trim(),
+                r.IsDBNull(7) ? null : r.GetString(7),
+                r.IsDBNull(8) ? null : r.GetString(8).Trim(),
+                r.GetString(9),
+                r.GetInt32(10), r.GetInt32(11)));
+        return list;
+    }
+
+    public void ApprovePurchase(int purchaseId, int approvedByPersonId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE Purchases SET ApprovedStatus = 'Approved',
+                                 ApprovedByPersonId = @by,
+                                 ApprovedAt = datetime('now')
+            WHERE PurchaseId = @id";
+        cmd.Parameters.AddWithValue("@id", purchaseId);
+        cmd.Parameters.AddWithValue("@by", approvedByPersonId);
+        cmd.ExecuteNonQuery();
     }
 
     private static object Nv(string? s) =>

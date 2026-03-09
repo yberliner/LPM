@@ -281,7 +281,7 @@ public class DashboardService
         return cmd.ExecuteScalar() as string ?? $"Person #{personId}";
     }
 
-    private void SendAutoMessageToAdmins(int fromStaffId, string msgText)
+    public void SendAutoMessageToAdmins(int fromStaffId, string msgText)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();

@@ -2,15 +2,17 @@
 @attribute [Authorize]
 @inject LPM.Services.PcService PcSvc
 @inject LPM.Services.CourseService CourseSvc
+@inject LPM.Services.DashboardService DashSvc
 @inject AuthenticationStateProvider AuthState
+@inject IJSRuntime JS
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using LPM.Services
 
 <div class="d-flex gap-3" style="height:calc(100vh - 130px); overflow:hidden;">
 
-    @* ── LEFT PANEL: PC List ── *@
-    <div class="d-flex flex-column border-end pe-2" style="width:240px;min-width:240px;">
+    @* ── LEFT PANEL: PC Table ── *@
+    <div class="d-flex flex-column" style="width:340px;min-width:340px;">
         <div class="d-flex gap-1 mb-2">
             <input class="form-control form-control-sm" placeholder="@LS.T("common.search")"
                    @bind="_search" @bind:event="oninput" />
@@ -19,41 +21,40 @@
             </button>
         </div>
         <div class="overflow-y-auto flex-grow-1">
-            @if (!FilteredPcs.Any())
+            @if (!FilteredPcsEx.Any())
             {
                 <div class="text-muted small text-center mt-4">@LS.T("pcs.noPcsFound")</div>
             }
-            @foreach (var pc in FilteredPcs)
+            else
             {
-                <div class="d-flex align-items-center gap-2 px-2 py-2 rounded mb-1"
-                     style="cursor:pointer; background:@(_selPcId == pc.PcId ? "#3949ab" : "#f5f5f5");"
-                     @onclick="() => SelectPc(pc.PcId)">
-                    <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
-                         style="width:30px;height:30px;font-size:0.8rem;font-weight:700;
-                                background:@(_selPcId == pc.PcId ? "#fff" : "#3949ab");
-                                color:@(_selPcId == pc.PcId ? "#3949ab" : "#fff");">
-                        @(pc.FullName.Length > 0 ? pc.FullName[0].ToString().ToUpper() : "?")
-                    </div>
-                    <div class="overflow-hidden flex-grow-1">
-                        <div class="fw-semibold text-truncate"
-                             style="font-size:0.82rem; color:@(_selPcId == pc.PcId ? "#fff" : "#212529");">
-                            @pc.FullName
-                        </div>
-                        @if (!string.IsNullOrEmpty(pc.ExternalId))
+                <table class="table table-sm table-hover mb-0 pc-list-table">
+                    <thead class="table-light" style="position:sticky;top:0;z-index:1;">
+                        <tr>
+                            <th class="small ps-2 pc-th-sort @SortClass("name")" @onclick='() => ToggleSort("name")'>@LS.T("pcs.pcName")</th>
+                            <th class="small text-center pc-th-sort @SortClass("hoursLeft")" style="width:70px;" @onclick='() => ToggleSort("hoursLeft")'>@LS.T("pcs.hoursLeft")</th>
+                            <th class="small text-center pc-th-sort @SortClass("totalTime")" style="width:70px;" @onclick='() => ToggleSort("totalTime")'>@LS.T("pcs.totalSessionTime")</th>
+                            <th class="small text-center pc-th-sort @SortClass("visits")" style="width:55px;" @onclick='() => ToggleSort("visits")'>@LS.T("pcs.totalVisits")</th>
+                            <th class="small text-center pc-th-sort @SortClass("purchased")" style="width:55px;" @onclick='() => ToggleSort("purchased")'>@LS.T("pcs.hoursPurchased")</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var pc in FilteredPcsEx)
                         {
-                            <div class="text-truncate"
-                                 style="font-size:0.7rem; color:@(_selPcId == pc.PcId ? "rgba(255,255,255,.65)" : "#888");">
-                                ID: @pc.ExternalId
-                            </div>
+                            <tr class="@(_selPcId == pc.PcId ? "table-primary" : "")"
+                                style="cursor:pointer;"
+                                @onclick="() => SelectPc(pc.PcId)">
+                                <td class="small ps-2 text-truncate" style="max-width:120px;">@pc.FullName</td>
+                                <td class="small text-center fw-semibold"
+                                    style="color:@(pc.RemainSec >= 0 ? "#2e7d32" : "#c62828");">
+                                    @HrsLabel(pc.RemainSec)
+                                </td>
+                                <td class="small text-center text-muted">@HrsLabel(pc.TotalSessionSec)</td>
+                                <td class="small text-center text-muted">@pc.AcademyVisits</td>
+                                <td class="small text-center text-muted">@(pc.HoursPurchased)h</td>
+                            </tr>
                         }
-                    </div>
-                    <span class="flex-shrink-0 rounded-pill px-2 py-0"
-                          style="font-size:0.7rem; font-weight:700; white-space:nowrap;
-                                 color:@(_selPcId == pc.PcId ? "#fff" : pc.RemainSec >= 0 ? "#2e7d32" : "#c62828");
-                                 background:@(_selPcId == pc.PcId ? "rgba(255,255,255,.18)" : pc.RemainSec >= 0 ? "#e8f5e9" : "#ffebee");">
-                        @HrsLabel(pc.RemainSec)
-                    </span>
-                </div>
+                    </tbody>
+                </table>
             }
         </div>
     </div>
@@ -232,7 +233,7 @@
                             <div class="pc-stat-label">@LS.T("pcs.hoursPurchased")</div>
                             @if (_stats.TotalAmountPaid > 0)
                             {
-                                <div class="pc-stat-sub">₪@_stats.TotalAmountPaid @LS.T("pcs.paid")</div>
+                                <div class="pc-stat-sub">@("\u20AA")@_stats.TotalAmountPaid @LS.T("pcs.paid")</div>
                             }
                         </div>
                     </div>
@@ -252,101 +253,16 @@
                 </div>
             }
 
-            @* Payments card *@
+            @* Payments card with Purchase button *@
             <div class="card shadow-sm mb-3">
                 <div class="card-header d-flex align-items-center justify-content-between py-2">
                     <span class="fw-semibold small"><i class="ri-bank-card-line me-1"></i>@LS.T("pcs.payments")</span>
-                    <button class="btn btn-sm @(_showAddPayment ? "btn-outline-secondary" : "btn-outline-primary") py-0 px-2"
+                    <button class="btn btn-sm btn-outline-primary py-0 px-2"
                             style="font-size:0.75rem;"
-                            @onclick="ToggleAddPayment">
-                        @(_showAddPayment ? LS.T("common.cancel") : LS.T("pcs.addPayment"))
+                            @onclick="OpenPurchaseModal">
+                        <i class="ri-shopping-cart-line me-1"></i>@LS.T("pcs.purchase")
                     </button>
                 </div>
-                @if (_showAddPayment)
-                {
-                    <div class="card-body py-2 border-bottom bg-light">
-                        @* ── Type selector ── *@
-                        <div class="d-flex gap-2 mb-2">
-                            <button class="btn btn-sm @(_payType == "Auditing" ? "btn-primary" : "btn-outline-secondary")"
-                                    @onclick="SetPayAuditing">
-                                <i class="ri-timer-flash-line me-1"></i>@LS.T("pcs.auditing")
-                            </button>
-                            <button class="btn btn-sm @(_payType == "Course" ? "btn-info text-white" : "btn-outline-secondary")"
-                                    @onclick="SetPayCourse">
-                                <i class="ri-book-2-line me-1"></i>@LS.T("pcs.course")
-                            </button>
-                        </div>
-
-                        <div class="row g-2 align-items-end">
-                            <div class="col-auto">
-                                <label class="form-label small mb-0">@LS.T("pcs.date")</label>
-                                <input type="date" class="form-control form-control-sm"
-                                       @bind="_payDate" style="width:148px;" />
-                            </div>
-
-                            @if (_payType == "Auditing")
-                            {
-                                <div class="col-auto">
-                                    <label class="form-label small mb-0">@LS.T("pcs.hoursBought")</label>
-                                    <input type="number" class="form-control form-control-sm"
-                                           @bind="_payHours" min="0" style="width:95px;" placeholder="0" />
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="col-auto">
-                                    <label class="form-label small mb-0">@LS.T("pcs.course")</label>
-                                    <select class="form-select form-select-sm" @bind="_payCourseId" style="width:200px;">
-                                        <option value="0">— @LS.T("pcs.selectCourse") —</option>
-                                        @foreach (var c in _allCourses)
-                                        {
-                                            <option value="@c.CourseId">@c.Name</option>
-                                        }
-                                    </select>
-                                </div>
-                            }
-
-                            <div class="col-auto">
-                                <label class="form-label small mb-0">@LS.T("pcs.amountIls")</label>
-                                <input type="number" class="form-control form-control-sm"
-                                       @bind="_payAmount" min="0" style="width:105px;" placeholder="0" />
-                            </div>
-                            <div class="col">
-                                <label class="form-label small mb-0">@LS.T("pcs.notes")</label>
-                                <input class="form-control form-control-sm" @bind="_payNotes" placeholder="@LS.T("members.optional")" />
-                            </div>
-                        </div>
-                        <div class="row g-2 align-items-end mt-1">
-                            <div class="col-auto">
-                                <label class="form-label small mb-0">@LS.T("courses.registrar")</label>
-                                <select class="form-select form-select-sm" @bind="_payRegistrarId" style="width:180px;">
-                                    <option value="0">— @LS.T("common.none") —</option>
-                                    @foreach (var s in _staff)
-                                    {
-                                        <option value="@s.PersonId">@s.FullName</option>
-                                    }
-                                </select>
-                            </div>
-                            <div class="col-auto">
-                                <label class="form-label small mb-0">@LS.T("courses.referral")</label>
-                                <select class="form-select form-select-sm" @bind="_payReferralId" style="width:200px;">
-                                    <option value="0">— @LS.T("common.none") —</option>
-                                    @foreach (var p in _allPersons)
-                                    {
-                                        <option value="@p.PersonId">@p.FullName</option>
-                                    }
-                                </select>
-                            </div>
-                            <div class="col-auto ms-auto">
-                                <button class="btn btn-sm btn-primary" @onclick="SavePayment">@LS.T("common.save")</button>
-                            </div>
-                        </div>
-                        @if (!string.IsNullOrEmpty(_payError))
-                        {
-                            <div class="alert alert-danger py-1 px-2 mt-2 small">@_payError</div>
-                        }
-                    </div>
-                }
                 <div class="card-body p-0">
                     @if (_payments?.Count > 0)
                     {
@@ -357,7 +273,6 @@
                                     <th class="small">@LS.T("pcs.typeCourse")</th>
                                     <th class="small text-center">@LS.T("pcs.hrsVis")</th>
                                     <th class="small text-end">@LS.T("pcs.amount")</th>
-                                    <th class="small">@LS.T("pcs.notes")</th>
                                     <th class="small">@LS.T("courses.registrar")</th>
                                     <th class="small">@LS.T("courses.referral")</th>
                                     <th style="width:36px;"></th>
@@ -393,9 +308,8 @@
                                             }
                                         </td>
                                         <td class="small text-end">
-                                            @(pay.AmountPaid > 0 ? $"₪{pay.AmountPaid}" : "—")
+                                            @(pay.AmountPaid > 0 ? $"\u20AA{pay.AmountPaid}" : "\u2014")
                                         </td>
-                                        <td class="small text-muted">@pay.Notes</td>
                                         <td class="small text-muted">@pay.RegistrarName</td>
                                         <td class="small text-muted">@pay.ReferralName</td>
                                         <td class="text-center">
@@ -414,13 +328,13 @@
                                     <td></td>
                                     <td class="small text-center fw-semibold">
                                         @{ var auditHrs = _payments.Where(p => p.PaymentType != "Course").Sum(p => p.HoursBought); }
-                                        @(auditHrs > 0 ? $"{auditHrs} h" : "—")
+                                        @(auditHrs > 0 ? $"{auditHrs} h" : "\u2014")
                                     </td>
                                     <td class="small text-end fw-semibold">
                                         @{ var tot = _payments.Sum(p => p.AmountPaid); }
-                                        @(tot > 0 ? $"₪{tot}" : "—")
+                                        @(tot > 0 ? $"\u20AA{tot}" : "\u2014")
                                     </td>
-                                    <td colspan="4"></td>
+                                    <td colspan="3"></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -463,7 +377,7 @@
                                         <td class="small">@s.AuditorName</td>
                                         <td class="small text-center">@Hmm(s.LengthSec)</td>
                                         <td class="small text-center text-muted">
-                                            @(s.AdminSec > 0 ? Hmm(s.AdminSec) : "—")
+                                            @(s.AdminSec > 0 ? Hmm(s.AdminSec) : "\u2014")
                                         </td>
                                         <td class="small text-center">
                                             @if (s.IsFree)
@@ -496,7 +410,7 @@
                                     </td>
                                     <td class="small text-center fw-semibold text-muted">
                                         @{ var adminTot = _sessions.Where(s => !s.IsFree).Sum(s => s.AdminSec); }
-                                        @(adminTot > 0 ? Hmm(adminTot) : "—")
+                                        @(adminTot > 0 ? Hmm(adminTot) : "\u2014")
                                     </td>
                                     <td colspan="2"></td>
                                 </tr>
@@ -509,6 +423,52 @@
                     }
                 </div>
             </div>
+
+            @* Pending Purchases card *@
+            @if (_pendingPurchases?.Count > 0)
+            {
+                <div class="card shadow-sm mt-3 pending-purchases-card">
+                    <div class="card-header d-flex align-items-center justify-content-between py-2 pending-purchases-header">
+                        <span class="fw-semibold small text-white">
+                            <i class="ri-shopping-cart-line me-1"></i>@LS.T("pcs.pendingPurchases")
+                        </span>
+                        <span class="badge rounded-pill bg-white text-warning fw-bold" style="font-size:.72rem;">
+                            @_pendingPurchases.Count
+                        </span>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm mb-0">
+                            <thead style="background:#fff8e1;">
+                                <tr>
+                                    <th class="small ps-3" style="color:#b45309;">@LS.T("pcs.date")</th>
+                                    <th class="small text-center" style="color:#b45309;">@LS.T("purchases.totalHours")</th>
+                                    <th class="small text-end" style="color:#b45309;">@LS.T("purchases.totalAmount")</th>
+                                    <th class="small" style="color:#b45309;">@LS.T("common.notes")</th>
+                                    <th class="small" style="color:#b45309;">@LS.T("purchases.createdBy")</th>
+                                    <th class="small text-center" style="color:#b45309;">@LS.T("common.status")</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var pp in _pendingPurchases)
+                                {
+                                    <tr style="background:#fffbeb;">
+                                        <td class="small ps-3">@FormatDate(pp.PurchaseDate)</td>
+                                        <td class="small text-center fw-semibold">@(pp.TotalHours > 0 ? $"{pp.TotalHours}h" : "\u2014")</td>
+                                        <td class="small text-end fw-semibold">@(pp.TotalAmount > 0 ? $"\u20AA{pp.TotalAmount}" : "\u2014")</td>
+                                        <td class="small text-muted" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@pp.Notes">@(pp.Notes ?? "\u2014")</td>
+                                        <td class="small text-muted">@pp.CreatedByName</td>
+                                        <td class="small text-center">
+                                            <span class="badge" style="background:#fef3c7;color:#92400e;font-size:.72rem;">
+                                                <i class="ri-time-line me-1"></i>@LS.T("purchases.pending")
+                                            </span>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
         }
         else
         {
@@ -522,8 +482,174 @@
     </div>
 </div>
 
+@* ── Purchase Modal ── *@
+@if (_showPurchaseModal && _detail != null)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5);z-index:1050;">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content" style="border-radius:14px;">
+                <div class="modal-header py-2 px-3 d-flex align-items-center">
+                    <h5 class="modal-title fw-bold mb-0">
+                        <i class="ri-shopping-cart-line me-2"></i>@LS.T("pcs.purchase")
+                    </h5>
+                    <div class="ms-auto d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="PrintPurchase">
+                            <i class="ri-printer-line me-1"></i>@LS.T("common.print")
+                        </button>
+                        <button type="button" class="btn-close" @onclick="ClosePurchaseModal"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-3">
+                    @* PC Name big *@
+                    <div class="text-center mb-3">
+                        <div style="font-size:1.6rem;font-weight:800;color:#1e3a5f;">@_detail.FullName</div>
+                    </div>
+
+                        @* Purchase items *@
+                        <div class="mb-3">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="fw-semibold small">@LS.T("pcs.purchaseItems")</span>
+                                <button class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size:0.75rem;"
+                                        @onclick="AddPurchaseItem">
+                                    @LS.T("pcs.addItem")
+                                </button>
+                            </div>
+
+                            @for (int idx = 0; idx < _purchaseItems.Count; idx++)
+                            {
+                                var i = idx;
+                                var item = _purchaseItems[i];
+                                <div class="card border mb-2">
+                                    <div class="card-body py-2 px-3">
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <div class="d-flex gap-2">
+                                                @{ var capturedIdx = i; }
+                                                <button class="btn btn-sm @(item.ItemType == "Auditing" ? "btn-primary" : "btn-outline-secondary")"
+                                                        @onclick='() => SetItemType(capturedIdx, "Auditing")'>
+                                                    <i class="ri-timer-flash-line me-1"></i>@LS.T("pcs.auditing")
+                                                </button>
+                                                <button class="btn btn-sm @(item.ItemType == "Course" ? "btn-info text-white" : "btn-outline-secondary")"
+                                                        @onclick='() => SetItemType(capturedIdx, "Course")'>
+                                                    <i class="ri-book-2-line me-1"></i>@LS.T("pcs.course")
+                                                </button>
+                                            </div>
+                                            @if (_purchaseItems.Count > 1)
+                                            {
+                                                <button class="btn btn-sm btn-outline-danger py-0 px-1" @onclick="() => RemovePurchaseItem(i)">
+                                                    <i class="ri-close-line"></i>
+                                                </button>
+                                            }
+                                        </div>
+                                        <div class="row g-2 align-items-end">
+                                            @if (item.ItemType == "Auditing")
+                                            {
+                                                <div class="col-auto">
+                                                    <label class="form-label small mb-0">@LS.T("pcs.hoursBought")</label>
+                                                    <input type="number" class="form-control form-control-sm"
+                                                           value="@item.HoursBought" min="0" style="width:95px;" placeholder="0"
+                                                           @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) item.HoursBought = v; }" />
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <div class="col-auto">
+                                                    <label class="form-label small mb-0">@LS.T("pcs.course")</label>
+                                                    <select class="form-select form-select-sm" style="width:200px;"
+                                                            value="@item.CourseId"
+                                                            @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) item.CourseId = v; }">
+                                                        <option value="0">— @LS.T("pcs.selectCourse") —</option>
+                                                        @foreach (var c in _allCourses)
+                                                        {
+                                                            <option value="@c.CourseId">@c.Name</option>
+                                                        }
+                                                    </select>
+                                                </div>
+                                            }
+                                            <div class="col-auto">
+                                                <label class="form-label small mb-0">@LS.T("pcs.amountIls")</label>
+                                                <input type="number" class="form-control form-control-sm"
+                                                       value="@item.AmountPaid" min="0" style="width:105px;" placeholder="0"
+                                                       @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) item.AmountPaid = v; }" />
+                                            </div>
+                                            <div class="col-auto">
+                                                <label class="form-label small mb-0">@LS.T("courses.registrar")</label>
+                                                <select class="form-select form-select-sm" style="width:160px;"
+                                                        value="@item.RegistrarId"
+                                                        @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) item.RegistrarId = v; }">
+                                                    <option value="0">— @LS.T("common.none") —</option>
+                                                    @foreach (var s in _staff)
+                                                    {
+                                                        <option value="@s.PersonId">@s.FullName</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                            <div class="col-auto">
+                                                <label class="form-label small mb-0">@LS.T("courses.referral")</label>
+                                                <select class="form-select form-select-sm" style="width:160px;"
+                                                        value="@item.ReferralId"
+                                                        @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) item.ReferralId = v; }">
+                                                    <option value="0">— @LS.T("common.none") —</option>
+                                                    @foreach (var p in _allPersons)
+                                                    {
+                                                        <option value="@p.PersonId">@p.FullName</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        @* Notes (below all items) *@
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold mb-1">@LS.T("pcs.notes")</label>
+                            <textarea class="form-control form-control-sm" rows="2" @bind="_purchaseNotes"
+                                      placeholder="@LS.T("members.optional")"></textarea>
+                        </div>
+
+                        @* Date *@
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            <div>
+                                <label class="form-label small fw-semibold mb-0">@LS.T("pcs.date")</label>
+                                <input type="date" class="form-control form-control-sm" @bind="_purchaseDate" style="width:160px;" />
+                            </div>
+                        </div>
+
+                        @* Signature *@
+                        <div class="mb-3">
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <label class="form-label small fw-semibold mb-0">
+                                    @LS.T("pcs.signature") <span style="color:#dc3545;font-size:1rem;">*</span>
+                                </label>
+                                <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:0.7rem;"
+                                        @onclick="ClearSignature">
+                                    @LS.T("pcs.clearSignature")
+                                </button>
+                            </div>
+                            <div style="border:2px solid #dee2e6;border-radius:8px;background:#fafafa;position:relative;">
+                                <canvas id="signatureCanvas" style="width:100%;height:120px;cursor:crosshair;display:block;"></canvas>
+                            </div>
+                        </div>
+                </div>
+                <div class="modal-footer py-2 px-3">
+                    @if (!string.IsNullOrEmpty(_purchaseError))
+                    {
+                        <div class="alert alert-danger py-1 px-2 mb-0 small flex-grow-1">@_purchaseError</div>
+                    }
+                    <button class="btn btn-secondary btn-sm" @onclick="ClosePurchaseModal">@LS.T("common.cancel")</button>
+                    <button class="btn btn-primary btn-sm" @onclick="SavePurchase"
+                            disabled="@(!HasValidPurchaseItems())">
+                        <i class="ri-save-line me-1"></i>@LS.T("common.save")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 <SpkNewPersonModal @ref="_addModal" Title="@LS.T("pcs.addNewPc")" ShowPcOriginField="true"
-                   ExistingFullNames="@(new HashSet<string>(_allPcs.Select(p => p.FullName), StringComparer.OrdinalIgnoreCase))"
+                   ExistingFullNames="@(new HashSet<string>(_allPcsEx.Select(p => p.FullName), StringComparer.OrdinalIgnoreCase))"
                    OnSaved="SaveNewPc" />
 
 <style>
@@ -542,17 +668,34 @@
     .pc-stat-value { font-size:1.7rem; font-weight:800; line-height:1.1; position:relative; }
     .pc-stat-label { font-size:.7rem; opacity:.82; margin-top:4px; letter-spacing:.03em; text-transform:uppercase; }
     .pc-stat-sub   { font-size:.7rem; opacity:.68; margin-top:2px; }
+
+    .pc-list-table th { font-size:0.7rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; white-space:nowrap; }
+    .pc-list-table td { vertical-align:middle; }
+    .pc-th-sort { cursor:pointer; user-select:none; position:relative; padding-right:16px !important; }
+    .pc-th-sort::after { content:''; display:inline-block; width:0; height:0; border-left:4px solid transparent;
+                         border-right:4px solid transparent; margin-left:4px; vertical-align:middle; opacity:0.3;
+                         border-bottom:4px solid currentColor; }
+    .pc-th-sort.sort-asc::after { border-bottom:4px solid currentColor; border-top:none; opacity:0.8; }
+    .pc-th-sort.sort-desc::after { border-bottom:none; border-top:4px solid currentColor; opacity:0.8; }
+
+    .pending-purchases-card { border: none; border-radius: 14px; overflow: hidden; }
+    .pending-purchases-header { background: linear-gradient(135deg, #d97706, #f59e0b); border: none; }
 </style>
 
 @code {
-    List<PcListItem> _allPcs    = [];
-    int?             _selPcId;
-    string           _search    = "";
+    List<PcListItemEx> _allPcsEx    = [];
+    int?               _selPcId;
+    string             _search      = "";
+
+    // Sort state
+    string _sortCol  = "hoursLeft";
+    bool   _sortAsc  = true;
 
     PcDetailInfo?       _detail;
     PcStats?            _stats;
     List<PcPayment>?    _payments;
     List<PcSessionInfo>? _sessions;
+    List<PurchaseListItem>? _pendingPurchases;
 
     // Add PC modal
     SpkNewPersonModal _addModal = default!;
@@ -564,27 +707,69 @@
     DateTime? _editDob;
     DateTime? _editStartDate;
 
-    // Add payment
-    bool     _showAddPayment;
-    string   _payType       = "Auditing";
-    DateTime _payDate       = DateTime.Today;
-    int      _payHours, _payAmount, _payCourseId, _payRegistrarId, _payReferralId;
-    string   _payNotes = "", _payError = "";
+    // Purchase modal
+    bool     _showPurchaseModal;
+    DateTime _purchaseDate = DateTime.Today;
+    string   _purchaseNotes = "";
+    string   _purchaseError = "";
+    List<PurchaseItemModel> _purchaseItems = new();
 
     List<CourseItem>             _allCourses  = [];
     List<(int PersonId, string FullName)> _staff      = [];
     List<(int PersonId, string FullName)> _allPersons = [];
     int? _currentPersonId;
 
-    IEnumerable<PcListItem> FilteredPcs => string.IsNullOrWhiteSpace(_search)
-        ? _allPcs
-        : _allPcs.Where(p =>
-            p.FullName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
-            p.ExternalId.Contains(_search, StringComparison.OrdinalIgnoreCase));
+    class PurchaseItemModel
+    {
+        public string ItemType { get; set; } = "Auditing";
+        public int CourseId { get; set; }
+        public int HoursBought { get; set; }
+        public int AmountPaid { get; set; }
+        public int RegistrarId { get; set; }
+        public int ReferralId { get; set; }
+    }
+
+    IEnumerable<PcListItemEx> FilteredPcsEx
+    {
+        get
+        {
+            var list = string.IsNullOrWhiteSpace(_search)
+                ? _allPcsEx.AsEnumerable()
+                : _allPcsEx.Where(p =>
+                    p.FullName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                    p.ExternalId.Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+            list = (_sortCol, _sortAsc) switch
+            {
+                ("name", true)       => list.OrderBy(p => p.FullName),
+                ("name", false)      => list.OrderByDescending(p => p.FullName),
+                ("hoursLeft", true)  => list.OrderBy(p => p.RemainSec),
+                ("hoursLeft", false) => list.OrderByDescending(p => p.RemainSec),
+                ("totalTime", true)  => list.OrderBy(p => p.TotalSessionSec),
+                ("totalTime", false) => list.OrderByDescending(p => p.TotalSessionSec),
+                ("visits", true)     => list.OrderBy(p => p.AcademyVisits),
+                ("visits", false)    => list.OrderByDescending(p => p.AcademyVisits),
+                ("purchased", true)  => list.OrderBy(p => p.HoursPurchased),
+                ("purchased", false) => list.OrderByDescending(p => p.HoursPurchased),
+                _ => list.OrderBy(p => p.RemainSec)
+            };
+
+            return list;
+        }
+    }
+
+    void ToggleSort(string col)
+    {
+        if (_sortCol == col) _sortAsc = !_sortAsc;
+        else { _sortCol = col; _sortAsc = true; }
+    }
+
+    string SortClass(string col) =>
+        _sortCol != col ? "" : _sortAsc ? "sort-asc" : "sort-desc";
 
     protected override async Task OnInitializedAsync()
     {
-        _allPcs     = PcSvc.GetAllPcs();
+        _allPcsEx   = PcSvc.GetAllPcsExtended();
         _allCourses = CourseSvc.GetAllCourses();
         _staff      = PcSvc.GetStaff();
         _allPersons = PcSvc.GetAllPersons();
@@ -596,26 +781,26 @@
 
     void SelectPc(int pcId)
     {
-        _selPcId        = pcId;
-        _editMode       = false;
-        _showAddPayment = false;
+        _selPcId  = pcId;
+        _editMode = false;
         LoadDetail();
     }
 
     void LoadDetail()
     {
         if (!_selPcId.HasValue) return;
-        _detail   = PcSvc.GetPcDetail(_selPcId.Value);
-        _stats    = PcSvc.GetPcStats(_selPcId.Value);
-        _payments = PcSvc.GetPayments(_selPcId.Value);
-        _sessions = PcSvc.GetPcSessions(_selPcId.Value);
+        _detail            = PcSvc.GetPcDetail(_selPcId.Value);
+        _stats             = PcSvc.GetPcStats(_selPcId.Value);
+        _payments          = PcSvc.GetPayments(_selPcId.Value);
+        _sessions          = PcSvc.GetPcSessions(_selPcId.Value);
+        _pendingPurchases  = PcSvc.GetPendingPurchasesForPc(_selPcId.Value);
     }
 
     void SaveNewPc((string fn, string ln, string phone, string email, string dob, string sex,
                     string org, string referral, string origin, int courseId) d)
     {
         var newId = PcSvc.AddPcWithPerson(d.fn, d.ln, d.phone, d.email, d.dob, d.sex, d.origin);
-        _allPcs = PcSvc.GetAllPcs();
+        _allPcsEx = PcSvc.GetAllPcsExtended();
         SelectPc(newId);
     }
 
@@ -646,58 +831,154 @@
             _editStartDate?.ToString("yyyy-MM-dd") ?? "", _editNotes,
             _editDob?.ToString("yyyy-MM-dd") ?? "", _editSex, _editOrigin);
         _editMode = false;
-        _allPcs   = PcSvc.GetAllPcs();
+        _allPcsEx = PcSvc.GetAllPcsExtended();
         LoadDetail();
     }
 
-    void SavePayment()
+    // ── Purchase modal ──────────────────────────────────────────────
+
+    async Task OpenPurchaseModal()
     {
-        if (_payType == "Course" && _payCourseId <= 0)
-        { _payError = LS.T("pcs.errorSelectCourse"); return; }
-        if (_payType == "Auditing" && _payHours <= 0 && _payAmount <= 0)
-        { _payError = LS.T("pcs.errorEnterHoursOrAmount"); return; }
-        if (_payType == "Course" && _payAmount <= 0)
-        { _payError = LS.T("pcs.errorEnterAmount"); return; }
-
-        PcSvc.AddPayment(_selPcId!.Value, _payDate.ToString("yyyy-MM-dd"),
-            _payType == "Auditing" ? _payHours : 0, _payAmount,
-            string.IsNullOrWhiteSpace(_payNotes) ? null : _payNotes,
-            _payType,
-            _payType == "Course" ? _payCourseId : null,
-            _payRegistrarId > 0 ? _payRegistrarId : null,
-            _payReferralId  > 0 ? _payReferralId  : null);
-        _showAddPayment = false;
-        _payHours = _payAmount = _payCourseId = _payReferralId = 0;
-        _payRegistrarId = _currentPersonId ?? 0;
-        _payNotes = _payError = "";
-        _payType  = "Auditing";
-        _payDate  = DateTime.Today;
-        LoadDetail();
-    }
-
-    void SetPayAuditing() => _payType = "Auditing";
-    void SetPayCourse()   { _payType = "Course"; _payHours = 0; }
-
-    void ToggleAddPayment()
-    {
-        _showAddPayment = !_showAddPayment;
-        _payError = "";
-        _payType  = "Auditing";
-        if (_showAddPayment)
+        _showPurchaseModal = true;
+        _purchaseDate      = DateTime.Today;
+        _purchaseNotes     = "";
+        _purchaseError     = "";
+        _allCourses        = CourseSvc.GetAllCourses();
+        _purchaseItems     = new List<PurchaseItemModel>
         {
-            _allCourses     = CourseSvc.GetAllCourses();
-            _payRegistrarId = _currentPersonId ?? 0;
-            _payReferralId  = 0;
-        }
+            new PurchaseItemModel { RegistrarId = _currentPersonId ?? 0 }
+        };
+        StateHasChanged();
+        await Task.Delay(100);
+        await JS.InvokeVoidAsync("SignaturePad.init", "signatureCanvas", null);
     }
+
+    async Task ClosePurchaseModal()
+    {
+        _showPurchaseModal = false;
+        await JS.InvokeVoidAsync("SignaturePad.dispose", "signatureCanvas");
+    }
+
+    void AddPurchaseItem()
+    {
+        _purchaseItems.Add(new PurchaseItemModel { RegistrarId = _currentPersonId ?? 0 });
+    }
+
+    void RemovePurchaseItem(int idx)
+    {
+        if (_purchaseItems.Count > 1)
+            _purchaseItems.RemoveAt(idx);
+    }
+
+    void SetItemType(int idx, string type)
+    {
+        _purchaseItems[idx].ItemType = type;
+        if (type == "Course") _purchaseItems[idx].HoursBought = 0;
+    }
+
+    bool HasValidPurchaseItems()
+    {
+        return _purchaseItems.Any(item =>
+            (item.ItemType == "Auditing" && (item.HoursBought > 0 || item.AmountPaid > 0)) ||
+            (item.ItemType == "Course" && item.CourseId > 0 && item.AmountPaid > 0));
+    }
+
+    async Task SavePurchase()
+    {
+        _purchaseError = "";
+
+        // Validate items
+        foreach (var item in _purchaseItems)
+        {
+            if (item.ItemType == "Course" && item.CourseId <= 0)
+            { _purchaseError = LS.T("pcs.errorSelectCourse"); return; }
+            if (item.ItemType == "Auditing" && item.HoursBought <= 0 && item.AmountPaid <= 0)
+            { _purchaseError = LS.T("pcs.errorEnterHoursOrAmount"); return; }
+            if (item.ItemType == "Course" && item.AmountPaid <= 0)
+            { _purchaseError = LS.T("pcs.errorEnterAmount"); return; }
+        }
+
+        // Get signature — required
+        string? sigData = await JS.InvokeAsync<string?>("SignaturePad.getDataUrl", "signatureCanvas");
+        if (string.IsNullOrEmpty(sigData))
+        { _purchaseError = LS.T("pcs.signatureRequired"); return; }
+
+        var items = _purchaseItems.Select(pi => (
+            itemType:    pi.ItemType,
+            courseId:    pi.ItemType == "Course" ? (int?)pi.CourseId : null,
+            hoursBought: pi.ItemType == "Auditing" ? pi.HoursBought : 0,
+            amountPaid:  pi.AmountPaid,
+            registrarId: pi.RegistrarId > 0 ? (int?)pi.RegistrarId : null,
+            referralId:  pi.ReferralId > 0 ? (int?)pi.ReferralId : null
+        )).ToList();
+
+        PcSvc.CreatePurchase(
+            _selPcId!.Value,
+            _purchaseDate.ToString("yyyy-MM-dd"),
+            string.IsNullOrWhiteSpace(_purchaseNotes) ? null : _purchaseNotes,
+            sigData,
+            _currentPersonId,
+            items);
+
+        // Send automatic message to admins about the purchase
+        if (_currentPersonId.HasValue && _detail != null)
+        {
+            var totalAmt = items.Sum(i => i.amountPaid);
+            var totalHrs = items.Where(i => i.itemType == "Auditing").Sum(i => i.hoursBought);
+            var msg = $"Automatic msg: New purchase for {_detail.FullName}";
+            if (totalHrs > 0) msg += $" — {totalHrs}h";
+            if (totalAmt > 0) msg += $" — \u20AA{totalAmt}";
+            DashSvc.SendAutoMessageToAdmins(_currentPersonId.Value, msg);
+        }
+
+        await ClosePurchaseModal();
+        _allPcsEx = PcSvc.GetAllPcsExtended();
+        LoadDetail();
+    }
+
+    async Task ClearSignature()
+    {
+        await JS.InvokeVoidAsync("SignaturePad.clear", "signatureCanvas");
+    }
+
+    async Task PrintPurchase()
+    {
+        string? sigData = await JS.InvokeAsync<string?>("SignaturePad.getDataUrl", "signatureCanvas");
+
+        var printItems = _purchaseItems.Select(pi => new
+        {
+            itemType = pi.ItemType,
+            courseName = pi.ItemType == "Course" && pi.CourseId > 0
+                ? _allCourses.FirstOrDefault(c => c.CourseId == pi.CourseId)?.Name ?? "Course"
+                : "",
+            hoursBought = pi.HoursBought,
+            amountPaid = pi.AmountPaid,
+            registrarName = pi.RegistrarId > 0
+                ? _staff.FirstOrDefault(s => s.PersonId == pi.RegistrarId).FullName ?? ""
+                : "",
+            referralName = pi.ReferralId > 0
+                ? _allPersons.FirstOrDefault(p => p.PersonId == pi.ReferralId).FullName ?? ""
+                : ""
+        }).ToArray();
+
+        await JS.InvokeVoidAsync("PrintPurchase.printReceipt",
+            _detail!.FullName,
+            _purchaseDate.ToString("dd/MM/yyyy"),
+            printItems,
+            string.IsNullOrWhiteSpace(_purchaseNotes) ? null : _purchaseNotes,
+            sigData);
+    }
+
+    // ── Legacy payment methods (still used by payment table) ────────
 
     void DeletePayment(int paymentId)
     {
         PcSvc.DeletePayment(paymentId);
+        _allPcsEx = PcSvc.GetAllPcsExtended();
         LoadDetail();
     }
 
-    // Decimal hours label for PC list (e.g. "3.48 hrs" / "-1.25 hrs")
+    // Decimal hours label for PC list (e.g. "3:48" / "-1:25")
     static string HrsLabel(long secs)
     {
         var sign = secs < 0 ? "-" : "";
@@ -713,6 +994,9 @@
         int s = Math.Abs(secs);
         return $"{s / 3600}:{(s % 3600) / 60:00}";
     }
+    static string FormatDate(string dateStr) =>
+        DateOnly.TryParse(dateStr, out var d) ? d.ToString("dd/MM/yy") : dateStr;
+
     // H:MM for a signed long (e.g. hours remaining can be negative)
     static string HmmSigned(long secs)
     {

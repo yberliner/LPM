@@ -71,6 +71,17 @@ public class MenuDataService
             requiredRole: "Admin"
         ),
         new MainMenuItems(
+            path: "/Admin/Purchases",
+            type: "link",
+            title: "Purchases",
+            icon: "ri-shopping-cart-line",
+            svg: "",
+            selected: false,
+            active: false,
+            dirChange: false,
+            requiredRole: "Admin"
+        ),
+        new MainMenuItems(
             path: "/Admin/StaffPermissions",
             type: "link",
             title: "Staff Permissions",

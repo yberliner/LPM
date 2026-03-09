@@ -1,0 +1,480 @@
+@page "/Admin/Purchases"
+@attribute [Authorize]
+@using LPM.Services
+@using LPM.Auth
+@using Microsoft.AspNetCore.Authorization
+@inject PcService PcSvc
+@inject UserDb UserDb
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<div class="pu-page p-3 p-md-4">
+
+    @* ── Page Header ── *@
+    <div class="d-flex align-items-center mb-3 gap-3 flex-wrap">
+        <div>
+            <h4 class="mb-0 fw-bold pu-title">@LS.T("purchases.title")</h4>
+            <span class="text-muted" style="font-size:0.82rem;">@LS.T("purchases.subtitle")</span>
+        </div>
+        <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
+            @if (_pendingCount > 0)
+            {
+                <span class="badge rounded-pill text-bg-warning px-3 py-2" style="font-size:0.77rem;">
+                    <i class="ri-time-line me-1"></i>@_pendingCount @LS.T("purchases.pendingApproval")
+                </span>
+            }
+            <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                    @onclick="LoadData" disabled="@_loading">
+                <i class="ri-refresh-line @(_loading ? "pu-spin" : "")"></i> @LS.T("common.refresh")
+            </button>
+        </div>
+    </div>
+
+    @* ── Filter bar ── *@
+    <div class="card border-0 shadow-sm mb-4 pu-filter-card">
+        <div class="card-body py-3 px-4">
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="text-muted fw-semibold" style="font-size:0.8rem;">@LS.T("purchases.show")</span>
+                    <div class="btn-group pu-seg" role="group">
+                        <button type="button"
+                                class="btn btn-sm @(!_includeApproved ? "pu-seg-active" : "pu-seg-inactive")"
+                                @onclick="SwitchToPendingOnly">
+                            <i class="ri-time-line me-1"></i>@LS.T("purchases.pendingOnly")
+                        </button>
+                        <button type="button"
+                                class="btn btn-sm @(_includeApproved ? "pu-seg-active" : "pu-seg-inactive")"
+                                @onclick="SwitchToIncludeApproved">
+                            <i class="ri-checkbox-circle-line me-1"></i>@LS.T("purchases.includeApproved")
+                        </button>
+                    </div>
+                </div>
+
+                @if (_includeApproved)
+                {
+                    <div class="pu-filter-divider d-none d-sm-block"></div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span class="text-muted" style="font-size:0.8rem;">@LS.T("common.from")</span>
+                        <input type="date" class="form-control form-control-sm pu-date-input"
+                               style="width:145px;"
+                               value="@_fromDateStr"
+                               @onchange="e => _fromDateStr = e.Value?.ToString() ?? string.Empty" />
+                        <span class="text-muted" style="font-size:0.8rem;">@LS.T("common.to")</span>
+                        <input type="date" class="form-control form-control-sm pu-date-input"
+                               style="width:145px;"
+                               value="@_toDateStr"
+                               @onchange="e => _toDateStr = e.Value?.ToString() ?? string.Empty" />
+                        <button class="btn btn-sm pu-btn-apply d-flex align-items-center gap-1"
+                                @onclick="ApplyFilter" disabled="@_loading">
+                            <i class="ri-search-line"></i> @LS.T("common.apply")
+                        </button>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_filterError))
+                    {
+                        <span class="text-danger small d-flex align-items-center gap-1">
+                            <i class="ri-error-warning-line"></i>@_filterError
+                        </span>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+
+    @* ── Purchases Table ── *@
+    @if (_loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary mb-3" style="width:2.5rem;height:2.5rem;" role="status"></div>
+            <div class="text-muted">@LS.T("common.loading")</div>
+        </div>
+    }
+    else if (_purchases.Count == 0)
+    {
+        <div class="pu-empty-block mb-4">
+            <i class="ri-check-double-line text-success" style="font-size:1.8rem;"></i>
+            <div class="fw-semibold mt-2">@LS.T("purchases.noPurchases")</div>
+            <div class="text-muted small">@(_includeApproved ? LS.T("purchases.noPurchases") : LS.T("purchases.allApproved"))</div>
+        </div>
+    }
+    else
+    {
+        <div class="card border-0 shadow-sm">
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0 pu-table">
+                    <thead>
+                        <tr class="pu-thead">
+                            <th class="ps-4">@LS.T("purchases.pcName")</th>
+                            <th>@LS.T("purchases.date")</th>
+                            <th class="text-center">@LS.T("purchases.items")</th>
+                            <th class="text-end">@LS.T("purchases.totalHours")</th>
+                            <th class="text-end">@LS.T("purchases.totalAmount")</th>
+                            <th>@LS.T("purchases.createdBy")</th>
+                            <th class="text-center" style="width:60px;">@LS.T("pcs.signature")</th>
+                            <th class="text-center" style="width:105px;">@LS.T("common.status")</th>
+                            <th class="pe-4" style="width:180px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in _purchases)
+                        {
+                            bool isApproved = p.ApprovedStatus == "Approved";
+                            <tr class="@(isApproved ? "pu-row-approved" : "pu-row-pending")">
+                                <td class="ps-4 py-2">
+                                    <span class="fw-semibold" style="color:#1e3a5f;">@p.PcName</span>
+                                </td>
+                                <td class="py-2"><span class="small">@FormatDate(p.PurchaseDate)</span></td>
+                                <td class="text-center py-2">
+                                    <span class="badge rounded-pill bg-light border text-dark px-2" style="font-size:0.78rem;">
+                                        @GetItemCount(p.PurchaseId)
+                                    </span>
+                                </td>
+                                <td class="text-end py-2 small fw-semibold">@(p.TotalHours > 0 ? $"{p.TotalHours}h" : "\u2014")</td>
+                                <td class="text-end py-2 small fw-semibold">@(p.TotalAmount > 0 ? $"\u20AA{p.TotalAmount}" : "\u2014")</td>
+                                <td class="py-2 small text-muted">@p.CreatedByName</td>
+                                <td class="text-center py-2">
+                                    @{ var sig = _signatures.GetValueOrDefault(p.PurchaseId); }
+                                    @if (!string.IsNullOrEmpty(sig))
+                                    {
+                                        <img src="@sig" style="max-width:50px;max-height:28px;border-radius:3px;" alt="Sig" />
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted" style="font-size:0.7rem;">&mdash;</span>
+                                    }
+                                </td>
+                                <td class="text-center py-2">
+                                    @if (isApproved)
+                                    {
+                                        <span class="badge pu-badge-approved"><i class="ri-check-line me-1"></i>@LS.T("purchases.approved")</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge pu-badge-pending">@LS.T("purchases.pending")</span>
+                                    }
+                                </td>
+                                <td class="pe-4 py-1 text-end">
+                                    <div class="d-flex gap-1 justify-content-end">
+                                        <button class="btn btn-sm pu-btn-view d-flex align-items-center gap-1"
+                                                @onclick="() => ViewPurchase(p.PurchaseId)">
+                                            <i class="ri-eye-line"></i>@LS.T("purchases.viewDetails")
+                                        </button>
+                                        @if (!isApproved)
+                                        {
+                                            <button class="btn btn-sm pu-btn-approve d-flex align-items-center gap-1"
+                                                    @onclick="() => ApprovePurchase(p.PurchaseId)" disabled="@_busy">
+                                                <i class="ri-check-line"></i>@LS.T("purchases.approve")
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@* ── Detail Modal ── *@
+@if (_viewDetail != null)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5);z-index:1050;">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content" style="border-radius:14px;">
+                <div class="modal-header py-2 px-3">
+                    <h5 class="modal-title fw-bold mb-0">
+                        <i class="ri-shopping-cart-line me-2"></i>@LS.T("purchases.purchaseDetail")
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="() => _viewDetail = null"></button>
+                </div>
+                <div class="modal-body p-3">
+                    <div class="text-center mb-3">
+                        <div style="font-size:1.6rem;font-weight:800;color:#1e3a5f;">@_viewDetail.PcName</div>
+                        <div class="text-muted small">@FormatDate(_viewDetail.PurchaseDate)</div>
+                    </div>
+
+                    @if (_viewDetail.Items.Count > 0)
+                    {
+                        <table class="table table-sm table-bordered mb-3">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="small">@LS.T("pcs.type")</th>
+                                    <th class="small text-center">@LS.T("pcs.hrsVis")</th>
+                                    <th class="small text-end">@LS.T("pcs.amount")</th>
+                                    <th class="small">@LS.T("courses.registrar")</th>
+                                    <th class="small">@LS.T("courses.referral")</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in _viewDetail.Items)
+                                {
+                                    <tr>
+                                        <td class="small">
+                                            @if (item.ItemType == "Course")
+                                            {
+                                                <span class="badge rounded-pill" style="background:#e0f2fe;color:#0369a1;font-size:.72rem;">
+                                                    <i class="ri-book-2-line me-1"></i>@(item.CourseName ?? "Course")
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge rounded-pill" style="background:#f0fdf4;color:#15803d;font-size:.72rem;">
+                                                    <i class="ri-timer-flash-line me-1"></i>@LS.T("pcs.auditing")
+                                                </span>
+                                            }
+                                        </td>
+                                        <td class="small text-center fw-semibold">
+                                            @if (item.ItemType == "Course") { <span style="color:#059669;">Course</span> }
+                                            else { @($"{item.HoursBought}h") }
+                                        </td>
+                                        <td class="small text-end">@(item.AmountPaid > 0 ? $"\u20AA{item.AmountPaid}" : "\u2014")</td>
+                                        <td class="small text-muted">@item.RegistrarName</td>
+                                        <td class="small text-muted">@item.ReferralName</td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot class="table-light">
+                                <tr>
+                                    <td class="small fw-semibold">@LS.T("stats.total")</td>
+                                    <td class="small text-center fw-semibold">
+                                        @{ var hrs = _viewDetail.Items.Where(i => i.ItemType == "Auditing").Sum(i => i.HoursBought); }
+                                        @(hrs > 0 ? $"{hrs}h" : "\u2014")
+                                    </td>
+                                    <td class="small text-end fw-semibold">
+                                        @{ var totalAmt = _viewDetail.Items.Sum(i => i.AmountPaid); }
+                                        @(totalAmt > 0 ? $"\u20AA{totalAmt}" : "\u2014")
+                                    </td>
+                                    <td colspan="2"></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    }
+                    else
+                    {
+                        <div class="text-muted small text-center py-3">@LS.T("purchases.noItems")</div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(_viewDetail.Notes))
+                    {
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold mb-1">@LS.T("pcs.notes")</label>
+                            <div class="border rounded p-2 small bg-light">@_viewDetail.Notes</div>
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(_viewDetail.SignatureData))
+                    {
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold mb-1">@LS.T("pcs.signature")</label>
+                            <div class="border rounded p-2 text-center bg-light">
+                                <img src="@_viewDetail.SignatureData" style="max-width:300px;max-height:120px;" alt="Signature" />
+                            </div>
+                        </div>
+                    }
+
+                    <div class="d-flex gap-3 text-muted small">
+                        @if (!string.IsNullOrEmpty(_viewDetail.CreatedByName))
+                        {
+                            <span><i class="ri-user-line me-1"></i>@LS.T("purchases.createdBy"): @_viewDetail.CreatedByName</span>
+                        }
+                        @if (!string.IsNullOrEmpty(_viewDetail.ApprovedByName))
+                        {
+                            <span><i class="ri-check-line me-1"></i>@LS.T("purchases.approvedBy"): @_viewDetail.ApprovedByName</span>
+                        }
+                    </div>
+                </div>
+                <div class="modal-footer py-2 px-3">
+                    @if (_viewDetail.ApprovedStatus != "Approved")
+                    {
+                        <button class="btn btn-sm btn-success" @onclick="() => { ApprovePurchase(_viewDetail.PurchaseId); _viewDetail = null; }">
+                            <i class="ri-check-line me-1"></i>@LS.T("purchases.approve")
+                        </button>
+                    }
+                    <button class="btn btn-sm btn-secondary" @onclick="() => _viewDetail = null">@LS.T("common.close")</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Toast ── *@
+@if (!string.IsNullOrEmpty(_msg))
+{
+    <div class="position-fixed bottom-0 end-0 p-4" style="z-index:1200;">
+        <div class="toast show align-items-center border-0 shadow-lg @(_msgIsError ? "text-bg-danger" : "text-bg-success")"
+             role="alert" style="min-width:300px;border-radius:12px;">
+            <div class="d-flex">
+                <div class="toast-body d-flex align-items-center gap-2 fw-semibold">
+                    <i class="@(_msgIsError ? "ri-error-warning-line" : "ri-checkbox-circle-line") fs-5"></i>
+                    @_msg
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto"
+                        @onclick='() => _msg = null'></button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .pu-page  { max-width: 1200px; }
+    .pu-title { color: #1e3a5f; }
+
+    .pu-empty-block { text-align: center; padding: 36px; background: #f8faff; border-radius: 12px; border: 1px dashed #c7d7f0; }
+
+    .pu-filter-card { border-radius: 12px; }
+    .pu-filter-divider { width: 1px; height: 28px; background: #dee2e6; }
+
+    .pu-seg { border-radius: 8px; overflow: hidden; border: 1px solid #dee2e6; }
+    .pu-seg .btn { border: none; border-radius: 0; font-size: 0.8rem; font-weight: 600; padding: 5px 14px; }
+    .pu-seg-active   { background: #1e3a5f !important; color: #fff !important; }
+    .pu-seg-inactive { background: #fff !important; color: #6c757d !important; }
+    .pu-seg-inactive:hover { background: #f1f3f9 !important; color: #1e3a5f !important; }
+
+    .pu-date-input { font-size: 0.83rem; border-color: #ced4da; }
+    .pu-date-input:focus { border-color: #2d6a9f; box-shadow: none; }
+    .pu-btn-apply { background: #2d6a9f; color: #fff; border: none; border-radius: 7px; font-size: 0.8rem; font-weight: 600; }
+    .pu-btn-apply:hover:not(:disabled) { background: #1e3a5f; color: #fff; }
+
+    .pu-table { font-size: 0.85rem; }
+    .pu-thead tr { background: #eef1f8; }
+    .pu-thead th { font-size: 0.69rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6c757d; padding-top: 7px; padding-bottom: 7px; border-bottom: 1px solid #dce3f0; border-top: none; }
+
+    .pu-row-pending td  { border-bottom: 1px solid #f0f2f8; transition: background .12s; }
+    .pu-row-pending:hover td { background: #f5f7ff; }
+    .pu-row-approved td { border-bottom: 1px solid #bbf7d0; background: #f0fdf4; }
+    .pu-row-approved:hover td { background: #dcfce7; }
+
+    .pu-badge-pending  { background: #fef3c7; color: #92400e; font-size: 0.73rem; }
+    .pu-badge-approved { background: #d1fae5; color: #065f46; font-size: 0.73rem; }
+
+    .pu-btn-view { background: transparent; color: #2d6a9f; border: 1px solid #2d6a9f; border-radius: 7px; font-size: 0.78rem; padding: 3px 10px; font-weight: 600; }
+    .pu-btn-view:hover { background: #2d6a9f; color: #fff; }
+    .pu-btn-approve { background: #16a34a; color: #fff; border: none; border-radius: 7px; font-size: 0.78rem; padding: 3px 10px; font-weight: 600; }
+    .pu-btn-approve:hover:not(:disabled) { background: #15803d; color: #fff; }
+
+    .pu-spin { display: inline-block; animation: pu-spin-anim 1s linear infinite; }
+    @@keyframes pu-spin-anim { to { transform: rotate(360deg); } }
+</style>
+
+@code {
+    private bool    _includeApproved = false;
+    private string  _fromDateStr = "";
+    private string  _toDateStr   = "";
+    private string? _filterError;
+
+    private List<PurchaseListItem> _purchases = new();
+    private Dictionary<int, int>   _itemCounts = new();
+    private Dictionary<int, string?> _signatures = new();
+    private PurchaseDetail?        _viewDetail;
+
+    private bool _loading = true;
+    private bool _busy;
+    private string? _msg;
+    private bool _msgIsError;
+    private int? _currentPersonId;
+
+    private int _pendingCount => _purchases.Count(p => p.ApprovedStatus != "Approved");
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (!authState.User.IsInRole("Admin"))
+        {
+            Navigation.NavigateTo("/Home", forceLoad: false);
+            return;
+        }
+
+        var username = authState.User.Identity?.Name;
+        _currentPersonId = username != null ? PcSvc.GetPersonIdByUsername(username) : null;
+
+        await LoadData();
+    }
+
+    private async Task SwitchToPendingOnly()
+    {
+        _includeApproved = false;
+        _filterError = null;
+        await LoadData();
+    }
+
+    private void SwitchToIncludeApproved()
+    {
+        if (_includeApproved) return;
+        _includeApproved = true;
+        if (string.IsNullOrEmpty(_fromDateStr))
+            _fromDateStr = DateOnly.FromDateTime(DateTime.Today.AddDays(-28)).ToString("yyyy-MM-dd");
+        if (string.IsNullOrEmpty(_toDateStr))
+            _toDateStr = DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd");
+    }
+
+    private async Task ApplyFilter()
+    {
+        _filterError = null;
+        if (!DateOnly.TryParse(_fromDateStr, out var from)) { _filterError = "Enter a valid From date."; return; }
+        if (!DateOnly.TryParse(_toDateStr,   out var to))   { _filterError = "Enter a valid To date."; return; }
+        if (from > to) { _filterError = "From date must be on or before To date."; return; }
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        StateHasChanged();
+        await Task.Yield();
+
+        DateOnly? from = null, to = null;
+        if (_includeApproved && DateOnly.TryParse(_fromDateStr, out var f)) from = f;
+        if (_includeApproved && DateOnly.TryParse(_toDateStr,   out var t)) to   = t;
+
+        _purchases = PcSvc.GetPurchases(_includeApproved, from, to);
+
+        // Pre-load item counts and signatures
+        _itemCounts.Clear();
+        _signatures.Clear();
+        foreach (var p in _purchases)
+        {
+            var detail = PcSvc.GetPurchaseDetail(p.PurchaseId);
+            _itemCounts[p.PurchaseId] = detail?.Items.Count ?? 0;
+            _signatures[p.PurchaseId] = detail?.SignatureData;
+        }
+
+        _loading = false;
+    }
+
+    private void ApprovePurchase(int purchaseId)
+    {
+        if (!_currentPersonId.HasValue) return;
+        _busy = true;
+        PcSvc.ApprovePurchase(purchaseId, _currentPersonId.Value);
+        _busy = false;
+
+        // Update in-memory
+        var idx = _purchases.FindIndex(p => p.PurchaseId == purchaseId);
+        if (idx >= 0)
+        {
+            if (_includeApproved)
+            {
+                _purchases[idx] = _purchases[idx] with { ApprovedStatus = "Approved" };
+            }
+            else
+            {
+                _purchases.RemoveAt(idx);
+            }
+        }
+        ShowMsg("Purchase approved.", false);
+    }
+
+    private void ViewPurchase(int purchaseId)
+    {
+        _viewDetail = PcSvc.GetPurchaseDetail(purchaseId);
+    }
+
+    private int GetItemCount(int purchaseId) =>
+        _itemCounts.GetValueOrDefault(purchaseId, 0);
+
+    private void ShowMsg(string msg, bool isError) { _msg = msg; _msgIsError = isError; }
+
+    private static string FormatDate(string dateStr) =>
+        DateOnly.TryParse(dateStr, out var d) ? d.ToString("dd/MM/yy") : dateStr;
+}
