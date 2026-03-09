@@ -83,6 +83,17 @@ window.SignaturePad = {
         return pad.canvas.toDataURL('image/png');
     },
 
+    drawImage: function (canvasId, dataUrl) {
+        const pad = this._pads[canvasId];
+        if (!pad) return;
+        const img = new Image();
+        img.onload = function () {
+            pad.ctx.drawImage(img, 0, 0, pad.canvas.width, pad.canvas.height);
+            pad.state.hasContent = true;
+        };
+        img.src = dataUrl;
+    },
+
     dispose: function (canvasId) {
         delete this._pads[canvasId];
     }

@@ -26,7 +26,9 @@ public record PurchaseItemInfo(int PurchaseItemId, string ItemType, int? CourseI
     string? RegistrarName, int? ReferralId, string? ReferralName);
 public record PurchaseDetail(int PurchaseId, int PcId, string PcName, string PurchaseDate,
     string? Notes, string? SignatureData, string ApprovedStatus, string? ApprovedByName,
-    string? CreatedByName, List<PurchaseItemInfo> Items);
+    string? CreatedByName, List<PurchaseItemInfo> Items, List<PurchasePaymentMethodInfo> PaymentMethods);
+public record PurchasePaymentMethodInfo(int PaymentMethodId, string MethodType,
+    int Amount, string? PaymentDate, bool IsMoneyInBank, string? MoneyInBankDate);
 
 public class PcService
 {
@@ -139,6 +141,33 @@ public class PcService
                 FOREIGN KEY (PurchaseId) REFERENCES Purchases(PurchaseId)
             )";
         c3.ExecuteNonQuery();
+
+        // PurchasePaymentMethods table
+        using var c4 = conn.CreateCommand();
+        c4.CommandText = @"
+            CREATE TABLE IF NOT EXISTS PurchasePaymentMethods (
+                PaymentMethodId INTEGER PRIMARY KEY AUTOINCREMENT,
+                PurchaseId      INTEGER NOT NULL,
+                MethodType      TEXT NOT NULL DEFAULT 'Cash',
+                Amount          INTEGER NOT NULL DEFAULT 0,
+                PaymentDate     TEXT,
+                IsMoneyInBank   INTEGER NOT NULL DEFAULT 0,
+                MoneyInBankDate TEXT,
+                FOREIGN KEY (PurchaseId) REFERENCES Purchases(PurchaseId)
+            )";
+        c4.ExecuteNonQuery();
+
+        // Add PurchaseId column to Payments for linking
+        {
+            using var ck = conn.CreateCommand();
+            ck.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Payments') WHERE name='PurchaseId'";
+            if ((long)(ck.ExecuteScalar() ?? 0L) == 0)
+            {
+                using var alt = conn.CreateCommand();
+                alt.CommandText = "ALTER TABLE Payments ADD COLUMN PurchaseId INTEGER";
+                alt.ExecuteNonQuery();
+            }
+        }
 
         // One-time migration: copy legacy Phone/Email from PCs → Persons
         using var migPhone = conn.CreateCommand();
@@ -514,7 +543,8 @@ public class PcService
 
     public int CreatePurchase(int pcId, string date, string? notes, string? signatureData,
         int? createdByPersonId,
-        List<(string itemType, int? courseId, int hoursBought, int amountPaid, int? registrarId, int? referralId)> items)
+        List<(string itemType, int? courseId, int hoursBought, int amountPaid, int? registrarId, int? referralId)> items,
+        List<(string methodType, int amount, string? paymentDate)>? paymentMethods = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -572,14 +602,32 @@ public class PcService
             }
         }
 
+        // Insert payment methods
+        if (paymentMethods != null)
+        {
+            foreach (var pm in paymentMethods)
+            {
+                using var pmCmd = conn.CreateCommand();
+                pmCmd.Transaction = tx;
+                pmCmd.CommandText = @"
+                    INSERT INTO PurchasePaymentMethods (PurchaseId, MethodType, Amount, PaymentDate)
+                    VALUES (@pid, @type, @amt, @date)";
+                pmCmd.Parameters.AddWithValue("@pid", purchaseId);
+                pmCmd.Parameters.AddWithValue("@type", pm.methodType);
+                pmCmd.Parameters.AddWithValue("@amt", pm.amount);
+                pmCmd.Parameters.AddWithValue("@date", (object?)pm.paymentDate ?? DBNull.Value);
+                pmCmd.ExecuteNonQuery();
+            }
+        }
+
         // Also insert into Payments table for backward compatibility (hours tracking)
         foreach (var item in items)
         {
             using var payCmd = conn.CreateCommand();
             payCmd.Transaction = tx;
             payCmd.CommandText = @"
-                INSERT INTO Payments (PcId, PaymentDate, HoursBought, AmountPaid, Notes, PaymentType, CourseId, RegistrarId, ReferralId)
-                VALUES (@pcId, @date, @hrs, @amt, @notes, @type, @cid, @regId, @refId)";
+                INSERT INTO Payments (PcId, PaymentDate, HoursBought, AmountPaid, Notes, PaymentType, CourseId, RegistrarId, ReferralId, PurchaseId)
+                VALUES (@pcId, @date, @hrs, @amt, @notes, @type, @cid, @regId, @refId, @purchaseId)";
             payCmd.Parameters.AddWithValue("@pcId", pcId);
             payCmd.Parameters.AddWithValue("@date", date);
             payCmd.Parameters.AddWithValue("@hrs", item.hoursBought);
@@ -589,6 +637,7 @@ public class PcService
             payCmd.Parameters.AddWithValue("@cid", item.courseId.HasValue ? (object)item.courseId.Value : DBNull.Value);
             payCmd.Parameters.AddWithValue("@regId", item.registrarId.HasValue ? (object)item.registrarId.Value : DBNull.Value);
             payCmd.Parameters.AddWithValue("@refId", item.referralId.HasValue ? (object)item.referralId.Value : DBNull.Value);
+            payCmd.Parameters.AddWithValue("@purchaseId", purchaseId);
             payCmd.ExecuteNonQuery();
         }
 
@@ -673,6 +722,9 @@ public class PcService
         using var r = cmd.ExecuteReader();
         if (!r.Read()) return null;
 
+        var items = new List<PurchaseItemInfo>();
+        var paymentMethods = new List<PurchasePaymentMethodInfo>();
+
         var detail = new PurchaseDetail(
             r.GetInt32(0), r.GetInt32(1), r.GetString(2).Trim(), r.GetString(3),
             r.IsDBNull(4) ? null : r.GetString(4),
@@ -680,7 +732,7 @@ public class PcService
             r.GetString(6),
             r.IsDBNull(7) ? null : r.GetString(7).Trim(),
             r.IsDBNull(8) ? null : r.GetString(8).Trim(),
-            new List<PurchaseItemInfo>());
+            items, paymentMethods);
         r.Close();
 
         using var iCmd = conn.CreateCommand();
@@ -700,7 +752,7 @@ public class PcService
         iCmd.Parameters.AddWithValue("@id", purchaseId);
         using var ir = iCmd.ExecuteReader();
         while (ir.Read())
-            detail.Items.Add(new PurchaseItemInfo(
+            items.Add(new PurchaseItemInfo(
                 ir.GetInt32(0), ir.GetString(1),
                 ir.IsDBNull(2) ? null : ir.GetInt32(2),
                 ir.IsDBNull(3) ? null : ir.GetString(3),
@@ -709,6 +761,21 @@ public class PcService
                 ir.IsDBNull(7) ? null : ir.GetString(7).Trim(),
                 ir.IsDBNull(8) ? null : ir.GetInt32(8),
                 ir.IsDBNull(9) ? null : ir.GetString(9).Trim()));
+        ir.Close();
+
+        // Load payment methods
+        using var pmCmd = conn.CreateCommand();
+        pmCmd.CommandText = @"
+            SELECT PaymentMethodId, MethodType, Amount, PaymentDate, IsMoneyInBank, MoneyInBankDate
+            FROM PurchasePaymentMethods WHERE PurchaseId = @id ORDER BY PaymentMethodId";
+        pmCmd.Parameters.AddWithValue("@id", purchaseId);
+        using var pmr = pmCmd.ExecuteReader();
+        while (pmr.Read())
+            paymentMethods.Add(new PurchasePaymentMethodInfo(
+                pmr.GetInt32(0), pmr.GetString(1), pmr.GetInt32(2),
+                pmr.IsDBNull(3) ? null : pmr.GetString(3),
+                pmr.GetInt32(4) == 1,
+                pmr.IsDBNull(5) ? null : pmr.GetString(5)));
 
         return detail;
     }
@@ -750,6 +817,170 @@ public class PcService
                 r.GetString(9),
                 r.GetInt32(10), r.GetInt32(11)));
         return list;
+    }
+
+    public List<PurchaseListItem> GetAllPurchasesForPc(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT p.PurchaseId, p.PcId,
+                   TRIM(per.FirstName || ' ' || COALESCE(NULLIF(per.LastName,''), '')) AS PcName,
+                   p.PurchaseDate, p.Notes, p.ApprovedStatus,
+                   TRIM(COALESCE(ap.FirstName,'') || ' ' || COALESCE(NULLIF(ap.LastName,''),'')) AS ApprovedByName,
+                   p.ApprovedAt,
+                   TRIM(COALESCE(cr.FirstName,'') || ' ' || COALESCE(NULLIF(cr.LastName,''),'')) AS CreatedByName,
+                   p.CreatedAt,
+                   COALESCE(items.TotalAmount, 0),
+                   COALESCE(items.TotalHours, 0)
+            FROM Purchases p
+            JOIN Persons per ON per.PersonId = p.PcId
+            LEFT JOIN Persons ap ON ap.PersonId = p.ApprovedByPersonId
+            LEFT JOIN Persons cr ON cr.PersonId = p.CreatedByPersonId
+            LEFT JOIN (
+                SELECT PurchaseId, SUM(AmountPaid) AS TotalAmount, SUM(HoursBought) AS TotalHours
+                FROM PurchaseItems GROUP BY PurchaseId
+            ) items ON items.PurchaseId = p.PurchaseId
+            WHERE p.PcId = @pcId
+            ORDER BY p.PurchaseDate DESC, p.PurchaseId DESC";
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        var list = new List<PurchaseListItem>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new PurchaseListItem(
+                r.GetInt32(0), r.GetInt32(1), r.GetString(2).Trim(), r.GetString(3),
+                r.IsDBNull(4) ? null : r.GetString(4),
+                r.GetString(5),
+                r.IsDBNull(6) ? null : r.GetString(6).Trim(),
+                r.IsDBNull(7) ? null : r.GetString(7),
+                r.IsDBNull(8) ? null : r.GetString(8).Trim(),
+                r.GetString(9),
+                r.GetInt32(10), r.GetInt32(11)));
+        return list;
+    }
+
+    public void UpdatePurchase(int purchaseId, string date, string? notes,
+        List<(string itemType, int? courseId, int hoursBought, int amountPaid, int? registrarId, int? referralId)> items,
+        List<(string methodType, int amount, string? paymentDate)> paymentMethods)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var tx = conn.BeginTransaction();
+
+        // Get PcId for backward compat Payments
+        int pcId;
+        using (var q = conn.CreateCommand())
+        {
+            q.Transaction = tx;
+            q.CommandText = "SELECT PcId FROM Purchases WHERE PurchaseId = @id";
+            q.Parameters.AddWithValue("@id", purchaseId);
+            pcId = (int)(long)q.ExecuteScalar()!;
+        }
+
+        // Update header + reset status to Draft
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = @"
+                UPDATE Purchases SET PurchaseDate = @date, Notes = @notes,
+                    ApprovedStatus = 'Draft', ApprovedByPersonId = NULL, ApprovedAt = NULL
+                WHERE PurchaseId = @id";
+            cmd.Parameters.AddWithValue("@id", purchaseId);
+            cmd.Parameters.AddWithValue("@date", date);
+            cmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
+            cmd.ExecuteNonQuery();
+        }
+
+        // Delete old items + recreate
+        using (var d = conn.CreateCommand()) { d.Transaction = tx; d.CommandText = "DELETE FROM PurchaseItems WHERE PurchaseId = @id"; d.Parameters.AddWithValue("@id", purchaseId); d.ExecuteNonQuery(); }
+
+        foreach (var item in items)
+        {
+            using var iCmd = conn.CreateCommand();
+            iCmd.Transaction = tx;
+            iCmd.CommandText = @"
+                INSERT INTO PurchaseItems (PurchaseId, ItemType, CourseId, HoursBought, AmountPaid, RegistrarId, ReferralId)
+                VALUES (@pid, @type, @cid, @hrs, @amt, @regId, @refId)";
+            iCmd.Parameters.AddWithValue("@pid", purchaseId);
+            iCmd.Parameters.AddWithValue("@type", item.itemType);
+            iCmd.Parameters.AddWithValue("@cid", item.courseId.HasValue ? (object)item.courseId.Value : DBNull.Value);
+            iCmd.Parameters.AddWithValue("@hrs", item.hoursBought);
+            iCmd.Parameters.AddWithValue("@amt", item.amountPaid);
+            iCmd.Parameters.AddWithValue("@regId", item.registrarId.HasValue ? (object)item.registrarId.Value : DBNull.Value);
+            iCmd.Parameters.AddWithValue("@refId", item.referralId.HasValue ? (object)item.referralId.Value : DBNull.Value);
+            iCmd.ExecuteNonQuery();
+        }
+
+        // Delete old payment methods + recreate
+        using (var d = conn.CreateCommand()) { d.Transaction = tx; d.CommandText = "DELETE FROM PurchasePaymentMethods WHERE PurchaseId = @id"; d.Parameters.AddWithValue("@id", purchaseId); d.ExecuteNonQuery(); }
+
+        foreach (var pm in paymentMethods)
+        {
+            using var pmCmd = conn.CreateCommand();
+            pmCmd.Transaction = tx;
+            pmCmd.CommandText = @"
+                INSERT INTO PurchasePaymentMethods (PurchaseId, MethodType, Amount, PaymentDate)
+                VALUES (@pid, @type, @amt, @date)";
+            pmCmd.Parameters.AddWithValue("@pid", purchaseId);
+            pmCmd.Parameters.AddWithValue("@type", pm.methodType);
+            pmCmd.Parameters.AddWithValue("@amt", pm.amount);
+            pmCmd.Parameters.AddWithValue("@date", (object?)pm.paymentDate ?? DBNull.Value);
+            pmCmd.ExecuteNonQuery();
+        }
+
+        // Update legacy Payments: delete old linked rows + recreate
+        using (var d = conn.CreateCommand()) { d.Transaction = tx; d.CommandText = "DELETE FROM Payments WHERE PurchaseId = @id"; d.Parameters.AddWithValue("@id", purchaseId); d.ExecuteNonQuery(); }
+
+        foreach (var item in items)
+        {
+            using var payCmd = conn.CreateCommand();
+            payCmd.Transaction = tx;
+            payCmd.CommandText = @"
+                INSERT INTO Payments (PcId, PaymentDate, HoursBought, AmountPaid, Notes, PaymentType, CourseId, RegistrarId, ReferralId, PurchaseId)
+                VALUES (@pcId, @date, @hrs, @amt, @notes, @type, @cid, @regId, @refId, @purchaseId)";
+            payCmd.Parameters.AddWithValue("@pcId", pcId);
+            payCmd.Parameters.AddWithValue("@date", date);
+            payCmd.Parameters.AddWithValue("@hrs", item.hoursBought);
+            payCmd.Parameters.AddWithValue("@amt", item.amountPaid);
+            payCmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
+            payCmd.Parameters.AddWithValue("@type", item.itemType);
+            payCmd.Parameters.AddWithValue("@cid", item.courseId.HasValue ? (object)item.courseId.Value : DBNull.Value);
+            payCmd.Parameters.AddWithValue("@regId", item.registrarId.HasValue ? (object)item.registrarId.Value : DBNull.Value);
+            payCmd.Parameters.AddWithValue("@refId", item.referralId.HasValue ? (object)item.referralId.Value : DBNull.Value);
+            payCmd.Parameters.AddWithValue("@purchaseId", purchaseId);
+            payCmd.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+    }
+
+    public void SetMoneyInBank(int paymentMethodId, bool isInBank)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE PurchasePaymentMethods
+            SET IsMoneyInBank = @val, MoneyInBankDate = CASE WHEN @val = 1 THEN datetime('now') ELSE NULL END
+            WHERE PaymentMethodId = @id";
+        cmd.Parameters.AddWithValue("@id", paymentMethodId);
+        cmd.Parameters.AddWithValue("@val", isInBank ? 1 : 0);
+        cmd.ExecuteNonQuery();
+    }
+
+    public void DeletePurchase(int purchaseId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var tx = conn.BeginTransaction();
+
+        using (var d1 = conn.CreateCommand()) { d1.Transaction = tx; d1.CommandText = "DELETE FROM PurchasePaymentMethods WHERE PurchaseId = @id"; d1.Parameters.AddWithValue("@id", purchaseId); d1.ExecuteNonQuery(); }
+        using (var d2 = conn.CreateCommand()) { d2.Transaction = tx; d2.CommandText = "DELETE FROM PurchaseItems WHERE PurchaseId = @id"; d2.Parameters.AddWithValue("@id", purchaseId); d2.ExecuteNonQuery(); }
+        using (var d3 = conn.CreateCommand()) { d3.Transaction = tx; d3.CommandText = "DELETE FROM Payments WHERE PurchaseId = @id"; d3.Parameters.AddWithValue("@id", purchaseId); d3.ExecuteNonQuery(); }
+        using (var d4 = conn.CreateCommand()) { d4.Transaction = tx; d4.CommandText = "DELETE FROM Purchases WHERE PurchaseId = @id"; d4.Parameters.AddWithValue("@id", purchaseId); d4.ExecuteNonQuery(); }
+
+        tx.Commit();
     }
 
     public void ApprovePurchase(int purchaseId, int approvedByPersonId)

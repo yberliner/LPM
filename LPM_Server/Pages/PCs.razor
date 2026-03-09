@@ -253,71 +253,90 @@
                 </div>
             }
 
-            @* Payments card with Purchase button *@
-            <div class="card shadow-sm mb-3">
-                <div class="card-header d-flex align-items-center justify-content-between py-2">
-                    <span class="fw-semibold small"><i class="ri-bank-card-line me-1"></i>@LS.T("pcs.payments")</span>
-                    <button class="btn btn-sm btn-outline-primary py-0 px-2"
-                            style="font-size:0.75rem;"
-                            @onclick="OpenPurchaseModal">
-                        <i class="ri-shopping-cart-line me-1"></i>@LS.T("pcs.purchase")
-                    </button>
+            @* Combined Purchases & Payments card *@
+            <div class="card shadow-sm mb-3 purchases-card">
+                <div class="card-header d-flex align-items-center justify-content-between py-2"
+                     style="background:linear-gradient(135deg,#1e3a5f,#2d6a9f);border:none;">
+                    <span class="fw-semibold small text-white">
+                        <i class="ri-shopping-cart-line me-1"></i>@LS.T("pcs.payments")
+                    </span>
+                    <div class="d-flex align-items-center gap-2">
+                        @if (_pcPurchases != null)
+                        {
+                            var unapproved = _pcPurchases.Count(p => p.ApprovedStatus != "Approved");
+                            @if (unapproved > 0)
+                            {
+                                <span class="badge rounded-pill bg-warning text-dark fw-bold" style="font-size:.7rem;">
+                                    @unapproved @LS.T("purchases.pending")
+                                </span>
+                            }
+                        }
+                        <button class="btn btn-sm btn-outline-light py-0 px-2" style="font-size:0.75rem;"
+                                @onclick="OpenPurchaseModal">
+                            <i class="ri-add-line me-1"></i>@LS.T("pcs.purchase")
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body p-0">
-                    @if (_payments?.Count > 0)
+                    @if (_pcPurchases?.Count > 0)
                     {
-                        <table class="table table-sm table-hover mb-0">
+                        <table class="table table-sm mb-0">
                             <thead class="table-light">
                                 <tr>
                                     <th class="small ps-3">@LS.T("pcs.date")</th>
-                                    <th class="small">@LS.T("pcs.typeCourse")</th>
-                                    <th class="small text-center">@LS.T("pcs.hrsVis")</th>
-                                    <th class="small text-end">@LS.T("pcs.amount")</th>
-                                    <th class="small">@LS.T("courses.registrar")</th>
-                                    <th class="small">@LS.T("courses.referral")</th>
-                                    <th style="width:36px;"></th>
+                                    <th class="small text-center">@LS.T("purchases.totalHours")</th>
+                                    <th class="small text-end">@LS.T("purchases.totalAmount")</th>
+                                    <th class="small">@LS.T("pcs.notes")</th>
+                                    <th class="small">@LS.T("purchases.createdBy")</th>
+                                    <th class="small text-center">@LS.T("common.status")</th>
+                                    <th style="width:70px;"></th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var pay in _payments)
+                                @foreach (var pp in _pcPurchases)
                                 {
-                                    <tr>
-                                        <td class="small ps-3">@pay.Date</td>
-                                        <td class="small">
-                                            @if (pay.PaymentType == "Course")
+                                    var isApproved = pp.ApprovedStatus == "Approved";
+                                    var isDraft = pp.ApprovedStatus == "Draft";
+                                    var rowBg = isApproved ? "#f0fdf4" : isDraft ? "#f8f9fa" : "#fffbeb";
+                                    <tr style="background:@rowBg;">
+                                        <td class="small ps-3">@FormatDate(pp.PurchaseDate)</td>
+                                        <td class="small text-center fw-semibold">@(pp.TotalHours > 0 ? $"{pp.TotalHours}h" : "\u2014")</td>
+                                        <td class="small text-end fw-semibold">@(pp.TotalAmount > 0 ? $"\u20AA{pp.TotalAmount}" : "\u2014")</td>
+                                        <td class="small text-muted" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@pp.Notes">@(pp.Notes ?? "\u2014")</td>
+                                        <td class="small text-muted">@pp.CreatedByName</td>
+                                        <td class="small text-center">
+                                            @if (isApproved)
                                             {
-                                                <span class="badge rounded-pill" style="background:#e0f2fe;color:#0369a1;font-size:.72rem;">
-                                                    <i class="ri-book-2-line me-1"></i>@(pay.CourseName ?? "Course")
+                                                <span class="badge" style="background:#d1fae5;color:#065f46;font-size:.72rem;">
+                                                    <i class="ri-check-line me-1"></i>@LS.T("purchases.approved")
+                                                </span>
+                                            }
+                                            else if (isDraft)
+                                            {
+                                                <span class="badge" style="background:#e2e8f0;color:#475569;font-size:.72rem;">
+                                                    <i class="ri-draft-line me-1"></i>@LS.T("pcs.draft")
                                                 </span>
                                             }
                                             else
                                             {
-                                                <span class="badge rounded-pill" style="background:#f0fdf4;color:#15803d;font-size:.72rem;">
-                                                    <i class="ri-timer-flash-line me-1"></i>@LS.T("pcs.auditing")
+                                                <span class="badge" style="background:#fef3c7;color:#92400e;font-size:.72rem;">
+                                                    <i class="ri-time-line me-1"></i>@LS.T("purchases.pending")
                                                 </span>
                                             }
                                         </td>
-                                        <td class="small text-center fw-semibold">
-                                            @if (pay.PaymentType == "Course")
-                                            {
-                                                <span style="color:#059669;">@pay.VisitCount @LS.T("pcs.vis")</span>
-                                            }
-                                            else
-                                            {
-                                                @($"{pay.HoursBought} h")
-                                            }
-                                        </td>
-                                        <td class="small text-end">
-                                            @(pay.AmountPaid > 0 ? $"\u20AA{pay.AmountPaid}" : "\u2014")
-                                        </td>
-                                        <td class="small text-muted">@pay.RegistrarName</td>
-                                        <td class="small text-muted">@pay.ReferralName</td>
                                         <td class="text-center">
-                                            <button class="btn btn-link btn-sm text-danger py-0 px-0"
-                                                    title="@LS.T("pcs.deletePayment")"
-                                                    @onclick="() => DeletePayment(pay.PaymentId)">
-                                                <i class="ri-delete-bin-line" style="font-size:0.85rem;"></i>
-                                            </button>
+                                            <div class="d-flex gap-1 justify-content-center">
+                                                <button class="btn btn-link btn-sm text-primary py-0 px-0"
+                                                        title="@LS.T("pcs.editPurchase")"
+                                                        @onclick="() => OpenEditPurchase(pp.PurchaseId)">
+                                                    <i class="ri-pencil-line" style="font-size:0.85rem;"></i>
+                                                </button>
+                                                <button class="btn btn-link btn-sm text-danger py-0 px-0"
+                                                        title="@LS.T("common.delete")"
+                                                        @onclick="() => _confirmDeletePurchaseId = pp.PurchaseId">
+                                                    <i class="ri-delete-bin-line" style="font-size:0.85rem;"></i>
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 }
@@ -325,16 +344,15 @@
                             <tfoot class="table-light">
                                 <tr>
                                     <td class="small ps-3 fw-semibold">@LS.T("stats.total")</td>
-                                    <td></td>
                                     <td class="small text-center fw-semibold">
-                                        @{ var auditHrs = _payments.Where(p => p.PaymentType != "Course").Sum(p => p.HoursBought); }
-                                        @(auditHrs > 0 ? $"{auditHrs} h" : "\u2014")
+                                        @{ var totalPurchaseHrs = _pcPurchases.Sum(p => p.TotalHours); }
+                                        @(totalPurchaseHrs > 0 ? $"{totalPurchaseHrs}h" : "\u2014")
                                     </td>
                                     <td class="small text-end fw-semibold">
-                                        @{ var tot = _payments.Sum(p => p.AmountPaid); }
-                                        @(tot > 0 ? $"\u20AA{tot}" : "\u2014")
+                                        @{ var totalPurchaseAmt = _pcPurchases.Sum(p => p.TotalAmount); }
+                                        @(totalPurchaseAmt > 0 ? $"\u20AA{totalPurchaseAmt}" : "\u2014")
                                     </td>
-                                    <td colspan="3"></td>
+                                    <td colspan="4"></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -424,51 +442,6 @@
                 </div>
             </div>
 
-            @* Pending Purchases card *@
-            @if (_pendingPurchases?.Count > 0)
-            {
-                <div class="card shadow-sm mt-3 pending-purchases-card">
-                    <div class="card-header d-flex align-items-center justify-content-between py-2 pending-purchases-header">
-                        <span class="fw-semibold small text-white">
-                            <i class="ri-shopping-cart-line me-1"></i>@LS.T("pcs.pendingPurchases")
-                        </span>
-                        <span class="badge rounded-pill bg-white text-warning fw-bold" style="font-size:.72rem;">
-                            @_pendingPurchases.Count
-                        </span>
-                    </div>
-                    <div class="card-body p-0">
-                        <table class="table table-sm mb-0">
-                            <thead style="background:#fff8e1;">
-                                <tr>
-                                    <th class="small ps-3" style="color:#b45309;">@LS.T("pcs.date")</th>
-                                    <th class="small text-center" style="color:#b45309;">@LS.T("purchases.totalHours")</th>
-                                    <th class="small text-end" style="color:#b45309;">@LS.T("purchases.totalAmount")</th>
-                                    <th class="small" style="color:#b45309;">@LS.T("common.notes")</th>
-                                    <th class="small" style="color:#b45309;">@LS.T("purchases.createdBy")</th>
-                                    <th class="small text-center" style="color:#b45309;">@LS.T("common.status")</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var pp in _pendingPurchases)
-                                {
-                                    <tr style="background:#fffbeb;">
-                                        <td class="small ps-3">@FormatDate(pp.PurchaseDate)</td>
-                                        <td class="small text-center fw-semibold">@(pp.TotalHours > 0 ? $"{pp.TotalHours}h" : "\u2014")</td>
-                                        <td class="small text-end fw-semibold">@(pp.TotalAmount > 0 ? $"\u20AA{pp.TotalAmount}" : "\u2014")</td>
-                                        <td class="small text-muted" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@pp.Notes">@(pp.Notes ?? "\u2014")</td>
-                                        <td class="small text-muted">@pp.CreatedByName</td>
-                                        <td class="small text-center">
-                                            <span class="badge" style="background:#fef3c7;color:#92400e;font-size:.72rem;">
-                                                <i class="ri-time-line me-1"></i>@LS.T("purchases.pending")
-                                            </span>
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            }
         }
         else
         {
@@ -490,8 +463,12 @@
             <div class="modal-content" style="border-radius:14px;">
                 <div class="modal-header py-2 px-3 d-flex align-items-center">
                     <h5 class="modal-title fw-bold mb-0">
-                        <i class="ri-shopping-cart-line me-2"></i>@LS.T("pcs.purchase")
+                        <i class="ri-shopping-cart-line me-2"></i>@(_editingPurchaseId.HasValue ? LS.T("pcs.editPurchase") : LS.T("pcs.purchase"))
                     </h5>
+                    @if (_editingPurchaseId.HasValue)
+                    {
+                        <span class="badge bg-warning text-dark ms-2" style="font-size:.7rem;">@LS.T("purchases.statusResetWarning")</span>
+                    }
                     <div class="ms-auto d-flex gap-2">
                         <button class="btn btn-sm btn-outline-secondary" @onclick="PrintPurchase">
                             <i class="ri-printer-line me-1"></i>@LS.T("common.print")
@@ -601,6 +578,64 @@
                             }
                         </div>
 
+                        @* Payment Methods *@
+                        <div class="mb-3">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="fw-semibold small">@LS.T("purchases.paymentMethods")</span>
+                                <button class="btn btn-sm btn-outline-success py-0 px-2" style="font-size:0.75rem;"
+                                        @onclick="AddPaymentMethod">
+                                    @LS.T("purchases.addPaymentMethod")
+                                </button>
+                            </div>
+                            @for (int pmIdx = 0; pmIdx < _purchasePaymentMethods.Count; pmIdx++)
+                            {
+                                var pi2 = pmIdx;
+                                var pm = _purchasePaymentMethods[pi2];
+                                <div class="d-flex gap-2 align-items-end mb-2 p-2 border rounded" style="background:#f8fafc;">
+                                    <div>
+                                        <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("purchases.methodType")</label>
+                                        <select class="form-select form-select-sm" style="width:140px;font-size:.8rem;"
+                                                value="@pm.MethodType"
+                                                @onchange='e => pm.MethodType = e.Value?.ToString() ?? "Cash"'>
+                                            <option value="Cash">@LS.T("purchases.cash")</option>
+                                            <option value="CreditCard">@LS.T("purchases.creditCard")</option>
+                                            <option value="Check">@LS.T("purchases.check")</option>
+                                            <option value="BankTransfer">@LS.T("purchases.bankTransfer")</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("pcs.amount")</label>
+                                        <input type="number" class="form-control form-control-sm" style="width:100px;font-size:.8rem;"
+                                               value="@pm.Amount" min="0" placeholder="0"
+                                               @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) pm.Amount = v; }" />
+                                    </div>
+                                    <div>
+                                        <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("purchases.paymentDate")</label>
+                                        <input type="date" class="form-control form-control-sm" style="width:140px;font-size:.8rem;"
+                                               value="@(pm.PaymentDate?.ToString("yyyy-MM-dd"))"
+                                               @onchange="e => pm.PaymentDate = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : null" />
+                                    </div>
+                                    @if (_purchasePaymentMethods.Count > 1)
+                                    {
+                                        <button class="btn btn-sm btn-outline-danger py-0 px-1" @onclick="() => _purchasePaymentMethods.RemoveAt(pi2)">
+                                            <i class="ri-close-line"></i>
+                                        </button>
+                                    }
+                                </div>
+                            }
+                            @{
+                                var itemsTotal = _purchaseItems.Sum(i => i.AmountPaid);
+                                var pmTotal = _purchasePaymentMethods.Sum(m => m.Amount);
+                            }
+                            @if (pmTotal > 0 && pmTotal != itemsTotal)
+                            {
+                                <div class="small text-warning d-flex align-items-center gap-1 mt-1">
+                                    <i class="ri-error-warning-line"></i>@LS.T("purchases.amountMismatch")
+                                    <span class="fw-semibold">(\u20AA@pmTotal / \u20AA@itemsTotal)</span>
+                                </div>
+                            }
+                        </div>
+
                         @* Notes (below all items) *@
                         <div class="mb-3">
                             <label class="form-label small fw-semibold mb-1">@LS.T("pcs.notes")</label>
@@ -652,6 +687,30 @@
                    ExistingFullNames="@(new HashSet<string>(_allPcsEx.Select(p => p.FullName), StringComparer.OrdinalIgnoreCase))"
                    OnSaved="SaveNewPc" />
 
+@* ── Delete Purchase Confirmation ── *@
+@if (_confirmDeletePurchaseId.HasValue)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.45);z-index:1060;">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content" style="border-radius:12px;">
+                <div class="modal-body text-center p-4">
+                    <i class="ri-error-warning-line text-danger" style="font-size:2.5rem;"></i>
+                    <div class="fw-bold mt-2 mb-1">@LS.T("pcs.confirmDeleteTitle")</div>
+                    <div class="text-muted small mb-3">@LS.T("pcs.confirmDeleteMsg")</div>
+                    <div class="d-flex gap-2 justify-content-center">
+                        <button class="btn btn-sm btn-secondary px-3" @onclick="() => _confirmDeletePurchaseId = null">
+                            @LS.T("common.cancel")
+                        </button>
+                        <button class="btn btn-sm btn-danger px-3" @onclick="ConfirmDeletePurchase">
+                            <i class="ri-delete-bin-line me-1"></i>@LS.T("common.delete")
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 <style>
     .pc-stat-card {
         border-radius: 14px; padding: 16px 12px; text-align: center; color: #fff;
@@ -678,8 +737,7 @@
     .pc-th-sort.sort-asc::after { border-bottom:4px solid currentColor; border-top:none; opacity:0.8; }
     .pc-th-sort.sort-desc::after { border-bottom:none; border-top:4px solid currentColor; opacity:0.8; }
 
-    .pending-purchases-card { border: none; border-radius: 14px; overflow: hidden; }
-    .pending-purchases-header { background: linear-gradient(135deg, #d97706, #f59e0b); border: none; }
+    .purchases-card { border: none; border-radius: 14px; overflow: hidden; }
 </style>
 
 @code {
@@ -693,9 +751,7 @@
 
     PcDetailInfo?       _detail;
     PcStats?            _stats;
-    List<PcPayment>?    _payments;
     List<PcSessionInfo>? _sessions;
-    List<PurchaseListItem>? _pendingPurchases;
 
     // Add PC modal
     SpkNewPersonModal _addModal = default!;
@@ -713,11 +769,18 @@
     string   _purchaseNotes = "";
     string   _purchaseError = "";
     List<PurchaseItemModel> _purchaseItems = new();
+    List<PaymentMethodModel> _purchasePaymentMethods = new();
+    int? _editingPurchaseId;
+    int? _confirmDeletePurchaseId;
+    string _origPurchaseSnapshot = "";
 
     List<CourseItem>             _allCourses  = [];
     List<(int PersonId, string FullName)> _staff      = [];
     List<(int PersonId, string FullName)> _allPersons = [];
     int? _currentPersonId;
+
+    // All purchases for this PC (not just pending)
+    List<PurchaseListItem>? _pcPurchases;
 
     class PurchaseItemModel
     {
@@ -727,6 +790,13 @@
         public int AmountPaid { get; set; }
         public int RegistrarId { get; set; }
         public int ReferralId { get; set; }
+    }
+
+    class PaymentMethodModel
+    {
+        public string MethodType { get; set; } = "Cash";
+        public int Amount { get; set; }
+        public DateTime? PaymentDate { get; set; } = DateTime.Today;
     }
 
     IEnumerable<PcListItemEx> FilteredPcsEx
@@ -791,9 +861,8 @@
         if (!_selPcId.HasValue) return;
         _detail            = PcSvc.GetPcDetail(_selPcId.Value);
         _stats             = PcSvc.GetPcStats(_selPcId.Value);
-        _payments          = PcSvc.GetPayments(_selPcId.Value);
         _sessions          = PcSvc.GetPcSessions(_selPcId.Value);
-        _pendingPurchases  = PcSvc.GetPendingPurchasesForPc(_selPcId.Value);
+        _pcPurchases       = PcSvc.GetAllPurchasesForPc(_selPcId.Value);
     }
 
     void SaveNewPc((string fn, string ln, string phone, string email, string dob, string sex,
@@ -837,9 +906,17 @@
 
     // ── Purchase modal ──────────────────────────────────────────────
 
+    string GetPurchaseSnapshot()
+    {
+        var items = string.Join("|", _purchaseItems.Select(i => $"{i.ItemType},{i.CourseId},{i.HoursBought},{i.AmountPaid},{i.RegistrarId},{i.ReferralId}"));
+        var pms = string.Join("|", _purchasePaymentMethods.Select(m => $"{m.MethodType},{m.Amount},{m.PaymentDate?.ToString("yyyy-MM-dd")}"));
+        return $"{_purchaseDate:yyyy-MM-dd}~{_purchaseNotes}~{items}~{pms}";
+    }
+
     async Task OpenPurchaseModal()
     {
         _showPurchaseModal = true;
+        _editingPurchaseId = null;
         _purchaseDate      = DateTime.Today;
         _purchaseNotes     = "";
         _purchaseError     = "";
@@ -848,9 +925,59 @@
         {
             new PurchaseItemModel { RegistrarId = _currentPersonId ?? 0 }
         };
+        _purchasePaymentMethods = new List<PaymentMethodModel>
+        {
+            new PaymentMethodModel()
+        };
         StateHasChanged();
         await Task.Delay(100);
         await JS.InvokeVoidAsync("SignaturePad.init", "signatureCanvas", null);
+        _origPurchaseSnapshot = GetPurchaseSnapshot();
+    }
+
+    async Task OpenEditPurchase(int purchaseId)
+    {
+        var detail = PcSvc.GetPurchaseDetail(purchaseId);
+        if (detail == null) return;
+
+        _showPurchaseModal = true;
+        _editingPurchaseId = purchaseId;
+        _purchaseError     = "";
+        _allCourses        = CourseSvc.GetAllCourses();
+
+        _purchaseDate = DateTime.TryParse(detail.PurchaseDate, out var dt) ? dt : DateTime.Today;
+        _purchaseNotes = detail.Notes ?? "";
+
+        _purchaseItems = detail.Items.Select(it => new PurchaseItemModel
+        {
+            ItemType    = it.ItemType,
+            CourseId    = it.CourseId ?? 0,
+            HoursBought = it.HoursBought,
+            AmountPaid  = it.AmountPaid,
+            RegistrarId = it.RegistrarId ?? 0,
+            ReferralId  = it.ReferralId ?? 0
+        }).ToList();
+        if (_purchaseItems.Count == 0)
+            _purchaseItems.Add(new PurchaseItemModel { RegistrarId = _currentPersonId ?? 0 });
+
+        _purchasePaymentMethods = detail.PaymentMethods.Select(pm => new PaymentMethodModel
+        {
+            MethodType  = pm.MethodType,
+            Amount      = pm.Amount,
+            PaymentDate = DateTime.TryParse(pm.PaymentDate, out var pdt) ? pdt : null
+        }).ToList();
+        if (_purchasePaymentMethods.Count == 0)
+            _purchasePaymentMethods.Add(new PaymentMethodModel());
+
+        StateHasChanged();
+        await Task.Delay(100);
+        await JS.InvokeVoidAsync("SignaturePad.init", "signatureCanvas", null);
+
+        // Draw existing signature if present
+        if (!string.IsNullOrEmpty(detail.SignatureData))
+            await JS.InvokeVoidAsync("SignaturePad.drawImage", "signatureCanvas", detail.SignatureData);
+
+        _origPurchaseSnapshot = GetPurchaseSnapshot();
     }
 
     async Task ClosePurchaseModal()
@@ -862,6 +989,11 @@
     void AddPurchaseItem()
     {
         _purchaseItems.Add(new PurchaseItemModel { RegistrarId = _currentPersonId ?? 0 });
+    }
+
+    void AddPaymentMethod()
+    {
+        _purchasePaymentMethods.Add(new PaymentMethodModel());
     }
 
     void RemovePurchaseItem(int idx)
@@ -912,23 +1044,44 @@
             referralId:  pi.ReferralId > 0 ? (int?)pi.ReferralId : null
         )).ToList();
 
-        PcSvc.CreatePurchase(
-            _selPcId!.Value,
-            _purchaseDate.ToString("yyyy-MM-dd"),
-            string.IsNullOrWhiteSpace(_purchaseNotes) ? null : _purchaseNotes,
-            sigData,
-            _currentPersonId,
-            items);
+        var pmList = _purchasePaymentMethods
+            .Where(m => m.Amount > 0)
+            .Select(m => (m.MethodType, m.Amount, paymentDate: m.PaymentDate?.ToString("yyyy-MM-dd")))
+            .ToList();
 
-        // Send automatic message to admins about the purchase
-        if (_currentPersonId.HasValue && _detail != null)
+        if (_editingPurchaseId.HasValue)
         {
-            var totalAmt = items.Sum(i => i.amountPaid);
-            var totalHrs = items.Where(i => i.itemType == "Auditing").Sum(i => i.hoursBought);
-            var msg = $"Automatic msg: New purchase for {_detail.FullName}";
-            if (totalHrs > 0) msg += $" — {totalHrs}h";
-            if (totalAmt > 0) msg += $" — \u20AA{totalAmt}";
-            DashSvc.SendAutoMessageToAdmins(_currentPersonId.Value, msg);
+            // Check if anything changed
+            if (GetPurchaseSnapshot() == _origPurchaseSnapshot)
+            {
+                _purchaseError = LS.T("purchases.nothingChanged");
+                return;
+            }
+            PcSvc.UpdatePurchase(_editingPurchaseId.Value,
+                _purchaseDate.ToString("yyyy-MM-dd"),
+                string.IsNullOrWhiteSpace(_purchaseNotes) ? null : _purchaseNotes,
+                items, pmList);
+        }
+        else
+        {
+            PcSvc.CreatePurchase(
+                _selPcId!.Value,
+                _purchaseDate.ToString("yyyy-MM-dd"),
+                string.IsNullOrWhiteSpace(_purchaseNotes) ? null : _purchaseNotes,
+                sigData,
+                _currentPersonId,
+                items, pmList);
+
+            // Send automatic message to admins about the purchase
+            if (_currentPersonId.HasValue && _detail != null)
+            {
+                var totalAmt = items.Sum(i => i.amountPaid);
+                var totalHrs = items.Where(i => i.itemType == "Auditing").Sum(i => i.hoursBought);
+                var msg = $"Automatic msg: New purchase for {_detail.FullName}";
+                if (totalHrs > 0) msg += $" — {totalHrs}h";
+                if (totalAmt > 0) msg += $" — \u20AA{totalAmt}";
+                DashSvc.SendAutoMessageToAdmins(_currentPersonId.Value, msg);
+            }
         }
 
         await ClosePurchaseModal();
@@ -969,11 +1122,11 @@
             sigData);
     }
 
-    // ── Legacy payment methods (still used by payment table) ────────
-
-    void DeletePayment(int paymentId)
+    void ConfirmDeletePurchase()
     {
-        PcSvc.DeletePayment(paymentId);
+        if (!_confirmDeletePurchaseId.HasValue) return;
+        PcSvc.DeletePurchase(_confirmDeletePurchaseId.Value);
+        _confirmDeletePurchaseId = null;
         _allPcsEx = PcSvc.GetAllPcsExtended();
         LoadDetail();
     }
