@@ -48,46 +48,45 @@ public class DashboardExtendedTests : IDisposable
     }
 
     [Fact]
-    public void GetAllPcs_Dashboard_AddsSoloEntry_ForSoloTypeAuditors()
-    {
-        using var conn = Open();
-        var pid = TestDbHelper.InsertPerson(conn, "Tami");
-        TestDbHelper.InsertPC(conn, pid);
-        TestDbHelper.InsertAuditor(conn, pid, type: 3, isActive: true); // RegularAndSolo
-
-        var pcs = _svc.GetAllPcs();
-        // Should have 1 regular entry + 1 solo entry
-        Assert.Equal(1, pcs.Count(p => p.WorkCapacity != "CSSolo"));
-        Assert.Equal(1, pcs.Count(p => p.WorkCapacity == "CSSolo"));
-    }
-
-    [Fact]
-    public void GetAllPcs_Dashboard_SoloEntry_HasSuffix()
-    {
-        using var conn = Open();
-        var pid = TestDbHelper.InsertPerson(conn, "Aviv");
-        TestDbHelper.InsertPC(conn, pid);
-        TestDbHelper.InsertAuditor(conn, pid, type: 2, isActive: true); // SoloOnly
-
-        var pcs  = _svc.GetAllPcs();
-        var solo = pcs.Single(p => p.WorkCapacity == "CSSolo");
-        Assert.Contains("Solo", solo.FullName);
-    }
-
-    [Fact]
-    public void GetAllPcs_Dashboard_SoloEntry_WorkCapacity_IsCS()
+    public void GetAllPcs_Dashboard_ReturnsRegularEntries_ForAllPcTypes()
     {
         using var conn = Open();
         var pid = TestDbHelper.InsertPerson(conn, "Tami");
         TestDbHelper.InsertPC(conn, pid);
         TestDbHelper.InsertAuditor(conn, pid, type: 3, isActive: true);
 
-        var solo = _svc.GetAllPcs().Single(p => p.WorkCapacity == "CSSolo");
-        Assert.Equal("CS", solo.WorkCapacity);
+        var pcs = _svc.GetAllPcs();
+        Assert.Single(pcs);
+        Assert.Equal("Auditor", pcs[0].WorkCapacity);
     }
 
     [Fact]
-    public void GetAllPcs_Dashboard_NoSoloEntry_ForType1_RegularOnly()
+    public void GetAllPcs_Dashboard_ReturnsSoloAuditor_AsRegularEntry()
+    {
+        using var conn = Open();
+        var pid = TestDbHelper.InsertPerson(conn, "Aviv");
+        TestDbHelper.InsertPC(conn, pid);
+        TestDbHelper.InsertAuditor(conn, pid, type: 2, isActive: true);
+
+        var pcs = _svc.GetAllPcs();
+        Assert.Single(pcs);
+        Assert.Contains("Aviv", pcs[0].FullName);
+    }
+
+    [Fact]
+    public void GetAllPcs_Dashboard_AllEntries_HaveAuditorCapacity()
+    {
+        using var conn = Open();
+        var pid = TestDbHelper.InsertPerson(conn, "Tami");
+        TestDbHelper.InsertPC(conn, pid);
+        TestDbHelper.InsertAuditor(conn, pid, type: 3, isActive: true);
+
+        var pcs = _svc.GetAllPcs();
+        Assert.All(pcs, p => Assert.Equal("Auditor", p.WorkCapacity));
+    }
+
+    [Fact]
+    public void GetAllPcs_Dashboard_RegularOnly_HasNoSpecialHandling()
     {
         using var conn = Open();
         var pid = TestDbHelper.InsertPerson(conn, "Genia");
@@ -95,7 +94,7 @@ public class DashboardExtendedTests : IDisposable
         TestDbHelper.InsertAuditor(conn, pid, type: 1, isActive: true);
 
         var pcs = _svc.GetAllPcs();
-        Assert.Empty(pcs.Where(p => p.WorkCapacity == "CSSolo"));
+        Assert.Single(pcs);
     }
 
     // =========================================================================

@@ -851,7 +851,7 @@
             "if(st.length){" +
             "r+='<div style=\"font-size:.7rem;color:#888;text-transform:uppercase;" +
                     "letter-spacing:.7px;margin:8px 0 5px\">Top Students</div>';" +
-            "for(var i=0;i<st.length;i++){" +
+            "var maxShow=20;for(var i=0;i<Math.min(st.length,maxShow);i++){" +
             "var orgLabel=st[i][2]?(' <span style=\"font-size:.7rem;padding:1px 5px;border-radius:8px;" +
                     "background:#e0e7ff;color:#4338ca;font-weight:600;\">'+st[i][2]+'</span>'):'';"+
             "r+='<div style=\"display:flex;justify-content:space-between;align-items:center;gap:12px;padding:3px 6px;" +
@@ -859,7 +859,11 @@
             "r+='<span style=\"color:#212529;font-size:.82rem\">'+st[i][0]+orgLabel+'</span>';" +
             "r+='<span style=\"color:#2e7d32;font-weight:700;font-size:.82rem\">'+st[i][1]+'</span>';" +
             "r+='</div>';" +
-            "}}" +
+            "}" +
+            "if(st.length>maxShow){r+='<div style=\"text-align:center;padding:6px 0 2px;color:#888;" +
+                    "font-size:.78rem;font-style:italic;border-top:1px dashed #e0e0e0;margin-top:4px\">" +
+                    "+'+(st.length-maxShow)+' more students\u2026</div>';}" +
+            "}" +
             "r+='</div>';" +
             "return r;}";
 

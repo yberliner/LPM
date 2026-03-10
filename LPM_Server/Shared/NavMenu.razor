@@ -53,6 +53,14 @@
         left: auto; right: 0;
         border-radius: 4px 0 0 4px;
     }
+
+    /* ── Compact menu spacing ── */
+    .app-sidebar .side-menu__item {
+        padding-block: 0.35rem !important;
+    }
+    [data-nav-layout=vertical] .app-sidebar .side-menu__item {
+        margin-block: 1px !important;
+    }
 </style>
 
 <div id="responsive-overlay" @onclick="() => responsivecloseFn()"></div>

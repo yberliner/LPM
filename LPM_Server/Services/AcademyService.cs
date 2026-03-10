@@ -11,7 +11,7 @@ public record WeekVisitCount(string WeekLabel, int TotalVisits, List<TopStudent>
     int DonCount, int FriendCount, int SocialCount, int OtherCount);
 public record MemberAdminItem(int PersonId, string FullName, string Phone,
     bool IsActive, bool IsPC, bool IsAcademyStudent, bool IsStaff,
-    string FirstName, string LastName, string? ExternalId);
+    string FirstName, string LastName, string? ExternalId, string? LastVisitDate);
 
 public class AcademyService
 {
@@ -67,7 +67,7 @@ public class AcademyService
 
     /// <summary>Creates a new Person record and returns the new PersonId.</summary>
     public int AddPersonForAcademy(string firstName, string lastName,
-        string phone, string email, string dateOfBirth, string sex,
+        string phone, string email, string dateOfBirth, string gender,
         string org = "", string referral = "")
     {
         using var conn = new SqliteConnection(_connectionString);
@@ -81,7 +81,7 @@ public class AcademyService
         cmd.Parameters.AddWithValue("@ph",  string.IsNullOrWhiteSpace(phone)       ? DBNull.Value : (object)phone.Trim());
         cmd.Parameters.AddWithValue("@em",  string.IsNullOrWhiteSpace(email)       ? DBNull.Value : (object)email.Trim());
         cmd.Parameters.AddWithValue("@dob", string.IsNullOrWhiteSpace(dateOfBirth) ? DBNull.Value : (object)dateOfBirth);
-        cmd.Parameters.AddWithValue("@gender", string.IsNullOrWhiteSpace(sex)      ? DBNull.Value : (object)sex);
+        cmd.Parameters.AddWithValue("@gender", string.IsNullOrWhiteSpace(gender)   ? DBNull.Value : (object)gender);
         cmd.Parameters.AddWithValue("@org", string.IsNullOrWhiteSpace(org)         ? DBNull.Value : (object)org);
         cmd.Parameters.AddWithValue("@ref", string.IsNullOrWhiteSpace(referral)    ? DBNull.Value : (object)referral);
         cmd.ExecuteNonQuery();
@@ -306,16 +306,22 @@ public class AcademyService
                    CASE WHEN aud.AuditorId IS NOT NULL OR cs.CsId IS NOT NULL THEN 1 ELSE 0 END AS IsStaff,
                    COALESCE(p.FirstName,'') AS FirstName,
                    COALESCE(p.LastName,'') AS LastName,
-                   p.ExternalId
+                   p.ExternalId,
+                   MAX(COALESCE(sess.LastSession, ''), COALESCE(acad.LastAcademy, '')) AS LastVisitDate
             FROM Persons p
             LEFT JOIN PCs pc ON pc.PcId = p.PersonId
             LEFT JOIN (SELECT DISTINCT PersonId FROM AcademyAttendance) vis ON vis.PersonId = p.PersonId
             LEFT JOIN Auditors aud ON aud.AuditorId = p.PersonId
             LEFT JOIN CaseSupervisors cs ON cs.CsId = p.PersonId
+            LEFT JOIN (SELECT PcId, MAX(SessionDate) AS LastSession FROM Sessions GROUP BY PcId) sess ON sess.PcId = p.PersonId
+            LEFT JOIN (SELECT PersonId, MAX(VisitDate) AS LastAcademy FROM AcademyAttendance GROUP BY PersonId) acad ON acad.PersonId = p.PersonId
             ORDER BY COALESCE(p.IsActive,1) DESC, p.FirstName, p.LastName";
         var list = new List<MemberAdminItem>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
+        {
+            var lastVisit = r.IsDBNull(10) ? null : r.GetString(10);
+            if (string.IsNullOrEmpty(lastVisit)) lastVisit = null;
             list.Add(new MemberAdminItem(
                 r.GetInt32(0), r.GetString(1).Trim(), r.GetString(2),
                 r.GetInt32(3) == 1,
@@ -323,7 +329,9 @@ public class AcademyService
                 r.GetInt32(5) == 1,
                 r.GetInt32(6) == 1,
                 r.GetString(7), r.GetString(8),
-                r.IsDBNull(9) ? null : r.GetString(9)));
+                r.IsDBNull(9) ? null : r.GetString(9),
+                lastVisit));
+        }
         return list;
     }
 

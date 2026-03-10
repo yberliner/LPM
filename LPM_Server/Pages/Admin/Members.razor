@@ -1,5 +1,5 @@
 @page "/Admin/Members"
-@attribute [Authorize(Roles = "Admin")]
+@attribute [Authorize]
 @inject LPM.Services.AcademyService AcademySvc
 @using Microsoft.AspNetCore.Authorization
 @using LPM.Services
@@ -94,10 +94,29 @@
                 <table class="table table-sm table-hover mb-0" style="font-size:.85rem;">
                     <thead class="table-light">
                         <tr>
-                            <th class="ps-3">@LS.T("common.name")</th>
+                            <th class="ps-3" style="cursor:pointer;user-select:none;" @onclick='() => SetSort("name")'>
+                                @LS.T("common.name")
+                                @if (_sortBy == "name")
+                                {
+                                    <i class="ri-arrow-@(_sortAsc ? "up" : "down")-s-line ms-1" style="font-size:.7rem;"></i>
+                                }
+                            </th>
                             <th>@LS.T("members.phone")</th>
                             <th>@LS.T("members.roles")</th>
-                            <th class="text-center">@LS.T("common.status")</th>
+                            <th style="cursor:pointer;user-select:none;" @onclick='() => SetSort("lastVisit")'>
+                                @LS.T("members.lastVisited")
+                                @if (_sortBy == "lastVisit")
+                                {
+                                    <i class="ri-arrow-@(_sortAsc ? "up" : "down")-s-line ms-1" style="font-size:.7rem;"></i>
+                                }
+                            </th>
+                            <th class="text-center" style="cursor:pointer;user-select:none;" @onclick='() => SetSort("status")'>
+                                @LS.T("common.status")
+                                @if (_sortBy == "status")
+                                {
+                                    <i class="ri-arrow-@(_sortAsc ? "up" : "down")-s-line ms-1" style="font-size:.7rem;"></i>
+                                }
+                            </th>
                             <th class="text-center pe-3">@LS.T("members.action")</th>
                         </tr>
                     </thead>
@@ -130,6 +149,16 @@
                                             <span class="badge rounded-pill" style="background:#e0e7ff;color:#3730a3;font-size:.68rem;">@LS.T("members.badgeStaff")</span>
                                         }
                                     </div>
+                                </td>
+                                <td class="align-middle text-muted">
+                                    @if (m.LastVisitDate != null)
+                                    {
+                                        @m.LastVisitDate
+                                    }
+                                    else
+                                    {
+                                        <span style="opacity:.4;">—</span>
+                                    }
                                 </td>
                                 <td class="text-center align-middle">
                                     @if (m.IsActive)
@@ -179,6 +208,8 @@
     List<MemberAdminItem> _members = [];
     string _search = "";
     string _filter = "all";
+    string _sortBy = "name";
+    bool   _sortAsc = true;
 
     // Conflict resolution state
     int    _conflictPersonId;
@@ -188,15 +219,47 @@
     string _editExternalId = "";
     string _conflictError  = "";
 
-    IEnumerable<MemberAdminItem> Filtered => _members
-        .Where(m => _filter switch {
-            "active"   => m.IsActive,
-            "inactive" => !m.IsActive,
-            _          => true
-        })
-        .Where(m => string.IsNullOrWhiteSpace(_search) ||
-                    m.FullName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
-                    m.Phone.Contains(_search, StringComparison.OrdinalIgnoreCase));
+    IEnumerable<MemberAdminItem> Filtered
+    {
+        get
+        {
+            var q = _members
+                .Where(m => _filter switch {
+                    "active"   => m.IsActive,
+                    "inactive" => !m.IsActive,
+                    _          => true
+                })
+                .Where(m => string.IsNullOrWhiteSpace(_search) ||
+                            m.FullName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                            m.Phone.Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+            if (_sortBy == "lastVisit")
+            {
+                q = _sortAsc
+                    ? q.OrderBy(m => m.LastVisitDate ?? "").ThenBy(m => m.FullName)
+                    : q.OrderByDescending(m => m.LastVisitDate ?? "").ThenBy(m => m.FullName);
+            }
+            else if (_sortBy == "status")
+            {
+                q = _sortAsc
+                    ? q.OrderBy(m => m.IsActive ? 0 : 1).ThenBy(m => m.FullName)
+                    : q.OrderBy(m => m.IsActive ? 1 : 0).ThenBy(m => m.FullName);
+            }
+            else
+            {
+                q = _sortAsc
+                    ? q.OrderBy(m => m.FullName)
+                    : q.OrderByDescending(m => m.FullName);
+            }
+            return q;
+        }
+    }
+
+    void SetSort(string col)
+    {
+        if (_sortBy == col) _sortAsc = !_sortAsc;
+        else { _sortBy = col; _sortAsc = col == "name"; }
+    }
 
     protected override void OnInitialized() => _members = AcademySvc.GetAllMembersForAdmin();
 

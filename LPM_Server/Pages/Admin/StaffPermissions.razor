@@ -102,9 +102,12 @@
 
         @foreach (var aud in _auditors)
         {
+            var audCollapsed = _collapsedAuditors.Contains(aud.AuditorId);
             <div class="card border-0 shadow-sm mb-4 sp-card">
                 @* Card header *@
-                <div class="card-header d-flex align-items-center gap-3 py-3 px-4 border-0 sp-aud-header">
+                <div class="card-header d-flex align-items-center gap-3 py-3 px-4 border-0 sp-aud-header"
+                     style="cursor:pointer;" @onclick="() => ToggleAuditorCollapse(aud.AuditorId)">
+                    <i class="ri-arrow-down-s-line text-white sp-chevron @(audCollapsed ? "sp-chevron-collapsed" : "")"></i>
                     <div class="sp-avatar">@(aud.AuditorName.Length > 0 ? char.ToUpper(aud.AuditorName[0]) : '?')</div>
                     <div class="text-white lh-sm flex-grow-1">
                         <div class="fw-semibold" style="font-size:1rem;">@aud.AuditorName</div>
@@ -115,8 +118,8 @@
                             { <span>@aud.ApprovedPcs.Count approved PC@(aud.ApprovedPcs.Count != 1 ? "s" : "")</span> }
                         </div>
                     </div>
-                    @* Allow All toggle *@
-                    <div class="d-flex align-items-center gap-2">
+                    @* Allow All toggle — stop propagation so clicking the switch doesn't toggle collapse *@
+                    <div class="d-flex align-items-center gap-2" @onclick:stopPropagation="true">
                         <span class="text-white-50" style="font-size:0.78rem;">@LS.T("staffperm.allowAll")</span>
                         <div class="form-check form-switch mb-0">
                             <input class="form-check-input sp-switch" type="checkbox"
@@ -128,6 +131,8 @@
                 </div>
 
                 @* Approved PCs list *@
+                @if (!audCollapsed)
+                {
                 <div class="card-body p-0">
                     @if (aud.AllowAll)
                     {
@@ -192,6 +197,7 @@
                         </div>
                     }
                 </div>
+                }
             </div>
         }
     }
@@ -271,6 +277,10 @@
     .sp-btn-add     { background: #2d6a9f; color: #fff; border: none; border-radius: 7px; font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
     .sp-btn-add:hover:not(:disabled)     { background: #1e3a5f; color: #fff; }
 
+    /* Collapse chevron */
+    .sp-chevron { font-size: 1.2rem; transition: transform .25s ease; }
+    .sp-chevron-collapsed { transform: rotate(-90deg); }
+
     /* Spinner */
     .sp-spin { display: inline-block; animation: sp-spin-anim 1s linear infinite; }
     @@keyframes sp-spin-anim { to { transform: rotate(360deg); } }
@@ -286,6 +296,7 @@
     private bool    _busy;
     private string? _msg;
     private bool    _msgIsError;
+    private HashSet<int> _collapsedAuditors = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -333,6 +344,12 @@
         _busy = false;
         _pending.RemoveAll(r => r.Id == id);
         ShowMsg("Request rejected and PC removed from dashboard.", false);
+    }
+
+    private void ToggleAuditorCollapse(int auditorId)
+    {
+        if (!_collapsedAuditors.Remove(auditorId))
+            _collapsedAuditors.Add(auditorId);
     }
 
     private void ToggleAllowAll(int auditorId, bool allow)

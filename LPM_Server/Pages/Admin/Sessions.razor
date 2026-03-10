@@ -90,13 +90,18 @@
     @* ══════════════════════════════════════════════════════════
        SECTION 1 — SESSIONS
        ══════════════════════════════════════════════════════════ *@
-    <div class="sa-section-label mb-3">
-        <i class="ri-calendar-check-line me-2"></i>@LS.T("sessions.sessions")
-        @if (_sessDraft > 0)    { <span class="badge rounded-pill sa-badge-pending ms-2">@_sessDraft @LS.T("sessions.draft")</span> }
-        @if (_sessApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm ms-1">@_sessApproved @LS.T("sessions.approved")</span> }
+    <div class="sa-collapse-header mb-3" @onclick="() => _sessCollapsed = !_sessCollapsed">
+        <div class="d-flex align-items-center gap-2">
+            <i class="ri-arrow-down-s-line sa-chevron @(_sessCollapsed ? "sa-chevron-collapsed" : "")"></i>
+            <i class="ri-calendar-check-line" style="font-size:1.05rem;"></i>
+            <span>@LS.T("sessions.sessions")</span>
+            @if (_sessDraft > 0)    { <span class="badge rounded-pill sa-badge-pending ms-2">@_sessDraft @LS.T("sessions.draft")</span> }
+            @if (_sessApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm ms-1">@_sessApproved @LS.T("sessions.approved")</span> }
+        </div>
     </div>
 
-    @if (_loading)
+    @if (_sessCollapsed) { }
+    else if (_loading)
     {
         <div class="text-center py-5">
             <div class="spinner-border text-primary mb-3" style="width:2.5rem;height:2.5rem;" role="status"></div>
@@ -229,13 +234,18 @@
     @* ══════════════════════════════════════════════════════════
        SECTION 2 — CS REVIEWS
        ══════════════════════════════════════════════════════════ *@
-    <div class="sa-section-label sa-section-label-cs mt-5 mb-3">
-        <i class="ri-user-star-line me-2"></i>@LS.T("sessions.csReviews")
-        @if (_csDraft > 0)    { <span class="badge rounded-pill sa-badge-pending ms-2">@_csDraft @LS.T("sessions.draft")</span> }
-        @if (_csApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm ms-1">@_csApproved @LS.T("sessions.approved")</span> }
+    <div class="sa-collapse-header sa-collapse-header-cs mt-5 mb-3" @onclick="() => _csCollapsed = !_csCollapsed">
+        <div class="d-flex align-items-center gap-2">
+            <i class="ri-arrow-down-s-line sa-chevron @(_csCollapsed ? "sa-chevron-collapsed" : "")"></i>
+            <i class="ri-user-star-line" style="font-size:1.05rem;"></i>
+            <span>@LS.T("sessions.csReviews")</span>
+            @if (_csDraft > 0)    { <span class="badge rounded-pill sa-badge-pending ms-2">@_csDraft @LS.T("sessions.draft")</span> }
+            @if (_csApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm ms-1">@_csApproved @LS.T("sessions.approved")</span> }
+        </div>
     </div>
 
-    @if (!_loading && _csGroups.Count == 0)
+    @if (_csCollapsed) { }
+    else if (!_loading && _csGroups.Count == 0)
     {
         <div class="sa-empty-block mb-4">
             <i class="ri-user-star-line" style="font-size:1.8rem;color:#4a7fc1;"></i>
@@ -369,6 +379,22 @@
 
 <style>
     .sa-page  { max-width: 1200px; }
+
+    /* Collapse headers */
+    .sa-collapse-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 16px; border-radius: 10px; cursor: pointer; user-select: none;
+        background: linear-gradient(135deg, #f0f4ff 0%, #e8edf8 100%);
+        border: 1px solid #dce3f0; font-size: 0.9rem; font-weight: 700;
+        color: var(--default-text-color); text-transform: uppercase; letter-spacing: .08em;
+        transition: background .2s, box-shadow .2s;
+    }
+    .sa-collapse-header:hover { background: linear-gradient(135deg, #e4eafc 0%, #dbe2f4 100%); box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+    .sa-collapse-header-cs { background: linear-gradient(135deg, #f0f4ff 0%, #e8edf8 100%); border-color: #c7d7f0; }
+    .sa-collapse-header-cs:hover { background: linear-gradient(135deg, #e4eafc 0%, #d6e0f6 100%); }
+
+    .sa-chevron { font-size: 1.2rem; transition: transform .25s ease; }
+    .sa-chevron-collapsed { transform: rotate(-90deg); }
     .sa-title { color: var(--default-text-color); }
 
     /* Section labels */
@@ -484,6 +510,8 @@
     private bool _busy;
     private string? _msg;
     private bool _msgIsError;
+    private bool _sessCollapsed = false;
+    private bool _csCollapsed   = false;
 
     private int _sessDraft    => _groups.Sum(g => g.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus != "Approved")));
     private int _sessApproved => _groups.Sum(g => g.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus == "Approved")));

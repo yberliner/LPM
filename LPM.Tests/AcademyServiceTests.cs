@@ -50,7 +50,7 @@ public class AcademyServiceTests : IDisposable
 
         using var conn = Open();
         using var cmd  = conn.CreateCommand();
-        cmd.CommandText = $"SELECT FirstName,LastName,Phone,Email,DateOfBirth,Sex FROM Persons WHERE PersonId={id}";
+        cmd.CommandText = $"SELECT FirstName,LastName,Phone,Email,DateOfBirth,Gender FROM Persons WHERE PersonId={id}";
         using var r = cmd.ExecuteReader();
         Assert.True(r.Read());
         Assert.Equal("Dana",       r.GetString(0));

@@ -58,7 +58,7 @@ public class PcServiceTests : IDisposable
         Assert.Equal("052-9999999",   detail.Phone);
         Assert.Equal("dana@test.com", detail.Email);
         Assert.Equal("1985-07-20",    detail.DateOfBirth);
-        Assert.Equal("F",             detail.Sex);
+        Assert.Equal("F",             detail.Gender);
     }
 
     [Fact]
@@ -190,7 +190,7 @@ public class PcServiceTests : IDisposable
         Assert.Equal("new@x.com",      d.Email);
         Assert.Equal("Updated notes",  d.Notes);
         Assert.Equal("1990-06-15",     d.DateOfBirth);
-        Assert.Equal("F",              d.Sex);
+        Assert.Equal("F",              d.Gender);
     }
 
     [Fact]

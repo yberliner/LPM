@@ -61,7 +61,7 @@ public class SchemaIntegrityTests : IDisposable
     [InlineData("Persons",   "Phone")]
     [InlineData("Persons",   "Email")]
     [InlineData("Persons",   "DateOfBirth")]
-    [InlineData("Persons",   "Sex")]
+    [InlineData("Persons",   "Gender")]
     [InlineData("Auditors",  "AuditorId")]
     [InlineData("Auditors",  "IsActive")]
     [InlineData("Auditors",  "Type")]

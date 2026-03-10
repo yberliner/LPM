@@ -98,94 +98,25 @@
     }
     else
     {
-        @* ── Upcoming Payments Table ── *@
-        @if (_upcomingPayments.Count > 0)
-        {
-            <div class="card border-0 shadow-sm mb-4">
-                <div class="card-header border-0 py-2 px-4" style="background:linear-gradient(135deg,#b45309,#f59e0b);border:none;">
-                    <span class="fw-semibold small text-white">
-                        <i class="ri-money-dollar-circle-line me-1"></i>@LS.T("purchases.upcomingPayments")
-                    </span>
-                    <span class="badge bg-white text-warning ms-2">@_upcomingPayments.Count</span>
-                </div>
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0 pu-table">
-                        <thead>
-                            <tr class="pu-thead">
-                                <th class="ps-4">@LS.T("purchases.pcName")</th>
-                                <th>@LS.T("purchases.paymentDate")</th>
-                                <th>@LS.T("purchases.methodType")</th>
-                                <th class="text-end">@LS.T("pcs.amount")</th>
-                                <th class="text-center">@LS.T("purchases.moneyInBank")</th>
-                                <th class="text-center" style="width:60px;"></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var up in _upcomingPayments)
-                            {
-                                bool isPast = up.PaymentDateParsed.HasValue && up.PaymentDateParsed.Value <= DateOnly.FromDateTime(DateTime.Today);
-                                bool isOverdue = isPast && !up.IsMoneyInBank;
-                                bool isFlash = _flashPaymentMethodId == up.PaymentMethodId;
-                                <tr @key="up.PaymentMethodId" class="@(isFlash ? "pu-flash" : "")"
-                                    style="@(isOverdue ? "background:#fef2f2;" : up.IsMoneyInBank ? "background:#f0fdf4;" : "")">
-                                    <td class="ps-4 py-2 small fw-semibold" style="color:#1e3a5f;">@up.PcName</td>
-                                    <td class="py-2 small">
-                                        @if (isOverdue)
-                                        {
-                                            <span style="color:#dc2626;font-weight:600;">
-                                                <i class="ri-alarm-warning-line me-1"></i>@FormatDate(up.PaymentDate)
-                                            </span>
-                                        }
-                                        else
-                                        {
-                                            @FormatDate(up.PaymentDate)
-                                        }
-                                    </td>
-                                    <td class="py-2 small">
-                                        @{
-                                            var (upIcon, upLabel) = up.MethodType switch
-                                            {
-                                                "CreditCard" => ("ri-bank-card-line", LS.T("purchases.creditCard")),
-                                                "Check" => ("ri-file-text-line", LS.T("purchases.check")),
-                                                "BankTransfer" => ("ri-exchange-line", LS.T("purchases.bankTransfer")),
-                                                _ => ("ri-money-dollar-circle-line", LS.T("purchases.cash"))
-                                            };
-                                        }
-                                        <i class="@upIcon me-1"></i>@upLabel
-                                    </td>
-                                    <td class="py-2 small text-end fw-semibold">@(up.Amount > 0 ? $"\u20AA{up.Amount}" : "\u2014")</td>
-                                    <td class="text-center py-2">
-                                        <input type="checkbox" class="form-check-input"
-                                               checked="@up.IsMoneyInBank"
-                                               @onchange="() => ToggleUpcomingMoneyInBank(up.PaymentMethodId, !up.IsMoneyInBank)" />
-                                    </td>
-                                    <td class="text-center py-2">
-                                        <button class="btn btn-sm pu-btn-view py-0 px-1"
-                                                @onclick="() => ViewPurchase(up.PurchaseId)">
-                                            <i class="ri-eye-line"></i>
-                                        </button>
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        }
-
         @* ── Auditing Purchases Table ── *@
         @if (_auditingPurchases.Count > 0)
         {
             <div class="card border-0 shadow-sm mb-4">
-                <div class="card-header border-0 py-2 px-4" style="background:linear-gradient(135deg,#15803d,#22c55e);border:none;">
+                <div class="card-header border-0 py-2 px-4 d-flex align-items-center"
+                     style="background:linear-gradient(135deg,#15803d,#22c55e);border:none;cursor:pointer;"
+                     @onclick="() => _auditingCollapsed = !_auditingCollapsed">
+                    <i class="ri-arrow-down-s-line text-white pu-chevron @(_auditingCollapsed ? "pu-chevron-collapsed" : "") me-1"></i>
                     <span class="fw-semibold small text-white">
                         <i class="ri-timer-flash-line me-1"></i>@LS.T("purchases.auditingPurchases")
                     </span>
                     <span class="badge bg-white text-success ms-2">@_auditingPurchases.Count</span>
                 </div>
-                <div class="table-responsive">
-                    @PurchaseTableBody(_auditingPurchases)
-                </div>
+                @if (!_auditingCollapsed)
+                {
+                    <div class="table-responsive">
+                        @PurchaseTableBody(_auditingPurchases)
+                    </div>
+                }
             </div>
         }
 
@@ -193,19 +124,25 @@
         @if (_coursePurchases.Count > 0)
         {
             <div class="card border-0 shadow-sm mb-4">
-                <div class="card-header border-0 py-2 px-4" style="background:linear-gradient(135deg,#1e40af,#6366f1);border:none;">
+                <div class="card-header border-0 py-2 px-4 d-flex align-items-center"
+                     style="background:linear-gradient(135deg,#1e40af,#6366f1);border:none;cursor:pointer;"
+                     @onclick="() => _courseCollapsed = !_courseCollapsed">
+                    <i class="ri-arrow-down-s-line text-white pu-chevron @(_courseCollapsed ? "pu-chevron-collapsed" : "") me-1"></i>
                     <span class="fw-semibold small text-white">
                         <i class="ri-book-2-line me-1"></i>@LS.T("purchases.coursePurchases")
                     </span>
                     <span class="badge bg-white text-primary ms-2">@_coursePurchases.Count</span>
                 </div>
-                <div class="table-responsive">
-                    @PurchaseTableBody(_coursePurchases)
-                </div>
+                @if (!_courseCollapsed)
+                {
+                    <div class="table-responsive">
+                        @PurchaseTableBody(_coursePurchases)
+                    </div>
+                }
             </div>
         }
 
-        @if (_auditingPurchases.Count == 0 && _coursePurchases.Count == 0 && _upcomingPayments.Count == 0)
+        @if (_auditingPurchases.Count == 0 && _coursePurchases.Count == 0)
         {
             <div class="pu-empty-block mb-4">
                 <i class="ri-check-double-line" style="font-size:1.8rem;color:#16a34a;"></i>
@@ -412,6 +349,9 @@
     .pu-page  { max-width: 1200px; }
     .pu-title { color: var(--default-text-color); }
 
+    .pu-chevron { font-size: 1.2rem; transition: transform .25s ease; }
+    .pu-chevron-collapsed { transform: rotate(-90deg); }
+
     .pu-empty-block { text-align: center; padding: 36px; background: #f8faff; border-radius: 12px; border: 1px dashed #c7d7f0; color: #212529; }
 
     .pu-filter-card { border-radius: 12px; }
@@ -483,7 +423,6 @@
     private List<PurchaseListItem> _purchases = new();
     private List<PurchaseListItem> _auditingPurchases = new();
     private List<PurchaseListItem> _coursePurchases = new();
-    private List<UpcomingPaymentRow> _upcomingPayments = new();
 
     private Dictionary<int, int>   _itemCounts = new();
     private Dictionary<int, string?> _signatures = new();
@@ -495,22 +434,13 @@
     private bool _busy;
     private string? _msg;
     private bool _msgIsError;
+    private bool _auditingCollapsed = false;
+    private bool _courseCollapsed   = false;
     private int? _currentPersonId;
-    private int? _flashPaymentMethodId;
+    private string _sortCol = "date";
+    private bool   _sortAsc = false;
 
     private int _pendingCount => _purchases.Count(p => p.ApprovedStatus != "Approved" && !p.IsDeleted);
-
-    class UpcomingPaymentRow
-    {
-        public int PaymentMethodId { get; set; }
-        public int PurchaseId { get; set; }
-        public string PcName { get; set; } = "";
-        public string MethodType { get; set; } = "";
-        public int Amount { get; set; }
-        public string? PaymentDate { get; set; }
-        public DateOnly? PaymentDateParsed { get; set; }
-        public bool IsMoneyInBank { get; set; }
-    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -577,7 +507,6 @@
         }
 
         SplitPurchases();
-        BuildUpcomingPayments();
         _loading = false;
     }
 
@@ -587,36 +516,6 @@
             _itemsCache.GetValueOrDefault(p.PurchaseId)?.Any(i => i.ItemType == "Auditing") == true).ToList();
         _coursePurchases = _purchases.Where(p =>
             _itemsCache.GetValueOrDefault(p.PurchaseId)?.Any(i => i.ItemType == "Course") == true).ToList();
-    }
-
-    private void BuildUpcomingPayments()
-    {
-        _upcomingPayments.Clear();
-        foreach (var p in _purchases)
-        {
-            if (p.IsDeleted) continue;
-            var pms = _paymentMethodsCache.GetValueOrDefault(p.PurchaseId);
-            if (pms == null) continue;
-            foreach (var pm in pms)
-            {
-                DateOnly? parsed = DateOnly.TryParse(pm.PaymentDate, out var d) ? d : null;
-                _upcomingPayments.Add(new UpcomingPaymentRow
-                {
-                    PaymentMethodId = pm.PaymentMethodId,
-                    PurchaseId = p.PurchaseId,
-                    PcName = p.PcName,
-                    MethodType = pm.MethodType,
-                    Amount = pm.Amount,
-                    PaymentDate = pm.PaymentDate,
-                    PaymentDateParsed = parsed,
-                    IsMoneyInBank = pm.IsMoneyInBank
-                });
-            }
-        }
-        _upcomingPayments = _upcomingPayments
-            .OrderBy(x => x.IsMoneyInBank ? 1 : 0)
-            .ThenBy(x => x.PaymentDateParsed ?? DateOnly.MaxValue)
-            .ToList();
     }
 
     private async Task ToggleDeleted()
@@ -670,7 +569,7 @@
         return "none";
     }
 
-    private async Task ToggleMoneyInBank(int paymentMethodId, bool newValue)
+    private void ToggleMoneyInBank(int paymentMethodId, bool newValue)
     {
         PcSvc.SetMoneyInBank(paymentMethodId, newValue);
         if (_viewDetail != null)
@@ -680,30 +579,6 @@
             if (_viewDetail != null)
                 _paymentMethodsCache[pid] = _viewDetail.PaymentMethods;
         }
-        _flashPaymentMethodId = paymentMethodId;
-        BuildUpcomingPayments();
-        StateHasChanged();
-        await Task.Delay(1200);
-        _flashPaymentMethodId = null;
-    }
-
-    private async Task ToggleUpcomingMoneyInBank(int paymentMethodId, bool newValue)
-    {
-        PcSvc.SetMoneyInBank(paymentMethodId, newValue);
-        foreach (var kvp in _paymentMethodsCache)
-        {
-            var pm = kvp.Value.FirstOrDefault(m => m.PaymentMethodId == paymentMethodId);
-            if (pm != null)
-            {
-                _paymentMethodsCache[kvp.Key] = PcSvc.GetPurchaseDetail(kvp.Key)?.PaymentMethods ?? new();
-                break;
-            }
-        }
-        _flashPaymentMethodId = paymentMethodId;
-        BuildUpcomingPayments();
-        StateHasChanged();
-        await Task.Delay(1200);
-        _flashPaymentMethodId = null;
     }
 
     private void ShowMsg(string msg, bool isError) { _msg = msg; _msgIsError = isError; }
@@ -711,33 +586,86 @@
     private static string FormatDate(string? dateStr) =>
         dateStr != null && DateOnly.TryParse(dateStr, out var d) ? d.ToString("dd/MM/yy") : dateStr ?? "\u2014";
 
+    void SetPurchaseSort(string col)
+    {
+        if (_sortCol == col) _sortAsc = !_sortAsc;
+        else { _sortCol = col; _sortAsc = col == "name"; }
+    }
+
+    string GetEffectiveDate(PurchaseListItem p)
+    {
+        var pms = _paymentMethodsCache.GetValueOrDefault(p.PurchaseId);
+        if (pms != null && pms.Count > 0)
+        {
+            var dates = pms.Where(pm => !string.IsNullOrEmpty(pm.PaymentDate)).Select(pm => pm.PaymentDate!).ToList();
+            if (dates.Count > 0) return dates.Min()!;
+        }
+        return p.PurchaseDate;
+    }
+
+    List<PurchaseListItem> SortedPurchases(List<PurchaseListItem> items)
+    {
+        IEnumerable<PurchaseListItem> q = items;
+        q = (_sortCol, _sortAsc) switch
+        {
+            ("name",    true)  => q.OrderBy(p => p.PcName),
+            ("name",    false) => q.OrderByDescending(p => p.PcName),
+            ("date",    true)  => q.OrderBy(p => GetEffectiveDate(p)).ThenBy(p => p.PcName),
+            ("date",    false) => q.OrderByDescending(p => GetEffectiveDate(p)).ThenBy(p => p.PcName),
+            ("hours",   true)  => q.OrderBy(p => p.TotalHours).ThenBy(p => p.PcName),
+            ("hours",   false) => q.OrderByDescending(p => p.TotalHours).ThenBy(p => p.PcName),
+            ("amount",  true)  => q.OrderBy(p => p.TotalAmount).ThenBy(p => p.PcName),
+            ("amount",  false) => q.OrderByDescending(p => p.TotalAmount).ThenBy(p => p.PcName),
+            ("created", true)  => q.OrderBy(p => p.CreatedByName ?? "").ThenBy(p => p.PcName),
+            ("created", false) => q.OrderByDescending(p => p.CreatedByName ?? "").ThenBy(p => p.PcName),
+            ("status",  true)  => q.OrderBy(p => p.ApprovedStatus).ThenBy(p => p.PcName),
+            ("status",  false) => q.OrderByDescending(p => p.ApprovedStatus).ThenBy(p => p.PcName),
+            _                  => q.OrderByDescending(p => GetEffectiveDate(p))
+        };
+        return q.ToList();
+    }
+
+    RenderFragment SortHeader(string col, string label, string extraClass = "") => __builder =>
+    {
+        <th class="@extraClass" style="cursor:pointer;user-select:none;" @onclick="() => SetPurchaseSort(col)">
+            @label
+            @if (_sortCol == col)
+            {
+                <i class="ri-arrow-@(_sortAsc ? "up" : "down")-s-line ms-1" style="font-size:.7rem;"></i>
+            }
+        </th>
+    };
+
     RenderFragment PurchaseTableBody(List<PurchaseListItem> items) => __builder =>
     {
+        var sorted = SortedPurchases(items);
         <table class="table table-sm align-middle mb-0 pu-table">
             <thead>
                 <tr class="pu-thead">
-                    <th class="ps-4">@LS.T("purchases.pcName")</th>
-                    <th>@LS.T("purchases.paymentDate")</th>
+                    @SortHeader("name", LS.T("purchases.pcName"), "ps-4")
+                    @SortHeader("date", LS.T("purchases.paymentDate"), "")
                     <th class="text-center">@LS.T("purchases.items")</th>
-                    <th class="text-end">@LS.T("purchases.totalHours")</th>
-                    <th class="text-end">@LS.T("purchases.totalAmount")</th>
+                    @SortHeader("hours", LS.T("purchases.totalHours"), "text-end")
+                    @SortHeader("amount", LS.T("purchases.totalAmount"), "text-end")
                     <th>@LS.T("pcs.notes")</th>
-                    <th>@LS.T("purchases.createdBy")</th>
+                    @SortHeader("created", LS.T("purchases.createdBy"), "")
                     <th class="text-center" style="width:60px;">@LS.T("pcs.signature")</th>
                     <th class="text-center" style="width:80px;">@LS.T("purchases.moneyInBank")</th>
-                    <th class="text-center" style="width:105px;">@LS.T("common.status")</th>
+                    @SortHeader("status", LS.T("common.status"), "text-center")
                     <th class="pe-4" style="width:180px;"></th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var p in items)
+                @foreach (var p in sorted)
                 {
                     var pid = p.PurchaseId;
                     bool isApproved = p.ApprovedStatus == "Approved";
                     bool isDraft = p.ApprovedStatus == "Draft";
                     bool isDeleted = p.IsDeleted;
+                    var bankSt = GetBankStatus(pid);
                     var rowClass = isDeleted ? "pu-row-deleted" : isApproved ? "pu-row-approved" : isDraft ? "pu-row-draft" : "pu-row-pending";
-                    <tr @key="pid" class="@rowClass">
+                    var bankBg = bankSt == "all" ? "background:#f0fdf4;" : bankSt == "partial" ? "background:#fefce8;" : "";
+                    <tr @key="pid" class="@rowClass" style="@bankBg">
                         <td class="ps-4 py-2">
                             <span class="fw-semibold @(isDeleted ? "text-decoration-line-through" : "")" style="color:#1e3a5f;">@p.PcName</span>
                         </td>
@@ -778,12 +706,11 @@
                             }
                         </td>
                         <td class="text-center py-2">
-                            @{ var bankStatus = GetBankStatus(pid); }
-                            @if (bankStatus == "all")
+                            @if (bankSt == "all")
                             {
                                 <i class="ri-checkbox-circle-fill" style="font-size:1rem;color:#16a34a;" title="All received"></i>
                             }
-                            else if (bankStatus == "partial")
+                            else if (bankSt == "partial")
                             {
                                 <i class="ri-indeterminate-circle-line" style="font-size:1rem;color:#d97706;" title="Partial"></i>
                             }
