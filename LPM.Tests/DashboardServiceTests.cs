@@ -501,15 +501,16 @@ public class DashboardServiceTests : IDisposable
     // =========================================================================
 
     [Fact]
-    public void AddSoloSession_CreatesSessionWithIsSoloFlag()
+    public void AddSoloSession_CreatesSoloSession_PcIdEqualsAuditorId()
     {
+        // Solo sessions are identified by PcId == AuditorId (no IsSolo column)
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "SoloAud");
         TestDbHelper.InsertAuditor(conn, audId, type: 3);
 
         var sid  = _svc.AddSoloSession(audId, new DateOnly(2024, 1, 10), 3600, 0, false, null);
-        var flag = TestDbHelper.Scalar(conn, $"SELECT IsSolo FROM Sessions WHERE SessionId={sid}");
-        Assert.Equal(1L, flag);
+        var pcId = TestDbHelper.Scalar(conn, $"SELECT PcId FROM Sessions WHERE SessionId={sid}");
+        Assert.Equal((long)audId, pcId);
     }
 
     [Fact]

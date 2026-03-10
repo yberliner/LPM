@@ -58,10 +58,12 @@ public class CourseService
                 PaymentDate TEXT    NOT NULL,
                 HoursBought INTEGER NOT NULL DEFAULT 0,
                 AmountPaid  INTEGER NOT NULL DEFAULT 0,
-                Notes       TEXT,
+                CreatedAt   TEXT    NOT NULL DEFAULT (datetime('now')),
                 PaymentType TEXT    DEFAULT 'Auditing',
                 CourseId    INTEGER,
-                CreatedAt   TEXT    NOT NULL DEFAULT (datetime('now'))
+                RegistrarId INTEGER,
+                ReferralId  INTEGER,
+                PurchaseId  INTEGER
             )";
         c3.ExecuteNonQuery();
 
@@ -167,7 +169,7 @@ public class CourseService
         var inClause = string.Join(",", ids);
         cmd.CommandText = $@"
             SELECT sc.PersonId, c.Name,
-                   (SELECT COUNT(*) FROM Students s
+                   (SELECT COUNT(*) FROM AcademyAttendance s
                     WHERE s.PersonId = sc.PersonId AND s.VisitDate >= sc.DateStarted) AS VisitCount
             FROM StudentCourses sc
             JOIN Courses c ON c.CourseId = sc.CourseId
@@ -241,7 +243,7 @@ public class CourseService
                    TRIM(COALESCE(reg.FirstName,'') || ' ' || COALESCE(NULLIF(reg.LastName,''),'')) AS RegistrarName,
                    pay.ReferralId,
                    TRIM(COALESCE(rf.FirstName,'') || ' ' || COALESCE(NULLIF(rf.LastName,''),'')) AS ReferralName,
-                   (SELECT COUNT(*) FROM Students s
+                   (SELECT COUNT(*) FROM AcademyAttendance s
                     WHERE s.PersonId = sc.PersonId AND s.VisitDate >= sc.DateStarted) AS VisitCount
             FROM StudentCourses sc
             JOIN Persons p ON p.PersonId = sc.PersonId
@@ -278,7 +280,7 @@ public class CourseService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(*) FROM Students WHERE PersonId=@pid AND VisitDate >= @since";
+        cmd.CommandText = "SELECT COUNT(*) FROM AcademyAttendance WHERE PersonId=@pid AND VisitDate >= @since";
         cmd.Parameters.AddWithValue("@pid", personId);
         cmd.Parameters.AddWithValue("@since", sinceDate);
         return (int)(long)cmd.ExecuteScalar()!;

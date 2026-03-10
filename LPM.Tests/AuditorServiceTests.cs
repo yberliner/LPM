@@ -257,14 +257,17 @@ public class AuditorServiceTests : IDisposable
     [Fact]
     public void GetAuditorStats_ExcludesSoloSessions()
     {
-        // AuditorStats should only count IsSolo=0 sessions
+        // AuditorStats should only count non-solo sessions.
+        // Solo is detected by PcId = AuditorId pattern.
         var audId = _svc.AddAuditor("Aviv", "", null, type: 3);
 
         using var conn = Open();
         var pcId = TestDbHelper.InsertPerson(conn, "Client3");
         TestDbHelper.InsertPC(conn, pcId);
-        TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-10", 3600, seqInDay: 1, isSolo: false);
-        TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-10", 1800, seqInDay: 2, isSolo: true);
+        // Regular session: PcId != AuditorId
+        TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-10", 3600, seqInDay: 1);
+        // Solo session: PcId == AuditorId
+        TestDbHelper.InsertSession(conn, audId, audId, "2024-01-10", 1800, seqInDay: 2);
 
         var stats = _svc.GetAuditorStats(audId);
         Assert.Equal(1,     stats.TotalSessions);

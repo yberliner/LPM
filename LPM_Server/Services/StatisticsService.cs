@@ -32,17 +32,7 @@ public class StatisticsService
 
     private void EnsureSchema()
     {
-        using var conn = new SqliteConnection(_connectionString);
-        conn.Open();
-        // Ensure PCs.Origin column exists (also added by PcService, but we need it here)
-        using var ck = conn.CreateCommand();
-        ck.CommandText = "SELECT COUNT(*) FROM pragma_table_info('PCs') WHERE name='Origin'";
-        if ((long)(ck.ExecuteScalar() ?? 0L) == 0)
-        {
-            using var alt = conn.CreateCommand();
-            alt.CommandText = "ALTER TABLE PCs ADD COLUMN Origin TEXT";
-            alt.ExecuteNonQuery();
-        }
+        // Schema is now managed directly in the DB; no runtime migrations needed.
     }
 
     /// <summary>
@@ -128,7 +118,7 @@ public class StatisticsService
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT VisitDate, COUNT(*)
-                FROM Students
+                FROM AcademyAttendance
                 WHERE VisitDate >= @s AND VisitDate <= @e
                 GROUP BY VisitDate";
             cmd.Parameters.AddWithValue("@s", startStr);
@@ -169,7 +159,7 @@ public class StatisticsService
                     SELECT SessionDate AS d, PcId     AS pid FROM Sessions
                     WHERE  SessionDate >= @s AND SessionDate <= @e
                     UNION ALL
-                    SELECT VisitDate   AS d, PersonId AS pid FROM Students
+                    SELECT VisitDate   AS d, PersonId AS pid FROM AcademyAttendance
                     WHERE  VisitDate   >= @s AND VisitDate   <= @e
                 ) GROUP BY d";
             cmd.Parameters.AddWithValue("@s", startStr);
@@ -270,7 +260,7 @@ public class StatisticsService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT VisitDate, PersonId FROM Students
+                SELECT VisitDate, PersonId FROM AcademyAttendance
                 WHERE VisitDate >= @s AND VisitDate <= @e";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
@@ -326,12 +316,12 @@ public class StatisticsService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT COALESCE(NULLIF(pc.Origin,''), 'Unknown') AS Origin,
+            SELECT COALESCE(NULLIF(p.Origin,''), 'Unknown') AS Origin,
                    SUM(s.LengthSeconds + s.AdminSeconds) AS TotalSec
             FROM Sessions s
-            JOIN PCs pc ON pc.PcId = s.PcId
+            JOIN Persons p ON p.PersonId = s.PcId
             WHERE s.SessionDate >= @s AND s.SessionDate <= @e
-            GROUP BY COALESCE(NULLIF(pc.Origin,''), 'Unknown')
+            GROUP BY COALESCE(NULLIF(p.Origin,''), 'Unknown')
             ORDER BY TotalSec DESC";
         cmd.Parameters.AddWithValue("@s", startStr);
         cmd.Parameters.AddWithValue("@e", endStr);

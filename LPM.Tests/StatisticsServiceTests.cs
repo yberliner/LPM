@@ -204,8 +204,8 @@ public class StatisticsServiceTests : IDisposable
         var pcId = TestDbHelper.InsertPerson(conn, "Client1");
         TestDbHelper.InsertPC(conn, pcId);
 
-        // Solo session on Thursday
-        var sid = TestDbHelper.InsertSession(conn, pcId, soloAudId, "2024-01-11", 3600, isSolo: true);
+        // Solo session on Thursday (PcId == AuditorId)
+        var sid = TestDbHelper.InsertSession(conn, soloAudId, soloAudId, "2024-01-11", 3600);
 
         // CS review by the solo-type auditor on that session
         using var csReviewCmd = conn.CreateCommand();
@@ -242,7 +242,7 @@ public class StatisticsServiceTests : IDisposable
 
         // Student visits on Thursday
         using var sc = conn.CreateCommand();
-        sc.CommandText = "INSERT INTO Students (PersonId, VisitDate) VALUES (@pid, '2024-01-11')";
+        sc.CommandText = "INSERT INTO AcademyAttendance (PersonId, VisitDate) VALUES (@pid, '2024-01-11')";
         sc.Parameters.AddWithValue("@pid", studentId);
         sc.ExecuteNonQuery();
 
@@ -263,7 +263,7 @@ public class StatisticsServiceTests : IDisposable
         // Same person has both a session AND an academy visit on Thursday
         TestDbHelper.InsertSession(conn, personId, audId, "2024-01-11", 3600);
         using var sc = conn.CreateCommand();
-        sc.CommandText = "INSERT INTO Students (PersonId, VisitDate) VALUES (@pid, '2024-01-11')";
+        sc.CommandText = "INSERT INTO AcademyAttendance (PersonId, VisitDate) VALUES (@pid, '2024-01-11')";
         sc.Parameters.AddWithValue("@pid", personId);
         sc.ExecuteNonQuery();
 

@@ -111,10 +111,6 @@
                                     <input class="form-control form-control-sm" @bind="_editExternalId" style="width:120px;" />
                                 </div>
                                 <div class="col-auto">
-                                    <label class="form-label small mb-0">@LS.T("pcs.startDate")</label>
-                                    <input type="date" class="form-control form-control-sm" @bind="_editStartDate" style="width:150px;" />
-                                </div>
-                                <div class="col-auto">
                                     <label class="form-label small mb-0">@LS.T("pcs.origin")</label>
                                     <select class="form-select form-select-sm" @bind="_editOrigin" style="width:140px;">
                                         <option value="">— @LS.T("pcs.selectOrigin") —</option>
@@ -138,12 +134,6 @@
                                     {
                                         <span class="badge bg-secondary-transparent text-secondary">
                                             <i class="ri-hashtag me-1"></i>@_detail.ExternalId
-                                        </span>
-                                    }
-                                    @if (!string.IsNullOrEmpty(_detail.StartDate))
-                                    {
-                                        <span class="text-muted small">
-                                            <i class="ri-calendar-line me-1"></i>@LS.T("pcs.since") @_detail.StartDate
                                         </span>
                                     }
                                     @if (!string.IsNullOrEmpty(_detail.Origin))
@@ -783,7 +773,6 @@
     string    _editFirstName = "", _editLastName = "", _editExternalId = "";
     string    _editPhone = "", _editEmail = "", _editNotes = "", _editSex = "", _editOrigin = "";
     DateTime? _editDob;
-    DateTime? _editStartDate;
 
     // Purchase modal
     bool     _showPurchaseModal;
@@ -926,8 +915,6 @@
         _editSex        = _detail.Sex;
         _editNotes      = _detail.Notes;
         _editOrigin     = _detail.Origin;
-        _editStartDate  = string.IsNullOrEmpty(_detail.StartDate) ? null
-                          : DateTime.TryParse(_detail.StartDate, out var d) ? d : null;
     }
 
     void SaveEdit()
@@ -935,8 +922,7 @@
         if (string.IsNullOrWhiteSpace(_editFirstName)) return;
         PcSvc.UpdatePcDetail(_selPcId!.Value,
             _editFirstName, _editLastName, _editExternalId,
-            _editPhone, _editEmail,
-            _editStartDate?.ToString("yyyy-MM-dd") ?? "", _editNotes,
+            _editPhone, _editEmail, _editNotes,
             _editDob?.ToString("yyyy-MM-dd") ?? "", _editSex, _editOrigin);
         _editMode = false;
         _allPcsEx = PcSvc.GetAllPcsExtended();

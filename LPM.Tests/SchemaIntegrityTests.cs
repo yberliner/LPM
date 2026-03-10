@@ -40,7 +40,7 @@ public class SchemaIntegrityTests : IDisposable
     [InlineData("Payments")]
     [InlineData("StaffPcList")]
     [InlineData("MiscCharge")]
-    [InlineData("Students")]
+    [InlineData("AcademyAttendance")]
     [InlineData("Users")]
     [InlineData("Roles")]
     [InlineData("UserRoles")]
@@ -74,7 +74,6 @@ public class SchemaIntegrityTests : IDisposable
     [InlineData("Sessions",  "AdminSeconds")]
     [InlineData("Sessions",  "IsFreeSession")]
     [InlineData("Sessions",  "VerifiedStatus")]
-    [InlineData("Sessions",  "IsSolo")]
     [InlineData("Sessions",  "SequenceInDay")]
     [InlineData("CsReviews", "CsReviewId")]
     [InlineData("CsReviews", "SessionId")]
@@ -86,9 +85,9 @@ public class SchemaIntegrityTests : IDisposable
     [InlineData("Payments",  "PcId")]
     [InlineData("Payments",  "HoursBought")]
     [InlineData("Payments",  "AmountPaid")]
-    [InlineData("Students",  "StudentId")]
-    [InlineData("Students",  "PersonId")]
-    [InlineData("Students",  "VisitDate")]
+    [InlineData("AcademyAttendance",  "StudentId")]
+    [InlineData("AcademyAttendance",  "PersonId")]
+    [InlineData("AcademyAttendance",  "VisitDate")]
     [InlineData("Users",     "Id")]
     [InlineData("Users",     "Username")]
     [InlineData("Users",     "PasswordHash")]
@@ -99,7 +98,6 @@ public class SchemaIntegrityTests : IDisposable
     [InlineData("StaffPcList","UserId")]
     [InlineData("StaffPcList","PcId")]
     [InlineData("StaffPcList","WorkCapacity")]
-    [InlineData("StaffPcList","IsSolo")]
     public void Column_ExistsAfterInit(string table, string column)
     {
         using var conn = Open();
@@ -157,54 +155,41 @@ public class SchemaIntegrityTests : IDisposable
     }
 
     [Fact]
-    public void Students_UniqueConstraint_OnPersonIdAndVisitDate_Enforced()
+    public void AcademyAttendance_UniqueConstraint_OnPersonIdAndVisitDate_Enforced()
     {
         using var conn = Open();
         var pid = TestDbHelper.InsertPerson(conn, "Alice");
 
-        TestDbHelper.Exec(conn, $"INSERT INTO Students (PersonId, VisitDate) VALUES ({pid}, '2024-01-15')");
+        TestDbHelper.Exec(conn, $"INSERT INTO AcademyAttendance (PersonId, VisitDate) VALUES ({pid}, '2024-01-15')");
 
         Assert.Throws<SqliteException>(() =>
-            TestDbHelper.Exec(conn, $"INSERT INTO Students (PersonId, VisitDate) VALUES ({pid}, '2024-01-15')")
+            TestDbHelper.Exec(conn, $"INSERT INTO AcademyAttendance (PersonId, VisitDate) VALUES ({pid}, '2024-01-15')")
         );
     }
 
     [Fact]
-    public void Students_UniqueConstraint_AllowsSamePerson_DifferentDays()
+    public void AcademyAttendance_UniqueConstraint_AllowsSamePerson_DifferentDays()
     {
         using var conn = Open();
         var pid = TestDbHelper.InsertPerson(conn, "Alice");
 
-        TestDbHelper.Exec(conn, $"INSERT INTO Students (PersonId, VisitDate) VALUES ({pid}, '2024-01-15')");
-        TestDbHelper.Exec(conn, $"INSERT INTO Students (PersonId, VisitDate) VALUES ({pid}, '2024-01-16')");
+        TestDbHelper.Exec(conn, $"INSERT INTO AcademyAttendance (PersonId, VisitDate) VALUES ({pid}, '2024-01-15')");
+        TestDbHelper.Exec(conn, $"INSERT INTO AcademyAttendance (PersonId, VisitDate) VALUES ({pid}, '2024-01-16')");
 
-        Assert.Equal(2L, TestDbHelper.Scalar(conn, $"SELECT COUNT(*) FROM Students WHERE PersonId={pid}"));
+        Assert.Equal(2L, TestDbHelper.Scalar(conn, $"SELECT COUNT(*) FROM AcademyAttendance WHERE PersonId={pid}"));
     }
 
     [Fact]
-    public void StaffPcList_UniqueConstraint_OnUserIdPcIdIsSolo_Enforced()
+    public void StaffPcList_UniqueConstraint_OnUserIdPcIdWorkCapacity_Enforced()
     {
         using var conn = Open();
         var uid = TestDbHelper.InsertPerson(conn, "Aud1");
         var pid = TestDbHelper.InsertPerson(conn, "Client1");
 
-        TestDbHelper.Exec(conn, $"INSERT OR IGNORE INTO StaffPcList (UserId, PcId, WorkCapacity, IsSolo) VALUES ({uid}, {pid}, 'Auditor', 0)");
-        TestDbHelper.Exec(conn, $"INSERT OR IGNORE INTO StaffPcList (UserId, PcId, WorkCapacity, IsSolo) VALUES ({uid}, {pid}, 'Auditor', 0)"); // duplicate ignored
+        TestDbHelper.Exec(conn, $"INSERT OR IGNORE INTO StaffPcList (UserId, PcId, WorkCapacity) VALUES ({uid}, {pid}, 'Auditor')");
+        TestDbHelper.Exec(conn, $"INSERT OR IGNORE INTO StaffPcList (UserId, PcId, WorkCapacity) VALUES ({uid}, {pid}, 'Auditor')"); // duplicate ignored
 
         Assert.Equal(1L, TestDbHelper.Scalar(conn, $"SELECT COUNT(*) FROM StaffPcList WHERE UserId={uid} AND PcId={pid}"));
-    }
-
-    [Fact]
-    public void StaffPcList_AllowsSamePair_WithDifferentIsSolo()
-    {
-        using var conn = Open();
-        var uid = TestDbHelper.InsertPerson(conn, "Aud1");
-        var pid = TestDbHelper.InsertPerson(conn, "Client1");
-
-        TestDbHelper.Exec(conn, $"INSERT INTO StaffPcList (UserId, PcId, WorkCapacity, IsSolo) VALUES ({uid}, {pid}, 'Auditor', 0)");
-        TestDbHelper.Exec(conn, $"INSERT INTO StaffPcList (UserId, PcId, WorkCapacity, IsSolo) VALUES ({uid}, {pid}, 'CS', 1)");
-
-        Assert.Equal(2L, TestDbHelper.Scalar(conn, $"SELECT COUNT(*) FROM StaffPcList WHERE UserId={uid} AND PcId={pid}"));
     }
 
     [Fact]
@@ -278,25 +263,6 @@ public class SchemaIntegrityTests : IDisposable
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT VerifiedStatus FROM Sessions ORDER BY SessionId DESC LIMIT 1";
         Assert.Equal("Draft", cmd.ExecuteScalar() as string);
-    }
-
-    [Fact]
-    public void Sessions_DefaultIsSolo_IsZero()
-    {
-        using var conn = Open();
-        var audId = TestDbHelper.InsertPerson(conn, "Aud1");
-        var pcId  = TestDbHelper.InsertPerson(conn, "Client1");
-        TestDbHelper.InsertPC(conn, pcId);
-
-        TestDbHelper.Exec(conn, $@"
-            INSERT INTO Sessions (PcId, AuditorId, SessionDate, SequenceInDay,
-                                  LengthSeconds, AdminSeconds, IsFreeSession,
-                                  ChargeSeconds, ChargedRateCentsPerHour)
-            VALUES ({pcId}, {audId}, '2024-01-11', 1, 3600, 0, 0, 0, 0)");
-
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT IsSolo FROM Sessions ORDER BY SessionId DESC LIMIT 1";
-        Assert.Equal(0L, (long)(cmd.ExecuteScalar() ?? 0L));
     }
 
     [Fact]

@@ -172,7 +172,7 @@ public class DashboardExtendedTests : IDisposable
     [Fact]
     public void SetUserPcRole_DoesNotAffectSoloEntry()
     {
-        // SetUserPcRole only touches IsSolo=0 rows
+        // SetUserPcRole only touches non-CSSolo rows
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "Aud1");
         var pcId  = TestDbHelper.InsertPerson(conn, "Client1");
@@ -259,9 +259,9 @@ public class DashboardExtendedTests : IDisposable
         TestDbHelper.InsertPC(conn, pcId);
 
         var date = new DateOnly(2024, 1, 15);
-        // Regular session (IsSolo=0)
-        TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-15", 7200, isSolo: false);
-        // Solo session (IsSolo=1)
+        // Regular session (PcId != AuditorId)
+        TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-15", 7200);
+        // Solo session (PcId == AuditorId, created via AddSoloSession)
         _svc.AddSoloSession(audId, date, 3600, 0, false, null);
 
         var detail = _svc.GetDayDetail(audId, audId, date, "SoloAuditor");
@@ -462,8 +462,8 @@ public class DashboardExtendedTests : IDisposable
 
         var week = new DateOnly(2024, 1, 11);
         _svc.AddSoloSession(audId, new DateOnly(2024, 1, 11), 3600, 0, false, null);
-        // Regular session should NOT be counted
-        TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-11", 7200, isSolo: false);
+        // Regular session (PcId != AuditorId) should NOT be counted
+        TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-11", 7200);
 
         var result = _svc.GetWeeklyTotalsSolo(audId, week, 1);
         Assert.Equal(3600, result.Last().TotalSeconds);
@@ -627,8 +627,8 @@ public class DashboardExtendedTests : IDisposable
         var pcId  = TestDbHelper.InsertPerson(conn, "Client1");
         TestDbHelper.InsertPC(conn, pcId);
 
-        // Regular session only (IsSolo=0)
-        TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-11", 3600, isSolo: false);
+        // Regular session only (PcId != AuditorId)
+        TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-11", 3600);
 
         var week = new DateOnly(2024, 1, 11);
         Assert.False(_svc.HasAnyWorkInWeek(audId, week, new List<PcInfo>(), soloMode: true));
@@ -731,7 +731,7 @@ public class DashboardExtendedTests : IDisposable
         var pcId  = pcSvc.AddPcWithPerson("Dana", "Cohen", "", "", "", "F");
 
         // Buy 5 hours
-        pcSvc.AddPayment(pcId, "2024-01-01", 5, 1500, null);
+        pcSvc.AddPayment(pcId, "2024-01-01", 5, 1500);
 
         // Use 3600 sec (1 hour) via DashboardService
         using var conn = Open();

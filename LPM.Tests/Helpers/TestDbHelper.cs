@@ -60,9 +60,15 @@ public static class TestDbHelper
                 LastName    TEXT,
                 Phone       TEXT,
                 Email       TEXT,
-                Age         INTEGER,
                 DateOfBirth TEXT,
-                Sex         TEXT
+                Sex         TEXT,
+                IsActive    INTEGER NOT NULL DEFAULT 1,
+                ExternalId  TEXT,
+                Notes       TEXT,
+                Origin      TEXT,
+                Org         TEXT,
+                Referral    TEXT,
+                CreatedAt   TEXT NOT NULL DEFAULT (datetime('now'))
             )");
 
         Exec(conn, @"
@@ -89,12 +95,7 @@ public static class TestDbHelper
 
         Exec(conn, @"
             CREATE TABLE IF NOT EXISTS PCs (
-                PcId       INTEGER NOT NULL,
-                ExternalId TEXT,
-                Notes      TEXT,
-                StartDate  TEXT,
-                Phone      TEXT,
-                Email      TEXT
+                PcId INTEGER NOT NULL PRIMARY KEY
             )");
 
         Exec(conn, @"
@@ -112,7 +113,7 @@ public static class TestDbHelper
                 SessionSummaryHtml      TEXT,
                 CreatedAt               TEXT    NOT NULL DEFAULT (datetime('now')),
                 VerifiedStatus          TEXT    NOT NULL DEFAULT 'Draft',
-                IsSolo                  INTEGER NOT NULL DEFAULT 0
+                AuditorSalaryCentsPerHour INTEGER NOT NULL DEFAULT 0
             )");
 
         Exec(conn, @"
@@ -145,8 +146,12 @@ public static class TestDbHelper
                 PaymentDate TEXT    NOT NULL,
                 HoursBought INTEGER NOT NULL DEFAULT 0,
                 AmountPaid  INTEGER NOT NULL DEFAULT 0,
-                Notes       TEXT,
-                CreatedAt   TEXT    NOT NULL DEFAULT (datetime('now'))
+                CreatedAt   TEXT    NOT NULL DEFAULT (datetime('now')),
+                PaymentType TEXT    DEFAULT 'Auditing',
+                CourseId    INTEGER,
+                RegistrarId INTEGER,
+                ReferralId  INTEGER,
+                PurchaseId  INTEGER
             )");
 
         Exec(conn, @"
@@ -154,9 +159,7 @@ public static class TestDbHelper
                 Id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 UserId       INTEGER NOT NULL,
                 PcId         INTEGER NOT NULL,
-                WorkCapacity TEXT    NOT NULL DEFAULT 'Auditor',
-                IsSolo       INTEGER NOT NULL DEFAULT 0,
-                UNIQUE(UserId, PcId, IsSolo)
+                WorkCapacity TEXT    NOT NULL DEFAULT 'Auditor'
             )");
 
         Exec(conn, @"
@@ -175,7 +178,7 @@ public static class TestDbHelper
 
         // UNIQUE(PersonId, VisitDate) matches the real schema in AcademyService
         Exec(conn, @"
-            CREATE TABLE IF NOT EXISTS Students (
+            CREATE TABLE IF NOT EXISTS AcademyAttendance (
                 StudentId INTEGER PRIMARY KEY AUTOINCREMENT,
                 PersonId  INTEGER NOT NULL,
                 VisitDate TEXT    NOT NULL,
@@ -298,17 +301,25 @@ public static class TestDbHelper
     public static void InsertPC(SqliteConnection conn, int personId, string? externalId = null)
     {
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT INTO PCs (PcId, ExternalId) VALUES (@id, @ext)";
-        cmd.Parameters.AddWithValue("@id",  personId);
-        cmd.Parameters.AddWithValue("@ext", (object?)externalId ?? DBNull.Value);
+        cmd.CommandText = "INSERT INTO PCs (PcId) VALUES (@id)";
+        cmd.Parameters.AddWithValue("@id", personId);
         cmd.ExecuteNonQuery();
+
+        if (!string.IsNullOrEmpty(externalId))
+        {
+            using var upd = conn.CreateCommand();
+            upd.CommandText = "UPDATE Persons SET ExternalId=@ext WHERE PersonId=@id";
+            upd.Parameters.AddWithValue("@ext", externalId);
+            upd.Parameters.AddWithValue("@id", personId);
+            upd.ExecuteNonQuery();
+        }
     }
 
     /// <summary>Inserts a Session and returns the new SessionId.</summary>
     public static int InsertSession(SqliteConnection conn,
         int pcId, int auditorId, string date,
         int lengthSec, int adminSec = 0,
-        bool isFree = false, bool isSolo = false,
+        bool isFree = false,
         int seqInDay = 1, string verifiedStatus = "Draft")
     {
         using var cmd = conn.CreateCommand();
@@ -317,12 +328,12 @@ public static class TestDbHelper
               (PcId, AuditorId, SessionDate, SequenceInDay,
                LengthSeconds, AdminSeconds, IsFreeSession,
                ChargeSeconds, ChargedRateCentsPerHour,
-               CreatedAt, VerifiedStatus, IsSolo)
+               CreatedAt, VerifiedStatus)
             VALUES
               (@pcId, @audId, @date, @seq,
                @len, @adm, @free,
                0, 0,
-               datetime('now'), @vs, @solo)";
+               datetime('now'), @vs)";
         cmd.Parameters.AddWithValue("@pcId",  pcId);
         cmd.Parameters.AddWithValue("@audId", auditorId);
         cmd.Parameters.AddWithValue("@date",  date);
@@ -331,33 +342,31 @@ public static class TestDbHelper
         cmd.Parameters.AddWithValue("@adm",   adminSec);
         cmd.Parameters.AddWithValue("@free",  isFree ? 1 : 0);
         cmd.Parameters.AddWithValue("@vs",    verifiedStatus);
-        cmd.Parameters.AddWithValue("@solo",  isSolo ? 1 : 0);
         cmd.ExecuteNonQuery();
         return (int)Scalar(conn, "SELECT last_insert_rowid()");
     }
 
     /// <summary>Inserts a Payment and returns the new PaymentId.</summary>
     public static int InsertPayment(SqliteConnection conn,
-        int pcId, string date, int hoursBought, int amountPaid = 0, string? notes = null)
+        int pcId, string date, int hoursBought, int amountPaid = 0)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO Payments (PcId, PaymentDate, HoursBought, AmountPaid, Notes)
-            VALUES (@pcId, @date, @hrs, @amt, @notes)";
+            INSERT INTO Payments (PcId, PaymentDate, HoursBought, AmountPaid)
+            VALUES (@pcId, @date, @hrs, @amt)";
         cmd.Parameters.AddWithValue("@pcId",  pcId);
         cmd.Parameters.AddWithValue("@date",  date);
         cmd.Parameters.AddWithValue("@hrs",   hoursBought);
         cmd.Parameters.AddWithValue("@amt",   amountPaid);
-        cmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
         cmd.ExecuteNonQuery();
         return (int)Scalar(conn, "SELECT last_insert_rowid()");
     }
 
-    /// <summary>Inserts an academy visit (Students row).</summary>
+    /// <summary>Inserts an academy visit (AcademyAttendance row).</summary>
     public static void InsertVisit(SqliteConnection conn, int personId, string date)
     {
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT OR IGNORE INTO Students (PersonId, VisitDate) VALUES (@pid, @date)";
+        cmd.CommandText = "INSERT OR IGNORE INTO AcademyAttendance (PersonId, VisitDate) VALUES (@pid, @date)";
         cmd.Parameters.AddWithValue("@pid",  personId);
         cmd.Parameters.AddWithValue("@date", date);
         cmd.ExecuteNonQuery();

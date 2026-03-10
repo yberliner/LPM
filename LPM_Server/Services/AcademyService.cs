@@ -30,62 +30,17 @@ public class AcademyService
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
-        AddPersonColumns(conn);
-        EnsureStudentsTable(conn);
-    }
 
-    private static void AddPersonColumns(SqliteConnection conn)
-    {
-        var cols = GetColumnNames(conn, "Persons");
-        foreach (var (col, type) in new[] {
-            ("Phone", "TEXT"), ("Email", "TEXT"),
-            ("Age", "INTEGER"),      // legacy — kept so existing rows aren't broken
-            ("DateOfBirth", "TEXT"),
-            ("Sex", "TEXT"),
-            ("Org", "TEXT"),
-            ("Referral", "TEXT"),
-            ("IsActive", "INTEGER NOT NULL DEFAULT 1"),
-            ("ExternalId", "TEXT") })
-            if (!cols.Contains(col))
-                Execute(conn, $"ALTER TABLE Persons ADD COLUMN {col} {type}");
-    }
-
-    private static void EnsureStudentsTable(SqliteConnection conn)
-    {
-        var tables = GetTableNames(conn);
-
-        if (!tables.Contains("Students"))
+        if (!GetTableNames(conn).Contains("AcademyAttendance"))
         {
             Execute(conn, @"
-                CREATE TABLE Students (
+                CREATE TABLE AcademyAttendance (
                     StudentId INTEGER PRIMARY KEY AUTOINCREMENT,
                     PersonId  INTEGER NOT NULL,
                     VisitDate TEXT    NOT NULL,
                     UNIQUE (PersonId, VisitDate)
                 )");
-            return;
         }
-
-        var cols = GetColumnNames(conn, "Students");
-        if (cols.Contains("VisitDate")) return; // already migrated
-
-        // Migrate old Students(StudentId,Notes,CreatedAt) + AcademyVisits → new Students
-        using var txn = conn.BeginTransaction();
-        Execute(conn, @"
-            CREATE TABLE StudentsNew (
-                StudentId INTEGER PRIMARY KEY AUTOINCREMENT,
-                PersonId  INTEGER NOT NULL,
-                VisitDate TEXT    NOT NULL,
-                UNIQUE (PersonId, VisitDate)
-            )");
-        if (tables.Contains("AcademyVisits"))
-        {
-            Execute(conn, "INSERT OR IGNORE INTO StudentsNew (PersonId, VisitDate) SELECT StudentId, VisitDate FROM AcademyVisits");
-            Execute(conn, "DROP TABLE AcademyVisits");
-        }
-        Execute(conn, "DROP TABLE Students");
-        Execute(conn, "ALTER TABLE StudentsNew RENAME TO Students");
-        txn.Commit();
     }
 
     // ── Persons ─────────────────────────────────────────────────────────────
@@ -155,7 +110,7 @@ public class AcademyService
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
                    COALESCE(p.Referral,'') AS Referral,
                    COALESCE(p.Org,'')      AS Org
-            FROM Students s
+            FROM AcademyAttendance s
             JOIN Persons p ON p.PersonId = s.PersonId
             WHERE s.VisitDate = @date AND COALESCE(p.IsActive, 1) = 1
             ORDER BY p.FirstName, p.LastName";
@@ -174,7 +129,7 @@ public class AcademyService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT OR IGNORE INTO Students (PersonId, VisitDate)
+            INSERT OR IGNORE INTO AcademyAttendance (PersonId, VisitDate)
             VALUES (@pid, @date)";
         cmd.Parameters.AddWithValue("@pid",  personId);
         cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
@@ -186,7 +141,7 @@ public class AcademyService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM Students WHERE StudentId = @id";
+        cmd.CommandText = "DELETE FROM AcademyAttendance WHERE StudentId = @id";
         cmd.Parameters.AddWithValue("@id", visitId);
         cmd.ExecuteNonQuery();
     }
@@ -204,7 +159,7 @@ public class AcademyService
                    COUNT(*) AS VisitCount,
                    COALESCE(p.Referral,'') AS Referral,
                    COALESCE(p.Org,'')      AS Org
-            FROM Students s
+            FROM AcademyAttendance s
             JOIN Persons p ON p.PersonId = s.PersonId
             WHERE s.VisitDate >= @start AND s.VisitDate <= @end
               AND COALESCE(p.IsActive, 1) = 1
@@ -235,7 +190,7 @@ public class AcademyService
         cmd.CommandText = @"
             SELECT COALESCE(p.Referral,'') AS Referral,
                    COALESCE(p.Org,'')      AS Org
-            FROM Students s
+            FROM AcademyAttendance s
             JOIN Persons p ON p.PersonId = s.PersonId
             WHERE s.VisitDate >= @start AND s.VisitDate <= @end
             GROUP BY s.PersonId";
@@ -276,7 +231,7 @@ public class AcademyService
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
                    COALESCE(p.Referral,'') AS Referral,
                    COALESCE(p.Org,'')      AS Org
-            FROM Students s
+            FROM AcademyAttendance s
             JOIN Persons p ON p.PersonId = s.PersonId
             WHERE s.VisitDate >= @start AND s.VisitDate < @end";
         cmd.Parameters.AddWithValue("@start", rangeStart.ToString("yyyy-MM-dd"));
@@ -354,7 +309,7 @@ public class AcademyService
                    p.ExternalId
             FROM Persons p
             LEFT JOIN PCs pc ON pc.PcId = p.PersonId
-            LEFT JOIN (SELECT DISTINCT PersonId FROM Students) vis ON vis.PersonId = p.PersonId
+            LEFT JOIN (SELECT DISTINCT PersonId FROM AcademyAttendance) vis ON vis.PersonId = p.PersonId
             LEFT JOIN Auditors aud ON aud.AuditorId = p.PersonId
             LEFT JOIN CaseSupervisors cs ON cs.CsId = p.PersonId
             ORDER BY COALESCE(p.IsActive,1) DESC, p.FirstName, p.LastName";
@@ -397,16 +352,6 @@ public class AcademyService
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
-
-    private static HashSet<string> GetColumnNames(SqliteConnection conn, string table)
-    {
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"PRAGMA table_info({table})";
-        var cols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        using var r = cmd.ExecuteReader();
-        while (r.Read()) cols.Add(r.GetString(1));
-        return cols;
-    }
 
     private static HashSet<string> GetTableNames(SqliteConnection conn)
     {

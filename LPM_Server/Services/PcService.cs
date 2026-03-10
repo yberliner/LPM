@@ -5,13 +5,13 @@ namespace LPM.Services;
 
 public record PcListItem(int PcId, string FullName, string ExternalId, long RemainSec);
 public record PcDetailInfo(int PcId, string FirstName, string LastName, string ExternalId,
-    string Phone, string Email, string Notes, string StartDate, string DateOfBirth, string Sex, string Origin)
+    string Phone, string Email, string Notes, string DateOfBirth, string Sex, string Origin)
 {
     public string FullName => string.IsNullOrEmpty(LastName) ? FirstName : $"{FirstName} {LastName}";
 }
 public record PcSessionInfo(int SessionId, string Date, string AuditorName,
     int LengthSec, int AdminSec, bool IsFree, string VerifiedStatus);
-public record PcPayment(int PaymentId, string Date, int HoursBought, int AmountPaid, string? Notes,
+public record PcPayment(int PaymentId, string Date, int HoursBought, int AmountPaid,
     string PaymentType, int? CourseId, string? CourseName, int VisitCount,
     int? RegistrarId, string? RegistrarName, int? ReferralId, string? ReferralName);
 public record PcStats(int TotalSessions, int FreeSessions, long UsedSec,
@@ -55,60 +55,14 @@ public class PcService
                 PaymentDate TEXT    NOT NULL,
                 HoursBought INTEGER NOT NULL DEFAULT 0,
                 AmountPaid  INTEGER NOT NULL DEFAULT 0,
-                Notes       TEXT,
-                CreatedAt   TEXT NOT NULL DEFAULT (datetime('now'))
+                CreatedAt   TEXT NOT NULL DEFAULT (datetime('now')),
+                PaymentType TEXT DEFAULT 'Auditing',
+                CourseId    INTEGER,
+                RegistrarId INTEGER,
+                ReferralId  INTEGER,
+                PurchaseId  INTEGER
             )";
         c1.ExecuteNonQuery();
-
-        // Extra columns on Payments
-        foreach (var (col, def) in new[] {
-            ("PaymentType",  "TEXT DEFAULT 'Auditing'"),
-            ("CourseId",     "INTEGER"),
-            ("RegistrarId",  "INTEGER"),
-            ("ReferralId",   "INTEGER") })
-        {
-            using var ck = conn.CreateCommand();
-            ck.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('Payments') WHERE name='{col}'";
-            if ((long)(ck.ExecuteScalar() ?? 0L) == 0)
-            {
-                using var alt = conn.CreateCommand();
-                alt.CommandText = $"ALTER TABLE Payments ADD COLUMN {col} {def}";
-                alt.ExecuteNonQuery();
-            }
-        }
-
-        // Extra columns on PCs
-        foreach (var (col, type) in new[] {
-            ("Phone",     "TEXT"),   // kept for legacy read; new writes go to Persons
-            ("Email",     "TEXT"),
-            ("Notes",     "TEXT"),
-            ("StartDate", "TEXT"),
-            ("Origin",    "TEXT") })
-        {
-            using var ck = conn.CreateCommand();
-            ck.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('PCs') WHERE name='{col}'";
-            if ((long)(ck.ExecuteScalar() ?? 0L) == 0)
-            {
-                using var alt = conn.CreateCommand();
-                alt.CommandText = $"ALTER TABLE PCs ADD COLUMN {col} {type}";
-                alt.ExecuteNonQuery();
-            }
-        }
-
-        // Ensure Persons has Phone/Email/DateOfBirth/Sex/IsActive/ExternalId columns
-        foreach (var (col, type) in new[] {
-            ("Phone", "TEXT"), ("Email", "TEXT"), ("Age", "INTEGER"), ("DateOfBirth", "TEXT"), ("Sex", "TEXT"),
-            ("IsActive", "INTEGER NOT NULL DEFAULT 1"), ("ExternalId", "TEXT") })
-        {
-            using var ck = conn.CreateCommand();
-            ck.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('Persons') WHERE name='{col}'";
-            if ((long)(ck.ExecuteScalar() ?? 0L) == 0)
-            {
-                using var alt = conn.CreateCommand();
-                alt.CommandText = $"ALTER TABLE Persons ADD COLUMN {col} {type}";
-                alt.ExecuteNonQuery();
-            }
-        }
 
         // Purchases & PurchaseItems tables
         using var c2 = conn.CreateCommand();
@@ -123,7 +77,8 @@ public class PcService
                 ApprovedByPersonId INTEGER,
                 ApprovedAt         TEXT,
                 CreatedByPersonId  INTEGER,
-                CreatedAt          TEXT NOT NULL DEFAULT (datetime('now'))
+                CreatedAt          TEXT NOT NULL DEFAULT (datetime('now')),
+                IsDeleted          INTEGER NOT NULL DEFAULT 0
             )";
         c2.ExecuteNonQuery();
 
@@ -156,45 +111,6 @@ public class PcService
                 FOREIGN KEY (PurchaseId) REFERENCES Purchases(PurchaseId)
             )";
         c4.ExecuteNonQuery();
-
-        // Add IsDeleted column to Purchases
-        {
-            using var ck = conn.CreateCommand();
-            ck.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Purchases') WHERE name='IsDeleted'";
-            if ((long)(ck.ExecuteScalar() ?? 0L) == 0)
-            {
-                using var alt = conn.CreateCommand();
-                alt.CommandText = "ALTER TABLE Purchases ADD COLUMN IsDeleted INTEGER NOT NULL DEFAULT 0";
-                alt.ExecuteNonQuery();
-            }
-        }
-
-        // Add PurchaseId column to Payments for linking
-        {
-            using var ck = conn.CreateCommand();
-            ck.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Payments') WHERE name='PurchaseId'";
-            if ((long)(ck.ExecuteScalar() ?? 0L) == 0)
-            {
-                using var alt = conn.CreateCommand();
-                alt.CommandText = "ALTER TABLE Payments ADD COLUMN PurchaseId INTEGER";
-                alt.ExecuteNonQuery();
-            }
-        }
-
-        // One-time migration: copy legacy Phone/Email from PCs → Persons
-        using var migPhone = conn.CreateCommand();
-        migPhone.CommandText = @"
-            UPDATE Persons SET Phone = (SELECT Phone FROM PCs WHERE PCs.PcId = Persons.PersonId)
-            WHERE PersonId IN (SELECT PcId FROM PCs WHERE Phone IS NOT NULL AND Phone != '')
-              AND (Phone IS NULL OR Phone = '')";
-        migPhone.ExecuteNonQuery();
-
-        using var migEmail = conn.CreateCommand();
-        migEmail.CommandText = @"
-            UPDATE Persons SET Email = (SELECT Email FROM PCs WHERE PCs.PcId = Persons.PersonId)
-            WHERE PersonId IN (SELECT PcId FROM PCs WHERE Email IS NOT NULL AND Email != '')
-              AND (Email IS NULL OR Email = '')";
-        migEmail.ExecuteNonQuery();
     }
 
     public List<PcListItem> GetAllPcs()
@@ -205,7 +121,7 @@ public class PcService
         cmd.CommandText = @"
             SELECT pc.PcId,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
-                   COALESCE(pc.ExternalId, '') AS ExternalId,
+                   COALESCE(p.ExternalId, '') AS ExternalId,
                    (COALESCE(pay.TotalHours, 0) * 3600 - COALESCE(sess.UsedSec, 0)) AS RemainSec
             FROM PCs pc
             JOIN Persons p ON p.PersonId = pc.PcId
@@ -234,14 +150,15 @@ public class PcService
 
         using var pCmd = conn.CreateCommand();
         pCmd.CommandText = @"
-            INSERT INTO Persons (FirstName, LastName, Phone, Email, DateOfBirth, Sex)
-            VALUES (@fn, @ln, @ph, @em, @dob, @sex)";
+            INSERT INTO Persons (FirstName, LastName, Phone, Email, DateOfBirth, Sex, Origin)
+            VALUES (@fn, @ln, @ph, @em, @dob, @sex, @orig)";
         pCmd.Parameters.AddWithValue("@fn",  firstName.Trim());
         pCmd.Parameters.AddWithValue("@ln",  lastName.Trim());
         pCmd.Parameters.AddWithValue("@ph",  Nv(phone));
         pCmd.Parameters.AddWithValue("@em",  Nv(email));
         pCmd.Parameters.AddWithValue("@dob", Nv(dateOfBirth));
         pCmd.Parameters.AddWithValue("@sex", Nv(sex));
+        pCmd.Parameters.AddWithValue("@orig", Nv(origin));
         pCmd.ExecuteNonQuery();
 
         using var idCmd = conn.CreateCommand();
@@ -249,9 +166,8 @@ public class PcService
         var personId = (int)(long)idCmd.ExecuteScalar()!;
 
         using var pcCmd = conn.CreateCommand();
-        pcCmd.CommandText = "INSERT INTO PCs (PcId, Origin) VALUES (@id, @orig)";
-        pcCmd.Parameters.AddWithValue("@id",   personId);
-        pcCmd.Parameters.AddWithValue("@orig", Nv(origin));
+        pcCmd.CommandText = "INSERT INTO PCs (PcId) VALUES (@id)";
+        pcCmd.Parameters.AddWithValue("@id", personId);
         pcCmd.ExecuteNonQuery();
 
         return personId;
@@ -264,10 +180,10 @@ public class PcService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT p.FirstName,             COALESCE(p.LastName,''),
-                   COALESCE(pc.ExternalId,''), COALESCE(p.Phone,''),
-                   COALESCE(p.Email,''),        COALESCE(pc.Notes,''),
-                   COALESCE(pc.StartDate,''),   COALESCE(p.DateOfBirth,''), COALESCE(p.Sex,''),
-                   COALESCE(pc.Origin,'')
+                   COALESCE(p.ExternalId,''), COALESCE(p.Phone,''),
+                   COALESCE(p.Email,''),        COALESCE(p.Notes,''),
+                   COALESCE(p.DateOfBirth,''), COALESCE(p.Sex,''),
+                   COALESCE(p.Origin,'')
             FROM PCs pc
             JOIN Persons p ON p.PersonId = pc.PcId
             WHERE pc.PcId = @id";
@@ -276,12 +192,12 @@ public class PcService
         if (!r.Read()) return null;
         return new PcDetailInfo(pcId,
             r.GetString(0), r.GetString(1), r.GetString(2),
-            r.GetString(3), r.GetString(4), r.GetString(5), r.GetString(6),
-            r.GetString(7), r.GetString(8), r.GetString(9));
+            r.GetString(3), r.GetString(4), r.GetString(5),
+            r.GetString(6), r.GetString(7), r.GetString(8));
     }
 
     public void UpdatePcDetail(int pcId, string firstName, string lastName,
-        string externalId, string phone, string email, string startDate, string notes,
+        string externalId, string phone, string email, string notes,
         string dateOfBirth, string sex, string origin = "")
     {
         using var conn = new SqliteConnection(_connectionString);
@@ -290,27 +206,20 @@ public class PcService
         using var pCmd = conn.CreateCommand();
         pCmd.CommandText = @"
             UPDATE Persons SET FirstName=@fn, LastName=@ln,
-                               Phone=@ph, Email=@em, DateOfBirth=@dob, Sex=@sex
+                               Phone=@ph, Email=@em, DateOfBirth=@dob, Sex=@sex,
+                               ExternalId=@ext, Notes=@nt, Origin=@orig
             WHERE PersonId=@id";
-        pCmd.Parameters.AddWithValue("@fn",  firstName.Trim());
-        pCmd.Parameters.AddWithValue("@ln",  lastName.Trim());
-        pCmd.Parameters.AddWithValue("@ph",  Nv(phone));
-        pCmd.Parameters.AddWithValue("@em",  Nv(email));
-        pCmd.Parameters.AddWithValue("@dob", Nv(dateOfBirth));
-        pCmd.Parameters.AddWithValue("@sex", Nv(sex));
-        pCmd.Parameters.AddWithValue("@id",  pcId);
+        pCmd.Parameters.AddWithValue("@fn",   firstName.Trim());
+        pCmd.Parameters.AddWithValue("@ln",   lastName.Trim());
+        pCmd.Parameters.AddWithValue("@ph",   Nv(phone));
+        pCmd.Parameters.AddWithValue("@em",   Nv(email));
+        pCmd.Parameters.AddWithValue("@dob",  Nv(dateOfBirth));
+        pCmd.Parameters.AddWithValue("@sex",  Nv(sex));
+        pCmd.Parameters.AddWithValue("@ext",  Nv(externalId));
+        pCmd.Parameters.AddWithValue("@nt",   Nv(notes));
+        pCmd.Parameters.AddWithValue("@orig", Nv(origin));
+        pCmd.Parameters.AddWithValue("@id",   pcId);
         pCmd.ExecuteNonQuery();
-
-        using var pcCmd = conn.CreateCommand();
-        pcCmd.CommandText = @"
-            UPDATE PCs SET ExternalId=@ext, StartDate=@sd, Notes=@nt, Origin=@orig
-            WHERE PcId=@id";
-        pcCmd.Parameters.AddWithValue("@ext",  Nv(externalId));
-        pcCmd.Parameters.AddWithValue("@sd",   Nv(startDate));
-        pcCmd.Parameters.AddWithValue("@nt",   Nv(notes));
-        pcCmd.Parameters.AddWithValue("@orig", Nv(origin));
-        pcCmd.Parameters.AddWithValue("@id",   pcId);
-        pcCmd.ExecuteNonQuery();
     }
 
     public PcStats GetPcStats(int pcId)
@@ -376,10 +285,10 @@ public class PcService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT p.PaymentId, p.PaymentDate, p.HoursBought, p.AmountPaid, p.Notes,
+            SELECT p.PaymentId, p.PaymentDate, p.HoursBought, p.AmountPaid,
                    COALESCE(p.PaymentType,'Auditing'), p.CourseId, c.Name,
                    CASE WHEN COALESCE(p.PaymentType,'Auditing') = 'Course' AND p.CourseId IS NOT NULL
-                        THEN (SELECT COUNT(*) FROM Students s
+                        THEN (SELECT COUNT(*) FROM AcademyAttendance s
                               WHERE s.PersonId = p.PcId AND s.VisitDate >= p.PaymentDate)
                         ELSE 0 END AS VisitCount,
                    p.RegistrarId,
@@ -398,32 +307,30 @@ public class PcService
         while (r.Read())
             list.Add(new PcPayment(
                 r.GetInt32(0), r.GetString(1), r.GetInt32(2), r.GetInt32(3),
-                r.IsDBNull(4) ? null : r.GetString(4),
-                r.GetString(5),
-                r.IsDBNull(6) ? null : r.GetInt32(6),
-                r.IsDBNull(7) ? null : r.GetString(7),
-                r.GetInt32(8),
-                r.IsDBNull(9)  ? null : r.GetInt32(9),
-                r.IsDBNull(10) ? null : r.GetString(10).Trim(),
-                r.IsDBNull(11) ? null : r.GetInt32(11),
-                r.IsDBNull(12) ? null : r.GetString(12).Trim()));
+                r.GetString(4),
+                r.IsDBNull(5) ? null : r.GetInt32(5),
+                r.IsDBNull(6) ? null : r.GetString(6),
+                r.GetInt32(7),
+                r.IsDBNull(8)  ? null : r.GetInt32(8),
+                r.IsDBNull(9)  ? null : r.GetString(9).Trim(),
+                r.IsDBNull(10) ? null : r.GetInt32(10),
+                r.IsDBNull(11) ? null : r.GetString(11).Trim()));
         return list;
     }
 
-    public void AddPayment(int pcId, string date, int hoursBought, int amountPaid, string? notes,
+    public void AddPayment(int pcId, string date, int hoursBought, int amountPaid,
         string paymentType = "Auditing", int? courseId = null, int? registrarId = null, int? referralId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO Payments (PcId, PaymentDate, HoursBought, AmountPaid, Notes, PaymentType, CourseId, RegistrarId, ReferralId)
-            VALUES (@pcId, @date, @hrs, @amt, @notes, @type, @cid, @regId, @refId)";
+            INSERT INTO Payments (PcId, PaymentDate, HoursBought, AmountPaid, PaymentType, CourseId, RegistrarId, ReferralId)
+            VALUES (@pcId, @date, @hrs, @amt, @type, @cid, @regId, @refId)";
         cmd.Parameters.AddWithValue("@pcId",  pcId);
         cmd.Parameters.AddWithValue("@date",  date);
         cmd.Parameters.AddWithValue("@hrs",   hoursBought);
         cmd.Parameters.AddWithValue("@amt",   amountPaid);
-        cmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@type",  paymentType);
         cmd.Parameters.AddWithValue("@cid",   courseId.HasValue    ? (object)courseId.Value    : DBNull.Value);
         cmd.Parameters.AddWithValue("@regId", registrarId.HasValue ? (object)registrarId.Value : DBNull.Value);
@@ -520,7 +427,7 @@ public class PcService
         cmd.CommandText = @"
             SELECT pc.PcId,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
-                   COALESCE(pc.ExternalId, '') AS ExternalId,
+                   COALESCE(p.ExternalId, '') AS ExternalId,
                    (COALESCE(pay.TotalHours, 0) * 3600 - COALESCE(sess.UsedSec, 0)) AS RemainSec,
                    COALESCE(sess.UsedSec, 0) AS TotalSessionSec,
                    COALESCE(sess.SessionCount, 0) AS TotalSessions,
@@ -538,7 +445,7 @@ public class PcService
             ) sess ON sess.PcId = pc.PcId
             LEFT JOIN (
                 SELECT PersonId, COUNT(*) AS VisitCount
-                FROM Students GROUP BY PersonId
+                FROM AcademyAttendance GROUP BY PersonId
             ) acad ON acad.PersonId = pc.PcId
             WHERE COALESCE(p.IsActive, 1) = 1
             ORDER BY RemainSec ASC, p.FirstName, p.LastName";
@@ -638,13 +545,12 @@ public class PcService
             using var payCmd = conn.CreateCommand();
             payCmd.Transaction = tx;
             payCmd.CommandText = @"
-                INSERT INTO Payments (PcId, PaymentDate, HoursBought, AmountPaid, Notes, PaymentType, CourseId, RegistrarId, ReferralId, PurchaseId)
-                VALUES (@pcId, @date, @hrs, @amt, @notes, @type, @cid, @regId, @refId, @purchaseId)";
+                INSERT INTO Payments (PcId, PaymentDate, HoursBought, AmountPaid, PaymentType, CourseId, RegistrarId, ReferralId, PurchaseId)
+                VALUES (@pcId, @date, @hrs, @amt, @type, @cid, @regId, @refId, @purchaseId)";
             payCmd.Parameters.AddWithValue("@pcId", pcId);
             payCmd.Parameters.AddWithValue("@date", date);
             payCmd.Parameters.AddWithValue("@hrs", item.hoursBought);
             payCmd.Parameters.AddWithValue("@amt", item.amountPaid);
-            payCmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
             payCmd.Parameters.AddWithValue("@type", item.itemType);
             payCmd.Parameters.AddWithValue("@cid", item.courseId.HasValue ? (object)item.courseId.Value : DBNull.Value);
             payCmd.Parameters.AddWithValue("@regId", item.registrarId.HasValue ? (object)item.registrarId.Value : DBNull.Value);
@@ -953,13 +859,12 @@ public class PcService
             using var payCmd = conn.CreateCommand();
             payCmd.Transaction = tx;
             payCmd.CommandText = @"
-                INSERT INTO Payments (PcId, PaymentDate, HoursBought, AmountPaid, Notes, PaymentType, CourseId, RegistrarId, ReferralId, PurchaseId)
-                VALUES (@pcId, @date, @hrs, @amt, @notes, @type, @cid, @regId, @refId, @purchaseId)";
+                INSERT INTO Payments (PcId, PaymentDate, HoursBought, AmountPaid, PaymentType, CourseId, RegistrarId, ReferralId, PurchaseId)
+                VALUES (@pcId, @date, @hrs, @amt, @type, @cid, @regId, @refId, @purchaseId)";
             payCmd.Parameters.AddWithValue("@pcId", pcId);
             payCmd.Parameters.AddWithValue("@date", date);
             payCmd.Parameters.AddWithValue("@hrs", item.hoursBought);
             payCmd.Parameters.AddWithValue("@amt", item.amountPaid);
-            payCmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
             payCmd.Parameters.AddWithValue("@type", item.itemType);
             payCmd.Parameters.AddWithValue("@cid", item.courseId.HasValue ? (object)item.courseId.Value : DBNull.Value);
             payCmd.Parameters.AddWithValue("@regId", item.registrarId.HasValue ? (object)item.registrarId.Value : DBNull.Value);
