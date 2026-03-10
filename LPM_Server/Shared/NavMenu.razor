@@ -14,6 +14,47 @@
 @using LPM._Spk
 
 
+<style>
+    /* ── Active menu item highlight ── */
+    .main-menu > .slide.active > .side-menu__item {
+        background: linear-gradient(90deg, rgba(99,102,241,.15), transparent) !important;
+        border-left: 3px solid #6366f1 !important;
+        border-radius: 0 8px 8px 0 !important;
+        position: relative;
+    }
+    [dir=rtl] .main-menu > .slide.active > .side-menu__item {
+        border-left: none !important;
+        border-right: 3px solid #6366f1 !important;
+        border-radius: 8px 0 0 8px !important;
+    }
+    .main-menu > .slide.active > .side-menu__item .side-menu__label {
+        font-weight: 700 !important;
+        color: #6366f1 !important;
+    }
+    .main-menu > .slide.active > .side-menu__item .side-menu__icon {
+        color: #6366f1 !important;
+    }
+    .main-menu > .slide.active > .side-menu__item svg {
+        filter: drop-shadow(0 2px 6px rgba(99,102,241,.35));
+        transform: scale(1.08);
+        transition: transform .2s ease, filter .2s ease;
+    }
+    .main-menu > .slide.active > .side-menu__item::after {
+        content: '';
+        position: absolute;
+        left: 0; top: 50%;
+        transform: translateY(-50%);
+        width: 3px; height: 60%;
+        background: #6366f1;
+        border-radius: 0 4px 4px 0;
+        box-shadow: 0 0 8px rgba(99,102,241,.5), 0 0 16px rgba(99,102,241,.25);
+    }
+    [dir=rtl] .main-menu > .slide.active > .side-menu__item::after {
+        left: auto; right: 0;
+        border-radius: 4px 0 0 4px;
+    }
+</style>
+
 <div id="responsive-overlay" @onclick="() => responsivecloseFn()"></div>
 <aside class="app-sidebar sticky @sidebarClass" id="sidebar" @onmouseenter="() => HoverToggleInnerMenuFn(true)" @onmouseleave="() => HoverToggleInnerMenuFn(false)" @onclick="() => icontextOpenFn()">
 
