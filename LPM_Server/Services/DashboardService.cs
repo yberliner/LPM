@@ -39,13 +39,15 @@ public record AuditorPermGroup(int AuditorId, string AuditorName, bool AllowAll,
 public class DashboardService
 {
     private readonly string _connectionString;
+    private readonly MessageNotifier _messageNotifier;
 
     // Reusable SQL expression for a person's display name (requires alias p for Persons)
     private const string FullNameExpr =
         "TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), ''))";
 
-    public DashboardService(IConfiguration config)
+    public DashboardService(IConfiguration config, MessageNotifier messageNotifier)
     {
+        _messageNotifier = messageNotifier;
         var dbPath = config["Database:Path"] ?? "lifepower.db";
         _connectionString = $"Data Source={dbPath}";
         RunMigrations();
@@ -207,6 +209,7 @@ public class DashboardService
             ins.Parameters.AddWithValue("@to",   adminId);
             ins.Parameters.AddWithValue("@msg",  msgText);
             ins.ExecuteNonQuery();
+            _messageNotifier.NotifyNewMessage(adminId);
         }
     }
 
@@ -1652,6 +1655,7 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@to",   toStaffId);
         cmd.Parameters.AddWithValue("@msg",  msgText);
         cmd.ExecuteNonQuery();
+        _messageNotifier.NotifyNewMessage(toStaffId);
     }
 
     public List<StaffMessage> GetPendingMessages(int staffId)

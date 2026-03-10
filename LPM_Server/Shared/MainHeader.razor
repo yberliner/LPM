@@ -8,6 +8,7 @@
 @inject LPM.Auth.UserDb UserDb
 @inject LPM.Services.DashboardService DashSvc
 @inject LPM.Services.PcService PcSvc
+@inject LPM.Services.MessageNotifier MsgNotifier
 @using LPM._Spk
 @using LPM.Services
 @implements IDisposable
@@ -590,7 +591,6 @@
     string _msgText   = "";
     string _msgStatus = "";
     bool   _msgStatusIsError;
-    System.Threading.Timer? _msgPollTimer;
 
     protected override async Task OnInitializedAsync()
     {
@@ -610,21 +610,8 @@
         if (_msgUserId.HasValue)
         {
             _pendingMsgCount = DashSvc.GetPendingMessageCount(_msgUserId.Value);
-            // Poll every 20 seconds for new messages (only updates button color, no full refresh)
-            _msgPollTimer = new System.Threading.Timer(async _ =>
-            {
-                if (_isDisposed || !_msgUserId.HasValue) return;
-                try
-                {
-                    var newCount = DashSvc.GetPendingMessageCount(_msgUserId.Value);
-                    if (newCount != _pendingMsgCount)
-                    {
-                        _pendingMsgCount = newCount;
-                        await InvokeAsync(StateHasChanged);
-                    }
-                }
-                catch { /* swallow — component may be disposed */ }
-            }, null, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(20));
+            // Subscribe to instant message notifications
+            MsgNotifier.OnNewMessage += OnNewMessageReceived;
         }
     }
 
@@ -806,6 +793,21 @@
         }
     }
 
+    private async void OnNewMessageReceived(int recipientPersonId)
+    {
+        if (_isDisposed || !_msgUserId.HasValue || recipientPersonId != _msgUserId.Value) return;
+        try
+        {
+            var newCount = DashSvc.GetPendingMessageCount(_msgUserId.Value);
+            if (newCount != _pendingMsgCount)
+            {
+                _pendingMsgCount = newCount;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch { /* swallow — component may be disposed */ }
+    }
+
     public void Dispose()
     {
         _isDisposed = true;
@@ -814,8 +816,7 @@
 
         refreshTimer?.Dispose();
         refreshTimer = null;
-        _msgPollTimer?.Dispose();
-        _msgPollTimer = null;
+        MsgNotifier.OnNewMessage -= OnNewMessageReceived;
         GC.SuppressFinalize(this);
     }
 
