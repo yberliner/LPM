@@ -803,7 +803,6 @@
 
     // All purchases for this PC (not just pending)
     List<PurchaseListItem>? _pcPurchases;
-    bool _showPaymentsPanel;
     Dictionary<int, int> _coursePurchaseMap = new(); // CourseId → PurchaseId
     int? _latestAuditingPurchaseId;
 
@@ -900,7 +899,6 @@
     void LoadDetail()
     {
         if (!_selPcId.HasValue) return;
-        _showPaymentsPanel = false;
         _detail            = PcSvc.GetPcDetail(_selPcId.Value);
         _stats             = PcSvc.GetPcStats(_selPcId.Value);
         _sessions          = PcSvc.GetPcSessions(_selPcId.Value);

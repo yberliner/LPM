@@ -1,9 +1,6 @@
 ﻿@inject StateService stateService
 @inject IJSRuntime JSRuntime
 @inject Microsoft.AspNetCore.Components.NavigationManager NavigationManager // This line is used to generate URLs dynamically //
-@inject MSGS.ClientSessionData session_data
-@inject MSGS.ClientManager client
-@inject MSGS.AgentsRepository _agents
 @inject AuthenticationStateProvider AuthStateProvider
 @inject LPM.Auth.UserDb UserDb
 @inject LPM.Services.DashboardService DashSvc
@@ -12,8 +9,6 @@
 @using LPM._Spk
 @using LPM.Services
 @implements IDisposable
-@using CardModel
-@* @inject PageCommandService Cmd *@
 
             <header class="app-header sticky @headerClass" id="header">
                 <!-- Start::main-header-container -->
@@ -52,16 +47,6 @@
                         </div>
                         <!-- End::header-element -->
 
-                        @* <div class="header-element btn-list">
-                            <button class="btn btn-success-light @(EStop.Visible==true ? "" : "invisible")"
-                                @onclick="ResetErrors"
-                                disabled="@(!EStop.Enabled)">
-                                Reset Errors
-                            </button>
-                            <SpkHeaderDropdown Info="@EStop" DropdownClicked="EStopClicked" Options="@DiscOper"/>
-                        </div> *@
-
-                        
                     </div>
 
                     <div class="dropdown d-flex align-items-center gap-2 text-nowrap text-white">
@@ -275,11 +260,6 @@
                         </li>
                         <!-- End::header-element logout -->
 
-                        @* <SpkHeaderDropdown Info="@miccb" DropdownClicked="MICCBClicked" Options="@InitOper"/>
-                        <SpkHeaderDropdown Info="@mocb" DropdownClicked="MOCBClicked" Options="@InitOper"/>
-                        <SpkHeaderDropdown Info="@rc" DropdownClicked="RCClicked" Options="@InitOper"/>
-                        <SpkHeaderDropdown Info="@mc" DropdownClicked="MCClicked" Options="@InitOper"/>
-                         *@
                         <!-- Start::header-element -->
                         <li class="header-element d-md-none d-block">
                             <a href="javascript:void(0);" class="header-link" data-bs-toggle="modal" data-bs-target="#header-responsive-search">
@@ -362,8 +342,6 @@
                     </div>
                 </div>
             </div>
-
-            <SpkModalSpinner @ref="_SpinnerDlg"/>
 
 <SpkNewPersonModal @ref="_addPcModal" Title="@LS.T("pcs.addNewPc")" RequireAllFields="true"
                    ExistingFullNames="@_existingPcNames"
@@ -572,7 +550,6 @@
 </style>
 
 @code {
-    private System.Timers.Timer? refreshTimer;
     private bool _isDisposed = false;
     private string _displayName = "";
     private string? _avatarUrl;
@@ -615,86 +592,7 @@
         }
     }
 
-    protected override void OnInitialized()
-    {
-        Console.WriteLine("MainHeaer OnInitialized called");
-        base.OnInitialized();
-        refreshTimer = new System.Timers.Timer(500); // 0.5 second interval
-        refreshTimer.Elapsed += (sender, e) => InvokeAsync(UpdateGUIValuesLogic);
-        refreshTimer.Start();
-    }
-
     [Parameter] public bool ShowMenuToggle { get; set; } = true;
-
-    private SpkModalSpinner? _SpinnerDlg;
-    
-    private static readonly string[] InitOper = { "Init", "Oper" };
-    private enum INITOPER
-    {
-        Init = 0,
-        Oper = 1
-    }
-
-    private static readonly string[] DiscOper = { "On", "Off" };
-    private enum DISCOPER
-    {
-        Disc = 0,
-        Oper = 1
-    }
-
-    private HeaderDropdownState miccb = new() { CurrentSelect = (int)INITOPER.Oper, Visible = false, Enabled = false, Caption = "MicCB" };
-    private HeaderDropdownState mocb = new() { CurrentSelect = (int)INITOPER.Oper, Visible = false, Enabled = false, Caption = "MocB" };
-    private HeaderDropdownState rc = new() { CurrentSelect = (int)INITOPER.Oper, Visible = false, Enabled = false, Caption = "RC" };
-    private HeaderDropdownState mc = new() { CurrentSelect = (int)INITOPER.Init, Visible = false, Enabled = false, Caption = "MC" };
-    private HeaderDropdownState EStop = new() { CurrentSelect = 0, Visible = false, Enabled = true, Caption = "EStop off"};
-
-    <!-- cart Data Start-->
-    public class CartList
-    {
-        public int id { get; set; }
-        public string? img { get; set; }
-        public string? imgalt { get; set; }
-        public string? title { get; set; }
-        public string? quantity { get; set; }
-        public string? originalprice { get; set; }
-        public string? desc { get; set; }
-        public string? price { get; set; }
-    }
-    public class Category
-    {
-        public string? value { get; set; }
-        public string? valueBgColor { get; set; }    
-    }
-                   
-    <!-- Notifications Data Start-->
-    public class NotifyList
-    {
-        public int id { get; set; }
-        public string? icon { get; set; }
-        public string? img { get; set; }
-        public string? iconBg { get; set; }
-        public string? title { get; set; }
-        public string? description { get; set; }
-        public string? description2 { get; set; }
-        public string? description2color { get; set; }
-        public string? description3 { get; set; }
-        public string? msgtime { get; set; }
-    }
-
-    List<NotifyList> NotifyListData = new List<NotifyList>()
-    {
-        new NotifyList { id= 1, img= "assets/images/faces/1.jpg", iconBg= "bg-primary", title= "New Messages", description= "Jane Sam sent you a message.",msgtime="Now"},
-        new NotifyList { id= 2, icon= "fe fe-shopping-cart fs-20", iconBg= "bg-primary", title= "Order Updates", description= "Order",description2= "#54321",description2color="text-primary1",description3="has been shipped.",msgtime="2 hours ago"},
-        new NotifyList { id= 3, img= "assets/images/faces/10.jpg", iconBg= "bg-orange", title= "Comment on Post", description= "Reacted: ",description2= "John Richard",description2color="text-primary3",description3=" on your next purchase!.",msgtime="2 hours ago"},
-        new NotifyList { id= 4, img= "assets/images/faces/11.jpg", iconBg= "bg-success", title= "Follow Request",description2= "Kelin Brown",description2color="text-info",description3="has sent you the request.",msgtime="5 hours ago"},
-        new NotifyList { id= 5, icon= "ri-gift-line fs-16", iconBg= "bg-primary2", title= "Exclusive Offers",description= "Enjoy",description2= "20% off",description2color="text-success",description3="on your next purchase!",msgtime="1 Day ago"},
-    };
-
-    void DeleteNotifyList(NotifyList NotifyList)
-    {
-        NotifyListData.Remove(NotifyList);
-    }   
-    <!-- Notifications Data End-->
 
     <!-- ToggleMenu -->
     private async void ToggleMenu() {
@@ -773,23 +671,6 @@
         if (firstRender)
         {
             await AttachHeaderScrollListener();
-            if (session_data.AgentName.Length > 0)
-            {
-                HardwareSetTooltip(miccb);
-                miccb.Visible = true;
-                HardwareSetTooltip(mocb);
-                mocb.Visible = true;
-                HardwareSetTooltip(rc);
-                rc.Visible = true;
-                HardwareSetTooltip(mc);
-                mc.Visible = true;
-
-                EStopSetTooltip();
-                EStop.Visible = true;
-                EStop.CurrentSelect = 1;
-
-                StateHasChanged(); // Ensure the UI is updated after setting visibility
-            }
         }
     }
 
@@ -811,13 +692,7 @@
     public void Dispose()
     {
         _isDisposed = true;
-
-        Console.WriteLine("1 - Disposing MainHeader component.");
-
-        refreshTimer?.Dispose();
-        refreshTimer = null;
         MsgNotifier.OnNewMessage -= OnNewMessageReceived;
-        GC.SuppressFinalize(this);
     }
 
     private async Task AttachHeaderScrollListener()
@@ -840,276 +715,6 @@
         StateHasChanged();
     }
     //sticky-pin //
-
-    private async Task ResetErrors()
-    {
-        Console.WriteLine("Reset Errors button clicked.");
-        if (client.ResetErrors(OnResetCompleted))
-        {
-            await _SpinnerDlg!.ShowAsync();
-        }
-    }
-
-    private async Task OnResetCompleted()
-    {
-        // Custom logic here
-        Console.WriteLine("ResetErrorManager / Estop finished and callback fired.");
-        await _SpinnerDlg!.HideAsync();
-
-    }
-
-    private void EStopSetTooltip()
-    {
-        if (string.IsNullOrEmpty(EStop.ErrorTag))
-        {
-            EStop.Tooltip = EStop.ErrorExists ? "Disconnected" : "All Ok";
-        } else
-        {
-            EStop.Tooltip = "Hardware Error";
-        }
-    }
-
-    private void HardwareSetTooltip(HeaderDropdownState state)
-    {
-        if (state.Enabled)
-        {
-            if (state.ErrorExists) 
-            {
-                state.Tooltip = "Device in error state.\nPlease press 'reset errors' button";
-            } 
-            else 
-            {
-                state.Tooltip = "All Ok";
-            }
-        } 
-        else
-        {
-            state.Tooltip = "No communication received";
-        }
-    }
-
-    private async Task EStopClicked(int Selection)
-    {
-        Console.WriteLine("Reset Errors button clicked.");
-        bool showSpinner = true;
-
-        if (Selection == (int)DISCOPER.Disc)
-        {
-            Console.WriteLine("Estop Disconnect button clicked.");
-            EStop.CurrentSelect = 0;
-            EStop.ErrorExists = true;
-            EStop.Caption = "EStop on";
-            showSpinner = client.EstopDisconnect(OnResetCompleted);
-        }
-        else 
-        {
-            Console.WriteLine("Estop Operational button clicked.");
-            EStop.CurrentSelect = 1;
-            EStop.ErrorExists = false;
-            EStop.Caption = "EStop off";
-            showSpinner = client.EstopOperational(OnResetCompleted);
-        }
-        if (showSpinner)
-        {
-            await _SpinnerDlg!.ShowAsync();
-            EStopSetTooltip();
-        }
-    }
-
-    /* ---------- caption-specific handlers ---------- */
-    private void OnDropdownClicked(HeaderDropdownState state, MSGS.DevicesScreen device, int Selection)
-    {
-        if (state.CurrentSelect != Selection)
-        {
-            state.CurrentSelect = Selection;
-            Console.WriteLine($"{device} clicked, Selection: {Selection}. Agent name: {session_data.AgentName}");
-            client.OnDeviceClicked(device, (Selection==(int)INITOPER.Init));
-        }
-    }
-
-    // Usage in markup:
-    private void MICCBClicked(int Selection) => OnDropdownClicked(miccb, MSGS.DevicesScreen.MICB, Selection);
-    private void MOCBClicked(int Selection) => OnDropdownClicked(mocb, MSGS.DevicesScreen.MOCB, Selection);
-    private void RCClicked(int Selection) => OnDropdownClicked(rc, MSGS.DevicesScreen.RC, Selection);
-    private void MCClicked(int Selection) => OnDropdownClicked(mc, MSGS.DevicesScreen.MC_FAST, Selection);
-
-    protected void DisableAllDevices()
-    {
-        miccb.Enabled = false;
-        mocb.Enabled = false;
-        rc.Enabled = false;
-        mc.Enabled = false;
-        EStop.Enabled = false;
-
-        InvokeAsync(StateHasChanged);
-    }
-    protected async Task UpdateGUIValuesLogic()
-    {
-        await InvokeAsync(() =>
-        {
-            try
-            {
-                if (_isDisposed || string.IsNullOrEmpty(session_data.AgentName))
-                {
-                    DisableAllDevices();
-                    return;
-                }
-                //Console.WriteLine($"MainHeader - UpdateGUIValuesLogic called. Agent: {session_data.AgentName}");
-
-                MSGS.agentData? data = _agents.GetClientAgentData(session_data.AgentName);
-                if (data == null)
-                {
-                    DisableAllDevices();
-                    return;
-                }
-
-                foreach (var kvp in data.errorState.ErrorMap)
-                {
-                    int key = kvp.Key;
-                    MSGS.E_OPCODES opcode = kvp.Value.opcode;
-                    bool flag = kvp.Value.flag;
-
-                    //Console.WriteLine($"Key: {key}, Opcode: {opcode}, Flag: {flag}");
-                    if (opcode == MSGS.E_OPCODES.OP_NA)
-                    {
-                        continue; // Skip processing for OP_NA
-                    }
-                    UpdateDeviceButton(opcode, key, flag,
-                            data.errorState.estop_sys_status_last, data.errorState.eEstopReady_last);
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error in UpdateGUIValuesLogic: {ex.Message}");
-                // Optionally log the error or handle it as needed
-            }
-        });
-    }
-
-    private void UpdateDeviceButton(
-                    MSGS.E_OPCODES opcode,
-                    int device,
-                    bool _errorExistsInMsg,
-                    MSGS.eEstopSysStatus estop_sys_status_last,
-                    MSGS.eSystemEstopReadyness eEstopReady_last)
-    {
-
-        if (_isDisposed)
-        {
-            Console.WriteLine("UpdateDeviceButton ignored because the component has been disposed.");
-            return;
-        }
-
-        // Map device to its DropdownState
-        HeaderDropdownState? state = device switch
-        {
-            (int)MSGS.DevicesScreen.MICB => miccb,
-            (int)MSGS.DevicesScreen.MOCB => mocb,
-            (int)MSGS.DevicesScreen.RC => rc,
-            (int)MSGS.DevicesScreen.MC_FAST => mc,
-            _ => null
-        };
-
-        if (state is null)
-        {
-            Console.WriteLine($"Unhandled device: {(MSGS.DevicesScreen)device}, opcode: {opcode}");
-            return;
-        }
-
-
-        bool updateGui = HandleEstopState(estop_sys_status_last, eEstopReady_last);
-
-        //Console.WriteLine($"surgeon_connected: {session_data.micb_periodic_status.surgeon_connected}");
-        //Console.WriteLine($"robot_connected: {session_data.micb_periodic_status.robot_connected}");
-
-        if (state.Enabled == false)
-        {
-            state.Enabled = true; // Enable the dropdown state for the device
-            updateGui = true;
-        }
-
-        //check if rc and mc have been disconnected
-        if (session_data.micb_periodic_status.robot_connected < 3 && rc.Enabled)
-        {
-            rc.Enabled = false;
-            updateGui = true;
-        }
-        if (session_data.micb_periodic_status.surgeon_connected < 3 && mc.Enabled)
-        {
-            mc.Enabled = false;
-            updateGui = true;
-        }
-
-        if (state.ErrorExists != _errorExistsInMsg)
-        {
-            updateGui = true;
-            state.ErrorExists = _errorExistsInMsg; // Update the error state
-        }
-
-        updateGui = updateGui || UpdateSelection(state, opcode);
-
-        if (updateGui)
-        {
-
-            HardwareSetTooltip(state);
-            InvokeAsync(StateHasChanged);
-            return; // No need to update the UI if nothing changed
-        }
-    }
-
-    private bool HandleEstopState(MSGS.eEstopSysStatus estop_sys_status_last,
-                MSGS.eSystemEstopReadyness eEstopReady_last)
-    {
-        bool guiChange = false; 
-        if (EStop.CurrentSelect == 0 && estop_sys_status_last == MSGS.eEstopSysStatus.eEstopHwSysOperational)
-        {
-            guiChange = true; // Indicate that the GUI needs to be updated
-            EStop.CurrentSelect = 1; // Switch to Operational if disconnected
-            EStop.ErrorExists = false; 
-            EStop.ErrorTag = "";
-            EStop.Caption = "EStop off";
-        }
-        else if (EStop.CurrentSelect == 1 && estop_sys_status_last == MSGS.eEstopSysStatus.eEstopHwSysDisconnect)
-        {
-            guiChange = true; // Indicate that the GUI needs to be updated
-            EStop.CurrentSelect = 0; // Switch to Disconnected if connected
-            EStop.ErrorExists = true;
-            EStop.Caption = "EStop on";
-            EStop.ErrorTag = eEstopReady_last == MSGS.eSystemEstopReadyness.eNotReady ? "HW Error" : ""; // Set error tag based on readiness
-        }
-        else if (EStop.ErrorTag.Length > 0 && eEstopReady_last == MSGS.eSystemEstopReadyness.eReady)
-        {
-            guiChange = true;
-            EStop.ErrorTag = string.Empty;
-        }
-        EStopSetTooltip();
-        return guiChange;
-    }
-
-    private static bool UpdateSelection(HeaderDropdownState state, MSGS.E_OPCODES opcode)
-    {
-        switch (opcode)
-        {
-            case MSGS.E_OPCODES.OP_CONTROLLER_PERIODIC_STATUS:
-                if (state.CurrentSelect==(int)INITOPER.Init)
-                {
-                    state.CurrentSelect = (int)INITOPER.Oper;
-                    return true;
-                }
-                break;
-            case MSGS.E_OPCODES.OP_CONTROLLER_INIT_STATUS:
-                if (state.CurrentSelect == (int)INITOPER.Oper)
-                {
-                    state.CurrentSelect = (int)INITOPER.Init;
-                    return true;
-                }
-                break;
-            // Add more opcodes as needed
-            default:
-                break;
-        }
-        return false;
-    }
 
     private async Task SwitchLanguage(string lang)
     {

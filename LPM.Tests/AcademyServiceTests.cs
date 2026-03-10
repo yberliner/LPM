@@ -429,7 +429,7 @@ public class AcademyServiceTests : IDisposable
     public void PersonAddedViaAcademy_VisibleInDashboardService_GetUserIdByUsername()
     {
         var id  = _svc.AddPersonForAcademy("Miriam", "Katz", "", "", "", "");
-        var svc = new DashboardService(TestConfig.For(_dbPath));
+        var svc = new DashboardService(TestConfig.For(_dbPath), new LPM.Services.MessageNotifier());
 
         Assert.Equal(id, svc.GetUserIdByUsername("Miriam"));
     }

@@ -19,7 +19,7 @@ public class DashboardExtendedTests : IDisposable
     public DashboardExtendedTests()
     {
         _dbPath = TestDbHelper.CreateTempDb();
-        _svc    = new DashboardService(TestConfig.For(_dbPath));
+        _svc    = new DashboardService(TestConfig.For(_dbPath), new LPM.Services.MessageNotifier());
     }
 
     public void Dispose() => TestDbHelper.Cleanup(_dbPath);
