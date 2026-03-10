@@ -131,57 +131,6 @@
                 </div>
             </div>
 
-            @* Stats row *@
-            @if (_stats != null)
-            {
-                long remainSec = (long)_stats.TotalHoursPurchased * 3600 - _stats.UsedSec;
-                <div class="row g-2 mb-3">
-                    <div class="col-6 col-md-3">
-                        <div class="pc-stat-card" style="background:linear-gradient(135deg,#1e40af,#6366f1);">
-                            <div class="pc-stat-icon"><i class="ri-calendar-check-line"></i></div>
-                            <div class="pc-stat-value">@_stats.TotalSessions</div>
-                            <div class="pc-stat-label">@LS.T("auditors.totalSessions")</div>
-                            @if (_stats.FreeSessions > 0)
-                            {
-                                <div class="pc-stat-sub">@_stats.FreeSessions @LS.T("pcs.free")</div>
-                            }
-                        </div>
-                    </div>
-                    <div class="col-6 col-md-3">
-                        <div class="pc-stat-card" style="background:linear-gradient(135deg,#0d9488,#22c55e);">
-                            <div class="pc-stat-icon"><i class="ri-timer-flash-line"></i></div>
-                            <div class="pc-stat-value">@Hmm((int)_stats.UsedSec)</div>
-                            <div class="pc-stat-label">@LS.T("pcs.hoursUsed")</div>
-                            <div class="pc-stat-sub">@LS.T("pcs.billedSessions")</div>
-                        </div>
-                    </div>
-                    <div class="col-6 col-md-3">
-                        <div class="pc-stat-card" style="background:linear-gradient(135deg,#d97706,#f59e0b);">
-                            <div class="pc-stat-icon"><i class="ri-bank-card-2-line"></i></div>
-                            <div class="pc-stat-value">@_stats.TotalHoursPurchased<span style="font-size:1rem;font-weight:500;">h</span></div>
-                            <div class="pc-stat-label">@LS.T("pcs.hoursPurchased")</div>
-                            @if (_stats.TotalAmountPaid > 0)
-                            {
-                                <div class="pc-stat-sub">@("\u20AA")@_stats.TotalAmountPaid @LS.T("pcs.paid")</div>
-                            }
-                        </div>
-                    </div>
-                    <div class="col-6 col-md-3">
-                        <div class="pc-stat-card" style="background:@(remainSec >= 0 ? "linear-gradient(135deg,#065f46,#16a34a)" : "linear-gradient(135deg,#9f1239,#ef4444)");">
-                            <div class="pc-stat-icon">
-                                <i class="@(remainSec >= 0 ? "ri-time-line" : "ri-alarm-warning-line")"></i>
-                            </div>
-                            <div class="pc-stat-value">@HmmSigned(remainSec)</div>
-                            <div class="pc-stat-label">@LS.T("pcs.hoursRemaining")</div>
-                            @if (_stats.LastSessionDate != null)
-                            {
-                                <div class="pc-stat-sub">@LS.T("pcs.last"): @_stats.LastSessionDate</div>
-                            }
-                        </div>
-                    </div>
-                </div>
-            }
-
             @* ── Purchase Button ── *@
             <div class="mb-3">
                 <button class="pc-purchase-btn" @onclick="OpenPurchaseModal">
@@ -669,22 +618,6 @@
 }
 
 <style>
-    .pc-stat-card {
-        border-radius: 14px; padding: 16px 12px; text-align: center; color: #fff;
-        position: relative; overflow: hidden;
-        box-shadow: 0 4px 16px rgba(0,0,0,.15);
-        transition: transform .18s, box-shadow .18s;
-    }
-    .pc-stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.22); }
-    .pc-stat-card::before {
-        content:''; position:absolute; top:-28px; right:-28px;
-        width:80px; height:80px; border-radius:50%; background:rgba(255,255,255,.1);
-    }
-    .pc-stat-icon  { font-size:1.4rem; opacity:.75; margin-bottom:4px; }
-    .pc-stat-value { font-size:1.7rem; font-weight:800; line-height:1.1; position:relative; }
-    .pc-stat-label { font-size:.7rem; opacity:.82; margin-top:4px; letter-spacing:.03em; text-transform:uppercase; }
-    .pc-stat-sub   { font-size:.7rem; opacity:.68; margin-top:2px; }
-
     .pc-purchase-btn {
         display: inline-flex; align-items: center; gap: 6px;
         background: #1e293b; color: #fff; border: none; border-radius: 10px;
@@ -768,7 +701,6 @@
     bool   _sortAsc  = true;
 
     PcDetailInfo?       _detail;
-    PcStats?            _stats;
     List<PcSessionInfo>? _sessions;
 
     // Courses
@@ -900,7 +832,6 @@
     {
         if (!_selPcId.HasValue) return;
         _detail            = PcSvc.GetPcDetail(_selPcId.Value);
-        _stats             = PcSvc.GetPcStats(_selPcId.Value);
         _sessions          = PcSvc.GetPcSessions(_selPcId.Value);
         _pcPurchases       = PcSvc.GetAllPurchasesForPc(_selPcId.Value);
         var allCourses     = CourseSvc.GetStudentCourses(_selPcId.Value);
@@ -1215,11 +1146,5 @@
     static string FormatDate(string dateStr) =>
         DateOnly.TryParse(dateStr, out var d) ? d.ToString("dd/MM/yy") : dateStr;
 
-    // H:MM for a signed long (e.g. hours remaining can be negative)
-    static string HmmSigned(long secs)
-    {
-        long s = Math.Abs(secs);
-        string t = $"{s / 3600}:{(s % 3600) / 60:00}";
-        return secs < 0 ? $"-{t}" : t;
-    }
+
 }
