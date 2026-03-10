@@ -8,16 +8,23 @@
       <stop offset="0%" stop-color="#3b82f6"/>
       <stop offset="100%" stop-color="#1e3a8a"/>
     </linearGradient>
+    <linearGradient id="tgOl" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#22d3ee"/>
+    </linearGradient>
   </defs>
-  <g transform="translate(0, 0)">
-    <polygon points="18,1 36,33 0,33" fill="url(#tgUp)" opacity="0.9">
-      <animate attributeName="opacity" values="0.9;1;0.9" dur="5s" repeatCount="indefinite"/>
+  <g>
+    <polygon points="18,1 36,33 0,33" fill="url(#tgUp)" opacity="0.92">
+      <animate attributeName="opacity" values="0.88;1;0.88" dur="4s" repeatCount="indefinite"/>
+      <animateTransform attributeName="transform" type="rotate" values="0 18 22;3 18 22;0 18 22;-3 18 22;0 18 22" dur="8s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1"/>
     </polygon>
-    <polygon points="4,7 40,7 22,39" fill="url(#tgDn)" opacity="0.85">
-      <animate attributeName="opacity" values="0.85;1;0.85" dur="5s" begin="2.5s" repeatCount="indefinite"/>
+    <polygon points="4,7 40,7 22,39" fill="url(#tgDn)" opacity="0.88">
+      <animate attributeName="opacity" values="0.85;1;0.85" dur="4s" begin="2s" repeatCount="indefinite"/>
+      <animateTransform attributeName="transform" type="rotate" values="0 22 20;-3 22 20;0 22 20;3 22 20;0 22 20" dur="8s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1"/>
     </polygon>
-    <polygon points="20,12 30,12 26,33 14,33" fill="#06b6d4" opacity="0.35">
-      <animate attributeName="opacity" values="0.35;0.55;0.35" dur="5s" begin="1.2s" repeatCount="indefinite"/>
+    <polygon points="20,12 30,12 26,33 14,33" fill="url(#tgOl)" opacity="0.4">
+      <animate attributeName="opacity" values="0.3;0.6;0.3" dur="4s" begin="1s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1"/>
+      <animateTransform attributeName="transform" type="scale" values="1;1.06;1" dur="4s" begin="1s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1" additive="sum"/>
     </polygon>
   </g>
 </svg>

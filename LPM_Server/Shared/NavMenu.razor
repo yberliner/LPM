@@ -61,6 +61,12 @@
     [data-nav-layout=vertical] .app-sidebar .side-menu__item {
         margin-block: 1px !important;
     }
+
+    /* ── Animated logo triangles ── */
+    .lpm-logo-full { height: 38px; width: auto; overflow: visible; }
+    .lpm-logo-icon { height: 32px; width: 32px; overflow: visible; }
+
+    /* triangle animations handled by SMIL inside the SVG */
 </style>
 
 <div id="responsive-overlay" @onclick="() => responsivecloseFn()"></div>
@@ -68,13 +74,71 @@
 
     <!-- Start::main-sidebar-header -->
     <div class="main-sidebar-header">
-        <div class="header-logo">
-            <img src="@($"{NavigationManager.BaseUri}assets/images/brand-logos/desktop-logo.svg")" alt="logo" class="desktop-logo">
-            <img src="@($"{NavigationManager.BaseUri}assets/images/brand-logos/toggle-dark.svg")" alt="logo" class="toggle-dark">
-            <img src="@($"{NavigationManager.BaseUri}assets/images/brand-logos/desktop-dark.svg")" alt="logo" class="desktop-dark">
-            <img src="@($"{NavigationManager.BaseUri}assets/images/brand-logos/toggle-logo.svg")" alt="logo" class="toggle-logo">
-            <img src="@($"{NavigationManager.BaseUri}assets/images/brand-logos/toggle-white.svg")" alt="logo" class="toggle-white">
-            <img src="@($"{NavigationManager.BaseUri}assets/images/brand-logos/desktop-white.svg")" alt="logo" class="desktop-white">
+        <div class="header-logo lpm-logo-wrap">
+            @{
+                var triGreen = "0,-21 19,11 -19,11";
+                var triBlue = "-16,-11 16,-11 0,21";
+                string[] logoClasses = new[] { "desktop-logo", "desktop-dark", "desktop-white" };
+                string[] iconClasses = new[] { "toggle-logo", "toggle-dark", "toggle-white" };
+            }
+            @foreach (var cls in logoClasses)
+            {
+                <svg class="lpm-logo-full @cls" viewBox="0 0 260 44" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="gU-@cls" x1="0%" y1="100%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#10b981"></stop><stop offset="100%" stop-color="#34d399"></stop>
+                        </linearGradient>
+                        <linearGradient id="gD-@cls" x1="100%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" stop-color="#3b82f6"></stop><stop offset="100%" stop-color="#1e3a8a"></stop>
+                        </linearGradient>
+                    </defs>
+                    <g transform="translate(4, 2)">
+                        <g transform="translate(20,22)">
+                            <polygon points="@triGreen" fill="url(#gU-@cls)" opacity="0.92">
+                                <animateTransform attributeName="transform" type="rotate" values="0;360;360" keyTimes="0;0.87;1" dur="38s" repeatCount="indefinite"></animateTransform>
+                            </polygon>
+                        </g>
+                        <g transform="translate(30,18)">
+                            <polygon points="@triBlue" fill="url(#gD-@cls)" opacity="0.88">
+                                <animateTransform attributeName="transform" type="rotate" values="0;-360;-360" keyTimes="0;0.87;1" dur="38s" repeatCount="indefinite"></animateTransform>
+                            </polygon>
+                        </g>
+                    </g>
+                    <text x="58" y="31" font-family="'Segoe UI','Inter',system-ui,sans-serif" font-size="25" letter-spacing="-0.3">
+                        @if (cls == "desktop-logo")
+                        {
+                            <tspan fill="#059669" font-weight="300">Life</tspan><tspan fill="#1e3a5f" font-weight="700">Power</tspan>
+                        }
+                        else
+                        {
+                            <tspan fill="#6ee7b7" font-weight="300">Life</tspan><tspan fill="#e2e8f0" font-weight="700">Power</tspan>
+                        }
+                    </text>
+                </svg>
+            }
+            @foreach (var cls in iconClasses)
+            {
+                <svg class="lpm-logo-icon @cls" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="gU-@cls" x1="0%" y1="100%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#10b981"></stop><stop offset="100%" stop-color="#34d399"></stop>
+                        </linearGradient>
+                        <linearGradient id="gD-@cls" x1="100%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" stop-color="#3b82f6"></stop><stop offset="100%" stop-color="#1e3a8a"></stop>
+                        </linearGradient>
+                    </defs>
+                    <g transform="translate(18,22)">
+                        <polygon points="0,-21 18,11 -18,11" fill="url(#gU-@cls)" opacity="0.92">
+                            <animateTransform attributeName="transform" type="rotate" values="0;360;360" keyTimes="0;0.87;1" dur="38s" repeatCount="indefinite"></animateTransform>
+                        </polygon>
+                    </g>
+                    <g transform="translate(22,18)">
+                        <polygon points="-18,-11 18,-11 0,21" fill="url(#gD-@cls)" opacity="0.88">
+                            <animateTransform attributeName="transform" type="rotate" values="0;-360;-360" keyTimes="0;0.87;1" dur="38s" repeatCount="indefinite"></animateTransform>
+                        </polygon>
+                    </g>
+                </svg>
+            }
         </div>
     </div>
     <!-- End::main-sidebar-header -->
