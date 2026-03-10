@@ -12,12 +12,16 @@
                 <span>@LS.T("guide.sidebarTitle")</span>
             </div>
             <ul class="guide-nav">
-                <li><a href="#overview"   class="guide-nav-link"><i class="ri-home-4-line"></i>@LS.T("guide.nav.overview")</a></li>
-                <li><a href="#dashboard"  class="guide-nav-link"><i class="ri-dashboard-line"></i>@LS.T("guide.nav.dashboard")</a></li>
-                <li><a href="#pcs"        class="guide-nav-link"><i class="ri-contacts-book-2-line"></i>@LS.T("guide.nav.pcs")</a></li>
-                <li><a href="#academy"    class="guide-nav-link"><i class="ri-graduation-cap-line"></i>@LS.T("guide.nav.academy")</a></li>
-                <li><a href="#admin"      class="guide-nav-link"><i class="ri-shield-user-line"></i>@LS.T("guide.nav.admin")</a></li>
-                <li><a href="#tips"       class="guide-nav-link"><i class="ri-lightbulb-line"></i>@LS.T("guide.nav.tips")</a></li>
+                <li><a href="#overview"    class="guide-nav-link"><i class="ri-home-4-line"></i>@LS.T("guide.nav.overview")</a></li>
+                <li><a href="#login"       class="guide-nav-link"><i class="ri-login-box-line"></i>@LS.T("guide.nav.login")</a></li>
+                <li><a href="#dashboard"   class="guide-nav-link"><i class="ri-dashboard-line"></i>@LS.T("guide.nav.dashboard")</a></li>
+                <li><a href="#pcs"         class="guide-nav-link"><i class="ri-contacts-book-2-line"></i>@LS.T("guide.nav.pcs")</a></li>
+                <li><a href="#academy"     class="guide-nav-link"><i class="ri-graduation-cap-line"></i>@LS.T("guide.nav.academy")</a></li>
+                <li><a href="#statistics"  class="guide-nav-link"><i class="ri-bar-chart-box-line"></i>@LS.T("guide.nav.statistics")</a></li>
+                <li><a href="#management"  class="guide-nav-link"><i class="ri-settings-3-line"></i>@LS.T("guide.nav.management")</a></li>
+                <li><a href="#admin"       class="guide-nav-link"><i class="ri-shield-user-line"></i>@LS.T("guide.nav.admin")</a></li>
+                <li><a href="#settings"    class="guide-nav-link"><i class="ri-settings-4-line"></i>@LS.T("guide.nav.settings")</a></li>
+                <li><a href="#tips"        class="guide-nav-link"><i class="ri-lightbulb-line"></i>@LS.T("guide.nav.tips")</a></li>
             </ul>
         </div>
     </nav>
@@ -34,8 +38,10 @@
                 <p class="guide-hero-sub">@LS.T("guide.hero.sub")</p>
                 <div class="guide-hero-pills">
                     <span class="guide-pill" style="background:#e0e7ff;color:#3730a3;"><i class="ri-dashboard-line me-1"></i>@LS.T("guide.nav.dashboard")</span>
-                    <span class="guide-pill" style="background:#dcfce7;color:#166534;"><i class="ri-graduation-cap-line me-1"></i>@LS.T("guide.nav.academy")</span>
                     <span class="guide-pill" style="background:#fef3c7;color:#92400e;"><i class="ri-contacts-book-2-line me-1"></i>@LS.T("guide.nav.pcs")</span>
+                    <span class="guide-pill" style="background:#dcfce7;color:#166534;"><i class="ri-graduation-cap-line me-1"></i>@LS.T("guide.nav.academy")</span>
+                    <span class="guide-pill" style="background:#ede9fe;color:#5b21b6;"><i class="ri-bar-chart-box-line me-1"></i>@LS.T("guide.nav.statistics")</span>
+                    <span class="guide-pill" style="background:#e0f2fe;color:#0369a1;"><i class="ri-settings-3-line me-1"></i>@LS.T("guide.nav.management")</span>
                     <span class="guide-pill" style="background:#fce7f3;color:#9d174d;"><i class="ri-shield-user-line me-1"></i>@LS.T("guide.nav.admin")</span>
                 </div>
             </div>
@@ -77,6 +83,20 @@
                             <p>@LS.T("guide.overview.academyDesc")</p>
                         </div>
                     </div>
+                    <div class="guide-feature-card" style="border-top:4px solid #7c3aed;">
+                        <div class="guide-feature-icon" style="background:#ede9fe;color:#6d28d9;"><i class="ri-bar-chart-box-line"></i></div>
+                        <div class="guide-feature-text">
+                            <strong>@LS.T("guide.overview.statisticsTitle")</strong>
+                            <p>@LS.T("guide.overview.statisticsDesc")</p>
+                        </div>
+                    </div>
+                    <div class="guide-feature-card" style="border-top:4px solid #0284c7;">
+                        <div class="guide-feature-icon" style="background:#e0f2fe;color:#0369a1;"><i class="ri-settings-3-line"></i></div>
+                        <div class="guide-feature-text">
+                            <strong>@LS.T("guide.overview.managementTitle")</strong>
+                            <p>@LS.T("guide.overview.managementDesc")</p>
+                        </div>
+                    </div>
                     <div class="guide-feature-card" style="border-top:4px solid #ec4899;">
                         <div class="guide-feature-icon" style="background:#fce7f3;color:#db2777;"><i class="ri-shield-user-line"></i></div>
                         <div class="guide-feature-text">
@@ -89,6 +109,37 @@
                 <div class="guide-tip">
                     <i class="ri-information-line guide-tip-icon"></i>
                     <div>@LS.T("guide.overview.tip")</div>
+                </div>
+            </div>
+        </section>
+
+        @* ══════════════════════════════════════════════════════════
+           SECTION 1b — LOGIN
+        ══════════════════════════════════════════════════════════ *@
+        <section id="login" class="guide-section">
+            <div class="guide-section-header" style="background:linear-gradient(135deg,#1e3a5f,#3b82f6);">
+                <i class="ri-login-box-line guide-section-icon"></i>
+                <div>
+                    <h2 class="guide-section-title">@LS.T("guide.login.title")</h2>
+                    <p class="guide-section-sub">@LS.T("guide.login.sub")</p>
+                </div>
+            </div>
+            <div class="guide-section-body">
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#3b82f6;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.login.step1title")</h4>
+                            <p>@LS.T("guide.login.step1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#3b82f6;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.login.step2title")</h4>
+                            <p>@LS.T("guide.login.step2text")</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -140,6 +191,48 @@
                         <div class="guide-step-content">
                             <h4>@LS.T("guide.dashboard.step5title")</h4>
                             <p>@LS.T("guide.dashboard.step5text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6366f1;">6</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.dashboard.step6title")</h4>
+                            <p>@LS.T("guide.dashboard.step6text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6366f1;">7</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.dashboard.step7title")</h4>
+                            <p>@LS.T("guide.dashboard.step7text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6366f1;">8</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.dashboard.step8title")</h4>
+                            <p>@LS.T("guide.dashboard.step8text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6366f1;">9</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.dashboard.step9title")</h4>
+                            <p>@LS.T("guide.dashboard.step9text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6366f1;">10</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.dashboard.step10title")</h4>
+                            <p>@LS.T("guide.dashboard.step10text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6366f1;">11</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.dashboard.step11title")</h4>
+                            <p>@LS.T("guide.dashboard.step11text")</p>
                         </div>
                     </div>
                 </div>
@@ -196,6 +289,42 @@
                     </div>
                 </div>
 
+                <h3 class="guide-sub-heading">@LS.T("guide.pcs.tableHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#f59e0b;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcs.table1title")</h4>
+                            <p>@LS.T("guide.pcs.table1text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.pcs.tabsHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#f59e0b;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcs.tabs1title")</h4>
+                            <p>@LS.T("guide.pcs.tabs1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#f59e0b;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcs.tabs2title")</h4>
+                            <p>@LS.T("guide.pcs.tabs2text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#f59e0b;">3</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcs.tabs3title")</h4>
+                            <p>@LS.T("guide.pcs.tabs3text")</p>
+                        </div>
+                    </div>
+                </div>
+
                 <h3 class="guide-sub-heading">@LS.T("guide.pcs.payment")</h3>
                 <div class="guide-steps">
                     <div class="guide-step">
@@ -217,6 +346,56 @@
                         <div class="guide-step-content">
                             <h4>@LS.T("guide.pcs.pay3title")</h4>
                             <p>@LS.T("guide.pcs.pay3text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.pcs.purchaseHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#f59e0b;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcs.purchase1title")</h4>
+                            <p>@LS.T("guide.pcs.purchase1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#f59e0b;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcs.purchase2title")</h4>
+                            <p>@LS.T("guide.pcs.purchase2text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#f59e0b;">3</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcs.purchase3title")</h4>
+                            <p>@LS.T("guide.pcs.purchase3text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#f59e0b;">4</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcs.purchase4title")</h4>
+                            <p>@LS.T("guide.pcs.purchase4text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#f59e0b;">5</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcs.purchase5title")</h4>
+                            <p>@LS.T("guide.pcs.purchase5text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.pcs.pendingHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#f59e0b;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcs.pending1title")</h4>
+                            <p>@LS.T("guide.pcs.pending1text")</p>
                         </div>
                     </div>
                 </div>
@@ -335,6 +514,39 @@
                     </div>
                 </div>
 
+                <h3 class="guide-sub-heading">@LS.T("guide.academy.chartHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#10b981;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.academy.chart1title")</h4>
+                            <p>@LS.T("guide.academy.chart1text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.academy.referralHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#10b981;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.academy.ref1title")</h4>
+                            <p>@LS.T("guide.academy.ref1text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.academy.noCourseHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#10b981;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.academy.noCourse1title")</h4>
+                            <p>@LS.T("guide.academy.noCourse1text")</p>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="guide-tip">
                     <i class="ri-information-line guide-tip-icon"></i>
                     <div>@LS.T("guide.academy.tip")</div>
@@ -344,7 +556,192 @@
         </section>
 
         @* ══════════════════════════════════════════════════════════
-           SECTION 5 — ADMIN
+           SECTION 5 — STATISTICS
+        ══════════════════════════════════════════════════════════ *@
+        <section id="statistics" class="guide-section">
+            <div class="guide-section-header" style="background:linear-gradient(135deg,#4c1d95,#7c3aed);">
+                <i class="ri-bar-chart-box-line guide-section-icon"></i>
+                <div>
+                    <h2 class="guide-section-title">@LS.T("guide.statistics.title")</h2>
+                    <p class="guide-section-sub">@LS.T("guide.statistics.sub")</p>
+                </div>
+            </div>
+            <div class="guide-section-body">
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#7c3aed;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.statistics.step1title")</h4>
+                            <p>@LS.T("guide.statistics.step1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#7c3aed;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.statistics.step2title")</h4>
+                            <p>@LS.T("guide.statistics.step2text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#7c3aed;">3</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.statistics.step3title")</h4>
+                            <p>@LS.T("guide.statistics.step3text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#7c3aed;">4</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.statistics.step4title")</h4>
+                            <p>@LS.T("guide.statistics.step4text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#7c3aed;">5</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.statistics.step5title")</h4>
+                            <p>@LS.T("guide.statistics.step5text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#7c3aed;">6</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.statistics.step6title")</h4>
+                            <p>@LS.T("guide.statistics.step6text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#7c3aed;">7</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.statistics.step7title")</h4>
+                            <p>@LS.T("guide.statistics.step7text")</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        @* ══════════════════════════════════════════════════════════
+           SECTION 6 — MANAGEMENT
+        ══════════════════════════════════════════════════════════ *@
+        <section id="management" class="guide-section">
+            <div class="guide-section-header" style="background:linear-gradient(135deg,#0c4a6e,#0284c7);">
+                <i class="ri-settings-3-line guide-section-icon"></i>
+                <div>
+                    <h2 class="guide-section-title">@LS.T("guide.management.title")</h2>
+                    <p class="guide-section-sub">@LS.T("guide.management.sub")</p>
+                </div>
+            </div>
+            <div class="guide-section-body">
+
+                <h3 class="guide-sub-heading">@LS.T("guide.management.auditorsHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0284c7;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.management.auditor1title")</h4>
+                            <p>@LS.T("guide.management.auditor1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0284c7;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.management.auditor2title")</h4>
+                            <p>@LS.T("guide.management.auditor2text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0284c7;">3</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.management.auditor3title")</h4>
+                            <p>@LS.T("guide.management.auditor3text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0284c7;">4</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.management.auditor4title")</h4>
+                            <p>@LS.T("guide.management.auditor4text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0284c7;">5</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.management.auditor5title")</h4>
+                            <p>@LS.T("guide.management.auditor5text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.management.coursesHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0284c7;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.management.course1title")</h4>
+                            <p>@LS.T("guide.management.course1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0284c7;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.management.course2title")</h4>
+                            <p>@LS.T("guide.management.course2text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0284c7;">3</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.management.course3title")</h4>
+                            <p>@LS.T("guide.management.course3text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.management.membersHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0284c7;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.management.member1title")</h4>
+                            <p>@LS.T("guide.management.member1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0284c7;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.management.member2title")</h4>
+                            <p>@LS.T("guide.management.member2text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0284c7;">3</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.management.member3title")</h4>
+                            <p>@LS.T("guide.management.member3text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0284c7;">4</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.management.member4title")</h4>
+                            <p>@LS.T("guide.management.member4text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0284c7;">5</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.management.member5title")</h4>
+                            <p>@LS.T("guide.management.member5text")</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        @* ══════════════════════════════════════════════════════════
+           SECTION 7 — ADMIN
         ══════════════════════════════════════════════════════════ *@
         <section id="admin" class="guide-section">
             <div class="guide-section-header" style="background:linear-gradient(135deg,#6b21a8,#a855f7);">
@@ -356,27 +753,84 @@
             </div>
             <div class="guide-section-body">
 
-                <h3 class="guide-sub-heading">@LS.T("guide.admin.courses")</h3>
+                <h3 class="guide-sub-heading">@LS.T("guide.admin.workReview")</h3>
                 <div class="guide-steps">
                     <div class="guide-step">
                         <div class="guide-step-num" style="background:#a855f7;">1</div>
                         <div class="guide-step-content">
-                            <h4>@LS.T("guide.admin.course1title")</h4>
-                            <p>@LS.T("guide.admin.course1text")</p>
+                            <h4>@LS.T("guide.admin.wr1title")</h4>
+                            <p>@LS.T("guide.admin.wr1text")</p>
                         </div>
                     </div>
                     <div class="guide-step">
                         <div class="guide-step-num" style="background:#a855f7;">2</div>
                         <div class="guide-step-content">
-                            <h4>@LS.T("guide.admin.course2title")</h4>
-                            <p>@LS.T("guide.admin.course2text")</p>
+                            <h4>@LS.T("guide.admin.wr2title")</h4>
+                            <p>@LS.T("guide.admin.wr2text")</p>
                         </div>
                     </div>
                     <div class="guide-step">
                         <div class="guide-step-num" style="background:#a855f7;">3</div>
                         <div class="guide-step-content">
-                            <h4>@LS.T("guide.admin.course3title")</h4>
-                            <p>@LS.T("guide.admin.course3text")</p>
+                            <h4>@LS.T("guide.admin.wr3title")</h4>
+                            <p>@LS.T("guide.admin.wr3text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.admin.purchasesHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.admin.purch1title")</h4>
+                            <p>@LS.T("guide.admin.purch1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.admin.purch2title")</h4>
+                            <p>@LS.T("guide.admin.purch2text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">3</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.admin.purch3title")</h4>
+                            <p>@LS.T("guide.admin.purch3text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">4</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.admin.purch4title")</h4>
+                            <p>@LS.T("guide.admin.purch4text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.admin.paymentsHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.admin.pay1title")</h4>
+                            <p>@LS.T("guide.admin.pay1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.admin.pay2title")</h4>
+                            <p>@LS.T("guide.admin.pay2text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">3</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.admin.pay3title")</h4>
+                            <p>@LS.T("guide.admin.pay3text")</p>
                         </div>
                     </div>
                 </div>
@@ -397,13 +851,69 @@
                             <p>@LS.T("guide.admin.perm2text")</p>
                         </div>
                     </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">3</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.admin.perm3title")</h4>
+                            <p>@LS.T("guide.admin.perm3text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.admin.messagingHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.admin.msg1title")</h4>
+                            <p>@LS.T("guide.admin.msg1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.admin.msg2title")</h4>
+                            <p>@LS.T("guide.admin.msg2text")</p>
+                        </div>
+                    </div>
                 </div>
 
             </div>
         </section>
 
         @* ══════════════════════════════════════════════════════════
-           SECTION 6 — TIPS
+           SECTION 7b — SETTINGS
+        ══════════════════════════════════════════════════════════ *@
+        <section id="settings" class="guide-section">
+            <div class="guide-section-header" style="background:linear-gradient(135deg,#374151,#6b7280);">
+                <i class="ri-settings-4-line guide-section-icon"></i>
+                <div>
+                    <h2 class="guide-section-title">@LS.T("guide.settings.title")</h2>
+                    <p class="guide-section-sub">@LS.T("guide.settings.sub")</p>
+                </div>
+            </div>
+            <div class="guide-section-body">
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6b7280;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.settings.step1title")</h4>
+                            <p>@LS.T("guide.settings.step1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6b7280;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.settings.step2title")</h4>
+                            <p>@LS.T("guide.settings.step2text")</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        @* ══════════════════════════════════════════════════════════
+           SECTION 8 — TIPS
         ══════════════════════════════════════════════════════════ *@
         <section id="tips" class="guide-section" style="margin-bottom:60px;">
             <div class="guide-section-header" style="background:linear-gradient(135deg,#0f172a,#475569);">
@@ -444,6 +954,36 @@
                         <div class="guide-tip-card-icon" style="color:#0ea5e9;"><i class="ri-printer-line"></i></div>
                         <h4>@LS.T("guide.tips.pdfTitle")</h4>
                         <p>@LS.T("guide.tips.pdfText")</p>
+                    </div>
+                    <div class="guide-tip-card">
+                        <div class="guide-tip-card-icon" style="color:#64748b;"><i class="ri-collapse-diagonal-line"></i></div>
+                        <h4>@LS.T("guide.tips.collapseTitle")</h4>
+                        <p>@LS.T("guide.tips.collapseText")</p>
+                    </div>
+                    <div class="guide-tip-card">
+                        <div class="guide-tip-card-icon" style="color:#059669;"><i class="ri-bank-line"></i></div>
+                        <h4>@LS.T("guide.tips.moneyBankTitle")</h4>
+                        <p>@LS.T("guide.tips.moneyBankText")</p>
+                    </div>
+                    <div class="guide-tip-card">
+                        <div class="guide-tip-card-icon" style="color:#d97706;"><i class="ri-file-text-line"></i></div>
+                        <h4>@LS.T("guide.tips.receiptTitle")</h4>
+                        <p>@LS.T("guide.tips.receiptText")</p>
+                    </div>
+                    <div class="guide-tip-card">
+                        <div class="guide-tip-card-icon" style="color:#8b5cf6;"><i class="ri-settings-4-line"></i></div>
+                        <h4>@LS.T("guide.tips.settingsTitle")</h4>
+                        <p>@LS.T("guide.tips.settingsText")</p>
+                    </div>
+                    <div class="guide-tip-card">
+                        <div class="guide-tip-card-icon" style="color:#ec4899;"><i class="ri-cursor-line"></i></div>
+                        <h4>@LS.T("guide.tips.contextMenuTitle")</h4>
+                        <p>@LS.T("guide.tips.contextMenuText")</p>
+                    </div>
+                    <div class="guide-tip-card">
+                        <div class="guide-tip-card-icon" style="color:#14b8a6;"><i class="ri-calendar-line"></i></div>
+                        <h4>@LS.T("guide.tips.weekNavTitle")</h4>
+                        <p>@LS.T("guide.tips.weekNavText")</p>
                     </div>
                 </div>
             </div>
