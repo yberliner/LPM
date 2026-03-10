@@ -7,6 +7,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject LPM.Auth.UserDb UserDb
 @inject LPM.Services.DashboardService DashSvc
+@inject LPM.Services.PcService PcSvc
 @using LPM._Spk
 @using LPM.Services
 @implements IDisposable
@@ -226,6 +227,16 @@
 
                     <ul class="header-content-right list-unstyled">
 
+                        <!-- Start::header-element new-pc -->
+                        <li class="header-element me-2">
+                            <button class="btn btn-sm btn-success d-flex align-items-center gap-1"
+                                    style="border-radius:8px; font-weight:600; font-size:.82rem; color:#fff !important;"
+                                    @onclick="() => _addPcModal.Show()">
+                                <i class="ri-user-add-line"></i>@LS.T("pcs.newPc")
+                            </button>
+                        </li>
+                        <!-- End::header-element new-pc -->
+
                         <!-- Start::header-element messages -->
                         @if (_msgUserId.HasValue)
                         {
@@ -352,6 +363,10 @@
             </div>
 
             <SpkModalSpinner @ref="_SpinnerDlg"/>
+
+<SpkNewPersonModal @ref="_addPcModal" Title="@LS.T("pcs.addNewPc")" RequireAllFields="true"
+                   ExistingFullNames="@_existingPcNames"
+                   OnSaved="SaveNewPc" />
 
 @* ── Messages Modal ── *@
 @if (_showMessagesModal)
@@ -561,6 +576,10 @@
     private string _displayName = "";
     private string? _avatarUrl;
 
+    // ── Add PC state ──
+    SpkNewPersonModal _addPcModal = default!;
+    HashSet<string>? _existingPcNames;
+
     // ── Messaging state ──
     int?   _msgUserId;
     int    _pendingMsgCount;
@@ -581,6 +600,10 @@
             ? char.ToUpper(name[0]) + name[1..]
             : "LP Management";
         _avatarUrl = UserDb.GetAvatarPath(name.ToLower());
+
+        // Load existing PC names for duplicate detection
+        _existingPcNames = new HashSet<string>(
+            PcSvc.GetAllPcs().Select(p => p.FullName), StringComparer.OrdinalIgnoreCase);
 
         // Resolve staff PersonId for messaging
         _msgUserId = DashSvc.GetUserIdByUsername(name);
@@ -1139,6 +1162,19 @@
             return dt.ToString("dd/MM HH:mm");
         }
         return isoDate;
+    }
+
+    // ── Add PC ──
+    void SaveNewPc((string FirstName, string LastName, string Phone, string Email,
+                    string DateOfBirth, string Gender, string Org, string Referral,
+                    string Notes, int CourseId) d)
+    {
+        PcSvc.AddPcWithPerson(d.FirstName, d.LastName, d.Phone, d.Email,
+            d.DateOfBirth, d.Gender, d.Org, d.Referral, d.Notes);
+        // Refresh duplicate-detection set
+        _existingPcNames = new HashSet<string>(
+            PcSvc.GetAllPcs().Select(p => p.FullName), StringComparer.OrdinalIgnoreCase);
+        NavigationManager.NavigateTo("/PCs", forceLoad: true);
     }
 
 }

@@ -28,6 +28,9 @@ public class LanguageService
     public string T(string key) =>
         _translations.TryGetValue(key, out var val) ? val : key;
 
+    public string T(string key, string arg0) =>
+        string.Format(_translations.TryGetValue(key, out var val) ? val : key, arg0);
+
     private bool LoadLanguage(string lang)
     {
         var path = Path.Combine(_wwwRootPath, "i18n", $"{lang}.json");

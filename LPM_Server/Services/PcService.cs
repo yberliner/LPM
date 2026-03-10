@@ -5,7 +5,8 @@ namespace LPM.Services;
 
 public record PcListItem(int PcId, string FullName, string ExternalId, long RemainSec);
 public record PcDetailInfo(int PcId, string FirstName, string LastName, string ExternalId,
-    string Phone, string Email, string Notes, string DateOfBirth, string Sex, string Origin)
+    string Phone, string Email, string Notes, string DateOfBirth, string Gender,
+    string Org, string Referral)
 {
     public string FullName => string.IsNullOrEmpty(LastName) ? FirstName : $"{FirstName} {LastName}";
 }
@@ -143,22 +144,25 @@ public class PcService
     }
 
     public int AddPcWithPerson(string firstName, string lastName,
-        string phone, string email, string dateOfBirth, string sex, string origin = "")
+        string phone, string email, string dateOfBirth, string gender,
+        string org = "", string referral = "", string notes = "")
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
         using var pCmd = conn.CreateCommand();
         pCmd.CommandText = @"
-            INSERT INTO Persons (FirstName, LastName, Phone, Email, DateOfBirth, Sex, Origin)
-            VALUES (@fn, @ln, @ph, @em, @dob, @sex, @orig)";
+            INSERT INTO Persons (FirstName, LastName, Phone, Email, DateOfBirth, Gender, Org, Referral, Notes)
+            VALUES (@fn, @ln, @ph, @em, @dob, @gender, @org, @ref, @notes)";
         pCmd.Parameters.AddWithValue("@fn",  firstName.Trim());
         pCmd.Parameters.AddWithValue("@ln",  lastName.Trim());
         pCmd.Parameters.AddWithValue("@ph",  Nv(phone));
         pCmd.Parameters.AddWithValue("@em",  Nv(email));
         pCmd.Parameters.AddWithValue("@dob", Nv(dateOfBirth));
-        pCmd.Parameters.AddWithValue("@sex", Nv(sex));
-        pCmd.Parameters.AddWithValue("@orig", Nv(origin));
+        pCmd.Parameters.AddWithValue("@gender", Nv(gender));
+        pCmd.Parameters.AddWithValue("@org", Nv(org));
+        pCmd.Parameters.AddWithValue("@ref", Nv(referral));
+        pCmd.Parameters.AddWithValue("@notes", Nv(notes));
         pCmd.ExecuteNonQuery();
 
         using var idCmd = conn.CreateCommand();
@@ -182,8 +186,8 @@ public class PcService
             SELECT p.FirstName,             COALESCE(p.LastName,''),
                    COALESCE(p.ExternalId,''), COALESCE(p.Phone,''),
                    COALESCE(p.Email,''),        COALESCE(p.Notes,''),
-                   COALESCE(p.DateOfBirth,''), COALESCE(p.Sex,''),
-                   COALESCE(p.Origin,'')
+                   COALESCE(p.DateOfBirth,''), COALESCE(p.Gender,''),
+                   COALESCE(p.Org,''),          COALESCE(p.Referral,'')
             FROM PCs pc
             JOIN Persons p ON p.PersonId = pc.PcId
             WHERE pc.PcId = @id";
@@ -193,12 +197,12 @@ public class PcService
         return new PcDetailInfo(pcId,
             r.GetString(0), r.GetString(1), r.GetString(2),
             r.GetString(3), r.GetString(4), r.GetString(5),
-            r.GetString(6), r.GetString(7), r.GetString(8));
+            r.GetString(6), r.GetString(7), r.GetString(8), r.GetString(9));
     }
 
     public void UpdatePcDetail(int pcId, string firstName, string lastName,
         string externalId, string phone, string email, string notes,
-        string dateOfBirth, string sex, string origin = "")
+        string dateOfBirth, string gender, string org = "", string referral = "")
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -206,18 +210,19 @@ public class PcService
         using var pCmd = conn.CreateCommand();
         pCmd.CommandText = @"
             UPDATE Persons SET FirstName=@fn, LastName=@ln,
-                               Phone=@ph, Email=@em, DateOfBirth=@dob, Sex=@sex,
-                               ExternalId=@ext, Notes=@nt, Origin=@orig
+                               Phone=@ph, Email=@em, DateOfBirth=@dob, Gender=@gender,
+                               ExternalId=@ext, Notes=@nt, Org=@org, Referral=@ref
             WHERE PersonId=@id";
         pCmd.Parameters.AddWithValue("@fn",   firstName.Trim());
         pCmd.Parameters.AddWithValue("@ln",   lastName.Trim());
         pCmd.Parameters.AddWithValue("@ph",   Nv(phone));
         pCmd.Parameters.AddWithValue("@em",   Nv(email));
         pCmd.Parameters.AddWithValue("@dob",  Nv(dateOfBirth));
-        pCmd.Parameters.AddWithValue("@sex",  Nv(sex));
+        pCmd.Parameters.AddWithValue("@gender", Nv(gender));
         pCmd.Parameters.AddWithValue("@ext",  Nv(externalId));
         pCmd.Parameters.AddWithValue("@nt",   Nv(notes));
-        pCmd.Parameters.AddWithValue("@orig", Nv(origin));
+        pCmd.Parameters.AddWithValue("@org",  Nv(org));
+        pCmd.Parameters.AddWithValue("@ref",  Nv(referral));
         pCmd.Parameters.AddWithValue("@id",   pcId);
         pCmd.ExecuteNonQuery();
     }

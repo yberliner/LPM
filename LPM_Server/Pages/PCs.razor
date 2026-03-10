@@ -16,9 +16,6 @@
         <div class="d-flex gap-1 mb-2">
             <input class="form-control form-control-sm" placeholder="@LS.T("common.search")"
                    @bind="_search" @bind:event="oninput" />
-            <button class="btn btn-sm btn-success text-nowrap" @onclick="() => _addModal.Show()">
-                <i class="ri-user-add-line me-1"></i>@LS.T("pcs.newPc")
-            </button>
         </div>
         <div class="overflow-y-auto flex-grow-1">
             @if (!FilteredPcsEx.Any())
@@ -74,119 +71,61 @@
                              style="width:48px;height:48px;background:#3949ab;font-size:1.3rem;">
                             @(_detail.FirstName.Length > 0 ? _detail.FirstName[0].ToString().ToUpper() : "?")
                         </div>
-                        @if (_editMode)
-                        {
-                            <div class="row g-2 flex-grow-1">
-                                <div class="col-auto">
-                                    <label class="form-label small mb-0">@LS.T("members.firstName")</label>
-                                    <input class="form-control form-control-sm" @bind="_editFirstName" style="width:130px;" />
-                                </div>
-                                <div class="col-auto">
-                                    <label class="form-label small mb-0">@LS.T("members.lastName")</label>
-                                    <input class="form-control form-control-sm" @bind="_editLastName" style="width:130px;" />
-                                </div>
-                                <div class="col-auto">
-                                    <label class="form-label small mb-0">@LS.T("members.phone")</label>
-                                    <input class="form-control form-control-sm" @bind="_editPhone" style="width:130px;" />
-                                </div>
-                                <div class="col-auto">
-                                    <label class="form-label small mb-0">@LS.T("pcs.email")</label>
-                                    <input class="form-control form-control-sm" @bind="_editEmail" style="width:190px;" />
-                                </div>
-                                <div class="col-auto">
-                                    <label class="form-label small mb-0">@LS.T("pcs.dateOfBirth")</label>
-                                    <input type="date" class="form-control form-control-sm" @bind="_editDob" style="width:150px;" />
-                                </div>
-                                <div class="col-auto">
-                                    <label class="form-label small mb-0">@LS.T("pcs.sex")</label>
-                                    <select class="form-select form-select-sm" @bind="_editSex" style="width:110px;">
-                                        <option value="">—</option>
-                                        <option value="Male">@LS.T("pcs.male")</option>
-                                        <option value="Female">@LS.T("pcs.female")</option>
-                                        <option value="Other">@LS.T("pcs.other")</option>
-                                    </select>
-                                </div>
-                                <div class="col-auto">
-                                    <label class="form-label small mb-0">@LS.T("members.externalId")</label>
-                                    <input class="form-control form-control-sm" @bind="_editExternalId" style="width:120px;" />
-                                </div>
-                                <div class="col-auto">
-                                    <label class="form-label small mb-0">@LS.T("pcs.origin")</label>
-                                    <select class="form-select form-select-sm" @bind="_editOrigin" style="width:140px;">
-                                        <option value="">— @LS.T("pcs.selectOrigin") —</option>
-                                        <option value="Haifa">Haifa</option>
-                                        <option value="Riga">Riga</option>
-                                        <option value="from Abroad">@LS.T("pcs.fromAbroad")</option>
-                                    </select>
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label small mb-0">@LS.T("pcs.notes")</label>
-                                    <textarea class="form-control form-control-sm" rows="2" @bind="_editNotes"></textarea>
-                                </div>
-                            </div>
-                        }
-                        else
-                        {
-                            <div class="flex-grow-1">
-                                <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
-                                    <span class="fs-5 fw-semibold" style="color:var(--default-text-color);">@_detail.FullName</span>
-                                    @if (!string.IsNullOrEmpty(_detail.ExternalId))
-                                    {
-                                        <span class="badge bg-secondary-transparent text-secondary">
-                                            <i class="ri-hashtag me-1"></i>@_detail.ExternalId
-                                        </span>
-                                    }
-                                    @if (!string.IsNullOrEmpty(_detail.Origin))
-                                    {
-                                        <span class="badge rounded-pill" style="background:#ede9fe;color:#6d28d9;font-size:.73rem;">
-                                            <i class="ri-map-pin-line me-1"></i>@_detail.Origin
-                                        </span>
-                                    }
-                                </div>
-                                <div class="d-flex gap-3 flex-wrap">
-                                    @if (!string.IsNullOrEmpty(_detail.Phone))
-                                    {
-                                        <span class="text-muted small">
-                                            <i class="ri-phone-line me-1"></i>@_detail.Phone
-                                        </span>
-                                    }
-                                    @if (!string.IsNullOrEmpty(_detail.Email))
-                                    {
-                                        <span class="text-muted small">
-                                            <i class="ri-mail-line me-1"></i>@_detail.Email
-                                        </span>
-                                    }
-                                    @if (!string.IsNullOrEmpty(_detail.DateOfBirth))
-                                    {
-                                        <span class="text-muted small">
-                                            <i class="ri-cake-line me-1"></i>@LS.T("pcs.dob") @_detail.DateOfBirth
-                                        </span>
-                                    }
-                                    @if (!string.IsNullOrEmpty(_detail.Sex))
-                                    {
-                                        <span class="text-muted small">@_detail.Sex</span>
-                                    }
-                                </div>
-                                @if (!string.IsNullOrEmpty(_detail.Notes))
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                                <span class="fs-5 fw-semibold" style="color:var(--default-text-color);">@_detail.FullName</span>
+                                @if (!string.IsNullOrEmpty(_detail.ExternalId))
                                 {
-                                    <div class="text-muted small mt-1 fst-italic">@_detail.Notes</div>
+                                    <span class="badge bg-secondary-transparent text-secondary">
+                                        <i class="ri-hashtag me-1"></i>@_detail.ExternalId
+                                    </span>
+                                }
+                                @if (!string.IsNullOrEmpty(_detail.Org))
+                                {
+                                    <span class="badge rounded-pill" style="background:#ede9fe;color:#6d28d9;font-size:.73rem;">
+                                        <i class="ri-building-line me-1"></i>@_detail.Org
+                                    </span>
                                 }
                             </div>
-                        }
+                            <div class="d-flex gap-3 flex-wrap">
+                                @if (!string.IsNullOrEmpty(_detail.Phone))
+                                {
+                                    <span class="text-muted small">
+                                        <i class="ri-phone-line me-1"></i>@_detail.Phone
+                                    </span>
+                                }
+                                @if (!string.IsNullOrEmpty(_detail.Email))
+                                {
+                                    <span class="text-muted small">
+                                        <i class="ri-mail-line me-1"></i>@_detail.Email
+                                    </span>
+                                }
+                                @if (!string.IsNullOrEmpty(_detail.DateOfBirth))
+                                {
+                                    <span class="text-muted small">
+                                        <i class="ri-cake-line me-1"></i>@LS.T("pcs.dob") @_detail.DateOfBirth
+                                    </span>
+                                }
+                                @if (!string.IsNullOrEmpty(_detail.Gender))
+                                {
+                                    <span class="text-muted small">@_detail.Gender</span>
+                                }
+                                @if (!string.IsNullOrEmpty(_detail.Referral))
+                                {
+                                    <span class="text-muted small">
+                                        <i class="ri-user-received-line me-1"></i>@_detail.Referral
+                                    </span>
+                                }
+                            </div>
+                            @if (!string.IsNullOrEmpty(_detail.Notes))
+                            {
+                                <div class="text-muted small mt-1 fst-italic">@_detail.Notes</div>
+                            }
+                        </div>
                         <div class="ms-auto d-flex gap-2 flex-shrink-0">
-                            @if (_editMode)
-                            {
-                                <button class="btn btn-sm btn-primary" @onclick="SaveEdit">
-                                    <i class="ri-save-line me-1"></i>@LS.T("common.save")
-                                </button>
-                                <button class="btn btn-sm btn-link text-muted" @onclick="() => _editMode = false">@LS.T("common.cancel")</button>
-                            }
-                            else
-                            {
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="StartEdit">
-                                    <i class="ri-edit-line me-1"></i>@LS.T("common.edit")
-                                </button>
-                            }
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="OpenEditModal">
+                                <i class="ri-edit-line me-1"></i>@LS.T("common.edit")
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -239,6 +178,81 @@
                                 <div class="pc-stat-sub">@LS.T("pcs.last"): @_stats.LastSessionDate</div>
                             }
                         </div>
+                    </div>
+                </div>
+            }
+
+            @* ── Active Courses ── *@
+            @if (_activeCourses?.Count > 0)
+            {
+                <div class="card shadow-sm mb-3" style="border:none;border-radius:14px;overflow:hidden;">
+                    <div class="card-header d-flex align-items-center justify-content-between py-2"
+                         style="background:linear-gradient(135deg,#6d28d9,#a855f7);border:none;">
+                        <span class="fw-semibold small text-white">
+                            <i class="ri-book-open-line me-1"></i>@LS.T("pcs.activeCourses")
+                        </span>
+                        <span class="badge bg-white text-primary">@_activeCourses.Count</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="small ps-3">@LS.T("pcs.course")</th>
+                                    <th class="small">@LS.T("pcs.dateStarted")</th>
+                                    <th class="small text-center"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var sc in _activeCourses)
+                                {
+                                    <tr>
+                                        <td class="small ps-3 fw-semibold" style="color:#6d28d9;">@sc.CourseName</td>
+                                        <td class="small">@sc.DateStarted</td>
+                                        <td class="small text-center">
+                                            <button class="btn btn-sm btn-outline-success py-0 px-2"
+                                                    @onclick="() => AskFinishCourse(sc.StudentCourseId, sc.CourseName)">
+                                                <i class="ri-check-line me-1"></i>@LS.T("pcs.markDone")
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+
+            @* ── Finished Courses ── *@
+            @if (_finishedCourses?.Count > 0)
+            {
+                <div class="card shadow-sm mb-3" style="border:none;border-radius:14px;overflow:hidden;">
+                    <div class="card-header d-flex align-items-center py-2"
+                         style="background:#f3f4f6;border:none;">
+                        <span class="fw-semibold small" style="color:#6b7280;">
+                            <i class="ri-book-mark-line me-1"></i>@LS.T("pcs.finishedCourses")
+                        </span>
+                        <span class="badge bg-secondary ms-2">@_finishedCourses.Count</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="small ps-3">@LS.T("pcs.course")</th>
+                                    <th class="small">@LS.T("pcs.dateStarted")</th>
+                                    <th class="small">@LS.T("pcs.dateFinished")</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var sc in _finishedCourses)
+                                {
+                                    <tr style="opacity:.7;">
+                                        <td class="small ps-3">@sc.CourseName</td>
+                                        <td class="small">@sc.DateStarted</td>
+                                        <td class="small">@sc.DateFinished</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             }
@@ -378,7 +392,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var s in _sessions)
+                                @foreach (var s in _sessions.Take(50))
                                 {
                                     <tr>
                                         <td class="small ps-3">@s.Date</td>
@@ -424,6 +438,12 @@
                                 </tr>
                             </tfoot>
                         </table>
+                        @if (_sessions.Count > 50)
+                        {
+                            <div class="small text-center py-2" style="color:#6b7280;">
+                                @LS.T("pcs.showingLatest50", _sessions.Count.ToString())
+                            </div>
+                        }
                     }
                     else
                     {
@@ -645,16 +665,37 @@
                         <div class="mb-3">
                             <div class="d-flex align-items-center justify-content-between mb-1">
                                 <label class="form-label small fw-semibold mb-0">
-                                    @LS.T("pcs.signature") <span style="color:#dc3545;font-size:1rem;">*</span>
+                                    @LS.T("pcs.signature") @if (!_skipSignature) { <span style="color:#dc3545;font-size:1rem;">*</span> }
                                 </label>
-                                <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:0.7rem;"
-                                        @onclick="ClearSignature">
-                                    @LS.T("pcs.clearSignature")
-                                </button>
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="form-check form-check-inline mb-0">
+                                        <input class="form-check-input" type="checkbox" id="skipSig"
+                                               checked="@_skipSignature" @onchange="e => _skipSignature = (bool)(e.Value ?? false)" />
+                                        <label class="form-check-label small text-muted" for="skipSig" style="font-size:0.72rem;">
+                                            @LS.T("pcs.noSignature")
+                                        </label>
+                                    </div>
+                                    @if (!_skipSignature)
+                                    {
+                                        <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:0.7rem;"
+                                                @onclick="ClearSignature">
+                                            @LS.T("pcs.clearSignature")
+                                        </button>
+                                    }
+                                </div>
                             </div>
-                            <div style="border:2px solid #dee2e6;border-radius:8px;background:#fafafa;position:relative;">
-                                <canvas id="signatureCanvas" style="width:100%;height:120px;cursor:crosshair;display:block;"></canvas>
-                            </div>
+                            @if (!_skipSignature)
+                            {
+                                <div style="border:2px solid #dee2e6;border-radius:8px;background:#fafafa;position:relative;">
+                                    <canvas id="signatureCanvas" style="width:100%;height:120px;cursor:crosshair;display:block;"></canvas>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="text-center py-3 small" style="border:2px dashed #dee2e6;border-radius:8px;background:#f9fafb;color:#9ca3af;">
+                                    <i class="ri-edit-line me-1"></i>@LS.T("pcs.noSignatureNote")
+                                </div>
+                            }
                         </div>
                 </div>
                 <div class="modal-footer py-2 px-3">
@@ -673,9 +714,6 @@
     </div>
 }
 
-<SpkNewPersonModal @ref="_addModal" Title="@LS.T("pcs.addNewPc")" ShowPcOriginField="true"
-                   ExistingFullNames="@(new HashSet<string>(_allPcsEx.Select(p => p.FullName), StringComparer.OrdinalIgnoreCase))"
-                   OnSaved="SaveNewPc" />
 
 @* ── Delete Purchase Confirmation ── *@
 @if (_confirmDeletePurchaseId.HasValue)
@@ -693,6 +731,32 @@
                         </button>
                         <button class="btn btn-sm btn-danger px-3" @onclick="ConfirmDeletePurchase">
                             <i class="ri-delete-bin-line me-1"></i>@LS.T("common.delete")
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<SpkNewPersonModal @ref="_editModal" Title="@LS.T("common.edit")" RequireAllFields="true" ExistingFullNames="_existingPcNames" OnSaved="SaveEditFromModal" />
+
+@* ── Finish Course Confirmation ── *@
+@if (_confirmFinishCourseId.HasValue)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.45);z-index:1060;">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content" style="border-radius:12px;background:#fff;color:#212529;">
+                <div class="modal-body text-center p-4">
+                    <i class="ri-check-double-line text-success" style="font-size:2.5rem;"></i>
+                    <div class="fw-bold mt-2 mb-1">@LS.T("pcs.confirmFinishCourseTitle")</div>
+                    <div class="small mb-3" style="color:#6b7280;">@LS.T("pcs.confirmFinishCourseMsg", _confirmFinishCourseName)</div>
+                    <div class="d-flex gap-2 justify-content-center">
+                        <button class="btn btn-sm btn-secondary px-3" @onclick="() => _confirmFinishCourseId = null">
+                            @LS.T("common.cancel")
+                        </button>
+                        <button class="btn btn-sm btn-success px-3" @onclick="ConfirmFinishCourse">
+                            <i class="ri-check-line me-1"></i>@LS.T("pcs.markDone")
                         </button>
                     </div>
                 </div>
@@ -765,14 +829,15 @@
     PcStats?            _stats;
     List<PcSessionInfo>? _sessions;
 
-    // Add PC modal
-    SpkNewPersonModal _addModal = default!;
+    // Courses
+    List<StudentCourseItem>? _activeCourses;
+    List<StudentCourseItem>? _finishedCourses;
+    int? _confirmFinishCourseId;
+    string _confirmFinishCourseName = "";
 
-    // Edit mode
-    bool      _editMode;
-    string    _editFirstName = "", _editLastName = "", _editExternalId = "";
-    string    _editPhone = "", _editEmail = "", _editNotes = "", _editSex = "", _editOrigin = "";
-    DateTime? _editDob;
+    // Edit modal
+    SpkNewPersonModal _editModal = null!;
+    HashSet<string> _existingPcNames = new();
 
     // Purchase modal
     bool     _showPurchaseModal;
@@ -784,6 +849,7 @@
     int? _editingPurchaseId;
     int? _confirmDeletePurchaseId;
     string _origPurchaseSnapshot = "";
+    bool   _skipSignature;
 
     List<CourseItem>             _allCourses  = [];
     List<(int PersonId, string FullName)> _staff      = [];
@@ -850,7 +916,7 @@
     string SortClass(string col) =>
         _sortCol != col ? "" : _sortAsc ? "sort-asc" : "sort-desc";
 
-    bool _sortLoaded;
+
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -860,7 +926,7 @@
             var asc = await JS.InvokeAsync<string>("localStorage.getItem", "pcs_sortAsc");
             if (!string.IsNullOrEmpty(col)) _sortCol = col;
             if (!string.IsNullOrEmpty(asc)) _sortAsc = asc == "True";
-            _sortLoaded = true;
+
             StateHasChanged();
         }
     }
@@ -880,7 +946,6 @@
     void SelectPc(int pcId)
     {
         _selPcId  = pcId;
-        _editMode = false;
         LoadDetail();
     }
 
@@ -891,41 +956,47 @@
         _stats             = PcSvc.GetPcStats(_selPcId.Value);
         _sessions          = PcSvc.GetPcSessions(_selPcId.Value);
         _pcPurchases       = PcSvc.GetAllPurchasesForPc(_selPcId.Value);
+        var allCourses     = CourseSvc.GetStudentCourses(_selPcId.Value);
+        _activeCourses     = allCourses.Where(c => c.DateFinished == null).ToList();
+        _finishedCourses   = allCourses.Where(c => c.DateFinished != null).ToList();
     }
 
-    void SaveNewPc((string fn, string ln, string phone, string email, string dob, string sex,
-                    string org, string referral, string origin, int courseId) d)
-    {
-        var newId = PcSvc.AddPcWithPerson(d.fn, d.ln, d.phone, d.email, d.dob, d.sex, d.origin);
-        _allPcsEx = PcSvc.GetAllPcsExtended();
-        SelectPc(newId);
-    }
 
-    void StartEdit()
+    void OpenEditModal()
     {
         if (_detail == null) return;
-        _editMode       = true;
-        _editFirstName  = _detail.FirstName;
-        _editLastName   = _detail.LastName;
-        _editExternalId = _detail.ExternalId;
-        _editPhone      = _detail.Phone;
-        _editEmail      = _detail.Email;
-        _editDob        = string.IsNullOrEmpty(_detail.DateOfBirth) ? null
-                          : DateTime.TryParse(_detail.DateOfBirth, out var dob) ? dob : null;
-        _editSex        = _detail.Sex;
-        _editNotes      = _detail.Notes;
-        _editOrigin     = _detail.Origin;
+        _existingPcNames = new HashSet<string>(
+            _allPcsEx.Select(p => p.FullName), StringComparer.OrdinalIgnoreCase);
+        _editModal.ShowForEdit(
+            _detail.FirstName, _detail.LastName,
+            _detail.Phone, _detail.Email,
+            _detail.DateOfBirth, _detail.Gender,
+            _detail.Org, _detail.Referral, _detail.Notes);
     }
 
-    void SaveEdit()
+    void SaveEditFromModal((string FirstName, string LastName, string Phone, string Email,
+        string DateOfBirth, string Gender, string Org, string Referral, string Notes, int CourseId) d)
     {
-        if (string.IsNullOrWhiteSpace(_editFirstName)) return;
         PcSvc.UpdatePcDetail(_selPcId!.Value,
-            _editFirstName, _editLastName, _editExternalId,
-            _editPhone, _editEmail, _editNotes,
-            _editDob?.ToString("yyyy-MM-dd") ?? "", _editSex, _editOrigin);
-        _editMode = false;
+            d.FirstName, d.LastName, _detail?.ExternalId ?? "",
+            d.Phone, d.Email, d.Notes,
+            d.DateOfBirth, d.Gender, d.Org, d.Referral);
         _allPcsEx = PcSvc.GetAllPcsExtended();
+        LoadDetail();
+    }
+
+    // ── Course finish ──
+    void AskFinishCourse(int studentCourseId, string courseName)
+    {
+        _confirmFinishCourseId = studentCourseId;
+        _confirmFinishCourseName = courseName;
+    }
+
+    void ConfirmFinishCourse()
+    {
+        if (!_confirmFinishCourseId.HasValue) return;
+        CourseSvc.FinishStudentCourse(_confirmFinishCourseId.Value, DateTime.Today.ToString("yyyy-MM-dd"));
+        _confirmFinishCourseId = null;
         LoadDetail();
     }
 
@@ -945,6 +1016,7 @@
         _purchaseDate      = DateTime.Today;
         _purchaseNotes     = "";
         _purchaseError     = "";
+        _skipSignature     = false;
         _allCourses        = CourseSvc.GetAllCourses();
         _purchaseItems     = new List<PurchaseItemModel>
         {
@@ -968,6 +1040,7 @@
         _showPurchaseModal = true;
         _editingPurchaseId = purchaseId;
         _purchaseError     = "";
+        _skipSignature     = string.IsNullOrEmpty(detail.SignatureData);
         _allCourses        = CourseSvc.GetAllCourses();
 
         _purchaseDate = DateTime.TryParse(detail.PurchaseDate, out var dt) ? dt : DateTime.Today;
@@ -996,11 +1069,12 @@
 
         StateHasChanged();
         await Task.Delay(100);
-        await JS.InvokeVoidAsync("SignaturePad.init", "signatureCanvas", null);
-
-        // Draw existing signature if present
-        if (!string.IsNullOrEmpty(detail.SignatureData))
-            await JS.InvokeVoidAsync("SignaturePad.drawImage", "signatureCanvas", detail.SignatureData);
+        if (!_skipSignature)
+        {
+            await JS.InvokeVoidAsync("SignaturePad.init", "signatureCanvas", null);
+            if (!string.IsNullOrEmpty(detail.SignatureData))
+                await JS.InvokeVoidAsync("SignaturePad.drawImage", "signatureCanvas", detail.SignatureData);
+        }
 
         _origPurchaseSnapshot = GetPurchaseSnapshot();
     }
@@ -1008,7 +1082,8 @@
     async Task ClosePurchaseModal()
     {
         _showPurchaseModal = false;
-        await JS.InvokeVoidAsync("SignaturePad.dispose", "signatureCanvas");
+        if (!_skipSignature)
+            await JS.InvokeVoidAsync("SignaturePad.dispose", "signatureCanvas");
     }
 
     void AddPurchaseItem()
@@ -1036,8 +1111,8 @@
     bool HasValidPurchaseItems()
     {
         return _purchaseItems.Any(item =>
-            (item.ItemType == "Auditing" && (item.HoursBought > 0 || item.AmountPaid > 0)) ||
-            (item.ItemType == "Course" && item.CourseId > 0 && item.AmountPaid > 0));
+            (item.ItemType == "Auditing" && item.HoursBought > 0) ||
+            (item.ItemType == "Course" && item.CourseId > 0));
     }
 
     async Task SavePurchase()
@@ -1049,15 +1124,14 @@
         {
             if (item.ItemType == "Course" && item.CourseId <= 0)
             { _purchaseError = LS.T("pcs.errorSelectCourse"); return; }
-            if (item.ItemType == "Auditing" && item.HoursBought <= 0 && item.AmountPaid <= 0)
+            if (item.ItemType == "Auditing" && item.HoursBought <= 0)
             { _purchaseError = LS.T("pcs.errorEnterHoursOrAmount"); return; }
-            if (item.ItemType == "Course" && item.AmountPaid <= 0)
-            { _purchaseError = LS.T("pcs.errorEnterAmount"); return; }
         }
 
-        // Get signature — required
-        string? sigData = await JS.InvokeAsync<string?>("SignaturePad.getDataUrl", "signatureCanvas");
-        if (string.IsNullOrEmpty(sigData))
+        // Get signature — required unless skipped
+        string? sigData = _skipSignature ? null
+            : await JS.InvokeAsync<string?>("SignaturePad.getDataUrl", "signatureCanvas");
+        if (!_skipSignature && string.IsNullOrEmpty(sigData))
         { _purchaseError = LS.T("pcs.signatureRequired"); return; }
 
         var items = _purchaseItems.Select(pi => (

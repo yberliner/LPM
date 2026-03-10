@@ -74,14 +74,14 @@ public class AcademyService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO Persons (FirstName, LastName, Phone, Email, DateOfBirth, Sex, Org, Referral)
-            VALUES (@fn, @ln, @ph, @em, @dob, @sex, @org, @ref)";
+            INSERT INTO Persons (FirstName, LastName, Phone, Email, DateOfBirth, Gender, Org, Referral)
+            VALUES (@fn, @ln, @ph, @em, @dob, @gender, @org, @ref)";
         cmd.Parameters.AddWithValue("@fn",  firstName.Trim());
         cmd.Parameters.AddWithValue("@ln",  lastName.Trim());
         cmd.Parameters.AddWithValue("@ph",  string.IsNullOrWhiteSpace(phone)       ? DBNull.Value : (object)phone.Trim());
         cmd.Parameters.AddWithValue("@em",  string.IsNullOrWhiteSpace(email)       ? DBNull.Value : (object)email.Trim());
         cmd.Parameters.AddWithValue("@dob", string.IsNullOrWhiteSpace(dateOfBirth) ? DBNull.Value : (object)dateOfBirth);
-        cmd.Parameters.AddWithValue("@sex", string.IsNullOrWhiteSpace(sex)         ? DBNull.Value : (object)sex);
+        cmd.Parameters.AddWithValue("@gender", string.IsNullOrWhiteSpace(sex)      ? DBNull.Value : (object)sex);
         cmd.Parameters.AddWithValue("@org", string.IsNullOrWhiteSpace(org)         ? DBNull.Value : (object)org);
         cmd.Parameters.AddWithValue("@ref", string.IsNullOrWhiteSpace(referral)    ? DBNull.Value : (object)referral);
         cmd.ExecuteNonQuery();

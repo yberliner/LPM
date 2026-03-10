@@ -1,11 +1,11 @@
 @* Shared modal for adding a new person.
    Usage:
-     <SpkNewPersonModal @ref="_modal" Title="Add New XYZ" OnSaved="HandleSaved" />
-     <SpkNewPersonModal @ref="_modal" Title="New Student" ShowAcademyFields="true" OnSaved="HandleSaved" />
-     <SpkNewPersonModal @ref="_modal" Title="Add New PC"  ShowPcOriginField="true" OnSaved="HandleSaved" />
+     <SpkNewPersonModal @ref="_modal" Title="Add New PC" RequireAllFields="true" OnSaved="HandleSaved" />
+     <SpkNewPersonModal @ref="_modal" Title="New Student" Courses="_courses" OnSaved="HandleSaved" />
 
    Call _modal.Show() to open it.
-   OnSaved fires with (FirstName, LastName, Phone, Email, DateOfBirth, Sex, Org, Referral, Origin) on successful save.
+   OnSaved fires with (FirstName, LastName, Phone, Email, DateOfBirth, Gender, Org, Referral, Notes, CourseId).
+   When RequireAllFields=true, Phone/Email/Gender/Org/Referral are mandatory (DOB and ExternalId are always optional).
 *@
 
 @using LPM.Services
@@ -20,8 +20,8 @@
             <div class="modal-content shadow spk-new-person-modal" style="background:#fff; color:#212529;">
 
                 <div class="modal-header py-2" style="background:linear-gradient(135deg,#1a237e,#3949ab); border-bottom:none;">
-                    <h6 class="modal-title mb-0 text-white">
-                        <i class="ri-user-add-line me-2 opacity-75"></i>@Title
+                    <h6 class="modal-title mb-0" style="color:#fff !important;">
+                        <i class="ri-user-add-line me-2 opacity-75" style="color:#fff !important;"></i>@Title
                     </h6>
                     <button type="button" class="btn-close btn-close-white" @onclick="Cancel"></button>
                 </div>
@@ -30,93 +30,93 @@
                     <div class="row g-2">
                         <div class="col-6">
                             <label class="form-label small mb-1">
-                                First Name <span class="text-danger">*</span>
+                                @LS.T("pcs.firstName") <span class="text-danger">*</span>
                             </label>
                             <input class="form-control form-control-sm"
-                                   @bind="_firstName" placeholder="First name" />
+                                   @bind="_firstName" placeholder="@LS.T("pcs.firstName")" />
                         </div>
                         <div class="col-6">
                             <label class="form-label small mb-1">
-                                Last Name <span class="text-danger">*</span>
+                                @LS.T("pcs.lastName") <span class="text-danger">*</span>
                             </label>
                             <input class="form-control form-control-sm"
-                                   @bind="_lastName" placeholder="Last name" />
+                                   @bind="_lastName" placeholder="@LS.T("pcs.lastName")" />
                         </div>
                         <div class="col-6">
-                            <label class="form-label small mb-1">Phone</label>
+                            <label class="form-label small mb-1">
+                                @LS.T("pcs.phone") <span class="text-danger">*</span>
+                            </label>
                             <input class="form-control form-control-sm"
-                                   @bind="_phone" placeholder="Phone number" />
+                                   @bind="_phone" placeholder="@LS.T("pcs.phone")" />
                         </div>
                         <div class="col-6">
-                            <label class="form-label small mb-1">Email</label>
+                            <label class="form-label small mb-1">
+                                @LS.T("pcs.email") <span class="text-danger">*</span>
+                            </label>
                             <input class="form-control form-control-sm"
-                                   @bind="_email" placeholder="Email address" />
+                                   @bind="_email" placeholder="@LS.T("pcs.email")" />
                         </div>
                         <div class="col-6">
-                            <label class="form-label small mb-1">Date of Birth</label>
-                            <input type="date" class="form-control form-control-sm" @bind="_dob" />
+                            <label class="form-label small mb-1">@LS.T("pcs.dob")</label>
+                            <input type="text" class="form-control form-control-sm"
+                                   @bind="_dobText" placeholder="dd/mm/yyyy" />
                         </div>
                         <div class="col-6">
-                            <label class="form-label small mb-1">Sex</label>
+                            <label class="form-label small mb-1">
+                                @LS.T("pcs.gender") @if (RequireAllFields) { <span class="text-danger">*</span> }
+                            </label>
                             <select class="form-select form-select-sm" @bind="_sex">
-                                <option value="">— select —</option>
+                                <option value="">— @LS.T("common.select") —</option>
                                 <option value="Male">Male</option>
                                 <option value="Female">Female</option>
                                 <option value="Other">Other</option>
                             </select>
                         </div>
 
-                        @* ── Academy-only fields ── *@
-                        @if (ShowAcademyFields)
+                        <div class="col-6">
+                            <label class="form-label small mb-1">
+                                @LS.T("pcs.org") @if (RequireAllFields) { <span class="text-danger">*</span> }
+                            </label>
+                            <select class="form-select form-select-sm" @bind="_org">
+                                <option value="">— @LS.T("common.select") —</option>
+                                <option value="Haifa">@LS.T("pcs.originHaifa")</option>
+                                <option value="Riga">@LS.T("pcs.originRiga")</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small mb-1">
+                                @LS.T("pcs.referral") @if (RequireAllFields) { <span class="text-danger">*</span> }
+                            </label>
+                            <select class="form-select form-select-sm" @bind="_referral">
+                                <option value="">— @LS.T("common.select") —</option>
+                                <option value="Don">Don</option>
+                                <option value="Friend">Friend / Other Student</option>
+                                <option value="Social Networks">Social Networks</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+
+                        @if (Courses != null && Courses.Count > 0)
                         {
-                            <div class="col-6">
-                                <label class="form-label small mb-1">Organization</label>
-                                <select class="form-select form-select-sm" @bind="_org">
-                                    <option value="">— select —</option>
-                                    <option value="Haifa">Haifa</option>
-                                    <option value="Riga">Riga</option>
+                            <div class="col-12">
+                                <label class="form-label small mb-1">
+                                    <i class="ri-book-2-line me-1" style="color:#7c3aed;"></i>@LS.T("pcs.course") <span class="text-danger">*</span>
+                                </label>
+                                <select class="form-select form-select-sm" @bind="_courseId">
+                                    <option value="0">— @LS.T("common.select") —</option>
+                                    @foreach (var c in Courses)
+                                    {
+                                        <option value="@c.CourseId">@c.Name</option>
+                                    }
                                 </select>
                             </div>
-                            <div class="col-6">
-                                <label class="form-label small mb-1">Referral</label>
-                                <select class="form-select form-select-sm" @bind="_referral">
-                                    <option value="">— select —</option>
-                                    <option value="Don">Don</option>
-                                    <option value="Friend">Friend / Other Student</option>
-                                    <option value="Social Networks">Social Networks</option>
-                                    <option value="Other">Other</option>
-                                </select>
-                            </div>
-                            @if (Courses != null && Courses.Count > 0)
-                            {
-                                <div class="col-12">
-                                    <label class="form-label small mb-1">
-                                        <i class="ri-book-2-line me-1" style="color:#7c3aed;"></i>Course <span class="text-danger">*</span>
-                                    </label>
-                                    <select class="form-select form-select-sm" @bind="_courseId">
-                                        <option value="0">— select course —</option>
-                                        @foreach (var c in Courses)
-                                        {
-                                            <option value="@c.CourseId">@c.Name</option>
-                                        }
-                                    </select>
-                                </div>
-                            }
                         }
 
-                        @* ── PC-only field ── *@
-                        @if (ShowPcOriginField)
-                        {
-                            <div class="col-6">
-                                <label class="form-label small mb-1">Origin</label>
-                                <select class="form-select form-select-sm" @bind="_origin">
-                                    <option value="">— select —</option>
-                                    <option value="Haifa">Haifa</option>
-                                    <option value="Riga">Riga</option>
-                                    <option value="from Abroad">From Abroad</option>
-                                </select>
-                            </div>
-                        }
+                        <div class="col-12">
+                            <label class="form-label small mb-1">@LS.T("pcs.notes")</label>
+                            <textarea class="form-control form-control-sm" rows="2"
+                                      @bind="_notes" placeholder="@LS.T("pcs.notes")"></textarea>
+                        </div>
                     </div>
 
                     @if (!string.IsNullOrEmpty(_error))
@@ -126,9 +126,9 @@
                 </div>
 
                 <div class="modal-footer py-2" style="background:#f8faff; border-top:1px solid #e8edff;">
-                    <button class="btn btn-sm btn-link text-muted" @onclick="Cancel">Cancel</button>
+                    <button class="btn btn-sm btn-link text-muted" @onclick="Cancel">@LS.T("common.cancel")</button>
                     <button class="btn btn-sm btn-primary" @onclick="Save">
-                        <i class="ri-save-line me-1"></i>Save
+                        <i class="ri-save-line me-1"></i>@LS.T("common.save")
                     </button>
                 </div>
 
@@ -148,29 +148,61 @@
 
 @code {
     [Parameter] public string Title { get; set; } = "Add New Person";
-    [Parameter] public bool ShowAcademyFields  { get; set; }
-    [Parameter] public bool ShowPcOriginField  { get; set; }
+    [Parameter] public bool RequireAllFields { get; set; }
     [Parameter] public List<CourseItem>? Courses { get; set; }
     [Parameter] public HashSet<string>? ExistingFullNames { get; set; }
     [Parameter] public EventCallback<(string FirstName, string LastName, string Phone, string Email,
-        string DateOfBirth, string Sex, string Org, string Referral, string Origin, int CourseId)> OnSaved { get; set; }
+        string DateOfBirth, string Gender, string Org, string Referral, string Notes, int CourseId)> OnSaved { get; set; }
 
     string    _firstName = "", _lastName = "";
     string    _phone = "", _email = "", _sex = "";
-    string    _org = "", _referral = "", _origin = "";
-    DateOnly? _dob;
+    string    _org = "", _referral = "";
+    string    _notes = "";
+    string    _dobText = "";
     int       _courseId;
     string    _error = "";
     bool      _visible;
+    string?   _editOriginalFullName;
 
     public void Show()
     {
         _firstName = _lastName = _phone = _email = _sex = _error = "";
-        _org = _referral = _origin = "";
-        _dob      = null;
+        _org = _referral = _notes = _dobText = "";
         _courseId = 0;
+        _editOriginalFullName = null;
         _visible  = true;
         StateHasChanged();
+    }
+
+    public void ShowForEdit(string firstName, string lastName, string phone, string email,
+        string dateOfBirth, string gender, string org, string referral, string notes)
+    {
+        _firstName = firstName;
+        _lastName  = lastName;
+        _phone     = phone;
+        _email     = email;
+        _sex       = gender;
+        _org       = org;
+        _referral  = referral;
+        _notes     = notes;
+        // Convert yyyy-MM-dd to dd/MM/yyyy for display
+        _dobText   = DateOnly.TryParse(dateOfBirth, out var d) ? d.ToString("dd/MM/yyyy") : "";
+        _courseId   = 0;
+        _error     = "";
+        _editOriginalFullName = $"{firstName.Trim()} {lastName.Trim()}";
+        _visible   = true;
+        StateHasChanged();
+    }
+
+    /// Parse dd/MM/yyyy text to yyyy-MM-dd for storage, or return empty if blank/invalid.
+    string ParseDobText()
+    {
+        if (string.IsNullOrWhiteSpace(_dobText)) return "";
+        if (DateOnly.TryParseExact(_dobText.Trim(), "dd/MM/yyyy", null, System.Globalization.DateTimeStyles.None, out var d))
+            return d.ToString("yyyy-MM-dd");
+        if (DateOnly.TryParseExact(_dobText.Trim(), "d/M/yyyy", null, System.Globalization.DateTimeStyles.None, out d))
+            return d.ToString("yyyy-MM-dd");
+        return "";
     }
 
     async Task Save()
@@ -179,19 +211,35 @@
             { _error = "First name is required."; return; }
         if (string.IsNullOrWhiteSpace(_lastName))
             { _error = "Last name is required."; return; }
+        if (string.IsNullOrWhiteSpace(_phone))
+            { _error = "Phone is required."; return; }
+        if (string.IsNullOrWhiteSpace(_email))
+            { _error = "Email is required."; return; }
+        if (RequireAllFields)
+        {
+            if (string.IsNullOrWhiteSpace(_sex))
+                { _error = "Gender is required."; return; }
+            if (string.IsNullOrWhiteSpace(_org))
+                { _error = "Organization is required."; return; }
+            if (string.IsNullOrWhiteSpace(_referral))
+                { _error = "Referral is required."; return; }
+        }
+        if (!string.IsNullOrWhiteSpace(_dobText) && ParseDobText() == "")
+            { _error = "Date of birth must be dd/mm/yyyy."; return; }
         if (Courses != null && Courses.Count > 0 && _courseId <= 0)
             { _error = "Please select a course."; return; }
 
         var fullName = $"{_firstName.Trim()} {_lastName.Trim()}";
-        if (ExistingFullNames != null && ExistingFullNames.Contains(fullName))
+        if (ExistingFullNames != null && ExistingFullNames.Contains(fullName)
+            && !string.Equals(fullName, _editOriginalFullName, StringComparison.OrdinalIgnoreCase))
             { _error = $"A person named \"{fullName}\" already exists."; return; }
 
         _visible = false;
         await OnSaved.InvokeAsync((
             _firstName.Trim(), _lastName.Trim(),
             _phone.Trim(), _email.Trim(),
-            _dob?.ToString("yyyy-MM-dd") ?? "", _sex,
-            _org, _referral, _origin, _courseId));
+            ParseDobText(), _sex,
+            _org, _referral, _notes.Trim(), _courseId));
     }
 
     void Cancel() => _visible = false;

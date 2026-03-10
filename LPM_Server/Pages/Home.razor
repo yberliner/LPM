@@ -1611,8 +1611,8 @@
         _addDuration = ""; _addAdminMin = "0"; _addIsFree = false;
         _addSummary = ""; _addError = "";
 
-        _detail = DashSvc.GetDayDetail(_userId.Value, _selPcId.Value,
-            _weekStart.AddDays(_selDay.Value), _selRole);
+        _detail = DashSvc.GetDayDetail(_userId!.Value, _selPcId!.Value,
+            _weekStart.AddDays(_selDay ?? 0), _selRole);
         _grid = _soloMode
             ? DashSvc.GetWeekGridSolo(_userId.Value, _weekStart)
             : DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
@@ -1649,8 +1649,8 @@
         _showAddGeneralCs = false;
         _addGeneralCsDuration = ""; _addGeneralCsNotes = ""; _generalCsError = "";
 
-        _detail = DashSvc.GetDayDetail(_userId.Value, _selPcId.Value,
-            _weekStart.AddDays(_selDay.Value), _selRole);
+        _detail = DashSvc.GetDayDetail(_userId!.Value, _selPcId!.Value,
+            _weekStart.AddDays(_selDay ?? 0), _selRole);
         _grid = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
         RefreshWeeklyTotals();
     }
