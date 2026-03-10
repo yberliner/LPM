@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="40" height="40">
+  <defs>
+    <linearGradient id="tdUp" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#34d399"/>
+    </linearGradient>
+    <linearGradient id="tdDn" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
+  <g>
+    <polygon points="18,1 36,33 0,33" fill="url(#tdUp)" opacity="0.9">
+      <animate attributeName="opacity" values="0.9;1;0.9" dur="5s" repeatCount="indefinite"/>
+    </polygon>
+    <polygon points="4,7 40,7 22,39" fill="url(#tdDn)" opacity="0.85">
+      <animate attributeName="opacity" values="0.85;1;0.85" dur="5s" begin="2.5s" repeatCount="indefinite"/>
+    </polygon>
+    <polygon points="20,12 30,12 26,33 14,33" fill="#22d3ee" opacity="0.35">
+      <animate attributeName="opacity" values="0.35;0.55;0.35" dur="5s" begin="1.2s" repeatCount="indefinite"/>
+    </polygon>
+  </g>
+</svg>
