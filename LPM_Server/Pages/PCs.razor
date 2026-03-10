@@ -64,78 +64,59 @@
             @* ── PC DETAIL ── *@
 
             @* Header card *@
-            <div class="card shadow-sm mb-3">
-                <div class="card-body py-2 px-3">
-                    <div class="d-flex align-items-start gap-3">
-                        <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0"
-                             style="width:48px;height:48px;background:#3949ab;font-size:1.3rem;">
-                            @(_detail.FirstName.Length > 0 ? _detail.FirstName[0].ToString().ToUpper() : "?")
-                        </div>
-                        <div class="flex-grow-1">
-                            <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
-                                <span class="fs-5 fw-semibold" style="color:var(--default-text-color);">@_detail.FullName</span>
-                                @if (!string.IsNullOrEmpty(_detail.ExternalId))
-                                {
-                                    <span class="badge bg-secondary-transparent text-secondary">
-                                        <i class="ri-hashtag me-1"></i>@_detail.ExternalId
-                                    </span>
-                                }
-                                @if (!string.IsNullOrEmpty(_detail.Org))
-                                {
-                                    <span class="badge rounded-pill" style="background:#ede9fe;color:#6d28d9;font-size:.73rem;">
-                                        <i class="ri-building-line me-1"></i>@_detail.Org
-                                    </span>
-                                }
-                            </div>
-                            <div class="d-flex gap-3 flex-wrap">
-                                @if (!string.IsNullOrEmpty(_detail.Phone))
-                                {
-                                    <span class="text-muted small">
-                                        <i class="ri-phone-line me-1"></i>@_detail.Phone
-                                    </span>
-                                }
-                                @if (!string.IsNullOrEmpty(_detail.Email))
-                                {
-                                    <span class="text-muted small">
-                                        <i class="ri-mail-line me-1"></i>@_detail.Email
-                                    </span>
-                                }
-                                @if (!string.IsNullOrEmpty(_detail.DateOfBirth))
-                                {
-                                    <span class="text-muted small">
-                                        <i class="ri-cake-line me-1"></i>@LS.T("pcs.dob") @_detail.DateOfBirth
-                                    </span>
-                                }
-                                @if (!string.IsNullOrEmpty(_detail.Gender))
-                                {
-                                    <span class="text-muted small">@_detail.Gender</span>
-                                }
-                                @if (!string.IsNullOrEmpty(_detail.Referral))
-                                {
-                                    <span class="text-muted small">
-                                        <i class="ri-user-received-line me-1"></i>@_detail.Referral
-                                    </span>
-                                }
-                            </div>
-                            @if (!string.IsNullOrEmpty(_detail.Notes))
+            <div class="pc-header-card mb-3">
+                <div class="pc-header-top">
+                    <div class="pc-header-avatar">
+                        @(_detail.FirstName.Length > 0 ? _detail.FirstName[0].ToString().ToUpper() : "?")
+                    </div>
+                    <div class="pc-header-info">
+                        <div class="pc-header-name-row">
+                            <span class="pc-header-name">@_detail.FullName</span>
+                            <button class="pc-edit-btn" @onclick="OpenEditModal">
+                                <i class="ri-edit-line"></i>@LS.T("common.edit")
+                            </button>
+                            @if (!string.IsNullOrEmpty(_detail.ExternalId))
                             {
-                                <div class="text-muted small mt-1 fst-italic">@_detail.Notes</div>
+                                <span class="pc-header-tag pc-tag-id"><i class="ri-hashtag"></i>@_detail.ExternalId</span>
+                            }
+                            @if (!string.IsNullOrEmpty(_detail.Org))
+                            {
+                                <span class="pc-header-tag pc-tag-org"><i class="ri-building-line"></i>@_detail.Org</span>
                             }
                         </div>
-                        <div class="ms-auto d-flex gap-2 flex-shrink-0">
-                            <button class="btn btn-sm btn-outline-secondary" @onclick="OpenEditModal">
-                                <i class="ri-edit-line me-1"></i>@LS.T("common.edit")
-                            </button>
+                        <div class="pc-header-meta">
+                            @if (!string.IsNullOrEmpty(_detail.Phone))
+                            {
+                                <span><i class="ri-phone-line"></i>@_detail.Phone</span>
+                            }
+                            @if (!string.IsNullOrEmpty(_detail.Email))
+                            {
+                                <span><i class="ri-mail-line"></i>@_detail.Email</span>
+                            }
+                            @if (!string.IsNullOrEmpty(_detail.DateOfBirth))
+                            {
+                                <span><i class="ri-cake-line"></i>@_detail.DateOfBirth</span>
+                            }
+                            @if (!string.IsNullOrEmpty(_detail.Gender))
+                            {
+                                <span>@_detail.Gender</span>
+                            }
+                            @if (!string.IsNullOrEmpty(_detail.Referral))
+                            {
+                                <span><i class="ri-user-received-line"></i>@_detail.Referral</span>
+                            }
                         </div>
+                        @if (!string.IsNullOrEmpty(_detail.Notes))
+                        {
+                            <div class="pc-header-notes">@_detail.Notes</div>
+                        }
+                    </div>
+                    <div class="pc-header-actions">
+                        <button class="pc-purchase-btn" @onclick="OpenPurchaseModal">
+                            <i class="ri-shopping-cart-line"></i>@LS.T("pcs.newPurchase")
+                        </button>
                     </div>
                 </div>
-            </div>
-
-            @* ── Purchase Button ── *@
-            <div class="mb-3">
-                <button class="pc-purchase-btn" @onclick="OpenPurchaseModal">
-                    <i class="ri-shopping-cart-line"></i>@LS.T("pcs.newPurchase")
-                </button>
             </div>
 
             @* ── Courses ── *@
@@ -516,25 +497,21 @@
                         @* Signature *@
                         <div class="mb-3">
                             <div class="d-flex align-items-center justify-content-between mb-1">
-                                <label class="form-label small fw-semibold mb-0">
-                                    @LS.T("pcs.signature") @if (!_skipSignature) { <span style="color:#dc3545;font-size:1rem;">*</span> }
+                                <label class="form-label small fw-semibold mb-0" style="color:#212529;">
+                                    @LS.T("pcs.signature")
+                                    @if (!_skipSignature) { <span style="color:#dc3545;font-size:1rem;">*</span> }
+                                    <input class="form-check-input ms-2" type="checkbox" id="skipSig"
+                                           style="vertical-align:middle;"
+                                           checked="@_skipSignature" @onchange="e => _skipSignature = (bool)(e.Value ?? false)" />
+                                    <span style="font-size:0.72rem;color:#6b7280;vertical-align:middle;margin-left:3px;">@LS.T("pcs.noSignature")</span>
                                 </label>
-                                <div class="d-flex align-items-center gap-2">
-                                    <div class="form-check form-check-inline mb-0">
-                                        <input class="form-check-input" type="checkbox" id="skipSig"
-                                               checked="@_skipSignature" @onchange="e => _skipSignature = (bool)(e.Value ?? false)" />
-                                        <label class="form-check-label small text-muted" for="skipSig" style="font-size:0.72rem;">
-                                            @LS.T("pcs.noSignature")
-                                        </label>
-                                    </div>
-                                    @if (!_skipSignature)
-                                    {
-                                        <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:0.7rem;"
-                                                @onclick="ClearSignature">
-                                            @LS.T("pcs.clearSignature")
-                                        </button>
-                                    }
-                                </div>
+                                @if (!_skipSignature)
+                                {
+                                    <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:0.7rem;"
+                                            @onclick="ClearSignature">
+                                        @LS.T("pcs.clearSignature")
+                                    </button>
+                                }
                             </div>
                             @if (!_skipSignature)
                             {
@@ -618,10 +595,70 @@
 }
 
 <style>
+    /* ── Header card ── */
+    .pc-header-card {
+        background: var(--custom-white, #fff);
+        border-radius: 16px;
+        box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+        border: 1px solid rgba(0,0,0,.06);
+        overflow: hidden;
+    }
+    .pc-header-top {
+        display: flex; align-items: center; gap: 16px;
+        padding: 14px 18px;
+    }
+    .pc-header-avatar {
+        width: 50px; height: 50px; border-radius: 14px; flex-shrink: 0;
+        background: linear-gradient(135deg, #6366f1, #3b82f6);
+        color: #fff; font-size: 1.3rem; font-weight: 700;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 4px 12px rgba(99,102,241,.3);
+    }
+    .pc-header-info { flex: 1; min-width: 0; }
+    .pc-header-name-row {
+        display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    }
+    .pc-header-name {
+        font-size: 1.15rem; font-weight: 700;
+        color: var(--default-text-color, #1e293b);
+    }
+    .pc-header-tag {
+        display: inline-flex; align-items: center; gap: 3px;
+        font-size: .7rem; font-weight: 600; padding: 2px 8px;
+        border-radius: 6px;
+    }
+    .pc-header-tag i { font-size: .72rem; }
+    .pc-tag-id  { background: #f1f5f9; color: #64748b; }
+    .pc-tag-org { background: #ede9fe; color: #6d28d9; }
+    .pc-header-meta {
+        display: flex; gap: 12px; flex-wrap: wrap;
+        margin-top: 4px; font-size: .78rem; color: #64748b;
+    }
+    .pc-header-meta i { margin-right: 3px; font-size: .8rem; }
+    .pc-header-notes {
+        margin-top: 4px; font-size: .78rem; color: #94a3b8;
+        font-style: italic;
+    }
+    .pc-header-actions {
+        display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+    }
+    .pc-edit-btn {
+        display: inline-flex; align-items: center; gap: 3px;
+        border: none; background: transparent;
+        color: #94a3b8; font-size: .75rem; font-weight: 500;
+        cursor: pointer; padding: 2px 6px; border-radius: 6px;
+        transition: all .15s ease;
+    }
+    .pc-edit-btn i { font-size: .8rem; }
+    .pc-edit-btn:hover {
+        background: #f1f5f9; color: #6366f1;
+    }
+
+    /* ── Purchase button ── */
     .pc-purchase-btn {
         display: inline-flex; align-items: center; gap: 6px;
         background: #1e293b; color: #fff; border: none; border-radius: 10px;
-        padding: 8px 18px; font-size: 0.85rem; font-weight: 600;
+        padding: 7px 16px; font-size: 0.82rem; font-weight: 600;
         cursor: pointer; position: relative; z-index: 0; overflow: visible;
         transition: transform .2s ease;
     }
@@ -657,6 +694,7 @@
         97%  { transform: translateX(0) rotate(0); }
     }
 
+    /* ── Left panel table ── */
     .pc-list-table th { font-size:0.7rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; white-space:nowrap; }
     .pc-list-table td { vertical-align:middle; }
     .pc-th-sort { cursor:pointer; user-select:none; position:relative; padding-right:16px !important; }

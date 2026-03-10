@@ -466,6 +466,7 @@
   "pcs.clearSignature": "Clear",
   "pcs.signatureRequired": "Signature is required",
   "pcs.totalVisits": "Total Visits",
+  "pcs.visits": "visits",
   "pcs.hoursLeft": "Hours Left",
   "pcs.totalSessionTime": "Total Time",
   "pcs.pcName": "PC Name",
