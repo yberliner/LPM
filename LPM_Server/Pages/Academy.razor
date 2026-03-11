@@ -89,7 +89,10 @@
                     @foreach (var v in _visits)
                     {
                         var (chipBg, chipBorder, chipColor) = ReferralChipStyle(v.Source);
-                        <span class="acad-visit-chip" style="background:@chipBg;border-color:@chipBorder;color:@chipColor;">
+                        var vid = v.VisitId;
+                        <span class="acad-visit-chip" style="background:@chipBg;border-color:@chipBorder;color:@chipColor;cursor:pointer;"
+                              @onclick="() => DoCycleVisits(vid)">
+                            <span class="acad-vpd-badge" title="Visits today (click to cycle)">@v.VisitsPerDay</span>
                             <i class="ri-user-smile-line" style="font-size:.82rem;opacity:.7;"></i>
                             @v.FullName@if (!string.IsNullOrEmpty(v.Nick)) { <text> </text><span style="font-size:.7rem;opacity:.75;">(@v.Nick)</span> }
                             @if (!string.IsNullOrEmpty(v.Org))
@@ -110,11 +113,11 @@
                                 </span>
                             }
                             <button class="acad-chip-remove" title="Manage courses" style="color:@chipColor;opacity:.7;"
-                                    @onclick="() => OpenCourseModal(v.PersonId, v.FullName)">
+                                    @onclick="() => OpenCourseModal(v.PersonId, v.FullName)" @onclick:stopPropagation="true">
                                 <i class="ri-book-line"></i>
                             </button>
                             <button class="acad-chip-remove" title="Remove" style="color:@chipColor;"
-                                    @onclick="() => DoRemoveVisit(v.VisitId)">
+                                    @onclick="() => DoRemoveVisit(v.VisitId)" @onclick:stopPropagation="true">
                                 <i class="ri-close-fill"></i>
                             </button>
                         </span>
@@ -254,6 +257,9 @@
                 <span class="badge rounded-pill" style="background:rgba(255,255,255,.15);font-size:.75rem;">
                     @_weekStudents.Sum(s => s.VisitCount) visits
                 </span>
+                <span class="badge rounded-pill" style="background:rgba(255,255,255,.3);font-size:.75rem;">
+                    @_weekStudents.Sum(s => s.TotalSessions) total visits
+                </span>
             </div>
         </div>
         @if (_weekTableExpanded)
@@ -268,7 +274,8 @@
                                 <th class="small" style="width:60px;">Org</th>
                                 <th class="small" style="width:120px;">Referral</th>
                                 <th class="small" style="width:130px;">Active Course</th>
-                                <th class="small text-center" style="width:50px;">@LS.T("academy.visits")</th>
+                                <th class="small text-center" style="width:50px;">Visits</th>
+                                <th class="small text-center" style="width:80px;">Total Visits</th>
                                 <th style="width:36px;"></th>
                             </tr>
                         </thead>
@@ -310,6 +317,9 @@
                                         <span class="fw-bold" style="color:#059669;font-size:.9rem;">@s.VisitCount</span>
                                     </td>
                                     <td class="text-center align-middle">
+                                        <span class="fw-bold" style="color:#d97706;font-size:.9rem;">@s.TotalSessions</span>
+                                    </td>
+                                    <td class="text-center align-middle">
                                         <button class="btn btn-link btn-sm py-0 px-1" title="Manage courses"
                                                 style="color:#7c3aed;font-size:.85rem;"
                                                 @onclick="() => OpenCourseModal(s.PersonId, s.FullName)">
@@ -346,6 +356,9 @@
                 <span class="badge rounded-pill" style="background:rgba(255,255,255,.15);font-size:.75rem;">
                     @_monthStudents.Sum(s => s.VisitCount) visits
                 </span>
+                <span class="badge rounded-pill" style="background:rgba(255,255,255,.3);font-size:.75rem;">
+                    @_monthStudents.Sum(s => s.TotalSessions) total visits
+                </span>
             </div>
         </div>
         @if (_monthTableExpanded)
@@ -360,7 +373,8 @@
                                 <th class="small" style="width:60px;">Org</th>
                                 <th class="small" style="width:120px;">Referral</th>
                                 <th class="small" style="width:130px;">Active Course</th>
-                                <th class="small text-center" style="width:50px;">@LS.T("academy.visits")</th>
+                                <th class="small text-center" style="width:50px;">Visits</th>
+                                <th class="small text-center" style="width:80px;">Total Visits</th>
                                 <th style="width:36px;"></th>
                             </tr>
                         </thead>
@@ -399,6 +413,9 @@
                                     </td>
                                     <td class="text-center align-middle">
                                         <span class="fw-bold" style="color:#4338ca;font-size:.9rem;">@s.VisitCount</span>
+                                    </td>
+                                    <td class="text-center align-middle">
+                                        <span class="fw-bold" style="color:#d97706;font-size:.9rem;">@s.TotalSessions</span>
                                     </td>
                                     <td class="text-center align-middle">
                                         <button class="btn btn-link btn-sm py-0 px-1" title="Manage courses"
@@ -488,6 +505,82 @@
         </ApexChart>
     </div>
 </div>
+
+@* ── Monthly statistics chart card ── *@
+@if (_monthlyTotals.Count > 0)
+{
+    <div class="card mx-3 mb-3 shadow-sm" style="border-radius:14px;border:none;overflow:visible;">
+        <div class="card-header acad-chart-header"
+             style="background:linear-gradient(135deg,#4338ca 0%,#6366f1 100%);">
+            <div class="d-flex align-items-center gap-2">
+                <i class="ri-bar-chart-box-fill" style="font-size:1.1rem;"></i>
+                <strong style="font-size:.9rem;">Monthly Visit Totals</strong>
+            </div>
+            <div class="d-flex align-items-center gap-3" style="font-size:.75rem;">
+                <span class="d-flex align-items-center gap-1">
+                    <span style="width:10px;height:10px;border-radius:2px;background:#16a34a;display:inline-block;"></span>
+                    <span class="opacity-80">@LS.T("academy.don")</span>
+                </span>
+                <span class="d-flex align-items-center gap-1">
+                    <span style="width:10px;height:10px;border-radius:2px;background:#f59e0b;display:inline-block;"></span>
+                    <span class="opacity-80">@LS.T("academy.friend")</span>
+                </span>
+                <span class="d-flex align-items-center gap-1">
+                    <span style="width:10px;height:10px;border-radius:2px;background:#3b82f6;display:inline-block;"></span>
+                    <span class="opacity-80">@LS.T("academy.social")</span>
+                </span>
+                <span class="d-flex align-items-center gap-1">
+                    <span style="width:10px;height:10px;border-radius:2px;background:#7c3aed;display:inline-block;"></span>
+                    <span class="opacity-80">Haifa</span>
+                </span>
+                <span class="d-flex align-items-center gap-1">
+                    <span style="width:10px;height:10px;border-radius:2px;background:#94a3b8;display:inline-block;"></span>
+                    <span class="opacity-80">@LS.T("academy.other")</span>
+                </span>
+                <span style="font-size:.78rem;opacity:.8;">
+                    @LS.T("home.total"): @_monthlyTotals.Sum(m => m.TotalVisits) @LS.T("academy.visits").ToLower()
+                </span>
+            </div>
+        </div>
+        <div class="card-body py-1 px-2">
+            <ApexChart TItem="MonthVisitCount"
+                       Options="@_monthChartOptions"
+                       Height="220"
+                       @key="_monthChartKey">
+                <ApexPointSeries TItem="MonthVisitCount"
+                                 Items="@_monthlyTotals"
+                                 Name="Don / Default"
+                                 SeriesType="SeriesType.Bar"
+                                 XValue="@(m => m.MonthLabel)"
+                                 YValue="@(m => (decimal)m.DonCount)" />
+                <ApexPointSeries TItem="MonthVisitCount"
+                                 Items="@_monthlyTotals"
+                                 Name="Friend"
+                                 SeriesType="SeriesType.Bar"
+                                 XValue="@(m => m.MonthLabel)"
+                                 YValue="@(m => (decimal)m.FriendCount)" />
+                <ApexPointSeries TItem="MonthVisitCount"
+                                 Items="@_monthlyTotals"
+                                 Name="Social Network"
+                                 SeriesType="SeriesType.Bar"
+                                 XValue="@(m => m.MonthLabel)"
+                                 YValue="@(m => (decimal)m.SocialCount)" />
+                <ApexPointSeries TItem="MonthVisitCount"
+                                 Items="@_monthlyTotals"
+                                 Name="Haifa"
+                                 SeriesType="SeriesType.Bar"
+                                 XValue="@(m => m.MonthLabel)"
+                                 YValue="@(m => (decimal)m.HaifaCount)" />
+                <ApexPointSeries TItem="MonthVisitCount"
+                                 Items="@_monthlyTotals"
+                                 Name="Other"
+                                 SeriesType="SeriesType.Bar"
+                                 XValue="@(m => m.MonthLabel)"
+                                 YValue="@(m => (decimal)m.OtherCount)" />
+            </ApexChart>
+        </div>
+    </div>
+}
 
 @* ── Course Management Modal ── *@
 @if (_courseMgmtPersonId.HasValue)
@@ -712,6 +805,12 @@
         transition: opacity .15s;
     }
     .acad-chip-remove:hover { opacity: 1; }
+    .acad-vpd-badge {
+        display: inline-flex; align-items: center; justify-content: center;
+        min-width: 18px; height: 18px; border-radius: 50%;
+        background: rgba(0,0,0,.2); color: #fff; font-size: .7rem; font-weight: 800;
+        line-height: 1; flex-shrink: 0;
+    }
 
     /* ── Persons panel ── */
     .acad-persons-card { background: #fff !important; }
@@ -796,7 +895,9 @@
     List<PersonItem>        _allPersons      = [];
     List<VisitRecord>       _visits          = [];
     List<WeekVisitCount>    _weeklyTotals    = [];
+    List<MonthVisitCount>   _monthlyTotals   = [];
     int                     _chartKey;
+    int                     _monthChartKey;
     string                  _searchText      = "";
     Dictionary<string, int> _weekByReferral  = [];
     Dictionary<string, int> _weekByOrg       = [];
@@ -807,8 +908,8 @@
     DateOnly _monthEnd;
     string _monthLabel = "";
 
-    List<(int PersonId, string FullName, int VisitCount, string Source, string Org, string Nick)> _weekStudents = [];
-    List<(int PersonId, string FullName, int VisitCount, string Source, string Org, string Nick)> _monthStudents = [];
+    List<(int PersonId, string FullName, int VisitCount, int TotalSessions, string Source, string Org, string Nick)> _weekStudents = [];
+    List<(int PersonId, string FullName, int VisitCount, int TotalSessions, string Source, string Org, string Nick)> _monthStudents = [];
     Dictionary<int, string> _personOpenCourses = [];
     List<CourseItem>        _allCourses        = [];
 
@@ -824,6 +925,21 @@
 
 
     ApexChartOptions<WeekVisitCount> _chartOptions = new()
+    {
+        Chart       = new Chart
+        {
+            Toolbar  = new Toolbar { Show = false },
+            Background = "transparent",
+            Stacked  = true,
+        },
+        PlotOptions = new PlotOptions { Bar = new PlotOptionsBar { ColumnWidth = "65%", BorderRadius = 0 } },
+        Colors      = new List<string> { "#16a34a", "#f59e0b", "#3b82f6", "#7c3aed", "#94a3b8" },
+        Xaxis       = new XAxis { Labels = new XAxisLabels { Rotate = -45, Style = new AxisLabelStyle { FontSize = "11px" } } },
+        Grid        = new Grid { BorderColor = "#e0e0e0" },
+        Legend      = new Legend { Show = false },
+    };
+
+    ApexChartOptions<MonthVisitCount> _monthChartOptions = new()
     {
         Chart       = new Chart
         {
@@ -920,8 +1036,9 @@
     void RefreshChart()
     {
         var latestWeekStart = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
-        _weeklyTotals = AcademySvc.GetWeeklyVisitCounts(latestWeekStart, 20);
-        _weekStudents = AcademySvc.GetStudentVisitsForWeek(_weekStart);
+        _weeklyTotals  = AcademySvc.GetWeeklyVisitCounts(latestWeekStart, 20);
+        _monthlyTotals = AcademySvc.GetMonthlyVisitCounts(latestWeekStart, 12);
+        _weekStudents  = AcademySvc.GetStudentVisitsForWeek(_weekStart);
         (_weekByReferral, _weekByOrg) = AcademySvc.GetWeeklyStudentBreakdown(_weekStart);
         LoadMonthStudents();
 
@@ -931,6 +1048,7 @@
 
         UpdateChartTooltip();
         _chartKey++;
+        _monthChartKey++;
     }
 
     void UpdateChartTooltip()
@@ -962,13 +1080,13 @@
             "var idx=opts.dataPointIndex;" +
             // sum all series for total
             "var total=0;for(var s=0;s<opts.series.length;s++){total+=(opts.series[s][idx]||0);}" +
-            "var labels=['Don/Default','Friend','Social','Other'];" +
-            "var colors=['#16a34a','#f59e0b','#3b82f6','#94a3b8'];" +
+            "var labels=['Don/Default','Friend','Social','Haifa','Other'];" +
+            "var colors=['#16a34a','#f59e0b','#3b82f6','#7c3aed','#94a3b8'];" +
             "var st=d[idx]||[];" +
             "var r='<div style=\"padding:10px 14px;min-width:210px;font-family:inherit;background:#fff;" +
                     "border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.14)\">';" +
             "r+='<div style=\"font-weight:700;font-size:.93rem;color:#1b5e20;" +
-                    "border-bottom:1px solid #c8e6c9;padding-bottom:5px;margin-bottom:8px\">Total visits: '+total+'</div>';" +
+                    "border-bottom:1px solid #c8e6c9;padding-bottom:5px;margin-bottom:8px\">Visit Count: '+total+'</div>';" +
             // referral breakdown
             "for(var i=0;i<labels.length;i++){" +
             "var cnt=opts.series[i]?opts.series[i][idx]||0:0;" +
@@ -996,6 +1114,65 @@
             "return r;}";
 
         _chartOptions.Tooltip = new Tooltip { Custom = fn };
+
+        // Monthly tooltip — same format
+        var msb = new System.Text.StringBuilder("[");
+        for (int i = 0; i < _monthlyTotals.Count; i++)
+        {
+            if (i > 0) msb.Append(',');
+            msb.Append('[');
+            var students = _monthlyTotals[i].TopStudents;
+            for (int j = 0; j < students.Count; j++)
+            {
+                if (j > 0) msb.Append(',');
+                var rawName = students[j].FullName;
+                if (!string.IsNullOrEmpty(students[j].Nick)) rawName += $" ({students[j].Nick})";
+                var name = rawName.Replace("\\", "\\\\").Replace("'", "\\'");
+                var org  = students[j].Org.Replace("\\", "\\\\").Replace("'", "\\'");
+                msb.Append($"['{name}',{students[j].VisitCount},'{org}']");
+            }
+            msb.Append(']');
+        }
+        msb.Append(']');
+        var mdata = msb.ToString();
+
+        var mfn =
+            "function(opts){" +
+            "var d=" + mdata + ";" +
+            "var idx=opts.dataPointIndex;" +
+            "var total=0;for(var s=0;s<opts.series.length;s++){total+=(opts.series[s][idx]||0);}" +
+            "var labels=['Don/Default','Friend','Social','Haifa','Other'];" +
+            "var colors=['#16a34a','#f59e0b','#3b82f6','#7c3aed','#94a3b8'];" +
+            "var st=d[idx]||[];" +
+            "var r='<div style=\"padding:10px 14px;min-width:210px;font-family:inherit;background:#fff;" +
+                    "border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.14)\">';" +
+            "r+='<div style=\"font-weight:700;font-size:.93rem;color:#312e81;" +
+                    "border-bottom:1px solid #c7d2fe;padding-bottom:5px;margin-bottom:8px\">Visit Count: '+total+'</div>';" +
+            "for(var i=0;i<labels.length;i++){" +
+            "var cnt=opts.series[i]?opts.series[i][idx]||0:0;" +
+            "if(cnt>0){r+='<div style=\"display:flex;align-items:center;gap:6px;padding:2px 0\">'+" +
+            "'<span style=\"width:9px;height:9px;border-radius:50%;background:'+colors[i]+';display:inline-block;\"></span>'+" +
+            "'<span style=\"font-size:.8rem;color:#374151\">'+labels[i]+': <b>'+cnt+'</b></span></div>';}}" +
+            "if(st.length){" +
+            "r+='<div style=\"font-size:.7rem;color:#888;text-transform:uppercase;" +
+                    "letter-spacing:.7px;margin:8px 0 5px\">Top Students</div>';" +
+            "var maxShow=20;for(var i=0;i<Math.min(st.length,maxShow);i++){" +
+            "var orgLabel=st[i][2]?(' <span style=\"font-size:.7rem;padding:1px 5px;border-radius:8px;" +
+                    "background:#e0e7ff;color:#4338ca;font-weight:600;\">'+st[i][2]+'</span>'):'';"+
+            "r+='<div style=\"display:flex;justify-content:space-between;align-items:center;gap:12px;padding:3px 6px;" +
+                    "border-radius:4px;background:'+(i%2===0?'#eef2ff':'transparent')+'\">';" +
+            "r+='<span style=\"color:#212529;font-size:.82rem\">'+st[i][0]+orgLabel+'</span>';" +
+            "r+='<span style=\"color:#4338ca;font-weight:700;font-size:.82rem\">'+st[i][1]+'</span>';" +
+            "r+='</div>';" +
+            "}" +
+            "if(st.length>maxShow){r+='<div style=\"text-align:center;padding:6px 0 2px;color:#888;" +
+                    "font-size:.78rem;font-style:italic;border-top:1px dashed #e0e0e0;margin-top:4px\">" +
+                    "+'+(st.length-maxShow)+' more students\u2026</div>';}" +
+            "}" +
+            "r+='</div>';" +
+            "return r;}";
+
+        _monthChartOptions.Tooltip = new Tooltip { Custom = mfn };
     }
 
     void SelectDay(int idx)
@@ -1054,6 +1231,13 @@
         RefreshChart();
     }
 
+    void DoCycleVisits(int visitId)
+    {
+        AcademySvc.CycleVisitsPerDay(visitId);
+        LoadVisits();
+        RefreshChart();
+    }
+
     /// Returns the list of week-start Thursdays whose month matches the given weekStart's month.
     static List<DateOnly> GetMonthWeeks(DateOnly weekStart)
     {
@@ -1088,7 +1272,7 @@
         var (byRef, byOrg) = AcademySvc.GetWeeklyStudentBreakdown(_weekStart);
         var personIds = students.Select(s => s.PersonId);
         var courses = CourseSvc.GetOpenCoursesForPersons(personIds);
-        var pdfBytes = PdfService.GenerateAcademyWeekPdf(_weekStart, students, byRef, byOrg, courses, _monthStudents, _monthLabel, _monthWeekCount, _monthStart, _monthEnd);
+        var pdfBytes = PdfService.GenerateAcademyWeekPdf(_weekStart, students, byRef, byOrg, courses, _monthStudents, _monthLabel, _monthWeekCount, _monthStart, _monthEnd, weeklyTotals: _weeklyTotals);
         var fileName = $"Academy_{_weekStart:yyyy_MM_dd}.pdf";
         await JS.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(pdfBytes));
     }

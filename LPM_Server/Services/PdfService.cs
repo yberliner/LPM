@@ -232,15 +232,16 @@ public class PdfService
     }
 
     public byte[] GenerateAcademyWeekPdf(DateOnly weekStart,
-        List<(int PersonId, string FullName, int VisitCount, string Referral, string Org, string Nick)> students,
+        List<(int PersonId, string FullName, int VisitCount, int TotalSessions, string Referral, string Org, string Nick)> students,
         Dictionary<string, int>? byReferral = null,
         Dictionary<string, int>? byOrg = null,
         Dictionary<int, string>? personCourses = null,
-        List<(int PersonId, string FullName, int VisitCount, string Referral, string Org, string Nick)>? monthStudents = null,
+        List<(int PersonId, string FullName, int VisitCount, int TotalSessions, string Referral, string Org, string Nick)>? monthStudents = null,
         string? monthLabel = null,
         int monthWeekCount = 0,
         DateOnly? monthStart = null,
-        DateOnly? monthEnd = null)
+        DateOnly? monthEnd = null,
+        List<WeekVisitCount>? weeklyTotals = null)
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
@@ -249,15 +250,47 @@ public class PdfService
         int numCols  = count <= 25 ? 2 : count <= 55 ? 3 : count <= 100 ? 4 : 6;
         int rows     = (int)Math.Ceiling((double)count / numCols);
 
+        // Build monthly chart data by aggregating weekly totals per month
+        var monthlyChartData = new List<(string Label, int Don, int Friend, int Social, int Haifa, int Other, int Total)>();
+        if (weeklyTotals != null && weeklyTotals.Count > 0)
+        {
+            var byMonth = new Dictionary<string, (int Don, int Friend, int Social, int Haifa, int Other, int Total)>();
+            var monthOrder = new List<string>();
+            foreach (var w in weeklyTotals)
+            {
+                // Parse week label "dd/MM" to get month
+                var parts = w.WeekLabel.Split('/');
+                if (parts.Length == 2)
+                {
+                    var mLabel = $"{parts[1]}/{(DateTime.Now.Year % 100):D2}"; // MM/YY
+                    if (!byMonth.ContainsKey(mLabel))
+                    {
+                        byMonth[mLabel] = (0, 0, 0, 0, 0, 0);
+                        monthOrder.Add(mLabel);
+                    }
+                    var cur = byMonth[mLabel];
+                    byMonth[mLabel] = (cur.Don + w.DonCount, cur.Friend + w.FriendCount,
+                        cur.Social + w.SocialCount, cur.Haifa + w.HaifaCount,
+                        cur.Other + w.OtherCount, cur.Total + w.TotalVisits);
+                }
+            }
+            foreach (var ml in monthOrder)
+            {
+                var d = byMonth[ml];
+                monthlyChartData.Add((ml, d.Don, d.Friend, d.Social, d.Haifa, d.Other, d.Total));
+            }
+        }
+
         return Document.Create(container =>
         {
+            // ══════════ PAGE 1: Weekly ══════════
             container.Page(page =>
             {
                 page.Size(PageSizes.A4);
                 page.Margin(12, Unit.Millimetre);
                 page.DefaultTextStyle(x => x.FontSize(10));
 
-                page.Content().Column(col =>
+                page.Content().ScaleToFit().Column(col =>
                 {
                     // ── Header ──
                     col.Item().Row(r =>
@@ -281,8 +314,10 @@ public class PdfService
                             c.Item().AlignRight()
                                 .Text(t =>
                                 {
-                                    t.Span("Total visits: ").FontSize(10);
+                                    t.Span("Visits: ").FontSize(10);
                                     t.Span(students.Sum(s => s.VisitCount).ToString()).FontSize(13).Bold().FontColor("#1b5e20");
+                                    t.Span("  Total Visits: ").FontSize(10);
+                                    t.Span(students.Sum(s => s.TotalSessions).ToString()).FontSize(13).Bold().FontColor("#d97706");
                                 });
                         });
                     });
@@ -290,14 +325,13 @@ public class PdfService
                     col.Item().PaddingTop(6).LineHorizontal(1.5f).LineColor("#2e7d32");
                     col.Item().PaddingTop(6);
 
-                    // ── Weekly breakdown summary ──────────────────────────────
+                    // ── Weekly breakdown summary ──
                     bool hasBreakdown = (byReferral != null && byReferral.Count > 0) ||
                                         (byOrg      != null && byOrg.Count > 0);
                     if (hasBreakdown)
                     {
                         col.Item().Background("#f0fdf4").CornerRadius(4).Padding(6).Row(br =>
                         {
-                            // Referral breakdown
                             if (byReferral != null && byReferral.Count > 0)
                             {
                                 br.AutoItem().Column(rc =>
@@ -329,11 +363,10 @@ public class PdfService
                                 });
                             }
 
-                            // Org breakdown
                             if (byOrg != null && byOrg.Count > 0)
                             {
                                 if (byReferral != null && byReferral.Count > 0)
-                                    br.ConstantItem(1).Background("#6ee7b7");  // divider
+                                    br.ConstantItem(1).Background("#6ee7b7");
                                 br.AutoItem().PaddingLeft(byReferral?.Count > 0 ? 10 : 0).Column(oc =>
                                 {
                                     oc.Item().Text("By Organization").FontSize(7).FontColor("#065f46").SemiBold();
@@ -366,8 +399,8 @@ public class PdfService
                         return;
                     }
 
-                    // ── Student columns ── (ScaleToFit so the unpageable Row always fits)
-                    col.Item().ScaleToFit().Row(row =>
+                    // ── Student columns ──
+                    col.Item().Row(row =>
                     {
                         for (int c = 0; c < numCols; c++)
                         {
@@ -376,7 +409,6 @@ public class PdfService
 
                             row.RelativeItem().Column(innerCol =>
                             {
-                                // column header
                                 innerCol.Item()
                                     .Background("#e8f5e9")
                                     .PaddingVertical(3).PaddingHorizontal(5)
@@ -385,13 +417,16 @@ public class PdfService
                                         hr.RelativeItem()
                                             .Text("Student")
                                             .FontSize(8).FontColor("#555").SemiBold();
-                                        hr.ConstantItem(22).AlignRight()
+                                        hr.ConstantItem(24).AlignRight()
                                             .Text("Vis.")
-                                            .FontSize(8).FontColor("#555").SemiBold();
+                                            .FontSize(7).FontColor("#555").SemiBold();
+                                        hr.ConstantItem(24).AlignRight()
+                                            .Text("Total")
+                                            .FontSize(7).FontColor("#555").SemiBold();
                                     });
 
                                 int rank = colIdx * rows + 1;
-                                foreach (var (pid, name, visits, referral, org, nick) in slice)
+                                foreach (var (pid, name, visits, totalSessions, referral, org, nick) in slice)
                                 {
                                     int r2 = rank++;
                                     var rowBg = r2 % 2 == 0 ? "#f6fef6" : "#ffffff";
@@ -408,14 +443,16 @@ public class PdfService
                                             rr.RelativeItem()
                                                 .Text(string.IsNullOrEmpty(nick) ? name : $"{name} ({nick})")
                                                 .FontSize(9);
-                                            rr.ConstantItem(22).AlignRight()
+                                            rr.ConstantItem(24).AlignRight()
                                                 .Text(visits.ToString())
                                                 .FontSize(9).FontColor("#2e7d32").SemiBold();
+                                            rr.ConstantItem(24).AlignRight()
+                                                .Text(totalSessions.ToString())
+                                                .FontSize(9).FontColor("#d97706").SemiBold();
                                         });
                                 }
                             });
 
-                            // column divider (except after last)
                             if (c < numCols - 1)
                                 row.ConstantItem(8).Column(_ => { });
                         }
@@ -424,15 +461,13 @@ public class PdfService
                     // ── Per-course student count table ──
                     if (personCourses != null)
                     {
-                        // Aggregate: course name → number of weekly students enrolled
                         var byCourse = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-                        foreach (var (pid, _, _, _, _, _) in students)
+                        foreach (var (pid, _, _, _, _, _, _) in students)
                         {
                             if (!personCourses.TryGetValue(pid, out var cs) || string.IsNullOrEmpty(cs))
                                 continue;
                             foreach (var part in cs.Split(','))
                             {
-                                // strip trailing " (N)" visit count
                                 var p = part.Trim();
                                 var lastParen = p.LastIndexOf('(');
                                 var courseName = lastParen > 0 ? p[..lastParen].Trim() : p;
@@ -473,11 +508,37 @@ public class PdfService
                             });
                         }
                     }
-                    // ── Monthly student list ──
-                    if (monthStudents != null && monthStudents.Count > 0)
-                    {
-                        col.Item().PageBreak();
 
+                    // ── Weekly visit chart ──
+                    if (weeklyTotals != null && weeklyTotals.Count > 0)
+                    {
+                        col.Item().PaddingTop(10).LineHorizontal(1f).LineColor("#a7f3d0");
+                        col.Item().PaddingTop(4)
+                            .Text("Weekly Visit History")
+                            .FontSize(8).SemiBold().FontColor("#065f46");
+                        col.Item().PaddingTop(4).Height(140).Svg(size =>
+                        {
+                            using var stream = new System.IO.MemoryStream();
+                            using (var skCanvas = SKSvgCanvas.Create(new SKRect(0, 0, size.Width, size.Height), stream))
+                                DrawAcademyChart(skCanvas, new SKSize(size.Width, size.Height), weeklyTotals, weekStart);
+                            stream.Position = 0;
+                            return new System.IO.StreamReader(stream).ReadToEnd();
+                        });
+                    }
+                });
+            });
+
+            // ══════════ PAGE 2: Monthly ══════════
+            if (monthStudents != null && monthStudents.Count > 0)
+            {
+                container.Page(page =>
+                {
+                    page.Size(PageSizes.A4);
+                    page.Margin(12, Unit.Millimetre);
+                    page.DefaultTextStyle(x => x.FontSize(10));
+
+                    page.Content().ScaleToFit().Column(col =>
+                    {
                         // Header
                         col.Item().Row(r =>
                         {
@@ -496,8 +557,10 @@ public class PdfService
                                 c.Item().AlignRight()
                                     .Text(t =>
                                     {
-                                        t.Span("Total visits: ").FontSize(10);
+                                        t.Span("Visits: ").FontSize(10);
                                         t.Span(monthStudents.Sum(s => s.VisitCount).ToString()).FontSize(13).Bold().FontColor("#4338ca");
+                                        t.Span("  Total Visits: ").FontSize(10);
+                                        t.Span(monthStudents.Sum(s => s.TotalSessions).ToString()).FontSize(13).Bold().FontColor("#d97706");
                                     });
                                 c.Item().AlignRight()
                                     .Text($"{monthWeekCount} weeks")
@@ -512,7 +575,7 @@ public class PdfService
                         int mNumCols = mCount <= 25 ? 2 : mCount <= 55 ? 3 : mCount <= 100 ? 4 : 6;
                         int mRows    = (int)Math.Ceiling((double)mCount / mNumCols);
 
-                        col.Item().ScaleToFit().Row(row =>
+                        col.Item().Row(row =>
                         {
                             for (int c = 0; c < mNumCols; c++)
                             {
@@ -529,13 +592,16 @@ public class PdfService
                                             hr.RelativeItem()
                                                 .Text("Student")
                                                 .FontSize(8).FontColor("#555").SemiBold();
-                                            hr.ConstantItem(22).AlignRight()
+                                            hr.ConstantItem(24).AlignRight()
                                                 .Text("Vis.")
-                                                .FontSize(8).FontColor("#555").SemiBold();
+                                                .FontSize(7).FontColor("#555").SemiBold();
+                                            hr.ConstantItem(24).AlignRight()
+                                                .Text("Total")
+                                                .FontSize(7).FontColor("#555").SemiBold();
                                         });
 
                                     int rank = colIdx * mRows + 1;
-                                    foreach (var (pid, name, visits, referral, org, nick) in slice)
+                                    foreach (var (pid, name, visits, totalSessions, referral, org, nick) in slice)
                                     {
                                         int r2 = rank++;
                                         var rowBg = r2 % 2 == 0 ? "#f5f3ff" : "#ffffff";
@@ -552,9 +618,12 @@ public class PdfService
                                                 rr.RelativeItem()
                                                     .Text(string.IsNullOrEmpty(nick) ? name : $"{name} ({nick})")
                                                     .FontSize(9);
-                                                rr.ConstantItem(22).AlignRight()
+                                                rr.ConstantItem(24).AlignRight()
                                                     .Text(visits.ToString())
                                                     .FontSize(9).FontColor("#4338ca").SemiBold();
+                                                rr.ConstantItem(24).AlignRight()
+                                                    .Text(totalSessions.ToString())
+                                                    .FontSize(9).FontColor("#d97706").SemiBold();
                                             });
                                     }
                                 });
@@ -568,7 +637,7 @@ public class PdfService
                         if (personCourses != null)
                         {
                             var byMonthCourse = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-                            foreach (var (pid, _, _, _, _, _) in monthStudents)
+                            foreach (var (pid, _, _, _, _, _, _) in monthStudents)
                             {
                                 if (!personCourses.TryGetValue(pid, out var cs) || string.IsNullOrEmpty(cs))
                                     continue;
@@ -612,9 +681,26 @@ public class PdfService
                                 });
                             }
                         }
-                    }
+
+                        // ── Monthly visit chart ──
+                        if (monthlyChartData.Count > 0)
+                        {
+                            col.Item().PaddingTop(10).LineHorizontal(1f).LineColor("#c7d2fe");
+                            col.Item().PaddingTop(4)
+                                .Text("Monthly Visit History")
+                                .FontSize(8).SemiBold().FontColor("#312e81");
+                            col.Item().PaddingTop(4).Height(140).Svg(size =>
+                            {
+                                using var stream = new System.IO.MemoryStream();
+                                using (var skCanvas = SKSvgCanvas.Create(new SKRect(0, 0, size.Width, size.Height), stream))
+                                    DrawAcademyMonthlyChart(skCanvas, new SKSize(size.Width, size.Height), monthlyChartData);
+                                stream.Position = 0;
+                                return new System.IO.StreamReader(stream).ReadToEnd();
+                            });
+                        }
+                    });
                 });
-            });
+            }
         }).GeneratePdf();
     }
 
@@ -1051,6 +1137,187 @@ public class PdfService
                 });
             }
         }).GeneratePdf();
+    }
+
+    static void DrawAcademyChart(SKCanvas canvas, SKSize size, IList<WeekVisitCount> data, DateOnly currentWeekStart)
+    {
+        if (data.Count == 0) return;
+
+        float W = size.Width, H = size.Height;
+        const float leftM = 28f, rightM = 6f, topM = 18f, bottomM = 26f;
+        float cX = leftM, cY = topM, cW = W - leftM - rightM, cH = H - topM - bottomM;
+
+        using var bgPaint   = new SKPaint { Color = new SKColor(248, 250, 252), Style = SKPaintStyle.Fill };
+        using var gridPaint = new SKPaint { Color = new SKColor(218, 222, 232), Style = SKPaintStyle.Stroke, StrokeWidth = 0.4f, PathEffect = SKPathEffect.CreateDash(new[] { 3f, 3f }, 0) };
+        using var axisPaint = new SKPaint { Color = new SKColor(160, 165, 175), Style = SKPaintStyle.Stroke, StrokeWidth = 0.8f };
+        using var hlPaint   = new SKPaint { Color = new SKColor(5, 150, 105, 30), Style = SKPaintStyle.Fill };
+
+        // Referral colors matching the UI chart
+        using var donPaint    = new SKPaint { Color = SKColor.Parse("#16a34a"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var friendPaint = new SKPaint { Color = SKColor.Parse("#f59e0b"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var socialPaint = new SKPaint { Color = SKColor.Parse("#3b82f6"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var haifaPaint  = new SKPaint { Color = SKColor.Parse("#7c3aed"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var otherPaint  = new SKPaint { Color = SKColor.Parse("#94a3b8"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var yPaint      = new SKPaint { Color = new SKColor(90, 95, 110), TextSize = 7f, IsAntialias = true };
+        using var xPaint      = new SKPaint { Color = new SKColor(90, 95, 110), TextSize = 6.5f, IsAntialias = true };
+
+        canvas.DrawRect(cX, cY, cW, cH, bgPaint);
+
+        // Max stacked value
+        int maxVal = 1;
+        foreach (var w in data)
+            maxVal = Math.Max(maxVal, w.TotalVisits);
+
+        const int gridLines = 4;
+        int step = (int)Math.Ceiling((float)maxVal / gridLines);
+        if (step < 1) step = 1;
+        int roundedMax = step * gridLines;
+
+        for (int i = 0; i <= gridLines; i++)
+        {
+            float gy = cY + cH - i * cH / gridLines;
+            canvas.DrawLine(cX, gy, cX + cW, gy, gridPaint);
+            string lbl = (i * step).ToString();
+            float tw = yPaint.MeasureText(lbl);
+            canvas.DrawText(lbl, cX - tw - 3f, gy + 2.5f, yPaint);
+        }
+
+        canvas.DrawLine(cX, cY, cX, cY + cH, axisPaint);
+        canvas.DrawLine(cX, cY + cH, cX + cW, cY + cH, axisPaint);
+
+        int n = data.Count;
+        float groupW = cW / n;
+        float barW = groupW * 0.7f;
+        float gapW = (groupW - barW) / 2f;
+        float baseY = cY + cH;
+
+        // Find current week label for highlighting
+        string curLabel = currentWeekStart.ToString("dd/MM", System.Globalization.CultureInfo.InvariantCulture);
+
+        for (int i = 0; i < n; i++)
+        {
+            var w = data[i];
+            float gx = cX + i * groupW;
+
+            if (w.WeekLabel == curLabel)
+                canvas.DrawRect(gx, cY, groupW, cH, hlPaint);
+
+            float bx = gx + gapW;
+            float cumH = 0;
+
+            void DrawStack(int val, SKPaint p)
+            {
+                if (val <= 0) return;
+                float segH = cH * val / roundedMax;
+                canvas.DrawRect(SKRect.Create(bx, baseY - cumH - segH, barW, segH), p);
+                cumH += segH;
+            }
+
+            DrawStack(w.DonCount, donPaint);
+            DrawStack(w.FriendCount, friendPaint);
+            DrawStack(w.SocialCount, socialPaint);
+            DrawStack(w.HaifaCount, haifaPaint);
+            DrawStack(w.OtherCount, otherPaint);
+
+            // X label
+            float lx = gx + groupW / 2f;
+            canvas.Save();
+            canvas.Translate(lx, baseY + 4f);
+            canvas.RotateDegrees(-50f);
+            canvas.DrawText(w.WeekLabel, 0, 0, xPaint);
+            canvas.Restore();
+        }
+
+        // Legend
+        float legY = cY + 11f;
+        DrawLegendItem(canvas, cX + 4f,   legY, SKColor.Parse("#16a34a"), "Don",     7f);
+        DrawLegendItem(canvas, cX + 38f,  legY, SKColor.Parse("#f59e0b"), "Friend",  7f);
+        DrawLegendItem(canvas, cX + 82f,  legY, SKColor.Parse("#3b82f6"), "Social",  7f);
+        DrawLegendItem(canvas, cX + 122f, legY, SKColor.Parse("#7c3aed"), "Haifa",   7f);
+        DrawLegendItem(canvas, cX + 162f, legY, SKColor.Parse("#94a3b8"), "Other",   7f);
+    }
+
+    static void DrawAcademyMonthlyChart(SKCanvas canvas, SKSize size,
+        IList<(string Label, int Don, int Friend, int Social, int Haifa, int Other, int Total)> data)
+    {
+        if (data.Count == 0) return;
+
+        float W = size.Width, H = size.Height;
+        const float leftM = 28f, rightM = 6f, topM = 18f, bottomM = 26f;
+        float cX = leftM, cY = topM, cW = W - leftM - rightM, cH = H - topM - bottomM;
+
+        using var bgPaint   = new SKPaint { Color = new SKColor(248, 250, 252), Style = SKPaintStyle.Fill };
+        using var gridPaint = new SKPaint { Color = new SKColor(218, 222, 232), Style = SKPaintStyle.Stroke, StrokeWidth = 0.4f, PathEffect = SKPathEffect.CreateDash(new[] { 3f, 3f }, 0) };
+        using var axisPaint = new SKPaint { Color = new SKColor(160, 165, 175), Style = SKPaintStyle.Stroke, StrokeWidth = 0.8f };
+
+        using var donPaint    = new SKPaint { Color = SKColor.Parse("#16a34a"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var friendPaint = new SKPaint { Color = SKColor.Parse("#f59e0b"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var socialPaint = new SKPaint { Color = SKColor.Parse("#3b82f6"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var haifaPaint  = new SKPaint { Color = SKColor.Parse("#7c3aed"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var otherPaint  = new SKPaint { Color = SKColor.Parse("#94a3b8"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var yPaint      = new SKPaint { Color = new SKColor(90, 95, 110), TextSize = 7f, IsAntialias = true };
+        using var xPaint      = new SKPaint { Color = new SKColor(90, 95, 110), TextSize = 7f, IsAntialias = true };
+
+        canvas.DrawRect(cX, cY, cW, cH, bgPaint);
+
+        int maxVal = 1;
+        foreach (var m in data) maxVal = Math.Max(maxVal, m.Total);
+
+        const int gridLines = 4;
+        int step = (int)Math.Ceiling((float)maxVal / gridLines);
+        if (step < 1) step = 1;
+        int roundedMax = step * gridLines;
+
+        for (int i = 0; i <= gridLines; i++)
+        {
+            float gy = cY + cH - i * cH / gridLines;
+            canvas.DrawLine(cX, gy, cX + cW, gy, gridPaint);
+            string lbl = (i * step).ToString();
+            float tw = yPaint.MeasureText(lbl);
+            canvas.DrawText(lbl, cX - tw - 3f, gy + 2.5f, yPaint);
+        }
+
+        canvas.DrawLine(cX, cY, cX, cY + cH, axisPaint);
+        canvas.DrawLine(cX, cY + cH, cX + cW, cY + cH, axisPaint);
+
+        int n = data.Count;
+        float groupW = cW / n;
+        float barW = groupW * 0.7f;
+        float gapW = (groupW - barW) / 2f;
+        float baseY = cY + cH;
+
+        for (int i = 0; i < n; i++)
+        {
+            var m = data[i];
+            float gx = cX + i * groupW;
+            float bx = gx + gapW;
+            float cumH = 0;
+
+            void DrawStack(int val, SKPaint p)
+            {
+                if (val <= 0) return;
+                float segH = cH * val / roundedMax;
+                canvas.DrawRect(SKRect.Create(bx, baseY - cumH - segH, barW, segH), p);
+                cumH += segH;
+            }
+
+            DrawStack(m.Don, donPaint);
+            DrawStack(m.Friend, friendPaint);
+            DrawStack(m.Social, socialPaint);
+            DrawStack(m.Haifa, haifaPaint);
+            DrawStack(m.Other, otherPaint);
+
+            float lx = gx + groupW / 2f;
+            float tw = xPaint.MeasureText(m.Label);
+            canvas.DrawText(m.Label, lx - tw / 2f, baseY + 12f, xPaint);
+        }
+
+        float legY = cY + 11f;
+        DrawLegendItem(canvas, cX + 4f,   legY, SKColor.Parse("#16a34a"), "Don",     7f);
+        DrawLegendItem(canvas, cX + 38f,  legY, SKColor.Parse("#f59e0b"), "Friend",  7f);
+        DrawLegendItem(canvas, cX + 82f,  legY, SKColor.Parse("#3b82f6"), "Social",  7f);
+        DrawLegendItem(canvas, cX + 122f, legY, SKColor.Parse("#7c3aed"), "Haifa",   7f);
+        DrawLegendItem(canvas, cX + 162f, legY, SKColor.Parse("#94a3b8"), "Other",   7f);
     }
 
     static void DrawMonthlyChart(SKCanvas canvas, SKSize size, IList<MonthStatSummary> history, DateOnly currentMonthStart)
