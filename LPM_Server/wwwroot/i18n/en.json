@@ -234,7 +234,7 @@
   "pcs.sex": "Gender",
   "pcs.gender": "Gender",
   "pcs.org": "Organization",
-  "pcs.referral": "Referral",
+  "pcs.source": "Source",
   "pcs.course": "Course",
   "pcs.externalId": "External ID",
   "pcs.startDate": "Start Date",

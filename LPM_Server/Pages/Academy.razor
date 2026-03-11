@@ -88,7 +88,7 @@
                 <div class="d-flex flex-wrap gap-2">
                     @foreach (var v in _visits)
                     {
-                        var (chipBg, chipBorder, chipColor) = ReferralChipStyle(v.Referral);
+                        var (chipBg, chipBorder, chipColor) = ReferralChipStyle(v.Source);
                         <span class="acad-visit-chip" style="background:@chipBg;border-color:@chipBorder;color:@chipColor;">
                             <i class="ri-user-smile-line" style="font-size:.82rem;opacity:.7;"></i>
                             @v.FullName
@@ -148,7 +148,7 @@
                     var hasActiveCourse = !string.IsNullOrEmpty(pCourse);
                     <div class="acad-person-row @(visited ? "acad-person-visited" : hasActiveCourse ? "acad-person-available" : "acad-person-no-course")"
                          @onclick="() => { if (!visited) OnPersonClick(p); }">
-                        <div class="acad-person-dot" style="background:@(hasActiveCourse ? ReferralDotColor(p.Referral) : "#d1d5db");"></div>
+                        <div class="acad-person-dot" style="background:@(hasActiveCourse ? ReferralDotColor(p.Source) : "#d1d5db");"></div>
                         <div class="overflow-hidden flex-grow-1" style="min-width:0;">
                             <div style="font-size:.83rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;@(hasActiveCourse ? "" : "color:#9ca3af;")">@p.FullName</div>
                             @if (hasActiveCourse)
@@ -269,9 +269,9 @@
                         @foreach (var s in _weekStudents)
                         {
                             rowNum++;
-                            var (bg, _, col) = ReferralChipStyle(s.Referral);
-                            var dotColor     = ReferralDotColor(s.Referral);
-                            var refLabel     = string.IsNullOrEmpty(s.Referral) ? "Don" : s.Referral;
+                            var (bg, _, col) = ReferralChipStyle(s.Source);
+                            var dotColor     = ReferralDotColor(s.Source);
+                            var refLabel     = string.IsNullOrEmpty(s.Source) ? "Don" : s.Source;
                             var courseStr    = _personOpenCourses.GetValueOrDefault(s.PersonId, "");
                             <tr style="background:@(rowNum % 2 == 0 ? "#fafafa" : "#fff");">
                                 <td class="ps-3 small text-muted align-middle">@rowNum</td>
@@ -338,6 +338,10 @@
                 <span class="opacity-80">@LS.T("academy.social")</span>
             </span>
             <span class="d-flex align-items-center gap-1">
+                <span style="width:10px;height:10px;border-radius:2px;background:#7c3aed;display:inline-block;"></span>
+                <span class="opacity-80">Haifa</span>
+            </span>
+            <span class="d-flex align-items-center gap-1">
                 <span style="width:10px;height:10px;border-radius:2px;background:#94a3b8;display:inline-block;"></span>
                 <span class="opacity-80">@LS.T("academy.other")</span>
             </span>
@@ -365,10 +369,16 @@
                              YValue="@(w => (decimal)w.FriendCount)" />
             <ApexPointSeries TItem="WeekVisitCount"
                              Items="@_weeklyTotals"
-                             Name="Social Networks"
+                             Name="Social Network"
                              SeriesType="SeriesType.Bar"
                              XValue="@(w => w.WeekLabel)"
                              YValue="@(w => (decimal)w.SocialCount)" />
+            <ApexPointSeries TItem="WeekVisitCount"
+                             Items="@_weeklyTotals"
+                             Name="Haifa"
+                             SeriesType="SeriesType.Bar"
+                             XValue="@(w => w.WeekLabel)"
+                             YValue="@(w => (decimal)w.HaifaCount)" />
             <ApexPointSeries TItem="WeekVisitCount"
                              Items="@_weeklyTotals"
                              Name="Other"
@@ -685,7 +695,7 @@
     Dictionary<string, int> _weekByReferral  = [];
     Dictionary<string, int> _weekByOrg       = [];
 
-    List<(int PersonId, string FullName, int VisitCount, string Referral, string Org)> _weekStudents = [];
+    List<(int PersonId, string FullName, int VisitCount, string Source, string Org)> _weekStudents = [];
     Dictionary<int, string> _personOpenCourses = [];
     List<CourseItem>        _allCourses        = [];
 
@@ -709,7 +719,7 @@
             Stacked  = true,
         },
         PlotOptions = new PlotOptions { Bar = new PlotOptionsBar { ColumnWidth = "65%", BorderRadius = 0 } },
-        Colors      = new List<string> { "#16a34a", "#f59e0b", "#3b82f6", "#94a3b8" },
+        Colors      = new List<string> { "#16a34a", "#f59e0b", "#3b82f6", "#7c3aed", "#94a3b8" },
         Xaxis       = new XAxis { Labels = new XAxisLabels { Rotate = -45, Style = new AxisLabelStyle { FontSize = "11px" } } },
         Grid        = new Grid { BorderColor = "#e0e0e0" },
         Legend      = new Legend { Show = false },
@@ -730,7 +740,8 @@
     static (string bg, string border, string color) ReferralChipStyle(string referral) => referral switch
     {
         "Friend"          => ("linear-gradient(135deg,#fef3c7,#fde68a)", "#fcd34d", "#78350f"),
-        "Social Networks" => ("linear-gradient(135deg,#dbeafe,#bfdbfe)", "#93c5fd", "#1e3a8a"),
+        "Social Network"  => ("linear-gradient(135deg,#dbeafe,#bfdbfe)", "#93c5fd", "#1e3a8a"),
+        "Haifa"           => ("linear-gradient(135deg,#f5f3ff,#ede9fe)", "#c4b5fd", "#4c1d95"),
         "Other"           => ("linear-gradient(135deg,#f3f4f6,#e5e7eb)", "#d1d5db", "#374151"),
         _                 => ("linear-gradient(135deg,#d1fae5,#a7f3d0)", "#6ee7b7", "#064e3b"),  // Don / default
     };
@@ -739,7 +750,8 @@
     static string ReferralDotColor(string referral) => referral switch
     {
         "Friend"          => "#f59e0b",
-        "Social Networks" => "#3b82f6",
+        "Social Network"  => "#3b82f6",
+        "Haifa"           => "#7c3aed",
         "Other"           => "#94a3b8",
         _                 => "#16a34a",  // Don / default
     };

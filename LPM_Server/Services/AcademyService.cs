@@ -4,11 +4,11 @@ using System.Globalization;
 
 namespace LPM.Services;
 
-public record PersonItem(int PersonId, string FullName, string Referral, string Org);
-public record VisitRecord(int VisitId, int PersonId, string FullName, string Referral, string Org);
+public record PersonItem(int PersonId, string FullName, string Source, string Org);
+public record VisitRecord(int VisitId, int PersonId, string FullName, string Source, string Org);
 public record TopStudent(string FullName, int VisitCount, string Org);
 public record WeekVisitCount(string WeekLabel, int TotalVisits, List<TopStudent> TopStudents,
-    int DonCount, int FriendCount, int SocialCount, int OtherCount);
+    int DonCount, int FriendCount, int SocialCount, int HaifaCount, int OtherCount);
 public record MemberAdminItem(int PersonId, string FullName, string Phone,
     bool IsActive, bool IsPC, bool IsAcademyStudent, bool IsStaff,
     string FirstName, string LastName, string? ExternalId, string? LastVisitDate);
@@ -41,6 +41,7 @@ public class AcademyService
                     UNIQUE (PersonId, VisitDate)
                 )");
         }
+
     }
 
     // ── Persons ─────────────────────────────────────────────────────────────
@@ -51,13 +52,15 @@ public class AcademyService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT PersonId,
-                   TRIM(FirstName || ' ' || COALESCE(NULLIF(LastName,''), '')) AS FullName,
-                   COALESCE(Referral,'') AS Referral,
-                   COALESCE(Org,'') AS Org
-            FROM core_persons
-            WHERE COALESCE(IsActive, 1) = 1
-            ORDER BY FirstName, LastName";
+            SELECT p.PersonId,
+                   TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
+                   COALESCE(rs.Name,'') AS Source,
+                   COALESCE(og.Name,'') AS Org
+            FROM core_persons p
+            LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
+            LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
+            WHERE COALESCE(p.IsActive, 1) = 1
+            ORDER BY p.FirstName, p.LastName";
         var list = new List<PersonItem>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -65,25 +68,49 @@ public class AcademyService
         return list;
     }
 
+    public List<string> GetAllReferralSources()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Name FROM lkp_referral_sources ORDER BY ReferralId";
+        var list = new List<string>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) list.Add(r.GetString(0));
+        return list;
+    }
+
+    public List<(int Id, string Name)> GetAllOrganizations()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT OrgId, Name FROM lkp_organizations ORDER BY OrgId";
+        var list = new List<(int, string)>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) list.Add((r.GetInt32(0), r.GetString(1)));
+        return list;
+    }
+
     /// <summary>Creates a new Person record and returns the new PersonId.</summary>
     public int AddPersonForAcademy(string firstName, string lastName,
         string phone, string email, string dateOfBirth, string gender,
-        string org = "", string referral = "")
+        int? orgId = null, int? sourceId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO core_persons (FirstName, LastName, Phone, Email, DateOfBirth, Gender, Org, Referral)
-            VALUES (@fn, @ln, @ph, @em, @dob, @gender, @org, @ref)";
+            INSERT INTO core_persons (FirstName, LastName, Phone, Email, DateOfBirth, Gender, Org, Source)
+            VALUES (@fn, @ln, @ph, @em, @dob, @gender, @org, @srcId)";
         cmd.Parameters.AddWithValue("@fn",  firstName.Trim());
         cmd.Parameters.AddWithValue("@ln",  lastName.Trim());
         cmd.Parameters.AddWithValue("@ph",  string.IsNullOrWhiteSpace(phone)       ? DBNull.Value : (object)phone.Trim());
         cmd.Parameters.AddWithValue("@em",  string.IsNullOrWhiteSpace(email)       ? DBNull.Value : (object)email.Trim());
         cmd.Parameters.AddWithValue("@dob", string.IsNullOrWhiteSpace(dateOfBirth) ? DBNull.Value : (object)dateOfBirth);
         cmd.Parameters.AddWithValue("@gender", string.IsNullOrWhiteSpace(gender)   ? DBNull.Value : (object)gender);
-        cmd.Parameters.AddWithValue("@org", string.IsNullOrWhiteSpace(org)         ? DBNull.Value : (object)org);
-        cmd.Parameters.AddWithValue("@ref", string.IsNullOrWhiteSpace(referral)    ? DBNull.Value : (object)referral);
+        cmd.Parameters.AddWithValue("@org", orgId.HasValue                         ? (object)orgId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@srcId", sourceId.HasValue                    ? (object)sourceId.Value : DBNull.Value);
         cmd.ExecuteNonQuery();
 
         using var idCmd = conn.CreateCommand();
@@ -108,10 +135,12 @@ public class AcademyService
         cmd.CommandText = @"
             SELECT s.StudentId, s.PersonId,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
-                   COALESCE(p.Referral,'') AS Referral,
-                   COALESCE(p.Org,'')      AS Org
+                   COALESCE(rs.Name,'') AS Source,
+                   COALESCE(og.Name,'') AS Org
             FROM acad_attendance s
             JOIN core_persons p ON p.PersonId = s.PersonId
+            LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
+            LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
             WHERE s.VisitDate = @date AND COALESCE(p.IsActive, 1) = 1
             ORDER BY p.FirstName, p.LastName";
         cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
@@ -147,7 +176,7 @@ public class AcademyService
     }
 
     /// <summary>Returns all students who visited during the week, with visit count, referral, and org.</summary>
-    public List<(int PersonId, string FullName, int VisitCount, string Referral, string Org)> GetStudentVisitsForWeek(DateOnly weekStart)
+    public List<(int PersonId, string FullName, int VisitCount, string Source, string Org)> GetStudentVisitsForWeek(DateOnly weekStart)
     {
         var weekEnd = weekStart.AddDays(6);
         using var conn = new SqliteConnection(_connectionString);
@@ -157,10 +186,12 @@ public class AcademyService
             SELECT s.PersonId,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS FullName,
                    COUNT(*) AS VisitCount,
-                   COALESCE(p.Referral,'') AS Referral,
-                   COALESCE(p.Org,'')      AS Org
+                   COALESCE(rs.Name,'') AS Source,
+                   COALESCE(og.Name,'') AS Org
             FROM acad_attendance s
             JOIN core_persons p ON p.PersonId = s.PersonId
+            LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
+            LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
             WHERE s.VisitDate >= @start AND s.VisitDate <= @end
               AND COALESCE(p.IsActive, 1) = 1
             GROUP BY s.PersonId
@@ -188,10 +219,12 @@ public class AcademyService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT COALESCE(p.Referral,'') AS Referral,
-                   COALESCE(p.Org,'')      AS Org
+            SELECT COALESCE(rs.Name,'') AS Source,
+                   COALESCE(og.Name,'') AS Org
             FROM acad_attendance s
             JOIN core_persons p ON p.PersonId = s.PersonId
+            LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
+            LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
             WHERE s.VisitDate >= @start AND s.VisitDate <= @end
             GROUP BY s.PersonId";
         cmd.Parameters.AddWithValue("@start", weekStart.ToString("yyyy-MM-dd"));
@@ -229,10 +262,12 @@ public class AcademyService
         cmd.CommandText = @"
             SELECT s.VisitDate,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
-                   COALESCE(p.Referral,'') AS Referral,
-                   COALESCE(p.Org,'')      AS Org
+                   COALESCE(rs.Name,'') AS Source,
+                   COALESCE(og.Name,'') AS Org
             FROM acad_attendance s
             JOIN core_persons p ON p.PersonId = s.PersonId
+            LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
+            LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
             WHERE s.VisitDate >= @start AND s.VisitDate < @end";
         cmd.Parameters.AddWithValue("@start", rangeStart.ToString("yyyy-MM-dd"));
         cmd.Parameters.AddWithValue("@end",   rangeEnd.ToString("yyyy-MM-dd"));
@@ -243,6 +278,7 @@ public class AcademyService
         var donCounts    = weekStarts.ToDictionary(ws => ws, _ => 0);
         var friendCounts = weekStarts.ToDictionary(ws => ws, _ => 0);
         var socialCounts = weekStarts.ToDictionary(ws => ws, _ => 0);
+        var haifaCounts  = weekStarts.ToDictionary(ws => ws, _ => 0);
         var otherCounts  = weekStarts.ToDictionary(ws => ws, _ => 0);
 
         using var r = cmd.ExecuteReader();
@@ -250,7 +286,7 @@ public class AcademyService
         {
             var visitDate = DateOnly.Parse(r.GetString(0));
             var name      = r.GetString(1);
-            var referral  = r.GetString(2);
+            var source    = r.GetString(2);
             var org       = r.GetString(3);
             foreach (var ws in weekStarts)
             {
@@ -260,10 +296,11 @@ public class AcademyService
                     personCounts[ws].TryGetValue(name, out var c);
                     personCounts[ws][name] = c + 1;
                     personOrgs[ws][name]   = org;
-                    switch (referral)
+                    switch (source)
                     {
                         case "Friend":          friendCounts[ws]++; break;
-                        case "Social Networks": socialCounts[ws]++; break;
+                        case "Social Network":  socialCounts[ws]++; break;
+                        case "Haifa":           haifaCounts[ws]++;  break;
                         case "Other":           otherCounts[ws]++;  break;
                         default:                donCounts[ws]++;    break; // "Don" or empty → green
                     }
@@ -285,6 +322,7 @@ public class AcademyService
                 donCounts[ws],
                 friendCounts[ws],
                 socialCounts[ws],
+                haifaCounts[ws],
                 otherCounts[ws]))
             .ToList();
     }

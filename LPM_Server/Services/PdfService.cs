@@ -299,7 +299,8 @@ public class PdfService
                                             var refColor = kv.Key switch
                                             {
                                                 "Friend"          => "#f59e0b",
-                                                "Social Networks" => "#3b82f6",
+                                                "Social Network"  => "#3b82f6",
+                                                "Haifa"           => "#7c3aed",
                                                 "Other"           => "#94a3b8",
                                                 _                 => "#16a34a",
                                             };
@@ -397,7 +398,8 @@ public class PdfService
                                     var refColor = referral switch
                                     {
                                         "Friend"          => "#b45309",
-                                        "Social Networks" => "#1d4ed8",
+                                        "Social Network"  => "#1d4ed8",
+                                        "Haifa"           => "#4c1d95",
                                         "Other"           => "#6b7280",
                                         _                 => "#15803d",
                                     };
@@ -877,7 +879,8 @@ public class PdfService
     static string ReferralPdfBg(string referral, int rowNum) => referral switch
     {
         "Friend"          => rowNum % 2 == 0 ? "#fef9e7" : "#fef3c7",
-        "Social Networks" => rowNum % 2 == 0 ? "#eff8ff" : "#dbeafe",
+        "Social Network"  => rowNum % 2 == 0 ? "#eff8ff" : "#dbeafe",
+        "Haifa"           => rowNum % 2 == 0 ? "#f5f3ff" : "#ede9fe",
         "Other"           => rowNum % 2 == 0 ? "#f9fafb" : "#f3f4f6",
         _                 => rowNum % 2 == 0 ? "#f9fbe7" : Colors.White,  // Don / default
     };

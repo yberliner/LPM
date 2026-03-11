@@ -4,11 +4,12 @@
      <SpkNewPersonModal @ref="_modal" Title="New Student" Courses="_courses" OnSaved="HandleSaved" />
 
    Call _modal.Show() to open it.
-   OnSaved fires with (FirstName, LastName, Phone, Email, DateOfBirth, Gender, Org, Referral, Notes, CourseId).
-   When RequireAllFields=true, Phone/Email/Gender/Org/Referral are mandatory (DOB and ExternalId are always optional).
+   OnSaved fires with (FirstName, LastName, Phone, Email, DateOfBirth, Gender, OrgId, Source, Notes, CourseId).
+   When RequireAllFields=true, Phone/Email/Gender/OrgId/Source are mandatory (DOB and ExternalId are always optional).
 *@
 
 @using LPM.Services
+@inject LPM.Services.AcademyService AcademySvc
 
 @if (_visible)
 {
@@ -77,22 +78,24 @@
                             <label class="form-label small mb-1">
                                 @LS.T("pcs.org") @if (RequireAllFields) { <span class="text-danger">*</span> }
                             </label>
-                            <select class="form-select form-select-sm" @bind="_org">
-                                <option value="">— @LS.T("common.select") —</option>
-                                <option value="Haifa">@LS.T("pcs.originHaifa")</option>
-                                <option value="Riga">@LS.T("pcs.originRiga")</option>
+                            <select class="form-select form-select-sm" @bind="_orgId">
+                                <option value="0">— @LS.T("common.select") —</option>
+                                @foreach (var o in _orgOptions)
+                                {
+                                    <option value="@o.Id">@o.Name</option>
+                                }
                             </select>
                         </div>
                         <div class="col-6">
                             <label class="form-label small mb-1">
-                                @LS.T("pcs.referral") @if (RequireAllFields) { <span class="text-danger">*</span> }
+                                @LS.T("pcs.source") @if (RequireAllFields) { <span class="text-danger">*</span> }
                             </label>
-                            <select class="form-select form-select-sm" @bind="_referral">
+                            <select class="form-select form-select-sm" @bind="_source">
                                 <option value="">— @LS.T("common.select") —</option>
-                                <option value="Don">Don</option>
-                                <option value="Friend">Friend / Other Student</option>
-                                <option value="Social Networks">Social Networks</option>
-                                <option value="Other">Other</option>
+                                @foreach (var r in _sourceOptions)
+                                {
+                                    <option value="@r">@r</option>
+                                }
                             </select>
                         </div>
 
@@ -152,11 +155,15 @@
     [Parameter] public List<CourseItem>? Courses { get; set; }
     [Parameter] public HashSet<string>? ExistingFullNames { get; set; }
     [Parameter] public EventCallback<(string FirstName, string LastName, string Phone, string Email,
-        string DateOfBirth, string Gender, string Org, string Referral, string Notes, int CourseId)> OnSaved { get; set; }
+        string DateOfBirth, string Gender, int OrgId, string Source, string Notes, int CourseId)> OnSaved { get; set; }
+
+    List<string> _sourceOptions = [];
+    List<(int Id, string Name)> _orgOptions = [];
 
     string    _firstName = "", _lastName = "";
     string    _phone = "", _email = "", _sex = "";
-    string    _org = "", _referral = "";
+    int       _orgId;
+    string    _source = "";
     string    _notes = "";
     string    _dobText = "";
     int       _courseId;
@@ -164,10 +171,17 @@
     bool      _visible;
     string?   _editOriginalFullName;
 
+    protected override void OnInitialized()
+    {
+        _sourceOptions = AcademySvc.GetAllReferralSources();
+        _orgOptions = AcademySvc.GetAllOrganizations();
+    }
+
     public void Show()
     {
         _firstName = _lastName = _phone = _email = _sex = _error = "";
-        _org = _referral = _notes = _dobText = "";
+        _source = _notes = _dobText = "";
+        _orgId = 0;
         _courseId = 0;
         _editOriginalFullName = null;
         _visible  = true;
@@ -175,15 +189,15 @@
     }
 
     public void ShowForEdit(string firstName, string lastName, string phone, string email,
-        string dateOfBirth, string gender, string org, string referral, string notes)
+        string dateOfBirth, string gender, int orgId, string source, string notes)
     {
         _firstName = firstName;
         _lastName  = lastName;
         _phone     = phone;
         _email     = email;
         _sex       = gender;
-        _org       = org;
-        _referral  = referral;
+        _orgId     = orgId;
+        _source  = source;
         _notes     = notes;
         // Convert yyyy-MM-dd to dd/MM/yyyy for display
         _dobText   = DateOnly.TryParse(dateOfBirth, out var d) ? d.ToString("dd/MM/yyyy") : "";
@@ -219,10 +233,10 @@
         {
             if (string.IsNullOrWhiteSpace(_sex))
                 { _error = "Gender is required."; return; }
-            if (string.IsNullOrWhiteSpace(_org))
+            if (_orgId <= 0)
                 { _error = "Organization is required."; return; }
-            if (string.IsNullOrWhiteSpace(_referral))
-                { _error = "Referral is required."; return; }
+            if (string.IsNullOrWhiteSpace(_source))
+                { _error = "Source is required."; return; }
         }
         if (!string.IsNullOrWhiteSpace(_dobText) && ParseDobText() == "")
             { _error = "Date of birth must be dd/mm/yyyy."; return; }
@@ -239,7 +253,7 @@
             _firstName.Trim(), _lastName.Trim(),
             _phone.Trim(), _email.Trim(),
             ParseDobText(), _sex,
-            _org, _referral, _notes.Trim(), _courseId));
+            _orgId, _source, _notes.Trim(), _courseId));
     }
 
     void Cancel() => _visible = false;

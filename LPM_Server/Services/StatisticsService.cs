@@ -316,12 +316,13 @@ public class StatisticsService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT COALESCE(NULLIF(p.Org,''), 'Unknown') AS Org,
+            SELECT COALESCE(og.Name, 'Unknown') AS Org,
                    SUM(s.LengthSeconds + s.AdminSeconds) AS TotalSec
             FROM sess_sessions s
             JOIN core_persons p ON p.PersonId = s.PcId
+            LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
             WHERE s.SessionDate >= @s AND s.SessionDate <= @e
-            GROUP BY COALESCE(NULLIF(p.Org,''), 'Unknown')
+            GROUP BY COALESCE(og.Name, 'Unknown')
             ORDER BY TotalSec DESC";
         cmd.Parameters.AddWithValue("@s", startStr);
         cmd.Parameters.AddWithValue("@e", endStr);

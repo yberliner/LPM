@@ -834,11 +834,11 @@
 
     // ── Add PC ──
     void SaveNewPc((string FirstName, string LastName, string Phone, string Email,
-                    string DateOfBirth, string Gender, string Org, string Referral,
+                    string DateOfBirth, string Gender, int OrgId, string Source,
                     string Notes, int CourseId) d)
     {
         PcSvc.AddPcWithPerson(d.FirstName, d.LastName, d.Phone, d.Email,
-            d.DateOfBirth, d.Gender, d.Org, d.Referral, d.Notes);
+            d.DateOfBirth, d.Gender, orgId: d.OrgId > 0 ? d.OrgId : null, notes: d.Notes);
         // Refresh duplicate-detection set
         _existingPcNames = new HashSet<string>(
             PcSvc.GetAllPcs().Select(p => p.FullName), StringComparer.OrdinalIgnoreCase);

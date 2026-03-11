@@ -101,9 +101,9 @@
                             {
                                 <span>@_detail.Gender</span>
                             }
-                            @if (!string.IsNullOrEmpty(_detail.Referral))
+                            @if (!string.IsNullOrEmpty(_detail.Source))
                             {
-                                <span><i class="ri-user-received-line"></i>@_detail.Referral</span>
+                                <span><i class="ri-user-received-line"></i>@_detail.Source</span>
                             }
                         </div>
                         @if (!string.IsNullOrEmpty(_detail.Notes))
@@ -906,16 +906,16 @@
             _detail.FirstName, _detail.LastName,
             _detail.Phone, _detail.Email,
             _detail.DateOfBirth, _detail.Gender,
-            _detail.Org, _detail.Referral, _detail.Notes);
+            _detail.OrgId, _detail.Source, _detail.Notes);
     }
 
     void SaveEditFromModal((string FirstName, string LastName, string Phone, string Email,
-        string DateOfBirth, string Gender, string Org, string Referral, string Notes, int CourseId) d)
+        string DateOfBirth, string Gender, int OrgId, string Source, string Notes, int CourseId) d)
     {
         PcSvc.UpdatePcDetail(_selPcId!.Value,
             d.FirstName, d.LastName, _detail?.ExternalId ?? "",
             d.Phone, d.Email, d.Notes,
-            d.DateOfBirth, d.Gender, d.Org, d.Referral);
+            d.DateOfBirth, d.Gender, orgId: d.OrgId > 0 ? d.OrgId : null);
         _allPcsEx = PcSvc.GetAllPcsExtended();
         LoadDetail();
     }
