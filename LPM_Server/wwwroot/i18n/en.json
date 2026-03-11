@@ -109,6 +109,7 @@
   "payments.alreadyDeposited": "Already deposited",
   "payments.showDeposited": "Show Deposited",
   "payments.confirm": "Confirm",
+  "payments.undoDeposit": "Click to undo deposit",
   "staffperm.title": "Staff PC Permissions",
   "staffperm.subtitle": "Control which PCs each auditor is allowed to work with",
   "staffperm.pendingRequests": "Pending Approval Requests",

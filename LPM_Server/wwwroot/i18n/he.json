@@ -109,6 +109,7 @@
   "payments.alreadyDeposited": "כבר הופקד",
   "payments.showDeposited": "הצג הפקדות",
   "payments.confirm": "אשר",
+  "payments.undoDeposit": "לחץ לביטול הפקדה",
   "staffperm.title": "הרשאות לקוח לצוות",
   "staffperm.subtitle": "שלוט באיזה לקוחות כל מבקר מורשה לעבוד",
   "staffperm.pendingRequests": "בקשות ממתינות לאישור",

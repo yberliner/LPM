@@ -252,8 +252,11 @@
                                             <td class="text-center">
                                                 @if (pm.IsMoneyInBank)
                                                 {
-                                                    <span class="py-badge-deposited" style="font-size:0.68rem;">
+                                                    <span class="py-chip-undo" role="button"
+                                                          @onclick="() => ToggleDetailBank(pm.PaymentMethodId, false)"
+                                                          title="@LS.T("payments.undoDeposit")">
                                                         <i class="ri-checkbox-circle-fill me-1"></i>@LS.T("payments.deposited")
+                                                        <i class="ri-close-line py-chip-undo-x"></i>
                                                     </span>
                                                 }
                                                 else
@@ -326,6 +329,19 @@
         box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
     }
     .py-chip-confirm:active { transform: scale(0.95); }
+
+    /* ── Undo-deposit chip (modal only) ── */
+    .py-chip-undo {
+        display: inline-flex; align-items: center; gap: 3px;
+        padding: 2px 10px; border-radius: 6px; font-size: 0.68rem; font-weight: 600;
+        background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;
+        cursor: pointer; transition: all 0.18s ease; user-select: none;
+    }
+    .py-chip-undo-x { font-size: 0.8rem; opacity: 0; margin-left: 2px; transition: opacity 0.15s ease; }
+    .py-chip-undo:hover {
+        background: #fef2f2; color: #dc2626; border-color: #fecaca;
+    }
+    .py-chip-undo:hover .py-chip-undo-x { opacity: 1; }
 
     /* ── Already-done icon ── */
     .py-action-done {
