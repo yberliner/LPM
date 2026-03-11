@@ -865,9 +865,21 @@ public class PcService
             cmd.ExecuteNonQuery();
         }
 
+        // Collect old course IDs before deleting items
+        var oldCourseIds = new HashSet<int>();
+        using (var oc = conn.CreateCommand())
+        {
+            oc.Transaction = tx;
+            oc.CommandText = "SELECT CourseId FROM fin_purchase_items WHERE PurchaseId = @id AND ItemType = 'Course' AND CourseId IS NOT NULL";
+            oc.Parameters.AddWithValue("@id", purchaseId);
+            using var rdr = oc.ExecuteReader();
+            while (rdr.Read()) oldCourseIds.Add(rdr.GetInt32(0));
+        }
+
         // Delete old items + recreate
         using (var d = conn.CreateCommand()) { d.Transaction = tx; d.CommandText = "DELETE FROM fin_purchase_items WHERE PurchaseId = @id"; d.Parameters.AddWithValue("@id", purchaseId); d.ExecuteNonQuery(); }
 
+        var newCourseIds = new HashSet<int>();
         foreach (var item in items)
         {
             using var iCmd = conn.CreateCommand();
@@ -883,6 +895,35 @@ public class PcService
             iCmd.Parameters.AddWithValue("@regId", item.registrarId.HasValue ? (object)item.registrarId.Value : DBNull.Value);
             iCmd.Parameters.AddWithValue("@refId", item.referralId.HasValue ? (object)item.referralId.Value : DBNull.Value);
             iCmd.ExecuteNonQuery();
+
+            if (item.itemType == "Course" && item.courseId.HasValue)
+                newCourseIds.Add(item.courseId.Value);
+        }
+
+        // Sync acad_student_courses: remove dropped courses, add new courses
+        foreach (var removedCourseId in oldCourseIds.Except(newCourseIds))
+        {
+            using var delSc = conn.CreateCommand();
+            delSc.Transaction = tx;
+            delSc.CommandText = "DELETE FROM acad_student_courses WHERE PersonId = @pid AND CourseId = @cid AND DateFinished IS NULL";
+            delSc.Parameters.AddWithValue("@pid", pcId);
+            delSc.Parameters.AddWithValue("@cid", removedCourseId);
+            delSc.ExecuteNonQuery();
+        }
+        foreach (var addedCourseId in newCourseIds.Except(oldCourseIds))
+        {
+            using var addSc = conn.CreateCommand();
+            addSc.Transaction = tx;
+            addSc.CommandText = @"
+                INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted)
+                SELECT @pid, @cid, @date
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM acad_student_courses WHERE PersonId=@pid AND CourseId=@cid AND DateFinished IS NULL
+                )";
+            addSc.Parameters.AddWithValue("@pid", pcId);
+            addSc.Parameters.AddWithValue("@cid", addedCourseId);
+            addSc.Parameters.AddWithValue("@date", date);
+            addSc.ExecuteNonQuery();
         }
 
         // Delete old payment methods + recreate
@@ -945,20 +986,65 @@ public class PcService
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE fin_purchases SET IsDeleted = 1 WHERE PurchaseId = @id";
-        cmd.Parameters.AddWithValue("@id", purchaseId);
-        cmd.ExecuteNonQuery();
+        using var tx = conn.BeginTransaction();
+
+        // Remove course enrollments linked to this purchase
+        using (var q = conn.CreateCommand())
+        {
+            q.Transaction = tx;
+            q.CommandText = @"
+                DELETE FROM acad_student_courses
+                WHERE DateFinished IS NULL
+                  AND PersonId = (SELECT PcId FROM fin_purchases WHERE PurchaseId = @id)
+                  AND CourseId IN (SELECT CourseId FROM fin_purchase_items WHERE PurchaseId = @id AND ItemType = 'Course' AND CourseId IS NOT NULL)";
+            q.Parameters.AddWithValue("@id", purchaseId);
+            q.ExecuteNonQuery();
+        }
+
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "UPDATE fin_purchases SET IsDeleted = 1 WHERE PurchaseId = @id";
+            cmd.Parameters.AddWithValue("@id", purchaseId);
+            cmd.ExecuteNonQuery();
+        }
+
+        tx.Commit();
     }
 
     public void RestorePurchase(int purchaseId)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE fin_purchases SET IsDeleted = 0 WHERE PurchaseId = @id";
-        cmd.Parameters.AddWithValue("@id", purchaseId);
-        cmd.ExecuteNonQuery();
+        using var tx = conn.BeginTransaction();
+
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "UPDATE fin_purchases SET IsDeleted = 0 WHERE PurchaseId = @id";
+            cmd.Parameters.AddWithValue("@id", purchaseId);
+            cmd.ExecuteNonQuery();
+        }
+
+        // Re-enroll courses from this purchase
+        using (var q = conn.CreateCommand())
+        {
+            q.Transaction = tx;
+            q.CommandText = @"
+                INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted)
+                SELECT p.PcId, pi.CourseId, p.PurchaseDate
+                FROM fin_purchase_items pi
+                JOIN fin_purchases p ON p.PurchaseId = pi.PurchaseId
+                WHERE pi.PurchaseId = @id AND pi.ItemType = 'Course' AND pi.CourseId IS NOT NULL
+                  AND NOT EXISTS (
+                    SELECT 1 FROM acad_student_courses sc
+                    WHERE sc.PersonId = p.PcId AND sc.CourseId = pi.CourseId AND sc.DateFinished IS NULL
+                  )";
+            q.Parameters.AddWithValue("@id", purchaseId);
+            q.ExecuteNonQuery();
+        }
+
+        tx.Commit();
     }
 
     public void ApprovePurchase(int purchaseId, int approvedByPersonId)
