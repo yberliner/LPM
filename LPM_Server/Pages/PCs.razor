@@ -134,15 +134,16 @@
                 <div class="card-body p-0">
                     @if (AllCoursesSorted.Count > 0)
                     {
-                        <table class="table table-sm table-hover mb-0">
+                        <table class="table table-sm table-hover mb-0" style="table-layout:auto;">
                             <thead class="table-light">
                                 <tr>
-                                    <th class="small ps-3">@LS.T("pcs.course")</th>
-                                    <th class="small">@LS.T("pcs.dateStarted")</th>
-                                    <th class="small">@LS.T("pcs.dateFinished")</th>
-                                    <th class="small text-center">@LS.T("common.status")</th>
-                                    <th class="small text-center" style="width:100px;"></th>
-                                    <th class="small text-center" style="width:36px;"></th>
+                                    <th class="small ps-3 align-middle" style="white-space:nowrap;">@LS.T("pcs.course")</th>
+                                    <th class="small text-center align-middle" style="white-space:nowrap;">@LS.T("pcs.dateStarted")</th>
+                                    <th class="small text-center align-middle" style="white-space:nowrap;">@LS.T("pcs.dateFinished")</th>
+                                    <th class="small text-center align-middle" style="white-space:nowrap;">@LS.T("pcs.amountIls")</th>
+                                    <th class="small text-center align-middle" style="white-space:nowrap;">@LS.T("common.status")</th>
+                                    <th class="small text-center align-middle" style="white-space:nowrap;">@LS.T("pcs.action")</th>
+                                    <th class="small text-center align-middle" style="white-space:nowrap;">@LS.T("pcs.editPurchase")</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -151,10 +152,11 @@
                                     bool isActive = sc.DateFinished == null;
                                     var hasPurchase = _coursePurchaseMap.TryGetValue(sc.CourseId, out var coursePurchaseId);
                                     <tr style="@(!isActive ? "opacity:.65;" : "")">
-                                        <td class="small ps-3 fw-semibold" style="color:@(isActive ? "#6d28d9" : "#6b7280");">@sc.CourseName</td>
-                                        <td class="small">@sc.DateStarted</td>
-                                        <td class="small">@(sc.DateFinished ?? "\u2014")</td>
-                                        <td class="small text-center">
+                                        <td class="small ps-3 fw-semibold align-middle" style="color:@(isActive ? "#6d28d9" : "#6b7280");">@sc.CourseName</td>
+                                        <td class="small text-center align-middle">@sc.DateStarted</td>
+                                        <td class="small text-center align-middle">@(sc.DateFinished ?? "\u2014")</td>
+                                        <td class="small text-center align-middle">@(_courseAmountMap.TryGetValue(sc.CourseId, out var cAmt) && cAmt > 0 ? $"\u20AA{cAmt}" : "\u2014")</td>
+                                        <td class="small text-center align-middle">
                                             @if (_coursePurchaseStatusMap.TryGetValue(sc.CourseId, out var cStatus))
                                             {
                                                 var (csCls, csLbl) = cStatus switch {
@@ -169,7 +171,7 @@
                                                 <span>\u2014</span>
                                             }
                                         </td>
-                                        <td class="small text-center">
+                                        <td class="small text-center align-middle">
                                             @if (isActive)
                                             {
                                                 <button class="btn btn-sm btn-outline-success py-0 px-2"
@@ -184,7 +186,7 @@
                                                 </span>
                                             }
                                         </td>
-                                        <td class="text-center">
+                                        <td class="text-center align-middle">
                                             @if (hasPurchase)
                                             {
                                                 <button class="btn btn-link btn-sm py-0 px-0"
@@ -228,7 +230,7 @@
                                     <th class="small text-center">@LS.T("pcs.hoursBought")</th>
                                     <th class="small text-center">@LS.T("pcs.amountIls")</th>
                                     <th class="small text-center">@LS.T("common.status")</th>
-                                    <th class="small text-center" style="width:36px;"></th>
+                                    <th class="small text-center" style="white-space:nowrap;">@LS.T("pcs.editPurchase")</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -325,7 +327,7 @@
                                     <i class="ri-shopping-bag-line" style="color:#3b82f6;"></i>@LS.T("pcs.purchaseItems")
                                 </span>
                                 <button class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size:0.75rem;"
-                                        @onclick="AddPurchaseItem">
+                                        @onclick="AddPurchaseItem" disabled="@(!CanAddMoreItems())">
                                     <i class="ri-add-line me-1"></i>@LS.T("pcs.addItem")
                                 </button>
                             </div>
@@ -334,10 +336,12 @@
                             {
                                 var i = idx;
                                 var item = _purchaseItems[i];
-                                <div class="card border mb-2" style="border-radius:10px;">
+                                var valid = IsItemValid(item);
+                                <div class="card mb-2 purchase-item-card @(!valid ? "purchase-item-invalid" : "purchase-item-valid")">
                                     <div class="card-body py-2 px-3">
                                         <div class="d-flex align-items-center justify-content-between mb-2">
-                                            <div class="d-flex gap-2">
+                                            <div class="d-flex gap-2 align-items-center">
+                                                <span class="item-number-badge">@(i + 1)</span>
                                                 @{ var capturedIdx = i; }
                                                 <button class="btn btn-sm @(item.ItemType == "Auditing" ? "btn-primary" : "btn-outline-secondary")"
                                                         @onclick='() => SetItemType(capturedIdx, "Auditing")'>
@@ -348,19 +352,28 @@
                                                     <i class="ri-book-2-line me-1"></i>@LS.T("pcs.course")
                                                 </button>
                                             </div>
-                                            @if (_purchaseItems.Count > 1)
-                                            {
-                                                <button class="btn btn-sm btn-outline-danger py-0 px-1" @onclick="() => RemovePurchaseItem(i)">
-                                                    <i class="ri-close-line"></i>
-                                                </button>
-                                            }
+                                            <div class="d-flex align-items-center gap-2">
+                                                @if (!valid)
+                                                {
+                                                    <span class="item-incomplete-hint">
+                                                        <i class="ri-error-warning-line"></i>
+                                                        @(item.ItemType == "Auditing" ? LS.T("pcs.enterHours") : LS.T("pcs.pickCourse"))
+                                                    </span>
+                                                }
+                                                @if (_purchaseItems.Count > 1)
+                                                {
+                                                    <button class="btn btn-sm btn-outline-danger py-0 px-1" @onclick="() => RemovePurchaseItem(i)">
+                                                        <i class="ri-close-line"></i>
+                                                    </button>
+                                                }
+                                            </div>
                                         </div>
                                         <div class="row g-2 align-items-end">
                                             @if (item.ItemType == "Auditing")
                                             {
                                                 <div class="col-auto">
                                                     <label class="form-label small mb-0">@LS.T("pcs.hoursBought")</label>
-                                                    <input type="number" class="form-control form-control-sm"
+                                                    <input type="number" class="form-control form-control-sm @(item.HoursBought <= 0 ? "field-invalid" : "field-valid")"
                                                            value="@item.HoursBought" min="0" style="width:95px;" placeholder="0"
                                                            @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) item.HoursBought = v; }" />
                                                 </div>
@@ -369,7 +382,7 @@
                                             {
                                                 <div class="col-auto">
                                                     <label class="form-label small mb-0">@LS.T("pcs.course")</label>
-                                                    <select class="form-select form-select-sm" style="width:200px;"
+                                                    <select class="form-select form-select-sm @(item.CourseId <= 0 ? "field-invalid" : "field-valid")" style="width:200px;"
                                                             value="@item.CourseId"
                                                             @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) item.CourseId = v; }">
                                                         <option value="0">— @LS.T("pcs.selectCourse") —</option>
@@ -390,6 +403,24 @@
                                     </div>
                                 </div>
                             }
+                            @* Items summary *@
+                            @if (_purchaseItems.Count > 0)
+                            {
+                                var totalItemAmount = _purchaseItems.Sum(x => x.AmountPaid);
+                                var totalHours = _purchaseItems.Where(x => x.ItemType == "Auditing").Sum(x => x.HoursBought);
+                                var courseCount = _purchaseItems.Count(x => x.ItemType == "Course" && x.CourseId > 0);
+                                <div class="items-summary">
+                                    @if (totalHours > 0)
+                                    {
+                                        <span><i class="ri-timer-flash-line"></i> @totalHours @LS.T("pcs.hours")</span>
+                                    }
+                                    @if (courseCount > 0)
+                                    {
+                                        <span><i class="ri-book-2-line"></i> @courseCount @LS.T("pcs.courses")</span>
+                                    }
+                                    <span class="ms-auto fw-semibold">@LS.T("pcs.total"): &#8362;@totalItemAmount</span>
+                                </div>
+                            }
                         </div>
 
                         @* ═══ SECTION 2: Payment Methods ═══ *@
@@ -399,7 +430,7 @@
                                     <i class="ri-bank-card-line" style="color:#10b981;"></i>@LS.T("purchases.paymentMethods")
                                 </span>
                                 <button class="btn btn-sm btn-outline-success py-0 px-2" style="font-size:0.75rem;"
-                                        @onclick="AddPaymentMethod">
+                                        @onclick="AddPaymentMethod" disabled="@(!CanAddMorePayments())">
                                     <i class="ri-add-line me-1"></i>@LS.T("purchases.addPaymentMethod")
                                 </button>
                             </div>
@@ -421,7 +452,8 @@
                                     </div>
                                     <div>
                                         <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("pcs.amount")</label>
-                                        <input type="number" class="form-control form-control-sm" style="width:100px;font-size:.8rem;"
+                                        <input type="number" class="form-control form-control-sm @(pm.Amount <= 0 ? "field-invalid" : "field-valid")"
+                                               style="width:100px;font-size:.8rem;"
                                                value="@pm.Amount" min="0" placeholder="0"
                                                @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) pm.Amount = v; }" />
                                     </div>
@@ -442,12 +474,25 @@
                             @{
                                 var itemsTotal = _purchaseItems.Sum(i => i.AmountPaid);
                                 var pmTotal = _purchasePaymentMethods.Sum(m => m.Amount);
+                                var pmBalance = itemsTotal - pmTotal;
                             }
-                            @if (pmTotal > 0 && pmTotal != itemsTotal)
+                            @if (pmTotal > 0 || itemsTotal > 0)
                             {
-                                <div class="small text-warning d-flex align-items-center gap-1 mt-1">
-                                    <i class="ri-error-warning-line"></i>@LS.T("purchases.amountMismatch")
-                                    <span class="fw-semibold">(\u20AA@pmTotal / \u20AA@itemsTotal)</span>
+                                <div class="payment-summary mt-2">
+                                    <span>@LS.T("purchases.paid"): &#8362;@pmTotal / &#8362;@itemsTotal</span>
+                                    @if (pmBalance != 0)
+                                    {
+                                        <span class="@(pmBalance > 0 ? "text-danger" : "text-warning") fw-semibold">
+                                            <i class="ri-error-warning-line"></i>
+                                            @(pmBalance > 0 ? LS.T("purchases.underpaid") : LS.T("purchases.overpaid")): &#8362;@Math.Abs(pmBalance)
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-success fw-semibold">
+                                            <i class="ri-check-line"></i> @LS.T("purchases.balanced")
+                                        </span>
+                                    }
                                 </div>
                             }
                         </div>
@@ -531,14 +576,23 @@
                             </div>
                         </div>
                 </div>
-                <div class="modal-footer py-2 px-3">
+                <div class="modal-footer py-2 px-3 flex-wrap">
                     @if (!string.IsNullOrEmpty(_purchaseError))
                     {
                         <div class="alert alert-danger py-1 px-2 mb-0 small flex-grow-1">@_purchaseError</div>
                     }
+                    @if (!_skipSignature && !_hasSigned)
+                    {
+                        <div class="signature-reminder flex-grow-1">
+                            <i class="ri-pen-nib-line"></i> @LS.T("pcs.signatureReminder")
+                        </div>
+                    }
                     <button class="btn btn-secondary btn-sm" @onclick="ClosePurchaseModal">@LS.T("common.cancel")</button>
+                    @{
+                        var canSave = HasValidPurchaseItems() && IsPaymentBalanced();
+                    }
                     <button class="btn btn-primary btn-sm" @onclick="SavePurchase"
-                            disabled="@(!HasValidPurchaseItems())">
+                            disabled="@(!canSave)">
                         <i class="ri-save-line me-1"></i>@LS.T("common.save")
                     </button>
                 </div>
@@ -738,6 +792,54 @@
     }
     .purchase-section-title i { font-size: 1rem; }
 
+    /* ── Item card validation states ── */
+    .purchase-item-card { border-radius: 10px; transition: all 0.25s ease; }
+    .purchase-item-valid { border: 1px solid #d1d5db; }
+    .purchase-item-invalid { border: 1.5px solid #f87171 !important; background: #fef2f2; }
+
+    .item-number-badge {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 22px; height: 22px; border-radius: 50%;
+        background: #e0e7ff; color: #3b5998; font-size: 0.72rem; font-weight: 700;
+    }
+    .purchase-item-invalid .item-number-badge { background: #fee2e2; color: #dc2626; }
+
+    .item-incomplete-hint {
+        font-size: 0.7rem; color: #ef4444; display: inline-flex; align-items: center; gap: 3px;
+        animation: hint-pulse 2s ease-in-out infinite;
+    }
+    @@keyframes hint-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+
+    /* Field-level validation */
+    .field-invalid { border-color: #f87171 !important; background-color: #fff5f5 !important; }
+    .field-valid { border-color: #86efac !important; }
+
+    /* Items summary bar */
+    .items-summary {
+        display: flex; align-items: center; gap: 12px;
+        padding: 6px 12px; border-radius: 8px;
+        background: #eff6ff; font-size: 0.78rem; color: #1e40af;
+    }
+    .items-summary i { font-size: 0.85rem; }
+
+    /* Signature reminder in footer */
+    .signature-reminder {
+        font-size: 0.75rem; color: #b45309;
+        background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px;
+        padding: 4px 10px; display: inline-flex; align-items: center; gap: 5px;
+        animation: hint-pulse 2s ease-in-out infinite;
+    }
+
+    /* Payment summary bar */
+    .payment-summary {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 6px 12px; border-radius: 8px;
+        background: #f0fdf4; font-size: 0.78rem; color: #166534;
+    }
+
     /* Force dark text inside white-bg modals (purchase modal, delete confirm) */
     .modal-content .form-label { color: #212529 !important; }
     .modal-content .form-control,
@@ -785,6 +887,8 @@
     int? _confirmDeletePurchaseId;
     string _origPurchaseSnapshot = "";
     bool   _skipSignature;
+    bool   _hasSigned;
+    DotNetObjectReference<PCs>? _sigRef;
 
     List<CourseItem>             _allCourses  = [];
     List<(int PersonId, string FullName)> _staff      = [];
@@ -795,6 +899,7 @@
     List<PurchaseListItem>? _pcPurchases;
     Dictionary<int, int> _coursePurchaseMap = new(); // CourseId → PurchaseId
     Dictionary<int, string> _coursePurchaseStatusMap = new(); // CourseId → ApprovedStatus
+    Dictionary<int, int> _courseAmountMap = new(); // CourseId → AmountPaid
     int? _latestAuditingPurchaseId;
 
     // Auditing purchases display
@@ -905,6 +1010,7 @@
         // Build CourseId → PurchaseId map, find latest auditing purchase, build auditing purchases list
         _coursePurchaseMap.Clear();
         _coursePurchaseStatusMap.Clear();
+        _courseAmountMap.Clear();
         _latestAuditingPurchaseId = null;
         _auditingPurchases.Clear();
         if (_pcPurchases != null)
@@ -919,6 +1025,7 @@
                     {
                         _coursePurchaseMap[item.CourseId.Value] = p.PurchaseId;
                         _coursePurchaseStatusMap[item.CourseId.Value] = p.ApprovedStatus;
+                        _courseAmountMap[item.CourseId.Value] = item.AmountPaid;
                     }
                     if (item.ItemType == "Auditing")
                     {
@@ -988,6 +1095,7 @@
         _purchaseNotes     = "";
         _purchaseError     = "";
         _skipSignature     = false;
+        _hasSigned         = false;
         _allCourses        = CourseSvc.GetAllCourses();
         _purchaseRegistrarId = _currentPersonId ?? 0;
         _purchaseReferralId  = 0;
@@ -1001,7 +1109,7 @@
         };
         StateHasChanged();
         await Task.Delay(100);
-        await JS.InvokeVoidAsync("SignaturePad.init", "signatureCanvas", null);
+        await InitSignaturePad();
         _origPurchaseSnapshot = GetPurchaseSnapshot();
     }
 
@@ -1014,6 +1122,7 @@
         _editingPurchaseId = purchaseId;
         _purchaseError     = "";
         _skipSignature     = string.IsNullOrEmpty(detail.SignatureData);
+        _hasSigned         = !string.IsNullOrEmpty(detail.SignatureData);
         _allCourses        = CourseSvc.GetAllCourses();
 
         _purchaseDate = DateTime.TryParse(detail.PurchaseDate, out var dt) ? dt : DateTime.Today;
@@ -1044,7 +1153,7 @@
         await Task.Delay(100);
         if (!_skipSignature)
         {
-            await JS.InvokeVoidAsync("SignaturePad.init", "signatureCanvas", null);
+            await InitSignaturePad();
             if (!string.IsNullOrEmpty(detail.SignatureData))
                 await JS.InvokeVoidAsync("SignaturePad.drawImage", "signatureCanvas", detail.SignatureData);
         }
@@ -1057,6 +1166,8 @@
         _showPurchaseModal = false;
         if (!_skipSignature)
             await JS.InvokeVoidAsync("SignaturePad.dispose", "signatureCanvas");
+        _sigRef?.Dispose();
+        _sigRef = null;
     }
 
     void AddPurchaseItem()
@@ -1086,6 +1197,31 @@
         return _purchaseItems.Any(item =>
             (item.ItemType == "Auditing" && item.HoursBought > 0) ||
             (item.ItemType == "Course" && item.CourseId > 0));
+    }
+
+    bool IsItemValid(PurchaseItemModel item)
+    {
+        return (item.ItemType == "Auditing" && item.HoursBought > 0) ||
+               (item.ItemType == "Course" && item.CourseId > 0);
+    }
+
+    bool CanAddMoreItems()
+    {
+        // Only allow adding a new item if the last one is valid
+        return _purchaseItems.Count == 0 || IsItemValid(_purchaseItems[^1]);
+    }
+
+    bool CanAddMorePayments()
+    {
+        // Only allow adding a new payment if the last one has an amount
+        return _purchasePaymentMethods.Count == 0 || _purchasePaymentMethods[^1].Amount > 0;
+    }
+
+    bool IsPaymentBalanced()
+    {
+        var itemsTotal = _purchaseItems.Sum(x => x.AmountPaid);
+        var pmTotal = _purchasePaymentMethods.Sum(m => m.Amount);
+        return pmTotal == itemsTotal;
     }
 
     async Task SavePurchase()
@@ -1165,17 +1301,33 @@
     async Task ToggleSkipSignature(ChangeEventArgs e)
     {
         _skipSignature = (bool)(e.Value ?? false);
+        _hasSigned = false;
         if (!_skipSignature)
         {
             StateHasChanged();
             await Task.Delay(100);
-            await JS.InvokeVoidAsync("SignaturePad.init", "signatureCanvas", null);
+            await InitSignaturePad();
         }
     }
 
     async Task ClearSignature()
     {
         await JS.InvokeVoidAsync("SignaturePad.clear", "signatureCanvas");
+        _hasSigned = false;
+    }
+
+    async Task InitSignaturePad()
+    {
+        _sigRef?.Dispose();
+        _sigRef = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("SignaturePad.init", "signatureCanvas", _sigRef);
+    }
+
+    [JSInvokable]
+    public void OnSignatureDrawn()
+    {
+        _hasSigned = true;
+        InvokeAsync(StateHasChanged);
     }
 
     async Task PrintPurchase()

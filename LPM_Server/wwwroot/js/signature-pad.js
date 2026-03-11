@@ -50,7 +50,12 @@ window.SignaturePad = {
             ctx.stroke();
             state.lastX = pos.x;
             state.lastY = pos.y;
-            state.hasContent = true;
+            if (!state.hasContent) {
+                state.hasContent = true;
+                if (state.dotNetRef) {
+                    state.dotNetRef.invokeMethodAsync('OnSignatureDrawn');
+                }
+            }
         }
 
         function onEnd(e) {
