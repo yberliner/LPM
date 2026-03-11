@@ -25,61 +25,25 @@ public class CourseService
 
     private void EnsureSchema()
     {
+        // Schema managed directly in DB — no CREATE TABLE statements here.
+
+        // Backfill: any course purchase item that has no open StudentCourses row gets one.
+        // This runs on every startup (idempotent — the NOT EXISTS guard prevents duplication).
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
-
-        using var c1 = conn.CreateCommand();
-        c1.CommandText = @"
-            CREATE TABLE IF NOT EXISTS lkp_courses (
-                CourseId INTEGER PRIMARY KEY AUTOINCREMENT,
-                Name     TEXT    NOT NULL
-            )";
-        c1.ExecuteNonQuery();
-
-        using var c2 = conn.CreateCommand();
-        c2.CommandText = @"
-            CREATE TABLE IF NOT EXISTS acad_student_courses (
-                StudentCourseId INTEGER PRIMARY KEY AUTOINCREMENT,
-                PersonId        INTEGER NOT NULL,
-                CourseId        INTEGER NOT NULL,
-                DateStarted     TEXT    NOT NULL,
-                DateFinished    TEXT    NULL
-            )";
-        c2.ExecuteNonQuery();
-
-        // Ensure Payments table exists (PcService also creates this; whichever singleton
-        // initialises first wins; CREATE IF NOT EXISTS is idempotent).
-        // We need it here so the backfill below always works.
-        using var c3 = conn.CreateCommand();
-        c3.CommandText = @"
-            CREATE TABLE IF NOT EXISTS fin_payments (
-                PaymentId   INTEGER PRIMARY KEY AUTOINCREMENT,
-                PcId        INTEGER NOT NULL,
-                PaymentDate TEXT    NOT NULL,
-                HoursBought INTEGER NOT NULL DEFAULT 0,
-                AmountPaid  INTEGER NOT NULL DEFAULT 0,
-                CreatedAt   TEXT    NOT NULL DEFAULT (datetime('now')),
-                PaymentType TEXT    DEFAULT 'Auditing',
-                CourseId    INTEGER,
-                RegistrarId INTEGER,
-                ReferralId  INTEGER,
-                PurchaseId  INTEGER
-            )";
-        c3.ExecuteNonQuery();
-
-        // Backfill: any course payment that has no open StudentCourses row gets one.
-        // This runs on every startup (idempotent — the NOT EXISTS guard prevents duplication).
         using var bf = conn.CreateCommand();
         bf.CommandText = @"
             INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted)
-            SELECT p.PcId, p.CourseId, p.PaymentDate
-            FROM fin_payments p
-            WHERE COALESCE(p.PaymentType, 'Auditing') = 'Course'
-              AND p.CourseId IS NOT NULL
+            SELECT pu.PcId, pi.CourseId, pu.PurchaseDate
+            FROM fin_purchase_items pi
+            JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+            WHERE pi.ItemType = 'Course'
+              AND pi.CourseId IS NOT NULL
+              AND pu.IsDeleted = 0
               AND NOT EXISTS (
                   SELECT 1 FROM acad_student_courses sc
-                  WHERE sc.PersonId = p.PcId
-                    AND sc.CourseId = p.CourseId
+                  WHERE sc.PersonId = pu.PcId
+                    AND sc.CourseId = pi.CourseId
                     AND sc.DateFinished IS NULL
               )";
         bf.ExecuteNonQuery();
@@ -238,10 +202,10 @@ public class CourseService
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS PCFullName,
                    c.CourseId, c.Name AS CourseName,
                    sc.DateStarted, sc.DateFinished,
-                   COALESCE(pay.AmountPaid, 0),
-                   pay.RegistrarId,
+                   COALESCE(pi.AmountPaid, 0),
+                   pu.RegistrarId,
                    TRIM(COALESCE(reg.FirstName,'') || ' ' || COALESCE(NULLIF(reg.LastName,''),'')) AS RegistrarName,
-                   pay.ReferralId,
+                   pu.ReferralId,
                    TRIM(COALESCE(rf.FirstName,'') || ' ' || COALESCE(NULLIF(rf.LastName,''),'')) AS ReferralName,
                    (SELECT COUNT(*) FROM acad_attendance s
                     WHERE s.PersonId = sc.PersonId AND s.VisitDate >= sc.DateStarted) AS VisitCount
@@ -249,14 +213,16 @@ public class CourseService
             JOIN core_persons p ON p.PersonId = sc.PersonId
             JOIN lkp_courses c ON c.CourseId = sc.CourseId
             LEFT JOIN (
-                SELECT PcId, CourseId, MAX(PaymentId) AS MaxPayId
-                FROM fin_payments
-                WHERE COALESCE(PaymentType,'Auditing') = 'Course'
-                GROUP BY PcId, CourseId
+                SELECT pu2.PcId, pi2.CourseId, MAX(pi2.PurchaseItemId) AS MaxItemId
+                FROM fin_purchase_items pi2
+                JOIN fin_purchases pu2 ON pu2.PurchaseId = pi2.PurchaseId
+                WHERE pi2.ItemType = 'Course' AND pu2.IsDeleted = 0
+                GROUP BY pu2.PcId, pi2.CourseId
             ) latest ON latest.PcId = sc.PersonId AND latest.CourseId = sc.CourseId
-            LEFT JOIN fin_payments pay ON pay.PaymentId = latest.MaxPayId
-            LEFT JOIN core_persons reg ON reg.PersonId = pay.RegistrarId
-            LEFT JOIN core_persons rf  ON rf.PersonId  = pay.ReferralId
+            LEFT JOIN fin_purchase_items pi ON pi.PurchaseItemId = latest.MaxItemId
+            LEFT JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+            LEFT JOIN core_persons reg ON reg.PersonId = pu.RegistrarId
+            LEFT JOIN core_persons rf  ON rf.PersonId  = pu.ReferralId
             ORDER BY c.Name, p.FirstName, p.LastName";
         var list = new List<CourseEnrollmentItem>();
         using var r = cmd.ExecuteReader();

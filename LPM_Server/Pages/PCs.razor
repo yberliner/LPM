@@ -318,13 +318,15 @@
                         <div style="font-size:1.6rem;font-weight:800;color:#1e3a5f;">@_detail.FullName</div>
                     </div>
 
-                        @* Purchase items *@
-                        <div class="mb-3">
+                        @* ═══ SECTION 1: Purchase Items ═══ *@
+                        <div class="purchase-section" style="border-left:3px solid #3b82f6;">
                             <div class="d-flex align-items-center justify-content-between mb-2">
-                                <span class="fw-semibold small">@LS.T("pcs.purchaseItems")</span>
+                                <span class="purchase-section-title">
+                                    <i class="ri-shopping-bag-line" style="color:#3b82f6;"></i>@LS.T("pcs.purchaseItems")
+                                </span>
                                 <button class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size:0.75rem;"
                                         @onclick="AddPurchaseItem">
-                                    @LS.T("pcs.addItem")
+                                    <i class="ri-add-line me-1"></i>@LS.T("pcs.addItem")
                                 </button>
                             </div>
 
@@ -332,7 +334,7 @@
                             {
                                 var i = idx;
                                 var item = _purchaseItems[i];
-                                <div class="card border mb-2">
+                                <div class="card border mb-2" style="border-radius:10px;">
                                     <div class="card-body py-2 px-3">
                                         <div class="d-flex align-items-center justify-content-between mb-2">
                                             <div class="d-flex gap-2">
@@ -384,50 +386,28 @@
                                                        value="@item.AmountPaid" min="0" style="width:105px;" placeholder="0"
                                                        @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) item.AmountPaid = v; }" />
                                             </div>
-                                            <div class="col-auto">
-                                                <label class="form-label small mb-0">@LS.T("courses.registrar")</label>
-                                                <select class="form-select form-select-sm" style="width:160px;"
-                                                        value="@item.RegistrarId"
-                                                        @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) item.RegistrarId = v; }">
-                                                    <option value="0">— @LS.T("common.none") —</option>
-                                                    @foreach (var s in _staff)
-                                                    {
-                                                        <option value="@s.PersonId">@s.FullName</option>
-                                                    }
-                                                </select>
-                                            </div>
-                                            <div class="col-auto">
-                                                <label class="form-label small mb-0">@LS.T("courses.referral")</label>
-                                                <select class="form-select form-select-sm" style="width:160px;"
-                                                        value="@item.ReferralId"
-                                                        @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) item.ReferralId = v; }">
-                                                    <option value="0">— @LS.T("common.none") —</option>
-                                                    @foreach (var p in _allPersons)
-                                                    {
-                                                        <option value="@p.PersonId">@p.FullName</option>
-                                                    }
-                                                </select>
-                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             }
                         </div>
 
-                        @* Payment Methods *@
-                        <div class="mb-3">
+                        @* ═══ SECTION 2: Payment Methods ═══ *@
+                        <div class="purchase-section" style="border-left:3px solid #10b981;">
                             <div class="d-flex align-items-center justify-content-between mb-2">
-                                <span class="fw-semibold small">@LS.T("purchases.paymentMethods")</span>
+                                <span class="purchase-section-title">
+                                    <i class="ri-bank-card-line" style="color:#10b981;"></i>@LS.T("purchases.paymentMethods")
+                                </span>
                                 <button class="btn btn-sm btn-outline-success py-0 px-2" style="font-size:0.75rem;"
                                         @onclick="AddPaymentMethod">
-                                    @LS.T("purchases.addPaymentMethod")
+                                    <i class="ri-add-line me-1"></i>@LS.T("purchases.addPaymentMethod")
                                 </button>
                             </div>
                             @for (int pmIdx = 0; pmIdx < _purchasePaymentMethods.Count; pmIdx++)
                             {
                                 var pi2 = pmIdx;
                                 var pm = _purchasePaymentMethods[pi2];
-                                <div class="d-flex gap-2 align-items-end mb-2 p-2 border rounded" style="background:#f8fafc;">
+                                <div class="d-flex gap-2 align-items-end mb-2 p-2 border rounded" style="background:#f8fafc;border-radius:10px !important;">
                                     <div>
                                         <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("purchases.methodType")</label>
                                         <select class="form-select form-select-sm" style="width:140px;font-size:.8rem;"
@@ -472,52 +452,83 @@
                             }
                         </div>
 
-                        @* Notes (below all items) *@
-                        <div class="mb-3">
-                            <label class="form-label small fw-semibold mb-1">@LS.T("pcs.notes")</label>
-                            <textarea class="form-control form-control-sm" rows="2" @bind="_purchaseNotes"
-                                      placeholder="@LS.T("members.optional")"></textarea>
-                        </div>
+                        @* ═══ SECTION 3: Details ═══ *@
+                        <div class="purchase-section" style="border-left:3px solid #8b5cf6;">
+                            <span class="purchase-section-title mb-2 d-block">
+                                <i class="ri-file-info-line" style="color:#8b5cf6;"></i>@LS.T("pcs.purchaseDetails")
+                            </span>
 
-                        @* Date *@
-                        <div class="d-flex align-items-center gap-3 mb-3">
-                            <div>
-                                <label class="form-label small fw-semibold mb-0">@LS.T("pcs.date")</label>
-                                <input type="date" class="form-control form-control-sm" @bind="_purchaseDate" style="width:160px;" />
+                            @* Date + Registrar + Referral in one row *@
+                            <div class="d-flex gap-3 flex-wrap mb-3">
+                                <div>
+                                    <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("pcs.date")</label>
+                                    <input type="date" class="form-control form-control-sm" @bind="_purchaseDate" style="width:150px;" />
+                                </div>
+                                <div>
+                                    <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("courses.registrar")</label>
+                                    <select class="form-select form-select-sm" style="width:170px;"
+                                            value="@_purchaseRegistrarId"
+                                            @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) _purchaseRegistrarId = v; }">
+                                        <option value="0">— @LS.T("common.none") —</option>
+                                        @foreach (var s in _staff)
+                                        {
+                                            <option value="@s.PersonId">@s.FullName</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("courses.referral")</label>
+                                    <select class="form-select form-select-sm" style="width:170px;"
+                                            value="@_purchaseReferralId"
+                                            @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) _purchaseReferralId = v; }">
+                                        <option value="0">— @LS.T("common.none") —</option>
+                                        @foreach (var p in _allPersons)
+                                        {
+                                            <option value="@p.PersonId">@p.FullName</option>
+                                        }
+                                    </select>
+                                </div>
                             </div>
-                        </div>
 
-                        @* Signature *@
-                        <div class="mb-3">
-                            <div class="d-flex align-items-center justify-content-between mb-1">
-                                <label class="form-label small fw-semibold mb-0" style="color:#212529;">
-                                    @LS.T("pcs.signature")
-                                    @if (!_skipSignature) { <span style="color:#dc3545;font-size:1rem;">*</span> }
-                                    <input class="form-check-input ms-2" type="checkbox" id="skipSig"
-                                           style="vertical-align:middle;"
-                                           checked="@_skipSignature" @onchange="e => _skipSignature = (bool)(e.Value ?? false)" />
-                                    <span style="font-size:0.72rem;color:#6b7280;vertical-align:middle;margin-left:3px;">@LS.T("pcs.noSignature")</span>
-                                </label>
+                            @* Notes *@
+                            <div class="mb-3">
+                                <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("pcs.notes")</label>
+                                <textarea class="form-control form-control-sm" rows="2" @bind="_purchaseNotes"
+                                          placeholder="@LS.T("members.optional")" style="border-radius:8px;"></textarea>
+                            </div>
+
+                            @* Signature *@
+                            <div>
+                                <div class="d-flex align-items-center justify-content-between mb-1">
+                                    <label class="form-label small mb-0" style="color:#212529;font-size:.72rem;">
+                                        @LS.T("pcs.signature")
+                                        @if (!_skipSignature) { <span style="color:#dc3545;font-size:1rem;">*</span> }
+                                        <input class="form-check-input ms-2" type="checkbox" id="skipSig"
+                                               style="vertical-align:middle;"
+                                               checked="@_skipSignature" @onchange="ToggleSkipSignature" />
+                                        <span style="font-size:0.72rem;color:#6b7280;vertical-align:middle;margin-left:3px;">@LS.T("pcs.noSignature")</span>
+                                    </label>
+                                    @if (!_skipSignature)
+                                    {
+                                        <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:0.7rem;"
+                                                @onclick="ClearSignature">
+                                            @LS.T("pcs.clearSignature")
+                                        </button>
+                                    }
+                                </div>
                                 @if (!_skipSignature)
                                 {
-                                    <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:0.7rem;"
-                                            @onclick="ClearSignature">
-                                        @LS.T("pcs.clearSignature")
-                                    </button>
+                                    <div style="border:2px solid #dee2e6;border-radius:8px;background:#fafafa;position:relative;">
+                                        <canvas id="signatureCanvas" style="width:100%;height:120px;cursor:crosshair;display:block;"></canvas>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="text-center py-3 small" style="border:2px dashed #dee2e6;border-radius:8px;background:#f9fafb;color:#9ca3af;">
+                                        <i class="ri-edit-line me-1"></i>@LS.T("pcs.noSignatureNote")
+                                    </div>
                                 }
                             </div>
-                            @if (!_skipSignature)
-                            {
-                                <div style="border:2px solid #dee2e6;border-radius:8px;background:#fafafa;position:relative;">
-                                    <canvas id="signatureCanvas" style="width:100%;height:120px;cursor:crosshair;display:block;"></canvas>
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="text-center py-3 small" style="border:2px dashed #dee2e6;border-radius:8px;background:#f9fafb;color:#9ca3af;">
-                                    <i class="ri-edit-line me-1"></i>@LS.T("pcs.noSignatureNote")
-                                </div>
-                            }
                         </div>
                 </div>
                 <div class="modal-footer py-2 px-3">
@@ -710,6 +721,23 @@
     .purchases-card .table-light th,
     .purchases-card .table-light td { color: #212529 !important; background-color: #f8f9fa !important; }
 
+    /* ── Purchase modal sections ── */
+    .purchase-section {
+        background: #f9fafb;
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin-bottom: 14px;
+    }
+    .purchase-section-title {
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: #374151;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .purchase-section-title i { font-size: 1rem; }
+
     /* Force dark text inside white-bg modals (purchase modal, delete confirm) */
     .modal-content .form-label { color: #212529 !important; }
     .modal-content .form-control,
@@ -779,9 +807,11 @@
         public int CourseId { get; set; }
         public int HoursBought { get; set; }
         public int AmountPaid { get; set; }
-        public int RegistrarId { get; set; }
-        public int ReferralId { get; set; }
     }
+
+    // Purchase-level registrar/referral
+    int _purchaseRegistrarId;
+    int _purchaseReferralId;
 
     class PaymentMethodModel
     {
@@ -945,9 +975,9 @@
 
     string GetPurchaseSnapshot()
     {
-        var items = string.Join("|", _purchaseItems.Select(i => $"{i.ItemType},{i.CourseId},{i.HoursBought},{i.AmountPaid},{i.RegistrarId},{i.ReferralId}"));
+        var items = string.Join("|", _purchaseItems.Select(i => $"{i.ItemType},{i.CourseId},{i.HoursBought},{i.AmountPaid}"));
         var pms = string.Join("|", _purchasePaymentMethods.Select(m => $"{m.MethodType},{m.Amount},{m.PaymentDate?.ToString("yyyy-MM-dd")}"));
-        return $"{_purchaseDate:yyyy-MM-dd}~{_purchaseNotes}~{items}~{pms}";
+        return $"{_purchaseDate:yyyy-MM-dd}~{_purchaseNotes}~{_purchaseRegistrarId}~{_purchaseReferralId}~{items}~{pms}";
     }
 
     async Task OpenPurchaseModal()
@@ -959,9 +989,11 @@
         _purchaseError     = "";
         _skipSignature     = false;
         _allCourses        = CourseSvc.GetAllCourses();
+        _purchaseRegistrarId = _currentPersonId ?? 0;
+        _purchaseReferralId  = 0;
         _purchaseItems     = new List<PurchaseItemModel>
         {
-            new PurchaseItemModel { RegistrarId = _currentPersonId ?? 0 }
+            new PurchaseItemModel()
         };
         _purchasePaymentMethods = new List<PaymentMethodModel>
         {
@@ -987,17 +1019,17 @@
         _purchaseDate = DateTime.TryParse(detail.PurchaseDate, out var dt) ? dt : DateTime.Today;
         _purchaseNotes = detail.Notes ?? "";
 
+        _purchaseRegistrarId = detail.RegistrarId ?? 0;
+        _purchaseReferralId  = detail.ReferralId ?? 0;
         _purchaseItems = detail.Items.Select(it => new PurchaseItemModel
         {
             ItemType    = it.ItemType,
             CourseId    = it.CourseId ?? 0,
             HoursBought = it.HoursBought,
-            AmountPaid  = it.AmountPaid,
-            RegistrarId = it.RegistrarId ?? 0,
-            ReferralId  = it.ReferralId ?? 0
+            AmountPaid  = it.AmountPaid
         }).ToList();
         if (_purchaseItems.Count == 0)
-            _purchaseItems.Add(new PurchaseItemModel { RegistrarId = _currentPersonId ?? 0 });
+            _purchaseItems.Add(new PurchaseItemModel());
 
         _purchasePaymentMethods = detail.PaymentMethods.Select(pm => new PaymentMethodModel
         {
@@ -1029,7 +1061,7 @@
 
     void AddPurchaseItem()
     {
-        _purchaseItems.Add(new PurchaseItemModel { RegistrarId = _currentPersonId ?? 0 });
+        _purchaseItems.Add(new PurchaseItemModel());
     }
 
     void AddPaymentMethod()
@@ -1079,10 +1111,11 @@
             itemType:    pi.ItemType,
             courseId:    pi.ItemType == "Course" ? (int?)pi.CourseId : null,
             hoursBought: pi.ItemType == "Auditing" ? pi.HoursBought : 0,
-            amountPaid:  pi.AmountPaid,
-            registrarId: pi.RegistrarId > 0 ? (int?)pi.RegistrarId : null,
-            referralId:  pi.ReferralId > 0 ? (int?)pi.ReferralId : null
+            amountPaid:  pi.AmountPaid
         )).ToList();
+
+        int? regId = _purchaseRegistrarId > 0 ? _purchaseRegistrarId : null;
+        int? refId = _purchaseReferralId > 0 ? _purchaseReferralId : null;
 
         var pmList = _purchasePaymentMethods
             .Where(m => m.Amount > 0)
@@ -1100,7 +1133,7 @@
             PcSvc.UpdatePurchase(_editingPurchaseId.Value,
                 _purchaseDate.ToString("yyyy-MM-dd"),
                 string.IsNullOrWhiteSpace(_purchaseNotes) ? null : _purchaseNotes,
-                items, pmList);
+                items, pmList, regId, refId);
         }
         else
         {
@@ -1110,7 +1143,7 @@
                 string.IsNullOrWhiteSpace(_purchaseNotes) ? null : _purchaseNotes,
                 sigData,
                 _currentPersonId,
-                items, pmList);
+                items, pmList, regId, refId);
 
             // Send automatic message to admins about the purchase
             if (_currentPersonId.HasValue && _detail != null)
@@ -1127,6 +1160,17 @@
         await ClosePurchaseModal();
         _allPcsEx = PcSvc.GetAllPcsExtended();
         LoadDetail();
+    }
+
+    async Task ToggleSkipSignature(ChangeEventArgs e)
+    {
+        _skipSignature = (bool)(e.Value ?? false);
+        if (!_skipSignature)
+        {
+            StateHasChanged();
+            await Task.Delay(100);
+            await JS.InvokeVoidAsync("SignaturePad.init", "signatureCanvas", null);
+        }
     }
 
     async Task ClearSignature()
@@ -1146,11 +1190,11 @@
                 : "",
             hoursBought = pi.HoursBought,
             amountPaid = pi.AmountPaid,
-            registrarName = pi.RegistrarId > 0
-                ? _staff.FirstOrDefault(s => s.PersonId == pi.RegistrarId).FullName ?? ""
+            registrarName = _purchaseRegistrarId > 0
+                ? _staff.FirstOrDefault(s => s.PersonId == _purchaseRegistrarId).FullName ?? ""
                 : "",
-            referralName = pi.ReferralId > 0
-                ? _allPersons.FirstOrDefault(p => p.PersonId == pi.ReferralId).FullName ?? ""
+            referralName = _purchaseReferralId > 0
+                ? _allPersons.FirstOrDefault(p => p.PersonId == _purchaseReferralId).FullName ?? ""
                 : ""
         }).ToArray();
 

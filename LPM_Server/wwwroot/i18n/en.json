@@ -557,6 +557,7 @@
   "pcs.addItem": "+ Add Item",
   "pcs.removeItem": "Remove",
   "pcs.purchaseItems": "Purchase Items",
+  "pcs.purchaseDetails": "Details",
   "pcs.signature": "Buyer Signature",
   "pcs.signHere": "Sign here",
   "pcs.clearSignature": "Clear",

@@ -12,9 +12,6 @@ public record PcDetailInfo(int PcId, string FirstName, string LastName, string N
 }
 public record PcSessionInfo(int SessionId, string Date, string AuditorName,
     int LengthSec, int AdminSec, bool IsFree, string VerifiedStatus);
-public record PcPayment(int PaymentId, string Date, int HoursBought, int AmountPaid,
-    string PaymentType, int? CourseId, string? CourseName, int VisitCount,
-    int? RegistrarId, string? RegistrarName, int? ReferralId, string? ReferralName);
 public record PcStats(int TotalSessions, int FreeSessions, long UsedSec,
     int TotalHoursPurchased, int TotalAmountPaid, string? LastSessionDate);
 public record PcListItemEx(int PcId, string FullName, string Nick, long RemainSec,
@@ -23,11 +20,11 @@ public record PurchaseListItem(int PurchaseId, int PcId, string PcName, string P
     string? Notes, string ApprovedStatus, string? ApprovedByName, string? ApprovedAt,
     string? CreatedByName, string CreatedAt, int TotalAmount, int TotalHours, bool IsDeleted = false);
 public record PurchaseItemInfo(int PurchaseItemId, string ItemType, int? CourseId,
-    string? CourseName, int HoursBought, int AmountPaid, int? RegistrarId,
-    string? RegistrarName, int? ReferralId, string? ReferralName);
+    string? CourseName, int HoursBought, int AmountPaid);
 public record PurchaseDetail(int PurchaseId, int PcId, string PcName, string PurchaseDate,
     string? Notes, string? SignatureData, string ApprovedStatus, string? ApprovedByName,
-    string? CreatedByName, List<PurchaseItemInfo> Items, List<PurchasePaymentMethodInfo> PaymentMethods);
+    string? CreatedByName, List<PurchaseItemInfo> Items, List<PurchasePaymentMethodInfo> PaymentMethods,
+    int? RegistrarId = null, string? RegistrarName = null, int? ReferralId = null, string? ReferralName = null);
 public record PurchasePaymentMethodInfo(int PaymentMethodId, string MethodType,
     int Amount, string? PaymentDate, bool IsMoneyInBank, string? MoneyInBankDate);
 
@@ -44,74 +41,7 @@ public class PcService
 
     private void EnsureSchema()
     {
-        using var conn = new SqliteConnection(_connectionString);
-        conn.Open();
-
-        // Payments table
-        using var c1 = conn.CreateCommand();
-        c1.CommandText = @"
-            CREATE TABLE IF NOT EXISTS fin_payments (
-                PaymentId   INTEGER PRIMARY KEY AUTOINCREMENT,
-                PcId        INTEGER NOT NULL,
-                PaymentDate TEXT    NOT NULL,
-                HoursBought INTEGER NOT NULL DEFAULT 0,
-                AmountPaid  INTEGER NOT NULL DEFAULT 0,
-                CreatedAt   TEXT NOT NULL DEFAULT (datetime('now')),
-                PaymentType TEXT DEFAULT 'Auditing',
-                CourseId    INTEGER,
-                RegistrarId INTEGER,
-                ReferralId  INTEGER,
-                PurchaseId  INTEGER
-            )";
-        c1.ExecuteNonQuery();
-
-        // Purchases & PurchaseItems tables
-        using var c2 = conn.CreateCommand();
-        c2.CommandText = @"
-            CREATE TABLE IF NOT EXISTS fin_purchases (
-                PurchaseId         INTEGER PRIMARY KEY AUTOINCREMENT,
-                PcId               INTEGER NOT NULL,
-                PurchaseDate       TEXT NOT NULL,
-                Notes              TEXT,
-                SignatureData      TEXT,
-                ApprovedStatus     TEXT NOT NULL DEFAULT 'Pending',
-                ApprovedByPersonId INTEGER,
-                ApprovedAt         TEXT,
-                CreatedByPersonId  INTEGER,
-                CreatedAt          TEXT NOT NULL DEFAULT (datetime('now')),
-                IsDeleted          INTEGER NOT NULL DEFAULT 0
-            )";
-        c2.ExecuteNonQuery();
-
-        using var c3 = conn.CreateCommand();
-        c3.CommandText = @"
-            CREATE TABLE IF NOT EXISTS fin_purchase_items (
-                PurchaseItemId INTEGER PRIMARY KEY AUTOINCREMENT,
-                PurchaseId     INTEGER NOT NULL,
-                ItemType       TEXT NOT NULL DEFAULT 'Auditing',
-                CourseId       INTEGER,
-                HoursBought    INTEGER NOT NULL DEFAULT 0,
-                AmountPaid     INTEGER NOT NULL DEFAULT 0,
-                RegistrarId    INTEGER,
-                ReferralId     INTEGER,
-                FOREIGN KEY (PurchaseId) REFERENCES fin_purchases(PurchaseId)
-            )";
-        c3.ExecuteNonQuery();
-
-        // PurchasePaymentMethods table
-        using var c4 = conn.CreateCommand();
-        c4.CommandText = @"
-            CREATE TABLE IF NOT EXISTS fin_payment_methods (
-                PaymentMethodId INTEGER PRIMARY KEY AUTOINCREMENT,
-                PurchaseId      INTEGER NOT NULL,
-                MethodType      TEXT NOT NULL DEFAULT 'Cash',
-                Amount          INTEGER NOT NULL DEFAULT 0,
-                PaymentDate     TEXT,
-                IsMoneyInBank   INTEGER NOT NULL DEFAULT 0,
-                MoneyInBankDate TEXT,
-                FOREIGN KEY (PurchaseId) REFERENCES fin_purchases(PurchaseId)
-            )";
-        c4.ExecuteNonQuery();
+        // Schema managed directly in DB — no CREATE TABLE statements here.
     }
 
     public List<PcListItem> GetAllPcs()
@@ -127,8 +57,11 @@ public class PcService
             FROM core_pcs pc
             JOIN core_persons p ON p.PersonId = pc.PcId
             LEFT JOIN (
-                SELECT PcId, SUM(HoursBought) AS TotalHours
-                FROM fin_payments GROUP BY PcId
+                SELECT pu.PcId, SUM(pi.HoursBought) AS TotalHours
+                FROM fin_purchase_items pi
+                JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+                WHERE pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+                GROUP BY pu.PcId
             ) pay ON pay.PcId = pc.PcId
             LEFT JOIN (
                 SELECT PcId, SUM(LengthSeconds) AS UsedSec
@@ -295,8 +228,11 @@ public class PcService
 
         using var pCmd = conn.CreateCommand();
         pCmd.CommandText = @"
-            SELECT COALESCE(SUM(HoursBought),0), COALESCE(SUM(AmountPaid),0)
-            FROM fin_payments WHERE PcId=@id";
+            SELECT COALESCE(SUM(CASE WHEN pi.ItemType='Auditing' THEN pi.HoursBought ELSE 0 END),0),
+                   COALESCE(SUM(pi.AmountPaid),0)
+            FROM fin_purchase_items pi
+            JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+            WHERE pu.PcId=@id AND pu.IsDeleted = 0";
         pCmd.Parameters.AddWithValue("@id", pcId);
         using var pr = pCmd.ExecuteReader();
         pr.Read();
@@ -330,91 +266,6 @@ public class PcService
         return list;
     }
 
-    public List<PcPayment> GetPayments(int pcId)
-    {
-        using var conn = new SqliteConnection(_connectionString);
-        conn.Open();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
-            SELECT p.PaymentId, p.PaymentDate, p.HoursBought, p.AmountPaid,
-                   COALESCE(p.PaymentType,'Auditing'), p.CourseId, c.Name,
-                   CASE WHEN COALESCE(p.PaymentType,'Auditing') = 'Course' AND p.CourseId IS NOT NULL
-                        THEN (SELECT COUNT(*) FROM acad_attendance s
-                              WHERE s.PersonId = p.PcId AND s.VisitDate >= p.PaymentDate)
-                        ELSE 0 END AS VisitCount,
-                   p.RegistrarId,
-                   TRIM(COALESCE(reg.FirstName,'') || ' ' || COALESCE(NULLIF(reg.LastName,''),'')) AS RegistrarName,
-                   p.ReferralId,
-                   TRIM(COALESCE(rf.FirstName,'') || ' ' || COALESCE(NULLIF(rf.LastName,''),'')) AS ReferralName
-            FROM fin_payments p
-            LEFT JOIN lkp_courses c   ON c.CourseId    = p.CourseId
-            LEFT JOIN core_persons reg ON reg.PersonId  = p.RegistrarId
-            LEFT JOIN core_persons rf  ON rf.PersonId   = p.ReferralId
-            WHERE p.PcId=@id
-            ORDER BY p.PaymentDate DESC";
-        cmd.Parameters.AddWithValue("@id", pcId);
-        var list = new List<PcPayment>();
-        using var r = cmd.ExecuteReader();
-        while (r.Read())
-            list.Add(new PcPayment(
-                r.GetInt32(0), r.GetString(1), r.GetInt32(2), r.GetInt32(3),
-                r.GetString(4),
-                r.IsDBNull(5) ? null : r.GetInt32(5),
-                r.IsDBNull(6) ? null : r.GetString(6),
-                r.GetInt32(7),
-                r.IsDBNull(8)  ? null : r.GetInt32(8),
-                r.IsDBNull(9)  ? null : r.GetString(9).Trim(),
-                r.IsDBNull(10) ? null : r.GetInt32(10),
-                r.IsDBNull(11) ? null : r.GetString(11).Trim()));
-        return list;
-    }
-
-    public void AddPayment(int pcId, string date, int hoursBought, int amountPaid,
-        string paymentType = "Auditing", int? courseId = null, int? registrarId = null, int? referralId = null)
-    {
-        using var conn = new SqliteConnection(_connectionString);
-        conn.Open();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
-            INSERT INTO fin_payments (PcId, PaymentDate, HoursBought, AmountPaid, PaymentType, CourseId, RegistrarId, ReferralId)
-            VALUES (@pcId, @date, @hrs, @amt, @type, @cid, @regId, @refId)";
-        cmd.Parameters.AddWithValue("@pcId",  pcId);
-        cmd.Parameters.AddWithValue("@date",  date);
-        cmd.Parameters.AddWithValue("@hrs",   hoursBought);
-        cmd.Parameters.AddWithValue("@amt",   amountPaid);
-        cmd.Parameters.AddWithValue("@type",  paymentType);
-        cmd.Parameters.AddWithValue("@cid",   courseId.HasValue    ? (object)courseId.Value    : DBNull.Value);
-        cmd.Parameters.AddWithValue("@regId", registrarId.HasValue ? (object)registrarId.Value : DBNull.Value);
-        cmd.Parameters.AddWithValue("@refId", referralId.HasValue  ? (object)referralId.Value  : DBNull.Value);
-        cmd.ExecuteNonQuery();
-
-        // Auto-enroll in Academy StudentCourses when a course is purchased
-        if (paymentType == "Course" && courseId.HasValue)
-        {
-            using var scCmd = conn.CreateCommand();
-            scCmd.CommandText = @"
-                INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted)
-                SELECT @pid, @cid, @date
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM acad_student_courses
-                    WHERE PersonId=@pid AND CourseId=@cid AND DateFinished IS NULL
-                )";
-            scCmd.Parameters.AddWithValue("@pid",  pcId);
-            scCmd.Parameters.AddWithValue("@cid",  courseId.Value);
-            scCmd.Parameters.AddWithValue("@date", date);
-            scCmd.ExecuteNonQuery();
-        }
-    }
-
-    public void DeletePayment(int paymentId)
-    {
-        using var conn = new SqliteConnection(_connectionString);
-        conn.Open();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM fin_payments WHERE PaymentId=@id";
-        cmd.Parameters.AddWithValue("@id", paymentId);
-        cmd.ExecuteNonQuery();
-    }
 
     /// <summary>All active staff (Auditors + CaseSupervisors), ordered by first name.</summary>
     public List<(int PersonId, string FullName)> GetStaff()
@@ -487,8 +338,11 @@ public class PcService
             FROM core_pcs pc
             JOIN core_persons p ON p.PersonId = pc.PcId
             LEFT JOIN (
-                SELECT PcId, SUM(HoursBought) AS TotalHours
-                FROM fin_payments GROUP BY PcId
+                SELECT pu.PcId, SUM(pi.HoursBought) AS TotalHours
+                FROM fin_purchase_items pi
+                JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+                WHERE pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+                GROUP BY pu.PcId
             ) pay ON pay.PcId = pc.PcId
             LEFT JOIN (
                 SELECT PcId, SUM(LengthSeconds) AS UsedSec, COUNT(*) AS SessionCount
@@ -513,8 +367,9 @@ public class PcService
 
     public int CreatePurchase(int pcId, string date, string? notes, string? signatureData,
         int? createdByPersonId,
-        List<(string itemType, int? courseId, int hoursBought, int amountPaid, int? registrarId, int? referralId)> items,
-        List<(string methodType, int amount, string? paymentDate)>? paymentMethods = null)
+        List<(string itemType, int? courseId, int hoursBought, int amountPaid)> items,
+        List<(string methodType, int amount, string? paymentDate)>? paymentMethods = null,
+        int? registrarId = null, int? referralId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -523,13 +378,15 @@ public class PcService
         using var cmd = conn.CreateCommand();
         cmd.Transaction = tx;
         cmd.CommandText = @"
-            INSERT INTO fin_purchases (PcId, PurchaseDate, Notes, SignatureData, CreatedByPersonId)
-            VALUES (@pcId, @date, @notes, @sig, @createdBy)";
+            INSERT INTO fin_purchases (PcId, PurchaseDate, Notes, SignatureData, CreatedByPersonId, RegistrarId, ReferralId)
+            VALUES (@pcId, @date, @notes, @sig, @createdBy, @regId, @refId)";
         cmd.Parameters.AddWithValue("@pcId", pcId);
         cmd.Parameters.AddWithValue("@date", date);
         cmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@sig", (object?)signatureData ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@createdBy", createdByPersonId.HasValue ? (object)createdByPersonId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@regId", registrarId.HasValue ? (object)registrarId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@refId", referralId.HasValue ? (object)referralId.Value : DBNull.Value);
         cmd.ExecuteNonQuery();
 
         using var idCmd = conn.CreateCommand();
@@ -542,15 +399,13 @@ public class PcService
             using var iCmd = conn.CreateCommand();
             iCmd.Transaction = tx;
             iCmd.CommandText = @"
-                INSERT INTO fin_purchase_items (PurchaseId, ItemType, CourseId, HoursBought, AmountPaid, RegistrarId, ReferralId)
-                VALUES (@pid, @type, @cid, @hrs, @amt, @regId, @refId)";
+                INSERT INTO fin_purchase_items (PurchaseId, ItemType, CourseId, HoursBought, AmountPaid)
+                VALUES (@pid, @type, @cid, @hrs, @amt)";
             iCmd.Parameters.AddWithValue("@pid", purchaseId);
             iCmd.Parameters.AddWithValue("@type", item.itemType);
             iCmd.Parameters.AddWithValue("@cid", item.courseId.HasValue ? (object)item.courseId.Value : DBNull.Value);
             iCmd.Parameters.AddWithValue("@hrs", item.hoursBought);
             iCmd.Parameters.AddWithValue("@amt", item.amountPaid);
-            iCmd.Parameters.AddWithValue("@regId", item.registrarId.HasValue ? (object)item.registrarId.Value : DBNull.Value);
-            iCmd.Parameters.AddWithValue("@refId", item.referralId.HasValue ? (object)item.referralId.Value : DBNull.Value);
             iCmd.ExecuteNonQuery();
 
             // Auto-enroll in Academy StudentCourses when a course is purchased
@@ -588,26 +443,6 @@ public class PcService
                 pmCmd.Parameters.AddWithValue("@date", (object?)pm.paymentDate ?? DBNull.Value);
                 pmCmd.ExecuteNonQuery();
             }
-        }
-
-        // Also insert into fin_payments table for hours tracking
-        foreach (var item in items)
-        {
-            using var payCmd = conn.CreateCommand();
-            payCmd.Transaction = tx;
-            payCmd.CommandText = @"
-                INSERT INTO fin_payments (PcId, PaymentDate, HoursBought, AmountPaid, PaymentType, CourseId, RegistrarId, ReferralId, PurchaseId)
-                VALUES (@pcId, @date, @hrs, @amt, @type, @cid, @regId, @refId, @purchaseId)";
-            payCmd.Parameters.AddWithValue("@pcId", pcId);
-            payCmd.Parameters.AddWithValue("@date", date);
-            payCmd.Parameters.AddWithValue("@hrs", item.hoursBought);
-            payCmd.Parameters.AddWithValue("@amt", item.amountPaid);
-            payCmd.Parameters.AddWithValue("@type", item.itemType);
-            payCmd.Parameters.AddWithValue("@cid", item.courseId.HasValue ? (object)item.courseId.Value : DBNull.Value);
-            payCmd.Parameters.AddWithValue("@regId", item.registrarId.HasValue ? (object)item.registrarId.Value : DBNull.Value);
-            payCmd.Parameters.AddWithValue("@refId", item.referralId.HasValue ? (object)item.referralId.Value : DBNull.Value);
-            payCmd.Parameters.AddWithValue("@purchaseId", purchaseId);
-            payCmd.ExecuteNonQuery();
         }
 
         tx.Commit();
@@ -685,11 +520,17 @@ public class PcService
                    TRIM(per.FirstName || ' ' || COALESCE(NULLIF(per.LastName,''), '')) AS PcName,
                    p.PurchaseDate, p.Notes, p.SignatureData, p.ApprovedStatus,
                    TRIM(COALESCE(ap.FirstName,'') || ' ' || COALESCE(NULLIF(ap.LastName,''),'')) AS ApprovedByName,
-                   TRIM(COALESCE(cr.FirstName,'') || ' ' || COALESCE(NULLIF(cr.LastName,''),'')) AS CreatedByName
+                   TRIM(COALESCE(cr.FirstName,'') || ' ' || COALESCE(NULLIF(cr.LastName,''),'')) AS CreatedByName,
+                   p.RegistrarId,
+                   TRIM(COALESCE(reg.FirstName,'') || ' ' || COALESCE(NULLIF(reg.LastName,''),'')) AS RegistrarName,
+                   p.ReferralId,
+                   TRIM(COALESCE(rf.FirstName,'') || ' ' || COALESCE(NULLIF(rf.LastName,''),'')) AS ReferralName
             FROM fin_purchases p
             JOIN core_persons per ON per.PersonId = p.PcId
             LEFT JOIN core_persons ap ON ap.PersonId = p.ApprovedByPersonId
             LEFT JOIN core_persons cr ON cr.PersonId = p.CreatedByPersonId
+            LEFT JOIN core_persons reg ON reg.PersonId = p.RegistrarId
+            LEFT JOIN core_persons rf ON rf.PersonId = p.ReferralId
             WHERE p.PurchaseId = @id";
         cmd.Parameters.AddWithValue("@id", purchaseId);
         using var r = cmd.ExecuteReader();
@@ -705,21 +546,19 @@ public class PcService
             r.GetString(6),
             r.IsDBNull(7) ? null : r.GetString(7).Trim(),
             r.IsDBNull(8) ? null : r.GetString(8).Trim(),
-            items, paymentMethods);
+            items, paymentMethods,
+            r.IsDBNull(9) ? null : r.GetInt32(9),
+            r.IsDBNull(10) ? null : r.GetString(10).Trim(),
+            r.IsDBNull(11) ? null : r.GetInt32(11),
+            r.IsDBNull(12) ? null : r.GetString(12).Trim());
         r.Close();
 
         using var iCmd = conn.CreateCommand();
         iCmd.CommandText = @"
             SELECT pi.PurchaseItemId, pi.ItemType, pi.CourseId, c.Name,
-                   pi.HoursBought, pi.AmountPaid,
-                   pi.RegistrarId,
-                   TRIM(COALESCE(reg.FirstName,'') || ' ' || COALESCE(NULLIF(reg.LastName,''),'')) AS RegistrarName,
-                   pi.ReferralId,
-                   TRIM(COALESCE(rf.FirstName,'') || ' ' || COALESCE(NULLIF(rf.LastName,''),'')) AS ReferralName
+                   pi.HoursBought, pi.AmountPaid
             FROM fin_purchase_items pi
             LEFT JOIN lkp_courses c ON c.CourseId = pi.CourseId
-            LEFT JOIN core_persons reg ON reg.PersonId = pi.RegistrarId
-            LEFT JOIN core_persons rf ON rf.PersonId = pi.ReferralId
             WHERE pi.PurchaseId = @id
             ORDER BY pi.PurchaseItemId";
         iCmd.Parameters.AddWithValue("@id", purchaseId);
@@ -729,11 +568,7 @@ public class PcService
                 ir.GetInt32(0), ir.GetString(1),
                 ir.IsDBNull(2) ? null : ir.GetInt32(2),
                 ir.IsDBNull(3) ? null : ir.GetString(3),
-                ir.GetInt32(4), ir.GetInt32(5),
-                ir.IsDBNull(6) ? null : ir.GetInt32(6),
-                ir.IsDBNull(7) ? null : ir.GetString(7).Trim(),
-                ir.IsDBNull(8) ? null : ir.GetInt32(8),
-                ir.IsDBNull(9) ? null : ir.GetString(9).Trim()));
+                ir.GetInt32(4), ir.GetInt32(5)));
         ir.Close();
 
         // Load payment methods
@@ -834,14 +669,15 @@ public class PcService
     }
 
     public void UpdatePurchase(int purchaseId, string date, string? notes,
-        List<(string itemType, int? courseId, int hoursBought, int amountPaid, int? registrarId, int? referralId)> items,
-        List<(string methodType, int amount, string? paymentDate)> paymentMethods)
+        List<(string itemType, int? courseId, int hoursBought, int amountPaid)> items,
+        List<(string methodType, int amount, string? paymentDate)> paymentMethods,
+        int? registrarId = null, int? referralId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var tx = conn.BeginTransaction();
 
-        // Get PcId for hours tracking
+        // Get PcId
         int pcId;
         using (var q = conn.CreateCommand())
         {
@@ -857,11 +693,14 @@ public class PcService
             cmd.Transaction = tx;
             cmd.CommandText = @"
                 UPDATE fin_purchases SET PurchaseDate = @date, Notes = @notes,
+                    RegistrarId = @regId, ReferralId = @refId,
                     ApprovedStatus = 'Draft', ApprovedByPersonId = NULL, ApprovedAt = NULL
                 WHERE PurchaseId = @id";
             cmd.Parameters.AddWithValue("@id", purchaseId);
             cmd.Parameters.AddWithValue("@date", date);
             cmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@regId", registrarId.HasValue ? (object)registrarId.Value : DBNull.Value);
+            cmd.Parameters.AddWithValue("@refId", referralId.HasValue ? (object)referralId.Value : DBNull.Value);
             cmd.ExecuteNonQuery();
         }
 
@@ -885,15 +724,13 @@ public class PcService
             using var iCmd = conn.CreateCommand();
             iCmd.Transaction = tx;
             iCmd.CommandText = @"
-                INSERT INTO fin_purchase_items (PurchaseId, ItemType, CourseId, HoursBought, AmountPaid, RegistrarId, ReferralId)
-                VALUES (@pid, @type, @cid, @hrs, @amt, @regId, @refId)";
+                INSERT INTO fin_purchase_items (PurchaseId, ItemType, CourseId, HoursBought, AmountPaid)
+                VALUES (@pid, @type, @cid, @hrs, @amt)";
             iCmd.Parameters.AddWithValue("@pid", purchaseId);
             iCmd.Parameters.AddWithValue("@type", item.itemType);
             iCmd.Parameters.AddWithValue("@cid", item.courseId.HasValue ? (object)item.courseId.Value : DBNull.Value);
             iCmd.Parameters.AddWithValue("@hrs", item.hoursBought);
             iCmd.Parameters.AddWithValue("@amt", item.amountPaid);
-            iCmd.Parameters.AddWithValue("@regId", item.registrarId.HasValue ? (object)item.registrarId.Value : DBNull.Value);
-            iCmd.Parameters.AddWithValue("@refId", item.referralId.HasValue ? (object)item.referralId.Value : DBNull.Value);
             iCmd.ExecuteNonQuery();
 
             if (item.itemType == "Course" && item.courseId.HasValue)
@@ -941,28 +778,6 @@ public class PcService
             pmCmd.Parameters.AddWithValue("@amt", pm.amount);
             pmCmd.Parameters.AddWithValue("@date", (object?)pm.paymentDate ?? DBNull.Value);
             pmCmd.ExecuteNonQuery();
-        }
-
-        // Update fin_payments: delete old linked rows + recreate
-        using (var d = conn.CreateCommand()) { d.Transaction = tx; d.CommandText = "DELETE FROM fin_payments WHERE PurchaseId = @id"; d.Parameters.AddWithValue("@id", purchaseId); d.ExecuteNonQuery(); }
-
-        foreach (var item in items)
-        {
-            using var payCmd = conn.CreateCommand();
-            payCmd.Transaction = tx;
-            payCmd.CommandText = @"
-                INSERT INTO fin_payments (PcId, PaymentDate, HoursBought, AmountPaid, PaymentType, CourseId, RegistrarId, ReferralId, PurchaseId)
-                VALUES (@pcId, @date, @hrs, @amt, @type, @cid, @regId, @refId, @purchaseId)";
-            payCmd.Parameters.AddWithValue("@pcId", pcId);
-            payCmd.Parameters.AddWithValue("@date", date);
-            payCmd.Parameters.AddWithValue("@hrs", item.hoursBought);
-            payCmd.Parameters.AddWithValue("@amt", item.amountPaid);
-            payCmd.Parameters.AddWithValue("@type", item.itemType);
-            payCmd.Parameters.AddWithValue("@cid", item.courseId.HasValue ? (object)item.courseId.Value : DBNull.Value);
-            payCmd.Parameters.AddWithValue("@regId", item.registrarId.HasValue ? (object)item.registrarId.Value : DBNull.Value);
-            payCmd.Parameters.AddWithValue("@refId", item.referralId.HasValue ? (object)item.referralId.Value : DBNull.Value);
-            payCmd.Parameters.AddWithValue("@purchaseId", purchaseId);
-            payCmd.ExecuteNonQuery();
         }
 
         tx.Commit();

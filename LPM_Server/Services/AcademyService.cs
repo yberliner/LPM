@@ -31,28 +31,7 @@ public class AcademyService
 
     private void EnsureSchema()
     {
-        using var conn = new SqliteConnection(_connectionString);
-        conn.Open();
-
-        if (!GetTableNames(conn).Contains("acad_attendance"))
-        {
-            Execute(conn, @"
-                CREATE TABLE acad_attendance (
-                    StudentId INTEGER PRIMARY KEY AUTOINCREMENT,
-                    PersonId  INTEGER NOT NULL,
-                    VisitDate TEXT    NOT NULL,
-                    VisitsPerDay INTEGER NOT NULL DEFAULT 1,
-                    UNIQUE (PersonId, VisitDate)
-                )");
-        }
-        else
-        {
-            // Migration: add VisitsPerDay column if missing
-            var cols = GetColumnNames(conn, "acad_attendance");
-            if (!cols.Contains("VisitsPerDay"))
-                Execute(conn, "ALTER TABLE acad_attendance ADD COLUMN VisitsPerDay INTEGER NOT NULL DEFAULT 1");
-        }
-
+        // Schema managed directly in DB — no CREATE TABLE statements here.
     }
 
     // ── Persons ─────────────────────────────────────────────────────────────
@@ -544,32 +523,4 @@ public class AcademyService
         cmd.ExecuteNonQuery();
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
-
-    private static HashSet<string> GetTableNames(SqliteConnection conn)
-    {
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table'";
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        using var r = cmd.ExecuteReader();
-        while (r.Read()) names.Add(r.GetString(0));
-        return names;
-    }
-
-    private static HashSet<string> GetColumnNames(SqliteConnection conn, string table)
-    {
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"PRAGMA table_info({table})";
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        using var r = cmd.ExecuteReader();
-        while (r.Read()) names.Add(r.GetString(1)); // column 1 = name
-        return names;
-    }
-
-    private static void Execute(SqliteConnection conn, string sql)
-    {
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = sql;
-        cmd.ExecuteNonQuery();
-    }
 }

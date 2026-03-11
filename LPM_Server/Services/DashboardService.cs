@@ -58,31 +58,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        // Create StaffMessages table
-        using var msgCmd = conn.CreateCommand();
-        msgCmd.CommandText = @"
-            CREATE TABLE IF NOT EXISTS sys_staff_messages (
-                Id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                FromStaffId     INTEGER NOT NULL,
-                ToStaffId       INTEGER NOT NULL,
-                MsgText         TEXT    NOT NULL,
-                CreatedAt       TEXT    NOT NULL DEFAULT (datetime('now')),
-                AcknowledgedAt  TEXT    NULL
-            )";
-        msgCmd.ExecuteNonQuery();
-
-        // Create AuditorPcPermissions table
-        using var permCmd = conn.CreateCommand();
-        permCmd.CommandText = @"
-            CREATE TABLE IF NOT EXISTS sys_auditor_pc_permissions (
-                Id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                AuditorId   INTEGER NOT NULL,
-                PcId        INTEGER NOT NULL,
-                IsApproved  INTEGER NOT NULL DEFAULT 0,
-                RequestedAt TEXT NOT NULL DEFAULT (date('now')),
-                UNIQUE(AuditorId, PcId)
-            )";
-        permCmd.ExecuteNonQuery();
+        // Schema managed directly in DB — no CREATE TABLE statements here.
 
         // Remove duplicate Persons rows (keep lowest PersonId per FirstName)
         using var dedupCmd = conn.CreateCommand();

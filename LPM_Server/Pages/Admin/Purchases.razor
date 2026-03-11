@@ -171,6 +171,18 @@
                         <div class="small" style="color:#6b7280;">@FormatDate(_viewDetail.PurchaseDate)</div>
                     </div>
 
+                    @* Registrar / Referral (purchase-level) *@
+                    <div class="d-flex gap-4 mb-3 small" style="color:#6b7280;">
+                        @if (!string.IsNullOrWhiteSpace(_viewDetail.RegistrarName))
+                        {
+                            <span><i class="ri-user-line me-1"></i>@LS.T("courses.registrar"): <strong style="color:#212529;">@_viewDetail.RegistrarName</strong></span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(_viewDetail.ReferralName))
+                        {
+                            <span><i class="ri-user-received-line me-1"></i>@LS.T("courses.referral"): <strong style="color:#212529;">@_viewDetail.ReferralName</strong></span>
+                        }
+                    </div>
+
                     @if (_viewDetail.Items.Count > 0)
                     {
                         <table class="table table-sm table-bordered mb-3" style="--bs-table-bg:#fff;--bs-table-color:#212529;--bs-table-border-color:#dee2e6;">
@@ -179,8 +191,6 @@
                                     <th class="small" style="color:#212529;">@LS.T("pcs.type")</th>
                                     <th class="small text-center" style="color:#212529;">@LS.T("pcs.hrsVis")</th>
                                     <th class="small text-end" style="color:#212529;">@LS.T("pcs.amount")</th>
-                                    <th class="small" style="color:#212529;">@LS.T("courses.registrar")</th>
-                                    <th class="small" style="color:#212529;">@LS.T("courses.referral")</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -206,8 +216,6 @@
                                             else { @($"{item.HoursBought}h") }
                                         </td>
                                         <td class="small text-end" style="color:#212529;">@(item.AmountPaid > 0 ? $"\u20AA{item.AmountPaid}" : "\u2014")</td>
-                                        <td class="small" style="color:#6b7280;">@item.RegistrarName</td>
-                                        <td class="small" style="color:#6b7280;">@item.ReferralName</td>
                                     </tr>
                                 }
                             </tbody>
@@ -222,7 +230,6 @@
                                         @{ var totalAmt = _viewDetail.Items.Sum(i => i.AmountPaid); }
                                         @(totalAmt > 0 ? $"\u20AA{totalAmt}" : "\u2014")
                                     </td>
-                                    <td colspan="2"></td>
                                 </tr>
                             </tfoot>
                         </table>
