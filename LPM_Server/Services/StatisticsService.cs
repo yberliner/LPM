@@ -303,6 +303,200 @@ public class StatisticsService
     }
 
     /// <summary>
+    /// Returns a single WeekStatSummary aggregating all data in the given date range (for monthly use).
+    /// </summary>
+    public WeekStatSummary GetMonthSummary(DateOnly monthStart, DateOnly monthEnd)
+    {
+        var startStr = monthStart.ToString("yyyy-MM-dd");
+        var endStr   = monthEnd.ToString("yyyy-MM-dd");
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Total audit+CS seconds
+        int totalSec = 0;
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT COALESCE(SUM(LengthSeconds + AdminSeconds), 0)
+                FROM sess_sessions
+                WHERE SessionDate >= @s AND SessionDate <= @e";
+            cmd.Parameters.AddWithValue("@s", startStr);
+            cmd.Parameters.AddWithValue("@e", endStr);
+            totalSec = Convert.ToInt32(cmd.ExecuteScalar());
+        }
+        // Solo CS time
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT COALESCE(SUM(cr.ReviewLengthSeconds), 0)
+                FROM cs_reviews cr
+                JOIN sess_sessions s ON s.SessionId = cr.SessionId
+                JOIN sess_auditors a ON a.AuditorId = cr.CsId
+                WHERE s.SessionDate >= @s AND s.SessionDate <= @e
+                  AND s.PcId = s.AuditorId
+                  AND a.Type IN (2, 3)";
+            cmd.Parameters.AddWithValue("@s", startStr);
+            cmd.Parameters.AddWithValue("@e", endStr);
+            totalSec += Convert.ToInt32(cmd.ExecuteScalar());
+        }
+
+        // Unique academy persons
+        int academyCount = 0;
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT COUNT(DISTINCT PersonId)
+                FROM acad_attendance
+                WHERE VisitDate >= @s AND VisitDate <= @e";
+            cmd.Parameters.AddWithValue("@s", startStr);
+            cmd.Parameters.AddWithValue("@e", endStr);
+            academyCount = Convert.ToInt32(cmd.ExecuteScalar());
+        }
+
+        // Unique PCs
+        int pcCount = 0;
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT COUNT(DISTINCT PcId)
+                FROM sess_sessions
+                WHERE SessionDate >= @s AND SessionDate <= @e";
+            cmd.Parameters.AddWithValue("@s", startStr);
+            cmd.Parameters.AddWithValue("@e", endStr);
+            pcCount = Convert.ToInt32(cmd.ExecuteScalar());
+        }
+
+        // Body in shop (unique persons: PcId from sessions UNION PersonId from academy)
+        int bodyInShop = 0;
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT COUNT(DISTINCT pid) FROM (
+                    SELECT PcId AS pid FROM sess_sessions
+                    WHERE SessionDate >= @s AND SessionDate <= @e
+                    UNION ALL
+                    SELECT PersonId AS pid FROM acad_attendance
+                    WHERE VisitDate >= @s AND VisitDate <= @e
+                )";
+            cmd.Parameters.AddWithValue("@s", startStr);
+            cmd.Parameters.AddWithValue("@e", endStr);
+            bodyInShop = Convert.ToInt32(cmd.ExecuteScalar());
+        }
+
+        return new WeekStatSummary(monthStart, totalSec, academyCount, bodyInShop, pcCount);
+    }
+
+    /// <summary>
+    /// Returns auditing hours grouped by PC Origin for the given date range.
+    /// </summary>
+    public List<OriginHours> GetMonthOriginHours(DateOnly monthStart, DateOnly monthEnd)
+    {
+        var startStr = monthStart.ToString("yyyy-MM-dd");
+        var endStr   = monthEnd.ToString("yyyy-MM-dd");
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT COALESCE(og.Name, 'Unknown') AS Org,
+                   SUM(s.LengthSeconds + s.AdminSeconds) AS TotalSec
+            FROM sess_sessions s
+            JOIN core_persons p ON p.PersonId = s.PcId
+            LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
+            WHERE s.SessionDate >= @s AND s.SessionDate <= @e
+            GROUP BY COALESCE(og.Name, 'Unknown')
+            ORDER BY TotalSec DESC";
+        cmd.Parameters.AddWithValue("@s", startStr);
+        cmd.Parameters.AddWithValue("@e", endStr);
+
+        var list = new List<OriginHours>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new OriginHours(r.GetString(0), r.GetInt32(1)));
+        return list;
+    }
+
+    /// <summary>
+    /// Returns staff leaderboard aggregated over a date range (for monthly use).
+    /// </summary>
+    public List<StaffStatRow> GetMonthStaffLeaderboard(DateOnly monthStart, DateOnly monthEnd)
+    {
+        var startStr = monthStart.ToString("yyyy-MM-dd");
+        var endStr   = monthEnd.ToString("yyyy-MM-dd");
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Active auditor names
+        var auditorNames = new Dictionary<int, string>();
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT a.AuditorId,
+                       TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS Name
+                FROM sess_auditors a
+                JOIN core_persons p ON p.PersonId = a.AuditorId
+                WHERE a.IsActive = 1";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                auditorNames[r.GetInt32(0)] = r.GetString(1);
+        }
+
+        // Audit seconds per auditor
+        var auditSecs = new Dictionary<int, int>();
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT AuditorId, SUM(LengthSeconds + AdminSeconds)
+                FROM sess_sessions
+                WHERE SessionDate >= @s AND SessionDate <= @e
+                GROUP BY AuditorId";
+            cmd.Parameters.AddWithValue("@s", startStr);
+            cmd.Parameters.AddWithValue("@e", endStr);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                auditSecs[r.GetInt32(0)] = r.GetInt32(1);
+        }
+
+        // Solo CS seconds per csId
+        var soloCsSecs = new Dictionary<int, int>();
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT cr.CsId, SUM(cr.ReviewLengthSeconds)
+                FROM cs_reviews cr
+                JOIN sess_sessions s ON s.SessionId = cr.SessionId
+                JOIN sess_auditors a ON a.AuditorId = cr.CsId
+                WHERE s.SessionDate >= @s AND s.SessionDate <= @e
+                  AND s.PcId = s.AuditorId
+                  AND a.Type IN (2, 3)
+                GROUP BY cr.CsId";
+            cmd.Parameters.AddWithValue("@s", startStr);
+            cmd.Parameters.AddWithValue("@e", endStr);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                soloCsSecs[r.GetInt32(0)] = r.GetInt32(1);
+        }
+
+        var allPids = new HashSet<int>(auditorNames.Keys);
+        foreach (var k in auditSecs.Keys)  allPids.Add(k);
+        foreach (var k in soloCsSecs.Keys) allPids.Add(k);
+
+        return allPids
+            .Select(pid =>
+            {
+                string name = auditorNames.TryGetValue(pid, out var n) ? n : $"Person {pid}";
+                int audit = auditSecs.GetValueOrDefault(pid);
+                int cs    = soloCsSecs.GetValueOrDefault(pid);
+                return new StaffStatRow(pid, name, audit, cs);
+            })
+            .Where(s => s.TotalSec > 0)
+            .OrderByDescending(s => s.TotalSec)
+            .ToList();
+    }
+
+    /// <summary>
     /// Returns auditing hours (LengthSeconds + AdminSeconds) grouped by PC Origin for the given week.
     /// Ordered by total descending.
     /// </summary>

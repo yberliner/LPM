@@ -681,14 +681,23 @@ public class PdfService
         List<DayStat> dayStats,
         List<WeekStatSummary> weekHistory,
         WeekStatSummary? currentWeekSummary,
-        List<OriginHours>? originHours = null)
+        List<OriginHours>? originHours = null,
+        List<StaffStatRow>? monthStaff = null,
+        WeekStatSummary? monthSummary = null,
+        List<OriginHours>? monthOriginHours = null,
+        string? monthLabel = null,
+        int monthWeekCount = 0,
+        DateOnly? monthStart = null,
+        DateOnly? monthEnd = null)
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
         var weekEnd = weekStart.AddDays(6);
+        bool hasMonthData = monthSummary != null && monthStaff != null && monthStaff.Count > 0;
 
         return Document.Create(container =>
         {
+            // ── PAGE 1: Weekly Report ──────────────────────────────────────
             container.Page(page =>
             {
                 page.Size(PageSizes.A4);
@@ -785,11 +794,11 @@ public class PdfService
                                 }
                             });
 
-                            // ── PC Origin Hours (below day-by-day table) ─────────────
+                            // ── Hours by Organization (below day-by-day table) ───────
                             if (originHours != null && originHours.Count > 0)
                             {
                                 left.Item().PaddingTop(8);
-                                left.Item().Text("PC Origin — Auditing Hours").SemiBold().FontSize(9).FontColor("#1a1a2e");
+                                left.Item().Text("Hours by Organization").SemiBold().FontSize(9).FontColor("#1a1a2e");
                                 left.Item().PaddingTop(3);
                                 left.Item().Table(ot =>
                                 {
@@ -825,7 +834,7 @@ public class PdfService
 
                         mainRow.RelativeItem(4).Column(right =>
                         {
-                            right.Item().Text("Staff Leaderboard").SemiBold().FontSize(9).FontColor("#1a1a2e");
+                            right.Item().Text("Week Staff Leaderboard").SemiBold().FontSize(9).FontColor("#1a1a2e");
                             right.Item().PaddingTop(3);
                             if (weekStaff.Count == 0)
                             {
@@ -882,6 +891,148 @@ public class PdfService
                     });
                 });
             });
+
+            // ── PAGE 2: Monthly Report ─────────────────────────────────────
+            if (hasMonthData)
+            {
+                container.Page(page =>
+                {
+                    page.Size(PageSizes.A4);
+                    page.Margin(10, Unit.Millimetre);
+                    page.DefaultTextStyle(x => x.FontSize(9));
+
+                    page.Content().ScaleToFit().Column(col =>
+                    {
+                        // Monthly header
+                        col.Item().Row(r =>
+                        {
+                            r.RelativeItem().Column(c =>
+                            {
+                                c.Item().Text($"Monthly Report — {monthLabel ?? ""}").SemiBold().FontSize(16).FontColor("#4338ca");
+                                c.Item().Text($"{monthStart?.ToString("ddd dd/MM/yyyy") ?? ""} – {monthEnd?.ToString("ddd dd/MM/yyyy") ?? ""} · {monthWeekCount} weeks")
+                                    .FontSize(9).FontColor(Colors.Grey.Darken2);
+                            });
+                        });
+
+                        col.Item().PaddingTop(6).LineHorizontal(1.2f).LineColor("#4338ca");
+                        col.Item().PaddingTop(8);
+
+                        // Month 4-box summary (indigo themed)
+                        col.Item().Row(r =>
+                        {
+                            r.RelativeItem().Border(1).BorderColor("#c7d2fe").Background("#eef2ff").CornerRadius(4).Padding(7).Column(c =>
+                            {
+                                c.Item().AlignCenter().Text("Aud+CS Sold").FontSize(7).FontColor(Colors.Grey.Darken2).SemiBold();
+                                c.Item().PaddingTop(3).AlignCenter().Text(FmtSec(monthSummary!.TotalAuditCsSec)).FontSize(16).Bold().FontColor("#4338ca");
+                            });
+                            r.ConstantItem(6);
+                            r.RelativeItem().Border(1).BorderColor("#dbeafe").Background("#eff6ff").CornerRadius(4).Padding(7).Column(c =>
+                            {
+                                c.Item().AlignCenter().Text("PCs").FontSize(7).FontColor(Colors.Grey.Darken2).SemiBold();
+                                c.Item().PaddingTop(3).AlignCenter().Text(monthSummary.PcCount.ToString()).FontSize(16).Bold().FontColor("#2563eb");
+                            });
+                            r.ConstantItem(6);
+                            r.RelativeItem().Border(1).BorderColor("#d1fae5").Background("#f0fdf4").CornerRadius(4).Padding(7).Column(c =>
+                            {
+                                c.Item().AlignCenter().Text("Academy").FontSize(7).FontColor(Colors.Grey.Darken2).SemiBold();
+                                c.Item().PaddingTop(3).AlignCenter().Text(monthSummary.AcademyCount.ToString()).FontSize(16).Bold().FontColor("#16a34a");
+                            });
+                            r.ConstantItem(6);
+                            r.RelativeItem().Border(1).BorderColor("#fde8d8").Background("#fff7ed").CornerRadius(4).Padding(7).Column(c =>
+                            {
+                                c.Item().AlignCenter().Text("Body in Shop").FontSize(7).FontColor(Colors.Grey.Darken2).SemiBold();
+                                c.Item().PaddingTop(3).AlignCenter().Text(monthSummary.BodyInShop.ToString()).FontSize(16).Bold().FontColor("#ea580c");
+                            });
+                        });
+
+                        col.Item().PaddingTop(10);
+
+                        // Month staff leaderboard + origin hours side by side
+                        col.Item().Row(mainRow =>
+                        {
+                            mainRow.RelativeItem(5).Column(left =>
+                            {
+                                left.Item().Text("Month Staff Leaderboard").SemiBold().FontSize(9).FontColor("#4338ca");
+                                left.Item().PaddingTop(3);
+                                if (monthStaff!.Count == 0)
+                                {
+                                    left.Item().Text("No sessions this month.").FontSize(8).FontColor(Colors.Grey.Medium);
+                                }
+                                else
+                                {
+                                    left.Item().Table(table =>
+                                    {
+                                        table.ColumnsDefinition(cols =>
+                                        {
+                                            cols.ConstantColumn(18);
+                                            cols.RelativeColumn(3);
+                                            cols.RelativeColumn(2);
+                                            cols.RelativeColumn(2);
+                                            cols.RelativeColumn(2);
+                                        });
+                                        table.Header(h =>
+                                        {
+                                            h.Cell().Background("#4338ca").Padding(3).AlignCenter().Text("#").FontSize(7).SemiBold().FontColor(Colors.White);
+                                            h.Cell().Background("#4338ca").Padding(3).Text("Name").FontSize(7).SemiBold().FontColor(Colors.White);
+                                            h.Cell().Background("#4338ca").Padding(3).AlignCenter().Text("Auditing").FontSize(7).SemiBold().FontColor(Colors.White);
+                                            h.Cell().Background("#4338ca").Padding(3).AlignCenter().Text("CS Solo").FontSize(7).SemiBold().FontColor(Colors.White);
+                                            h.Cell().Background("#4338ca").Padding(3).AlignCenter().Text("Total").FontSize(7).SemiBold().FontColor(Colors.White);
+                                        });
+                                        int mrank = 1;
+                                        foreach (var s in monthStaff)
+                                        {
+                                            var bg = mrank % 2 == 0 ? Colors.Grey.Lighten5 : Colors.White;
+                                            table.Cell().Background(bg).AlignCenter().Padding(3).Text(mrank.ToString()).FontSize(8).FontColor(Colors.Grey.Darken1);
+                                            table.Cell().Background(bg).Padding(3).Text(s.Name).FontSize(8).SemiBold();
+                                            table.Cell().Background(bg).AlignCenter().Padding(3).Text(s.AuditSec > 0 ? FmtSec(s.AuditSec) : "–").FontSize(8).FontColor(s.AuditSec > 0 ? "#1a73e8" : Colors.Grey.Medium);
+                                            table.Cell().Background(bg).AlignCenter().Padding(3).Text(s.SoloCsSec > 0 ? FmtSec(s.SoloCsSec) : "–").FontSize(8).FontColor(s.SoloCsSec > 0 ? "#c5221f" : Colors.Grey.Medium);
+                                            table.Cell().Background(bg).AlignCenter().Padding(3).Text(FmtSec(s.TotalSec)).FontSize(8).SemiBold().FontColor("#4338ca");
+                                            mrank++;
+                                        }
+                                    });
+                                }
+                            });
+
+                            mainRow.ConstantItem(12);
+
+                            mainRow.RelativeItem(4).Column(right =>
+                            {
+                                // Month origin hours
+                                if (monthOriginHours != null && monthOriginHours.Count > 0)
+                                {
+                                    right.Item().Text("Hours by Organization — Month").SemiBold().FontSize(9).FontColor("#4338ca");
+                                    right.Item().PaddingTop(3);
+                                    right.Item().Table(ot =>
+                                    {
+                                        ot.ColumnsDefinition(oc =>
+                                        {
+                                            oc.RelativeColumn(3);
+                                            oc.RelativeColumn(2);
+                                        });
+                                        ot.Header(h =>
+                                        {
+                                            h.Cell().Background("#4338ca").Padding(3).Text("Origin").FontSize(7).SemiBold().FontColor(Colors.White);
+                                            h.Cell().Background("#4338ca").Padding(3).AlignCenter().Text("Hours").FontSize(7).SemiBold().FontColor(Colors.White);
+                                        });
+                                        foreach (var oh in monthOriginHours)
+                                        {
+                                            var (oBg, oColor) = oh.Origin switch
+                                            {
+                                                "Haifa"       => ("#f5f3ff", "#7c3aed"),
+                                                "Riga"        => ("#f0fdfa", "#0d9488"),
+                                                "from Abroad" => ("#fff7ed", "#ea580c"),
+                                                _             => ("#f9fafb", "#6b7280"),
+                                            };
+                                            ot.Cell().Background(oBg).Padding(3).Text(oh.Origin).FontSize(8).FontColor(oColor).SemiBold();
+                                            ot.Cell().Background(oBg).AlignCenter().Padding(3).Text(FmtSec(oh.Seconds)).FontSize(8).FontColor(oColor).SemiBold();
+                                        }
+                                    });
+                                }
+                            });
+                        });
+                    });
+                });
+            }
         }).GeneratePdf();
     }
 

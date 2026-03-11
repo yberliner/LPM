@@ -10,6 +10,7 @@
 
 <style>
     .stat-card-gradient-purple { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+
     .stat-card-gradient-dark   { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); }
     .stat-metric-box {
         border-radius: 12px; padding: 12px 8px; text-align: center;
@@ -132,38 +133,43 @@
     @* ── Two-column layout ── *@
     <div class="row g-3">
 
-        @* ── LEFT: Staff Leaderboard + PC Origin ── *@
+        @* ── LEFT: Week Leaderboard + Month Leaderboard + Hours by Org ── *@
         <div class="col-xl-7 col-lg-7 d-flex flex-column gap-3">
+
+            @* ── Week Leaderboard (full table style) ── *@
+            @{ var weekStaffList = GetWeekStaff(); }
             <div class="card border-0 shadow-sm" style="border-radius:14px;overflow:visible;">
-                <div class="card-header border-0 py-3 stat-card-gradient-purple" style="border-radius:14px 14px 0 0;">
+                <div class="card-header border-0 py-3 stat-card-gradient-purple" style="border-radius:14px 14px 0 0;cursor:pointer;"
+                     @onclick="() => _weekLeaderExpanded = !_weekLeaderExpanded">
                     <div class="d-flex align-items-start justify-content-between text-white">
                         <div>
                             <h6 class="mb-0 fw-bold fs-14">
-                                <i class="ri-trophy-fill me-2"></i>@LS.T("stats.staffLeaderboard")
+                                <i class="@(_weekLeaderExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line") me-1" style="font-size:1.1rem;"></i>
+                                <i class="ri-trophy-fill me-1"></i>@LS.T("stats.weekLeaderboard")
                             </h6>
                             <div class="opacity-75 mt-1" style="font-size:0.8rem;">
-                                @_dayStats[_selDay].Date.ToString("dddd, dd MMMM yyyy", CultureInfo.InvariantCulture)
+                                @DayLabel(_weekStart) – @DayLabel(_weekStart.AddDays(6))
                             </div>
                         </div>
                         <div class="text-end">
-                            <div class="fw-bold fs-4 text-white lh-1">@Fmt(_dayStats[_selDay].Staff.Sum(s => s.TotalSec))</div>
-                            <div class="opacity-75 mt-1" style="font-size:0.75rem;">@LS.T("stats.dayTotal")</div>
+                            <div class="fw-bold fs-4 text-white lh-1">@Fmt(weekStaffList.Sum(s => s.TotalSec))</div>
+                            <div class="opacity-75 mt-1" style="font-size:0.75rem;">@LS.T("stats.weekTotal")</div>
                         </div>
                     </div>
                 </div>
 
+                @if (_weekLeaderExpanded)
+                {
                 <div class="card-body p-0">
                     @{
-                        var selDay = _dayStats[_selDay];
-                        var maxSec = selDay.Staff.Count > 0 ? selDay.Staff[0].TotalSec : 1;
-                        int rank   = 1;
+                        var weekMax = weekStaffList.Count > 0 ? weekStaffList[0].TotalSec : 1;
+                        int wRank  = 1;
                     }
-                    @if (selDay.Staff.Count == 0)
+                    @if (weekStaffList.Count == 0)
                     {
                         <div class="text-center py-5 text-muted">
                             <i class="ri-calendar-event-line d-block mb-2 opacity-40" style="font-size:2.5rem;"></i>
-                            <div class="fw-semibold">@LS.T("stats.noSessionsRecorded")</div>
-                            <div class="small mt-1">@LS.T("stats.for") @selDay.Date.ToString("dddd dd/MM", CultureInfo.InvariantCulture)</div>
+                            <div class="fw-semibold">@LS.T("stats.noDataWeek")</div>
                         </div>
                     }
                     else
@@ -179,23 +185,23 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var s in selDay.Staff)
+                                    @foreach (var s in weekStaffList)
                                     {
-                                        var pct       = maxSec > 0 ? (int)(s.TotalSec * 100.0 / maxSec) : 0;
-                                        var avColor   = AvatarColor(rank);
+                                        var pct       = weekMax > 0 ? (int)(s.TotalSec * 100.0 / weekMax) : 0;
+                                        var avColor   = AvatarColor(wRank);
                                         var firstName = s.Name.Split(' ')[0];
                                         <tr class="leaderboard-row border-bottom">
                                             <td class="ps-3 align-middle">
                                                 <div class="d-flex align-items-center gap-2">
                                                     <div class="avatar-wrap" style="--av-color:@avColor;">
                                                         <span class="name-pill" style="background:@avColor;">
-                                                            @if (rank == 1) { <i class="ri-medal-fill me-1" style="font-size:11px;"></i> }
+                                                            @if (wRank == 1) { <i class="ri-medal-fill me-1" style="font-size:11px;"></i> }
                                                             @firstName
                                                         </span>
                                                         <div class="avatar-hover-card">
                                                             <div class="avatar-big-circle">@(firstName.Length > 0 ? firstName[0].ToString().ToUpper() : "?")</div>
                                                             <div class="av-name">@s.Name</div>
-                                                            <div class="av-sub">#@rank · @Fmt(s.TotalSec)</div>
+                                                            <div class="av-sub">#@wRank · @Fmt(s.TotalSec)</div>
                                                         </div>
                                                     </div>
                                                     <div>
@@ -220,16 +226,108 @@
                                                 <span class="fw-bold">@Fmt(s.TotalSec)</span>
                                             </td>
                                         </tr>
-                                        rank++;
+                                        wRank++;
                                     }
                                 </tbody>
                             </table>
                         </div>
                     }
                 </div>
+                }
             </div>
 
-            @* ── PC Origin Hours card ── *@
+            @* ── Month Leaderboard ── *@
+            @if (_monthStaff.Count > 0)
+            {
+                <div class="card border-0 shadow-sm" style="border-radius:14px;overflow:visible;">
+                    <div class="card-header border-0 py-3" style="border-radius:14px 14px 0 0;background:linear-gradient(135deg,#4338ca 0%,#6366f1 100%);cursor:pointer;"
+                         @onclick="() => _monthLeaderExpanded = !_monthLeaderExpanded">
+                        <div class="d-flex align-items-start justify-content-between text-white">
+                            <div>
+                                <h6 class="mb-0 fw-bold" style="font-size:0.95rem;">
+                                    <i class="@(_monthLeaderExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line") me-1" style="font-size:1.1rem;"></i>
+                                    <i class="ri-bar-chart-box-line me-1"></i><strong>@_monthLabel</strong> Leaderboard
+                                </h6>
+                                <div class="opacity-75 mt-1" style="font-size:0.78rem;">
+                                    @DayLabel(_monthStart) – @DayLabel(_monthEnd) · @_monthWeekCount weeks
+                                </div>
+                            </div>
+                            <div class="text-end">
+                                <div class="fw-bold fs-4 text-white lh-1">@Fmt(_monthStaff.Sum(s => s.TotalSec))</div>
+                                <div class="opacity-75 mt-1" style="font-size:0.75rem;">Month Total</div>
+                            </div>
+                        </div>
+                    </div>
+                    @if (_monthLeaderExpanded)
+                    {
+                    <div class="card-body p-0">
+                        @{
+                            int mMax  = _monthStaff[0].TotalSec;
+                            int mRank = 1;
+                        }
+                        <div style="overflow:visible;">
+                            <table class="table mb-0" style="font-size:0.9rem;">
+                                <thead style="background:#f5f3ff;">
+                                    <tr style="font-size:0.75rem;letter-spacing:0.04em;text-transform:uppercase;color:#6b7280;">
+                                        <th class="ps-3 fw-semibold">@LS.T("stats.staffMember")</th>
+                                        <th class="text-center fw-semibold">@LS.T("stats.auditing")</th>
+                                        <th class="text-center fw-semibold">@LS.T("stats.csSolo")</th>
+                                        <th class="text-center fw-semibold pe-3">@LS.T("stats.total")</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var ms in _monthStaff)
+                                    {
+                                        var mPct      = mMax > 0 ? (int)(ms.TotalSec * 100.0 / mMax) : 0;
+                                        var mColor    = AvatarColor(mRank);
+                                        var firstName = ms.Name.Split(' ')[0];
+                                        <tr class="leaderboard-row border-bottom">
+                                            <td class="ps-3 align-middle">
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <div class="avatar-wrap" style="--av-color:@mColor;">
+                                                        <span class="name-pill" style="background:@mColor;">
+                                                            @if (mRank == 1) { <i class="ri-medal-fill me-1" style="font-size:11px;"></i> }
+                                                            @firstName
+                                                        </span>
+                                                        <div class="avatar-hover-card">
+                                                            <div class="avatar-big-circle">@(firstName.Length > 0 ? firstName[0].ToString().ToUpper() : "?")</div>
+                                                            <div class="av-name">@ms.Name</div>
+                                                            <div class="av-sub">#@mRank · @Fmt(ms.TotalSec)</div>
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <div class="fw-semibold">@ms.Name</div>
+                                                        <div class="progress-thin mt-1" style="width:90px;">
+                                                            <div class="bar" style="width:@mPct%;background:@mColor;"></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="text-center align-middle">
+                                                @if (ms.AuditSec > 0)
+                                                { <span class="badge rounded-pill badge-time">@Fmt(ms.AuditSec)</span> }
+                                                else { <span class="text-muted small">–</span> }
+                                            </td>
+                                            <td class="text-center align-middle">
+                                                @if (ms.SoloCsSec > 0)
+                                                { <span class="badge rounded-pill badge-orange">@Fmt(ms.SoloCsSec)</span> }
+                                                else { <span class="text-muted small">–</span> }
+                                            </td>
+                                            <td class="text-center align-middle pe-3">
+                                                <span class="fw-bold" style="color:#4338ca;">@Fmt(ms.TotalSec)</span>
+                                            </td>
+                                        </tr>
+                                        mRank++;
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    }
+                </div>
+            }
+
+            @* ── Hours by Organization card ── *@
             <div class="card border-0 shadow-sm" style="border-radius:14px;overflow:hidden;">
                 <div class="card-header border-0 py-2 px-3 bg-white border-bottom">
                     <div class="panel-period-label">
@@ -263,7 +361,7 @@
 
         </div>
 
-        @* ── RIGHT: Day snapshot + Week totals ── *@
+        @* ── RIGHT: Day snapshot + Week totals + Month totals ── *@
         <div class="col-xl-5 col-lg-5 d-flex flex-column gap-3">
 
             @* ─ Day snapshot ─ *@
@@ -351,65 +449,61 @@
                 </div>
             </div>
 
-            @* ─ Week mini leaderboard ─ *@
-            <div class="card border-0 shadow-sm flex-fill" style="border-radius:14px;overflow:visible;">
-                <div class="card-header border-0 py-2 px-3 bg-white border-bottom" style="border-radius:14px 14px 0 0;">
-                    <div class="panel-period-label">
-                        <i class="ri-list-ordered text-primary"></i>
-                        @LS.T("stats.weekLeaderboard")
-                    </div>
-                </div>
-                <div class="card-body px-3 py-2">
-                    @{
-                        var weekStaff = _dayStats
-                            .SelectMany(d => d.Staff)
-                            .GroupBy(s => s.PersonId)
-                            .Select(g => (Name: g.First().Name, AuditSec: g.Sum(x => x.AuditSec), SoloCsSec: g.Sum(x => x.SoloCsSec)))
-                            .Where(x => x.AuditSec + x.SoloCsSec > 0)
-                            .OrderByDescending(x => x.AuditSec + x.SoloCsSec)
-                            .ToList();
-                        int weekMax = weekStaff.Count > 0 ? weekStaff[0].AuditSec + weekStaff[0].SoloCsSec : 1;
-                        int wrank   = 1;
-                    }
-                    @if (weekStaff.Count == 0)
-                    {
-                        <div class="text-center py-3 text-muted small">@LS.T("stats.noDataWeek")</div>
-                    }
-                    else
-                    {
-                        @foreach (var ms in weekStaff)
-                        {
-                            var total     = ms.AuditSec + ms.SoloCsSec;
-                            var wPct      = weekMax > 0 ? (int)(total * 100.0 / weekMax) : 0;
-                            var wColor    = AvatarColor(wrank);
-                            var firstName = ms.Name.Split(' ')[0];
-                            <div class="d-flex align-items-center gap-2 py-1 border-bottom">
-                                <div class="avatar-wrap" style="--av-color:@wColor;">
-                                    <span class="name-pill" style="background:@wColor;font-size:0.72rem;padding:2px 8px;">
-                                        @if (wrank == 1) { <i class="ri-medal-fill me-1" style="font-size:10px;"></i> }
-                                        @firstName
-                                    </span>
-                                    <div class="avatar-hover-card">
-                                        <div class="avatar-big-circle">@(firstName.Length > 0 ? firstName[0].ToString().ToUpper() : "?")</div>
-                                        <div class="av-name">@ms.Name</div>
-                                        <div class="av-sub">#@wrank · @Fmt(total)</div>
-                                    </div>
-                                </div>
-                                <div class="flex-fill overflow-hidden">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <span class="fw-semibold text-truncate" style="font-size:0.85rem;">@ms.Name</span>
-                                        <span class="badge rounded-pill badge-time ms-1 flex-shrink-0">@Fmt(total)</span>
-                                    </div>
-                                    <div class="progress-thin mt-1">
-                                        <div class="bar" style="width:@wPct%;background:@wColor;"></div>
-                                    </div>
+            @* ─ Month totals ─ *@
+            @if (_monthSummary != null)
+            {
+                <div class="card border-0 shadow-sm" style="border-radius:14px;overflow:hidden;">
+                    <div class="card-header border-0 py-3" style="border-radius:14px 14px 0 0;background:linear-gradient(135deg,#4338ca 0%,#6366f1 100%);">
+                        <div class="d-flex align-items-start justify-content-between text-white">
+                            <div>
+                                <h6 class="mb-0 fw-bold" style="font-size:0.95rem;">
+                                    <i class="ri-calendar-line me-2"></i>@_monthLabel
+                                </h6>
+                                <div class="opacity-75 mt-1" style="font-size:0.78rem;">
+                                    @DayLabel(_monthStart) – @DayLabel(_monthEnd) · @_monthWeekCount weeks
                                 </div>
                             </div>
-                            wrank++;
-                        }
-                    }
+                            <div class="text-end">
+                                <div class="fw-bold fs-4 text-white lh-1">@Fmt(_monthSummary.TotalAuditCsSec)</div>
+                                <div class="opacity-75 mt-1" style="font-size:0.75rem;">Month Total</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body px-3 py-3">
+                        <div class="row g-2">
+                            <div class="col-3">
+                                <div class="stat-metric-box" style="background:#eef2ff;">
+                                    <div class="value" style="color:#4338ca;">@Fmt(_monthSummary.TotalAuditCsSec)</div>
+                                    <div class="main-lbl">@LS.T("stats.auditingTime")</div>
+                                    <div class="sub-lbl">All staff</div>
+                                </div>
+                            </div>
+                            <div class="col-3">
+                                <div class="stat-metric-box" style="background:#eff6ff;">
+                                    <div class="value" style="color:#2563eb;">@_monthSummary.PcCount</div>
+                                    <div class="main-lbl">@LS.T("stats.pcs")</div>
+                                    <div class="sub-lbl">Unique month</div>
+                                </div>
+                            </div>
+                            <div class="col-3">
+                                <div class="stat-metric-box" style="background:#f0fdf4;">
+                                    <div class="value" style="color:#16a34a;">@_monthSummary.AcademyCount</div>
+                                    <div class="main-lbl">@LS.T("stats.students")</div>
+                                    <div class="sub-lbl">Unique month</div>
+                                </div>
+                            </div>
+                            <div class="col-3">
+                                <div class="stat-metric-box" style="background:#fff7ed;">
+                                    <div class="value" style="color:#ea580c;">@_monthSummary.BodyInShop</div>
+                                    <div class="main-lbl">BIS</div>
+                                    <div class="sub-lbl">Unique month</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-            </div>
+            }
+
         </div>
     </div>
 
@@ -490,6 +584,17 @@
     private List<OriginHours>     _originHours  = new();
     private int _chartKey;
 
+    // Monthly fields
+    private WeekStatSummary?   _monthSummary;
+    private List<StaffStatRow> _monthStaff       = new();
+    private List<OriginHours>  _monthOriginHours = new();
+    private int      _monthWeekCount;
+    private DateOnly _monthStart;
+    private DateOnly _monthEnd;
+    private string   _monthLabel = "";
+    private bool _weekLeaderExpanded = true;
+    private bool _monthLeaderExpanded;
+
     private WeekStatSummary? CurrentWeekSummary =>
         _weekHistory.FirstOrDefault(w => w.WeekStart == _weekStart);
 
@@ -565,7 +670,51 @@
         _chartHistory = _weekHistory.Where(w => w.TotalAuditCsSec > 0 || w.PcCount > 0 || w.AcademyCount > 0 || w.BodyInShop > 0).ToList();
         _originHours  = StatSvc.GetWeekOriginHours(_weekStart);
         _chartKey++;
+        LoadMonth();
     }
+
+    void LoadMonth()
+    {
+        var weeks = GetMonthWeeks(_weekStart);
+        _monthWeekCount = weeks.Count;
+        if (weeks.Count == 0)
+        {
+            _monthSummary = null;
+            _monthStaff = [];
+            _monthOriginHours = [];
+            return;
+        }
+        _monthStart = weeks[0];
+        _monthEnd   = weeks[^1].AddDays(6);
+        _monthLabel = _monthStart.ToString("MMMM yyyy", CultureInfo.InvariantCulture);
+        _monthSummary     = StatSvc.GetMonthSummary(_monthStart, _monthEnd);
+        _monthStaff       = StatSvc.GetMonthStaffLeaderboard(_monthStart, _monthEnd);
+        _monthOriginHours = StatSvc.GetMonthOriginHours(_monthStart, _monthEnd);
+    }
+
+    static List<DateOnly> GetMonthWeeks(DateOnly weekStart)
+    {
+        var month = weekStart.Month;
+        var year  = weekStart.Year;
+        var d = new DateOnly(year, month, 1);
+        while (d.DayOfWeek != DayOfWeek.Thursday) d = d.AddDays(1);
+        var weeks = new List<DateOnly>();
+        while (d.Month == month)
+        {
+            weeks.Add(d);
+            d = d.AddDays(7);
+        }
+        return weeks;
+    }
+
+    List<StaffStatRow> GetWeekStaff() =>
+        _dayStats
+            .SelectMany(d => d.Staff)
+            .GroupBy(s => s.PersonId)
+            .Select(g => new StaffStatRow(g.Key, g.First().Name, g.Sum(x => x.AuditSec), g.Sum(x => x.SoloCsSec)))
+            .Where(s => s.TotalSec > 0)
+            .OrderByDescending(s => s.TotalSec)
+            .ToList();
 
     static (string bg, string color) OriginStyle(string origin) => origin switch
     {
@@ -595,14 +744,16 @@
 
     async Task PrintStats()
     {
-        var weekStaff = _dayStats
-            .SelectMany(d => d.Staff)
-            .GroupBy(s => s.PersonId)
-            .Select(g => new StaffStatRow(g.Key, g.First().Name, g.Sum(x => x.AuditSec), g.Sum(x => x.SoloCsSec)))
-            .Where(s => s.TotalSec > 0)
-            .OrderByDescending(s => s.TotalSec)
-            .ToList();
-        var pdfBytes = PdfService.GenerateStatisticsPdf(_weekStart, weekStaff, _dayStats, _weekHistory, CurrentWeekSummary, _originHours);
+        var weekStaff = GetWeekStaff();
+        var pdfBytes = PdfService.GenerateStatisticsPdf(
+            _weekStart, weekStaff, _dayStats, _weekHistory, CurrentWeekSummary, _originHours,
+            monthStaff: _monthStaff,
+            monthSummary: _monthSummary,
+            monthOriginHours: _monthOriginHours,
+            monthLabel: _monthLabel,
+            monthWeekCount: _monthWeekCount,
+            monthStart: _monthStart,
+            monthEnd: _monthEnd);
         await JS.InvokeVoidAsync("downloadFile", $"Statistics_{_weekStart:yyyy_MM_dd}.pdf", Convert.ToBase64String(pdfBytes));
     }
 
