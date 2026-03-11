@@ -1,6 +1,7 @@
 @page "/Admin/Members"
 @attribute [Authorize]
 @inject LPM.Services.AcademyService AcademySvc
+@inject LPM.Services.PcService PcSvc
 @using Microsoft.AspNetCore.Authorization
 @using LPM.Services
 
@@ -117,6 +118,7 @@
                                     <i class="ri-arrow-@(_sortAsc ? "up" : "down")-s-line ms-1" style="font-size:.7rem;"></i>
                                 }
                             </th>
+                            <th class="text-center" style="width:50px;">@LS.T("common.edit")</th>
                             <th class="text-center pe-3">@LS.T("members.action")</th>
                         </tr>
                     </thead>
@@ -174,6 +176,14 @@
                                         </span>
                                     }
                                 </td>
+                                <td class="text-center align-middle">
+                                    <button class="btn btn-sm btn-outline-primary py-0 px-1"
+                                            style="font-size:.78rem; border-radius:6px;"
+                                            title="@LS.T("common.edit")"
+                                            @onclick="() => OpenEdit(m.PersonId)">
+                                        <i class="ri-pencil-line"></i>
+                                    </button>
+                                </td>
                                 <td class="text-center pe-3 align-middle">
                                     @if (m.IsActive)
                                     {
@@ -203,6 +213,8 @@
     </div>
 
 </div>
+
+<SpkNewPersonModal @ref="_editModal" Title="@LS.T("common.edit")" RequireAllFields="false" ExistingFullNames="_existingNames" OnSaved="SaveEdit" />
 
 @code {
     List<MemberAdminItem> _members = [];
@@ -313,5 +325,35 @@
         _editLastName        = "";
         _editNick      = "";
         _conflictError       = "";
+    }
+
+    // ── Edit member ──
+    SpkNewPersonModal _editModal = null!;
+    HashSet<string>? _existingNames;
+    int _editingPersonId;
+
+    void OpenEdit(int personId)
+    {
+        var detail = AcademySvc.GetPersonDetail(personId);
+        if (detail == null) return;
+        _editingPersonId = personId;
+        _existingNames = new HashSet<string>(
+            _members.Where(m => m.PersonId != personId).Select(m => m.FullName),
+            StringComparer.OrdinalIgnoreCase);
+        _editModal.ShowForEdit(
+            detail.FirstName, detail.LastName,
+            detail.Phone, detail.Email,
+            detail.DateOfBirth, detail.Gender,
+            detail.OrgId, detail.Source, detail.Notes, detail.Nick);
+    }
+
+    void SaveEdit((string FirstName, string LastName, string Phone, string Email,
+        string DateOfBirth, string Gender, int OrgId, string Source, string Notes, int CourseId, string Nick) d)
+    {
+        AcademySvc.UpdatePerson(_editingPersonId,
+            d.FirstName, d.LastName, d.Nick,
+            d.Phone, d.Email, d.Notes,
+            d.DateOfBirth, d.Gender, orgId: d.OrgId > 0 ? d.OrgId : null);
+        _members = AcademySvc.GetAllMembersForAdmin();
     }
 }

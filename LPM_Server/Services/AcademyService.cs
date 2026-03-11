@@ -16,6 +16,10 @@ public record MemberAdminItem(int PersonId, string FullName, string Phone,
     bool IsActive, bool IsPC, bool IsAcademyStudent, bool IsStaff,
     string FirstName, string LastName, string? Nick, string? LastVisitDate);
 
+public record PersonDetailInfo(int PersonId, string FirstName, string LastName, string Nick,
+    string Phone, string Email, string Notes, string DateOfBirth, string Gender,
+    string Source, int OrgId);
+
 public class AcademyService
 {
     private readonly string _connectionString;
@@ -520,6 +524,54 @@ public class AcademyService
         cmd.CommandText = "UPDATE core_persons SET IsActive = @v WHERE PersonId = @id";
         cmd.Parameters.AddWithValue("@v",  active ? 1 : 0);
         cmd.Parameters.AddWithValue("@id", personId);
+        cmd.ExecuteNonQuery();
+    }
+
+    public PersonDetailInfo? GetPersonDetail(int personId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT p.FirstName, COALESCE(p.LastName,''),
+                   COALESCE(p.Nick,''), COALESCE(p.Phone,''),
+                   COALESCE(p.Email,''), COALESCE(p.Notes,''),
+                   COALESCE(p.DateOfBirth,''), COALESCE(p.Gender,''),
+                   COALESCE(rs.Name,''), COALESCE(p.Org, 0)
+            FROM core_persons p
+            LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
+            WHERE p.PersonId = @id";
+        cmd.Parameters.AddWithValue("@id", personId);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return null;
+        return new PersonDetailInfo(personId,
+            r.GetString(0), r.GetString(1), r.GetString(2),
+            r.GetString(3), r.GetString(4), r.GetString(5),
+            r.GetString(6), r.GetString(7), r.GetString(8), r.GetInt32(9));
+    }
+
+    public void UpdatePerson(int personId, string firstName, string lastName,
+        string nick, string phone, string email, string notes,
+        string dateOfBirth, string gender, int? orgId = null)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE core_persons SET FirstName=@fn, LastName=@ln,
+                   Phone=@ph, Email=@em, DateOfBirth=@dob, Gender=@gender,
+                   Nick=@nick, Notes=@nt, Org=@org
+            WHERE PersonId=@id";
+        cmd.Parameters.AddWithValue("@fn",     firstName.Trim());
+        cmd.Parameters.AddWithValue("@ln",     lastName.Trim());
+        cmd.Parameters.AddWithValue("@ph",     string.IsNullOrWhiteSpace(phone) ? DBNull.Value : phone.Trim());
+        cmd.Parameters.AddWithValue("@em",     string.IsNullOrWhiteSpace(email) ? DBNull.Value : email.Trim());
+        cmd.Parameters.AddWithValue("@dob",    string.IsNullOrWhiteSpace(dateOfBirth) ? DBNull.Value : dateOfBirth);
+        cmd.Parameters.AddWithValue("@gender", string.IsNullOrWhiteSpace(gender) ? DBNull.Value : gender);
+        cmd.Parameters.AddWithValue("@nick",   string.IsNullOrWhiteSpace(nick) ? DBNull.Value : nick.Trim());
+        cmd.Parameters.AddWithValue("@nt",     string.IsNullOrWhiteSpace(notes) ? DBNull.Value : notes.Trim());
+        cmd.Parameters.AddWithValue("@org",    orgId.HasValue && orgId.Value > 0 ? (object)orgId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@id",     personId);
         cmd.ExecuteNonQuery();
     }
 
