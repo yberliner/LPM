@@ -241,79 +241,179 @@
 @if (_weekStudents.Count > 0)
 {
     <div class="card mx-3 mb-3 shadow-sm" style="border-radius:14px;border:none;">
-        <div class="card-header acad-chart-header" style="border-radius:14px 14px 0 0;">
+        <div class="card-header acad-chart-header" style="border-radius:14px 14px 0 0;cursor:pointer;"
+             @onclick="() => _weekTableExpanded = !_weekTableExpanded">
             <div class="d-flex align-items-center gap-2">
-                <i class="ri-table-line" style="font-size:1.1rem;"></i>
+                <i class="@(_weekTableExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")" style="font-size:1.1rem;"></i>
                 <strong style="font-size:.9rem;">Weekly Student List — @DayLabel(_weekStart) – @DayLabel(_weekStart.AddDays(6))</strong>
             </div>
-            <span class="badge rounded-pill" style="background:rgba(255,255,255,.25);font-size:.78rem;">
-                @_weekStudents.Count students
-            </span>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-sm table-hover mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th class="ps-3 small" style="width:32px;">#</th>
-                            <th class="small">Student</th>
-                            <th class="small" style="width:60px;">Org</th>
-                            <th class="small" style="width:120px;">Referral</th>
-                            <th class="small" style="width:130px;">Active Course</th>
-                            <th class="small text-center" style="width:50px;">@LS.T("academy.visits")</th>
-                            <th style="width:36px;"></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @{ int rowNum = 0; }
-                        @foreach (var s in _weekStudents)
-                        {
-                            rowNum++;
-                            var (bg, _, col) = ReferralChipStyle(s.Source);
-                            var dotColor     = ReferralDotColor(s.Source);
-                            var refLabel     = string.IsNullOrEmpty(s.Source) ? "Don" : s.Source;
-                            var courseStr    = _personOpenCourses.GetValueOrDefault(s.PersonId, "");
-                            <tr style="background:@(rowNum % 2 == 0 ? "#fafafa" : "#fff");">
-                                <td class="ps-3 small text-muted align-middle">@rowNum</td>
-                                <td class="align-middle">
-                                    <span class="fw-medium" style="font-size:.86rem;">@s.FullName@if (!string.IsNullOrEmpty(s.Nick)) { <span class="text-muted" style="font-size:.72rem;"> (@s.Nick)</span> }</span>
-                                </td>
-                                <td class="align-middle">
-                                    @if (!string.IsNullOrEmpty(s.Org))
-                                    {
-                                        <span class="badge rounded-pill" style="background:#e0e7ff;color:#4338ca;font-size:.72rem;">@s.Org</span>
-                                    }
-                                </td>
-                                <td class="align-middle">
-                                    <span class="d-inline-flex align-items-center gap-1" style="font-size:.8rem;font-weight:600;">
-                                        <span style="width:7px;height:7px;border-radius:50%;background:@dotColor;display:inline-block;flex-shrink:0;"></span>
-                                        @refLabel
-                                    </span>
-                                </td>
-                                <td class="align-middle">
-                                    @if (!string.IsNullOrEmpty(courseStr))
-                                    {
-                                        <span class="badge rounded-pill" style="background:#ede9fe;color:#7c3aed;font-size:.72rem;">
-                                            <i class="ri-book-2-line me-1"></i>@courseStr
-                                        </span>
-                                    }
-                                </td>
-                                <td class="text-center align-middle">
-                                    <span class="fw-bold" style="color:#059669;font-size:.9rem;">@s.VisitCount</span>
-                                </td>
-                                <td class="text-center align-middle">
-                                    <button class="btn btn-link btn-sm py-0 px-1" title="Manage courses"
-                                            style="color:#7c3aed;font-size:.85rem;"
-                                            @onclick="() => OpenCourseModal(s.PersonId, s.FullName)">
-                                        <i class="ri-book-line"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge rounded-pill" style="background:rgba(255,255,255,.25);font-size:.78rem;">
+                    @_weekStudents.Count students
+                </span>
+                <span class="badge rounded-pill" style="background:rgba(255,255,255,.15);font-size:.75rem;">
+                    @_weekStudents.Sum(s => s.VisitCount) visits
+                </span>
             </div>
         </div>
+        @if (_weekTableExpanded)
+        {
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-3 small" style="width:32px;">#</th>
+                                <th class="small">Student</th>
+                                <th class="small" style="width:60px;">Org</th>
+                                <th class="small" style="width:120px;">Referral</th>
+                                <th class="small" style="width:130px;">Active Course</th>
+                                <th class="small text-center" style="width:50px;">@LS.T("academy.visits")</th>
+                                <th style="width:36px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @{ int rowNum = 0; }
+                            @foreach (var s in _weekStudents)
+                            {
+                                rowNum++;
+                                var (bg, _, col) = ReferralChipStyle(s.Source);
+                                var dotColor     = ReferralDotColor(s.Source);
+                                var refLabel     = string.IsNullOrEmpty(s.Source) ? "Don" : s.Source;
+                                var courseStr    = _personOpenCourses.GetValueOrDefault(s.PersonId, "");
+                                <tr style="background:@(rowNum % 2 == 0 ? "#fafafa" : "#fff");">
+                                    <td class="ps-3 small text-muted align-middle">@rowNum</td>
+                                    <td class="align-middle">
+                                        <span class="fw-medium" style="font-size:.86rem;">@s.FullName@if (!string.IsNullOrEmpty(s.Nick)) { <span style="font-size:.72rem;color:#6b7280;"> (@s.Nick)</span> }</span>
+                                    </td>
+                                    <td class="align-middle">
+                                        @if (!string.IsNullOrEmpty(s.Org))
+                                        {
+                                            <span class="badge rounded-pill" style="background:#e0e7ff;color:#4338ca;font-size:.72rem;">@s.Org</span>
+                                        }
+                                    </td>
+                                    <td class="align-middle">
+                                        <span class="d-inline-flex align-items-center gap-1" style="font-size:.8rem;font-weight:600;">
+                                            <span style="width:7px;height:7px;border-radius:50%;background:@dotColor;display:inline-block;flex-shrink:0;"></span>
+                                            @refLabel
+                                        </span>
+                                    </td>
+                                    <td class="align-middle">
+                                        @if (!string.IsNullOrEmpty(courseStr))
+                                        {
+                                            <span class="badge rounded-pill" style="background:#ede9fe;color:#7c3aed;font-size:.72rem;">
+                                                <i class="ri-book-2-line me-1"></i>@courseStr
+                                            </span>
+                                        }
+                                    </td>
+                                    <td class="text-center align-middle">
+                                        <span class="fw-bold" style="color:#059669;font-size:.9rem;">@s.VisitCount</span>
+                                    </td>
+                                    <td class="text-center align-middle">
+                                        <button class="btn btn-link btn-sm py-0 px-1" title="Manage courses"
+                                                style="color:#7c3aed;font-size:.85rem;"
+                                                @onclick="() => OpenCourseModal(s.PersonId, s.FullName)">
+                                            <i class="ri-book-line"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@* ── Monthly student table (collapsible) ── *@
+@if (_monthStudents.Count > 0)
+{
+    <div class="card mx-3 mb-3 shadow-sm" style="border-radius:14px;border:none;">
+        <div class="card-header acad-chart-header" style="border-radius:14px 14px 0 0;cursor:pointer;background:linear-gradient(135deg,#4338ca 0%,#6366f1 100%);"
+             @onclick="() => _monthTableExpanded = !_monthTableExpanded">
+            <div class="d-flex align-items-center gap-2">
+                <i class="@(_monthTableExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")" style="font-size:1.1rem;"></i>
+                <strong style="font-size:.9rem;">Monthly Student List — @_monthLabel (@DayLabel(_monthStart) – @DayLabel(_monthEnd))</strong>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge rounded-pill" style="background:rgba(255,255,255,.2);font-size:.75rem;">
+                    @_monthWeekCount weeks
+                </span>
+                <span class="badge rounded-pill" style="background:rgba(255,255,255,.25);font-size:.78rem;">
+                    @_monthStudents.Count students
+                </span>
+                <span class="badge rounded-pill" style="background:rgba(255,255,255,.15);font-size:.75rem;">
+                    @_monthStudents.Sum(s => s.VisitCount) visits
+                </span>
+            </div>
+        </div>
+        @if (_monthTableExpanded)
+        {
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-3 small" style="width:32px;">#</th>
+                                <th class="small">Student</th>
+                                <th class="small" style="width:60px;">Org</th>
+                                <th class="small" style="width:120px;">Referral</th>
+                                <th class="small" style="width:130px;">Active Course</th>
+                                <th class="small text-center" style="width:50px;">@LS.T("academy.visits")</th>
+                                <th style="width:36px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @{ int mRowNum = 0; }
+                            @foreach (var s in _monthStudents)
+                            {
+                                mRowNum++;
+                                var dotColor  = ReferralDotColor(s.Source);
+                                var refLabel  = string.IsNullOrEmpty(s.Source) ? "Don" : s.Source;
+                                var courseStr = _personOpenCourses.GetValueOrDefault(s.PersonId, "");
+                                <tr style="background:@(mRowNum % 2 == 0 ? "#f5f3ff" : "#fff");">
+                                    <td class="ps-3 small text-muted align-middle">@mRowNum</td>
+                                    <td class="align-middle">
+                                        <span class="fw-medium" style="font-size:.86rem;">@s.FullName@if (!string.IsNullOrEmpty(s.Nick)) { <span style="font-size:.72rem;color:#6b7280;"> (@s.Nick)</span> }</span>
+                                    </td>
+                                    <td class="align-middle">
+                                        @if (!string.IsNullOrEmpty(s.Org))
+                                        {
+                                            <span class="badge rounded-pill" style="background:#e0e7ff;color:#4338ca;font-size:.72rem;">@s.Org</span>
+                                        }
+                                    </td>
+                                    <td class="align-middle">
+                                        <span class="d-inline-flex align-items-center gap-1" style="font-size:.8rem;font-weight:600;">
+                                            <span style="width:7px;height:7px;border-radius:50%;background:@dotColor;display:inline-block;flex-shrink:0;"></span>
+                                            @refLabel
+                                        </span>
+                                    </td>
+                                    <td class="align-middle">
+                                        @if (!string.IsNullOrEmpty(courseStr))
+                                        {
+                                            <span class="badge rounded-pill" style="background:#ede9fe;color:#7c3aed;font-size:.72rem;">
+                                                <i class="ri-book-2-line me-1"></i>@courseStr
+                                            </span>
+                                        }
+                                    </td>
+                                    <td class="text-center align-middle">
+                                        <span class="fw-bold" style="color:#4338ca;font-size:.9rem;">@s.VisitCount</span>
+                                    </td>
+                                    <td class="text-center align-middle">
+                                        <button class="btn btn-link btn-sm py-0 px-1" title="Manage courses"
+                                                style="color:#7c3aed;font-size:.85rem;"
+                                                @onclick="() => OpenCourseModal(s.PersonId, s.FullName)">
+                                            <i class="ri-book-line"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
     </div>
 }
 
@@ -700,8 +800,15 @@
     string                  _searchText      = "";
     Dictionary<string, int> _weekByReferral  = [];
     Dictionary<string, int> _weekByOrg       = [];
+    bool _weekTableExpanded;
+    bool _monthTableExpanded;
+    int _monthWeekCount;
+    DateOnly _monthStart;
+    DateOnly _monthEnd;
+    string _monthLabel = "";
 
     List<(int PersonId, string FullName, int VisitCount, string Source, string Org, string Nick)> _weekStudents = [];
+    List<(int PersonId, string FullName, int VisitCount, string Source, string Org, string Nick)> _monthStudents = [];
     Dictionary<int, string> _personOpenCourses = [];
     List<CourseItem>        _allCourses        = [];
 
@@ -816,6 +923,7 @@
         _weeklyTotals = AcademySvc.GetWeeklyVisitCounts(latestWeekStart, 20);
         _weekStudents = AcademySvc.GetStudentVisitsForWeek(_weekStart);
         (_weekByReferral, _weekByOrg) = AcademySvc.GetWeeklyStudentBreakdown(_weekStart);
+        LoadMonthStudents();
 
         // Batch-load open courses for all persons
         var allIds = _allPersons.Select(p => p.PersonId);
@@ -946,13 +1054,41 @@
         RefreshChart();
     }
 
+    /// Returns the list of week-start Thursdays whose month matches the given weekStart's month.
+    static List<DateOnly> GetMonthWeeks(DateOnly weekStart)
+    {
+        var month = weekStart.Month;
+        var year  = weekStart.Year;
+        // Find first Thursday in this month
+        var d = new DateOnly(year, month, 1);
+        while (d.DayOfWeek != DayOfWeek.Thursday) d = d.AddDays(1);
+        var weeks = new List<DateOnly>();
+        while (d.Month == month)
+        {
+            weeks.Add(d);
+            d = d.AddDays(7);
+        }
+        return weeks;
+    }
+
+    void LoadMonthStudents()
+    {
+        var weeks = GetMonthWeeks(_weekStart);
+        _monthWeekCount = weeks.Count;
+        if (weeks.Count == 0) { _monthStudents = []; return; }
+        _monthStart = weeks[0];
+        _monthEnd   = weeks[^1].AddDays(6);
+        _monthLabel = _monthStart.ToString("MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture);
+        _monthStudents = AcademySvc.GetStudentVisitsForDateRange(_monthStart, _monthEnd);
+    }
+
     async Task PrintWeek()
     {
         var students = AcademySvc.GetStudentVisitsForWeek(_weekStart);
         var (byRef, byOrg) = AcademySvc.GetWeeklyStudentBreakdown(_weekStart);
         var personIds = students.Select(s => s.PersonId);
         var courses = CourseSvc.GetOpenCoursesForPersons(personIds);
-        var pdfBytes = PdfService.GenerateAcademyWeekPdf(_weekStart, students, byRef, byOrg, courses);
+        var pdfBytes = PdfService.GenerateAcademyWeekPdf(_weekStart, students, byRef, byOrg, courses, _monthStudents, _monthLabel, _monthWeekCount, _monthStart, _monthEnd);
         var fileName = $"Academy_{_weekStart:yyyy_MM_dd}.pdf";
         await JS.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(pdfBytes));
     }

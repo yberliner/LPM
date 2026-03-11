@@ -179,8 +179,10 @@ public class AcademyService
 
     /// <summary>Returns all students who visited during the week, with visit count, referral, and org.</summary>
     public List<(int PersonId, string FullName, int VisitCount, string Source, string Org, string Nick)> GetStudentVisitsForWeek(DateOnly weekStart)
+        => GetStudentVisitsForDateRange(weekStart, weekStart.AddDays(6));
+
+    public List<(int PersonId, string FullName, int VisitCount, string Source, string Org, string Nick)> GetStudentVisitsForDateRange(DateOnly rangeStart, DateOnly rangeEnd)
     {
-        var weekEnd = weekStart.AddDays(6);
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
@@ -199,8 +201,8 @@ public class AcademyService
               AND COALESCE(p.IsActive, 1) = 1
             GROUP BY s.PersonId
             ORDER BY VisitCount DESC, FullName ASC";
-        cmd.Parameters.AddWithValue("@start", weekStart.ToString("yyyy-MM-dd"));
-        cmd.Parameters.AddWithValue("@end",   weekEnd.ToString("yyyy-MM-dd"));
+        cmd.Parameters.AddWithValue("@start", rangeStart.ToString("yyyy-MM-dd"));
+        cmd.Parameters.AddWithValue("@end",   rangeEnd.ToString("yyyy-MM-dd"));
         var list = new List<(int, string, int, string, string, string)>();
         using var r = cmd.ExecuteReader();
         while (r.Read())

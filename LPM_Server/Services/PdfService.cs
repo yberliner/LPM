@@ -235,7 +235,12 @@ public class PdfService
         List<(int PersonId, string FullName, int VisitCount, string Referral, string Org, string Nick)> students,
         Dictionary<string, int>? byReferral = null,
         Dictionary<string, int>? byOrg = null,
-        Dictionary<int, string>? personCourses = null)
+        Dictionary<int, string>? personCourses = null,
+        List<(int PersonId, string FullName, int VisitCount, string Referral, string Org, string Nick)>? monthStudents = null,
+        string? monthLabel = null,
+        int monthWeekCount = 0,
+        DateOnly? monthStart = null,
+        DateOnly? monthEnd = null)
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
@@ -272,6 +277,12 @@ public class PdfService
                                 {
                                     t.Span("Total students: ").FontSize(14);
                                     t.Span(count.ToString()).FontSize(17).Bold().FontColor("#1b5e20");
+                                });
+                            c.Item().AlignRight()
+                                .Text(t =>
+                                {
+                                    t.Span("Total visits: ").FontSize(10);
+                                    t.Span(students.Sum(s => s.VisitCount).ToString()).FontSize(13).Bold().FontColor("#1b5e20");
                                 });
                         });
                     });
@@ -365,7 +376,6 @@ public class PdfService
 
                             row.RelativeItem().Column(innerCol =>
                             {
-                                bool showCourse = personCourses != null;
                                 // column header
                                 innerCol.Item()
                                     .Background("#e8f5e9")
@@ -375,17 +385,7 @@ public class PdfService
                                         hr.RelativeItem()
                                             .Text("Student")
                                             .FontSize(8).FontColor("#555").SemiBold();
-                                        hr.ConstantItem(30)
-                                            .Text("Org")
-                                            .FontSize(8).FontColor("#555").SemiBold();
-                                        hr.ConstantItem(36)
-                                            .Text("Referral")
-                                            .FontSize(8).FontColor("#555").SemiBold();
-                                        if (showCourse)
-                                            hr.ConstantItem(50)
-                                                .Text("Course")
-                                                .FontSize(8).FontColor("#555").SemiBold();
-                                        hr.ConstantItem(18).AlignRight()
+                                        hr.ConstantItem(22).AlignRight()
                                             .Text("Vis.")
                                             .FontSize(8).FontColor("#555").SemiBold();
                                     });
@@ -394,18 +394,7 @@ public class PdfService
                                 foreach (var (pid, name, visits, referral, org, nick) in slice)
                                 {
                                     int r2 = rank++;
-                                    var rowBg = ReferralPdfBg(referral, r2);
-                                    var refColor = referral switch
-                                    {
-                                        "Friend"          => "#b45309",
-                                        "Social Network"  => "#1d4ed8",
-                                        "Haifa"           => "#4c1d95",
-                                        "Other"           => "#6b7280",
-                                        _                 => "#15803d",
-                                    };
-                                    var courseLabel = showCourse
-                                        ? (personCourses!.TryGetValue(pid, out var cn) ? cn : "")
-                                        : "";
+                                    var rowBg = r2 % 2 == 0 ? "#f6fef6" : "#ffffff";
                                     innerCol.Item()
                                         .BorderBottom(0.5f)
                                         .BorderColor(Colors.Grey.Lighten3)
@@ -419,17 +408,7 @@ public class PdfService
                                             rr.RelativeItem()
                                                 .Text(string.IsNullOrEmpty(nick) ? name : $"{name} ({nick})")
                                                 .FontSize(9);
-                                            rr.ConstantItem(30)
-                                                .Text(org)
-                                                .FontSize(7.5f).FontColor("#4338ca");
-                                            rr.ConstantItem(36)
-                                                .Text(string.IsNullOrEmpty(referral) ? "Don" : referral)
-                                                .FontSize(7.5f).FontColor(refColor);
-                                            if (showCourse)
-                                                rr.ConstantItem(50)
-                                                    .Text(courseLabel)
-                                                    .FontSize(7f).FontColor("#7c3aed");
-                                            rr.ConstantItem(18).AlignRight()
+                                            rr.ConstantItem(22).AlignRight()
                                                 .Text(visits.ToString())
                                                 .FontSize(9).FontColor("#2e7d32").SemiBold();
                                         });
@@ -492,6 +471,146 @@ public class PdfService
                                         .Text(kv.Value.ToString()).FontSize(9).SemiBold().FontColor("#059669");
                                 }
                             });
+                        }
+                    }
+                    // ── Monthly student list ──
+                    if (monthStudents != null && monthStudents.Count > 0)
+                    {
+                        col.Item().PageBreak();
+
+                        // Header
+                        col.Item().Row(r =>
+                        {
+                            r.RelativeItem()
+                                .Text($"Monthly Student List — {monthLabel} ({monthStart:dd/MM} – {monthEnd:dd/MM})")
+                                .SemiBold().FontSize(18).FontColor("#4338ca");
+
+                            r.RelativeItem().AlignRight().Column(c =>
+                            {
+                                c.Item().AlignRight()
+                                    .Text(t =>
+                                    {
+                                        t.Span("Total students: ").FontSize(14);
+                                        t.Span(monthStudents.Count.ToString()).FontSize(17).Bold().FontColor("#4338ca");
+                                    });
+                                c.Item().AlignRight()
+                                    .Text(t =>
+                                    {
+                                        t.Span("Total visits: ").FontSize(10);
+                                        t.Span(monthStudents.Sum(s => s.VisitCount).ToString()).FontSize(13).Bold().FontColor("#4338ca");
+                                    });
+                                c.Item().AlignRight()
+                                    .Text($"{monthWeekCount} weeks")
+                                    .FontSize(10).FontColor("#6b7280");
+                            });
+                        });
+
+                        col.Item().PaddingTop(6).LineHorizontal(1.5f).LineColor("#4338ca");
+                        col.Item().PaddingTop(6);
+
+                        int mCount   = monthStudents.Count;
+                        int mNumCols = mCount <= 25 ? 2 : mCount <= 55 ? 3 : mCount <= 100 ? 4 : 6;
+                        int mRows    = (int)Math.Ceiling((double)mCount / mNumCols);
+
+                        col.Item().ScaleToFit().Row(row =>
+                        {
+                            for (int c = 0; c < mNumCols; c++)
+                            {
+                                var slice = monthStudents.Skip(c * mRows).Take(mRows).ToList();
+                                int colIdx = c;
+
+                                row.RelativeItem().Column(innerCol =>
+                                {
+                                    innerCol.Item()
+                                        .Background("#e0e7ff")
+                                        .PaddingVertical(3).PaddingHorizontal(5)
+                                        .Row(hr =>
+                                        {
+                                            hr.RelativeItem()
+                                                .Text("Student")
+                                                .FontSize(8).FontColor("#555").SemiBold();
+                                            hr.ConstantItem(22).AlignRight()
+                                                .Text("Vis.")
+                                                .FontSize(8).FontColor("#555").SemiBold();
+                                        });
+
+                                    int rank = colIdx * mRows + 1;
+                                    foreach (var (pid, name, visits, referral, org, nick) in slice)
+                                    {
+                                        int r2 = rank++;
+                                        var rowBg = r2 % 2 == 0 ? "#f5f3ff" : "#ffffff";
+                                        innerCol.Item()
+                                            .BorderBottom(0.5f)
+                                            .BorderColor(Colors.Grey.Lighten3)
+                                            .Background(rowBg)
+                                            .PaddingVertical(2).PaddingHorizontal(5)
+                                            .Row(rr =>
+                                            {
+                                                rr.ConstantItem(18)
+                                                    .Text($"{r2}.")
+                                                    .FontSize(8).FontColor(Colors.Grey.Medium);
+                                                rr.RelativeItem()
+                                                    .Text(string.IsNullOrEmpty(nick) ? name : $"{name} ({nick})")
+                                                    .FontSize(9);
+                                                rr.ConstantItem(22).AlignRight()
+                                                    .Text(visits.ToString())
+                                                    .FontSize(9).FontColor("#4338ca").SemiBold();
+                                            });
+                                    }
+                                });
+
+                                if (c < mNumCols - 1)
+                                    row.ConstantItem(8).Column(_ => { });
+                            }
+                        });
+
+                        // ── Monthly students per course ──
+                        if (personCourses != null)
+                        {
+                            var byMonthCourse = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                            foreach (var (pid, _, _, _, _, _) in monthStudents)
+                            {
+                                if (!personCourses.TryGetValue(pid, out var cs) || string.IsNullOrEmpty(cs))
+                                    continue;
+                                foreach (var part in cs.Split(','))
+                                {
+                                    var p = part.Trim();
+                                    var lastParen = p.LastIndexOf('(');
+                                    var courseName = lastParen > 0 ? p[..lastParen].Trim() : p;
+                                    byMonthCourse[courseName] = byMonthCourse.GetValueOrDefault(courseName) + 1;
+                                }
+                            }
+                            if (byMonthCourse.Count > 0)
+                            {
+                                col.Item().PaddingTop(8).LineHorizontal(1f).LineColor("#c7d2fe");
+                                col.Item().PaddingTop(6)
+                                    .Text("Students per Course — this month")
+                                    .FontSize(8).SemiBold().FontColor("#312e81");
+                                col.Item().PaddingTop(3).Table(t =>
+                                {
+                                    t.ColumnsDefinition(cd =>
+                                    {
+                                        cd.RelativeColumn(4);
+                                        cd.RelativeColumn(1);
+                                    });
+                                    t.Header(h =>
+                                    {
+                                        h.Cell().Background("#e0e7ff").Padding(3)
+                                            .Text("Course").FontSize(7.5f).SemiBold().FontColor("#312e81");
+                                        h.Cell().Background("#e0e7ff").Padding(3).AlignCenter()
+                                            .Text("Students").FontSize(7.5f).SemiBold().FontColor("#312e81");
+                                    });
+                                    int ci = 0;
+                                    foreach (var kv in byMonthCourse.OrderByDescending(x => x.Value))
+                                    {
+                                        string bg = ci++ % 2 == 0 ? "#ffffff" : "#f5f3ff";
+                                        t.Cell().Background(bg).Padding(3)
+                                            .Text(kv.Key).FontSize(8).FontColor("#1a1a2e");
+                                        t.Cell().Background(bg).AlignCenter().Padding(3)
+                                            .Text(kv.Value.ToString()).FontSize(9).SemiBold().FontColor("#4338ca");
+                                    }
+                                });
+                            }
                         }
                     }
                 });
