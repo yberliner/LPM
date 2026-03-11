@@ -145,7 +145,7 @@
                                                  font-weight:600; font-size:.85em; padding:.3em .75em;
                                                  @(isPendingApprv ? "opacity:0.6;" : "")">
                                         @if (isPendingApprv) { <i class="ri-time-line me-1" style="font-size:0.75em;"></i> }
-                                        @pc.FullName
+                                        @pc.FullName@if (!string.IsNullOrEmpty(pc.Nick)) { <span style="font-size:.75em;opacity:.7;"> (@pc.Nick)</span> }
                                     </span>
                                 </th>
                             }
@@ -270,7 +270,7 @@
                                               ? "background:#f3e5f5; color:#6a1b9a; border:1px solid #ab47bc;"
                                               : "background:#f3e5f5; color:#6a1b9a; border:1px solid #ce93d8;")
                                              font-weight:600; font-size:.82em; padding:.25em .6em;">
-                                        @pc.FullName
+                                        @pc.FullName@if (!string.IsNullOrEmpty(pc.Nick)) { <span style="font-size:.75em;opacity:.7;"> (@pc.Nick)</span> }
                                     </span>
                                     <span style="position:absolute; top:1px; right:2px; line-height:1; cursor:pointer;
                                                  color:#aaa; font-size:11px; font-weight:700;"
@@ -408,7 +408,7 @@
                                               ? "background:#fff3e0; color:#e65100; border:1px solid #ff9800;"
                                               : "background:#e8f5e9; color:#2e7d32; border:1px solid #4caf50;")
                                              font-weight:600; font-size:.78em; padding:.25em .6em;">
-                                        @pc.FullName
+                                        @pc.FullName@if (!string.IsNullOrEmpty(pc.Nick)) { <span style="font-size:.75em;opacity:.7;"> (@pc.Nick)</span> }
                                     </span>
                                     <span style="position:absolute; top:1px; right:2px; line-height:1; cursor:pointer;
                                                  color:#aaa; font-size:11px; font-weight:700;"
@@ -632,8 +632,8 @@
                                     var available = _allPcs
                                         .Where(p => !myPcSet.Contains((p.PcId, _addPcCategory)))
                                         .Where(p => string.IsNullOrEmpty(_pcSearch)
-                                                    || p.FullName.Contains(_pcSearch,
-                                                           StringComparison.OrdinalIgnoreCase))
+                                                    || p.FullName.Contains(_pcSearch, StringComparison.OrdinalIgnoreCase)
+                                                    || p.Nick.Contains(_pcSearch, StringComparison.OrdinalIgnoreCase))
                                         .ToList();
                                     // Get PCs with pending solo CS reviews (PcId=AuditorId sessions without review)
                                     var pendingSoloPcIds = _addPcCategory == "CSSolo" ? GetPcIdsWithPendingSoloReviews() : new HashSet<int>();
@@ -651,7 +651,7 @@
                                     <div class="home-pc-item"
                                          style="@(hasPending ? "background:#e8f5e9; border-left:3px solid #4caf50;" : "")"
                                          @onclick="() => AddPc(pc.PcId, _addPcCategory)">
-                                        <i class="ri-user-line me-2 opacity-50"></i>@pc.FullName
+                                        <i class="ri-user-line me-2 opacity-50"></i>@pc.FullName@if (!string.IsNullOrEmpty(pc.Nick)) { <span style="font-size:.75rem;color:#6b7280;opacity:.85;"> (@pc.Nick)</span> }
                                         @if (hasPending)
                                         {
                                             <span class="ms-auto badge bg-success" style="font-size:.7em;">pending</span>

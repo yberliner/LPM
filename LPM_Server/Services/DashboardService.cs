@@ -4,7 +4,7 @@ using System.Globalization;
 
 namespace LPM.Services;
 
-public record PcInfo(int PcId, string FullName, string WorkCapacity);
+public record PcInfo(int PcId, string FullName, string WorkCapacity, string Nick = "");
 public record SessionRow(int SessionId, int LengthSec, int AdminSec, bool IsFree, string? Summary, string CreatedAt, string AuditorName, string VerifiedStatus = "Pending");
 public record CsReviewRow(int CsReviewId, int SessionId, int ReviewSec, string Status, string? Notes);
 public record CsWorkRow(int CsWorkLogId, int LengthSec, string? Notes, string CreatedAt);
@@ -402,7 +402,8 @@ public class DashboardService
         cmd.CommandText = $@"
             SELECT pc.PcId,
                    {FullNameExpr} AS FullName,
-                   spl.WorkCapacity
+                   spl.WorkCapacity,
+                   COALESCE(p.Nick, '') AS Nick
             FROM sys_staff_pc_list spl
             JOIN core_pcs     pc ON pc.PcId    = spl.PcId
             JOIN core_persons p  ON p.PersonId = pc.PcId
@@ -412,7 +413,7 @@ public class DashboardService
         var list = new List<PcInfo>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add(new PcInfo(r.GetInt32(0), r.GetString(1), r.GetString(2)));
+            list.Add(new PcInfo(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetString(3)));
         return list;
     }
 
@@ -425,14 +426,15 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $@"
             SELECT pc.PcId,
-                   {FullNameExpr} AS FullName
+                   {FullNameExpr} AS FullName,
+                   COALESCE(p.Nick, '') AS Nick
             FROM core_pcs     pc
             JOIN core_persons p ON p.PersonId = pc.PcId
             ORDER BY p.FirstName, p.LastName";
         var list = new List<PcInfo>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add(new PcInfo(r.GetInt32(0), r.GetString(1), "Auditor"));
+            list.Add(new PcInfo(r.GetInt32(0), r.GetString(1), "Auditor", r.GetString(2)));
 
         return list;
     }
