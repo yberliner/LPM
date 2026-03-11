@@ -507,13 +507,15 @@
         </div>
     </div>
 
-    @* ── Weekly History Chart ── *@
+    @* ── Weekly History Chart (collapsible) ── *@
     <div class="card border-0 shadow-sm mt-4" style="border-radius:14px;overflow:hidden;">
-        <div class="card-header border-0 py-3 px-3 stat-card-gradient-dark">
+        <div class="card-header border-0 py-3 px-3 stat-card-gradient-dark" style="cursor:pointer;"
+             @onclick="() => _weekHistoryExpanded = !_weekHistoryExpanded">
             <div class="d-flex align-items-center justify-content-between" style="color:#fff;">
                 <div>
                     <h6 class="mb-0 fw-bold" style="color:#fff;font-size:0.95rem;">
-                        <i class="ri-bar-chart-grouped-fill me-2"></i>@LS.T("stats.weeklyHistory")
+                        <i class="@(_weekHistoryExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line") me-1" style="font-size:1.1rem;"></i>
+                        <i class="ri-bar-chart-grouped-fill me-1"></i>@LS.T("stats.weeklyHistory")
                     </h6>
                     <div class="mt-1" style="font-size:0.8rem;color:rgba(255,255,255,0.7);">
                         @LS.T("stats.lastWeeks1") @_weekHistory.Count @LS.T("stats.lastWeeks2")
@@ -539,8 +541,9 @@
                 </div>
             </div>
         </div>
+        @if (_weekHistoryExpanded)
+        {
         <div class="card-body py-2 px-2" style="background:linear-gradient(180deg,#16213e 0%,#0f1729 100%);">
-
             <ApexChart TItem="WeekStatSummary"
                        Options="@_chartOptions"
                        Height="300"
@@ -571,7 +574,81 @@
                                  YValue="@(w => w.BodyInShop > 0 ? (decimal)w.BodyInShop : 0.1m)" />
             </ApexChart>
         </div>
+        }
     </div>
+
+    @* ── Monthly History Chart (collapsible) ── *@
+    @if (_chartMonthHistory.Count > 0)
+    {
+    <div class="card border-0 shadow-sm mt-3" style="border-radius:14px;overflow:hidden;">
+        <div class="card-header border-0 py-3 px-3" style="cursor:pointer;background:linear-gradient(135deg,#312e81 0%,#4338ca 50%,#6366f1 100%);"
+             @onclick="() => _monthHistoryExpanded = !_monthHistoryExpanded">
+            <div class="d-flex align-items-center justify-content-between" style="color:#fff;">
+                <div>
+                    <h6 class="mb-0 fw-bold" style="color:#fff;font-size:0.95rem;">
+                        <i class="@(_monthHistoryExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line") me-1" style="font-size:1.1rem;"></i>
+                        <i class="ri-calendar-2-line me-1"></i>Monthly History
+                    </h6>
+                    <div class="mt-1" style="font-size:0.8rem;color:rgba(255,255,255,0.7);">
+                        Last @_monthHistory.Count months
+                    </div>
+                </div>
+                <div class="d-flex gap-3" style="font-size:0.75rem;">
+                    <span class="d-flex align-items-center gap-1">
+                        <span style="width:10px;height:10px;border-radius:2px;background:#4338ca;display:inline-block;"></span>
+                        <span style="color:rgba(255,255,255,0.75);">@LS.T("stats.auditingTimeHrs")</span>
+                    </span>
+                    <span class="d-flex align-items-center gap-1">
+                        <span style="width:10px;height:10px;border-radius:2px;background:#3b82f6;display:inline-block;"></span>
+                        <span style="color:rgba(255,255,255,0.75);">@LS.T("stats.pcs")</span>
+                    </span>
+                    <span class="d-flex align-items-center gap-1">
+                        <span style="width:10px;height:10px;border-radius:2px;background:#22c55e;display:inline-block;"></span>
+                        <span style="color:rgba(255,255,255,0.75);">@LS.T("stats.students")</span>
+                    </span>
+                    <span class="d-flex align-items-center gap-1">
+                        <span style="width:10px;height:10px;border-radius:2px;background:#f97316;display:inline-block;"></span>
+                        <span style="color:rgba(255,255,255,0.75);">BIS</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+        @if (_monthHistoryExpanded)
+        {
+        <div class="card-body py-2 px-2" style="background:linear-gradient(180deg,#1e1b4b 0%,#0f172a 100%);">
+            <ApexChart TItem="MonthStatSummary"
+                       Options="@_monthChartOptions"
+                       Height="300"
+                       @key="_monthChartKey">
+                <ApexPointSeries TItem="MonthStatSummary"
+                                 Items="@_chartMonthHistory"
+                                 Name="Auditing time (hrs)"
+                                 SeriesType="SeriesType.Bar"
+                                 XValue="@(m => m.MonthLabel)"
+                                 YValue="@(m => m.TotalAuditCsSec > 0 ? (decimal)Math.Round(m.TotalAuditCsSec / 3600.0, 2) : 0.1m)" />
+                <ApexPointSeries TItem="MonthStatSummary"
+                                 Items="@_chartMonthHistory"
+                                 Name="PCs"
+                                 SeriesType="SeriesType.Bar"
+                                 XValue="@(m => m.MonthLabel)"
+                                 YValue="@(m => m.PcCount > 0 ? (decimal)m.PcCount : 0.1m)" />
+                <ApexPointSeries TItem="MonthStatSummary"
+                                 Items="@_chartMonthHistory"
+                                 Name="Students"
+                                 SeriesType="SeriesType.Bar"
+                                 XValue="@(m => m.MonthLabel)"
+                                 YValue="@(m => m.AcademyCount > 0 ? (decimal)m.AcademyCount : 0.1m)" />
+                <ApexPointSeries TItem="MonthStatSummary"
+                                 Items="@_chartMonthHistory"
+                                 Name="BIS"
+                                 SeriesType="SeriesType.Bar"
+                                 XValue="@(m => m.MonthLabel)"
+                                 YValue="@(m => m.BodyInShop > 0 ? (decimal)m.BodyInShop : 0.1m)" />
+            </ApexChart>
+        </div>
+        }
+    </div>
+    }
 
 </div>
 
@@ -594,6 +671,11 @@
     private string   _monthLabel = "";
     private bool _weekLeaderExpanded = true;
     private bool _monthLeaderExpanded;
+    private bool _weekHistoryExpanded = true;
+    private bool _monthHistoryExpanded;
+    private List<MonthStatSummary> _monthHistory     = new();
+    private List<MonthStatSummary> _chartMonthHistory = new();
+    private int _monthChartKey;
 
     private WeekStatSummary? CurrentWeekSummary =>
         _weekHistory.FirstOrDefault(w => w.WeekStart == _weekStart);
@@ -610,6 +692,56 @@
             Bar = new PlotOptionsBar { ColumnWidth = "80%", BorderRadius = 2 }
         },
         Colors = new List<string> { "#6366f1", "#3b82f6", "#22c55e", "#f97316" },
+        Xaxis  = new XAxis
+        {
+            Labels = new XAxisLabels
+            {
+                Rotate = -45,
+                Style  = new AxisLabelStyle { FontSize = "10px", Colors = "#94a3b8" }
+            }
+        },
+        Yaxis = new List<YAxis>
+        {
+            new YAxis
+            {
+                Labels = new YAxisLabels
+                {
+                    Style     = new AxisLabelStyle { Colors = "#94a3b8" },
+                    Formatter = "function(val){ var h=Math.floor(val); var m=Math.round((val-h)*60); return h+':'+String(m).padStart(2,'0'); }"
+                }
+            }
+        },
+        Tooltip = new Tooltip
+        {
+            Shared    = true,
+            Intersect = false,
+            Y = new TooltipY
+            {
+                Formatter = "function(val, opts){ if(opts.seriesIndex===0){ if(val<0.2) return '0'; var h=Math.floor(val); var m=Math.round((val-h)*60); return h+'h '+String(m).padStart(2,'0')+'m'; } return val<0.2?'0':Math.round(val); }"
+            }
+        },
+        Legend = new Legend
+        {
+            Show      = true,
+            Position  = LegendPosition.Top,
+            FontSize  = "12px",
+            Labels    = new LegendLabels { Colors = "#94a3b8" },
+        },
+        Grid = new Grid { BorderColor = "#1e3a5f" },
+    };
+
+    private readonly ApexChartOptions<MonthStatSummary> _monthChartOptions = new()
+    {
+        Chart = new Chart
+        {
+            Toolbar    = new Toolbar { Show = false },
+            Background = "transparent",
+        },
+        PlotOptions = new PlotOptions
+        {
+            Bar = new PlotOptionsBar { ColumnWidth = "80%", BorderRadius = 2 }
+        },
+        Colors = new List<string> { "#4338ca", "#3b82f6", "#22c55e", "#f97316" },
         Xaxis  = new XAxis
         {
             Labels = new XAxisLabels
@@ -690,6 +822,9 @@
         _monthSummary     = StatSvc.GetMonthSummary(_monthStart, _monthEnd);
         _monthStaff       = StatSvc.GetMonthStaffLeaderboard(_monthStart, _monthEnd);
         _monthOriginHours = StatSvc.GetMonthOriginHours(_monthStart, _monthEnd);
+        _monthHistory     = StatSvc.GetMonthlySummaries(_weekStart, 12);
+        _chartMonthHistory = _monthHistory.Where(m => m.TotalAuditCsSec > 0 || m.PcCount > 0 || m.AcademyCount > 0 || m.BodyInShop > 0).ToList();
+        _monthChartKey++;
     }
 
     static List<DateOnly> GetMonthWeeks(DateOnly weekStart)
@@ -753,7 +888,8 @@
             monthLabel: _monthLabel,
             monthWeekCount: _monthWeekCount,
             monthStart: _monthStart,
-            monthEnd: _monthEnd);
+            monthEnd: _monthEnd,
+            monthHistory: _monthHistory);
         await JS.InvokeVoidAsync("downloadFile", $"Statistics_{_weekStart:yyyy_MM_dd}.pdf", Convert.ToBase64String(pdfBytes));
     }
 

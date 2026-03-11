@@ -19,6 +19,12 @@ public record WeekStatSummary(DateOnly WeekStart, int TotalAuditCsSec, int Acade
         $"{WeekStart:dd/MM} – {WeekStart.AddDays(6):dd/MM}";
 }
 
+public record MonthStatSummary(DateOnly MonthStart, DateOnly MonthEnd, int TotalAuditCsSec, int AcademyCount, int BodyInShop, int PcCount)
+{
+    public string MonthLabel =>
+        MonthStart.ToString("MMM yyyy", CultureInfo.InvariantCulture);
+}
+
 public class StatisticsService
 {
     private readonly string _connectionString;
@@ -494,6 +500,136 @@ public class StatisticsService
             .Where(s => s.TotalSec > 0)
             .OrderByDescending(s => s.TotalSec)
             .ToList();
+    }
+
+    /// <summary>
+    /// Returns monthly summaries for the last numMonths months (each month = weeks where Thursday falls in that month).
+    /// </summary>
+    public List<MonthStatSummary> GetMonthlySummaries(DateOnly currentWeekStart, int numMonths = 12)
+    {
+        // Build list of months going back numMonths
+        var months = new List<(DateOnly start, DateOnly end, DateOnly firstThursday)>();
+        var refDate = new DateOnly(currentWeekStart.Year, currentWeekStart.Month, 1);
+        for (int i = 0; i < numMonths; i++)
+        {
+            var mDate = refDate.AddMonths(-(numMonths - 1 - i));
+            // Find first Thursday in this month
+            var d = mDate;
+            while (d.DayOfWeek != DayOfWeek.Thursday) d = d.AddDays(1);
+            var firstThu = d;
+            // Find last Thursday
+            var lastThu = firstThu;
+            while (lastThu.AddDays(7).Month == mDate.Month)
+                lastThu = lastThu.AddDays(7);
+            var monthEnd = lastThu.AddDays(6);
+            months.Add((firstThu, monthEnd, firstThu));
+        }
+
+        if (months.Count == 0) return new();
+
+        var globalStart = months[0].start.ToString("yyyy-MM-dd");
+        var globalEnd   = months[^1].end.ToString("yyyy-MM-dd");
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Audit+CS time per date
+        var dayTotals = new Dictionary<string, int>();
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT SessionDate, SUM(LengthSeconds + AdminSeconds)
+                FROM sess_sessions
+                WHERE SessionDate >= @s AND SessionDate <= @e
+                GROUP BY SessionDate";
+            cmd.Parameters.AddWithValue("@s", globalStart);
+            cmd.Parameters.AddWithValue("@e", globalEnd);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                dayTotals[r.GetString(0)] = r.GetInt32(1);
+        }
+        // Solo CS time
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT s.SessionDate, SUM(cr.ReviewLengthSeconds)
+                FROM cs_reviews cr
+                JOIN sess_sessions s ON s.SessionId = cr.SessionId
+                JOIN sess_auditors a ON a.AuditorId = cr.CsId
+                WHERE s.SessionDate >= @s AND s.SessionDate <= @e
+                  AND s.PcId = s.AuditorId
+                  AND a.Type IN (2, 3)
+                GROUP BY s.SessionDate";
+            cmd.Parameters.AddWithValue("@s", globalStart);
+            cmd.Parameters.AddWithValue("@e", globalEnd);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var dt = r.GetString(0);
+                dayTotals[dt] = dayTotals.GetValueOrDefault(dt) + r.GetInt32(1);
+            }
+        }
+
+        // Academy visits per date+person
+        var academyByDate = new Dictionary<string, HashSet<int>>();
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT VisitDate, PersonId FROM acad_attendance
+                WHERE VisitDate >= @s AND VisitDate <= @e";
+            cmd.Parameters.AddWithValue("@s", globalStart);
+            cmd.Parameters.AddWithValue("@e", globalEnd);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var dt = r.GetString(0);
+                if (!academyByDate.ContainsKey(dt)) academyByDate[dt] = new();
+                academyByDate[dt].Add(r.GetInt32(1));
+            }
+        }
+
+        // Session PcIds per date
+        var sessionsByDate = new Dictionary<string, HashSet<int>>();
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT SessionDate, PcId FROM sess_sessions
+                WHERE SessionDate >= @s AND SessionDate <= @e";
+            cmd.Parameters.AddWithValue("@s", globalStart);
+            cmd.Parameters.AddWithValue("@e", globalEnd);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var dt = r.GetString(0);
+                if (!sessionsByDate.ContainsKey(dt)) sessionsByDate[dt] = new();
+                sessionsByDate[dt].Add(r.GetInt32(1));
+            }
+        }
+
+        // Aggregate per month
+        return months.Select(m =>
+        {
+            int totalSec = 0;
+            var acadPersons = new HashSet<int>();
+            var bisPersons  = new HashSet<int>();
+            var pcPersons   = new HashSet<int>();
+
+            for (var d = m.start; d <= m.end; d = d.AddDays(1))
+            {
+                var ds = d.ToString("yyyy-MM-dd");
+                totalSec += dayTotals.GetValueOrDefault(ds);
+                if (academyByDate.TryGetValue(ds, out var ap))
+                {
+                    foreach (var p in ap) { acadPersons.Add(p); bisPersons.Add(p); }
+                }
+                if (sessionsByDate.TryGetValue(ds, out var sp))
+                {
+                    foreach (var p in sp) { pcPersons.Add(p); bisPersons.Add(p); }
+                }
+            }
+
+            return new MonthStatSummary(m.start, m.end, totalSec, acadPersons.Count, bisPersons.Count, pcPersons.Count);
+        }).ToList();
     }
 
     /// <summary>

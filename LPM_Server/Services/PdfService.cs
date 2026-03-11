@@ -688,7 +688,8 @@ public class PdfService
         string? monthLabel = null,
         int monthWeekCount = 0,
         DateOnly? monthStart = null,
-        DateOnly? monthEnd = null)
+        DateOnly? monthEnd = null,
+        List<MonthStatSummary>? monthHistory = null)
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
@@ -1030,10 +1031,124 @@ public class PdfService
                                 }
                             });
                         });
+
+                        // ── Monthly History Chart ─────────────────────────────
+                        if (monthHistory != null && monthHistory.Count > 0)
+                        {
+                            col.Item().PaddingTop(10);
+                            col.Item().Text("Monthly History — PCs / Academy / BIS").SemiBold().FontSize(9).FontColor("#4338ca");
+                            col.Item().PaddingTop(4);
+                            col.Item().Height(160).Svg(size =>
+                            {
+                                using var stream = new MemoryStream();
+                                using (var skCanvas = SKSvgCanvas.Create(new SKRect(0, 0, size.Width, size.Height), stream))
+                                    DrawMonthlyChart(skCanvas, new SKSize(size.Width, size.Height), monthHistory, monthStart ?? default);
+                                stream.Position = 0;
+                                return new StreamReader(stream).ReadToEnd();
+                            });
+                        }
                     });
                 });
             }
         }).GeneratePdf();
+    }
+
+    static void DrawMonthlyChart(SKCanvas canvas, SKSize size, IList<MonthStatSummary> history, DateOnly currentMonthStart)
+    {
+        if (history.Count == 0) return;
+
+        float W = size.Width;
+        float H = size.Height;
+        const float leftM   = 28f;
+        const float rightM  = 6f;
+        const float topM    = 18f;
+        const float bottomM = 26f;
+
+        float cX = leftM;
+        float cY = topM;
+        float cW = W - leftM - rightM;
+        float cH = H - topM - bottomM;
+
+        using var bgPaint    = new SKPaint { Color = new SKColor(248, 250, 252), Style = SKPaintStyle.Fill };
+        using var gridPaint  = new SKPaint { Color = new SKColor(218, 222, 232), Style = SKPaintStyle.Stroke, StrokeWidth = 0.4f, PathEffect = SKPathEffect.CreateDash(new[] { 3f, 3f }, 0) };
+        using var axisPaint  = new SKPaint { Color = new SKColor(160, 165, 175), Style = SKPaintStyle.Stroke, StrokeWidth = 0.8f };
+        using var hlPaint    = new SKPaint { Color = new SKColor(67, 56, 202, 30), Style = SKPaintStyle.Fill };
+        using var auditPaint = new SKPaint { Color = SKColor.Parse("#4338ca"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var pcPaint    = new SKPaint { Color = SKColor.Parse("#3b82f6"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var acPaint    = new SKPaint { Color = SKColor.Parse("#16a34a"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var bpPaint    = new SKPaint { Color = SKColor.Parse("#ea580c"), Style = SKPaintStyle.Fill, IsAntialias = true };
+        using var yPaint     = new SKPaint { Color = new SKColor(90, 95, 110), TextSize = 7f,   IsAntialias = true };
+        using var xPaint     = new SKPaint { Color = new SKColor(90, 95, 110), TextSize = 6.5f, IsAntialias = true };
+
+        canvas.DrawRect(cX, cY, cW, cH, bgPaint);
+
+        float maxF = 1f;
+        foreach (var m in history)
+            maxF = Math.Max(maxF, Math.Max(
+                (float)(m.TotalAuditCsSec / 3600.0),
+                Math.Max(m.PcCount, Math.Max(m.AcademyCount, m.BodyInShop))));
+
+        const int gridLines = 4;
+        int step = (int)Math.Ceiling(maxF / gridLines);
+        if (step < 1) step = 1;
+        int roundedMax = step * gridLines;
+
+        for (int i = 0; i <= gridLines; i++)
+        {
+            float gy = cY + cH - i * cH / gridLines;
+            canvas.DrawLine(cX, gy, cX + cW, gy, gridPaint);
+            string lbl = (i * step).ToString();
+            float tw = yPaint.MeasureText(lbl);
+            canvas.DrawText(lbl, cX - tw - 3f, gy + 2.5f, yPaint);
+        }
+
+        canvas.DrawLine(cX, cY, cX, cY + cH, axisPaint);
+        canvas.DrawLine(cX, cY + cH, cX + cW, cY + cH, axisPaint);
+
+        int   n      = history.Count;
+        float groupW = cW / n;
+        float barsW  = groupW * 0.84f;
+        float barW   = barsW / 4f;
+        float gapW   = (groupW - barsW) / 2f;
+        float base_  = cY + cH;
+        const float minH = 2f;
+
+        for (int i = 0; i < n; i++)
+        {
+            var   m  = history[i];
+            float gx = cX + i * groupW;
+
+            if (m.MonthStart == currentMonthStart)
+                canvas.DrawRect(gx, cY, groupW, cH, hlPaint);
+
+            float bx = gx + gapW;
+
+            void DrawBar(float x, float val, SKPaint p)
+            {
+                float bh = val > 0 ? cH * val / roundedMax : minH;
+                canvas.DrawRoundRect(SKRect.Create(x, base_ - bh, barW, bh), 1.2f, 1.2f, p);
+            }
+
+            DrawBar(bx,            (float)(m.TotalAuditCsSec / 3600.0), auditPaint);
+            DrawBar(bx + barW,     m.PcCount,                           pcPaint);
+            DrawBar(bx + barW * 2f, m.AcademyCount,                    acPaint);
+            DrawBar(bx + barW * 3f, m.BodyInShop,                      bpPaint);
+
+            string xl = m.MonthStart.ToString("MMM yy", System.Globalization.CultureInfo.InvariantCulture);
+            float  lx = gx + groupW / 2f;
+            canvas.Save();
+            canvas.Translate(lx, base_ + 4f);
+            canvas.RotateDegrees(-50f);
+            canvas.DrawText(xl, 0, 0, xPaint);
+            canvas.Restore();
+        }
+
+        // Legend
+        float legY = cY + 11f;
+        DrawLegendItem(canvas, cX + 4f,   legY, SKColor.Parse("#4338ca"), "Aud+CS (h)", 7f);
+        DrawLegendItem(canvas, cX + 66f,  legY, SKColor.Parse("#3b82f6"), "PCs",        7f);
+        DrawLegendItem(canvas, cX + 100f, legY, SKColor.Parse("#16a34a"), "Academy",    7f);
+        DrawLegendItem(canvas, cX + 153f, legY, SKColor.Parse("#ea580c"), "BIS",        7f);
     }
 
     static void DrawWeeklyChart(SKCanvas canvas, SKSize size, IList<WeekStatSummary> history, DateOnly currentWeekStart)
