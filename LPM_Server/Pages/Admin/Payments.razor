@@ -28,7 +28,7 @@
                 <input class="form-check-input" type="checkbox" role="switch" id="bankToggle"
                        checked="@_showBankCol" @onchange="() => _showBankCol = !_showBankCol" />
                 <label class="form-check-label small text-muted" for="bankToggle" style="cursor:pointer;">
-                    @LS.T("purchases.moneyInBank")
+                    @LS.T("payments.showDeposited")
                 </label>
             </div>
             <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
@@ -63,11 +63,9 @@
                             @ColHeader("date", LS.T("purchases.paymentDate"), "")
                             @ColHeader("method", LS.T("purchases.methodType"), "")
                             @ColHeader("amount", LS.T("pcs.amount"), "text-end")
-                            @if (_showBankCol)
-                            {
-                                @ColHeader("bank", LS.T("purchases.moneyInBank"), "text-center")
-                            }
-                            <th class="text-center" style="width:60px;"></th>
+                            @ColHeader("bank", LS.T("payments.status"), "text-center")
+                            <th class="py-thead-action text-center" style="width:90px;">@LS.T("payments.action")</th>
+                            <th class="py-thead-action text-center" style="width:50px;">@LS.T("common.edit")</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -75,8 +73,8 @@
                         {
                             bool isPast = up.PaymentDateParsed.HasValue && up.PaymentDateParsed.Value <= DateOnly.FromDateTime(DateTime.Today);
                             bool isOverdue = isPast && !up.IsMoneyInBank;
-                            bool isFlash = _flashId == up.PaymentMethodId;
-                            <tr @key="up.PaymentMethodId" class="@(isFlash ? "py-flash" : "")"
+                            bool isExit = _exitId == up.PaymentMethodId;
+                            <tr @key="up.PaymentMethodId" class="@(isExit ? "py-row-exit" : "")"
                                 style="@(isOverdue ? "background:#fef2f2;" : up.IsMoneyInBank ? "background:#f0fdf4;" : "")">
                                 <td class="ps-4 py-2 small fw-semibold" style="color:#1e3a5f;">@up.PcName</td>
                                 <td class="py-2 small">
@@ -104,18 +102,40 @@
                                     <i class="@ico me-1"></i>@lbl
                                 </td>
                                 <td class="py-2 small text-end fw-semibold">@(up.Amount > 0 ? $"\u20AA{up.Amount}" : "\u2014")</td>
-                                @if (_showBankCol)
-                                {
-                                    <td class="text-center py-2">
-                                        <input type="checkbox" class="form-check-input"
-                                               checked="@up.IsMoneyInBank"
-                                               @onchange="() => ToggleBank(up.PaymentMethodId, !up.IsMoneyInBank)" />
-                                    </td>
-                                }
+                                <td class="text-center py-2">
+                                    @if (up.IsMoneyInBank)
+                                    {
+                                        <span class="py-badge-deposited">
+                                            <i class="ri-checkbox-circle-fill me-1"></i>@LS.T("payments.deposited")
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="py-badge-pending">
+                                            <i class="ri-time-line me-1"></i>@LS.T("payments.pending")
+                                        </span>
+                                    }
+                                </td>
+                                <td class="text-center py-2">
+                                    @if (up.IsMoneyInBank)
+                                    {
+                                        <span class="py-action-done" title="@LS.T("payments.alreadyDeposited")">
+                                            <i class="ri-check-double-line"></i>
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="py-chip-confirm" role="button"
+                                              @onclick="() => ToggleBank(up.PaymentMethodId, true)"
+                                              title="@LS.T("payments.markDeposited")">
+                                            <i class="ri-check-line"></i> @LS.T("payments.confirm")
+                                        </span>
+                                    }
+                                </td>
                                 <td class="text-center py-2">
                                     <button class="btn btn-sm py-btn-view py-0 px-1"
                                             @onclick="() => ViewPurchase(up.PurchaseId)">
-                                        <i class="ri-eye-line"></i>
+                                        <i class="ri-pencil-line"></i>
                                     </button>
                                 </td>
                             </tr>
@@ -230,9 +250,20 @@
                                             <td class="small text-end fw-semibold" style="color:#212529;">@(pm.Amount > 0 ? $"\u20AA{pm.Amount}" : "\u2014")</td>
                                             <td class="small" style="color:#212529;">@(pm.PaymentDate != null ? Fmt(pm.PaymentDate) : "\u2014")</td>
                                             <td class="text-center">
-                                                <input type="checkbox" class="form-check-input"
-                                                       checked="@pm.IsMoneyInBank"
-                                                       @onchange="() => ToggleDetailBank(pm.PaymentMethodId, !pm.IsMoneyInBank)" />
+                                                @if (pm.IsMoneyInBank)
+                                                {
+                                                    <span class="py-badge-deposited" style="font-size:0.68rem;">
+                                                        <i class="ri-checkbox-circle-fill me-1"></i>@LS.T("payments.deposited")
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="py-chip-confirm" role="button"
+                                                          @onclick="() => ToggleDetailBank(pm.PaymentMethodId, true)"
+                                                          title="@LS.T("payments.markDeposited")">
+                                                        <i class="ri-check-line"></i> @LS.T("payments.confirm")
+                                                    </span>
+                                                }
                                             </td>
                                             <td class="small" style="color:#6b7280;">@(pm.MoneyInBankDate != null ? Fmt(pm.MoneyInBankDate) : "\u2014")</td>
                                         </tr>
@@ -271,14 +302,56 @@
     .py-btn-view { background: transparent; color: #2d6a9f; border: 1px solid #2d6a9f; border-radius: 7px; font-size: 0.78rem; font-weight: 600; }
     .py-btn-view:hover { background: #2d6a9f; color: #fff; }
 
+    /* ── Status badges ── */
+    .py-badge-deposited {
+        display: inline-flex; align-items: center; gap: 2px;
+        padding: 3px 10px; border-radius: 20px; font-size: 0.73rem; font-weight: 600;
+        background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0;
+    }
+    .py-badge-pending {
+        display: inline-flex; align-items: center; gap: 2px;
+        padding: 3px 10px; border-radius: 20px; font-size: 0.73rem; font-weight: 600;
+        background: #fef3c7; color: #92400e; border: 1px solid #fde68a;
+    }
+
+    /* ── Confirm chip ── */
+    .py-chip-confirm {
+        display: inline-flex; align-items: center; gap: 3px;
+        padding: 2px 10px; border-radius: 6px; font-size: 0.74rem; font-weight: 600;
+        background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe;
+        cursor: pointer; transition: all 0.18s ease; user-select: none;
+    }
+    .py-chip-confirm:hover {
+        background: #2563eb; color: #fff; border-color: #2563eb;
+        box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+    }
+    .py-chip-confirm:active { transform: scale(0.95); }
+
+    /* ── Already-done icon ── */
+    .py-action-done {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 24px; height: 24px; border-radius: 50%;
+        background: #dcfce7; color: #15803d; font-size: 0.9rem;
+    }
+
+    .py-thead-action { font-size: 0.69rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6c757d; padding-top: 7px; padding-bottom: 7px; border-bottom: 1px solid #dce3f0; border-top: none; }
+
     .py-spin { display: inline-block; animation: py-spin-anim 1s linear infinite; }
     @@keyframes py-spin-anim { to { transform: rotate(360deg); } }
 
-    .py-flash td { animation: py-flash-anim 1.2s ease-out; }
-    @@keyframes py-flash-anim {
-        0%   { background: #fbbf24; }
-        25%  { background: #34d399; }
-        100% { background: transparent; }
+    /* ── Row exit animation ── */
+    .py-row-exit td {
+        animation: py-row-exit-anim 0.7s ease-in-out forwards;
+    }
+    .py-row-exit {
+        transition: opacity 0.5s ease, transform 0.5s ease;
+        opacity: 0;
+        transform: translateX(40px);
+    }
+    @@keyframes py-row-exit-anim {
+        0%   { background: #bbf7d0; }
+        40%  { background: #86efac; }
+        100% { background: #dcfce7; opacity: 0.3; }
     }
 
     .modal-content,
@@ -294,7 +367,7 @@
     private List<PayRow> _rows = new();
     private PurchaseDetail? _viewDetail;
     private bool _loading = true;
-    private int? _flashId;
+    private int? _exitId;
 
     private string _sortCol = "date";
     private bool   _sortAsc = true;
@@ -400,25 +473,40 @@
     async Task ToggleBank(int paymentMethodId, bool newValue)
     {
         PcSvc.SetMoneyInBank(paymentMethodId, newValue);
+
+        // Play exit animation before updating state (row slides out)
+        if (newValue && !_showBankCol)
+        {
+            _exitId = paymentMethodId;
+            StateHasChanged();
+            await Task.Delay(800);
+            _exitId = null;
+        }
+
         var row = _rows.FirstOrDefault(r => r.PaymentMethodId == paymentMethodId);
         if (row != null) row.IsMoneyInBank = newValue;
-        _flashId = paymentMethodId;
-        StateHasChanged();
-        await Task.Delay(1200);
-        _flashId = null;
     }
 
     async Task ToggleDetailBank(int paymentMethodId, bool newValue)
     {
         PcSvc.SetMoneyInBank(paymentMethodId, newValue);
-        if (_viewDetail != null)
+
+        if (newValue && !_showBankCol)
+        {
+            // Close the modal, then animate the row out
+            _viewDetail = null;
+            _exitId = paymentMethodId;
+            StateHasChanged();
+            await Task.Delay(800);
+            _exitId = null;
+        }
+        else if (_viewDetail != null)
+        {
             _viewDetail = PcSvc.GetPurchaseDetail(_viewDetail.PurchaseId);
+        }
+
         var row = _rows.FirstOrDefault(r => r.PaymentMethodId == paymentMethodId);
         if (row != null) row.IsMoneyInBank = newValue;
-        _flashId = paymentMethodId;
-        StateHasChanged();
-        await Task.Delay(1200);
-        _flashId = null;
     }
 
     void ViewPurchase(int purchaseId) => _viewDetail = PcSvc.GetPurchaseDetail(purchaseId);

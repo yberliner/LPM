@@ -120,7 +120,7 @@
             </div>
 
             @* ── Courses ── *@
-            <div class="card shadow-sm mb-3" style="border:none;border-radius:14px;overflow:hidden;">
+            <div class="card shadow-sm mb-3 pc-card-courses" style="border:none;border-radius:14px;overflow:hidden;">
                 <div class="card-header d-flex align-items-center justify-content-between py-2"
                      style="background:linear-gradient(135deg,#6d28d9,#a855f7);border:none;">
                     <span class="fw-semibold small text-white">
@@ -209,7 +209,7 @@
             </div>
 
             @* ── Auditing Purchases ── *@
-            <div class="card shadow-sm" style="border:none;border-radius:14px;overflow:hidden;">
+            <div class="card shadow-sm pc-card-auditing" style="border:none;border-radius:14px;overflow:hidden;">
                 <div class="card-header d-flex align-items-center justify-content-between py-2"
                      style="background:linear-gradient(135deg,#1e3a5f,#3b82f6);border:none;">
                     <span class="fw-semibold small text-white">
@@ -774,6 +774,16 @@
     .purchases-card .table-light { background-color: #f8f9fa !important; color: #212529 !important; }
     .purchases-card .table-light th,
     .purchases-card .table-light td { color: #212529 !important; background-color: #f8f9fa !important; }
+
+    /* ── Courses vs Auditing table tints ── */
+    .pc-card-courses .table tbody tr { background: #faf5ff; }
+    .pc-card-courses .table tbody tr:hover { background: #f3e8ff !important; }
+    .pc-card-courses .table thead.table-light th { background: #f3e8ff !important; color: #581c87 !important; }
+
+    .pc-card-auditing .table tbody tr { background: #f0f7ff; }
+    .pc-card-auditing .table tbody tr:hover { background: #e0efff !important; }
+    .pc-card-auditing .table thead.table-light th { background: #dbeafe !important; color: #1e3a5f !important; }
+    .pc-card-auditing .table tfoot.table-light td { background: #dbeafe !important; color: #1e3a5f !important; }
 
     /* ── Purchase modal sections ── */
     .purchase-section {
