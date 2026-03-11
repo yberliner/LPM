@@ -667,10 +667,9 @@
                 {
                     var pid = p.PurchaseId;
                     bool isApproved = p.ApprovedStatus == "Approved";
-                    bool isDraft = p.ApprovedStatus == "Draft";
                     bool isDeleted = p.IsDeleted;
                     var bankSt = GetBankStatus(pid);
-                    var rowClass = isDeleted ? "pu-row-deleted" : isApproved ? "pu-row-approved" : isDraft ? "pu-row-draft" : "pu-row-pending";
+                    var rowClass = isDeleted ? "pu-row-deleted" : isApproved ? "pu-row-approved" : "pu-row-pending";
                     var bankBg = bankSt == "all" ? "background:#f0fdf4;" : bankSt == "partial" ? "background:#fefce8;" : "";
                     <tr @key="pid" class="@rowClass" style="@bankBg">
                         <td class="ps-4 py-2">
@@ -735,13 +734,9 @@
                             {
                                 <span class="badge pu-badge-approved"><i class="ri-check-line me-1"></i>@LS.T("purchases.approved")</span>
                             }
-                            else if (isDraft)
-                            {
-                                <span class="badge pu-badge-draft"><i class="ri-draft-line me-1"></i>@LS.T("purchases.draft")</span>
-                            }
                             else
                             {
-                                <span class="badge pu-badge-pending">@LS.T("purchases.pending")</span>
+                                <span class="badge pu-badge-pending"><i class="ri-time-line me-1"></i>@LS.T("purchases.pending")</span>
                             }
                         </td>
                         <td class="pe-4 py-1 text-end">

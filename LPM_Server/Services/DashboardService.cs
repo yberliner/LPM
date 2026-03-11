@@ -5,7 +5,7 @@ using System.Globalization;
 namespace LPM.Services;
 
 public record PcInfo(int PcId, string FullName, string WorkCapacity);
-public record SessionRow(int SessionId, int LengthSec, int AdminSec, bool IsFree, string? Summary, string CreatedAt, string AuditorName, string VerifiedStatus = "Draft");
+public record SessionRow(int SessionId, int LengthSec, int AdminSec, bool IsFree, string? Summary, string CreatedAt, string AuditorName, string VerifiedStatus = "Pending");
 public record CsReviewRow(int CsReviewId, int SessionId, int ReviewSec, string Status, string? Notes);
 public record CsWorkRow(int CsWorkLogId, int LengthSec, string? Notes, string CreatedAt);
 public record PcWeekItem(string FullName, int Seconds);
@@ -651,7 +651,7 @@ public class DashboardService
                     r.IsDBNull(4) ? null : r.GetString(4),
                     r.IsDBNull(5) ? ""   : r.GetString(5),
                     r.IsDBNull(6) ? ""   : r.GetString(6),
-                    r.IsDBNull(7) ? "Draft" : r.GetString(7)));
+                    r.IsDBNull(7) ? "Pending" : r.GetString(7)));
             }
         }
         else if (role == "Miscellaneous")
@@ -699,7 +699,7 @@ public class DashboardService
                     r.IsDBNull(4) ? null : r.GetString(4),
                     r.IsDBNull(5) ? ""   : r.GetString(5),
                     "",
-                    r.IsDBNull(6) ? "Draft" : r.GetString(6)));
+                    r.IsDBNull(6) ? "Pending" : r.GetString(6)));
             }
         }
         else  // CS role
@@ -727,7 +727,7 @@ public class DashboardService
                     rs.IsDBNull(4) ? null : rs.GetString(4),
                     rs.IsDBNull(5) ? ""   : rs.GetString(5),
                     rs.IsDBNull(6) ? ""   : rs.GetString(6),
-                    rs.IsDBNull(7) ? "Draft" : rs.GetString(7)));
+                    rs.IsDBNull(7) ? "Pending" : rs.GetString(7)));
             }
 
             // All reviews for those sessions (by any CS worker — UNIQUE per session anyway)
@@ -1370,7 +1370,7 @@ public class DashboardService
 
         var where = new System.Text.StringBuilder(
             includeApproved
-                ? "s.VerifiedStatus IN ('Draft','Approved')"
+                ? "s.VerifiedStatus IN ('Pending','Approved')"
                 : "s.VerifiedStatus != 'Approved'");
 
         if (includeApproved && from.HasValue)
@@ -1416,7 +1416,7 @@ public class DashboardService
                 r.GetInt32(5), r.GetInt32(6),
                 r.GetInt32(7) == 1,
                 r.GetInt32(8), r.GetInt32(9),
-                r.IsDBNull(10) ? "Draft" : r.GetString(10));
+                r.IsDBNull(10) ? "Pending" : r.GetString(10));
 
             auditorNames.TryAdd(auditorId, auditorName);
             pcNames.TryAdd(key, pcName);
@@ -1487,7 +1487,7 @@ public class DashboardService
             var row = new AdminCsRow(
                 r.GetInt32(0), r.GetInt32(1), pcId, pcName, csId, csName,
                 r.GetString(6), r.GetInt32(7), r.GetInt32(8),
-                r.IsDBNull(9) ? "Draft" : r.GetString(9));
+                r.IsDBNull(9) ? "Pending" : r.GetString(9));
 
             csNames.TryAdd(csId, csName);
             pcNames.TryAdd(key, pcName);

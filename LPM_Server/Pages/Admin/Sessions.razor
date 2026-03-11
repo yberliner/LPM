@@ -18,13 +18,13 @@
             @if (_sessDraft > 0)
             {
                 <span class="badge rounded-pill text-bg-warning px-3 py-2" style="font-size:0.77rem;">
-                    <i class="ri-time-line me-1"></i>@_sessDraft @LS.T("sessions.sessionDraft")
+                    <i class="ri-time-line me-1"></i>@_sessDraft @LS.T("sessions.sessionPending")
                 </span>
             }
             @if (_csDraft > 0)
             {
                 <span class="badge rounded-pill sa-badge-cs-draft px-3 py-2" style="font-size:0.77rem;">
-                    <i class="ri-user-star-line me-1"></i>@_csDraft @LS.T("sessions.csDraft")
+                    <i class="ri-user-star-line me-1"></i>@_csDraft @LS.T("sessions.csPending")
                 </span>
             }
             <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
@@ -46,7 +46,7 @@
                         <button type="button"
                                 class="btn btn-sm @(!_includeApproved ? "sa-seg-active" : "sa-seg-inactive")"
                                 @onclick="SwitchToDraftOnly">
-                            <i class="ri-file-list-line me-1"></i>@LS.T("sessions.draftOnly")
+                            <i class="ri-file-list-line me-1"></i>@LS.T("sessions.pendingOnly")
                         </button>
                         <button type="button"
                                 class="btn btn-sm @(_includeApproved ? "sa-seg-active" : "sa-seg-inactive")"
@@ -95,7 +95,7 @@
             <i class="ri-arrow-down-s-line sa-chevron @(_sessCollapsed ? "sa-chevron-collapsed" : "")"></i>
             <i class="ri-calendar-check-line" style="font-size:1.05rem;"></i>
             <span>@LS.T("sessions.sessions")</span>
-            @if (_sessDraft > 0)    { <span class="badge rounded-pill sa-badge-pending ms-2">@_sessDraft @LS.T("sessions.draft")</span> }
+            @if (_sessDraft > 0)    { <span class="badge rounded-pill sa-badge-pending ms-2">@_sessDraft @LS.T("sessions.pending")</span> }
             @if (_sessApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm ms-1">@_sessApproved @LS.T("sessions.approved")</span> }
         </div>
     </div>
@@ -113,7 +113,7 @@
         <div class="sa-empty-block mb-4">
             <i class="ri-check-double-line" style="font-size:1.8rem;color:#16a34a;"></i>
             <div class="fw-semibold mt-2">@LS.T("sessions.noSessions")</div>
-            <div class="small" style="color:#6b7280;">@(_includeApproved ? "No sessions in the selected date range." : "No draft sessions pending approval.")</div>
+            <div class="small" style="color:#6b7280;">@(_includeApproved ? "No sessions in the selected date range." : "No pending sessions for approval.")</div>
         </div>
     }
     else
@@ -132,7 +132,7 @@
                         <div class="fw-semibold" style="font-size:1rem;">@group.AuditorName</div>
                         <div style="font-size:0.71rem;opacity:.72;">
                             @group.PcGroups.Count PC@(group.PcGroups.Count != 1 ? "s" : "")
-                            @if (gDraft > 0)    { <span> · @gDraft @LS.T("sessions.draft")</span> }
+                            @if (gDraft > 0)    { <span> · @gDraft @LS.T("sessions.pending")</span> }
                             @if (gApproved > 0) { <span> · @gApproved @LS.T("sessions.approved")</span> }
                         </div>
                     </div>
@@ -154,7 +154,7 @@
                         <div class="d-flex align-items-center gap-2">
                             <div class="sa-pc-dot"></div>
                             <span class="fw-semibold sa-pc-name">@pcGroup.PcName</span>
-                            @if (pcDraft > 0)    { <span class="badge rounded-pill sa-badge-pending">@pcDraft @LS.T("sessions.draft")</span> }
+                            @if (pcDraft > 0)    { <span class="badge rounded-pill sa-badge-pending">@pcDraft @LS.T("sessions.pending")</span> }
                             @if (pcApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm">@pcApproved @LS.T("sessions.approved")</span> }
                         </div>
                         <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
@@ -212,7 +212,7 @@
                                         <td class="py-1"><input type="number" class="form-control form-control-sm sa-row-input" @bind="edit.Salary" min="0" step="1" /></td>
                                         <td class="py-2">
                                             @if (isApproved) { <span class="badge sa-badge-status-approved"><i class="ri-check-line me-1"></i>@LS.T("sessions.approvedStatus")</span> }
-                                            else             { <span class="badge sa-badge-status-draft">@LS.T("sessions.draftStatus")</span> }
+                                            else             { <span class="badge sa-badge-status-draft">@LS.T("sessions.pendingStatus")</span> }
                                         </td>
                                         <td class="pe-4 py-1">
                                             <button class="btn btn-sm d-flex align-items-center gap-1 @(isApproved ? "sa-btn-update" : "sa-btn-submit")"
@@ -239,7 +239,7 @@
             <i class="ri-arrow-down-s-line sa-chevron @(_csCollapsed ? "sa-chevron-collapsed" : "")"></i>
             <i class="ri-user-star-line" style="font-size:1.05rem;"></i>
             <span>@LS.T("sessions.csReviews")</span>
-            @if (_csDraft > 0)    { <span class="badge rounded-pill sa-badge-pending ms-2">@_csDraft @LS.T("sessions.draft")</span> }
+            @if (_csDraft > 0)    { <span class="badge rounded-pill sa-badge-pending ms-2">@_csDraft @LS.T("sessions.pending")</span> }
             @if (_csApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm ms-1">@_csApproved @LS.T("sessions.approved")</span> }
         </div>
     </div>
@@ -250,7 +250,7 @@
         <div class="sa-empty-block mb-4">
             <i class="ri-user-star-line" style="font-size:1.8rem;color:#4a7fc1;"></i>
             <div class="fw-semibold mt-2">@LS.T("sessions.noCSReviews")</div>
-            <div class="small" style="color:#6b7280;">@(_includeApproved ? "No CS reviews in the selected date range." : "No draft CS reviews pending approval.")</div>
+            <div class="small" style="color:#6b7280;">@(_includeApproved ? "No CS reviews in the selected date range." : "No pending CS reviews for approval.")</div>
         </div>
     }
     else if (!_loading)
@@ -269,7 +269,7 @@
                         <div class="fw-semibold" style="font-size:1rem;">@csGroup.CsName</div>
                         <div style="font-size:0.71rem;opacity:.72;">
                             @csGroup.PcGroups.Count PC@(csGroup.PcGroups.Count != 1 ? "s" : "")
-                            @if (cgDraft > 0)    { <span> · @cgDraft @LS.T("sessions.draft")</span> }
+                            @if (cgDraft > 0)    { <span> · @cgDraft @LS.T("sessions.pending")</span> }
                             @if (cgApproved > 0) { <span> · @cgApproved @LS.T("sessions.approved")</span> }
                         </div>
                     </div>
@@ -291,7 +291,7 @@
                         <div class="d-flex align-items-center gap-2">
                             <div class="sa-pc-dot sa-pc-dot-cs"></div>
                             <span class="fw-semibold sa-pc-name">@pcGroup.PcName</span>
-                            @if (csPcDraft > 0) { <span class="badge rounded-pill sa-badge-pending">@csPcDraft @LS.T("sessions.draft")</span> }
+                            @if (csPcDraft > 0) { <span class="badge rounded-pill sa-badge-pending">@csPcDraft @LS.T("sessions.pending")</span> }
                             @if (csPcApprv > 0) { <span class="badge rounded-pill sa-badge-approved-sm">@csPcApprv @LS.T("sessions.approved")</span> }
                         </div>
                         <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
@@ -338,7 +338,7 @@
                                         </td>
                                         <td class="py-2">
                                             @if (csApproved) { <span class="badge sa-badge-status-approved"><i class="ri-check-line me-1"></i>@LS.T("sessions.approvedStatus")</span> }
-                                            else             { <span class="badge sa-badge-status-draft">@LS.T("sessions.draftStatus")</span> }
+                                            else             { <span class="badge sa-badge-status-draft">@LS.T("sessions.pendingStatus")</span> }
                                         </td>
                                         <td class="pe-4 py-1">
                                             <button class="btn btn-sm d-flex align-items-center gap-1 @(csApproved ? "sa-btn-update" : "sa-btn-submit")"

@@ -1109,7 +1109,7 @@
     {
         int secs = ParseTime(_editRevDuration);
         if (secs <= 0) { _editRevError = "Invalid duration — use H:MM (e.g. 0:30)."; return; }
-        DashSvc.UpdateCsReview(_editReviewId!.Value, secs, "Draft",
+        DashSvc.UpdateCsReview(_editReviewId!.Value, secs, "Pending",
             string.IsNullOrWhiteSpace(_editRevNotes) ? null : _editRevNotes);
         _editReviewId = null;
         _detail = DashSvc.GetDayDetail(_userId!.Value, _selPcId!.Value,
@@ -1663,7 +1663,7 @@
         try
         {
             DashSvc.AddCsReview(
-                _userId!.Value, _addReviewSessionId, secs, "Draft",
+                _userId!.Value, _addReviewSessionId, secs, "Pending",
                 string.IsNullOrWhiteSpace(_addReviewNotes) ? null : _addReviewNotes);
         }
         catch (Exception ex) when (ex.Message.Contains("UNIQUE"))

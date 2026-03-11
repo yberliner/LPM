@@ -44,6 +44,18 @@ public class PcService
         // Schema managed directly in DB — no CREATE TABLE statements here.
     }
 
+    public List<string> GetStatuses()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Name FROM lkp_statuses ORDER BY StatusId";
+        var list = new List<string>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) list.Add(r.GetString(0));
+        return list;
+    }
+
     public List<PcListItem> GetAllPcs()
     {
         using var conn = new SqliteConnection(_connectionString);
@@ -250,7 +262,7 @@ public class PcService
         cmd.CommandText = @"
             SELECT s.SessionId, s.SessionDate, p.FirstName,
                    s.LengthSeconds, s.AdminSeconds, s.IsFreeSession,
-                   COALESCE(s.VerifiedStatus,'Draft')
+                   COALESCE(s.VerifiedStatus,'Pending')
             FROM sess_sessions s
             JOIN core_persons p ON p.PersonId = s.AuditorId
             WHERE s.PcId=@id
@@ -687,14 +699,14 @@ public class PcService
             pcId = (int)(long)q.ExecuteScalar()!;
         }
 
-        // Update header + reset status to Draft
+        // Update header + reset status to Pending
         using (var cmd = conn.CreateCommand())
         {
             cmd.Transaction = tx;
             cmd.CommandText = @"
                 UPDATE fin_purchases SET PurchaseDate = @date, Notes = @notes,
                     RegistrarId = @regId, ReferralId = @refId,
-                    ApprovedStatus = 'Draft', ApprovedByPersonId = NULL, ApprovedAt = NULL
+                    ApprovedStatus = 'Pending', ApprovedByPersonId = NULL, ApprovedAt = NULL
                 WHERE PurchaseId = @id";
             cmd.Parameters.AddWithValue("@id", purchaseId);
             cmd.Parameters.AddWithValue("@date", date);
