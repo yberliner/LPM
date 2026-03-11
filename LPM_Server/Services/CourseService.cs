@@ -30,7 +30,7 @@ public class CourseService
 
         using var c1 = conn.CreateCommand();
         c1.CommandText = @"
-            CREATE TABLE IF NOT EXISTS Courses (
+            CREATE TABLE IF NOT EXISTS lkp_courses (
                 CourseId INTEGER PRIMARY KEY AUTOINCREMENT,
                 Name     TEXT    NOT NULL
             )";
@@ -38,7 +38,7 @@ public class CourseService
 
         using var c2 = conn.CreateCommand();
         c2.CommandText = @"
-            CREATE TABLE IF NOT EXISTS StudentCourses (
+            CREATE TABLE IF NOT EXISTS acad_student_courses (
                 StudentCourseId INTEGER PRIMARY KEY AUTOINCREMENT,
                 PersonId        INTEGER NOT NULL,
                 CourseId        INTEGER NOT NULL,
@@ -52,7 +52,7 @@ public class CourseService
         // We need it here so the backfill below always works.
         using var c3 = conn.CreateCommand();
         c3.CommandText = @"
-            CREATE TABLE IF NOT EXISTS Payments (
+            CREATE TABLE IF NOT EXISTS fin_payments (
                 PaymentId   INTEGER PRIMARY KEY AUTOINCREMENT,
                 PcId        INTEGER NOT NULL,
                 PaymentDate TEXT    NOT NULL,
@@ -71,13 +71,13 @@ public class CourseService
         // This runs on every startup (idempotent — the NOT EXISTS guard prevents duplication).
         using var bf = conn.CreateCommand();
         bf.CommandText = @"
-            INSERT INTO StudentCourses (PersonId, CourseId, DateStarted)
+            INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted)
             SELECT p.PcId, p.CourseId, p.PaymentDate
-            FROM Payments p
+            FROM fin_payments p
             WHERE COALESCE(p.PaymentType, 'Auditing') = 'Course'
               AND p.CourseId IS NOT NULL
               AND NOT EXISTS (
-                  SELECT 1 FROM StudentCourses sc
+                  SELECT 1 FROM acad_student_courses sc
                   WHERE sc.PersonId = p.PcId
                     AND sc.CourseId = p.CourseId
                     AND sc.DateFinished IS NULL
@@ -92,7 +92,7 @@ public class CourseService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT CourseId, Name FROM Courses ORDER BY Name";
+        cmd.CommandText = "SELECT CourseId, Name FROM lkp_courses ORDER BY Name";
         var list = new List<CourseItem>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -105,7 +105,7 @@ public class CourseService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT INTO Courses (Name) VALUES (@name)";
+        cmd.CommandText = "INSERT INTO lkp_courses (Name) VALUES (@name)";
         cmd.Parameters.AddWithValue("@name", name.Trim());
         cmd.ExecuteNonQuery();
         using var idCmd = conn.CreateCommand();
@@ -118,7 +118,7 @@ public class CourseService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE Courses SET Name=@name WHERE CourseId=@id";
+        cmd.CommandText = "UPDATE lkp_courses SET Name=@name WHERE CourseId=@id";
         cmd.Parameters.AddWithValue("@name", name.Trim());
         cmd.Parameters.AddWithValue("@id", courseId);
         cmd.ExecuteNonQuery();
@@ -129,7 +129,7 @@ public class CourseService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM Courses WHERE CourseId=@id";
+        cmd.CommandText = "DELETE FROM lkp_courses WHERE CourseId=@id";
         cmd.Parameters.AddWithValue("@id", courseId);
         cmd.ExecuteNonQuery();
     }
@@ -143,8 +143,8 @@ public class CourseService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT sc.StudentCourseId, sc.PersonId, sc.CourseId, c.Name, sc.DateStarted, sc.DateFinished
-            FROM StudentCourses sc
-            JOIN Courses c ON c.CourseId = sc.CourseId
+            FROM acad_student_courses sc
+            JOIN lkp_courses c ON c.CourseId = sc.CourseId
             WHERE sc.PersonId = @pid
             ORDER BY sc.DateStarted DESC";
         cmd.Parameters.AddWithValue("@pid", personId);
@@ -169,10 +169,10 @@ public class CourseService
         var inClause = string.Join(",", ids);
         cmd.CommandText = $@"
             SELECT sc.PersonId, c.Name,
-                   (SELECT COUNT(*) FROM AcademyAttendance s
+                   (SELECT COUNT(*) FROM acad_attendance s
                     WHERE s.PersonId = sc.PersonId AND s.VisitDate >= sc.DateStarted) AS VisitCount
-            FROM StudentCourses sc
-            JOIN Courses c ON c.CourseId = sc.CourseId
+            FROM acad_student_courses sc
+            JOIN lkp_courses c ON c.CourseId = sc.CourseId
             WHERE sc.PersonId IN ({inClause}) AND sc.DateFinished IS NULL
             ORDER BY sc.PersonId, sc.DateStarted";
         var dict = new Dictionary<int, List<string>>();
@@ -195,7 +195,7 @@ public class CourseService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO StudentCourses (PersonId, CourseId, DateStarted)
+            INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted)
             VALUES (@pid, @cid, @ds)";
         cmd.Parameters.AddWithValue("@pid", personId);
         cmd.Parameters.AddWithValue("@cid", courseId);
@@ -211,7 +211,7 @@ public class CourseService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE StudentCourses SET DateFinished=@df WHERE StudentCourseId=@id";
+        cmd.CommandText = "UPDATE acad_student_courses SET DateFinished=@df WHERE StudentCourseId=@id";
         cmd.Parameters.AddWithValue("@df", dateFinished);
         cmd.Parameters.AddWithValue("@id", studentCourseId);
         cmd.ExecuteNonQuery();
@@ -222,7 +222,7 @@ public class CourseService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM StudentCourses WHERE StudentCourseId=@id";
+        cmd.CommandText = "DELETE FROM acad_student_courses WHERE StudentCourseId=@id";
         cmd.Parameters.AddWithValue("@id", studentCourseId);
         cmd.ExecuteNonQuery();
     }
@@ -243,20 +243,20 @@ public class CourseService
                    TRIM(COALESCE(reg.FirstName,'') || ' ' || COALESCE(NULLIF(reg.LastName,''),'')) AS RegistrarName,
                    pay.ReferralId,
                    TRIM(COALESCE(rf.FirstName,'') || ' ' || COALESCE(NULLIF(rf.LastName,''),'')) AS ReferralName,
-                   (SELECT COUNT(*) FROM AcademyAttendance s
+                   (SELECT COUNT(*) FROM acad_attendance s
                     WHERE s.PersonId = sc.PersonId AND s.VisitDate >= sc.DateStarted) AS VisitCount
-            FROM StudentCourses sc
-            JOIN Persons p ON p.PersonId = sc.PersonId
-            JOIN Courses c ON c.CourseId = sc.CourseId
+            FROM acad_student_courses sc
+            JOIN core_persons p ON p.PersonId = sc.PersonId
+            JOIN lkp_courses c ON c.CourseId = sc.CourseId
             LEFT JOIN (
                 SELECT PcId, CourseId, MAX(PaymentId) AS MaxPayId
-                FROM Payments
+                FROM fin_payments
                 WHERE COALESCE(PaymentType,'Auditing') = 'Course'
                 GROUP BY PcId, CourseId
             ) latest ON latest.PcId = sc.PersonId AND latest.CourseId = sc.CourseId
-            LEFT JOIN Payments pay ON pay.PaymentId = latest.MaxPayId
-            LEFT JOIN Persons reg ON reg.PersonId = pay.RegistrarId
-            LEFT JOIN Persons rf  ON rf.PersonId  = pay.ReferralId
+            LEFT JOIN fin_payments pay ON pay.PaymentId = latest.MaxPayId
+            LEFT JOIN core_persons reg ON reg.PersonId = pay.RegistrarId
+            LEFT JOIN core_persons rf  ON rf.PersonId  = pay.ReferralId
             ORDER BY c.Name, p.FirstName, p.LastName";
         var list = new List<CourseEnrollmentItem>();
         using var r = cmd.ExecuteReader();
@@ -280,7 +280,7 @@ public class CourseService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(*) FROM AcademyAttendance WHERE PersonId=@pid AND VisitDate >= @since";
+        cmd.CommandText = "SELECT COUNT(*) FROM acad_attendance WHERE PersonId=@pid AND VisitDate >= @since";
         cmd.Parameters.AddWithValue("@pid", personId);
         cmd.Parameters.AddWithValue("@since", sinceDate);
         return (int)(long)cmd.ExecuteScalar()!;

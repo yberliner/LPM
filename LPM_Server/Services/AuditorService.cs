@@ -23,9 +23,9 @@ public class AuditorService(IConfiguration config)
             SELECT a.AuditorId,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
                    a.Type, a.IsActive, g.Code
-            FROM Auditors a
-            JOIN Persons p ON p.PersonId = a.AuditorId
-            LEFT JOIN Grades g ON g.GradeId = a.CurrentGradeId
+            FROM sess_auditors a
+            JOIN core_persons p ON p.PersonId = a.AuditorId
+            LEFT JOIN lkp_grades g ON g.GradeId = a.CurrentGradeId
             ORDER BY p.FirstName";
         var list = new List<AuditorListItem>();
         using var r = cmd.ExecuteReader();
@@ -41,7 +41,7 @@ public class AuditorService(IConfiguration config)
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT GradeId, Code FROM Grades ORDER BY SortOrder";
+        cmd.CommandText = "SELECT GradeId, Code FROM lkp_grades ORDER BY SortOrder";
         var list = new List<GradeItem>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -57,9 +57,9 @@ public class AuditorService(IConfiguration config)
         cmd.CommandText = @"
             SELECT a.AuditorId, p.FirstName, COALESCE(p.LastName,''),
                    a.Type, a.IsActive, a.CurrentGradeId, g.Code
-            FROM Auditors a
-            JOIN Persons p ON p.PersonId = a.AuditorId
-            LEFT JOIN Grades g ON g.GradeId = a.CurrentGradeId
+            FROM sess_auditors a
+            JOIN core_persons p ON p.PersonId = a.AuditorId
+            LEFT JOIN lkp_grades g ON g.GradeId = a.CurrentGradeId
             WHERE a.AuditorId = @id";
         cmd.Parameters.AddWithValue("@id", auditorId);
         using var r = cmd.ExecuteReader();
@@ -78,7 +78,7 @@ public class AuditorService(IConfiguration config)
         conn.Open();
 
         using var pCmd = conn.CreateCommand();
-        pCmd.CommandText = "UPDATE Persons SET FirstName=@fn, LastName=@ln WHERE PersonId=@id";
+        pCmd.CommandText = "UPDATE core_persons SET FirstName=@fn, LastName=@ln WHERE PersonId=@id";
         pCmd.Parameters.AddWithValue("@fn", firstName.Trim());
         pCmd.Parameters.AddWithValue("@ln", lastName.Trim());
         pCmd.Parameters.AddWithValue("@id", auditorId);
@@ -86,7 +86,7 @@ public class AuditorService(IConfiguration config)
 
         using var aCmd = conn.CreateCommand();
         aCmd.CommandText = @"
-            UPDATE Auditors SET CurrentGradeId=@gid, Type=@type, IsActive=@active
+            UPDATE sess_auditors SET CurrentGradeId=@gid, Type=@type, IsActive=@active
             WHERE AuditorId=@id";
         aCmd.Parameters.AddWithValue("@gid", gradeId.HasValue ? (object)gradeId.Value : DBNull.Value);
         aCmd.Parameters.AddWithValue("@type", type);
@@ -101,7 +101,7 @@ public class AuditorService(IConfiguration config)
         conn.Open();
 
         using var pCmd = conn.CreateCommand();
-        pCmd.CommandText = "INSERT INTO Persons (FirstName, LastName) VALUES (@fn, @ln)";
+        pCmd.CommandText = "INSERT INTO core_persons (FirstName, LastName) VALUES (@fn, @ln)";
         pCmd.Parameters.AddWithValue("@fn", firstName.Trim());
         pCmd.Parameters.AddWithValue("@ln", lastName.Trim());
         pCmd.ExecuteNonQuery();
@@ -112,7 +112,7 @@ public class AuditorService(IConfiguration config)
 
         using var aCmd = conn.CreateCommand();
         aCmd.CommandText = @"
-            INSERT INTO Auditors (AuditorId, CurrentGradeId, IsActive, Type)
+            INSERT INTO sess_auditors (AuditorId, CurrentGradeId, IsActive, Type)
             VALUES (@id, @gid, 1, @type)";
         aCmd.Parameters.AddWithValue("@id", personId);
         aCmd.Parameters.AddWithValue("@gid", gradeId.HasValue ? (object)gradeId.Value : DBNull.Value);
@@ -120,7 +120,7 @@ public class AuditorService(IConfiguration config)
         aCmd.ExecuteNonQuery();
 
         using var pcCmd = conn.CreateCommand();
-        pcCmd.CommandText = "INSERT OR IGNORE INTO PCs (PcId) VALUES (@id)";
+        pcCmd.CommandText = "INSERT OR IGNORE INTO core_pcs (PcId) VALUES (@id)";
         pcCmd.Parameters.AddWithValue("@id", personId);
         pcCmd.ExecuteNonQuery();
 
@@ -137,7 +137,7 @@ public class AuditorService(IConfiguration config)
                    COALESCE(SUM(CASE WHEN IsFreeSession=1 THEN 1 ELSE 0 END), 0),
                    COALESCE(SUM(LengthSeconds), 0),
                    MAX(SessionDate)
-            FROM Sessions
+            FROM sess_sessions
             WHERE AuditorId=@id AND PcId != AuditorId";
         cmd.Parameters.AddWithValue("@id", auditorId);
         using var r = cmd.ExecuteReader();

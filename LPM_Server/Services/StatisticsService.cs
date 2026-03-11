@@ -56,8 +56,8 @@ public class StatisticsService
             cmd.CommandText = @"
                 SELECT a.AuditorId,
                        TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS Name
-                FROM Auditors a
-                JOIN Persons p ON p.PersonId = a.AuditorId
+                FROM sess_auditors a
+                JOIN core_persons p ON p.PersonId = a.AuditorId
                 WHERE a.IsActive = 1";
             using var r = cmd.ExecuteReader();
             while (r.Read())
@@ -71,7 +71,7 @@ public class StatisticsService
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT AuditorId, SessionDate, SUM(LengthSeconds + AdminSeconds)
-                FROM Sessions
+                FROM sess_sessions
                 WHERE SessionDate >= @s AND SessionDate <= @e
                 GROUP BY AuditorId, SessionDate";
             cmd.Parameters.AddWithValue("@s", startStr);
@@ -93,9 +93,9 @@ public class StatisticsService
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT cr.CsId, s.SessionDate, SUM(cr.ReviewLengthSeconds)
-                FROM CsReviews cr
-                JOIN Sessions s  ON s.SessionId   = cr.SessionId
-                JOIN Auditors a  ON a.AuditorId   = cr.CsId
+                FROM cs_reviews cr
+                JOIN sess_sessions s  ON s.SessionId   = cr.SessionId
+                JOIN sess_auditors a  ON a.AuditorId   = cr.CsId
                 WHERE s.SessionDate >= @s AND s.SessionDate <= @e
                   AND s.PcId = s.AuditorId
                   AND a.Type IN (2, 3)
@@ -118,7 +118,7 @@ public class StatisticsService
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT VisitDate, COUNT(*)
-                FROM AcademyAttendance
+                FROM acad_attendance
                 WHERE VisitDate >= @s AND VisitDate <= @e
                 GROUP BY VisitDate";
             cmd.Parameters.AddWithValue("@s", startStr);
@@ -137,7 +137,7 @@ public class StatisticsService
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT SessionDate, COUNT(DISTINCT PcId)
-                FROM Sessions
+                FROM sess_sessions
                 WHERE SessionDate >= @s AND SessionDate <= @e
                 GROUP BY SessionDate";
             cmd.Parameters.AddWithValue("@s", startStr);
@@ -156,10 +156,10 @@ public class StatisticsService
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT d, COUNT(DISTINCT pid) FROM (
-                    SELECT SessionDate AS d, PcId     AS pid FROM Sessions
+                    SELECT SessionDate AS d, PcId     AS pid FROM sess_sessions
                     WHERE  SessionDate >= @s AND SessionDate <= @e
                     UNION ALL
-                    SELECT VisitDate   AS d, PersonId AS pid FROM AcademyAttendance
+                    SELECT VisitDate   AS d, PersonId AS pid FROM acad_attendance
                     WHERE  VisitDate   >= @s AND VisitDate   <= @e
                 ) GROUP BY d";
             cmd.Parameters.AddWithValue("@s", startStr);
@@ -221,7 +221,7 @@ public class StatisticsService
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT SessionDate, SUM(LengthSeconds + AdminSeconds)
-                FROM Sessions
+                FROM sess_sessions
                 WHERE SessionDate >= @s AND SessionDate <= @e
                 GROUP BY SessionDate";
             cmd.Parameters.AddWithValue("@s", startStr);
@@ -239,9 +239,9 @@ public class StatisticsService
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT s.SessionDate, SUM(cr.ReviewLengthSeconds)
-                FROM CsReviews cr
-                JOIN Sessions  s ON s.SessionId = cr.SessionId
-                JOIN Auditors  a ON a.AuditorId = cr.CsId
+                FROM cs_reviews cr
+                JOIN sess_sessions  s ON s.SessionId = cr.SessionId
+                JOIN sess_auditors  a ON a.AuditorId = cr.CsId
                 WHERE s.SessionDate >= @s AND s.SessionDate <= @e
                   AND s.PcId = s.AuditorId
                   AND a.Type IN (2, 3)
@@ -260,7 +260,7 @@ public class StatisticsService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT VisitDate, PersonId FROM AcademyAttendance
+                SELECT VisitDate, PersonId FROM acad_attendance
                 WHERE VisitDate >= @s AND VisitDate <= @e";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
@@ -279,7 +279,7 @@ public class StatisticsService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT SessionDate, PcId FROM Sessions
+                SELECT SessionDate, PcId FROM sess_sessions
                 WHERE SessionDate >= @s AND SessionDate <= @e";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
@@ -318,8 +318,8 @@ public class StatisticsService
         cmd.CommandText = @"
             SELECT COALESCE(NULLIF(p.Org,''), 'Unknown') AS Org,
                    SUM(s.LengthSeconds + s.AdminSeconds) AS TotalSec
-            FROM Sessions s
-            JOIN Persons p ON p.PersonId = s.PcId
+            FROM sess_sessions s
+            JOIN core_persons p ON p.PersonId = s.PcId
             WHERE s.SessionDate >= @s AND s.SessionDate <= @e
             GROUP BY COALESCE(NULLIF(p.Org,''), 'Unknown')
             ORDER BY TotalSec DESC";

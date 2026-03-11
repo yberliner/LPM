@@ -21,24 +21,24 @@ public class UserDb
 
         // Add AvatarPath column if missing
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('Users') WHERE name='AvatarPath'";
+        cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('core_users') WHERE name='AvatarPath'";
         if ((long)cmd.ExecuteScalar()! == 0)
         {
-            cmd.CommandText = "ALTER TABLE Users ADD COLUMN AvatarPath TEXT";
+            cmd.CommandText = "ALTER TABLE core_users ADD COLUMN AvatarPath TEXT";
             cmd.ExecuteNonQuery();
         }
 
         // One-time fix: rename "camela" → "carmela" with corrected password
-        cmd.CommandText = "SELECT COUNT(*) FROM Users WHERE LOWER(Username)='camela'";
+        cmd.CommandText = "SELECT COUNT(*) FROM core_users WHERE LOWER(Username)='camela'";
         if ((long)cmd.ExecuteScalar()! > 0)
         {
-            cmd.CommandText = "UPDATE Users SET Username='carmela', PasswordHash=@h WHERE LOWER(Username)='camela'";
+            cmd.CommandText = "UPDATE core_users SET Username='carmela', PasswordHash=@h WHERE LOWER(Username)='camela'";
             cmd.Parameters.AddWithValue("@h", HashPassword("Carmela1992"));
             cmd.ExecuteNonQuery();
             cmd.Parameters.Clear();
 
             // Fix display name in Persons table as well
-            cmd.CommandText = "UPDATE Persons SET FirstName='Carmela' WHERE LOWER(FirstName)='camela'";
+            cmd.CommandText = "UPDATE core_persons SET FirstName='Carmela' WHERE LOWER(FirstName)='camela'";
             cmd.ExecuteNonQuery();
         }
     }
@@ -49,7 +49,7 @@ public class UserDb
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT AvatarPath FROM Users WHERE Username = @u COLLATE NOCASE";
+        cmd.CommandText = "SELECT AvatarPath FROM core_users WHERE Username = @u COLLATE NOCASE";
         cmd.Parameters.AddWithValue("@u", username);
         var result = cmd.ExecuteScalar();
         return result is DBNull || result is null ? null : (string)result;
@@ -61,7 +61,7 @@ public class UserDb
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE Users SET AvatarPath = @p WHERE Username = @u COLLATE NOCASE";
+        cmd.CommandText = "UPDATE core_users SET AvatarPath = @p WHERE Username = @u COLLATE NOCASE";
         cmd.Parameters.AddWithValue("@p", (object?)path ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@u", username);
         cmd.ExecuteNonQuery();
@@ -76,7 +76,7 @@ public class UserDb
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT PasswordHash FROM Users WHERE Username = @u COLLATE NOCASE AND IsActive = 1";
+        cmd.CommandText = "SELECT PasswordHash FROM core_users WHERE Username = @u COLLATE NOCASE AND IsActive = 1";
         cmd.Parameters.AddWithValue("@u", username);
         var storedHash = cmd.ExecuteScalar() as string;
         if (storedHash is null) return "User not found.";
@@ -84,7 +84,7 @@ public class UserDb
 
         var newHash = HashPassword(newPwd);
         using var updateCmd = conn.CreateCommand();
-        updateCmd.CommandText = "UPDATE Users SET PasswordHash = @h WHERE Username = @u COLLATE NOCASE";
+        updateCmd.CommandText = "UPDATE core_users SET PasswordHash = @h WHERE Username = @u COLLATE NOCASE";
         updateCmd.Parameters.AddWithValue("@h", newHash);
         updateCmd.Parameters.AddWithValue("@u", username);
         updateCmd.ExecuteNonQuery();
@@ -117,7 +117,7 @@ public class UserDb
         using var userCmd = conn.CreateCommand();
         userCmd.CommandText = @"
             SELECT Id, PasswordHash, IsActive
-            FROM Users
+            FROM core_users
             WHERE Username = @u COLLATE NOCASE";
         userCmd.Parameters.AddWithValue("@u", username);
 
@@ -140,8 +140,8 @@ public class UserDb
         using var roleCmd = conn.CreateCommand();
         roleCmd.CommandText = @"
             SELECT r.Code
-            FROM UserRoles ur
-            JOIN Roles r ON r.RoleId = ur.RoleId
+            FROM core_user_roles ur
+            JOIN lkp_roles r ON r.RoleId = ur.RoleId
             WHERE ur.UserId = @id";
         roleCmd.Parameters.AddWithValue("@id", userId);
 

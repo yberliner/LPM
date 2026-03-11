@@ -31,10 +31,10 @@ public class AcademyService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        if (!GetTableNames(conn).Contains("AcademyAttendance"))
+        if (!GetTableNames(conn).Contains("acad_attendance"))
         {
             Execute(conn, @"
-                CREATE TABLE AcademyAttendance (
+                CREATE TABLE acad_attendance (
                     StudentId INTEGER PRIMARY KEY AUTOINCREMENT,
                     PersonId  INTEGER NOT NULL,
                     VisitDate TEXT    NOT NULL,
@@ -55,7 +55,7 @@ public class AcademyService
                    TRIM(FirstName || ' ' || COALESCE(NULLIF(LastName,''), '')) AS FullName,
                    COALESCE(Referral,'') AS Referral,
                    COALESCE(Org,'') AS Org
-            FROM Persons
+            FROM core_persons
             WHERE COALESCE(IsActive, 1) = 1
             ORDER BY FirstName, LastName";
         var list = new List<PersonItem>();
@@ -74,7 +74,7 @@ public class AcademyService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO Persons (FirstName, LastName, Phone, Email, DateOfBirth, Gender, Org, Referral)
+            INSERT INTO core_persons (FirstName, LastName, Phone, Email, DateOfBirth, Gender, Org, Referral)
             VALUES (@fn, @ln, @ph, @em, @dob, @gender, @org, @ref)";
         cmd.Parameters.AddWithValue("@fn",  firstName.Trim());
         cmd.Parameters.AddWithValue("@ln",  lastName.Trim());
@@ -91,7 +91,7 @@ public class AcademyService
         var personId = (int)(long)idCmd.ExecuteScalar()!;
 
         using var pcCmd = conn.CreateCommand();
-        pcCmd.CommandText = "INSERT OR IGNORE INTO PCs (PcId) VALUES (@id)";
+        pcCmd.CommandText = "INSERT OR IGNORE INTO core_pcs (PcId) VALUES (@id)";
         pcCmd.Parameters.AddWithValue("@id", personId);
         pcCmd.ExecuteNonQuery();
 
@@ -110,8 +110,8 @@ public class AcademyService
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
                    COALESCE(p.Referral,'') AS Referral,
                    COALESCE(p.Org,'')      AS Org
-            FROM AcademyAttendance s
-            JOIN Persons p ON p.PersonId = s.PersonId
+            FROM acad_attendance s
+            JOIN core_persons p ON p.PersonId = s.PersonId
             WHERE s.VisitDate = @date AND COALESCE(p.IsActive, 1) = 1
             ORDER BY p.FirstName, p.LastName";
         cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
@@ -129,7 +129,7 @@ public class AcademyService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT OR IGNORE INTO AcademyAttendance (PersonId, VisitDate)
+            INSERT OR IGNORE INTO acad_attendance (PersonId, VisitDate)
             VALUES (@pid, @date)";
         cmd.Parameters.AddWithValue("@pid",  personId);
         cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
@@ -141,7 +141,7 @@ public class AcademyService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM AcademyAttendance WHERE StudentId = @id";
+        cmd.CommandText = "DELETE FROM acad_attendance WHERE StudentId = @id";
         cmd.Parameters.AddWithValue("@id", visitId);
         cmd.ExecuteNonQuery();
     }
@@ -159,8 +159,8 @@ public class AcademyService
                    COUNT(*) AS VisitCount,
                    COALESCE(p.Referral,'') AS Referral,
                    COALESCE(p.Org,'')      AS Org
-            FROM AcademyAttendance s
-            JOIN Persons p ON p.PersonId = s.PersonId
+            FROM acad_attendance s
+            JOIN core_persons p ON p.PersonId = s.PersonId
             WHERE s.VisitDate >= @start AND s.VisitDate <= @end
               AND COALESCE(p.IsActive, 1) = 1
             GROUP BY s.PersonId
@@ -190,8 +190,8 @@ public class AcademyService
         cmd.CommandText = @"
             SELECT COALESCE(p.Referral,'') AS Referral,
                    COALESCE(p.Org,'')      AS Org
-            FROM AcademyAttendance s
-            JOIN Persons p ON p.PersonId = s.PersonId
+            FROM acad_attendance s
+            JOIN core_persons p ON p.PersonId = s.PersonId
             WHERE s.VisitDate >= @start AND s.VisitDate <= @end
             GROUP BY s.PersonId";
         cmd.Parameters.AddWithValue("@start", weekStart.ToString("yyyy-MM-dd"));
@@ -231,8 +231,8 @@ public class AcademyService
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
                    COALESCE(p.Referral,'') AS Referral,
                    COALESCE(p.Org,'')      AS Org
-            FROM AcademyAttendance s
-            JOIN Persons p ON p.PersonId = s.PersonId
+            FROM acad_attendance s
+            JOIN core_persons p ON p.PersonId = s.PersonId
             WHERE s.VisitDate >= @start AND s.VisitDate < @end";
         cmd.Parameters.AddWithValue("@start", rangeStart.ToString("yyyy-MM-dd"));
         cmd.Parameters.AddWithValue("@end",   rangeEnd.ToString("yyyy-MM-dd"));
@@ -308,13 +308,13 @@ public class AcademyService
                    COALESCE(p.LastName,'') AS LastName,
                    p.ExternalId,
                    MAX(COALESCE(sess.LastSession, ''), COALESCE(acad.LastAcademy, '')) AS LastVisitDate
-            FROM Persons p
-            LEFT JOIN PCs pc ON pc.PcId = p.PersonId
-            LEFT JOIN (SELECT DISTINCT PersonId FROM AcademyAttendance) vis ON vis.PersonId = p.PersonId
-            LEFT JOIN Auditors aud ON aud.AuditorId = p.PersonId
-            LEFT JOIN CaseSupervisors cs ON cs.CsId = p.PersonId
-            LEFT JOIN (SELECT PcId, MAX(SessionDate) AS LastSession FROM Sessions GROUP BY PcId) sess ON sess.PcId = p.PersonId
-            LEFT JOIN (SELECT PersonId, MAX(VisitDate) AS LastAcademy FROM AcademyAttendance GROUP BY PersonId) acad ON acad.PersonId = p.PersonId
+            FROM core_persons p
+            LEFT JOIN core_pcs pc ON pc.PcId = p.PersonId
+            LEFT JOIN (SELECT DISTINCT PersonId FROM acad_attendance) vis ON vis.PersonId = p.PersonId
+            LEFT JOIN sess_auditors aud ON aud.AuditorId = p.PersonId
+            LEFT JOIN cs_case_supervisors cs ON cs.CsId = p.PersonId
+            LEFT JOIN (SELECT PcId, MAX(SessionDate) AS LastSession FROM sess_sessions GROUP BY PcId) sess ON sess.PcId = p.PersonId
+            LEFT JOIN (SELECT PersonId, MAX(VisitDate) AS LastAcademy FROM acad_attendance GROUP BY PersonId) acad ON acad.PersonId = p.PersonId
             ORDER BY COALESCE(p.IsActive,1) DESC, p.FirstName, p.LastName";
         var list = new List<MemberAdminItem>();
         using var r = cmd.ExecuteReader();
@@ -340,7 +340,7 @@ public class AcademyService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE Persons SET FirstName=@fn, LastName=@ln, ExternalId=@eid, IsActive=1 WHERE PersonId=@id";
+        cmd.CommandText = "UPDATE core_persons SET FirstName=@fn, LastName=@ln, ExternalId=@eid, IsActive=1 WHERE PersonId=@id";
         cmd.Parameters.AddWithValue("@fn", firstName.Trim());
         cmd.Parameters.AddWithValue("@ln", lastName.Trim());
         cmd.Parameters.AddWithValue("@eid", (object?)externalId ?? DBNull.Value);
@@ -353,7 +353,7 @@ public class AcademyService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE Persons SET IsActive = @v WHERE PersonId = @id";
+        cmd.CommandText = "UPDATE core_persons SET IsActive = @v WHERE PersonId = @id";
         cmd.Parameters.AddWithValue("@v",  active ? 1 : 0);
         cmd.Parameters.AddWithValue("@id", personId);
         cmd.ExecuteNonQuery();

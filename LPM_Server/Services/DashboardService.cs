@@ -61,7 +61,7 @@ public class DashboardService
         // Create StaffMessages table
         using var msgCmd = conn.CreateCommand();
         msgCmd.CommandText = @"
-            CREATE TABLE IF NOT EXISTS StaffMessages (
+            CREATE TABLE IF NOT EXISTS sys_staff_messages (
                 Id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 FromStaffId     INTEGER NOT NULL,
                 ToStaffId       INTEGER NOT NULL,
@@ -74,7 +74,7 @@ public class DashboardService
         // Create AuditorPcPermissions table
         using var permCmd = conn.CreateCommand();
         permCmd.CommandText = @"
-            CREATE TABLE IF NOT EXISTS AuditorPcPermissions (
+            CREATE TABLE IF NOT EXISTS sys_auditor_pc_permissions (
                 Id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 AuditorId   INTEGER NOT NULL,
                 PcId        INTEGER NOT NULL,
@@ -87,13 +87,13 @@ public class DashboardService
         // Remove duplicate Persons rows (keep lowest PersonId per FirstName)
         using var dedupCmd = conn.CreateCommand();
         dedupCmd.CommandText = @"
-            DELETE FROM Persons
+            DELETE FROM core_persons
             WHERE PersonId NOT IN (
-                SELECT MIN(PersonId) FROM Persons GROUP BY LOWER(FirstName)
+                SELECT MIN(PersonId) FROM core_persons GROUP BY LOWER(FirstName)
             )
-            AND PersonId NOT IN (SELECT AuditorId FROM Auditors)
-            AND PersonId NOT IN (SELECT CsId FROM CaseSupervisors)
-            AND PersonId NOT IN (SELECT PcId FROM PCs)";
+            AND PersonId NOT IN (SELECT AuditorId FROM sess_auditors)
+            AND PersonId NOT IN (SELECT CsId FROM cs_case_supervisors)
+            AND PersonId NOT IN (SELECT PcId FROM core_pcs)";
         var removed = dedupCmd.ExecuteNonQuery();
         if (removed > 0)
             Console.WriteLine($"[Startup] Removed {removed} duplicate Persons row(s).");
@@ -101,12 +101,12 @@ public class DashboardService
         // Ensure every active User has a matching Persons row (matched by Username → FirstName)
         using var ensurePersonsCmd = conn.CreateCommand();
         ensurePersonsCmd.CommandText = @"
-            INSERT INTO Persons (FirstName, LastName)
+            INSERT INTO core_persons (FirstName, LastName)
             SELECT u.Username, ''
-            FROM Users u
+            FROM core_users u
             WHERE u.IsActive = 1
               AND NOT EXISTS (
-                  SELECT 1 FROM Persons p WHERE LOWER(p.FirstName) = LOWER(u.Username)
+                  SELECT 1 FROM core_persons p WHERE LOWER(p.FirstName) = LOWER(u.Username)
               )";
         var inserted = ensurePersonsCmd.ExecuteNonQuery();
         if (inserted > 0)
@@ -115,10 +115,10 @@ public class DashboardService
         // Ensure all staff (Auditors + CaseSupervisors) exist in PCs table
         using var ensurePcsCmd = conn.CreateCommand();
         ensurePcsCmd.CommandText = @"
-            INSERT OR IGNORE INTO PCs (PcId)
-            SELECT AuditorId FROM Auditors
+            INSERT OR IGNORE INTO core_pcs (PcId)
+            SELECT AuditorId FROM sess_auditors
             UNION
-            SELECT CsId FROM CaseSupervisors";
+            SELECT CsId FROM cs_case_supervisors";
         var pcsInserted = ensurePcsCmd.ExecuteNonQuery();
         if (pcsInserted > 0)
             Console.WriteLine($"[Startup] Added {pcsInserted} staff member(s) to PCs table.");
@@ -140,14 +140,14 @@ public class DashboardService
 
         // Check AllowAll flag
         using var aaCmd = conn.CreateCommand();
-        aaCmd.CommandText = "SELECT AllowAll FROM Auditors WHERE AuditorId = @id";
+        aaCmd.CommandText = "SELECT AllowAll FROM sess_auditors WHERE AuditorId = @id";
         aaCmd.Parameters.AddWithValue("@id", auditorId);
         var allowAll = aaCmd.ExecuteScalar() is long aa && aa == 1;
         if (allowAll) return true;
 
         // Check existing permission
         using var chkCmd = conn.CreateCommand();
-        chkCmd.CommandText = "SELECT IsApproved FROM AuditorPcPermissions WHERE AuditorId = @aud AND PcId = @pc";
+        chkCmd.CommandText = "SELECT IsApproved FROM sys_auditor_pc_permissions WHERE AuditorId = @aud AND PcId = @pc";
         chkCmd.Parameters.AddWithValue("@aud", auditorId);
         chkCmd.Parameters.AddWithValue("@pc",  pcId);
         var existing = chkCmd.ExecuteScalar();
@@ -156,7 +156,7 @@ public class DashboardService
         // No existing record — create a pending request
         using var insCmd = conn.CreateCommand();
         insCmd.CommandText = @"
-            INSERT OR IGNORE INTO AuditorPcPermissions (AuditorId, PcId, IsApproved)
+            INSERT OR IGNORE INTO sys_auditor_pc_permissions (AuditorId, PcId, IsApproved)
             VALUES (@aud, @pc, 0)";
         insCmd.Parameters.AddWithValue("@aud", auditorId);
         insCmd.Parameters.AddWithValue("@pc",  pcId);
@@ -177,7 +177,7 @@ public class DashboardService
     private string GetPersonName(SqliteConnection conn, int personId)
     {
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"SELECT {FullNameExpr} FROM Persons p WHERE p.PersonId = @id";
+        cmd.CommandText = $"SELECT {FullNameExpr} FROM core_persons p WHERE p.PersonId = @id";
         cmd.Parameters.AddWithValue("@id", personId);
         return cmd.ExecuteScalar() as string ?? $"Person #{personId}";
     }
@@ -190,10 +190,10 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT p.PersonId
-            FROM Persons p
-            JOIN Users u ON LOWER(u.Username) = LOWER(p.FirstName)
-            JOIN UserRoles ur ON ur.UserId = u.Id
-            JOIN Roles r ON r.RoleId = ur.RoleId
+            FROM core_persons p
+            JOIN core_users u ON LOWER(u.Username) = LOWER(p.FirstName)
+            JOIN core_user_roles ur ON ur.UserId = u.Id
+            JOIN lkp_roles r ON r.RoleId = ur.RoleId
             WHERE r.Code = 'Admin'";
         var adminPersonIds = new List<int>();
         using var r = cmd.ExecuteReader();
@@ -203,7 +203,7 @@ public class DashboardService
         {
             using var ins = conn.CreateCommand();
             ins.CommandText = @"
-                INSERT INTO StaffMessages (FromStaffId, ToStaffId, MsgText)
+                INSERT INTO sys_staff_messages (FromStaffId, ToStaffId, MsgText)
                 VALUES (@from, @to, @msg)";
             ins.Parameters.AddWithValue("@from", fromStaffId);
             ins.Parameters.AddWithValue("@to",   adminId);
@@ -222,7 +222,7 @@ public class DashboardService
 
         // AllowAll=1 → nothing blocked
         using var aaCmd = conn.CreateCommand();
-        aaCmd.CommandText = "SELECT COALESCE(AllowAll, 0) FROM Auditors WHERE AuditorId = @id";
+        aaCmd.CommandText = "SELECT COALESCE(AllowAll, 0) FROM sess_auditors WHERE AuditorId = @id";
         aaCmd.Parameters.AddWithValue("@id", auditorId);
         if (aaCmd.ExecuteScalar() is long aa && aa == 1) return [];
 
@@ -230,10 +230,10 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT spl.PcId
-            FROM StaffPcList spl
+            FROM sys_staff_pc_list spl
             WHERE spl.UserId = @aud AND spl.WorkCapacity != 'CSSolo'
               AND NOT EXISTS (
-                  SELECT 1 FROM AuditorPcPermissions ap
+                  SELECT 1 FROM sys_auditor_pc_permissions ap
                   WHERE ap.AuditorId = @aud AND ap.PcId = spl.PcId AND ap.IsApproved = 1
               )";
         cmd.Parameters.AddWithValue("@aud", auditorId);
@@ -254,9 +254,9 @@ public class DashboardService
                    ap.PcId,
                    TRIM(pp.FirstName || ' ' || COALESCE(NULLIF(pp.LastName,''), '')) AS PcName,
                    ap.RequestedAt
-            FROM AuditorPcPermissions ap
-            JOIN Persons pa ON pa.PersonId = ap.AuditorId
-            JOIN Persons pp ON pp.PersonId = ap.PcId
+            FROM sys_auditor_pc_permissions ap
+            JOIN core_persons pa ON pa.PersonId = ap.AuditorId
+            JOIN core_persons pp ON pp.PersonId = ap.PcId
             WHERE ap.IsApproved = 0
             ORDER BY ap.RequestedAt DESC, pa.FirstName";
         var list = new List<PermissionRequest>();
@@ -273,7 +273,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE AuditorPcPermissions SET IsApproved = 1 WHERE Id = @id";
+        cmd.CommandText = "UPDATE sys_auditor_pc_permissions SET IsApproved = 1 WHERE Id = @id";
         cmd.Parameters.AddWithValue("@id", id);
         cmd.ExecuteNonQuery();
     }
@@ -284,7 +284,7 @@ public class DashboardService
         conn.Open();
         // Remove from StaffPcList too so it disappears from the auditor's dashboard
         using var getCmd = conn.CreateCommand();
-        getCmd.CommandText = "SELECT AuditorId, PcId FROM AuditorPcPermissions WHERE Id = @id";
+        getCmd.CommandText = "SELECT AuditorId, PcId FROM sys_auditor_pc_permissions WHERE Id = @id";
         getCmd.Parameters.AddWithValue("@id", id);
         using var r = getCmd.ExecuteReader();
         if (!r.Read()) return;
@@ -293,12 +293,12 @@ public class DashboardService
         r.Close();
 
         using var delPerm = conn.CreateCommand();
-        delPerm.CommandText = "DELETE FROM AuditorPcPermissions WHERE Id = @id";
+        delPerm.CommandText = "DELETE FROM sys_auditor_pc_permissions WHERE Id = @id";
         delPerm.Parameters.AddWithValue("@id", id);
         delPerm.ExecuteNonQuery();
 
         using var delSpl = conn.CreateCommand();
-        delSpl.CommandText = "DELETE FROM StaffPcList WHERE UserId = @uid AND PcId = @pc AND WorkCapacity != 'CSSolo'";
+        delSpl.CommandText = "DELETE FROM sys_staff_pc_list WHERE UserId = @uid AND PcId = @pc AND WorkCapacity != 'CSSolo'";
         delSpl.Parameters.AddWithValue("@uid", auditorId);
         delSpl.Parameters.AddWithValue("@pc",  pcId);
         delSpl.ExecuteNonQuery();
@@ -315,8 +315,8 @@ public class DashboardService
             SELECT a.AuditorId,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS Name,
                    COALESCE(a.AllowAll, 0)
-            FROM Auditors a
-            JOIN Persons p ON p.PersonId = a.AuditorId
+            FROM sess_auditors a
+            JOIN core_persons p ON p.PersonId = a.AuditorId
             WHERE a.IsActive = 1 AND a.Type != 0
             ORDER BY p.FirstName, p.LastName";
         var auditors = new List<(int Id, string Name, bool AllowAll)>();
@@ -329,8 +329,8 @@ public class DashboardService
         permCmd.CommandText = @"
             SELECT ap.Id, ap.AuditorId, ap.PcId,
                    TRIM(pp.FirstName || ' ' || COALESCE(NULLIF(pp.LastName,''), '')) AS PcName
-            FROM AuditorPcPermissions ap
-            JOIN Persons pp ON pp.PersonId = ap.PcId
+            FROM sys_auditor_pc_permissions ap
+            JOIN core_persons pp ON pp.PersonId = ap.PcId
             WHERE ap.IsApproved = 1
             ORDER BY pp.FirstName, pp.LastName";
         var permsByAuditor = new Dictionary<int, List<ApprovedPcEntry>>();
@@ -352,7 +352,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE Auditors SET AllowAll = @v WHERE AuditorId = @id";
+        cmd.CommandText = "UPDATE sess_auditors SET AllowAll = @v WHERE AuditorId = @id";
         cmd.Parameters.AddWithValue("@v",  allow ? 1 : 0);
         cmd.Parameters.AddWithValue("@id", auditorId);
         cmd.ExecuteNonQuery();
@@ -365,7 +365,7 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO AuditorPcPermissions (AuditorId, PcId, IsApproved)
+            INSERT INTO sys_auditor_pc_permissions (AuditorId, PcId, IsApproved)
             VALUES (@aud, @pc, 1)
             ON CONFLICT(AuditorId, PcId) DO UPDATE SET IsApproved = 1";
         cmd.Parameters.AddWithValue("@aud", auditorId);
@@ -378,7 +378,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM AuditorPcPermissions WHERE Id = @id";
+        cmd.CommandText = "DELETE FROM sys_auditor_pc_permissions WHERE Id = @id";
         cmd.Parameters.AddWithValue("@id", id);
         cmd.ExecuteNonQuery();
     }
@@ -391,7 +391,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT PersonId FROM Persons WHERE LOWER(FirstName) = LOWER(@u) LIMIT 1";
+        cmd.CommandText = "SELECT PersonId FROM core_persons WHERE LOWER(FirstName) = LOWER(@u) LIMIT 1";
         cmd.Parameters.AddWithValue("@u", username);
         var result = cmd.ExecuteScalar();
         return result is long l ? (int)l : null;
@@ -403,7 +403,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT 1 FROM Auditors WHERE AuditorId = @id AND IsActive = 1 AND Type IN (1, 3)";
+        cmd.CommandText = "SELECT 1 FROM sess_auditors WHERE AuditorId = @id AND IsActive = 1 AND Type IN (1, 3)";
         cmd.Parameters.AddWithValue("@id", userId);
         return cmd.ExecuteScalar() is not null;
     }
@@ -413,7 +413,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT 1 FROM CaseSupervisors WHERE CsId = @id AND IsActive = 1";
+        cmd.CommandText = "SELECT 1 FROM cs_case_supervisors WHERE CsId = @id AND IsActive = 1";
         cmd.Parameters.AddWithValue("@id", userId);
         return cmd.ExecuteScalar() is not null;
     }
@@ -427,9 +427,9 @@ public class DashboardService
             SELECT pc.PcId,
                    {FullNameExpr} AS FullName,
                    spl.WorkCapacity
-            FROM StaffPcList spl
-            JOIN PCs     pc ON pc.PcId    = spl.PcId
-            JOIN Persons p  ON p.PersonId = pc.PcId
+            FROM sys_staff_pc_list spl
+            JOIN core_pcs     pc ON pc.PcId    = spl.PcId
+            JOIN core_persons p  ON p.PersonId = pc.PcId
             WHERE spl.UserId = @uid
             ORDER BY p.FirstName, p.LastName, spl.WorkCapacity";
         cmd.Parameters.AddWithValue("@uid", userId);
@@ -450,8 +450,8 @@ public class DashboardService
         cmd.CommandText = $@"
             SELECT pc.PcId,
                    {FullNameExpr} AS FullName
-            FROM PCs     pc
-            JOIN Persons p ON p.PersonId = pc.PcId
+            FROM core_pcs     pc
+            JOIN core_persons p ON p.PersonId = pc.PcId
             ORDER BY p.FirstName, p.LastName";
         var list = new List<PcInfo>();
         using var r = cmd.ExecuteReader();
@@ -466,7 +466,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT OR IGNORE INTO StaffPcList (UserId, PcId, WorkCapacity) VALUES (@uid, @pcId, @cap)";
+        cmd.CommandText = "INSERT OR IGNORE INTO sys_staff_pc_list (UserId, PcId, WorkCapacity) VALUES (@uid, @pcId, @cap)";
         cmd.Parameters.AddWithValue("@uid",  userId);
         cmd.Parameters.AddWithValue("@pcId", pcId);
         cmd.Parameters.AddWithValue("@cap",  workCapacity);
@@ -478,7 +478,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM StaffPcList WHERE UserId = @uid AND PcId = @pcId AND WorkCapacity = @cap";
+        cmd.CommandText = "DELETE FROM sys_staff_pc_list WHERE UserId = @uid AND PcId = @pcId AND WorkCapacity = @cap";
         cmd.Parameters.AddWithValue("@uid",  userId);
         cmd.Parameters.AddWithValue("@pcId", pcId);
         cmd.Parameters.AddWithValue("@cap",  workCapacity);
@@ -491,7 +491,7 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
         // CSSolo columns are not changed here — only Auditor/CS/Miscellaneous columns
-        cmd.CommandText = "UPDATE StaffPcList SET WorkCapacity = @role WHERE UserId = @uid AND PcId = @pcId AND WorkCapacity NOT IN ('CSSolo')";
+        cmd.CommandText = "UPDATE sys_staff_pc_list SET WorkCapacity = @role WHERE UserId = @uid AND PcId = @pcId AND WorkCapacity NOT IN ('CSSolo')";
         cmd.Parameters.AddWithValue("@role", role);
         cmd.Parameters.AddWithValue("@uid",  userId);
         cmd.Parameters.AddWithValue("@pcId", pcId);
@@ -525,7 +525,7 @@ public class DashboardService
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT PcId, SessionDate, SUM(LengthSeconds + AdminSeconds)
-                FROM Sessions
+                FROM sess_sessions
                 WHERE AuditorId = @uid AND PcId IN ({pcList}) AND SessionDate IN ({dateList}) AND PcId != AuditorId
                 GROUP BY PcId, SessionDate";
             cmd.Parameters.AddWithValue("@uid", userId);
@@ -548,8 +548,8 @@ public class DashboardService
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT s.PcId, s.SessionDate, SUM(cr.ReviewLengthSeconds)
-                FROM CsReviews cr
-                JOIN Sessions s ON s.SessionId = cr.SessionId
+                FROM cs_reviews cr
+                JOIN sess_sessions s ON s.SessionId = cr.SessionId
                 WHERE cr.CsId = @uid AND s.PcId IN ({pcList}) AND s.SessionDate IN ({dateList}) AND s.PcId != s.AuditorId
                 GROUP BY s.PcId, s.SessionDate";
             cmd.Parameters.AddWithValue("@uid", userId);
@@ -569,7 +569,7 @@ public class DashboardService
             using var wCmd = conn.CreateCommand();
             wCmd.CommandText = $@"
                 SELECT PcId, WorkDate, SUM(LengthSeconds)
-                FROM CsWorkLog
+                FROM cs_work_log
                 WHERE CsId = @uid AND PcId IN ({pcList}) AND WorkDate IN ({dateList})
                 GROUP BY PcId, WorkDate";
             wCmd.Parameters.AddWithValue("@uid", userId);
@@ -594,8 +594,8 @@ public class DashboardService
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT s.PcId, s.SessionDate, SUM(cr.ReviewLengthSeconds)
-                FROM CsReviews cr
-                JOIN Sessions s ON s.SessionId = cr.SessionId
+                FROM cs_reviews cr
+                JOIN sess_sessions s ON s.SessionId = cr.SessionId
                 WHERE cr.CsId = @uid AND s.PcId IN ({pcList}) AND s.SessionDate IN ({dateList}) AND s.PcId = s.AuditorId
                 GROUP BY s.PcId, s.SessionDate";
             cmd.Parameters.AddWithValue("@uid", userId);
@@ -618,7 +618,7 @@ public class DashboardService
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT PcId, ChargeDate, SUM(LengthSeconds + AdminSeconds)
-                FROM MiscCharge
+                FROM sess_misc_charges
                 WHERE AuditorId = @uid AND PcId IN ({pcList}) AND ChargeDate IN ({dateList})
                 GROUP BY PcId, ChargeDate";
             cmd.Parameters.AddWithValue("@uid", userId);
@@ -659,8 +659,8 @@ public class DashboardService
                 SELECT s.SessionId, s.LengthSeconds, s.AdminSeconds,
                        s.IsFreeSession, s.SessionSummaryHtml, s.CreatedAt,
                        p.FirstName, s.VerifiedStatus
-                FROM Sessions s
-                JOIN Persons p ON p.PersonId = s.AuditorId
+                FROM sess_sessions s
+                JOIN core_persons p ON p.PersonId = s.AuditorId
                 WHERE s.AuditorId = @uid AND s.PcId = @pcId AND s.SessionDate = @date
                 ORDER BY s.SequenceInDay";
             cmd.Parameters.AddWithValue("@uid",  userId);
@@ -685,7 +685,7 @@ public class DashboardService
             cmd.CommandText = @"
                 SELECT MiscChargeId, LengthSeconds, AdminSeconds,
                        IsFree, Summary, CreatedAt
-                FROM MiscCharge
+                FROM sess_misc_charges
                 WHERE AuditorId = @uid AND PcId = @pcId AND ChargeDate = @date
                 ORDER BY SequenceInDay";
             cmd.Parameters.AddWithValue("@uid",  userId);
@@ -709,7 +709,7 @@ public class DashboardService
                 SELECT SessionId, LengthSeconds, AdminSeconds,
                        IsFreeSession, SessionSummaryHtml, CreatedAt,
                        VerifiedStatus
-                FROM Sessions
+                FROM sess_sessions
                 WHERE AuditorId = @uid AND PcId = AuditorId AND SessionDate = @date
                 ORDER BY SequenceInDay";
             cmd.Parameters.AddWithValue("@uid",  userId);
@@ -736,8 +736,8 @@ public class DashboardService
                 SELECT s.SessionId, s.LengthSeconds, s.AdminSeconds,
                        s.IsFreeSession, s.SessionSummaryHtml, s.CreatedAt,
                        p.FirstName, s.VerifiedStatus
-                FROM Sessions s
-                JOIN Persons p ON p.PersonId = s.AuditorId
+                FROM sess_sessions s
+                JOIN core_persons p ON p.PersonId = s.AuditorId
                 WHERE s.PcId = @pcId AND s.SessionDate = @date AND s.PcId {(isCSSolo ? "=" : "!=")} s.AuditorId
                 ORDER BY s.SequenceInDay";
             sessCmd.Parameters.AddWithValue("@pcId", pcId);
@@ -759,8 +759,8 @@ public class DashboardService
             revCmd.CommandText = @"
                 SELECT cr.CsReviewId, cr.SessionId, cr.ReviewLengthSeconds,
                        cr.Status, cr.Notes
-                FROM CsReviews cr
-                JOIN Sessions s ON s.SessionId = cr.SessionId
+                FROM cs_reviews cr
+                JOIN sess_sessions s ON s.SessionId = cr.SessionId
                 WHERE s.PcId = @pcId AND s.SessionDate = @date";
             revCmd.Parameters.AddWithValue("@pcId", pcId);
             revCmd.Parameters.AddWithValue("@date", dateStr);
@@ -777,7 +777,7 @@ public class DashboardService
             using var workCmd = conn.CreateCommand();
             workCmd.CommandText = @"
                 SELECT CsWorkLogId, LengthSeconds, Notes, CreatedAt
-                FROM CsWorkLog
+                FROM cs_work_log
                 WHERE CsId = @uid AND PcId = @pcId AND WorkDate = @date
                 ORDER BY CsWorkLogId";
             workCmd.Parameters.AddWithValue("@uid",  userId);
@@ -808,7 +808,7 @@ public class DashboardService
         using var seqCmd = conn.CreateCommand();
         seqCmd.CommandText = @"
             SELECT COALESCE(MAX(SequenceInDay), 0) + 1
-            FROM Sessions
+            FROM sess_sessions
             WHERE PcId = @pcId AND SessionDate = @date";
         seqCmd.Parameters.AddWithValue("@pcId", pcId);
         seqCmd.Parameters.AddWithValue("@date", dateStr);
@@ -816,7 +816,7 @@ public class DashboardService
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO Sessions
+            INSERT INTO sess_sessions
               (PcId, AuditorId, SessionDate, SequenceInDay,
                LengthSeconds, AdminSeconds, IsFreeSession,
                ChargeSeconds, ChargedRateCentsPerHour,
@@ -852,7 +852,7 @@ public class DashboardService
         using var seqCmd = conn.CreateCommand();
         seqCmd.CommandText = @"
             SELECT COALESCE(MAX(SequenceInDay), 0) + 1
-            FROM MiscCharge
+            FROM sess_misc_charges
             WHERE AuditorId = @uid AND PcId = @pcId AND ChargeDate = @date";
         seqCmd.Parameters.AddWithValue("@uid",  auditorId);
         seqCmd.Parameters.AddWithValue("@pcId", pcId);
@@ -861,7 +861,7 @@ public class DashboardService
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO MiscCharge
+            INSERT INTO sess_misc_charges
               (AuditorId, PcId, ChargeDate, SequenceInDay,
                LengthSeconds, AdminSeconds, IsFree, Summary, CreatedAt)
             VALUES
@@ -890,7 +890,7 @@ public class DashboardService
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO CsReviews
+            INSERT INTO cs_reviews
               (SessionId, CsId, ReviewLengthSeconds, ReviewedAt, Status, Notes)
             VALUES
               (@sid, @csId, @rev, datetime('now'), @status, @notes)";
@@ -912,7 +912,7 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            UPDATE Sessions
+            UPDATE sess_sessions
             SET LengthSeconds=@len, AdminSeconds=@adm, IsFreeSession=@free, SessionSummaryHtml=@sum
             WHERE SessionId=@id";
         cmd.Parameters.AddWithValue("@len",  lengthSec);
@@ -929,7 +929,7 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            UPDATE CsReviews
+            UPDATE cs_reviews
             SET ReviewLengthSeconds=@rev, Status=@status, Notes=@notes
             WHERE CsReviewId=@id";
         cmd.Parameters.AddWithValue("@rev",    reviewSec);
@@ -985,8 +985,8 @@ public class DashboardService
                 SELECT s.SessionDate,
                        TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS FullName,
                        SUM(s.LengthSeconds + s.AdminSeconds)
-                FROM Sessions s
-                JOIN Persons p ON p.PersonId = s.PcId
+                FROM sess_sessions s
+                JOIN core_persons p ON p.PersonId = s.PcId
                 WHERE s.AuditorId = @uid AND s.PcId IN ({pcList}) AND s.SessionDate >= @start AND s.PcId != s.AuditorId
                 GROUP BY s.SessionDate, s.PcId";
             cmd.Parameters.AddWithValue("@uid",   userId);
@@ -1005,8 +1005,8 @@ public class DashboardService
                 SELECT m.ChargeDate,
                        TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS FullName,
                        SUM(m.LengthSeconds + m.AdminSeconds)
-                FROM MiscCharge m
-                JOIN Persons p ON p.PersonId = m.PcId
+                FROM sess_misc_charges m
+                JOIN core_persons p ON p.PersonId = m.PcId
                 WHERE m.AuditorId = @uid AND m.PcId IN ({pcList}) AND m.ChargeDate >= @start
                 GROUP BY m.ChargeDate, m.PcId";
             cmd.Parameters.AddWithValue("@uid",   userId);
@@ -1031,7 +1031,7 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO CsWorkLog (CsId, PcId, WorkDate, LengthSeconds, Notes, CreatedAt)
+            INSERT INTO cs_work_log (CsId, PcId, WorkDate, LengthSeconds, Notes, CreatedAt)
             VALUES (@csId, @pcId, @date, @len, @notes, datetime('now'))";
         cmd.Parameters.AddWithValue("@csId", csId);
         cmd.Parameters.AddWithValue("@pcId", pcId);
@@ -1090,8 +1090,8 @@ public class DashboardService
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT s.PcId, s.SessionDate
-                FROM Sessions s
-                LEFT JOIN CsReviews cr ON cr.SessionId = s.SessionId
+                FROM sess_sessions s
+                LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
                 WHERE s.PcId IN ({pcList})
                   AND s.SessionDate IN ({dateList})
                   AND s.PcId {(solo ? "=" : "!=")} s.AuditorId
@@ -1122,8 +1122,8 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT DISTINCT s.PcId
-            FROM Sessions s
-            LEFT JOIN CsReviews cr ON cr.SessionId = s.SessionId
+            FROM sess_sessions s
+            LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
             WHERE s.PcId = s.AuditorId AND cr.CsReviewId IS NULL";
         var set = new HashSet<int>();
         using var r = cmd.ExecuteReader();
@@ -1139,8 +1139,8 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT DISTINCT s.PcId
-            FROM Sessions s
-            LEFT JOIN CsReviews cr ON cr.SessionId = s.SessionId
+            FROM sess_sessions s
+            LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
             WHERE s.PcId != s.AuditorId AND cr.CsReviewId IS NULL";
         var set = new HashSet<int>();
         using var r = cmd.ExecuteReader();
@@ -1155,7 +1155,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT 1 FROM Auditors WHERE AuditorId = @id AND IsActive = 1 AND Type IN (2, 3)";
+        cmd.CommandText = "SELECT 1 FROM sess_auditors WHERE AuditorId = @id AND IsActive = 1 AND Type IN (2, 3)";
         cmd.Parameters.AddWithValue("@id", userId);
         return cmd.ExecuteScalar() is not null;
     }
@@ -1165,7 +1165,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Type FROM Auditors WHERE AuditorId = @id LIMIT 1";
+        cmd.CommandText = "SELECT Type FROM sess_auditors WHERE AuditorId = @id LIMIT 1";
         cmd.Parameters.AddWithValue("@id", userId);
         var result = cmd.ExecuteScalar();
         return result is long l ? (int)l : 1; // default RegularOnly if not found
@@ -1178,7 +1178,7 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT TRIM(FirstName || ' ' || COALESCE(NULLIF(LastName,''), ''))
-            FROM Persons WHERE PersonId = @id";
+            FROM core_persons WHERE PersonId = @id";
         cmd.Parameters.AddWithValue("@id", userId);
         var name = cmd.ExecuteScalar() as string;
         return name is null ? null : new PcInfo(userId, name, "SoloAuditor");
@@ -1195,7 +1195,7 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $@"
             SELECT SessionDate, SUM(LengthSeconds + AdminSeconds)
-            FROM Sessions
+            FROM sess_sessions
             WHERE AuditorId = @uid AND PcId = AuditorId AND SessionDate IN ({dateList})
             GROUP BY SessionDate";
         cmd.Parameters.AddWithValue("@uid", userId);
@@ -1226,7 +1226,7 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $@"
             SELECT SessionDate, SUM(LengthSeconds + AdminSeconds)
-            FROM Sessions
+            FROM sess_sessions
             WHERE AuditorId = @uid AND PcId = AuditorId AND SessionDate >= @start
             GROUP BY SessionDate";
         cmd.Parameters.AddWithValue("@uid",   userId);
@@ -1252,14 +1252,14 @@ public class DashboardService
 
         // Ensure auditor exists in PCs (solo sessions use PcId = AuditorId)
         using var pcCmd = conn.CreateCommand();
-        pcCmd.CommandText = "INSERT OR IGNORE INTO PCs (PcId) VALUES (@id)";
+        pcCmd.CommandText = "INSERT OR IGNORE INTO core_pcs (PcId) VALUES (@id)";
         pcCmd.Parameters.AddWithValue("@id", auditorId);
         pcCmd.ExecuteNonQuery();
 
         using var seqCmd = conn.CreateCommand();
         seqCmd.CommandText = @"
             SELECT COALESCE(MAX(SequenceInDay), 0) + 1
-            FROM Sessions
+            FROM sess_sessions
             WHERE AuditorId = @uid AND PcId = AuditorId AND SessionDate = @date";
         seqCmd.Parameters.AddWithValue("@uid",  auditorId);
         seqCmd.Parameters.AddWithValue("@date", dateStr);
@@ -1267,7 +1267,7 @@ public class DashboardService
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO Sessions
+            INSERT INTO sess_sessions
               (PcId, AuditorId, SessionDate, SequenceInDay,
                LengthSeconds, AdminSeconds, IsFreeSession,
                ChargeSeconds, ChargedRateCentsPerHour,
@@ -1308,14 +1308,14 @@ public class DashboardService
                    {FullNameExpr} AS FullName
             FROM (
                 SELECT s2.PcId, MAX(cr2.CsReviewId) AS MaxId
-                FROM CsReviews cr2
-                JOIN Sessions s2 ON s2.SessionId = cr2.SessionId
+                FROM cs_reviews cr2
+                JOIN sess_sessions s2 ON s2.SessionId = cr2.SessionId
                 WHERE s2.PcId IN ({pcList})
                 GROUP BY s2.PcId
             ) latest
-            JOIN CsReviews cr ON cr.CsReviewId = latest.MaxId
-            JOIN Sessions s   ON s.SessionId   = cr.SessionId
-            JOIN Persons p    ON p.PersonId    = cr.CsId";
+            JOIN cs_reviews cr ON cr.CsReviewId = latest.MaxId
+            JOIN sess_sessions s   ON s.SessionId   = cr.SessionId
+            JOIN core_persons p    ON p.PersonId    = cr.CsId";
 
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -1338,7 +1338,7 @@ public class DashboardService
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
             SELECT 1
-            FROM Sessions
+            FROM sess_sessions
             WHERE AuditorId = @uid AND PcId = AuditorId AND SessionDate IN ({dateList})
             LIMIT 1";
             cmd.Parameters.AddWithValue("@uid", userId);
@@ -1355,7 +1355,7 @@ public class DashboardService
             using var sCmd = conn.CreateCommand();
             sCmd.CommandText = $@"
             SELECT 1
-            FROM Sessions
+            FROM sess_sessions
             WHERE AuditorId = @uid AND PcId != AuditorId AND PcId IN ({pcList}) AND SessionDate IN ({dateList})
             LIMIT 1";
             sCmd.Parameters.AddWithValue("@uid", userId);
@@ -1368,7 +1368,7 @@ public class DashboardService
             using var mCmd = conn.CreateCommand();
             mCmd.CommandText = $@"
             SELECT 1
-            FROM MiscCharge
+            FROM sess_misc_charges
             WHERE AuditorId = @uid AND PcId IN ({pcList}) AND ChargeDate IN ({dateList})
             LIMIT 1";
             mCmd.Parameters.AddWithValue("@uid", userId);
@@ -1415,9 +1415,9 @@ public class DashboardService
                    s.SessionDate, s.LengthSeconds, s.AdminSeconds, s.IsFreeSession,
                    s.ChargedRateCentsPerHour, s.AuditorSalaryCentsPerHour,
                    s.VerifiedStatus, s.AuditorId
-            FROM Sessions s
-            JOIN Persons pa ON pa.PersonId = s.AuditorId
-            JOIN Persons pc ON pc.PersonId = s.PcId
+            FROM sess_sessions s
+            JOIN core_persons pa ON pa.PersonId = s.AuditorId
+            JOIN core_persons pc ON pc.PersonId = s.PcId
             WHERE {where}
             ORDER BY pa.FirstName, pa.LastName, pc.FirstName, pc.LastName, s.SessionDate, s.SequenceInDay";
 
@@ -1488,10 +1488,10 @@ public class DashboardService
                    cr.CsId,
                    TRIM(pcs.FirstName || ' ' || COALESCE(NULLIF(pcs.LastName,''), '')) AS CsName,
                    s.SessionDate, cr.ReviewLengthSeconds, cr.CsSalaryCentsPerHour, cr.Status
-            FROM CsReviews cr
-            JOIN Sessions  s   ON s.SessionId   = cr.SessionId
-            JOIN Persons   pc  ON pc.PersonId   = s.PcId
-            JOIN Persons   pcs ON pcs.PersonId  = cr.CsId
+            FROM cs_reviews cr
+            JOIN sess_sessions  s   ON s.SessionId   = cr.SessionId
+            JOIN core_persons   pc  ON pc.PersonId   = s.PcId
+            JOIN core_persons   pcs ON pcs.PersonId  = cr.CsId
             WHERE {where}
             ORDER BY pcs.FirstName, pcs.LastName, pc.FirstName, pc.LastName, s.SessionDate, s.SequenceInDay";
 
@@ -1536,7 +1536,7 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT ChargedRateCentsPerHour, AuditorSalaryCentsPerHour
-            FROM Sessions
+            FROM sess_sessions
             WHERE AuditorId = @id AND VerifiedStatus = 'Approved'
             ORDER BY SessionDate DESC, SequenceInDay DESC
             LIMIT 1";
@@ -1555,7 +1555,7 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT ChargedRateCentsPerHour, AuditorSalaryCentsPerHour
-            FROM Sessions
+            FROM sess_sessions
             WHERE AuditorId = @aud AND PcId = @pc AND VerifiedStatus = 'Approved'
             ORDER BY SessionDate DESC, SequenceInDay DESC
             LIMIT 1";
@@ -1575,8 +1575,8 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT cr.CsSalaryCentsPerHour
-            FROM CsReviews cr
-            JOIN Sessions s ON s.SessionId = cr.SessionId
+            FROM cs_reviews cr
+            JOIN sess_sessions s ON s.SessionId = cr.SessionId
             WHERE s.PcId = @pc AND cr.Status = 'Approved'
             ORDER BY s.SessionDate DESC, s.SequenceInDay DESC
             LIMIT 1";
@@ -1591,7 +1591,7 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            UPDATE Sessions
+            UPDATE sess_sessions
             SET VerifiedStatus = 'Approved',
                 ChargedRateCentsPerHour = @rate,
                 AuditorSalaryCentsPerHour = @salary
@@ -1608,7 +1608,7 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            UPDATE CsReviews
+            UPDATE cs_reviews
             SET Status = 'Approved', CsSalaryCentsPerHour = @salary
             WHERE CsReviewId = @id";
         cmd.Parameters.AddWithValue("@salary", csSalaryCents);
@@ -1625,12 +1625,12 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $@"
             SELECT p.PersonId, {FullNameExpr} AS FullName
-            FROM Persons p
-            WHERE EXISTS (SELECT 1 FROM Auditors a WHERE a.AuditorId = p.PersonId AND a.IsActive = 1)
-               OR EXISTS (SELECT 1 FROM CaseSupervisors cs WHERE cs.CsId = p.PersonId AND cs.IsActive = 1)
+            FROM core_persons p
+            WHERE EXISTS (SELECT 1 FROM sess_auditors a WHERE a.AuditorId = p.PersonId AND a.IsActive = 1)
+               OR EXISTS (SELECT 1 FROM cs_case_supervisors cs WHERE cs.CsId = p.PersonId AND cs.IsActive = 1)
                OR EXISTS (
-                   SELECT 1 FROM Users u
-                   JOIN UserRoles ur ON ur.UserId = u.Id
+                   SELECT 1 FROM core_users u
+                   JOIN core_user_roles ur ON ur.UserId = u.Id
                    WHERE LOWER(u.Username) = LOWER(p.FirstName) AND u.IsActive = 1
                )
             GROUP BY p.PersonId
@@ -1649,7 +1649,7 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO StaffMessages (FromStaffId, ToStaffId, MsgText)
+            INSERT INTO sys_staff_messages (FromStaffId, ToStaffId, MsgText)
             VALUES (@from, @to, @msg)";
         cmd.Parameters.AddWithValue("@from", fromStaffId);
         cmd.Parameters.AddWithValue("@to",   toStaffId);
@@ -1669,8 +1669,8 @@ public class DashboardService
                    m.ToStaffId,
                    '' AS ToName,
                    m.MsgText, m.CreatedAt, m.AcknowledgedAt
-            FROM StaffMessages m
-            JOIN Persons pf ON pf.PersonId = m.FromStaffId
+            FROM sys_staff_messages m
+            JOIN core_persons pf ON pf.PersonId = m.FromStaffId
             WHERE m.ToStaffId = @id AND m.AcknowledgedAt IS NULL
             ORDER BY m.CreatedAt DESC";
         cmd.Parameters.AddWithValue("@id", staffId);
@@ -1689,7 +1689,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(*) FROM StaffMessages WHERE ToStaffId = @id AND AcknowledgedAt IS NULL";
+        cmd.CommandText = "SELECT COUNT(*) FROM sys_staff_messages WHERE ToStaffId = @id AND AcknowledgedAt IS NULL";
         cmd.Parameters.AddWithValue("@id", staffId);
         return (int)(long)(cmd.ExecuteScalar() ?? 0L);
     }
@@ -1699,7 +1699,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE StaffMessages SET AcknowledgedAt = datetime('now') WHERE Id = @id";
+        cmd.CommandText = "UPDATE sys_staff_messages SET AcknowledgedAt = datetime('now') WHERE Id = @id";
         cmd.Parameters.AddWithValue("@id", messageId);
         cmd.ExecuteNonQuery();
     }
@@ -1711,7 +1711,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Remarks FROM WeeklyRemarks WHERE AuditorId = @aud AND WeekDate = @wk";
+        cmd.CommandText = "SELECT Remarks FROM sys_weekly_remarks WHERE AuditorId = @aud AND WeekDate = @wk";
         cmd.Parameters.AddWithValue("@aud", auditorId);
         cmd.Parameters.AddWithValue("@wk", weekDate);
         return cmd.ExecuteScalar() as string;
@@ -1723,7 +1723,7 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO WeeklyRemarks (AuditorId, WeekDate, Remarks, SubmittedAt)
+            INSERT INTO sys_weekly_remarks (AuditorId, WeekDate, Remarks, SubmittedAt)
             VALUES (@aud, @wk, @rem, datetime('now'))
             ON CONFLICT(AuditorId, WeekDate)
             DO UPDATE SET Remarks = @rem, SubmittedAt = datetime('now')";
