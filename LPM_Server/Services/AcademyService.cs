@@ -4,14 +4,14 @@ using System.Globalization;
 
 namespace LPM.Services;
 
-public record PersonItem(int PersonId, string FullName, string Source, string Org);
-public record VisitRecord(int VisitId, int PersonId, string FullName, string Source, string Org);
-public record TopStudent(string FullName, int VisitCount, string Org);
+public record PersonItem(int PersonId, string FullName, string Source, string Org, string Nick);
+public record VisitRecord(int VisitId, int PersonId, string FullName, string Source, string Org, string Nick);
+public record TopStudent(string FullName, int VisitCount, string Org, string Nick);
 public record WeekVisitCount(string WeekLabel, int TotalVisits, List<TopStudent> TopStudents,
     int DonCount, int FriendCount, int SocialCount, int HaifaCount, int OtherCount);
 public record MemberAdminItem(int PersonId, string FullName, string Phone,
     bool IsActive, bool IsPC, bool IsAcademyStudent, bool IsStaff,
-    string FirstName, string LastName, string? ExternalId, string? LastVisitDate);
+    string FirstName, string LastName, string? Nick, string? LastVisitDate);
 
 public class AcademyService
 {
@@ -55,7 +55,8 @@ public class AcademyService
             SELECT p.PersonId,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
                    COALESCE(rs.Name,'') AS Source,
-                   COALESCE(og.Name,'') AS Org
+                   COALESCE(og.Name,'') AS Org,
+                   COALESCE(p.Nick,'') AS Nick
             FROM core_persons p
             LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
             LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
@@ -64,7 +65,7 @@ public class AcademyService
         var list = new List<PersonItem>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add(new PersonItem(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetString(3)));
+            list.Add(new PersonItem(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4)));
         return list;
     }
 
@@ -136,7 +137,8 @@ public class AcademyService
             SELECT s.StudentId, s.PersonId,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
                    COALESCE(rs.Name,'') AS Source,
-                   COALESCE(og.Name,'') AS Org
+                   COALESCE(og.Name,'') AS Org,
+                   COALESCE(p.Nick,'') AS Nick
             FROM acad_attendance s
             JOIN core_persons p ON p.PersonId = s.PersonId
             LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
@@ -147,7 +149,7 @@ public class AcademyService
         var list = new List<VisitRecord>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add(new VisitRecord(r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3), r.GetString(4)));
+            list.Add(new VisitRecord(r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3), r.GetString(4), r.GetString(5)));
         return list;
     }
 
@@ -176,7 +178,7 @@ public class AcademyService
     }
 
     /// <summary>Returns all students who visited during the week, with visit count, referral, and org.</summary>
-    public List<(int PersonId, string FullName, int VisitCount, string Source, string Org)> GetStudentVisitsForWeek(DateOnly weekStart)
+    public List<(int PersonId, string FullName, int VisitCount, string Source, string Org, string Nick)> GetStudentVisitsForWeek(DateOnly weekStart)
     {
         var weekEnd = weekStart.AddDays(6);
         using var conn = new SqliteConnection(_connectionString);
@@ -187,7 +189,8 @@ public class AcademyService
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS FullName,
                    COUNT(*) AS VisitCount,
                    COALESCE(rs.Name,'') AS Source,
-                   COALESCE(og.Name,'') AS Org
+                   COALESCE(og.Name,'') AS Org,
+                   COALESCE(p.Nick,'') AS Nick
             FROM acad_attendance s
             JOIN core_persons p ON p.PersonId = s.PersonId
             LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
@@ -198,10 +201,10 @@ public class AcademyService
             ORDER BY VisitCount DESC, FullName ASC";
         cmd.Parameters.AddWithValue("@start", weekStart.ToString("yyyy-MM-dd"));
         cmd.Parameters.AddWithValue("@end",   weekEnd.ToString("yyyy-MM-dd"));
-        var list = new List<(int, string, int, string, string)>();
+        var list = new List<(int, string, int, string, string, string)>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add((r.GetInt32(0), r.GetString(1), r.GetInt32(2), r.GetString(3), r.GetString(4)));
+            list.Add((r.GetInt32(0), r.GetString(1), r.GetInt32(2), r.GetString(3), r.GetString(4), r.GetString(5)));
         return list;
     }
 
@@ -263,7 +266,8 @@ public class AcademyService
             SELECT s.VisitDate,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
                    COALESCE(rs.Name,'') AS Source,
-                   COALESCE(og.Name,'') AS Org
+                   COALESCE(og.Name,'') AS Org,
+                   COALESCE(p.Nick,'') AS Nick
             FROM acad_attendance s
             JOIN core_persons p ON p.PersonId = s.PersonId
             LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
@@ -275,6 +279,7 @@ public class AcademyService
         var totalCounts  = weekStarts.ToDictionary(ws => ws, _ => 0);
         var personCounts = weekStarts.ToDictionary(ws => ws, _ => new Dictionary<string, int>());
         var personOrgs   = weekStarts.ToDictionary(ws => ws, _ => new Dictionary<string, string>());
+        var personNicks  = weekStarts.ToDictionary(ws => ws, _ => new Dictionary<string, string>());
         var donCounts    = weekStarts.ToDictionary(ws => ws, _ => 0);
         var friendCounts = weekStarts.ToDictionary(ws => ws, _ => 0);
         var socialCounts = weekStarts.ToDictionary(ws => ws, _ => 0);
@@ -288,6 +293,7 @@ public class AcademyService
             var name      = r.GetString(1);
             var source    = r.GetString(2);
             var org       = r.GetString(3);
+            var nick      = r.GetString(4);
             foreach (var ws in weekStarts)
             {
                 if (visitDate >= ws && visitDate < ws.AddDays(7))
@@ -296,6 +302,7 @@ public class AcademyService
                     personCounts[ws].TryGetValue(name, out var c);
                     personCounts[ws][name] = c + 1;
                     personOrgs[ws][name]   = org;
+                    personNicks[ws][name]  = nick;
                     switch (source)
                     {
                         case "Friend":          friendCounts[ws]++; break;
@@ -317,7 +324,8 @@ public class AcademyService
                     .OrderByDescending(kv => kv.Value)
                     .ThenBy(kv => kv.Key)
                     .Select(kv => new TopStudent(kv.Key, kv.Value,
-                        personOrgs[ws].GetValueOrDefault(kv.Key, "")))
+                        personOrgs[ws].GetValueOrDefault(kv.Key, ""),
+                        personNicks[ws].GetValueOrDefault(kv.Key, "")))
                     .ToList(),
                 donCounts[ws],
                 friendCounts[ws],
@@ -344,7 +352,7 @@ public class AcademyService
                    CASE WHEN aud.AuditorId IS NOT NULL OR cs.CsId IS NOT NULL THEN 1 ELSE 0 END AS IsStaff,
                    COALESCE(p.FirstName,'') AS FirstName,
                    COALESCE(p.LastName,'') AS LastName,
-                   p.ExternalId,
+                   p.Nick,
                    MAX(COALESCE(sess.LastSession, ''), COALESCE(acad.LastAcademy, '')) AS LastVisitDate
             FROM core_persons p
             LEFT JOIN core_pcs pc ON pc.PcId = p.PersonId
@@ -373,15 +381,15 @@ public class AcademyService
         return list;
     }
 
-    public void UpdateAndActivatePerson(int personId, string firstName, string lastName, string? externalId)
+    public void UpdateAndActivatePerson(int personId, string firstName, string lastName, string? nick)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE core_persons SET FirstName=@fn, LastName=@ln, ExternalId=@eid, IsActive=1 WHERE PersonId=@id";
+        cmd.CommandText = "UPDATE core_persons SET FirstName=@fn, LastName=@ln, Nick=@nick, IsActive=1 WHERE PersonId=@id";
         cmd.Parameters.AddWithValue("@fn", firstName.Trim());
         cmd.Parameters.AddWithValue("@ln", lastName.Trim());
-        cmd.Parameters.AddWithValue("@eid", (object?)externalId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@nick", (object?)nick ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@id", personId);
         cmd.ExecuteNonQuery();
     }

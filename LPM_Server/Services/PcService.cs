@@ -3,8 +3,8 @@ using Microsoft.Extensions.Configuration;
 
 namespace LPM.Services;
 
-public record PcListItem(int PcId, string FullName, string ExternalId, long RemainSec);
-public record PcDetailInfo(int PcId, string FirstName, string LastName, string ExternalId,
+public record PcListItem(int PcId, string FullName, string Nick, long RemainSec);
+public record PcDetailInfo(int PcId, string FirstName, string LastName, string Nick,
     string Phone, string Email, string Notes, string DateOfBirth, string Gender,
     string Org, string Source, int OrgId = 0)
 {
@@ -17,7 +17,7 @@ public record PcPayment(int PaymentId, string Date, int HoursBought, int AmountP
     int? RegistrarId, string? RegistrarName, int? ReferralId, string? ReferralName);
 public record PcStats(int TotalSessions, int FreeSessions, long UsedSec,
     int TotalHoursPurchased, int TotalAmountPaid, string? LastSessionDate);
-public record PcListItemEx(int PcId, string FullName, string ExternalId, long RemainSec,
+public record PcListItemEx(int PcId, string FullName, string Nick, long RemainSec,
     long TotalSessionSec, int TotalSessions, int AcademyVisits, int HoursPurchased);
 public record PurchaseListItem(int PurchaseId, int PcId, string PcName, string PurchaseDate,
     string? Notes, string ApprovedStatus, string? ApprovedByName, string? ApprovedAt,
@@ -122,7 +122,7 @@ public class PcService
         cmd.CommandText = @"
             SELECT pc.PcId,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
-                   COALESCE(p.ExternalId, '') AS ExternalId,
+                   COALESCE(p.Nick, '') AS Nick,
                    (COALESCE(pay.TotalHours, 0) * 3600 - COALESCE(sess.UsedSec, 0)) AS RemainSec
             FROM core_pcs pc
             JOIN core_persons p ON p.PersonId = pc.PcId
@@ -143,17 +143,58 @@ public class PcService
         return list;
     }
 
+    /// <summary>
+    /// Checks for duplicate PC by FirstName+LastName+Nick.
+    /// Returns null if no conflict, or a message string if blocked.
+    /// If the duplicate is inactive, auto-renames its nick and allows adding.
+    /// </summary>
+    public string? CheckDuplicatePc(string firstName, string lastName, string nick)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT p.PersonId, COALESCE(p.IsActive, 1)
+            FROM core_persons p
+            JOIN core_pcs pc ON pc.PcId = p.PersonId
+            WHERE LOWER(TRIM(p.FirstName)) = LOWER(@fn)
+              AND LOWER(COALESCE(TRIM(p.LastName),'')) = LOWER(@ln)
+              AND LOWER(COALESCE(TRIM(p.Nick),'')) = LOWER(@nick)";
+        cmd.Parameters.AddWithValue("@fn", firstName.Trim());
+        cmd.Parameters.AddWithValue("@ln", lastName.Trim());
+        cmd.Parameters.AddWithValue("@nick", nick?.Trim() ?? "");
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return null; // no conflict
+
+        var existingId = r.GetInt32(0);
+        var isActive = r.GetInt32(1) == 1;
+
+        if (!isActive)
+        {
+            // Auto-rename the inactive one's nick
+            r.Close();
+            using var upd = conn.CreateCommand();
+            upd.CommandText = "UPDATE core_persons SET Nick = @newNick WHERE PersonId = @id";
+            upd.Parameters.AddWithValue("@newNick", $"_{existingId}");
+            upd.Parameters.AddWithValue("@id", existingId);
+            upd.ExecuteNonQuery();
+            return null; // conflict resolved
+        }
+
+        return "ACTIVE_DUPLICATE";
+    }
+
     public int AddPcWithPerson(string firstName, string lastName,
         string phone, string email, string dateOfBirth, string gender,
-        int? orgId = null, int? sourceId = null, string notes = "")
+        int? orgId = null, int? sourceId = null, string notes = "", string nick = "")
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
         using var pCmd = conn.CreateCommand();
         pCmd.CommandText = @"
-            INSERT INTO core_persons (FirstName, LastName, Phone, Email, DateOfBirth, Gender, Org, Source, Notes)
-            VALUES (@fn, @ln, @ph, @em, @dob, @gender, @org, @srcId, @notes)";
+            INSERT INTO core_persons (FirstName, LastName, Phone, Email, DateOfBirth, Gender, Org, Source, Notes, Nick)
+            VALUES (@fn, @ln, @ph, @em, @dob, @gender, @org, @srcId, @notes, @nick)";
         pCmd.Parameters.AddWithValue("@fn",  firstName.Trim());
         pCmd.Parameters.AddWithValue("@ln",  lastName.Trim());
         pCmd.Parameters.AddWithValue("@ph",  Nv(phone));
@@ -163,6 +204,7 @@ public class PcService
         pCmd.Parameters.AddWithValue("@org", orgId.HasValue ? (object)orgId.Value : DBNull.Value);
         pCmd.Parameters.AddWithValue("@srcId", sourceId.HasValue ? (object)sourceId.Value : DBNull.Value);
         pCmd.Parameters.AddWithValue("@notes", Nv(notes));
+        pCmd.Parameters.AddWithValue("@nick", Nv(nick));
         pCmd.ExecuteNonQuery();
 
         using var idCmd = conn.CreateCommand();
@@ -184,7 +226,7 @@ public class PcService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT p.FirstName,             COALESCE(p.LastName,''),
-                   COALESCE(p.ExternalId,''), COALESCE(p.Phone,''),
+                   COALESCE(p.Nick,''), COALESCE(p.Phone,''),
                    COALESCE(p.Email,''),        COALESCE(p.Notes,''),
                    COALESCE(p.DateOfBirth,''), COALESCE(p.Gender,''),
                    COALESCE(og.Name,''),        COALESCE(rs.Name,''),
@@ -205,7 +247,7 @@ public class PcService
     }
 
     public void UpdatePcDetail(int pcId, string firstName, string lastName,
-        string externalId, string phone, string email, string notes,
+        string nick, string phone, string email, string notes,
         string dateOfBirth, string gender, int? orgId = null, int? sourceId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
@@ -215,7 +257,7 @@ public class PcService
         pCmd.CommandText = @"
             UPDATE core_persons SET FirstName=@fn, LastName=@ln,
                                Phone=@ph, Email=@em, DateOfBirth=@dob, Gender=@gender,
-                               ExternalId=@ext, Notes=@nt, Org=@org, Source=@srcId
+                               Nick=@nick, Notes=@nt, Org=@org, Source=@srcId
             WHERE PersonId=@id";
         pCmd.Parameters.AddWithValue("@fn",   firstName.Trim());
         pCmd.Parameters.AddWithValue("@ln",   lastName.Trim());
@@ -223,7 +265,7 @@ public class PcService
         pCmd.Parameters.AddWithValue("@em",   Nv(email));
         pCmd.Parameters.AddWithValue("@dob",  Nv(dateOfBirth));
         pCmd.Parameters.AddWithValue("@gender", Nv(gender));
-        pCmd.Parameters.AddWithValue("@ext",  Nv(externalId));
+        pCmd.Parameters.AddWithValue("@nick", Nv(nick));
         pCmd.Parameters.AddWithValue("@nt",   Nv(notes));
         pCmd.Parameters.AddWithValue("@org",  orgId.HasValue ? (object)orgId.Value : DBNull.Value);
         pCmd.Parameters.AddWithValue("@srcId", sourceId.HasValue ? (object)sourceId.Value : DBNull.Value);
@@ -436,7 +478,7 @@ public class PcService
         cmd.CommandText = @"
             SELECT pc.PcId,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
-                   COALESCE(p.ExternalId, '') AS ExternalId,
+                   COALESCE(p.Nick, '') AS Nick,
                    (COALESCE(pay.TotalHours, 0) * 3600 - COALESCE(sess.UsedSec, 0)) AS RemainSec,
                    COALESCE(sess.UsedSec, 0) AS TotalSessionSec,
                    COALESCE(sess.SessionCount, 0) AS TotalSessions,

@@ -63,9 +63,9 @@
                         <input class="form-control form-control-sm" @bind="_editLastName" />
                     </div>
                     <div class="col-auto">
-                        <label class="form-label small mb-1">@LS.T("members.externalId") <span class="text-muted">@LS.T("members.optional")</span></label>
+                        <label class="form-label small mb-1">@LS.T("pcs.nick") <span class="text-muted">@LS.T("members.optional")</span></label>
                         <input class="form-control form-control-sm" style="width:140px;"
-                               placeholder="@LS.T("members.extIdPlaceholder")" @bind="_editExternalId" />
+                               placeholder="@LS.T("pcs.nick")" @bind="_editNick" />
                     </div>
                     <div class="col-auto d-flex gap-2">
                         <button class="btn btn-sm btn-success" @onclick="ConfirmReactivate">
@@ -126,9 +126,9 @@
                             <tr style="opacity:@(m.IsActive ? "1" : ".55");">
                                 <td class="ps-3 align-middle fw-medium" style="color:var(--default-text-color);">
                                     @m.FullName
-                                    @if (!string.IsNullOrEmpty(m.ExternalId))
+                                    @if (!string.IsNullOrEmpty(m.Nick))
                                     {
-                                        <span class="ms-1 text-muted" style="font-size:.72rem;font-weight:400;">(#@m.ExternalId)</span>
+                                        <span class="ms-1 text-muted" style="font-size:.72rem;font-weight:400;">(@m.Nick)</span>
                                     }
                                 </td>
                                 <td class="align-middle text-muted">
@@ -216,7 +216,7 @@
     string _conflictCurrentName = "";
     string _editFirstName  = "";
     string _editLastName   = "";
-    string _editExternalId = "";
+    string _editNick = "";
     string _conflictError  = "";
 
     IEnumerable<MemberAdminItem> Filtered
@@ -275,7 +275,7 @@
                 _conflictCurrentName = m.FullName;
                 _editFirstName       = m.FirstName;
                 _editLastName        = m.LastName;
-                _editExternalId      = "";
+                _editNick      = "";
                 _conflictError       = "";
                 return;
             }
@@ -292,14 +292,14 @@
         var newName = $"{_editFirstName.Trim()} {_editLastName.Trim()}".Trim();
         bool stillConflicts = _members.Any(x => x.PersonId != _conflictPersonId && x.IsActive && x.FullName == newName);
 
-        if (stillConflicts && string.IsNullOrWhiteSpace(_editExternalId))
+        if (stillConflicts && string.IsNullOrWhiteSpace(_editNick))
         { _conflictError = LS.T("members.nameStillTaken"); return; }
 
         AcademySvc.UpdateAndActivatePerson(
             _conflictPersonId,
             _editFirstName,
             _editLastName,
-            string.IsNullOrWhiteSpace(_editExternalId) ? null : _editExternalId.Trim());
+            string.IsNullOrWhiteSpace(_editNick) ? null : _editNick.Trim());
 
         CancelConflict();
         _members = AcademySvc.GetAllMembersForAdmin();
@@ -311,7 +311,7 @@
         _conflictCurrentName = "";
         _editFirstName       = "";
         _editLastName        = "";
-        _editExternalId      = "";
+        _editNick      = "";
         _conflictError       = "";
     }
 }

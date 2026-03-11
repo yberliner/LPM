@@ -4,12 +4,14 @@
      <SpkNewPersonModal @ref="_modal" Title="New Student" Courses="_courses" OnSaved="HandleSaved" />
 
    Call _modal.Show() to open it.
-   OnSaved fires with (FirstName, LastName, Phone, Email, DateOfBirth, Gender, OrgId, Source, Notes, CourseId).
-   When RequireAllFields=true, Phone/Email/Gender/OrgId/Source are mandatory (DOB and ExternalId are always optional).
+   OnSaved fires with (FirstName, LastName, Phone, Email, DateOfBirth, Gender, OrgId, Source, Notes, CourseId, Nick).
+   When RequireAllFields=true, Phone/Email/Gender/OrgId/Source are mandatory (DOB and Nick are always optional).
 *@
 
 @using LPM.Services
 @inject LPM.Services.AcademyService AcademySvc
+@inject LPM.Services.PcService PcSvc
+@inject LPM.Services.LanguageService LS
 
 @if (_visible)
 {
@@ -36,12 +38,17 @@
                             <input class="form-control form-control-sm"
                                    @bind="_firstName" placeholder="@LS.T("pcs.firstName")" />
                         </div>
-                        <div class="col-6">
+                        <div class="col-4">
                             <label class="form-label small mb-1">
                                 @LS.T("pcs.lastName") <span class="text-danger">*</span>
                             </label>
                             <input class="form-control form-control-sm"
                                    @bind="_lastName" placeholder="@LS.T("pcs.lastName")" />
+                        </div>
+                        <div class="col-2">
+                            <label class="form-label small mb-1">@LS.T("pcs.nick")</label>
+                            <input class="form-control form-control-sm"
+                                   @bind="_nick" placeholder="@LS.T("pcs.nick")" />
                         </div>
                         <div class="col-6">
                             <label class="form-label small mb-1">
@@ -155,12 +162,12 @@
     [Parameter] public List<CourseItem>? Courses { get; set; }
     [Parameter] public HashSet<string>? ExistingFullNames { get; set; }
     [Parameter] public EventCallback<(string FirstName, string LastName, string Phone, string Email,
-        string DateOfBirth, string Gender, int OrgId, string Source, string Notes, int CourseId)> OnSaved { get; set; }
+        string DateOfBirth, string Gender, int OrgId, string Source, string Notes, int CourseId, string Nick)> OnSaved { get; set; }
 
     List<string> _sourceOptions = [];
     List<(int Id, string Name)> _orgOptions = [];
 
-    string    _firstName = "", _lastName = "";
+    string    _firstName = "", _lastName = "", _nick = "";
     string    _phone = "", _email = "", _sex = "";
     int       _orgId;
     string    _source = "";
@@ -179,7 +186,7 @@
 
     public void Show()
     {
-        _firstName = _lastName = _phone = _email = _sex = _error = "";
+        _firstName = _lastName = _nick = _phone = _email = _sex = _error = "";
         _source = _notes = _dobText = "";
         _orgId = 0;
         _courseId = 0;
@@ -189,10 +196,11 @@
     }
 
     public void ShowForEdit(string firstName, string lastName, string phone, string email,
-        string dateOfBirth, string gender, int orgId, string source, string notes)
+        string dateOfBirth, string gender, int orgId, string source, string notes, string nick = "")
     {
         _firstName = firstName;
         _lastName  = lastName;
+        _nick      = nick;
         _phone     = phone;
         _email     = email;
         _sex       = gender;
@@ -244,16 +252,23 @@
             { _error = "Please select a course."; return; }
 
         var fullName = $"{_firstName.Trim()} {_lastName.Trim()}";
-        if (ExistingFullNames != null && ExistingFullNames.Contains(fullName)
-            && !string.Equals(fullName, _editOriginalFullName, StringComparison.OrdinalIgnoreCase))
-            { _error = $"A person named \"{fullName}\" already exists."; return; }
+        // Only check duplicates when adding (not editing)
+        if (_editOriginalFullName == null)
+        {
+            var dup = PcSvc.CheckDuplicatePc(_firstName, _lastName, _nick);
+            if (dup == "ACTIVE_DUPLICATE")
+            {
+                _error = $"An active PC named \"{fullName}\" already exists. Add a nickname to distinguish them.";
+                return;
+            }
+        }
 
         _visible = false;
         await OnSaved.InvokeAsync((
             _firstName.Trim(), _lastName.Trim(),
             _phone.Trim(), _email.Trim(),
             ParseDobText(), _sex,
-            _orgId, _source, _notes.Trim(), _courseId));
+            _orgId, _source, _notes.Trim(), _courseId, _nick.Trim()));
     }
 
     void Cancel() => _visible = false;

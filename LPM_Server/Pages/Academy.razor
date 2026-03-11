@@ -91,7 +91,7 @@
                         var (chipBg, chipBorder, chipColor) = ReferralChipStyle(v.Source);
                         <span class="acad-visit-chip" style="background:@chipBg;border-color:@chipBorder;color:@chipColor;">
                             <i class="ri-user-smile-line" style="font-size:.82rem;opacity:.7;"></i>
-                            @v.FullName
+                            @v.FullName@if (!string.IsNullOrEmpty(v.Nick)) { <text> </text><span style="font-size:.7rem;opacity:.75;">(@v.Nick)</span> }
                             @if (!string.IsNullOrEmpty(v.Org))
                             {
                                 <span style="font-size:.68rem;padding:1px 5px;border-radius:8px;
@@ -150,7 +150,7 @@
                          @onclick="() => { if (!visited) OnPersonClick(p); }">
                         <div class="acad-person-dot" style="background:@(hasActiveCourse ? ReferralDotColor(p.Source) : "#d1d5db");"></div>
                         <div class="overflow-hidden flex-grow-1" style="min-width:0;">
-                            <div style="font-size:.83rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;@(hasActiveCourse ? "" : "color:#9ca3af;")">@p.FullName</div>
+                            <div style="font-size:.83rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;@(hasActiveCourse ? "" : "color:#9ca3af;")">@p.FullName@if (!string.IsNullOrEmpty(p.Nick)) { <span style="font-size:.68rem;color:#6b7280;opacity:.85;"> (@p.Nick)</span> }</div>
                             @if (hasActiveCourse)
                             {
                                 <div style="font-size:.67rem;color:#a78bfa;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
@@ -276,7 +276,7 @@
                             <tr style="background:@(rowNum % 2 == 0 ? "#fafafa" : "#fff");">
                                 <td class="ps-3 small text-muted align-middle">@rowNum</td>
                                 <td class="align-middle">
-                                    <span class="fw-medium" style="font-size:.86rem;">@s.FullName</span>
+                                    <span class="fw-medium" style="font-size:.86rem;">@s.FullName@if (!string.IsNullOrEmpty(s.Nick)) { <span class="text-muted" style="font-size:.72rem;"> (@s.Nick)</span> }</span>
                                 </td>
                                 <td class="align-middle">
                                     @if (!string.IsNullOrEmpty(s.Org))
@@ -695,7 +695,7 @@
     Dictionary<string, int> _weekByReferral  = [];
     Dictionary<string, int> _weekByOrg       = [];
 
-    List<(int PersonId, string FullName, int VisitCount, string Source, string Org)> _weekStudents = [];
+    List<(int PersonId, string FullName, int VisitCount, string Source, string Org, string Nick)> _weekStudents = [];
     Dictionary<int, string> _personOpenCourses = [];
     List<CourseItem>        _allCourses        = [];
 
@@ -831,7 +831,9 @@
             for (int j = 0; j < students.Count; j++)
             {
                 if (j > 0) sb.Append(',');
-                var name = students[j].FullName.Replace("\\", "\\\\").Replace("'", "\\'");
+                var rawName = students[j].FullName;
+                if (!string.IsNullOrEmpty(students[j].Nick)) rawName += $" ({students[j].Nick})";
+                var name = rawName.Replace("\\", "\\\\").Replace("'", "\\'");
                 var org  = students[j].Org.Replace("\\", "\\\\").Replace("'", "\\'");
                 sb.Append($"['{name}',{students[j].VisitCount},'{org}']");
             }

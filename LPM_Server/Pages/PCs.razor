@@ -40,7 +40,7 @@
                             <tr class="@(_selPcId == pc.PcId ? "table-primary" : "")"
                                 style="cursor:pointer;"
                                 @onclick="() => SelectPc(pc.PcId)">
-                                <td class="small ps-2 text-truncate" style="max-width:120px;">@pc.FullName</td>
+                                <td class="small ps-2 text-truncate" style="max-width:120px;">@pc.FullName@if (!string.IsNullOrEmpty(pc.Nick)) { <span class="text-muted" style="font-size:.7rem;"> (@pc.Nick)</span> }</td>
                                 <td class="small text-center fw-semibold"
                                     style="color:@(pc.RemainSec >= 0 ? "#4ade80" : "#f87171");">
                                     @HrsLabel(pc.RemainSec)
@@ -75,9 +75,9 @@
                             <button class="pc-edit-btn" @onclick="OpenEditModal">
                                 <i class="ri-edit-line"></i>@LS.T("common.edit")
                             </button>
-                            @if (!string.IsNullOrEmpty(_detail.ExternalId))
+                            @if (!string.IsNullOrEmpty(_detail.Nick))
                             {
-                                <span class="pc-header-tag pc-tag-id"><i class="ri-hashtag"></i>@_detail.ExternalId</span>
+                                <span class="pc-header-tag pc-tag-id"><i class="ri-hashtag"></i>@_detail.Nick</span>
                             }
                             @if (!string.IsNullOrEmpty(_detail.Org))
                             {
@@ -801,7 +801,7 @@
                 ? _allPcsEx.AsEnumerable()
                 : _allPcsEx.Where(p =>
                     p.FullName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
-                    p.ExternalId.Contains(_search, StringComparison.OrdinalIgnoreCase));
+                    p.Nick.Contains(_search, StringComparison.OrdinalIgnoreCase));
 
             list = (_sortCol, _sortAsc) switch
             {
@@ -906,14 +906,14 @@
             _detail.FirstName, _detail.LastName,
             _detail.Phone, _detail.Email,
             _detail.DateOfBirth, _detail.Gender,
-            _detail.OrgId, _detail.Source, _detail.Notes);
+            _detail.OrgId, _detail.Source, _detail.Notes, _detail.Nick);
     }
 
     void SaveEditFromModal((string FirstName, string LastName, string Phone, string Email,
-        string DateOfBirth, string Gender, int OrgId, string Source, string Notes, int CourseId) d)
+        string DateOfBirth, string Gender, int OrgId, string Source, string Notes, int CourseId, string Nick) d)
     {
         PcSvc.UpdatePcDetail(_selPcId!.Value,
-            d.FirstName, d.LastName, _detail?.ExternalId ?? "",
+            d.FirstName, d.LastName, d.Nick,
             d.Phone, d.Email, d.Notes,
             d.DateOfBirth, d.Gender, orgId: d.OrgId > 0 ? d.OrgId : null);
         _allPcsEx = PcSvc.GetAllPcsExtended();

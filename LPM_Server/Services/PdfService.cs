@@ -232,7 +232,7 @@ public class PdfService
     }
 
     public byte[] GenerateAcademyWeekPdf(DateOnly weekStart,
-        List<(int PersonId, string FullName, int VisitCount, string Referral, string Org)> students,
+        List<(int PersonId, string FullName, int VisitCount, string Referral, string Org, string Nick)> students,
         Dictionary<string, int>? byReferral = null,
         Dictionary<string, int>? byOrg = null,
         Dictionary<int, string>? personCourses = null)
@@ -391,7 +391,7 @@ public class PdfService
                                     });
 
                                 int rank = colIdx * rows + 1;
-                                foreach (var (pid, name, visits, referral, org) in slice)
+                                foreach (var (pid, name, visits, referral, org, nick) in slice)
                                 {
                                     int r2 = rank++;
                                     var rowBg = ReferralPdfBg(referral, r2);
@@ -417,7 +417,7 @@ public class PdfService
                                                 .Text($"{r2}.")
                                                 .FontSize(8).FontColor(Colors.Grey.Medium);
                                             rr.RelativeItem()
-                                                .Text(name)
+                                                .Text(string.IsNullOrEmpty(nick) ? name : $"{name} ({nick})")
                                                 .FontSize(9);
                                             rr.ConstantItem(30)
                                                 .Text(org)
@@ -447,7 +447,7 @@ public class PdfService
                     {
                         // Aggregate: course name → number of weekly students enrolled
                         var byCourse = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-                        foreach (var (pid, _, _, _, _) in students)
+                        foreach (var (pid, _, _, _, _, _) in students)
                         {
                             if (!personCourses.TryGetValue(pid, out var cs) || string.IsNullOrEmpty(cs))
                                 continue;

@@ -835,10 +835,12 @@
     // ── Add PC ──
     void SaveNewPc((string FirstName, string LastName, string Phone, string Email,
                     string DateOfBirth, string Gender, int OrgId, string Source,
-                    string Notes, int CourseId) d)
+                    string Notes, int CourseId, string Nick) d)
     {
+        var dup = PcSvc.CheckDuplicatePc(d.FirstName, d.LastName, d.Nick);
+        if (dup == "ACTIVE_DUPLICATE") return; // modal validation should catch this
         PcSvc.AddPcWithPerson(d.FirstName, d.LastName, d.Phone, d.Email,
-            d.DateOfBirth, d.Gender, orgId: d.OrgId > 0 ? d.OrgId : null, notes: d.Notes);
+            d.DateOfBirth, d.Gender, orgId: d.OrgId > 0 ? d.OrgId : null, notes: d.Notes, nick: d.Nick);
         // Refresh duplicate-detection set
         _existingPcNames = new HashSet<string>(
             PcSvc.GetAllPcs().Select(p => p.FullName), StringComparer.OrdinalIgnoreCase);
