@@ -138,7 +138,7 @@
 
             @* ── Week Leaderboard (full table style) ── *@
             @{ var weekStaffList = GetWeekStaff(); }
-            <div class="card border-0 shadow-sm" style="border-radius:14px;overflow:visible;">
+            <div class="card border-0 shadow-sm" style="border-radius:14px;">
                 <div class="card-header border-0 py-3 stat-card-gradient-purple" style="border-radius:14px 14px 0 0;cursor:pointer;"
                      @onclick="() => _weekLeaderExpanded = !_weekLeaderExpanded">
                     <div class="d-flex align-items-start justify-content-between text-white">
@@ -174,7 +174,7 @@
                     }
                     else
                     {
-                        <div style="overflow:visible;">
+                        <div class="table-responsive">
                             <table class="table mb-0" style="font-size:0.9rem;">
                                 <thead style="background:#f8f9fa;">
                                     <tr class="text-muted" style="font-size:0.75rem;letter-spacing:0.04em;text-transform:uppercase;">
@@ -239,7 +239,7 @@
             @* ── Month Leaderboard ── *@
             @if (_monthStaff.Count > 0)
             {
-                <div class="card border-0 shadow-sm" style="border-radius:14px;overflow:visible;">
+                <div class="card border-0 shadow-sm" style="border-radius:14px;">
                     <div class="card-header border-0 py-3" style="border-radius:14px 14px 0 0;background:linear-gradient(135deg,#4338ca 0%,#6366f1 100%);cursor:pointer;"
                          @onclick="() => _monthLeaderExpanded = !_monthLeaderExpanded">
                         <div class="d-flex align-items-start justify-content-between text-white">
@@ -265,7 +265,7 @@
                             int mMax  = _monthStaff[0].TotalSec;
                             int mRank = 1;
                         }
-                        <div style="overflow:visible;">
+                        <div class="table-responsive">
                             <table class="table mb-0" style="font-size:0.9rem;">
                                 <thead style="background:#f5f3ff;">
                                     <tr style="font-size:0.75rem;letter-spacing:0.04em;text-transform:uppercase;color:#6b7280;">

@@ -53,7 +53,7 @@
 </div>
 
 @* ── Main content: visits + person list ── *@
-<div class="d-flex gap-3 px-3 mb-3" style="align-items:flex-start;">
+<div class="d-flex gap-3 px-3 mb-3 acad-main-layout" style="align-items:flex-start;">
 
     @* ── Today's visit list ── *@
     <div class="card flex-grow-1 shadow-sm acad-visit-card" style="min-width:0;border-radius:14px;border:none;">
@@ -128,7 +128,7 @@
     </div>
 
     @* ── All persons panel ── *@
-    <div class="card shadow-sm acad-persons-card" style="width:290px;min-width:220px;flex-shrink:0;border-radius:14px;border:none;">
+    <div class="card shadow-sm acad-persons-card acad-right-panel" style="border-radius:14px;border:none;">
         <div class="card-header acad-persons-header">
             <i class="ri-contacts-book-2-line me-1"></i>
             <strong style="font-size:.88rem;">All Persons</strong>
@@ -629,8 +629,8 @@
                                 </div>
                                 @if (_finishingCourseId == sc.StudentCourseId)
                                 {
-                                    <div class="d-flex align-items-center gap-1">
-                                        <input type="date" class="form-control form-control-sm" style="width:145px;"
+                                    <div class="d-flex align-items-center gap-1 flex-wrap">
+                                        <input type="date" class="form-control form-control-sm" style="max-width:145px;"
                                                @bind="_finishDate" />
                                         <button class="btn btn-sm btn-success py-0 px-2"
                                                 @onclick="() => ConfirmFinish(sc.StudentCourseId)">✓</button>
@@ -665,14 +665,14 @@
                             <i class="ri-add-circle-line me-1"></i>Enroll in Course
                         </div>
                         <div class="d-flex gap-2 flex-wrap">
-                            <select class="form-select form-select-sm" style="width:200px;" @bind="_newEnrollCourseId">
+                            <select class="form-select form-select-sm" style="max-width:200px;" @bind="_newEnrollCourseId">
                                 <option value="0">— select course —</option>
                                 @foreach (var c in _allCourses)
                                 {
                                     <option value="@c.CourseId">@c.Name</option>
                                 }
                             </select>
-                            <input type="date" class="form-control form-control-sm" style="width:145px;"
+                            <input type="date" class="form-control form-control-sm" style="max-width:145px;"
                                    @bind="_newEnrollDate" />
                             <button class="btn btn-sm btn-primary"
                                     @onclick="AddStudentCourse"
@@ -722,6 +722,13 @@
 }
 
 <style>
+    /* ── Responsive two-panel layout ── */
+    .acad-right-panel { width: 290px; min-width: 220px; flex-shrink: 0; }
+    @@media (max-width: 768px) {
+        .acad-main-layout { flex-direction: column; }
+        .acad-right-panel { width: 100% !important; min-width: 0 !important; }
+    }
+
     /* ── Persons scrollbar ── */
     .acad-persons-scroll { scrollbar-width: thin; scrollbar-color: #c4c4c4 transparent; }
     .acad-persons-scroll::-webkit-scrollbar { width: 6px; }

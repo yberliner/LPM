@@ -185,6 +185,7 @@
 
                     @if (_viewDetail.Items.Count > 0)
                     {
+                      <div class="table-responsive">
                         <table class="table table-sm table-bordered mb-3" style="--bs-table-bg:#fff;--bs-table-color:#212529;--bs-table-border-color:#dee2e6;">
                             <thead style="background:#f8f9fa;">
                                 <tr>
@@ -233,6 +234,7 @@
                                 </tr>
                             </tfoot>
                         </table>
+                      </div>
                     }
                     else
                     {
@@ -252,6 +254,7 @@
                     {
                         <div class="mb-3">
                             <label class="small fw-semibold mb-1" style="color:#212529;">@LS.T("purchases.paymentMethods")</label>
+                          <div class="table-responsive">
                             <table class="table table-sm table-bordered mb-0" style="--bs-table-bg:#fff;--bs-table-color:#212529;--bs-table-border-color:#dee2e6;">
                                 <thead style="background:#f8f9fa;">
                                     <tr>
@@ -290,6 +293,7 @@
                                     }
                                 </tbody>
                             </table>
+                          </div>
                         </div>
                     }
 

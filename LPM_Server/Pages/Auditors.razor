@@ -4,10 +4,10 @@
 @using Microsoft.AspNetCore.Authorization
 @using LPM.Services
 
-<div class="d-flex gap-3" style="height:calc(100vh - 130px); overflow:hidden;">
+<div class="d-flex gap-3 aud-layout">
 
     @* ── LEFT PANEL: Auditor List ── *@
-    <div class="d-flex flex-column border-end pe-2" style="width:240px;min-width:240px;">
+    <div class="d-flex flex-column border-end pe-2 aud-left-panel">
         <div class="d-flex gap-1 mb-2">
             <input class="form-control form-control-sm" placeholder="@LS.T("common.search")"
                    @bind="_search" @bind:event="oninput" />
@@ -110,15 +110,15 @@
                                 <div class="row g-2">
                                     <div class="col-auto">
                                         <label class="form-label small mb-0">@LS.T("members.firstName")</label>
-                                        <input class="form-control form-control-sm" @bind="_editFirstName" style="width:130px;" />
+                                        <input class="form-control form-control-sm" @bind="_editFirstName" />
                                     </div>
                                     <div class="col-auto">
                                         <label class="form-label small mb-0">@LS.T("members.lastName")</label>
-                                        <input class="form-control form-control-sm" @bind="_editLastName" style="width:130px;" />
+                                        <input class="form-control form-control-sm" @bind="_editLastName" />
                                     </div>
                                     <div class="col-auto">
                                         <label class="form-label small mb-0">@LS.T("auditors.grade")</label>
-                                        <select class="form-select form-select-sm" @bind="_editGradeId" style="width:140px;">
+                                        <select class="form-select form-select-sm" @bind="_editGradeId">
                                             <option value="">— @LS.T("common.none") —</option>
                                             @foreach (var g in _grades)
                                             {
@@ -128,7 +128,7 @@
                                     </div>
                                     <div class="col-auto">
                                         <label class="form-label small mb-0">@LS.T("auditors.type")</label>
-                                        <select class="form-select form-select-sm" @bind="_editType" style="width:150px;">
+                                        <select class="form-select form-select-sm" @bind="_editType">
                                             <option value="0">@LS.T("auditors.typeInactive")</option>
                                             <option value="1">@LS.T("auditors.typeRegular")</option>
                                             <option value="2">@LS.T("auditors.typeSolo")</option>
@@ -234,6 +234,14 @@
 </div>
 
 <style>
+    /* ── Responsive two-panel layout ── */
+    .aud-layout { height: calc(100vh - 130px); overflow: hidden; }
+    .aud-left-panel { width: 240px; min-width: 240px; }
+    @@media (max-width: 768px) {
+        .aud-layout { flex-direction: column; height: auto; overflow: visible; }
+        .aud-left-panel { width: 100% !important; min-width: 0 !important; max-height: 40vh; overflow-y: auto; border-end: none !important; }
+    }
+
     .aud-stat-card {
         border-radius: 14px; padding: 16px 12px; text-align: center; color: #fff;
         position: relative; overflow: hidden;

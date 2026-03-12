@@ -9,10 +9,10 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using LPM.Services
 
-<div class="d-flex gap-3" style="height:calc(100vh - 130px); overflow:hidden;">
+<div class="d-flex gap-3 pc-layout">
 
     @* ── LEFT PANEL: PC Table ── *@
-    <div class="d-flex flex-column" style="width:340px;min-width:340px;">
+    <div class="d-flex flex-column pc-left-panel">
         <div class="d-flex gap-1 mb-2">
             <input class="form-control form-control-sm" placeholder="@LS.T("common.search")"
                    @bind="_search" @bind:event="oninput" />
@@ -24,6 +24,7 @@
             }
             else
             {
+            <div class="table-responsive">
                 <table class="table table-sm table-hover mb-0 pc-list-table">
                     <thead class="table-light" style="position:sticky;top:0;z-index:1;">
                         <tr>
@@ -52,6 +53,7 @@
                         }
                     </tbody>
                 </table>
+            </div>
             }
         </div>
     </div>
@@ -134,6 +136,7 @@
                 <div class="card-body p-0">
                     @if (AllCoursesSorted.Count > 0)
                     {
+                      <div class="table-responsive">
                         <table class="table table-sm table-hover mb-0" style="table-layout:auto;">
                             <thead class="table-light">
                                 <tr>
@@ -200,6 +203,7 @@
                                 }
                             </tbody>
                         </table>
+                      </div>
                     }
                     else
                     {
@@ -223,6 +227,7 @@
                 <div class="card-body p-0">
                     @if (_auditingPurchases.Count > 0)
                     {
+                      <div class="table-responsive">
                         <table class="table table-sm table-hover mb-0">
                             <thead class="table-light">
                                 <tr>
@@ -272,6 +277,7 @@
                                 </tr>
                             </tfoot>
                         </table>
+                      </div>
                     }
                     else
                     {
@@ -374,7 +380,7 @@
                                                 <div class="col-auto">
                                                     <label class="form-label small mb-0">@LS.T("pcs.hoursBought")</label>
                                                     <input type="number" class="form-control form-control-sm @(item.HoursBought <= 0 ? "field-invalid" : "field-valid")"
-                                                           value="@item.HoursBought" min="0" style="width:95px;" placeholder="0"
+                                                           value="@item.HoursBought" min="0" style="max-width:95px;" placeholder="0"
                                                            @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) item.HoursBought = v; }" />
                                                 </div>
                                             }
@@ -382,7 +388,7 @@
                                             {
                                                 <div class="col-auto">
                                                     <label class="form-label small mb-0">@LS.T("pcs.course")</label>
-                                                    <select class="form-select form-select-sm @(item.CourseId <= 0 ? "field-invalid" : "field-valid")" style="width:200px;"
+                                                    <select class="form-select form-select-sm @(item.CourseId <= 0 ? "field-invalid" : "field-valid")" style="max-width:200px;"
                                                             value="@item.CourseId"
                                                             @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) item.CourseId = v; }">
                                                         <option value="0">— @LS.T("pcs.selectCourse") —</option>
@@ -396,7 +402,7 @@
                                             <div class="col-auto">
                                                 <label class="form-label small mb-0">@LS.T("pcs.amountIls")</label>
                                                 <input type="number" class="form-control form-control-sm"
-                                                       value="@item.AmountPaid" min="0" style="width:105px;" placeholder="0"
+                                                       value="@item.AmountPaid" min="0" style="max-width:105px;" placeholder="0"
                                                        @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) item.AmountPaid = v; }" />
                                             </div>
                                         </div>
@@ -438,10 +444,10 @@
                             {
                                 var pi2 = pmIdx;
                                 var pm = _purchasePaymentMethods[pi2];
-                                <div class="d-flex gap-2 align-items-end mb-2 p-2 border rounded" style="background:#f8fafc;border-radius:10px !important;">
+                                <div class="d-flex gap-2 align-items-end mb-2 p-2 border rounded flex-wrap" style="background:#f8fafc;border-radius:10px !important;">
                                     <div>
                                         <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("purchases.methodType")</label>
-                                        <select class="form-select form-select-sm" style="width:140px;font-size:.8rem;"
+                                        <select class="form-select form-select-sm" style="max-width:140px;font-size:.8rem;"
                                                 value="@pm.MethodType"
                                                 @onchange='e => pm.MethodType = e.Value?.ToString() ?? "Cash"'>
                                             <option value="Cash">@LS.T("purchases.cash")</option>
@@ -453,13 +459,13 @@
                                     <div>
                                         <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("pcs.amount")</label>
                                         <input type="number" class="form-control form-control-sm @(pm.Amount <= 0 ? "field-invalid" : "field-valid")"
-                                               style="width:100px;font-size:.8rem;"
+                                               style="max-width:100px;font-size:.8rem;"
                                                value="@pm.Amount" min="0" placeholder="0"
                                                @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) pm.Amount = v; }" />
                                     </div>
                                     <div>
                                         <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("purchases.paymentDate")</label>
-                                        <input type="date" class="form-control form-control-sm" style="width:140px;font-size:.8rem;"
+                                        <input type="date" class="form-control form-control-sm" style="max-width:140px;font-size:.8rem;"
                                                value="@(pm.PaymentDate?.ToString("yyyy-MM-dd"))"
                                                @onchange="e => pm.PaymentDate = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : null" />
                                     </div>
@@ -507,11 +513,11 @@
                             <div class="d-flex gap-3 flex-wrap mb-3">
                                 <div>
                                     <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("pcs.date")</label>
-                                    <input type="date" class="form-control form-control-sm" @bind="_purchaseDate" style="width:150px;" />
+                                    <input type="date" class="form-control form-control-sm" @bind="_purchaseDate" style="max-width:150px;" />
                                 </div>
                                 <div>
                                     <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("courses.registrar")</label>
-                                    <select class="form-select form-select-sm" style="width:170px;"
+                                    <select class="form-select form-select-sm" style="max-width:170px;"
                                             value="@_purchaseRegistrarId"
                                             @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) _purchaseRegistrarId = v; }">
                                         <option value="0">— @LS.T("common.none") —</option>
@@ -523,7 +529,7 @@
                                 </div>
                                 <div>
                                     <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("courses.referral")</label>
-                                    <select class="form-select form-select-sm" style="width:170px;"
+                                    <select class="form-select form-select-sm" style="max-width:170px;"
                                             value="@_purchaseReferralId"
                                             @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) _purchaseReferralId = v; }">
                                         <option value="0">— @LS.T("common.none") —</option>
@@ -653,6 +659,14 @@
 }
 
 <style>
+    /* ── Responsive two-panel layout ── */
+    .pc-layout { height: calc(100vh - 130px); overflow: hidden; }
+    .pc-left-panel { width: 340px; min-width: 340px; }
+    @@media (max-width: 768px) {
+        .pc-layout { flex-direction: column; height: auto; overflow: visible; }
+        .pc-left-panel { width: 100% !important; min-width: 0 !important; max-height: 40vh; overflow-y: auto; }
+    }
+
     /* ── Header card ── */
     .pc-header-card {
         background: var(--custom-white, #fff);
