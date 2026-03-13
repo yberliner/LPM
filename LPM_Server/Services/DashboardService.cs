@@ -158,6 +158,13 @@ public class DashboardService
         return cmd.ExecuteScalar() as string ?? $"Person #{personId}";
     }
 
+    public string GetPersonName(int personId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        return GetPersonName(conn, personId);
+    }
+
     public void SendAutoMessageToAdmins(int fromStaffId, string msgText)
     {
         using var conn = new SqliteConnection(_connectionString);

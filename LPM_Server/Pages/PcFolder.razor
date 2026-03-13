@@ -251,13 +251,22 @@
                 }
                 else
                 {
-                    <button class="pcf-done-btn" title="Mark CS Done — saves all annotations, records the CS review with the displayed time, and closes the tab"
-                            @onclick="DoneCs" disabled="@(_csSessionId == 0)">
+                    <button class="pcf-done-btn" title="@(_csLocked ? "Another tab is already CSing this session" : "Mark CS Done — saves all annotations, records the CS review with the displayed time, and closes the tab")"
+                            @onclick="DoneCs" disabled="@(_csSessionId == 0 || _csLocked)">
                         <i class="ri-check-double-line me-1"></i>Mark CS Done
                     </button>
                 }
             </div>
         </div>
+
+        @if (_csLocked)
+        {
+            <div class="pcf-lock-banner">
+                <i class="ri-lock-line me-2"></i>
+                This session is already being CSed by <strong>@_csLockedBy</strong> in another tab.
+                You can view the files but cannot mark CS as done.
+            </div>
+        }
 
         @* ── PDF viewer area ── *@
         <div class="pcf-viewer-area @(_paneCount > 1 ? "pcf-split" : "")">
@@ -564,6 +573,13 @@
         to   { opacity: 1; transform: translateX(-50%) translateY(0); }
     }
 
+    .pcf-lock-banner {
+        background: linear-gradient(135deg, #92400e, #b45309);
+        color: #fef3c7; padding: 8px 16px;
+        font-size: .82rem; display: flex; align-items: center;
+        flex-shrink: 0;
+    }
+
     /* ── Viewer area ── */
     .pcf-viewer-area {
         flex-grow: 1; display: flex; overflow: hidden; min-height: 0;
@@ -625,6 +641,11 @@
     [Parameter] public int PcId { get; set; }
     [Parameter] public int SessionId { get; set; }
     [Parameter] public int UserPersonId { get; set; }
+
+    // ── Active CS session tracker (shared across all circuits) ──
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<int, string> _activeCsSessions = new();
+    bool _csLocked;        // true if another tab is already CSing this session
+    string? _csLockedBy;   // who is CSing it
 
     static readonly string[] PaneIds = ["p1", "p2", "p3"];
 
@@ -732,6 +753,18 @@
         {
             _csSessionName = DashSvc.GetSessionName(_csSessionId);
             _csReviewMinutes = (int)Math.Round(DashSvc.GetSessionTotalSeconds(_csSessionId) / 60.0);
+
+            // Check if another tab is already CSing this session
+            var userName = DashSvc.GetPersonName(UserPersonId) ?? $"User {UserPersonId}";
+            if (_activeCsSessions.TryGetValue(_csSessionId, out var existingUser))
+            {
+                _csLocked = true;
+                _csLockedBy = existingUser;
+            }
+            else
+            {
+                _activeCsSessions[_csSessionId] = userName;
+            }
         }
 
         FolderFileItem? match = null;
@@ -981,6 +1014,9 @@
 
     public void Dispose()
     {
+        // Unregister this session from active CS tracker (only if we own it)
+        if (_csSessionId > 0 && !_csLocked)
+            _activeCsSessions.TryRemove(_csSessionId, out _);
         _dotNetRef?.Dispose();
     }
 
