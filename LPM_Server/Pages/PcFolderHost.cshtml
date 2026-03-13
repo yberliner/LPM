@@ -13,6 +13,14 @@
     }
 
     var pcId = int.Parse(RouteData.Values["pcId"]!.ToString()!);
+    int sessionId = 0;
+    if (int.TryParse(ViewContext.HttpContext.Request.Query["sessionId"], out var qsid))
+        sessionId = qsid;
+
+    // Resolve current user's PersonId
+    var dashSvc = ViewContext.HttpContext.RequestServices.GetRequiredService<LPM.Services.DashboardService>();
+    var username = User.FindFirst(ClaimTypes.Name)?.Value ?? "";
+    var userPersonId = dashSvc.GetUserIdByUsername(username) ?? 0;
 
     // Admin role bypasses permission check
     var isAdmin = User.IsInRole("Admin");
@@ -20,11 +28,8 @@
 
     if (!authorized)
     {
-        var dashSvc = ViewContext.HttpContext.RequestServices.GetRequiredService<LPM.Services.DashboardService>();
-        var username = User.FindFirst(ClaimTypes.Name)?.Value ?? "";
-        var personId = dashSvc.GetUserIdByUsername(username);
-        if (personId.HasValue)
-            authorized = dashSvc.CanAccessPcFolder(personId.Value, pcId);
+        if (userPersonId > 0)
+            authorized = dashSvc.CanAccessPcFolder(userPersonId, pcId);
     }
 }
 
@@ -49,5 +54,6 @@
 else
 {
     <component type="typeof(PcFolder)" render-mode="Server"
-               param-PcId="pcId" />
+               param-PcId="pcId" param-SessionId="sessionId"
+               param-UserPersonId="userPersonId" />
 }

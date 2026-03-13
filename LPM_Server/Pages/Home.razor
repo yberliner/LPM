@@ -1140,9 +1140,9 @@
     async Task OnCsTheSession(int sessionId, string? sessionName)
     {
         if (!_selPcId.HasValue) return;
-        var url = $"/PcFolder/{_selPcId.Value}";
+        var url = $"/PcFolder/{_selPcId.Value}?sessionId={sessionId}";
         if (!string.IsNullOrWhiteSpace(sessionName))
-            url += $"?file={Uri.EscapeDataString(sessionName)}";
+            url += $"&file={Uri.EscapeDataString(sessionName)}";
         await JS.InvokeVoidAsync("pcfOpenTab", url);
     }
 

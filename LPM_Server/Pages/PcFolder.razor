@@ -1,6 +1,6 @@
 @inject LPM.Services.FolderService FolderSvc
+@inject LPM.Services.DashboardService DashSvc
 @inject IJSRuntime JS
-@inject IHttpContextAccessor HttpCtx
 @using LPM.Services
 @implements IDisposable
 
@@ -63,33 +63,63 @@
             </div>
             @if (_wsExpanded)
             {
-                var visibleWs = _showAllWorksheets
-                    ? _folder.WorkSheets
-                    : _folder.WorkSheets.Take(5).ToList();
-                @foreach (var f in visibleWs)
+                @* ── Search filter ── *@
+                <div class="pcf-ws-search">
+                    <i class="ri-search-line"></i>
+                    <input type="text" placeholder="Search worksheets..."
+                           value="@_wsFilter" @oninput="OnWsFilterChanged" />
+                    @if (!string.IsNullOrEmpty(_wsFilter))
+                    {
+                        <i class="ri-close-line pcf-ws-search-clear" @onclick="ClearWsFilter"></i>
+                    }
+                </div>
+
+                @foreach (var f in GetWsPage(out var totalPages))
                 {
                     var active = IsFileActive(f.RelativePath);
-                    <div class="pcf-file-item @active"
+                    var stripped = StripDatePrefix(f.FileName);
+                    var csed = _nameToSessionId.TryGetValue(stripped, out var fSid) && _csedSessionIds.Contains(fSid);
+                    var isCsTarget = !string.IsNullOrEmpty(_csSessionName)
+                        && stripped.Equals(_csSessionName, StringComparison.OrdinalIgnoreCase);
+                    <div class="pcf-file-item @active @(isCsTarget ? "pcf-file-cs-target" : "")"
                          @onclick="@(() => SelectFile(f.RelativePath, f.FileName, "WorkSheet"))">
-                        <i class="ri-file-pdf-2-line me-1"></i>
-                        <span class="pcf-file-name">@StripDatePrefix(f.FileName)</span>
+                        @if (isCsTarget)
+                        {
+                            <i class="ri-star-fill me-1 pcf-star-pulse" title="Currently CSing this session"></i>
+                        }
+                        else
+                        {
+                            <i class="ri-file-pdf-2-line me-1 @(csed ? "text-success" : "")"></i>
+                        }
+                        <span class="pcf-file-name @(csed ? "pcf-file-csed" : "")">@stripped</span>
+                        @if (csed)
+                        {
+                            <i class="ri-check-line" style="color:#22c55e;font-size:.7rem;" title="CS Done"></i>
+                        }
                         @if (f.DateParsed.HasValue)
                         {
                             <span class="pcf-file-date">@f.DateParsed.Value.ToString("dd/MM/yy")</span>
                         }
                     </div>
                 }
-                @if (_folder.WorkSheets.Count > 5 && !_showAllWorksheets)
+
+                @* ── Pagination ── *@
+                @if (WsTotalPages > 1)
                 {
-                    <div class="pcf-show-more" @onclick="() => _showAllWorksheets = true">
-                        <i class="ri-arrow-down-line me-1"></i>Show @(_folder.WorkSheets.Count - 5) older...
+                    <div class="pcf-ws-pager">
+                        <button disabled="@(_wsPage == 0)" @onclick="() => _wsPage--">
+                            <i class="ri-arrow-left-s-line"></i>
+                        </button>
+                        <span>@(_wsPage + 1) / @WsTotalPages</span>
+                        <button disabled="@(_wsPage >= WsTotalPages - 1)" @onclick="() => _wsPage++">
+                            <i class="ri-arrow-right-s-line"></i>
+                        </button>
+                        <span class="pcf-ws-pager-total">(@WsFilteredCount)</span>
                     </div>
                 }
-                else if (_showAllWorksheets && _folder.WorkSheets.Count > 5)
+                else if (WsFilteredCount == 0 && !string.IsNullOrWhiteSpace(_wsFilter))
                 {
-                    <div class="pcf-show-more" @onclick="() => _showAllWorksheets = false">
-                        <i class="ri-arrow-up-line me-1"></i>Show less
-                    </div>
+                    <div style="padding:8px 28px;font-size:.76rem;color:#94a3b8;">No matches</div>
                 }
             }
         }
@@ -99,7 +129,7 @@
     <div class="pcf-main">
         @* ── Toolbar ── *@
         <div class="pcf-toolbar">
-            <div class="d-flex align-items-center gap-2 flex-grow-1 overflow-hidden">
+            <div class="d-flex align-items-center gap-2 flex-shrink-0 overflow-hidden">
                 <span class="pcf-toolbar-file">
                     <i class="ri-file-pdf-2-line me-1"></i>
                     @{ var ap = _panes[_activeIdx]; }
@@ -110,6 +140,14 @@
                     @(ap.FileName ?? "Select a file")
                 </span>
             </div>
+            @if (!string.IsNullOrEmpty(_csSessionName))
+            {
+                <div class="flex-grow-1 d-flex justify-content-center">
+                    <span class="pcf-cs-session-label">
+                        <span style="opacity:.7;font-weight:400;">CSing:</span> @_csSessionName
+                    </span>
+                </div>
+            }
             <div class="d-flex align-items-center gap-2 flex-shrink-0 flex-nowrap">
                 <button class="pcf-tool-btn @(_toolMode == "draw" ? "pcf-tool-active" : "")"
                         title="Draw" @onclick='() => SetTool("draw")'>
@@ -172,9 +210,19 @@
                     <span style="font-size:.7rem;margin-left:2px;">@_paneCount</span>
                 </button>
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
-                <button class="pcf-done-btn" title="Close" @onclick="DoneCs">
-                    <i class="ri-check-double-line me-1"></i>Done
-                </button>
+                @if (_csDone)
+                {
+                    <button class="pcf-done-btn pcf-done-success" disabled>
+                        <i class="ri-check-line me-1"></i>CS Done
+                    </button>
+                }
+                else
+                {
+                    <button class="pcf-done-btn" title="Mark this session's CS as done and close"
+                            @onclick="DoneCs" disabled="@(_csSessionId == 0)">
+                        <i class="ri-check-double-line me-1"></i>Mark CS Done
+                    </button>
+                }
             </div>
         </div>
 
@@ -221,6 +269,14 @@
             <div class="spinner-border mb-2" role="status"></div>
             <div>Saving...</div>
         </div>
+    </div>
+}
+
+@if (_csDone)
+{
+    <div class="pcf-toast-success">
+        <i class="ri-check-double-line me-2" style="font-size:1.2rem;"></i>
+        CS review marked as done! You can close this tab.
     </div>
 }
 
@@ -272,15 +328,54 @@
     .pcf-file-active-p2 { background: #7c3aed !important; color: #fff !important; font-weight: 600; }
     .pcf-file-active-p3 { background: #d97706 !important; color: #fff !important; font-weight: 600; }
     .pcf-file-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1; min-width: 0; }
+    .pcf-file-csed { color: #22c55e !important; }
+    .pcf-file-cs-target {
+        border-left: 3px solid #fbbf24 !important;
+        animation: pcf-target-glow 2.5s ease-in-out infinite;
+    }
+    @@keyframes pcf-target-glow {
+        0%, 100% { background: rgba(251,191,36,.06); box-shadow: inset 0 0 8px rgba(251,191,36,.05); }
+        50%      { background: rgba(251,191,36,.18); box-shadow: inset 0 0 16px rgba(251,191,36,.12); }
+    }
+    .pcf-star-pulse {
+        color: #fbbf24; font-size: .85rem;
+        animation: pcf-star-blink 2s ease-in-out infinite;
+    }
+    @@keyframes pcf-star-blink {
+        0%, 100% { opacity: .5; transform: scale(.9); }
+        50%      { opacity: 1; transform: scale(1.1); }
+    }
     .pcf-file-date { font-size: .68rem; color: #64748b; flex-shrink: 0; }
     .pcf-file-active-p1 .pcf-file-date,
     .pcf-file-active-p2 .pcf-file-date,
     .pcf-file-active-p3 .pcf-file-date { color: rgba(255,255,255,.7); }
-    .pcf-show-more {
-        padding: 6px 14px 6px 28px; font-size: .76rem;
-        color: #60a5fa; cursor: pointer; font-weight: 600; transition: background .12s;
+    .pcf-ws-search {
+        display: flex; align-items: center; gap: 6px;
+        padding: 6px 14px; border-bottom: 1px solid #334155;
     }
-    .pcf-show-more:hover { background: #334155; }
+    .pcf-ws-search i { color: #64748b; font-size: .8rem; }
+    .pcf-ws-search input {
+        flex: 1; background: #0f172a; border: 1px solid #475569;
+        color: #e2e8f0; border-radius: 4px; padding: 3px 8px;
+        font-size: .76rem; outline: none; min-width: 0;
+    }
+    .pcf-ws-search input::placeholder { color: #64748b; }
+    .pcf-ws-search input:focus { border-color: #60a5fa; }
+    .pcf-ws-search-clear { cursor: pointer; color: #94a3b8 !important; }
+    .pcf-ws-search-clear:hover { color: #e2e8f0 !important; }
+    .pcf-ws-pager {
+        display: flex; align-items: center; justify-content: center;
+        gap: 8px; padding: 6px 14px; border-top: 1px solid #334155;
+        font-size: .72rem; color: #94a3b8;
+    }
+    .pcf-ws-pager button {
+        background: #334155; border: none; color: #e2e8f0;
+        border-radius: 4px; padding: 2px 8px; cursor: pointer;
+        font-size: .76rem; transition: background .12s;
+    }
+    .pcf-ws-pager button:hover:not(:disabled) { background: #475569; }
+    .pcf-ws-pager button:disabled { opacity: .3; cursor: default; }
+    .pcf-ws-pager-total { color: #64748b; }
 
     /* ── Main area ── */
     .pcf-main {
@@ -350,7 +445,35 @@
         padding: 4px 14px; font-size: .82rem; font-weight: 600;
         cursor: pointer; transition: opacity .15s, transform .15s;
     }
-    .pcf-done-btn:hover { transform: translateY(-1px); }
+    .pcf-cs-session-label {
+        background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.3);
+        border-radius: 6px; padding: 3px 12px;
+        font-size: .8rem; font-weight: 700; color: #fbbf24;
+        animation: pcf-glow 2s ease-in-out infinite;
+    }
+    @@keyframes pcf-glow {
+        0%, 100% { box-shadow: 0 0 4px rgba(251,191,36,.2); }
+        50%      { box-shadow: 0 0 12px rgba(251,191,36,.5); }
+    }
+    .pcf-done-btn:hover:not(:disabled) { transform: translateY(-1px); }
+    .pcf-done-btn:disabled { opacity: .5; cursor: default; }
+    .pcf-done-success {
+        background: linear-gradient(135deg, #059669, #10b981) !important;
+        opacity: 1 !important;
+    }
+    .pcf-toast-success {
+        position: fixed; top: 56px; left: 50%; transform: translateX(-50%);
+        z-index: 10000; background: #059669; color: #fff;
+        padding: 12px 28px; border-radius: 10px;
+        font-size: .9rem; font-weight: 600;
+        box-shadow: 0 8px 24px rgba(0,0,0,.3);
+        display: flex; align-items: center;
+        animation: pcf-toast-in .3s ease-out;
+    }
+    @@keyframes pcf-toast-in {
+        from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+        to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
 
     /* ── Viewer area ── */
     .pcf-viewer-area {
@@ -372,10 +495,18 @@
     .pcf-pane-hdr-p2 { background: #5b21b6; }
     .pcf-pane-hdr-p3 { background: #92400e; }
     .pcf-viewer {
-        flex-grow: 1; overflow-y: auto; overflow-x: auto;
+        flex-grow: 1; overflow-y: scroll; overflow-x: auto;
         display: flex; flex-direction: column; align-items: center;
         padding: 20px; gap: 12px; background: #64748b;
+        scrollbar-width: auto; scrollbar-color: #475569 #64748b;
     }
+    .pcf-viewer::-webkit-scrollbar { width: 10px; }
+    .pcf-viewer::-webkit-scrollbar-track { background: #64748b; }
+    .pcf-viewer::-webkit-scrollbar-thumb {
+        background: #475569; border-radius: 5px;
+        border: 2px solid #64748b;
+    }
+    .pcf-viewer::-webkit-scrollbar-thumb:hover { background: #334155; }
     .pcf-empty {
         display: flex; flex-direction: column; align-items: center;
         justify-content: center; height: 100%; color: #94a3b8;
@@ -403,12 +534,18 @@
 
 @code {
     [Parameter] public int PcId { get; set; }
+    [Parameter] public int SessionId { get; set; }
+    [Parameter] public int UserPersonId { get; set; }
 
-    // Pane IDs used for viewer element ids and JS pane keys
     static readonly string[] PaneIds = ["p1", "p2", "p3"];
 
     string _pcName = "";
     PcFolderInfo? _folder;
+    int _csSessionId;            // session ID passed from Dashboard (0 = not from CS button)
+    string? _csSessionName;      // name of the session being CSed
+    bool _csDone;                // true after "Mark CS Done" was executed
+    HashSet<int> _csedSessionIds = new();                    // session IDs that have cs_reviews
+    Dictionary<string, int> _nameToSessionId = new(StringComparer.OrdinalIgnoreCase);  // session name → ID
 
     // Per-pane state (always 3 slots; _paneCount controls how many are visible)
     class PaneState { public string? File; public string? FileName; public string Section = ""; }
@@ -420,7 +557,9 @@
     bool _frontExpanded = true;
     bool _backExpanded = true;
     bool _wsExpanded = true;
-    bool _showAllWorksheets;
+    string _wsFilter = "";
+    int _wsPage;
+    const int WsPageSize = 10;
     string _toolMode = "";
     string _drawColor = "#e11d48";
     int _fontSize = 14;
@@ -438,6 +577,41 @@
         "#dc2626", "#16a34a", "#2563eb", "#7c3aed"
     ];
 
+    List<FolderFileItem> GetWsPage(out int totalPages)
+    {
+        var all = _folder!.WorkSheets;
+        var filtered = string.IsNullOrWhiteSpace(_wsFilter)
+            ? all
+            : all.Where(f => StripDatePrefix(f.FileName)
+                    .Contains(_wsFilter, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        totalPages = Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)WsPageSize));
+        if (_wsPage >= totalPages) _wsPage = totalPages - 1;
+        return filtered.Skip(_wsPage * WsPageSize).Take(WsPageSize).ToList();
+    }
+
+    int WsTotalPages => _folder == null ? 1 : Math.Max(1,
+        (int)Math.Ceiling((_folder.WorkSheets.Count(f =>
+            string.IsNullOrWhiteSpace(_wsFilter) ||
+            StripDatePrefix(f.FileName).Contains(_wsFilter, StringComparison.OrdinalIgnoreCase)))
+        / (double)WsPageSize));
+
+    int WsFilteredCount => _folder == null ? 0 : _folder.WorkSheets.Count(f =>
+        string.IsNullOrWhiteSpace(_wsFilter) ||
+        StripDatePrefix(f.FileName).Contains(_wsFilter, StringComparison.OrdinalIgnoreCase));
+
+    void OnWsFilterChanged(ChangeEventArgs e)
+    {
+        _wsFilter = e.Value?.ToString() ?? "";
+        _wsPage = 0;
+    }
+
+    void ClearWsFilter()
+    {
+        _wsFilter = "";
+        _wsPage = 0;
+    }
+
     string IsFileActive(string relativePath)
     {
         for (int i = 0; i < _paneCount; i++)
@@ -452,15 +626,26 @@
     {
         _folder = FolderSvc.GetPcFolder(PcId);
         _pcName = _folder?.PcName ?? $"PC {PcId}";
+        _csedSessionIds = DashSvc.GetCsedSessionIdsForPc(PcId);
+        foreach (var pair in DashSvc.GetSessionsForPc(PcId))
+        {
+            if (!string.IsNullOrEmpty(pair.Name))
+                _nameToSessionId.TryAdd(pair.Name, pair.SessionId);
+        }
 
-        var requestedFile = HttpCtx.HttpContext?.Request.Query["file"].ToString();
+        // Session ID passed from Dashboard "CS The Session" button (via host page parameter)
+        _csSessionId = SessionId;
+
+        // Derive session name from DB
+        if (_csSessionId > 0)
+            _csSessionName = DashSvc.GetSessionName(_csSessionId);
 
         FolderFileItem? match = null;
-        if (!string.IsNullOrWhiteSpace(requestedFile) && _folder != null)
+        if (!string.IsNullOrWhiteSpace(_csSessionName) && _folder != null)
         {
             match = _folder.WorkSheets
                 .FirstOrDefault(f => StripDatePrefix(f.FileName)
-                    .Equals(requestedFile, StringComparison.OrdinalIgnoreCase));
+                    .Equals(_csSessionName, StringComparison.OrdinalIgnoreCase));
         }
 
         if (match != null)
@@ -642,13 +827,37 @@
 
     async Task DoneCs()
     {
-        // Auto-save all visible panes before closing
+        if (_csSessionId == 0) return;
+
+        // Auto-save all visible panes
         for (int i = 0; i < _paneCount; i++)
             await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]);
 
-        var confirmed = await JS.InvokeAsync<bool>("confirm", "Is CSing done?");
-        if (confirmed)
+        var confirmed = await JS.InvokeAsync<bool>("confirm", "Mark this session's CS review as done?");
+        if (!confirmed) return;
+
+        try
+        {
+            // Create cs_review if one doesn't already exist
+            if (!DashSvc.HasCsReview(_csSessionId))
+            {
+                var reviewSec = DashSvc.GetSessionTotalSeconds(_csSessionId);
+                DashSvc.AddCsReview(csId: UserPersonId, sessionId: _csSessionId,
+                    reviewSec: reviewSec, status: "Draft", notes: null);
+            }
+
+            // Refresh the CSed session IDs so sidebar turns green
+            _csedSessionIds = DashSvc.GetCsedSessionIdsForPc(PcId);
+            _csDone = true;
+            StateHasChanged();
+
+            // Try to close the tab (works if opened via window.open)
             await JS.InvokeVoidAsync("window.close");
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Failed to mark CS done: {ex.Message}");
+        }
     }
 
     public void Dispose()

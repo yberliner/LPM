@@ -1619,6 +1619,72 @@ public class DashboardService
         cmd.ExecuteNonQuery();
     }
 
+    /// Returns session IDs that have a cs_review for a given PC.
+    public HashSet<int> GetCsedSessionIdsForPc(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT cr.SessionId FROM cs_reviews cr
+            JOIN sess_sessions s ON s.SessionId = cr.SessionId
+            WHERE s.PcId = @pcId";
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        var set = new HashSet<int>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            set.Add(r.GetInt32(0));
+        return set;
+    }
+
+    /// Returns all sessions for a PC: (SessionId, Name).
+    public List<(int SessionId, string Name)> GetSessionsForPc(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT SessionId, COALESCE(Name,'') FROM sess_sessions
+            WHERE PcId = @pcId";
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        var list = new List<(int, string)>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add((r.GetInt32(0), r.GetString(1)));
+        return list;
+    }
+
+    public string? GetSessionName(int sessionId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Name FROM sess_sessions WHERE SessionId = @sid";
+        cmd.Parameters.AddWithValue("@sid", sessionId);
+        return cmd.ExecuteScalar() as string;
+    }
+
+    public int GetSessionTotalSeconds(int sessionId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COALESCE(LengthSeconds,0) + COALESCE(AdminSeconds,0) FROM sess_sessions WHERE SessionId = @sid";
+        cmd.Parameters.AddWithValue("@sid", sessionId);
+        var result = cmd.ExecuteScalar();
+        return result is long v ? (int)v : 0;
+    }
+
+    public bool HasCsReview(int sessionId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(1) FROM cs_reviews WHERE SessionId = @sid";
+        cmd.Parameters.AddWithValue("@sid", sessionId);
+        return (long)cmd.ExecuteScalar()! > 0;
+    }
+
     // ── Staff Messaging ─────────────────────────────────────────
 
     public List<StaffMember> GetActiveStaffMembers()
