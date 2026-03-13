@@ -1288,6 +1288,12 @@
                                                     <i class="ri-user-line me-1"></i>@s.AuditorName
                                                 </span>
                                             }
+                                            @if (!string.IsNullOrWhiteSpace(s.Name))
+                                            {
+                                                <span class="badge rounded-pill" style="background:#ede9fe;color:#5b21b6;font-size:.72rem;">
+                                                    <i class="ri-file-text-line me-1"></i>@s.Name
+                                                </span>
+                                            }
                                             <span class="badge bg-primary-transparent fs-12">
                                                 @DashboardService.Fmt(s.LengthSec)
                                             </span>
@@ -1395,6 +1401,12 @@
                                         <span class="fw-semibold small" style="color:#a78bfa;">
                                             <i class="ri-user-line me-1"></i>@s.AuditorName
                                         </span>
+                                        @if (!string.IsNullOrWhiteSpace(s.Name))
+                                        {
+                                            <span class="badge rounded-pill" style="background:#ede9fe;color:#5b21b6;font-size:.72rem;">
+                                                <i class="ri-file-text-line me-1"></i>@s.Name
+                                            </span>
+                                        }
                                         <span class="badge bg-primary-transparent fs-12">
                                             @DashboardService.Fmt(s.LengthSec)
                                         </span>
