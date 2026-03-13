@@ -5,7 +5,7 @@ using System.Globalization;
 namespace LPM.Services;
 
 public record PcInfo(int PcId, string FullName, string WorkCapacity, string Nick = "");
-public record SessionRow(int SessionId, int LengthSec, int AdminSec, bool IsFree, string? Summary, string CreatedAt, string AuditorName, string VerifiedStatus = "Pending");
+public record SessionRow(int SessionId, int LengthSec, int AdminSec, bool IsFree, string? Summary, string CreatedAt, string AuditorName, string VerifiedStatus = "Pending", string? Name = null);
 public record CsReviewRow(int CsReviewId, int SessionId, int ReviewSec, string Status, string? Notes);
 public record CsWorkRow(int CsWorkLogId, int LengthSec, string? Notes, string CreatedAt);
 public record PcWeekItem(string FullName, int Seconds);
@@ -636,7 +636,7 @@ public class DashboardService
             cmd.CommandText = @"
                 SELECT s.SessionId, s.LengthSeconds, s.AdminSeconds,
                        s.IsFreeSession, s.SessionSummaryHtml, s.CreatedAt,
-                       p.FirstName, s.VerifiedStatus
+                       p.FirstName, s.VerifiedStatus, s.Name
                 FROM sess_sessions s
                 JOIN core_persons p ON p.PersonId = s.AuditorId
                 WHERE s.AuditorId = @uid AND s.PcId = @pcId AND s.SessionDate = @date
@@ -653,7 +653,8 @@ public class DashboardService
                     r.IsDBNull(4) ? null : r.GetString(4),
                     r.IsDBNull(5) ? ""   : r.GetString(5),
                     r.IsDBNull(6) ? ""   : r.GetString(6),
-                    r.IsDBNull(7) ? "Pending" : r.GetString(7)));
+                    r.IsDBNull(7) ? "Pending" : r.GetString(7),
+                    r.IsDBNull(8) ? null : r.GetString(8)));
             }
         }
         else if (role == "Miscellaneous")
@@ -686,7 +687,7 @@ public class DashboardService
             cmd.CommandText = @"
                 SELECT SessionId, LengthSeconds, AdminSeconds,
                        IsFreeSession, SessionSummaryHtml, CreatedAt,
-                       VerifiedStatus
+                       VerifiedStatus, Name
                 FROM sess_sessions
                 WHERE AuditorId = @uid AND PcId = AuditorId AND SessionDate = @date
                 ORDER BY SequenceInDay";
@@ -701,7 +702,8 @@ public class DashboardService
                     r.IsDBNull(4) ? null : r.GetString(4),
                     r.IsDBNull(5) ? ""   : r.GetString(5),
                     "",
-                    r.IsDBNull(6) ? "Pending" : r.GetString(6)));
+                    r.IsDBNull(6) ? "Pending" : r.GetString(6),
+                    r.IsDBNull(7) ? null : r.GetString(7)));
             }
         }
         else  // CS role
@@ -713,7 +715,7 @@ public class DashboardService
             sessCmd.CommandText = $@"
                 SELECT s.SessionId, s.LengthSeconds, s.AdminSeconds,
                        s.IsFreeSession, s.SessionSummaryHtml, s.CreatedAt,
-                       p.FirstName, s.VerifiedStatus
+                       p.FirstName, s.VerifiedStatus, s.Name
                 FROM sess_sessions s
                 JOIN core_persons p ON p.PersonId = s.AuditorId
                 WHERE s.PcId = @pcId AND s.SessionDate = @date AND s.PcId {(isCSSolo ? "=" : "!=")} s.AuditorId
@@ -729,7 +731,8 @@ public class DashboardService
                     rs.IsDBNull(4) ? null : rs.GetString(4),
                     rs.IsDBNull(5) ? ""   : rs.GetString(5),
                     rs.IsDBNull(6) ? ""   : rs.GetString(6),
-                    rs.IsDBNull(7) ? "Pending" : rs.GetString(7)));
+                    rs.IsDBNull(7) ? "Pending" : rs.GetString(7),
+                    rs.IsDBNull(8) ? null : rs.GetString(8)));
             }
 
             // All reviews for those sessions (by any CS worker — UNIQUE per session anyway)

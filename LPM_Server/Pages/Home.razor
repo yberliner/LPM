@@ -1137,10 +1137,12 @@
     }
 
     // ── CS The Session ──
-    async Task OnCsTheSession(int sessionId)
+    async Task OnCsTheSession(int sessionId, string? sessionName)
     {
         if (!_selPcId.HasValue) return;
         var url = $"/PcFolder/{_selPcId.Value}";
+        if (!string.IsNullOrWhiteSpace(sessionName))
+            url += $"?file={Uri.EscapeDataString(sessionName)}";
         await JS.InvokeVoidAsync("pcfOpenTab", url);
     }
 
@@ -1477,7 +1479,7 @@
                                     </div>
                                     <div class="mt-1 mb-1">
                                         <button class="btn btn-sm home-cs-session-btn"
-                                                @onclick="() => OnCsTheSession(s.SessionId)">
+                                                @onclick="() => OnCsTheSession(s.SessionId, s.Name)">
                                             <i class="ri-folder-open-line me-1"></i>CS The Session
                                         </button>
                                     </div>

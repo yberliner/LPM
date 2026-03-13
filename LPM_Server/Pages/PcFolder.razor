@@ -1,5 +1,6 @@
 @inject LPM.Services.FolderService FolderSvc
 @inject IJSRuntime JS
+@inject IHttpContextAccessor HttpCtx
 @using LPM.Services
 @implements IDisposable
 
@@ -388,10 +389,27 @@
         _folder = FolderSvc.GetPcFolder(PcId);
         _pcName = _folder?.PcName ?? $"PC {PcId}";
 
-        // Auto-open latest worksheet
-        if (_folder?.WorkSheets.Count > 0)
+        // Check for ?file=SessionName query parameter
+        var requestedFile = HttpCtx.HttpContext?.Request.Query["file"].ToString();
+
+        FolderFileItem? match = null;
+        if (!string.IsNullOrWhiteSpace(requestedFile) && _folder != null)
         {
-            var latest = _folder.WorkSheets[0]; // already sorted newest first
+            // Match worksheet whose filename contains the session name
+            match = _folder.WorkSheets
+                .FirstOrDefault(f => StripDatePrefix(f.FileName)
+                    .Equals(requestedFile, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (match != null)
+        {
+            _selectedFile = match.RelativePath;
+            _selectedFileName = StripDatePrefix(match.FileName);
+        }
+        else if (_folder?.WorkSheets.Count > 0)
+        {
+            // Fallback: auto-open latest worksheet
+            var latest = _folder.WorkSheets[0];
             _selectedFile = latest.RelativePath;
             _selectedFileName = StripDatePrefix(latest.FileName);
         }
