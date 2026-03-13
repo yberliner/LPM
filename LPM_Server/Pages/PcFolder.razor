@@ -142,9 +142,20 @@
             </div>
             @if (!string.IsNullOrEmpty(_csSessionName))
             {
-                <div class="flex-grow-1 d-flex justify-content-center">
+                <div class="flex-grow-1 d-flex justify-content-center align-items-center gap-3">
                     <span class="pcf-cs-session-label">
                         <span style="opacity:.7;font-weight:400;">CSing:</span> @_csSessionName
+                    </span>
+                    <span class="pcf-cs-time-label @(_csReviewMinutes <= 0 ? "pcf-cs-time-zero" : "")">
+                        <i class="ri-time-line me-1" style="opacity:.7;"></i>
+                        <input type="number" min="0" class="pcf-cs-time-input @(_csReviewMinutes <= 0 ? "pcf-cs-time-input-zero" : "")"
+                               @bind="_csReviewMinutes" @bind:event="oninput"
+                               title="Review time in minutes (session + admin)" />
+                        <span style="opacity:.7;font-size:.72rem;">min</span>
+                        @if (_csReviewMinutes <= 0)
+                        {
+                            <i class="ri-error-warning-line pcf-cs-time-warn" title="Review time is 0 — please correct"></i>
+                        }
                     </span>
                 </div>
             }
@@ -451,6 +462,41 @@
         font-size: .8rem; font-weight: 700; color: #fbbf24;
         animation: pcf-glow 2s ease-in-out infinite;
     }
+    .pcf-cs-time-label {
+        display: flex; align-items: center; gap: 4px;
+        background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.3);
+        border-radius: 6px; padding: 3px 10px;
+        font-size: .8rem; font-weight: 600; color: #e2e8f0;
+    }
+    .pcf-cs-time-input {
+        width: 52px; background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.3);
+        color: #fff; border-radius: 4px; padding: 1px 4px; text-align: center;
+        font-size: .8rem; font-weight: 700; outline: none;
+        -moz-appearance: textfield;
+    }
+    .pcf-cs-time-input::-webkit-outer-spin-button,
+    .pcf-cs-time-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .pcf-cs-time-input:focus { border-color: #fbbf24; box-shadow: 0 0 6px rgba(251,191,36,.4); }
+    .pcf-cs-time-zero {
+        border-color: #ef4444 !important;
+        animation: pcf-time-pulse 1.5s ease-in-out infinite;
+    }
+    .pcf-cs-time-input-zero {
+        border-color: #ef4444 !important; color: #fca5a5 !important;
+        background: rgba(239,68,68,.25) !important;
+    }
+    .pcf-cs-time-warn {
+        color: #ef4444; font-size: .9rem;
+        animation: pcf-warn-blink 1s ease-in-out infinite;
+    }
+    @@keyframes pcf-time-pulse {
+        0%, 100% { box-shadow: 0 0 4px rgba(239,68,68,.3); }
+        50%      { box-shadow: 0 0 14px rgba(239,68,68,.6); }
+    }
+    @@keyframes pcf-warn-blink {
+        0%, 100% { opacity: .4; }
+        50%      { opacity: 1; }
+    }
     @@keyframes pcf-glow {
         0%, 100% { box-shadow: 0 0 4px rgba(251,191,36,.2); }
         50%      { box-shadow: 0 0 12px rgba(251,191,36,.5); }
@@ -544,6 +590,7 @@
     int _csSessionId;            // session ID passed from Dashboard (0 = not from CS button)
     string? _csSessionName;      // name of the session being CSed
     bool _csDone;                // true after "Mark CS Done" was executed
+    int _csReviewMinutes;        // editable review time (session + admin) in minutes
     HashSet<int> _csedSessionIds = new();                    // session IDs that have cs_reviews
     Dictionary<string, int> _nameToSessionId = new(StringComparer.OrdinalIgnoreCase);  // session name → ID
 
@@ -636,9 +683,12 @@
         // Session ID passed from Dashboard "CS The Session" button (via host page parameter)
         _csSessionId = SessionId;
 
-        // Derive session name from DB
+        // Derive session name and review time from DB
         if (_csSessionId > 0)
+        {
             _csSessionName = DashSvc.GetSessionName(_csSessionId);
+            _csReviewMinutes = (int)Math.Round(DashSvc.GetSessionTotalSeconds(_csSessionId) / 60.0);
+        }
 
         FolderFileItem? match = null;
         if (!string.IsNullOrWhiteSpace(_csSessionName) && _folder != null)
@@ -829,19 +879,28 @@
     {
         if (_csSessionId == 0) return;
 
+        // Validate review time — if 0, warn user and abort
+        if (_csReviewMinutes <= 0)
+        {
+            await JS.InvokeVoidAsync("alert",
+                "Review time is 0 minutes. Please update the session's admin time before marking CS as done.");
+            return;
+        }
+
         // Auto-save all visible panes
         for (int i = 0; i < _paneCount; i++)
             await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]);
 
-        var confirmed = await JS.InvokeAsync<bool>("confirm", "Mark this session's CS review as done?");
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            $"Mark this session's CS review as done?\nReview time: {_csReviewMinutes} minutes");
         if (!confirmed) return;
 
         try
         {
-            // Create cs_review if one doesn't already exist
+            // Create cs_review if one doesn't already exist — use the GUI value
             if (!DashSvc.HasCsReview(_csSessionId))
             {
-                var reviewSec = DashSvc.GetSessionTotalSeconds(_csSessionId);
+                var reviewSec = _csReviewMinutes * 60;
                 DashSvc.AddCsReview(csId: UserPersonId, sessionId: _csSessionId,
                     reviewSec: reviewSec, status: "Draft", notes: null);
             }
