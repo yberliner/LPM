@@ -90,7 +90,7 @@
                     {
                         var (chipBg, chipBorder, chipColor) = ReferralChipStyle(v.Source);
                         var vid = v.VisitId;
-                        <span class="acad-visit-chip" style="background:@chipBg;border-color:@chipBorder;color:@chipColor;cursor:pointer;"
+                        <span class="acad-visit-chip @(v.PersonId == _lastAddedPersonId ? "acad-chip-enter" : "") @(v.VisitId == _tappedVisitId ? "acad-chip-tapped" : "")" style="background:@chipBg;border-color:@chipBorder;color:@chipColor;cursor:pointer;"
                               @onclick="() => DoCycleVisits(vid)">
                             <span class="acad-vpd-badge" title="Visits today (click to cycle)">@v.VisitsPerDay</span>
                             <i class="ri-user-smile-line" style="font-size:.82rem;opacity:.7;"></i>
@@ -149,7 +149,7 @@
                     var visited = AlreadyVisited(p.PersonId);
                     var pCourse = _personOpenCourses.GetValueOrDefault(p.PersonId, "");
                     var hasActiveCourse = !string.IsNullOrEmpty(pCourse);
-                    <div class="acad-person-row @(visited ? "acad-person-visited" : hasActiveCourse ? "acad-person-available" : "acad-person-no-course")"
+                    <div class="acad-person-row @(visited ? "acad-person-visited" : hasActiveCourse ? "acad-person-available" : "acad-person-no-course") @(p.PersonId == _clickedPersonId ? "acad-person-clicked" : "")"
                          @onclick="() => { if (!visited) OnPersonClick(p); }">
                         <div class="acad-person-dot" style="background:@(hasActiveCourse ? ReferralDotColor(p.Source) : "#d1d5db");"></div>
                         <div class="overflow-hidden flex-grow-1" style="min-width:0;">
@@ -727,6 +727,7 @@
     @@media (max-width: 768px) {
         .acad-main-layout { flex-direction: column; }
         .acad-right-panel { width: 100% !important; min-width: 0 !important; }
+        .acad-visit-card .card-body { overflow-x: hidden; }
     }
 
     /* ── Persons scrollbar ── */
@@ -803,6 +804,7 @@
         border-width: 1px; border-style: solid;
         box-shadow: 0 1px 4px rgba(0,0,0,.1);
         transition: transform .15s, box-shadow .15s;
+        max-width: 100%; flex-wrap: wrap;
     }
     .acad-visit-chip:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,.15); }
     .acad-chip-remove {
@@ -810,6 +812,7 @@
         opacity: .6; line-height: 1; cursor: pointer; font-size: .9rem;
         display: flex; align-items: center;
         transition: opacity .15s;
+        flex-shrink: 0;
     }
     .acad-chip-remove:hover { opacity: 1; }
     .acad-vpd-badge {
@@ -866,6 +869,47 @@
     /* Force dark text inside white-bg course modal */
     .modal-content .form-select,
     .modal-content .form-control { color: #212529 !important; background-color: #fff !important; border-color: #dee2e6 !important; }
+
+    /* ── Click animation on person row ── */
+    .acad-person-clicked {
+        animation: personClickPulse .55s cubic-bezier(.4,0,.2,1);
+        pointer-events: none;
+    }
+    @@keyframes personClickPulse {
+        0%   { transform: scale(1); background: transparent; }
+        15%  { transform: scale(.96); background: #d1fae5; box-shadow: inset 0 0 0 2px #34d399; }
+        40%  { transform: scale(1.02); background: #a7f3d0; }
+        60%  { transform: scale(.99); background: #d1fae5; }
+        100% { transform: scale(1); background: transparent; box-shadow: none; }
+    }
+
+    /* ── Pop-in animation for newly added visit chip ── */
+    .acad-chip-enter {
+        animation: chipPopIn .5s cubic-bezier(.34,1.56,.64,1);
+    }
+    @@keyframes chipPopIn {
+        0%   { opacity: 0; transform: scale(.3) translateY(12px); }
+        50%  { opacity: 1; transform: scale(1.08) translateY(-2px); }
+        70%  { transform: scale(.97) translateY(1px); }
+        100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    /* Subtle glow on the newly added chip */
+    .acad-chip-enter {
+        box-shadow: 0 0 0 3px rgba(16,185,129,.35), 0 4px 15px rgba(16,185,129,.25);
+    }
+
+    /* ── Tap animation on visit chip (cycle visits) ── */
+    .acad-chip-tapped {
+        animation: chipTapBounce .45s cubic-bezier(.4,0,.2,1);
+    }
+    @@keyframes chipTapBounce {
+        0%   { transform: scale(1); }
+        20%  { transform: scale(.92); filter: brightness(1.15); }
+        50%  { transform: scale(1.06); }
+        70%  { transform: scale(.98); }
+        100% { transform: scale(1); filter: brightness(1); }
+    }
 </style>
 
 @* ── No active course warning popup ── *@
@@ -1196,8 +1240,17 @@
     bool _showNoCourseWarning;
     PersonItem? _pendingVisitPerson;
 
-    void OnPersonClick(PersonItem p)
+    // Animation state
+    int? _lastAddedPersonId;
+    int? _clickedPersonId;
+    int? _tappedVisitId;
+
+    async void OnPersonClick(PersonItem p)
     {
+        // Trigger click animation on the person row
+        _clickedPersonId = p.PersonId;
+        StateHasChanged();
+
         var hasCourse = !string.IsNullOrEmpty(_personOpenCourses.GetValueOrDefault(p.PersonId, ""));
         if (!hasCourse)
         {
@@ -1206,14 +1259,25 @@
             return;
         }
         AddVisit(p);
+
+        // Clear animation states after animations complete
+        await Task.Delay(700);
+        _clickedPersonId = null;
+        _lastAddedPersonId = null;
+        StateHasChanged();
     }
 
-    void ConfirmAddWithoutCourse()
+    async void ConfirmAddWithoutCourse()
     {
         _showNoCourseWarning = false;
         if (_pendingVisitPerson != null)
             AddVisit(_pendingVisitPerson);
         _pendingVisitPerson = null;
+        StateHasChanged();
+
+        await Task.Delay(700);
+        _lastAddedPersonId = null;
+        StateHasChanged();
     }
 
     void CancelNoCourseWarning()
@@ -1224,6 +1288,7 @@
 
     void AddVisit(PersonItem p)
     {
+        _lastAddedPersonId = p.PersonId;
         AcademySvc.AddVisit(p.PersonId, SelectedDate);
         _dayCounts[_selDay] = AcademySvc.GetVisitsForDay(SelectedDate).Count;
         LoadVisits();
@@ -1238,11 +1303,18 @@
         RefreshChart();
     }
 
-    void DoCycleVisits(int visitId)
+    async void DoCycleVisits(int visitId)
     {
+        _tappedVisitId = visitId;
+        StateHasChanged();
+
         AcademySvc.CycleVisitsPerDay(visitId);
         LoadVisits();
         RefreshChart();
+
+        await Task.Delay(500);
+        _tappedVisitId = null;
+        StateHasChanged();
     }
 
     /// Returns the list of week-start Thursdays whose month matches the given weekStart's month.
