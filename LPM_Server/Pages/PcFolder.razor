@@ -146,30 +146,39 @@
                     <span class="pcf-cs-session-label">
                         <span style="opacity:.7;font-weight:400;">CSing:</span> @_csSessionName
                     </span>
-                    <span class="pcf-cs-time-label @(_csReviewMinutes <= 0 ? "pcf-cs-time-zero" : "")">
-                        <i class="ri-time-line me-1" style="opacity:.7;"></i>
-                        <input type="number" min="0" class="pcf-cs-time-input @(_csReviewMinutes <= 0 ? "pcf-cs-time-input-zero" : "")"
-                               @bind="_csReviewMinutes" @bind:event="oninput"
-                               title="Review time in minutes (session + admin)" />
-                        <span style="opacity:.7;font-size:.72rem;">min</span>
+                    <div class="pcf-timer @(_csReviewMinutes <= 0 ? "pcf-timer-zero" : "")"
+                         title="CS Review time (session + admin). This value will be saved when you press Mark CS Done. Edit hours and minutes if needed.">
+                        <i class="ri-timer-line pcf-timer-icon"></i>
+                        <div class="pcf-timer-display">
+                            <input type="number" min="0" class="pcf-timer-num"
+                                   value="@(_csReviewMinutes / 60)"
+                                   @onchange="e => OnTimerHoursChanged(e)" />
+                            <span class="pcf-timer-colon">:</span>
+                            <input type="number" min="0" max="59" class="pcf-timer-num"
+                                   value="@(_csReviewMinutes % 60)"
+                                   @onchange="e => OnTimerMinsChanged(e)" />
+                        </div>
                         @if (_csReviewMinutes <= 0)
                         {
-                            <i class="ri-error-warning-line pcf-cs-time-warn" title="Review time is 0 — please correct"></i>
+                            <i class="ri-error-warning-line pcf-timer-warn" title="Review time is 0 — update before marking done"></i>
                         }
-                    </span>
+                    </div>
                 </div>
             }
             <div class="d-flex align-items-center gap-2 flex-shrink-0 flex-nowrap">
                 <button class="pcf-tool-btn @(_toolMode == "draw" ? "pcf-tool-active" : "")"
-                        title="Draw" @onclick='() => SetTool("draw")'>
+                        title="Draw — click and drag on the PDF to draw freehand annotations"
+                        @onclick='() => SetTool("draw")'>
                     <i class="ri-pencil-line"></i>
                 </button>
                 <button class="pcf-tool-btn @(_toolMode == "text" ? "pcf-tool-active" : "")"
-                        title="Add Text" @onclick='() => SetTool("text")'>
+                        title="Add Text — click anywhere on the PDF to place a text note"
+                        @onclick='() => SetTool("text")'>
                     <i class="ri-text"></i>
                 </button>
                 <div class="pcf-color-wrap">
-                    <button class="pcf-tool-btn" title="Color" @onclick="() => _showColors = !_showColors"
+                    <button class="pcf-tool-btn" title="Pick color — choose a color for drawing and text annotations"
+                            @onclick="() => _showColors = !_showColors"
                             style="border-bottom: 3px solid @_drawColor;">
                         <i class="ri-palette-line"></i>
                     </button>
@@ -186,7 +195,8 @@
                     }
                 </div>
                 <div class="pcf-color-wrap">
-                    <button class="pcf-tool-btn" title="Text size" @onclick="() => _showSizes = !_showSizes"
+                    <button class="pcf-tool-btn" title="Text size — change the font size for text annotations"
+                            @onclick="() => _showSizes = !_showSizes"
                             style="font-size:.75rem;min-width:36px;">
                         @(_fontSize)px
                     </button>
@@ -204,18 +214,19 @@
                         </div>
                     }
                 </div>
-                <button class="pcf-tool-btn" title="Undo" @onclick="Undo">
+                <button class="pcf-tool-btn" title="Undo — remove the last annotation on the active pane" @onclick="Undo">
                     <i class="ri-arrow-go-back-line"></i>
                 </button>
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
-                <button class="pcf-save-btn" title="Save" @onclick="SaveAnnotations"
+                <button class="pcf-save-btn" title="Save — save annotations to the PDF now (also auto-saves when switching files or closing)"
+                        @onclick="SaveAnnotations"
                         disabled="@(!_hasAnnotations)">
                     <i class="ri-save-line me-1"></i>Save
                 </button>
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
                 @* Pane count toggle: cycles 1→2→3→1 *@
                 <button class="pcf-tool-btn @(_paneCount > 1 ? "pcf-tool-active" : "")"
-                        title="@(_paneCount) pane(s) — click to change"
+                        title="Split view — currently @_paneCount pane(s). Click to cycle between 1, 2, or 3 side-by-side panes for comparing files"
                         @onclick="CyclePanes">
                     <i class="ri-layout-column-line"></i>
                     <span style="font-size:.7rem;margin-left:2px;">@_paneCount</span>
@@ -229,7 +240,7 @@
                 }
                 else
                 {
-                    <button class="pcf-done-btn" title="Mark this session's CS as done and close"
+                    <button class="pcf-done-btn" title="Mark CS Done — saves all annotations, records the CS review with the displayed time, and closes the tab"
                             @onclick="DoneCs" disabled="@(_csSessionId == 0)">
                         <i class="ri-check-double-line me-1"></i>Mark CS Done
                     </button>
@@ -462,40 +473,54 @@
         font-size: .8rem; font-weight: 700; color: #fbbf24;
         animation: pcf-glow 2s ease-in-out infinite;
     }
-    .pcf-cs-time-label {
+    .pcf-timer {
         display: flex; align-items: center; gap: 4px;
-        background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.3);
-        border-radius: 6px; padding: 3px 10px;
-        font-size: .8rem; font-weight: 600; color: #e2e8f0;
+        background: rgba(0,0,0,.25); border: 1px solid rgba(255,255,255,.15);
+        border-radius: 6px; padding: 2px 7px;
+        backdrop-filter: blur(4px);
     }
-    .pcf-cs-time-input {
-        width: 52px; background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.3);
-        color: #fff; border-radius: 4px; padding: 1px 4px; text-align: center;
-        font-size: .8rem; font-weight: 700; outline: none;
-        -moz-appearance: textfield;
+    .pcf-timer-icon { font-size: .7rem; color: #94a3b8; }
+    .pcf-timer-display {
+        display: flex; align-items: center; gap: 0;
     }
-    .pcf-cs-time-input::-webkit-outer-spin-button,
-    .pcf-cs-time-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-    .pcf-cs-time-input:focus { border-color: #fbbf24; box-shadow: 0 0 6px rgba(251,191,36,.4); }
-    .pcf-cs-time-zero {
+    .pcf-timer-num {
+        width: 24px; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.15);
+        color: #f1f5f9; border-radius: 3px; padding: 0 1px;
+        text-align: center; font-size: .72rem; font-weight: 800;
+        font-family: 'Segoe UI', system-ui, monospace;
+        letter-spacing: .5px; outline: none;
+        -moz-appearance: textfield; transition: all .15s;
+    }
+    .pcf-timer-num::-webkit-outer-spin-button,
+    .pcf-timer-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .pcf-timer-num:focus {
+        background: rgba(255,255,255,.18);
+        border-color: #60a5fa; box-shadow: 0 0 6px rgba(96,165,250,.35);
+    }
+    .pcf-timer-colon {
+        font-size: .72rem; font-weight: 800; color: #64748b;
+        margin: 0 1px;
+    }
+    .pcf-timer-zero {
         border-color: #ef4444 !important;
-        animation: pcf-time-pulse 1.5s ease-in-out infinite;
+        animation: pcf-timer-pulse 1.5s ease-in-out infinite;
     }
-    .pcf-cs-time-input-zero {
-        border-color: #ef4444 !important; color: #fca5a5 !important;
-        background: rgba(239,68,68,.25) !important;
+    .pcf-timer-zero .pcf-timer-num {
+        background: rgba(239,68,68,.2); border-color: rgba(239,68,68,.5);
+        color: #fca5a5;
     }
-    .pcf-cs-time-warn {
-        color: #ef4444; font-size: .9rem;
+    .pcf-timer-zero .pcf-timer-icon { color: #ef4444; }
+    .pcf-timer-warn {
+        color: #ef4444; font-size: .7rem;
         animation: pcf-warn-blink 1s ease-in-out infinite;
     }
-    @@keyframes pcf-time-pulse {
-        0%, 100% { box-shadow: 0 0 4px rgba(239,68,68,.3); }
-        50%      { box-shadow: 0 0 14px rgba(239,68,68,.6); }
+    @@keyframes pcf-timer-pulse {
+        0%, 100% { box-shadow: 0 0 4px rgba(239,68,68,.2), inset 0 0 4px rgba(239,68,68,.1); }
+        50%      { box-shadow: 0 0 16px rgba(239,68,68,.5), inset 0 0 8px rgba(239,68,68,.15); }
     }
     @@keyframes pcf-warn-blink {
-        0%, 100% { opacity: .4; }
-        50%      { opacity: 1; }
+        0%, 100% { opacity: .4; transform: scale(.9); }
+        50%      { opacity: 1; transform: scale(1.1); }
     }
     @@keyframes pcf-glow {
         0%, 100% { box-shadow: 0 0 4px rgba(251,191,36,.2); }
@@ -873,6 +898,22 @@
             _saving = false;
             StateHasChanged();
         }
+    }
+
+    void OnTimerHoursChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var h) && h >= 0)
+            _csReviewMinutes = h * 60 + (_csReviewMinutes % 60);
+        else
+            _csReviewMinutes = _csReviewMinutes % 60;
+    }
+
+    void OnTimerMinsChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var m) && m >= 0)
+            _csReviewMinutes = (_csReviewMinutes / 60) * 60 + Math.Min(m, 59);
+        else
+            _csReviewMinutes = (_csReviewMinutes / 60) * 60;
     }
 
     async Task DoneCs()
