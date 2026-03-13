@@ -13,7 +13,9 @@
 - NEVER commit without explicit user permission
 - NEVER touch LPM.Tests unless explicitly asked
 - Proceed autonomously for file edits and builds; ask only for destructive/risky actions
-- Use Bootstrap for all UI components
+- Prefer Bootstrap for all UI components and layout.
+- Do not introduce additional UI frameworks unless explicitly requested.
+- Use custom CSS or Blazor CSS isolation for small gaps instead of adding another UI library.
 - NEVER create DB tables from code — manage schema directly in the database
 - No backward compatibility needed — just change the code, no shims or migration paths
 
