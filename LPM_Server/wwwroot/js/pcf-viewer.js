@@ -7,12 +7,14 @@ window.pcfViewer = {
     currentStroke: null,
     drawColor: '#e11d48',
     drawWidth: 2.5,
+    fontSize: 14,
     textInputEl: null,
     dotNetRef: null,
 
     setDotNetRef(ref) { this.dotNetRef = ref; },
 
     setColor(color) { this.drawColor = color; },
+    setFontSize(size) { this.fontSize = size; },
 
     async loadPdf(url) {
         const viewer = document.getElementById('pcf-viewer');
@@ -157,6 +159,12 @@ window.pcfViewer = {
         input.style.left = x + 'px';
         input.style.top = (y - 18) + 'px';
         input.placeholder = 'Type here...';
+
+        const color = this.drawColor;
+        const fontSize = this.fontSize;
+        input.style.color = color;
+        input.style.fontSize = fontSize + 'px';
+
         wrapper.appendChild(input);
         this.textInputEl = input;
 
@@ -164,14 +172,13 @@ window.pcfViewer = {
         input.addEventListener('pointerdown', (e) => e.stopPropagation());
 
         const self = this;
-        const color = this.drawColor;
         let committed = false;
         const commit = () => {
             if (committed) return;
             committed = true;
             const text = input.value.trim();
             if (text) {
-                self.annotations.push({ pageIdx, type: 'text', text, x, y, color: color, fontSize: 14 });
+                self.annotations.push({ pageIdx, type: 'text', text, x, y, color: color, fontSize: fontSize });
                 self._redrawOverlay(pageIdx);
                 self._notifyChange();
             }

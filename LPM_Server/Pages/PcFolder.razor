@@ -126,6 +126,25 @@
                         </div>
                     }
                 </div>
+                <div class="pcf-color-wrap">
+                    <button class="pcf-tool-btn" title="Text size" @onclick="() => _showSizes = !_showSizes"
+                            style="font-size:.75rem;min-width:36px;">
+                        @(_fontSize)px
+                    </button>
+                    @if (_showSizes)
+                    {
+                        <div class="pcf-size-popup">
+                            @foreach (var s in _fontSizes)
+                            {
+                                <div class="pcf-size-item @(s == _fontSize ? "pcf-size-active" : "")"
+                                     @onclick="() => PickSize(s)">
+                                    <span style="font-size:@(Math.Min(s, 20))px;">A</span>
+                                    <span>@(s)px</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
                 <button class="pcf-tool-btn" title="Undo" @onclick="Undo">
                     <i class="ri-arrow-go-back-line"></i>
                 </button>
@@ -270,6 +289,20 @@
     }
     .pcf-color-swatch:hover { transform: scale(1.15); border-color: rgba(255,255,255,.6); }
     .pcf-swatch-active { border-color: #fff !important; box-shadow: 0 0 0 2px #3b82f6; }
+    .pcf-size-popup {
+        position: absolute; top: 110%; right: 0; z-index: 100;
+        display: flex; flex-direction: column; gap: 2px;
+        padding: 6px; background: #1e293b; border: 1px solid #475569;
+        border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+        min-width: 80px;
+    }
+    .pcf-size-item {
+        display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        padding: 4px 10px; border-radius: 4px; cursor: pointer;
+        color: #cbd5e1; font-size: .8rem; transition: background .1s;
+    }
+    .pcf-size-item:hover { background: #334155; color: #f1f5f9; }
+    .pcf-size-active { background: #3b82f6 !important; color: #fff !important; font-weight: 600; }
     .pcf-save-btn {
         background: linear-gradient(135deg, #059669, #10b981);
         border: none; color: #fff; border-radius: 6px;
@@ -335,9 +368,13 @@
     bool _showAllWorksheets;
     string _toolMode = "";
     string _drawColor = "#e11d48";
+    int _fontSize = 14;
     bool _showColors;
+    bool _showSizes;
     bool _hasAnnotations;
     bool _saving;
+
+    static readonly int[] _fontSizes = [10, 12, 14, 18, 24, 32, 40, 56];
 
     static readonly string[] _palette = [
         "#000000", "#ffffff", "#e11d48", "#f97316",
@@ -414,6 +451,13 @@
         _drawColor = color;
         _showColors = false;
         await JS.InvokeVoidAsync("pcfViewer.setColor", color);
+    }
+
+    async Task PickSize(int size)
+    {
+        _fontSize = size;
+        _showSizes = false;
+        await JS.InvokeVoidAsync("pcfViewer.setFontSize", size);
     }
 
     async Task SaveAnnotations()
