@@ -1,42 +1,73 @@
-// PC Folder PDF viewer with annotation support
+// PC Folder PDF viewer with annotation support — multi-pane
 window.pcfViewer = {
-    pdfDoc: null,
-    pages: [],
+    panes: {},       // keyed by paneId ('left', 'right')
+    activePane: 'left',
     toolMode: null,
-    annotations: [],
-    currentStroke: null,
     drawColor: '#e11d48',
     drawWidth: 2.5,
     fontSize: 14,
     textInputEl: null,
     dotNetRef: null,
+    _pcId: 0,
+
+    _initPane(paneId) {
+        if (!this.panes[paneId]) {
+            this.panes[paneId] = {
+                pdfDoc: null,
+                pages: [],
+                annotations: [],
+                currentStroke: null,
+                filePath: null
+            };
+        }
+        return this.panes[paneId];
+    },
 
     setDotNetRef(ref) { this.dotNetRef = ref; },
-
+    setPcId(pcId) { this._pcId = pcId; },
     setColor(color) { this.drawColor = color; },
     setFontSize(size) { this.fontSize = size; },
+    setActivePane(paneId) { this.activePane = paneId; },
 
-    async loadPdf(url) {
-        const viewer = document.getElementById('pcf-viewer');
+    async loadPdf(url, paneId) {
+        paneId = paneId || this.activePane;
+        const pane = this._initPane(paneId);
+
+        // Extract filePath from the URL for auto-save
+        const u = new URL(url, location.origin);
+        pane.filePath = u.searchParams.get('path');
+
+        let viewer = document.getElementById('pcf-viewer-' + paneId);
+        // Wait for the viewer element to exist and have a valid width
+        for (let attempt = 0; attempt < 50 && (!viewer || viewer.clientWidth < 10); attempt++) {
+            await new Promise(r => requestAnimationFrame(r));
+            viewer = document.getElementById('pcf-viewer-' + paneId);
+        }
         if (!viewer) return;
         viewer.innerHTML = '';
-        this.pages = [];
-        this.annotations = [];
-        this.currentStroke = null;
+        pane.pages = [];
+        pane.annotations = [];
+        pane.currentStroke = null;
 
         const pdfjsLib = window['pdfjs-dist/build/pdf'];
         if (!pdfjsLib) { viewer.innerHTML = '<div style="color:#fff;padding:40px;">PDF.js not loaded</div>'; return; }
 
         try {
-            this.pdfDoc = await pdfjsLib.getDocument(url).promise;
+            pane.pdfDoc = await pdfjsLib.getDocument(url).promise;
         } catch (e) {
             viewer.innerHTML = '<div style="color:#fff;padding:40px;">Failed to load PDF: ' + e.message + '</div>';
             return;
         }
 
-        for (let i = 0; i < this.pdfDoc.numPages; i++) {
-            const page = await this.pdfDoc.getPage(i + 1);
-            const scale = 1.5;
+        // Calculate scale to fit viewer width (minus padding)
+        const viewerWidth = viewer.clientWidth - 40; // 20px padding each side
+        const firstPage = await pane.pdfDoc.getPage(1);
+        const defaultVp = firstPage.getViewport({ scale: 1 });
+        const fitScale = Math.min(viewerWidth / defaultVp.width, 3); // cap at 3x
+        const scale = Math.max(fitScale, 0.5); // min 0.5x
+
+        for (let i = 0; i < pane.pdfDoc.numPages; i++) {
+            const page = i === 0 ? firstPage : await pane.pdfDoc.getPage(i + 1);
             const vp = page.getViewport({ scale });
 
             const wrapper = document.createElement('div');
@@ -62,17 +93,21 @@ window.pcfViewer = {
             const ctx = canvas.getContext('2d');
             await page.render({ canvasContext: ctx, viewport: vp }).promise;
 
-            this.pages.push({ canvas, overlay, vp, pageIdx: i });
-            this._attachEvents(overlay, i);
+            pane.pages.push({ canvas, overlay, vp, pageIdx: i, scale });
+            this._attachEvents(overlay, i, paneId);
         }
     },
 
-    _attachEvents(overlay, pageIdx) {
+    _attachEvents(overlay, pageIdx, paneId) {
         const self = this;
         let drawing = false;
 
+        // Clicking anywhere in a pane makes it active
         overlay.addEventListener('pointerdown', (e) => {
-            // Ignore if a text input is active
+            self.activePane = paneId;
+            const pane = self.panes[paneId];
+            if (!pane) return;
+
             if (self.textInputEl) return;
 
             if (self.toolMode === 'draw') {
@@ -81,48 +116,52 @@ window.pcfViewer = {
                 const r = overlay.getBoundingClientRect();
                 const x = e.clientX - r.left;
                 const y = e.clientY - r.top;
-                self.currentStroke = { pageIdx, points: [{ x, y }], color: self.drawColor, width: self.drawWidth };
+                pane.currentStroke = { pageIdx, points: [{ x, y }], color: self.drawColor, width: self.drawWidth };
             } else if (self.toolMode === 'text') {
                 const r = overlay.getBoundingClientRect();
                 const x = e.clientX - r.left;
                 const y = e.clientY - r.top;
-                self._showTextInput(overlay.parentElement, pageIdx, x, y);
+                self._showTextInput(overlay.parentElement, pageIdx, x, y, paneId);
             }
         });
 
         overlay.addEventListener('pointermove', (e) => {
-            if (!drawing || !self.currentStroke) return;
+            const pane = self.panes[paneId];
+            if (!drawing || !pane || !pane.currentStroke) return;
             const r = overlay.getBoundingClientRect();
             const x = e.clientX - r.left;
             const y = e.clientY - r.top;
-            self.currentStroke.points.push({ x, y });
-            self._redrawOverlay(pageIdx);
+            pane.currentStroke.points.push({ x, y });
+            self._redrawOverlay(pageIdx, paneId);
         });
 
         overlay.addEventListener('pointerup', () => {
-            if (drawing && self.currentStroke && self.currentStroke.points.length > 1) {
-                self.annotations.push({ pageIdx, type: 'draw', stroke: self.currentStroke });
+            const pane = self.panes[paneId];
+            if (drawing && pane && pane.currentStroke && pane.currentStroke.points.length > 1) {
+                pane.annotations.push({ pageIdx, type: 'draw', stroke: pane.currentStroke });
                 self._notifyChange();
             }
             drawing = false;
-            self.currentStroke = null;
+            if (pane) pane.currentStroke = null;
         });
     },
 
-    _redrawOverlay(pageIdx) {
-        const pg = this.pages[pageIdx];
+    _redrawOverlay(pageIdx, paneId) {
+        const pane = this.panes[paneId];
+        if (!pane) return;
+        const pg = pane.pages[pageIdx];
         if (!pg) return;
         const ctx = pg.overlay.getContext('2d');
         ctx.clearRect(0, 0, pg.overlay.width, pg.overlay.height);
 
-        for (const ann of this.annotations) {
+        for (const ann of pane.annotations) {
             if (ann.pageIdx !== pageIdx) continue;
             if (ann.type === 'draw') this._drawStroke(ctx, ann.stroke);
             if (ann.type === 'text') this._drawText(ctx, ann);
         }
 
-        if (this.currentStroke && this.currentStroke.pageIdx === pageIdx) {
-            this._drawStroke(ctx, this.currentStroke);
+        if (pane.currentStroke && pane.currentStroke.pageIdx === pageIdx) {
+            this._drawStroke(ctx, pane.currentStroke);
         }
     },
 
@@ -146,8 +185,7 @@ window.pcfViewer = {
         ctx.fillText(ann.text, ann.x, ann.y);
     },
 
-    _showTextInput(wrapper, pageIdx, x, y) {
-        // Remove existing
+    _showTextInput(wrapper, pageIdx, x, y, paneId) {
         if (this.textInputEl) {
             this.textInputEl.remove();
             this.textInputEl = null;
@@ -168,7 +206,6 @@ window.pcfViewer = {
         wrapper.appendChild(input);
         this.textInputEl = input;
 
-        // Prevent clicks on the input from bubbling to the overlay
         input.addEventListener('pointerdown', (e) => e.stopPropagation());
 
         const self = this;
@@ -178,9 +215,12 @@ window.pcfViewer = {
             committed = true;
             const text = input.value.trim();
             if (text) {
-                self.annotations.push({ pageIdx, type: 'text', text, x, y, color: color, fontSize: fontSize });
-                self._redrawOverlay(pageIdx);
-                self._notifyChange();
+                const pane = self.panes[paneId];
+                if (pane) {
+                    pane.annotations.push({ pageIdx, type: 'text', text, x, y, color: color, fontSize: fontSize });
+                    self._redrawOverlay(pageIdx, paneId);
+                    self._notifyChange();
+                }
             }
             input.remove();
             self.textInputEl = null;
@@ -192,7 +232,6 @@ window.pcfViewer = {
         });
         input.addEventListener('blur', commit);
 
-        // Focus after a tiny delay to avoid immediate blur
         requestAnimationFrame(() => input.focus());
     },
 
@@ -204,26 +243,44 @@ window.pcfViewer = {
 
     setTool(mode) {
         this.toolMode = mode;
-        for (const pg of this.pages) {
-            pg.overlay.style.cursor = mode === 'draw' ? 'crosshair' : mode === 'text' ? 'text' : 'default';
+        for (const paneId in this.panes) {
+            const pane = this.panes[paneId];
+            for (const pg of pane.pages) {
+                pg.overlay.style.cursor = mode === 'draw' ? 'crosshair' : mode === 'text' ? 'text' : 'default';
+            }
         }
     },
 
-    undo() {
-        if (this.annotations.length === 0) return;
-        const removed = this.annotations.pop();
-        this._redrawOverlay(removed.pageIdx);
+    undo(paneId) {
+        paneId = paneId || this.activePane;
+        const pane = this.panes[paneId];
+        if (!pane || pane.annotations.length === 0) return;
+        const removed = pane.annotations.pop();
+        this._redrawOverlay(removed.pageIdx, paneId);
     },
 
-    hasAnnotations() {
-        return this.annotations.length > 0;
+    hasAnnotations(paneId) {
+        paneId = paneId || this.activePane;
+        const pane = this.panes[paneId];
+        return pane ? pane.annotations.length > 0 : false;
     },
 
-    async getAnnotatedPdf() {
+    hasAnyAnnotations() {
+        for (const paneId in this.panes) {
+            if (this.panes[paneId].annotations.length > 0) return true;
+        }
+        return false;
+    },
+
+    async getAnnotatedPdf(paneId) {
+        paneId = paneId || this.activePane;
+        const pane = this.panes[paneId];
+        if (!pane) return JSON.stringify([]);
+
         const finalCanvas = document.createElement('canvas');
         const pages = [];
 
-        for (const pg of this.pages) {
+        for (const pg of pane.pages) {
             const w = pg.canvas.width;
             const h = pg.canvas.height;
             finalCanvas.width = w;
@@ -235,5 +292,67 @@ window.pcfViewer = {
             pages.push({ width: w, height: h, dataUrl });
         }
         return JSON.stringify(pages);
+    },
+
+    // ── Auto-save support ──
+
+    // Save a specific pane synchronously (for beforeunload)
+    _saveSync(paneId) {
+        const pane = this.panes[paneId];
+        if (!pane || pane.annotations.length === 0 || !pane.filePath || !this._pcId) return;
+
+        const finalCanvas = document.createElement('canvas');
+        const pagesData = [];
+        for (const pg of pane.pages) {
+            const w = pg.canvas.width;
+            const h = pg.canvas.height;
+            finalCanvas.width = w;
+            finalCanvas.height = h;
+            const ctx = finalCanvas.getContext('2d');
+            ctx.drawImage(pg.canvas, 0, 0);
+            ctx.drawImage(pg.overlay, 0, 0);
+            pagesData.push({ width: w, height: h, dataUrl: finalCanvas.toDataURL('image/png') });
+        }
+
+        // Use synchronous XHR to ensure it completes before tab closes
+        const formData = new FormData();
+        for (let i = 0; i < pagesData.length; i++) {
+            const byteStr = atob(pagesData[i].dataUrl.split(',')[1]);
+            const arr = new Uint8Array(byteStr.length);
+            for (let j = 0; j < byteStr.length; j++) arr[j] = byteStr.charCodeAt(j);
+            formData.append('page_' + i, new Blob([arr], { type: 'image/png' }), 'page_' + i + '.png');
+        }
+        formData.append('pageCount', pagesData.length.toString());
+        formData.append('widths', JSON.stringify(pagesData.map(p => p.width)));
+        formData.append('heights', JSON.stringify(pagesData.map(p => p.height)));
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/pc-file-save-annotated?pcId=' + this._pcId + '&path=' + encodeURIComponent(pane.filePath), false);
+        xhr.send(formData);
+
+        // Clear annotations after saving
+        pane.annotations = [];
+    },
+
+    // Save all panes that have annotations (sync, for beforeunload)
+    saveAllSync() {
+        for (const paneId in this.panes) {
+            this._saveSync(paneId);
+        }
+    },
+
+    // Async save for a pane (used when switching files)
+    async savePane(paneId) {
+        const pane = this.panes[paneId];
+        if (!pane || pane.annotations.length === 0 || !pane.filePath || !this._pcId) return;
+
+        const pagesJson = await this.getAnnotatedPdf(paneId);
+        await window.pcfSaveAnnotatedPdf(this._pcId, pane.filePath, pagesJson);
+        pane.annotations = [];
     }
 };
+
+// ── Auto-save on tab close / navigation ──
+window.addEventListener('beforeunload', function () {
+    window.pcfViewer.saveAllSync();
+});

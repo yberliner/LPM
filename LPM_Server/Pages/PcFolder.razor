@@ -25,7 +25,8 @@
             {
                 @foreach (var f in _folder.FrontCover)
                 {
-                    <div class="pcf-file-item @(f.RelativePath == _selectedFile ? "pcf-file-active" : "")"
+                    var active = IsFileActive(f.RelativePath);
+                    <div class="pcf-file-item @active"
                          @onclick="@(() => SelectFile(f.RelativePath, f.FileName, "Front Cover"))">
                         <i class="ri-file-pdf-2-line me-1"></i>
                         <span class="pcf-file-name">@StripDatePrefix(f.FileName)</span>
@@ -44,7 +45,8 @@
             {
                 @foreach (var f in _folder.BackCover)
                 {
-                    <div class="pcf-file-item @(f.RelativePath == _selectedFile ? "pcf-file-active" : "")"
+                    var active = IsFileActive(f.RelativePath);
+                    <div class="pcf-file-item @active"
                          @onclick="@(() => SelectFile(f.RelativePath, f.FileName, "Back Cover"))">
                         <i class="ri-file-pdf-2-line me-1"></i>
                         <span class="pcf-file-name">@StripDatePrefix(f.FileName)</span>
@@ -66,7 +68,8 @@
                     : _folder.WorkSheets.Take(5).ToList();
                 @foreach (var f in visibleWs)
                 {
-                    <div class="pcf-file-item @(f.RelativePath == _selectedFile ? "pcf-file-active" : "")"
+                    var active = IsFileActive(f.RelativePath);
+                    <div class="pcf-file-item @active"
                          @onclick="@(() => SelectFile(f.RelativePath, f.FileName, "WorkSheet"))">
                         <i class="ri-file-pdf-2-line me-1"></i>
                         <span class="pcf-file-name">@StripDatePrefix(f.FileName)</span>
@@ -99,11 +102,11 @@
             <div class="d-flex align-items-center gap-2 flex-grow-1 overflow-hidden">
                 <span class="pcf-toolbar-file">
                     <i class="ri-file-pdf-2-line me-1"></i>
-                    @if (!string.IsNullOrEmpty(_selectedSection))
+                    @if (!string.IsNullOrEmpty(ActiveSection))
                     {
-                        <span class="pcf-toolbar-section">@_selectedSection</span>
+                        <span class="pcf-toolbar-section">@ActiveSection</span>
                     }
-                    @(_selectedFileName ?? "Select a file")
+                    @(ActiveFileName ?? "Select a file")
                 </span>
             </div>
             <div class="d-flex align-items-center gap-2 flex-shrink-0 flex-nowrap">
@@ -160,19 +163,68 @@
                     <i class="ri-save-line me-1"></i>Save
                 </button>
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
+                @* Split toggle *@
+                <button class="pcf-tool-btn @(_splitMode ? "pcf-tool-active" : "")"
+                        title="@(_splitMode ? "Single view" : "Split view")"
+                        @onclick="ToggleSplit">
+                    <i class="ri-layout-column-line"></i>
+                </button>
+                <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
                 <button class="pcf-done-btn" title="Close" @onclick="DoneCs">
                     <i class="ri-check-double-line me-1"></i>Done
                 </button>
             </div>
         </div>
 
-        @* ── PDF canvas area ── *@
-        <div class="pcf-viewer" id="pcf-viewer">
-            @if (string.IsNullOrEmpty(_selectedFile))
+        @* ── PDF viewer area ── *@
+        <div class="pcf-viewer-area @(_splitMode ? "pcf-split" : "")">
+            @* Left pane (always visible) *@
+            <div class="pcf-pane @(_activePane == "left" ? "pcf-pane-active" : "")"
+                 @onclick='() => SetActivePane("left")'>
+                @if (_splitMode)
+                {
+                    <div class="pcf-pane-header">
+                        <i class="ri-file-pdf-2-line me-1"></i>
+                        @if (!string.IsNullOrEmpty(_leftSection))
+                        {
+                            <span class="pcf-toolbar-section" style="font-size:.65rem;">@_leftSection</span>
+                        }
+                        @(_leftFileName ?? "Empty")
+                    </div>
+                }
+                <div class="pcf-viewer" id="pcf-viewer-left">
+                    @if (string.IsNullOrEmpty(_leftFile))
+                    {
+                        <div class="pcf-empty">
+                            <i class="ri-file-search-line" style="font-size:3rem;opacity:.3;"></i>
+                            <div class="mt-2" style="font-size:.9rem;">Select a file from the sidebar</div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* Right pane (only in split mode) *@
+            @if (_splitMode)
             {
-                <div class="pcf-empty">
-                    <i class="ri-file-search-line" style="font-size:3rem;opacity:.3;"></i>
-                    <div class="mt-2" style="font-size:.9rem;">Select a file from the sidebar to view</div>
+                <div class="pcf-pane @(_activePane == "right" ? "pcf-pane-active" : "")"
+                     @onclick='() => SetActivePane("right")'>
+                    <div class="pcf-pane-header">
+                        <i class="ri-file-pdf-2-line me-1"></i>
+                        @if (!string.IsNullOrEmpty(_rightSection))
+                        {
+                            <span class="pcf-toolbar-section" style="font-size:.65rem;">@_rightSection</span>
+                        }
+                        @(_rightFileName ?? "Empty")
+                    </div>
+                    <div class="pcf-viewer" id="pcf-viewer-right">
+                        @if (string.IsNullOrEmpty(_rightFile))
+                        {
+                            <div class="pcf-empty">
+                                <i class="ri-file-search-line" style="font-size:3rem;opacity:.3;"></i>
+                                <div class="mt-2" style="font-size:.9rem;">Select a file to view here</div>
+                            </div>
+                        }
+                    </div>
                 </div>
             }
         </div>
@@ -239,9 +291,11 @@
         color: #cbd5e1;
     }
     .pcf-file-item:hover { background: #334155; color: #f1f5f9; }
-    .pcf-file-active {
-        background: #3b82f6 !important; color: #fff !important;
-        font-weight: 600;
+    .pcf-file-active-left {
+        background: #3b82f6 !important; color: #fff !important; font-weight: 600;
+    }
+    .pcf-file-active-right {
+        background: #7c3aed !important; color: #fff !important; font-weight: 600;
     }
     .pcf-file-name {
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -250,7 +304,8 @@
     .pcf-file-date {
         font-size: .68rem; color: #64748b; flex-shrink: 0;
     }
-    .pcf-file-active .pcf-file-date { color: rgba(255,255,255,.7); }
+    .pcf-file-active-left .pcf-file-date,
+    .pcf-file-active-right .pcf-file-date { color: rgba(255,255,255,.7); }
     .pcf-show-more {
         padding: 6px 14px 6px 28px; font-size: .76rem;
         color: #60a5fa; cursor: pointer; font-weight: 600;
@@ -261,7 +316,7 @@
     /* ── Main area ── */
     .pcf-main {
         flex-grow: 1; display: flex; flex-direction: column;
-        min-width: 0; overflow: hidden;
+        min-width: 0; min-height: 0; overflow: hidden;
     }
     .pcf-toolbar {
         display: flex; align-items: center; gap: 8px;
@@ -333,6 +388,29 @@
         cursor: pointer; transition: opacity .15s, transform .15s;
     }
     .pcf-done-btn:hover { transform: translateY(-1px); }
+
+    /* ── Viewer area — single or split ── */
+    .pcf-viewer-area {
+        flex-grow: 1; display: flex; overflow: hidden; min-height: 0;
+    }
+    .pcf-viewer-area.pcf-split {
+        gap: 3px;
+    }
+    .pcf-pane {
+        flex: 1; display: flex; flex-direction: column;
+        min-width: 0; min-height: 0; overflow: hidden;
+        border: 2px solid transparent;
+        transition: border-color .15s;
+    }
+    .pcf-pane-active {
+        border-color: #3b82f6;
+    }
+    .pcf-pane-header {
+        padding: 4px 12px; font-size: .78rem; font-weight: 600;
+        background: #334155; color: #e2e8f0;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        flex-shrink: 0;
+    }
     .pcf-viewer {
         flex-grow: 1; overflow-y: auto; overflow-x: auto;
         display: flex; flex-direction: column; align-items: center;
@@ -374,9 +452,17 @@
 
     string _pcName = "";
     PcFolderInfo? _folder;
-    string? _selectedFile;
-    string? _selectedFileName;
-    string _selectedSection = "";
+
+    // Per-pane state
+    string? _leftFile;
+    string? _leftFileName;
+    string _leftSection = "";
+    string? _rightFile;
+    string? _rightFileName;
+    string _rightSection = "";
+
+    string _activePane = "left";
+    bool _splitMode;
 
     bool _frontExpanded = true;
     bool _backExpanded = true;
@@ -390,6 +476,11 @@
     bool _hasAnnotations;
     bool _saving;
 
+    // Computed properties for active pane
+    string? ActiveFile => _activePane == "right" ? _rightFile : _leftFile;
+    string? ActiveFileName => _activePane == "right" ? _rightFileName : _leftFileName;
+    string ActiveSection => _activePane == "right" ? _rightSection : _leftSection;
+
     static readonly int[] _fontSizes = [10, 12, 14, 18, 24, 32, 40, 56];
 
     static readonly string[] _palette = [
@@ -398,6 +489,13 @@
         "#8b5cf6", "#ec4899", "#78716c", "#475569",
         "#dc2626", "#16a34a", "#2563eb", "#7c3aed"
     ];
+
+    string IsFileActive(string relativePath)
+    {
+        if (relativePath == _leftFile) return "pcf-file-active-left";
+        if (_splitMode && relativePath == _rightFile) return "pcf-file-active-right";
+        return "";
+    }
 
     protected override void OnInitialized()
     {
@@ -410,7 +508,6 @@
         FolderFileItem? match = null;
         if (!string.IsNullOrWhiteSpace(requestedFile) && _folder != null)
         {
-            // Match worksheet whose filename contains the session name
             match = _folder.WorkSheets
                 .FirstOrDefault(f => StripDatePrefix(f.FileName)
                     .Equals(requestedFile, StringComparison.OrdinalIgnoreCase));
@@ -418,17 +515,16 @@
 
         if (match != null)
         {
-            _selectedFile = match.RelativePath;
-            _selectedFileName = StripDatePrefix(match.FileName);
-            _selectedSection = "WorkSheet";
+            _leftFile = match.RelativePath;
+            _leftFileName = StripDatePrefix(match.FileName);
+            _leftSection = "WorkSheet";
         }
         else if (_folder?.WorkSheets.Count > 0)
         {
-            // Fallback: auto-open latest worksheet
             var latest = _folder.WorkSheets[0];
-            _selectedFile = latest.RelativePath;
-            _selectedFileName = StripDatePrefix(latest.FileName);
-            _selectedSection = "WorkSheet";
+            _leftFile = latest.RelativePath;
+            _leftFileName = StripDatePrefix(latest.FileName);
+            _leftSection = "WorkSheet";
         }
     }
 
@@ -440,14 +536,25 @@
         {
             _dotNetRef = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("pcfViewer.setDotNetRef", _dotNetRef);
+            await JS.InvokeVoidAsync("pcfViewer.setPcId", PcId);
 
-            if (!string.IsNullOrEmpty(_selectedFile))
+            if (!string.IsNullOrEmpty(_leftFile))
             {
-                var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_selectedFile)}&_t={DateTime.UtcNow.Ticks}";
-                await JS.InvokeVoidAsync("pcfViewer.loadPdf", url);
+                var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_leftFile)}&_t={DateTime.UtcNow.Ticks}";
+                await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, "left");
             }
         }
+
+        if (_pendingReload != null)
+        {
+            var (pane, file) = _pendingReload.Value;
+            _pendingReload = null;
+            var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}&_t={DateTime.UtcNow.Ticks}";
+            await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, pane);
+        }
     }
+
+    (string pane, string file)? _pendingReload;
 
     [JSInvokable]
     public void OnAnnotationChanged()
@@ -458,16 +565,74 @@
 
     async Task SelectFile(string relativePath, string fileName, string section = "")
     {
-        _selectedFile = relativePath;
-        _selectedFileName = StripDatePrefix(fileName);
-        _selectedSection = section;
+        var pane = _activePane;
+        if (!_splitMode) pane = "left";
+
+        // Auto-save current pane before switching
+        await JS.InvokeVoidAsync("pcfViewer.savePane", pane);
+
+        // Update state for the target pane
+        if (pane == "right")
+        {
+            _rightFile = relativePath;
+            _rightFileName = StripDatePrefix(fileName);
+            _rightSection = section;
+        }
+        else
+        {
+            _leftFile = relativePath;
+            _leftFileName = StripDatePrefix(fileName);
+            _leftSection = section;
+        }
+
         _hasAnnotations = false;
         _toolMode = "";
         StateHasChanged();
 
         var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}&_t={DateTime.UtcNow.Ticks}";
-        await JS.InvokeVoidAsync("pcfViewer.loadPdf", url);
+        await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, pane);
         await JS.InvokeVoidAsync("pcfViewer.setTool", "");
+    }
+
+    void SetActivePane(string pane)
+    {
+        if (_activePane == pane) return;
+        _activePane = pane;
+        // Update toolbar annotation state for the new active pane
+        _ = JS.InvokeAsync<bool>("pcfViewer.hasAnnotations", pane).AsTask().ContinueWith(t =>
+        {
+            if (t.IsCompletedSuccessfully)
+            {
+                _hasAnnotations = t.Result;
+                InvokeAsync(StateHasChanged);
+            }
+        });
+    }
+
+    async Task ToggleSplit()
+    {
+        _splitMode = !_splitMode;
+        if (!_splitMode)
+        {
+            // Closing split — auto-save right pane if it has annotations
+            await JS.InvokeVoidAsync("pcfViewer.savePane", "right");
+            _rightFile = null;
+            _rightFileName = null;
+            _rightSection = "";
+            _activePane = "left";
+            // Reload left pane to fit new (full) width after next render
+            if (!string.IsNullOrEmpty(_leftFile))
+                _pendingReload = ("left", _leftFile);
+        }
+        else
+        {
+            // Opening split — set active to right so next file click goes there
+            _activePane = "right";
+            // Reload left pane to fit new (half) width after next render
+            if (!string.IsNullOrEmpty(_leftFile))
+                _pendingReload = ("left", _leftFile);
+        }
+        await JS.InvokeVoidAsync("pcfViewer.setActivePane", _activePane);
     }
 
     async Task SetTool(string mode)
@@ -478,8 +643,8 @@
 
     async Task Undo()
     {
-        await JS.InvokeVoidAsync("pcfViewer.undo");
-        _hasAnnotations = await JS.InvokeAsync<bool>("pcfViewer.hasAnnotations");
+        await JS.InvokeVoidAsync("pcfViewer.undo", _activePane);
+        _hasAnnotations = await JS.InvokeAsync<bool>("pcfViewer.hasAnnotations", _activePane);
     }
 
     async Task PickColor(string color)
@@ -498,20 +663,19 @@
 
     async Task SaveAnnotations()
     {
-        if (string.IsNullOrEmpty(_selectedFile)) return;
+        var file = ActiveFile;
+        if (string.IsNullOrEmpty(file)) return;
         _saving = true;
         StateHasChanged();
 
         try
         {
-            var pagesJson = await JS.InvokeAsync<string>("pcfViewer.getAnnotatedPdf");
-            // Send to server for PDF rebuild
-            await JS.InvokeVoidAsync("pcfSaveAnnotatedPdf", PcId, _selectedFile, pagesJson);
+            var pagesJson = await JS.InvokeAsync<string>("pcfViewer.getAnnotatedPdf", _activePane);
+            await JS.InvokeVoidAsync("pcfSaveAnnotatedPdf", PcId, file, pagesJson);
 
-            // Reload the file to show saved version (cache-bust to avoid stale PDF)
             _hasAnnotations = false;
-            var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_selectedFile)}&_t={DateTime.UtcNow.Ticks}";
-            await JS.InvokeVoidAsync("pcfViewer.loadPdf", url);
+            var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}&_t={DateTime.UtcNow.Ticks}";
+            await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, _activePane);
         }
         finally
         {
@@ -522,6 +686,11 @@
 
     async Task DoneCs()
     {
+        // Auto-save all panes before closing
+        await JS.InvokeVoidAsync("pcfViewer.savePane", "left");
+        if (_splitMode)
+            await JS.InvokeVoidAsync("pcfViewer.savePane", "right");
+
         var confirmed = await JS.InvokeAsync<bool>("confirm", "Is CSing done?");
         if (confirmed)
             await JS.InvokeVoidAsync("window.close");
@@ -534,7 +703,6 @@
 
     static string StripDatePrefix(string fileName)
     {
-        // Strip "yy-mm-dd_" prefix and ".pdf" extension
         var name = Path.GetFileNameWithoutExtension(fileName);
         if (name.Length > 9 && name[2] == '-' && name[5] == '-' && name[8] == '_')
             name = name[9..];
