@@ -102,11 +102,12 @@
             <div class="d-flex align-items-center gap-2 flex-grow-1 overflow-hidden">
                 <span class="pcf-toolbar-file">
                     <i class="ri-file-pdf-2-line me-1"></i>
-                    @if (!string.IsNullOrEmpty(ActiveSection))
+                    @{ var ap = _panes[_activeIdx]; }
+                    @if (!string.IsNullOrEmpty(ap.Section))
                     {
-                        <span class="pcf-toolbar-section">@ActiveSection</span>
+                        <span class="pcf-toolbar-section">@ap.Section</span>
                     }
-                    @(ActiveFileName ?? "Select a file")
+                    @(ap.FileName ?? "Select a file")
                 </span>
             </div>
             <div class="d-flex align-items-center gap-2 flex-shrink-0 flex-nowrap">
@@ -163,11 +164,12 @@
                     <i class="ri-save-line me-1"></i>Save
                 </button>
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
-                @* Split toggle *@
-                <button class="pcf-tool-btn @(_splitMode ? "pcf-tool-active" : "")"
-                        title="@(_splitMode ? "Single view" : "Split view")"
-                        @onclick="ToggleSplit">
+                @* Pane count toggle: cycles 1→2→3→1 *@
+                <button class="pcf-tool-btn @(_paneCount > 1 ? "pcf-tool-active" : "")"
+                        title="@(_paneCount) pane(s) — click to change"
+                        @onclick="CyclePanes">
                     <i class="ri-layout-column-line"></i>
+                    <span style="font-size:.7rem;margin-left:2px;">@_paneCount</span>
                 </button>
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
                 <button class="pcf-done-btn" title="Close" @onclick="DoneCs">
@@ -177,51 +179,30 @@
         </div>
 
         @* ── PDF viewer area ── *@
-        <div class="pcf-viewer-area @(_splitMode ? "pcf-split" : "")">
-            @* Left pane (always visible) *@
-            <div class="pcf-pane @(_activePane == "left" ? "pcf-pane-active" : "")"
-                 @onclick='() => SetActivePane("left")'>
-                @if (_splitMode)
-                {
-                    <div class="pcf-pane-header">
-                        <i class="ri-file-pdf-2-line me-1"></i>
-                        @if (!string.IsNullOrEmpty(_leftSection))
-                        {
-                            <span class="pcf-toolbar-section" style="font-size:.65rem;">@_leftSection</span>
-                        }
-                        @(_leftFileName ?? "Empty")
-                    </div>
-                }
-                <div class="pcf-viewer" id="pcf-viewer-left">
-                    @if (string.IsNullOrEmpty(_leftFile))
+        <div class="pcf-viewer-area @(_paneCount > 1 ? "pcf-split" : "")">
+            @for (int pi = 0; pi < _paneCount; pi++)
+            {
+                var idx = pi;
+                var p = _panes[idx];
+                <div class="pcf-pane @(_activeIdx == idx ? "pcf-pane-active" : "")"
+                     @onclick="() => SetActiveIdx(idx)">
+                    @if (_paneCount > 1)
                     {
-                        <div class="pcf-empty">
-                            <i class="ri-file-search-line" style="font-size:3rem;opacity:.3;"></i>
-                            <div class="mt-2" style="font-size:.9rem;">Select a file from the sidebar</div>
+                        <div class="pcf-pane-header pcf-pane-hdr-@PaneIds[idx]">
+                            <i class="ri-file-pdf-2-line me-1"></i>
+                            @if (!string.IsNullOrEmpty(p.Section))
+                            {
+                                <span class="pcf-toolbar-section" style="font-size:.65rem;">@p.Section</span>
+                            }
+                            @(p.FileName ?? "Empty")
                         </div>
                     }
-                </div>
-            </div>
-
-            @* Right pane (only in split mode) *@
-            @if (_splitMode)
-            {
-                <div class="pcf-pane @(_activePane == "right" ? "pcf-pane-active" : "")"
-                     @onclick='() => SetActivePane("right")'>
-                    <div class="pcf-pane-header">
-                        <i class="ri-file-pdf-2-line me-1"></i>
-                        @if (!string.IsNullOrEmpty(_rightSection))
-                        {
-                            <span class="pcf-toolbar-section" style="font-size:.65rem;">@_rightSection</span>
-                        }
-                        @(_rightFileName ?? "Empty")
-                    </div>
-                    <div class="pcf-viewer" id="pcf-viewer-right">
-                        @if (string.IsNullOrEmpty(_rightFile))
+                    <div class="pcf-viewer" id="pcf-viewer-@PaneIds[idx]">
+                        @if (string.IsNullOrEmpty(p.File))
                         {
                             <div class="pcf-empty">
                                 <i class="ri-file-search-line" style="font-size:3rem;opacity:.3;"></i>
-                                <div class="mt-2" style="font-size:.9rem;">Select a file to view here</div>
+                                <div class="mt-2" style="font-size:.9rem;">Select a file from the sidebar</div>
                             </div>
                         }
                     </div>
@@ -244,7 +225,6 @@
 }
 
 <style>
-    /* ── Container — fixed overlay to bypass all theme CSS ── */
     .pcf-container {
         display: flex !important; overflow: hidden;
         background: #f1f5f9 !important; color: #1e293b !important;
@@ -265,9 +245,7 @@
         border-bottom: 1px solid #334155;
         font-size: 1rem; font-weight: 700; color: #f8fafc;
     }
-    .pcf-pc-name {
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
+    .pcf-pc-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .pcf-section-title {
         display: flex; align-items: center; gap: 6px;
         padding: 12px 14px; font-size: .95rem; font-weight: 700;
@@ -287,29 +265,20 @@
     .pcf-file-item {
         display: flex; align-items: center; gap: 4px;
         padding: 7px 14px 7px 28px; font-size: .8rem;
-        cursor: pointer; transition: background .12s;
-        color: #cbd5e1;
+        cursor: pointer; transition: background .12s; color: #cbd5e1;
     }
     .pcf-file-item:hover { background: #334155; color: #f1f5f9; }
-    .pcf-file-active-left {
-        background: #3b82f6 !important; color: #fff !important; font-weight: 600;
-    }
-    .pcf-file-active-right {
-        background: #7c3aed !important; color: #fff !important; font-weight: 600;
-    }
-    .pcf-file-name {
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        flex-grow: 1; min-width: 0;
-    }
-    .pcf-file-date {
-        font-size: .68rem; color: #64748b; flex-shrink: 0;
-    }
-    .pcf-file-active-left .pcf-file-date,
-    .pcf-file-active-right .pcf-file-date { color: rgba(255,255,255,.7); }
+    .pcf-file-active-p1 { background: #3b82f6 !important; color: #fff !important; font-weight: 600; }
+    .pcf-file-active-p2 { background: #7c3aed !important; color: #fff !important; font-weight: 600; }
+    .pcf-file-active-p3 { background: #d97706 !important; color: #fff !important; font-weight: 600; }
+    .pcf-file-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-grow: 1; min-width: 0; }
+    .pcf-file-date { font-size: .68rem; color: #64748b; flex-shrink: 0; }
+    .pcf-file-active-p1 .pcf-file-date,
+    .pcf-file-active-p2 .pcf-file-date,
+    .pcf-file-active-p3 .pcf-file-date { color: rgba(255,255,255,.7); }
     .pcf-show-more {
         padding: 6px 14px 6px 28px; font-size: .76rem;
-        color: #60a5fa; cursor: pointer; font-weight: 600;
-        transition: background .12s;
+        color: #60a5fa; cursor: pointer; font-weight: 600; transition: background .12s;
     }
     .pcf-show-more:hover { background: #334155; }
 
@@ -332,20 +301,15 @@
     .pcf-toolbar-section {
         background: rgba(255,255,255,.2); border-radius: 4px;
         padding: 1px 8px; margin-right: 6px;
-        font-size: .75rem; font-weight: 700; text-transform: uppercase;
-        letter-spacing: .5px;
+        font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
     }
     .pcf-tool-btn {
         background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.25);
         color: #fff; border-radius: 6px; padding: 4px 10px;
-        font-size: .85rem; cursor: pointer;
-        transition: background .15s;
+        font-size: .85rem; cursor: pointer; transition: background .15s;
     }
     .pcf-tool-btn:hover { background: rgba(255,255,255,.3); }
-    .pcf-tool-active {
-        background: #fff !important; color: #1e40af !important;
-        font-weight: 700;
-    }
+    .pcf-tool-active { background: #fff !important; color: #1e40af !important; font-weight: 700; }
     .pcf-color-wrap { position: relative; }
     .pcf-color-popup {
         position: absolute; top: 110%; right: 0; z-index: 100;
@@ -363,8 +327,7 @@
         position: absolute; top: 110%; right: 0; z-index: 100;
         display: flex; flex-direction: column; gap: 2px;
         padding: 6px; background: #1e293b; border: 1px solid #475569;
-        border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.4);
-        min-width: 80px;
+        border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.4); min-width: 80px;
     }
     .pcf-size-item {
         display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -389,33 +352,29 @@
     }
     .pcf-done-btn:hover { transform: translateY(-1px); }
 
-    /* ── Viewer area — single or split ── */
+    /* ── Viewer area ── */
     .pcf-viewer-area {
         flex-grow: 1; display: flex; overflow: hidden; min-height: 0;
     }
-    .pcf-viewer-area.pcf-split {
-        gap: 3px;
-    }
+    .pcf-viewer-area.pcf-split { gap: 3px; }
     .pcf-pane {
         flex: 1; display: flex; flex-direction: column;
         min-width: 0; min-height: 0; overflow: hidden;
-        border: 2px solid transparent;
-        transition: border-color .15s;
+        border: 2px solid transparent; transition: border-color .15s;
     }
-    .pcf-pane-active {
-        border-color: #3b82f6;
-    }
+    .pcf-pane-active { border-color: #3b82f6; }
     .pcf-pane-header {
         padding: 4px 12px; font-size: .78rem; font-weight: 600;
-        background: #334155; color: #e2e8f0;
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        flex-shrink: 0;
+        color: #e2e8f0; white-space: nowrap; overflow: hidden;
+        text-overflow: ellipsis; flex-shrink: 0;
     }
+    .pcf-pane-hdr-p1 { background: #1e40af; }
+    .pcf-pane-hdr-p2 { background: #5b21b6; }
+    .pcf-pane-hdr-p3 { background: #92400e; }
     .pcf-viewer {
         flex-grow: 1; overflow-y: auto; overflow-x: auto;
         display: flex; flex-direction: column; align-items: center;
-        padding: 20px; gap: 12px;
-        background: #64748b;
+        padding: 20px; gap: 12px; background: #64748b;
     }
     .pcf-empty {
         display: flex; flex-direction: column; align-items: center;
@@ -424,16 +383,11 @@
 
     /* ── PDF page wrapper ── */
     .pcf-page-wrapper {
-        position: relative; box-shadow: 0 4px 20px rgba(0,0,0,.3);
-        background: #fff;
+        position: relative; box-shadow: 0 4px 20px rgba(0,0,0,.3); background: #fff;
     }
     .pcf-page-wrapper canvas { display: block; }
-    .pcf-annotation-canvas {
-        position: absolute; top: 0; left: 0;
-        cursor: crosshair;
-    }
+    .pcf-annotation-canvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
 
-    /* Text input overlay */
     .pcf-text-input {
         position: absolute; border: 2px solid #3b82f6;
         background: rgba(255,255,255,.9); color: #1e293b;
@@ -450,19 +404,18 @@
 @code {
     [Parameter] public int PcId { get; set; }
 
+    // Pane IDs used for viewer element ids and JS pane keys
+    static readonly string[] PaneIds = ["p1", "p2", "p3"];
+
     string _pcName = "";
     PcFolderInfo? _folder;
 
-    // Per-pane state
-    string? _leftFile;
-    string? _leftFileName;
-    string _leftSection = "";
-    string? _rightFile;
-    string? _rightFileName;
-    string _rightSection = "";
+    // Per-pane state (always 3 slots; _paneCount controls how many are visible)
+    class PaneState { public string? File; public string? FileName; public string Section = ""; }
+    PaneState[] _panes = [new(), new(), new()];
 
-    string _activePane = "left";
-    bool _splitMode;
+    int _paneCount = 1;   // 1, 2, or 3
+    int _activeIdx = 0;   // index into _panes / PaneIds
 
     bool _frontExpanded = true;
     bool _backExpanded = true;
@@ -475,14 +428,9 @@
     bool _showSizes;
     bool _hasAnnotations;
     bool _saving;
-
-    // Computed properties for active pane
-    string? ActiveFile => _activePane == "right" ? _rightFile : _leftFile;
-    string? ActiveFileName => _activePane == "right" ? _rightFileName : _leftFileName;
-    string ActiveSection => _activePane == "right" ? _rightSection : _leftSection;
+    List<(string paneId, string file)>? _pendingReloads;
 
     static readonly int[] _fontSizes = [10, 12, 14, 18, 24, 32, 40, 56];
-
     static readonly string[] _palette = [
         "#000000", "#ffffff", "#e11d48", "#f97316",
         "#eab308", "#22c55e", "#06b6d4", "#3b82f6",
@@ -492,8 +440,11 @@
 
     string IsFileActive(string relativePath)
     {
-        if (relativePath == _leftFile) return "pcf-file-active-left";
-        if (_splitMode && relativePath == _rightFile) return "pcf-file-active-right";
+        for (int i = 0; i < _paneCount; i++)
+        {
+            if (relativePath == _panes[i].File)
+                return "pcf-file-active-" + PaneIds[i];
+        }
         return "";
     }
 
@@ -502,7 +453,6 @@
         _folder = FolderSvc.GetPcFolder(PcId);
         _pcName = _folder?.PcName ?? $"PC {PcId}";
 
-        // Check for ?file=SessionName query parameter
         var requestedFile = HttpCtx.HttpContext?.Request.Query["file"].ToString();
 
         FolderFileItem? match = null;
@@ -515,16 +465,16 @@
 
         if (match != null)
         {
-            _leftFile = match.RelativePath;
-            _leftFileName = StripDatePrefix(match.FileName);
-            _leftSection = "WorkSheet";
+            _panes[0].File = match.RelativePath;
+            _panes[0].FileName = StripDatePrefix(match.FileName);
+            _panes[0].Section = "WorkSheet";
         }
         else if (_folder?.WorkSheets.Count > 0)
         {
             var latest = _folder.WorkSheets[0];
-            _leftFile = latest.RelativePath;
-            _leftFileName = StripDatePrefix(latest.FileName);
-            _leftSection = "WorkSheet";
+            _panes[0].File = latest.RelativePath;
+            _panes[0].FileName = StripDatePrefix(latest.FileName);
+            _panes[0].Section = "WorkSheet";
         }
     }
 
@@ -538,23 +488,24 @@
             await JS.InvokeVoidAsync("pcfViewer.setDotNetRef", _dotNetRef);
             await JS.InvokeVoidAsync("pcfViewer.setPcId", PcId);
 
-            if (!string.IsNullOrEmpty(_leftFile))
+            if (!string.IsNullOrEmpty(_panes[0].File))
             {
-                var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_leftFile)}&_t={DateTime.UtcNow.Ticks}";
-                await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, "left");
+                var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_panes[0].File)}&_t={DateTime.UtcNow.Ticks}";
+                await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, PaneIds[0]);
             }
         }
 
-        if (_pendingReload != null)
+        if (_pendingReloads != null)
         {
-            var (pane, file) = _pendingReload.Value;
-            _pendingReload = null;
-            var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}&_t={DateTime.UtcNow.Ticks}";
-            await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, pane);
+            var reloads = _pendingReloads;
+            _pendingReloads = null;
+            foreach (var (paneId, file) in reloads)
+            {
+                var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}&_t={DateTime.UtcNow.Ticks}";
+                await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId);
+            }
         }
     }
-
-    (string pane, string file)? _pendingReload;
 
     [JSInvokable]
     public void OnAnnotationChanged()
@@ -565,41 +516,31 @@
 
     async Task SelectFile(string relativePath, string fileName, string section = "")
     {
-        var pane = _activePane;
-        if (!_splitMode) pane = "left";
+        var idx = _paneCount == 1 ? 0 : _activeIdx;
+        var paneId = PaneIds[idx];
 
         // Auto-save current pane before switching
-        await JS.InvokeVoidAsync("pcfViewer.savePane", pane);
+        await JS.InvokeVoidAsync("pcfViewer.savePane", paneId);
 
-        // Update state for the target pane
-        if (pane == "right")
-        {
-            _rightFile = relativePath;
-            _rightFileName = StripDatePrefix(fileName);
-            _rightSection = section;
-        }
-        else
-        {
-            _leftFile = relativePath;
-            _leftFileName = StripDatePrefix(fileName);
-            _leftSection = section;
-        }
+        _panes[idx].File = relativePath;
+        _panes[idx].FileName = StripDatePrefix(fileName);
+        _panes[idx].Section = section;
 
         _hasAnnotations = false;
         _toolMode = "";
         StateHasChanged();
 
         var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}&_t={DateTime.UtcNow.Ticks}";
-        await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, pane);
+        await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId);
         await JS.InvokeVoidAsync("pcfViewer.setTool", "");
     }
 
-    void SetActivePane(string pane)
+    void SetActiveIdx(int idx)
     {
-        if (_activePane == pane) return;
-        _activePane = pane;
-        // Update toolbar annotation state for the new active pane
-        _ = JS.InvokeAsync<bool>("pcfViewer.hasAnnotations", pane).AsTask().ContinueWith(t =>
+        if (_activeIdx == idx) return;
+        _activeIdx = idx;
+        var paneId = PaneIds[idx];
+        _ = JS.InvokeAsync<bool>("pcfViewer.hasAnnotations", paneId).AsTask().ContinueWith(t =>
         {
             if (t.IsCompletedSuccessfully)
             {
@@ -609,30 +550,44 @@
         });
     }
 
-    async Task ToggleSplit()
+    async Task CyclePanes()
     {
-        _splitMode = !_splitMode;
-        if (!_splitMode)
+        var oldCount = _paneCount;
+        var newCount = oldCount >= 3 ? 1 : oldCount + 1;
+
+        // Auto-save panes being removed
+        for (int i = newCount; i < oldCount; i++)
+            await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]);
+
+        // Clear removed panes
+        for (int i = newCount; i < 3; i++)
         {
-            // Closing split — auto-save right pane if it has annotations
-            await JS.InvokeVoidAsync("pcfViewer.savePane", "right");
-            _rightFile = null;
-            _rightFileName = null;
-            _rightSection = "";
-            _activePane = "left";
-            // Reload left pane to fit new (full) width after next render
-            if (!string.IsNullOrEmpty(_leftFile))
-                _pendingReload = ("left", _leftFile);
+            _panes[i].File = null;
+            _panes[i].FileName = null;
+            _panes[i].Section = "";
         }
-        else
+
+        _paneCount = newCount;
+
+        // Clamp active pane
+        if (_activeIdx >= newCount)
+            _activeIdx = 0;
+
+        // When adding panes, set active to the new empty one
+        if (newCount > oldCount)
+            _activeIdx = newCount - 1;
+
+        // Schedule reload of all existing panes to fit new width
+        var reloads = new List<(string, string)>();
+        for (int i = 0; i < newCount; i++)
         {
-            // Opening split — set active to right so next file click goes there
-            _activePane = "right";
-            // Reload left pane to fit new (half) width after next render
-            if (!string.IsNullOrEmpty(_leftFile))
-                _pendingReload = ("left", _leftFile);
+            if (!string.IsNullOrEmpty(_panes[i].File))
+                reloads.Add((PaneIds[i], _panes[i].File!));
         }
-        await JS.InvokeVoidAsync("pcfViewer.setActivePane", _activePane);
+        if (reloads.Count > 0)
+            _pendingReloads = reloads;
+
+        await JS.InvokeVoidAsync("pcfViewer.setActivePane", PaneIds[_activeIdx]);
     }
 
     async Task SetTool(string mode)
@@ -643,8 +598,8 @@
 
     async Task Undo()
     {
-        await JS.InvokeVoidAsync("pcfViewer.undo", _activePane);
-        _hasAnnotations = await JS.InvokeAsync<bool>("pcfViewer.hasAnnotations", _activePane);
+        await JS.InvokeVoidAsync("pcfViewer.undo", PaneIds[_activeIdx]);
+        _hasAnnotations = await JS.InvokeAsync<bool>("pcfViewer.hasAnnotations", PaneIds[_activeIdx]);
     }
 
     async Task PickColor(string color)
@@ -663,19 +618,20 @@
 
     async Task SaveAnnotations()
     {
-        var file = ActiveFile;
+        var file = _panes[_activeIdx].File;
         if (string.IsNullOrEmpty(file)) return;
         _saving = true;
         StateHasChanged();
 
         try
         {
-            var pagesJson = await JS.InvokeAsync<string>("pcfViewer.getAnnotatedPdf", _activePane);
+            var paneId = PaneIds[_activeIdx];
+            var pagesJson = await JS.InvokeAsync<string>("pcfViewer.getAnnotatedPdf", paneId);
             await JS.InvokeVoidAsync("pcfSaveAnnotatedPdf", PcId, file, pagesJson);
 
             _hasAnnotations = false;
             var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}&_t={DateTime.UtcNow.Ticks}";
-            await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, _activePane);
+            await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId);
         }
         finally
         {
@@ -686,10 +642,9 @@
 
     async Task DoneCs()
     {
-        // Auto-save all panes before closing
-        await JS.InvokeVoidAsync("pcfViewer.savePane", "left");
-        if (_splitMode)
-            await JS.InvokeVoidAsync("pcfViewer.savePane", "right");
+        // Auto-save all visible panes before closing
+        for (int i = 0; i < _paneCount; i++)
+            await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]);
 
         var confirmed = await JS.InvokeAsync<bool>("confirm", "Is CSing done?");
         if (confirmed)
