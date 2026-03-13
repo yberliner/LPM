@@ -1,5 +1,6 @@
 @page "/PcFolder/{pcId:int}"
 @using Microsoft.AspNetCore.Components.Web
+@using System.Security.Claims
 @namespace LPM.Pages
 @addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
 @{
@@ -12,7 +13,41 @@
     }
 
     var pcId = int.Parse(RouteData.Values["pcId"]!.ToString()!);
+
+    // Admin role bypasses permission check
+    var isAdmin = User.IsInRole("Admin");
+    var authorized = isAdmin;
+
+    if (!authorized)
+    {
+        var dashSvc = ViewContext.HttpContext.RequestServices.GetRequiredService<LPM.Services.DashboardService>();
+        var username = User.FindFirst(ClaimTypes.Name)?.Value ?? "";
+        var personId = dashSvc.GetUserIdByUsername(username);
+        if (personId.HasValue)
+            authorized = dashSvc.CanAccessPcFolder(personId.Value, pcId);
+    }
 }
 
-<component type="typeof(PcFolder)" render-mode="Server"
-           param-PcId="pcId" />
+@if (!authorized)
+{
+    <div style="display:flex;align-items:center;justify-content:center;height:100vh;
+                font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+        <div style="text-align:center;max-width:420px;padding:40px;">
+            <i class="ri-lock-line" style="font-size:4rem;color:#dc2626;"></i>
+            <h2 style="margin:16px 0 8px;color:#1e293b;">Access Denied</h2>
+            <p style="color:#64748b;font-size:.95rem;line-height:1.5;">
+                You do not have permission to view this PC's folder.<br>
+                Please contact your administrator to request access.
+            </p>
+            <a href="/Home" style="display:inline-block;margin-top:16px;padding:8px 24px;
+               background:#3b82f6;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">
+                Back to Dashboard
+            </a>
+        </div>
+    </div>
+}
+else
+{
+    <component type="typeof(PcFolder)" render-mode="Server"
+               param-PcId="pcId" />
+}

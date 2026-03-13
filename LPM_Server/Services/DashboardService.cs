@@ -374,6 +374,28 @@ public class DashboardService
     }
 
 
+    /// <summary>Check if a user (by PersonId) can access a PC's folder.
+    /// Admins always can. Otherwise requires approved permission or AllowAll.</summary>
+    public bool CanAccessPcFolder(int personId, int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Check AllowAll flag on the auditor
+        using var cmdAllow = conn.CreateCommand();
+        cmdAllow.CommandText = "SELECT AllowAll FROM sess_auditors WHERE AuditorId = @aid AND IsActive = 1";
+        cmdAllow.Parameters.AddWithValue("@aid", personId);
+        var allowAll = cmdAllow.ExecuteScalar();
+        if (allowAll is long a && a == 1) return true;
+
+        // Check approved permission
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT 1 FROM sys_auditor_pc_permissions WHERE AuditorId = @aid AND PcId = @pid AND IsApproved = 1";
+        cmd.Parameters.AddWithValue("@aid", personId);
+        cmd.Parameters.AddWithValue("@pid", pcId);
+        return cmd.ExecuteScalar() is not null;
+    }
+
     public bool IsAuditor(int userId)
     {
         using var conn = new SqliteConnection(_connectionString);
