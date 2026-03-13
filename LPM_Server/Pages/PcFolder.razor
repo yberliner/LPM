@@ -15,9 +15,9 @@
         @if (_folder != null)
         {
             @* ── Front Cover ── *@
-            <div class="pcf-section-title" @onclick="() => _frontExpanded = !_frontExpanded">
+            <div class="pcf-section-title pcf-section-front" @onclick="() => _frontExpanded = !_frontExpanded">
                 <i class="@(_frontExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"></i>
-                <i class="ri-book-open-line me-1" style="color:#2e86c1;"></i>
+                <i class="ri-book-open-line me-1"></i>
                 Front Cover
                 <span class="pcf-section-count">@_folder.FrontCover.Count</span>
             </div>
@@ -26,7 +26,7 @@
                 @foreach (var f in _folder.FrontCover)
                 {
                     <div class="pcf-file-item @(f.RelativePath == _selectedFile ? "pcf-file-active" : "")"
-                         @onclick="() => SelectFile(f.RelativePath, f.FileName)">
+                         @onclick="@(() => SelectFile(f.RelativePath, f.FileName, "Front Cover"))">
                         <i class="ri-file-pdf-2-line me-1"></i>
                         <span class="pcf-file-name">@StripDatePrefix(f.FileName)</span>
                     </div>
@@ -34,9 +34,9 @@
             }
 
             @* ── Back Cover ── *@
-            <div class="pcf-section-title" @onclick="() => _backExpanded = !_backExpanded">
+            <div class="pcf-section-title pcf-section-back" @onclick="() => _backExpanded = !_backExpanded">
                 <i class="@(_backExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"></i>
-                <i class="ri-book-3-line me-1" style="color:#0e6655;"></i>
+                <i class="ri-book-3-line me-1"></i>
                 Back Cover
                 <span class="pcf-section-count">@_folder.BackCover.Count</span>
             </div>
@@ -45,7 +45,7 @@
                 @foreach (var f in _folder.BackCover)
                 {
                     <div class="pcf-file-item @(f.RelativePath == _selectedFile ? "pcf-file-active" : "")"
-                         @onclick="() => SelectFile(f.RelativePath, f.FileName)">
+                         @onclick="@(() => SelectFile(f.RelativePath, f.FileName, "Back Cover"))">
                         <i class="ri-file-pdf-2-line me-1"></i>
                         <span class="pcf-file-name">@StripDatePrefix(f.FileName)</span>
                     </div>
@@ -53,9 +53,9 @@
             }
 
             @* ── WorkSheets ── *@
-            <div class="pcf-section-title" @onclick="() => _wsExpanded = !_wsExpanded">
+            <div class="pcf-section-title pcf-section-ws" @onclick="() => _wsExpanded = !_wsExpanded">
                 <i class="@(_wsExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"></i>
-                <i class="ri-file-list-3-line me-1" style="color:#7c3aed;"></i>
+                <i class="ri-file-list-3-line me-1"></i>
                 WorkSheets
                 <span class="pcf-section-count">@_folder.WorkSheets.Count</span>
             </div>
@@ -67,7 +67,7 @@
                 @foreach (var f in visibleWs)
                 {
                     <div class="pcf-file-item @(f.RelativePath == _selectedFile ? "pcf-file-active" : "")"
-                         @onclick="() => SelectFile(f.RelativePath, f.FileName)">
+                         @onclick="@(() => SelectFile(f.RelativePath, f.FileName, "WorkSheet"))">
                         <i class="ri-file-pdf-2-line me-1"></i>
                         <span class="pcf-file-name">@StripDatePrefix(f.FileName)</span>
                         @if (f.DateParsed.HasValue)
@@ -98,7 +98,12 @@
         <div class="pcf-toolbar">
             <div class="d-flex align-items-center gap-2 flex-grow-1 overflow-hidden">
                 <span class="pcf-toolbar-file">
-                    <i class="ri-file-pdf-2-line me-1"></i>@(_selectedFileName ?? "Select a file")
+                    <i class="ri-file-pdf-2-line me-1"></i>
+                    @if (!string.IsNullOrEmpty(_selectedSection))
+                    {
+                        <span class="pcf-toolbar-section">@_selectedSection</span>
+                    }
+                    @(_selectedFileName ?? "Select a file")
                 </span>
             </div>
             <div class="d-flex align-items-center gap-2 flex-shrink-0 flex-nowrap">
@@ -212,13 +217,16 @@
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .pcf-section-title {
-        display: flex; align-items: center; gap: 4px;
-        padding: 10px 14px; font-size: .82rem; font-weight: 600;
-        color: #94a3b8; cursor: pointer;
-        border-bottom: 1px solid #334155;
+        display: flex; align-items: center; gap: 6px;
+        padding: 12px 14px; font-size: .95rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: .5px;
+        cursor: pointer; border-bottom: 1px solid #334155;
         transition: background .12s;
     }
     .pcf-section-title:hover { background: #334155; }
+    .pcf-section-front { color: #60a5fa; }
+    .pcf-section-back  { color: #34d399; }
+    .pcf-section-ws    { color: #c084fc; }
     .pcf-section-count {
         margin-left: auto; font-size: .7rem;
         background: #475569; color: #e2e8f0;
@@ -265,6 +273,12 @@
     .pcf-toolbar-file {
         font-size: .85rem; font-weight: 600;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .pcf-toolbar-section {
+        background: rgba(255,255,255,.2); border-radius: 4px;
+        padding: 1px 8px; margin-right: 6px;
+        font-size: .75rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: .5px;
     }
     .pcf-tool-btn {
         background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.25);
@@ -362,6 +376,7 @@
     PcFolderInfo? _folder;
     string? _selectedFile;
     string? _selectedFileName;
+    string _selectedSection = "";
 
     bool _frontExpanded = true;
     bool _backExpanded = true;
@@ -405,6 +420,7 @@
         {
             _selectedFile = match.RelativePath;
             _selectedFileName = StripDatePrefix(match.FileName);
+            _selectedSection = "WorkSheet";
         }
         else if (_folder?.WorkSheets.Count > 0)
         {
@@ -412,6 +428,7 @@
             var latest = _folder.WorkSheets[0];
             _selectedFile = latest.RelativePath;
             _selectedFileName = StripDatePrefix(latest.FileName);
+            _selectedSection = "WorkSheet";
         }
     }
 
@@ -439,10 +456,11 @@
         InvokeAsync(StateHasChanged);
     }
 
-    async Task SelectFile(string relativePath, string fileName)
+    async Task SelectFile(string relativePath, string fileName, string section = "")
     {
         _selectedFile = relativePath;
         _selectedFileName = StripDatePrefix(fileName);
+        _selectedSection = section;
         _hasAnnotations = false;
         _toolMode = "";
         StateHasChanged();
