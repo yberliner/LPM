@@ -53,6 +53,7 @@ Log/
 *.log
 glibc*
 RKS
+*.pdf
 
 !/Forsight_Server/wwwroot/
 !/Forsight_Server/wwwroot/**

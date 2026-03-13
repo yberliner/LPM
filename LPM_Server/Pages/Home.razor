@@ -787,6 +787,48 @@
     /* Force dark text inside white-bg add-PC modal */
     .modal-content .form-control { color: #212529 !important; background-color: #fff !important; border-color: #dee2e6 !important; }
     .modal-content .home-pc-item { color: #374151; }
+
+    /* ── CS The Session button ── */
+    .home-cs-session-btn {
+        background: linear-gradient(135deg, #7c3aed, #a855f7);
+        color: #fff;
+        border: none;
+        border-radius: 20px;
+        padding: 4px 16px;
+        font-size: .78rem;
+        font-weight: 600;
+        letter-spacing: .03em;
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 0 8px rgba(124, 58, 237, .4), 0 0 20px rgba(168, 85, 247, .2);
+        animation: csSessionGlow 2s ease-in-out infinite;
+        transition: transform .15s, box-shadow .15s;
+    }
+    .home-cs-session-btn:hover {
+        transform: translateY(-1px) scale(1.03);
+        box-shadow: 0 0 14px rgba(124, 58, 237, .6), 0 0 30px rgba(168, 85, 247, .35);
+        color: #fff;
+    }
+    .home-cs-session-btn:active {
+        transform: scale(.96);
+    }
+    /* Shimmer sweep */
+    .home-cs-session-btn::after {
+        content: '';
+        position: absolute;
+        top: 0; left: -100%; width: 60%; height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,.25), transparent);
+        animation: csSessionShimmer 3s ease-in-out infinite;
+    }
+    @@keyframes csSessionGlow {
+        0%, 100% { box-shadow: 0 0 8px rgba(124,58,237,.4), 0 0 20px rgba(168,85,247,.2); }
+        50%      { box-shadow: 0 0 16px rgba(124,58,237,.6), 0 0 35px rgba(168,85,247,.35); }
+    }
+    @@keyframes csSessionShimmer {
+        0%   { left: -100%; }
+        50%  { left: 150%; }
+        100% { left: 150%; }
+    }
 </style>
 
 @code {
@@ -1092,6 +1134,14 @@
             ? DashSvc.GetWeeklyTotalsSolo(_userId.Value, ChartLatestWeekStart(), 20)
             : DashSvc.GetWeeklyTotals(_userId.Value, ChartLatestWeekStart(), 20, _myPcs);
         _chartKey++;
+    }
+
+    // ── CS The Session ──
+    async Task OnCsTheSession(int sessionId)
+    {
+        if (!_selPcId.HasValue) return;
+        var url = $"/PcFolder/{_selPcId.Value}";
+        await JS.InvokeVoidAsync("pcfOpenTab", url);
     }
 
     // ── Edit CS Review ──
@@ -1424,6 +1474,12 @@
                                         {
                                             <div class="text-muted small mt-1">@((MarkupString)s.Summary)</div>
                                         }
+                                    </div>
+                                    <div class="mt-1 mb-1">
+                                        <button class="btn btn-sm home-cs-session-btn"
+                                                @onclick="() => OnCsTheSession(s.SessionId)">
+                                            <i class="ri-folder-open-line me-1"></i>CS The Session
+                                        </button>
                                     </div>
                                     @if (rev != null)
                                     {

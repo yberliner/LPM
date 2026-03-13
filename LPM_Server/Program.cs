@@ -111,6 +111,7 @@ builder.Services.AddSingleton<LPM.Services.AcademyService>();
 builder.Services.AddSingleton<LPM.Services.StatisticsService>();
 builder.Services.AddSingleton<LPM.Services.CourseService>();
 builder.Services.AddSingleton<LPM.Services.MessageNotifier>();
+builder.Services.AddSingleton<LPM.Services.FolderService>();
 
 // Add session services
 builder.Services.AddDistributedMemoryCache();
@@ -174,6 +175,7 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapRazorPages();
 
 // Login endpoint — validates credentials and sets auth cookie
 app.MapPost("/loginpost", async (HttpContext ctx, UserDb db) =>
@@ -245,5 +247,64 @@ Func<HttpContext, string, Task<IResult>> DownloadHandler(string bucket) =>
         const string mime = "application/octet-stream";
         return Task.FromResult<IResult>(Results.File(fullPath, mime, fileName));
     };
+
+// ── PC Folder file endpoints ──
+app.MapGet("/api/pc-file", (int pcId, string path, LPM.Services.FolderService svc) =>
+{
+    var filePath = svc.GetFilePath(pcId, path);
+    if (filePath == null) return Results.NotFound();
+    return Results.File(filePath, "application/pdf");
+});
+
+app.MapPost("/api/pc-file-save", async (HttpContext ctx, LPM.Services.FolderService svc) =>
+{
+    if (!int.TryParse(ctx.Request.Query["pcId"], out var pcId)) return Results.BadRequest();
+    var path = ctx.Request.Query["path"].ToString();
+    if (string.IsNullOrEmpty(path)) return Results.BadRequest();
+
+    using var ms = new MemoryStream();
+    await ctx.Request.Body.CopyToAsync(ms);
+    return svc.SaveFile(pcId, path, ms.ToArray()) ? Results.Ok() : Results.NotFound();
+});
+
+app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.FolderService svc) =>
+{
+    if (!int.TryParse(ctx.Request.Query["pcId"], out var pcId)) return Results.BadRequest();
+    var path = ctx.Request.Query["path"].ToString();
+    if (string.IsNullOrEmpty(path)) return Results.BadRequest();
+
+    var form = await ctx.Request.ReadFormAsync();
+    if (!int.TryParse(form["pageCount"], out var pageCount) || pageCount == 0)
+        return Results.BadRequest("No pages");
+
+    var widths = System.Text.Json.JsonSerializer.Deserialize<int[]>(form["widths"].ToString()) ?? [];
+    var heights = System.Text.Json.JsonSerializer.Deserialize<int[]>(form["heights"].ToString()) ?? [];
+
+    // Build a new PDF from the annotated page images using PdfSharpCore
+    using var pdfDoc = new PdfSharpCore.Pdf.PdfDocument();
+    for (int i = 0; i < pageCount; i++)
+    {
+        var file = form.Files[$"page_{i}"];
+        if (file == null) continue;
+
+        using var imgStream = new MemoryStream();
+        await file.CopyToAsync(imgStream);
+        imgStream.Position = 0;
+
+        var page = pdfDoc.AddPage();
+        // Scale from rendered pixels (at 1.5x) back to PDF points
+        double pxScale = 1.5;
+        page.Width = PdfSharpCore.Drawing.XUnit.FromPoint(widths[i] / pxScale);
+        page.Height = PdfSharpCore.Drawing.XUnit.FromPoint(heights[i] / pxScale);
+
+        using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page);
+        var img = PdfSharpCore.Drawing.XImage.FromStream(() => new MemoryStream(imgStream.ToArray()));
+        gfx.DrawImage(img, 0, 0, page.Width, page.Height);
+    }
+
+    using var outputMs = new MemoryStream();
+    pdfDoc.Save(outputMs);
+    return svc.SaveFile(pcId, path, outputMs.ToArray()) ? Results.Ok() : Results.NotFound();
+});
 
 app.Run();

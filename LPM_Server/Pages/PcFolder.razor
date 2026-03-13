@@ -1,0 +1,463 @@
+@inject LPM.Services.FolderService FolderSvc
+@inject IJSRuntime JS
+@using LPM.Services
+@implements IDisposable
+
+<div class="pcf-container">
+    @* ── Left sidebar ── *@
+    <div class="pcf-sidebar">
+        <div class="pcf-sidebar-header">
+            <i class="ri-folder-user-line me-2"></i>
+            <span class="pcf-pc-name">@_pcName</span>
+        </div>
+
+        @if (_folder != null)
+        {
+            @* ── Front Cover ── *@
+            <div class="pcf-section-title" @onclick="() => _frontExpanded = !_frontExpanded">
+                <i class="@(_frontExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"></i>
+                <i class="ri-book-open-line me-1" style="color:#2e86c1;"></i>
+                Front Cover
+                <span class="pcf-section-count">@_folder.FrontCover.Count</span>
+            </div>
+            @if (_frontExpanded)
+            {
+                @foreach (var f in _folder.FrontCover)
+                {
+                    <div class="pcf-file-item @(f.RelativePath == _selectedFile ? "pcf-file-active" : "")"
+                         @onclick="() => SelectFile(f.RelativePath, f.FileName)">
+                        <i class="ri-file-pdf-2-line me-1"></i>
+                        <span class="pcf-file-name">@StripDatePrefix(f.FileName)</span>
+                    </div>
+                }
+            }
+
+            @* ── Back Cover ── *@
+            <div class="pcf-section-title" @onclick="() => _backExpanded = !_backExpanded">
+                <i class="@(_backExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"></i>
+                <i class="ri-book-3-line me-1" style="color:#0e6655;"></i>
+                Back Cover
+                <span class="pcf-section-count">@_folder.BackCover.Count</span>
+            </div>
+            @if (_backExpanded)
+            {
+                @foreach (var f in _folder.BackCover)
+                {
+                    <div class="pcf-file-item @(f.RelativePath == _selectedFile ? "pcf-file-active" : "")"
+                         @onclick="() => SelectFile(f.RelativePath, f.FileName)">
+                        <i class="ri-file-pdf-2-line me-1"></i>
+                        <span class="pcf-file-name">@StripDatePrefix(f.FileName)</span>
+                    </div>
+                }
+            }
+
+            @* ── WorkSheets ── *@
+            <div class="pcf-section-title" @onclick="() => _wsExpanded = !_wsExpanded">
+                <i class="@(_wsExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"></i>
+                <i class="ri-file-list-3-line me-1" style="color:#7c3aed;"></i>
+                WorkSheets
+                <span class="pcf-section-count">@_folder.WorkSheets.Count</span>
+            </div>
+            @if (_wsExpanded)
+            {
+                var visibleWs = _showAllWorksheets
+                    ? _folder.WorkSheets
+                    : _folder.WorkSheets.Take(5).ToList();
+                @foreach (var f in visibleWs)
+                {
+                    <div class="pcf-file-item @(f.RelativePath == _selectedFile ? "pcf-file-active" : "")"
+                         @onclick="() => SelectFile(f.RelativePath, f.FileName)">
+                        <i class="ri-file-pdf-2-line me-1"></i>
+                        <span class="pcf-file-name">@StripDatePrefix(f.FileName)</span>
+                        @if (f.DateParsed.HasValue)
+                        {
+                            <span class="pcf-file-date">@f.DateParsed.Value.ToString("dd/MM/yy")</span>
+                        }
+                    </div>
+                }
+                @if (_folder.WorkSheets.Count > 5 && !_showAllWorksheets)
+                {
+                    <div class="pcf-show-more" @onclick="() => _showAllWorksheets = true">
+                        <i class="ri-arrow-down-line me-1"></i>Show @(_folder.WorkSheets.Count - 5) older...
+                    </div>
+                }
+                else if (_showAllWorksheets && _folder.WorkSheets.Count > 5)
+                {
+                    <div class="pcf-show-more" @onclick="() => _showAllWorksheets = false">
+                        <i class="ri-arrow-up-line me-1"></i>Show less
+                    </div>
+                }
+            }
+        }
+    </div>
+
+    @* ── Main content: PDF viewer ── *@
+    <div class="pcf-main">
+        @* ── Toolbar ── *@
+        <div class="pcf-toolbar">
+            <div class="d-flex align-items-center gap-2 flex-grow-1 overflow-hidden">
+                <span class="pcf-toolbar-file">
+                    <i class="ri-file-pdf-2-line me-1"></i>@(_selectedFileName ?? "Select a file")
+                </span>
+            </div>
+            <div class="d-flex align-items-center gap-2 flex-shrink-0 flex-nowrap">
+                <button class="pcf-tool-btn @(_toolMode == "draw" ? "pcf-tool-active" : "")"
+                        title="Draw" @onclick='() => SetTool("draw")'>
+                    <i class="ri-pencil-line"></i>
+                </button>
+                <button class="pcf-tool-btn @(_toolMode == "text" ? "pcf-tool-active" : "")"
+                        title="Add Text" @onclick='() => SetTool("text")'>
+                    <i class="ri-text"></i>
+                </button>
+                <div class="pcf-color-wrap">
+                    <button class="pcf-tool-btn" title="Color" @onclick="() => _showColors = !_showColors"
+                            style="border-bottom: 3px solid @_drawColor;">
+                        <i class="ri-palette-line"></i>
+                    </button>
+                    @if (_showColors)
+                    {
+                        <div class="pcf-color-popup">
+                            @foreach (var c in _palette)
+                            {
+                                <div class="pcf-color-swatch @(c == _drawColor ? "pcf-swatch-active" : "")"
+                                     style="background:@c;" title="@c"
+                                     @onclick="() => PickColor(c)"></div>
+                            }
+                        </div>
+                    }
+                </div>
+                <button class="pcf-tool-btn" title="Undo" @onclick="Undo">
+                    <i class="ri-arrow-go-back-line"></i>
+                </button>
+                <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
+                <button class="pcf-save-btn" title="Save" @onclick="SaveAnnotations"
+                        disabled="@(!_hasAnnotations)">
+                    <i class="ri-save-line me-1"></i>Save
+                </button>
+                <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
+                <button class="pcf-done-btn" title="Close" @onclick="DoneCs">
+                    <i class="ri-check-double-line me-1"></i>Done
+                </button>
+            </div>
+        </div>
+
+        @* ── PDF canvas area ── *@
+        <div class="pcf-viewer" id="pcf-viewer">
+            @if (string.IsNullOrEmpty(_selectedFile))
+            {
+                <div class="pcf-empty">
+                    <i class="ri-file-search-line" style="font-size:3rem;opacity:.3;"></i>
+                    <div class="mt-2" style="font-size:.9rem;">Select a file from the sidebar to view</div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@* ── Saving indicator ── *@
+@if (_saving)
+{
+    <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:9999;
+                display:flex;align-items:center;justify-content:center;">
+        <div class="text-white text-center">
+            <div class="spinner-border mb-2" role="status"></div>
+            <div>Saving...</div>
+        </div>
+    </div>
+}
+
+<style>
+    /* ── Container — fixed overlay to bypass all theme CSS ── */
+    .pcf-container {
+        display: flex !important; overflow: hidden;
+        background: #f1f5f9 !important; color: #1e293b !important;
+        position: fixed !important; top: 0; left: 0; right: 0; bottom: 0;
+        z-index: 9999; margin: 0 !important; padding: 0 !important;
+    }
+
+    /* ── Sidebar ── */
+    .pcf-sidebar {
+        width: 280px; min-width: 240px; flex-shrink: 0;
+        background: #1e293b; color: #e2e8f0;
+        overflow-y: auto; display: flex; flex-direction: column;
+        scrollbar-width: thin; scrollbar-color: #475569 transparent;
+    }
+    .pcf-sidebar-header {
+        padding: 16px 14px; display: flex; align-items: center;
+        background: linear-gradient(135deg, #0f172a, #1e293b);
+        border-bottom: 1px solid #334155;
+        font-size: 1rem; font-weight: 700; color: #f8fafc;
+    }
+    .pcf-pc-name {
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .pcf-section-title {
+        display: flex; align-items: center; gap: 4px;
+        padding: 10px 14px; font-size: .82rem; font-weight: 600;
+        color: #94a3b8; cursor: pointer;
+        border-bottom: 1px solid #334155;
+        transition: background .12s;
+    }
+    .pcf-section-title:hover { background: #334155; }
+    .pcf-section-count {
+        margin-left: auto; font-size: .7rem;
+        background: #475569; color: #e2e8f0;
+        border-radius: 10px; padding: 1px 7px; min-width: 20px; text-align: center;
+    }
+    .pcf-file-item {
+        display: flex; align-items: center; gap: 4px;
+        padding: 7px 14px 7px 28px; font-size: .8rem;
+        cursor: pointer; transition: background .12s;
+        color: #cbd5e1;
+    }
+    .pcf-file-item:hover { background: #334155; color: #f1f5f9; }
+    .pcf-file-active {
+        background: #3b82f6 !important; color: #fff !important;
+        font-weight: 600;
+    }
+    .pcf-file-name {
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        flex-grow: 1; min-width: 0;
+    }
+    .pcf-file-date {
+        font-size: .68rem; color: #64748b; flex-shrink: 0;
+    }
+    .pcf-file-active .pcf-file-date { color: rgba(255,255,255,.7); }
+    .pcf-show-more {
+        padding: 6px 14px 6px 28px; font-size: .76rem;
+        color: #60a5fa; cursor: pointer; font-weight: 600;
+        transition: background .12s;
+    }
+    .pcf-show-more:hover { background: #334155; }
+
+    /* ── Main area ── */
+    .pcf-main {
+        flex-grow: 1; display: flex; flex-direction: column;
+        min-width: 0; overflow: hidden;
+    }
+    .pcf-toolbar {
+        display: flex; align-items: center; gap: 8px;
+        padding: 8px 16px;
+        background: linear-gradient(135deg, #1e40af, #3b82f6);
+        color: #fff; flex-shrink: 0; flex-wrap: nowrap;
+        white-space: nowrap; min-height: 44px;
+    }
+    .pcf-toolbar-file {
+        font-size: .85rem; font-weight: 600;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .pcf-tool-btn {
+        background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.25);
+        color: #fff; border-radius: 6px; padding: 4px 10px;
+        font-size: .85rem; cursor: pointer;
+        transition: background .15s;
+    }
+    .pcf-tool-btn:hover { background: rgba(255,255,255,.3); }
+    .pcf-tool-active {
+        background: #fff !important; color: #1e40af !important;
+        font-weight: 700;
+    }
+    .pcf-color-wrap { position: relative; }
+    .pcf-color-popup {
+        position: absolute; top: 110%; right: 0; z-index: 100;
+        display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;
+        padding: 8px; background: #1e293b; border: 1px solid #475569;
+        border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    }
+    .pcf-color-swatch {
+        width: 28px; height: 28px; border-radius: 5px; cursor: pointer;
+        border: 2px solid transparent; transition: transform .1s, border-color .1s;
+    }
+    .pcf-color-swatch:hover { transform: scale(1.15); border-color: rgba(255,255,255,.6); }
+    .pcf-swatch-active { border-color: #fff !important; box-shadow: 0 0 0 2px #3b82f6; }
+    .pcf-save-btn {
+        background: linear-gradient(135deg, #059669, #10b981);
+        border: none; color: #fff; border-radius: 6px;
+        padding: 4px 14px; font-size: .82rem; font-weight: 600;
+        cursor: pointer; transition: opacity .15s, transform .15s;
+    }
+    .pcf-save-btn:hover:not(:disabled) { transform: translateY(-1px); }
+    .pcf-save-btn:disabled { opacity: .4; cursor: default; }
+    .pcf-done-btn {
+        background: linear-gradient(135deg, #dc2626, #ef4444);
+        border: none; color: #fff; border-radius: 6px;
+        padding: 4px 14px; font-size: .82rem; font-weight: 600;
+        cursor: pointer; transition: opacity .15s, transform .15s;
+    }
+    .pcf-done-btn:hover { transform: translateY(-1px); }
+    .pcf-viewer {
+        flex-grow: 1; overflow-y: auto; overflow-x: auto;
+        display: flex; flex-direction: column; align-items: center;
+        padding: 20px; gap: 12px;
+        background: #64748b;
+    }
+    .pcf-empty {
+        display: flex; flex-direction: column; align-items: center;
+        justify-content: center; height: 100%; color: #94a3b8;
+    }
+
+    /* ── PDF page wrapper ── */
+    .pcf-page-wrapper {
+        position: relative; box-shadow: 0 4px 20px rgba(0,0,0,.3);
+        background: #fff;
+    }
+    .pcf-page-wrapper canvas { display: block; }
+    .pcf-annotation-canvas {
+        position: absolute; top: 0; left: 0;
+        cursor: crosshair;
+    }
+
+    /* Text input overlay */
+    .pcf-text-input {
+        position: absolute; border: 2px solid #3b82f6;
+        background: rgba(255,255,255,.9); color: #1e293b;
+        font-size: 14px; padding: 2px 4px; min-width: 120px;
+        outline: none; border-radius: 3px; z-index: 10;
+    }
+
+    @@media (max-width: 768px) {
+        .pcf-sidebar { width: 200px; min-width: 180px; }
+        .pcf-viewer { padding: 10px; }
+    }
+</style>
+
+@code {
+    [Parameter] public int PcId { get; set; }
+
+    string _pcName = "";
+    PcFolderInfo? _folder;
+    string? _selectedFile;
+    string? _selectedFileName;
+
+    bool _frontExpanded = true;
+    bool _backExpanded = true;
+    bool _wsExpanded = true;
+    bool _showAllWorksheets;
+    string _toolMode = "";
+    string _drawColor = "#e11d48";
+    bool _showColors;
+    bool _hasAnnotations;
+    bool _saving;
+
+    static readonly string[] _palette = [
+        "#000000", "#ffffff", "#e11d48", "#f97316",
+        "#eab308", "#22c55e", "#06b6d4", "#3b82f6",
+        "#8b5cf6", "#ec4899", "#78716c", "#475569",
+        "#dc2626", "#16a34a", "#2563eb", "#7c3aed"
+    ];
+
+    protected override void OnInitialized()
+    {
+        _folder = FolderSvc.GetPcFolder(PcId);
+        _pcName = _folder?.PcName ?? $"PC {PcId}";
+
+        // Auto-open latest worksheet
+        if (_folder?.WorkSheets.Count > 0)
+        {
+            var latest = _folder.WorkSheets[0]; // already sorted newest first
+            _selectedFile = latest.RelativePath;
+            _selectedFileName = StripDatePrefix(latest.FileName);
+        }
+    }
+
+    DotNetObjectReference<PcFolder>? _dotNetRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("pcfViewer.setDotNetRef", _dotNetRef);
+
+            if (!string.IsNullOrEmpty(_selectedFile))
+            {
+                var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_selectedFile)}&_t={DateTime.UtcNow.Ticks}";
+                await JS.InvokeVoidAsync("pcfViewer.loadPdf", url);
+            }
+        }
+    }
+
+    [JSInvokable]
+    public void OnAnnotationChanged()
+    {
+        _hasAnnotations = true;
+        InvokeAsync(StateHasChanged);
+    }
+
+    async Task SelectFile(string relativePath, string fileName)
+    {
+        _selectedFile = relativePath;
+        _selectedFileName = StripDatePrefix(fileName);
+        _hasAnnotations = false;
+        _toolMode = "";
+        StateHasChanged();
+
+        var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}&_t={DateTime.UtcNow.Ticks}";
+        await JS.InvokeVoidAsync("pcfViewer.loadPdf", url);
+        await JS.InvokeVoidAsync("pcfViewer.setTool", "");
+    }
+
+    async Task SetTool(string mode)
+    {
+        _toolMode = _toolMode == mode ? "" : mode;
+        await JS.InvokeVoidAsync("pcfViewer.setTool", _toolMode);
+    }
+
+    async Task Undo()
+    {
+        await JS.InvokeVoidAsync("pcfViewer.undo");
+        _hasAnnotations = await JS.InvokeAsync<bool>("pcfViewer.hasAnnotations");
+    }
+
+    async Task PickColor(string color)
+    {
+        _drawColor = color;
+        _showColors = false;
+        await JS.InvokeVoidAsync("pcfViewer.setColor", color);
+    }
+
+    async Task SaveAnnotations()
+    {
+        if (string.IsNullOrEmpty(_selectedFile)) return;
+        _saving = true;
+        StateHasChanged();
+
+        try
+        {
+            var pagesJson = await JS.InvokeAsync<string>("pcfViewer.getAnnotatedPdf");
+            // Send to server for PDF rebuild
+            await JS.InvokeVoidAsync("pcfSaveAnnotatedPdf", PcId, _selectedFile, pagesJson);
+
+            // Reload the file to show saved version (cache-bust to avoid stale PDF)
+            _hasAnnotations = false;
+            var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_selectedFile)}&_t={DateTime.UtcNow.Ticks}";
+            await JS.InvokeVoidAsync("pcfViewer.loadPdf", url);
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    async Task DoneCs()
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", "Is CSing done?");
+        if (confirmed)
+            await JS.InvokeVoidAsync("window.close");
+    }
+
+    public void Dispose()
+    {
+        _dotNetRef?.Dispose();
+    }
+
+    static string StripDatePrefix(string fileName)
+    {
+        // Strip "yy-mm-dd_" prefix and ".pdf" extension
+        var name = Path.GetFileNameWithoutExtension(fileName);
+        if (name.Length > 9 && name[2] == '-' && name[5] == '-' && name[8] == '_')
+            name = name[9..];
+        return name;
+    }
+}

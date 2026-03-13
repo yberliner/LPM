@@ -226,6 +226,11 @@
         <script src="js/resizeInterop.js"></script>
         <script src="js/signature-pad.js"></script>
 
+        <div id="blazor-error-ui" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:99999;
+            padding:12px 20px;background:#ffdd57;color:#333;text-align:center;font-size:14px;">
+            An error has occurred. <a href="" onclick="location.reload()">Reload</a>
+        </div>
+
         <script src="_framework/blazor.server.js"></script>
 
         <script>
@@ -269,6 +274,42 @@
               console.error("downloadFile failed:", e);
             }
           };
+        </script>
+
+        <!-- PDF.js for PC Folder viewer -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+        <script>
+            if (window['pdfjs-dist/build/pdf']) {
+                window['pdfjs-dist/build/pdf'].GlobalWorkerOptions.workerSrc =
+                    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            }
+        </script>
+        <script src="js/pcf-viewer.js"></script>
+        <script>
+            window.pcfSaveAnnotatedPdf = async function(pcId, filePath, pagesJson) {
+                const pages = JSON.parse(pagesJson);
+                // Convert page images to blobs, build a multi-page PDF via canvas→PNG→fetch to server
+                // For now: flatten each page (PDF + annotations) into images, send to server to rebuild PDF
+                const formData = new FormData();
+                for (let i = 0; i < pages.length; i++) {
+                    const resp = await fetch(pages[i].dataUrl);
+                    const blob = await resp.blob();
+                    formData.append('page_' + i, blob, 'page_' + i + '.png');
+                }
+                formData.append('pageCount', pages.length.toString());
+                formData.append('widths', JSON.stringify(pages.map(p => p.width)));
+                formData.append('heights', JSON.stringify(pages.map(p => p.height)));
+
+                const saveResp = await fetch('/api/pc-file-save-annotated?pcId=' + pcId + '&path=' + encodeURIComponent(filePath), {
+                    method: 'POST',
+                    body: formData
+                });
+                if (!saveResp.ok) throw new Error('Save failed: ' + saveResp.status);
+            };
+
+            window.pcfOpenTab = function(url) {
+                window.open(url, '_blank');
+            };
         </script>
 
     </body>

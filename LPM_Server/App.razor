@@ -32,39 +32,50 @@ else
         if (!firstRender || _initialized)
             return;
 
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var user = authState.User;
-
-        if (user.Identity?.IsAuthenticated != true)
+        try
         {
-            // Not logged in — allow login page, redirect everything else
-            var currentPath = Navigation.ToBaseRelativePath(Navigation.Uri)
-                                        .ToLowerInvariant().Trim('/');
-            bool isLoginPage = string.IsNullOrEmpty(currentPath)
-                               || currentPath == "index"
-                               || currentPath == "login";
+            Console.WriteLine($"[App] OnAfterRenderAsync — URI: {Navigation.Uri}");
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
 
-            if (!isLoginPage)
+            if (user.Identity?.IsAuthenticated != true)
             {
-                Console.WriteLine($"[App] Not authenticated, path='{currentPath}' → /login");
-                Navigation.NavigateTo("/login", forceLoad: true);
+                // Not logged in — allow login page, redirect everything else
+                var currentPath = Navigation.ToBaseRelativePath(Navigation.Uri)
+                                            .ToLowerInvariant().Trim('/');
+                bool isLoginPage = string.IsNullOrEmpty(currentPath)
+                                   || currentPath == "index"
+                                   || currentPath == "login";
+
+                if (!isLoginPage)
+                {
+                    Console.WriteLine($"[App] Not authenticated, path='{currentPath}' → /login");
+                    Navigation.NavigateTo("/login", forceLoad: true);
+                    return;
+                }
+
+                // On login page — show it
+                _initialized = true;
+                StateHasChanged();
                 return;
             }
 
-            // On login page — show it
+            // Authenticated
+            var username = user.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
+            var role     = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
+            Console.WriteLine($"[App] Authenticated: '{username}' role='{role}'");
+
+            // All authenticated users proceed — TCP agent check not required
             _initialized = true;
             StateHasChanged();
-            return;
         }
-
-        // Authenticated
-        var username = user.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
-        var role     = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
-        Console.WriteLine($"[App] Authenticated: '{username}' role='{role}'");
-
-        // All authenticated users proceed — TCP agent check not required
-        _initialized = true;
-        StateHasChanged();
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[App] ERROR in OnAfterRenderAsync: {ex}");
+            // Still initialize to avoid permanent blank page
+            _initialized = true;
+            StateHasChanged();
+        }
     }
 
     public void Dispose()
