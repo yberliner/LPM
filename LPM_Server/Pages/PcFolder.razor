@@ -6,10 +6,13 @@
 
 <div class="pcf-container">
     @* ── Left sidebar ── *@
-    <div class="pcf-sidebar">
+    <div class="pcf-sidebar @(_sidebarOpen ? "" : "pcf-sidebar-collapsed")">
         <div class="pcf-sidebar-header">
             <i class="ri-folder-user-line me-2"></i>
             <span class="pcf-pc-name">@_pcName</span>
+            <button class="pcf-sidebar-toggle" title="Collapse sidebar" @onclick="() => _sidebarOpen = false">
+                <i class="ri-arrow-left-double-line"></i>
+            </button>
         </div>
 
         @if (_folder != null)
@@ -130,6 +133,14 @@
         @* ── Toolbar ── *@
         <div class="pcf-toolbar">
             <div class="d-flex align-items-center gap-2 flex-shrink-0 overflow-hidden">
+                @if (!_sidebarOpen)
+                {
+                    <button class="pcf-tool-btn" title="Open sidebar — show file list"
+                            @onclick="() => _sidebarOpen = true">
+                        <i class="ri-side-bar-line"></i>
+                    </button>
+                    <div class="vr mx-0" style="border-color:rgba(255,255,255,.3);"></div>
+                }
                 <span class="pcf-toolbar-file">
                     <i class="ri-file-pdf-2-line me-1"></i>
                     @{ var ap = _panes[_activeIdx]; }
@@ -317,12 +328,19 @@
         overflow-y: auto; display: flex; flex-direction: column;
         scrollbar-width: thin; scrollbar-color: #475569 transparent;
     }
+    .pcf-sidebar-collapsed { display: none; }
     .pcf-sidebar-header {
         padding: 16px 14px; display: flex; align-items: center;
         background: linear-gradient(135deg, #0f172a, #1e293b);
         border-bottom: 1px solid #334155;
         font-size: 1rem; font-weight: 700; color: #f8fafc;
     }
+    .pcf-sidebar-toggle {
+        margin-left: auto; background: transparent; border: none;
+        color: #94a3b8; cursor: pointer; font-size: .85rem;
+        padding: 2px 6px; border-radius: 4px; transition: all .15s;
+    }
+    .pcf-sidebar-toggle:hover { color: #f1f5f9; background: rgba(255,255,255,.1); }
     .pcf-pc-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .pcf-section-title {
         display: flex; align-items: center; gap: 6px;
@@ -626,6 +644,7 @@
     int _paneCount = 1;   // 1, 2, or 3
     int _activeIdx = 0;   // index into _panes / PaneIds
 
+    bool _sidebarOpen = true;
     bool _frontExpanded = true;
     bool _backExpanded = true;
     bool _wsExpanded = true;
