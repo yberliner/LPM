@@ -510,7 +510,7 @@
             } @* end Weekly Overview *@
 
             @* ══════ PENDING CS TABLE ══════ *@
-            @if (_isCS && _pendingCsSessions.Count > 0)
+            @if (_isCS)
             {
                 <div class="card mx-3 mt-3 mb-2 home-pending-cs-card">
                     <div class="card-header py-2 home-pending-cs-header"
@@ -560,6 +560,12 @@
                                         string? prevPcName = null;
                                         int pcGroupIdx = 0;
                                         var sorted = GetSortedPendingCs();
+                                    }
+                                    @if (sorted.Count == 0)
+                                    {
+                                        <tr><td colspan="6" class="text-center" style="padding:16px;color:#64748b;font-size:.8rem;">
+                                            No sessions pending review for this period
+                                        </td></tr>
                                     }
                                     @foreach (var s in sorted)
                                     {
@@ -612,7 +618,7 @@
             }
 
             @* ══════ MY AUDITING STATUS ══════ *@
-            @if (_isAuditor && _auditorStatuses.Count > 0)
+            @if (_isAuditor)
             {
                 <div class="card mx-3 mt-3 mb-2 home-aud-status-card">
                     <div class="card-header py-2 home-aud-status-header"
@@ -649,6 +655,12 @@
                                     @{
                                         string? prevAudPc = null;
                                         int audGroupIdx = 0;
+                                    }
+                                    @if (_auditorStatuses.Count == 0)
+                                    {
+                                        <tr><td colspan="6" class="text-center" style="padding:16px;color:#64748b;font-size:.8rem;">
+                                            No sessions found for this period
+                                        </td></tr>
                                     }
                                     @foreach (var s in _auditorStatuses)
                                     {
