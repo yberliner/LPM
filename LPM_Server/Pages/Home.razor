@@ -642,6 +642,13 @@
                             </button>
                         }
                     }
+                    @if (CanOpenPcFolder(_ctxPcId))
+                    {
+                        <button class="list-group-item list-group-item-action py-2"
+                                @onclick="() => OpenPcFolder(_ctxPcId)">
+                            <i class="ri-folder-open-line me-2" style="color:#3b82f6;"></i>Open PC Folder
+                        </button>
+                    }
                     <button class="list-group-item list-group-item-action text-danger py-2"
                             @onclick="RemovePc">
                         <i class="ri-delete-bin-line me-2"></i>Remove PC
@@ -1385,6 +1392,19 @@
     }
 
     // ── Pending CS table ──
+    bool CanOpenPcFolder(int pcId)
+    {
+        if (!_userId.HasValue) return false;
+        return DashSvc.CanAccessPcFolder(_userId.Value, pcId);
+    }
+
+    async Task OpenPcFolder(int pcId)
+    {
+        _showCtxMenu = false;
+        var url = $"/PcFolder/{pcId}";
+        await JS.InvokeVoidAsync("pcfOpenTab", url);
+    }
+
     async Task OpenPendingCs(DashboardService.PendingCsSession s)
     {
         var url = $"/PcFolder/{s.PcId}?sessionId={s.SessionId}";
