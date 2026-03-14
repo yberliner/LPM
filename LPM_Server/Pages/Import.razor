@@ -108,6 +108,56 @@
             <i class="ri-folder-open-line"></i>Select Folder
         </button>
 
+        @* ── PC names confirmation ── *@
+        @if (_manifest.Count > 0 && !_uploading)
+        {
+            <div class="card mt-3" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
+                <div class="card-header py-2" style="background:rgba(34,197,94,.12); color:#22c55e; font-size:.85rem; border-color:rgba(34,197,94,.2);">
+                    <i class="ri-user-search-line me-1"></i>
+                    <strong>@_manifest.Count PC(s) detected — verify names</strong>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0" style="font-size:.8rem; color:#e2e8f0;">
+                        <thead>
+                            <tr style="background:rgba(0,0,0,.2); color:#94a3b8;">
+                                <th style="padding:8px 12px; width:30%;">Folder</th>
+                                <th style="padding:8px 12px; width:35%;">PC Name</th>
+                                <th style="padding:8px 12px; width:15%;">Status</th>
+                                <th style="padding:8px 12px; width:10%; text-align:center;">Front</th>
+                                <th style="padding:8px 12px; width:10%; text-align:center;">WS</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (int i = 0; i < _manifest.Count; i++)
+                            {
+                                var idx = i;
+                                var pc = _manifest[idx];
+                                <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+                                    <td style="padding:6px 12px; color:#94a3b8;">
+                                        <i class="ri-folder-line me-1"></i>@pc.FolderName
+                                    </td>
+                                    <td style="padding:6px 12px;">
+                                        <input type="text" class="form-control form-control-sm"
+                                               style="background:#0f172a; color:#e2e8f0; border-color:#475569; font-size:.8rem;"
+                                               value="@pc.PcName"
+                                               @onchange="e => OnPcNameChanged(idx, e)" />
+                                    </td>
+                                    <td style="padding:6px 12px;">
+                                        @if (pc.ExistingPcId.HasValue)
+                                        { <span style="color:#22c55e; font-size:.72rem;">Existing</span> }
+                                        else
+                                        { <span style="color:#fbbf24; font-size:.72rem;">New PC</span> }
+                                    </td>
+                                    <td style="padding:6px 12px; text-align:center;">@pc.Files.Count(f => f.Section is "Front_Cover" or "Back_Cover")</td>
+                                    <td style="padding:6px 12px; text-align:center;">@pc.Files.Count(f => f.Section == "WorkSheets")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+
         @* ── Cover file mapping ── *@
         @if (_coverMappings.Count > 0)
         {
@@ -265,7 +315,13 @@
     // Local records (with FileIndex for JS interop during upload)
     record LocalFileEntry(int FileIndex, string RelativePath, string FileName, string Section,
         string? ParentSessionFile, long Size, string? LastModified);
-    record LocalPcManifest(string FolderName, string PcName, int? ExistingPcId, List<LocalFileEntry> Files);
+    class LocalPcManifest
+    {
+        public string FolderName { get; set; } = "";
+        public string PcName { get; set; } = "";
+        public int? ExistingPcId { get; set; }
+        public List<LocalFileEntry> Files { get; set; } = [];
+    }
     class CoverMappingLocal
     {
         public string FileName { get; set; } = "";
@@ -299,6 +355,24 @@
     void ClearJob()
     {
         ImportJob.ClearJob();
+    }
+
+    void OnPcNameChanged(int idx, ChangeEventArgs e)
+    {
+        UpdatePcName(idx, e.Value?.ToString() ?? "");
+    }
+
+    void UpdatePcName(int idx, string newName)
+    {
+        if (idx < 0 || idx >= _manifest.Count || string.IsNullOrWhiteSpace(newName)) return;
+        var pc = _manifest[idx];
+        pc.PcName = newName.Trim();
+        // Re-check if PC exists with the new name
+        var (existingId, _) = TryFindPc(pc.PcName);
+        pc.ExistingPcId = existingId;
+        // Update cover mappings PC name too
+        foreach (var cm in _coverMappings.Where(c => c.PcFolderName == pc.FolderName))
+            cm.PcName = pc.PcName;
     }
 
     void ResetState()
@@ -343,20 +417,19 @@
         _manifest.Clear();
         var pcGroups = new Dictionary<string, List<(ManifestEntry Entry, string Section, string FileName, string? ParentSession)>>(StringComparer.OrdinalIgnoreCase);
 
-        int pcIndex = _bulkMode ? 1 : 0;
-        int subStart = pcIndex + 1;
-
         foreach (var e in entries)
         {
             var parts = e.relativePath.Split('/');
-            if (parts.Length < subStart + 2) continue;
+            if (parts.Length < 3) continue; // need at least: something/section/file.pdf
 
-            var pcFolder = parts[pcIndex];
             var fileName = parts[^1];
             string? section = null;
+            string? pcFolder = null;
             string? parentSession = null;
+            int sectionIdx = -1;
 
-            for (int i = subStart; i < parts.Length - 1; i++)
+            // Scan all intermediate folders to find the section folder
+            for (int i = 0; i < parts.Length - 1; i++)
             {
                 var seg = parts[i];
                 if (seg.EndsWith("_att", StringComparison.OrdinalIgnoreCase))
@@ -366,10 +439,29 @@
                     break;
                 }
                 var detected = DetectSection(seg);
-                if (detected != null) section = detected;
+                if (detected != null)
+                {
+                    section = detected;
+                    sectionIdx = i;
+                }
             }
 
             if (section == null) continue;
+
+            // PC folder = the segment just before the section folder
+            // For attachments, find the section folder first (the one before _att)
+            if (section == "Attachment")
+            {
+                // Re-scan to find the actual section folder before _att
+                for (int i = 0; i < parts.Length - 1; i++)
+                {
+                    if (DetectSection(parts[i]) != null) sectionIdx = i;
+                }
+            }
+
+            if (sectionIdx <= 0) continue; // section is the root itself — can't determine PC
+            pcFolder = parts[sectionIdx - 1];
+
             if (!pcGroups.ContainsKey(pcFolder)) pcGroups[pcFolder] = [];
             pcGroups[pcFolder].Add((e, section, fileName, parentSession));
         }
@@ -382,7 +474,11 @@
                 f.Entry.index, f.Entry.relativePath, f.FileName, f.Section,
                 f.ParentSession, f.Entry.size, f.Entry.lastModified
             )).ToList();
-            _manifest.Add(new LocalPcManifest(folder, pcName, existingId, importFiles));
+            _manifest.Add(new LocalPcManifest
+            {
+                FolderName = folder, PcName = pcName,
+                ExistingPcId = existingId, Files = importFiles
+            });
         }
     }
 

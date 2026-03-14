@@ -133,7 +133,7 @@ public class ImportJobService
             {
                 UpdateStatus(jobId, $"Processing PC: {pc.PcName}...");
 
-                var (pcId, wasCreated) = _pcSvc.FindOrCreatePcByName(pc.FolderName);
+                var (pcId, wasCreated) = _pcSvc.FindOrCreatePcByName(pc.PcName);
                 if (wasCreated && CurrentJob != null) CurrentJob.NewPcsCreated++;
 
                 // Front_Cover and Back_Cover
