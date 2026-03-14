@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 
 namespace LPM.Services;
@@ -10,12 +11,14 @@ public class FolderService
 {
     private readonly string _basePath;
     private readonly string _connectionString;
+    private readonly string? _ghostscriptExe;
 
     public FolderService(IConfiguration config)
     {
         _basePath = Path.Combine(Directory.GetCurrentDirectory(), "PC-Folders");
         var dbPath = config["Database:Path"] ?? "lifepower.db";
         _connectionString = $"Data Source={dbPath}";
+        _ghostscriptExe = config["GhostscriptExe"];
     }
 
     public string? GetPcName(int pcId)
@@ -177,6 +180,7 @@ public class FolderService
         }
 
         File.WriteAllBytes(fullPath, fileBytes);
+        TryShrinkPdf(fullPath);
         return Path.GetFileName(fullPath);
     }
 
@@ -204,6 +208,82 @@ public class FolderService
         }
 
         File.WriteAllBytes(fullPath, fileBytes);
+        TryShrinkPdf(fullPath);
+    }
+
+    /// <summary>Shrink a PDF in-place using Ghostscript. Keeps the original if shrinking fails or produces a larger file.</summary>
+    private void TryShrinkPdf(string pdfPath)
+    {
+        if (string.IsNullOrEmpty(_ghostscriptExe) || !File.Exists(_ghostscriptExe)) return;
+        if (!File.Exists(pdfPath)) return;
+
+        var originalSize = new FileInfo(pdfPath).Length;
+        var tempOutput = pdfPath + ".shrunk";
+
+        try
+        {
+            var args = string.Join(' ', new[]
+            {
+                "-sDEVICE=pdfwrite",
+                "-dCompatibilityLevel=1.4",
+                "-dNOPAUSE",
+                "-dQUIET",
+                "-dBATCH",
+                "-dDetectDuplicateImages=true",
+                "-dCompressFonts=true",
+                "-dDownsampleColorImages=true",
+                "-dDownsampleGrayImages=true",
+                "-dDownsampleMonoImages=true",
+                "-dColorImageResolution=150",
+                "-dGrayImageResolution=150",
+                "-dMonoImageResolution=300",
+                "-dAutoFilterColorImages=false",
+                "-dAutoFilterGrayImages=false",
+                "-dColorImageFilter=/DCTEncode",
+                "-dGrayImageFilter=/DCTEncode",
+                "-dJPEGQ=60",
+                $"-sOutputFile=\"{tempOutput}\"",
+                $"\"{pdfPath}\""
+            });
+
+            using var process = new Process();
+            process.StartInfo = new ProcessStartInfo
+            {
+                FileName = _ghostscriptExe,
+                Arguments = args,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            process.Start();
+            process.WaitForExit(30_000);
+
+            if (process.ExitCode == 0 && File.Exists(tempOutput))
+            {
+                var shrunkSize = new FileInfo(tempOutput).Length;
+                if (shrunkSize > 0 && shrunkSize < originalSize)
+                {
+                    File.Delete(pdfPath);
+                    File.Move(tempOutput, pdfPath);
+                    Console.WriteLine($"[PDF Shrink] {Path.GetFileName(pdfPath)}: {originalSize / 1024}KB → {shrunkSize / 1024}KB ({100 - shrunkSize * 100 / originalSize}% smaller)");
+                }
+                else
+                {
+                    File.Delete(tempOutput);
+                }
+            }
+            else
+            {
+                if (File.Exists(tempOutput)) File.Delete(tempOutput);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PDF Shrink] Error: {ex.Message}");
+            if (File.Exists(tempOutput)) File.Delete(tempOutput);
+        }
     }
 
     /// <summary>Resolve relative path safely — prevents traversal and absolute path injection</summary>
