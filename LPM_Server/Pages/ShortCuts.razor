@@ -2,6 +2,7 @@
 @using LPM.Services
 @attribute [Authorize]
 @inject ShortcutService ShortcutSvc
+@inject IJSRuntime JS
 
 <div class="sc-page p-3 p-md-4">
 
@@ -24,13 +25,15 @@
                     </tr>
                 </thead>
                 <tbody>
+                    @{ int rowIdx = 0; }
                     @foreach (var key in _allKeys)
                     {
-                        var k = key; // capture
+                        var k = key;
                         var isEditing = _editingKey == k;
                         var hasValue = _shortcuts.TryGetValue(k, out var currentText) && !string.IsNullOrEmpty(currentText);
+                        var rowBg = rowIdx % 2 == 0 ? "" : "background:#f8f9fa;";
 
-                        <tr style="@(hasValue ? "" : "opacity:0.6;")">
+                        <tr style="@(hasValue ? "" : "opacity:0.6;") @rowBg">
                             <td class="text-center fw-bold" style="font-family:monospace; font-size:0.95rem;">
                                 <kbd>Alt</kbd> + <kbd>@k</kbd>
                             </td>
@@ -79,6 +82,7 @@
                                 }
                             </td>
                         </tr>
+                        rowIdx++;
                     }
                 </tbody>
             </table>
@@ -132,7 +136,7 @@
         _editText = "";
     }
 
-    void SaveEdit(string key)
+    async Task SaveEdit(string key)
     {
         var text = _editText?.Trim() ?? "";
         ShortcutSvc.SaveShortcut(key, text);
@@ -145,18 +149,20 @@
         _editingKey = null;
         _editText = "";
         _toast = $"Shortcut Alt+{key.ToUpper()} saved.";
+        await JS.InvokeVoidAsync("lpmLoadShortcuts", _shortcuts);
     }
 
-    void ClearShortcut(string key)
+    async Task ClearShortcut(string key)
     {
         ShortcutSvc.SaveShortcut(key, "");
         _shortcuts.Remove(key);
         _toast = $"Shortcut Alt+{key.ToUpper()} cleared.";
+        await JS.InvokeVoidAsync("lpmLoadShortcuts", _shortcuts);
     }
 
-    void OnEditKeyDown(KeyboardEventArgs e, string key)
+    async Task OnEditKeyDown(KeyboardEventArgs e, string key)
     {
-        if (e.Key == "Enter") SaveEdit(key);
+        if (e.Key == "Enter") await SaveEdit(key);
         else if (e.Key == "Escape") CancelEdit();
     }
 }
