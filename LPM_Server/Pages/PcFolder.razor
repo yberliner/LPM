@@ -30,9 +30,16 @@
                 @foreach (var f in _folder.FrontCover)
                 {
                     var active = IsFileActive(f.RelativePath);
+                    var clr = GetCoverBorderColor(f.FileName);
+                    var coverStyle = !string.IsNullOrEmpty(clr)
+                        ? $"border-left:3px solid {clr}; background:rgba({HexToRgb(clr)},.08);" : "";
                     <div class="pcf-file-item @active"
+                         style="@coverStyle"
                          @onclick="@(() => SelectFile(f.RelativePath, f.FileName, "Front Cover"))">
-                        <i class="ri-file-pdf-2-line me-1"></i>
+                        @if (!string.IsNullOrEmpty(clr))
+                        {
+                            <span class="pcf-cover-dot" style="background:@clr;"></span>
+                        }
                         <span class="pcf-file-name">@StripDatePrefix(f.FileName)</span>
                     </div>
                 }
@@ -50,9 +57,16 @@
                 @foreach (var f in _folder.BackCover)
                 {
                     var active = IsFileActive(f.RelativePath);
+                    var clr = GetCoverBorderColor(f.FileName);
+                    var coverStyle = !string.IsNullOrEmpty(clr)
+                        ? $"border-left:3px solid {clr}; background:rgba({HexToRgb(clr)},.08);" : "";
                     <div class="pcf-file-item @active"
+                         style="@coverStyle"
                          @onclick="@(() => SelectFile(f.RelativePath, f.FileName, "Back Cover"))">
-                        <i class="ri-file-pdf-2-line me-1"></i>
+                        @if (!string.IsNullOrEmpty(clr))
+                        {
+                            <span class="pcf-cover-dot" style="background:@clr;"></span>
+                        }
                         <span class="pcf-file-name">@StripDatePrefix(f.FileName)</span>
                     </div>
                 }
@@ -465,6 +479,9 @@
     .pcf-att-child.pcf-file-active-p3 { background: rgba(217,119,6,.25) !important; color: #fff !important; }
     .pcf-att-line {
         width: 10px; height: 1px; background: #334155; flex-shrink: 0;
+    }
+    .pcf-cover-dot {
+        width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
     }
     .pcf-file-date { font-size: .68rem; color: #64748b; flex-shrink: 0; }
     .pcf-file-active-p1 .pcf-file-date,
@@ -1210,6 +1227,45 @@
         if (_csSessionId > 0 && !_csLocked)
             _activeCsSessions.TryRemove(_csSessionId, out _);
         _dotNetRef?.Dispose();
+    }
+
+    // ── Cover file type detection for color-coded borders ──
+    static string GetCoverBorderColor(string fileName)
+    {
+        var nameNoExt = Path.GetFileNameWithoutExtension(fileName);
+        // Strip date prefixes: yyMMdd or yy-MM-dd_
+        if (nameNoExt.Length >= 7)
+        {
+            var prefix = nameNoExt.Substring(0, 6);
+            if (prefix.All(char.IsDigit) && !char.IsDigit(nameNoExt[6]))
+                nameNoExt = nameNoExt.Substring(6).TrimStart(' ', '_', '-');
+        }
+        if (nameNoExt.Length >= 9 && nameNoExt[2] == '-' && nameNoExt[5] == '-' && nameNoExt[8] == '_')
+            nameNoExt = nameNoExt.Substring(9);
+
+        var lower = nameNoExt.ToLowerInvariant().Replace("_", " ").Replace("-", " ").Replace(".", " ");
+
+        if (lower.Contains("folder summary") || lower.Contains("summary")) return "#f59e0b"; // amber
+        if (lower.Contains("process")) return "#3b82f6"; // blue
+        if (lower.Contains("case progress") || lower.Contains("progress sheet") || lower.Contains("cps") || lower.Contains("case data")) return "#a855f7"; // purple
+        if (lower.Contains("program") || lower.Contains("prog")) return "#22c55e"; // green
+        if (lower.Contains("oca")) return "#f97316"; // orange
+        if (lower.Contains("yellow")) return "#eab308"; // yellow
+        if (lower.Contains("fes")) return "#ec4899"; // pink
+        if (lower.Contains("dn flow") || lower.Contains("flow table") || lower.Contains("dnflow")) return "#14b8a6"; // teal
+        if (lower.Contains("routing")) return "#6366f1"; // indigo
+        if (lower.Contains("invoice")) return "#64748b"; // slate
+
+        return "";
+    }
+
+    static string HexToRgb(string hex)
+    {
+        if (string.IsNullOrEmpty(hex) || hex.Length != 7) return "255,255,255";
+        var r = Convert.ToInt32(hex.Substring(1, 2), 16);
+        var g = Convert.ToInt32(hex.Substring(3, 2), 16);
+        var b = Convert.ToInt32(hex.Substring(5, 2), 16);
+        return $"{r},{g},{b}";
     }
 
     static string StripDatePrefix(string fileName)
