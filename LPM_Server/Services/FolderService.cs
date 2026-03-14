@@ -122,17 +122,30 @@ public class FolderService
             .ToList();
     }
 
-    /// <summary>Parse yy-mm-dd_ prefix from filename</summary>
+    /// <summary>Parse date prefix from filename. Supports: yy-MM-dd_, yyMMdd, yyMMdd.</summary>
     private static DateTime? TryParseDatePrefix(string fileName)
     {
-        // Format: yy-mm-dd_Name.pdf
-        if (fileName.Length < 9 || fileName[2] != '-' || fileName[5] != '-' || fileName[8] != '_')
-            return null;
-        var dateStr = fileName[..8]; // "yy-mm-dd"
-        if (DateTime.TryParseExact("20" + dateStr, "yyyy-MM-dd",
-            System.Globalization.CultureInfo.InvariantCulture,
-            System.Globalization.DateTimeStyles.None, out var dt))
-            return dt;
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        var ds = System.Globalization.DateTimeStyles.None;
+
+        // Format: yy-MM-dd_Name.pdf (e.g. 26-03-14_session.pdf)
+        if (fileName.Length >= 9 && fileName[2] == '-' && fileName[5] == '-' && fileName[8] == '_')
+        {
+            if (DateTime.TryParseExact("20" + fileName[..8], "yyyy-MM-dd", ci, ds, out var dt1))
+                return dt1;
+        }
+
+        // Format: yyMMdd followed by non-digit (e.g. 250310.pdf, 250310 something.pdf)
+        if (fileName.Length >= 6 && fileName[..6].All(char.IsDigit))
+        {
+            var sep = fileName.Length > 6 ? fileName[6] : '.';
+            if (!char.IsDigit(sep))
+            {
+                if (DateTime.TryParseExact("20" + fileName[..6], "yyyyMMdd", ci, ds, out var dt2))
+                    return dt2;
+            }
+        }
+
         return null;
     }
 
