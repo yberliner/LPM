@@ -77,7 +77,6 @@
     {
         @* ── Normal import UI ── *@
 
-        @* ── Mode toggle ── *@
         <div class="btn-group mt-3 mb-3" role="group">
             <button class="btn btn-sm @(_bulkMode ? "btn-outline-primary" : "btn-primary")"
                     @onclick="() => { _bulkMode = false; ResetState(); }">
@@ -108,7 +107,9 @@
             <i class="ri-folder-open-line"></i>Select Folder
         </button>
 
-        @* ── PC names confirmation ── *@
+        @* ════════════════════════════════════════════════════════════
+           PC NAMES + SUMMARY (both modes)
+           ════════════════════════════════════════════════════════════ *@
         @if (_manifest.Count > 0 && !_uploading)
         {
             <div class="card mt-3" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
@@ -120,11 +121,14 @@
                     <table class="table table-sm mb-0" style="font-size:.8rem; color:#e2e8f0;">
                         <thead>
                             <tr style="background:rgba(0,0,0,.2); color:#94a3b8;">
-                                <th style="padding:8px 12px; width:30%;">Folder</th>
-                                <th style="padding:8px 12px; width:35%;">PC Name</th>
-                                <th style="padding:8px 12px; width:15%;">Status</th>
-                                <th style="padding:8px 12px; width:10%; text-align:center;">Front</th>
-                                <th style="padding:8px 12px; width:10%; text-align:center;">WS</th>
+                                <th style="padding:8px 12px; width:25%;">Folder</th>
+                                <th style="padding:8px 12px; width:25%;">PC Name</th>
+                                <th style="padding:8px 12px; width:12%;">Status</th>
+                                <th style="padding:8px 12px; width:8%; text-align:center;">Front</th>
+                                <th style="padding:8px 12px; width:8%; text-align:center;">Back</th>
+                                <th style="padding:8px 12px; width:8%; text-align:center;">WS</th>
+                                <th style="padding:8px 12px; width:6%; text-align:center;">Att.</th>
+                                <th style="padding:8px 12px; width:8%; text-align:center;">Total</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -133,7 +137,7 @@
                                 var idx = i;
                                 var pc = _manifest[idx];
                                 <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
-                                    <td style="padding:6px 12px; color:#94a3b8;">
+                                    <td style="padding:6px 12px; color:#94a3b8; font-size:.75rem;">
                                         <i class="ri-folder-line me-1"></i>@pc.FolderName
                                     </td>
                                     <td style="padding:6px 12px;">
@@ -148,8 +152,12 @@
                                         else
                                         { <span style="color:#fbbf24; font-size:.72rem;">New PC</span> }
                                     </td>
-                                    <td style="padding:6px 12px; text-align:center;">@pc.Files.Count(f => f.Section is "Front_Cover" or "Back_Cover")</td>
-                                    <td style="padding:6px 12px; text-align:center;">@pc.Files.Count(f => f.Section == "WorkSheets")</td>
+                                    @{ var newFiles = pc.Files.Where(f => !f.AlreadyExists).ToList(); }
+                                    <td style="padding:6px 12px; text-align:center;">@newFiles.Count(f => f.Section == "Front_Cover")</td>
+                                    <td style="padding:6px 12px; text-align:center;">@newFiles.Count(f => f.Section == "Back_Cover")</td>
+                                    <td style="padding:6px 12px; text-align:center;">@newFiles.Count(f => f.Section == "WorkSheets")</td>
+                                    <td style="padding:6px 12px; text-align:center;">@newFiles.Count(f => f.Section == "Attachment")</td>
+                                    <td style="padding:6px 12px; text-align:center; font-weight:600;">@newFiles.Count</td>
                                 </tr>
                             }
                         </tbody>
@@ -158,118 +166,124 @@
             </div>
         }
 
-        @* ── Cover file mapping ── *@
-        @if (_coverMappings.Count > 0)
+        @* ════════════════════════════════════════════════════════════
+           COVER FILES WITH CHECKBOXES (single mode only)
+           ════════════════════════════════════════════════════════════ *@
+        @if (!_bulkMode && _manifest.Count > 0 && !_uploading)
         {
+            var coverFiles = _manifest.SelectMany(pc => pc.Files)
+                .Where(f => !f.AlreadyExists && f.Section is "Front_Cover" or "Back_Cover").ToList();
+            if (coverFiles.Count > 0)
+            {
             <div class="card mt-3" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
-                <div class="card-header py-2" style="background:rgba(251,191,36,.15); color:#fbbf24; font-size:.85rem; border-color:rgba(251,191,36,.2);">
+                <div class="card-header py-2 d-flex align-items-center" style="background:rgba(251,191,36,.12); color:#fbbf24; font-size:.85rem; border-color:rgba(251,191,36,.2);">
                     <i class="ri-file-settings-line me-1"></i>
-                    <strong>Map Cover Files to Folder Items</strong>
-                    <span class="ms-2" style="font-size:.72rem; opacity:.7;">Adjust if needed, then start import.</span>
+                    <strong>Cover Files</strong>
+                    <span class="ms-2" style="font-size:.72rem; opacity:.7;">
+                        @coverFiles.Count(f => f.Include) of @coverFiles.Count selected — uncheck to skip
+                    </span>
+                    <button class="btn btn-sm ms-auto py-0 px-2" style="color:#fbbf24; font-size:.7rem;"
+                            @onclick="() => { var allOn = coverFiles.All(x => x.Include); foreach (var f in coverFiles) f.Include = !allOn; }">
+                        Toggle All
+                    </button>
                 </div>
                 <div class="card-body p-0">
                     <table class="table table-sm mb-0" style="font-size:.78rem; color:#e2e8f0;">
                         <thead>
                             <tr style="background:rgba(0,0,0,.2); color:#94a3b8;">
-                                <th style="padding:8px 12px; width:30%;">File Name</th>
-                                <th style="padding:8px 12px; width:15%;">Section</th>
-                                <th style="padding:8px 12px; width:25%;">PC</th>
-                                <th style="padding:8px 12px; width:30%;">Assigned Folder Item</th>
+                                <th style="padding:6px 12px; width:5%;"></th>
+                                <th style="padding:6px 12px; width:30%;">File</th>
+                                <th style="padding:6px 12px; width:13%;">Section</th>
+                                <th style="padding:6px 12px; width:37%;">Folder Item</th>
+                                <th style="padding:6px 12px; width:15%; text-align:right;">Size</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var m in _coverMappings)
+                            @foreach (var file in coverFiles)
                             {
-                                var mapping = m;
-                                var sectionItems = _folderItems.Where(fi => fi.Section == mapping.Section).ToList();
-                                <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
-                                    <td style="padding:6px 12px;">
-                                        <i class="ri-file-pdf-2-line me-1" style="color:#ef5350;"></i>@mapping.FileName
+                                var f = file;
+                                var cm = _coverMappings.FirstOrDefault(
+                                    c => c.FileName == f.FileName && c.Section == f.Section);
+                                <tr style="border-bottom:1px solid rgba(255,255,255,.03); opacity:@(f.Include ? "1" : "0.4");">
+                                    <td style="padding:4px 12px; text-align:center;">
+                                        <input type="checkbox" checked="@f.Include"
+                                               @onchange="() => f.Include = !f.Include" />
                                     </td>
-                                    <td style="padding:6px 12px; color:#94a3b8;">@mapping.Section.Replace("_", " ")</td>
-                                    <td style="padding:6px 12px;">@mapping.PcName</td>
-                                    <td style="padding:6px 12px;">
-                                        <select class="form-select form-select-sm"
-                                                style="background:#0f172a; color:#e2e8f0; border-color:#475569; font-size:.75rem;"
-                                                value="@mapping.AssignedItemId"
-                                                @onchange="e => mapping.AssignedItemId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0">
-                                            <option value="0">— None —</option>
-                                            @foreach (var item in sectionItems)
-                                            {
-                                                <option value="@item.ItemId">@item.Name</option>
-                                            }
-                                        </select>
+                                    <td style="padding:4px 12px;">
+                                        <i class="ri-file-pdf-2-line me-1" style="color:#ef5350; font-size:.7rem;"></i>@f.FileName
+                                    </td>
+                                    <td style="padding:4px 12px; color:#94a3b8;">@f.Section.Replace("_", " ")</td>
+                                    <td style="padding:4px 12px;">
+                                        @if (cm != null)
+                                        {
+                                            var mapping = cm;
+                                            var sectionItems = _folderItems.Where(fi => fi.Section == mapping.Section).ToList();
+                                            <select class="form-select form-select-sm"
+                                                    style="background:#0f172a; color:#e2e8f0; border-color:#475569; font-size:.72rem; padding:2px 6px;"
+                                                    value="@mapping.AssignedItemId"
+                                                    @onchange="e => mapping.AssignedItemId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0">
+                                                <option value="0">— None —</option>
+                                                @foreach (var item in sectionItems)
+                                                {
+                                                    <option value="@item.ItemId">@item.Name</option>
+                                                }
+                                            </select>
+                                        }
+                                    </td>
+                                    <td style="padding:4px 12px; text-align:right; color:#64748b;">
+                                        @FormatBytes(f.Size)
                                     </td>
                                 </tr>
                             }
                         </tbody>
                     </table>
-                </div>
-                <div class="card-footer py-2 d-flex align-items-center gap-2" style="border-color:#334155;">
-                    @if (!_uploading)
-                    {
-                        <button class="btn btn-sm btn-success d-flex align-items-center gap-1"
-                                @onclick="StartUploadAndImport">
-                            <i class="ri-upload-2-line"></i>Start Import
-                        </button>
-                        <span style="font-size:.72rem; color:#64748b;">@_manifest.Sum(m => m.Files.Count) files across @_manifest.Count PC(s)</span>
-                    }
                 </div>
             </div>
+            }
         }
 
-        @* ── Manifest + Start Import (no cover files) ── *@
-        @if (_manifest.Count > 0 && _coverMappings.Count == 0)
+        @* ════════════════════════════════════════════════════════════
+           DISK SPACE + START IMPORT
+           ════════════════════════════════════════════════════════════ *@
+        @if (_manifest.Count > 0 && !_uploading)
         {
             <div class="card mt-3" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
-                <div class="card-header py-2" style="background:rgba(59,130,246,.15); color:#60a5fa; font-size:.85rem;">
-                    <i class="ri-list-check me-1"></i>
-                    <strong>@_manifest.Count PC(s) — @_manifest.Sum(m => m.Files.Count) file(s) total</strong>
+                <div class="card-body py-3">
+                    <div class="d-flex align-items-center flex-wrap gap-3" style="font-size:.82rem;">
+                        <div>
+                            <i class="ri-hard-drive-2-line me-1" style="color:#60a5fa;"></i>
+                            <strong>Needed:</strong>
+                            <span style="color:#fbbf24;">@FormatBytes(_totalSizeBytes)</span>
+                        </div>
+                        <div>
+                            <i class="ri-database-2-line me-1" style="color:#60a5fa;"></i>
+                            <strong>Free space:</strong>
+                            <span style="color:@(_freeSpaceBytes > _totalSizeBytes * 2 ? "#22c55e" : _freeSpaceBytes > _totalSizeBytes ? "#fbbf24" : "#ef4444");">
+                                @FormatBytes(_freeSpaceBytes)
+                            </span>
+                        </div>
+                        @if (_freeSpaceBytes < _totalSizeBytes * 2)
+                        {
+                            <span style="color:#ef4444; font-size:.75rem;">
+                                <i class="ri-error-warning-line me-1"></i>Low disk space — need at least 2x for processing
+                            </span>
+                        }
+                    </div>
                 </div>
-                <div class="card-body p-0">
-                    <table class="table table-sm table-hover mb-0" style="font-size:.78rem; color:#e2e8f0;">
-                        <thead>
-                            <tr style="background:rgba(0,0,0,.2); color:#94a3b8;">
-                                <th style="padding:8px 12px;">PC Name</th>
-                                <th style="padding:8px 12px;">Status</th>
-                                <th style="padding:8px 12px; text-align:center;">Front</th>
-                                <th style="padding:8px 12px; text-align:center;">Back</th>
-                                <th style="padding:8px 12px; text-align:center;">WorkSheets</th>
-                                <th style="padding:8px 12px; text-align:center;">Att.</th>
-                                <th style="padding:8px 12px; text-align:center;">Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var pc in _manifest)
-                            {
-                                <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
-                                    <td style="padding:7px 12px; font-weight:600;">
-                                        <i class="ri-user-line me-1" style="opacity:.5;"></i>@pc.PcName
-                                    </td>
-                                    <td style="padding:7px 12px;">
-                                        @if (pc.ExistingPcId.HasValue)
-                                        { <span style="color:#22c55e; font-size:.72rem;">Existing</span> }
-                                        else
-                                        { <span style="color:#fbbf24; font-size:.72rem;">New PC</span> }
-                                    </td>
-                                    <td style="padding:7px 12px; text-align:center;">@pc.Files.Count(f => f.Section == "Front_Cover")</td>
-                                    <td style="padding:7px 12px; text-align:center;">@pc.Files.Count(f => f.Section == "Back_Cover")</td>
-                                    <td style="padding:7px 12px; text-align:center;">@pc.Files.Count(f => f.Section == "WorkSheets")</td>
-                                    <td style="padding:7px 12px; text-align:center;">@pc.Files.Count(f => f.Section == "Attachment")</td>
-                                    <td style="padding:7px 12px; text-align:center; font-weight:600;">@pc.Files.Count</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-                <div class="card-footer py-2" style="border-color:#334155;">
-                    @if (!_uploading)
-                    {
-                        <button class="btn btn-sm btn-success d-flex align-items-center gap-1"
-                                @onclick="StartUploadAndImport">
-                            <i class="ri-upload-2-line"></i>Start Import
-                        </button>
-                    }
+                <div class="card-footer py-2 d-flex align-items-center gap-2" style="border-color:#334155;">
+                    <button class="btn btn-sm btn-success d-flex align-items-center gap-1"
+                            disabled="@(_freeSpaceBytes < _totalSizeBytes)"
+                            @onclick="StartUploadAndImport">
+                        <i class="ri-upload-2-line"></i>Start Import
+                    </button>
+                    <span style="font-size:.72rem; color:#64748b;">
+                        @_manifest.Sum(m => m.Files.Count(f => !f.AlreadyExists)) new files across @_manifest.Count PC(s)
+                        @{ var skippedCount = _manifest.Sum(m => m.Files.Count(f => f.AlreadyExists)); }
+                        @if (skippedCount > 0)
+                        {
+                            <span style="color:#64748b;"> — @skippedCount already imported</span>
+                        }
+                    </span>
                 </div>
             </div>
         }
@@ -307,14 +321,25 @@
     string _errorMessage = "";
     int _uploadedCount, _totalFileCount;
     int? _userId;
+    long _totalSizeBytes;
+    long _freeSpaceBytes;
 
     List<DashboardService.FolderItem> _folderItems = [];
     List<LocalPcManifest> _manifest = [];
     List<CoverMappingLocal> _coverMappings = [];
 
-    // Local records (with FileIndex for JS interop during upload)
-    record LocalFileEntry(int FileIndex, string RelativePath, string FileName, string Section,
-        string? ParentSessionFile, long Size, string? LastModified);
+    class LocalFileEntry
+    {
+        public int FileIndex { get; set; }
+        public string RelativePath { get; set; } = "";
+        public string FileName { get; set; } = "";
+        public string Section { get; set; } = "";
+        public string? ParentSessionFile { get; set; }
+        public long Size { get; set; }
+        public string? LastModified { get; set; }
+        public bool Include { get; set; } = true;
+        public bool AlreadyExists { get; set; }
+    }
     class LocalPcManifest
     {
         public string FolderName { get; set; } = "";
@@ -338,39 +363,24 @@
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         var username = auth.User.Identity?.Name ?? "";
         _userId = DashSvc.GetUserIdByUsername(username);
-
         ImportJob.OnProgressChanged += OnJobProgress;
     }
 
-    void OnJobProgress()
-    {
-        _ = InvokeAsync(StateHasChanged);
-    }
+    void OnJobProgress() => _ = InvokeAsync(StateHasChanged);
 
-    public void Dispose()
-    {
-        ImportJob.OnProgressChanged -= OnJobProgress;
-    }
+    public void Dispose() => ImportJob.OnProgressChanged -= OnJobProgress;
 
-    void ClearJob()
-    {
-        ImportJob.ClearJob();
-    }
+    void ClearJob() => ImportJob.ClearJob();
 
-    void OnPcNameChanged(int idx, ChangeEventArgs e)
-    {
-        UpdatePcName(idx, e.Value?.ToString() ?? "");
-    }
+    void OnPcNameChanged(int idx, ChangeEventArgs e) => UpdatePcName(idx, e.Value?.ToString() ?? "");
 
     void UpdatePcName(int idx, string newName)
     {
         if (idx < 0 || idx >= _manifest.Count || string.IsNullOrWhiteSpace(newName)) return;
         var pc = _manifest[idx];
         pc.PcName = newName.Trim();
-        // Re-check if PC exists with the new name
         var (existingId, _) = TryFindPc(pc.PcName);
         pc.ExistingPcId = existingId;
-        // Update cover mappings PC name too
         foreach (var cm in _coverMappings.Where(c => c.PcFolderName == pc.FolderName))
             cm.PcName = pc.PcName;
     }
@@ -381,6 +391,7 @@
         _coverMappings.Clear();
         _errorMessage = "";
         _uploadedCount = _totalFileCount = 0;
+        _totalSizeBytes = _freeSpaceBytes = 0;
     }
 
     async Task OpenFolderPicker()
@@ -395,13 +406,26 @@
         var entries = await JS.InvokeAsync<List<ManifestEntry>>("folderImport.readManifest", "import-folder-input");
         if (entries == null || entries.Count == 0) { _errorMessage = "No files found."; return; }
 
-        entries = entries.Where(e => e.relativePath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)).ToList();
-        if (entries.Count == 0) { _errorMessage = "No PDF files found."; return; }
+        var supportedExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { ".pdf", ".doc", ".docx", ".odt", ".rtf" };
+        entries = entries.Where(e => supportedExts.Contains(Path.GetExtension(e.relativePath))).ToList();
+        if (entries.Count == 0) { _errorMessage = "No supported files found (PDF, DOC, DOCX)."; return; }
 
         ParseManifest(entries);
-        BuildCoverMappings();
+        MarkExistingFiles();
+
+        // Only build cover mappings for single mode
+        if (!_bulkMode)
+            BuildCoverMappings();
+
+        // Calculate disk space (only for files to be imported)
+        _totalSizeBytes = _manifest.SelectMany(pc => pc.Files).Where(f => f.Include).Sum(f => f.Size);
+        _freeSpaceBytes = FolderSvc.GetFreeSpaceBytes();
+
         StateHasChanged();
     }
+
+    // ── Parsing ──
 
     static string? DetectSection(string folderName)
     {
@@ -420,7 +444,7 @@
         foreach (var e in entries)
         {
             var parts = e.relativePath.Split('/');
-            if (parts.Length < 3) continue; // need at least: something/section/file.pdf
+            if (parts.Length < 3) continue;
 
             var fileName = parts[^1];
             string? section = null;
@@ -428,7 +452,6 @@
             string? parentSession = null;
             int sectionIdx = -1;
 
-            // Scan all intermediate folders to find the section folder
             for (int i = 0; i < parts.Length - 1; i++)
             {
                 var seg = parts[i];
@@ -448,18 +471,13 @@
 
             if (section == null) continue;
 
-            // PC folder = the segment just before the section folder
-            // For attachments, find the section folder first (the one before _att)
             if (section == "Attachment")
             {
-                // Re-scan to find the actual section folder before _att
                 for (int i = 0; i < parts.Length - 1; i++)
-                {
                     if (DetectSection(parts[i]) != null) sectionIdx = i;
-                }
             }
 
-            if (sectionIdx <= 0) continue; // section is the root itself — can't determine PC
+            if (sectionIdx <= 0) continue;
             pcFolder = parts[sectionIdx - 1];
 
             if (!pcGroups.ContainsKey(pcFolder)) pcGroups[pcFolder] = [];
@@ -470,15 +488,54 @@
         {
             var pcName = System.Text.RegularExpressions.Regex.Replace(folder.Trim(), @"^\d+-\s*", "");
             var (existingId, _) = TryFindPc(pcName);
-            var importFiles = files.Select(f => new LocalFileEntry(
-                f.Entry.index, f.Entry.relativePath, f.FileName, f.Section,
-                f.ParentSession, f.Entry.size, f.Entry.lastModified
-            )).ToList();
+            var importFiles = files.Select(f => new LocalFileEntry
+            {
+                FileIndex = f.Entry.index, RelativePath = f.Entry.relativePath,
+                FileName = f.FileName, Section = f.Section,
+                ParentSessionFile = f.ParentSession, Size = f.Entry.size,
+                LastModified = f.Entry.lastModified
+            }).ToList();
             _manifest.Add(new LocalPcManifest
             {
                 FolderName = folder, PcName = pcName,
                 ExistingPcId = existingId, Files = importFiles
             });
+        }
+    }
+
+    void MarkExistingFiles()
+    {
+        foreach (var pc in _manifest)
+        {
+            if (!pc.ExistingPcId.HasValue) continue;
+            var pcId = pc.ExistingPcId.Value;
+
+            foreach (var file in pc.Files)
+            {
+                bool exists;
+                if (file.Section == "Attachment" && file.ParentSessionFile != null)
+                    exists = FolderSvc.AttachmentFileExists(pcId, file.ParentSessionFile, file.FileName);
+                else if (file.Section is "Front_Cover" or "Back_Cover" or "WorkSheets")
+                    exists = FolderSvc.SectionFileExists(pcId, file.Section, file.FileName);
+                else
+                    exists = false;
+
+                // Also check with .pdf extension for convertible files
+                if (!exists && FolderService.ConvertibleExtensions.Contains(Path.GetExtension(file.FileName)))
+                {
+                    var pdfName = Path.GetFileNameWithoutExtension(file.FileName) + ".pdf";
+                    if (file.Section == "Attachment" && file.ParentSessionFile != null)
+                        exists = FolderSvc.AttachmentFileExists(pcId, file.ParentSessionFile, pdfName);
+                    else if (file.Section is "Front_Cover" or "Back_Cover" or "WorkSheets")
+                        exists = FolderSvc.SectionFileExists(pcId, file.Section, pdfName);
+                }
+
+                if (exists)
+                {
+                    file.AlreadyExists = true;
+                    file.Include = false;
+                }
+            }
         }
     }
 
@@ -493,7 +550,7 @@
         return match != null ? (match.PcId, true) : (null, false);
     }
 
-    // ── Keyword matching for cover files ──
+    // ── Cover mapping (single mode only) ──
 
     static readonly Dictionary<string, string[]> ItemKeywords = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -531,10 +588,8 @@
 
     static string StripDatePrefix(string name)
     {
-        // Handle yyMMdd format (e.g. 250806) — 6 digits followed by space or non-digit
         if (name.Length >= 7 && name[..6].All(char.IsDigit) && !char.IsDigit(name[6]))
             return name[6..].TrimStart(' ', '_', '-');
-        // Handle yy-MM-dd_ format
         if (name.Length >= 9 && name[2] == '-' && name[5] == '-' && name[8] == '_')
             return name[9..];
         return name;
@@ -545,7 +600,7 @@
         _coverMappings.Clear();
         foreach (var pc in _manifest)
         {
-            foreach (var f in pc.Files.Where(f => f.Section is "Front_Cover" or "Back_Cover"))
+            foreach (var f in pc.Files.Where(f => (f.Section is "Front_Cover" or "Back_Cover") && !f.AlreadyExists))
             {
                 _coverMappings.Add(new CoverMappingLocal
                 {
@@ -559,13 +614,18 @@
         }
     }
 
-    // ── Upload + kick off background ──
+    // ── Upload + background import ──
 
     async Task StartUploadAndImport()
     {
         if (!_userId.HasValue) { _errorMessage = "User not identified."; return; }
 
-        _totalFileCount = _manifest.Sum(m => m.Files.Count);
+        // Filter to included files only
+        var includedFiles = _manifest
+            .SelectMany(pc => pc.Files.Where(f => f.Include).Select(f => (Pc: pc, File: f)))
+            .ToList();
+
+        _totalFileCount = includedFiles.Count;
         var jobId = ImportJob.TryStartUpload(_userId.Value, _totalFileCount);
         if (jobId == null) { _errorMessage = "An import is already in progress."; return; }
 
@@ -576,39 +636,35 @@
 
         try
         {
-            // Phase 1: Upload all files from browser to server temp folder
-            foreach (var pc in _manifest)
+            foreach (var (pc, file) in includedFiles)
             {
-                foreach (var file in pc.Files)
+                var base64 = await JS.InvokeAsync<string>("folderImport.readFileAsBase64",
+                    "import-folder-input", file.FileIndex);
+                if (!string.IsNullOrEmpty(base64))
                 {
-                    var base64 = await JS.InvokeAsync<string>("folderImport.readFileAsBase64",
-                        "import-folder-input", file.FileIndex);
-                    if (!string.IsNullOrEmpty(base64))
-                    {
-                        var bytes = Convert.FromBase64String(base64);
-                        ImportJob.RecordFileUploaded(jobId, pc.FolderName, file.Section,
-                            file.FileName, bytes, file.ParentSessionFile);
-                    }
-                    _uploadedCount++;
-                    await InvokeAsync(StateHasChanged);
+                    var bytes = Convert.FromBase64String(base64);
+                    ImportJob.RecordFileUploaded(jobId, pc.FolderName, file.Section,
+                        file.FileName, bytes, file.ParentSessionFile);
                 }
+                _uploadedCount++;
+                await InvokeAsync(StateHasChanged);
             }
 
-            // Phase 2: Convert local manifests to service manifests and start background processing
-            var svcManifest = _manifest.Select(pc => new ImportPcManifest(
-                pc.FolderName, pc.PcName, pc.ExistingPcId,
-                pc.Files.Select(f => new ImportFileManifest(
-                    f.RelativePath, f.FileName, f.Section, f.ParentSessionFile, f.LastModified
-                )).ToList()
-            )).ToList();
+            var svcManifest = _manifest
+                .Select(pc => new ImportPcManifest(
+                    pc.FolderName, pc.PcName, pc.ExistingPcId,
+                    pc.Files.Where(f => f.Include).Select(f => new ImportFileManifest(
+                        f.RelativePath, f.FileName, f.Section, f.ParentSessionFile, f.LastModified
+                    )).ToList()
+                ))
+                .Where(pc => pc.Files.Count > 0)
+                .ToList();
 
             var svcCoverMappings = _coverMappings.Select(m =>
                 new ImportCoverMapping(m.FileName, m.Section, m.PcFolderName, m.AssignedItemId)
             ).ToList();
 
             ImportJob.StartProcessing(jobId, svcManifest, svcCoverMappings);
-
-            // Clear local state — job is now tracked by the singleton
             _manifest.Clear();
             _coverMappings.Clear();
         }
@@ -621,5 +677,13 @@
             _uploading = false;
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    static string FormatBytes(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1048576) return $"{bytes / 1024.0:F1} KB";
+        if (bytes < 1073741824) return $"{bytes / 1048576.0:F1} MB";
+        return $"{bytes / 1073741824.0:F2} GB";
     }
 }

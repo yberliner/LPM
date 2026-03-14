@@ -124,6 +124,32 @@ public class ImportJobService
         _ = Task.Run(() => ProcessInBackground(jobId, tempJobPath, manifest, coverMappings, userId));
     }
 
+    /// <summary>Read a temp file and convert to PDF if it's a doc/docx. Returns (bytes, finalFileName).</summary>
+    private (byte[]? Bytes, string FileName) ReadAndConvert(string tempFilePath, string originalFileName)
+    {
+        if (!File.Exists(tempFilePath)) return (null, originalFileName);
+
+        var ext = Path.GetExtension(originalFileName);
+        var bytes = File.ReadAllBytes(tempFilePath);
+
+        if (FolderService.ConvertibleExtensions.Contains(ext))
+        {
+            var pdfBytes = _folderSvc.ConvertToPdf(bytes, originalFileName);
+            if (pdfBytes != null)
+            {
+                var pdfName = Path.GetFileNameWithoutExtension(originalFileName) + ".pdf";
+                File.Delete(tempFilePath);
+                return (pdfBytes, pdfName);
+            }
+            Console.WriteLine($"[Import] Could not convert {originalFileName} to PDF — skipping");
+            File.Delete(tempFilePath);
+            return (null, originalFileName);
+        }
+
+        File.Delete(tempFilePath);
+        return (bytes, originalFileName);
+    }
+
     private void ProcessInBackground(string jobId, string tempJobPath,
         List<ImportPcManifest> manifest, List<ImportCoverMapping> coverMappings, int userId)
     {
@@ -141,19 +167,17 @@ public class ImportJobService
                 {
                     UpdateStatus(jobId, $"{pc.PcName}: {file.FileName}");
 
-                    if (_folderSvc.SectionFileExists(pcId, file.Section, file.FileName))
+                    var tempFile = Path.Combine(tempJobPath, pc.FolderName, file.Section, file.FileName);
+                    var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
+                    if (bytes == null) { IncrementSkipped(jobId); continue; }
+
+                    if (_folderSvc.SectionFileExists(pcId, file.Section, finalName))
                     {
                         IncrementSkipped(jobId);
                         continue;
                     }
 
-                    var tempFile = Path.Combine(tempJobPath, pc.FolderName, file.Section, file.FileName);
-                    if (!File.Exists(tempFile)) { IncrementSkipped(jobId); continue; }
-
-                    var bytes = File.ReadAllBytes(tempFile);
-                    _folderSvc.SaveSectionFile(pcId, file.Section, file.FileName, bytes);
-                    File.Delete(tempFile);
-
+                    _folderSvc.SaveSectionFile(pcId, file.Section, finalName, bytes);
                     IncrementProcessed(jobId);
                 }
 
@@ -162,21 +186,20 @@ public class ImportJobService
                 {
                     UpdateStatus(jobId, $"{pc.PcName}: {file.FileName}");
 
-                    if (_folderSvc.SectionFileExists(pcId, "WorkSheets", file.FileName))
+                    var tempFile = Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName);
+                    var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
+                    if (bytes == null) { IncrementSkipped(jobId); continue; }
+
+                    if (_folderSvc.SectionFileExists(pcId, "WorkSheets", finalName))
                     {
                         IncrementSkipped(jobId);
                         continue;
                     }
 
-                    var tempFile = Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName);
-                    if (!File.Exists(tempFile)) { IncrementSkipped(jobId); continue; }
-
-                    var bytes = File.ReadAllBytes(tempFile);
-                    _folderSvc.SaveSectionFile(pcId, "WorkSheets", file.FileName, bytes);
-                    File.Delete(tempFile);
+                    _folderSvc.SaveSectionFile(pcId, "WorkSheets", finalName, bytes);
 
                     // Create session record
-                    var sessionName = Path.GetFileNameWithoutExtension(file.FileName);
+                    var sessionName = Path.GetFileNameWithoutExtension(finalName);
                     var sessionDate = ParseSessionDate(file);
                     var createdAt = ParseCreatedAt(file);
                     _dashSvc.CreateImportedSessionWithDate(pcId, userId, sessionName,
@@ -191,27 +214,27 @@ public class ImportJobService
                 {
                     UpdateStatus(jobId, $"{pc.PcName}: {file.FileName} (attachment)");
 
-                    if (file.ParentSessionFile != null &&
-                        _folderSvc.AttachmentFileExists(pcId, file.ParentSessionFile, file.FileName))
-                    {
-                        IncrementSkipped(jobId);
-                        continue;
-                    }
-
                     var parentNoExt = file.ParentSessionFile != null
                         ? Path.GetFileNameWithoutExtension(file.ParentSessionFile) : null;
                     var tempFile = parentNoExt != null
                         ? Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", $"{parentNoExt}_att", file.FileName)
                         : Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName);
 
-                    if (!File.Exists(tempFile)) { IncrementSkipped(jobId); continue; }
+                    var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
+                    if (bytes == null) { IncrementSkipped(jobId); continue; }
 
-                    var bytes = File.ReadAllBytes(tempFile);
                     if (file.ParentSessionFile != null)
-                        _folderSvc.SaveImportedAttachment(pcId, file.ParentSessionFile, file.FileName, bytes);
+                    {
+                        if (_folderSvc.AttachmentFileExists(pcId, file.ParentSessionFile, finalName))
+                        { IncrementSkipped(jobId); continue; }
+                        _folderSvc.SaveImportedAttachment(pcId, file.ParentSessionFile, finalName, bytes);
+                    }
                     else
-                        _folderSvc.SaveSectionFile(pcId, "WorkSheets", file.FileName, bytes);
-                    File.Delete(tempFile);
+                    {
+                        if (_folderSvc.SectionFileExists(pcId, "WorkSheets", finalName))
+                        { IncrementSkipped(jobId); continue; }
+                        _folderSvc.SaveSectionFile(pcId, "WorkSheets", finalName, bytes);
+                    }
 
                     IncrementProcessed(jobId);
                 }

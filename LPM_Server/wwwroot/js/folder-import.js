@@ -23,6 +23,14 @@ window.folderImport = {
         return manifest;
     },
 
+    getTotalSize: function (inputId) {
+        var el = document.getElementById(inputId);
+        if (!el || !el.files) return 0;
+        var total = 0;
+        for (var i = 0; i < el.files.length; i++) total += el.files[i].size;
+        return total;
+    },
+
     readFileAsBase64: async function (inputId, fileIndex) {
         var el = document.getElementById(inputId);
         if (!el || !el.files || fileIndex >= el.files.length) return null;

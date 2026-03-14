@@ -13,6 +13,7 @@ public class FolderService
     private readonly string _basePath;
     private readonly string _connectionString;
     private readonly string? _ghostscriptExe;
+    private readonly string? _libreOfficePath;
     private readonly byte[]? _encKey;
 
     public FolderService(IConfiguration config)
@@ -21,9 +22,77 @@ public class FolderService
         var dbPath = config["Database:Path"] ?? "lifepower.db";
         _connectionString = $"Data Source={dbPath}";
         _ghostscriptExe = config["GhostscriptExe"];
+        _libreOfficePath = config["LibreOfficePath"];
         var keyStr = config["EncryptionKey"];
         if (!string.IsNullOrEmpty(keyStr))
             _encKey = Convert.FromBase64String(keyStr);
+    }
+
+    /// <summary>Returns free space in bytes on the drive where PC-Folders is located.</summary>
+    public long GetFreeSpaceBytes()
+    {
+        var root = Path.GetPathRoot(Path.GetFullPath(_basePath));
+        if (string.IsNullOrEmpty(root)) return 0;
+        var drive = new DriveInfo(root);
+        return drive.AvailableFreeSpace;
+    }
+
+    public static readonly HashSet<string> ConvertibleExtensions = new(StringComparer.OrdinalIgnoreCase)
+        { ".doc", ".docx", ".odt", ".rtf" };
+
+    public bool CanConvertToPdf => !string.IsNullOrEmpty(_libreOfficePath) && File.Exists(_libreOfficePath);
+
+    /// <summary>Convert a doc/docx file to PDF using LibreOffice. Returns the PDF bytes, or null on failure.</summary>
+    public byte[]? ConvertToPdf(byte[] docBytes, string originalFileName)
+    {
+        if (!CanConvertToPdf) return null;
+
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lpm_convert_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var inputPath = Path.Combine(tempDir, originalFileName);
+            File.WriteAllBytes(inputPath, docBytes);
+
+            var args = $"--headless --convert-to pdf --outdir \"{tempDir}\" \"{inputPath}\"";
+            using var process = new Process();
+            process.StartInfo = new ProcessStartInfo
+            {
+                FileName = _libreOfficePath!,
+                Arguments = args,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            process.Start();
+            process.WaitForExit(60_000);
+
+            var pdfName = Path.GetFileNameWithoutExtension(originalFileName) + ".pdf";
+            var pdfPath = Path.Combine(tempDir, pdfName);
+
+            if (process.ExitCode == 0 && File.Exists(pdfPath))
+            {
+                var pdfBytes = File.ReadAllBytes(pdfPath);
+                Console.WriteLine($"[Doc→PDF] {originalFileName} → {pdfBytes.Length / 1024}KB");
+                return pdfBytes;
+            }
+
+            var err = process.StandardError.ReadToEnd();
+            Console.WriteLine($"[Doc→PDF] Failed for {originalFileName}: exit={process.ExitCode} {err}");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Doc→PDF] Error: {ex.Message}");
+            return null;
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch { }
+        }
     }
 
     public string? GetPcName(int pcId)
