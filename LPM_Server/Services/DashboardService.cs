@@ -102,6 +102,83 @@ public class DashboardService
 
     }
 
+    // ── Import Session ─────────────────────────────────────────
+
+    public record ApprovedPc(int PcId, string FullName);
+
+    /// <summary>Returns PCs the user is allowed to access (AllowAll or approved permission).</summary>
+    public List<ApprovedPc> GetApprovedPcsForUser(int userId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Check AllowAll — if true, return all PCs
+        using var aaCmd = conn.CreateCommand();
+        aaCmd.CommandText = "SELECT COALESCE(AllowAll, 0) FROM sess_auditors WHERE AuditorId = @id AND IsActive = 1";
+        aaCmd.Parameters.AddWithValue("@id", userId);
+        var allowAll = aaCmd.ExecuteScalar() is long a && a == 1;
+
+        using var cmd = conn.CreateCommand();
+        if (allowAll)
+        {
+            cmd.CommandText = $@"
+                SELECT pc.PcId, {FullNameExpr} AS FullName
+                FROM core_pcs pc
+                JOIN core_persons p ON p.PersonId = pc.PcId
+                ORDER BY p.FirstName, p.LastName";
+        }
+        else
+        {
+            cmd.CommandText = $@"
+                SELECT pc.PcId, {FullNameExpr} AS FullName
+                FROM sys_auditor_pc_permissions ap
+                JOIN core_pcs pc ON pc.PcId = ap.PcId
+                JOIN core_persons p ON p.PersonId = pc.PcId
+                WHERE ap.AuditorId = @uid AND ap.IsApproved = 1
+                ORDER BY p.FirstName, p.LastName";
+            cmd.Parameters.AddWithValue("@uid", userId);
+        }
+        var list = new List<ApprovedPc>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new ApprovedPc(r.GetInt32(0), r.GetString(1)));
+        return list;
+    }
+
+    /// <summary>Insert a new session and return the SessionId.</summary>
+    public int CreateImportedSession(int pcId, int auditorId, string sessionName)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        var today = DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd");
+
+        // Calculate SequenceInDay
+        using var seqCmd = conn.CreateCommand();
+        seqCmd.CommandText = @"
+            SELECT COALESCE(MAX(SequenceInDay), 0)
+            FROM sess_sessions
+            WHERE PcId = @pc AND AuditorId = @aud AND SessionDate = @dt";
+        seqCmd.Parameters.AddWithValue("@pc", pcId);
+        seqCmd.Parameters.AddWithValue("@aud", auditorId);
+        seqCmd.Parameters.AddWithValue("@dt", today);
+        var maxSeq = (long)(seqCmd.ExecuteScalar() ?? 0L);
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO sess_sessions
+                (PcId, AuditorId, SessionDate, SequenceInDay, LengthSeconds, Name, CreatedByUserId)
+            VALUES (@pc, @aud, @dt, @seq, 0, @name, @creator);
+            SELECT last_insert_rowid();";
+        cmd.Parameters.AddWithValue("@pc", pcId);
+        cmd.Parameters.AddWithValue("@aud", auditorId);
+        cmd.Parameters.AddWithValue("@dt", today);
+        cmd.Parameters.AddWithValue("@seq", maxSeq + 1);
+        cmd.Parameters.AddWithValue("@name", sessionName);
+        cmd.Parameters.AddWithValue("@creator", auditorId);
+        return Convert.ToInt32(cmd.ExecuteScalar());
+    }
+
     // ── Staff Permissions ─────────────────────────────────────────
 
     /// <summary>

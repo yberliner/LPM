@@ -78,33 +78,68 @@
                     }
                 </div>
 
-                @foreach (var f in GetWsPage(out var totalPages))
+                @foreach (var ws in GetWsPage(out var totalPages))
                 {
+                    var f = ws.File;
                     var active = IsFileActive(f.RelativePath);
                     var stripped = StripDatePrefix(f.FileName);
                     var csed = _nameToSessionId.TryGetValue(stripped, out var fSid) && _csedSessionIds.Contains(fSid);
                     var isCsTarget = !string.IsNullOrEmpty(_csSessionName)
                         && stripped.Equals(_csSessionName, StringComparison.OrdinalIgnoreCase);
-                    <div class="pcf-file-item @active @(isCsTarget ? "pcf-file-cs-target" : "")"
-                         @onclick="@(() => SelectFile(f.RelativePath, f.FileName, "WorkSheet"))">
-                        @if (isCsTarget)
+                    var hasAtt = ws.Attachments.Count > 0;
+                    var wsKey = f.RelativePath;
+                    var attExpanded = !_collapsedAttachments.Contains(wsKey);
+
+                    @* ── Session row ── *@
+                    <div class="pcf-file-item @active @(isCsTarget ? "pcf-file-cs-target" : "")">
+                        @if (hasAtt)
                         {
-                            <i class="ri-star-fill me-1 pcf-star-pulse" title="Currently CSing this session"></i>
+                            <i class="@(attExpanded ? "ri-arrow-down-s-fill" : "ri-arrow-right-s-fill") pcf-att-toggle"
+                               @onclick="() => ToggleAttachments(wsKey)"
+                               @onclick:stopPropagation="true"></i>
                         }
-                        else
+                        <span style="flex:1; display:flex; align-items:center; gap:4px; min-width:0;"
+                              @onclick="@(() => SelectFile(f.RelativePath, f.FileName, "WorkSheet"))">
+                            @if (isCsTarget)
+                            {
+                                <i class="ri-star-fill pcf-star-pulse" style="flex-shrink:0;"></i>
+                            }
+                            else
+                            {
+                                <i class="ri-file-pdf-2-line @(csed ? "text-success" : "")" style="flex-shrink:0;"></i>
+                            }
+                            <span class="pcf-file-name @(csed ? "pcf-file-csed" : "")">@stripped</span>
+                            @if (csed)
+                            {
+                                <i class="ri-check-line" style="color:#22c55e;font-size:.7rem;flex-shrink:0;" title="CS Done"></i>
+                            }
+                        </span>
+                        @if (hasAtt)
                         {
-                            <i class="ri-file-pdf-2-line me-1 @(csed ? "text-success" : "")"></i>
-                        }
-                        <span class="pcf-file-name @(csed ? "pcf-file-csed" : "")">@stripped</span>
-                        @if (csed)
-                        {
-                            <i class="ri-check-line" style="color:#22c55e;font-size:.7rem;" title="CS Done"></i>
+                            <span class="pcf-att-count">@ws.Attachments.Count</span>
                         }
                         @if (f.DateParsed.HasValue)
                         {
                             <span class="pcf-file-date">@f.DateParsed.Value.ToString("dd/MM/yy")</span>
                         }
                     </div>
+
+                    @* ── Attachment children ── *@
+                    @if (hasAtt && attExpanded)
+                    {
+                        <div class="pcf-att-group">
+                            @foreach (var att in ws.Attachments)
+                            {
+                                var attActive = IsFileActive(att.RelativePath);
+                                <div class="pcf-att-child @attActive"
+                                     @onclick="@(() => SelectFile(att.RelativePath, att.FileName, "WorkSheet"))">
+                                    <span class="pcf-att-line"></span>
+                                    <i class="ri-file-pdf-2-line" style="font-size:.7rem; opacity:.5; flex-shrink:0;"></i>
+                                    <span class="pcf-file-name">@att.FileName</span>
+                                </div>
+                            }
+                        </div>
+                    }
                 }
 
                 @* ── Pagination ── *@
@@ -402,6 +437,31 @@
     @@keyframes pcf-star-blink {
         0%, 100% { opacity: .5; transform: scale(.9); }
         50%      { opacity: 1; transform: scale(1.1); }
+    }
+    .pcf-att-toggle {
+        font-size: .75rem; color: #64748b; cursor: pointer;
+        flex-shrink: 0; padding: 0 2px; transition: color .12s;
+    }
+    .pcf-att-toggle:hover { color: #e2e8f0; }
+    .pcf-att-count {
+        font-size: .58rem; color: #64748b; background: rgba(255,255,255,.06);
+        border-radius: 6px; padding: 0 4px; flex-shrink: 0;
+        min-width: 14px; text-align: center;
+    }
+    .pcf-att-group {
+        margin-left: 20px; border-left: 1px solid #334155;
+    }
+    .pcf-att-child {
+        display: flex; align-items: center; gap: 4px;
+        padding: 4px 10px 4px 12px; font-size: .72rem;
+        color: #94a3b8; cursor: pointer; transition: background .12s;
+    }
+    .pcf-att-child:hover { background: #334155; color: #cbd5e1; }
+    .pcf-att-child.pcf-file-active-p1 { background: rgba(59,130,246,.25) !important; color: #fff !important; }
+    .pcf-att-child.pcf-file-active-p2 { background: rgba(124,58,237,.25) !important; color: #fff !important; }
+    .pcf-att-child.pcf-file-active-p3 { background: rgba(217,119,6,.25) !important; color: #fff !important; }
+    .pcf-att-line {
+        width: 10px; height: 1px; background: #334155; flex-shrink: 0;
     }
     .pcf-file-date { font-size: .68rem; color: #64748b; flex-shrink: 0; }
     .pcf-file-active-p1 .pcf-file-date,
@@ -742,6 +802,13 @@
     bool _backExpanded = true;
     bool _wsExpanded = true;
     string _wsFilter = "";
+    HashSet<string> _collapsedAttachments = [];
+
+    void ToggleAttachments(string wsKey)
+    {
+        if (!_collapsedAttachments.Remove(wsKey))
+            _collapsedAttachments.Add(wsKey);
+    }
     int _wsPage;
     const int WsPageSize = 10;
     string _toolMode = "";
@@ -761,12 +828,12 @@
         "#dc2626", "#16a34a", "#2563eb", "#7c3aed"
     ];
 
-    List<FolderFileItem> GetWsPage(out int totalPages)
+    List<WorkSheetItem> GetWsPage(out int totalPages)
     {
         var all = _folder!.WorkSheets;
         var filtered = string.IsNullOrWhiteSpace(_wsFilter)
             ? all
-            : all.Where(f => StripDatePrefix(f.FileName)
+            : all.Where(ws => StripDatePrefix(ws.File.FileName)
                     .Contains(_wsFilter, StringComparison.OrdinalIgnoreCase))
                 .ToList();
         totalPages = Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)WsPageSize));
@@ -775,14 +842,14 @@
     }
 
     int WsTotalPages => _folder == null ? 1 : Math.Max(1,
-        (int)Math.Ceiling((_folder.WorkSheets.Count(f =>
+        (int)Math.Ceiling((_folder.WorkSheets.Count(ws =>
             string.IsNullOrWhiteSpace(_wsFilter) ||
-            StripDatePrefix(f.FileName).Contains(_wsFilter, StringComparison.OrdinalIgnoreCase)))
+            StripDatePrefix(ws.File.FileName).Contains(_wsFilter, StringComparison.OrdinalIgnoreCase)))
         / (double)WsPageSize));
 
-    int WsFilteredCount => _folder == null ? 0 : _folder.WorkSheets.Count(f =>
+    int WsFilteredCount => _folder == null ? 0 : _folder.WorkSheets.Count(ws =>
         string.IsNullOrWhiteSpace(_wsFilter) ||
-        StripDatePrefix(f.FileName).Contains(_wsFilter, StringComparison.OrdinalIgnoreCase));
+        StripDatePrefix(ws.File.FileName).Contains(_wsFilter, StringComparison.OrdinalIgnoreCase));
 
     void OnWsFilterChanged(ChangeEventArgs e)
     {
@@ -839,26 +906,42 @@
             }
         }
 
-        FolderFileItem? match = null;
+        WorkSheetItem? match = null;
         if (!string.IsNullOrWhiteSpace(_csSessionName) && _folder != null)
         {
             match = _folder.WorkSheets
-                .FirstOrDefault(f => StripDatePrefix(f.FileName)
+                .FirstOrDefault(ws => StripDatePrefix(ws.File.FileName)
                     .Equals(_csSessionName, StringComparison.OrdinalIgnoreCase));
         }
 
         if (match != null)
         {
-            _panes[0].File = match.RelativePath;
-            _panes[0].FileName = StripDatePrefix(match.FileName);
+            _panes[0].File = match.File.RelativePath;
+            _panes[0].FileName = StripDatePrefix(match.File.FileName);
             _panes[0].Section = "WorkSheet";
+            if (match.Attachments.Count > 0)
+            {
+                _paneCount = 2;
+                var firstAtt = match.Attachments[0];
+                _panes[1].File = firstAtt.RelativePath;
+                _panes[1].FileName = firstAtt.FileName;
+                _panes[1].Section = "WorkSheet";
+            }
         }
         else if (_folder?.WorkSheets.Count > 0)
         {
             var latest = _folder.WorkSheets[0];
-            _panes[0].File = latest.RelativePath;
-            _panes[0].FileName = StripDatePrefix(latest.FileName);
+            _panes[0].File = latest.File.RelativePath;
+            _panes[0].FileName = StripDatePrefix(latest.File.FileName);
             _panes[0].Section = "WorkSheet";
+            if (latest.Attachments.Count > 0)
+            {
+                _paneCount = 2;
+                var firstAtt = latest.Attachments[0];
+                _panes[1].File = firstAtt.RelativePath;
+                _panes[1].FileName = firstAtt.FileName;
+                _panes[1].Section = "WorkSheet";
+            }
         }
     }
 
@@ -872,10 +955,13 @@
             await JS.InvokeVoidAsync("pcfViewer.setDotNetRef", _dotNetRef);
             await JS.InvokeVoidAsync("pcfViewer.setPcId", PcId);
 
-            if (!string.IsNullOrEmpty(_panes[0].File))
+            for (int i = 0; i < _paneCount; i++)
             {
-                var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_panes[0].File)}&_t={DateTime.UtcNow.Ticks}";
-                await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, PaneIds[0]);
+                if (!string.IsNullOrEmpty(_panes[i].File))
+                {
+                    var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_panes[i].File)}&_t={DateTime.UtcNow.Ticks}";
+                    await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, PaneIds[i]);
+                }
             }
         }
 

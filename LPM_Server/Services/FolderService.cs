@@ -3,7 +3,8 @@ using Microsoft.Data.Sqlite;
 namespace LPM.Services;
 
 public record FolderFileItem(string FileName, string Section, string RelativePath, DateTime? DateParsed);
-public record PcFolderInfo(int PcId, string PcName, string FolderPath, List<FolderFileItem> FrontCover, List<FolderFileItem> BackCover, List<FolderFileItem> WorkSheets);
+public record WorkSheetItem(FolderFileItem File, List<FolderFileItem> Attachments);
+public record PcFolderInfo(int PcId, string PcName, string FolderPath, List<FolderFileItem> FrontCover, List<FolderFileItem> BackCover, List<WorkSheetItem> WorkSheets);
 
 public class FolderService
 {
@@ -52,11 +53,49 @@ public class FolderService
 
         var frontCover = GetFilesForSection(folder, "Front_Cover");
         var backCover = GetFilesForSection(folder, "Back_Cover");
-        var workSheets = GetFilesForSection(folder, "WorkSheets")
+        var workSheets = GetWorkSheets(folder);
+
+        return new PcFolderInfo(pcId, pcName, folder, frontCover, backCover, workSheets);
+    }
+
+    private List<WorkSheetItem> GetWorkSheets(string pcFolder)
+    {
+        var wsPath = Path.Combine(pcFolder, "WorkSheets");
+        if (!Directory.Exists(wsPath)) return [];
+
+        var files = Directory.GetFiles(wsPath, "*.pdf")
+            .Select(f =>
+            {
+                var name = Path.GetFileName(f);
+                var dateParsed = TryParseDatePrefix(name);
+                var relativePath = $"WorkSheets/{name}";
+                return new FolderFileItem(name, "WorkSheets", relativePath, dateParsed);
+            })
             .OrderByDescending(f => f.DateParsed ?? DateTime.MinValue)
             .ToList();
 
-        return new PcFolderInfo(pcId, pcName, folder, frontCover, backCover, workSheets);
+        var items = new List<WorkSheetItem>();
+        foreach (var file in files)
+        {
+            // Check for _att subfolder: WorkSheets/{filenameWithoutExt}_att/
+            var nameNoExt = Path.GetFileNameWithoutExtension(file.FileName);
+            var attDir = Path.Combine(wsPath, $"{nameNoExt}_att");
+            var attachments = new List<FolderFileItem>();
+            if (Directory.Exists(attDir))
+            {
+                attachments = Directory.GetFiles(attDir, "*.pdf")
+                    .Select(af =>
+                    {
+                        var afName = Path.GetFileName(af);
+                        var relPath = $"WorkSheets/{nameNoExt}_att/{afName}";
+                        return new FolderFileItem(afName, "WorkSheets", relPath, null);
+                    })
+                    .OrderBy(af => af.FileName)
+                    .ToList();
+            }
+            items.Add(new WorkSheetItem(file, attachments));
+        }
+        return items;
     }
 
     private List<FolderFileItem> GetFilesForSection(string pcFolder, string section)
@@ -112,6 +151,59 @@ public class FolderService
 
         File.WriteAllBytes(fullPath, pdfBytes);
         return true;
+    }
+
+    /// <summary>Save an uploaded session file to WorkSheets with date prefix. Returns the saved filename.</summary>
+    public string? SaveUploadedFile(int pcId, string fileName, byte[] fileBytes)
+    {
+        var folder = GetPcFolder(pcId);
+        if (folder == null) return null;
+
+        var wsPath = Path.Combine(folder.FolderPath, "WorkSheets");
+        Directory.CreateDirectory(wsPath);
+
+        var datePrefix = DateTime.Today.ToString("yy-MM-dd");
+        var safeName = string.Join("_", fileName.Split(Path.GetInvalidFileNameChars()));
+        var finalName = $"{datePrefix}_{safeName}";
+        var fullPath = Path.Combine(wsPath, finalName);
+
+        var counter = 2;
+        var nameNoExt = Path.GetFileNameWithoutExtension(finalName);
+        var ext = Path.GetExtension(finalName);
+        while (File.Exists(fullPath))
+        {
+            fullPath = Path.Combine(wsPath, $"{nameNoExt}({counter}){ext}");
+            counter++;
+        }
+
+        File.WriteAllBytes(fullPath, fileBytes);
+        return Path.GetFileName(fullPath);
+    }
+
+    /// <summary>Save an attachment file into the _att subfolder for a session file.</summary>
+    public void SaveAttachment(int pcId, string sessionFileName, string attFileName, byte[] fileBytes)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return;
+
+        var wsPath = Path.Combine(folder, "WorkSheets");
+        var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
+        var attDir = Path.Combine(wsPath, $"{sessionNoExt}_att");
+        Directory.CreateDirectory(attDir);
+
+        var safeName = string.Join("_", attFileName.Split(Path.GetInvalidFileNameChars()));
+        var fullPath = Path.Combine(attDir, safeName);
+
+        var counter = 2;
+        var nameNoExt = Path.GetFileNameWithoutExtension(safeName);
+        var ext = Path.GetExtension(safeName);
+        while (File.Exists(fullPath))
+        {
+            fullPath = Path.Combine(attDir, $"{nameNoExt}({counter}){ext}");
+            counter++;
+        }
+
+        File.WriteAllBytes(fullPath, fileBytes);
     }
 
     /// <summary>Resolve relative path safely — prevents traversal and absolute path injection</summary>

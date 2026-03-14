@@ -6,8 +6,10 @@
 @inject LPM.Services.DashboardService DashSvc
 @inject LPM.Services.PcService PcSvc
 @inject LPM.Services.MessageNotifier MsgNotifier
+@inject LPM.Services.FolderService FolderSvc
 @using LPM._Spk
 @using LPM.Services
+@using Microsoft.AspNetCore.Components.Forms
 @implements IDisposable
 
             <header class="app-header sticky @headerClass" id="header">
@@ -281,6 +283,16 @@
                         </li>
                         <!-- End::header-element new-pc -->
 
+                        <!-- Start::header-element import-session -->
+                        <li class="header-element me-2">
+                            <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
+                                    style="border-radius:8px; font-weight:600; font-size:.82rem; color:#fff !important;"
+                                    @onclick="OpenImportSession">
+                                <i class="ri-upload-2-line"></i>Import Session
+                            </button>
+                        </li>
+                        <!-- End::header-element import-session -->
+
                         <!-- Start::header-element messages -->
                         @if (_msgUserId.HasValue)
                         {
@@ -404,6 +416,136 @@
 <SpkNewPersonModal @ref="_addPcModal" Title="@LS.T("pcs.addNewPc")" RequireAllFields="true"
                    ExistingFullNames="@_existingPcNames"
                    OnSaved="SaveNewPc" />
+
+@* ── Import Session Wizard ── *@
+@if (_showImportWizard)
+{
+    <div class="modal show d-block" tabindex="-1"
+         style="background:rgba(0,0,0,.5); z-index:9999;"
+         @onclick="() => _showImportWizard = false">
+        <div class="modal-dialog modal-dialog-centered modal-md"
+             @onclick:stopPropagation="true">
+            <div class="modal-content" style="background:#1e293b; color:#e2e8f0; border:1px solid #334155;">
+                <div class="modal-header py-2" style="background:linear-gradient(135deg,#1565c0,#1e88e5); border-bottom:none;">
+                    <h5 class="modal-title fs-15 text-white d-flex align-items-center gap-2">
+                        <i class="ri-upload-2-line"></i>Import Session
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white"
+                            @onclick="() => _showImportWizard = false"></button>
+                </div>
+                <div class="modal-body">
+                    @* ── Step 1: Select PC ── *@
+                    <div class="mb-3">
+                        <label class="form-label" style="font-size:.82rem; color:#94a3b8;">Select PC</label>
+                        <select class="form-select form-select-sm" style="background:#0f172a; color:#e2e8f0; border-color:#475569;"
+                                @bind="_importPcId">
+                            <option value="0">— Choose a PC —</option>
+                            @foreach (var pc in _approvedPcs)
+                            {
+                                <option value="@pc.PcId">@pc.FullName</option>
+                            }
+                        </select>
+                    </div>
+
+                    @* ── Step 2: Session file (single) ── *@
+                    @if (_importPcId > 0)
+                    {
+                        <div class="mb-3">
+                            <label class="form-label" style="font-size:.82rem; color:#94a3b8;">
+                                Session File <span class="text-danger">*</span> <span class="text-muted">(PDF, single file)</span>
+                            </label>
+                            <InputFile accept=".pdf" OnChange="OnSessionFileSelected"
+                                       class="form-control form-control-sm"
+                                       style="background:#0f172a; color:#e2e8f0; border-color:#475569;" />
+                        </div>
+
+                        @if (_importSessionFile != null)
+                        {
+                            <div class="d-flex align-items-center gap-2 py-1 px-2 mb-3"
+                                 style="background:rgba(59,130,246,.1); border:1px solid rgba(59,130,246,.3); border-radius:4px; font-size:.78rem;">
+                                <i class="ri-file-pdf-2-line" style="color:#3b82f6;"></i>
+                                <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                                    @_importSessionFile.Name
+                                </span>
+                                <span style="color:#64748b; font-size:.7rem;">@FormatFileSize(_importSessionFile.Size)</span>
+                                <button class="btn btn-sm p-0" style="color:#ef5350; font-size:.85rem;"
+                                        @onclick="() => _importSessionFile = null">
+                                    <i class="ri-close-line"></i>
+                                </button>
+                            </div>
+                        }
+
+                        @* ── Step 3: Attachments (multiple, optional) ── *@
+                        <div class="mb-3">
+                            <label class="form-label" style="font-size:.82rem; color:#94a3b8;">
+                                Attachments <span class="text-muted">(optional, multiple PDFs)</span>
+                            </label>
+                            <InputFile multiple accept=".pdf" OnChange="OnAttachmentFilesSelected"
+                                       class="form-control form-control-sm"
+                                       style="background:#0f172a; color:#e2e8f0; border-color:#475569;" />
+                        </div>
+
+                        @if (_importAttachments.Count > 0)
+                        {
+                            <div class="mb-3">
+                                <div style="font-size:.78rem; color:#94a3b8;" class="mb-1">
+                                    <i class="ri-attachment-line me-1"></i>@_importAttachments.Count attachment(s):
+                                </div>
+                                @foreach (var f in _importAttachments)
+                                {
+                                    var file = f;
+                                    <div class="d-flex align-items-center gap-2 py-1 px-2 mb-1"
+                                         style="background:rgba(255,255,255,.05); border-radius:4px; font-size:.78rem;">
+                                        <i class="ri-file-pdf-2-line" style="color:#ef5350;"></i>
+                                        <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                                            @file.Name
+                                        </span>
+                                        <span style="color:#64748b; font-size:.7rem;">
+                                            @FormatFileSize(file.Size)
+                                        </span>
+                                        <button class="btn btn-sm p-0" style="color:#ef5350; font-size:.85rem;"
+                                                @onclick="() => _importAttachments.Remove(file)">
+                                            <i class="ri-close-line"></i>
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+
+                    @if (!string.IsNullOrEmpty(_importError))
+                    {
+                        <div class="alert alert-danger py-1 mb-2" style="font-size:.8rem;">
+                            <i class="ri-error-warning-line me-1"></i>@_importError
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(_importSuccess))
+                    {
+                        <div class="alert alert-success py-1 mb-2" style="font-size:.8rem;">
+                            <i class="ri-check-double-line me-1"></i>@_importSuccess
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer py-2" style="border-color:#334155;">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showImportWizard = false">Cancel</button>
+                    <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
+                            disabled="@(_importPcId == 0 || _importSessionFile == null || _importBusy)"
+                            @onclick="ExecuteImport">
+                        @if (_importBusy)
+                        {
+                            <span class="spinner-border spinner-border-sm"></span>
+                        }
+                        else
+                        {
+                            <i class="ri-upload-2-line"></i>
+                        }
+                        Go
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
 
 @* ── Messages Modal ── *@
 @if (_showMessagesModal)
@@ -619,6 +761,101 @@
     // ── Add PC state ──
     SpkNewPersonModal _addPcModal = default!;
     HashSet<string>? _existingPcNames;
+
+    // ── Import Session state ──
+    bool _showImportWizard;
+    int  _importPcId;
+    IBrowserFile? _importSessionFile;
+    List<IBrowserFile> _importAttachments = [];
+    List<DashboardService.ApprovedPc> _approvedPcs = [];
+    bool   _importBusy;
+    string _importError   = "";
+    string _importSuccess = "";
+
+    void OpenImportSession()
+    {
+        if (!_msgUserId.HasValue) return;
+        _approvedPcs = DashSvc.GetApprovedPcsForUser(_msgUserId.Value);
+        _importPcId = 0;
+        _importSessionFile = null;
+        _importAttachments.Clear();
+        _importError = "";
+        _importSuccess = "";
+        _importBusy = false;
+        _showImportWizard = true;
+    }
+
+    void OnSessionFileSelected(InputFileChangeEventArgs e)
+    {
+        _importSessionFile = e.File;
+        _importError = "";
+    }
+
+    void OnAttachmentFilesSelected(InputFileChangeEventArgs e)
+    {
+        _importAttachments = e.GetMultipleFiles(20).ToList();
+        _importError = "";
+    }
+
+    async Task ExecuteImport()
+    {
+        if (!_msgUserId.HasValue || _importPcId == 0 || _importSessionFile == null) return;
+        _importBusy = true;
+        _importError = "";
+        _importSuccess = "";
+        StateHasChanged();
+
+        try
+        {
+            // Use session file name (without extension) as session name
+            var sessionName = Path.GetFileNameWithoutExtension(_importSessionFile.Name);
+
+            // Create session record
+            var sessionId = DashSvc.CreateImportedSession(_importPcId, _msgUserId.Value, sessionName);
+
+            // Upload session file
+            string savedSessionFileName;
+            using (var ms = new MemoryStream())
+            {
+                await _importSessionFile.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024).CopyToAsync(ms);
+                savedSessionFileName = FolderSvc.SaveUploadedFile(_importPcId, _importSessionFile.Name, ms.ToArray())!;
+            }
+
+            // Upload attachments into _att subfolder
+            foreach (var file in _importAttachments)
+            {
+                using var ms = new MemoryStream();
+                await file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024).CopyToAsync(ms);
+                FolderSvc.SaveAttachment(_importPcId, savedSessionFileName, file.Name, ms.ToArray());
+            }
+
+            var totalFiles = 1 + _importAttachments.Count;
+            _importSuccess = $"Session imported ({totalFiles} file(s) uploaded)";
+            _importSessionFile = null;
+            _importAttachments.Clear();
+            _importPcId = 0;
+
+            // Refresh dashboard
+            await Task.Delay(1500);
+            _showImportWizard = false;
+            NavigationManager.NavigateTo("/Home", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            _importError = ex.Message;
+        }
+        finally
+        {
+            _importBusy = false;
+        }
+    }
+
+    static string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1048576) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / 1048576.0:F1} MB";
+    }
 
     // ── Messaging state ──
     int?   _msgUserId;
