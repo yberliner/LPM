@@ -129,11 +129,17 @@
         }
     </div>
 
+    @* ── Sidebar backdrop for mobile ── *@
+    @if (_sidebarOpen)
+    {
+        <div class="pcf-sidebar-backdrop" @onclick="() => _sidebarOpen = false"></div>
+    }
+
     @* ── Main content: PDF viewer ── *@
     <div class="pcf-main">
         @* ── Toolbar ── *@
         <div class="pcf-toolbar">
-            <div class="d-flex align-items-center gap-2 flex-shrink-0 overflow-hidden">
+            <div class="d-flex align-items-center gap-2 flex-shrink-0" style="min-width:0;overflow:hidden;">
                 @if (!_sidebarOpen)
                 {
                     <button class="pcf-tool-btn" title="Open sidebar — show file list"
@@ -177,7 +183,7 @@
                     </div>
                 </div>
             }
-            <div class="d-flex align-items-center gap-2 flex-shrink-0 flex-nowrap">
+            <div class="pcf-tools-right">
                 <button class="pcf-tool-btn @(_toolMode == "draw" ? "pcf-tool-active" : "")"
                         title="Draw — click and drag on the PDF to draw freehand annotations"
                         @onclick='() => SetTool("draw")'>
@@ -306,7 +312,7 @@
 @* ── Saving indicator ── *@
 @if (_saving)
 {
-    <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:9999;
+    <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:10001;
                 display:flex;align-items:center;justify-content:center;">
         <div class="text-white text-center">
             <div class="spinner-border mb-2" role="status"></div>
@@ -337,8 +343,10 @@
         background: #1e293b; color: #e2e8f0;
         overflow-y: auto; display: flex; flex-direction: column;
         scrollbar-width: thin; scrollbar-color: #475569 transparent;
+        -webkit-overflow-scrolling: touch;
     }
     .pcf-sidebar-collapsed { display: none; }
+    .pcf-sidebar-backdrop { display: none; }
     .pcf-sidebar-header {
         padding: 16px 14px; display: flex; align-items: center;
         background: linear-gradient(135deg, #0f172a, #1e293b);
@@ -437,7 +445,7 @@
         padding: 8px 16px;
         background: linear-gradient(135deg, #1e40af, #3b82f6);
         color: #fff; flex-shrink: 0; flex-wrap: nowrap;
-        white-space: nowrap; min-height: 44px;
+        min-height: 44px;
     }
     .pcf-toolbar-file {
         font-size: .85rem; font-weight: 600;
@@ -448,10 +456,16 @@
         padding: 1px 8px; margin-right: 6px;
         font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
     }
+    .pcf-tools-right {
+        display: flex; align-items: center; gap: 2px;
+        flex-shrink: 0; flex-wrap: nowrap;
+    }
     .pcf-tool-btn {
         background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.25);
         color: #fff; border-radius: 6px; padding: 4px 10px;
         font-size: .85rem; cursor: pointer; transition: background .15s;
+        display: inline-flex; align-items: center; justify-content: center;
+        height: 30px; box-sizing: border-box;
     }
     .pcf-tool-btn:hover { background: rgba(255,255,255,.3); }
     .pcf-tool-active { background: #fff !important; color: #1e40af !important; font-weight: 700; }
@@ -632,9 +646,66 @@
         outline: none; border-radius: 3px; z-index: 10;
     }
 
+    /* ── Tablet ── */
     @@media (max-width: 768px) {
-        .pcf-sidebar { width: 200px; min-width: 180px; }
-        .pcf-viewer { padding: 10px; }
+        .pcf-sidebar {
+            position: absolute; z-index: 200; height: 100%;
+            width: 260px; min-width: 220px;
+            box-shadow: 4px 0 16px rgba(0,0,0,.3);
+        }
+        .pcf-sidebar-backdrop {
+            display: block; position: absolute; z-index: 199;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,.4);
+        }
+        .pcf-toolbar {
+            padding: 6px 10px; gap: 4px 8px;
+            flex-wrap: wrap; min-height: auto;
+        }
+        .pcf-toolbar > .pcf-tools-right { flex-wrap: wrap; gap: 4px; }
+        .pcf-toolbar .vr { display: none; }
+        .pcf-toolbar-file { font-size: .78rem; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+        .pcf-tool-btn { padding: 4px 8px; font-size: .78rem; min-height: 36px; }
+        .pcf-save-btn, .pcf-done-btn { padding: 4px 10px; font-size: .78rem; min-height: 36px; }
+        .pcf-viewer { padding: 10px; gap: 8px; }
+        .pcf-timer-num { width: 20px; font-size: .65rem; }
+        .pcf-cs-session-label { font-size: .75rem; padding: 2px 8px; }
+        .pcf-color-popup { right: auto; left: 0; }
+        .pcf-size-popup { right: auto; left: 0; }
+        .pcf-viewer-area.pcf-split { flex-direction: column; }
+        .pcf-toast-success { padding: 10px 16px; font-size: .82rem; max-width: 90vw; }
+        .pcf-lock-banner { flex-wrap: wrap; font-size: .78rem; }
+        .pcf-text-input { min-width: 80px; }
+        .pcf-page-wrapper { max-width: 100%; overflow: hidden; }
+        .pcf-page-wrapper canvas { max-width: 100%; height: auto !important; }
+    }
+
+    /* ── Phone ── */
+    @@media (max-width: 480px) {
+        .pcf-sidebar { width: 85vw; min-width: 0; max-width: 300px; }
+        .pcf-sidebar-header { padding: 10px; font-size: .88rem; }
+        .pcf-section-title { padding: 10px 10px; font-size: .82rem; min-height: 44px; }
+        .pcf-file-item { padding: 10px 10px 10px 20px; font-size: .75rem; min-height: 44px; }
+        .pcf-toolbar { padding: 5px 8px; gap: 3px 6px; }
+        .pcf-toolbar-file { font-size: .72rem; max-width: 100px; }
+        .pcf-toolbar-section { font-size: .65rem; padding: 1px 5px; }
+        .pcf-tool-btn { padding: 4px 8px; font-size: .78rem; min-height: 36px; min-width: 36px;
+                        display: inline-flex; align-items: center; justify-content: center; }
+        .pcf-save-btn { padding: 4px 10px; font-size: .72rem; min-height: 36px; }
+        .pcf-done-btn { padding: 4px 10px; font-size: .72rem; white-space: nowrap; min-height: 36px; }
+        .pcf-cs-session-label { font-size: .65rem; padding: 2px 6px; }
+        .pcf-timer { padding: 1px 4px; }
+        .pcf-timer-num { width: 18px; font-size: .6rem; }
+        .pcf-viewer { padding: 4px; gap: 4px; -webkit-overflow-scrolling: touch; }
+        .pcf-pane-header { padding: 3px 8px; font-size: .7rem; }
+        .pcf-lock-banner { font-size: .72rem; padding: 6px 8px; }
+        .pcf-toast-success { padding: 8px 12px; font-size: .78rem; max-width: 95vw; border-radius: 8px; }
+        .pcf-empty i { font-size: 2rem !important; }
+        .pcf-empty div { font-size: .8rem !important; }
+        .pcf-text-input { min-width: 60px; font-size: 12px; }
+        .pcf-color-swatch { width: 28px; height: 28px; }
+        .pcf-ws-pager button { padding: 6px 12px; min-height: 36px; }
+        .pcf-annotation-canvas { cursor: default; }
     }
 </style>
 

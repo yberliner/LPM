@@ -106,6 +106,14 @@
         font-size: 0.85rem;
         border: 1px solid #bbb;
     }
+    @@media (max-width: 576px) {
+        .sc-page h4 { font-size: 1.1rem; }
+        .sc-page .table th:first-child,
+        .sc-page .table td:first-child { width: 80px; }
+        .sc-page .table th:last-child,
+        .sc-page .table td:last-child { width: 60px; }
+        .sc-page kbd { font-size: 0.75rem; padding: 1px 3px; }
+    }
 </style>
 
 @code {
