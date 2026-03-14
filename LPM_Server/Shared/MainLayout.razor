@@ -6,6 +6,7 @@
 @inject StateService stateService
 @inject SessionService _sessionService
 @inject NavigationManager NavigationManager
+@inject LPM.Services.ShortcutService ShortcutSvc
 @implements IDisposable
 
 <Switcher />
@@ -51,7 +52,15 @@
             await JSRuntime.InvokeVoidAsync("interop.addAttributeToHtml", "dir", LS.IsRtl ? "rtl" : "ltr");
             await stateService.retrieveFromLocalStorage();
             await JSRuntime.InvokeVoidAsync("interop.updateScrollVisibility", DotNetObjectReference.Create(this));
-            
+
+            // Load Alt+key shortcuts into JS
+            try
+            {
+                var sc = ShortcutSvc.GetShortcuts();
+                await JSRuntime.InvokeVoidAsync("lpmLoadShortcuts", sc);
+            }
+            catch { /* non-critical */ }
+
             var dataNavLayout = await JSRuntime.InvokeAsync<string>("interop.getAttributeToHtml", "data-nav-layout");
             var inner = await JSRuntime.InvokeAsync<int>("interop.inner", "innerWidth");
             if(dataNavLayout == "horizontal" && inner >= 992){

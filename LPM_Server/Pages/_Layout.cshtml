@@ -311,6 +311,33 @@
                 window.open(url, '_blank');
             };
 
+            // ── Alt+key shortcuts: insert text at cursor ──
+            window._lpmShortcuts = {};
+            window.lpmLoadShortcuts = function(shortcuts) {
+                window._lpmShortcuts = shortcuts || {};
+            };
+            document.addEventListener('keydown', function(e) {
+                if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+                var key = e.key.toLowerCase();
+                var text = window._lpmShortcuts[key];
+                if (!text) return;
+                var el = document.activeElement;
+                if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) {
+                    e.preventDefault();
+                    if (el.isContentEditable) {
+                        document.execCommand('insertText', false, text);
+                    } else {
+                        var start = el.selectionStart;
+                        var end = el.selectionEnd;
+                        var val = el.value;
+                        el.value = val.substring(0, start) + text + val.substring(end);
+                        el.selectionStart = el.selectionEnd = start + text.length;
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+            });
+
             // Cross-tab CS-done listener for Dashboard refresh
             window.lpmInitCsListener = function(dotNetRef) {
                 try {

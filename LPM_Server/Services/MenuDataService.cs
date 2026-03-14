@@ -79,6 +79,16 @@ public class MenuDataService
             dirChange: false
         ),
         new MainMenuItems(
+            path: "/ShortCuts",
+            type: "link",
+            title: "Shortcuts",
+            icon: "",
+            svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><rect x='6' y='20' width='52' height='30' rx='5' fill='#78909c' stroke='#546e7a' stroke-width='2'/><rect x='12' y='26' width='8' height='7' rx='1.5' fill='#eceff1'/><rect x='22' y='26' width='8' height='7' rx='1.5' fill='#eceff1'/><rect x='32' y='26' width='8' height='7' rx='1.5' fill='#eceff1'/><rect x='42' y='26' width='8' height='7' rx='1.5' fill='#eceff1'/><rect x='12' y='36' width='8' height='7' rx='1.5' fill='#eceff1'/><rect x='22' y='36' width='20' height='7' rx='1.5' fill='#bbdefb'/><rect x='44' y='36' width='8' height='7' rx='1.5' fill='#eceff1'/></svg>",
+            selected: false,
+            active: false,
+            dirChange: false
+        ),
+        new MainMenuItems(
             menuTitle: "Administration",
             requiredRole: "Admin"
         ),

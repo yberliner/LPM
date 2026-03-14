@@ -1,0 +1,162 @@
+@page "/ShortCuts"
+@using LPM.Services
+@attribute [Authorize]
+@inject ShortcutService ShortcutSvc
+
+<div class="sc-page p-3 p-md-4">
+
+    <div class="d-flex align-items-center mb-4 gap-3 flex-wrap">
+        <div>
+            <h4 class="mb-0 fw-bold" style="color:#37474f;">Keyboard Shortcuts</h4>
+            <span class="text-muted" style="font-size:0.82rem;">
+                Press <kbd>Alt</kbd> + key to auto-type text anywhere in the system
+            </span>
+        </div>
+    </div>
+
+        <div class="table-responsive" style="max-width:700px;">
+            <table class="table table-bordered table-hover table-sm align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:100px; text-align:center;">Shortcut</th>
+                        <th>Text to insert</th>
+                        <th style="width:70px; text-align:center;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var key in _allKeys)
+                    {
+                        var k = key; // capture
+                        var isEditing = _editingKey == k;
+                        var hasValue = _shortcuts.TryGetValue(k, out var currentText) && !string.IsNullOrEmpty(currentText);
+
+                        <tr style="@(hasValue ? "" : "opacity:0.6;")">
+                            <td class="text-center fw-bold" style="font-family:monospace; font-size:0.95rem;">
+                                <kbd>Alt</kbd> + <kbd>@k</kbd>
+                            </td>
+                            <td>
+                                @if (isEditing)
+                                {
+                                    <input type="text" class="form-control form-control-sm"
+                                           @bind="_editText" @bind:event="oninput"
+                                           @onkeydown="e => OnEditKeyDown(e, k)"
+                                           autofocus />
+                                }
+                                else
+                                {
+                                    <span class="@(hasValue ? "" : "text-muted")"
+                                          style="cursor:pointer; display:block; min-height:1.4em;"
+                                          @ondblclick="() => StartEdit(k)"
+                                          title="Double-click to edit">
+                                        @(hasValue ? currentText : "—")
+                                    </span>
+                                }
+                            </td>
+                            <td class="text-center">
+                                @if (isEditing)
+                                {
+                                    <button class="btn btn-sm btn-success me-1 px-1 py-0" @onclick="() => SaveEdit(k)" title="Save">
+                                        <i class="ri-check-line"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary px-1 py-0" @onclick="CancelEdit" title="Cancel">
+                                        <i class="ri-close-line"></i>
+                                    </button>
+                                }
+                                else if (hasValue)
+                                {
+                                    <button class="btn btn-sm btn-outline-primary px-1 py-0 me-1" @onclick="() => StartEdit(k)" title="Edit">
+                                        <i class="ri-pencil-line"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger px-1 py-0" @onclick="() => ClearShortcut(k)" title="Clear">
+                                        <i class="ri-delete-bin-line"></i>
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-outline-primary px-1 py-0" @onclick="() => StartEdit(k)" title="Edit">
+                                        <i class="ri-pencil-line"></i>
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_toast))
+        {
+            <div class="alert alert-success alert-dismissible mt-3 py-2" style="max-width:700px;">
+                @_toast
+                <button type="button" class="btn-close btn-close-sm" @onclick='() => _toast = ""'></button>
+            </div>
+        }
+</div>
+
+<style>
+    .sc-page kbd {
+        background: #e0e0e0;
+        color: #333;
+        padding: 1px 5px;
+        border-radius: 3px;
+        font-size: 0.85rem;
+        border: 1px solid #bbb;
+    }
+</style>
+
+@code {
+    Dictionary<string, string> _shortcuts = new();
+    string? _editingKey;
+    string _editText = "";
+    string _toast = "";
+
+    static readonly string[] _allKeys =
+        Enumerable.Range(1, 9).Select(i => i.ToString())
+        .Concat(Enumerable.Range('a', 26).Select(i => ((char)i).ToString()))
+        .ToArray();
+
+    protected override void OnInitialized()
+    {
+        _shortcuts = ShortcutSvc.GetShortcuts();
+    }
+
+    void StartEdit(string key)
+    {
+        _editingKey = key;
+        _editText = _shortcuts.TryGetValue(key, out var t) ? t : "";
+    }
+
+    void CancelEdit()
+    {
+        _editingKey = null;
+        _editText = "";
+    }
+
+    void SaveEdit(string key)
+    {
+        var text = _editText?.Trim() ?? "";
+        ShortcutSvc.SaveShortcut(key, text);
+
+        if (string.IsNullOrEmpty(text))
+            _shortcuts.Remove(key);
+        else
+            _shortcuts[key] = text;
+
+        _editingKey = null;
+        _editText = "";
+        _toast = $"Shortcut Alt+{key.ToUpper()} saved.";
+    }
+
+    void ClearShortcut(string key)
+    {
+        ShortcutSvc.SaveShortcut(key, "");
+        _shortcuts.Remove(key);
+        _toast = $"Shortcut Alt+{key.ToUpper()} cleared.";
+    }
+
+    void OnEditKeyDown(KeyboardEventArgs e, string key)
+    {
+        if (e.Key == "Enter") SaveEdit(key);
+        else if (e.Key == "Escape") CancelEdit();
+    }
+}
