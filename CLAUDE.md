@@ -22,3 +22,4 @@
 ## Build
 - Solution: `LPM_Server/LPM.sln`
 - Publish: linux-x64, self-contained → `C:\PublishedApps\LPM\`
+- When checking build errors, grep for BOTH `error CS` (C# errors) and `error RZ` (Razor errors)
