@@ -65,8 +65,20 @@
         @* ── Grids ── *@
         <div id="print-zone">
 
+            @* ══════ WEEKLY OVERVIEW (collapsible) ══════ *@
+            <div class="home-overview-header px-3 mt-1 mb-1"
+                 style="cursor:pointer;" @onclick="() => _weeklyOverviewExpanded = !_weeklyOverviewExpanded">
+                <i class="@(_weeklyOverviewExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"
+                   style="font-size:1.1rem;"></i>
+                <i class="ri-calendar-check-line me-1"></i>
+                <strong>Weekly Overview</strong>
+            </div>
+
+            @if (_weeklyOverviewExpanded)
+            {
+            var _audPcs = AuditorPcs;
+
             @* ══════ AUDITOR TABLE ══════ *@
-            @{ var _audPcs = AuditorPcs; }
             @if (_audPcs.Count > 0 || _myPcs.Count == 0)
             {
                 <div class="home-table-label px-3 mt-1 mb-1">
@@ -244,7 +256,7 @@
             }
 
             @* ══════ CS SOLO TABLE ══════ *@
-            @{ var _csSoloPcs = CsSoloPcs; }
+            var _csSoloPcs = CsSoloPcs;
             @if (_csSoloPcs.Count > 0)
             {
                 <div class="home-table-label px-3 mt-3 mb-1" style="color:#ce93d8; font-weight:600; font-size:.85rem;">
@@ -360,13 +372,11 @@
             }
 
             @* ══════ COMBINED GRAND TOTAL (Auditor + CS Solo) ══════ *@
-            @{
-                var combinedAudTotal = _audPcs.Sum(pc => Enumerable.Range(0, 7)
-                    .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
-                var combinedSoloTotal = _csSoloPcs.Sum(pc => Enumerable.Range(0, 7)
-                    .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
-                var combinedTotal = combinedAudTotal + combinedSoloTotal;
-            }
+            var combinedAudTotal = _audPcs.Sum(pc => Enumerable.Range(0, 7)
+                .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
+            var combinedSoloTotal = _csSoloPcs.Sum(pc => Enumerable.Range(0, 7)
+                .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
+            var combinedTotal = combinedAudTotal + combinedSoloTotal;
             @if (combinedTotal > 0)
             {
                 <div class="px-3 mt-2 mb-1">
@@ -381,7 +391,7 @@
             }
 
             @* ══════ CS TABLE ══════ *@
-            @{ var _csPcs = CsPcs; }
+            var _csPcs = CsPcs;
             @if (_csPcs.Count > 0)
             {
                 <div class="home-table-label home-table-label-cs px-3 mt-3 mb-1">
@@ -496,6 +506,8 @@
                     @DetailPanel
                 }
             }
+
+            } @* end Weekly Overview *@
 
             @* ══════ PENDING CS TABLE ══════ *@
             @if (_isCS && _pendingCsSessions.Count > 0)
@@ -1137,6 +1149,14 @@
         animation: csSessionShimmer 3s ease-in-out infinite;
     }
 
+    .home-overview-header {
+        display: flex; align-items: center; gap: 4px;
+        color: #90caf9; font-size: .88rem;
+        padding: 8px 0; user-select: none;
+        transition: color .15s;
+    }
+    .home-overview-header:hover { color: #bbdefb; }
+
     .home-range-select {
         margin-left: auto; font-size: .7rem;
         background: rgba(0,0,0,.25); color: inherit;
@@ -1238,6 +1258,7 @@
     Dictionary<int, string>  _pcCsNames   = [];
     List<DashboardService.PendingCsSession> _pendingCsSessions = [];
     bool _pendingCsExpanded = true;
+    bool _weeklyOverviewExpanded = true;
     int _csQueueDays = 0;
     List<DashboardService.AuditorSessionStatus> _auditorStatuses = [];
     bool _audStatusExpanded = true;
