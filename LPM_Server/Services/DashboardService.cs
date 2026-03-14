@@ -1724,7 +1724,7 @@ public class DashboardService
 
     public record PendingCsSession(
         int SessionId, int PcId, string PcName, string SessionName,
-        string SessionDate, int TotalSeconds, bool IsSolo);
+        string SessionDate, int TotalSeconds, bool IsSolo, string AuditorName);
 
     /// Returns all sessions from the last <paramref name="lookbackDays"/> days that have no CS review yet.
     public List<PendingCsSession> GetPendingCsSessions(int lookbackDays = 10)
@@ -1732,21 +1732,26 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        var cutoff = DateOnly.FromDateTime(DateTime.Today.AddDays(-lookbackDays)).ToString("yyyy-MM-dd");
+        var dateFilter = lookbackDays > 0
+            ? "AND s.SessionDate >= @cutoff" : "";
         cmd.CommandText = $@"
             SELECT s.SessionId, s.PcId,
                    {FullNameExpr} AS PcName,
                    COALESCE(s.Name, '') AS SessionName,
                    s.SessionDate,
                    COALESCE(s.LengthSeconds,0) + COALESCE(s.AdminSeconds,0) AS TotalSec,
-                   CASE WHEN s.PcId = s.AuditorId THEN 1 ELSE 0 END AS IsSolo
+                   CASE WHEN s.PcId = s.AuditorId THEN 1 ELSE 0 END AS IsSolo,
+                   TRIM(pa.FirstName || ' ' || COALESCE(NULLIF(pa.LastName,''), '')) AS AuditorName
             FROM sess_sessions s
             JOIN core_persons p ON p.PersonId = s.PcId
+            JOIN core_persons pa ON pa.PersonId = s.AuditorId
             LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
             WHERE cr.CsReviewId IS NULL
-              AND s.SessionDate >= @cutoff
+              {dateFilter}
             ORDER BY PcName, s.SessionDate, s.SequenceInDay";
-        cmd.Parameters.AddWithValue("@cutoff", cutoff);
+        if (lookbackDays > 0)
+            cmd.Parameters.AddWithValue("@cutoff",
+                DateOnly.FromDateTime(DateTime.Today.AddDays(-lookbackDays)).ToString("yyyy-MM-dd"));
         var list = new List<PendingCsSession>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -1754,7 +1759,58 @@ public class DashboardService
             list.Add(new PendingCsSession(
                 r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3),
                 r.GetString(4), r.IsDBNull(5) ? 0 : r.GetInt32(5),
-                r.GetInt32(6) == 1));
+                r.GetInt32(6) == 1, r.GetString(7)));
+        }
+        return list;
+    }
+
+    // ── Auditor Session Status (My Auditing Status) ────────────
+
+    public record AuditorSessionStatus(
+        int SessionId, int PcId, string PcName, string SessionName,
+        string SessionDate, int TotalSeconds, string CsStatus, string? CsName);
+
+    /// <summary>
+    /// Returns sessions the auditor conducted in the last <paramref name="lookbackDays"/> days
+    /// with their CS review status: Waiting / Done / Approved / Correction.
+    /// </summary>
+    public List<AuditorSessionStatus> GetAuditorSessionStatuses(int auditorId, int lookbackDays = 10)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        var dateFilter = lookbackDays > 0
+            ? "AND s.SessionDate >= @cutoff" : "";
+        cmd.CommandText = $@"
+            SELECT s.SessionId, s.PcId,
+                   {FullNameExpr} AS PcName,
+                   COALESCE(s.Name, '') AS SessionName,
+                   s.SessionDate,
+                   COALESCE(s.LengthSeconds,0) + COALESCE(s.AdminSeconds,0) AS TotalSec,
+                   CASE
+                       WHEN cr.CsReviewId IS NULL THEN 'Waiting'
+                       ELSE cr.Status
+                   END AS CsStatus,
+                   TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS CsName
+            FROM sess_sessions s
+            JOIN core_persons p ON p.PersonId = s.PcId
+            LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
+            LEFT JOIN core_persons pc ON pc.PersonId = cr.CsId
+            WHERE s.AuditorId = @aid
+              {dateFilter}
+            ORDER BY s.SessionDate DESC, s.SequenceInDay DESC";
+        cmd.Parameters.AddWithValue("@aid", auditorId);
+        if (lookbackDays > 0)
+            cmd.Parameters.AddWithValue("@cutoff",
+                DateOnly.FromDateTime(DateTime.Today.AddDays(-lookbackDays)).ToString("yyyy-MM-dd"));
+        var list = new List<AuditorSessionStatus>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            list.Add(new AuditorSessionStatus(
+                r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3),
+                r.GetString(4), r.IsDBNull(5) ? 0 : r.GetInt32(5),
+                r.GetString(6), r.IsDBNull(7) ? null : r.GetString(7)));
         }
         return list;
     }
