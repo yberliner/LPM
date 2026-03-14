@@ -7,6 +7,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
 @inject PdfService PdfService
+@inject CsNotificationService CsNotifySvc
 @implements IDisposable
 
 <div @onclick="DismissMenu">
@@ -1033,6 +1034,7 @@
 @code {
 
     string _displayName = "LP Management";
+    string? _csNotifyKey;
 
     int?          _userId;
     bool          _isAuditor, _isCS;
@@ -1174,6 +1176,19 @@
         }
         _weekStart = TodayWeekStart;
         await RefreshAsync();
+
+        // Subscribe to cross-user CS notifications
+        if (_userId.HasValue)
+        {
+            _csNotifyKey = CsNotifySvc.Subscribe(_userId.Value, async pcId =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    await RefreshAsync();
+                    StateHasChanged();
+                });
+            });
+        }
     }
 
     DotNetObjectReference<Home>? _dotNetRef;
@@ -1213,6 +1228,8 @@
     public void Dispose()
     {
         _dotNetRef?.Dispose();
+        if (_csNotifyKey != null)
+            CsNotifySvc.Unsubscribe(_csNotifyKey);
     }
 
     DateOnly AllowedWeekStart => DashboardService.GetWeekStart(MaxAllowedDate());

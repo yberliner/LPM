@@ -112,6 +112,7 @@ builder.Services.AddSingleton<LPM.Services.StatisticsService>();
 builder.Services.AddSingleton<LPM.Services.CourseService>();
 builder.Services.AddSingleton<LPM.Services.MessageNotifier>();
 builder.Services.AddSingleton<LPM.Services.FolderService>();
+builder.Services.AddSingleton<LPM.Services.CsNotificationService>();
 
 // Add session services
 builder.Services.AddDistributedMemoryCache();

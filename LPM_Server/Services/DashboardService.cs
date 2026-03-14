@@ -383,6 +383,36 @@ public class DashboardService
 
     /// <summary>Check if a user (by PersonId) can access a PC's folder.
     /// Admins always can. Otherwise requires approved permission or AllowAll.</summary>
+    /// <summary>
+    /// Returns true if the user has this PC on their dashboard AND has approved permission for it.
+    /// Used by CsNotificationService to decide whether to refresh a user's Home screen.
+    /// </summary>
+    public bool UserHasApprovedPcOnDashboard(int userId, int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Must have the PC on their staff list
+        using var splCmd = conn.CreateCommand();
+        splCmd.CommandText = "SELECT 1 FROM sys_staff_pc_list WHERE UserId = @uid AND PcId = @pid";
+        splCmd.Parameters.AddWithValue("@uid", userId);
+        splCmd.Parameters.AddWithValue("@pid", pcId);
+        if (splCmd.ExecuteScalar() is null) return false;
+
+        // Check AllowAll flag
+        using var aaCmd = conn.CreateCommand();
+        aaCmd.CommandText = "SELECT AllowAll FROM sess_auditors WHERE AuditorId = @uid AND IsActive = 1";
+        aaCmd.Parameters.AddWithValue("@uid", userId);
+        if (aaCmd.ExecuteScalar() is long a && a == 1) return true;
+
+        // Check approved permission
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT 1 FROM sys_auditor_pc_permissions WHERE AuditorId = @uid AND PcId = @pid AND IsApproved = 1";
+        cmd.Parameters.AddWithValue("@uid", userId);
+        cmd.Parameters.AddWithValue("@pid", pcId);
+        return cmd.ExecuteScalar() is not null;
+    }
+
     public bool CanAccessPcFolder(int personId, int pcId)
     {
         using var conn = new SqliteConnection(_connectionString);

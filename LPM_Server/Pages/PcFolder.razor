@@ -1,5 +1,6 @@
 @inject LPM.Services.FolderService FolderSvc
 @inject LPM.Services.DashboardService DashSvc
+@inject LPM.Services.CsNotificationService CsNotifySvc
 @inject IJSRuntime JS
 @using LPM.Services
 @implements IDisposable
@@ -1006,6 +1007,9 @@
             // Notify other tabs (Dashboard) that a CS review was completed
             await JS.InvokeVoidAsync("eval",
                 "try { new BroadcastChannel('lpm-cs-done').postMessage('done'); } catch(e) {}");
+
+            // Notify all connected users who have permission for this PC
+            _ = CsNotifySvc.NotifyCsDone(PcId, DashSvc.UserHasApprovedPcOnDashboard);
 
             // Try to close the tab (works if opened via window.open)
             await JS.InvokeVoidAsync("window.close");
