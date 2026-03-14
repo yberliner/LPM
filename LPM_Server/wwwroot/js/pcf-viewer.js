@@ -256,7 +256,15 @@ window.pcfViewer = {
         const pane = this.panes[paneId];
         if (!pane || pane.annotations.length === 0) return;
         const removed = pane.annotations.pop();
-        this._redrawOverlay(removed.pageIdx, paneId);
+        if (removed.type === 'blank-page') {
+            // Remove the blank page from DOM and pane.pages
+            const pg = pane.pages.pop();
+            if (pg && pg.canvas && pg.canvas.parentElement) {
+                pg.canvas.parentElement.remove();
+            }
+        } else {
+            this._redrawOverlay(removed.pageIdx, paneId);
+        }
     },
 
     hasAnnotations(paneId) {
@@ -270,6 +278,57 @@ window.pcfViewer = {
             if (this.panes[paneId].annotations.length > 0) return true;
         }
         return false;
+    },
+
+    addBlankPage(paneId) {
+        const pane = this.panes[paneId];
+        if (!pane || pane.pages.length === 0) return;
+
+        // Use same dimensions as the last page
+        const lastPg = pane.pages[pane.pages.length - 1];
+        const w = lastPg.canvas.width;
+        const h = lastPg.canvas.height;
+
+        const viewer = document.getElementById('pcf-viewer-' + paneId);
+        if (!viewer) return;
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'pcf-page-wrapper';
+        wrapper.style.width = w + 'px';
+        wrapper.style.height = h + 'px';
+
+        // White canvas (blank page)
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+        wrapper.appendChild(canvas);
+
+        // Annotation overlay
+        const overlay = document.createElement('canvas');
+        overlay.className = 'pcf-annotation-canvas';
+        overlay.width = w;
+        overlay.height = h;
+        overlay.style.width = w + 'px';
+        overlay.style.height = h + 'px';
+        wrapper.appendChild(overlay);
+
+        viewer.appendChild(wrapper);
+
+        const pageIdx = pane.pages.length;
+        pane.pages.push({ canvas, overlay, vp: lastPg.vp, pageIdx, scale: lastPg.scale });
+        this._attachEvents(overlay, pageIdx, paneId);
+
+        // Mark as annotation so it gets saved
+        pane.annotations.push({ type: 'blank-page', pageIdx });
+
+        // Scroll to the new page
+        wrapper.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
+        // Notify Blazor
+        if (this.dotNetRef) this.dotNetRef.invokeMethodAsync('OnAnnotationChanged');
     },
 
     async getAnnotatedPdf(paneId) {

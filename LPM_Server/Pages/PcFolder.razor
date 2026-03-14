@@ -267,8 +267,11 @@
                         </div>
                     }
                 </div>
-                <button class="pcf-tool-btn" title="Undo — remove the last annotation on the active pane" @onclick="Undo">
+                <button class="pcf-tool-btn" title="Undo — remove the last annotation on the active pane (Ctrl+Z)" @onclick="Undo">
                     <i class="ri-arrow-go-back-line"></i>
+                </button>
+                <button class="pcf-tool-btn" title="Add blank page at the end" @onclick="AddBlankPage">
+                    <i class="ri-file-add-line"></i>
                 </button>
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
                 <button class="pcf-save-btn" title="Save — save annotations to the PDF now (also auto-saves when switching files or closing)"
@@ -963,6 +966,19 @@
                     await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, PaneIds[i]);
                 }
             }
+
+            // Ctrl+Z → Undo
+            await JS.InvokeVoidAsync("eval", @"
+                document.addEventListener('keydown', function(e) {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+                        var el = document.activeElement;
+                        if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return;
+                        e.preventDefault();
+                        if (window.pcfViewer && window.pcfViewer.dotNetRef)
+                            window.pcfViewer.dotNetRef.invokeMethodAsync('OnCtrlZ');
+                    }
+                });
+            ");
         }
 
         if (_pendingReloads != null)
@@ -1070,6 +1086,17 @@
     {
         await JS.InvokeVoidAsync("pcfViewer.undo", PaneIds[_activeIdx]);
         _hasAnnotations = await JS.InvokeAsync<bool>("pcfViewer.hasAnnotations", PaneIds[_activeIdx]);
+    }
+
+    [JSInvokable]
+    public async Task OnCtrlZ()
+    {
+        await Undo();
+    }
+
+    async Task AddBlankPage()
+    {
+        await JS.InvokeVoidAsync("pcfViewer.addBlankPage", PaneIds[_activeIdx]);
     }
 
     async Task PickColor(string color)
