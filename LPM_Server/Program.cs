@@ -195,9 +195,7 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db) =>
             new ClaimsPrincipal(identity));
 
         Console.WriteLine($"[Login] '{username}' signed in as [{string.Join(", ", roles)}]");
-        return roles.Contains("Admin")
-            ? Results.Redirect("/Admin")
-            : Results.Redirect("/Home");
+        return Results.Redirect("/Home");
     }
 
     Console.WriteLine($"[Login] Failed attempt for '{username}'");

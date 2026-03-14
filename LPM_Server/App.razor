@@ -5,32 +5,22 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @implements IDisposable
 
-@if (!_initialized)
-{
-    <div class="p-4 text-muted fs-13">Initializing...</div>
-}
-else
-{
-    <Router AppAssembly="@typeof(App).Assembly">
-        <Found Context="routeData">
-            <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
-            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
-        </Found>
-        <NotFound>
-            <LayoutView Layout="@typeof(MainLayout)">
-                <p>Page not found.</p>
-            </LayoutView>
-        </NotFound>
-    </Router>
-}
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="@typeof(MainLayout)">
+            <p>Page not found.</p>
+        </LayoutView>
+    </NotFound>
+</Router>
 
 @code {
-    private bool _initialized = false;
-
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || _initialized)
-            return;
+        if (!firstRender) return;
 
         try
         {
@@ -40,7 +30,6 @@ else
 
             if (user.Identity?.IsAuthenticated != true)
             {
-                // Not logged in — allow login page, redirect everything else
                 var currentPath = Navigation.ToBaseRelativePath(Navigation.Uri)
                                             .ToLowerInvariant().Trim('/');
                 bool isLoginPage = string.IsNullOrEmpty(currentPath)
@@ -51,30 +40,18 @@ else
                 {
                     Console.WriteLine($"[App] Not authenticated, path='{currentPath}' → /login");
                     Navigation.NavigateTo("/login", forceLoad: true);
-                    return;
                 }
-
-                // On login page — show it
-                _initialized = true;
-                StateHasChanged();
-                return;
             }
-
-            // Authenticated
-            var username = user.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
-            var role     = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
-            Console.WriteLine($"[App] Authenticated: '{username}' role='{role}'");
-
-            // All authenticated users proceed — TCP agent check not required
-            _initialized = true;
-            StateHasChanged();
+            else
+            {
+                var username = user.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
+                var role     = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
+                Console.WriteLine($"[App] Authenticated: '{username}' role='{role}'");
+            }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[App] ERROR in OnAfterRenderAsync: {ex}");
-            // Still initialize to avoid permanent blank page
-            _initialized = true;
-            StateHasChanged();
         }
     }
 
