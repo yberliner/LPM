@@ -213,7 +213,19 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@createdAt", createdAt);
         cmd.Parameters.AddWithValue("@verifier", verifiedByUserId);
         cmd.Parameters.AddWithValue("@verifiedAt", createdAt);
-        return Convert.ToInt32(cmd.ExecuteScalar());
+        var sessionId = Convert.ToInt32(cmd.ExecuteScalar());
+
+        // Mark as CS reviewed (imported sessions are considered fully done)
+        using var crCmd = conn.CreateCommand();
+        crCmd.CommandText = @"
+            INSERT INTO cs_reviews (SessionId, CsId, ReviewLengthSeconds, ReviewedAt, Status)
+            VALUES (@sid, @csId, 0, @reviewedAt, 'Approved')";
+        crCmd.Parameters.AddWithValue("@sid", sessionId);
+        crCmd.Parameters.AddWithValue("@csId", verifiedByUserId);
+        crCmd.Parameters.AddWithValue("@reviewedAt", createdAt);
+        crCmd.ExecuteNonQuery();
+
+        return sessionId;
     }
 
     public record FolderItem(int ItemId, string Name, string Section);
