@@ -1003,6 +1003,10 @@
             _csDone = true;
             StateHasChanged();
 
+            // Notify other tabs (Dashboard) that a CS review was completed
+            await JS.InvokeVoidAsync("eval",
+                "try { new BroadcastChannel('lpm-cs-done').postMessage('done'); } catch(e) {}");
+
             // Try to close the tab (works if opened via window.open)
             await JS.InvokeVoidAsync("window.close");
         }

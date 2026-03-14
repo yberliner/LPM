@@ -310,6 +310,18 @@
             window.pcfOpenTab = function(url) {
                 window.open(url, '_blank');
             };
+
+            // Cross-tab CS-done listener for Dashboard refresh
+            window.lpmInitCsListener = function(dotNetRef) {
+                try {
+                    var ch = new BroadcastChannel('lpm-cs-done');
+                    ch.onmessage = function() { dotNetRef.invokeMethodAsync('OnCsDoneFromTab'); };
+                    window._lpmCsCh = ch;
+                } catch(e) {}
+                document.addEventListener('visibilitychange', function() {
+                    if (!document.hidden) dotNetRef.invokeMethodAsync('OnTabFocused');
+                });
+            };
         </script>
 
     </body>

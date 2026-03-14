@@ -7,6 +7,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
 @inject PdfService PdfService
+@implements IDisposable
 
 <div @onclick="DismissMenu">
 
@@ -1166,6 +1167,45 @@
         }
         _weekStart = TodayWeekStart;
         await RefreshAsync();
+    }
+
+    DotNetObjectReference<Home>? _dotNetRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("lpmInitCsListener", _dotNetRef);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnCsDoneFromTab()
+    {
+        if (_isCS)
+            _pendingCsSessions = DashSvc.GetPendingCsSessions();
+        await RefreshAsync();
+    }
+
+    bool _lastFocusPendingCount = false;
+    int _lastPendingCount;
+
+    [JSInvokable]
+    public async Task OnTabFocused()
+    {
+        if (!_isCS) return;
+        var fresh = DashSvc.GetPendingCsSessions();
+        if (fresh.Count != _pendingCsSessions.Count)
+        {
+            _pendingCsSessions = fresh;
+            await RefreshAsync();
+        }
+    }
+
+    public void Dispose()
+    {
+        _dotNetRef?.Dispose();
     }
 
     DateOnly AllowedWeekStart => DashboardService.GetWeekStart(MaxAllowedDate());
