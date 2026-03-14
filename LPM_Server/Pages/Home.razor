@@ -495,6 +495,101 @@
                 }
             }
 
+            @* ══════ PENDING CS TABLE ══════ *@
+            @if (_isCS && _pendingCsSessions.Count > 0)
+            {
+                <div class="card mx-3 mt-3 mb-2 home-pending-cs-card">
+                    <div class="card-header py-2 home-pending-cs-header"
+                         style="cursor:pointer;" @onclick="() => _pendingCsExpanded = !_pendingCsExpanded">
+                        <i class="@(_pendingCsExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"
+                           style="font-size:1rem;"></i>
+                        <i class="ri-clipboard-line me-1"></i>
+                        <strong>Sessions Pending CS Review</strong>
+                        <span class="home-pending-cs-badge">@_pendingCsSessions.Count</span>
+                        <span style="margin-left:auto;font-size:.7rem;opacity:.6;">Last 10 days</span>
+                    </div>
+                    @if (_pendingCsExpanded)
+                    {
+                        <div class="card-body p-0">
+                            <table class="table table-sm table-hover mb-0 home-pending-cs-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:22%;" class="home-pcs-sortable"
+                                            @onclick='() => TogglePcsSort("pc")'>
+                                            PC Name
+                                            <i class="@PcsSortIcon("pc")"></i>
+                                        </th>
+                                        <th style="width:25%;">Session</th>
+                                        <th style="width:16%;" class="home-pcs-sortable"
+                                            @onclick='() => TogglePcsSort("date")'>
+                                            Date
+                                            <i class="@PcsSortIcon("date")"></i>
+                                        </th>
+                                        <th style="width:12%;" class="home-pcs-sortable"
+                                            @onclick='() => TogglePcsSort("dur")'>
+                                            Duration
+                                            <i class="@PcsSortIcon("dur")"></i>
+                                        </th>
+                                        <th style="width:10%;">Type</th>
+                                        <th style="width:15%;text-align:center;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @{
+                                        string? prevPcName = null;
+                                        int pcGroupIdx = 0;
+                                        var sorted = GetSortedPendingCs();
+                                    }
+                                    @foreach (var s in sorted)
+                                    {
+                                        var isNewPc = s.PcName != prevPcName;
+                                        if (isNewPc) { pcGroupIdx++; prevPcName = s.PcName; }
+                                        var rowClass = pcGroupIdx % 2 == 0 ? "home-pcs-row-even" : "home-pcs-row-odd";
+                                        var totalMin = s.TotalSeconds / 60;
+                                        var hrs = totalMin / 60;
+                                        var mins = totalMin % 60;
+                                        var durStr = hrs > 0 ? $"{hrs}h {mins:D2}m" : $"{mins}m";
+                                        var dateStr = DateOnly.TryParse(s.SessionDate, out var d)
+                                            ? d.ToString("dd/MM/yy") : s.SessionDate;
+                                        <tr class="@rowClass home-pcs-row" @onclick="() => OpenPendingCs(s)">
+                                            <td class="home-pcs-pcname">
+                                                @if (isNewPc)
+                                                {
+                                                    <i class="ri-user-line me-1" style="opacity:.5;"></i>@s.PcName
+                                                }
+                                            </td>
+                                            <td class="home-pcs-session">
+                                                <i class="ri-file-text-line me-1" style="opacity:.4;"></i>
+                                                @(string.IsNullOrEmpty(s.SessionName) ? "—" : s.SessionName)
+                                            </td>
+                                            <td class="home-pcs-date">@dateStr</td>
+                                            <td class="home-pcs-dur">
+                                                <i class="ri-time-line me-1" style="opacity:.4;"></i>@durStr
+                                            </td>
+                                            <td>
+                                                @if (s.IsSolo)
+                                                {
+                                                    <span class="home-pcs-solo-badge">Solo</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="home-pcs-regular-badge">Regular</span>
+                                                }
+                                            </td>
+                                            <td style="text-align:center;">
+                                                <button class="home-pcs-cs-btn" title="Open CS for this session">
+                                                    <i class="ri-eye-line me-1"></i>CS
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            }
+
             @* ══════ WEEKLY REMARKS ══════ *@
             <div class="card mx-3 mt-3 mb-2">
                 <div class="card-header py-2" style="background:rgba(63,81,181,0.15); color:#7986cb; font-size:.85rem; border-color:rgba(255,255,255,0.1);">
@@ -829,6 +924,102 @@
         50%  { left: 150%; }
         100% { left: 150%; }
     }
+
+    /* ── Pending CS Table ── */
+    .home-pending-cs-card {
+        border: 1px solid rgba(244,114,182,.25);
+        overflow: hidden;
+        animation: pendingCsFadeIn .4s ease-out;
+    }
+    @@keyframes pendingCsFadeIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    .home-pending-cs-header {
+        background: linear-gradient(135deg, rgba(244,114,182,.15), rgba(168,85,247,.12));
+        color: #f472b6; font-size: .85rem;
+        border-color: rgba(244,114,182,.2);
+        display: flex; align-items: center; gap: 4px;
+    }
+    .home-pending-cs-badge {
+        background: #ec4899; color: #fff;
+        border-radius: 10px; padding: 0 8px;
+        font-size: .7rem; font-weight: 700;
+        min-width: 22px; text-align: center;
+        animation: pendingCsPulse 2s ease-in-out infinite;
+    }
+    @@keyframes pendingCsPulse {
+        0%, 100% { box-shadow: 0 0 4px rgba(236,72,153,.3); }
+        50%      { box-shadow: 0 0 12px rgba(236,72,153,.6); }
+    }
+    .home-pending-cs-table {
+        font-size: .78rem; color: #e2e8f0;
+    }
+    .home-pending-cs-table thead th {
+        background: rgba(0,0,0,.2); color: #94a3b8;
+        font-size: .7rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: .5px;
+        border-bottom: 1px solid rgba(255,255,255,.08);
+        padding: 8px 12px;
+    }
+    .home-pcs-sortable {
+        cursor: pointer; user-select: none; transition: color .15s;
+    }
+    .home-pcs-sortable:hover { color: #e2e8f0; }
+    .home-pcs-sort-idle { opacity: .3; font-size: .65rem; margin-left: 2px; }
+    .home-pcs-sort-active { color: #f472b6; font-size: .75rem; margin-left: 2px; }
+    .home-pcs-row {
+        cursor: pointer; transition: background .15s;
+    }
+    .home-pcs-row:hover {
+        background: rgba(244,114,182,.1) !important;
+    }
+    .home-pcs-row td {
+        padding: 7px 12px; vertical-align: middle;
+        border-bottom: 1px solid rgba(255,255,255,.04);
+    }
+    .home-pcs-row-odd td { background: rgba(255,255,255,.02); }
+    .home-pcs-row-even td { background: rgba(0,0,0,.08); }
+    .home-pcs-pcname {
+        font-weight: 700; color: #f8fafc;
+    }
+    .home-pcs-session {
+        color: #cbd5e1;
+    }
+    .home-pcs-date {
+        color: #94a3b8; font-variant-numeric: tabular-nums;
+    }
+    .home-pcs-dur {
+        font-weight: 600; color: #e2e8f0; font-variant-numeric: tabular-nums;
+    }
+    .home-pcs-solo-badge {
+        background: linear-gradient(135deg, #7c3aed, #a855f7);
+        color: #fff; font-size: .65rem; font-weight: 700;
+        padding: 2px 8px; border-radius: 10px;
+        letter-spacing: .3px;
+    }
+    .home-pcs-regular-badge {
+        background: rgba(100,116,139,.3); color: #94a3b8;
+        font-size: .65rem; font-weight: 600;
+        padding: 2px 8px; border-radius: 10px;
+    }
+    .home-pcs-cs-btn {
+        background: linear-gradient(135deg, #0ea5e9, #3b82f6);
+        border: none; color: #fff; border-radius: 6px;
+        padding: 3px 12px; font-size: .72rem; font-weight: 600;
+        cursor: pointer; transition: all .15s;
+        position: relative; overflow: hidden;
+    }
+    .home-pcs-cs-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(59,130,246,.4);
+    }
+    .home-pcs-cs-btn::after {
+        content: ''; position: absolute; top: 0; left: -100%;
+        width: 100%; height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,.2), transparent);
+        animation: csSessionShimmer 3s ease-in-out infinite;
+    }
 </style>
 
 @code {
@@ -869,6 +1060,10 @@
         .ToList();
     HashSet<(int, int)>      _pendingCs   = [];
     Dictionary<int, string>  _pcCsNames   = [];
+    List<DashboardService.PendingCsSession> _pendingCsSessions = [];
+    bool _pendingCsExpanded = true;
+    string _pcsSortCol = "pc";   // "pc", "date", "dur"
+    bool _pcsSortAsc = true;
 
     int?       _selPcId;
     int?       _selDay;
@@ -1001,6 +1196,9 @@
 
             RefreshCsMetadata();
         }
+
+        if (_isCS)
+            _pendingCsSessions = DashSvc.GetPendingCsSessions();
 
         _weekRemarks = DashSvc.GetWeeklyRemarks(_userId.Value, _weekStart.ToString("yyyy-MM-dd")) ?? "";
         _remarksSaved = false;
@@ -1144,6 +1342,45 @@
         if (!string.IsNullOrWhiteSpace(sessionName))
             url += $"&file={Uri.EscapeDataString(sessionName)}";
         await JS.InvokeVoidAsync("pcfOpenTab", url);
+    }
+
+    // ── Pending CS table ──
+    async Task OpenPendingCs(DashboardService.PendingCsSession s)
+    {
+        var url = $"/PcFolder/{s.PcId}?sessionId={s.SessionId}";
+        if (!string.IsNullOrWhiteSpace(s.SessionName))
+            url += $"&file={Uri.EscapeDataString(s.SessionName)}";
+        await JS.InvokeVoidAsync("pcfOpenTab", url);
+    }
+
+    void TogglePcsSort(string col)
+    {
+        if (_pcsSortCol == col) _pcsSortAsc = !_pcsSortAsc;
+        else { _pcsSortCol = col; _pcsSortAsc = true; }
+    }
+
+    string PcsSortIcon(string col)
+    {
+        if (_pcsSortCol != col) return "ri-arrow-up-down-line" + " home-pcs-sort-idle";
+        return _pcsSortAsc ? "ri-arrow-up-s-line home-pcs-sort-active" : "ri-arrow-down-s-line home-pcs-sort-active";
+    }
+
+    List<DashboardService.PendingCsSession> GetSortedPendingCs()
+    {
+        IEnumerable<DashboardService.PendingCsSession> q = _pendingCsSessions;
+        q = _pcsSortCol switch
+        {
+            "date" => _pcsSortAsc
+                ? q.OrderBy(s => s.SessionDate).ThenBy(s => s.PcName)
+                : q.OrderByDescending(s => s.SessionDate).ThenBy(s => s.PcName),
+            "dur" => _pcsSortAsc
+                ? q.OrderBy(s => s.TotalSeconds).ThenBy(s => s.PcName)
+                : q.OrderByDescending(s => s.TotalSeconds).ThenBy(s => s.PcName),
+            _ => _pcsSortAsc
+                ? q.OrderBy(s => s.PcName).ThenBy(s => s.SessionDate)
+                : q.OrderByDescending(s => s.PcName).ThenBy(s => s.SessionDate),
+        };
+        return q.ToList();
     }
 
     // ── Edit CS Review ──

@@ -1692,6 +1692,43 @@ public class DashboardService
         return (long)cmd.ExecuteScalar()! > 0;
     }
 
+    public record PendingCsSession(
+        int SessionId, int PcId, string PcName, string SessionName,
+        string SessionDate, int TotalSeconds, bool IsSolo);
+
+    /// Returns all sessions from the last <paramref name="lookbackDays"/> days that have no CS review yet.
+    public List<PendingCsSession> GetPendingCsSessions(int lookbackDays = 10)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        var cutoff = DateOnly.FromDateTime(DateTime.Today.AddDays(-lookbackDays)).ToString("yyyy-MM-dd");
+        cmd.CommandText = $@"
+            SELECT s.SessionId, s.PcId,
+                   {FullNameExpr} AS PcName,
+                   COALESCE(s.Name, '') AS SessionName,
+                   s.SessionDate,
+                   COALESCE(s.LengthSeconds,0) + COALESCE(s.AdminSeconds,0) AS TotalSec,
+                   CASE WHEN s.PcId = s.AuditorId THEN 1 ELSE 0 END AS IsSolo
+            FROM sess_sessions s
+            JOIN core_persons p ON p.PersonId = s.PcId
+            LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
+            WHERE cr.CsReviewId IS NULL
+              AND s.SessionDate >= @cutoff
+            ORDER BY PcName, s.SessionDate, s.SequenceInDay";
+        cmd.Parameters.AddWithValue("@cutoff", cutoff);
+        var list = new List<PendingCsSession>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            list.Add(new PendingCsSession(
+                r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3),
+                r.GetString(4), r.IsDBNull(5) ? 0 : r.GetInt32(5),
+                r.GetInt32(6) == 1));
+        }
+        return list;
+    }
+
     // ── Staff Messaging ─────────────────────────────────────────
 
     public List<StaffMember> GetActiveStaffMembers()
