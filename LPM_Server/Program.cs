@@ -116,6 +116,7 @@ builder.Services.AddSingleton<LPM.Services.MessageNotifier>();
 builder.Services.AddSingleton<LPM.Services.FolderService>();
 builder.Services.AddSingleton<LPM.Services.CsNotificationService>();
 builder.Services.AddSingleton<LPM.Services.ShortcutService>();
+builder.Services.AddSingleton<LPM.Services.ImportJobService>();
 
 // Add session services
 builder.Services.AddDistributedMemoryCache();

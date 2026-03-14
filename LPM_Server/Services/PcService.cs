@@ -129,6 +129,37 @@ public class PcService
         return "ACTIVE_DUPLICATE";
     }
 
+    /// <summary>Find an existing PC by name or create a new one. Returns (PcId, wasCreated).</summary>
+    public (int PcId, bool WasCreated) FindOrCreatePcByName(string folderName)
+    {
+        // Strip numeric prefix like "25-" from folder name
+        var name = System.Text.RegularExpressions.Regex.Replace(folderName.Trim(), @"^\d+-\s*", "");
+        var parts = name.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var firstName = parts.Length > 0 ? parts[0] : name;
+        var lastName = parts.Length > 1 ? parts[1] : "";
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Try to find existing PC by name match
+        using var findCmd = conn.CreateCommand();
+        findCmd.CommandText = @"
+            SELECT pc.PcId FROM core_pcs pc
+            JOIN core_persons p ON p.PersonId = pc.PcId
+            WHERE LOWER(TRIM(p.FirstName)) = LOWER(@fn)
+              AND LOWER(COALESCE(TRIM(p.LastName),'')) = LOWER(@ln)
+            LIMIT 1";
+        findCmd.Parameters.AddWithValue("@fn", firstName);
+        findCmd.Parameters.AddWithValue("@ln", lastName);
+        var existing = findCmd.ExecuteScalar();
+        if (existing is long id)
+            return ((int)id, false);
+
+        // Create new
+        var newId = AddPcWithPerson(firstName, lastName, "", "", "", "");
+        return (newId, true);
+    }
+
     public int AddPcWithPerson(string firstName, string lastName,
         string phone, string email, string dateOfBirth, string gender,
         int? orgId = null, int? sourceId = null, string notes = "", string nick = "")

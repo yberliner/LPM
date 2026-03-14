@@ -1,0 +1,529 @@
+@page "/Import"
+@using LPM.Services
+@attribute [Authorize]
+@inject FolderService FolderSvc
+@inject PcService PcSvc
+@inject DashboardService DashSvc
+@inject ImportJobService ImportJob
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="p-3 p-md-4" style="max-width:960px;">
+
+    <h4 class="fw-bold mb-1" style="color:#37474f;">Import PC Folders</h4>
+    <span class="text-muted" style="font-size:.82rem;">
+        Import a single PC folder or an entire directory of PC folders from your machine.
+    </span>
+
+    @{ var job = ImportJob.CurrentJob; }
+
+    @* ── Active/completed job display ── *@
+    @if (job != null && job.Status is ImportStatus.Processing or ImportStatus.Complete or ImportStatus.Failed)
+    {
+        <div class="card mt-3" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
+            <div class="card-header py-2" style="background:rgba(59,130,246,.15); color:#60a5fa; font-size:.85rem;">
+                <i class="@(job.Status == ImportStatus.Processing ? "ri-loader-4-line" : job.Status == ImportStatus.Complete ? "ri-check-double-line" : "ri-error-warning-line") me-1"></i>
+                <strong>@(job.Status switch {
+                    ImportStatus.Processing => "Import in progress...",
+                    ImportStatus.Complete => "Import complete!",
+                    ImportStatus.Failed => "Import failed",
+                    _ => ""
+                })</strong>
+            </div>
+            <div class="card-body py-3">
+                @if (job.Status == ImportStatus.Processing)
+                {
+                    <div class="d-flex align-items-center gap-2 mb-2" style="font-size:.82rem;">
+                        <span class="spinner-border spinner-border-sm"></span>
+                        <span>@job.CurrentFileName</span>
+                    </div>
+                }
+                <div class="progress mb-2" style="height:8px; background:#334155;">
+                    <div class="progress-bar @(job.Status == ImportStatus.Failed ? "bg-danger" : "bg-success")"
+                         role="progressbar"
+                         style="width:@(job.TotalFiles > 0 ? job.ProcessedFiles * 100 / job.TotalFiles : 0)%; transition:width .3s;"></div>
+                </div>
+                <div style="font-size:.75rem; color:#94a3b8;">
+                    @job.ProcessedFiles / @job.TotalFiles files —
+                    @job.SkippedFiles skipped —
+                    @job.NewPcsCreated new PCs —
+                    @job.SessionsCreated sessions
+                </div>
+                @if (job.Status == ImportStatus.Failed && !string.IsNullOrEmpty(job.ErrorMessage))
+                {
+                    <div class="alert alert-danger mt-2 py-1" style="font-size:.8rem;">
+                        <i class="ri-error-warning-line me-1"></i>@job.ErrorMessage
+                    </div>
+                }
+                @if (job.Status == ImportStatus.Complete)
+                {
+                    <div class="alert alert-success mt-2 py-1 mb-0" style="font-size:.8rem;">
+                        <i class="ri-check-double-line me-1"></i>All files processed successfully.
+                    </div>
+                }
+            </div>
+            @if (job.Status is ImportStatus.Complete or ImportStatus.Failed)
+            {
+                <div class="card-footer py-2" style="border-color:#334155;">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="ClearJob">
+                        <i class="ri-close-line me-1"></i>Clear &amp; Start New Import
+                    </button>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        @* ── Normal import UI ── *@
+
+        @* ── Mode toggle ── *@
+        <div class="btn-group mt-3 mb-3" role="group">
+            <button class="btn btn-sm @(_bulkMode ? "btn-outline-primary" : "btn-primary")"
+                    @onclick="() => { _bulkMode = false; ResetState(); }">
+                <i class="ri-folder-line me-1"></i>Single PC
+            </button>
+            <button class="btn btn-sm @(_bulkMode ? "btn-primary" : "btn-outline-primary")"
+                    @onclick="() => { _bulkMode = true; ResetState(); }">
+                <i class="ri-folders-line me-1"></i>All PC Folders
+            </button>
+        </div>
+
+        <div class="mb-2" style="font-size:.82rem; color:#64748b;">
+            @if (_bulkMode)
+            {
+                <span>Select the <strong>root directory</strong> containing all PC folders.</span>
+            }
+            else
+            {
+                <span>Select a <strong>single PC folder</strong> (e.g. <code>25-John Doe</code>) containing Front Cover, Back Cover, WorkSheets.</span>
+            }
+        </div>
+
+        <input type="file" id="import-folder-input" webkitdirectory directory multiple
+               style="display:none;" @onchange="OnFolderSelected" />
+
+        <button class="btn btn-primary d-flex align-items-center gap-2" disabled="@_uploading"
+                @onclick="OpenFolderPicker">
+            <i class="ri-folder-open-line"></i>Select Folder
+        </button>
+
+        @* ── Cover file mapping ── *@
+        @if (_coverMappings.Count > 0)
+        {
+            <div class="card mt-3" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
+                <div class="card-header py-2" style="background:rgba(251,191,36,.15); color:#fbbf24; font-size:.85rem; border-color:rgba(251,191,36,.2);">
+                    <i class="ri-file-settings-line me-1"></i>
+                    <strong>Map Cover Files to Folder Items</strong>
+                    <span class="ms-2" style="font-size:.72rem; opacity:.7;">Adjust if needed, then start import.</span>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0" style="font-size:.78rem; color:#e2e8f0;">
+                        <thead>
+                            <tr style="background:rgba(0,0,0,.2); color:#94a3b8;">
+                                <th style="padding:8px 12px; width:30%;">File Name</th>
+                                <th style="padding:8px 12px; width:15%;">Section</th>
+                                <th style="padding:8px 12px; width:25%;">PC</th>
+                                <th style="padding:8px 12px; width:30%;">Assigned Folder Item</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var m in _coverMappings)
+                            {
+                                var mapping = m;
+                                var sectionItems = _folderItems.Where(fi => fi.Section == mapping.Section).ToList();
+                                <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+                                    <td style="padding:6px 12px;">
+                                        <i class="ri-file-pdf-2-line me-1" style="color:#ef5350;"></i>@mapping.FileName
+                                    </td>
+                                    <td style="padding:6px 12px; color:#94a3b8;">@mapping.Section.Replace("_", " ")</td>
+                                    <td style="padding:6px 12px;">@mapping.PcName</td>
+                                    <td style="padding:6px 12px;">
+                                        <select class="form-select form-select-sm"
+                                                style="background:#0f172a; color:#e2e8f0; border-color:#475569; font-size:.75rem;"
+                                                value="@mapping.AssignedItemId"
+                                                @onchange="e => mapping.AssignedItemId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0">
+                                            <option value="0">— None —</option>
+                                            @foreach (var item in sectionItems)
+                                            {
+                                                <option value="@item.ItemId">@item.Name</option>
+                                            }
+                                        </select>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="card-footer py-2 d-flex align-items-center gap-2" style="border-color:#334155;">
+                    @if (!_uploading)
+                    {
+                        <button class="btn btn-sm btn-success d-flex align-items-center gap-1"
+                                @onclick="StartUploadAndImport">
+                            <i class="ri-upload-2-line"></i>Start Import
+                        </button>
+                        <span style="font-size:.72rem; color:#64748b;">@_manifest.Sum(m => m.Files.Count) files across @_manifest.Count PC(s)</span>
+                    }
+                </div>
+            </div>
+        }
+
+        @* ── Manifest + Start Import (no cover files) ── *@
+        @if (_manifest.Count > 0 && _coverMappings.Count == 0)
+        {
+            <div class="card mt-3" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
+                <div class="card-header py-2" style="background:rgba(59,130,246,.15); color:#60a5fa; font-size:.85rem;">
+                    <i class="ri-list-check me-1"></i>
+                    <strong>@_manifest.Count PC(s) — @_manifest.Sum(m => m.Files.Count) file(s) total</strong>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm table-hover mb-0" style="font-size:.78rem; color:#e2e8f0;">
+                        <thead>
+                            <tr style="background:rgba(0,0,0,.2); color:#94a3b8;">
+                                <th style="padding:8px 12px;">PC Name</th>
+                                <th style="padding:8px 12px;">Status</th>
+                                <th style="padding:8px 12px; text-align:center;">Front</th>
+                                <th style="padding:8px 12px; text-align:center;">Back</th>
+                                <th style="padding:8px 12px; text-align:center;">WorkSheets</th>
+                                <th style="padding:8px 12px; text-align:center;">Att.</th>
+                                <th style="padding:8px 12px; text-align:center;">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var pc in _manifest)
+                            {
+                                <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+                                    <td style="padding:7px 12px; font-weight:600;">
+                                        <i class="ri-user-line me-1" style="opacity:.5;"></i>@pc.PcName
+                                    </td>
+                                    <td style="padding:7px 12px;">
+                                        @if (pc.ExistingPcId.HasValue)
+                                        { <span style="color:#22c55e; font-size:.72rem;">Existing</span> }
+                                        else
+                                        { <span style="color:#fbbf24; font-size:.72rem;">New PC</span> }
+                                    </td>
+                                    <td style="padding:7px 12px; text-align:center;">@pc.Files.Count(f => f.Section == "Front_Cover")</td>
+                                    <td style="padding:7px 12px; text-align:center;">@pc.Files.Count(f => f.Section == "Back_Cover")</td>
+                                    <td style="padding:7px 12px; text-align:center;">@pc.Files.Count(f => f.Section == "WorkSheets")</td>
+                                    <td style="padding:7px 12px; text-align:center;">@pc.Files.Count(f => f.Section == "Attachment")</td>
+                                    <td style="padding:7px 12px; text-align:center; font-weight:600;">@pc.Files.Count</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="card-footer py-2" style="border-color:#334155;">
+                    @if (!_uploading)
+                    {
+                        <button class="btn btn-sm btn-success d-flex align-items-center gap-1"
+                                @onclick="StartUploadAndImport">
+                            <i class="ri-upload-2-line"></i>Start Import
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+
+        @* ── Upload progress (Phase 1) ── *@
+        @if (_uploading)
+        {
+            <div class="mt-3">
+                <div class="d-flex align-items-center gap-2 mb-1" style="font-size:.82rem;">
+                    <span class="spinner-border spinner-border-sm"></span>
+                    <span>Uploading files to server... @_uploadedCount / @_totalFileCount</span>
+                </div>
+                <div class="progress" style="height:8px; background:#334155;">
+                    <div class="progress-bar bg-info" role="progressbar"
+                         style="width:@(_totalFileCount > 0 ? _uploadedCount * 100 / _totalFileCount : 0)%; transition:width .3s;"></div>
+                </div>
+                <div class="mt-1" style="font-size:.72rem; color:#94a3b8;">
+                    Stay on this page until upload completes. Processing will continue in the background.
+                </div>
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <div class="alert alert-danger mt-3 py-2" style="font-size:.82rem;">
+                <i class="ri-error-warning-line me-1"></i>@_errorMessage
+            </div>
+        }
+    }
+</div>
+
+@code {
+    bool _bulkMode;
+    bool _uploading;
+    string _errorMessage = "";
+    int _uploadedCount, _totalFileCount;
+    int? _userId;
+
+    List<DashboardService.FolderItem> _folderItems = [];
+    List<LocalPcManifest> _manifest = [];
+    List<CoverMappingLocal> _coverMappings = [];
+
+    // Local records (with FileIndex for JS interop during upload)
+    record LocalFileEntry(int FileIndex, string RelativePath, string FileName, string Section,
+        string? ParentSessionFile, long Size, string? LastModified);
+    record LocalPcManifest(string FolderName, string PcName, int? ExistingPcId, List<LocalFileEntry> Files);
+    class CoverMappingLocal
+    {
+        public string FileName { get; set; } = "";
+        public string Section { get; set; } = "";
+        public string PcName { get; set; } = "";
+        public string PcFolderName { get; set; } = "";
+        public int AssignedItemId { get; set; }
+    }
+    record ManifestEntry(int index, string relativePath, long size, string lastModified);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _folderItems = DashSvc.GetFolderItems();
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var username = auth.User.Identity?.Name ?? "";
+        _userId = DashSvc.GetUserIdByUsername(username);
+
+        ImportJob.OnProgressChanged += OnJobProgress;
+    }
+
+    void OnJobProgress()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        ImportJob.OnProgressChanged -= OnJobProgress;
+    }
+
+    void ClearJob()
+    {
+        ImportJob.ClearJob();
+    }
+
+    void ResetState()
+    {
+        _manifest.Clear();
+        _coverMappings.Clear();
+        _errorMessage = "";
+        _uploadedCount = _totalFileCount = 0;
+    }
+
+    async Task OpenFolderPicker()
+    {
+        ResetState();
+        await JS.InvokeVoidAsync("folderImport.openPicker", "import-folder-input");
+    }
+
+    async Task OnFolderSelected()
+    {
+        _errorMessage = "";
+        var entries = await JS.InvokeAsync<List<ManifestEntry>>("folderImport.readManifest", "import-folder-input");
+        if (entries == null || entries.Count == 0) { _errorMessage = "No files found."; return; }
+
+        entries = entries.Where(e => e.relativePath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (entries.Count == 0) { _errorMessage = "No PDF files found."; return; }
+
+        ParseManifest(entries);
+        BuildCoverMappings();
+        StateHasChanged();
+    }
+
+    static string? DetectSection(string folderName)
+    {
+        var lower = folderName.ToLowerInvariant().Replace("_", " ").Replace("-", " ");
+        if (lower.Contains("front") && lower.Contains("cover")) return "Front_Cover";
+        if (lower.Contains("back") && lower.Contains("cover")) return "Back_Cover";
+        if (lower.Contains("worksheet")) return "WorkSheets";
+        return null;
+    }
+
+    void ParseManifest(List<ManifestEntry> entries)
+    {
+        _manifest.Clear();
+        var pcGroups = new Dictionary<string, List<(ManifestEntry Entry, string Section, string FileName, string? ParentSession)>>(StringComparer.OrdinalIgnoreCase);
+
+        int pcIndex = _bulkMode ? 1 : 0;
+        int subStart = pcIndex + 1;
+
+        foreach (var e in entries)
+        {
+            var parts = e.relativePath.Split('/');
+            if (parts.Length < subStart + 2) continue;
+
+            var pcFolder = parts[pcIndex];
+            var fileName = parts[^1];
+            string? section = null;
+            string? parentSession = null;
+
+            for (int i = subStart; i < parts.Length - 1; i++)
+            {
+                var seg = parts[i];
+                if (seg.EndsWith("_att", StringComparison.OrdinalIgnoreCase))
+                {
+                    parentSession = seg[..^4] + ".pdf";
+                    section = "Attachment";
+                    break;
+                }
+                var detected = DetectSection(seg);
+                if (detected != null) section = detected;
+            }
+
+            if (section == null) continue;
+            if (!pcGroups.ContainsKey(pcFolder)) pcGroups[pcFolder] = [];
+            pcGroups[pcFolder].Add((e, section, fileName, parentSession));
+        }
+
+        foreach (var (folder, files) in pcGroups)
+        {
+            var pcName = System.Text.RegularExpressions.Regex.Replace(folder.Trim(), @"^\d+-\s*", "");
+            var (existingId, _) = TryFindPc(pcName);
+            var importFiles = files.Select(f => new LocalFileEntry(
+                f.Entry.index, f.Entry.relativePath, f.FileName, f.Section,
+                f.ParentSession, f.Entry.size, f.Entry.lastModified
+            )).ToList();
+            _manifest.Add(new LocalPcManifest(folder, pcName, existingId, importFiles));
+        }
+    }
+
+    (int? PcId, bool Found) TryFindPc(string pcName)
+    {
+        var allPcs = PcSvc.GetAllPcs();
+        var match = allPcs.FirstOrDefault(p => p.FullName.Equals(pcName, StringComparison.OrdinalIgnoreCase));
+        if (match != null) return (match.PcId, true);
+        var parts = pcName.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var fullName = $"{(parts.Length > 0 ? parts[0] : pcName)} {(parts.Length > 1 ? parts[1] : "")}".Trim();
+        match = allPcs.FirstOrDefault(p => p.FullName.Equals(fullName, StringComparison.OrdinalIgnoreCase));
+        return match != null ? (match.PcId, true) : (null, false);
+    }
+
+    // ── Keyword matching for cover files ──
+
+    static readonly Dictionary<string, string[]> ItemKeywords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        { "Case Progress Sheet", new[] { "case progress", "progress sheet", "cps" } },
+        { "Yellow Sheet",        new[] { "yellow" } },
+        { "OCA Graph",           new[] { "oca" } },
+        { "Program - Main",      new[] { "program main", "main program", "program-main", "prog main" } },
+        { "Program - Sub",       new[] { "program sub", "sub program", "program-sub", "prog sub" } },
+        { "Folder Summary",      new[] { "summary", "folder summary" } },
+        { "Dn Flow Table",       new[] { "dn flow", "flow table", "dnflow" } },
+        { "FES",                  new[] { "fes" } },
+        { "Routing Form",        new[] { "routing" } },
+        { "Invoice Form",        new[] { "invoice" } },
+    };
+
+    int AutoMatchItem(string fileName, string section)
+    {
+        var nameNoExt = Path.GetFileNameWithoutExtension(fileName);
+        var normalized = StripDatePrefix(nameNoExt).Replace("_", " ").Replace("-", " ").Replace(".", " ");
+        var lower = normalized.ToLowerInvariant();
+        var sectionItems = _folderItems.Where(fi => fi.Section == section).ToList();
+
+        foreach (var item in sectionItems)
+        {
+            if (ItemKeywords.TryGetValue(item.Name, out var keywords))
+                foreach (var kw in keywords)
+                    if (lower.Contains(kw)) return item.ItemId;
+
+            var itemWords = item.Name.ToLowerInvariant().Replace("-", " ").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (itemWords.Any(w => w.Length >= 3 && lower.Contains(w)))
+                return item.ItemId;
+        }
+        return 0;
+    }
+
+    static string StripDatePrefix(string name)
+    {
+        // Handle yyMMdd format (e.g. 250806) — 6 digits followed by space or non-digit
+        if (name.Length >= 7 && name[..6].All(char.IsDigit) && !char.IsDigit(name[6]))
+            return name[6..].TrimStart(' ', '_', '-');
+        // Handle yy-MM-dd_ format
+        if (name.Length >= 9 && name[2] == '-' && name[5] == '-' && name[8] == '_')
+            return name[9..];
+        return name;
+    }
+
+    void BuildCoverMappings()
+    {
+        _coverMappings.Clear();
+        foreach (var pc in _manifest)
+        {
+            foreach (var f in pc.Files.Where(f => f.Section is "Front_Cover" or "Back_Cover"))
+            {
+                _coverMappings.Add(new CoverMappingLocal
+                {
+                    FileName = f.FileName,
+                    Section = f.Section,
+                    PcName = pc.PcName,
+                    PcFolderName = pc.FolderName,
+                    AssignedItemId = AutoMatchItem(f.FileName, f.Section)
+                });
+            }
+        }
+    }
+
+    // ── Upload + kick off background ──
+
+    async Task StartUploadAndImport()
+    {
+        if (!_userId.HasValue) { _errorMessage = "User not identified."; return; }
+
+        _totalFileCount = _manifest.Sum(m => m.Files.Count);
+        var jobId = ImportJob.TryStartUpload(_userId.Value, _totalFileCount);
+        if (jobId == null) { _errorMessage = "An import is already in progress."; return; }
+
+        _uploading = true;
+        _uploadedCount = 0;
+        _errorMessage = "";
+        StateHasChanged();
+
+        try
+        {
+            // Phase 1: Upload all files from browser to server temp folder
+            foreach (var pc in _manifest)
+            {
+                foreach (var file in pc.Files)
+                {
+                    var base64 = await JS.InvokeAsync<string>("folderImport.readFileAsBase64",
+                        "import-folder-input", file.FileIndex);
+                    if (!string.IsNullOrEmpty(base64))
+                    {
+                        var bytes = Convert.FromBase64String(base64);
+                        ImportJob.RecordFileUploaded(jobId, pc.FolderName, file.Section,
+                            file.FileName, bytes, file.ParentSessionFile);
+                    }
+                    _uploadedCount++;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+
+            // Phase 2: Convert local manifests to service manifests and start background processing
+            var svcManifest = _manifest.Select(pc => new ImportPcManifest(
+                pc.FolderName, pc.PcName, pc.ExistingPcId,
+                pc.Files.Select(f => new ImportFileManifest(
+                    f.RelativePath, f.FileName, f.Section, f.ParentSessionFile, f.LastModified
+                )).ToList()
+            )).ToList();
+
+            var svcCoverMappings = _coverMappings.Select(m =>
+                new ImportCoverMapping(m.FileName, m.Section, m.PcFolderName, m.AssignedItemId)
+            ).ToList();
+
+            ImportJob.StartProcessing(jobId, svcManifest, svcCoverMappings);
+
+            // Clear local state — job is now tracked by the singleton
+            _manifest.Clear();
+            _coverMappings.Clear();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Upload failed: {ex.Message}";
+        }
+        finally
+        {
+            _uploading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}

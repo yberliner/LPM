@@ -179,6 +179,58 @@ public class DashboardService
         return Convert.ToInt32(cmd.ExecuteScalar());
     }
 
+    /// <summary>Insert a session with a specific date, and mark it verified. Returns SessionId.</summary>
+    public int CreateImportedSessionWithDate(int pcId, int auditorId, string sessionName,
+        string sessionDate, string createdAt, int verifiedByUserId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        using var seqCmd = conn.CreateCommand();
+        seqCmd.CommandText = @"
+            SELECT COALESCE(MAX(SequenceInDay), 0)
+            FROM sess_sessions
+            WHERE PcId = @pc AND AuditorId = @aud AND SessionDate = @dt";
+        seqCmd.Parameters.AddWithValue("@pc", pcId);
+        seqCmd.Parameters.AddWithValue("@aud", auditorId);
+        seqCmd.Parameters.AddWithValue("@dt", sessionDate);
+        var maxSeq = (long)(seqCmd.ExecuteScalar() ?? 0L);
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO sess_sessions
+                (PcId, AuditorId, SessionDate, SequenceInDay, LengthSeconds, Name,
+                 CreatedByUserId, CreatedAt, VerifiedStatus, VerifiedByUserId, VerifiedAt)
+            VALUES (@pc, @aud, @dt, @seq, 0, @name,
+                    @creator, @createdAt, 'Verified', @verifier, @verifiedAt);
+            SELECT last_insert_rowid();";
+        cmd.Parameters.AddWithValue("@pc", pcId);
+        cmd.Parameters.AddWithValue("@aud", auditorId);
+        cmd.Parameters.AddWithValue("@dt", sessionDate);
+        cmd.Parameters.AddWithValue("@seq", maxSeq + 1);
+        cmd.Parameters.AddWithValue("@name", sessionName);
+        cmd.Parameters.AddWithValue("@creator", verifiedByUserId);
+        cmd.Parameters.AddWithValue("@createdAt", createdAt);
+        cmd.Parameters.AddWithValue("@verifier", verifiedByUserId);
+        cmd.Parameters.AddWithValue("@verifiedAt", createdAt);
+        return Convert.ToInt32(cmd.ExecuteScalar());
+    }
+
+    public record FolderItem(int ItemId, string Name, string Section);
+
+    public List<FolderItem> GetFolderItems()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT ItemId, Name, Section FROM lkp_folder_items ORDER BY Section, ItemId";
+        var list = new List<FolderItem>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new FolderItem(r.GetInt32(0), r.GetString(1), r.GetString(2)));
+        return list;
+    }
+
     // ── Staff Permissions ─────────────────────────────────────────
 
     /// <summary>

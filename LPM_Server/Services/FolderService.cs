@@ -175,6 +175,73 @@ public class FolderService
         return true;
     }
 
+    // ── Import helpers ────────────────────────────────────────
+
+    public static readonly HashSet<string> ValidSections = new(StringComparer.OrdinalIgnoreCase)
+        { "Front_Cover", "Back_Cover", "WorkSheets" };
+
+    /// <summary>Check if a file already exists in a PC section folder.</summary>
+    public bool SectionFileExists(int pcId, string section, string fileName)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return false;
+        var path = Path.Combine(folder, section, fileName);
+        return File.Exists(path);
+    }
+
+    /// <summary>Check if an attachment file already exists.</summary>
+    public bool AttachmentFileExists(int pcId, string sessionFileName, string attFileName)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return false;
+        var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
+        var path = Path.Combine(folder, "WorkSheets", $"{sessionNoExt}_att", attFileName);
+        return File.Exists(path);
+    }
+
+    /// <summary>Save an imported file to a PC section (Front_Cover, Back_Cover, WorkSheets). Keeps original name. Shrinks + encrypts.</summary>
+    public void SaveSectionFile(int pcId, string section, string fileName, byte[] fileBytes)
+    {
+        if (!ValidSections.Contains(section)) return;
+
+        var folder = GetPcFolder(pcId);
+        if (folder == null) return;
+
+        var sectionPath = Path.Combine(folder.FolderPath, section);
+        Directory.CreateDirectory(sectionPath);
+
+        var safeName = string.Join("_", fileName.Split(Path.GetInvalidFileNameChars()));
+        var fullPath = Path.Combine(sectionPath, safeName);
+
+        // Skip if already exists
+        if (File.Exists(fullPath)) return;
+
+        File.WriteAllBytes(fullPath, fileBytes);
+        TryShrinkPdf(fullPath);
+        EncryptFileInPlace(fullPath);
+    }
+
+    /// <summary>Save an imported attachment file. Keeps original name. Shrinks + encrypts.</summary>
+    public void SaveImportedAttachment(int pcId, string sessionFileName, string attFileName, byte[] fileBytes)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return;
+
+        var wsPath = Path.Combine(folder, "WorkSheets");
+        var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
+        var attDir = Path.Combine(wsPath, $"{sessionNoExt}_att");
+        Directory.CreateDirectory(attDir);
+
+        var safeName = string.Join("_", attFileName.Split(Path.GetInvalidFileNameChars()));
+        var fullPath = Path.Combine(attDir, safeName);
+
+        if (File.Exists(fullPath)) return;
+
+        File.WriteAllBytes(fullPath, fileBytes);
+        TryShrinkPdf(fullPath);
+        EncryptFileInPlace(fullPath);
+    }
+
     /// <summary>Save an uploaded session file to WorkSheets with date prefix. Returns the saved filename.</summary>
     public string? SaveUploadedFile(int pcId, string fileName, byte[] fileBytes)
     {
