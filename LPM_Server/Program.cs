@@ -37,6 +37,8 @@ AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Configuration.AddJsonFile("appsettings.secret.json", optional: true, reloadOnChange: false);
+
 builder.Services.Configure<FSMSGS.TCPSettings>(builder.Configuration.GetSection("TCPSettings"));
 
 builder.WebHost.ConfigureKestrel((context, options) =>
@@ -251,9 +253,9 @@ Func<HttpContext, string, Task<IResult>> DownloadHandler(string bucket) =>
 // ── PC Folder file endpoints ──
 app.MapGet("/api/pc-file", (int pcId, string path, LPM.Services.FolderService svc) =>
 {
-    var filePath = svc.GetFilePath(pcId, path);
-    if (filePath == null) return Results.NotFound();
-    return Results.File(filePath, "application/pdf");
+    var bytes = svc.ReadFileBytes(pcId, path);
+    if (bytes == null) return Results.NotFound();
+    return Results.File(bytes, "application/pdf");
 });
 
 app.MapPost("/api/pc-file-save", async (HttpContext ctx, LPM.Services.FolderService svc) =>

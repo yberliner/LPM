@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>LPM</RootNamespace>
     <AssemblyName>LPM</AssemblyName>
+    <UserSecretsId>34686800-087f-4f4d-8ea5-8c98c2064269</UserSecretsId>
   </PropertyGroup>
   <ItemGroup>
 <PackageReference Include="ClosedXML" Version="0.105.0" />

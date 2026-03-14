@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
 using Microsoft.Data.Sqlite;
 
 namespace LPM.Services;
@@ -12,6 +13,7 @@ public class FolderService
     private readonly string _basePath;
     private readonly string _connectionString;
     private readonly string? _ghostscriptExe;
+    private readonly byte[]? _encKey;
 
     public FolderService(IConfiguration config)
     {
@@ -19,6 +21,9 @@ public class FolderService
         var dbPath = config["Database:Path"] ?? "lifepower.db";
         _connectionString = $"Data Source={dbPath}";
         _ghostscriptExe = config["GhostscriptExe"];
+        var keyStr = config["EncryptionKey"];
+        if (!string.IsNullOrEmpty(keyStr))
+            _encKey = Convert.FromBase64String(keyStr);
     }
 
     public string? GetPcName(int pcId)
@@ -132,6 +137,7 @@ public class FolderService
     }
 
     /// <summary>Get the absolute path for a file given pcId and relative path</summary>
+    /// <summary>Get the absolute path for a file (for existence checks only).</summary>
     public string? GetFilePath(int pcId, string relativePath)
     {
         var folder = FindPcFolder(pcId);
@@ -143,7 +149,20 @@ public class FolderService
         return File.Exists(fullPath) ? fullPath : null;
     }
 
-    /// <summary>Save annotated PDF bytes back to disk</summary>
+    /// <summary>Read a file and return decrypted bytes. Handles both encrypted and legacy unencrypted files.</summary>
+    public byte[]? ReadFileBytes(int pcId, string relativePath)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return null;
+
+        var fullPath = SafeResolvePath(folder, relativePath);
+        if (fullPath == null || !File.Exists(fullPath)) return null;
+
+        var raw = File.ReadAllBytes(fullPath);
+        return DecryptBytes(raw);
+    }
+
+    /// <summary>Save annotated PDF bytes back to disk (encrypted)</summary>
     public bool SaveFile(int pcId, string relativePath, byte[] pdfBytes)
     {
         var folder = FindPcFolder(pcId);
@@ -152,7 +171,7 @@ public class FolderService
         var fullPath = SafeResolvePath(folder, relativePath);
         if (fullPath == null) return false;
 
-        File.WriteAllBytes(fullPath, pdfBytes);
+        File.WriteAllBytes(fullPath, EncryptBytes(pdfBytes));
         return true;
     }
 
@@ -179,8 +198,11 @@ public class FolderService
             counter++;
         }
 
+        // Write plaintext first so Ghostscript can shrink it
         File.WriteAllBytes(fullPath, fileBytes);
         TryShrinkPdf(fullPath);
+        // Now encrypt the (possibly shrunk) file in-place
+        EncryptFileInPlace(fullPath);
         return Path.GetFileName(fullPath);
     }
 
@@ -209,6 +231,15 @@ public class FolderService
 
         File.WriteAllBytes(fullPath, fileBytes);
         TryShrinkPdf(fullPath);
+        EncryptFileInPlace(fullPath);
+    }
+
+    /// <summary>Read a file from disk, encrypt its contents, and write back.</summary>
+    private void EncryptFileInPlace(string path)
+    {
+        if (_encKey == null || !File.Exists(path)) return;
+        var plain = File.ReadAllBytes(path);
+        File.WriteAllBytes(path, EncryptBytes(plain));
     }
 
     /// <summary>Shrink a PDF in-place using Ghostscript. Keeps the original if shrinking fails or produces a larger file.</summary>
@@ -284,6 +315,40 @@ public class FolderService
             Console.WriteLine($"[PDF Shrink] Error: {ex.Message}");
             if (File.Exists(tempOutput)) File.Delete(tempOutput);
         }
+    }
+
+    // ── AES-256-CBC encryption ──────────────────────────────────
+    // File format: [16-byte IV][encrypted data]
+    // Legacy unencrypted files (starting with %PDF) are returned as-is.
+
+    private byte[] EncryptBytes(byte[] plain)
+    {
+        if (_encKey == null) return plain;
+        using var aes = Aes.Create();
+        aes.Key = _encKey;
+        aes.GenerateIV();
+        using var enc = aes.CreateEncryptor();
+        var cipher = enc.TransformFinalBlock(plain, 0, plain.Length);
+        var result = new byte[aes.IV.Length + cipher.Length];
+        Buffer.BlockCopy(aes.IV, 0, result, 0, aes.IV.Length);
+        Buffer.BlockCopy(cipher, 0, result, aes.IV.Length, cipher.Length);
+        return result;
+    }
+
+    private byte[] DecryptBytes(byte[] raw)
+    {
+        if (_encKey == null) return raw;
+        // Detect unencrypted legacy files — PDF starts with %PDF
+        if (raw.Length >= 4 && raw[0] == '%' && raw[1] == 'P' && raw[2] == 'D' && raw[3] == 'F')
+            return raw;
+        if (raw.Length < 17) return raw; // too small to be encrypted (16 IV + at least 1 block)
+        using var aes = Aes.Create();
+        aes.Key = _encKey;
+        var iv = new byte[16];
+        Buffer.BlockCopy(raw, 0, iv, 0, 16);
+        aes.IV = iv;
+        using var dec = aes.CreateDecryptor();
+        return dec.TransformFinalBlock(raw, 16, raw.Length - 16);
     }
 
     /// <summary>Resolve relative path safely — prevents traversal and absolute path injection</summary>

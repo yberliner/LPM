@@ -9,6 +9,9 @@ obj/
 *.pdb
 *.o
 
+# Ignore secrets
+appsettings.secret.json
+
 # Ignore user-specific settings
 .vscode/
 .idea/
