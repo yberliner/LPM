@@ -300,6 +300,37 @@ public class FolderService
         File.Copy(fullPath, backupPath);
     }
 
+    /// <summary>Backup raw bytes (e.g. original upload before shrink/encrypt) to _backups/.</summary>
+    public void BackupBytes(int pcId, string fileName, byte[] bytes)
+    {
+        var backupDir = Path.Combine(_basePath, "_backups");
+        Directory.CreateDirectory(backupDir);
+
+        // Clean up files older than 10 days
+        foreach (var old in Directory.GetFiles(backupDir))
+        {
+            if (File.GetCreationTime(old) < DateTime.Now.AddDays(-10))
+                try { File.Delete(old); } catch { }
+        }
+
+        var backupName = $"{pcId}_{fileName}";
+        var backupPath = Path.Combine(backupDir, backupName);
+
+        if (File.Exists(backupPath))
+        {
+            var nameNoExt = Path.GetFileNameWithoutExtension(backupName);
+            var ext = Path.GetExtension(backupName);
+            var counter = 2;
+            while (File.Exists(backupPath))
+            {
+                backupPath = Path.Combine(backupDir, $"{nameNoExt}_{counter}{ext}");
+                counter++;
+            }
+        }
+
+        File.WriteAllBytes(backupPath, bytes);
+    }
+
     // ── Import helpers ────────────────────────────────────────
 
     public static readonly HashSet<string> ValidSections = new(StringComparer.OrdinalIgnoreCase)
@@ -398,6 +429,9 @@ public class FolderService
         var safeName = string.Join("_", fileName.Split(Path.GetInvalidFileNameChars()));
         var finalName = safeName;
         var fullPath = Path.Combine(wsPath, finalName);
+
+        // Backup the original upload before shrink+encrypt
+        BackupBytes(pcId, finalName, fileBytes);
 
         // Write plaintext first so Ghostscript can shrink it
         File.WriteAllBytes(fullPath, fileBytes);
