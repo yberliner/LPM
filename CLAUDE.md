@@ -10,6 +10,7 @@
 - Auth: cookie-based, roles are Admin and Customer
 
 ## Rules
+- For each implementation request, first create a complete implementation plan, print it, and wait for user approval/remarks/changes before writing any code
 - NEVER commit without explicit user permission
 - NEVER touch LPM.Tests unless explicitly asked
 - Proceed autonomously for file edits and builds; ask only for destructive/risky actions

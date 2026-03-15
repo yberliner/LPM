@@ -285,9 +285,22 @@
                 <button class="pcf-tool-btn" title="Undo — remove the last annotation on the active pane (Ctrl+Z)" @onclick="Undo">
                     <i class="ri-arrow-go-back-line"></i>
                 </button>
-                <button class="pcf-tool-btn" title="Add blank page at the end" @onclick="AddBlankPage">
-                    <i class="ri-file-add-line"></i>
-                </button>
+                <div class="pcf-addpage-wrap">
+                    <button class="pcf-tool-btn" title="Add blank page" @onclick="ToggleAddPageMenu">
+                        <i class="ri-file-add-line"></i>
+                    </button>
+                    @if (_showAddPageMenu)
+                    {
+                        <div class="pcf-addpage-menu">
+                            <button @onclick="AddBlankPageAbove">
+                                <i class="ri-arrow-up-line me-2"></i>Add Page Above
+                            </button>
+                            <button @onclick="AddBlankPageBelow">
+                                <i class="ri-arrow-down-line me-2"></i>Add Page Below
+                            </button>
+                        </div>
+                    }
+                </div>
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
                 <button class="pcf-save-btn" title="Save — save annotations to the PDF now (also auto-saves when switching files or closing)"
                         @onclick="SaveAnnotations"
@@ -549,6 +562,19 @@
         height: 30px; box-sizing: border-box;
     }
     .pcf-tool-btn:hover { background: rgba(255,255,255,.3); }
+    .pcf-addpage-wrap { position: relative; display: inline-block; }
+    .pcf-addpage-menu {
+        position: absolute; top: 100%; left: 0; z-index: 9999;
+        background: #1e293b; border: 1px solid #475569; border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0,0,0,.4); padding: 4px 0;
+        min-width: 180px; margin-top: 4px;
+    }
+    .pcf-addpage-menu button {
+        display: block; width: 100%; text-align: left; padding: 8px 14px;
+        background: none; border: none; color: #e2e8f0; font-size: .85rem;
+        cursor: pointer; white-space: nowrap;
+    }
+    .pcf-addpage-menu button:hover { background: rgba(255,255,255,.15); }
     .pcf-tool-active { background: #fff !important; color: #1e40af !important; font-weight: 700; }
     .pcf-color-wrap { position: relative; }
     .pcf-color-popup {
@@ -1120,9 +1146,20 @@
         await Undo();
     }
 
-    async Task AddBlankPage()
+    bool _showAddPageMenu;
+
+    void ToggleAddPageMenu() => _showAddPageMenu = !_showAddPageMenu;
+
+    async Task AddBlankPageAbove()
     {
-        await JS.InvokeVoidAsync("pcfViewer.addBlankPage", PaneIds[_activeIdx]);
+        _showAddPageMenu = false;
+        await JS.InvokeVoidAsync("pcfViewer.addBlankPage", PaneIds[_activeIdx], "above");
+    }
+
+    async Task AddBlankPageBelow()
+    {
+        _showAddPageMenu = false;
+        await JS.InvokeVoidAsync("pcfViewer.addBlankPage", PaneIds[_activeIdx], "below");
     }
 
     async Task PickColor(string color)

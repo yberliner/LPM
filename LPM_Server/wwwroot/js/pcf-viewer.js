@@ -336,10 +336,24 @@ window.pcfViewer = {
         if (!pane || pane.annotations.length === 0) return;
         const removed = pane.annotations.pop();
         if (removed.type === 'blank-page') {
-            // Remove the blank page from DOM and pane.pages
-            const pg = pane.pages.pop();
-            if (pg && pg.canvas && pg.canvas.parentElement) {
-                pg.canvas.parentElement.remove();
+            // Remove the blank page from DOM and pane.pages by its pageIdx
+            const idx = removed.pageIdx;
+            if (idx >= 0 && idx < pane.pages.length) {
+                const pg = pane.pages[idx];
+                if (pg && pg.canvas && pg.canvas.parentElement) {
+                    pg.canvas.parentElement.remove();
+                }
+                pane.pages.splice(idx, 1);
+                // Re-index pages
+                for (let i = 0; i < pane.pages.length; i++) {
+                    pane.pages[i].pageIdx = i;
+                }
+                // Shift annotation pageIdx values down for pages after the removed one
+                for (const ann of pane.annotations) {
+                    if (ann.pageIdx > idx) {
+                        ann.pageIdx--;
+                    }
+                }
             }
         } else {
             this._redrawOverlay(removed.pageIdx, paneId);
@@ -359,14 +373,43 @@ window.pcfViewer = {
         return false;
     },
 
-    addBlankPage(paneId) {
+    _getVisiblePageIdx(paneId) {
+        const pane = this.panes[paneId];
+        if (!pane || pane.pages.length === 0) return 0;
+        const viewer = document.getElementById('pcf-viewer-' + paneId);
+        if (!viewer) return 0;
+
+        const viewerRect = viewer.getBoundingClientRect();
+        const viewerMid = viewerRect.top + viewerRect.height / 2;
+        let bestIdx = 0;
+        let bestDist = Infinity;
+
+        for (let i = 0; i < pane.pages.length; i++) {
+            const wrapper = pane.pages[i].canvas.parentElement;
+            if (!wrapper) continue;
+            const r = wrapper.getBoundingClientRect();
+            const pageMid = r.top + r.height / 2;
+            const dist = Math.abs(pageMid - viewerMid);
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestIdx = i;
+            }
+        }
+        return bestIdx;
+    },
+
+    addBlankPage(paneId, position) {
         const pane = this.panes[paneId];
         if (!pane || pane.pages.length === 0) return;
 
-        // Use same dimensions as the last page
-        const lastPg = pane.pages[pane.pages.length - 1];
-        const w = lastPg.canvas.width;
-        const h = lastPg.canvas.height;
+        const visibleIdx = this._getVisiblePageIdx(paneId);
+        // insertIdx = the index the new page will occupy
+        const insertIdx = position === 'above' ? visibleIdx : visibleIdx + 1;
+
+        // Use same dimensions as the visible page
+        const refPg = pane.pages[visibleIdx];
+        const w = refPg.canvas.width;
+        const h = refPg.canvas.height;
 
         const viewer = document.getElementById('pcf-viewer-' + paneId);
         if (!viewer) return;
@@ -394,17 +437,35 @@ window.pcfViewer = {
         overlay.style.height = h + 'px';
         wrapper.appendChild(overlay);
 
-        viewer.appendChild(wrapper);
+        // Insert into DOM at the right position
+        if (insertIdx < pane.pages.length) {
+            const refWrapper = pane.pages[insertIdx].canvas.parentElement;
+            viewer.insertBefore(wrapper, refWrapper);
+        } else {
+            viewer.appendChild(wrapper);
+        }
 
-        const pageIdx = pane.pages.length;
-        pane.pages.push({ canvas, overlay, vp: lastPg.vp, pageIdx, scale: lastPg.scale });
-        this._attachEvents(overlay, pageIdx, paneId);
+        // Insert into pane.pages array
+        const newPage = { canvas, overlay, vp: refPg.vp, pageIdx: insertIdx, scale: refPg.scale };
+        pane.pages.splice(insertIdx, 0, newPage);
+
+        // Re-index all pages and annotations after insertion
+        for (let i = 0; i < pane.pages.length; i++) {
+            pane.pages[i].pageIdx = i;
+        }
+        for (const ann of pane.annotations) {
+            if (ann.pageIdx >= insertIdx) {
+                ann.pageIdx++;
+            }
+        }
+
+        this._attachEvents(overlay, insertIdx, paneId);
 
         // Mark as annotation so it gets saved
-        pane.annotations.push({ type: 'blank-page', pageIdx });
+        pane.annotations.push({ type: 'blank-page', pageIdx: insertIdx });
 
         // Scroll to the new page
-        wrapper.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
         // Notify Blazor
         if (this.dotNetRef) this.dotNetRef.invokeMethodAsync('OnAnnotationChanged');
