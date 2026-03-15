@@ -288,7 +288,7 @@
                             <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
                                     style="border-radius:8px; font-weight:600; font-size:.82rem; color:#fff !important;"
                                     @onclick="OpenImportSession">
-                                <i class="ri-upload-2-line"></i>Import Session
+                                <i class="ri-upload-2-line"></i>Add Session
                             </button>
                         </li>
                         <!-- End::header-element import-session -->
@@ -417,7 +417,7 @@
                    ExistingFullNames="@_existingPcNames"
                    OnSaved="SaveNewPc" />
 
-@* ── Import Session Wizard ── *@
+@* ── Add Session Wizard ── *@
 @if (_showImportWizard)
 {
     <div class="modal show d-block" tabindex="-1"
@@ -428,7 +428,7 @@
             <div class="modal-content" style="background:#1e293b; color:#e2e8f0; border:1px solid #334155;">
                 <div class="modal-header py-2" style="background:linear-gradient(135deg,#1565c0,#1e88e5); border-bottom:none;">
                     <h5 class="modal-title fs-15 text-white d-flex align-items-center gap-2">
-                        <i class="ri-upload-2-line"></i>Import Session
+                        <i class="ri-upload-2-line"></i>Add Session
                     </h5>
                     <button type="button" class="btn-close btn-close-white"
                             @onclick="() => _showImportWizard = false"></button>
@@ -762,7 +762,7 @@
     SpkNewPersonModal _addPcModal = default!;
     HashSet<string>? _existingPcNames;
 
-    // ── Import Session state ──
+    // ── Add Session state ──
     bool _showImportWizard;
     int  _importPcId;
     IBrowserFile? _importSessionFile;
