@@ -65,6 +65,224 @@
         @* ── Grids ── *@
         <div id="print-zone">
 
+            @* ══════ PENDING CS TABLE ══════ *@
+            @if (_isCS)
+            {
+                <div class="card mx-3 mt-3 mb-2 home-pending-cs-card">
+                    <div class="card-header py-2 home-pending-cs-header"
+                         style="cursor:pointer;" @onclick="() => _pendingCsExpanded = !_pendingCsExpanded">
+                        <i class="@(_pendingCsExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"
+                           style="font-size:1rem;"></i>
+                        <i class="ri-clipboard-line me-1"></i>
+                        <strong>My CS Queue</strong>
+                        <span class="home-pending-cs-badge">@_pendingCsSessions.Count</span>
+                        <select class="home-range-select" value="@_csQueueDays"
+                                @onclick:stopPropagation="true"
+                                @onchange="OnCsQueueRangeChanged">
+                            <option value="1">Last 1 day</option>
+                            <option value="3">Last 3 days</option>
+                            <option value="10">Last 10 days</option>
+                            <option value="0">All</option>
+                        </select>
+                    </div>
+                    @if (_pendingCsExpanded)
+                    {
+                        <div class="card-body p-0">
+                            <table class="table table-sm table-hover mb-0 home-pending-cs-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:18%;" class="home-pcs-sortable"
+                                            @onclick='() => TogglePcsSort("pc")'>
+                                            PC Name
+                                            <i class="@PcsSortIcon("pc")"></i>
+                                        </th>
+                                        <th style="width:18%;">Name</th>
+                                        <th style="width:14%;" class="home-pcs-sortable"
+                                            @onclick='() => TogglePcsSort("date")'>
+                                            Date
+                                            <i class="@PcsSortIcon("date")"></i>
+                                        </th>
+                                        <th style="width:12%;" class="home-pcs-sortable"
+                                            @onclick='() => TogglePcsSort("dur")'>
+                                            Duration
+                                            <i class="@PcsSortIcon("dur")"></i>
+                                        </th>
+                                        <th style="width:14%;">Auditor</th>
+                                        <th style="width:10%;">Type</th>
+                                        <th style="width:14%;text-align:center;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @{
+                                        string? prevPcName = null;
+                                        int pcGroupIdx = 0;
+                                        var sorted = GetSortedPendingCs();
+                                    }
+                                    @if (sorted.Count == 0)
+                                    {
+                                        <tr><td colspan="7" class="text-center" style="padding:16px;color:#64748b;font-size:.8rem;">
+                                            No sessions pending review for this period
+                                        </td></tr>
+                                    }
+                                    @foreach (var s in sorted)
+                                    {
+                                        var isNewPc = s.PcName != prevPcName;
+                                        if (isNewPc) { pcGroupIdx++; prevPcName = s.PcName; }
+                                        var rowClass = pcGroupIdx % 2 == 0 ? "home-pcs-row-even" : "home-pcs-row-odd";
+                                        var totalMin = s.TotalSeconds / 60;
+                                        var hrs = totalMin / 60;
+                                        var mins = totalMin % 60;
+                                        var durStr = hrs > 0 ? $"{hrs}h {mins:D2}m" : $"{mins}m";
+                                        var dateStr = DateTime.TryParse(s.CreatedAt, out var dt)
+                                            ? dt.ToString("dd/MM/yy HH:mm")
+                                            : (DateOnly.TryParse(s.SessionDate, out var d) ? d.ToString("dd/MM/yy") : s.SessionDate);
+                                        <tr class="@rowClass home-pcs-row" @onclick="() => OpenPendingCs(s)">
+                                            <td class="home-pcs-pcname">
+                                                @if (isNewPc)
+                                                {
+                                                    <i class="ri-user-line me-1" style="opacity:.5;"></i>@s.PcName
+                                                }
+                                            </td>
+                                            <td style="font-size:.78rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;">@s.SessionName</td>
+                                            <td class="home-pcs-date">@dateStr</td>
+                                            <td class="home-pcs-dur">
+                                                <i class="ri-time-line me-1" style="opacity:.4;"></i>@durStr
+                                            </td>
+                                            <td style="font-size:.78rem;color:#64748b;">
+                                                @s.AuditorName
+                                            </td>
+                                            <td>
+                                                @if (s.IsSolo)
+                                                {
+                                                    <span class="home-pcs-solo-badge">Solo</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="home-pcs-regular-badge">Regular</span>
+                                                }
+                                            </td>
+                                            <td style="text-align:center;">
+                                                <button class="home-pcs-cs-btn" title="Open CS for this session">
+                                                    <i class="ri-eye-line me-1"></i>CS
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            }
+
+            @* ══════ MY AUDITING STATUS ══════ *@
+            @if (_isAuditor)
+            {
+                <div class="card mx-3 mt-3 mb-2 home-aud-status-card">
+                    <div class="card-header py-2 home-aud-status-header"
+                         style="cursor:pointer;" @onclick="() => _audStatusExpanded = !_audStatusExpanded">
+                        <i class="@(_audStatusExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"
+                           style="font-size:1rem;"></i>
+                        <i class="ri-stethoscope-line me-1"></i>
+                        <strong>My Auditing Status</strong>
+                        <span class="home-aud-status-badge">@_auditorStatuses.Count</span>
+                        <select class="home-range-select" value="@_audStatusDays"
+                                @onclick:stopPropagation="true"
+                                @onchange="OnAudStatusRangeChanged">
+                            <option value="1">Last 1 day</option>
+                            <option value="3">Last 3 days</option>
+                            <option value="10">Last 10 days</option>
+                            <option value="0">All</option>
+                        </select>
+                    </div>
+                    @if (_audStatusExpanded)
+                    {
+                        <div class="card-body p-0">
+                            <table class="table table-sm table-hover mb-0 home-aud-status-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:18%;">PC Name</th>
+                                        <th style="width:18%;">Name</th>
+                                        <th style="width:12%;">Date</th>
+                                        <th style="width:12%;">Duration</th>
+                                        <th style="width:14%;">CS Status</th>
+                                        <th style="width:14%;">CS By</th>
+                                        <th style="width:12%;text-align:center;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @{
+                                        string? prevAudPc = null;
+                                        int audGroupIdx = 0;
+                                    }
+                                    @if (_auditorStatuses.Count == 0)
+                                    {
+                                        <tr><td colspan="7" class="text-center" style="padding:16px;color:#64748b;font-size:.8rem;">
+                                            No sessions found for this period
+                                        </td></tr>
+                                    }
+                                    @foreach (var s in _auditorStatuses)
+                                    {
+                                        var isNewPc = s.PcName != prevAudPc;
+                                        if (isNewPc) { audGroupIdx++; prevAudPc = s.PcName; }
+                                        var rowClass = audGroupIdx % 2 == 0 ? "home-pcs-row-even" : "home-pcs-row-odd";
+                                        var totalMin = s.TotalSeconds / 60;
+                                        var hrs = totalMin / 60;
+                                        var mins = totalMin % 60;
+                                        var durStr = hrs > 0 ? $"{hrs}h {mins:D2}m" : $"{mins}m";
+                                        var dateStr = DateTime.TryParse(s.CreatedAt, out var dt2)
+                                            ? dt2.ToString("dd/MM/yy HH:mm")
+                                            : (DateOnly.TryParse(s.SessionDate, out var d2) ? d2.ToString("dd/MM/yy") : s.SessionDate);
+                                        var statusClass = s.CsStatus switch {
+                                            "Waiting"          => "home-aud-st-waiting",
+                                            "Draft"            => "home-aud-st-done",
+                                            "Pending"          => "home-aud-st-done",
+                                            "Approved"         => "home-aud-st-approved",
+                                            "NeedsCorrection"  => "home-aud-st-correction",
+                                            _                  => ""
+                                        };
+                                        var statusLabel = s.CsStatus switch {
+                                            "Waiting"          => "Waiting for CS",
+                                            "Draft"            => "CS Done",
+                                            "Pending"          => "CS Done",
+                                            "Approved"         => "Approved",
+                                            "NeedsCorrection"  => "Correction Needed",
+                                            _                  => s.CsStatus
+                                        };
+                                        <tr class="@rowClass home-pcs-row" @onclick="() => OpenAuditorSession(s)">
+                                            <td class="home-pcs-pcname">
+                                                @if (isNewPc)
+                                                {
+                                                    <i class="ri-user-line me-1" style="opacity:.5;"></i>@s.PcName
+                                                }
+                                            </td>
+                                            <td style="font-size:.78rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;">@s.SessionName</td>
+                                            <td class="home-pcs-date">@dateStr</td>
+                                            <td class="home-pcs-dur">
+                                                <i class="ri-time-line me-1" style="opacity:.4;"></i>@durStr
+                                            </td>
+                                            <td>
+                                                <span class="home-aud-st-badge @statusClass">@statusLabel</span>
+                                            </td>
+                                            <td style="font-size:.78rem;color:#64748b;">
+                                                @(s.CsName ?? "—")
+                                            </td>
+                                            <td style="text-align:center;">
+                                                <button class="home-pcs-cs-btn" style="background:#5c6bc0;"
+                                                        title="Open PC Folder"
+                                                        @onclick="() => OpenAuditorSession(s)">
+                                                    <i class="ri-folder-open-line"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            }
+
             @* ══════ WEEKLY OVERVIEW (collapsible) ══════ *@
             <div class="home-overview-header px-3 mt-1 mb-1"
                  style="cursor:pointer;" @onclick="() => _weeklyOverviewExpanded = !_weeklyOverviewExpanded">
@@ -508,224 +726,6 @@
             }
 
             } @* end Weekly Overview *@
-
-            @* ══════ PENDING CS TABLE ══════ *@
-            @if (_isCS)
-            {
-                <div class="card mx-3 mt-3 mb-2 home-pending-cs-card">
-                    <div class="card-header py-2 home-pending-cs-header"
-                         style="cursor:pointer;" @onclick="() => _pendingCsExpanded = !_pendingCsExpanded">
-                        <i class="@(_pendingCsExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"
-                           style="font-size:1rem;"></i>
-                        <i class="ri-clipboard-line me-1"></i>
-                        <strong>My CS Queue</strong>
-                        <span class="home-pending-cs-badge">@_pendingCsSessions.Count</span>
-                        <select class="home-range-select" value="@_csQueueDays"
-                                @onclick:stopPropagation="true"
-                                @onchange="OnCsQueueRangeChanged">
-                            <option value="1">Last 1 day</option>
-                            <option value="3">Last 3 days</option>
-                            <option value="10">Last 10 days</option>
-                            <option value="0">All</option>
-                        </select>
-                    </div>
-                    @if (_pendingCsExpanded)
-                    {
-                        <div class="card-body p-0">
-                            <table class="table table-sm table-hover mb-0 home-pending-cs-table">
-                                <thead>
-                                    <tr>
-                                        <th style="width:18%;" class="home-pcs-sortable"
-                                            @onclick='() => TogglePcsSort("pc")'>
-                                            PC Name
-                                            <i class="@PcsSortIcon("pc")"></i>
-                                        </th>
-                                        <th style="width:18%;">Name</th>
-                                        <th style="width:14%;" class="home-pcs-sortable"
-                                            @onclick='() => TogglePcsSort("date")'>
-                                            Date
-                                            <i class="@PcsSortIcon("date")"></i>
-                                        </th>
-                                        <th style="width:12%;" class="home-pcs-sortable"
-                                            @onclick='() => TogglePcsSort("dur")'>
-                                            Duration
-                                            <i class="@PcsSortIcon("dur")"></i>
-                                        </th>
-                                        <th style="width:14%;">Auditor</th>
-                                        <th style="width:10%;">Type</th>
-                                        <th style="width:14%;text-align:center;">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @{
-                                        string? prevPcName = null;
-                                        int pcGroupIdx = 0;
-                                        var sorted = GetSortedPendingCs();
-                                    }
-                                    @if (sorted.Count == 0)
-                                    {
-                                        <tr><td colspan="7" class="text-center" style="padding:16px;color:#64748b;font-size:.8rem;">
-                                            No sessions pending review for this period
-                                        </td></tr>
-                                    }
-                                    @foreach (var s in sorted)
-                                    {
-                                        var isNewPc = s.PcName != prevPcName;
-                                        if (isNewPc) { pcGroupIdx++; prevPcName = s.PcName; }
-                                        var rowClass = pcGroupIdx % 2 == 0 ? "home-pcs-row-even" : "home-pcs-row-odd";
-                                        var totalMin = s.TotalSeconds / 60;
-                                        var hrs = totalMin / 60;
-                                        var mins = totalMin % 60;
-                                        var durStr = hrs > 0 ? $"{hrs}h {mins:D2}m" : $"{mins}m";
-                                        var dateStr = DateTime.TryParse(s.CreatedAt, out var dt)
-                                            ? dt.ToString("dd/MM/yy HH:mm")
-                                            : (DateOnly.TryParse(s.SessionDate, out var d) ? d.ToString("dd/MM/yy") : s.SessionDate);
-                                        <tr class="@rowClass home-pcs-row" @onclick="() => OpenPendingCs(s)">
-                                            <td class="home-pcs-pcname">
-                                                @if (isNewPc)
-                                                {
-                                                    <i class="ri-user-line me-1" style="opacity:.5;"></i>@s.PcName
-                                                }
-                                            </td>
-                                            <td style="font-size:.78rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;">@s.SessionName</td>
-                                            <td class="home-pcs-date">@dateStr</td>
-                                            <td class="home-pcs-dur">
-                                                <i class="ri-time-line me-1" style="opacity:.4;"></i>@durStr
-                                            </td>
-                                            <td style="font-size:.78rem;color:#64748b;">
-                                                @s.AuditorName
-                                            </td>
-                                            <td>
-                                                @if (s.IsSolo)
-                                                {
-                                                    <span class="home-pcs-solo-badge">Solo</span>
-                                                }
-                                                else
-                                                {
-                                                    <span class="home-pcs-regular-badge">Regular</span>
-                                                }
-                                            </td>
-                                            <td style="text-align:center;">
-                                                <button class="home-pcs-cs-btn" title="Open CS for this session">
-                                                    <i class="ri-eye-line me-1"></i>CS
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    }
-                </div>
-            }
-
-            @* ══════ MY AUDITING STATUS ══════ *@
-            @if (_isAuditor)
-            {
-                <div class="card mx-3 mt-3 mb-2 home-aud-status-card">
-                    <div class="card-header py-2 home-aud-status-header"
-                         style="cursor:pointer;" @onclick="() => _audStatusExpanded = !_audStatusExpanded">
-                        <i class="@(_audStatusExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"
-                           style="font-size:1rem;"></i>
-                        <i class="ri-stethoscope-line me-1"></i>
-                        <strong>My Auditing Status</strong>
-                        <span class="home-aud-status-badge">@_auditorStatuses.Count</span>
-                        <select class="home-range-select" value="@_audStatusDays"
-                                @onclick:stopPropagation="true"
-                                @onchange="OnAudStatusRangeChanged">
-                            <option value="1">Last 1 day</option>
-                            <option value="3">Last 3 days</option>
-                            <option value="10">Last 10 days</option>
-                            <option value="0">All</option>
-                        </select>
-                    </div>
-                    @if (_audStatusExpanded)
-                    {
-                        <div class="card-body p-0">
-                            <table class="table table-sm table-hover mb-0 home-aud-status-table">
-                                <thead>
-                                    <tr>
-                                        <th style="width:18%;">PC Name</th>
-                                        <th style="width:18%;">Name</th>
-                                        <th style="width:12%;">Date</th>
-                                        <th style="width:12%;">Duration</th>
-                                        <th style="width:14%;">CS Status</th>
-                                        <th style="width:14%;">CS By</th>
-                                        <th style="width:12%;text-align:center;">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @{
-                                        string? prevAudPc = null;
-                                        int audGroupIdx = 0;
-                                    }
-                                    @if (_auditorStatuses.Count == 0)
-                                    {
-                                        <tr><td colspan="7" class="text-center" style="padding:16px;color:#64748b;font-size:.8rem;">
-                                            No sessions found for this period
-                                        </td></tr>
-                                    }
-                                    @foreach (var s in _auditorStatuses)
-                                    {
-                                        var isNewPc = s.PcName != prevAudPc;
-                                        if (isNewPc) { audGroupIdx++; prevAudPc = s.PcName; }
-                                        var rowClass = audGroupIdx % 2 == 0 ? "home-pcs-row-even" : "home-pcs-row-odd";
-                                        var totalMin = s.TotalSeconds / 60;
-                                        var hrs = totalMin / 60;
-                                        var mins = totalMin % 60;
-                                        var durStr = hrs > 0 ? $"{hrs}h {mins:D2}m" : $"{mins}m";
-                                        var dateStr = DateTime.TryParse(s.CreatedAt, out var dt2)
-                                            ? dt2.ToString("dd/MM/yy HH:mm")
-                                            : (DateOnly.TryParse(s.SessionDate, out var d2) ? d2.ToString("dd/MM/yy") : s.SessionDate);
-                                        var statusClass = s.CsStatus switch {
-                                            "Waiting"          => "home-aud-st-waiting",
-                                            "Draft"            => "home-aud-st-done",
-                                            "Pending"          => "home-aud-st-done",
-                                            "Approved"         => "home-aud-st-approved",
-                                            "NeedsCorrection"  => "home-aud-st-correction",
-                                            _                  => ""
-                                        };
-                                        var statusLabel = s.CsStatus switch {
-                                            "Waiting"          => "Waiting for CS",
-                                            "Draft"            => "CS Done",
-                                            "Pending"          => "CS Done",
-                                            "Approved"         => "Approved",
-                                            "NeedsCorrection"  => "Correction Needed",
-                                            _                  => s.CsStatus
-                                        };
-                                        <tr class="@rowClass home-pcs-row" @onclick="() => OpenAuditorSession(s)">
-                                            <td class="home-pcs-pcname">
-                                                @if (isNewPc)
-                                                {
-                                                    <i class="ri-user-line me-1" style="opacity:.5;"></i>@s.PcName
-                                                }
-                                            </td>
-                                            <td style="font-size:.78rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;">@s.SessionName</td>
-                                            <td class="home-pcs-date">@dateStr</td>
-                                            <td class="home-pcs-dur">
-                                                <i class="ri-time-line me-1" style="opacity:.4;"></i>@durStr
-                                            </td>
-                                            <td>
-                                                <span class="home-aud-st-badge @statusClass">@statusLabel</span>
-                                            </td>
-                                            <td style="font-size:.78rem;color:#64748b;">
-                                                @(s.CsName ?? "—")
-                                            </td>
-                                            <td style="text-align:center;">
-                                                <button class="home-pcs-cs-btn" style="background:#5c6bc0;"
-                                                        title="Open PC Folder"
-                                                        @onclick="() => OpenAuditorSession(s)">
-                                                    <i class="ri-folder-open-line"></i>
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    }
-                </div>
-            }
 
             @* ══════ WEEKLY REMARKS ══════ *@
             <div class="card mx-3 mt-3 mb-2">
