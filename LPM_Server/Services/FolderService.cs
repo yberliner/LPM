@@ -12,7 +12,46 @@ public static class BackupProgress
 {
     public static volatile int Current;
     public static volatile bool Running;
+    public static volatile bool CancelRequested;
     public static string CurrentFile = "";
+    public static string? AuthToken;
+    public static DateTime AuthExpiry;
+
+    // Brute-force protection: IP → (failCount, lockedUntil)
+    static readonly Dictionary<string, (int Fails, DateTime LockedUntil)> _ipLocks = new();
+    static readonly object _lockObj = new();
+    const int MaxAttempts = 5;
+    static readonly TimeSpan LockDuration = TimeSpan.FromMinutes(15);
+
+    public static bool IsLockedOut(string ip)
+    {
+        lock (_lockObj)
+        {
+            if (!_ipLocks.TryGetValue(ip, out var entry)) return false;
+            if (entry.LockedUntil > DateTime.UtcNow) return true;
+            if (entry.LockedUntil != default && entry.LockedUntil <= DateTime.UtcNow)
+                _ipLocks.Remove(ip); // lock expired
+            return false;
+        }
+    }
+
+    /// <summary>Records a failure and returns the number of attempts remaining.</summary>
+    public static int RecordFailure(string ip)
+    {
+        lock (_lockObj)
+        {
+            var entry = _ipLocks.GetValueOrDefault(ip);
+            var fails = entry.Fails + 1;
+            var locked = fails >= MaxAttempts ? DateTime.UtcNow.Add(LockDuration) : default;
+            _ipLocks[ip] = (fails, locked);
+            return Math.Max(0, MaxAttempts - fails);
+        }
+    }
+
+    public static void ClearFailures(string ip)
+    {
+        lock (_lockObj) { _ipLocks.Remove(ip); }
+    }
 }
 
 public class FolderService

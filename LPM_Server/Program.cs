@@ -299,10 +299,57 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
     return svc.SaveFile(pcId, path, outputMs.ToArray()) ? Results.Ok() : Results.NotFound();
 });
 
+// ── Backup: password verification → one-time token ──
+app.MapPost("/api/backup-auth", async (HttpContext ctx, LPM.Auth.UserDb userDb) =>
+{
+    if (ctx.User?.IsInRole("Admin") != true) return Results.Forbid();
+    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    var username = ctx.User.Identity?.Name ?? "";
+
+    // Check brute-force lockout
+    if (LPM.Services.BackupProgress.IsLockedOut(ip))
+    {
+        Console.WriteLine($"[Backup] BLOCKED (locked out) attempt by '{username}' from {ip} at {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        return Results.Json(new { ok = false, locked = true }, statusCode: 429);
+    }
+
+    var form = await ctx.Request.ReadFormAsync();
+    var password = form["password"].ToString();
+
+    if (string.IsNullOrEmpty(password) || !userDb.ValidateUser(username, password, out _))
+    {
+        var remaining = LPM.Services.BackupProgress.RecordFailure(ip);
+        var isLocked = remaining == 0;
+        Console.WriteLine($"[Backup] FAILED auth attempt by '{username}' from {ip} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} ({remaining} left)");
+        return Results.Json(new { ok = false, locked = isLocked, remaining }, statusCode: isLocked ? 429 : 401);
+    }
+
+    // Success — clear failures and generate a one-time token valid for 5 minutes
+    LPM.Services.BackupProgress.ClearFailures(ip);
+    var token = Guid.NewGuid().ToString("N");
+    LPM.Services.BackupProgress.AuthToken = token;
+    LPM.Services.BackupProgress.AuthExpiry = DateTime.UtcNow.AddMinutes(5);
+    Console.WriteLine($"[Backup] Auth OK for '{username}' from {ip} at {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+    return Results.Ok(new { ok = true, token });
+});
+
 // ── Backup: build zip to temp file, then serve it ──
 app.MapGet("/api/backup-download", (HttpContext ctx, LPM.Services.FolderService svc) =>
 {
     if (ctx.User?.IsInRole("Admin") != true) return Results.Forbid();
+
+    // Verify one-time token
+    var token = ctx.Request.Query["token"].ToString();
+    if (string.IsNullOrEmpty(token)
+        || token != LPM.Services.BackupProgress.AuthToken
+        || DateTime.UtcNow > LPM.Services.BackupProgress.AuthExpiry)
+    {
+        var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        Console.WriteLine($"[Backup] REJECTED download (bad/expired token) from {ip} at {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        return Results.Unauthorized();
+    }
+    // Invalidate the token (one-time use)
+    LPM.Services.BackupProgress.AuthToken = null;
 
     // Check free space on temp drive
     var tempDir = Path.GetTempPath();
@@ -324,6 +371,7 @@ app.MapGet("/api/backup-download", (HttpContext ctx, LPM.Services.FolderService 
     LPM.Services.BackupProgress.Current = 0;
     LPM.Services.BackupProgress.CurrentFile = "";
     LPM.Services.BackupProgress.Running = true;
+    LPM.Services.BackupProgress.CancelRequested = false;
     int processed = 0;
 
     var tempFile = Path.Combine(tempDir, $"lpm-backup-{Guid.NewGuid():N}.zip");
@@ -347,6 +395,7 @@ app.MapGet("/api/backup-download", (HttpContext ctx, LPM.Services.FolderService 
             // 2. Add all PC-Folder files (decrypted)
             foreach (var (relPath, fullPath) in svc.EnumerateBackupFiles())
             {
+                if (LPM.Services.BackupProgress.CancelRequested) break;
                 try
                 {
                     LPM.Services.BackupProgress.CurrentFile = relPath;
@@ -362,6 +411,17 @@ app.MapGet("/api/backup-download", (HttpContext ctx, LPM.Services.FolderService 
         }
 
         LPM.Services.BackupProgress.Running = false;
+        var user = ctx.User.Identity?.Name ?? "unknown";
+        var dlIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+        if (LPM.Services.BackupProgress.CancelRequested)
+        {
+            Console.WriteLine($"[Backup] CANCELLED by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files processed before cancel");
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+            return Results.StatusCode(499); // Client Closed Request
+        }
+
+        Console.WriteLine($"[Backup] Completed by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files");
 
         var fileName = $"LPM-Backup-{DateTime.Now:yyyy-MM-dd_HHmm}.zip";
         // Open as stream that deletes the temp file when disposed

@@ -95,7 +95,7 @@
         {
             <button class="btn btn-primary btn-lg d-flex align-items-center gap-2"
                     disabled="@_notEnoughSpace"
-                    @onclick="StartBackup">
+                    @onclick="ShowPasswordPrompt">
                 <i class="ri-download-cloud-2-line" style="font-size:1.3rem;"></i>
                 Start Backup
             </button>
@@ -104,7 +104,12 @@
         {
             <button class="btn btn-secondary btn-lg" disabled>
                 <span class="spinner-border spinner-border-sm me-2"></span>
-                Downloading...
+                Preparing backup...
+            </button>
+            <button class="btn btn-outline-danger btn-lg d-flex align-items-center gap-2"
+                    @onclick="CancelBackup">
+                <i class="ri-close-circle-line"></i>
+                Cancel
             </button>
         }
     </div>
@@ -112,6 +117,47 @@
     @if (!string.IsNullOrEmpty(_error))
     {
         <div class="alert alert-danger mt-3" style="max-width:600px;">@_error</div>
+    }
+
+    @* ── Password Modal ── *@
+    @if (_showPasswordModal)
+    {
+        <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.6);" @onclick="() => _showPasswordModal = false">
+            <div class="modal-dialog modal-sm modal-dialog-centered" @onclick:stopPropagation="true">
+                <div class="modal-content" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
+                    <div class="modal-header py-2" style="border-color:#334155;">
+                        <h6 class="modal-title"><i class="ri-lock-2-line me-2"></i>Confirm Identity</h6>
+                        <button class="btn-close btn-close-white" @onclick="() => _showPasswordModal = false"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p style="font-size:.82rem; color:#94a3b8;">Enter your password to start the backup download.</p>
+                        <input type="password" class="form-control"
+                               style="background:#0f172a; color:#e2e8f0; border-color:#475569;"
+                               placeholder="Password"
+                               autocomplete="new-password"
+                               data-lpignore="true"
+                               data-1p-ignore="true"
+                               @bind="_backupPassword"
+                               @bind:event="oninput"
+                               @onkeydown="OnPasswordKeyDown" />
+                        @if (!string.IsNullOrEmpty(_passwordError))
+                        {
+                            <div class="text-danger mt-2" style="font-size:.8rem;">@_passwordError</div>
+                        }
+                    </div>
+                    <div class="modal-footer py-2" style="border-color:#334155;">
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showPasswordModal = false">Cancel</button>
+                        <button class="btn btn-sm btn-primary" disabled="@_authBusy" @onclick="AuthAndStartBackup">
+                            @if (_authBusy)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            Confirm
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     }
 
     @if (_done)
@@ -169,6 +215,12 @@
     string _progressFile = "";
     System.Threading.Timer? _pollTimer;
 
+    // Password modal
+    bool _showPasswordModal;
+    string _backupPassword = "";
+    string _passwordError = "";
+    bool _authBusy;
+
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -193,7 +245,65 @@
         }
     }
 
-    async Task StartBackup()
+    void ShowPasswordPrompt()
+    {
+        _backupPassword = "";
+        _passwordError = "";
+        _authBusy = false;
+        _showPasswordModal = true;
+    }
+
+    async Task OnPasswordKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await AuthAndStartBackup();
+    }
+
+    async Task AuthAndStartBackup()
+    {
+        if (string.IsNullOrWhiteSpace(_backupPassword)) { _passwordError = "Password is required"; return; }
+        _authBusy = true;
+        _passwordError = "";
+        StateHasChanged();
+
+        try
+        {
+            var escapedPw = _backupPassword.Replace("\\", "\\\\").Replace("'", "\\'");
+            var js = "(async function(){var fd=new FormData();fd.append('password','" + escapedPw
+                + "');var resp=await fetch('/api/backup-auth',{method:'POST',body:fd});"
+                + "var json=await resp.json();if(json.locked)return 'LOCKED';"
+                + "if(!json.ok)return 'FAIL:'+json.remaining;return json.token;})()";
+            var result = await JS.InvokeAsync<string>("eval", js);
+
+            if (result == "LOCKED")
+            {
+                _passwordError = "Too many failed attempts. Locked for 15 minutes.";
+                _authBusy = false;
+                return;
+            }
+
+            if (string.IsNullOrEmpty(result) || result.StartsWith("FAIL:"))
+            {
+                var remaining = result != null && result.StartsWith("FAIL:")
+                    ? result.Substring(5) : "?";
+                _passwordError = $"Incorrect password. {remaining} attempt(s) remaining.";
+                _authBusy = false;
+                return;
+            }
+
+            var token = result;
+
+            _showPasswordModal = false;
+            _backupPassword = "";
+            await StartBackup(token);
+        }
+        catch
+        {
+            _passwordError = "Authentication failed";
+            _authBusy = false;
+        }
+    }
+
+    async Task StartBackup(string token)
     {
         _downloading = true;
         _done = false;
@@ -210,16 +320,19 @@
             // Start polling progress
             _pollTimer = new System.Threading.Timer(PollProgress, null, 500, 800);
 
-            // Trigger the download via JS — use window.open to avoid navigation
-            await JS.InvokeVoidAsync("eval",
-                "var a=document.createElement('a');a.href='/api/backup-download';a.download='';document.body.appendChild(a);a.click();document.body.removeChild(a);");
+            // Trigger the download with the one-time token
+            var dlJs = "var a=document.createElement('a');a.href='/api/backup-download?token=" + token
+                + "';a.download='';document.body.appendChild(a);a.click();document.body.removeChild(a);";
+            await JS.InvokeVoidAsync("eval", dlJs);
 
-            // Wait a moment for the download to start, then poll until done
+            // Wait for the server-side zip creation to finish
             await Task.Delay(2000);
             while (BackupProgress.Running)
                 await Task.Delay(1000);
 
-            _done = true;
+            _done = !BackupProgress.CancelRequested;
+            if (BackupProgress.CancelRequested)
+                _error = "Backup was cancelled.";
         }
         catch (Exception ex)
         {
@@ -239,6 +352,11 @@
         _progressCurrent = BackupProgress.Current;
         _progressFile = BackupProgress.CurrentFile;
         _ = InvokeAsync(StateHasChanged);
+    }
+
+    void CancelBackup()
+    {
+        BackupProgress.CancelRequested = true;
     }
 
     public void Dispose()
