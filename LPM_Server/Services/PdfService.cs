@@ -1016,19 +1016,19 @@ public class PdfService
                             r.RelativeItem().Border(1).BorderColor("#dbeafe").Background("#eff6ff").CornerRadius(4).Padding(7).Column(c =>
                             {
                                 c.Item().AlignCenter().Text("PCs").FontSize(7).FontColor(Colors.Grey.Darken2).SemiBold();
-                                c.Item().PaddingTop(3).AlignCenter().Text(monthSummary.PcCount.ToString()).FontSize(16).Bold().FontColor("#2563eb");
+                                c.Item().PaddingTop(3).AlignCenter().Text(monthSummary!.PcCount.ToString()).FontSize(16).Bold().FontColor("#2563eb");
                             });
                             r.ConstantItem(6);
                             r.RelativeItem().Border(1).BorderColor("#d1fae5").Background("#f0fdf4").CornerRadius(4).Padding(7).Column(c =>
                             {
                                 c.Item().AlignCenter().Text("Academy").FontSize(7).FontColor(Colors.Grey.Darken2).SemiBold();
-                                c.Item().PaddingTop(3).AlignCenter().Text(monthSummary.AcademyCount.ToString()).FontSize(16).Bold().FontColor("#16a34a");
+                                c.Item().PaddingTop(3).AlignCenter().Text(monthSummary!.AcademyCount.ToString()).FontSize(16).Bold().FontColor("#16a34a");
                             });
                             r.ConstantItem(6);
                             r.RelativeItem().Border(1).BorderColor("#fde8d8").Background("#fff7ed").CornerRadius(4).Padding(7).Column(c =>
                             {
                                 c.Item().AlignCenter().Text("Body in Shop").FontSize(7).FontColor(Colors.Grey.Darken2).SemiBold();
-                                c.Item().PaddingTop(3).AlignCenter().Text(monthSummary.BodyInShop.ToString()).FontSize(16).Bold().FontColor("#ea580c");
+                                c.Item().PaddingTop(3).AlignCenter().Text(monthSummary!.BodyInShop.ToString()).FontSize(16).Bold().FontColor("#ea580c");
                             });
                         });
 

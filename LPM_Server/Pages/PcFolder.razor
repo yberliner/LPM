@@ -1072,7 +1072,7 @@
             {
                 if (!string.IsNullOrEmpty(_panes[i].File))
                 {
-                    var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_panes[i].File)}&_t={DateTime.UtcNow.Ticks}";
+                    var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_panes[i].File!)}&_t={DateTime.UtcNow.Ticks}";
                     await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, PaneIds[i]);
                 }
             }
