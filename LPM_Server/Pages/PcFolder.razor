@@ -407,9 +407,14 @@
 {
     <div class="pcf-extract-bar">
         <span><i class="ri-scissors-line me-2"></i><strong>@_extractCount</strong> page(s) selected</span>
-        <div class="d-flex gap-2">
+        <div class="d-flex align-items-center gap-2">
+            <span style="color:#94a3b8;font-size:.78rem;white-space:nowrap;">Attachment name:</span>
+            <input type="text" class="form-control form-control-sm"
+                   style="width:160px;background:#0f172a;color:#e2e8f0;border-color:#475569;font-size:.78rem;"
+                   @bind="_extractAttName" @bind:event="oninput" />
             <button class="btn btn-sm btn-light" @onclick="CancelExtract">Cancel</button>
-            <button class="btn btn-sm btn-primary" @onclick="DoExtract" disabled="@(_extractCount == 0 || _saving)">
+            <button class="btn btn-sm btn-primary" @onclick="DoExtract"
+                    disabled="@(_extractCount == 0 || string.IsNullOrWhiteSpace(_extractAttName) || _saving)">
                 <i class="ri-download-line me-1"></i>Extract
             </button>
         </div>
@@ -1226,6 +1231,7 @@
     // ── Extract Pages ──
     bool _extractMode;
     int _extractCount;
+    string _extractAttName = "extract";
 
     // Extraction only allowed on the file being CSed (active pane must show the CS session worksheet)
     bool CanExtract
@@ -1251,6 +1257,7 @@
         }
         _extractMode = true;
         _extractCount = 0;
+        _extractAttName = "extract";
         await JS.InvokeVoidAsync("pcfViewer.enterExtractMode", PaneIds[_activeIdx]);
     }
 
@@ -1305,7 +1312,8 @@
             // Save as attachment
             var sessionFileName = System.IO.Path.GetFileName(file);
             var nameNoExt = System.IO.Path.GetFileNameWithoutExtension(sessionFileName);
-            var attFileName = $"{nameNoExt}_extract.pdf";
+            var safeName = string.Join("_", _extractAttName.Trim().Split(System.IO.Path.GetInvalidFileNameChars()));
+            var attFileName = $"{safeName}.pdf";
             FolderSvc.SaveAttachment(PcId, sessionFileName, attFileName, outStream.ToArray());
 
             // Remove extracted pages from the original PDF
