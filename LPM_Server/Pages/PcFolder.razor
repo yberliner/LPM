@@ -1118,13 +1118,16 @@
         InvokeAsync(StateHasChanged);
     }
 
-    async Task SelectFile(string relativePath, string fileName, string section = "")
+    int _selectGeneration; // incremented on each click to detect stale loads
+
+    void SelectFile(string relativePath, string fileName, string section = "")
     {
+        var gen = ++_selectGeneration;
         var idx = _paneCount == 1 ? 0 : _activeIdx;
         var paneId = PaneIds[idx];
 
-        // Auto-save current pane before switching
-        await JS.InvokeVoidAsync("pcfViewer.savePane", paneId);
+        // Fire-and-forget auto-save
+        _ = JS.InvokeVoidAsync("pcfViewer.savePane", paneId);
 
         _panes[idx].File = relativePath;
         _panes[idx].FileName = SessionDisplayName(fileName);
@@ -1132,10 +1135,18 @@
 
         _hasAnnotations = false;
         _toolMode = "";
-        StateHasChanged();
 
+        // Fire-and-forget the PDF load so Blazor's event loop stays free for the next click
         var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}&_t={DateTime.UtcNow.Ticks}";
+        _ = LoadPdfAsync(gen, url, paneId);
+    }
+
+    async Task LoadPdfAsync(int gen, string url, string paneId)
+    {
+        await Task.Yield(); // release the Blazor sync context immediately
+        if (gen != _selectGeneration) return;
         await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId);
+        if (gen != _selectGeneration) return;
         await JS.InvokeVoidAsync("pcfViewer.setTool", "");
     }
 
