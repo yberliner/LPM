@@ -140,36 +140,34 @@ public class FolderService
         var wsPath = Path.Combine(pcFolder, "WorkSheets");
         if (!Directory.Exists(wsPath)) return [];
 
-        var files = Directory.GetFiles(wsPath, "*.pdf")
-            .Select(f =>
+        var allPdfs = Directory.GetFiles(wsPath, "*.pdf").Select(Path.GetFileName).ToList();
+
+        // Session files = PDFs that don't contain _att_ in their name
+        var files = allPdfs
+            .Where(name => !name!.Contains("_att_", StringComparison.OrdinalIgnoreCase))
+            .Select(name =>
             {
-                var name = Path.GetFileName(f);
-                var dateParsed = TryParseDatePrefix(name);
                 var relativePath = $"WorkSheets/{name}";
-                return new FolderFileItem(name, "WorkSheets", relativePath, dateParsed);
+                return new FolderFileItem(name!, "WorkSheets", relativePath, null);
             })
-            .OrderByDescending(f => f.DateParsed ?? DateTime.MinValue)
+            .OrderByDescending(f => f.FileName)
             .ToList();
 
         var items = new List<WorkSheetItem>();
         foreach (var file in files)
         {
-            // Check for _att subfolder: WorkSheets/{filenameWithoutExt}_att/
+            // Attachments are files matching {sessionNameNoExt}_att_*.pdf
             var nameNoExt = Path.GetFileNameWithoutExtension(file.FileName);
-            var attDir = Path.Combine(wsPath, $"{nameNoExt}_att");
-            var attachments = new List<FolderFileItem>();
-            if (Directory.Exists(attDir))
-            {
-                attachments = Directory.GetFiles(attDir, "*.pdf")
-                    .Select(af =>
-                    {
-                        var afName = Path.GetFileName(af);
-                        var relPath = $"WorkSheets/{nameNoExt}_att/{afName}";
-                        return new FolderFileItem(afName, "WorkSheets", relPath, null);
-                    })
-                    .OrderBy(af => af.FileName)
-                    .ToList();
-            }
+            var prefix = $"{nameNoExt}_att_";
+            var attachments = allPdfs
+                .Where(n => n!.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                .Select(n =>
+                {
+                    var relPath = $"WorkSheets/{n}";
+                    return new FolderFileItem(n!, "WorkSheets", relPath, null);
+                })
+                .OrderBy(af => af.FileName)
+                .ToList();
             items.Add(new WorkSheetItem(file, attachments));
         }
         return items;
@@ -271,13 +269,32 @@ public class FolderService
         return File.Exists(path);
     }
 
+    /// <summary>Check if a worksheet with the given session name exists.</summary>
+    public bool SessionFileExistsByName(int pcId, string sessionName)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return false;
+        var wsPath = Path.Combine(folder, "WorkSheets");
+        if (!Directory.Exists(wsPath)) return false;
+
+        foreach (var f in Directory.GetFiles(wsPath, "*.pdf"))
+        {
+            var name = Path.GetFileNameWithoutExtension(Path.GetFileName(f));
+            if (name.Contains("_att_", StringComparison.OrdinalIgnoreCase)) continue;
+            if (name.Equals(sessionName, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
     /// <summary>Check if an attachment file already exists.</summary>
     public bool AttachmentFileExists(int pcId, string sessionFileName, string attFileName)
     {
         var folder = FindPcFolder(pcId);
         if (folder == null) return false;
         var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
-        var path = Path.Combine(folder, "WorkSheets", $"{sessionNoExt}_att", attFileName);
+        var flatName = $"{sessionNoExt}_att_{attFileName}";
+        var path = Path.Combine(folder, "WorkSheets", flatName);
         return File.Exists(path);
     }
 
@@ -303,19 +320,19 @@ public class FolderService
         EncryptFileInPlace(fullPath);
     }
 
-    /// <summary>Save an imported attachment file. Keeps original name. Shrinks + encrypts.</summary>
+    /// <summary>Save an imported attachment file. Flat naming in WorkSheets. Shrinks + encrypts.</summary>
     public void SaveImportedAttachment(int pcId, string sessionFileName, string attFileName, byte[] fileBytes)
     {
         var folder = FindPcFolder(pcId);
         if (folder == null) return;
 
         var wsPath = Path.Combine(folder, "WorkSheets");
-        var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
-        var attDir = Path.Combine(wsPath, $"{sessionNoExt}_att");
-        Directory.CreateDirectory(attDir);
+        Directory.CreateDirectory(wsPath);
 
+        var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
         var safeName = string.Join("_", attFileName.Split(Path.GetInvalidFileNameChars()));
-        var fullPath = Path.Combine(attDir, safeName);
+        var flatName = $"{sessionNoExt}_att_{safeName}";
+        var fullPath = Path.Combine(wsPath, flatName);
 
         if (File.Exists(fullPath)) return;
 
@@ -324,7 +341,7 @@ public class FolderService
         EncryptFileInPlace(fullPath);
     }
 
-    /// <summary>Save an uploaded session file to WorkSheets with date prefix. Returns the saved filename.</summary>
+    /// <summary>Save an uploaded session file to WorkSheets. Returns the saved filename.</summary>
     public string? SaveUploadedFile(int pcId, string fileName, byte[] fileBytes)
     {
         var folder = GetPcFolder(pcId);
@@ -333,19 +350,9 @@ public class FolderService
         var wsPath = Path.Combine(folder.FolderPath, "WorkSheets");
         Directory.CreateDirectory(wsPath);
 
-        var datePrefix = DateTime.Today.ToString("yy-MM-dd");
         var safeName = string.Join("_", fileName.Split(Path.GetInvalidFileNameChars()));
-        var finalName = $"{datePrefix}_{safeName}";
+        var finalName = safeName;
         var fullPath = Path.Combine(wsPath, finalName);
-
-        var counter = 2;
-        var nameNoExt = Path.GetFileNameWithoutExtension(finalName);
-        var ext = Path.GetExtension(finalName);
-        while (File.Exists(fullPath))
-        {
-            fullPath = Path.Combine(wsPath, $"{nameNoExt}({counter}){ext}");
-            counter++;
-        }
 
         // Write plaintext first so Ghostscript can shrink it
         File.WriteAllBytes(fullPath, fileBytes);
@@ -355,26 +362,26 @@ public class FolderService
         return Path.GetFileName(fullPath);
     }
 
-    /// <summary>Save an attachment file into the _att subfolder for a session file.</summary>
+    /// <summary>Save an attachment file as flat file in WorkSheets: {session}_att_{name}.</summary>
     public void SaveAttachment(int pcId, string sessionFileName, string attFileName, byte[] fileBytes)
     {
         var folder = FindPcFolder(pcId);
         if (folder == null) return;
 
         var wsPath = Path.Combine(folder, "WorkSheets");
-        var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
-        var attDir = Path.Combine(wsPath, $"{sessionNoExt}_att");
-        Directory.CreateDirectory(attDir);
+        Directory.CreateDirectory(wsPath);
 
+        var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
         var safeName = string.Join("_", attFileName.Split(Path.GetInvalidFileNameChars()));
-        var fullPath = Path.Combine(attDir, safeName);
+        var flatName = $"{sessionNoExt}_att_{safeName}";
+        var fullPath = Path.Combine(wsPath, flatName);
 
         var counter = 2;
-        var nameNoExt = Path.GetFileNameWithoutExtension(safeName);
-        var ext = Path.GetExtension(safeName);
+        var nameNoExt = Path.GetFileNameWithoutExtension(flatName);
+        var ext = Path.GetExtension(flatName);
         while (File.Exists(fullPath))
         {
-            fullPath = Path.Combine(attDir, $"{nameNoExt}({counter}){ext}");
+            fullPath = Path.Combine(wsPath, $"{nameNoExt}({counter}){ext}");
             counter++;
         }
 

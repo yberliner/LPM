@@ -833,7 +833,7 @@ public class PcService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             UPDATE fin_payment_methods
-            SET IsMoneyInBank = @val, MoneyInBankDate = CASE WHEN @val = 1 THEN datetime('now') ELSE NULL END
+            SET IsMoneyInBank = @val, MoneyInBankDate = CASE WHEN @val = 1 THEN datetime('now', '+2 hours') ELSE NULL END
             WHERE PaymentMethodId = @id";
         cmd.Parameters.AddWithValue("@id", paymentMethodId);
         cmd.Parameters.AddWithValue("@val", isInBank ? 1 : 0);
@@ -913,7 +913,7 @@ public class PcService
         cmd.CommandText = @"
             UPDATE fin_purchases SET ApprovedStatus = 'Approved',
                                  ApprovedByPersonId = @by,
-                                 ApprovedAt = datetime('now')
+                                 ApprovedAt = datetime('now', '+2 hours')
             WHERE PurchaseId = @id";
         cmd.Parameters.AddWithValue("@id", purchaseId);
         cmd.Parameters.AddWithValue("@by", approvedByPersonId);

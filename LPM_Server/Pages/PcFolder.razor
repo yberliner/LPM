@@ -41,7 +41,7 @@
                         {
                             <span class="pcf-cover-dot" style="background:@clr;"></span>
                         }
-                        <span class="pcf-file-name">@StripDatePrefix(f.FileName)</span>
+                        <span class="pcf-file-name">@SessionDisplayName(f.FileName)</span>
                     </div>
                 }
             }
@@ -68,7 +68,7 @@
                         {
                             <span class="pcf-cover-dot" style="background:@clr;"></span>
                         }
-                        <span class="pcf-file-name">@StripDatePrefix(f.FileName)</span>
+                        <span class="pcf-file-name">@SessionDisplayName(f.FileName)</span>
                     </div>
                 }
             }
@@ -97,10 +97,10 @@
                 {
                     var f = ws.File;
                     var active = IsFileActive(f.RelativePath);
-                    var stripped = StripDatePrefix(f.FileName);
-                    var csed = _nameToSessionId.TryGetValue(stripped, out var fSid) && _csedSessionIds.Contains(fSid);
+                    var sessionName = Path.GetFileNameWithoutExtension(f.FileName);
+                    var csed = _nameToSessionId.TryGetValue(sessionName, out var fSid) && _csedSessionIds.Contains(fSid);
                     var isCsTarget = !string.IsNullOrEmpty(_csSessionName)
-                        && stripped.Equals(_csSessionName, StringComparison.OrdinalIgnoreCase);
+                        && sessionName.Equals(_csSessionName, StringComparison.OrdinalIgnoreCase);
                     var hasAtt = ws.Attachments.Count > 0;
                     var wsKey = f.RelativePath;
                     var attExpanded = !_collapsedAttachments.Contains(wsKey);
@@ -123,7 +123,7 @@
                             {
                                 <i class="ri-file-pdf-2-line @(csed ? "text-success" : "")" style="flex-shrink:0;"></i>
                             }
-                            <span class="pcf-file-name @(csed ? "pcf-file-csed" : "")">@stripped</span>
+                            <span class="pcf-file-name @(csed ? "pcf-file-csed" : "")">@sessionName</span>
                             @if (csed)
                             {
                                 <i class="ri-check-line" style="color:#22c55e;font-size:.7rem;flex-shrink:0;" title="CS Done"></i>
@@ -133,9 +133,9 @@
                         {
                             <span class="pcf-att-count">@ws.Attachments.Count</span>
                         }
-                        @if (f.DateParsed.HasValue)
+                        @if (_nameToCreatedAt.TryGetValue(sessionName, out var createdAt))
                         {
-                            <span class="pcf-file-date">@f.DateParsed.Value.ToString("dd/MM/yy")</span>
+                            <span class="pcf-file-date">@createdAt.ToString("dd/MM/yy")</span>
                         }
                     </div>
 
@@ -883,6 +883,7 @@
     int _csReviewMinutes;        // editable review time (session + admin) in minutes
     HashSet<int> _csedSessionIds = new();                    // session IDs that have cs_reviews
     Dictionary<string, int> _nameToSessionId = new(StringComparer.OrdinalIgnoreCase);  // session name → ID
+    Dictionary<string, DateTime> _nameToCreatedAt = new(StringComparer.OrdinalIgnoreCase); // session name → CreatedAt
 
     // Per-pane state (always 3 slots; _paneCount controls how many are visible)
     class PaneState { public string? File; public string? FileName; public string Section = ""; }
@@ -924,10 +925,16 @@
 
     List<WorkSheetItem> GetWsPage(out int totalPages)
     {
-        var all = _folder!.WorkSheets;
+        var sorted = _folder!.WorkSheets
+            .OrderByDescending(ws =>
+            {
+                var name = SessionDisplayName(ws.File.FileName);
+                return _nameToCreatedAt.TryGetValue(name, out var dt) ? dt : DateTime.MinValue;
+            })
+            .ToList();
         var filtered = string.IsNullOrWhiteSpace(_wsFilter)
-            ? all
-            : all.Where(ws => StripDatePrefix(ws.File.FileName)
+            ? sorted
+            : sorted.Where(ws => SessionDisplayName(ws.File.FileName)
                     .Contains(_wsFilter, StringComparison.OrdinalIgnoreCase))
                 .ToList();
         totalPages = Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)WsPageSize));
@@ -938,12 +945,12 @@
     int WsTotalPages => _folder == null ? 1 : Math.Max(1,
         (int)Math.Ceiling((_folder.WorkSheets.Count(ws =>
             string.IsNullOrWhiteSpace(_wsFilter) ||
-            StripDatePrefix(ws.File.FileName).Contains(_wsFilter, StringComparison.OrdinalIgnoreCase)))
+            SessionDisplayName(ws.File.FileName).Contains(_wsFilter, StringComparison.OrdinalIgnoreCase)))
         / (double)WsPageSize));
 
     int WsFilteredCount => _folder == null ? 0 : _folder.WorkSheets.Count(ws =>
         string.IsNullOrWhiteSpace(_wsFilter) ||
-        StripDatePrefix(ws.File.FileName).Contains(_wsFilter, StringComparison.OrdinalIgnoreCase));
+        SessionDisplayName(ws.File.FileName).Contains(_wsFilter, StringComparison.OrdinalIgnoreCase));
 
     void OnWsFilterChanged(ChangeEventArgs e)
     {
@@ -975,7 +982,11 @@
         foreach (var pair in DashSvc.GetSessionsForPc(PcId))
         {
             if (!string.IsNullOrEmpty(pair.Name))
+            {
                 _nameToSessionId.TryAdd(pair.Name, pair.SessionId);
+                if (DateTime.TryParse(pair.CreatedAt, out var dt))
+                    _nameToCreatedAt.TryAdd(pair.Name, dt);
+            }
         }
 
         // Session ID passed from Dashboard "CS The Session" button (via host page parameter)
@@ -1004,14 +1015,14 @@
         if (!string.IsNullOrWhiteSpace(_csSessionName) && _folder != null)
         {
             match = _folder.WorkSheets
-                .FirstOrDefault(ws => StripDatePrefix(ws.File.FileName)
+                .FirstOrDefault(ws => SessionDisplayName(ws.File.FileName)
                     .Equals(_csSessionName, StringComparison.OrdinalIgnoreCase));
         }
 
         if (match != null)
         {
             _panes[0].File = match.File.RelativePath;
-            _panes[0].FileName = StripDatePrefix(match.File.FileName);
+            _panes[0].FileName = SessionDisplayName(match.File.FileName);
             _panes[0].Section = "WorkSheet";
             var attCount = Math.Min(match.Attachments.Count, 2);
             if (attCount > 0)
@@ -1029,7 +1040,7 @@
         {
             var latest = _folder.WorkSheets[0];
             _panes[0].File = latest.File.RelativePath;
-            _panes[0].FileName = StripDatePrefix(latest.File.FileName);
+            _panes[0].FileName = SessionDisplayName(latest.File.FileName);
             _panes[0].Section = "WorkSheet";
             if (latest.Attachments.Count > 0)
             {
@@ -1111,7 +1122,7 @@
         await JS.InvokeVoidAsync("pcfViewer.savePane", paneId);
 
         _panes[idx].File = relativePath;
-        _panes[idx].FileName = StripDatePrefix(fileName);
+        _panes[idx].FileName = SessionDisplayName(fileName);
         _panes[idx].Section = section;
 
         _hasAnnotations = false;
@@ -1226,7 +1237,7 @@
             if (string.IsNullOrEmpty(file)) return false;
             if (_panes[_activeIdx].Section != "WorkSheet") return false;
             var fileName = System.IO.Path.GetFileName(file); // "26-03-14_session.pdf"
-            var stripped = StripDatePrefix(fileName); // "session"
+            var stripped = SessionDisplayName(fileName); // "session"
             return stripped.Equals(_csSessionName, StringComparison.OrdinalIgnoreCase);
         }
     }
@@ -1345,8 +1356,13 @@
                 _panes[targetPane].FileName = newAtt.FileName;
                 _panes[targetPane].Section = "WorkSheet";
 
+                // Reload ALL panes so they resize to the new pane layout
                 _pendingReloads ??= new();
-                _pendingReloads.Add((PaneIds[targetPane], newAtt.RelativePath));
+                for (int i = 0; i < _paneCount; i++)
+                {
+                    if (!string.IsNullOrEmpty(_panes[i].File))
+                        _pendingReloads.Add((PaneIds[i], _panes[i].File!));
+                }
             }
         }
         catch (Exception ex)
@@ -1512,11 +1528,5 @@
         return $"{r},{g},{b}";
     }
 
-    static string StripDatePrefix(string fileName)
-    {
-        var name = Path.GetFileNameWithoutExtension(fileName);
-        if (name.Length > 9 && name[2] == '-' && name[5] == '-' && name[8] == '_')
-            name = name[9..];
-        return name;
-    }
+    static string SessionDisplayName(string fileName) => Path.GetFileNameWithoutExtension(fileName);
 }

@@ -167,8 +167,8 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO sess_sessions
-                (PcId, AuditorId, SessionDate, SequenceInDay, LengthSeconds, Name, CreatedByUserId)
-            VALUES (@pc, @aud, @dt, @seq, 0, @name, @creator);
+                (PcId, AuditorId, SessionDate, SequenceInDay, LengthSeconds, Name, CreatedByUserId, CreatedAt)
+            VALUES (@pc, @aud, @dt, @seq, 0, @name, @creator, datetime('now', '+2 hours'));
             SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("@pc", pcId);
         cmd.Parameters.AddWithValue("@aud", auditorId);
@@ -1006,7 +1006,7 @@ public class DashboardService
               (@pcId, @audId, @date, @seq,
                @len, @adm, @free,
                0, 0,
-               @sum, datetime('now'))";
+               @sum, datetime('now', '+2 hours'))";
         cmd.Parameters.AddWithValue("@pcId",  pcId);
         cmd.Parameters.AddWithValue("@audId", auditorId);
         cmd.Parameters.AddWithValue("@date",  dateStr);
@@ -1047,7 +1047,7 @@ public class DashboardService
                LengthSeconds, AdminSeconds, IsFree, Summary, CreatedAt)
             VALUES
               (@audId, @pcId, @date, @seq,
-               @len, @adm, @free, @sum, datetime('now'))";
+               @len, @adm, @free, @sum, datetime('now', '+2 hours'))";
         cmd.Parameters.AddWithValue("@audId", auditorId);
         cmd.Parameters.AddWithValue("@pcId",  pcId);
         cmd.Parameters.AddWithValue("@date",  dateStr);
@@ -1074,7 +1074,7 @@ public class DashboardService
             INSERT INTO cs_reviews
               (SessionId, CsId, ReviewLengthSeconds, ReviewedAt, Status, Notes)
             VALUES
-              (@sid, @csId, @rev, datetime('now'), @status, @notes)";
+              (@sid, @csId, @rev, datetime('now', '+2 hours'), @status, @notes)";
         cmd.Parameters.AddWithValue("@sid",    sessionId);
         cmd.Parameters.AddWithValue("@csId",   csId);
         cmd.Parameters.AddWithValue("@rev",    reviewSec);
@@ -1213,7 +1213,7 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO cs_work_log (CsId, PcId, WorkDate, LengthSeconds, Notes, CreatedAt)
-            VALUES (@csId, @pcId, @date, @len, @notes, datetime('now'))";
+            VALUES (@csId, @pcId, @date, @len, @notes, datetime('now', '+2 hours'))";
         cmd.Parameters.AddWithValue("@csId", csId);
         cmd.Parameters.AddWithValue("@pcId", pcId);
         cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
@@ -1457,7 +1457,7 @@ public class DashboardService
               (@pcId, @audId, @date, @seq,
                @len, @adm, @free,
                0, 0,
-               @sum, datetime('now'))";
+               @sum, datetime('now', '+2 hours'))";
         cmd.Parameters.AddWithValue("@pcId",  auditorId);  // PcId = AuditorId for solo
         cmd.Parameters.AddWithValue("@audId", auditorId);
         cmd.Parameters.AddWithValue("@date",  dateStr);
@@ -1816,19 +1816,19 @@ public class DashboardService
     }
 
     /// Returns all sessions for a PC: (SessionId, Name).
-    public List<(int SessionId, string Name)> GetSessionsForPc(int pcId)
+    public List<(int SessionId, string Name, string CreatedAt)> GetSessionsForPc(int pcId)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT SessionId, COALESCE(Name,'') FROM sess_sessions
+            SELECT SessionId, COALESCE(Name,''), COALESCE(CreatedAt,'') FROM sess_sessions
             WHERE PcId = @pcId";
         cmd.Parameters.AddWithValue("@pcId", pcId);
-        var list = new List<(int, string)>();
+        var list = new List<(int, string, string)>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add((r.GetInt32(0), r.GetString(1)));
+            list.Add((r.GetInt32(0), r.GetString(1), r.GetString(2)));
         return list;
     }
 
@@ -1865,7 +1865,7 @@ public class DashboardService
 
     public record PendingCsSession(
         int SessionId, int PcId, string PcName, string SessionName,
-        string SessionDate, int TotalSeconds, bool IsSolo, string AuditorName);
+        string SessionDate, int TotalSeconds, bool IsSolo, string AuditorName, string CreatedAt);
 
     /// Returns all sessions from the last <paramref name="lookbackDays"/> days that have no CS review yet.
     public List<PendingCsSession> GetPendingCsSessions(int lookbackDays = 10)
@@ -1882,7 +1882,8 @@ public class DashboardService
                    s.SessionDate,
                    COALESCE(s.LengthSeconds,0) + COALESCE(s.AdminSeconds,0) AS TotalSec,
                    CASE WHEN s.PcId = s.AuditorId THEN 1 ELSE 0 END AS IsSolo,
-                   TRIM(pa.FirstName || ' ' || COALESCE(NULLIF(pa.LastName,''), '')) AS AuditorName
+                   TRIM(pa.FirstName || ' ' || COALESCE(NULLIF(pa.LastName,''), '')) AS AuditorName,
+                   COALESCE(s.CreatedAt, '') AS CreatedAt
             FROM sess_sessions s
             JOIN core_persons p ON p.PersonId = s.PcId
             JOIN core_persons pa ON pa.PersonId = s.AuditorId
@@ -1900,7 +1901,7 @@ public class DashboardService
             list.Add(new PendingCsSession(
                 r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3),
                 r.GetString(4), r.IsDBNull(5) ? 0 : r.GetInt32(5),
-                r.GetInt32(6) == 1, r.GetString(7)));
+                r.GetInt32(6) == 1, r.GetString(7), r.GetString(8)));
         }
         return list;
     }
@@ -1909,7 +1910,7 @@ public class DashboardService
 
     public record AuditorSessionStatus(
         int SessionId, int PcId, string PcName, string SessionName,
-        string SessionDate, int TotalSeconds, string CsStatus, string? CsName);
+        string SessionDate, int TotalSeconds, string CsStatus, string? CsName, string CreatedAt);
 
     /// <summary>
     /// Returns sessions the auditor conducted in the last <paramref name="lookbackDays"/> days
@@ -1932,14 +1933,15 @@ public class DashboardService
                        WHEN cr.CsReviewId IS NULL THEN 'Waiting'
                        ELSE cr.Status
                    END AS CsStatus,
-                   TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS CsName
+                   TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS CsName,
+                   COALESCE(s.CreatedAt, '') AS CreatedAt
             FROM sess_sessions s
             JOIN core_persons p ON p.PersonId = s.PcId
             LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
             LEFT JOIN core_persons pc ON pc.PersonId = cr.CsId
             WHERE s.AuditorId = @aid
               {dateFilter}
-            ORDER BY s.SessionDate DESC, s.SequenceInDay DESC";
+            ORDER BY PcName, s.SessionDate, s.SequenceInDay";
         cmd.Parameters.AddWithValue("@aid", auditorId);
         if (lookbackDays > 0)
             cmd.Parameters.AddWithValue("@cutoff",
@@ -1951,7 +1953,7 @@ public class DashboardService
             list.Add(new AuditorSessionStatus(
                 r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3),
                 r.GetString(4), r.IsDBNull(5) ? 0 : r.GetInt32(5),
-                r.GetString(6), r.IsDBNull(7) ? null : r.GetString(7)));
+                r.GetString(6), r.IsDBNull(7) ? null : r.GetString(7), r.GetString(8)));
         }
         return list;
     }
@@ -2039,7 +2041,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE sys_staff_messages SET AcknowledgedAt = datetime('now') WHERE Id = @id";
+        cmd.CommandText = "UPDATE sys_staff_messages SET AcknowledgedAt = datetime('now', '+2 hours') WHERE Id = @id";
         cmd.Parameters.AddWithValue("@id", messageId);
         cmd.ExecuteNonQuery();
     }
@@ -2064,9 +2066,9 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO sys_weekly_remarks (AuditorId, WeekDate, Remarks, SubmittedAt)
-            VALUES (@aud, @wk, @rem, datetime('now'))
+            VALUES (@aud, @wk, @rem, datetime('now', '+2 hours'))
             ON CONFLICT(AuditorId, WeekDate)
-            DO UPDATE SET Remarks = @rem, SubmittedAt = datetime('now')";
+            DO UPDATE SET Remarks = @rem, SubmittedAt = datetime('now', '+2 hours')";
         cmd.Parameters.AddWithValue("@aud", auditorId);
         cmd.Parameters.AddWithValue("@wk", weekDate);
         cmd.Parameters.AddWithValue("@rem", remarks ?? "");

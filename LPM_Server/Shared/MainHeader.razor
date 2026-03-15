@@ -438,7 +438,7 @@
                     <div class="mb-3">
                         <label class="form-label" style="font-size:.82rem; color:#94a3b8;">Select PC</label>
                         <select class="form-select form-select-sm" style="background:#0f172a; color:#e2e8f0; border-color:#475569;"
-                                @bind="_importPcId">
+                                value="@_importPcId" @onchange="OnPcChanged">
                             <option value="0">— Choose a PC —</option>
                             @foreach (var pc in _approvedPcs)
                             {
@@ -461,18 +461,24 @@
 
                         @if (_importSessionFile != null)
                         {
-                            <div class="d-flex align-items-center gap-2 py-1 px-2 mb-3"
-                                 style="background:rgba(59,130,246,.1); border:1px solid rgba(59,130,246,.3); border-radius:4px; font-size:.78rem;">
-                                <i class="ri-file-pdf-2-line" style="color:#3b82f6;"></i>
+                            <div class="imp-file-card @(_importDuplicate ? "imp-file-dup imp-shake" : "")" >
+                                <i class="ri-file-pdf-2-line" style="color:@(_importDuplicate ? "#ef4444" : "#3b82f6");"></i>
                                 <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                                     @_importSessionFile.Name
                                 </span>
                                 <span style="color:#64748b; font-size:.7rem;">@FormatFileSize(_importSessionFile.Size)</span>
                                 <button class="btn btn-sm p-0" style="color:#ef5350; font-size:.85rem;"
-                                        @onclick="() => _importSessionFile = null">
+                                        @onclick="ClearSessionFile">
                                     <i class="ri-close-line"></i>
                                 </button>
                             </div>
+                            @if (_importDuplicate)
+                            {
+                                <div class="imp-dup-msg">
+                                    <i class="ri-error-warning-fill me-1"></i>
+                                    A session named <strong>"@Path.GetFileNameWithoutExtension(_importSessionFile.Name)"</strong> already exists for this PC
+                                </div>
+                            }
                         }
 
                         @* ── Step 3: Attachments (multiple, optional) ── *@
@@ -529,7 +535,7 @@
                 <div class="modal-footer py-2" style="border-color:#334155;">
                     <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showImportWizard = false">Cancel</button>
                     <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                            disabled="@(_importPcId == 0 || _importSessionFile == null || _importBusy)"
+                            disabled="@(_importPcId == 0 || _importSessionFile == null || _importBusy || _importDuplicate)"
                             @onclick="ExecuteImport">
                         @if (_importBusy)
                         {
@@ -751,6 +757,34 @@
     /* ── Animated header logo triangles ── */
     .lpm-hdr-logo { height: 36px; width: auto; overflow: visible; }
     .lpm-hdr-logo-icon { height: 32px; width: 32px; overflow: visible; }
+
+    /* ── Add Session file card ── */
+    .imp-file-card {
+        display: flex; align-items: center; gap: 8px;
+        padding: 6px 10px; margin-bottom: 12px;
+        background: rgba(59,130,246,.1); border: 1px solid rgba(59,130,246,.3);
+        border-radius: 6px; font-size: .78rem;
+        transition: all .3s ease;
+    }
+    .imp-file-dup {
+        background: rgba(239,68,68,.12) !important;
+        border-color: #ef4444 !important;
+        box-shadow: 0 0 0 2px rgba(239,68,68,.25), 0 0 12px rgba(239,68,68,.15);
+    }
+    .imp-dup-msg {
+        color: #fca5a5; font-size: .78rem; margin: -8px 0 12px 4px;
+        animation: imp-fade-in .4s ease-out;
+    }
+    @@keyframes imp-shake {
+        0%, 100% { transform: translateX(0); }
+        10%, 50%, 90% { transform: translateX(-4px); }
+        30%, 70% { transform: translateX(4px); }
+    }
+    @@keyframes imp-fade-in {
+        from { opacity: 0; transform: translateY(-6px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .imp-shake { animation: imp-shake .5s ease-in-out; }
 </style>
 
 @code {
@@ -769,6 +803,7 @@
     List<IBrowserFile> _importAttachments = [];
     List<DashboardService.ApprovedPc> _approvedPcs = [];
     bool   _importBusy;
+    bool   _importDuplicate;
     string _importError   = "";
     string _importSuccess = "";
 
@@ -782,6 +817,7 @@
         _importError = "";
         _importSuccess = "";
         _importBusy = false;
+        _importDuplicate = false;
         _showImportWizard = true;
     }
 
@@ -789,6 +825,27 @@
     {
         _importSessionFile = e.File;
         _importError = "";
+        CheckDuplicateSession();
+    }
+
+    void ClearSessionFile()
+    {
+        _importSessionFile = null;
+        _importDuplicate = false;
+    }
+
+    void OnPcChanged(ChangeEventArgs e)
+    {
+        _importPcId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        CheckDuplicateSession();
+    }
+
+    void CheckDuplicateSession()
+    {
+        _importDuplicate = false;
+        if (_importPcId <= 0 || _importSessionFile == null) return;
+        var sessionName = Path.GetFileNameWithoutExtension(_importSessionFile.Name);
+        _importDuplicate = FolderSvc.SessionFileExistsByName(_importPcId, sessionName);
     }
 
     void OnAttachmentFilesSelected(InputFileChangeEventArgs e)
@@ -821,7 +878,7 @@
                 savedSessionFileName = FolderSvc.SaveUploadedFile(_importPcId, _importSessionFile.Name, ms.ToArray())!;
             }
 
-            // Upload attachments into _att subfolder
+            // Upload attachments as flat files: {session}_att_{name}
             foreach (var file in _importAttachments)
             {
                 using var ms = new MemoryStream();

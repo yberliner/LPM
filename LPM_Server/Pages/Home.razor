@@ -535,24 +535,25 @@
                             <table class="table table-sm table-hover mb-0 home-pending-cs-table">
                                 <thead>
                                     <tr>
-                                        <th style="width:22%;" class="home-pcs-sortable"
+                                        <th style="width:18%;" class="home-pcs-sortable"
                                             @onclick='() => TogglePcsSort("pc")'>
                                             PC Name
                                             <i class="@PcsSortIcon("pc")"></i>
                                         </th>
-                                        <th style="width:16%;" class="home-pcs-sortable"
+                                        <th style="width:18%;">Name</th>
+                                        <th style="width:14%;" class="home-pcs-sortable"
                                             @onclick='() => TogglePcsSort("date")'>
                                             Date
                                             <i class="@PcsSortIcon("date")"></i>
                                         </th>
-                                        <th style="width:14%;" class="home-pcs-sortable"
+                                        <th style="width:12%;" class="home-pcs-sortable"
                                             @onclick='() => TogglePcsSort("dur")'>
                                             Duration
                                             <i class="@PcsSortIcon("dur")"></i>
                                         </th>
-                                        <th style="width:16%;">Auditor</th>
-                                        <th style="width:12%;">Type</th>
-                                        <th style="width:20%;text-align:center;">Action</th>
+                                        <th style="width:14%;">Auditor</th>
+                                        <th style="width:10%;">Type</th>
+                                        <th style="width:14%;text-align:center;">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -563,7 +564,7 @@
                                     }
                                     @if (sorted.Count == 0)
                                     {
-                                        <tr><td colspan="6" class="text-center" style="padding:16px;color:#64748b;font-size:.8rem;">
+                                        <tr><td colspan="7" class="text-center" style="padding:16px;color:#64748b;font-size:.8rem;">
                                             No sessions pending review for this period
                                         </td></tr>
                                     }
@@ -576,16 +577,17 @@
                                         var hrs = totalMin / 60;
                                         var mins = totalMin % 60;
                                         var durStr = hrs > 0 ? $"{hrs}h {mins:D2}m" : $"{mins}m";
-                                        var dateStr = DateOnly.TryParse(s.SessionDate, out var d)
-                                            ? d.ToString("dd/MM/yy") : s.SessionDate;
-                                        <tr class="@rowClass home-pcs-row" @onclick="() => OpenPendingCs(s)"
-                                            title="@(string.IsNullOrEmpty(s.SessionName) ? "" : s.SessionName)">
+                                        var dateStr = DateTime.TryParse(s.CreatedAt, out var dt)
+                                            ? dt.ToString("dd/MM/yy HH:mm")
+                                            : (DateOnly.TryParse(s.SessionDate, out var d) ? d.ToString("dd/MM/yy") : s.SessionDate);
+                                        <tr class="@rowClass home-pcs-row" @onclick="() => OpenPendingCs(s)">
                                             <td class="home-pcs-pcname">
                                                 @if (isNewPc)
                                                 {
                                                     <i class="ri-user-line me-1" style="opacity:.5;"></i>@s.PcName
                                                 }
                                             </td>
+                                            <td style="font-size:.78rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;">@s.SessionName</td>
                                             <td class="home-pcs-date">@dateStr</td>
                                             <td class="home-pcs-dur">
                                                 <i class="ri-time-line me-1" style="opacity:.4;"></i>@durStr
@@ -643,12 +645,13 @@
                             <table class="table table-sm table-hover mb-0 home-aud-status-table">
                                 <thead>
                                     <tr>
-                                        <th style="width:22%;">PC Name</th>
-                                        <th style="width:14%;">Date</th>
-                                        <th style="width:14%;">Duration</th>
-                                        <th style="width:18%;">CS Status</th>
-                                        <th style="width:16%;">CS By</th>
-                                        <th style="width:16%;text-align:center;">Action</th>
+                                        <th style="width:18%;">PC Name</th>
+                                        <th style="width:18%;">Name</th>
+                                        <th style="width:12%;">Date</th>
+                                        <th style="width:12%;">Duration</th>
+                                        <th style="width:14%;">CS Status</th>
+                                        <th style="width:14%;">CS By</th>
+                                        <th style="width:12%;text-align:center;">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -658,7 +661,7 @@
                                     }
                                     @if (_auditorStatuses.Count == 0)
                                     {
-                                        <tr><td colspan="6" class="text-center" style="padding:16px;color:#64748b;font-size:.8rem;">
+                                        <tr><td colspan="7" class="text-center" style="padding:16px;color:#64748b;font-size:.8rem;">
                                             No sessions found for this period
                                         </td></tr>
                                     }
@@ -671,8 +674,9 @@
                                         var hrs = totalMin / 60;
                                         var mins = totalMin % 60;
                                         var durStr = hrs > 0 ? $"{hrs}h {mins:D2}m" : $"{mins}m";
-                                        var dateStr = DateOnly.TryParse(s.SessionDate, out var d2)
-                                            ? d2.ToString("dd/MM/yy") : s.SessionDate;
+                                        var dateStr = DateTime.TryParse(s.CreatedAt, out var dt2)
+                                            ? dt2.ToString("dd/MM/yy HH:mm")
+                                            : (DateOnly.TryParse(s.SessionDate, out var d2) ? d2.ToString("dd/MM/yy") : s.SessionDate);
                                         var statusClass = s.CsStatus switch {
                                             "Waiting"          => "home-aud-st-waiting",
                                             "Draft"            => "home-aud-st-done",
@@ -689,14 +693,14 @@
                                             "NeedsCorrection"  => "Correction Needed",
                                             _                  => s.CsStatus
                                         };
-                                        <tr class="@rowClass home-pcs-row" @onclick="() => OpenAuditorSession(s)"
-                                            title="@(string.IsNullOrEmpty(s.SessionName) ? "" : s.SessionName)">
+                                        <tr class="@rowClass home-pcs-row" @onclick="() => OpenAuditorSession(s)">
                                             <td class="home-pcs-pcname">
                                                 @if (isNewPc)
                                                 {
                                                     <i class="ri-user-line me-1" style="opacity:.5;"></i>@s.PcName
                                                 }
                                             </td>
+                                            <td style="font-size:.78rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;">@s.SessionName</td>
                                             <td class="home-pcs-date">@dateStr</td>
                                             <td class="home-pcs-dur">
                                                 <i class="ri-time-line me-1" style="opacity:.4;"></i>@durStr
