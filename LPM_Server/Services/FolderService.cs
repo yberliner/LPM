@@ -396,6 +396,30 @@ public class FolderService
         EncryptFileInPlace(fullPath);
     }
 
+    /// <summary>Overwrite an existing section file. Backs up the old file first.</summary>
+    public void OverwriteSectionFile(int pcId, string section, string fileName, byte[] fileBytes)
+    {
+        if (!ValidSections.Contains(section)) return;
+
+        var folder = GetPcFolder(pcId);
+        if (folder == null) return;
+
+        var sectionPath = Path.Combine(folder.FolderPath, section);
+        var safeName = string.Join("_", fileName.Split(Path.GetInvalidFileNameChars()));
+        var fullPath = Path.Combine(sectionPath, safeName);
+
+        // Backup the existing file before overwriting
+        if (File.Exists(fullPath))
+            BackupFile(pcId, $"{section}/{safeName}");
+
+        // Backup the original upload
+        BackupBytes(pcId, safeName, fileBytes);
+
+        File.WriteAllBytes(fullPath, fileBytes);
+        TryShrinkPdf(fullPath);
+        EncryptFileInPlace(fullPath);
+    }
+
     /// <summary>Save an imported attachment file. Flat naming in WorkSheets. Shrinks + encrypts.</summary>
     public void SaveImportedAttachment(int pcId, string sessionFileName, string attFileName, byte[] fileBytes)
     {

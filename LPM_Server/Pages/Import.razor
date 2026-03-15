@@ -152,12 +152,12 @@
                                         else
                                         { <span style="color:#fbbf24; font-size:.72rem;">New PC</span> }
                                     </td>
-                                    @{ var newFiles = pc.Files.Where(f => !f.AlreadyExists).ToList(); }
-                                    <td style="padding:6px 12px; text-align:center;">@newFiles.Count(f => f.Section == "Front_Cover")</td>
-                                    <td style="padding:6px 12px; text-align:center;">@newFiles.Count(f => f.Section == "Back_Cover")</td>
-                                    <td style="padding:6px 12px; text-align:center;">@newFiles.Count(f => f.Section == "WorkSheets")</td>
-                                    <td style="padding:6px 12px; text-align:center;">@newFiles.Count(f => f.Section == "Attachment")</td>
-                                    <td style="padding:6px 12px; text-align:center; font-weight:600;">@newFiles.Count</td>
+                                    @{ var inclFiles = pc.Files.Where(f => f.Include).ToList(); }
+                                    <td style="padding:6px 12px; text-align:center;">@inclFiles.Count(f => f.Section == "Front_Cover")</td>
+                                    <td style="padding:6px 12px; text-align:center;">@inclFiles.Count(f => f.Section == "Back_Cover")</td>
+                                    <td style="padding:6px 12px; text-align:center;">@inclFiles.Count(f => f.Section == "WorkSheets")</td>
+                                    <td style="padding:6px 12px; text-align:center;">@inclFiles.Count(f => f.Section == "Attachment")</td>
+                                    <td style="padding:6px 12px; text-align:center; font-weight:600;">@inclFiles.Count</td>
                                 </tr>
                             }
                         </tbody>
@@ -172,7 +172,7 @@
         @if (!_bulkMode && _manifest.Count > 0 && !_uploading)
         {
             var coverFiles = _manifest.SelectMany(pc => pc.Files)
-                .Where(f => !f.AlreadyExists && f.Section is "Front_Cover" or "Back_Cover").ToList();
+                .Where(f => f.Section is "Front_Cover" or "Back_Cover").ToList();
             if (coverFiles.Count > 0)
             {
             <div class="card mt-3" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
@@ -183,7 +183,7 @@
                         @coverFiles.Count(f => f.Include) of @coverFiles.Count selected — uncheck to skip
                     </span>
                     <button class="btn btn-sm ms-auto py-0 px-2" style="color:#fbbf24; font-size:.7rem;"
-                            @onclick="() => { var allOn = coverFiles.All(x => x.Include); foreach (var f in coverFiles) f.Include = !allOn; }">
+                            @onclick="() => { var allOn = coverFiles.All(x => x.Include); foreach (var f in coverFiles) { f.Include = !allOn; if (f.AlreadyExists) f.OverrideExisting = !allOn; } }">
                         Toggle All
                     </button>
                 </div>
@@ -192,9 +192,10 @@
                         <thead>
                             <tr style="background:rgba(0,0,0,.2); color:#94a3b8;">
                                 <th style="padding:6px 12px; width:5%;"></th>
-                                <th style="padding:6px 12px; width:30%;">File</th>
-                                <th style="padding:6px 12px; width:13%;">Section</th>
-                                <th style="padding:6px 12px; width:37%;">Folder Item</th>
+                                <th style="padding:6px 12px; width:28%;">File</th>
+                                <th style="padding:6px 12px; width:11%;">Section</th>
+                                <th style="padding:6px 12px; width:11%;">Status</th>
+                                <th style="padding:6px 12px; width:30%;">Folder Item</th>
                                 <th style="padding:6px 12px; width:15%; text-align:right;">Size</th>
                             </tr>
                         </thead>
@@ -206,13 +207,33 @@
                                     c => c.FileName == f.FileName && c.Section == f.Section);
                                 <tr style="border-bottom:1px solid rgba(255,255,255,.03); opacity:@(f.Include ? "1" : "0.4");">
                                     <td style="padding:4px 12px; text-align:center;">
-                                        <input type="checkbox" checked="@f.Include"
-                                               @onchange="() => f.Include = !f.Include" />
+                                        @if (f.AlreadyExists)
+                                        {
+                                            <input type="checkbox" checked="@f.OverrideExisting"
+                                                   @onchange="() => { f.OverrideExisting = !f.OverrideExisting; f.Include = f.OverrideExisting; }" />
+                                        }
+                                        else
+                                        {
+                                            <input type="checkbox" checked="@f.Include"
+                                                   @onchange="() => f.Include = !f.Include" />
+                                        }
                                     </td>
                                     <td style="padding:4px 12px;">
-                                        <i class="ri-file-pdf-2-line me-1" style="color:#ef5350; font-size:.7rem;"></i>@f.FileName
+                                        <i class="ri-file-pdf-2-line me-1" style="color:@(f.AlreadyExists ? "#fbbf24" : "#ef5350"); font-size:.7rem;"></i>@f.FileName
                                     </td>
                                     <td style="padding:4px 12px; color:#94a3b8;">@f.Section.Replace("_", " ")</td>
+                                    <td style="padding:4px 12px;">
+                                        @if (f.AlreadyExists)
+                                        {
+                                            <span style="color:#fbbf24; font-size:.72rem;">
+                                                <i class="ri-error-warning-line me-1"></i>Exists
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span style="color:#22c55e; font-size:.72rem;">New</span>
+                                        }
+                                    </td>
                                     <td style="padding:4px 12px;">
                                         @if (cm != null)
                                         {
@@ -277,11 +298,16 @@
                         <i class="ri-upload-2-line"></i>Start Import
                     </button>
                     <span style="font-size:.72rem; color:#64748b;">
-                        @_manifest.Sum(m => m.Files.Count(f => !f.AlreadyExists)) new files across @_manifest.Count PC(s)
-                        @{ var skippedCount = _manifest.Sum(m => m.Files.Count(f => f.AlreadyExists)); }
+                        @_manifest.Sum(m => m.Files.Count(f => f.Include)) files to import across @_manifest.Count PC(s)
+                        @{ var skippedCount = _manifest.Sum(m => m.Files.Count(f => !f.Include && f.AlreadyExists)); }
+                        @{ var overrideCount = _manifest.Sum(m => m.Files.Count(f => f.OverrideExisting)); }
                         @if (skippedCount > 0)
                         {
-                            <span style="color:#64748b;"> — @skippedCount already imported</span>
+                            <span style="color:#64748b;"> — @skippedCount skipped</span>
+                        }
+                        @if (overrideCount > 0)
+                        {
+                            <span style="color:#fbbf24;"> — @overrideCount override(s)</span>
                         }
                     </span>
                 </div>
@@ -339,6 +365,7 @@
         public string? LastModified { get; set; }
         public bool Include { get; set; } = true;
         public bool AlreadyExists { get; set; }
+        public bool OverrideExisting { get; set; }
     }
     class LocalPcManifest
     {
@@ -654,7 +681,7 @@
                 .Select(pc => new ImportPcManifest(
                     pc.FolderName, pc.PcName, pc.ExistingPcId,
                     pc.Files.Where(f => f.Include).Select(f => new ImportFileManifest(
-                        f.RelativePath, f.FileName, f.Section, f.ParentSessionFile, f.LastModified
+                        f.RelativePath, f.FileName, f.Section, f.ParentSessionFile, f.LastModified, f.OverrideExisting
                     )).ToList()
                 ))
                 .Where(pc => pc.Files.Count > 0)

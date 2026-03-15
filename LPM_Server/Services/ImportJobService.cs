@@ -4,7 +4,7 @@ public enum ImportStatus { Uploading, Processing, Complete, Failed }
 
 public record ImportFileManifest(
     string RelativePath, string FileName, string Section,
-    string? ParentSessionFile, string? LastModified);
+    string? ParentSessionFile, string? LastModified, bool OverrideExisting = false);
 
 public record ImportPcManifest(
     string FolderName, string PcName, int? ExistingPcId,
@@ -173,11 +173,15 @@ public class ImportJobService
 
                     if (_folderSvc.SectionFileExists(pcId, file.Section, finalName))
                     {
-                        IncrementSkipped(jobId);
-                        continue;
+                        if (file.OverrideExisting)
+                            _folderSvc.OverwriteSectionFile(pcId, file.Section, finalName, bytes);
+                        else
+                        { IncrementSkipped(jobId); continue; }
                     }
-
-                    _folderSvc.SaveSectionFile(pcId, file.Section, finalName, bytes);
+                    else
+                    {
+                        _folderSvc.SaveSectionFile(pcId, file.Section, finalName, bytes);
+                    }
                     IncrementProcessed(jobId);
                 }
 
