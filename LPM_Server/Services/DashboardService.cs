@@ -176,7 +176,9 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@seq", maxSeq + 1);
         cmd.Parameters.AddWithValue("@name", sessionName);
         cmd.Parameters.AddWithValue("@creator", auditorId);
-        return Convert.ToInt32(cmd.ExecuteScalar());
+        var sessionId = Convert.ToInt32(cmd.ExecuteScalar());
+        Console.WriteLine($"[DashboardService] Created imported session for PC {pcId}, name: '{sessionName}'");
+        return sessionId;
     }
 
     /// <summary>Insert a session with a specific date, and mark it verified. Returns SessionId.</summary>
@@ -225,6 +227,7 @@ public class DashboardService
         crCmd.Parameters.AddWithValue("@reviewedAt", createdAt);
         crCmd.ExecuteNonQuery();
 
+        Console.WriteLine($"[DashboardService] Created imported session with date for PC {pcId}, name: '{sessionName}', date: {sessionDate}");
         return sessionId;
     }
 
@@ -260,7 +263,11 @@ public class DashboardService
         aaCmd.CommandText = "SELECT AllowAll FROM sess_auditors WHERE AuditorId = @id";
         aaCmd.Parameters.AddWithValue("@id", auditorId);
         var allowAll = aaCmd.ExecuteScalar() is long aa && aa == 1;
-        if (allowAll) return true;
+        if (allowAll)
+        {
+            Console.WriteLine($"[DashboardService] Permission check for user {auditorId} on PC {pcId}: AllowAll");
+            return true;
+        }
 
         // Check existing permission
         using var chkCmd = conn.CreateCommand();
@@ -268,7 +275,12 @@ public class DashboardService
         chkCmd.Parameters.AddWithValue("@aud", auditorId);
         chkCmd.Parameters.AddWithValue("@pc",  pcId);
         var existing = chkCmd.ExecuteScalar();
-        if (existing is long approved) return approved == 1;
+        if (existing is long approved)
+        {
+            var result = approved == 1;
+            Console.WriteLine($"[DashboardService] Permission check for user {auditorId} on PC {pcId}: {(result ? "Approved" : "Pending")}");
+            return result;
+        }
 
         // No existing record — create a pending request
         using var insCmd = conn.CreateCommand();
@@ -288,6 +300,7 @@ public class DashboardService
             SendAutoMessageToAdmins(auditorId, msgText);
         }
 
+        Console.WriteLine($"[DashboardService] Permission check for user {auditorId} on PC {pcId}: RequestCreated");
         return false;
     }
 
@@ -335,6 +348,7 @@ public class DashboardService
             ins.ExecuteNonQuery();
             _messageNotifier.NotifyNewMessage(adminId);
         }
+        Console.WriteLine($"[DashboardService] Sent auto message: '{msgText}'");
     }
 
     /// Returns all PcIds in the auditor's StaffPcList that are NOT explicitly approved.
@@ -400,6 +414,7 @@ public class DashboardService
         cmd.CommandText = "UPDATE sys_auditor_pc_permissions SET IsApproved = 1 WHERE Id = @id";
         cmd.Parameters.AddWithValue("@id", id);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] Approved permission request {id}");
     }
 
     public void RejectPermissionRequest(int id)
@@ -426,6 +441,7 @@ public class DashboardService
         delSpl.Parameters.AddWithValue("@uid", auditorId);
         delSpl.Parameters.AddWithValue("@pc",  pcId);
         delSpl.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] Rejected permission request {id} for auditor {auditorId}, PC {pcId}");
     }
 
     public List<AuditorPermGroup> GetAuditorPermGroups()
@@ -480,6 +496,7 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@v",  allow ? 1 : 0);
         cmd.Parameters.AddWithValue("@id", auditorId);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] Set AllowAll={allow} for auditor {auditorId}");
     }
 
     /// Admin adds a PC permission directly (approved).
@@ -495,6 +512,7 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@aud", auditorId);
         cmd.Parameters.AddWithValue("@pc",  pcId);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] Added approved permission for auditor {auditorId}, PC {pcId}");
     }
 
     public void RemovePermission(int id)
@@ -505,6 +523,7 @@ public class DashboardService
         cmd.CommandText = "DELETE FROM sys_auditor_pc_permissions WHERE Id = @id";
         cmd.Parameters.AddWithValue("@id", id);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] Removed permission {id}");
     }
 
     /// <summary>
@@ -649,6 +668,7 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@pcId", pcId);
         cmd.Parameters.AddWithValue("@cap",  workCapacity);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] Added PC {pcId} to user {userId} as {workCapacity}");
     }
 
     public void RemoveUserPc(int userId, int pcId, string workCapacity = "Auditor")
@@ -661,6 +681,7 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@pcId", pcId);
         cmd.Parameters.AddWithValue("@cap",  workCapacity);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] Removed PC {pcId} from user {userId}");
     }
 
     public void SetUserPcRole(int userId, int pcId, string role)
@@ -674,6 +695,7 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@uid",  userId);
         cmd.Parameters.AddWithValue("@pcId", pcId);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] Set PC {pcId} role to '{role}' for user {userId}");
     }
 
     /// <summary>
@@ -1019,7 +1041,9 @@ public class DashboardService
 
         using var rowIdCmd = conn.CreateCommand();
         rowIdCmd.CommandText = "SELECT last_insert_rowid()";
-        return (int)(long)rowIdCmd.ExecuteScalar()!;
+        var newSessionId = (int)(long)rowIdCmd.ExecuteScalar()!;
+        Console.WriteLine($"[DashboardService] Added session {newSessionId} for PC {pcId}, auditor {auditorId}");
+        return newSessionId;
     }
 
     public int AddMiscCharge(
@@ -1060,7 +1084,9 @@ public class DashboardService
 
         using var rowIdCmd = conn.CreateCommand();
         rowIdCmd.CommandText = "SELECT last_insert_rowid()";
-        return (int)(long)rowIdCmd.ExecuteScalar()!;
+        var newChargeId = (int)(long)rowIdCmd.ExecuteScalar()!;
+        Console.WriteLine($"[DashboardService] Added misc charge {newChargeId} for PC {pcId}, auditor {auditorId}");
+        return newChargeId;
     }
 
     public int AddCsReview(
@@ -1084,7 +1110,9 @@ public class DashboardService
 
         using var rowIdCmd = conn.CreateCommand();
         rowIdCmd.CommandText = "SELECT last_insert_rowid()";
-        return (int)(long)rowIdCmd.ExecuteScalar()!;
+        var newReviewId = (int)(long)rowIdCmd.ExecuteScalar()!;
+        Console.WriteLine($"[DashboardService] Added CS review {newReviewId} for session {sessionId}");
+        return newReviewId;
     }
 
     public void UpdateSession(int sessionId, int lengthSec, int adminSec, bool isFree, string? summary)
@@ -1102,6 +1130,7 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@sum",  (object?)summary ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@id",   sessionId);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] Updated session {sessionId}");
     }
 
     public void UpdateCsReview(int csReviewId, int reviewSec, string status, string? notes)
@@ -1118,6 +1147,7 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@notes",  (object?)notes ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@id",     csReviewId);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] Updated CS review {csReviewId}");
     }
 
     /// <summary>
@@ -1222,7 +1252,9 @@ public class DashboardService
         cmd.ExecuteNonQuery();
         using var rowIdCmd = conn.CreateCommand();
         rowIdCmd.CommandText = "SELECT last_insert_rowid()";
-        return (int)(long)rowIdCmd.ExecuteScalar()!;
+        var newWorkId = (int)(long)rowIdCmd.ExecuteScalar()!;
+        Console.WriteLine($"[DashboardService] Added CS work log {newWorkId} for PC {pcId}");
+        return newWorkId;
     }
 
     public static DateOnly GetWeekStart(DateOnly d)
@@ -1470,7 +1502,9 @@ public class DashboardService
 
         using var rowIdCmd = conn.CreateCommand();
         rowIdCmd.CommandText = "SELECT last_insert_rowid()";
-        return (int)(long)rowIdCmd.ExecuteScalar()!;
+        var newSoloId = (int)(long)rowIdCmd.ExecuteScalar()!;
+        Console.WriteLine($"[DashboardService] Added solo session {newSoloId} for auditor {auditorId}");
+        return newSoloId;
     }
 
     /// Returns a map of pcId → first name of the CS who last reviewed a session for that PC.
@@ -1781,6 +1815,7 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@salary", auditorSalaryCents);
         cmd.Parameters.AddWithValue("@id",     sessionId);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] Approved session {sessionId}");
     }
 
     public void ApproveCsReview(int csReviewId, int csSalaryCents)
@@ -1795,6 +1830,7 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@salary", csSalaryCents);
         cmd.Parameters.AddWithValue("@id",     csReviewId);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] Approved CS review {csReviewId}");
     }
 
     /// Returns session IDs that have a cs_review for a given PC.
@@ -1998,6 +2034,7 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@msg",  msgText);
         cmd.ExecuteNonQuery();
         _messageNotifier.NotifyNewMessage(toStaffId);
+        Console.WriteLine($"[DashboardService] Sent message from {fromStaffId} to {toStaffId}");
     }
 
     public List<StaffMessage> GetPendingMessages(int staffId)
@@ -2044,6 +2081,7 @@ public class DashboardService
         cmd.CommandText = "UPDATE sys_staff_messages SET AcknowledgedAt = datetime('now', '+2 hours') WHERE Id = @id";
         cmd.Parameters.AddWithValue("@id", messageId);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] Acknowledged message {messageId}");
     }
 
     // ── Weekly Remarks ───────────────────────────────────────────────
@@ -2073,5 +2111,6 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@wk", weekDate);
         cmd.Parameters.AddWithValue("@rem", remarks ?? "");
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] Saved weekly remarks for auditor {auditorId}, week {weekDate}");
     }
 }

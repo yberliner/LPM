@@ -321,6 +321,7 @@
         { _addError = LS.T("members.firstNameRequired"); return; }
 
         int? gradeId = int.TryParse(_addGradeId, out var g) ? g : null;
+        Console.WriteLine($"[Auditors] Added auditor '{_addFirstName} {_addLastName}' type={_addType} by 'admin'");
         var newId = AuditorSvc.AddAuditor(_addFirstName, _addLastName, gradeId, _addType);
         _allAuditors = AuditorSvc.GetAllAuditors();
         _showAddForm = false;
@@ -347,6 +348,7 @@
         { _editError = LS.T("members.firstNameRequired"); return; }
 
         int? gradeId = int.TryParse(_editGradeId, out var g) ? g : null;
+        Console.WriteLine($"[Auditors] Updated auditor {_selId!.Value} — '{_editFirstName} {_editLastName}' type={_editType} active={_editIsActive} by 'admin'");
         AuditorSvc.UpdateAuditor(_selId!.Value, _editFirstName, _editLastName,
             gradeId, _editType, _editIsActive);
         _editMode    = false;

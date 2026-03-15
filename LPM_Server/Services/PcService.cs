@@ -157,6 +157,7 @@ public class PcService
 
         // Create new
         var newId = AddPcWithPerson(firstName, lastName, "", "", "", "");
+        Console.WriteLine($"[PcService] Created new PC {newId} from folder name '{folderName}'");
         return (newId, true);
     }
 
@@ -192,6 +193,7 @@ public class PcService
         pcCmd.Parameters.AddWithValue("@id", personId);
         pcCmd.ExecuteNonQuery();
 
+        Console.WriteLine($"[PcService] Added PC with person {personId}: '{firstName.Trim()} {lastName.Trim()}'");
         return personId;
     }
 
@@ -247,6 +249,7 @@ public class PcService
         pCmd.Parameters.AddWithValue("@srcId", sourceId.HasValue ? (object)sourceId.Value : DBNull.Value);
         pCmd.Parameters.AddWithValue("@id",   pcId);
         pCmd.ExecuteNonQuery();
+        Console.WriteLine($"[PcService] Updated person data for {pcId}");
     }
 
     public PcStats GetPcStats(int pcId)
@@ -489,6 +492,7 @@ public class PcService
         }
 
         tx.Commit();
+        Console.WriteLine($"[PcService] Created purchase {purchaseId} for PC {pcId}, items: {items.Count}");
         return purchaseId;
     }
 
@@ -824,6 +828,7 @@ public class PcService
         }
 
         tx.Commit();
+        Console.WriteLine($"[PcService] Updated purchase {purchaseId}, items: {items.Count}");
     }
 
     public void SetMoneyInBank(int paymentMethodId, bool isInBank)
@@ -838,6 +843,7 @@ public class PcService
         cmd.Parameters.AddWithValue("@id", paymentMethodId);
         cmd.Parameters.AddWithValue("@val", isInBank ? 1 : 0);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[PcService] Set money in bank={isInBank} for payment method {paymentMethodId}");
     }
 
     public void DeletePurchase(int purchaseId)
@@ -868,6 +874,7 @@ public class PcService
         }
 
         tx.Commit();
+        Console.WriteLine($"[PcService] Deleted purchase {purchaseId}");
     }
 
     public void RestorePurchase(int purchaseId)
@@ -903,6 +910,7 @@ public class PcService
         }
 
         tx.Commit();
+        Console.WriteLine($"[PcService] Restored purchase {purchaseId}");
     }
 
     public void ApprovePurchase(int purchaseId, int approvedByPersonId)
@@ -918,6 +926,7 @@ public class PcService
         cmd.Parameters.AddWithValue("@id", purchaseId);
         cmd.Parameters.AddWithValue("@by", approvedByPersonId);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[PcService] Approved purchase {purchaseId}");
     }
 
     private static object Nv(string? s) =>

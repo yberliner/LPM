@@ -918,6 +918,7 @@
     List<(int PersonId, string FullName)> _staff      = [];
     List<(int PersonId, string FullName)> _allPersons = [];
     int? _currentPersonId;
+    string _username = "";
 
     // All purchases for this PC (not just pending)
     List<PurchaseListItem>? _pcPurchases;
@@ -1012,8 +1013,8 @@
         _allPersons = PcSvc.GetAllPersons();
 
         var auth = await AuthState.GetAuthenticationStateAsync();
-        var username = auth.User.Identity?.Name;
-        _currentPersonId = username != null ? PcSvc.GetPersonIdByUsername(username) : null;
+        _username = auth.User.Identity?.Name ?? "";
+        _currentPersonId = !string.IsNullOrEmpty(_username) ? PcSvc.GetPersonIdByUsername(_username) : null;
     }
 
     void SelectPc(int pcId)
@@ -1079,6 +1080,7 @@
     void SaveEditFromModal((string FirstName, string LastName, string Phone, string Email,
         string DateOfBirth, string Gender, int OrgId, string Source, string Notes, int CourseId, string Nick) d)
     {
+        Console.WriteLine($"[PCs] Updated PC {_selPcId!.Value} — '{d.FirstName} {d.LastName}' nick='{d.Nick}' by '{_username}'");
         PcSvc.UpdatePcDetail(_selPcId!.Value,
             d.FirstName, d.LastName, d.Nick,
             d.Phone, d.Email, d.Notes,
@@ -1097,6 +1099,7 @@
     void ConfirmFinishCourse()
     {
         if (!_confirmFinishCourseId.HasValue) return;
+        Console.WriteLine($"[PCs] Finished course enrollment {_confirmFinishCourseId.Value} for PC {_selPcId} by '{_username}'");
         CourseSvc.FinishStudentCourse(_confirmFinishCourseId.Value, DateTime.Today.ToString("yyyy-MM-dd"));
         _confirmFinishCourseId = null;
         LoadDetail();
@@ -1290,6 +1293,7 @@
                 _purchaseError = LS.T("purchases.nothingChanged");
                 return;
             }
+            Console.WriteLine($"[PCs] Updated purchase {_editingPurchaseId.Value} for PC {_selPcId} by '{_username}'");
             PcSvc.UpdatePurchase(_editingPurchaseId.Value,
                 _purchaseDate.ToString("yyyy-MM-dd"),
                 string.IsNullOrWhiteSpace(_purchaseNotes) ? null : _purchaseNotes,
@@ -1297,6 +1301,7 @@
         }
         else
         {
+            Console.WriteLine($"[PCs] Created purchase for PC {_selPcId!.Value} — {items.Count} items by '{_username}'");
             PcSvc.CreatePurchase(
                 _selPcId!.Value,
                 _purchaseDate.ToString("yyyy-MM-dd"),
@@ -1385,6 +1390,7 @@
     void ConfirmDeletePurchase()
     {
         if (!_confirmDeletePurchaseId.HasValue) return;
+        Console.WriteLine($"[PCs] Deleted purchase {_confirmDeletePurchaseId.Value} for PC {_selPcId} by '{_username}'");
         PcSvc.DeletePurchase(_confirmDeletePurchaseId.Value);
         _confirmDeletePurchaseId = null;
         _allPcsEx = PcSvc.GetAllPcsExtended();

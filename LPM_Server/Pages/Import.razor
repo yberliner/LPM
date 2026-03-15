@@ -347,6 +347,7 @@
     string _errorMessage = "";
     int _uploadedCount, _totalFileCount;
     int? _userId;
+    string _logUsername = "";
     long _totalSizeBytes;
     long _freeSpaceBytes;
 
@@ -388,8 +389,8 @@
     {
         _folderItems = DashSvc.GetFolderItems();
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
-        var username = auth.User.Identity?.Name ?? "";
-        _userId = DashSvc.GetUserIdByUsername(username);
+        _logUsername = auth.User.Identity?.Name ?? "";
+        _userId = DashSvc.GetUserIdByUsername(_logUsername);
         ImportJob.OnProgressChanged += OnJobProgress;
     }
 
@@ -653,6 +654,7 @@
             .ToList();
 
         _totalFileCount = includedFiles.Count;
+        Console.WriteLine($"[Import] Started import: {_manifest.Count} PCs, {includedFiles.Count} files by '{_logUsername}'");
         var jobId = ImportJob.TryStartUpload(_userId.Value, _totalFileCount);
         if (jobId == null) { _errorMessage = "An import is already in progress."; return; }
 

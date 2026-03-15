@@ -239,6 +239,7 @@
         {
             _pwMsg = LS.T("settings.passwordTooShort"); _pwOk = false; return;
         }
+        Console.WriteLine($"[UserSettings] Changed password by '{_username}'");
         var error = UserDb.ChangePassword(_username, _currentPwd, _newPwd);
         if (error is not null)
         {
@@ -280,6 +281,7 @@
         await using var stream = new FileStream(filePath, FileMode.Create);
         await file.OpenReadStream(2 * 1024 * 1024).CopyToAsync(stream);
 
+        Console.WriteLine($"[UserSettings] Uploaded avatar by '{_username}'");
         UserDb.SetAvatarPath(_username, $"/avatars/{_username}{ext}");
         Nav.NavigateTo("/Settings", forceLoad: true);
     }
@@ -287,6 +289,7 @@
     private void HandleDeleteAvatar()
     {
         if (_avatarUrl is null) return;
+        Console.WriteLine($"[UserSettings] Deleted avatar by '{_username}'");
         var avatarsDir = Path.Combine(Env.WebRootPath, "avatars");
         foreach (var old in Directory.GetFiles(avatarsDir, $"{_username}.*"))
             File.Delete(old);

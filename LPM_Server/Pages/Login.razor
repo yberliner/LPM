@@ -123,6 +123,7 @@
             return;
 
         _loading = true;
+        Console.WriteLine($"[Login] Login attempt for '{_username}'");
         await InvokeAsync(StateHasChanged);
         await JS.InvokeVoidAsync("submitLoginForm", _username, _password);
     }

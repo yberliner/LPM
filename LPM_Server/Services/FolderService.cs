@@ -298,6 +298,7 @@ public class FolderService
         if (fullPath == null) return false;
 
         File.WriteAllBytes(fullPath, EncryptBytes(pdfBytes));
+        Console.WriteLine($"[FolderService] Saved file PC {pcId}: {relativePath}");
         return true;
     }
 
@@ -344,6 +345,7 @@ public class FolderService
         }
 
         File.Copy(fullPath, backupPath);
+        Console.WriteLine($"[FolderService] Backed up file PC {pcId}: {relativePath}");
     }
 
     /// <summary>Backup raw bytes (e.g. original upload before shrink/encrypt) to _backups/.</summary>
@@ -375,6 +377,7 @@ public class FolderService
         }
 
         File.WriteAllBytes(backupPath, bytes);
+        Console.WriteLine($"[FolderService] Backed up bytes '{fileName}' for PC {pcId}");
     }
 
     // ── Full backup (DB + PC-Folders) ─────────────────────────
@@ -494,6 +497,7 @@ public class FolderService
         File.WriteAllBytes(fullPath, fileBytes);
         TryShrinkPdf(fullPath);
         EncryptFileInPlace(fullPath);
+        Console.WriteLine($"[FolderService] Saved section file '{fileName}' to {section} for PC {pcId}");
     }
 
     /// <summary>Overwrite an existing section file. Backs up the old file first.</summary>
@@ -518,6 +522,7 @@ public class FolderService
         File.WriteAllBytes(fullPath, fileBytes);
         TryShrinkPdf(fullPath);
         EncryptFileInPlace(fullPath);
+        Console.WriteLine($"[FolderService] Overwrote section file '{fileName}' in {section} for PC {pcId}");
     }
 
     /// <summary>Save an imported attachment file. Flat naming in WorkSheets. Shrinks + encrypts.</summary>
@@ -539,6 +544,7 @@ public class FolderService
         File.WriteAllBytes(fullPath, fileBytes);
         TryShrinkPdf(fullPath);
         EncryptFileInPlace(fullPath);
+        Console.WriteLine($"[FolderService] Saved imported attachment '{attFileName}' for session '{sessionFileName}', PC {pcId}");
     }
 
     /// <summary>Save an uploaded session file to WorkSheets. Returns the saved filename.</summary>
@@ -562,6 +568,7 @@ public class FolderService
         TryShrinkPdf(fullPath);
         // Now encrypt the (possibly shrunk) file in-place
         EncryptFileInPlace(fullPath);
+        Console.WriteLine($"[FolderService] Saved uploaded file '{fileName}' for PC {pcId}");
         return Path.GetFileName(fullPath);
     }
 
@@ -591,6 +598,7 @@ public class FolderService
         File.WriteAllBytes(fullPath, fileBytes);
         TryShrinkPdf(fullPath);
         EncryptFileInPlace(fullPath);
+        Console.WriteLine($"[FolderService] Saved attachment '{attFileName}' for session '{sessionFileName}', PC {pcId}");
     }
 
     /// <summary>Read a file from disk, encrypt its contents, and write back.</summary>

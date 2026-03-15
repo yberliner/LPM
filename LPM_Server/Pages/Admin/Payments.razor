@@ -388,6 +388,7 @@
     private PurchaseDetail? _viewDetail;
     private bool _loading = true;
     private int? _exitId;
+    private string _username = "";
 
     private string _sortCol = "date";
     private bool   _sortAsc = true;
@@ -439,6 +440,7 @@
             Navigation.NavigateTo("/Home", forceLoad: false);
             return;
         }
+        _username = authState.User.Identity?.Name ?? "";
         await LoadData();
     }
 
@@ -492,6 +494,7 @@
 
     async Task ToggleBank(int paymentMethodId, bool newValue)
     {
+        Console.WriteLine($"[Payments] Toggled money-in-bank for payment {paymentMethodId} to {newValue} by '{_username}'");
         PcSvc.SetMoneyInBank(paymentMethodId, newValue);
 
         // Play exit animation before updating state (row slides out)
@@ -509,6 +512,7 @@
 
     async Task ToggleDetailBank(int paymentMethodId, bool newValue)
     {
+        Console.WriteLine($"[Payments] Toggled money-in-bank (detail) for payment {paymentMethodId} to {newValue} by '{_username}'");
         PcSvc.SetMoneyInBank(paymentMethodId, newValue);
 
         if (newValue && !_showBankCol)
@@ -529,7 +533,11 @@
         if (row != null) row.IsMoneyInBank = newValue;
     }
 
-    void ViewPurchase(int purchaseId) => _viewDetail = PcSvc.GetPurchaseDetail(purchaseId);
+    void ViewPurchase(int purchaseId)
+    {
+        Console.WriteLine($"[Payments] Viewed purchase {purchaseId} detail by '{_username}'");
+        _viewDetail = PcSvc.GetPurchaseDetail(purchaseId);
+    }
 
     static string Fmt(string? dateStr) =>
         dateStr != null && DateOnly.TryParse(dateStr, out var d) ? d.ToString("dd/MM/yy") : dateStr ?? "\u2014";

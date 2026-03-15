@@ -93,6 +93,7 @@ public class AuditorService(IConfiguration config)
         aCmd.Parameters.AddWithValue("@active", isActive ? 1 : 0);
         aCmd.Parameters.AddWithValue("@id", auditorId);
         aCmd.ExecuteNonQuery();
+        Console.WriteLine($"[AuditorService] Updated auditor {auditorId}");
     }
 
     public int AddAuditor(string firstName, string lastName, int? gradeId, int type)
@@ -124,6 +125,7 @@ public class AuditorService(IConfiguration config)
         pcCmd.Parameters.AddWithValue("@id", personId);
         pcCmd.ExecuteNonQuery();
 
+        Console.WriteLine($"[AuditorService] Added auditor: '{firstName.Trim()} {lastName.Trim()}'");
         return personId;
     }
 

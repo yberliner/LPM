@@ -512,6 +512,7 @@
     private bool _msgIsError;
     private bool _sessCollapsed = false;
     private bool _csCollapsed   = false;
+    private string _username = "";
 
     private int _sessDraft    => _groups.Sum(g => g.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus != "Approved")));
     private int _sessApproved => _groups.Sum(g => g.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus == "Approved")));
@@ -530,6 +531,7 @@
             Navigation.NavigateTo("/Home", forceLoad: false);
             return;
         }
+        _username = authState.User.Identity?.Name ?? "";
         await LoadData();
     }
 
@@ -652,6 +654,7 @@
     private void SubmitOne(int sessionId)
     {
         if (!_rowEdits.TryGetValue(sessionId, out var edit)) return;
+        Console.WriteLine($"[Sessions] Submitted session {sessionId} — rate={edit.ChargeRate}, salary={edit.Salary} by '{_username}'");
         _busy = true;
         DashSvc.ApproveSession(sessionId, edit.ChargeRate * 100, edit.Salary * 100);
         _busy = false;
@@ -664,6 +667,7 @@
         var audGroup = _groups.FirstOrDefault(g => g.AuditorId == auditorId);
         var pcGroup  = audGroup?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
         if (pcGroup is null) return;
+        Console.WriteLine($"[Sessions] Submitted all sessions for auditor {auditorId}, PC {pcId} by '{_username}'");
         _busy = true;
         int count = 0;
         string pcName = pcGroup.PcName;
@@ -682,6 +686,7 @@
     private void SubmitOneCsReview(int csReviewId)
     {
         if (!_csRowEdits.TryGetValue(csReviewId, out var salary)) return;
+        Console.WriteLine($"[Sessions] Submitted CS review {csReviewId} — salary={salary} by '{_username}'");
         _busy = true;
         DashSvc.ApproveCsReview(csReviewId, salary * 100);
         _busy = false;
@@ -694,6 +699,7 @@
         var pcGroup = _csGroups.FirstOrDefault(g => g.CsId == csId)
                                ?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
         if (pcGroup is null) return;
+        Console.WriteLine($"[Sessions] Submitted all CS reviews for CS {csId}, PC {pcId} by '{_username}'");
         _busy = true;
         int count = 0;
         string pcName = pcGroup.PcName;

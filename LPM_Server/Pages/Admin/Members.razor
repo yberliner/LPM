@@ -294,6 +294,7 @@
                 return;
             }
         }
+        Console.WriteLine($"[Members] Toggled member {personId} active={active} by 'admin'");
         AcademySvc.SetPersonActive(personId, active);
         _members = AcademySvc.GetAllMembersForAdmin();
     }
@@ -309,6 +310,7 @@
         if (stillConflicts && string.IsNullOrWhiteSpace(_editNick))
         { _conflictError = LS.T("members.nameStillTaken"); return; }
 
+        Console.WriteLine($"[Members] Reactivated member {_conflictPersonId} as '{_editFirstName} {_editLastName}' by 'admin'");
         AcademySvc.UpdateAndActivatePerson(
             _conflictPersonId,
             _editFirstName,
@@ -352,6 +354,7 @@
     void SaveEdit((string FirstName, string LastName, string Phone, string Email,
         string DateOfBirth, string Gender, int OrgId, string Source, string Notes, int CourseId, string Nick) d)
     {
+        Console.WriteLine($"[Members] Updated member {_editingPersonId} — '{d.FirstName} {d.LastName}' by 'admin'");
         AcademySvc.UpdatePerson(_editingPersonId,
             d.FirstName, d.LastName, d.Nick,
             d.Phone, d.Email, d.Notes,

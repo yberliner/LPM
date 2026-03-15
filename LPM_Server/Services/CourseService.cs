@@ -74,7 +74,9 @@ public class CourseService
         cmd.ExecuteNonQuery();
         using var idCmd = conn.CreateCommand();
         idCmd.CommandText = "SELECT last_insert_rowid()";
-        return (int)(long)idCmd.ExecuteScalar()!;
+        var courseId = (int)(long)idCmd.ExecuteScalar()!;
+        Console.WriteLine($"[CourseService] Added course {courseId}: '{name.Trim()}'");
+        return courseId;
     }
 
     public void UpdateCourse(int courseId, string name)
@@ -86,6 +88,7 @@ public class CourseService
         cmd.Parameters.AddWithValue("@name", name.Trim());
         cmd.Parameters.AddWithValue("@id", courseId);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[CourseService] Updated course {courseId}: '{name.Trim()}'");
     }
 
     public void DeleteCourse(int courseId)
@@ -96,6 +99,7 @@ public class CourseService
         cmd.CommandText = "DELETE FROM lkp_courses WHERE CourseId=@id";
         cmd.Parameters.AddWithValue("@id", courseId);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[CourseService] Deleted course {courseId}");
     }
 
     // ── Student Courses ───────────────────────────────────────────────────────
@@ -167,7 +171,9 @@ public class CourseService
         cmd.ExecuteNonQuery();
         using var idCmd = conn.CreateCommand();
         idCmd.CommandText = "SELECT last_insert_rowid()";
-        return (int)(long)idCmd.ExecuteScalar()!;
+        var scId = (int)(long)idCmd.ExecuteScalar()!;
+        Console.WriteLine($"[CourseService] Enrolled student {personId} in course {courseId}");
+        return scId;
     }
 
     public void FinishStudentCourse(int studentCourseId, string dateFinished)
@@ -179,6 +185,7 @@ public class CourseService
         cmd.Parameters.AddWithValue("@df", dateFinished);
         cmd.Parameters.AddWithValue("@id", studentCourseId);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[CourseService] Finished enrollment {studentCourseId}");
     }
 
     public void DeleteStudentCourse(int studentCourseId)
@@ -189,6 +196,7 @@ public class CourseService
         cmd.CommandText = "DELETE FROM acad_student_courses WHERE StudentCourseId=@id";
         cmd.Parameters.AddWithValue("@id", studentCourseId);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[CourseService] Removed enrollment {studentCourseId}");
     }
 
     /// <summary>All course enrollments with payment/registrar/referral/visit info for admin report.</summary>

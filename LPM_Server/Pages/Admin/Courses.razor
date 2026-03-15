@@ -182,6 +182,7 @@
     {
         if (string.IsNullOrWhiteSpace(_newName)) { _addError = LS.T("courses.nameRequired"); return; }
         _addError = "";
+        Console.WriteLine($"[Courses] Added course '{_newName.Trim()}' by 'admin'");
         CourseSvc.AddCourse(_newName.Trim());
         _newName = "";
         Reload();
@@ -194,7 +195,10 @@
     void SaveEdit()
     {
         if (_editId.HasValue && !string.IsNullOrWhiteSpace(_editName))
+        {
+            Console.WriteLine($"[Courses] Updated course {_editId.Value} to '{_editName.Trim()}' by 'admin'");
             CourseSvc.UpdateCourse(_editId.Value, _editName.Trim());
+        }
         _editId = null;
         Reload();
     }
@@ -203,6 +207,7 @@
 
     void DeleteCourse(int id)
     {
+        Console.WriteLine($"[Courses] Deleted course {id} by 'admin'");
         CourseSvc.DeleteCourse(id);
         Reload();
     }

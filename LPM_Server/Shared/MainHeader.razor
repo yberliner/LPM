@@ -790,6 +790,7 @@
 @code {
     private bool _isDisposed = false;
     private string _displayName = "";
+    private string _logUsername = "";
     private string? _avatarUrl;
 
     // ── Add PC state ──
@@ -887,6 +888,7 @@
             }
 
             var totalFiles = 1 + _importAttachments.Count;
+            Console.WriteLine($"[MainHeader] Imported session '{_importSessionFile?.Name}' for PC {_importPcId} with {_importAttachments.Count} attachments by '{_logUsername}'");
             _importSuccess = $"Session imported ({totalFiles} file(s) uploaded)";
             _importSessionFile = null;
             _importAttachments.Clear();
@@ -929,6 +931,7 @@
     {
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         var name = auth.User.Identity?.Name ?? "";
+        _logUsername = name;
         _displayName = name.Length > 0
             ? char.ToUpper(name[0]) + name[1..]
             : "LP Management";
@@ -1094,6 +1097,7 @@
     void SendMessage()
     {
         if (!_msgUserId.HasValue || _msgRecipientId == 0 || string.IsNullOrWhiteSpace(_msgText)) return;
+        Console.WriteLine($"[MainHeader] Sent message to recipientId={_msgRecipientId} by '{_logUsername}'");
         DashSvc.SendMessage(_msgUserId.Value, _msgRecipientId, _msgText.Trim());
         _msgText        = "";
         _msgRecipientId = 0;
@@ -1108,6 +1112,7 @@
 
     void AcknowledgeMsg(int messageId)
     {
+        Console.WriteLine($"[MainHeader] Acknowledged message {messageId} by '{_logUsername}'");
         DashSvc.AcknowledgeMessage(messageId);
         _pendingMessages = _pendingMessages.Where(m => m.Id != messageId).ToList();
         _pendingMsgCount = _pendingMessages.Count;

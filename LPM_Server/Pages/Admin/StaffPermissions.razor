@@ -297,6 +297,7 @@
     private string? _msg;
     private bool    _msgIsError;
     private HashSet<int> _collapsedAuditors = new();
+    private string _username = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -306,6 +307,7 @@
             Navigation.NavigateTo("/Home", forceLoad: false);
             return;
         }
+        _username = authState.User.Identity?.Name ?? "";
         await LoadData();
     }
 
@@ -328,6 +330,8 @@
 
     private void Approve(int id)
     {
+        var req = _pending.FirstOrDefault(r => r.Id == id);
+        Console.WriteLine($"[StaffPermissions] Approved permission {id} for {req?.AuditorName} -> {req?.PcName} by '{_username}'");
         _busy = true;
         DashSvc.ApprovePermissionRequest(id);
         _busy = false;
@@ -339,6 +343,8 @@
 
     private void Reject(int id)
     {
+        var req = _pending.FirstOrDefault(r => r.Id == id);
+        Console.WriteLine($"[StaffPermissions] Rejected permission {id} for {req?.AuditorName} -> {req?.PcName} by '{_username}'");
         _busy = true;
         DashSvc.RejectPermissionRequest(id);
         _busy = false;
@@ -354,6 +360,7 @@
 
     private void ToggleAllowAll(int auditorId, bool allow)
     {
+        Console.WriteLine($"[StaffPermissions] Set AllowAll={allow} for auditor {auditorId} by '{_username}'");
         _busy = true;
         DashSvc.SetAuditorAllowAll(auditorId, allow);
         _busy = false;
@@ -368,6 +375,7 @@
         var pc = _allPcs.FirstOrDefault(p => p.PcId == pcId);
         if (pc is null) return;
 
+        Console.WriteLine($"[StaffPermissions] Added permission for auditor {auditorId} -> PC {pcId} ({pc.FullName}) by '{_username}'");
         _busy = true;
         DashSvc.AddApprovedPermission(auditorId, pcId);
         _busy = false;
@@ -385,6 +393,7 @@
 
     private void RemovePermission(int id)
     {
+        Console.WriteLine($"[StaffPermissions] Deleted permission {id} by '{_username}'");
         _busy = true;
         DashSvc.RemovePermission(id);
         _busy = false;

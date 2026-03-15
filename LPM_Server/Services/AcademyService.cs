@@ -117,6 +117,7 @@ public class AcademyService
         pcCmd.Parameters.AddWithValue("@id", personId);
         pcCmd.ExecuteNonQuery();
 
+        Console.WriteLine($"[AcademyService] Added member: '{firstName.Trim()} {lastName.Trim()}'");
         return personId;
     }
 
@@ -160,6 +161,7 @@ public class AcademyService
         cmd.Parameters.AddWithValue("@pid",  personId);
         cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[AcademyService] Added attendance for person {personId}");
     }
 
     public void RemoveVisit(int visitId)
@@ -170,6 +172,7 @@ public class AcademyService
         cmd.CommandText = "DELETE FROM acad_attendance WHERE StudentId = @id";
         cmd.Parameters.AddWithValue("@id", visitId);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[AcademyService] Deleted attendance {visitId}");
     }
 
     /// <summary>Cycles VisitsPerDay: 1→2→3→1</summary>
@@ -514,6 +517,7 @@ public class AcademyService
         cmd.Parameters.AddWithValue("@nick", (object?)nick ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@id", personId);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[AcademyService] Updated and activated person {personId}");
     }
 
     public void SetPersonActive(int personId, bool active)
@@ -525,6 +529,7 @@ public class AcademyService
         cmd.Parameters.AddWithValue("@v",  active ? 1 : 0);
         cmd.Parameters.AddWithValue("@id", personId);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[AcademyService] Set person {personId} active={active}");
     }
 
     public PersonDetailInfo? GetPersonDetail(int personId)
@@ -573,6 +578,7 @@ public class AcademyService
         cmd.Parameters.AddWithValue("@org",    orgId.HasValue && orgId.Value > 0 ? (object)orgId.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@id",     personId);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[AcademyService] Updated person {personId}");
     }
 
 }

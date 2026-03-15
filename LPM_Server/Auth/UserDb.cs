@@ -65,6 +65,7 @@ public class UserDb
         cmd.Parameters.AddWithValue("@p", (object?)path ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@u", username);
         cmd.ExecuteNonQuery();
+        Console.WriteLine($"[UserDb] Avatar updated for user '{username}'");
     }
 
     /// <summary>
@@ -88,6 +89,7 @@ public class UserDb
         updateCmd.Parameters.AddWithValue("@h", newHash);
         updateCmd.Parameters.AddWithValue("@u", username);
         updateCmd.ExecuteNonQuery();
+        Console.WriteLine($"[UserDb] Password changed for user '{username}'");
         return null;
     }
 

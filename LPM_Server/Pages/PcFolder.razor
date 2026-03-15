@@ -881,6 +881,7 @@
     static readonly string[] PaneIds = ["p1", "p2", "p3"];
 
     string _pcName = "";
+    string _userName = "";
     PcFolderInfo? _folder;
     int _csSessionId;            // session ID passed from Dashboard (0 = not from CS button)
     string? _csSessionName;      // name of the session being CSed
@@ -981,8 +982,10 @@
 
     protected override void OnInitialized()
     {
+        _userName = DashSvc.GetPersonName(UserPersonId) ?? $"User {UserPersonId}";
         _folder = FolderSvc.GetPcFolder(PcId);
         _pcName = _folder?.PcName ?? $"PC {PcId}";
+        Console.WriteLine($"[PcFolder] Opened PC folder for '{_pcName}' (PC {PcId}) by '{_userName}'{(SessionId > 0 ? $" — CS session {SessionId}" : "")}");
         _csedSessionIds = DashSvc.GetCsedSessionIdsForPc(PcId);
         foreach (var pair in DashSvc.GetSessionsForPc(PcId))
         {
@@ -1009,10 +1012,12 @@
             {
                 _csLocked = true;
                 _csLockedBy = existingUser;
+                Console.WriteLine($"[PcFolder] CS session {_csSessionId} LOCKED — already being CSed by '{existingUser}', attempted by '{_userName}'");
             }
             else
             {
                 _activeCsSessions[_csSessionId] = userName;
+                Console.WriteLine($"[PcFolder] CS session {_csSessionId} ('{_csSessionName}') started by '{_userName}' for PC {PcId}");
             }
         }
 
@@ -1122,6 +1127,7 @@
 
     void SelectFile(string relativePath, string fileName, string section = "")
     {
+        Console.WriteLine($"[PcFolder] Selected file '{fileName}' (section: {section}) by '{_userName}' — for PC {PcId}");
         var gen = ++_selectGeneration;
         var idx = _paneCount == 1 ? 0 : _activeIdx;
         var paneId = PaneIds[idx];
@@ -1169,6 +1175,7 @@
     {
         var oldCount = _paneCount;
         var newCount = oldCount >= 3 ? 1 : oldCount + 1;
+        Console.WriteLine($"[PcFolder] Changed pane count to {newCount} by '{_userName}' — for PC {PcId}");
 
         // Auto-save panes being removed
         for (int i = newCount; i < oldCount; i++)
@@ -1208,11 +1215,13 @@
     async Task SetTool(string mode)
     {
         _toolMode = _toolMode == mode ? "" : mode;
+        Console.WriteLine($"[PcFolder] Set tool to '{(_toolMode == "" ? "none" : _toolMode)}' by '{_userName}' — for PC {PcId}");
         await JS.InvokeVoidAsync("pcfViewer.setTool", _toolMode);
     }
 
     async Task Undo()
     {
+        Console.WriteLine($"[PcFolder] Undo annotation by '{_userName}' — file '{_panes[_activeIdx].FileName}' for PC {PcId}");
         await JS.InvokeVoidAsync("pcfViewer.undo", PaneIds[_activeIdx]);
         _hasAnnotations = await JS.InvokeAsync<bool>("pcfViewer.hasAnnotations", PaneIds[_activeIdx]);
     }
@@ -1229,12 +1238,14 @@
 
     async Task AddBlankPageAbove()
     {
+        Console.WriteLine($"[PcFolder] Added blank page above by '{_userName}' — file '{_panes[_activeIdx].FileName}' for PC {PcId}");
         _showAddPageMenu = false;
         await JS.InvokeVoidAsync("pcfViewer.addBlankPage", PaneIds[_activeIdx], "above");
     }
 
     async Task AddBlankPageBelow()
     {
+        Console.WriteLine($"[PcFolder] Added blank page below by '{_userName}' — file '{_panes[_activeIdx].FileName}' for PC {PcId}");
         _showAddPageMenu = false;
         await JS.InvokeVoidAsync("pcfViewer.addBlankPage", PaneIds[_activeIdx], "below");
     }
@@ -1266,6 +1277,7 @@
             await CancelExtract();
             return;
         }
+        Console.WriteLine($"[PcFolder] Entered extract mode by '{_userName}' — for PC {PcId}");
         _extractMode = true;
         _extractCount = 0;
         _extractAttName = "extract";
@@ -1274,6 +1286,7 @@
 
     async Task CancelExtract()
     {
+        Console.WriteLine($"[PcFolder] Exited extract mode by '{_userName}' — for PC {PcId}");
         _extractMode = false;
         _extractCount = 0;
         await JS.InvokeVoidAsync("pcfViewer.exitExtractMode", PaneIds[_activeIdx]);
@@ -1291,6 +1304,7 @@
         var file = _panes[_activeIdx].File;
         if (string.IsNullOrEmpty(file)) return;
 
+        Console.WriteLine($"[PcFolder] Extracting pages by '{_userName}' — from '{file}' for PC {PcId}, attachment: '{_extractAttName}'");
         _saving = true;
         StateHasChanged();
 
@@ -1343,6 +1357,8 @@
             using var remainingStream = new System.IO.MemoryStream();
             remainingDoc.Save(remainingStream);
             FolderSvc.SaveFile(PcId, file, remainingStream.ToArray());
+
+            Console.WriteLine($"[PcFolder] Extracted {indices.Length} pages from '{file}' by '{_userName}' — for PC {PcId}, attachment: '{_extractAttName}'");
 
             // Exit extract mode
             await JS.InvokeVoidAsync("pcfViewer.exitExtractMode", paneId);
@@ -1400,6 +1416,7 @@
 
     async Task PickColor(string color)
     {
+        Console.WriteLine($"[PcFolder] Picked color '{color}' by '{_userName}' — for PC {PcId}");
         _drawColor = color;
         _showColors = false;
         await JS.InvokeVoidAsync("pcfViewer.setColor", color);
@@ -1407,6 +1424,7 @@
 
     async Task PickSize(int size)
     {
+        Console.WriteLine($"[PcFolder] Picked font size {size}px by '{_userName}' — for PC {PcId}");
         _fontSize = size;
         _showSizes = false;
         await JS.InvokeVoidAsync("pcfViewer.setFontSize", size);
@@ -1416,6 +1434,7 @@
     {
         var file = _panes[_activeIdx].File;
         if (string.IsNullOrEmpty(file)) return;
+        Console.WriteLine($"[PcFolder] Saved annotations on '{_panes[_activeIdx].FileName}' by '{_userName}' — for PC {PcId}");
         _saving = true;
         StateHasChanged();
 
@@ -1442,6 +1461,7 @@
             _csReviewMinutes = h * 60 + (_csReviewMinutes % 60);
         else
             _csReviewMinutes = _csReviewMinutes % 60;
+        Console.WriteLine($"[PcFolder] Timer hours changed by '{_userName}' — new total: {_csReviewMinutes} min, for PC {PcId}");
     }
 
     void OnTimerMinsChanged(ChangeEventArgs e)
@@ -1450,11 +1470,13 @@
             _csReviewMinutes = (_csReviewMinutes / 60) * 60 + Math.Min(m, 59);
         else
             _csReviewMinutes = (_csReviewMinutes / 60) * 60;
+        Console.WriteLine($"[PcFolder] Timer minutes changed by '{_userName}' — new total: {_csReviewMinutes} min, for PC {PcId}");
     }
 
     async Task DoneCs()
     {
         if (_csSessionId == 0) return;
+        Console.WriteLine($"[PcFolder] Mark CS Done initiated by '{_userName}' — session {_csSessionId} ('{_csSessionName}'), review time: {_csReviewMinutes} min, for PC {PcId}");
 
         // Validate review time — if 0, warn user and abort
         if (_csReviewMinutes <= 0)
@@ -1482,6 +1504,8 @@
                     reviewSec: reviewSec, status: "Draft", notes: null);
             }
 
+            Console.WriteLine($"[PcFolder] CS review created by '{_userName}' — session {_csSessionId} ('{_csSessionName}'), review time: {_csReviewMinutes} min, for PC {PcId}");
+
             // Refresh the CSed session IDs so sidebar turns green
             _csedSessionIds = DashSvc.GetCsedSessionIdsForPc(PcId);
             _csDone = true;
@@ -1505,6 +1529,7 @@
 
     public void Dispose()
     {
+        Console.WriteLine($"[PcFolder] Closed PC folder for '{_pcName}' (PC {PcId}) by '{_userName}'{(_csSessionId > 0 ? $" — CS session {_csSessionId} released" : "")}");
         // Unregister this session from active CS tracker (only if we own it)
         if (_csSessionId > 0 && !_csLocked)
             _activeCsSessions.TryRemove(_csSessionId, out _);

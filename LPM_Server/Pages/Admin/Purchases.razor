@@ -448,6 +448,7 @@
     private bool _auditingCollapsed = false;
     private bool _courseCollapsed   = false;
     private int? _currentPersonId;
+    private string _username = "";
     private string _sortCol = "date";
     private bool   _sortAsc = false;
 
@@ -461,8 +462,8 @@
             Navigation.NavigateTo("/Home", forceLoad: false);
             return;
         }
-        var username = authState.User.Identity?.Name;
-        _currentPersonId = username != null ? PcSvc.GetPersonIdByUsername(username) : null;
+        _username = authState.User.Identity?.Name ?? "";
+        _currentPersonId = !string.IsNullOrEmpty(_username) ? PcSvc.GetPersonIdByUsername(_username) : null;
         await LoadData();
     }
 
@@ -537,6 +538,7 @@
 
     private async Task RestorePurchase(int purchaseId)
     {
+        Console.WriteLine($"[Purchases] Restored purchase {purchaseId} by '{_username}'");
         _busy = true;
         PcSvc.RestorePurchase(purchaseId);
         _busy = false;
@@ -547,6 +549,7 @@
     private void ApprovePurchase(int purchaseId)
     {
         if (!_currentPersonId.HasValue) return;
+        Console.WriteLine($"[Purchases] Approved purchase {purchaseId} by '{_username}'");
         _busy = true;
         PcSvc.ApprovePurchase(purchaseId, _currentPersonId.Value);
         _busy = false;
@@ -565,6 +568,7 @@
 
     private void ViewPurchase(int purchaseId)
     {
+        Console.WriteLine($"[Purchases] Viewed purchase {purchaseId} detail by '{_username}'");
         _viewDetail = PcSvc.GetPurchaseDetail(purchaseId);
     }
 
@@ -582,6 +586,7 @@
 
     private void ToggleMoneyInBank(int paymentMethodId, bool newValue)
     {
+        Console.WriteLine($"[Purchases] Toggled money-in-bank for paymentMethod {paymentMethodId} to {newValue} by '{_username}'");
         PcSvc.SetMoneyInBank(paymentMethodId, newValue);
         if (_viewDetail != null)
         {

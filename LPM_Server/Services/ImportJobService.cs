@@ -78,6 +78,7 @@ public class ImportJobService
             var jobPath = Path.Combine(_tempBasePath, jobId);
             Directory.CreateDirectory(jobPath);
 
+            Console.WriteLine($"[ImportJobService] Started upload job {jobId}, user {userId}, totalFiles: {totalFiles}");
             return jobId;
         }
     }
@@ -118,6 +119,7 @@ public class ImportJobService
         CurrentJob.ProcessedFiles = 0;
         OnProgressChanged?.Invoke();
 
+        Console.WriteLine($"[ImportJobService] Started processing job {jobId}, {manifest.Count} PCs");
         var userId = CurrentJob.UserId;
         var tempJobPath = Path.Combine(_tempBasePath, jobId);
 
@@ -161,6 +163,7 @@ public class ImportJobService
 
                 var (pcId, wasCreated) = _pcSvc.FindOrCreatePcByName(pc.PcName);
                 if (wasCreated && CurrentJob != null) CurrentJob.NewPcsCreated++;
+                Console.WriteLine($"[ImportJobService] Processing PC: {pc.PcName} (id={pcId}, new={wasCreated})");
 
                 // Front_Cover and Back_Cover
                 foreach (var file in pc.Files.Where(f => f.Section is "Front_Cover" or "Back_Cover"))
@@ -209,6 +212,7 @@ public class ImportJobService
                     _dashSvc.CreateImportedSessionWithDate(pcId, userId, sessionName,
                         sessionDate, createdAt, userId);
                     if (CurrentJob != null) CurrentJob.SessionsCreated++;
+                    Console.WriteLine($"[ImportJobService] Created session for PC {pcId}: '{sessionName}'");
 
                     IncrementProcessed(jobId);
                 }

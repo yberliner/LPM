@@ -1248,6 +1248,7 @@
 @code {
 
     string _displayName = "LP Management";
+    string _username = "";
     string? _csNotifyKey;
 
     int?          _userId;
@@ -1377,6 +1378,7 @@
     {
         var auth     = await AuthStateProvider.GetAuthenticationStateAsync();
         var username = auth.User.Identity?.Name ?? "";
+        _username = username;
         _displayName = username.Length > 0
             ? char.ToUpper(username[0]) + username[1..]
             : "LP Management";
@@ -1492,12 +1494,13 @@
         await InvokeAsync(StateHasChanged);
     }
 
-    async Task PrevWeek() { _weekStart = _weekStart.AddDays(-7); await RefreshAsync(); }
+    async Task PrevWeek() { _weekStart = _weekStart.AddDays(-7); Console.WriteLine($"[Home] Navigated to week {_weekStart} by '{_username}'"); await RefreshAsync(); }
     async Task NextWeek()
     {
         var next = _weekStart.AddDays(7);
         if (next > DashboardService.GetWeekStart(MaxAllowedDate())) return;
         _weekStart = next;
+        Console.WriteLine($"[Home] Navigated to week {_weekStart} by '{_username}'");
         await RefreshAsync();
     }
 
@@ -1525,6 +1528,7 @@
 
     async Task SetPcRole(int pcId, string role)
     {
+        Console.WriteLine($"[Home] Changed PC {pcId} role to {role} by '{_username}'");
         DashSvc.SetUserPcRole(_userId!.Value, pcId, role);
         _myPcs = DashSvc.GetUserPcs(_userId.Value);
         _grid  = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
@@ -1539,6 +1543,7 @@
     async Task ToggleSoloMode()
     {
         _soloMode = !_soloMode;
+        Console.WriteLine($"[Home] Toggled solo mode to {_soloMode} by '{_username}'");
         _detail = null; _selPcId = null; _selDay = null;
         await RefreshAsync();
     }
@@ -1574,6 +1579,7 @@
 
     async Task RemovePc()
     {
+        Console.WriteLine($"[Home] Removed PC {_ctxPcId} (via context menu, capacity={_ctxWorkCapacity}) by '{_username}'");
         DashSvc.RemoveUserPc(_userId!.Value, _ctxPcId, _ctxWorkCapacity);
         _showCtxMenu = false;
         await RefreshAsync();
@@ -1581,6 +1587,7 @@
 
     async Task RemovePcDirectly(PcInfo pc)
     {
+        Console.WriteLine($"[Home] Removed PC {pc.PcId} ({pc.FullName}, capacity={pc.WorkCapacity}) by '{_username}'");
         DashSvc.RemoveUserPc(_userId!.Value, pc.PcId, pc.WorkCapacity);
         await RefreshAsync();
     }
@@ -1600,6 +1607,7 @@
 
     void SaveEditSession()
     {
+        Console.WriteLine($"[Home] Updated session {_editSessionId} — duration={_editDuration}, admin={_editAdminMin}m, free={_editIsFree} by '{_username}'");
         int secs = ParseTime(_editDuration);
         if (secs <= 0) { _editError = "Invalid duration — use H:MM (e.g. 1:30)."; return; }
         if (!int.TryParse(_editAdminMin, out int adminMin) || adminMin < 0) { _editError = "Invalid admin time."; return; }
@@ -1621,6 +1629,7 @@
     // ── CS The Session ──
     async Task OnCsTheSession(int sessionId, string? sessionName)
     {
+        Console.WriteLine($"[Home] CS The Session — sessionId={sessionId}, sessionName={sessionName}, pcId={_selPcId} by '{_username}'");
         if (!_selPcId.HasValue) return;
         var url = $"/PcFolder/{_selPcId.Value}?sessionId={sessionId}";
         if (!string.IsNullOrWhiteSpace(sessionName))
@@ -1637,6 +1646,7 @@
 
     async Task OpenPcFolder(int pcId)
     {
+        Console.WriteLine($"[Home] Opened PC folder for PC {pcId} by '{_username}'");
         _showCtxMenu = false;
         var url = $"/PcFolder/{pcId}";
         await JS.InvokeVoidAsync("pcfOpenTab", url);
@@ -1644,6 +1654,7 @@
 
     async Task OpenPendingCs(DashboardService.PendingCsSession s)
     {
+        Console.WriteLine($"[Home] Opened pending CS for session {s.SessionId} (PC {s.PcId}, {s.PcName}) by '{_username}'");
         var url = $"/PcFolder/{s.PcId}?sessionId={s.SessionId}";
         if (!string.IsNullOrWhiteSpace(s.SessionName))
             url += $"&file={Uri.EscapeDataString(s.SessionName)}";
@@ -1652,6 +1663,7 @@
 
     async Task OpenAuditorSession(DashboardService.AuditorSessionStatus s)
     {
+        Console.WriteLine($"[Home] Opened auditor session {s.SessionId} (PC {s.PcId}, {s.PcName}) by '{_username}'");
         var url = $"/PcFolder/{s.PcId}?sessionId={s.SessionId}";
         if (!string.IsNullOrWhiteSpace(s.SessionName))
             url += $"&file={Uri.EscapeDataString(s.SessionName)}";
@@ -1661,6 +1673,7 @@
     async Task OnCsQueueRangeChanged(ChangeEventArgs e)
     {
         _csQueueDays = int.TryParse(e.Value?.ToString(), out var v) ? v : 10;
+        Console.WriteLine($"[Home] Changed CS queue range to {_csQueueDays} days by '{_username}'");
         _pendingCsSessions = DashSvc.GetPendingCsSessions(_csQueueDays);
         await InvokeAsync(StateHasChanged);
     }
@@ -1669,6 +1682,7 @@
     {
         if (!_userId.HasValue) return;
         _audStatusDays = int.TryParse(e.Value?.ToString(), out var v) ? v : 10;
+        Console.WriteLine($"[Home] Changed auditor status range to {_audStatusDays} days by '{_username}'");
         _auditorStatuses = DashSvc.GetAuditorSessionStatuses(_userId.Value, _audStatusDays);
         await InvokeAsync(StateHasChanged);
     }
@@ -1716,6 +1730,7 @@
 
     void SaveEditReview()
     {
+        Console.WriteLine($"[Home] Updated CS review {_editReviewId} — duration={_editRevDuration} by '{_username}'");
         int secs = ParseTime(_editRevDuration);
         if (secs <= 0) { _editRevError = "Invalid duration — use H:MM (e.g. 0:30)."; return; }
         DashSvc.UpdateCsReview(_editReviewId!.Value, secs, "Pending",
@@ -1737,6 +1752,7 @@
 
     void SetAsOther()
     {
+        Console.WriteLine($"[Home] Set PC {_ctxPcId} as Other (Miscellaneous) by '{_username}'");
         // Solo columns cannot be set to Other — they are always CS
         if (_ctxWorkCapacity == "CSSolo") { _showCtxMenu = false; return; }
         DashSvc.SetUserPcRole(_userId!.Value, _ctxPcId, "Miscellaneous");
@@ -1749,6 +1765,7 @@
 
     void RemoveFromOthers()
     {
+        Console.WriteLine($"[Home] Removed PC {_ctxPcId} from Others (back to Auditor) by '{_username}'");
         DashSvc.SetUserPcRole(_userId!.Value, _ctxPcId, "Auditor");
         _showCtxMenu = false;
         _myPcs = DashSvc.GetUserPcs(_userId.Value);
@@ -1760,12 +1777,14 @@
     void SaveRemarks()
     {
         if (!_userId.HasValue) return;
+        Console.WriteLine($"[Home] Saved weekly remarks for week {_weekStart} by '{_username}'");
         DashSvc.SaveWeeklyRemarks(_userId.Value, _weekStart.ToString("yyyy-MM-dd"), _weekRemarks);
         _remarksSaved = true;
     }
 
     async Task PrintTable()
     {
+        Console.WriteLine($"[Home] Generated PDF report for week {_weekStart} by '{_username}'");
         var pdfBytes = PdfService.GenerateWeeklyTablePdf(_displayName, _weekStart, _myPcs, _grid, _pcCsNames, _weekRemarks);
 
         var fileName = $"Week_{_weekStart:yyyy_MM_dd}.pdf";
@@ -1775,6 +1794,7 @@
     // ── Add-PC modal ──
     void ShowAddPcModal()
     {
+        Console.WriteLine($"[Home] Opened Add PC dialog by '{_username}'");
         _showAddPcModal = true;
         _pcSearch = "";
         // Default to the first available category the user can use
@@ -1783,6 +1803,7 @@
 
     async Task AddPc(int pcId, string workCapacity = "Auditor")
     {
+        Console.WriteLine($"[Home] Added PC {pcId} as {workCapacity} by '{_username}'");
         DashSvc.AddUserPc(_userId!.Value, pcId, workCapacity);
         DashSvc.CheckOrRequestPermission(_userId!.Value, pcId);
         _showAddPcModal = false;
@@ -2206,6 +2227,7 @@
 
     void SaveSession()
     {
+        Console.WriteLine($"[Home] Adding session — PC={_selPcId}, role={_selRole}, duration={_addDuration}, admin={_addAdminMin}m, free={_addIsFree} by '{_username}'");
         int secs = ParseTime(_addDuration);
         if (secs <= 0) { _addError = "Invalid duration — use H:MM (e.g. 1:30)."; return; }
         if (!int.TryParse(_addAdminMin, out int adminMin) || adminMin < 0)
@@ -2263,6 +2285,7 @@
 
     void SaveGeneralCs()
     {
+        Console.WriteLine($"[Home] Adding general CS work — PC={_selPcId}, duration={_addGeneralCsDuration} by '{_username}'");
         int secs = ParseTime(_addGeneralCsDuration);
         if (secs <= 0) { _generalCsError = "Invalid duration — use H:MM (e.g. 0:30)."; return; }
 
@@ -2283,6 +2306,7 @@
 
     void SaveReview()
     {
+        Console.WriteLine($"[Home] Adding CS review — sessionId={_addReviewSessionId}, duration={_addReviewDuration} by '{_username}'");
         int secs = ParseTime(_addReviewDuration);
         if (secs <= 0) { _reviewError = "Invalid duration — use H:MM (e.g. 0:30)."; return; }
 

@@ -188,17 +188,21 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db) =>
         await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
             new ClaimsPrincipal(identity));
 
-        Console.WriteLine($"[Login] '{username}' signed in as [{string.Join(", ", roles)}]");
+        var loginIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        Console.WriteLine($"[Login] Login success for '{username}' from {loginIp} — roles=[{string.Join(", ", roles)}]");
         return Results.Redirect("/Home");
     }
 
-    Console.WriteLine($"[Login] Failed attempt for '{username}'");
+    var failIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    Console.WriteLine($"[Login] Login failure for '{username}' from {failIp}");
     return Results.Redirect($"/login?error=1&username={Uri.EscapeDataString(username)}");
 }).DisableAntiforgery();
 
 // Logout endpoint — clears auth cookie and redirects to login
 app.Map("/logout", async (HttpContext ctx) =>
 {
+    var logoutUser = ctx.User.Identity?.Name ?? "unknown";
+    Console.WriteLine($"[Login] Logout by '{logoutUser}'");
     await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     return Results.Redirect("/login");
 });
@@ -256,6 +260,8 @@ app.MapPost("/api/pc-file-save", async (HttpContext ctx, LPM.Services.FolderServ
 
     using var ms = new MemoryStream();
     await ctx.Request.Body.CopyToAsync(ms);
+    var saveUser = ctx.User?.Identity?.Name ?? "unknown";
+    Console.WriteLine($"[PcFile] Saved PC file pcId={pcId}: {path} by '{saveUser}'");
     return svc.SaveFile(pcId, path, ms.ToArray()) ? Results.Ok() : Results.NotFound();
 });
 
@@ -296,6 +302,8 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
 
     using var outputMs = new MemoryStream();
     pdfDoc.Save(outputMs);
+    var annotUser = ctx.User?.Identity?.Name ?? "unknown";
+    Console.WriteLine($"[PcFile] Saved annotated PDF pcId={pcId}: {path} by '{annotUser}'");
     return svc.SaveFile(pcId, path, outputMs.ToArray()) ? Results.Ok() : Results.NotFound();
 });
 
