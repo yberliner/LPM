@@ -493,6 +493,93 @@ window.pcfViewer = {
         return JSON.stringify(pages);
     },
 
+    // ── Extract pages mode ──
+    _extractMode: false,
+    _extractSelected: {},  // { pageIdx: true/false }
+
+    enterExtractMode(paneId) {
+        paneId = paneId || this.activePane;
+        const pane = this.panes[paneId];
+        if (!pane || pane.pages.length === 0) return;
+
+        this._extractMode = true;
+        this._extractSelected = {};
+
+        for (const pg of pane.pages) {
+            const wrapper = pg.canvas.parentElement;
+            if (!wrapper) continue;
+
+            // Add checkbox overlay
+            const cb = document.createElement('label');
+            cb.className = 'pcf-extract-cb';
+            cb.innerHTML = '<input type="checkbox" /><span></span>';
+            cb.style.position = 'absolute';
+            cb.style.top = '10px';
+            cb.style.left = '10px';
+            cb.style.zIndex = '20';
+            cb.style.cursor = 'pointer';
+
+            const idx = pg.pageIdx;
+            const self = this;
+            cb.querySelector('input').addEventListener('change', function () {
+                self._extractSelected[idx] = this.checked;
+                wrapper.style.outline = this.checked ? '3px solid #3b82f6' : 'none';
+                if (self.dotNetRef) self.dotNetRef.invokeMethodAsync('OnExtractSelectionChanged', self.getExtractCount());
+            });
+
+            wrapper.style.position = 'relative';
+            wrapper.appendChild(cb);
+        }
+    },
+
+    exitExtractMode(paneId) {
+        paneId = paneId || this.activePane;
+        const pane = this.panes[paneId];
+        if (!pane) return;
+
+        this._extractMode = false;
+        this._extractSelected = {};
+
+        for (const pg of pane.pages) {
+            const wrapper = pg.canvas.parentElement;
+            if (!wrapper) continue;
+            wrapper.style.outline = 'none';
+            const cb = wrapper.querySelector('.pcf-extract-cb');
+            if (cb) cb.remove();
+        }
+    },
+
+    getExtractCount() {
+        let count = 0;
+        for (const k in this._extractSelected) {
+            if (this._extractSelected[k]) count++;
+        }
+        return count;
+    },
+
+    async getExtractedPages(paneId) {
+        paneId = paneId || this.activePane;
+        const pane = this.panes[paneId];
+        if (!pane) return JSON.stringify([]);
+
+        const finalCanvas = document.createElement('canvas');
+        const pages = [];
+
+        for (const pg of pane.pages) {
+            if (!this._extractSelected[pg.pageIdx]) continue;
+            const w = pg.canvas.width;
+            const h = pg.canvas.height;
+            finalCanvas.width = w;
+            finalCanvas.height = h;
+            const ctx = finalCanvas.getContext('2d');
+            ctx.drawImage(pg.canvas, 0, 0);
+            ctx.drawImage(pg.overlay, 0, 0);
+            const dataUrl = finalCanvas.toDataURL('image/png');
+            pages.push({ width: w, height: h, dataUrl });
+        }
+        return JSON.stringify(pages);
+    },
+
     // ── Auto-save support ──
 
     // Save a specific pane synchronously (for beforeunload)

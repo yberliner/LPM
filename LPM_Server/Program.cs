@@ -299,4 +299,49 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
     return svc.SaveFile(pcId, path, outputMs.ToArray()) ? Results.Ok() : Results.NotFound();
 });
 
+app.MapPost("/api/pc-file-extract-pages", async (HttpContext ctx, LPM.Services.FolderService svc) =>
+{
+    if (!int.TryParse(ctx.Request.Query["pcId"], out var pcId)) return Results.BadRequest();
+    var sessionFile = ctx.Request.Query["sessionFile"].ToString();
+    if (string.IsNullOrEmpty(sessionFile)) return Results.BadRequest("sessionFile required");
+
+    var form = await ctx.Request.ReadFormAsync();
+    if (!int.TryParse(form["pageCount"], out var pageCount) || pageCount == 0)
+        return Results.BadRequest("No pages");
+
+    var widths = System.Text.Json.JsonSerializer.Deserialize<int[]>(form["widths"].ToString()) ?? [];
+    var heights = System.Text.Json.JsonSerializer.Deserialize<int[]>(form["heights"].ToString()) ?? [];
+
+    using var pdfDoc = new PdfSharpCore.Pdf.PdfDocument();
+    for (int i = 0; i < pageCount; i++)
+    {
+        var file = form.Files[$"page_{i}"];
+        if (file == null) continue;
+
+        using var imgStream = new MemoryStream();
+        await file.CopyToAsync(imgStream);
+        imgStream.Position = 0;
+
+        var page = pdfDoc.AddPage();
+        double pxScale = 1.5;
+        page.Width = PdfSharpCore.Drawing.XUnit.FromPoint(widths[i] / pxScale);
+        page.Height = PdfSharpCore.Drawing.XUnit.FromPoint(heights[i] / pxScale);
+
+        using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page);
+        var img = PdfSharpCore.Drawing.XImage.FromStream(() => new MemoryStream(imgStream.ToArray()));
+        gfx.DrawImage(img, 0, 0, page.Width, page.Height);
+    }
+
+    using var outputMs = new MemoryStream();
+    pdfDoc.Save(outputMs);
+
+    // Derive attachment name from session file
+    var sessionFileName = Path.GetFileName(sessionFile);
+    var nameNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
+    var attFileName = $"{nameNoExt}_extract.pdf";
+
+    svc.SaveAttachment(pcId, sessionFileName, attFileName, outputMs.ToArray());
+    return Results.Ok();
+});
+
 app.Run();

@@ -189,7 +189,7 @@
     <div class="pcf-main">
         @* ── Toolbar ── *@
         <div class="pcf-toolbar">
-            <div class="d-flex align-items-center gap-2 flex-shrink-0" style="min-width:0;overflow:hidden;">
+            <div class="d-flex align-items-center gap-2" style="min-width:0;overflow:hidden;flex-shrink:1;">
                 @if (!_sidebarOpen)
                 {
                     <button class="pcf-tool-btn" title="Open sidebar — show file list"
@@ -301,6 +301,22 @@
                         </div>
                     }
                 </div>
+                @if (CanExtract)
+                {
+                    <button class="pcf-tool-btn @(_extractMode ? "pcf-tool-active" : "")"
+                            title="Extract Pages — select pages to extract into a new attachment"
+                            @onclick="ToggleExtractMode">
+                        <i class="ri-scissors-line"></i>
+                    </button>
+                }
+                else
+                {
+                    <button class="pcf-tool-btn" style="opacity:.3;cursor:not-allowed;"
+                            title="Extract is only available on the CS session file"
+                            disabled>
+                        <i class="ri-scissors-line"></i>
+                    </button>
+                }
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
                 <button class="pcf-save-btn" title="Save — save annotations to the PDF now (also auto-saves when switching files or closing)"
                         @onclick="SaveAnnotations"
@@ -383,6 +399,19 @@
         <div class="text-white text-center">
             <div class="spinner-border mb-2" role="status"></div>
             <div>Saving...</div>
+        </div>
+    </div>
+}
+
+@if (_extractMode)
+{
+    <div class="pcf-extract-bar">
+        <span><i class="ri-scissors-line me-2"></i><strong>@_extractCount</strong> page(s) selected</span>
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-light" @onclick="CancelExtract">Cancel</button>
+            <button class="btn btn-sm btn-primary" @onclick="DoExtract" disabled="@(_extractCount == 0 || _saving)">
+                <i class="ri-download-line me-1"></i>Extract
+            </button>
         </div>
     </div>
 }
@@ -544,6 +573,7 @@
     .pcf-toolbar-file {
         font-size: .85rem; font-weight: 600;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        max-width: 250px; min-width: 0;
     }
     .pcf-toolbar-section {
         background: rgba(255,255,255,.2); border-radius: 4px;
@@ -681,6 +711,23 @@
         background: linear-gradient(135deg, #059669, #10b981) !important;
         opacity: 1 !important;
     }
+    .pcf-extract-bar {
+        position: fixed; bottom: 0; left: 0; right: 0; z-index: 10000;
+        background: linear-gradient(135deg, #1e40af, #3b82f6);
+        color: #fff; padding: 12px 24px;
+        display: flex; align-items: center; justify-content: space-between;
+        box-shadow: 0 -4px 20px rgba(0,0,0,.3);
+        font-size: .9rem;
+    }
+    .pcf-extract-cb {
+        display: flex; align-items: center; justify-content: center;
+        width: 28px; height: 28px; background: rgba(255,255,255,.9);
+        border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,.3);
+    }
+    .pcf-extract-cb input[type="checkbox"] {
+        width: 18px; height: 18px; cursor: pointer; accent-color: #3b82f6;
+    }
+    .pcf-extract-cb span { display: none; }
     .pcf-toast-success {
         position: fixed; top: 56px; left: 50%; transform: translateX(-50%);
         z-index: 10000; background: #059669; color: #fff;
@@ -966,13 +1013,16 @@
             _panes[0].File = match.File.RelativePath;
             _panes[0].FileName = StripDatePrefix(match.File.FileName);
             _panes[0].Section = "WorkSheet";
-            if (match.Attachments.Count > 0)
+            var attCount = Math.Min(match.Attachments.Count, 2);
+            if (attCount > 0)
             {
-                _paneCount = 2;
-                var firstAtt = match.Attachments[0];
-                _panes[1].File = firstAtt.RelativePath;
-                _panes[1].FileName = firstAtt.FileName;
-                _panes[1].Section = "WorkSheet";
+                _paneCount = 1 + attCount;
+                for (int i = 0; i < attCount; i++)
+                {
+                    _panes[i + 1].File = match.Attachments[i].RelativePath;
+                    _panes[i + 1].FileName = match.Attachments[i].FileName;
+                    _panes[i + 1].Section = "WorkSheet";
+                }
             }
         }
         else if (_folder?.WorkSheets.Count > 0)
@@ -1160,6 +1210,117 @@
     {
         _showAddPageMenu = false;
         await JS.InvokeVoidAsync("pcfViewer.addBlankPage", PaneIds[_activeIdx], "below");
+    }
+
+    // ── Extract Pages ──
+    bool _extractMode;
+    int _extractCount;
+
+    // Extraction only allowed on the file being CSed (active pane must show the CS session worksheet)
+    bool CanExtract
+    {
+        get
+        {
+            if (_csSessionId <= 0 || string.IsNullOrEmpty(_csSessionName)) return false;
+            var file = _panes[_activeIdx].File;
+            if (string.IsNullOrEmpty(file)) return false;
+            if (_panes[_activeIdx].Section != "WorkSheet") return false;
+            var fileName = System.IO.Path.GetFileName(file); // "26-03-14_session.pdf"
+            var stripped = StripDatePrefix(fileName); // "session"
+            return stripped.Equals(_csSessionName, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    async Task ToggleExtractMode()
+    {
+        if (_extractMode)
+        {
+            await CancelExtract();
+            return;
+        }
+        _extractMode = true;
+        _extractCount = 0;
+        await JS.InvokeVoidAsync("pcfViewer.enterExtractMode", PaneIds[_activeIdx]);
+    }
+
+    async Task CancelExtract()
+    {
+        _extractMode = false;
+        _extractCount = 0;
+        await JS.InvokeVoidAsync("pcfViewer.exitExtractMode", PaneIds[_activeIdx]);
+    }
+
+    [JSInvokable]
+    public void OnExtractSelectionChanged(int count)
+    {
+        _extractCount = count;
+        InvokeAsync(StateHasChanged);
+    }
+
+    async Task DoExtract()
+    {
+        var file = _panes[_activeIdx].File;
+        if (string.IsNullOrEmpty(file)) return;
+
+        _saving = true;
+        StateHasChanged();
+
+        try
+        {
+            var paneId = PaneIds[_activeIdx];
+            var pagesJson = await JS.InvokeAsync<string>("pcfViewer.getExtractedPages", paneId);
+
+            // POST extracted pages to the server
+            await JS.InvokeVoidAsync("pcfExtractPages", PcId, file, pagesJson);
+
+            // Exit extract mode
+            await JS.InvokeVoidAsync("pcfViewer.exitExtractMode", paneId);
+            _extractMode = false;
+            _extractCount = 0;
+
+            // Refresh sidebar to show the new attachment
+            var oldFolder = _folder;
+            _folder = FolderSvc.GetPcFolder(PcId);
+
+            // Find the session worksheet and load the new attachment into a pane
+            var sessionFileName = System.IO.Path.GetFileName(file);
+            var sessionNoExt = System.IO.Path.GetFileNameWithoutExtension(sessionFileName);
+            var ws = _folder?.WorkSheets.FirstOrDefault(w =>
+                System.IO.Path.GetFileNameWithoutExtension(w.File.FileName)
+                    .Equals(sessionNoExt, StringComparison.OrdinalIgnoreCase));
+            if (ws != null && ws.Attachments.Count > 0)
+            {
+                // Find the newest attachment (last in list, since SaveAttachment auto-increments)
+                var newAtt = ws.Attachments.Last();
+                int targetPane;
+                if (_paneCount < 3)
+                {
+                    targetPane = _paneCount;
+                    _paneCount++;
+                }
+                else
+                {
+                    // All panes full — use the last pane
+                    targetPane = 2;
+                }
+                _panes[targetPane].File = newAtt.RelativePath;
+                _panes[targetPane].FileName = newAtt.FileName;
+                _panes[targetPane].Section = "WorkSheet";
+
+                // Queue the pane to load the PDF after render
+                _pendingReloads ??= new();
+                _pendingReloads.Add((PaneIds[targetPane], newAtt.RelativePath));
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Extract failed: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
     }
 
     async Task PickColor(string color)

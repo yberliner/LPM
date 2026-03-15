@@ -89,6 +89,25 @@
             });
             if (!saveResp.ok) throw new Error('Save failed: ' + saveResp.status);
         };
+
+        window.pcfExtractPages = async function(pcId, sessionFile, pagesJson) {
+            const pages = JSON.parse(pagesJson);
+            const formData = new FormData();
+            for (let i = 0; i < pages.length; i++) {
+                const resp = await fetch(pages[i].dataUrl);
+                const blob = await resp.blob();
+                formData.append('page_' + i, blob, 'page_' + i + '.png');
+            }
+            formData.append('pageCount', pages.length.toString());
+            formData.append('widths', JSON.stringify(pages.map(p => p.width)));
+            formData.append('heights', JSON.stringify(pages.map(p => p.height)));
+
+            const resp = await fetch('/api/pc-file-extract-pages?pcId=' + pcId + '&sessionFile=' + encodeURIComponent(sessionFile), {
+                method: 'POST',
+                body: formData
+            });
+            if (!resp.ok) throw new Error('Extract failed: ' + resp.status);
+        };
     </script>
 </body>
 </html>
