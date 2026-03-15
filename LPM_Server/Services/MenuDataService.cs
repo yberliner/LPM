@@ -147,6 +147,17 @@ public class MenuDataService
             requiredRole: "Admin"
         ),
         new MainMenuItems(
+            path: "/Admin/Backup",
+            type: "link",
+            title: "Backup",
+            icon: "",
+            svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><rect x='10' y='20' width='44' height='32' rx='4' fill='#5c6bc0'/><rect x='14' y='24' width='36' height='24' rx='2' fill='#3949ab'/><path d='M32 28v12M26 36l6 6 6-6' stroke='#e8eaf6' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/><path d='M20 14h24l4 6H16z' fill='#7986cb'/></svg>",
+            selected: false,
+            active: false,
+            dirChange: false,
+            requiredRole: "Admin"
+        ),
+        new MainMenuItems(
             menuTitle: "User Guide"
         ),
         new MainMenuItems(

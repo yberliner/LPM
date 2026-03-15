@@ -299,4 +299,97 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
     return svc.SaveFile(pcId, path, outputMs.ToArray()) ? Results.Ok() : Results.NotFound();
 });
 
+// ── Backup: build zip to temp file, then serve it ──
+app.MapGet("/api/backup-download", (HttpContext ctx, LPM.Services.FolderService svc) =>
+{
+    if (ctx.User?.IsInRole("Admin") != true) return Results.Forbid();
+
+    // Check free space on temp drive
+    var tempDir = Path.GetTempPath();
+    var tempRoot = Path.GetPathRoot(Path.GetFullPath(tempDir));
+    if (!string.IsNullOrEmpty(tempRoot))
+    {
+        var drive = new DriveInfo(tempRoot);
+        var (dbSize, pcSize, _) = svc.GetBackupSizeInfo();
+        var needed = dbSize + pcSize;
+        if (drive.AvailableFreeSpace < needed)
+            return Results.Problem($"Not enough disk space on server. Need {needed / (1024*1024)}MB, have {drive.AvailableFreeSpace / (1024*1024)}MB free.");
+    }
+
+    // Clean up any stale backup zips from previous runs
+    foreach (var stale in Directory.GetFiles(tempDir, "lpm-backup-*.zip"))
+        try { File.Delete(stale); } catch { }
+
+    // Reset progress
+    LPM.Services.BackupProgress.Current = 0;
+    LPM.Services.BackupProgress.CurrentFile = "";
+    LPM.Services.BackupProgress.Running = true;
+    int processed = 0;
+
+    var tempFile = Path.Combine(tempDir, $"lpm-backup-{Guid.NewGuid():N}.zip");
+    try
+    {
+        using (var zip = System.IO.Compression.ZipFile.Open(tempFile, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            // 1. Add the DB file
+            var dbPath = svc.GetDbFilePath();
+            if (File.Exists(dbPath))
+            {
+                LPM.Services.BackupProgress.CurrentFile = "lifepower.db";
+                var entry = zip.CreateEntry("lifepower.db", System.IO.Compression.CompressionLevel.Fastest);
+                using var entryStream = entry.Open();
+                using var dbStream = new FileStream(dbPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                dbStream.CopyTo(entryStream);
+                processed++;
+                LPM.Services.BackupProgress.Current = processed;
+            }
+
+            // 2. Add all PC-Folder files (decrypted)
+            foreach (var (relPath, fullPath) in svc.EnumerateBackupFiles())
+            {
+                try
+                {
+                    LPM.Services.BackupProgress.CurrentFile = relPath;
+                    var decrypted = svc.DecryptFileForBackup(fullPath);
+                    var entry = zip.CreateEntry(relPath, System.IO.Compression.CompressionLevel.Fastest);
+                    using var entryStream = entry.Open();
+                    entryStream.Write(decrypted);
+                    processed++;
+                    LPM.Services.BackupProgress.Current = processed;
+                }
+                catch { /* skip unreadable files */ }
+            }
+        }
+
+        LPM.Services.BackupProgress.Running = false;
+
+        var fileName = $"LPM-Backup-{DateTime.Now:yyyy-MM-dd_HHmm}.zip";
+        // Open as stream that deletes the temp file when disposed
+        var stream = new FileStream(tempFile, FileMode.Open, FileAccess.Read,
+            FileShare.None, 4096, FileOptions.DeleteOnClose);
+        return Results.File(stream, "application/zip", fileName);
+    }
+    catch
+    {
+        LPM.Services.BackupProgress.Running = false;
+        if (File.Exists(tempFile)) File.Delete(tempFile);
+        throw;
+    }
+});
+
+// ── Backup progress polling ──
+app.MapGet("/api/backup-progress", (HttpContext ctx) =>
+{
+    if (ctx.User?.IsInRole("Admin") != true) return Results.Forbid();
+    return Results.Ok(new {
+        current = LPM.Services.BackupProgress.Current,
+        file = LPM.Services.BackupProgress.CurrentFile,
+        running = LPM.Services.BackupProgress.Running
+    });
+});
+
+// Clean up any leftover backup zips from previous runs (crash recovery)
+foreach (var stale in Directory.GetFiles(Path.GetTempPath(), "lpm-backup-*.zip"))
+    try { File.Delete(stale); } catch { }
+
 app.Run();

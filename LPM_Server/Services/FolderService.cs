@@ -8,6 +8,13 @@ public record FolderFileItem(string FileName, string Section, string RelativePat
 public record WorkSheetItem(FolderFileItem File, List<FolderFileItem> Attachments);
 public record PcFolderInfo(int PcId, string PcName, string FolderPath, List<FolderFileItem> FrontCover, List<FolderFileItem> BackCover, List<WorkSheetItem> WorkSheets);
 
+public static class BackupProgress
+{
+    public static volatile int Current;
+    public static volatile bool Running;
+    public static string CurrentFile = "";
+}
+
 public class FolderService
 {
     private readonly string _basePath;
@@ -329,6 +336,60 @@ public class FolderService
         }
 
         File.WriteAllBytes(backupPath, bytes);
+    }
+
+    // ── Full backup (DB + PC-Folders) ─────────────────────────
+
+    /// <summary>Returns the absolute path to the lifepower.db file.</summary>
+    public string GetDbFilePath()
+    {
+        // _connectionString is "Data Source=lifepower.db" (or custom path)
+        var src = _connectionString.Replace("Data Source=", "");
+        return Path.GetFullPath(src);
+    }
+
+    /// <summary>Returns (dbSizeBytes, pcFoldersSizeBytes, totalFiles).</summary>
+    public (long DbSize, long PcFoldersSize, int TotalFiles) GetBackupSizeInfo()
+    {
+        long dbSize = 0;
+        var dbPath = GetDbFilePath();
+        if (File.Exists(dbPath)) dbSize = new FileInfo(dbPath).Length;
+
+        long pcSize = 0;
+        int totalFiles = 1; // start with 1 for the DB file
+        if (Directory.Exists(_basePath))
+        {
+            foreach (var f in Directory.GetFiles(_basePath, "*", SearchOption.AllDirectories))
+            {
+                // Skip _backups folder
+                if (f.Contains(Path.Combine(_basePath, "_backups"))) continue;
+                pcSize += new FileInfo(f).Length;
+                totalFiles++;
+            }
+        }
+        return (dbSize, pcSize, totalFiles);
+    }
+
+    /// <summary>
+    /// Enumerate all PC-Folder files (excluding _backups). Returns (relativePath, fullPath) pairs.
+    /// </summary>
+    public IEnumerable<(string RelativePath, string FullPath)> EnumerateBackupFiles()
+    {
+        if (!Directory.Exists(_basePath)) yield break;
+        var backupsDir = Path.Combine(_basePath, "_backups");
+        foreach (var f in Directory.GetFiles(_basePath, "*", SearchOption.AllDirectories))
+        {
+            if (f.StartsWith(backupsDir, StringComparison.OrdinalIgnoreCase)) continue;
+            var rel = Path.GetRelativePath(_basePath, f).Replace('\\', '/');
+            yield return ($"PC-Folders/{rel}", f);
+        }
+    }
+
+    /// <summary>Decrypt a raw file from disk (for backup streaming).</summary>
+    public byte[] DecryptFileForBackup(string fullPath)
+    {
+        var raw = File.ReadAllBytes(fullPath);
+        return DecryptBytes(raw);
     }
 
     // ── Import helpers ────────────────────────────────────────

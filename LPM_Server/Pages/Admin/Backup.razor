@@ -1,0 +1,256 @@
+@page "/Admin/Backup"
+@attribute [Authorize]
+@using LPM.Services
+@using Microsoft.AspNetCore.Authorization
+@inject FolderService FolderSvc
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="bk-page p-3 p-md-4">
+
+    <div class="d-flex align-items-center mb-4 gap-3 flex-wrap">
+        <div>
+            <h4 class="mb-0 fw-bold" style="color:#e2e8f0;">System Backup</h4>
+            <span class="text-muted" style="font-size:0.82rem;">Download a full backup of the database and all PC folders</span>
+        </div>
+    </div>
+
+    @* ── Size Info Card ── *@
+    <div class="card mb-3" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
+        <div class="card-body">
+            <div class="d-flex align-items-center gap-4 flex-wrap">
+                <div>
+                    <div style="font-size:.78rem; color:#94a3b8;">Database</div>
+                    <div style="font-size:1.1rem; font-weight:600;">@FormatSize(_dbSize)</div>
+                </div>
+                <div>
+                    <div style="font-size:.78rem; color:#94a3b8;">PC Folders</div>
+                    <div style="font-size:1.1rem; font-weight:600;">@FormatSize(_pcSize)</div>
+                </div>
+                <div>
+                    <div style="font-size:.78rem; color:#94a3b8;">Total Files</div>
+                    <div style="font-size:1.1rem; font-weight:600;">@_totalFiles</div>
+                </div>
+                <div style="border-left:2px solid #475569; padding-left:16px;">
+                    <div style="font-size:.78rem; color:#94a3b8;">Required Space</div>
+                    <div style="font-size:1.3rem; font-weight:700; color:#fbbf24;">@FormatSize(_dbSize + _pcSize)</div>
+                </div>
+                <div>
+                    <div style="font-size:.78rem; color:#94a3b8;">Server Free Space</div>
+                    <div style="font-size:1.1rem; font-weight:600; color:@(_notEnoughSpace ? "#ef4444" : "#22c55e");">@FormatSize(_serverFreeSpace)</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Warning Banner ── *@
+    @if (_downloading)
+    {
+        <div class="bk-warning-banner">
+            <div class="bk-warning-icon">
+                <i class="ri-alarm-warning-fill"></i>
+            </div>
+            <div style="flex:1;">
+                <div class="bk-warning-title">BACKUP IN PROGRESS</div>
+                <div class="bk-warning-text">
+                    Do NOT close this tab, navigate away, or let your computer go to sleep.
+                    The backup will fail if the connection is interrupted.
+                </div>
+                <div class="mt-3">
+                    <div class="d-flex justify-content-between mb-1" style="font-size:.78rem;">
+                        <span style="color:#e2e8f0;">@_progressCurrent / @_totalFiles files</span>
+                        <span style="color:#94a3b8;">@(_totalFiles > 0 ? (_progressCurrent * 100 / _totalFiles) : 0)%</span>
+                    </div>
+                    <div class="progress" style="height:8px; background:#1e293b; border-radius:4px;">
+                        <div class="progress-bar" role="progressbar"
+                             style="width:@(_totalFiles > 0 ? (_progressCurrent * 100 / _totalFiles) : 0)%; background:#3b82f6; transition:width .3s ease;">
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_progressFile))
+                    {
+                        <div style="font-size:.72rem; color:#64748b; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                            @_progressFile
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Disk space warning ── *@
+    @if (_notEnoughSpace)
+    {
+        <div class="alert alert-danger d-flex align-items-center gap-2 mt-3" style="max-width:600px;">
+            <i class="ri-error-warning-fill" style="font-size:1.2rem;"></i>
+            Not enough disk space on the server to create the backup.
+            Need <strong>@FormatSize(_dbSize + _pcSize)</strong>, only <strong>@FormatSize(_serverFreeSpace)</strong> available.
+        </div>
+    }
+
+    @* ── Action ── *@
+    <div class="d-flex align-items-center gap-3 mt-3">
+        @if (!_downloading)
+        {
+            <button class="btn btn-primary btn-lg d-flex align-items-center gap-2"
+                    disabled="@_notEnoughSpace"
+                    @onclick="StartBackup">
+                <i class="ri-download-cloud-2-line" style="font-size:1.3rem;"></i>
+                Start Backup
+            </button>
+        }
+        else
+        {
+            <button class="btn btn-secondary btn-lg" disabled>
+                <span class="spinner-border spinner-border-sm me-2"></span>
+                Downloading...
+            </button>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-danger mt-3" style="max-width:600px;">@_error</div>
+    }
+
+    @if (_done)
+    {
+        <div class="alert alert-success mt-3 d-flex align-items-center gap-2" style="max-width:600px;">
+            <i class="ri-check-double-line" style="font-size:1.2rem;"></i>
+            Backup complete. Check your browser downloads.
+        </div>
+    }
+</div>
+
+<style>
+    .bk-page { max-width: 800px; }
+
+    .bk-warning-banner {
+        display: flex; align-items: flex-start; gap: 16px;
+        padding: 16px 20px;
+        background: rgba(239, 68, 68, .12);
+        border: 2px solid #ef4444;
+        border-radius: 10px;
+        animation: bk-pulse 1.5s ease-in-out infinite;
+    }
+    .bk-warning-icon {
+        font-size: 2.2rem; color: #ef4444; margin-top: 2px;
+        animation: bk-flash 1s ease-in-out infinite;
+    }
+    .bk-warning-title {
+        font-size: 1rem; font-weight: 700; color: #ef4444;
+        letter-spacing: .05em;
+    }
+    .bk-warning-text {
+        font-size: .85rem; color: #fca5a5; margin-top: 4px;
+    }
+
+    @@keyframes bk-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,.3); }
+        50% { box-shadow: 0 0 0 8px rgba(239,68,68,0), 0 0 20px rgba(239,68,68,.15); }
+    }
+    @@keyframes bk-flash {
+        0%, 100% { opacity: 1; }
+        50% { opacity: .3; }
+    }
+</style>
+
+@code {
+    long _dbSize;
+    long _pcSize;
+    int _totalFiles;
+    long _serverFreeSpace;
+    bool _notEnoughSpace;
+    bool _downloading;
+    bool _done;
+    string _error = "";
+    int _progressCurrent;
+    string _progressFile = "";
+    System.Threading.Timer? _pollTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (!authState.User.IsInRole("Admin"))
+        {
+            Navigation.NavigateTo("/Home", forceLoad: false);
+            return;
+        }
+
+        var info = FolderSvc.GetBackupSizeInfo();
+        _dbSize = info.DbSize;
+        _pcSize = info.PcFoldersSize;
+        _totalFiles = info.TotalFiles;
+
+        // Check free space on server temp drive
+        var tempRoot = Path.GetPathRoot(Path.GetFullPath(Path.GetTempPath()));
+        if (!string.IsNullOrEmpty(tempRoot))
+        {
+            var drive = new DriveInfo(tempRoot);
+            _serverFreeSpace = drive.AvailableFreeSpace;
+            _notEnoughSpace = _serverFreeSpace < (_dbSize + _pcSize);
+        }
+    }
+
+    async Task StartBackup()
+    {
+        _downloading = true;
+        _done = false;
+        _error = "";
+        _progressCurrent = 0;
+        _progressFile = "";
+        StateHasChanged();
+
+        try
+        {
+            // Request Wake Lock to prevent sleep
+            await JS.InvokeVoidAsync("eval", "navigator.wakeLock?.request('screen').catch(()=>{})");
+
+            // Start polling progress
+            _pollTimer = new System.Threading.Timer(PollProgress, null, 500, 800);
+
+            // Trigger the download via JS — use window.open to avoid navigation
+            await JS.InvokeVoidAsync("eval",
+                "var a=document.createElement('a');a.href='/api/backup-download';a.download='';document.body.appendChild(a);a.click();document.body.removeChild(a);");
+
+            // Wait a moment for the download to start, then poll until done
+            await Task.Delay(2000);
+            while (BackupProgress.Running)
+                await Task.Delay(1000);
+
+            _done = true;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Backup failed: {ex.Message}";
+        }
+        finally
+        {
+            _pollTimer?.Dispose();
+            _pollTimer = null;
+            _downloading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    void PollProgress(object? state)
+    {
+        _progressCurrent = BackupProgress.Current;
+        _progressFile = BackupProgress.CurrentFile;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        _pollTimer?.Dispose();
+    }
+
+    static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        if (bytes < 1024L * 1024 * 1024) return $"{bytes / (1024.0 * 1024):F1} MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):F2} GB";
+    }
+}
