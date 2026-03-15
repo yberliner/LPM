@@ -125,6 +125,19 @@ window.pcfViewer = {
             }
         });
 
+        overlay.addEventListener('dblclick', (e) => {
+            const pane = self.panes[paneId];
+            if (!pane || self.textInputEl) return;
+            const r = overlay.getBoundingClientRect();
+            const x = e.clientX - r.left;
+            const y = e.clientY - r.top;
+            const hit = self._hitTestText(pane, pageIdx, x, y);
+            if (hit) {
+                e.preventDefault();
+                self._showTextInput(overlay.parentElement, pageIdx, hit.ann.x, hit.ann.y, paneId, hit.ann, hit.idx);
+            }
+        });
+
         overlay.addEventListener('pointermove', (e) => {
             const pane = self.panes[paneId];
             if (!drawing || !pane || !pane.currentStroke) return;
@@ -189,11 +202,44 @@ window.pcfViewer = {
         }
     },
 
-    _showTextInput(wrapper, pageIdx, x, y, paneId) {
+    _hitTestText(pane, pageIdx, x, y) {
+        // Create a temporary canvas context for measuring text
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        for (let i = pane.annotations.length - 1; i >= 0; i--) {
+            const ann = pane.annotations[i];
+            if (ann.type !== 'text' || ann.pageIdx !== pageIdx) continue;
+            const fontSize = ann.fontSize || 14;
+            ctx.font = fontSize + 'px Arial';
+            const lines = (ann.text || '').split('\n');
+            const lineHeight = fontSize * 1.3;
+            const totalHeight = lines.length * lineHeight;
+            let maxWidth = 0;
+            for (const line of lines) {
+                const w = ctx.measureText(line).width;
+                if (w > maxWidth) maxWidth = w;
+            }
+            // Text baseline is at ann.y, so bounding box goes from ann.y - fontSize to ann.y - fontSize + totalHeight
+            const top = ann.y - fontSize;
+            const bottom = top + totalHeight + 4;
+            const left = ann.x - 4;
+            const right = ann.x + maxWidth + 4;
+            if (x >= left && x <= right && y >= top && y <= bottom) {
+                return { ann, idx: i };
+            }
+        }
+        return null;
+    },
+
+    _showTextInput(wrapper, pageIdx, x, y, paneId, existingAnn, existingIdx) {
         if (this.textInputEl) {
             this.textInputEl.remove();
             this.textInputEl = null;
         }
+
+        const isEditing = existingAnn != null;
+        const color = isEditing ? existingAnn.color : this.drawColor;
+        const fontSize = isEditing ? (existingAnn.fontSize || 14) : this.fontSize;
 
         const input = document.createElement('textarea');
         input.className = 'pcf-text-input';
@@ -201,14 +247,15 @@ window.pcfViewer = {
         input.style.left = x + 'px';
         input.style.top = (y - 18) + 'px';
         input.placeholder = 'Type here... (Shift+Enter for new line)';
-
-        const color = this.drawColor;
-        const fontSize = this.fontSize;
         input.style.color = color;
         input.style.fontSize = fontSize + 'px';
         input.style.lineHeight = '1.3';
         input.style.resize = 'none';
         input.style.overflow = 'hidden';
+
+        if (isEditing) {
+            input.value = existingAnn.text;
+        }
 
         wrapper.appendChild(input);
         this.textInputEl = input;
@@ -219,6 +266,10 @@ window.pcfViewer = {
             input.style.height = input.scrollHeight + 'px';
         };
         input.addEventListener('input', autoGrow);
+        // Trigger auto-grow for pre-filled text
+        if (isEditing) {
+            requestAnimationFrame(autoGrow);
+        }
 
         input.addEventListener('pointerdown', (e) => e.stopPropagation());
 
@@ -228,13 +279,22 @@ window.pcfViewer = {
             if (committed) return;
             committed = true;
             const text = input.value.trim();
-            if (text) {
-                const pane = self.panes[paneId];
-                if (pane) {
+            const pane = self.panes[paneId];
+            if (pane) {
+                if (isEditing) {
+                    if (text) {
+                        // Update existing annotation
+                        pane.annotations[existingIdx].text = text;
+                    } else {
+                        // Empty text = delete annotation
+                        pane.annotations.splice(existingIdx, 1);
+                    }
+                } else if (text) {
+                    // New annotation
                     pane.annotations.push({ pageIdx, type: 'text', text, x, y, color: color, fontSize: fontSize });
-                    self._redrawOverlay(pageIdx, paneId);
-                    self._notifyChange();
                 }
+                self._redrawOverlay(pageIdx, paneId);
+                self._notifyChange();
             }
             input.remove();
             self.textInputEl = null;
@@ -246,7 +306,12 @@ window.pcfViewer = {
         });
         input.addEventListener('blur', commit);
 
-        requestAnimationFrame(() => input.focus());
+        requestAnimationFrame(() => {
+            input.focus();
+            if (isEditing) {
+                input.selectionStart = input.selectionEnd = input.value.length;
+            }
+        });
     },
 
     _notifyChange() {
