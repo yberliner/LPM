@@ -355,7 +355,7 @@ public class DashboardService
         cmd.CommandText = @"
             SELECT spl.PcId
             FROM sys_staff_pc_list spl
-            WHERE spl.UserId = @aud AND spl.WorkCapacity != 'CSSolo'
+            WHERE spl.UserId = @aud
               AND NOT EXISTS (
                   SELECT 1 FROM sys_auditor_pc_permissions ap
                   WHERE ap.AuditorId = @aud AND ap.PcId = spl.PcId AND ap.IsApproved = 1
