@@ -557,27 +557,13 @@ window.pcfViewer = {
         return count;
     },
 
-    async getExtractedPages(paneId) {
-        paneId = paneId || this.activePane;
-        const pane = this.panes[paneId];
-        if (!pane) return JSON.stringify([]);
-
-        const finalCanvas = document.createElement('canvas');
-        const pages = [];
-
-        for (const pg of pane.pages) {
-            if (!this._extractSelected[pg.pageIdx]) continue;
-            const w = pg.canvas.width;
-            const h = pg.canvas.height;
-            finalCanvas.width = w;
-            finalCanvas.height = h;
-            const ctx = finalCanvas.getContext('2d');
-            ctx.drawImage(pg.canvas, 0, 0);
-            ctx.drawImage(pg.overlay, 0, 0);
-            const dataUrl = finalCanvas.toDataURL('image/png');
-            pages.push({ width: w, height: h, dataUrl });
+    getSelectedPageIndices() {
+        const indices = [];
+        for (const k in this._extractSelected) {
+            if (this._extractSelected[k]) indices.push(parseInt(k));
         }
-        return JSON.stringify(pages);
+        indices.sort((a, b) => a - b);
+        return indices;
     },
 
     // ── Auto-save support ──

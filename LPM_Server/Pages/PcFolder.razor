@@ -1268,29 +1268,68 @@
         try
         {
             var paneId = PaneIds[_activeIdx];
-            var pagesJson = await JS.InvokeAsync<string>("pcfViewer.getExtractedPages", paneId);
 
-            // POST extracted pages to the server
-            await JS.InvokeVoidAsync("pcfExtractPages", PcId, file, pagesJson);
+            // Get selected page indices from JS
+            var indices = await JS.InvokeAsync<int[]>("pcfViewer.getSelectedPageIndices");
+            if (indices == null || indices.Length == 0) return;
+
+            // Read the original PDF (decrypted)
+            var srcBytes = FolderSvc.ReadFileBytes(PcId, file);
+            if (srcBytes == null) return;
+
+            // Extract selected pages using PdfSharpCore
+            using var srcStream = new System.IO.MemoryStream(srcBytes);
+            using var srcDoc = PdfSharpCore.Pdf.IO.PdfReader.Open(srcStream, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
+            using var newDoc = new PdfSharpCore.Pdf.PdfDocument();
+
+            foreach (var idx in indices)
+            {
+                if (idx >= 0 && idx < srcDoc.PageCount)
+                    newDoc.AddPage(srcDoc.Pages[idx]);
+            }
+
+            using var outStream = new System.IO.MemoryStream();
+            newDoc.Save(outStream);
+
+            // Save as attachment
+            var sessionFileName = System.IO.Path.GetFileName(file);
+            var nameNoExt = System.IO.Path.GetFileNameWithoutExtension(sessionFileName);
+            var attFileName = $"{nameNoExt}_extract.pdf";
+            FolderSvc.SaveAttachment(PcId, sessionFileName, attFileName, outStream.ToArray());
+
+            // Remove extracted pages from the original PDF
+            var selectedSet = new HashSet<int>(indices);
+            using var srcStream2 = new System.IO.MemoryStream(srcBytes);
+            using var srcDoc2 = PdfSharpCore.Pdf.IO.PdfReader.Open(srcStream2, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
+            using var remainingDoc = new PdfSharpCore.Pdf.PdfDocument();
+            for (int i = 0; i < srcDoc2.PageCount; i++)
+            {
+                if (!selectedSet.Contains(i))
+                    remainingDoc.AddPage(srcDoc2.Pages[i]);
+            }
+            using var remainingStream = new System.IO.MemoryStream();
+            remainingDoc.Save(remainingStream);
+            FolderSvc.SaveFile(PcId, file, remainingStream.ToArray());
 
             // Exit extract mode
             await JS.InvokeVoidAsync("pcfViewer.exitExtractMode", paneId);
             _extractMode = false;
             _extractCount = 0;
 
+            // Reload the original (now trimmed) PDF in the current pane
+            var reloadUrl = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}&_t={DateTime.UtcNow.Ticks}";
+            await JS.InvokeVoidAsync("pcfViewer.loadPdf", reloadUrl, paneId);
+
             // Refresh sidebar to show the new attachment
-            var oldFolder = _folder;
             _folder = FolderSvc.GetPcFolder(PcId);
 
             // Find the session worksheet and load the new attachment into a pane
-            var sessionFileName = System.IO.Path.GetFileName(file);
             var sessionNoExt = System.IO.Path.GetFileNameWithoutExtension(sessionFileName);
             var ws = _folder?.WorkSheets.FirstOrDefault(w =>
                 System.IO.Path.GetFileNameWithoutExtension(w.File.FileName)
                     .Equals(sessionNoExt, StringComparison.OrdinalIgnoreCase));
             if (ws != null && ws.Attachments.Count > 0)
             {
-                // Find the newest attachment (last in list, since SaveAttachment auto-increments)
                 var newAtt = ws.Attachments.Last();
                 int targetPane;
                 if (_paneCount < 3)
@@ -1300,14 +1339,12 @@
                 }
                 else
                 {
-                    // All panes full — use the last pane
                     targetPane = 2;
                 }
                 _panes[targetPane].File = newAtt.RelativePath;
                 _panes[targetPane].FileName = newAtt.FileName;
                 _panes[targetPane].Section = "WorkSheet";
 
-                // Queue the pane to load the PDF after render
                 _pendingReloads ??= new();
                 _pendingReloads.Add((PaneIds[targetPane], newAtt.RelativePath));
             }
