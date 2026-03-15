@@ -1,6 +1,7 @@
 @inject LPM.Services.FolderService FolderSvc
 @inject LPM.Services.DashboardService DashSvc
 @inject LPM.Services.CsNotificationService CsNotifySvc
+@inject LPM.Services.ShortcutService ShortcutSvc
 @inject IJSRuntime JS
 @using LPM.Services
 @implements IDisposable
@@ -983,6 +984,14 @@
                     await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, PaneIds[i]);
                 }
             }
+
+            // Load Ctrl+key shortcuts
+            try
+            {
+                var sc = ShortcutSvc.GetShortcuts();
+                await JS.InvokeVoidAsync("lpmLoadShortcuts", sc);
+            }
+            catch { }
 
             // Ctrl+Z → Undo
             await JS.InvokeVoidAsync("eval", @"

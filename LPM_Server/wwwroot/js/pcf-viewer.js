@@ -182,7 +182,11 @@ window.pcfViewer = {
     _drawText(ctx, ann) {
         ctx.font = (ann.fontSize || 14) + 'px Arial';
         ctx.fillStyle = ann.color || '#1e293b';
-        ctx.fillText(ann.text, ann.x, ann.y);
+        const lines = (ann.text || '').split('\n');
+        const lineHeight = (ann.fontSize || 14) * 1.3;
+        for (let i = 0; i < lines.length; i++) {
+            ctx.fillText(lines[i], ann.x, ann.y + i * lineHeight);
+        }
     },
 
     _showTextInput(wrapper, pageIdx, x, y, paneId) {
@@ -191,20 +195,30 @@ window.pcfViewer = {
             this.textInputEl = null;
         }
 
-        const input = document.createElement('input');
-        input.type = 'text';
+        const input = document.createElement('textarea');
         input.className = 'pcf-text-input';
+        input.rows = 1;
         input.style.left = x + 'px';
         input.style.top = (y - 18) + 'px';
-        input.placeholder = 'Type here...';
+        input.placeholder = 'Type here... (Shift+Enter for new line)';
 
         const color = this.drawColor;
         const fontSize = this.fontSize;
         input.style.color = color;
         input.style.fontSize = fontSize + 'px';
+        input.style.lineHeight = '1.3';
+        input.style.resize = 'none';
+        input.style.overflow = 'hidden';
 
         wrapper.appendChild(input);
         this.textInputEl = input;
+
+        // Auto-grow textarea
+        const autoGrow = () => {
+            input.style.height = 'auto';
+            input.style.height = input.scrollHeight + 'px';
+        };
+        input.addEventListener('input', autoGrow);
 
         input.addEventListener('pointerdown', (e) => e.stopPropagation());
 
@@ -227,7 +241,7 @@ window.pcfViewer = {
         };
 
         input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') commit();
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commit(); }
             if (e.key === 'Escape') { input.remove(); self.textInputEl = null; }
         });
         input.addEventListener('blur', commit);

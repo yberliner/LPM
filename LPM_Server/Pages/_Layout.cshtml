@@ -311,14 +311,16 @@
                 window.open(url, '_blank');
             };
 
-            // ── Alt+key shortcuts: insert text at cursor ──
+            // ── Ctrl+key shortcuts: insert text at cursor ──
             window._lpmShortcuts = {};
+            window._lpmReservedKeys = ['c','v','z','x','a','s','p','f','r','t','w','n','l'];
             window.lpmLoadShortcuts = function(shortcuts) {
                 window._lpmShortcuts = shortcuts || {};
             };
             document.addEventListener('keydown', function(e) {
-                if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+                if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
                 var key = e.key.toLowerCase();
+                if (window._lpmReservedKeys.indexOf(key) >= 0) return;
                 var text = window._lpmShortcuts[key];
                 if (!text) return;
                 var el = document.activeElement;
