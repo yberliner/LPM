@@ -255,6 +255,51 @@ public class FolderService
         return true;
     }
 
+    // ── Backup ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Copy a PC file (encrypted on disk) to _backups/ before modifying it.
+    /// Cleans up backup files older than 10 days.
+    /// </summary>
+    public void BackupFile(int pcId, string relativePath)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return;
+
+        var fullPath = SafeResolvePath(folder, relativePath);
+        if (fullPath == null || !File.Exists(fullPath)) return;
+
+        var backupDir = Path.Combine(_basePath, "_backups");
+        Directory.CreateDirectory(backupDir);
+
+        // Clean up files older than 10 days
+        foreach (var old in Directory.GetFiles(backupDir))
+        {
+            if (File.GetCreationTime(old) < DateTime.Now.AddDays(-10))
+                try { File.Delete(old); } catch { }
+        }
+
+        // Build backup filename: pcId_filename
+        var fileName = Path.GetFileName(fullPath);
+        var backupName = $"{pcId}_{fileName}";
+        var backupPath = Path.Combine(backupDir, backupName);
+
+        // Add postfix if already exists
+        if (File.Exists(backupPath))
+        {
+            var nameNoExt = Path.GetFileNameWithoutExtension(backupName);
+            var ext = Path.GetExtension(backupName);
+            var counter = 2;
+            while (File.Exists(backupPath))
+            {
+                backupPath = Path.Combine(backupDir, $"{nameNoExt}_{counter}{ext}");
+                counter++;
+            }
+        }
+
+        File.Copy(fullPath, backupPath);
+    }
+
     // ── Import helpers ────────────────────────────────────────
 
     public static readonly HashSet<string> ValidSections = new(StringComparer.OrdinalIgnoreCase)

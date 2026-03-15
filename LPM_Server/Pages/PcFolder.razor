@@ -1302,6 +1302,9 @@
             var indices = await JS.InvokeAsync<int[]>("pcfViewer.getSelectedPageIndices");
             if (indices == null || indices.Length == 0) return;
 
+            // Backup the original file before modifying
+            FolderSvc.BackupFile(PcId, file);
+
             // Read the original PDF (decrypted)
             var srcBytes = FolderSvc.ReadFileBytes(PcId, file);
             if (srcBytes == null) return;
