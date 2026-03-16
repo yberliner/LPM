@@ -1725,7 +1725,7 @@ public class DashboardService
 
             var row = new AdminCsRow(
                 r.GetInt32(0), r.GetInt32(1), pcId, pcName, csId, csName,
-                r.GetString(6), r.GetInt32(7), r.GetInt32(8),
+                r.GetString(6), r.IsDBNull(7) ? 0 : r.GetInt32(7), r.IsDBNull(8) ? 0 : r.GetInt32(8),
                 r.IsDBNull(9) ? "Pending" : r.GetString(9));
 
             csNames.TryAdd(csId, csName);
