@@ -146,7 +146,8 @@ public class DashboardService
     }
 
     /// <summary>Insert a new session and return the SessionId.</summary>
-    public int CreateImportedSession(int pcId, int auditorId, string sessionName)
+    public int CreateImportedSession(int pcId, int auditorId, string sessionName,
+        int lengthSeconds = 0, int adminSeconds = 0, string? summaryHtml = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -167,17 +168,20 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO sess_sessions
-                (PcId, AuditorId, SessionDate, SequenceInDay, LengthSeconds, Name, CreatedByUserId, CreatedAt)
-            VALUES (@pc, @aud, @dt, @seq, 0, @name, @creator, datetime('now', '+2 hours'));
+                (PcId, AuditorId, SessionDate, SequenceInDay, LengthSeconds, AdminSeconds, Name, SessionSummaryHtml, CreatedByUserId, CreatedAt)
+            VALUES (@pc, @aud, @dt, @seq, @len, @admin, @name, @summary, @creator, datetime('now', '+2 hours'));
             SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("@pc", pcId);
         cmd.Parameters.AddWithValue("@aud", auditorId);
         cmd.Parameters.AddWithValue("@dt", today);
         cmd.Parameters.AddWithValue("@seq", maxSeq + 1);
+        cmd.Parameters.AddWithValue("@len", lengthSeconds);
+        cmd.Parameters.AddWithValue("@admin", adminSeconds);
         cmd.Parameters.AddWithValue("@name", sessionName);
+        cmd.Parameters.AddWithValue("@summary", (object?)summaryHtml ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@creator", auditorId);
         var sessionId = Convert.ToInt32(cmd.ExecuteScalar());
-        Console.WriteLine($"[DashboardService] Created imported session for PC {pcId}, name: '{sessionName}'");
+        Console.WriteLine($"[DashboardService] Created imported session for PC {pcId}, name: '{sessionName}', length: {lengthSeconds}s, admin: {adminSeconds}s");
         return sessionId;
     }
 

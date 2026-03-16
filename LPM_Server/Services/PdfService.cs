@@ -1539,6 +1539,138 @@ public class PdfService
 
     // ── HTML → QuestPDF rich text rendering ──────────────────────────
 
+    // ── Auditor Report Form PDF ──
+
+    public record ArfRowData(bool Checked, string Process, string Time, string ToneArm, string Results);
+
+    public byte[] GenerateArfPdf(
+        string pcName, string date, string grade, string sessionLength,
+        string adminTime, string totalTa, string taRange,
+        List<ArfRowData> rows, string? summaryHtml)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+
+        // Dark theme colors matching the GUI
+        var bgPage   = "#1e293b";
+        var bgCard   = "#0f172a";
+        var bgHeader = "#1e40af";
+        var txtMain  = "#e2e8f0";
+        var txtLabel = "#94a3b8";
+        var txtValue = "#f1f5f9";
+        var border   = "#334155";
+        var bgThRow  = "#1e3a5f";
+
+        return Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(30);
+                page.DefaultTextStyle(x => x.FontSize(10).FontColor(txtMain));
+                page.PageColor(bgPage);
+
+                page.Content().Column(col =>
+                {
+                    // Title bar
+                    col.Item().Background(bgHeader).Padding(10).AlignCenter()
+                        .Text("Auditor Report Form").FontSize(16).Bold().FontColor("#ffffff");
+
+                    col.Item().PaddingTop(14);
+
+                    // Card area
+                    col.Item().Background(bgCard).Border(1).BorderColor(border).Padding(16).Column(card =>
+                    {
+                        // Row 1: PC's Name + Date
+                        card.Item().PaddingBottom(6).Row(row =>
+                        {
+                            row.RelativeItem().Text(t =>
+                            {
+                                t.Span("PC's Name  ").FontSize(10).FontColor(txtLabel);
+                                t.Span(pcName).FontSize(11).Bold().FontColor(txtValue);
+                            });
+                            row.ConstantItem(180).Text(t =>
+                            {
+                                t.Span("Date  ").FontSize(10).FontColor(txtLabel);
+                                t.Span(date).FontSize(11).Bold().FontColor(txtValue);
+                            });
+                        });
+
+                        // Row 2: PC's Grade + Session Length
+                        card.Item().PaddingBottom(6).Row(row =>
+                        {
+                            row.RelativeItem().Text(t =>
+                            {
+                                t.Span("PC's Grade  ").FontSize(10).FontColor(txtLabel);
+                                t.Span(grade).FontSize(11).Bold().FontColor(txtValue);
+                            });
+                            row.ConstantItem(180).Text(t =>
+                            {
+                                t.Span("Session Length  ").FontSize(10).FontColor(txtLabel);
+                                t.Span(sessionLength).FontSize(11).Bold().FontColor(txtValue);
+                            });
+                        });
+
+                        // Row 3: Admin Time + Total TA
+                        card.Item().PaddingBottom(10).Row(row =>
+                        {
+                            row.RelativeItem().Text(t =>
+                            {
+                                t.Span("Admin Time  ").FontSize(10).FontColor(txtLabel);
+                                t.Span(adminTime).FontSize(11).Bold().FontColor(txtValue);
+                            });
+                            row.ConstantItem(180).Text(t =>
+                            {
+                                t.Span("Total TA  ").FontSize(10).FontColor(txtLabel);
+                                t.Span(totalTa).FontSize(11).Bold().FontColor(txtValue);
+                            });
+                        });
+
+                        // Table header
+                        card.Item().Background(bgThRow).Border(0.5f).BorderColor(border).Row(row =>
+                        {
+                            row.RelativeItem(4).Padding(5).Text("Process").FontSize(9).Bold().FontColor(txtLabel);
+                            row.ConstantItem(60).Padding(5).AlignCenter().Text("Time").FontSize(9).Bold().FontColor(txtLabel);
+                            row.ConstantItem(70).Padding(5).AlignCenter().Text("Tone Arm\nReads").FontSize(9).Bold().FontColor(txtLabel);
+                            row.RelativeItem(4).Padding(5).Text("Results and Comments").FontSize(9).Bold().FontColor(txtLabel);
+                        });
+
+                        // Table rows
+                        bool alt = false;
+                        foreach (var r in rows)
+                        {
+                            var rowBg = alt ? "#162033" : bgCard;
+                            alt = !alt;
+                            card.Item().Background(rowBg).Border(0.5f).BorderColor(border).Row(row =>
+                            {
+                                row.RelativeItem(4).Padding(5).Text(r.Process).FontSize(10).FontColor(txtMain);
+                                row.ConstantItem(60).Padding(5).AlignCenter().Text(r.Time).FontSize(10).FontColor(txtMain);
+                                row.ConstantItem(70).Padding(5).AlignCenter().Text(r.ToneArm).FontSize(10).FontColor(txtMain);
+                                row.RelativeItem(4).Padding(5).Text(r.Results).FontSize(10).FontColor(txtMain);
+                            });
+                        }
+
+                        // TA Range
+                        card.Item().PaddingTop(12).Text(t =>
+                        {
+                            t.Span("TA Range:  ").FontSize(10).FontColor(txtLabel);
+                            t.Span(taRange).FontSize(11).Bold().FontColor(txtValue);
+                        });
+                    });
+
+                    // Summary section
+                    if (!string.IsNullOrWhiteSpace(summaryHtml))
+                    {
+                        col.Item().PaddingTop(14).Background(bgCard).Border(1).BorderColor(border).Padding(12).Column(sumCol =>
+                        {
+                            sumCol.Item().PaddingBottom(6).Text("Summary").FontSize(11).Bold().FontColor(txtValue);
+                            RenderHtmlBlock(sumCol, summaryHtml);
+                        });
+                    }
+                });
+            });
+        }).GeneratePdf();
+    }
+
     private static void RenderHtmlBlock(ColumnDescriptor col, string html)
     {
         // Split into paragraphs by <p>, <div>, <br>, <li> boundaries
