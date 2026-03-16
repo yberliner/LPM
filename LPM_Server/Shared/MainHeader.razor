@@ -1105,7 +1105,7 @@
     void AddArfRow() { if (CanAddArfRow) { _arfRows.Add(new ArfRow()); RebuildArfSummary(); } }
     void RemoveArfRow(int idx) { if (_arfRows.Count > 1) { _arfRows.RemoveAt(idx); RecalcSessionLength(); RebuildArfSummary(); } }
 
-    void RebuildArfSummary()
+    void RebuildArfSummary(bool pushToEditor = true)
     {
         var lines = _arfRows
             .Where(r => r.Checked && !string.IsNullOrWhiteSpace(r.Process))
@@ -1116,9 +1116,11 @@
                 return string.IsNullOrWhiteSpace(res) ? proc : $"{proc} TO: {res}";
             });
         _arfSummary = string.Join("<br>", lines);
-        // Push to Quill editor
-        _ = JSRuntime.InvokeVoidAsync("eval",
-            $"if(window._arfQuill) window._arfQuill.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(_arfSummary)};");
+        if (pushToEditor)
+        {
+            _ = JSRuntime.InvokeVoidAsync("eval",
+                $"if(window._arfQuill) window._arfQuill.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(_arfSummary)};");
+        }
     }
 
     async Task ReadArfSummaryFromEditor()
@@ -1126,6 +1128,7 @@
         var html = await JSRuntime.InvokeAsync<string>("eval",
             "window._arfQuill ? window._arfQuill.root.innerHTML : ''");
         _arfSummary = (html == "<p><br></p>" || string.IsNullOrWhiteSpace(html)) ? "" : html;
+        Console.WriteLine($"[ARF] Summary HTML read from editor: {_arfSummary}");
     }
 
     // Strip everything except digits and '.' — user literally cannot enter letters

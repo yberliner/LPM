@@ -1550,119 +1550,104 @@ public class PdfService
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
-        // Dark theme colors matching the GUI
-        var bgPage   = "#1e293b";
-        var bgCard   = "#0f172a";
-        var bgHeader = "#1e40af";
-        var txtMain  = "#e2e8f0";
-        var txtLabel = "#94a3b8";
-        var txtValue = "#f1f5f9";
-        var border   = "#334155";
-        var bgThRow  = "#1e3a5f";
-
         return Document.Create(container =>
         {
             container.Page(page =>
             {
                 page.Size(PageSizes.A4);
                 page.Margin(30);
-                page.DefaultTextStyle(x => x.FontSize(10).FontColor(txtMain));
-                page.PageColor(bgPage);
+                page.DefaultTextStyle(x => x.FontSize(10).FontColor("#1a1a1a"));
 
                 page.Content().Column(col =>
                 {
-                    // Title bar
-                    col.Item().Background(bgHeader).Padding(10).AlignCenter()
-                        .Text("Auditor Report Form").FontSize(16).Bold().FontColor("#ffffff");
+                    // Title
+                    col.Item().AlignCenter().PaddingBottom(14)
+                        .Text("Auditor Report Form").FontSize(18).Bold().FontColor("#1a1a1a");
 
-                    col.Item().PaddingTop(14);
-
-                    // Card area
-                    col.Item().Background(bgCard).Border(1).BorderColor(border).Padding(16).Column(card =>
+                    // Row 1: PC's Name + Date
+                    col.Item().PaddingBottom(6).Row(row =>
                     {
-                        // Row 1: PC's Name + Date
-                        card.Item().PaddingBottom(6).Row(row =>
+                        row.RelativeItem().Text(t =>
                         {
-                            row.RelativeItem().Text(t =>
-                            {
-                                t.Span("PC's Name  ").FontSize(10).FontColor(txtLabel);
-                                t.Span(pcName).FontSize(11).Bold().FontColor(txtValue);
-                            });
-                            row.ConstantItem(180).Text(t =>
-                            {
-                                t.Span("Date  ").FontSize(10).FontColor(txtLabel);
-                                t.Span(date).FontSize(11).Bold().FontColor(txtValue);
-                            });
+                            t.Span("PC's Name:  ").FontSize(10).FontColor("#666");
+                            t.Span(pcName).FontSize(12).Bold().FontColor("#000");
                         });
-
-                        // Row 2: PC's Grade + Session Length
-                        card.Item().PaddingBottom(6).Row(row =>
+                        row.ConstantItem(200).Text(t =>
                         {
-                            row.RelativeItem().Text(t =>
-                            {
-                                t.Span("PC's Grade  ").FontSize(10).FontColor(txtLabel);
-                                t.Span(grade).FontSize(11).Bold().FontColor(txtValue);
-                            });
-                            row.ConstantItem(180).Text(t =>
-                            {
-                                t.Span("Session Length  ").FontSize(10).FontColor(txtLabel);
-                                t.Span(sessionLength).FontSize(11).Bold().FontColor(txtValue);
-                            });
-                        });
-
-                        // Row 3: Admin Time + Total TA
-                        card.Item().PaddingBottom(10).Row(row =>
-                        {
-                            row.RelativeItem().Text(t =>
-                            {
-                                t.Span("Admin Time  ").FontSize(10).FontColor(txtLabel);
-                                t.Span(adminTime).FontSize(11).Bold().FontColor(txtValue);
-                            });
-                            row.ConstantItem(180).Text(t =>
-                            {
-                                t.Span("Total TA  ").FontSize(10).FontColor(txtLabel);
-                                t.Span(totalTa).FontSize(11).Bold().FontColor(txtValue);
-                            });
-                        });
-
-                        // Table header
-                        card.Item().Background(bgThRow).Border(0.5f).BorderColor(border).Row(row =>
-                        {
-                            row.RelativeItem(4).Padding(5).Text("Process").FontSize(9).Bold().FontColor(txtLabel);
-                            row.ConstantItem(60).Padding(5).AlignCenter().Text("Time").FontSize(9).Bold().FontColor(txtLabel);
-                            row.ConstantItem(70).Padding(5).AlignCenter().Text("Tone Arm\nReads").FontSize(9).Bold().FontColor(txtLabel);
-                            row.RelativeItem(4).Padding(5).Text("Results and Comments").FontSize(9).Bold().FontColor(txtLabel);
-                        });
-
-                        // Table rows
-                        bool alt = false;
-                        foreach (var r in rows)
-                        {
-                            var rowBg = alt ? "#162033" : bgCard;
-                            alt = !alt;
-                            card.Item().Background(rowBg).Border(0.5f).BorderColor(border).Row(row =>
-                            {
-                                row.RelativeItem(4).Padding(5).Text(r.Process).FontSize(10).FontColor(txtMain);
-                                row.ConstantItem(60).Padding(5).AlignCenter().Text(r.Time).FontSize(10).FontColor(txtMain);
-                                row.ConstantItem(70).Padding(5).AlignCenter().Text(r.ToneArm).FontSize(10).FontColor(txtMain);
-                                row.RelativeItem(4).Padding(5).Text(r.Results).FontSize(10).FontColor(txtMain);
-                            });
-                        }
-
-                        // TA Range
-                        card.Item().PaddingTop(12).Text(t =>
-                        {
-                            t.Span("TA Range:  ").FontSize(10).FontColor(txtLabel);
-                            t.Span(taRange).FontSize(11).Bold().FontColor(txtValue);
+                            t.Span("Date:  ").FontSize(10).FontColor("#666");
+                            t.Span(date).FontSize(12).Bold().FontColor("#000");
                         });
                     });
 
-                    // Summary section
+                    // Row 2: PC's Grade + Session Length
+                    col.Item().PaddingBottom(6).Row(row =>
+                    {
+                        row.RelativeItem().Text(t =>
+                        {
+                            t.Span("PC's Grade:  ").FontSize(10).FontColor("#666");
+                            t.Span(grade).FontSize(12).Bold().FontColor("#000");
+                        });
+                        row.ConstantItem(200).Text(t =>
+                        {
+                            t.Span("Session Length:  ").FontSize(10).FontColor("#666");
+                            t.Span(sessionLength).FontSize(12).Bold().FontColor("#000");
+                        });
+                    });
+
+                    // Row 3: Admin Time + Total TA
+                    col.Item().PaddingBottom(12).Row(row =>
+                    {
+                        row.RelativeItem().Text(t =>
+                        {
+                            t.Span("Admin Time:  ").FontSize(10).FontColor("#666");
+                            t.Span(adminTime).FontSize(12).Bold().FontColor("#000");
+                        });
+                        row.ConstantItem(200).Text(t =>
+                        {
+                            t.Span("Total TA:  ").FontSize(10).FontColor("#666");
+                            t.Span(totalTa).FontSize(12).Bold().FontColor("#000");
+                        });
+                    });
+
+                    // Table header
+                    col.Item().Background("#2c3e50").Border(0.5f).BorderColor("#2c3e50").Row(row =>
+                    {
+                        row.RelativeItem(4).Padding(6).Text("Process").FontSize(10).Bold().FontColor("#fff");
+                        row.ConstantItem(65).Padding(6).AlignCenter().Text("Time").FontSize(10).Bold().FontColor("#fff");
+                        row.ConstantItem(75).Padding(6).AlignCenter().Text("Tone Arm\nReads").FontSize(9).Bold().FontColor("#fff");
+                        row.RelativeItem(4).Padding(6).Text("Results and Comments").FontSize(10).Bold().FontColor("#fff");
+                    });
+
+                    // Table rows
+                    bool alt = false;
+                    foreach (var r in rows)
+                    {
+                        var rowBg = alt ? "#f4f6f8" : "#ffffff";
+                        alt = !alt;
+                        col.Item().Background(rowBg).BorderBottom(0.5f).BorderColor("#ddd").Row(row =>
+                        {
+                            row.RelativeItem(4).Padding(6).Text(r.Process).FontSize(11).FontColor("#1a1a1a");
+                            row.ConstantItem(65).Padding(6).AlignCenter().Text(r.Time).FontSize(11).FontColor("#1a1a1a");
+                            row.ConstantItem(75).Padding(6).AlignCenter().Text(r.ToneArm).FontSize(11).FontColor("#1a1a1a");
+                            row.RelativeItem(4).Padding(6).Text(r.Results).FontSize(11).FontColor("#1a1a1a");
+                        });
+                    }
+
+                    // TA Range
+                    col.Item().PaddingTop(12).Text(t =>
+                    {
+                        t.Span("TA Range:  ").FontSize(10).FontColor("#666");
+                        t.Span(taRange).FontSize(12).Bold().FontColor("#000");
+                    });
+
+                    // Summary
                     if (!string.IsNullOrWhiteSpace(summaryHtml))
                     {
-                        col.Item().PaddingTop(14).Background(bgCard).Border(1).BorderColor(border).Padding(12).Column(sumCol =>
+                        col.Item().PaddingTop(16).PaddingBottom(4)
+                            .Text("Summary").FontSize(12).Bold().FontColor("#1a1a1a");
+                        col.Item().Background("#f8f9fa").Border(0.5f).BorderColor("#ddd")
+                            .Padding(10).Column(sumCol =>
                         {
-                            sumCol.Item().PaddingBottom(6).Text("Summary").FontSize(11).Bold().FontColor(txtValue);
                             RenderHtmlBlock(sumCol, summaryHtml);
                         });
                     }
@@ -1671,8 +1656,22 @@ public class PdfService
         }).GeneratePdf();
     }
 
+    private static void ExtractInlineStyles(string tag, ref string? color, ref string? bgColor, ref float fontSize)
+    {
+        var styleMatch = Regex.Match(tag, @"style\s*=\s*""([^""]*)""");
+        if (!styleMatch.Success) return;
+        var style = styleMatch.Groups[1].Value;
+        var colorMatch = Regex.Match(style, @"(?<![a-z-])color\s*:\s*([^;""]+)");
+        if (colorMatch.Success) color = colorMatch.Groups[1].Value.Trim();
+        var bgMatch = Regex.Match(style, @"background-color\s*:\s*([^;""]+)");
+        if (bgMatch.Success) bgColor = bgMatch.Groups[1].Value.Trim();
+        var sizeMatch = Regex.Match(style, @"font-size\s*:\s*(\d+)");
+        if (sizeMatch.Success) fontSize = float.Parse(sizeMatch.Groups[1].Value);
+    }
+
     private static void RenderHtmlBlock(ColumnDescriptor col, string html)
     {
+        Console.WriteLine($"[RenderHtmlBlock] Input HTML: {html}");
         // Split into paragraphs by <p>, <div>, <br>, <li> boundaries
         // Quill output: <p>text</p>, <p><br></p> for empty lines, <p class="ql-direction-rtl">...</p>
         var blocks = Regex.Split(html, @"(?=<p[\s>])|(?=<li[\s>])|(?=<div[\s>])");
@@ -1706,6 +1705,10 @@ public class PdfService
 
                 // Parse inline elements: <strong>, <em>, <u>, <s>, <span style="...">, plain text
                 var parts = Regex.Split(innerHtml, @"(<(?:strong|em|u|s|span|br)\b[^>]*>|</(?:strong|em|u|s|span)>)");
+                Console.WriteLine($"  [RenderHtml] innerHtml: {innerHtml}");
+                for (int pi = 0; pi < parts.Length; pi++)
+                    if (!string.IsNullOrEmpty(parts[pi]))
+                        Console.WriteLine($"    part[{pi}]: [{parts[pi]}]");
 
                 bool bold = false, italic = false, underline = false, strike = false;
                 string? color = null;
@@ -1716,29 +1719,22 @@ public class PdfService
                 {
                     if (string.IsNullOrEmpty(part)) continue;
 
-                    if (part == "<strong>" || part == "<b>") { bold = true; continue; }
+                    // Check for opening tags (may have style attributes)
+                    if (part.StartsWith("<strong") || part.StartsWith("<b>") || part.StartsWith("<b "))
+                    { bold = true; ExtractInlineStyles(part, ref color, ref bgColor, ref fontSize); continue; }
                     if (part == "</strong>" || part == "</b>") { bold = false; continue; }
-                    if (part == "<em>" || part == "<i>") { italic = true; continue; }
+                    if (part.StartsWith("<em") || part.StartsWith("<i>") || part.StartsWith("<i "))
+                    { italic = true; ExtractInlineStyles(part, ref color, ref bgColor, ref fontSize); continue; }
                     if (part == "</em>" || part == "</i>") { italic = false; continue; }
-                    if (part == "<u>") { underline = true; continue; }
+                    if (part.StartsWith("<u")) { underline = true; ExtractInlineStyles(part, ref color, ref bgColor, ref fontSize); continue; }
                     if (part == "</u>") { underline = false; continue; }
-                    if (part == "<s>") { strike = true; continue; }
+                    if (part.StartsWith("<s>") || part.StartsWith("<s ")) { strike = true; ExtractInlineStyles(part, ref color, ref bgColor, ref fontSize); continue; }
                     if (part == "</s>") { strike = false; continue; }
                     if (part.StartsWith("<br")) { text.Span("\n"); continue; }
 
                     if (part.StartsWith("<span"))
                     {
-                        var styleMatch = Regex.Match(part, @"style=""([^""]*)""");
-                        if (styleMatch.Success)
-                        {
-                            var style = styleMatch.Groups[1].Value;
-                            var colorMatch = Regex.Match(style, @"(?<!background-)color:\s*([^;]+)");
-                            if (colorMatch.Success) color = colorMatch.Groups[1].Value.Trim();
-                            var bgMatch = Regex.Match(style, @"background-color:\s*([^;]+)");
-                            if (bgMatch.Success) bgColor = bgMatch.Groups[1].Value.Trim();
-                            var sizeMatch = Regex.Match(style, @"font-size:\s*(\d+)");
-                            if (sizeMatch.Success) fontSize = float.Parse(sizeMatch.Groups[1].Value);
-                        }
+                        ExtractInlineStyles(part, ref color, ref bgColor, ref fontSize);
                         continue;
                     }
                     if (part == "</span>") { color = null; bgColor = null; fontSize = 10f; continue; }
@@ -1762,10 +1758,10 @@ public class PdfService
 
     private static string ParseColor(string cssColor)
     {
-        cssColor = cssColor.Trim().TrimEnd(';');
+        cssColor = cssColor.Trim().TrimEnd(';').Trim();
         if (cssColor.StartsWith("#")) return cssColor;
-        // Handle rgb(r,g,b)
-        var rgbMatch = Regex.Match(cssColor, @"rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)");
+        // Handle rgb(r,g,b) and rgba(r,g,b,a)
+        var rgbMatch = Regex.Match(cssColor, @"rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)");
         if (rgbMatch.Success)
         {
             int r = int.Parse(rgbMatch.Groups[1].Value);
@@ -1774,10 +1770,12 @@ public class PdfService
             return $"#{r:X2}{g:X2}{b:X2}";
         }
         // Named colors fallback
-        return cssColor switch
+        return cssColor.ToLowerInvariant() switch
         {
             "red" => "#FF0000", "blue" => "#0000FF", "green" => "#008000",
+            "orange" => "#FF8C00", "purple" => "#800080", "magenta" => "#FF00FF",
             "yellow" => "#FFFF00", "white" => "#FFFFFF", "black" => "#000000",
+            "gray" or "grey" => "#808080",
             _ => "#000000"
         };
     }
