@@ -1779,7 +1779,7 @@ public class PdfService
                     page.Header().Column(hdr =>
                     {
                         hdr.Item().AlignCenter().PaddingBottom(8)
-                            .Text("Folder Summary").FontSize(28).Bold();
+                            .Text("FOLDER SUMMARY").FontSize(24).Bold();
                         hdr.Item().PaddingBottom(8).Row(row =>
                         {
                             row.RelativeItem().Text(t =>
