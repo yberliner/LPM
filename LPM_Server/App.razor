@@ -1,7 +1,4 @@
-@inject MSGS.ClientManager udpClient
-@inject MSGS.ClientSessionData SessionData
 @inject NavigationManager Navigation
-@inject MSGS.AgentsRepository _agentsRepository
 @inject AuthenticationStateProvider AuthStateProvider
 @implements IDisposable
 
@@ -57,6 +54,6 @@
 
     public void Dispose()
     {
-        udpClient?.Dispose();
+        
     }
 }

@@ -1,4 +1,3 @@
-@inject Microsoft.Extensions.Options.IOptions<FSMSGS.TCPSettings> TcpSettings
 
 <footer class="footer mt-auto py-3 bg-white text-center">
     <div class="position-relative">
@@ -16,16 +15,11 @@
 </footer>
 
 @code {
-    private string ProgramVersion = "Version 1.0"; //fallback
+    private string ProgramVersion = "Version 1.0 LifePower"; //fallback
     private int currentYear;
     protected override void OnInitialized()
     {
         base.OnInitialized();
         currentYear = DateTime.Now.Year;
-
-        if (!string.IsNullOrWhiteSpace(TcpSettings.Value.ProgramVersion))
-        {
-            ProgramVersion = TcpSettings.Value.ProgramVersion;
-        }
     }
 }

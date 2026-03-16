@@ -10,8 +10,6 @@ using Microsoft.AspNetCore.Http;
 using ApexCharts;
 using Index1;
 using Microsoft.AspNetCore.HttpOverrides;
-using MSGS;
-using FSMSGS;
 using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 using System.IO;
 using System.Text;
@@ -39,8 +37,6 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Configuration.AddJsonFile("appsettings.secret.json", optional: true, reloadOnChange: false);
 
-builder.Services.Configure<FSMSGS.TCPSettings>(builder.Configuration.GetSection("TCPSettings"));
-
 builder.WebHost.ConfigureKestrel((context, options) =>
 {
     options.Configure(context.Configuration.GetSection("Kestrel"));
@@ -66,22 +62,13 @@ builder.Services.AddWMBOS();
 builder.Services.AddSession();
 
 //Forsight Scoped classes:
-builder.Services.AddScoped<ClientSessionData>();
-builder.Services.AddScoped<ClientManager>();
-builder.Services.AddScoped<AgentList>();
 builder.Services.AddScoped<ProtectedSessionStorage>();
 builder.Services.AddScoped<PdfService>();
 
 //Forsight Singleton Classes:
-builder.Services.AddSingleton<TCPEngine>();
-builder.Services.AddSingleton<CommRepository>();
-builder.Services.AddSingleton<OutgoingMsgsManager>();
-builder.Services.AddSingleton<AgentsRepository>();
+
 builder.Services.AddSingleton<LPM.ServerConfigService>();
 builder.Services.AddSingleton<DevTableVisibilityService>();
-builder.Services.AddSingleton<EMBVersionStorage>();
-builder.Services.AddSingleton<OrdersExcelToJson>();
-builder.Services.AddSingleton<CustomerReservationsProvider>();
 builder.Services.AddSingleton<AllScriptResServices>(sp =>
 {
     AllScriptResServices AllScripts = new AllScriptResServices();
@@ -98,11 +85,6 @@ builder.Services.AddSingleton<AllScriptResServices>(sp =>
     return AllScripts;
 });
 
-builder.Services.AddSingleton<IFileStore>(sp =>
-{
-    var env = sp.GetRequiredService<IWebHostEnvironment>();
-    return new FileStore(env.ContentRootPath);
-});
 
 // SQLite user database
 builder.Services.AddSingleton<UserDb>();
@@ -145,7 +127,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     });
 
 var app = builder.Build();
-Globals.ServiceProvider = app.Services;
+//Globals.ServiceProvider = app.Services;
 
 // Configure forwarded headers middleware early in the pipeline
 app.UseForwardedHeaders(new ForwardedHeadersOptions
