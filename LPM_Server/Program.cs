@@ -247,7 +247,8 @@ app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
     if (summaries.Count == 0)
         return Results.File(originalBytes, "application/pdf");
 
-    var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries);
+    var originalPageCount = pdfSvc.CountPdfPages(originalBytes);
+    var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
     var combined = pdfSvc.CombinePdfs(summaryPdf, originalBytes);
     return Results.File(combined, "application/pdf");
 });

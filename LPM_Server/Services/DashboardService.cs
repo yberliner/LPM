@@ -1868,7 +1868,7 @@ public class DashboardService
         return list;
     }
 
-    public record SessionSummaryInfo(string Name, string SessionDate, string? SummaryHtml);
+    public record SessionSummaryInfo(string Name, string SessionDate, string? SummaryHtml, int LengthSeconds, int AdminSeconds);
 
     public List<SessionSummaryInfo> GetSessionSummariesForPc(int pcId)
     {
@@ -1876,7 +1876,10 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT COALESCE(s.Name, ''), COALESCE(s.SessionDate, fs.CreatedAt), fs.SummaryHtml
+            SELECT COALESCE(s.Name, ''),
+                   COALESCE(s.SessionDate, SUBSTR(fs.CreatedAt, 1, 10)),
+                   fs.SummaryHtml,
+                   COALESCE(s.LengthSeconds, 0), COALESCE(s.AdminSeconds, 0)
             FROM sess_folder_summary fs
             LEFT JOIN sess_sessions s ON s.SessionId = fs.SessionId
             WHERE fs.PcId = @pcId AND fs.SummaryHtml IS NOT NULL AND fs.SummaryHtml != ''
@@ -1885,7 +1888,8 @@ public class DashboardService
         var list = new List<SessionSummaryInfo>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add(new SessionSummaryInfo(r.GetString(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2)));
+            list.Add(new SessionSummaryInfo(r.GetString(0), r.GetString(1),
+                r.IsDBNull(2) ? null : r.GetString(2), r.GetInt32(3), r.GetInt32(4)));
         return list;
     }
 

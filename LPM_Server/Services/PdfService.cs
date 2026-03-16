@@ -1658,59 +1658,237 @@ public class PdfService
 
     // ── Session Summaries PDF (prepended to Folder Summary) ──
 
-    public byte[] GenerateSessionSummariesPdf(string pcName, List<DashboardService.SessionSummaryInfo> summaries)
+    static string SecsToHMM(int secs) => secs <= 0 ? "" : $"{secs / 3600}:{(secs % 3600) / 60:D2}";
+
+    static string FormatDateDDMMYY(string dateStr)
+    {
+        if (DateTime.TryParse(dateStr, out var dt))
+            return dt.ToString("dd-MM-yy");
+        return dateStr;
+    }
+
+    public byte[] GenerateSessionSummariesPdf(string pcName,
+        List<DashboardService.SessionSummaryInfo> summaries, int originalPageCount)
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
+        // Two-pass: first generate to count summary pages, then regenerate with correct total
+        int summaryPageCount = 1;
+        int totalPages = summaryPageCount + originalPageCount;
+
+        // Pass 1: render to count pages
+        var pass1 = BuildFolderSummaryDoc(pcName, summaries, 999).GeneratePdf();
+        using (var ms1 = new System.IO.MemoryStream(pass1))
+        using (var doc1 = PdfSharpCore.Pdf.IO.PdfReader.Open(ms1, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import))
+        {
+            summaryPageCount = doc1.PageCount;
+        }
+        totalPages = summaryPageCount + originalPageCount;
+
+        // Pass 2: render with correct total
+        return BuildFolderSummaryDoc(pcName, summaries, totalPages).GeneratePdf();
+    }
+
+    // Estimate entry height for page layout
+    private static float EstimateEntryHeight(DashboardService.SessionSummaryInfo s)
+    {
+        float h = 18; // date line
+        if (s.LengthSeconds > 0) h += 16;
+        if (s.AdminSeconds > 0) h += 16;
+        if (!string.IsNullOrWhiteSpace(s.Name)) h += 16;
+        if (!string.IsNullOrWhiteSpace(s.SummaryHtml))
+        {
+            var text = Regex.Replace(s.SummaryHtml!, "<[^>]+>", "");
+            var lines = Math.Max(1, (int)Math.Ceiling(text.Length / 40.0));
+            h += lines * 15;
+        }
+        return h + 12; // padding
+    }
+
+    private const float PageUsableHeight = 700f; // A4 minus margins and header
+
+    // Pre-compute which entries go on which page and column
+    private static List<(List<DashboardService.SessionSummaryInfo> left, List<DashboardService.SessionSummaryInfo> right)>
+        PackIntoPages(List<DashboardService.SessionSummaryInfo> summaries)
+    {
+        var pages = new List<(List<DashboardService.SessionSummaryInfo>, List<DashboardService.SessionSummaryInfo>)>();
+        var curLeft = new List<DashboardService.SessionSummaryInfo>();
+        var curRight = new List<DashboardService.SessionSummaryInfo>();
+        float leftH = 0, rightH = 0;
+        bool fillingLeft = true;
+
+        foreach (var s in summaries)
+        {
+            float h = EstimateEntryHeight(s);
+            if (fillingLeft)
+            {
+                if (leftH + h <= PageUsableHeight)
+                {
+                    curLeft.Add(s); leftH += h;
+                }
+                else
+                {
+                    fillingLeft = false;
+                    curRight.Add(s); rightH = h;
+                }
+            }
+            else
+            {
+                if (rightH + h <= PageUsableHeight)
+                {
+                    curRight.Add(s); rightH += h;
+                }
+                else
+                {
+                    pages.Add((curLeft, curRight));
+                    curLeft = new List<DashboardService.SessionSummaryInfo> { s };
+                    curRight = new List<DashboardService.SessionSummaryInfo>();
+                    leftH = h; rightH = 0; fillingLeft = true;
+                }
+            }
+        }
+        if (curLeft.Count > 0 || curRight.Count > 0)
+            pages.Add((curLeft, curRight));
+        if (pages.Count == 0)
+            pages.Add((new(), new()));
+        return pages;
+    }
+
+    private Document BuildFolderSummaryDoc(string pcName,
+        List<DashboardService.SessionSummaryInfo> summaries, int totalPages)
+    {
+        var pages = PackIntoPages(summaries);
+        int summaryPageCount = pages.Count;
+
         return Document.Create(container =>
         {
-            container.Page(page =>
+            for (int p = 0; p < pages.Count; p++)
             {
-                page.Size(PageSizes.A4);
-                page.Margin(30);
-                page.DefaultTextStyle(x => x.FontSize(10).FontColor("#1a1a1a"));
+                var pageIdx = p;
+                // Backward page number: first summary page = totalPages, last = totalPages - summaryPageCount + 1
+                var displayPageNum = totalPages - pageIdx;
+                var (left, right) = pages[pageIdx];
+                int maxRows = Math.Max(left.Count, right.Count);
 
-                page.Header().AlignCenter().PaddingBottom(10).Text(t =>
+                container.Page(page =>
                 {
-                    t.Span("Session Summaries — ").FontSize(14).Bold();
-                    t.Span(pcName).FontSize(14).Bold().FontColor("#2563eb");
-                });
+                    page.Size(PageSizes.A4);
+                    page.Margin(25);
+                    page.DefaultTextStyle(x => x.FontSize(11).FontColor("#1a1a1a"));
 
-                page.Content().Column(col =>
-                {
-                    foreach (var s in summaries)
+                    page.Header().Column(hdr =>
                     {
-                        // Session header
-                        col.Item().PaddingTop(8).Background("#f0f4ff").Border(0.5f).BorderColor("#c7d2fe")
-                            .Padding(8).Row(row =>
+                        hdr.Item().AlignCenter().PaddingBottom(8)
+                            .Text("Folder Summary").FontSize(28).Bold();
+                        hdr.Item().PaddingBottom(8).Row(row =>
                         {
                             row.RelativeItem().Text(t =>
                             {
-                                t.Span(s.Name).FontSize(11).Bold().FontColor("#1e40af");
-                                t.Span("  ").FontSize(8);
-                                t.Span(s.SessionDate).FontSize(9).FontColor("#64748b");
+                                t.Span("PC Name: ").FontSize(16).FontColor("#333");
+                                t.Span(pcName).FontSize(16).Bold();
+                            });
+                            row.ConstantItem(140).AlignRight().Text(t =>
+                            {
+                                t.Span("Page: ").FontSize(16).Bold();
+                                t.Span($"{displayPageNum}").FontSize(16).Bold();
+                                t.Span($" / {totalPages}").FontSize(16).Bold();
                             });
                         });
-
-                        // Summary content
-                        if (!string.IsNullOrWhiteSpace(s.SummaryHtml))
+                        // Column headers with full border
+                        hdr.Item().BorderTop(1).BorderLeft(1).BorderRight(1).BorderColor("#000").Row(row =>
                         {
-                            col.Item().PaddingHorizontal(4).PaddingVertical(4).Column(sumCol =>
+                            row.ConstantItem(65).Padding(4).AlignCenter().AlignMiddle().Text("Date & Time").FontSize(11).Bold().FontColor("#000");
+                            row.RelativeItem(4).BorderLeft(1).BorderColor("#000").Padding(4).AlignCenter().AlignMiddle()
+                                .Text("What & Results").FontSize(11).Bold().FontColor("#000");
+                            row.ConstantItem(3).Background("#000");
+                            row.ConstantItem(65).Padding(4).AlignCenter().AlignMiddle().Text("Date & Time").FontSize(11).Bold().FontColor("#000");
+                            row.RelativeItem(4).BorderLeft(1).BorderColor("#000").Padding(4).AlignCenter().AlignMiddle()
+                                .Text("What & Results").FontSize(11).Bold().FontColor("#000");
+                        });
+                    });
+
+                    page.Content().Border(1).BorderColor("#000").Column(tableCol =>
+                    {
+                        for (int i = 0; i < maxRows; i++)
+                        {
+                            var rowIdx = i;
+                            tableCol.Item().BorderBottom(1).BorderColor("#000").MinHeight(30).Row(row =>
                             {
-                                RenderHtmlBlock(sumCol, s.SummaryHtml!);
+                                // Left: Date & Time
+                                if (rowIdx < left.Count)
+                                {
+                                    var entry = left[rowIdx];
+                                    row.ConstantItem(65).Padding(4).Column(dtCol =>
+                                    {
+                                        dtCol.Item().Text(FormatDateDDMMYY(entry.SessionDate)).FontSize(11).Bold();
+                                        if (entry.LengthSeconds > 0)
+                                            dtCol.Item().Text($"S: {SecsToHMM(entry.LengthSeconds)}").FontSize(11).FontColor("#333");
+                                        if (entry.AdminSeconds > 0)
+                                            dtCol.Item().Text($"A: {SecsToHMM(entry.AdminSeconds)}").FontSize(11).FontColor("#333");
+                                    });
+
+                                    // Left: What & Results
+                                    row.RelativeItem(4).BorderLeft(1).BorderColor("#000")
+                                        .Padding(4).Column(sumCol =>
+                                    {
+                                        if (!string.IsNullOrWhiteSpace(entry.SummaryHtml))
+                                            RenderHtmlBlock(sumCol, entry.SummaryHtml!);
+                                    });
+                                }
+                                else
+                                {
+                                    row.ConstantItem(65);
+                                    row.RelativeItem(4).BorderLeft(1).BorderColor("#000");
+                                }
+
+                                // Center divider
+                                row.ConstantItem(3).Background("#000");
+
+                                // Right: Date & Time
+                                if (rowIdx < right.Count)
+                                {
+                                    var entry = right[rowIdx];
+                                    row.ConstantItem(65).Padding(4).Column(dtCol =>
+                                    {
+                                        dtCol.Item().Text(FormatDateDDMMYY(entry.SessionDate)).FontSize(11).Bold();
+                                        if (entry.LengthSeconds > 0)
+                                            dtCol.Item().Text($"S: {SecsToHMM(entry.LengthSeconds)}").FontSize(11).FontColor("#333");
+                                        if (entry.AdminSeconds > 0)
+                                            dtCol.Item().Text($"A: {SecsToHMM(entry.AdminSeconds)}").FontSize(11).FontColor("#333");
+                                    });
+
+                                    // Right: What & Results
+                                    row.RelativeItem(4).BorderLeft(1).BorderColor("#000")
+                                        .Padding(4).Column(sumCol =>
+                                    {
+                                        if (!string.IsNullOrWhiteSpace(entry.SummaryHtml))
+                                            RenderHtmlBlock(sumCol, entry.SummaryHtml!);
+                                    });
+                                }
+                                else
+                                {
+                                    row.ConstantItem(65);
+                                    row.RelativeItem(4).BorderLeft(1).BorderColor("#000");
+                                }
                             });
                         }
-
-                        col.Item().PaddingBottom(4).LineHorizontal(0.5f).LineColor("#e2e8f0");
-                    }
-                });
-            });
-        }).GeneratePdf();
+                        // Fill remaining page height with vertical lines
+                        tableCol.Item().Extend().Row(row =>
+                        {
+                            row.ConstantItem(65);
+                            row.RelativeItem(4).BorderLeft(1).BorderColor("#000");
+                            row.ConstantItem(3).Background("#000");
+                            row.ConstantItem(65);
+                            row.RelativeItem(4).BorderLeft(1).BorderColor("#000");
+                        });
+                    }); // end tableCol / page.Content
+                }); // end container.Page
+            } // end pages loop
+        });
     }
 
     public byte[] CombinePdfs(byte[] first, byte[] second)
     {
-        // Use PdfSharpCore to merge two PDFs
         using var output = new PdfSharpCore.Pdf.PdfDocument();
 
         void AddPages(byte[] src)
@@ -1727,6 +1905,13 @@ public class PdfService
         using var result = new System.IO.MemoryStream();
         output.Save(result);
         return result.ToArray();
+    }
+
+    public int CountPdfPages(byte[] pdfBytes)
+    {
+        using var ms = new System.IO.MemoryStream(pdfBytes);
+        using var doc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
+        return doc.PageCount;
     }
 
     private static void ExtractInlineStyles(string tag, ref string? color, ref string? bgColor, ref float fontSize)
@@ -1768,7 +1953,7 @@ public class PdfService
                 continue;
             }
 
-            var item = col.Item().Background("#f5f5f5").PaddingHorizontal(8).PaddingVertical(1);
+            var item = col.Item().PaddingHorizontal(4).PaddingVertical(1);
             if (isRtl)
                 item = item.AlignRight();
 

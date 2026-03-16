@@ -408,9 +408,8 @@
                                         var secs           = _grid.GetValueOrDefault((DashboardService.GKey(pc), dayIdx));
                                         var isSelected     = _selPcId == pc.PcId && _selDay == dayIdx && _selRole == pc.WorkCapacity;
                                         var isPendingApprv = _unapprovedPcIds.Contains(pc.PcId);
-                                        <td class="text-center @(isSelected && !isPendingApprv ? "table-primary fw-semibold" : "")"
-                                            style="@(isPendingApprv ? "cursor:not-allowed; opacity:.35; pointer-events:none;" : isFuture ? "cursor:default; opacity:.45;" : "cursor:pointer;")"
-                                            @onclick="() => { if (!isPendingApprv && !isFuture) TrySelectCell(pc, dayIdx); }">
+                                        <td class="text-center"
+                                            style="@(isPendingApprv ? "opacity:.35;" : isFuture ? "opacity:.45;" : "")">
                                             @if (secs > 0)
                                             {
                                                 <span>@DashboardService.Fmt(secs)</span>
@@ -532,9 +531,8 @@
                                     var isSelected = _selPcId == pc.PcId && _selDay == dayIdx && _selRole == pc.WorkCapacity;
                                     var isPendingCs = _pendingCs.Contains((DashboardService.GKey(pc), dayIdx));
                                     var isPendingApprv = _unapprovedPcIds.Contains(pc.PcId);
-                                    <td class="text-center @(isSelected && !isPendingApprv ? "table-primary fw-semibold" : "")"
-                                        style="@(isPendingApprv ? "cursor:not-allowed; opacity:.35; pointer-events:none;" : isFuture ? "cursor:default; opacity:.45;" : "cursor:pointer;") color:#ce93d8; font-size:.82em;"
-                                        @onclick="() => { if (!isPendingApprv && !isFuture) TrySelectCell(pc, dayIdx); }">
+                                    <td class="text-center"
+                                        style="@(isPendingApprv ? "opacity:.35;" : isFuture ? "opacity:.45;" : "") color:#ce93d8; font-size:.82em;">
                                         @if (secs > 0)
                                         {
                                             <span>
@@ -674,9 +672,8 @@
                                     var isSelected = _selPcId == pc.PcId && _selDay == dayIdx && _selRole == pc.WorkCapacity;
                                     var isPendingCs = _pendingCs.Contains((DashboardService.GKey(pc), dayIdx));
                                     var isPendingApprv = _unapprovedPcIds.Contains(pc.PcId);
-                                    <td class="text-center @(isSelected && !isPendingApprv ? "table-primary fw-semibold" : "")"
-                                        style="@(isPendingApprv ? "cursor:not-allowed; opacity:.35; pointer-events:none;" : isFuture ? "cursor:default; opacity:.45;" : "cursor:pointer;") color:#adb5bd; font-size:.78em;"
-                                        @onclick="() => { if (!isPendingApprv && !isFuture) TrySelectCell(pc, dayIdx); }">
+                                    <td class="text-center"
+                                        style="@(isPendingApprv ? "opacity:.35;" : isFuture ? "opacity:.45;" : "") color:#adb5bd; font-size:.78em;">
                                         @if (secs > 0)
                                         {
                                             <span>
