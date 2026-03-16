@@ -318,6 +318,17 @@
                     </button>
                 }
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
+                <button class="pcf-tool-btn" title="Zoom out (show smaller)" @onclick="ZoomOut"
+                        disabled="@(_zoomPercent <= 10)">
+                    <i class="ri-subtract-line"></i>
+                </button>
+                <span class="pcf-zoom-label" title="Zoom level — click to reset to 100% (fit to width)"
+                      @onclick="ResetZoom">@(_zoomPercent)%</span>
+                <button class="pcf-tool-btn" title="Zoom in (show larger)" @onclick="ZoomIn"
+                        disabled="@(_zoomPercent >= 300)">
+                    <i class="ri-add-line"></i>
+                </button>
+                <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
                 <button class="pcf-save-btn" title="Save — save annotations to the PDF now (also auto-saves when switching files or closing)"
                         @onclick="SaveAnnotations"
                         disabled="@(!_hasAnnotations)">
@@ -602,6 +613,13 @@
         height: 30px; box-sizing: border-box;
     }
     .pcf-tool-btn:hover { background: rgba(255,255,255,.3); }
+    .pcf-zoom-label {
+        font-size: .75rem; font-weight: 600; color: rgba(255,255,255,.9);
+        min-width: 38px; text-align: center; cursor: pointer;
+        padding: 2px 4px; border-radius: 4px; transition: background .12s;
+        user-select: none;
+    }
+    .pcf-zoom-label:hover { background: rgba(255,255,255,.15); }
     .pcf-addpage-wrap { position: relative; display: inline-block; }
     .pcf-addpage-menu {
         position: absolute; top: 100%; left: 0; z-index: 9999;
@@ -924,6 +942,7 @@
     bool _showSizes;
     bool _hasAnnotations;
     bool _saving;
+    int _zoomPercent = 100;
     List<(string paneId, string file)>? _pendingReloads;
 
     static readonly int[] _fontSizes = [10, 12, 14, 18, 24, 32, 40, 56];
@@ -1146,6 +1165,7 @@
 
         _hasAnnotations = false;
         _toolMode = "";
+        _zoomPercent = 100;
 
         // Fire-and-forget the PDF load so Blazor's event loop stays free for the next click
         var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}&_t={DateTime.UtcNow.Ticks}";
@@ -1166,13 +1186,20 @@
         if (_activeIdx == idx) return;
         _activeIdx = idx;
         var paneId = PaneIds[idx];
-        _ = JS.InvokeAsync<bool>("pcfViewer.hasAnnotations", paneId).AsTask().ContinueWith(t =>
+        _ = Task.Run(async () =>
         {
-            if (t.IsCompletedSuccessfully)
+            try
             {
-                _hasAnnotations = t.Result;
-                InvokeAsync(StateHasChanged);
+                var ha = await JS.InvokeAsync<bool>("pcfViewer.hasAnnotations", paneId);
+                var zp = await JS.InvokeAsync<int>("pcfViewer.getZoomPercent", paneId);
+                await InvokeAsync(() =>
+                {
+                    _hasAnnotations = ha;
+                    _zoomPercent = zp;
+                    StateHasChanged();
+                });
             }
+            catch { }
         });
     }
 
@@ -1235,6 +1262,21 @@
     public async Task OnCtrlZ()
     {
         await Undo();
+    }
+
+    async Task ZoomIn()
+    {
+        _zoomPercent = await JS.InvokeAsync<int>("pcfViewer.zoomIn", PaneIds[_activeIdx]);
+    }
+
+    async Task ZoomOut()
+    {
+        _zoomPercent = await JS.InvokeAsync<int>("pcfViewer.zoomOut", PaneIds[_activeIdx]);
+    }
+
+    async Task ResetZoom()
+    {
+        _zoomPercent = await JS.InvokeAsync<int>("pcfViewer._setZoom", PaneIds[_activeIdx], 1.0);
     }
 
     bool _showAddPageMenu;

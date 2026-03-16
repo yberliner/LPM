@@ -10,6 +10,8 @@ window.pcfViewer = {
     dotNetRef: null,
     _pcId: 0,
 
+    _zoomLevels: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.5, 3.0],
+
     _initPane(paneId) {
         if (!this.panes[paneId]) {
             this.panes[paneId] = {
@@ -17,7 +19,9 @@ window.pcfViewer = {
                 pages: [],
                 annotations: [],
                 currentStroke: null,
-                filePath: null
+                filePath: null,
+                baseScale: 1,
+                zoomLevel: 1.0
             };
         }
         return this.panes[paneId];
@@ -32,6 +36,7 @@ window.pcfViewer = {
     async loadPdf(url, paneId) {
         paneId = paneId || this.activePane;
         const pane = this._initPane(paneId);
+        pane.zoomLevel = 1.0; // reset zoom on new PDF
 
         // Extract filePath from the URL for auto-save
         const u = new URL(url, location.origin);
@@ -59,15 +64,24 @@ window.pcfViewer = {
             return;
         }
 
-        // Calculate scale to fit viewer width (minus padding)
-        const viewerWidth = viewer.clientWidth - 40; // 20px padding each side
-        const firstPage = await pane.pdfDoc.getPage(1);
-        const defaultVp = firstPage.getViewport({ scale: 1 });
-        const fitScale = Math.min(viewerWidth / defaultVp.width, 3); // cap at 3x
-        const scale = Math.max(fitScale, 0.5); // min 0.5x
+        // Scan ALL pages to find the widest one for scale calculation
+        const allPages = [];
+        let maxNaturalWidth = 0;
+        for (let i = 1; i <= pane.pdfDoc.numPages; i++) {
+            const page = await pane.pdfDoc.getPage(i);
+            const naturalVp = page.getViewport({ scale: 1 });
+            if (naturalVp.width > maxNaturalWidth) maxNaturalWidth = naturalVp.width;
+            allPages.push(page);
+        }
 
-        for (let i = 0; i < pane.pdfDoc.numPages; i++) {
-            const page = i === 0 ? firstPage : await pane.pdfDoc.getPage(i + 1);
+        // Calculate scale to fit the WIDEST page within viewer width
+        const viewerWidth = viewer.clientWidth - 40; // 20px padding each side
+        const fitScale = Math.min(viewerWidth / maxNaturalWidth, 3); // cap at 3x
+        const scale = Math.max(fitScale, 0.5); // min 0.5x
+        pane.baseScale = scale;
+
+        for (let i = 0; i < allPages.length; i++) {
+            const page = allPages[i];
             const vp = page.getViewport({ scale });
 
             const wrapper = document.createElement('div');
@@ -102,6 +116,16 @@ window.pcfViewer = {
         const self = this;
         let drawing = false;
 
+        // Helper: get pointer position in canvas coordinates, accounting for CSS zoom
+        function canvasXY(e) {
+            const r = overlay.getBoundingClientRect();
+            const zoom = (self.panes[paneId] && self.panes[paneId].zoomLevel) || 1;
+            return {
+                x: (e.clientX - r.left) / zoom,
+                y: (e.clientY - r.top) / zoom
+            };
+        }
+
         // Clicking anywhere in a pane makes it active
         overlay.addEventListener('pointerdown', (e) => {
             self.activePane = paneId;
@@ -113,14 +137,10 @@ window.pcfViewer = {
             if (self.toolMode === 'draw') {
                 drawing = true;
                 overlay.setPointerCapture(e.pointerId);
-                const r = overlay.getBoundingClientRect();
-                const x = e.clientX - r.left;
-                const y = e.clientY - r.top;
+                const { x, y } = canvasXY(e);
                 pane.currentStroke = { pageIdx, points: [{ x, y }], color: self.drawColor, width: self.drawWidth };
             } else if (self.toolMode === 'text') {
-                const r = overlay.getBoundingClientRect();
-                const x = e.clientX - r.left;
-                const y = e.clientY - r.top;
+                const { x, y } = canvasXY(e);
                 self._showTextInput(overlay.parentElement, pageIdx, x, y, paneId);
             }
         });
@@ -128,9 +148,7 @@ window.pcfViewer = {
         overlay.addEventListener('dblclick', (e) => {
             const pane = self.panes[paneId];
             if (!pane || self.textInputEl) return;
-            const r = overlay.getBoundingClientRect();
-            const x = e.clientX - r.left;
-            const y = e.clientY - r.top;
+            const { x, y } = canvasXY(e);
             const hit = self._hitTestText(pane, pageIdx, x, y);
             if (hit) {
                 e.preventDefault();
@@ -141,9 +159,7 @@ window.pcfViewer = {
         overlay.addEventListener('pointermove', (e) => {
             const pane = self.panes[paneId];
             if (!drawing || !pane || !pane.currentStroke) return;
-            const r = overlay.getBoundingClientRect();
-            const x = e.clientX - r.left;
-            const y = e.clientY - r.top;
+            const { x, y } = canvasXY(e);
             pane.currentStroke.points.push({ x, y });
             self._redrawOverlay(pageIdx, paneId);
         });
@@ -437,6 +453,11 @@ window.pcfViewer = {
         overlay.style.height = h + 'px';
         wrapper.appendChild(overlay);
 
+        // Apply current zoom level
+        if (pane.zoomLevel && pane.zoomLevel !== 1) {
+            wrapper.style.zoom = pane.zoomLevel;
+        }
+
         // Insert into DOM at the right position
         if (insertIdx < pane.pages.length) {
             const refWrapper = pane.pages[insertIdx].canvas.parentElement;
@@ -491,6 +512,49 @@ window.pcfViewer = {
             pages.push({ width: w, height: h, dataUrl });
         }
         return JSON.stringify(pages);
+    },
+
+    // ── Zoom ──
+
+    zoomIn(paneId) {
+        paneId = paneId || this.activePane;
+        const pane = this.panes[paneId];
+        if (!pane || !pane.pdfDoc) return 100;
+        const cur = pane.zoomLevel;
+        let next = cur;
+        for (const z of this._zoomLevels) {
+            if (z > cur + 0.01) { next = z; break; }
+        }
+        return this._setZoom(paneId, next);
+    },
+
+    zoomOut(paneId) {
+        paneId = paneId || this.activePane;
+        const pane = this.panes[paneId];
+        if (!pane || !pane.pdfDoc) return 100;
+        const cur = pane.zoomLevel;
+        let prev = cur;
+        for (let i = this._zoomLevels.length - 1; i >= 0; i--) {
+            if (this._zoomLevels[i] < cur - 0.01) { prev = this._zoomLevels[i]; break; }
+        }
+        return this._setZoom(paneId, prev);
+    },
+
+    _setZoom(paneId, level) {
+        const pane = this.panes[paneId];
+        if (!pane) return 100;
+        pane.zoomLevel = level;
+        for (const pg of pane.pages) {
+            const wrapper = pg.canvas.parentElement;
+            if (wrapper) wrapper.style.zoom = level;
+        }
+        return Math.round(level * 100);
+    },
+
+    getZoomPercent(paneId) {
+        paneId = paneId || this.activePane;
+        const pane = this.panes[paneId];
+        return pane ? Math.round((pane.zoomLevel || 1) * 100) : 100;
     },
 
     // ── Extract pages mode ──

@@ -65,18 +65,6 @@
     <Folder Include="wwwroot\images\" />
   </ItemGroup>
 
-
-  
-  
-  <ItemGroup>
-    <Content Update="emb_versions.json" ExcludeFromPublish="true">
-      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-    </Content>
-    <Content Update="Pages\absolute_defaults.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-
   <!-- <ItemGroup>
   <Content Update="wwwroot\**\*">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
