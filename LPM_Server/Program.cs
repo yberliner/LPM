@@ -244,6 +244,7 @@ app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
 
     var pcName = dashSvc.GetPersonName(pcId) ?? $"PC {pcId}";
     var summaries = dashSvc.GetSessionSummariesForPc(pcId);
+    Console.WriteLine($"[FolderSummary] PC {pcId} ({pcName}): {summaries.Count} summaries found");
     if (summaries.Count == 0)
         return Results.File(originalBytes, "application/pdf");
 
