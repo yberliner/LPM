@@ -1358,7 +1358,11 @@
 
             // Create session record
             var sessionId = DashSvc.CreateImportedSession(_importPcId, _msgUserId.Value, sessionName,
-                sessionLenSec, adminSec, summaryHtml);
+                sessionLenSec, adminSec);
+
+            // Save folder summary to separate table
+            if (!string.IsNullOrWhiteSpace(summaryHtml))
+                DashSvc.AddFolderSummary(sessionId, _importPcId, _msgUserId.Value, summaryHtml);
 
             // Upload session file (from cached bytes)
             var savedSessionFileName = FolderSvc.SaveUploadedFile(_importPcId, _importSessionFileName, _importSessionBytes)!;

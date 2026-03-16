@@ -147,7 +147,7 @@ public class DashboardService
 
     /// <summary>Insert a new session and return the SessionId.</summary>
     public int CreateImportedSession(int pcId, int auditorId, string sessionName,
-        int lengthSeconds = 0, int adminSeconds = 0, string? summaryHtml = null)
+        int lengthSeconds = 0, int adminSeconds = 0)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -168,8 +168,8 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO sess_sessions
-                (PcId, AuditorId, SessionDate, SequenceInDay, LengthSeconds, AdminSeconds, Name, SessionSummaryHtml, CreatedByUserId, CreatedAt)
-            VALUES (@pc, @aud, @dt, @seq, @len, @admin, @name, @summary, @creator, datetime('now', '+2 hours'));
+                (PcId, AuditorId, SessionDate, SequenceInDay, LengthSeconds, AdminSeconds, Name, CreatedByUserId, CreatedAt)
+            VALUES (@pc, @aud, @dt, @seq, @len, @admin, @name, @creator, datetime('now', '+2 hours'));
             SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("@pc", pcId);
         cmd.Parameters.AddWithValue("@aud", auditorId);
@@ -178,7 +178,6 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@len", lengthSeconds);
         cmd.Parameters.AddWithValue("@admin", adminSeconds);
         cmd.Parameters.AddWithValue("@name", sessionName);
-        cmd.Parameters.AddWithValue("@summary", (object?)summaryHtml ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@creator", auditorId);
         var sessionId = Convert.ToInt32(cmd.ExecuteScalar());
         Console.WriteLine($"[DashboardService] Created imported session for PC {pcId}, name: '{sessionName}', length: {lengthSeconds}s, admin: {adminSeconds}s");
@@ -861,7 +860,7 @@ public class DashboardService
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 SELECT s.SessionId, s.LengthSeconds, s.AdminSeconds,
-                       s.IsFreeSession, s.SessionSummaryHtml, s.CreatedAt,
+                       s.IsFreeSession, s.CreatedAt,
                        p.FirstName, s.VerifiedStatus, s.Name
                 FROM sess_sessions s
                 JOIN core_persons p ON p.PersonId = s.AuditorId
@@ -876,11 +875,11 @@ public class DashboardService
                 sessions.Add(new SessionRow(
                     r.GetInt32(0), r.GetInt32(1), r.GetInt32(2),
                     r.GetInt32(3) == 1,
-                    r.IsDBNull(4) ? null : r.GetString(4),
+                    null,
+                    r.IsDBNull(4) ? ""   : r.GetString(4),
                     r.IsDBNull(5) ? ""   : r.GetString(5),
-                    r.IsDBNull(6) ? ""   : r.GetString(6),
-                    r.IsDBNull(7) ? "Pending" : r.GetString(7),
-                    r.IsDBNull(8) ? null : r.GetString(8)));
+                    r.IsDBNull(6) ? "Pending" : r.GetString(6),
+                    r.IsDBNull(7) ? null : r.GetString(7)));
             }
         }
         else if (role == "Miscellaneous")
@@ -912,7 +911,7 @@ public class DashboardService
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 SELECT SessionId, LengthSeconds, AdminSeconds,
-                       IsFreeSession, SessionSummaryHtml, CreatedAt,
+                       IsFreeSession, CreatedAt,
                        VerifiedStatus, Name
                 FROM sess_sessions
                 WHERE AuditorId = @uid AND PcId = AuditorId AND SessionDate = @date
@@ -925,11 +924,11 @@ public class DashboardService
                 sessions.Add(new SessionRow(
                     r.GetInt32(0), r.GetInt32(1), r.GetInt32(2),
                     r.GetInt32(3) == 1,
-                    r.IsDBNull(4) ? null : r.GetString(4),
-                    r.IsDBNull(5) ? ""   : r.GetString(5),
+                    null,
+                    r.IsDBNull(4) ? ""   : r.GetString(4),
                     "",
-                    r.IsDBNull(6) ? "Pending" : r.GetString(6),
-                    r.IsDBNull(7) ? null : r.GetString(7)));
+                    r.IsDBNull(5) ? "Pending" : r.GetString(5),
+                    r.IsDBNull(6) ? null : r.GetString(6)));
             }
         }
         else  // CS role
@@ -940,7 +939,7 @@ public class DashboardService
             using var sessCmd = conn.CreateCommand();
             sessCmd.CommandText = $@"
                 SELECT s.SessionId, s.LengthSeconds, s.AdminSeconds,
-                       s.IsFreeSession, s.SessionSummaryHtml, s.CreatedAt,
+                       s.IsFreeSession, s.CreatedAt,
                        p.FirstName, s.VerifiedStatus, s.Name
                 FROM sess_sessions s
                 JOIN core_persons p ON p.PersonId = s.AuditorId
@@ -954,11 +953,11 @@ public class DashboardService
                 sessions.Add(new SessionRow(
                     rs.GetInt32(0), rs.GetInt32(1), rs.GetInt32(2),
                     rs.GetInt32(3) == 1,
-                    rs.IsDBNull(4) ? null : rs.GetString(4),
+                    null,
+                    rs.IsDBNull(4) ? ""   : rs.GetString(4),
                     rs.IsDBNull(5) ? ""   : rs.GetString(5),
-                    rs.IsDBNull(6) ? ""   : rs.GetString(6),
-                    rs.IsDBNull(7) ? "Pending" : rs.GetString(7),
-                    rs.IsDBNull(8) ? null : rs.GetString(8)));
+                    rs.IsDBNull(6) ? "Pending" : rs.GetString(6),
+                    rs.IsDBNull(7) ? null : rs.GetString(7)));
             }
 
             // All reviews for those sessions (by any CS worker — UNIQUE per session anyway)
@@ -1027,12 +1026,12 @@ public class DashboardService
               (PcId, AuditorId, SessionDate, SequenceInDay,
                LengthSeconds, AdminSeconds, IsFreeSession,
                ChargeSeconds, ChargedRateCentsPerHour,
-               SessionSummaryHtml, CreatedAt)
+               CreatedAt)
             VALUES
               (@pcId, @audId, @date, @seq,
                @len, @adm, @free,
                0, 0,
-               @sum, datetime('now', '+2 hours'))";
+               datetime('now', '+2 hours'))";
         cmd.Parameters.AddWithValue("@pcId",  pcId);
         cmd.Parameters.AddWithValue("@audId", auditorId);
         cmd.Parameters.AddWithValue("@date",  dateStr);
@@ -1040,7 +1039,6 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@len",   lengthSec);
         cmd.Parameters.AddWithValue("@adm",   adminSec);
         cmd.Parameters.AddWithValue("@free",  isFree ? 1 : 0);
-        cmd.Parameters.AddWithValue("@sum",   (object?)summary ?? DBNull.Value);
         cmd.ExecuteNonQuery();
 
         using var rowIdCmd = conn.CreateCommand();
@@ -1126,12 +1124,11 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             UPDATE sess_sessions
-            SET LengthSeconds=@len, AdminSeconds=@adm, IsFreeSession=@free, SessionSummaryHtml=@sum
+            SET LengthSeconds=@len, AdminSeconds=@adm, IsFreeSession=@free
             WHERE SessionId=@id";
         cmd.Parameters.AddWithValue("@len",  lengthSec);
         cmd.Parameters.AddWithValue("@adm",  adminSec);
         cmd.Parameters.AddWithValue("@free", isFree ? 1 : 0);
-        cmd.Parameters.AddWithValue("@sum",  (object?)summary ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@id",   sessionId);
         cmd.ExecuteNonQuery();
         Console.WriteLine($"[DashboardService] Updated session {sessionId}");
@@ -1488,12 +1485,12 @@ public class DashboardService
               (PcId, AuditorId, SessionDate, SequenceInDay,
                LengthSeconds, AdminSeconds, IsFreeSession,
                ChargeSeconds, ChargedRateCentsPerHour,
-               SessionSummaryHtml, CreatedAt)
+               CreatedAt)
             VALUES
               (@pcId, @audId, @date, @seq,
                @len, @adm, @free,
                0, 0,
-               @sum, datetime('now', '+2 hours'))";
+               datetime('now', '+2 hours'))";
         cmd.Parameters.AddWithValue("@pcId",  auditorId);  // PcId = AuditorId for solo
         cmd.Parameters.AddWithValue("@audId", auditorId);
         cmd.Parameters.AddWithValue("@date",  dateStr);
@@ -1501,7 +1498,6 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@len",   lengthSec);
         cmd.Parameters.AddWithValue("@adm",   adminSec);
         cmd.Parameters.AddWithValue("@free",  isFree ? 1 : 0);
-        cmd.Parameters.AddWithValue("@sum",   (object?)summary ?? DBNull.Value);
         cmd.ExecuteNonQuery();
 
         using var rowIdCmd = conn.CreateCommand();
@@ -1880,16 +1876,32 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT COALESCE(Name,''), SessionDate, SessionSummaryHtml
-            FROM sess_sessions
-            WHERE PcId = @pcId AND SessionSummaryHtml IS NOT NULL AND SessionSummaryHtml != ''
-            ORDER BY SessionDate DESC, SequenceInDay DESC";
+            SELECT COALESCE(s.Name, ''), COALESCE(s.SessionDate, fs.CreatedAt), fs.SummaryHtml
+            FROM sess_folder_summary fs
+            LEFT JOIN sess_sessions s ON s.SessionId = fs.SessionId
+            WHERE fs.PcId = @pcId AND fs.SummaryHtml IS NOT NULL AND fs.SummaryHtml != ''
+            ORDER BY fs.CreatedAt DESC";
         cmd.Parameters.AddWithValue("@pcId", pcId);
         var list = new List<SessionSummaryInfo>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
             list.Add(new SessionSummaryInfo(r.GetString(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2)));
         return list;
+    }
+
+    public void AddFolderSummary(int? sessionId, int pcId, int auditorId, string summaryHtml)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO sess_folder_summary (SessionId, PcId, AuditorId, SummaryHtml, CreatedAt)
+            VALUES (@sid, @pcId, @audId, @html, datetime('now', '+2 hours'))";
+        cmd.Parameters.AddWithValue("@sid", (object?)sessionId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        cmd.Parameters.AddWithValue("@audId", auditorId);
+        cmd.Parameters.AddWithValue("@html", summaryHtml);
+        cmd.ExecuteNonQuery();
     }
 
     public string? GetSessionName(int sessionId)
