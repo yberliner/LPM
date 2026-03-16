@@ -1167,9 +1167,11 @@
         _toolMode = "";
         _zoomPercent = 100;
 
-        // Fire-and-forget the PDF load so Blazor's event loop stays free for the next click
-        var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}&_t={DateTime.UtcNow.Ticks}";
-        _ = LoadPdfAsync(gen, url, paneId);
+        // Fire-and-forget the PDF load — use special endpoint for folder summary files
+        var apiPath = IsFolderSummaryFile(fileName)
+            ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}&_t={DateTime.UtcNow.Ticks}"
+            : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}&_t={DateTime.UtcNow.Ticks}";
+        _ = LoadPdfAsync(gen, apiPath, paneId);
     }
 
     async Task LoadPdfAsync(int gen, string url, string paneId)
@@ -1612,7 +1614,7 @@
 
         var lower = nameNoExt.ToLowerInvariant().Replace("_", " ").Replace("-", " ").Replace(".", " ");
 
-        if (lower.Contains("folder summary") || lower.Contains("summary")) return "#f59e0b"; // amber
+        if (IsFolderSummaryName(lower)) return "#f59e0b"; // amber
         if (lower.Contains("process")) return "#3b82f6"; // blue
         if (lower.Contains("case progress") || lower.Contains("progress sheet") || lower.Contains("cps") || lower.Contains("case data")) return "#a855f7"; // purple
         if (lower.Contains("program") || lower.Contains("prog")) return "#22c55e"; // green
@@ -1624,6 +1626,20 @@
         if (lower.Contains("invoice")) return "#64748b"; // slate
 
         return "";
+    }
+
+    static bool IsFolderSummaryName(string lowerName) =>
+        lowerName.Contains("folder summary") || lowerName.Contains("summary");
+
+    static bool IsFolderSummaryFile(string fileName)
+    {
+        var nameNoExt = Path.GetFileNameWithoutExtension(fileName);
+        if (nameNoExt.Length >= 6 && nameNoExt.Substring(0, 6).All(char.IsDigit) && nameNoExt.Length > 6 && !char.IsDigit(nameNoExt[6]))
+            nameNoExt = nameNoExt.Substring(6).TrimStart(' ', '_', '-');
+        if (nameNoExt.Length >= 9 && nameNoExt[2] == '-' && nameNoExt[5] == '-' && nameNoExt[8] == '_')
+            nameNoExt = nameNoExt.Substring(9);
+        var lower = nameNoExt.ToLowerInvariant().Replace("_", " ").Replace("-", " ").Replace(".", " ");
+        return IsFolderSummaryName(lower);
     }
 
     static string HexToRgb(string hex)

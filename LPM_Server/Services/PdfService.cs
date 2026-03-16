@@ -1656,6 +1656,79 @@ public class PdfService
         }).GeneratePdf();
     }
 
+    // ── Session Summaries PDF (prepended to Folder Summary) ──
+
+    public byte[] GenerateSessionSummariesPdf(string pcName, List<DashboardService.SessionSummaryInfo> summaries)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+
+        return Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(30);
+                page.DefaultTextStyle(x => x.FontSize(10).FontColor("#1a1a1a"));
+
+                page.Header().AlignCenter().PaddingBottom(10).Text(t =>
+                {
+                    t.Span("Session Summaries — ").FontSize(14).Bold();
+                    t.Span(pcName).FontSize(14).Bold().FontColor("#2563eb");
+                });
+
+                page.Content().Column(col =>
+                {
+                    foreach (var s in summaries)
+                    {
+                        // Session header
+                        col.Item().PaddingTop(8).Background("#f0f4ff").Border(0.5f).BorderColor("#c7d2fe")
+                            .Padding(8).Row(row =>
+                        {
+                            row.RelativeItem().Text(t =>
+                            {
+                                t.Span(s.Name).FontSize(11).Bold().FontColor("#1e40af");
+                                t.Span("  ").FontSize(8);
+                                t.Span(s.SessionDate).FontSize(9).FontColor("#64748b");
+                            });
+                        });
+
+                        // Summary content
+                        if (!string.IsNullOrWhiteSpace(s.SummaryHtml))
+                        {
+                            col.Item().PaddingHorizontal(4).PaddingVertical(4).Column(sumCol =>
+                            {
+                                RenderHtmlBlock(sumCol, s.SummaryHtml!);
+                            });
+                        }
+
+                        col.Item().PaddingBottom(4).LineHorizontal(0.5f).LineColor("#e2e8f0");
+                    }
+                });
+            });
+        }).GeneratePdf();
+    }
+
+    public byte[] CombinePdfs(byte[] first, byte[] second)
+    {
+        // Use PdfSharpCore to merge two PDFs
+        using var output = new PdfSharpCore.Pdf.PdfDocument();
+
+        void AddPages(byte[] src)
+        {
+            using var ms = new System.IO.MemoryStream(src);
+            using var input = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
+            for (int i = 0; i < input.PageCount; i++)
+                output.AddPage(input.Pages[i]);
+        }
+
+        AddPages(first);
+        AddPages(second);
+
+        using var result = new System.IO.MemoryStream();
+        output.Save(result);
+        return result.ToArray();
+    }
+
     private static void ExtractInlineStyles(string tag, ref string? color, ref string? bgColor, ref float fontSize)
     {
         var styleMatch = Regex.Match(tag, @"style\s*=\s*""([^""]*)""");

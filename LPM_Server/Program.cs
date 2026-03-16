@@ -234,6 +234,24 @@ app.MapGet("/api/pc-file", (int pcId, string path, LPM.Services.FolderService sv
     return Results.File(bytes, "application/pdf");
 });
 
+app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
+    LPM.Services.FolderService folderSvc,
+    LPM.Services.DashboardService dashSvc,
+    PdfService pdfSvc) =>
+{
+    var originalBytes = folderSvc.ReadFileBytes(pcId, path);
+    if (originalBytes == null) return Results.NotFound();
+
+    var pcName = dashSvc.GetPersonName(pcId) ?? $"PC {pcId}";
+    var summaries = dashSvc.GetSessionSummariesForPc(pcId);
+    if (summaries.Count == 0)
+        return Results.File(originalBytes, "application/pdf");
+
+    var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries);
+    var combined = pdfSvc.CombinePdfs(summaryPdf, originalBytes);
+    return Results.File(combined, "application/pdf");
+});
+
 app.MapPost("/api/pc-file-save", async (HttpContext ctx, LPM.Services.FolderService svc) =>
 {
     if (!int.TryParse(ctx.Request.Query["pcId"], out var pcId)) return Results.BadRequest();

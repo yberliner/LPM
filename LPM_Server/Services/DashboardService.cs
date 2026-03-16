@@ -1872,6 +1872,26 @@ public class DashboardService
         return list;
     }
 
+    public record SessionSummaryInfo(string Name, string SessionDate, string? SummaryHtml);
+
+    public List<SessionSummaryInfo> GetSessionSummariesForPc(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT COALESCE(Name,''), SessionDate, SessionSummaryHtml
+            FROM sess_sessions
+            WHERE PcId = @pcId AND SessionSummaryHtml IS NOT NULL AND SessionSummaryHtml != ''
+            ORDER BY SessionDate DESC, SequenceInDay DESC";
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        var list = new List<SessionSummaryInfo>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new SessionSummaryInfo(r.GetString(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2)));
+        return list;
+    }
+
     public string? GetSessionName(int sessionId)
     {
         using var conn = new SqliteConnection(_connectionString);
