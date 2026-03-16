@@ -323,6 +323,11 @@
                         disabled="@(!_hasAnnotations)">
                     <i class="ri-save-line me-1"></i>Save
                 </button>
+                <button class="pcf-tool-btn" title="Download — download the currently selected file"
+                        @onclick="DownloadFile"
+                        disabled="@(string.IsNullOrEmpty(_panes[_activeIdx].File))">
+                    <i class="ri-download-2-line"></i>
+                </button>
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
                 @* Pane count toggle: cycles 1→2→3→1 *@
                 <button class="pcf-tool-btn @(_paneCount > 1 ? "pcf-tool-active" : "")"
@@ -1453,6 +1458,19 @@
             _saving = false;
             StateHasChanged();
         }
+    }
+
+    async Task DownloadFile()
+    {
+        var file = _panes[_activeIdx].File;
+        if (string.IsNullOrEmpty(file)) return;
+
+        var fileName = _panes[_activeIdx].FileName ?? System.IO.Path.GetFileName(file);
+        Console.WriteLine($"[PcFolder] Downloaded file '{fileName}' by '{_userName}' — for PC {PcId}");
+
+        var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}&_t={DateTime.UtcNow.Ticks}";
+        var js = "var a=document.createElement('a');a.href='" + url + "';a.download='" + fileName.Replace("'", "\\'") + "';document.body.appendChild(a);a.click();document.body.removeChild(a);";
+        await JS.InvokeVoidAsync("eval", js);
     }
 
     void OnTimerHoursChanged(ChangeEventArgs e)
