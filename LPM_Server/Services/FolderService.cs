@@ -930,6 +930,102 @@ public class FolderService
         return true;
     }
 
+    // ── TAA Action Excel ──────────────────────────────
+
+    private const string TaaFileName = "TAA Action.xlsx";
+    private static readonly string TaaTemplatePath = Path.Combine(Directory.GetCurrentDirectory(), "Templates", "TAA_Action_Template.xlsx");
+
+    /// <summary>
+    /// Ensures the TAA Action.xlsx exists in the PC's Front_Cover folder.
+    /// If not, copies from template and sets the PC name in B3.
+    /// Returns the full path to the file, or null on failure.
+    /// </summary>
+    public string? EnsureTaaFile(int pcId)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return null;
+        var frontCover = Path.Combine(folder, "Front_Cover");
+        Directory.CreateDirectory(frontCover);
+        var taaPath = Path.Combine(frontCover, TaaFileName);
+
+        if (!File.Exists(taaPath))
+        {
+            if (!File.Exists(TaaTemplatePath))
+            {
+                Console.WriteLine($"[FolderService] TAA template not found at {TaaTemplatePath}");
+                return null;
+            }
+            File.Copy(TaaTemplatePath, taaPath);
+
+            // Set PC name in B3
+            var pcName = GetPcName(pcId) ?? $"PC {pcId}";
+            try
+            {
+                using var wb = new ClosedXML.Excel.XLWorkbook(taaPath);
+                var ws = wb.Worksheets.First();
+                ws.Cell("B3").Value = pcName;
+                wb.Save();
+                Console.WriteLine($"[FolderService] Created TAA Action file for PC {pcId} ({pcName})");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[FolderService] Error setting PC name in TAA file: {ex.Message}");
+            }
+        }
+
+        return taaPath;
+    }
+
+    /// <summary>
+    /// Appends a row to the TAA Action.xlsx for the given PC.
+    /// date: session date string (dd.M.yy), minutes: session length in minutes (no admin), totalTa: Total TA value.
+    /// </summary>
+    public void AppendTaaRow(int pcId, string dateStr, int minutes, string totalTa)
+    {
+        var taaPath = EnsureTaaFile(pcId);
+        if (taaPath == null) return;
+
+        try
+        {
+            using var wb = new ClosedXML.Excel.XLWorkbook(taaPath);
+            var ws = wb.Worksheets.First();
+
+            // Find first empty row starting from row 7
+            int newRow = 7;
+            while (ws.Cell(newRow, 1).GetString() != "") newRow++;
+
+            // A = Date
+            ws.Cell(newRow, 1).Value = dateStr;
+
+            // B = Minutes in session — 0 or negative treated as 0
+            ws.Cell(newRow, 2).Value = minutes > 0 ? minutes : 0;
+
+            // C = TAA (Total TA) — blank treated as 0
+            if (string.IsNullOrWhiteSpace(totalTa))
+                ws.Cell(newRow, 3).Value = 0;
+            else if (double.TryParse(totalTa, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var taVal))
+                ws.Cell(newRow, 3).Value = taVal;
+            else
+                ws.Cell(newRow, 3).Value = 0;
+
+            // D = TAA/Hour formula: =IFERROR(C{n}*60/B{n},0)
+            ws.Cell(newRow, 4).FormulaA1 = $"IFERROR(C{newRow}*60/B{newRow},0)";
+
+            // E = Time on Grade formula: =TEXT(SUM($B$7:B{n})/1440, "[h]:mm")
+            ws.Cell(newRow, 5).FormulaA1 = $"TEXT(SUM($B$7:B{newRow})/1440, \"[h]:mm\")";
+
+            // F = Remark (empty)
+
+            wb.Save();
+            Console.WriteLine($"[FolderService] Appended TAA row for PC {pcId}: date={dateStr}, min={minutes}, ta={totalTa} (row {newRow})");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FolderService] Error appending TAA row for PC {pcId}: {ex.Message}");
+        }
+    }
+
     private static string SanitizeName(string name)
     {
         var invalid = Path.GetInvalidFileNameChars();

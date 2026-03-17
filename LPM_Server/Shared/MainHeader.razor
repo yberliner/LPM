@@ -1677,6 +1677,14 @@
                 summaryHtml);
             FolderSvc.SaveAttachment(_importPcId, savedSessionFileName, "arf.pdf", arfPdfBytes);
 
+            // Append row to TAA Action.xlsx
+            var sessionMinutes = sessionLenSec / 60;
+            var taaDate = !string.IsNullOrEmpty(_arfDate) ? _arfDate : DateTime.Today.ToString("d.M.yy");
+            // Convert dd/MM/yyyy to d.M.yy format for the Excel
+            if (DateTime.TryParseExact(taaDate, "dd/MM/yyyy", null, System.Globalization.DateTimeStyles.None, out var parsedDate))
+                taaDate = parsedDate.ToString("d.M.yy");
+            FolderSvc.AppendTaaRow(_importPcId, taaDate, sessionMinutes, _arfTotalTa);
+
             var totalFiles = 1 + _importAttachmentBytes.Count + 1; // +1 for ARF PDF
             Console.WriteLine($"[MainHeader] Imported session '{_importSessionFileName}' for PC {_importPcId} with {_importAttachmentBytes.Count} attachments by '{_logUsername}'");
             _importSuccess = $"Session imported ({totalFiles} file(s) uploaded)";
