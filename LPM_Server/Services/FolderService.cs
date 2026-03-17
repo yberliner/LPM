@@ -845,6 +845,44 @@ public class FolderService
         return true;
     }
 
+    public byte[] CreatePinkPdf()
+    {
+        using var ms = new MemoryStream();
+        var doc = new PdfSharpCore.Pdf.PdfDocument();
+        var page = doc.AddPage();
+        var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page);
+        gfx.DrawRectangle(new PdfSharpCore.Drawing.XSolidBrush(
+            PdfSharpCore.Drawing.XColor.FromArgb(252, 231, 243)), // #fce7f3 pink
+            0, 0, page.Width, page.Height);
+        gfx.Dispose();
+        doc.Save(ms);
+        return ms.ToArray();
+    }
+
+    public bool RenameAttachment(int pcId, string relativePath, string newSuffix)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return false;
+        var fullPath = SafeResolvePath(folder, relativePath);
+        if (fullPath == null || !File.Exists(fullPath)) return false;
+        var fileName = Path.GetFileName(fullPath);
+        // Find the _att_ prefix
+        var attIdx = fileName.IndexOf("_att_", StringComparison.OrdinalIgnoreCase);
+        if (attIdx < 0) return false; // not an attachment
+        var prefix = fileName[..(attIdx + 5)]; // includes "_att_"
+        var sanitized = SanitizeName(newSuffix);
+        if (string.IsNullOrWhiteSpace(sanitized)) return false;
+        if (!sanitized.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            sanitized += ".pdf";
+        var newName = prefix + sanitized;
+        var dir = Path.GetDirectoryName(fullPath)!;
+        var destPath = Path.Combine(dir, newName);
+        if (File.Exists(destPath)) return false;
+        File.Move(fullPath, destPath);
+        Console.WriteLine($"[FolderService] Renamed attachment '{fileName}' → '{newName}' for PC {pcId}");
+        return true;
+    }
+
     public byte[] CreateEmptyPdf()
     {
         using var ms = new System.IO.MemoryStream();

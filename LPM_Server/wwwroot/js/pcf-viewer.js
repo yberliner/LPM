@@ -692,40 +692,44 @@ window.pcfViewer = {
     async setPageBackground(paneId, pageIdx, color) {
         paneId = paneId || this.activePane;
         const pane = this.panes[paneId];
-        if (!pane || !pane.pdfDoc) return;
+        if (!pane) return;
         const pg = pane.pages[pageIdx];
         if (!pg) return;
 
         const w = pg.canvas.width;
         const h = pg.canvas.height;
-
-        // Render PDF to a temp canvas first
-        const tmpCanvas = document.createElement('canvas');
-        tmpCanvas.width = w;
-        tmpCanvas.height = h;
-        const tmpCtx = tmpCanvas.getContext('2d');
-        const page = await pane.pdfDoc.getPage(pageIdx + 1);
-        await page.render({ canvasContext: tmpCtx, viewport: pg.vp }).promise;
-
-        // Now draw background + PDF composite onto the real canvas
         const ctx = pg.canvas.getContext('2d');
-        ctx.clearRect(0, 0, w, h);
 
-        // Fill background color first
-        if (color && color !== '' && color !== '#ffffff' && color !== '#FFFFFF') {
-            ctx.fillStyle = color;
+        // Check if this page exists in the original PDF (blank pages added later won't)
+        const isOriginalPage = pane.pdfDoc && (pageIdx + 1) <= pane.pdfDoc.numPages;
+
+        if (isOriginalPage) {
+            // Render PDF to a temp canvas first
+            const tmpCanvas = document.createElement('canvas');
+            tmpCanvas.width = w;
+            tmpCanvas.height = h;
+            const tmpCtx = tmpCanvas.getContext('2d');
+            const page = await pane.pdfDoc.getPage(pageIdx + 1);
+            await page.render({ canvasContext: tmpCtx, viewport: pg.vp }).promise;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // Fill background color
+            ctx.fillStyle = (color && color !== '' && color !== '#ffffff' && color !== '#FFFFFF') ? color : '#ffffff';
             ctx.fillRect(0, 0, w, h);
+
+            // Draw PDF on top — use multiply blend so white areas take the background color
+            if (color && color !== '' && color !== '#ffffff' && color !== '#FFFFFF') {
+                ctx.globalCompositeOperation = 'multiply';
+            }
+            ctx.drawImage(tmpCanvas, 0, 0);
+            ctx.globalCompositeOperation = 'source-over';
         } else {
-            ctx.fillStyle = '#ffffff';
+            // Blank/added page — just fill with the color directly
+            ctx.clearRect(0, 0, w, h);
+            ctx.fillStyle = (color && color !== '' && color !== '#ffffff' && color !== '#FFFFFF') ? color : '#ffffff';
             ctx.fillRect(0, 0, w, h);
         }
-
-        // Draw PDF on top — use multiply blend so white areas take the background color
-        if (color && color !== '' && color !== '#ffffff' && color !== '#FFFFFF') {
-            ctx.globalCompositeOperation = 'multiply';
-        }
-        ctx.drawImage(tmpCanvas, 0, 0);
-        ctx.globalCompositeOperation = 'source-over';
 
         // Mark as having annotations so it gets saved
         if (this.dotNetRef) {

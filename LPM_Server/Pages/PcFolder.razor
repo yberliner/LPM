@@ -132,7 +132,9 @@
                     var attExpanded = !_collapsedAttachments.Contains(wsKey);
 
                     @* ── Session row ── *@
-                    <div class="pcf-file-item @active @(isCsTarget ? "pcf-file-cs-target" : "")">
+                    <div class="pcf-file-item @active @(isCsTarget ? "pcf-file-cs-target" : "")"
+                         @oncontextmenu="e => ShowWsCtxMenu(e, f.FileName, false, string.Empty)"
+                         @oncontextmenu:preventDefault="true">
                         @if (hasAtt)
                         {
                             <i class="@(attExpanded ? "ri-arrow-down-s-fill" : "ri-arrow-right-s-fill") pcf-att-toggle"
@@ -172,11 +174,35 @@
                             @foreach (var att in ws.Attachments)
                             {
                                 var attActive = IsFileActive(att.RelativePath);
+                                var attRelPath = att.RelativePath;
+                                var attName = att.FileName;
                                 <div class="pcf-att-child @attActive"
+                                     @oncontextmenu="e => ShowWsCtxMenu(e, f.FileName, true, attRelPath)"
+                                     @oncontextmenu:preventDefault="true"
                                      @onclick="@(() => SelectFile(att.RelativePath, att.FileName, "WorkSheet"))">
                                     <span class="pcf-att-line"></span>
                                     <i class="ri-file-pdf-2-line" style="font-size:.7rem; opacity:.5; flex-shrink:0;"></i>
-                                    <span class="pcf-file-name">@att.FileName</span>
+                                    @if (_isRenamingAtt && _renameAttPath == attRelPath)
+                                    {
+                                        <input class="pcf-rename-input" value="@_renameAttValue"
+                                               @oninput="e => _renameAttValue = e.Value?.ToString() ?? string.Empty"
+                                               @onkeydown="OnRenameAttKey"
+                                               @onclick:stopPropagation="true"
+                                               placeholder="attachment name" />
+                                        <button class="pcf-create-folder-ok" @onclick="ConfirmRenameAtt"
+                                                @onclick:stopPropagation="true"
+                                                disabled="@string.IsNullOrWhiteSpace(_renameAttValue)">
+                                            <i class="ri-check-line"></i>
+                                        </button>
+                                        <button class="pcf-create-folder-cancel" @onclick="CancelRenameAtt"
+                                                @onclick:stopPropagation="true">
+                                            <i class="ri-close-line"></i>
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span class="pcf-file-name">@attName</span>
+                                    }
                                 </div>
                             }
                         </div>
@@ -232,6 +258,27 @@
                     </button>
                 }
             </div>
+        </div>
+    }
+
+    @* ── Worksheet context menu ── *@
+    @if (_showWsCtxMenu)
+    {
+        <div class="pcf-ctx-backdrop" @onclick="CloseWsCtxMenu"></div>
+        <div class="pcf-ctx-menu" style="top:@(_wsCtxY)px;left:@(_wsCtxX)px;">
+            @if (!_wsCtxIsAttachment)
+            {
+                <button @onclick="WsCtxAddPinkSheet"><i class="ri-file-add-line me-2" style="color:#ec4899 !important;"></i>Add Pink Sheet</button>
+            }
+            else
+            {
+                <button @onclick="WsCtxRenameAtt"><i class="ri-edit-line me-2"></i>Rename</button>
+                @if (_wsCtxAttRelPath.Contains("PinkSheet", StringComparison.OrdinalIgnoreCase))
+                {
+                    <div class="pcf-ctx-divider"></div>
+                    <button class="pcf-ctx-danger" @onclick="WsCtxDeletePinkSheet"><i class="ri-delete-bin-line me-2"></i>Delete Pink Sheet</button>
+                }
+            }
         </div>
     }
 
@@ -1324,7 +1371,7 @@
     string _moveSelectedFolder = "";
     bool _moveNewFolderMode;
     string _moveNewFolderName = "";
-    string _moveNewFolderParent = "";
+
 
     // Drag & drop
     FolderTreeNode? _dragNode;
@@ -1347,6 +1394,18 @@
     bool _showOverwriteConfirm;
     List<(string Name, byte[] Data)> _uploadPendingFiles = [];
     List<string> _uploadDuplicateNames = [];
+
+    // Worksheet context menu
+    bool _showWsCtxMenu;
+    double _wsCtxX, _wsCtxY;
+    string _wsCtxSessionFileName = "";  // for "Add Pink Sheet"
+    string _wsCtxAttRelPath = "";       // for attachment rename
+    bool _wsCtxIsAttachment;
+
+    // Attachment rename
+    bool _isRenamingAtt;
+    string _renameAttPath = "";
+    string _renameAttValue = "";
 
     // Page background color picker
     bool _showPageBgPicker;
@@ -2161,6 +2220,122 @@
         _showPageBgPicker = false;
     }
 
+    // ── Worksheet context menu methods ──
+
+    void ShowWsCtxMenu(MouseEventArgs e, string sessionFileName, bool isAttachment, string attRelPath)
+    {
+        _wsCtxSessionFileName = sessionFileName;
+        _wsCtxIsAttachment = isAttachment;
+        _wsCtxAttRelPath = attRelPath;
+        _wsCtxX = e.ClientX;
+        _wsCtxY = e.ClientY;
+        _showWsCtxMenu = true;
+    }
+
+    void CloseWsCtxMenu() { _showWsCtxMenu = false; }
+
+    void WsCtxAddPinkSheet()
+    {
+        Console.WriteLine($"[PcFolder] Adding pink sheet to session '{_wsCtxSessionFileName}' by '{_userName}' — PC {PcId}");
+        var sessionFileName = _wsCtxSessionFileName;
+        var pinkBytes = FolderSvc.CreatePinkPdf();
+        FolderSvc.SaveAttachment(PcId, sessionFileName, "PinkSheet.pdf", pinkBytes);
+        _folder = FolderSvc.GetPcFolder(PcId);
+        CloseWsCtxMenu();
+
+        // Find the newly created pink sheet attachment
+        var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
+        var wsItem = _folder!.WorkSheets.FirstOrDefault(w =>
+            Path.GetFileNameWithoutExtension(w.File.FileName).Equals(sessionNoExt, StringComparison.OrdinalIgnoreCase));
+        var pinkAtt = wsItem?.Attachments.LastOrDefault(a =>
+            a.FileName.Contains("PinkSheet", StringComparison.OrdinalIgnoreCase));
+        if (pinkAtt == null) return;
+
+        // Expand attachments for this session
+        _collapsedAttachments.Remove(wsItem!.File.RelativePath);
+
+        // Open in a new pane or the 3rd pane
+        int targetIdx;
+        if (_paneCount < 3)
+        {
+            _paneCount++;
+            targetIdx = _paneCount - 1;
+        }
+        else
+        {
+            targetIdx = 2; // 3rd pane (index 2)
+        }
+        _activeIdx = targetIdx;
+        SelectFile(pinkAtt.RelativePath, pinkAtt.FileName, "WorkSheet");
+    }
+
+    void WsCtxDeletePinkSheet()
+    {
+        var path = _wsCtxAttRelPath;
+        var name = Path.GetFileName(path);
+        CloseWsCtxMenu();
+        _deleteTargetPath = path;
+        _deleteTargetName = name;
+        _deleteIsFolder = false;
+        _showDeleteConfirm = true;
+    }
+
+    void WsCtxRenameAtt()
+    {
+        // Extract the part after _att_ for editing
+        var fileName = Path.GetFileName(_wsCtxAttRelPath);
+        var attIdx = fileName.IndexOf("_att_", StringComparison.OrdinalIgnoreCase);
+        if (attIdx < 0) { CloseWsCtxMenu(); return; }
+        var suffix = fileName[(attIdx + 5)..];
+        _renameAttPath = _wsCtxAttRelPath;
+        _renameAttValue = Path.GetFileNameWithoutExtension(suffix);
+        _isRenamingAtt = true;
+        CloseWsCtxMenu();
+    }
+
+    void OnRenameAttKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") ConfirmRenameAtt();
+        else if (e.Key == "Escape") CancelRenameAtt();
+    }
+
+    void ConfirmRenameAtt()
+    {
+        if (!string.IsNullOrWhiteSpace(_renameAttValue))
+        {
+            Console.WriteLine($"[PcFolder] Renamed attachment '{_renameAttPath}' suffix to '{_renameAttValue}' by '{_userName}' — PC {PcId}");
+            var oldPath = _renameAttPath;
+            FolderSvc.RenameAttachment(PcId, _renameAttPath, _renameAttValue);
+            _folder = FolderSvc.GetPcFolder(PcId);
+
+            // Update pane if renamed file is currently displayed
+            // Build expected new filename: same prefix up to _att_ + new suffix
+            var oldFileName = Path.GetFileName(oldPath);
+            var attIdx = oldFileName.IndexOf("_att_", StringComparison.OrdinalIgnoreCase);
+            if (attIdx >= 0)
+            {
+                var prefix = oldFileName[..(attIdx + 5)];
+                var newSuffix = _renameAttValue;
+                if (!newSuffix.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                    newSuffix += ".pdf";
+                var expectedNewName = prefix + newSuffix;
+                var expectedNewPath = "WorkSheets/" + expectedNewName;
+
+                for (int i = 0; i < _paneCount; i++)
+                {
+                    if (_panes[i].File == oldPath)
+                    {
+                        _panes[i].File = expectedNewPath;
+                        _panes[i].FileName = expectedNewName;
+                    }
+                }
+            }
+        }
+        CancelRenameAtt();
+    }
+
+    void CancelRenameAtt() { _isRenamingAtt = false; _renameAttPath = ""; _renameAttValue = ""; }
+
     // Section-level event handlers (avoid nested quotes in Razor attributes)
     void OnFrontCoverCtx(MouseEventArgs e) => ShowCtxMenu(e, _folder!.FrontCoverTree, "Front_Cover");
     void OnFrontCoverDrop() => OnTreeDrop(_folder!.FrontCoverTree.RelativePath, "Front_Cover");
@@ -2527,10 +2702,21 @@
         else
         {
             FolderSvc.DeleteFileToBackup(PcId, _deleteTargetPath);
-            // Clear pane if showing deleted file
-            for (int i = 0; i < _paneCount; i++)
+            // Clear pane if showing deleted file, and close the pane if possible
+            for (int i = _paneCount - 1; i >= 0; i--)
+            {
                 if (_panes[i].File == _deleteTargetPath)
-                    { _panes[i].File = null; _panes[i].FileName = null; _panes[i].Section = ""; }
+                {
+                    _panes[i].File = null; _panes[i].FileName = null; _panes[i].Section = "";
+                    _ = JS.InvokeVoidAsync("eval", $"var v=document.getElementById('pcf-viewer-{PaneIds[i]}');if(v)v.innerHTML='';");
+                    // Close the pane if more than 1 open
+                    if (_paneCount > 1)
+                    {
+                        _paneCount--;
+                        if (_activeIdx >= _paneCount) _activeIdx = _paneCount - 1;
+                    }
+                }
+            }
         }
         _folder = FolderSvc.GetPcFolder(PcId);
         _showDeleteConfirm = false;
