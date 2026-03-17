@@ -97,6 +97,7 @@ builder.Services.AddSingleton<LPM.Services.CourseService>();
 builder.Services.AddSingleton<LPM.Services.MessageNotifier>();
 builder.Services.AddSingleton<LPM.Services.FolderService>();
 builder.Services.AddSingleton<LPM.Services.MeetingService>();
+builder.Services.AddHostedService<LPM.Services.DbBackupService>();
 builder.Services.AddSingleton<LPM.Services.CsNotificationService>();
 builder.Services.AddSingleton<LPM.Services.ShortcutService>();
 builder.Services.AddSingleton<LPM.Services.ImportJobService>();
@@ -351,8 +352,16 @@ app.MapPost("/api/backup-auth", async (HttpContext ctx, LPM.Auth.UserDb userDb) 
     return Results.Ok(new { ok = true, token });
 });
 
+// ── Backup: integrity pre-check (called before triggering download) ──
+app.MapGet("/api/backup-integrity", (HttpContext ctx, LPM.Services.FolderService svc) =>
+{
+    if (ctx.User?.IsInRole("Admin") != true) return Results.Forbid();
+    var result = svc.CheckIntegrity();
+    return Results.Ok(new { ok = result == "ok", detail = result });
+});
+
 // ── Backup: build zip to temp file, then serve it ──
-app.MapGet("/api/backup-download", (HttpContext ctx, LPM.Services.FolderService svc) =>
+app.MapGet("/api/backup-download", (HttpContext ctx, LPM.Services.FolderService svc, IConfiguration cfg) =>
 {
     if (ctx.User?.IsInRole("Admin") != true) return Results.Forbid();
 
@@ -385,6 +394,10 @@ app.MapGet("/api/backup-download", (HttpContext ctx, LPM.Services.FolderService 
     foreach (var stale in Directory.GetFiles(tempDir, "lpm-backup-*.zip"))
         try { File.Delete(stale); } catch { }
 
+    // Integrity check — always proceed, embed result in filename
+    var integrity = svc.CheckIntegrity();
+    var integrityTag = integrity == "ok" ? "OK" : "CORRUPT";
+
     // Reset progress
     LPM.Services.BackupProgress.Current = 0;
     LPM.Services.BackupProgress.CurrentFile = "";
@@ -397,20 +410,48 @@ app.MapGet("/api/backup-download", (HttpContext ctx, LPM.Services.FolderService 
     {
         using (var zip = System.IO.Compression.ZipFile.Open(tempFile, System.IO.Compression.ZipArchiveMode.Create))
         {
-            // 1. Add the DB file
+            // 1. Live DB snapshot → db-live/lifepower.db
             var dbPath = svc.GetDbFilePath();
             if (File.Exists(dbPath))
             {
-                LPM.Services.BackupProgress.CurrentFile = "lifepower.db";
-                var entry = zip.CreateEntry("lifepower.db", System.IO.Compression.CompressionLevel.Fastest);
-                using var entryStream = entry.Open();
-                using var dbStream = new FileStream(dbPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                dbStream.CopyTo(entryStream);
+                LPM.Services.BackupProgress.CurrentFile = "db-live/lifepower.db";
+                var tempDbCopy = Path.Combine(tempDir, $"db-snap-{Guid.NewGuid():N}.db");
+                try
+                {
+                    svc.BackupDbTo(tempDbCopy);
+                    var entry = zip.CreateEntry("db-live/lifepower.db", System.IO.Compression.CompressionLevel.Fastest);
+                    using var entryStream = entry.Open();
+                    using var dbStream = File.OpenRead(tempDbCopy);
+                    dbStream.CopyTo(entryStream);
+                }
+                finally { try { File.Delete(tempDbCopy); } catch { } }
                 processed++;
                 LPM.Services.BackupProgress.Current = processed;
             }
 
-            // 2. Add all PC-Folder files (decrypted)
+            // 2. Auto-backup files → db-autobackups/
+            var backupFolder = svc.GetAutoBackupFolder(cfg["Database:BackupFolder"]);
+            if (Directory.Exists(backupFolder))
+            {
+                foreach (var bf in Directory.GetFiles(backupFolder, "lifepower_*.db").OrderByDescending(f => f))
+                {
+                    if (LPM.Services.BackupProgress.CancelRequested) break;
+                    var bfName = Path.GetFileName(bf);
+                    LPM.Services.BackupProgress.CurrentFile = $"db-autobackups/{bfName}";
+                    try
+                    {
+                        var entry = zip.CreateEntry($"db-autobackups/{bfName}", System.IO.Compression.CompressionLevel.Fastest);
+                        using var entryStream = entry.Open();
+                        using var bfStream = File.OpenRead(bf);
+                        bfStream.CopyTo(entryStream);
+                        processed++;
+                        LPM.Services.BackupProgress.Current = processed;
+                    }
+                    catch { /* skip unreadable */ }
+                }
+            }
+
+            // 3. PC-Folder files
             foreach (var (relPath, fullPath) in svc.EnumerateBackupFiles())
             {
                 if (LPM.Services.BackupProgress.CancelRequested) break;
@@ -439,10 +480,9 @@ app.MapGet("/api/backup-download", (HttpContext ctx, LPM.Services.FolderService 
             return Results.StatusCode(499); // Client Closed Request
         }
 
-        Console.WriteLine($"[Backup] Completed by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files");
+        Console.WriteLine($"[Backup] Completed by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files — integrity={integrityTag}");
 
-        var fileName = $"LPM-Backup-{DateTime.Now:yyyy-MM-dd_HHmm}.zip";
-        // Open as stream that deletes the temp file when disposed
+        var fileName = $"LPM-Backup-{integrityTag}-{DateTime.Now:yyyy-MM-dd_HHmm}.zip";
         var stream = new FileStream(tempFile, FileMode.Open, FileAccess.Read,
             FileShare.None, 4096, FileOptions.DeleteOnClose);
         return Results.File(stream, "application/zip", fileName);
@@ -465,6 +505,9 @@ app.MapGet("/api/backup-progress", (HttpContext ctx) =>
         running = LPM.Services.BackupProgress.Running
     });
 });
+
+// Enable WAL mode for crash-safe writes (runs once; setting persists in the DB file)
+app.Services.GetRequiredService<LPM.Services.FolderService>().InitializeDb();
 
 // Clean up any leftover backup zips from previous runs (crash recovery)
 foreach (var stale in Directory.GetFiles(Path.GetTempPath(), "lpm-backup-*.zip"))

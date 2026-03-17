@@ -114,6 +114,26 @@
         }
     </div>
 
+    @* ── Integrity warning ── *@
+    @if (!string.IsNullOrEmpty(_integrityWarning))
+    {
+        <div class="alert mt-3 d-flex align-items-start gap-3"
+             style="max-width:700px; background:rgba(239,68,68,.15); border:2px solid #ef4444; border-radius:10px; color:#fca5a5;">
+            <i class="ri-error-warning-fill" style="font-size:2rem; color:#ef4444; flex-shrink:0; margin-top:2px;"></i>
+            <div>
+                <div style="font-size:1rem; font-weight:700; color:#ef4444; letter-spacing:.04em;">
+                    DATABASE INTEGRITY CHECK FAILED
+                </div>
+                <div style="font-size:.84rem; margin-top:4px;">
+                    The live database appears to be corrupt. The backup was created anyway and includes all
+                    auto-backups in the <strong>db-autobackups/</strong> folder — restore from the newest
+                    healthy one there.
+                </div>
+                <div style="font-size:.76rem; color:#94a3b8; margin-top:6px; font-family:monospace;">@_integrityWarning</div>
+            </div>
+        </div>
+    }
+
     @if (!string.IsNullOrEmpty(_error))
     {
         <div class="alert alert-danger mt-3" style="max-width:600px;">@_error</div>
@@ -215,6 +235,8 @@
     string _progressFile = "";
     System.Threading.Timer? _pollTimer;
 
+    string _integrityWarning = "";
+
     // Password modal
     bool _showPasswordModal;
     string _backupPassword = "";
@@ -294,6 +316,15 @@
 
             _showPasswordModal = false;
             _backupPassword = "";
+
+            // Pre-check integrity — show warning but always proceed
+            _integrityWarning = "";
+            var integrityJs = "(async function(){var r=await fetch('/api/backup-integrity');var j=await r.json();return j.ok?'ok':j.detail;})()";
+            var integrityResult = await JS.InvokeAsync<string>("eval", integrityJs);
+            if (integrityResult != "ok")
+                _integrityWarning = integrityResult;
+            StateHasChanged();
+
             await StartBackup(token);
         }
         catch

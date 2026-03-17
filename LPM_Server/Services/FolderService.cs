@@ -385,6 +385,72 @@ public class FolderService
         Console.WriteLine($"[FolderService] Backed up bytes '{fileName}' for PC {pcId}");
     }
 
+    // ── DB health ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Run once at startup: enables WAL journal mode and NORMAL sync level.
+    /// WAL mode survives crashes without corruption; NORMAL is safe with WAL and faster than FULL.
+    /// </summary>
+    public void InitializeDb()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;";
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Runs SQLite's built-in integrity check.
+    /// Returns "ok" if the database is healthy, or an error description if corrupt.
+    /// </summary>
+    public string CheckIntegrity()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "PRAGMA integrity_check;";
+        return cmd.ExecuteScalar()?.ToString() ?? "error";
+    }
+
+    /// <summary>
+    /// Creates a consistent point-in-time copy of the DB using SQLite's own backup API.
+    /// Safer than raw file copy — works correctly even while the DB is being written to.
+    /// </summary>
+    public void BackupDbTo(string destinationPath)
+    {
+        using var source = new SqliteConnection(_connectionString);
+        source.Open();
+        using var dest = new SqliteConnection($"Data Source={destinationPath}");
+        dest.Open();
+        source.BackupDatabase(dest);
+    }
+
+    /// <summary>Runs integrity check on any arbitrary SQLite file (e.g. a backup).</summary>
+    public string CheckBackupIntegrity(string dbFilePath)
+    {
+        using var conn = new SqliteConnection($"Data Source={dbFilePath}");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "PRAGMA integrity_check;";
+        return cmd.ExecuteScalar()?.ToString() ?? "error";
+    }
+
+    /// <summary>
+    /// Replaces the live DB with a backup file.
+    /// Removes WAL/SHM files first so the restored DB starts clean.
+    /// </summary>
+    public void RestoreFromBackup(string backupPath)
+    {
+        var dbPath = GetDbFilePath();
+        foreach (var ext in new[] { "-wal", "-shm" })
+        {
+            var f = dbPath + ext;
+            if (File.Exists(f)) try { File.Delete(f); } catch { }
+        }
+        File.Copy(backupPath, dbPath, overwrite: true);
+    }
+
     // ── Full backup (DB + PC-Folders) ─────────────────────────
 
     /// <summary>Returns the absolute path to the lifepower.db file.</summary>
@@ -393,6 +459,22 @@ public class FolderService
         // _connectionString is "Data Source=lifepower.db" (or custom path)
         var src = _connectionString.Replace("Data Source=", "");
         return Path.GetFullPath(src);
+    }
+
+    /// <summary>
+    /// Returns the absolute path to the auto-backup folder (creates it if missing).
+    /// Pass the configured relative/absolute path from appsettings (e.g. "db-backups").
+    /// </summary>
+    public string GetAutoBackupFolder(string? configuredPath = null)
+    {
+        var folder = configuredPath ?? "db-backups";
+        if (!Path.IsPathRooted(folder))
+        {
+            var dbDir = Path.GetDirectoryName(GetDbFilePath()) ?? ".";
+            folder = Path.Combine(dbDir, folder);
+        }
+        Directory.CreateDirectory(folder);
+        return folder;
     }
 
     /// <summary>Returns (dbSizeBytes, pcFoldersSizeBytes, totalFiles).</summary>
