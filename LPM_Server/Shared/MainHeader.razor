@@ -316,6 +316,12 @@
                                             <i class="ri-file-edit-line" style="color:#8b5cf6;"></i>Write to Folder Summary
                                         </a>
                                     </li>
+                                    <li>
+                                        <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
+                                           @onclick="OpenScheduleMeeting">
+                                            <i class="ri-calendar-event-line" style="color:#f59e0b;"></i>Schedule Meeting
+                                        </a>
+                                    </li>
                                 </ul>
                             </div>
                         </li>
@@ -1331,6 +1337,8 @@
     .arf-add-row-btn:hover { background: rgba(96,165,250,.1); border-color: #60a5fa; color: #93c5fd; }
 </style>
 
+<SpkScheduleMeetingModal @ref="_meetingModal" OnSaved="StateHasChanged" />
+
 @code {
     private bool _isDisposed = false;
     private string _displayName = "";
@@ -1716,6 +1724,10 @@
         if (bytes < 1048576) return $"{bytes / 1024.0:F1} KB";
         return $"{bytes / 1048576.0:F1} MB";
     }
+
+    // ── Schedule meeting ──
+    SpkScheduleMeetingModal? _meetingModal;
+    async Task OpenScheduleMeeting() => await (_meetingModal?.Show(meetingType: "Academy") ?? Task.CompletedTask);
 
     // ── Actions state ──
     bool   _showActionOpenFolder;

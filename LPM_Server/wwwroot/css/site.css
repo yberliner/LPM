@@ -123,3 +123,140 @@ a, .btn-link {
         display: none !important;
     }
 }
+/* ── FullCalendar (Schedule page) global overrides ── */
+.fc .fc-toolbar-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--default-text-color, #374151);
+}
+
+.fc .fc-button {
+    border-radius: 6px !important;
+    font-size: .82rem !important;
+    font-weight: 600 !important;
+    padding: 4px 12px !important;
+}
+
+.fc .fc-button-primary {
+    background-color: #3b82f6 !important;
+    border-color: #3b82f6 !important;
+}
+
+.fc .fc-button-primary:not(.fc-button-active):hover {
+    background-color: #2563eb !important;
+    border-color: #2563eb !important;
+}
+
+.fc .fc-button-primary.fc-button-active {
+    background-color: #1d4ed8 !important;
+    border-color: #1d4ed8 !important;
+}
+
+.fc .fc-daygrid-day.fc-day-today,
+.fc .fc-timegrid-col.fc-day-today {
+    background: #eff6ff !important;
+}
+
+.fc .fc-event {
+    border-radius: 5px !important;
+    font-size: .78rem !important;
+    font-weight: 500 !important;
+    border: none !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,.15);
+    transition: filter .12s, transform .1s;
+    cursor: pointer;
+}
+
+.fc .fc-event:hover {
+    filter: brightness(.92);
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(0,0,0,.2);
+}
+
+/* Day/column header — fix white-on-white caused by FC CDN CSS setting page-bg:#fff */
+.fc .fc-col-header-cell {
+    background-color: var(--custom-white, #f8fafc) !important;
+}
+.fc .fc-col-header-cell-cushion,
+a.fc-col-header-cell-cushion {
+    color: var(--default-text-color, #374151) !important;
+    font-weight: 600 !important;
+    text-decoration: none !important;
+}
+
+/* Month grid day numbers */
+a.fc-daygrid-day-number,
+.fc .fc-daygrid-day-number {
+    color: var(--default-text-color, #374151) !important;
+    font-weight: 600 !important;
+    text-decoration: none !important;
+}
+.fc .fc-daygrid-day-number:hover { color: #3b82f6 !important; }
+
+/* Time slot labels */
+.fc .fc-timegrid-slot-label-cushion {
+    color: var(--default-text-color, #6b7280) !important;
+    font-size: .75rem;
+}
+
+/* Give the time grid body the same bg as the card so it doesn't stay FC-default-white in dark mode */
+.fc-theme-standard td, .fc-theme-standard th {
+    border-color: var(--default-border, #e5e7eb) !important;
+}
+
+/* Responsive: single-day on narrow screens */
+@media (max-width: 600px) {
+    .fc .fc-toolbar {
+        flex-direction: column;
+        gap: .4rem;
+    }
+    .fc .fc-toolbar-title {
+        font-size: .95rem;
+    }
+}
+
+/* ── Schedule page: context menu (global — position:fixed needs global scope) ── */
+.sched-ctx {
+    position: fixed !important;
+    z-index: 9999;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.18);
+    min-width: 160px;
+    overflow: hidden;
+    padding: 4px 0;
+    animation: sched-ctx-pop .1s ease;
+}
+
+@keyframes sched-ctx-pop {
+    from { opacity: 0; transform: scale(.95) translateY(-4px); }
+    to   { opacity: 1; transform: scale(1)  translateY(0); }
+}
+
+.sched-ctx-backdrop {
+    position: fixed !important;
+    inset: 0;
+    z-index: 9998;
+}
+
+.sched-ctx-item {
+    padding: 9px 16px;
+    font-size: .84rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #374151;
+    transition: background .08s;
+}
+
+.sched-ctx-item:hover {
+    background: #f1f5f9;
+}
+
+.sched-ctx-sep {
+    height: 1px;
+    background: #e5e7eb;
+    margin: 3px 0;
+}

@@ -98,6 +98,16 @@ public class MenuDataService
             active: false,
             dirChange: false
         ),
+        new MainMenuItems (
+            path: "/Schedule",
+            type: "link",
+            title: "Schedule",
+            icon: "",
+            svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><rect x='8' y='14' width='48' height='44' rx='5' fill='#42a5f5'/><rect x='8' y='14' width='48' height='18' rx='5' fill='#1565c0'/><rect x='8' y='26' width='48' height='6' fill='#1565c0'/><rect x='20' y='6' width='5' height='14' rx='2.5' fill='#78909c'/><rect x='39' y='6' width='5' height='14' rx='2.5' fill='#78909c'/><rect x='14' y='36' width='9' height='8' rx='1.5' fill='#bbdefb'/><rect x='27' y='36' width='9' height='8' rx='1.5' fill='#bbdefb'/><rect x='41' y='36' width='9' height='8' rx='1.5' fill='#ef5350'/><rect x='14' y='48' width='9' height='8' rx='1.5' fill='#bbdefb'/><rect x='27' y='48' width='9' height='8' rx='1.5' fill='#bbdefb'/></svg>",
+            selected: false,
+            active: false,
+            dirChange: false
+        ),
         new MainMenuItems(
             menuTitle: "Administration",
             requiredRole: "Admin"

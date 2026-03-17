@@ -1,0 +1,202 @@
+@inject LPM.Services.MeetingService MeetingSvc
+@inject LPM.Services.PcService PcSvc
+@inject LPM.Services.AuditorService AuditorSvc
+@inject AuthenticationStateProvider AuthStateProvider
+@using LPM.Services
+
+@if (_show)
+{
+    <div class="modal show d-block" tabindex="-1"
+         style="background:rgba(0,0,0,.45);z-index:1055;"
+         @onclick="Close">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
+            <div class="modal-content">
+
+                <div class="modal-header py-2"
+                     style="background:linear-gradient(135deg,#3b82f6,#1e3a8a);">
+                    <h6 class="modal-title text-white fw-semibold">
+                        <i class="ri-calendar-event-line me-2"></i>
+                        @(_editId.HasValue ? "Edit Meeting" : "Schedule New Meeting")
+                    </h6>
+                    <button class="btn-close btn-close-white" @onclick="Close"></button>
+                </div>
+
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(_error))
+                    {
+                        <div class="alert alert-danger py-2 mb-3 small">@_error</div>
+                    }
+
+                    <!-- PC -->
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold small mb-1">PC</label>
+                        <select class="form-select form-select-sm" @bind="_pcId">
+                            <option value="0">-- Select PC --</option>
+                            @foreach (var pc in _pcs)
+                            {
+                                <option value="@pc.PcId">
+                                    @pc.FullName@(string.IsNullOrEmpty(pc.Nick) ? "" : $" ({pc.Nick})")
+                                </option>
+                            }
+                        </select>
+                    </div>
+
+                    <!-- Auditor (Auditing only) -->
+                    @if (_meetingType == "Auditing")
+                    {
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small mb-1">Auditor</label>
+                            <select class="form-select form-select-sm" @bind="_auditorId">
+                                <option value="0">-- Select Auditor --</option>
+                                @foreach (var a in _auditors)
+                                {
+                                    <option value="@a.AuditorId">@a.FullName</option>
+                                }
+                            </select>
+                        </div>
+                    }
+
+                    <!-- Date & Time -->
+                    <div class="row g-2 mb-3">
+                        <div class="col-7">
+                            <label class="form-label fw-semibold small mb-1">Date</label>
+                            <input type="date" class="form-control form-control-sm"
+                                   value="@_dateStr"
+                                   @onchange="e => _dateStr = e.Value?.ToString() ?? _dateStr" />
+                        </div>
+                        <div class="col-5">
+                            <label class="form-label fw-semibold small mb-1">Time</label>
+                            <input type="time" class="form-control form-control-sm" step="900"
+                                   value="@_timeStr"
+                                   @onchange="e => _timeStr = e.Value?.ToString() ?? _timeStr" />
+                        </div>
+                    </div>
+
+                    <!-- Duration -->
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold small mb-1">Duration (minutes)</label>
+                        <input type="number" class="form-control form-control-sm"
+                               min="5" max="480" step="5"
+                               @bind="_durationMin" />
+                    </div>
+
+                    <!-- Repeat weekly -->
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="sched_weekly"
+                               @bind="_isWeekly" />
+                        <label class="form-check-label small" for="sched_weekly">
+                            <i class="ri-repeat-line me-1 text-primary"></i>Repeat every week
+                        </label>
+                    </div>
+                </div>
+
+                <div class="modal-footer py-2">
+                    <button class="btn btn-sm btn-secondary" @onclick="Close"
+                            disabled="@_busy">Cancel</button>
+                    <button class="btn btn-sm btn-primary" @onclick="Save"
+                            disabled="@_busy">
+                        @if (_busy)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        @(_editId.HasValue ? "Save Changes" : "Schedule")
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    bool _show, _busy;
+    string _error = "";
+    int? _editId;
+    string _meetingType = "Auditing";
+    int _pcId, _auditorId;
+    string _dateStr = "", _timeStr = "09:00";
+    int _durationMin = 60;
+    bool _isWeekly;
+
+    List<PcListItem> _pcs = new();
+    List<AuditorListItem> _auditors = new();
+
+    public async Task Show(DateTime? defaultDate = null, string meetingType = "Auditing")
+    {
+        _editId = null;
+        _error = "";
+        _meetingType = meetingType;
+        _pcId = 0;
+        _durationMin = 60;
+        _isWeekly = false;
+        var d = defaultDate ?? DateTime.Today;
+        _dateStr = d.ToString("yyyy-MM-dd");
+        _timeStr = (d.Hour > 0 || d.Minute > 0) ? d.ToString("HH:mm") : "09:00";
+        await LoadDropdowns(setDefaultAuditor: true);
+        _show = true;
+        StateHasChanged();
+    }
+
+    public async Task ShowForEdit(MeetingItem meeting)
+    {
+        _editId = meeting.MeetingId;
+        _error = "";
+        _meetingType = meeting.MeetingType;
+        _pcId = meeting.PcId;
+        _auditorId = meeting.AuditorId ?? 0;
+        _dateStr = meeting.StartAt.ToString("yyyy-MM-dd");
+        _timeStr = meeting.StartAt.ToString("HH:mm");
+        _durationMin = meeting.LengthSeconds >= 300 ? meeting.LengthSeconds / 60 : 60;
+        _isWeekly = meeting.IsWeekly;
+        await LoadDropdowns(setDefaultAuditor: false);
+        _show = true;
+        StateHasChanged();
+    }
+
+    void Close() { _show = false; _error = ""; }
+
+    async Task LoadDropdowns(bool setDefaultAuditor)
+    {
+        _pcs = PcSvc.GetAllPcs();
+        _auditors = AuditorSvc.GetAllAuditors();
+        if (setDefaultAuditor)
+        {
+            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+            var username = auth.User.Identity?.Name ?? "";
+            var personId = PcSvc.GetPersonIdByUsername(username);
+            _auditorId = personId.HasValue && _auditors.Any(a => a.AuditorId == personId.Value)
+                ? personId.Value : 0;
+        }
+    }
+
+    async Task Save()
+    {
+        _error = "";
+        if (_pcId == 0) { _error = "Please select a PC."; return; }
+        if (_meetingType == "Auditing" && _auditorId == 0) { _error = "Please select an Auditor."; return; }
+        if (!DateTime.TryParse(_dateStr + "T" + _timeStr, out var startAt))
+        { _error = "Invalid date or time."; return; }
+
+        _busy = true;
+        try
+        {
+            int? auditorId = _meetingType == "Academy" ? null : _auditorId;
+            var lengthSec = _durationMin * 60;
+            var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+            var username = auth.User.Identity?.Name ?? "";
+            var createdBy = PcSvc.GetPersonIdByUsername(username) ?? 0;
+
+            if (_editId.HasValue)
+                MeetingSvc.UpdateMeeting(_editId.Value, _pcId, auditorId, _meetingType, startAt, lengthSec, _isWeekly);
+            else
+                MeetingSvc.AddMeeting(_pcId, auditorId, _meetingType, startAt, lengthSec, _isWeekly, createdBy);
+
+            _show = false;
+            await OnSaved.InvokeAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}

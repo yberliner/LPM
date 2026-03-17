@@ -96,6 +96,7 @@ builder.Services.AddSingleton<LPM.Services.StatisticsService>();
 builder.Services.AddSingleton<LPM.Services.CourseService>();
 builder.Services.AddSingleton<LPM.Services.MessageNotifier>();
 builder.Services.AddSingleton<LPM.Services.FolderService>();
+builder.Services.AddSingleton<LPM.Services.MeetingService>();
 builder.Services.AddSingleton<LPM.Services.CsNotificationService>();
 builder.Services.AddSingleton<LPM.Services.ShortcutService>();
 builder.Services.AddSingleton<LPM.Services.ImportJobService>();
