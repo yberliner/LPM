@@ -30,14 +30,6 @@
             </button>
             @if (!_soloMode)
             {
-                <button class="btn btn-sm @(_hideEmpty?"home-filter-active":"home-filter-btn")"
-                        title="@(_hideEmpty?LS.T("home.showEmpty"):LS.T("home.hideEmpty"))"
-                        @onclick="() => _hideEmpty = !_hideEmpty">
-                    <i class="@(_hideEmpty?"ri-eye-line":"ri-eye-off-line")"></i>
-                </button>
-            }
-            @if (!_soloMode)
-            {
                 <button class="btn btn-sm home-nav-btn-accent" @onclick="ShowAddPcModal">
                     <i class="ri-add-line me-1"></i>@LS.T("home.addPC")
                 </button>
@@ -297,12 +289,25 @@
             }
 
             @* ══════ WEEKLY OVERVIEW (collapsible) ══════ *@
-            <div class="home-overview-header px-3 mt-1 mb-1"
-                 style="cursor:pointer;" @onclick="() => _weeklyOverviewExpanded = !_weeklyOverviewExpanded">
-                <i class="@(_weeklyOverviewExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"
-                   style="font-size:1.1rem;"></i>
-                <i class="ri-calendar-check-line me-1"></i>
-                <strong>Weekly Overview</strong>
+            <div class="home-overview-header px-3 mt-1 mb-1 d-flex align-items-center"
+                 style="cursor:pointer;">
+                <div @onclick="() => _weeklyOverviewExpanded = !_weeklyOverviewExpanded" style="display:flex;align-items:center;flex:1;">
+                    <i class="@(_weeklyOverviewExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"
+                       style="font-size:1.1rem;"></i>
+                    <i class="ri-calendar-check-line me-1"></i>
+                    <strong>Weekly Overview</strong>
+                </div>
+                @if (!_soloMode && _weeklyOverviewExpanded)
+                {
+                    <button class="btn btn-sm @(_hideEmpty?"home-filter-active":"home-filter-btn") ms-2 d-flex align-items-center gap-1"
+                            title="@(_hideEmpty?LS.T("home.showEmpty"):LS.T("home.hideEmpty"))"
+                            @onclick="() => _hideEmpty = !_hideEmpty"
+                            @onclick:stopPropagation="true"
+                            style="font-size:.75rem;">
+                        <i class="@(_hideEmpty?"ri-eye-line":"ri-eye-off-line")"></i>
+                        @(_hideEmpty ? "Show empty PCs" : "Hide empty PCs")
+                    </button>
+                }
             </div>
 
             @if (_weeklyOverviewExpanded)
