@@ -234,6 +234,13 @@ app.MapGet("/api/pc-file", (int pcId, string path, LPM.Services.FolderService sv
     return Results.File(bytes, "application/pdf");
 });
 
+app.MapGet("/api/program-insert", (string name, LPM.Services.FolderService svc) =>
+{
+    var bytes = svc.GetProgramInsertFileBytes(name);
+    if (bytes == null) return Results.NotFound();
+    return Results.File(bytes, "application/pdf");
+});
+
 app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
     LPM.Services.FolderService folderSvc,
     LPM.Services.DashboardService dashSvc,
@@ -461,5 +468,8 @@ app.MapGet("/api/backup-progress", (HttpContext ctx) =>
 // Clean up any leftover backup zips from previous runs (crash recovery)
 foreach (var stale in Directory.GetFiles(Path.GetTempPath(), "lpm-backup-*.zip"))
     try { File.Delete(stale); } catch { }
+
+// Ensure dummy program insert PDFs exist
+LPM.Services.FolderService.EnsureDummyProgramInserts();
 
 app.Run();

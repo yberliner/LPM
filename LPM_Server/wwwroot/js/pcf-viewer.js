@@ -134,11 +134,17 @@ window.pcfViewer = {
 
             if (self.textInputEl) return;
 
-            if (self.toolMode === 'draw') {
+            if (self.toolMode === 'draw' || self.toolMode === 'brush') {
                 drawing = true;
                 overlay.setPointerCapture(e.pointerId);
                 const { x, y } = canvasXY(e);
-                pane.currentStroke = { pageIdx, points: [{ x, y }], color: self.drawColor, width: self.drawWidth };
+                const isBrush = self.toolMode === 'brush';
+                pane.currentStroke = {
+                    pageIdx, points: [{ x, y }],
+                    color: self.drawColor,
+                    width: isBrush ? Math.max(self.drawWidth * 4, 16) : self.drawWidth,
+                    brush: isBrush
+                };
             } else if (self.toolMode === 'text') {
                 const { x, y } = canvasXY(e);
                 self._showTextInput(overlay.parentElement, pageIdx, x, y, paneId);
@@ -196,6 +202,12 @@ window.pcfViewer = {
 
     _drawStroke(ctx, stroke) {
         if (stroke.points.length < 2) return;
+        const prevAlpha = ctx.globalAlpha;
+        const prevComposite = ctx.globalCompositeOperation;
+        if (stroke.brush) {
+            ctx.globalAlpha = 0.35;
+            ctx.globalCompositeOperation = 'multiply';
+        }
         ctx.beginPath();
         ctx.strokeStyle = stroke.color;
         ctx.lineWidth = stroke.width;
@@ -206,6 +218,8 @@ window.pcfViewer = {
             ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
         }
         ctx.stroke();
+        ctx.globalAlpha = prevAlpha;
+        ctx.globalCompositeOperation = prevComposite;
     },
 
     _drawText(ctx, ann) {
@@ -338,12 +352,17 @@ window.pcfViewer = {
 
     setTool(mode) {
         this.toolMode = mode;
+        const cursor = mode === 'draw' ? 'crosshair' : mode === 'brush' ? 'crosshair' : mode === 'text' ? 'text' : 'default';
         for (const paneId in this.panes) {
             const pane = this.panes[paneId];
             for (const pg of pane.pages) {
-                pg.overlay.style.cursor = mode === 'draw' ? 'crosshair' : mode === 'text' ? 'text' : 'default';
+                pg.overlay.style.cursor = cursor;
             }
         }
+    },
+
+    setWidth(width) {
+        this.drawWidth = width;
     },
 
     undo(paneId) {
@@ -370,6 +389,14 @@ window.pcfViewer = {
                         ann.pageIdx--;
                     }
                 }
+            }
+        } else if (removed.type === 'bg-change') {
+            // Restore the previous canvas snapshot
+            const pg = pane.pages[removed.pageIdx];
+            if (pg && removed.snapshot) {
+                const ctx = pg.canvas.getContext('2d');
+                ctx.clearRect(0, 0, pg.canvas.width, pg.canvas.height);
+                ctx.drawImage(removed.snapshot, 0, 0);
             }
         } else {
             this._redrawOverlay(removed.pageIdx, paneId);
@@ -490,6 +517,89 @@ window.pcfViewer = {
 
         // Notify Blazor
         if (this.dotNetRef) this.dotNetRef.invokeMethodAsync('OnAnnotationChanged');
+    },
+
+    async insertPdfPages(paneId, beforePageIdx, pdfUrl) {
+        const pane = this.panes[paneId];
+        if (!pane) return 0;
+        const viewer = document.getElementById('pcf-viewer-' + paneId);
+        if (!viewer) return 0;
+
+        let insertDoc;
+        try {
+            insertDoc = await pdfjsLib.getDocument(pdfUrl).promise;
+        } catch (e) {
+            console.error('Failed to load insert PDF:', e);
+            return 0;
+        }
+
+        const numPages = insertDoc.numPages;
+        const refPg = pane.pages[0]; // use first page for reference dimensions
+
+        for (let i = 1; i <= numPages; i++) {
+            const page = await insertDoc.getPage(i);
+            const vp = page.getViewport({ scale: pane.baseScale || 1 });
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'pcf-page-wrapper';
+            wrapper.style.width = vp.width + 'px';
+            wrapper.style.height = vp.height + 'px';
+
+            const canvas = document.createElement('canvas');
+            canvas.width = vp.width;
+            canvas.height = vp.height;
+            const ctx = canvas.getContext('2d');
+            await page.render({ canvasContext: ctx, viewport: vp }).promise;
+            wrapper.appendChild(canvas);
+
+            const overlay = document.createElement('canvas');
+            overlay.className = 'pcf-annotation-canvas';
+            overlay.width = vp.width;
+            overlay.height = vp.height;
+            overlay.style.width = vp.width + 'px';
+            overlay.style.height = vp.height + 'px';
+            wrapper.appendChild(overlay);
+
+            if (pane.zoomLevel && pane.zoomLevel !== 1) {
+                wrapper.style.zoom = pane.zoomLevel;
+            }
+
+            const insertIdx = beforePageIdx + (i - 1);
+            if (insertIdx < pane.pages.length) {
+                const refWrapper = pane.pages[insertIdx].canvas.parentElement;
+                viewer.insertBefore(wrapper, refWrapper);
+            } else {
+                viewer.appendChild(wrapper);
+            }
+
+            const newPage = { canvas, overlay, vp, pageIdx: insertIdx, scale: pane.baseScale || 1 };
+            pane.pages.splice(insertIdx, 0, newPage);
+
+            this._attachEvents(overlay, insertIdx, paneId);
+        }
+
+        // Re-index pages and shift annotations
+        for (let i = 0; i < pane.pages.length; i++) {
+            pane.pages[i].pageIdx = i;
+        }
+        for (const ann of pane.annotations) {
+            if (ann.pageIdx >= beforePageIdx) {
+                ann.pageIdx += numPages;
+            }
+        }
+
+        // Mark each inserted page as annotation so they get saved
+        for (let i = 0; i < numPages; i++) {
+            pane.annotations.push({ type: 'blank-page', pageIdx: beforePageIdx + i });
+        }
+
+        // Scroll to first inserted page
+        if (pane.pages[beforePageIdx]) {
+            pane.pages[beforePageIdx].canvas.parentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        if (this.dotNetRef) this.dotNetRef.invokeMethodAsync('OnAnnotationChanged');
+        return numPages;
     },
 
     async getAnnotatedPdf(paneId) {
@@ -700,6 +810,13 @@ window.pcfViewer = {
         const h = pg.canvas.height;
         const ctx = pg.canvas.getContext('2d');
 
+        // Snapshot current canvas for undo
+        const snapshot = document.createElement('canvas');
+        snapshot.width = w;
+        snapshot.height = h;
+        snapshot.getContext('2d').drawImage(pg.canvas, 0, 0);
+        pane.annotations.push({ type: 'bg-change', pageIdx, snapshot });
+
         // Check if this page exists in the original PDF (blank pages added later won't)
         const isOriginalPage = pane.pdfDoc && (pageIdx + 1) <= pane.pdfDoc.numPages;
 
@@ -731,10 +848,8 @@ window.pcfViewer = {
             ctx.fillRect(0, 0, w, h);
         }
 
-        // Mark as having annotations so it gets saved
-        if (this.dotNetRef) {
-            try { this.dotNetRef.invokeMethodAsync('MarkAnnotationsDirty'); } catch(e) {}
-        }
+        // Notify Blazor
+        if (this.dotNetRef) this.dotNetRef.invokeMethodAsync('OnAnnotationChanged');
     },
 
     getPageCount(paneId) {

@@ -937,6 +937,66 @@ public class FolderService
         return true;
     }
 
+    // ── Program Insert Templates ──────────────────────────────
+
+    private static readonly string ProgramInsertsDir = Path.Combine(Directory.GetCurrentDirectory(), "Templates", "ProgramInserts");
+
+    public List<string> GetProgramInsertFiles()
+    {
+        if (!Directory.Exists(ProgramInsertsDir)) return new();
+        return Directory.GetFiles(ProgramInsertsDir, "*.pdf")
+            .Select(f => Path.GetFileName(f))
+            .OrderBy(f => f)
+            .ToList();
+    }
+
+    public byte[]? GetProgramInsertFileBytes(string fileName)
+    {
+        var safe = SanitizeName(fileName);
+        if (string.IsNullOrWhiteSpace(safe)) return null;
+        var fullPath = Path.Combine(ProgramInsertsDir, safe);
+        if (!fullPath.StartsWith(ProgramInsertsDir, StringComparison.OrdinalIgnoreCase)) return null;
+        if (!File.Exists(fullPath)) return null;
+        return File.ReadAllBytes(fullPath);
+    }
+
+    public static void EnsureDummyProgramInserts()
+    {
+        if (!Directory.Exists(ProgramInsertsDir))
+            Directory.CreateDirectory(ProgramInsertsDir);
+        if (Directory.GetFiles(ProgramInsertsDir, "*.pdf").Length > 0) return;
+
+        var names = new[] {
+            "Intake Form", "Treatment Plan", "Progress Notes",
+            "Assessment Report", "Discharge Summary", "Consent Form",
+            "Referral Letter", "Session Log"
+        };
+        foreach (var name in names)
+        {
+            var path = Path.Combine(ProgramInsertsDir, name + ".pdf");
+            using var doc = new PdfSharpCore.Pdf.PdfDocument();
+            for (int p = 1; p <= 3; p++)
+            {
+                var page = doc.AddPage();
+                var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page);
+                var font = new PdfSharpCore.Drawing.XFont("Arial", 24);
+                var smallFont = new PdfSharpCore.Drawing.XFont("Arial", 14);
+                gfx.DrawString(name, font, PdfSharpCore.Drawing.XBrushes.DarkBlue,
+                    new PdfSharpCore.Drawing.XRect(0, 80, page.Width, 40),
+                    PdfSharpCore.Drawing.XStringFormats.Center);
+                gfx.DrawString($"Page {p} of 3", smallFont, PdfSharpCore.Drawing.XBrushes.Gray,
+                    new PdfSharpCore.Drawing.XRect(0, 130, page.Width, 30),
+                    PdfSharpCore.Drawing.XStringFormats.Center);
+                gfx.DrawString("[ Template placeholder content ]", smallFont, PdfSharpCore.Drawing.XBrushes.LightGray,
+                    new PdfSharpCore.Drawing.XRect(0, 300, page.Width, 30),
+                    PdfSharpCore.Drawing.XStringFormats.Center);
+                gfx.Dispose();
+            }
+            doc.Save(path);
+        }
+        Console.WriteLine($"[FolderService] Generated {names.Length} dummy program insert PDFs in {ProgramInsertsDir}");
+    }
+
     // ── TAA Action Excel ──────────────────────────────
 
     private const string TaaFileName = "TAA Action.xlsx";

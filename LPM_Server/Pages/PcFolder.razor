@@ -237,6 +237,23 @@
         <div class="pcf-sidebar-backdrop" @onclick="() => _sidebarOpen = false"></div>
     }
 
+    @* ── Page right-click context menu ── *@
+    @if (_showPageCtxMenu)
+    {
+        <div class="pcf-ctx-backdrop" @onclick="() => _showPageCtxMenu = false"></div>
+        <div class="pcf-ctx-menu" style="top:@(_pageBgY)px;left:@(_pageBgX)px;">
+            @if (_pageCtxIsProgram)
+            {
+                <button class="pcf-ctx-item" @onclick="ShowInsertFormFromCtx">
+                    <i class="ri-file-add-line me-2"></i>Insert Form
+                </button>
+            }
+            <button class="pcf-ctx-item" @onclick="ShowPageBgFromCtx">
+                <i class="ri-palette-line me-2"></i>Change Background
+            </button>
+        </div>
+    }
+
     @* ── Page background color picker ── *@
     @if (_showPageBgPicker)
     {
@@ -256,6 +273,32 @@
                             style="background:@bgStyle;"
                             @onclick="() => SetPageBgColor(color)">
                     </button>
+                }
+            </div>
+        </div>
+    }
+
+    @* ── Insert Form picker (program files) ── *@
+    @if (_showInsertFormPicker)
+    {
+        <div class="pcf-ctx-backdrop" @onclick="() => _showInsertFormPicker = false"></div>
+        <div class="pcf-insertform-picker" style="top:@(_pageBgY)px;left:@(_pageBgX)px;">
+            <div class="pcf-pagebg-title">
+                <i class="ri-file-add-line me-1"></i>Insert Form Above Page @(_pageBgPageIdx + 1)
+            </div>
+            <div class="pcf-insertform-list">
+                @foreach (var f in _programInsertFiles)
+                {
+                    <button class="pcf-insertform-item" @onclick="() => InsertFormFile(f)">
+                        <i class="ri-file-pdf-2-line me-2" style="color:#e11d48;"></i>
+                        @Path.GetFileNameWithoutExtension(f)
+                    </button>
+                }
+                @if (_programInsertFiles.Count == 0)
+                {
+                    <div style="padding:12px;color:#94a3b8;font-size:.82rem;text-align:center;">
+                        No template files found in ProgramInserts folder.
+                    </div>
                 }
             </div>
         </div>
@@ -455,15 +498,6 @@
                     </button>
                     <div class="vr mx-0" style="border-color:rgba(255,255,255,.3);"></div>
                 }
-                <span class="pcf-toolbar-file">
-                    <i class="ri-file-pdf-2-line me-1"></i>
-                    @{ var ap = _panes[_activeIdx]; }
-                    @if (!string.IsNullOrEmpty(ap.Section))
-                    {
-                        <span class="pcf-toolbar-section">@ap.Section</span>
-                    }
-                    @(ap.FileName ?? "Select a file")
-                </span>
             </div>
             @if (!string.IsNullOrEmpty(_csSessionName))
             {
@@ -496,11 +530,36 @@
                         @onclick='() => SetTool("draw")'>
                     <i class="ri-pencil-line"></i>
                 </button>
+                <button class="pcf-tool-btn @(_toolMode == "brush" ? "pcf-tool-active" : "")"
+                        title="Brush — semi-transparent highlighter brush"
+                        @onclick='() => SetTool("brush")'>
+                    <i class="ri-brush-line"></i>
+                </button>
                 <button class="pcf-tool-btn @(_toolMode == "text" ? "pcf-tool-active" : "")"
                         title="Add Text — click anywhere on the PDF to place a text note"
                         @onclick='() => SetTool("text")'>
                     <i class="ri-text"></i>
                 </button>
+                <div class="pcf-color-wrap">
+                    <button class="pcf-tool-btn" title="Stroke width"
+                            @onclick="() => _showWidths = !_showWidths"
+                            style="font-size:.7rem;min-width:36px;">
+                        <i class="ri-line-height"></i>
+                    </button>
+                    @if (_showWidths)
+                    {
+                        <div class="pcf-size-popup">
+                            @foreach (var w in _strokeWidths)
+                            {
+                                <div class="pcf-size-item @(w == _drawWidth ? "pcf-size-active" : "")"
+                                     @onclick="() => PickWidth(w)">
+                                    <span style="display:inline-block;width:24px;height:@(w)px;background:@_drawColor;border-radius:@(w)px;"></span>
+                                    <span>@(w)px</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
                 <div class="pcf-color-wrap">
                     <button class="pcf-tool-btn" title="Pick color — choose a color for drawing and text annotations"
                             @onclick="() => _showColors = !_showColors"
@@ -1486,6 +1545,24 @@
         transform: scale(1.2); border-color: #fff;
         box-shadow: 0 2px 10px rgba(0,0,0,.3);
     }
+    .pcf-insertform-picker {
+        position: fixed; z-index: 10006;
+        background: #263044; border: 1px solid #4a5c75; border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.06);
+        padding: 10px 12px; min-width: 220px; max-width: 320px;
+        animation: pcf-ctx-pop .12s ease-out;
+    }
+    .pcf-insertform-list {
+        display: flex; flex-direction: column; gap: 2px;
+        max-height: 300px; overflow-y: auto;
+    }
+    .pcf-insertform-item {
+        display: flex; align-items: center; padding: 8px 12px;
+        background: none; border: none; color: #e2e8f0;
+        font-size: .84rem; border-radius: 6px; cursor: pointer;
+        text-align: left; transition: background .12s;
+    }
+    .pcf-insertform-item:hover { background: #3b4d66; }
     .pcf-pagebg-white {
         border: 2px solid #94a3b8;
     }
@@ -1619,9 +1696,13 @@
 
     // Page background color picker
     bool _showPageBgPicker;
+    bool _showInsertFormPicker;
+    bool _showPageCtxMenu;
+    bool _pageCtxIsProgram;
     double _pageBgX, _pageBgY;
     string _pageBgPaneId = "";
     int _pageBgPageIdx;
+    List<string> _programInsertFiles = new();
 
     static readonly string[] _pageBgColors = [
         "", "#dbeafe", "#bfdbfe", "#93c5fd", "#60a5fa",
@@ -1645,10 +1726,13 @@
     const int WsPageSize = 10;
     string _toolMode = "";
     string _drawColor = "#e11d48";
+    double _drawWidth = 2.5;
     int _fontSize = 14;
     bool _showColors;
     bool _showSizes;
+    bool _showWidths;
     bool _hasAnnotations;
+    static readonly double[] _strokeWidths = [1, 2, 3, 5, 8, 12, 20];
     bool _saving;
     int _zoomPercent = 100;
     List<(string paneId, string file)>? _pendingReloads;
@@ -1717,6 +1801,7 @@
         _userName = DashSvc.GetPersonName(UserPersonId) ?? $"User {UserPersonId}";
         _folder = FolderSvc.GetPcFolder(PcId);
         _pcName = _folder?.PcName ?? $"PC {PcId}";
+        _programInsertFiles = FolderSvc.GetProgramInsertFiles();
         Console.WriteLine($"[PcFolder] Opened PC folder for '{_pcName}' (PC {PcId}) by '{_userName}'{(SessionId > 0 ? $" — CS session {SessionId}" : "")}");
         _csedSessionIds = DashSvc.GetCsedSessionIdsForPc(PcId);
         foreach (var pair in DashSvc.GetSessionsForPc(PcId))
@@ -1924,8 +2009,8 @@
         _toolMode = "";
         _zoomPercent = 100;
 
-        // Fire-and-forget the PDF load — use special endpoint for folder summary files
-        var apiPath = IsFolderSummaryFile(fileName)
+        // Fire-and-forget the PDF load — use special endpoint for folder summary files (Front Cover only)
+        var apiPath = IsFolderSummaryFile(fileName, relativePath)
             ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}&_t={DateTime.UtcNow.Ticks}"
             : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}&_t={DateTime.UtcNow.Ticks}";
         _ = LoadPdfAsync(gen, apiPath, paneId);
@@ -2236,6 +2321,13 @@
         await JS.InvokeVoidAsync("pcfViewer.setFontSize", size);
     }
 
+    async Task PickWidth(double width)
+    {
+        _drawWidth = width;
+        _showWidths = false;
+        await JS.InvokeVoidAsync("pcfViewer.setWidth", width);
+    }
+
     async Task SaveAnnotations()
     {
         var file = _panes[_activeIdx].File;
@@ -2269,7 +2361,7 @@
         var fileName = _panes[_activeIdx].FileName ?? System.IO.Path.GetFileName(file);
         Console.WriteLine($"[PcFolder] Downloaded file '{fileName}' by '{_userName}' — for PC {PcId}");
 
-        var apiEndpoint = IsFolderSummaryFile(fileName)
+        var apiEndpoint = IsFolderSummaryFile(fileName, file)
             ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(file)}&_t={DateTime.UtcNow.Ticks}"
             : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}&_t={DateTime.UtcNow.Ticks}";
         var js = "var a=document.createElement('a');a.href='" + apiEndpoint + "';a.download='" + fileName.Replace("'", "\\'") + "';document.body.appendChild(a);a.click();document.body.removeChild(a);";
@@ -2393,8 +2485,11 @@
     static bool IsFolderSummaryName(string lowerName) =>
         lowerName.Contains("folder summary") || lowerName.Contains("summary");
 
-    static bool IsFolderSummaryFile(string fileName)
+    static bool IsFolderSummaryFile(string fileName, string? relativePath = null)
     {
+        // Only treat as folder summary if it's in the Front_Cover section
+        if (relativePath != null && !relativePath.StartsWith("Front_Cover", StringComparison.OrdinalIgnoreCase))
+            return false;
         var nameNoExt = Path.GetFileNameWithoutExtension(fileName);
         if (nameNoExt.Length >= 6 && nameNoExt.Substring(0, 6).All(char.IsDigit) && nameNoExt.Length > 6 && !char.IsDigit(nameNoExt[6]))
             nameNoExt = nameNoExt.Substring(6).TrimStart(' ', '_', '-');
@@ -2420,18 +2515,28 @@
     [JSInvokable]
     public async Task OnPageRightClick(string paneId, int pageIdx, double clientX, double clientY)
     {
-        // Only show for Front/Back Cover files
         var paneIndex = Array.IndexOf(PaneIds, paneId);
         if (paneIndex < 0) return;
         var section = _panes[paneIndex].Section;
-        if (section != "Front Cover" && section != "Back Cover") return;
+        var fileName = _panes[paneIndex].FileName ?? "";
+        var lower = fileName.ToLowerInvariant();
 
         _pageBgPaneId = paneId;
         _pageBgPageIdx = pageIdx;
         _pageBgX = clientX;
         _pageBgY = clientY;
-        _showPageBgPicker = true;
-        await InvokeAsync(StateHasChanged);
+
+        bool isProgram = lower.Contains("program") || lower.Contains("prog");
+        bool isCover = section == "Front Cover" || section == "Back Cover";
+
+        if (isProgram || isCover)
+        {
+            _showPageCtxMenu = true;
+            _pageCtxIsProgram = isProgram;
+            _showPageBgPicker = false;
+            _showInsertFormPicker = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     [JSInvokable]
@@ -2439,6 +2544,28 @@
     {
         _hasAnnotations = true;
         await InvokeAsync(StateHasChanged);
+    }
+
+    void ShowInsertFormFromCtx()
+    {
+        _showPageCtxMenu = false;
+        _showInsertFormPicker = true;
+    }
+
+    void ShowPageBgFromCtx()
+    {
+        _showPageCtxMenu = false;
+        _showPageBgPicker = true;
+    }
+
+    async Task InsertFormFile(string fileName)
+    {
+        _showInsertFormPicker = false;
+        var url = $"/api/program-insert?name={Uri.EscapeDataString(fileName)}";
+        Console.WriteLine($"[PcFolder] Inserting form '{fileName}' above page {_pageBgPageIdx + 1} in pane {_pageBgPaneId} by '{_userName}' — PC {PcId}");
+        var count = await JS.InvokeAsync<int>("pcfViewer.insertPdfPages", _pageBgPaneId, _pageBgPageIdx, url);
+        Console.WriteLine($"[PcFolder] Inserted {count} pages from '{fileName}'");
+        _hasAnnotations = true;
     }
 
     async Task SetPageBgColor(string color)
@@ -2864,7 +2991,7 @@
         var relPath = _ctxNode.RelativePath;
         var fileName = _ctxNode.Name;
         CloseCtxMenu();
-        var apiEndpoint = IsFolderSummaryFile(fileName)
+        var apiEndpoint = IsFolderSummaryFile(fileName, relPath)
             ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(relPath)}&_t={DateTime.UtcNow.Ticks}"
             : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relPath)}&_t={DateTime.UtcNow.Ticks}";
         var js = $"var a=document.createElement('a');a.href='{apiEndpoint}';a.download='{fileName.Replace("'", "\\'")}';document.body.appendChild(a);a.click();document.body.removeChild(a);";
