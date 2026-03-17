@@ -201,10 +201,22 @@
                             <table class="table table-sm table-hover mb-0 home-aud-status-table">
                                 <thead>
                                     <tr>
-                                        <th style="width:18%;">PC Name</th>
+                                        <th style="width:18%;" class="home-pcs-sortable"
+                                            @onclick='() => ToggleAudSort("pc")'>
+                                            PC Name
+                                            <i class="@AudSortIcon("pc")"></i>
+                                        </th>
                                         <th style="width:18%;">Name</th>
-                                        <th style="width:12%;">Date</th>
-                                        <th style="width:12%;">Duration</th>
+                                        <th style="width:12%;" class="home-pcs-sortable"
+                                            @onclick='() => ToggleAudSort("date")'>
+                                            Date
+                                            <i class="@AudSortIcon("date")"></i>
+                                        </th>
+                                        <th style="width:12%;" class="home-pcs-sortable"
+                                            @onclick='() => ToggleAudSort("dur")'>
+                                            Duration
+                                            <i class="@AudSortIcon("dur")"></i>
+                                        </th>
                                         <th style="width:14%;">CS Status</th>
                                         <th style="width:14%;">CS By</th>
                                         <th style="width:12%;text-align:center;">Action</th>
@@ -221,7 +233,8 @@
                                             No sessions found for this period
                                         </td></tr>
                                     }
-                                    @foreach (var s in _auditorStatuses)
+                                    @{ var sortedAud = GetSortedAudStatuses(); }
+                                    @foreach (var s in sortedAud)
                                     {
                                         var isNewPc = s.PcName != prevAudPc;
                                         if (isNewPc) { audGroupIdx++; prevAudPc = s.PcName; }
@@ -1291,6 +1304,8 @@
     int _audStatusDays = 0;
     string _pcsSortCol = "pc";   // "pc", "date", "dur"
     bool _pcsSortAsc = true;
+    string _audSortCol = "pc";   // "pc", "date", "dur"
+    bool _audSortAsc = true;
 
     int?       _selPcId;
     int?       _selDay;
@@ -1708,6 +1723,36 @@
                 ? q.OrderBy(s => s.TotalSeconds).ThenBy(s => s.PcName)
                 : q.OrderByDescending(s => s.TotalSeconds).ThenBy(s => s.PcName),
             _ => _pcsSortAsc
+                ? q.OrderBy(s => s.PcName).ThenBy(s => s.SessionDate)
+                : q.OrderByDescending(s => s.PcName).ThenBy(s => s.SessionDate),
+        };
+        return q.ToList();
+    }
+
+    void ToggleAudSort(string col)
+    {
+        if (_audSortCol == col) _audSortAsc = !_audSortAsc;
+        else { _audSortCol = col; _audSortAsc = true; }
+    }
+
+    string AudSortIcon(string col)
+    {
+        if (_audSortCol != col) return "ri-arrow-up-down-line" + " home-pcs-sort-idle";
+        return _audSortAsc ? "ri-arrow-up-s-line home-pcs-sort-active" : "ri-arrow-down-s-line home-pcs-sort-active";
+    }
+
+    List<DashboardService.AuditorSessionStatus> GetSortedAudStatuses()
+    {
+        IEnumerable<DashboardService.AuditorSessionStatus> q = _auditorStatuses;
+        q = _audSortCol switch
+        {
+            "date" => _audSortAsc
+                ? q.OrderBy(s => s.SessionDate).ThenBy(s => s.PcName)
+                : q.OrderByDescending(s => s.SessionDate).ThenBy(s => s.PcName),
+            "dur" => _audSortAsc
+                ? q.OrderBy(s => s.TotalSeconds).ThenBy(s => s.PcName)
+                : q.OrderByDescending(s => s.TotalSeconds).ThenBy(s => s.PcName),
+            _ => _audSortAsc
                 ? q.OrderBy(s => s.PcName).ThenBy(s => s.SessionDate)
                 : q.OrderByDescending(s => s.PcName).ThenBy(s => s.SessionDate),
         };
