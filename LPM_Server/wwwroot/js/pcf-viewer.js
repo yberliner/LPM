@@ -685,6 +685,76 @@ window.pcfViewer = {
         const pagesJson = await this.getAnnotatedPdf(paneId);
         await window.pcfSaveAnnotatedPdf(this._pcId, pane.filePath, pagesJson);
         pane.annotations = [];
+    },
+
+    // ── Page background color ──
+
+    async setPageBackground(paneId, pageIdx, color) {
+        paneId = paneId || this.activePane;
+        const pane = this.panes[paneId];
+        if (!pane || !pane.pdfDoc) return;
+        const pg = pane.pages[pageIdx];
+        if (!pg) return;
+
+        const w = pg.canvas.width;
+        const h = pg.canvas.height;
+
+        // Render PDF to a temp canvas first
+        const tmpCanvas = document.createElement('canvas');
+        tmpCanvas.width = w;
+        tmpCanvas.height = h;
+        const tmpCtx = tmpCanvas.getContext('2d');
+        const page = await pane.pdfDoc.getPage(pageIdx + 1);
+        await page.render({ canvasContext: tmpCtx, viewport: pg.vp }).promise;
+
+        // Now draw background + PDF composite onto the real canvas
+        const ctx = pg.canvas.getContext('2d');
+        ctx.clearRect(0, 0, w, h);
+
+        // Fill background color first
+        if (color && color !== '' && color !== '#ffffff' && color !== '#FFFFFF') {
+            ctx.fillStyle = color;
+            ctx.fillRect(0, 0, w, h);
+        } else {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, w, h);
+        }
+
+        // Draw PDF on top — use multiply blend so white areas take the background color
+        if (color && color !== '' && color !== '#ffffff' && color !== '#FFFFFF') {
+            ctx.globalCompositeOperation = 'multiply';
+        }
+        ctx.drawImage(tmpCanvas, 0, 0);
+        ctx.globalCompositeOperation = 'source-over';
+
+        // Mark as having annotations so it gets saved
+        if (this.dotNetRef) {
+            try { this.dotNetRef.invokeMethodAsync('MarkAnnotationsDirty'); } catch(e) {}
+        }
+    },
+
+    getPageCount(paneId) {
+        paneId = paneId || this.activePane;
+        const pane = this.panes[paneId];
+        return pane && pane.pages ? pane.pages.length : 0;
+    },
+
+    attachPageContextMenu(paneId) {
+        const viewer = document.getElementById('pcf-viewer-' + paneId);
+        if (!viewer) return;
+        viewer.addEventListener('contextmenu', (e) => {
+            // Find which page was right-clicked
+            const wrapper = e.target.closest('.pcf-page-wrapper');
+            if (!wrapper) return;
+            const pane = this.panes[paneId];
+            if (!pane) return;
+            const idx = Array.from(viewer.querySelectorAll('.pcf-page-wrapper')).indexOf(wrapper);
+            if (idx < 0) return;
+            e.preventDefault();
+            if (this.dotNetRef) {
+                this.dotNetRef.invokeMethodAsync('OnPageRightClick', paneId, idx, e.clientX, e.clientY);
+            }
+        });
     }
 };
 

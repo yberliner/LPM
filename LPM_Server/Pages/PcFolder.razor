@@ -20,57 +20,83 @@
         @if (_folder != null)
         {
             @* ── Front Cover ── *@
-            <div class="pcf-section-title pcf-section-front" @onclick="() => _frontExpanded = !_frontExpanded">
-                <i class="@(_frontExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"></i>
-                <i class="ri-book-open-line me-1"></i>
-                Front Cover
-                <span class="pcf-section-count">@_folder.FrontCover.Count</span>
+            <div class="pcf-section-title pcf-section-front pcf-drop-zone"
+                 @oncontextmenu="OnFrontCoverCtx"
+                 @oncontextmenu:preventDefault="true"
+                 @ondrop="OnFrontCoverDrop">
+                <div class="pcf-drop-zone-inner" @onclick="() => _frontExpanded = !_frontExpanded">
+                    <i class="@(_frontExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"></i>
+                    <i class="ri-book-open-line me-1"></i>
+                    Front Cover
+                    <span class="pcf-section-count">@_folder.FrontCover.Count</span>
+                </div>
             </div>
             @if (_frontExpanded)
             {
-                @foreach (var f in _folder.FrontCover)
+                @foreach (var child in _folder.FrontCoverTree.Children)
                 {
-                    var active = IsFileActive(f.RelativePath);
-                    var clr = GetCoverBorderColor(f.FileName);
-                    var coverStyle = !string.IsNullOrEmpty(clr)
-                        ? $"border-left:3px solid {clr}; background:rgba({HexToRgb(clr)},.08);" : "";
-                    <div class="pcf-file-item @active"
-                         style="@coverStyle"
-                         @onclick="@(() => SelectFile(f.RelativePath, f.FileName, "Front Cover"))">
-                        @if (!string.IsNullOrEmpty(clr))
-                        {
-                            <span class="pcf-cover-dot" style="background:@clr;"></span>
-                        }
-                        <span class="pcf-file-name">@SessionDisplayName(f.FileName)</span>
+                    @RenderTreeNode(child, "Front_Cover", 0)
+                }
+                @if (_isCreatingFolder && _createFolderParent == "Front_Cover" && _createFolderSection == "Front_Cover")
+                {
+                    <div class="pcf-tree-folder pcf-create-folder-row" style="padding-left:14px;">
+                        <i class="ri-folder-add-line" style="color:#fbbf24;"></i>
+                        <input class="pcf-rename-input" value="@_createFolderName"
+                               @oninput="e => _createFolderName = e.Value?.ToString() ?? string.Empty"
+                               @onkeydown="OnCreateFolderKey"
+                               placeholder="Folder name" />
+                        <button class="pcf-create-folder-ok" @onclick="ConfirmCreateFolder"
+                                disabled="@string.IsNullOrWhiteSpace(_createFolderName)">
+                            <i class="ri-check-line"></i>
+                        </button>
+                        <button class="pcf-create-folder-cancel" @onclick="CancelCreateFolder">
+                            <i class="ri-close-line"></i>
+                        </button>
                     </div>
                 }
+                <div class="pcf-new-btn" @onclick="OnFrontCoverNew">
+                    <i class="ri-add-line"></i> New...
+                </div>
             }
 
             @* ── Back Cover ── *@
-            <div class="pcf-section-title pcf-section-back" @onclick="() => _backExpanded = !_backExpanded">
-                <i class="@(_backExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"></i>
-                <i class="ri-book-3-line me-1"></i>
-                Back Cover
-                <span class="pcf-section-count">@_folder.BackCover.Count</span>
+            <div class="pcf-section-title pcf-section-back pcf-drop-zone"
+                 @oncontextmenu="OnBackCoverCtx"
+                 @oncontextmenu:preventDefault="true"
+                 @ondrop="OnBackCoverDrop">
+                <div class="pcf-drop-zone-inner" @onclick="() => _backExpanded = !_backExpanded">
+                    <i class="@(_backExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"></i>
+                    <i class="ri-book-3-line me-1"></i>
+                    Back Cover
+                    <span class="pcf-section-count">@_folder.BackCover.Count</span>
+                </div>
             </div>
             @if (_backExpanded)
             {
-                @foreach (var f in _folder.BackCover)
+                @foreach (var child in _folder.BackCoverTree.Children)
                 {
-                    var active = IsFileActive(f.RelativePath);
-                    var clr = GetCoverBorderColor(f.FileName);
-                    var coverStyle = !string.IsNullOrEmpty(clr)
-                        ? $"border-left:3px solid {clr}; background:rgba({HexToRgb(clr)},.08);" : "";
-                    <div class="pcf-file-item @active"
-                         style="@coverStyle"
-                         @onclick="@(() => SelectFile(f.RelativePath, f.FileName, "Back Cover"))">
-                        @if (!string.IsNullOrEmpty(clr))
-                        {
-                            <span class="pcf-cover-dot" style="background:@clr;"></span>
-                        }
-                        <span class="pcf-file-name">@SessionDisplayName(f.FileName)</span>
+                    @RenderTreeNode(child, "Back_Cover", 0)
+                }
+                @if (_isCreatingFolder && _createFolderParent == "Back_Cover" && _createFolderSection == "Back_Cover")
+                {
+                    <div class="pcf-tree-folder pcf-create-folder-row" style="padding-left:14px;">
+                        <i class="ri-folder-add-line" style="color:#fbbf24;"></i>
+                        <input class="pcf-rename-input" value="@_createFolderName"
+                               @oninput="e => _createFolderName = e.Value?.ToString() ?? string.Empty"
+                               @onkeydown="OnCreateFolderKey"
+                               placeholder="Folder name" />
+                        <button class="pcf-create-folder-ok" @onclick="ConfirmCreateFolder"
+                                disabled="@string.IsNullOrWhiteSpace(_createFolderName)">
+                            <i class="ri-check-line"></i>
+                        </button>
+                        <button class="pcf-create-folder-cancel" @onclick="CancelCreateFolder">
+                            <i class="ri-close-line"></i>
+                        </button>
                     </div>
                 }
+                <div class="pcf-new-btn" @onclick="OnBackCoverNew">
+                    <i class="ri-add-line"></i> New...
+                </div>
             }
 
             @* ── WorkSheets ── *@
@@ -183,6 +209,190 @@
     @if (_sidebarOpen)
     {
         <div class="pcf-sidebar-backdrop" @onclick="() => _sidebarOpen = false"></div>
+    }
+
+    @* ── Page background color picker ── *@
+    @if (_showPageBgPicker)
+    {
+        <div class="pcf-ctx-backdrop" @onclick="() => _showPageBgPicker = false"></div>
+        <div class="pcf-pagebg-picker" style="top:@(_pageBgY)px;left:@(_pageBgX)px;">
+            <div class="pcf-pagebg-title">
+                <i class="ri-palette-line me-1"></i>Page @(_pageBgPageIdx + 1) Background
+            </div>
+            <div class="pcf-pagebg-grid">
+                @for (int i = 0; i < _pageBgColors.Length; i++)
+                {
+                    var color = _pageBgColors[i];
+                    var label = _pageBgLabels[i];
+                    var bgStyle = string.IsNullOrEmpty(color) ? "#ffffff" : color;
+                    <button class="pcf-pagebg-swatch @(string.IsNullOrEmpty(color) ? "pcf-pagebg-white" : "")"
+                            title="@label"
+                            style="background:@bgStyle;"
+                            @onclick="() => SetPageBgColor(color)">
+                    </button>
+                }
+            </div>
+        </div>
+    }
+
+    @* ── Context menu ── *@
+    @if (_showCtxMenu && _ctxNode != null)
+    {
+        <div class="pcf-ctx-backdrop" @onclick="CloseCtxMenu"></div>
+        <div class="pcf-ctx-menu" style="top:@(_ctxMenuY)px;left:@(_ctxMenuX)px;">
+            @if (_ctxNode.IsFolder)
+            {
+                <button @onclick="CtxNewFolder"><i class="ri-folder-add-line me-2"></i>New Folder</button>
+                <button @onclick="CtxUploadFile"><i class="ri-upload-2-line me-2"></i>Upload File</button>
+                <button @onclick="CtxNewEmptyPdf"><i class="ri-file-add-line me-2"></i>New Empty PDF</button>
+                @if (_ctxNode.RelativePath != "Front_Cover" && _ctxNode.RelativePath != "Back_Cover")
+                {
+                    <div class="pcf-ctx-divider"></div>
+                    <button @onclick="CtxRename"><i class="ri-edit-line me-2"></i>Rename</button>
+                    <button class="pcf-ctx-danger" @onclick="CtxDelete"><i class="ri-delete-bin-line me-2"></i>Delete Folder</button>
+                }
+            }
+            else
+            {
+                <button @onclick="CtxMoveTo"><i class="ri-folder-transfer-line me-2"></i>Move to...</button>
+                <button @onclick="CtxRename"><i class="ri-edit-line me-2"></i>Rename</button>
+                <button class="pcf-ctx-danger" @onclick="CtxDelete"><i class="ri-delete-bin-line me-2"></i>Delete</button>
+                <div class="pcf-ctx-divider"></div>
+                <button @onclick="CtxDownload"><i class="ri-download-2-line me-2"></i>Download</button>
+            }
+        </div>
+    }
+
+    @* ── New menu popover ── *@
+    @if (_newMenuSection != null)
+    {
+        <div class="pcf-ctx-backdrop" @onclick="CloseNewMenu"></div>
+        <div class="pcf-new-popover" style="top:@(_newMenuY)px;left:@(_newMenuX)px;">
+            @if (_newMenuUpload)
+            {
+                <div style="padding:8px 12px;">
+                    <InputFile accept=".pdf" multiple OnChange="NewMenuUploadFile"
+                               class="form-control form-control-sm"
+                               style="background:#0f172a; color:#e2e8f0; border-color:#475569; font-size:.78rem;" />
+                </div>
+            }
+            else
+            {
+                <button @onclick="NewMenuFolder"><i class="ri-folder-add-line me-2"></i>New Folder</button>
+                <button @onclick="() => _newMenuUpload = true"><i class="ri-upload-2-line me-2"></i>Upload File</button>
+                <button @onclick="NewMenuEmptyPdf"><i class="ri-file-add-line me-2"></i>New Empty PDF</button>
+            }
+        </div>
+    }
+
+    @* ── Delete confirmation modal ── *@
+    @if (_showDeleteConfirm)
+    {
+        <div class="pcf-modal-backdrop" @onclick="() => _showDeleteConfirm = false">
+            <div class="pcf-modal-sm" @onclick:stopPropagation="true">
+                <div class="pcf-modal-icon-danger"><i class="ri-delete-bin-line"></i></div>
+                <div style="font-weight:700; font-size:.95rem; margin-bottom:4px;">
+                    Delete @(_deleteIsFolder ? "folder" : "file")?
+                </div>
+                <div style="font-size:.82rem; color:#94a3b8; margin-bottom:16px; word-break:break-word;">
+                    "@_deleteTargetName"
+                    @if (!_deleteIsFolder) { <span> will be backed up.</span> }
+                    else { <span> (must be empty)</span> }
+                </div>
+                <div class="d-flex gap-2 justify-content-center">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showDeleteConfirm = false">Cancel</button>
+                    <button class="btn btn-sm btn-danger" @onclick="ExecuteDelete">Delete</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Upload overwrite confirmation modal ── *@
+    @if (_showOverwriteConfirm)
+    {
+        <div class="pcf-modal-backdrop" @onclick="CancelOverwrite">
+            <div class="pcf-modal-sm" @onclick:stopPropagation="true">
+                <div class="pcf-modal-icon-danger"><i class="ri-file-warning-line"></i></div>
+                <div style="font-weight:700; font-size:.95rem; margin-bottom:8px;">
+                    File@(_uploadDuplicateNames.Count > 1 ? "s" : "") already exist@(_uploadDuplicateNames.Count == 1 ? "s" : "")
+                </div>
+                <div style="font-size:.82rem; color:#94a3b8; margin-bottom:4px;">
+                    @foreach (var name in _uploadDuplicateNames)
+                    {
+                        <div style="color:#fbbf24; font-weight:600;">@name</div>
+                    }
+                </div>
+                <div style="font-size:.78rem; color:#64748b; margin-bottom:16px;">
+                    The existing file@(_uploadDuplicateNames.Count > 1 ? "s" : "") will be backed up before overwriting.
+                </div>
+                <div class="d-flex gap-2 justify-content-center">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="CancelOverwrite">Cancel</button>
+                    <button class="btn btn-sm btn-warning" @onclick="ConfirmOverwrite">Overwrite</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Drag-drop confirmation modal ── *@
+    @if (_showDragConfirm)
+    {
+        <div class="pcf-modal-backdrop" @onclick="CancelDragMove">
+            <div class="pcf-modal-sm" @onclick:stopPropagation="true">
+                <div class="pcf-modal-icon-move"><i class="ri-folder-transfer-line"></i></div>
+                <div style="font-weight:700; font-size:.95rem; margin-bottom:12px;">Confirm Move</div>
+                <div style="font-size:.84rem; color:#e2e8f0; margin-bottom:4px; word-break:break-word;">
+                    Move "<strong>@_dragConfirmFileName</strong>"
+                </div>
+                <div style="font-size:.78rem; color:#94a3b8; margin-bottom:3px;">
+                    <i class="ri-folder-line me-1" style="color:#f59e0b;"></i>From: <strong style="color:#e2e8f0;">@_dragConfirmFrom</strong>
+                </div>
+                <div style="font-size:.78rem; color:#94a3b8; margin-bottom:16px;">
+                    <i class="ri-folder-open-line me-1" style="color:#22c55e;"></i>To: <strong style="color:#e2e8f0;">@_dragConfirmTo</strong>
+                </div>
+                <div class="d-flex gap-2 justify-content-center">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="CancelDragMove">Cancel</button>
+                    <button class="btn btn-sm btn-primary" @onclick="ExecuteDragMove">Move</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Move-to modal ── *@
+    @if (_showMoveModal && _folder != null)
+    {
+        <div class="pcf-modal-backdrop" @onclick="() => _showMoveModal = false">
+            <div class="pcf-modal-move" @onclick:stopPropagation="true">
+                <div style="font-weight:700; font-size:.92rem; margin-bottom:4px;">
+                    <i class="ri-folder-transfer-line me-2" style="color:#3b82f6;"></i>Move "@_moveFileName"
+                </div>
+                <div style="font-size:.75rem; color:#64748b; margin-bottom:12px;">Select destination folder</div>
+                <div style="max-height:40vh; overflow-y:auto; margin-bottom:12px; background:#0f172a; border-radius:6px; padding:6px 0;">
+                    @RenderMoveFolderTree(GetSectionTree(_moveFileSection), 0)
+                </div>
+                @if (_moveNewFolderMode)
+                {
+                    <div class="d-flex gap-2 mb-2">
+                        <input class="form-control form-control-sm" @bind="_moveNewFolderName"
+                               placeholder="New folder name"
+                               style="background:#0f172a; color:#e2e8f0; border-color:#475569; font-size:.82rem;" />
+                        <button class="btn btn-sm btn-primary" style="white-space:nowrap;"
+                                disabled="@string.IsNullOrWhiteSpace(_moveNewFolderName)"
+                                @onclick="CreateMoveDestFolder">Create</button>
+                    </div>
+                }
+                <div class="d-flex gap-2 justify-content-between">
+                    <button class="btn btn-sm btn-outline-light d-flex align-items-center gap-1"
+                            @onclick="() => _moveNewFolderMode = !_moveNewFolderMode">
+                        <i class="ri-folder-add-line"></i>New Folder
+                    </button>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showMoveModal = false">Cancel</button>
+                        <button class="btn btn-sm btn-primary" @onclick="ExecuteMove"
+                                disabled="@string.IsNullOrEmpty(_moveSelectedFolder)">Move Here</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     }
 
     @* ── Main content: PDF viewer ── *@
@@ -889,6 +1099,158 @@
         .pcf-ws-pager button { padding: 6px 12px; min-height: 36px; }
         .pcf-annotation-canvas { cursor: default; }
     }
+
+    /* ── Tree file manager ── */
+    .pcf-tree-folder {
+        display: flex; align-items: center; gap: 4px;
+        padding: 5px 14px; font-size: .78rem; cursor: pointer;
+        color: #e2e8f0; transition: background .12s; user-select: none;
+    }
+    .pcf-tree-folder:hover { background: rgba(255,255,255,.06); }
+    .pcf-drop-target { background: rgba(59,130,246,.2) !important; outline: 2px dashed #3b82f6; outline-offset: -2px; }
+    .pcf-drop-zone { position: relative; }
+    .pcf-drop-zone-inner { display: flex; align-items: center; flex: 1; pointer-events: auto; }
+
+    .pcf-rename-input {
+        background: #0f172a; color: #e2e8f0; border: 1px solid #3b82f6;
+        border-radius: 4px; padding: 2px 6px; font-size: .78rem;
+        outline: none; flex: 1; min-width: 60px;
+    }
+
+    .pcf-create-folder-row { gap: 4px !important; }
+    .pcf-create-folder-ok {
+        background: #22c55e; color: #fff; border: none; border-radius: 4px;
+        width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+        font-size: .85rem; cursor: pointer; flex-shrink: 0; transition: background .15s;
+    }
+    .pcf-create-folder-ok:hover:not(:disabled) { background: #16a34a; }
+    .pcf-create-folder-ok:disabled { opacity: .3; cursor: default; }
+    .pcf-create-folder-cancel {
+        background: transparent; color: #94a3b8; border: 1px solid #475569; border-radius: 4px;
+        width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+        font-size: .85rem; cursor: pointer; flex-shrink: 0; transition: all .15s;
+    }
+    .pcf-create-folder-cancel:hover { color: #ef4444; border-color: #ef4444; }
+
+    .pcf-new-btn {
+        display: flex; align-items: center; gap: 4px;
+        padding: 6px 28px; font-size: .74rem; color: #64748b;
+        cursor: pointer; transition: all .12s; border-top: 1px dashed rgba(255,255,255,.06);
+        margin-top: 2px;
+    }
+    .pcf-new-btn:hover { color: #e2e8f0; background: rgba(255,255,255,.04); }
+
+    /* ── Context menu ── */
+    .pcf-ctx-backdrop { position: fixed; top:0; left:0; right:0; bottom:0; z-index: 10005; }
+    .pcf-ctx-menu {
+        position: fixed; z-index: 10006;
+        background: #263044; border: 1px solid #4a5c75; border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.06);
+        padding: 6px 0; min-width: 200px; animation: pcf-ctx-pop .12s ease-out;
+    }
+    .pcf-ctx-menu button {
+        display: flex; align-items: center; width: 100%; text-align: left; padding: 9px 16px;
+        background: none; border: none; color: #e2e8f0; font-size: .84rem;
+        cursor: pointer; white-space: nowrap; transition: background .1s;
+    }
+    .pcf-ctx-menu button:hover { background: rgba(255,255,255,.12); }
+    .pcf-ctx-menu button i { color: #60a5fa; }
+    .pcf-ctx-menu button i.ri-delete-bin-line { color: #ef4444; }
+    .pcf-ctx-danger { color: #ef4444 !important; }
+    .pcf-ctx-danger i { color: #ef4444 !important; }
+    .pcf-ctx-danger:hover { background: rgba(239,68,68,.15) !important; }
+    .pcf-ctx-divider { border-top: 1px solid #334155; margin: 4px 0; }
+    @@keyframes pcf-ctx-pop { from { opacity: 0; transform: scale(.95); } to { opacity: 1; transform: scale(1); } }
+
+    /* ── New menu popover ── */
+    .pcf-new-popover {
+        position: fixed; z-index: 10006;
+        background: #263044; border: 1px solid #4a5c75; border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.06);
+        padding: 6px 0; min-width: 200px; animation: pcf-ctx-pop .12s ease-out;
+    }
+    .pcf-new-popover button {
+        display: flex; align-items: center; width: 100%; text-align: left; padding: 9px 16px;
+        background: none; border: none; color: #e2e8f0; font-size: .84rem;
+        cursor: pointer; white-space: nowrap; transition: background .1s;
+    }
+    .pcf-new-popover button:hover { background: rgba(255,255,255,.12); }
+    .pcf-new-popover button i { color: #60a5fa; }
+
+    /* ── Modals ── */
+    .pcf-modal-backdrop {
+        position: fixed; top:0; left:0; right:0; bottom:0; z-index: 10010;
+        background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center;
+    }
+    .pcf-modal-sm {
+        background: #1e293b; border: 1px solid #334155; border-radius: 14px;
+        padding: 28px 24px; max-width: 340px; width: 90%; text-align: center;
+        color: #e2e8f0; box-shadow: 0 20px 60px rgba(0,0,0,.4);
+        animation: pcf-ctx-pop .2s ease-out;
+    }
+    .pcf-modal-icon-danger {
+        width: 52px; height: 52px; border-radius: 50%;
+        background: rgba(239,68,68,.15); color: #ef4444;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 1.5rem; margin-bottom: 12px;
+    }
+    .pcf-modal-icon-move {
+        width: 52px; height: 52px; border-radius: 50%;
+        background: rgba(59,130,246,.15); color: #3b82f6;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 1.5rem; margin-bottom: 12px;
+    }
+    .pcf-modal-move {
+        background: #1e293b; border: 1px solid #334155; border-radius: 14px;
+        padding: 20px; max-width: 380px; width: 90%;
+        color: #e2e8f0; box-shadow: 0 20px 60px rgba(0,0,0,.4);
+        animation: pcf-ctx-pop .2s ease-out;
+    }
+    .pcf-move-folder {
+        display: flex; align-items: center; gap: 6px;
+        padding: 7px 10px; border-radius: 6px; cursor: pointer;
+        font-size: .82rem; transition: background .12s; color: #e2e8f0;
+    }
+    .pcf-move-folder:hover { background: rgba(255,255,255,.08); }
+    .pcf-move-folder-selected { background: #3b82f6 !important; color: #fff !important; }
+
+    /* ── Page background color picker ── */
+    .pcf-pagebg-picker {
+        position: fixed; z-index: 10006;
+        background: #263044; border: 1px solid #4a5c75; border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.06);
+        padding: 10px 12px; min-width: 200px; animation: pcf-ctx-pop .12s ease-out;
+    }
+    .pcf-pagebg-title {
+        font-size: .78rem; font-weight: 600; color: #94a3b8;
+        margin-bottom: 8px; text-align: center;
+    }
+    .pcf-pagebg-grid {
+        display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px;
+    }
+    .pcf-pagebg-swatch {
+        width: 30px; height: 30px; border-radius: 6px;
+        border: 2px solid rgba(255,255,255,.15); cursor: pointer;
+        transition: transform .12s, border-color .12s, box-shadow .12s;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .pcf-pagebg-swatch:hover {
+        transform: scale(1.2); border-color: #fff;
+        box-shadow: 0 2px 10px rgba(0,0,0,.3);
+    }
+    .pcf-pagebg-white {
+        border: 2px solid #94a3b8;
+    }
+
+    /* ── Responsive: file manager menus ── */
+    @@media (max-width: 768px) {
+        .pcf-ctx-menu, .pcf-new-popover {
+            left: 50% !important; top: auto !important; bottom: 20px !important;
+            transform: translateX(-50%); min-width: 220px;
+        }
+        .pcf-modal-sm { max-width: 92vw; }
+        .pcf-modal-move { max-width: 92vw; }
+    }
 </style>
 
 @code {
@@ -927,6 +1289,83 @@
     bool _wsExpanded = true;
     string _wsFilter = "";
     HashSet<string> _collapsedAttachments = [];
+
+    // ── Tree file manager state ──
+    HashSet<string> _expandedTreeFolders = new(StringComparer.OrdinalIgnoreCase);
+
+    // Context menu
+    bool _showCtxMenu;
+    double _ctxMenuX, _ctxMenuY;
+    FolderTreeNode? _ctxNode;
+    string _ctxSection = "";
+
+    // Rename inline
+    bool _isRenaming;
+    string _renameTargetPath = "";
+    string _renameValue = "";
+
+    // New menu popover
+    string? _newMenuSection;
+    string _newMenuParentFolder = "";
+    bool _newMenuUpload;
+    double _newMenuX, _newMenuY;
+
+    // New folder inline input
+    bool _isCreatingFolder;
+    string _createFolderParent = "";
+    string _createFolderSection = "";
+    string _createFolderName = "";
+
+    // Move modal
+    bool _showMoveModal;
+    string _moveFilePath = "";
+    string _moveFileName = "";
+    string _moveFileSection = "";
+    string _moveSelectedFolder = "";
+    bool _moveNewFolderMode;
+    string _moveNewFolderName = "";
+    string _moveNewFolderParent = "";
+
+    // Drag & drop
+    FolderTreeNode? _dragNode;
+    string _dragSection = "";
+
+    // Drag-drop confirmation modal
+    bool _showDragConfirm;
+    string _dragConfirmFileName = "";
+    string _dragConfirmFrom = "";
+    string _dragConfirmTo = "";
+    string _dragConfirmToPath = "";
+
+    // Delete confirmation
+    bool _showDeleteConfirm;
+    string _deleteTargetPath = "";
+    string _deleteTargetName = "";
+    bool _deleteIsFolder;
+
+    // Upload overwrite confirmation
+    bool _showOverwriteConfirm;
+    List<(string Name, byte[] Data)> _uploadPendingFiles = [];
+    List<string> _uploadDuplicateNames = [];
+
+    // Page background color picker
+    bool _showPageBgPicker;
+    double _pageBgX, _pageBgY;
+    string _pageBgPaneId = "";
+    int _pageBgPageIdx;
+
+    static readonly string[] _pageBgColors = [
+        "", "#dbeafe", "#bfdbfe", "#93c5fd", "#60a5fa",
+        "#fce7f3", "#fbcfe8", "#f9a8d4", "#c4b5fd",
+        "#d1fae5", "#a7f3d0", "#fef3c7", "#fde68a",
+        "#fee2e2", "#fecaca", "#e2e8f0", "#cbd5e1"
+    ];
+    static readonly string[] _pageBgLabels = [
+        "White", "Blue 1", "Blue 2", "Blue 3", "Blue 4",
+        "Pink 1", "Pink 2", "Pink 3", "Purple",
+        "Green 1", "Green 2", "Yellow 1", "Yellow 2",
+        "Red 1", "Red 2", "Gray 1", "Gray 2"
+    ];
 
     void ToggleAttachments(string wsKey)
     {
@@ -1108,6 +1547,14 @@
                 }
             }
 
+            // Attach right-click handler for page background color
+            try
+            {
+                for (int i = 0; i < 3; i++)
+                    await JS.InvokeVoidAsync("pcfViewer.attachPageContextMenu", PaneIds[i]);
+            }
+            catch { /* JS not yet loaded — will work after page refresh */ }
+
             // Load Ctrl+key shortcuts
             try
             {
@@ -1115,6 +1562,30 @@
                 await JS.InvokeVoidAsync("lpmLoadShortcuts", sc);
             }
             catch { }
+
+            // Drag-and-drop: handle dragover/dragleave on drop zones and tree folders
+            await JS.InvokeVoidAsync("eval", @"
+                (function() {
+                    var sidebar = document.querySelector('.pcf-sidebar');
+                    if (!sidebar || sidebar._dragSetup) return;
+                    sidebar._dragSetup = true;
+                    sidebar.addEventListener('dragover', function(e) {
+                        var zone = e.target.closest('.pcf-drop-zone, .pcf-tree-folder, .pcf-file-item');
+                        if (zone) { e.preventDefault(); zone.classList.add('pcf-drop-target'); }
+                    });
+                    sidebar.addEventListener('dragleave', function(e) {
+                        var zone = e.target.closest('.pcf-drop-zone, .pcf-tree-folder, .pcf-file-item');
+                        if (zone && !zone.contains(e.relatedTarget)) {
+                            zone.classList.remove('pcf-drop-target');
+                        }
+                    });
+                    sidebar.addEventListener('drop', function(e) {
+                        sidebar.querySelectorAll('.pcf-drop-target').forEach(function(el) {
+                            el.classList.remove('pcf-drop-target');
+                        });
+                    });
+                })();
+            ");
 
             // Ctrl+Z → Undo
             await JS.InvokeVoidAsync("eval", @"
@@ -1514,8 +1985,10 @@
         var fileName = _panes[_activeIdx].FileName ?? System.IO.Path.GetFileName(file);
         Console.WriteLine($"[PcFolder] Downloaded file '{fileName}' by '{_userName}' — for PC {PcId}");
 
-        var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}&_t={DateTime.UtcNow.Ticks}";
-        var js = "var a=document.createElement('a');a.href='" + url + "';a.download='" + fileName.Replace("'", "\\'") + "';document.body.appendChild(a);a.click();document.body.removeChild(a);";
+        var apiEndpoint = IsFolderSummaryFile(fileName)
+            ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(file)}&_t={DateTime.UtcNow.Ticks}"
+            : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}&_t={DateTime.UtcNow.Ticks}";
+        var js = "var a=document.createElement('a');a.href='" + apiEndpoint + "';a.download='" + fileName.Replace("'", "\\'") + "';document.body.appendChild(a);a.click();document.body.removeChild(a);";
         await JS.InvokeVoidAsync("eval", js);
     }
 
@@ -1654,4 +2127,511 @@
     }
 
     static string SessionDisplayName(string fileName) => Path.GetFileNameWithoutExtension(fileName);
+
+    // ── Tree file manager methods ──────────────────────────
+
+    [JSInvokable]
+    public async Task OnPageRightClick(string paneId, int pageIdx, double clientX, double clientY)
+    {
+        // Only show for Front/Back Cover files
+        var paneIndex = Array.IndexOf(PaneIds, paneId);
+        if (paneIndex < 0) return;
+        var section = _panes[paneIndex].Section;
+        if (section != "Front Cover" && section != "Back Cover") return;
+
+        _pageBgPaneId = paneId;
+        _pageBgPageIdx = pageIdx;
+        _pageBgX = clientX;
+        _pageBgY = clientY;
+        _showPageBgPicker = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task MarkAnnotationsDirty()
+    {
+        _hasAnnotations = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task SetPageBgColor(string color)
+    {
+        Console.WriteLine($"[PcFolder] Set page {_pageBgPageIdx} background to '{(string.IsNullOrEmpty(color) ? "white" : color)}' in pane {_pageBgPaneId} by '{_userName}' — PC {PcId}");
+        await JS.InvokeVoidAsync("pcfViewer.setPageBackground", _pageBgPaneId, _pageBgPageIdx, color);
+        _showPageBgPicker = false;
+    }
+
+    // Section-level event handlers (avoid nested quotes in Razor attributes)
+    void OnFrontCoverCtx(MouseEventArgs e) => ShowCtxMenu(e, _folder!.FrontCoverTree, "Front_Cover");
+    void OnFrontCoverDrop() => OnTreeDrop(_folder!.FrontCoverTree.RelativePath, "Front_Cover");
+    void OnFrontCoverNew(MouseEventArgs e) => ShowNewMenu(e, "Front_Cover", "Front_Cover");
+    void OnBackCoverCtx(MouseEventArgs e) => ShowCtxMenu(e, _folder!.BackCoverTree, "Back_Cover");
+    void OnBackCoverDrop() => OnTreeDrop(_folder!.BackCoverTree.RelativePath, "Back_Cover");
+    void OnBackCoverNew(MouseEventArgs e) => ShowNewMenu(e, "Back_Cover", "Back_Cover");
+
+    void ExpandPathHierarchy(string folderRelPath)
+    {
+        // Expand all parent folders in the path: "Front_Cover/A/B" → expand "Front_Cover", "Front_Cover/A", "Front_Cover/A/B"
+        var parts = folderRelPath.Split('/');
+        var path = "";
+        foreach (var part in parts)
+        {
+            path = string.IsNullOrEmpty(path) ? part : $"{path}/{part}";
+            _expandedTreeFolders.Add(path);
+        }
+    }
+
+    bool IsFolderExpanded(string relPath) => _expandedTreeFolders.Contains(relPath);
+
+    void ToggleTreeFolder(string relPath)
+    {
+        if (!_expandedTreeFolders.Remove(relPath))
+            _expandedTreeFolders.Add(relPath);
+    }
+
+    string FolderDisplayPath(string relPath)
+    {
+        // "Front_Cover/Medical/Imaging" → "Medical / Imaging"
+        var parts = relPath.Split('/');
+        return parts.Length <= 1 ? "(root)" : string.Join(" / ", parts.Skip(1));
+    }
+
+    RenderFragment RenderTreeNode(FolderTreeNode node, string section, int depth) => __builder =>
+    {
+        if (node.IsFolder)
+        {
+            var isExpanded = IsFolderExpanded(node.RelativePath);
+            var isDropTarget = _dragNode != null && _dragSection == section;
+            <div class="pcf-tree-folder"
+                 style="padding-left:@(14 + depth * 18)px;"
+                 @oncontextmenu="e => ShowCtxMenu(e, node, section)"
+                 @oncontextmenu:preventDefault="true"
+                 ondragover="event.preventDefault();"
+                 @ondrop="() => OnTreeDrop(node.RelativePath, section)"
+                 @onclick="() => ToggleTreeFolder(node.RelativePath)">
+                <i class="@(isExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")" style="font-size:.85rem;"></i>
+                <i class="@(isExpanded ? "ri-folder-open-line" : "ri-folder-line")" style="color:#fbbf24;"></i>
+                @if (_isRenaming && _renameTargetPath == node.RelativePath)
+                {
+                    <input class="pcf-rename-input" value="@_renameValue"
+                           @oninput="e => _renameValue = e.Value?.ToString() ?? string.Empty"
+                           @onkeydown="e => OnRenameKey(e, true)"
+                           @onfocusout="CancelRename"
+                           @onclick:stopPropagation="true" />
+                }
+                else
+                {
+                    <span class="pcf-file-name" style="color:#fbbf24;">@node.Name</span>
+                    <span class="pcf-section-count" style="font-size:.6rem;">@node.Children.Count(c => !c.IsFolder)</span>
+                }
+            </div>
+            @if (isExpanded)
+            {
+                @foreach (var child in node.Children)
+                {
+                    @RenderTreeNode(child, section, depth + 1)
+                }
+                @if (_isCreatingFolder && _createFolderParent == node.RelativePath && _createFolderSection == section)
+                {
+                    <div class="pcf-tree-folder pcf-create-folder-row" style="padding-left:@(14 + (depth + 1) * 18)px;">
+                        <i class="ri-folder-add-line" style="color:#fbbf24;"></i>
+                        <input class="pcf-rename-input" value="@_createFolderName"
+                               @oninput="e => _createFolderName = e.Value?.ToString() ?? string.Empty"
+                               @onkeydown="OnCreateFolderKey"
+                               placeholder="Folder name" />
+                        <button class="pcf-create-folder-ok" @onclick="ConfirmCreateFolder"
+                                disabled="@string.IsNullOrWhiteSpace(_createFolderName)">
+                            <i class="ri-check-line"></i>
+                        </button>
+                        <button class="pcf-create-folder-cancel" @onclick="CancelCreateFolder">
+                            <i class="ri-close-line"></i>
+                        </button>
+                    </div>
+                }
+            }
+        }
+        else
+        {
+            var active = IsFileActive(node.RelativePath);
+            var clr = GetCoverBorderColor(node.Name);
+            var coverStyle = !string.IsNullOrEmpty(clr)
+                ? $"border-left:3px solid {clr}; background:rgba({HexToRgb(clr)},.08);" : "";
+            var sectionLabel = section == "Front_Cover" ? "Front Cover" : "Back Cover";
+            var fileParentFolder = Path.GetDirectoryName(node.RelativePath)?.Replace('\\', '/') ?? section;
+            <div class="pcf-file-item @active"
+                 style="padding-left:@(14 + depth * 18)px; @coverStyle"
+                 draggable="true"
+                 @ondragstart="() => OnDragStart(node, section)"
+                 @ondragend="OnDragEnd"
+                 ondragover="event.preventDefault();"
+                 @ondrop="() => OnTreeDrop(fileParentFolder, section)"
+                 @ondrop:stopPropagation="true"
+                 @oncontextmenu="e => ShowCtxMenu(e, node, section)"
+                 @oncontextmenu:preventDefault="true"
+                 @onclick="@(() => SelectFile(node.RelativePath, node.Name, sectionLabel))">
+                @if (_isRenaming && _renameTargetPath == node.RelativePath)
+                {
+                    <input class="pcf-rename-input" value="@_renameValue"
+                           @oninput="e => _renameValue = e.Value?.ToString() ?? string.Empty"
+                           @onkeydown="e => OnRenameKey(e, false)"
+                           @onfocusout="CancelRename"
+                           @onclick:stopPropagation="true" />
+                }
+                else
+                {
+                    @if (!string.IsNullOrEmpty(clr))
+                    {
+                        <span class="pcf-cover-dot" style="background:@clr;"></span>
+                    }
+                    <span class="pcf-file-name">@SessionDisplayName(node.Name)</span>
+                }
+            </div>
+        }
+    };
+
+    // ── Context menu ──
+
+    void ShowCtxMenu(MouseEventArgs e, FolderTreeNode node, string section)
+    {
+        _ctxNode = node;
+        _ctxSection = section;
+        // Clamp to prevent off-screen (approx menu size 200x200)
+        _ctxMenuX = Math.Min(e.ClientX, Math.Max(e.ClientX, 10));
+        _ctxMenuY = Math.Min(e.ClientY, Math.Max(e.ClientY, 10));
+        _showCtxMenu = true;
+        CloseNewMenu();
+    }
+
+    void CloseCtxMenu() { _showCtxMenu = false; _ctxNode = null; }
+
+    // ── Context menu actions ──
+
+    void CtxNewFolder()
+    {
+        if (_ctxNode == null) return;
+        var parent = _ctxNode.IsFolder ? _ctxNode.RelativePath : Path.GetDirectoryName(_ctxNode.RelativePath)!.Replace('\\', '/');
+        Console.WriteLine($"[PcFolder] New folder requested in '{parent}' by '{_userName}' — PC {PcId}");
+        _createFolderParent = parent;
+        _createFolderSection = _ctxSection;
+        _createFolderName = "";
+        _isCreatingFolder = true;
+        if (!_expandedTreeFolders.Contains(parent)) _expandedTreeFolders.Add(parent);
+        CloseCtxMenu();
+    }
+
+    void CtxRename()
+    {
+        if (_ctxNode == null) return;
+        _renameTargetPath = _ctxNode.RelativePath;
+        _renameValue = _ctxNode.IsFolder ? _ctxNode.Name : Path.GetFileNameWithoutExtension(_ctxNode.Name);
+        _isRenaming = true;
+        CloseCtxMenu();
+    }
+
+    void CtxDelete()
+    {
+        if (_ctxNode == null) return;
+        _deleteTargetPath = _ctxNode.RelativePath;
+        _deleteTargetName = _ctxNode.Name;
+        _deleteIsFolder = _ctxNode.IsFolder;
+        _showDeleteConfirm = true;
+        CloseCtxMenu();
+    }
+
+    void CtxMoveTo()
+    {
+        if (_ctxNode == null || _ctxNode.IsFolder) return;
+        _moveFilePath = _ctxNode.RelativePath;
+        _moveFileName = _ctxNode.Name;
+        _moveFileSection = _ctxSection;
+        _moveSelectedFolder = "";
+        _moveNewFolderMode = false;
+        _moveNewFolderName = "";
+        _showMoveModal = true;
+        CloseCtxMenu();
+    }
+
+    async Task CtxDownload()
+    {
+        if (_ctxNode == null || _ctxNode.IsFolder) return;
+        var relPath = _ctxNode.RelativePath;
+        var fileName = _ctxNode.Name;
+        CloseCtxMenu();
+        var apiEndpoint = IsFolderSummaryFile(fileName)
+            ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(relPath)}&_t={DateTime.UtcNow.Ticks}"
+            : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relPath)}&_t={DateTime.UtcNow.Ticks}";
+        var js = $"var a=document.createElement('a');a.href='{apiEndpoint}';a.download='{fileName.Replace("'", "\\'")}';document.body.appendChild(a);a.click();document.body.removeChild(a);";
+        await JS.InvokeVoidAsync("eval", js);
+    }
+
+    void CtxUploadFile()
+    {
+        if (_ctxNode == null) return;
+        _newMenuParentFolder = _ctxNode.IsFolder ? _ctxNode.RelativePath : Path.GetDirectoryName(_ctxNode.RelativePath)!.Replace('\\', '/');
+        _newMenuSection = _ctxSection;
+        _newMenuUpload = true;
+        CloseCtxMenu();
+    }
+
+    void CtxNewEmptyPdf()
+    {
+        if (_ctxNode == null) return;
+        var parent = _ctxNode.IsFolder ? _ctxNode.RelativePath : Path.GetDirectoryName(_ctxNode.RelativePath)!.Replace('\\', '/');
+        var pdfBytes = FolderSvc.CreateEmptyPdf();
+        var fileName = $"new-{DateTime.Now:yyMMdd-HHmmss}.pdf";
+        Console.WriteLine($"[PcFolder] Created empty PDF '{fileName}' in '{parent}' by '{_userName}' — PC {PcId}");
+        FolderSvc.SaveSectionFileToPath(PcId, parent, fileName, pdfBytes);
+        _folder = FolderSvc.GetPcFolder(PcId);
+        CloseCtxMenu();
+    }
+
+    // ── Rename ──
+
+    void OnRenameKey(KeyboardEventArgs e, bool isFolder)
+    {
+        if (e.Key == "Enter")
+        {
+            if (!string.IsNullOrWhiteSpace(_renameValue))
+            {
+                Console.WriteLine($"[PcFolder] Renamed '{_renameTargetPath}' to '{_renameValue}' (isFolder={isFolder}) by '{_userName}' — PC {PcId}");
+                if (isFolder)
+                    FolderSvc.RenameFolder(PcId, _renameTargetPath, _renameValue);
+                else
+                    FolderSvc.RenameFile(PcId, _renameTargetPath, _renameValue);
+                _folder = FolderSvc.GetPcFolder(PcId);
+            }
+            CancelRename();
+        }
+        else if (e.Key == "Escape") CancelRename();
+    }
+
+    void CancelRename() { _isRenaming = false; _renameTargetPath = ""; }
+
+    // ── Create folder ──
+
+    void OnCreateFolderKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") ConfirmCreateFolder();
+        else if (e.Key == "Escape") CancelCreateFolder();
+    }
+
+    void ConfirmCreateFolder()
+    {
+        if (!string.IsNullOrWhiteSpace(_createFolderName))
+        {
+            Console.WriteLine($"[PcFolder] Created folder '{_createFolderName}' in '{_createFolderParent}' by '{_userName}' — PC {PcId}");
+            FolderSvc.CreateSubfolder(PcId, _createFolderParent, _createFolderName);
+            _folder = FolderSvc.GetPcFolder(PcId);
+        }
+        CancelCreateFolder();
+    }
+
+    void CancelCreateFolder() { _isCreatingFolder = false; _createFolderName = ""; }
+
+    // ── New menu ──
+
+    void ShowNewMenu(MouseEventArgs e, string section, string parentFolder)
+    {
+        _newMenuSection = _newMenuSection == section ? null : section;
+        _newMenuParentFolder = parentFolder;
+        _newMenuUpload = false;
+        _newMenuX = e.ClientX;
+        _newMenuY = e.ClientY - 100; // position above the click
+    }
+
+    void CloseNewMenu() { _newMenuSection = null; _newMenuUpload = false; }
+
+    void NewMenuFolder()
+    {
+        _createFolderParent = _newMenuParentFolder;
+        _createFolderSection = _newMenuSection!;
+        _createFolderName = "";
+        _isCreatingFolder = true;
+        if (!_expandedTreeFolders.Contains(_newMenuParentFolder))
+            _expandedTreeFolders.Add(_newMenuParentFolder);
+        CloseNewMenu();
+    }
+
+    void NewMenuEmptyPdf()
+    {
+        var pdfBytes = FolderSvc.CreateEmptyPdf();
+        var fileName = $"new-{DateTime.Now:yyMMdd-HHmmss}.pdf";
+        FolderSvc.SaveSectionFileToPath(PcId, _newMenuParentFolder, fileName, pdfBytes);
+        _folder = FolderSvc.GetPcFolder(PcId);
+        CloseNewMenu();
+    }
+
+    async Task NewMenuUploadFile(InputFileChangeEventArgs e)
+    {
+        _uploadPendingFiles.Clear();
+        _uploadDuplicateNames.Clear();
+        var parentFolder = _newMenuParentFolder;
+
+        foreach (var file in e.GetMultipleFiles(20))
+        {
+            using var ms = new MemoryStream();
+            await file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024).CopyToAsync(ms);
+            var data = ms.ToArray();
+            if (FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, file.Name))
+            {
+                _uploadPendingFiles.Add((file.Name, data));
+                _uploadDuplicateNames.Add(file.Name);
+            }
+            else
+            {
+                Console.WriteLine($"[PcFolder] Uploaded file '{file.Name}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
+                FolderSvc.SaveSectionFileToPath(PcId, parentFolder, file.Name, data);
+            }
+        }
+
+        if (_uploadDuplicateNames.Count > 0)
+        {
+            _showOverwriteConfirm = true;
+            CloseNewMenu();
+        }
+        else
+        {
+            _folder = FolderSvc.GetPcFolder(PcId);
+            CloseNewMenu();
+        }
+    }
+
+    void ConfirmOverwrite()
+    {
+        foreach (var (name, data) in _uploadPendingFiles)
+        {
+            Console.WriteLine($"[PcFolder] Overwriting file '{name}' in '{_newMenuParentFolder}' by '{_userName}' — PC {PcId}");
+            FolderSvc.SaveSectionFileToPath(PcId, _newMenuParentFolder, name, data, overwrite: true);
+        }
+        _uploadPendingFiles.Clear();
+        _uploadDuplicateNames.Clear();
+        _showOverwriteConfirm = false;
+        _folder = FolderSvc.GetPcFolder(PcId);
+    }
+
+    void CancelOverwrite()
+    {
+        _uploadPendingFiles.Clear();
+        _uploadDuplicateNames.Clear();
+        _showOverwriteConfirm = false;
+        _folder = FolderSvc.GetPcFolder(PcId); // still refresh for non-duplicate files that were saved
+    }
+
+    // ── Delete ──
+
+    void ExecuteDelete()
+    {
+        Console.WriteLine($"[PcFolder] Deleted '{_deleteTargetName}' (isFolder={_deleteIsFolder}) by '{_userName}' — PC {PcId}");
+        if (_deleteIsFolder)
+            FolderSvc.DeleteEmptyFolder(PcId, _deleteTargetPath);
+        else
+        {
+            FolderSvc.DeleteFileToBackup(PcId, _deleteTargetPath);
+            // Clear pane if showing deleted file
+            for (int i = 0; i < _paneCount; i++)
+                if (_panes[i].File == _deleteTargetPath)
+                    { _panes[i].File = null; _panes[i].FileName = null; _panes[i].Section = ""; }
+        }
+        _folder = FolderSvc.GetPcFolder(PcId);
+        _showDeleteConfirm = false;
+    }
+
+    // ── Move modal ──
+
+    FolderTreeNode? GetSectionTree(string section) =>
+        section == "Front_Cover" ? _folder?.FrontCoverTree : _folder?.BackCoverTree;
+
+    RenderFragment RenderMoveFolderTree(FolderTreeNode? node, int depth) => __builder =>
+    {
+        if (node == null) return;
+        var isSelected = _moveSelectedFolder == node.RelativePath;
+        <div class="pcf-move-folder @(isSelected ? "pcf-move-folder-selected" : "")"
+             style="padding-left:@(8 + depth * 18)px;"
+             @onclick="() => _moveSelectedFolder = node.RelativePath"
+             @onclick:stopPropagation="true">
+            <i class="ri-folder-line" style="color:#fbbf24;"></i>
+            <span>@(depth == 0 ? "(root)" : node.Name)</span>
+        </div>
+        @foreach (var child in node.Children.Where(c => c.IsFolder))
+        {
+            @RenderMoveFolderTree(child, depth + 1)
+        }
+    };
+
+    void ExecuteMove()
+    {
+        if (string.IsNullOrEmpty(_moveSelectedFolder)) return;
+        Console.WriteLine($"[PcFolder] Moved '{_moveFileName}' to '{_moveSelectedFolder}' by '{_userName}' — PC {PcId}");
+        FolderSvc.MoveFile(PcId, _moveFilePath, _moveSelectedFolder);
+        ExpandPathHierarchy(_moveSelectedFolder);
+        _folder = FolderSvc.GetPcFolder(PcId);
+        _showMoveModal = false;
+    }
+
+    void CreateMoveDestFolder()
+    {
+        if (string.IsNullOrWhiteSpace(_moveNewFolderName)) return;
+        var parent = string.IsNullOrEmpty(_moveSelectedFolder)
+            ? _moveFileSection
+            : _moveSelectedFolder;
+        FolderSvc.CreateSubfolder(PcId, parent, _moveNewFolderName);
+        _folder = FolderSvc.GetPcFolder(PcId);
+        _moveNewFolderName = "";
+        _moveNewFolderMode = false;
+    }
+
+    // ── Drag & drop ──
+
+    void OnDragStart(FolderTreeNode node, string section)
+    {
+        _dragNode = node;
+        _dragSection = section;
+        Console.WriteLine($"[PcFolder] Drag started: '{node.Name}' from {section} — PC {PcId}");
+    }
+
+    void OnDragEnd()
+    {
+        // Only clear if no confirmation dialog is pending
+        if (!_showDragConfirm)
+        {
+            _dragNode = null;
+            _dragSection = "";
+        }
+    }
+
+    void OnTreeDrop(string folderRelPath, string section)
+    {
+        if (_dragNode == null || _dragNode.IsFolder || _dragSection != section)
+        {
+            _dragNode = null; _dragSection = "";
+            return;
+        }
+        var srcFolder = Path.GetDirectoryName(_dragNode.RelativePath)?.Replace('\\', '/') ?? "";
+        if (srcFolder == folderRelPath) { _dragNode = null; _dragSection = ""; return; }
+
+        _dragConfirmFileName = _dragNode.Name;
+        _dragConfirmFrom = FolderDisplayPath(srcFolder);
+        _dragConfirmTo = FolderDisplayPath(folderRelPath);
+        _dragConfirmToPath = folderRelPath;
+        _showDragConfirm = true;
+        Console.WriteLine($"[PcFolder] Drop requested: '{_dragNode.Name}' from '{srcFolder}' to '{folderRelPath}' — PC {PcId}");
+    }
+
+    void ExecuteDragMove()
+    {
+        if (_dragNode == null) return;
+        Console.WriteLine($"[PcFolder] Drag move confirmed: '{_dragNode.RelativePath}' → '{_dragConfirmToPath}' by '{_userName}' — PC {PcId}");
+        FolderSvc.MoveFile(PcId, _dragNode.RelativePath, _dragConfirmToPath);
+        ExpandPathHierarchy(_dragConfirmToPath);
+        _folder = FolderSvc.GetPcFolder(PcId);
+        _showDragConfirm = false;
+        _dragNode = null; _dragSection = "";
+    }
+
+    void CancelDragMove()
+    {
+        Console.WriteLine($"[PcFolder] Drag move cancelled by '{_userName}' — PC {PcId}");
+        _showDragConfirm = false;
+        _dragNode = null; _dragSection = "";
+    }
 }

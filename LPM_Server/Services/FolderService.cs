@@ -6,7 +6,8 @@ namespace LPM.Services;
 
 public record FolderFileItem(string FileName, string Section, string RelativePath, DateTime? DateParsed);
 public record WorkSheetItem(FolderFileItem File, List<FolderFileItem> Attachments);
-public record PcFolderInfo(int PcId, string PcName, string FolderPath, List<FolderFileItem> FrontCover, List<FolderFileItem> BackCover, List<WorkSheetItem> WorkSheets);
+public record FolderTreeNode(string Name, string RelativePath, bool IsFolder, DateTime? DateParsed, List<FolderTreeNode> Children);
+public record PcFolderInfo(int PcId, string PcName, string FolderPath, List<FolderFileItem> FrontCover, List<FolderFileItem> BackCover, List<WorkSheetItem> WorkSheets, FolderTreeNode FrontCoverTree, FolderTreeNode BackCoverTree);
 
 public static class BackupProgress
 {
@@ -177,8 +178,10 @@ public class FolderService
         var frontCover = GetFilesForSection(folder, "Front_Cover");
         var backCover = GetFilesForSection(folder, "Back_Cover");
         var workSheets = GetWorkSheets(folder);
+        var frontTree = BuildSectionTree(folder, "Front_Cover");
+        var backTree = BuildSectionTree(folder, "Back_Cover");
 
-        return new PcFolderInfo(pcId, pcName, folder, frontCover, backCover, workSheets);
+        return new PcFolderInfo(pcId, pcName, folder, frontCover, backCover, workSheets, frontTree, backTree);
     }
 
     private List<WorkSheetItem> GetWorkSheets(string pcFolder)
@@ -224,12 +227,12 @@ public class FolderService
         var sectionPath = Path.Combine(pcFolder, section);
         if (!Directory.Exists(sectionPath)) return [];
 
-        return Directory.GetFiles(sectionPath, "*.pdf")
+        return Directory.GetFiles(sectionPath, "*.pdf", SearchOption.AllDirectories)
             .Select(f =>
             {
                 var name = Path.GetFileName(f);
                 var dateParsed = TryParseDatePrefix(name);
-                var relativePath = $"{section}/{name}";
+                var relativePath = Path.GetRelativePath(pcFolder, f).Replace('\\', '/');
                 return new FolderFileItem(name, section, relativePath, dateParsed);
             })
             .ToList();
@@ -719,6 +722,182 @@ public class FolderService
     }
 
     /// <summary>Resolve relative path safely — prevents traversal and absolute path injection</summary>
+    // ── Tree & File Management ──────────────────────────────
+
+    private FolderTreeNode BuildSectionTree(string pcFolder, string section)
+    {
+        var sectionPath = Path.Combine(pcFolder, section);
+        if (!Directory.Exists(sectionPath))
+            return new FolderTreeNode(section, section, true, null, []);
+        return BuildTreeRecursive(pcFolder, sectionPath, section);
+    }
+
+    private FolderTreeNode BuildTreeRecursive(string pcFolder, string dirPath, string sectionName)
+    {
+        var relativePath = Path.GetRelativePath(pcFolder, dirPath).Replace('\\', '/');
+        var name = Path.GetFileName(dirPath);
+        var children = new List<FolderTreeNode>();
+
+        // Subfolders first (sorted alphabetically)
+        foreach (var subDir in Directory.GetDirectories(dirPath).OrderBy(d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase))
+        {
+            children.Add(BuildTreeRecursive(pcFolder, subDir, sectionName));
+        }
+
+        // Files (sorted alphabetically)
+        foreach (var file in Directory.GetFiles(dirPath, "*.pdf").OrderBy(f => Path.GetFileName(f), StringComparer.OrdinalIgnoreCase))
+        {
+            var fileName = Path.GetFileName(file);
+            var fileRelPath = Path.GetRelativePath(pcFolder, file).Replace('\\', '/');
+            var dateParsed = TryParseDatePrefix(fileName);
+            children.Add(new FolderTreeNode(fileName, fileRelPath, false, dateParsed, []));
+        }
+
+        return new FolderTreeNode(name, relativePath, true, null, children);
+    }
+
+    public bool CreateSubfolder(int pcId, string parentRelativePath, string folderName)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return false;
+        var sanitized = SanitizeName(folderName);
+        if (string.IsNullOrWhiteSpace(sanitized)) return false;
+        var parentPath = SafeResolvePath(folder, parentRelativePath);
+        if (parentPath == null || !Directory.Exists(parentPath)) return false;
+        var newPath = Path.Combine(parentPath, sanitized);
+        if (Directory.Exists(newPath)) return false;
+        Directory.CreateDirectory(newPath);
+        Console.WriteLine($"[FolderService] Created subfolder '{sanitized}' in {parentRelativePath} for PC {pcId}");
+        return true;
+    }
+
+    public bool MoveFile(int pcId, string sourceRelativePath, string destFolderRelativePath)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return false;
+        var srcPath = SafeResolvePath(folder, sourceRelativePath);
+        if (srcPath == null || !File.Exists(srcPath)) return false;
+        var destDir = SafeResolvePath(folder, destFolderRelativePath);
+        if (destDir == null || !Directory.Exists(destDir)) return false;
+        var fileName = Path.GetFileName(srcPath);
+        var destPath = Path.Combine(destDir, fileName);
+        if (File.Exists(destPath)) return false; // no silent overwrite
+        File.Move(srcPath, destPath);
+        Console.WriteLine($"[FolderService] Moved '{sourceRelativePath}' → '{destFolderRelativePath}/{fileName}' for PC {pcId}");
+        return true;
+    }
+
+    public bool RenameFile(int pcId, string relativePath, string newName)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return false;
+        var sanitized = SanitizeName(newName);
+        if (string.IsNullOrWhiteSpace(sanitized)) return false;
+        if (!sanitized.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            sanitized += ".pdf";
+        var fullPath = SafeResolvePath(folder, relativePath);
+        if (fullPath == null || !File.Exists(fullPath)) return false;
+        var dir = Path.GetDirectoryName(fullPath)!;
+        var destPath = Path.Combine(dir, sanitized);
+        if (File.Exists(destPath)) return false;
+        File.Move(fullPath, destPath);
+        Console.WriteLine($"[FolderService] Renamed '{relativePath}' → '{sanitized}' for PC {pcId}");
+        return true;
+    }
+
+    public bool RenameFolder(int pcId, string relativePath, string newName)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return false;
+        var sanitized = SanitizeName(newName);
+        if (string.IsNullOrWhiteSpace(sanitized)) return false;
+        var fullPath = SafeResolvePath(folder, relativePath);
+        if (fullPath == null || !Directory.Exists(fullPath)) return false;
+        var parentDir = Path.GetDirectoryName(fullPath)!;
+        var destPath = Path.Combine(parentDir, sanitized);
+        if (Directory.Exists(destPath)) return false;
+        Directory.Move(fullPath, destPath);
+        Console.WriteLine($"[FolderService] Renamed folder '{relativePath}' → '{sanitized}' for PC {pcId}");
+        return true;
+    }
+
+    public bool DeleteFileToBackup(int pcId, string relativePath)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return false;
+        var fullPath = SafeResolvePath(folder, relativePath);
+        if (fullPath == null || !File.Exists(fullPath)) return false;
+        BackupFile(pcId, relativePath);
+        File.Delete(fullPath);
+        Console.WriteLine($"[FolderService] Deleted (backed up) '{relativePath}' for PC {pcId}");
+        return true;
+    }
+
+    public bool DeleteEmptyFolder(int pcId, string relativePath)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return false;
+        var fullPath = SafeResolvePath(folder, relativePath);
+        if (fullPath == null || !Directory.Exists(fullPath)) return false;
+        if (Directory.GetFileSystemEntries(fullPath).Length > 0) return false; // not empty
+        Directory.Delete(fullPath);
+        Console.WriteLine($"[FolderService] Deleted empty folder '{relativePath}' for PC {pcId}");
+        return true;
+    }
+
+    public byte[] CreateEmptyPdf()
+    {
+        using var ms = new System.IO.MemoryStream();
+        var doc = new PdfSharpCore.Pdf.PdfDocument();
+        doc.AddPage(); // blank A4 page
+        doc.Save(ms);
+        return ms.ToArray();
+    }
+
+    public bool SectionFileExistsAtPath(int pcId, string relativeFolder, string fileName)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return false;
+        var targetDir = SafeResolvePath(folder, relativeFolder);
+        if (targetDir == null) return false;
+        var safeName = SanitizeName(fileName);
+        if (!safeName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            safeName += ".pdf";
+        return File.Exists(Path.Combine(targetDir, safeName));
+    }
+
+    public bool SaveSectionFileToPath(int pcId, string relativeFolder, string fileName, byte[] fileBytes, bool overwrite = false)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return false;
+        var targetDir = SafeResolvePath(folder, relativeFolder);
+        if (targetDir == null) return false;
+        Directory.CreateDirectory(targetDir);
+        var safeName = SanitizeName(fileName);
+        if (!safeName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            safeName += ".pdf";
+        var fullPath = Path.Combine(targetDir, safeName);
+        if (File.Exists(fullPath))
+        {
+            if (!overwrite) return false;
+            // Backup existing file before overwriting
+            var relPath = Path.GetRelativePath(folder, fullPath).Replace('\\', '/');
+            BackupFile(pcId, relPath);
+            File.Delete(fullPath);
+        }
+        File.WriteAllBytes(fullPath, fileBytes);
+        TryShrinkPdf(fullPath);
+        EncryptFileInPlace(fullPath);
+        Console.WriteLine($"[FolderService] Saved '{safeName}' to {relativeFolder} for PC {pcId}{(overwrite ? " (overwrite)" : "")}");
+        return true;
+    }
+
+    private static string SanitizeName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        return string.Join("_", name.Split(invalid)).Trim();
+    }
+
     private static string? SafeResolvePath(string baseFolder, string relativePath)
     {
         var normalized = relativePath.Replace('\\', '/');
