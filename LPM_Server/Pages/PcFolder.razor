@@ -649,15 +649,128 @@
                             @(p.FileName ?? "Empty")
                         </div>
                     }
-                    <div class="pcf-viewer" id="pcf-viewer-@PaneIds[idx]">
-                        @if (string.IsNullOrEmpty(p.File))
-                        {
+                    @{
+                        var isExcelPane = _excelData != null && p.File == _excelRelPath && idx == _activeIdx;
+                        var isPdfPane = !string.IsNullOrEmpty(p.File) && !isExcelPane;
+                        var isEmptyPane = string.IsNullOrEmpty(p.File);
+                    }
+                    @* JS-managed PDF viewer — always present, hidden when not showing PDF *@
+                    <div class="pcf-viewer" id="pcf-viewer-@PaneIds[idx]"
+                         style="@(isPdfPane ? "" : "display:none !important;")">
+                    </div>
+                    @if (isEmptyPane)
+                    {
+                        <div class="pcf-viewer" style="justify-content:center;">
                             <div class="pcf-empty">
                                 <i class="ri-file-search-line" style="font-size:3rem;opacity:.3;"></i>
                                 <div class="mt-2" style="font-size:.9rem;">Select a file from the sidebar</div>
                             </div>
-                        }
-                    </div>
+                        </div>
+                    }
+                    else if (isExcelPane)
+                    {
+                        <div class="pcf-viewer" style="align-items:stretch; padding:16px;">
+                            <div class="pcf-excel-editor">
+                                @* ── Toolbar (above header) ── *@
+                                <div class="pcf-excel-toolbar">
+                                    <button class="btn btn-success d-flex align-items-center gap-1 pcf-excel-btn"
+                                            disabled="@(!_excelDirty)"
+                                            @onclick="SaveExcelChanges">
+                                        <i class="ri-save-line"></i> Save
+                                    </button>
+                                    <button class="btn btn-primary d-flex align-items-center gap-1 pcf-excel-btn"
+                                            @onclick="AddExcelRow">
+                                        <i class="ri-add-line"></i> Add Row
+                                    </button>
+                                    @if (_excelDirty)
+                                    {
+                                        <span style="font-size:.72rem; color:#f59e0b; margin-left:8px;">
+                                            <i class="ri-error-warning-line me-1"></i>Unsaved changes
+                                        </span>
+                                    }
+                                </div>
+
+                                @* ── Header info rows ── *@
+                                <div class="pcf-excel-header-info">
+                                    <div class="pcf-excel-title">TAA Table</div>
+                                    <div class="pcf-excel-meta">
+                                        <span><strong>PC Name:</strong> @_excelData.PcName</span>
+                                        <span><strong>Action:</strong>
+                                            <input value="@(_excelActionEdit ?? _excelData.Action)"
+                                                   @oninput="e => { _excelActionEdit = e.Value?.ToString() ?? string.Empty; _excelDirty = true; }"
+                                                   class="pcf-excel-action-input" />
+                                        </span>
+                                    </div>
+                                </div>
+
+                                @* ── Data table ── *@
+                                <div class="pcf-excel-table-wrap">
+                                    <table class="pcf-excel-table">
+                                        <thead>
+                                            <tr>
+                                                <th class="pcf-excel-rownum">#</th>
+                                                @foreach (var h in _excelData.ColumnHeaders.Take(6))
+                                                {
+                                                    <th>@h</th>
+                                                }
+                                                <th style="width:36px;"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @{
+                                                var dataRows = _excelData.Cells
+                                                    .Where(c => c.Row >= 7 && c.Col <= 6)
+                                                    .GroupBy(c => c.Row)
+                                                    .OrderBy(g => g.Key)
+                                                    .ToList();
+                                            }
+                                            @foreach (var rowGroup in dataRows)
+                                            {
+                                                var row = rowGroup.Key;
+                                                <tr>
+                                                    <td class="pcf-excel-rownum">@(row - 6)</td>
+                                                    @foreach (var cell in rowGroup.OrderBy(c => c.Col))
+                                                    {
+                                                        var r = cell.Row;
+                                                        var c = cell.Col;
+                                                        var isEditable = c <= 3 || c == 6; // A,B,C,F editable; D,E are formulas
+                                                        var displayVal = _excelEdits.TryGetValue((r, c), out var edited) ? edited : cell.Value;
+                                                        @if (isEditable)
+                                                        {
+                                                            <td class="pcf-excel-editable">
+                                                                <input value="@displayVal"
+                                                                       @oninput="e => OnExcelCellEdit(r, c, e.Value?.ToString() ?? string.Empty)"
+                                                                       class="pcf-excel-input" />
+                                                            </td>
+                                                        }
+                                                        else
+                                                        {
+                                                            var formulaVal = _formulaOverrides.TryGetValue((r, c), out var ov) ? ov : FormatFormulaCell(cell.Value, c);
+                                                            <td class="pcf-excel-formula">@formulaVal</td>
+                                                        }
+                                                    }
+                                                    <td class="pcf-excel-actions">
+                                                        <button class="pcf-excel-del-btn" title="Delete row"
+                                                                @onclick="() => DeleteExcelRow(row)">
+                                                            <i class="ri-close-line"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            }
+                                            @if (dataRows.Count == 0)
+                                            {
+                                                <tr>
+                                                    <td colspan="8" style="text-align:center; padding:20px; color:#64748b;">
+                                                        No data rows. Click "Add Row" to start.
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    }
                 </div>
             }
         </div>
@@ -699,6 +812,14 @@
     <div class="pcf-toast-success">
         <i class="ri-check-double-line me-2" style="font-size:1.2rem;"></i>
         CS review marked as done! You can close this tab.
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(_errorToast))
+{
+    <div class="pcf-toast-error">
+        <i class="ri-error-warning-line me-2" style="font-size:1.2rem;"></i>
+        @_errorToast
     </div>
 }
 
@@ -1026,6 +1147,15 @@
         from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
         to   { opacity: 1; transform: translateX(-50%) translateY(0); }
     }
+    .pcf-toast-error {
+        position: fixed; top: 56px; left: 50%; transform: translateX(-50%);
+        z-index: 10000; background: #dc2626; color: #fff;
+        padding: 12px 28px; border-radius: 10px;
+        font-size: .9rem; font-weight: 600;
+        box-shadow: 0 8px 24px rgba(0,0,0,.3);
+        display: flex; align-items: center;
+        animation: pcf-toast-in .3s ease-out;
+    }
 
     .pcf-lock-banner {
         background: linear-gradient(135deg, #92400e, #b45309);
@@ -1074,8 +1204,9 @@
     /* ── PDF page wrapper ── */
     .pcf-page-wrapper {
         position: relative; box-shadow: 0 4px 20px rgba(0,0,0,.3); background: #fff;
+        max-width: 100%;
     }
-    .pcf-page-wrapper canvas { display: block; }
+    .pcf-page-wrapper canvas { display: block; max-width: 100%; height: auto !important; }
     .pcf-annotation-canvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
 
     .pcf-text-input {
@@ -1261,6 +1392,76 @@
     .pcf-move-folder:hover { background: rgba(255,255,255,.08); }
     .pcf-move-folder-selected { background: #3b82f6 !important; color: #fff !important; }
 
+    /* ── Excel spreadsheet editor ── */
+    .pcf-excel-editor {
+        width: 100%; max-width: 900px; padding: 16px; color: #1e293b;
+    }
+    .pcf-excel-header-info {
+        background: #f0f4ff; border-radius: 10px; padding: 14px 18px; margin-bottom: 12px;
+        border: 1px solid #e2e8f0;
+    }
+    .pcf-excel-title {
+        font-size: 1.1rem; font-weight: 800; color: #1e3a5f; margin-bottom: 6px;
+    }
+    .pcf-excel-meta {
+        display: flex; gap: 24px; font-size: .82rem; color: #475569;
+    }
+    .pcf-excel-toolbar {
+        display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+    }
+    .pcf-excel-btn {
+        padding: 6px 16px; font-size: .88rem; font-weight: 600;
+        box-shadow: 0 2px 6px rgba(0,0,0,.2); letter-spacing: .3px;
+    }
+    .pcf-excel-btn:disabled {
+        opacity: .45; box-shadow: none;
+    }
+    .pcf-excel-table-wrap {
+        overflow-x: auto; border-radius: 8px; border: 1px solid #cbd5e1;
+        background: #fff;
+    }
+    .pcf-excel-table {
+        width: 100%; border-collapse: collapse; font-size: .82rem;
+    }
+    .pcf-excel-table thead th {
+        background: #1e3a5f; color: #fff; padding: 8px 10px;
+        font-weight: 600; font-size: .76rem; text-transform: uppercase;
+        letter-spacing: .3px; text-align: center; white-space: nowrap;
+        border: 1px solid #1e3a5f; position: sticky; top: 0; z-index: 1;
+    }
+    .pcf-excel-table tbody td {
+        padding: 0; border: 1px solid #e2e8f0; text-align: center;
+    }
+    .pcf-excel-rownum {
+        width: 32px; color: #94a3b8; font-size: .7rem; text-align: center !important;
+        background: #f8fafc; padding: 6px 4px !important;
+    }
+    .pcf-excel-editable { padding: 0 !important; }
+    .pcf-excel-input {
+        width: 100%; border: none; outline: none; padding: 6px 8px;
+        font-size: .82rem; text-align: center; background: transparent;
+        color: #1e293b;
+    }
+    .pcf-excel-input:focus {
+        background: #eff6ff; outline: 2px solid #3b82f6; outline-offset: -2px;
+    }
+    .pcf-excel-action-input {
+        border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px 8px;
+        font-size: .82rem; color: #1e293b; background: #fff; width: 160px;
+    }
+    .pcf-excel-action-input:focus {
+        outline: 2px solid #3b82f6; outline-offset: -1px; border-color: #3b82f6;
+    }
+    .pcf-excel-formula {
+        background: #f8fafc; color: #64748b; font-style: italic; padding: 6px 8px !important;
+    }
+    .pcf-excel-actions { width: 36px; padding: 2px !important; }
+    .pcf-excel-del-btn {
+        background: none; border: none; color: #cbd5e1; font-size: .85rem;
+        cursor: pointer; transition: color .12s; padding: 2px 6px;
+    }
+    .pcf-excel-del-btn:hover { color: #ef4444; }
+
     /* ── Page background color picker ── */
     .pcf-pagebg-picker {
         position: fixed; z-index: 10006;
@@ -1318,6 +1519,7 @@
     int _csSessionId;            // session ID passed from Dashboard (0 = not from CS button)
     string? _csSessionName;      // name of the session being CSed
     bool _csDone;                // true after "Mark CS Done" was executed
+    string _errorToast = "";
     int _csReviewMinutes;        // editable review time (session + admin) in minutes
     HashSet<int> _csedSessionIds = new();                    // session IDs that have cs_reviews
     Dictionary<string, int> _nameToSessionId = new(StringComparer.OrdinalIgnoreCase);  // session name → ID
@@ -1406,6 +1608,14 @@
     bool _isRenamingAtt;
     string _renameAttPath = "";
     string _renameAttValue = "";
+
+    // Excel spreadsheet editor
+    FolderService.ExcelSheetData? _excelData;
+    string _excelRelPath = "";
+    bool _excelDirty;
+    Dictionary<(int Row, int Col), string> _excelEdits = new();
+    Dictionary<(int Row, int Col), string> _formulaOverrides = new();
+    string? _excelActionEdit;
 
     // Page background color picker
     bool _showPageBgPicker;
@@ -1695,6 +1905,21 @@
         _panes[idx].FileName = SessionDisplayName(fileName);
         _panes[idx].Section = section;
 
+        // Check if this is an Excel file
+        if (fileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+        {
+            _excelRelPath = relativePath;
+            _excelData = FolderSvc.ReadExcelFile(PcId, relativePath);
+            _excelEdits.Clear();
+            _excelDirty = false;
+            // Clear the PDF viewer for this pane
+            _ = JS.InvokeVoidAsync("eval", $"var v=document.getElementById('pcf-viewer-{paneId}');if(v)v.innerHTML='';");
+            return;
+        }
+
+        _excelData = null; // clear excel mode
+        _excelRelPath = "";
+
         _hasAnnotations = false;
         _toolMode = "";
         _zoomPercent = 100;
@@ -1765,11 +1990,11 @@
         if (newCount > oldCount)
             _activeIdx = newCount - 1;
 
-        // Schedule reload of all existing panes to fit new width
+        // Schedule reload of all existing PDF panes to fit new width (skip .xlsx)
         var reloads = new List<(string, string)>();
         for (int i = 0; i < newCount; i++)
         {
-            if (!string.IsNullOrEmpty(_panes[i].File))
+            if (!string.IsNullOrEmpty(_panes[i].File) && !_panes[i].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
                 reloads.Add((PaneIds[i], _panes[i].File!));
         }
         if (reloads.Count > 0)
@@ -1975,11 +2200,11 @@
                 _panes[targetPane].FileName = newAtt.FileName;
                 _panes[targetPane].Section = "WorkSheet";
 
-                // Reload ALL panes so they resize to the new pane layout
+                // Reload ALL PDF panes so they resize to the new pane layout (skip .xlsx)
                 _pendingReloads ??= new();
                 for (int i = 0; i < _paneCount; i++)
                 {
-                    if (!string.IsNullOrEmpty(_panes[i].File))
+                    if (!string.IsNullOrEmpty(_panes[i].File) && !_panes[i].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
                         _pendingReloads.Add((PaneIds[i], _panes[i].File!));
                 }
             }
@@ -2145,6 +2370,9 @@
         }
         if (nameNoExt.Length >= 9 && nameNoExt[2] == '-' && nameNoExt[5] == '-' && nameNoExt[8] == '_')
             nameNoExt = nameNoExt.Substring(9);
+
+        // Excel files get a special color
+        if (fileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase)) return "#16a34a"; // green for Excel
 
         var lower = nameNoExt.ToLowerInvariant().Replace("_", " ").Replace("-", " ").Replace(".", " ");
 
@@ -2335,6 +2563,110 @@
     }
 
     void CancelRenameAtt() { _isRenamingAtt = false; _renameAttPath = ""; _renameAttValue = ""; }
+
+    // ── Excel editor methods ──
+
+    void OnExcelCellEdit(int row, int col, string value)
+    {
+        _excelEdits[(row, col)] = value;
+        _excelDirty = true;
+        RecalcFormulas(row, col);
+    }
+
+    void RecalcFormulas(int editedRow, int editedCol)
+    {
+        if (_excelData == null) return;
+        // Only B and C affect formulas
+        if (editedCol != 2 && editedCol != 3) return;
+
+        var dataRows = _excelData.Cells
+            .Where(c => c.Row >= 7)
+            .Select(c => c.Row).Distinct().OrderBy(r => r).ToList();
+
+        // Recalc D for the edited row: D = C*60/B
+        {
+            double b = GetEffectiveNumeric(editedRow, 2);
+            double c = GetEffectiveNumeric(editedRow, 3);
+            _formulaOverrides[(editedRow, 4)] = b != 0 ? (c * 60 / b).ToString("0.##") : "0";
+        }
+
+        // If B changed, recalc E for edited row and all below: E = cumulative sum of B / 1440 as [h]:mm
+        if (editedCol == 2)
+        {
+            double cumSum = 0;
+            foreach (var r in dataRows)
+            {
+                cumSum += GetEffectiveNumeric(r, 2);
+                double totalMinutes = cumSum / 1440.0 * 24 * 60; // back to minutes
+                int hours = (int)(cumSum / 60);
+                int mins = (int)(cumSum % 60);
+                _formulaOverrides[(r, 5)] = $"{hours}:{mins:D2}";
+            }
+        }
+    }
+
+    string FormatFormulaCell(string value, int col)
+    {
+        // Column D is numeric — limit to 2 decimal places
+        if (col == 4 && double.TryParse(value, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var num))
+            return num.ToString("0.##");
+        return value;
+    }
+
+    double GetEffectiveNumeric(int row, int col)
+    {
+        string val;
+        if (_excelEdits.TryGetValue((row, col), out var edited))
+            val = edited;
+        else
+            val = _excelData?.Cells.FirstOrDefault(c => c.Row == row && c.Col == col)?.Value ?? "0";
+        return double.TryParse(val, System.Globalization.NumberStyles.Any,
+            System.Globalization.CultureInfo.InvariantCulture, out var num) ? num : 0;
+    }
+
+    void SaveExcelChanges()
+    {
+        if (!_excelDirty || string.IsNullOrEmpty(_excelRelPath)) return;
+        var updates = _excelEdits
+            .Select(kv => new FolderService.ExcelCellUpdate(kv.Key.Row, kv.Key.Col, kv.Value))
+            .ToList();
+        // Save Action field (B4) if edited
+        if (_excelActionEdit != null)
+            updates.Add(new FolderService.ExcelCellUpdate(4, 2, _excelActionEdit));
+        Console.WriteLine($"[PcFolder] Saving {updates.Count} Excel changes to '{_excelRelPath}' by '{_userName}' — PC {PcId}");
+        FolderSvc.SaveExcelChanges(PcId, _excelRelPath, updates);
+        // Reload
+        _excelData = FolderSvc.ReadExcelFile(PcId, _excelRelPath);
+        _excelEdits.Clear();
+        _formulaOverrides.Clear();
+        _excelActionEdit = null;
+        _excelDirty = false;
+    }
+
+    void AddExcelRow()
+    {
+        if (string.IsNullOrEmpty(_excelRelPath)) return;
+        // Save pending edits first
+        if (_excelDirty) SaveExcelChanges();
+        Console.WriteLine($"[PcFolder] Adding Excel row to '{_excelRelPath}' by '{_userName}' — PC {PcId}");
+        FolderSvc.AddExcelRow(PcId, _excelRelPath);
+        _excelData = FolderSvc.ReadExcelFile(PcId, _excelRelPath);
+        _excelEdits.Clear();
+        _formulaOverrides.Clear();
+        _excelDirty = false;
+    }
+
+    void DeleteExcelRow(int row)
+    {
+        if (string.IsNullOrEmpty(_excelRelPath)) return;
+        Console.WriteLine($"[PcFolder] Deleting Excel row {row} from '{_excelRelPath}' by '{_userName}' — PC {PcId}");
+        FolderSvc.DeleteExcelRow(PcId, _excelRelPath, row);
+        _excelData = FolderSvc.ReadExcelFile(PcId, _excelRelPath);
+        _excelEdits.Clear();
+        _formulaOverrides.Clear();
+        _excelDirty = false;
+    }
 
     // Section-level event handlers (avoid nested quotes in Razor attributes)
     void OnFrontCoverCtx(MouseEventArgs e) => ShowCtxMenu(e, _folder!.FrontCoverTree, "Front_Cover");
@@ -2748,7 +3080,13 @@
     {
         if (string.IsNullOrEmpty(_moveSelectedFolder)) return;
         Console.WriteLine($"[PcFolder] Moved '{_moveFileName}' to '{_moveSelectedFolder}' by '{_userName}' — PC {PcId}");
-        FolderSvc.MoveFile(PcId, _moveFilePath, _moveSelectedFolder);
+        var ok = FolderSvc.MoveFile(PcId, _moveFilePath, _moveSelectedFolder);
+        if (!ok)
+        {
+            ShowErrorToast($"A file named '{_moveFileName}' already exists in the destination folder.");
+            _showMoveModal = false;
+            return;
+        }
         ExpandPathHierarchy(_moveSelectedFolder);
         _folder = FolderSvc.GetPcFolder(PcId);
         _showMoveModal = false;
@@ -2807,11 +3145,27 @@
     {
         if (_dragNode == null) return;
         Console.WriteLine($"[PcFolder] Drag move confirmed: '{_dragNode.RelativePath}' → '{_dragConfirmToPath}' by '{_userName}' — PC {PcId}");
-        FolderSvc.MoveFile(PcId, _dragNode.RelativePath, _dragConfirmToPath);
+        var ok = FolderSvc.MoveFile(PcId, _dragNode.RelativePath, _dragConfirmToPath);
+        if (!ok)
+        {
+            ShowErrorToast($"A file named '{_dragNode.Name}' already exists in the destination folder.");
+            _showDragConfirm = false;
+            _dragNode = null; _dragSection = "";
+            return;
+        }
         ExpandPathHierarchy(_dragConfirmToPath);
         _folder = FolderSvc.GetPcFolder(PcId);
         _showDragConfirm = false;
         _dragNode = null; _dragSection = "";
+    }
+
+    async void ShowErrorToast(string msg)
+    {
+        _errorToast = msg;
+        StateHasChanged();
+        await Task.Delay(3000);
+        _errorToast = "";
+        await InvokeAsync(StateHasChanged);
     }
 
     void CancelDragMove()

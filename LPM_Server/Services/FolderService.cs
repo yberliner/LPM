@@ -227,7 +227,9 @@ public class FolderService
         var sectionPath = Path.Combine(pcFolder, section);
         if (!Directory.Exists(sectionPath)) return [];
 
-        return Directory.GetFiles(sectionPath, "*.pdf", SearchOption.AllDirectories)
+        var extensions = new[] { "*.pdf", "*.xlsx" };
+        return extensions
+            .SelectMany(ext => Directory.GetFiles(sectionPath, ext, SearchOption.AllDirectories))
             .Select(f =>
             {
                 var name = Path.GetFileName(f);
@@ -708,8 +710,10 @@ public class FolderService
     private byte[] DecryptBytes(byte[] raw)
     {
         if (_encKey == null) return raw;
-        // Detect unencrypted legacy files — PDF starts with %PDF
+        // Detect unencrypted legacy files — PDF starts with %PDF, ZIP/XLSX starts with PK
         if (raw.Length >= 4 && raw[0] == '%' && raw[1] == 'P' && raw[2] == 'D' && raw[3] == 'F')
+            return raw;
+        if (raw.Length >= 4 && raw[0] == 'P' && raw[1] == 'K')
             return raw;
         if (raw.Length < 17) return raw; // too small to be encrypted (16 IV + at least 1 block)
         using var aes = Aes.Create();
@@ -744,8 +748,11 @@ public class FolderService
             children.Add(BuildTreeRecursive(pcFolder, subDir, sectionName));
         }
 
-        // Files (sorted alphabetically)
-        foreach (var file in Directory.GetFiles(dirPath, "*.pdf").OrderBy(f => Path.GetFileName(f), StringComparer.OrdinalIgnoreCase))
+        // Files (sorted alphabetically) — include both .pdf and .xlsx
+        var sectionFiles = new[] { "*.pdf", "*.xlsx" }
+            .SelectMany(ext => Directory.GetFiles(dirPath, ext))
+            .OrderBy(f => Path.GetFileName(f), StringComparer.OrdinalIgnoreCase);
+        foreach (var file in sectionFiles)
         {
             var fileName = Path.GetFileName(file);
             var fileRelPath = Path.GetRelativePath(pcFolder, file).Replace('\\', '/');
@@ -1023,6 +1030,184 @@ public class FolderService
         catch (Exception ex)
         {
             Console.WriteLine($"[FolderService] Error appending TAA row for PC {pcId}: {ex.Message}");
+        }
+    }
+
+    // ── Excel read/write ──────────────────────────────
+
+    public record ExcelCellData(int Row, int Col, string Value, bool IsFormula, bool IsHeader);
+
+    public record ExcelSheetData(
+        int RowCount, int ColCount,
+        List<string> ColumnHeaders,      // row 6 headers
+        string PcName,                   // B3
+        string Action,                   // B4
+        string TotalTimeOnGrade,         // B5 (formula result)
+        List<ExcelCellData> Cells        // all cells
+    );
+
+    public ExcelSheetData? ReadExcelFile(int pcId, string relativePath)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return null;
+        var fullPath = SafeResolvePath(folder, relativePath);
+        if (fullPath == null || !File.Exists(fullPath)) return null;
+
+        try
+        {
+            using var wb = new ClosedXML.Excel.XLWorkbook(fullPath);
+            var ws = wb.Worksheets.First();
+            var lastRow = ws.LastRowUsed()?.RowNumber() ?? 6;
+            var lastCol = Math.Max(ws.LastColumnUsed()?.ColumnNumber() ?? 6, 6);
+
+            var headers = new List<string>();
+            for (int c = 1; c <= lastCol; c++)
+                headers.Add(ws.Cell(6, c).GetString());
+
+            var pcName = ws.Cell("B3").GetString();
+            var action = ws.Cell("B4").GetString();
+            var totalTime = ws.Cell("B5").GetString();
+
+            var cells = new List<ExcelCellData>();
+            for (int r = 1; r <= lastRow; r++)
+            {
+                for (int c = 1; c <= lastCol; c++)
+                {
+                    var cell = ws.Cell(r, c);
+                    var val = cell.HasFormula ? cell.CachedValue.ToString() : cell.GetString();
+                    cells.Add(new ExcelCellData(r, c, val, cell.HasFormula, r <= 6));
+                }
+            }
+
+            return new ExcelSheetData(lastRow, lastCol, headers, pcName, action, totalTime, cells);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FolderService] Error reading Excel file: {ex.Message}");
+            return null;
+        }
+    }
+
+    public record ExcelCellUpdate(int Row, int Col, string Value);
+
+    public bool SaveExcelChanges(int pcId, string relativePath, List<ExcelCellUpdate> updates)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return false;
+        var fullPath = SafeResolvePath(folder, relativePath);
+        if (fullPath == null || !File.Exists(fullPath)) return false;
+
+        try
+        {
+            using var wb = new ClosedXML.Excel.XLWorkbook(fullPath);
+            var ws = wb.Worksheets.First();
+
+            foreach (var u in updates)
+            {
+                // Allow editing B4 (Action field); skip other header rows
+                if (u.Row < 7 && !(u.Row == 4 && u.Col == 2)) continue;
+
+                switch (u.Col)
+                {
+                    case 1: // A = Date (string)
+                        ws.Cell(u.Row, u.Col).Value = u.Value;
+                        break;
+                    case 2: // B = Minutes (number)
+                        if (double.TryParse(u.Value, System.Globalization.NumberStyles.Any,
+                            System.Globalization.CultureInfo.InvariantCulture, out var numB))
+                            ws.Cell(u.Row, u.Col).Value = numB;
+                        else
+                            ws.Cell(u.Row, u.Col).Value = u.Value;
+                        break;
+                    case 3: // C = TAA (number)
+                        if (double.TryParse(u.Value, System.Globalization.NumberStyles.Any,
+                            System.Globalization.CultureInfo.InvariantCulture, out var numC))
+                            ws.Cell(u.Row, u.Col).Value = numC;
+                        else
+                            ws.Cell(u.Row, u.Col).Value = u.Value;
+                        break;
+                    case 4: // D = formula (recalc)
+                        ws.Cell(u.Row, u.Col).FormulaA1 = $"IFERROR(C{u.Row}*60/B{u.Row},0)";
+                        break;
+                    case 5: // E = formula (recalc)
+                        ws.Cell(u.Row, u.Col).FormulaA1 = $"TEXT(SUM($B$7:B{u.Row})/1440, \"[h]:mm\")";
+                        break;
+                    case 6: // F = Remark (string)
+                        ws.Cell(u.Row, u.Col).Value = u.Value;
+                        break;
+                    default:
+                        ws.Cell(u.Row, u.Col).Value = u.Value;
+                        break;
+                }
+            }
+
+            wb.Save();
+            Console.WriteLine($"[FolderService] Saved {updates.Count} Excel changes to '{relativePath}' for PC {pcId}");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FolderService] Error saving Excel changes: {ex.Message}");
+            return false;
+        }
+    }
+
+    public bool AddExcelRow(int pcId, string relativePath)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return false;
+        var fullPath = SafeResolvePath(folder, relativePath);
+        if (fullPath == null || !File.Exists(fullPath)) return false;
+
+        try
+        {
+            using var wb = new ClosedXML.Excel.XLWorkbook(fullPath);
+            var ws = wb.Worksheets.First();
+            int newRow = 7;
+            while (ws.Cell(newRow, 1).GetString() != "") newRow++;
+            // Just create the formulas — user fills A, B, C, F
+            ws.Cell(newRow, 4).FormulaA1 = $"IFERROR(C{newRow}*60/B{newRow},0)";
+            ws.Cell(newRow, 5).FormulaA1 = $"TEXT(SUM($B$7:B{newRow})/1440, \"[h]:mm\")";
+            wb.Save();
+            Console.WriteLine($"[FolderService] Added empty Excel row {newRow} in '{relativePath}' for PC {pcId}");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FolderService] Error adding Excel row: {ex.Message}");
+            return false;
+        }
+    }
+
+    public bool DeleteExcelRow(int pcId, string relativePath, int row)
+    {
+        if (row < 7) return false; // can't delete header rows
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return false;
+        var fullPath = SafeResolvePath(folder, relativePath);
+        if (fullPath == null || !File.Exists(fullPath)) return false;
+
+        try
+        {
+            using var wb = new ClosedXML.Excel.XLWorkbook(fullPath);
+            var ws = wb.Worksheets.First();
+            ws.Row(row).Delete();
+            // Recalculate formulas for remaining rows
+            int r = 7;
+            while (ws.Cell(r, 1).GetString() != "" || ws.Cell(r, 2).GetString() != "")
+            {
+                ws.Cell(r, 4).FormulaA1 = $"IFERROR(C{r}*60/B{r},0)";
+                ws.Cell(r, 5).FormulaA1 = $"TEXT(SUM($B$7:B{r})/1440, \"[h]:mm\")";
+                r++;
+            }
+            wb.Save();
+            Console.WriteLine($"[FolderService] Deleted Excel row {row} in '{relativePath}' for PC {pcId}");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FolderService] Error deleting Excel row: {ex.Message}");
+            return false;
         }
     }
 
