@@ -257,8 +257,8 @@
     {
         @foreach (var csGroup in _csGroups)
         {
-            int cgDraft    = csGroup.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus != "Approved"));
-            int cgApproved = csGroup.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus == "Approved"));
+            int cgDraft    = csGroup.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus != "Done"));
+            int cgApproved = csGroup.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus == "Done"));
             var csAvatar   = _csAvatars.GetValueOrDefault(csGroup.CsId);
 
             <div class="card border-0 shadow-sm mb-4 sa-auditor-card">
@@ -281,8 +281,8 @@
                     var csPcKey    = (csGroup.CsId, pcGroup.PcId);
                     int csPcDef    = _csPcDefaults.GetValueOrDefault(csPcKey);
                     int csPcTotal  = pcGroup.Reviews.Count;
-                    int csPcDraft  = pcGroup.Reviews.Count(r => r.CsStatus != "Approved");
-                    int csPcApprv  = pcGroup.Reviews.Count(r => r.CsStatus == "Approved");
+                    int csPcDraft  = pcGroup.Reviews.Count(r => r.CsStatus != "Done");
+                    int csPcApprv  = pcGroup.Reviews.Count(r => r.CsStatus == "Done");
 
                     @if (!firstCsPc) { <div class="sa-pc-divider"></div> }
                     firstCsPc = false;
@@ -324,7 +324,7 @@
                             <tbody>
                                 @foreach (var rev in pcGroup.Reviews)
                                 {
-                                    bool csApproved = rev.CsStatus == "Approved";
+                                    bool csApproved = rev.CsStatus == "Done";
                                     var csSalary    = _csRowEdits.GetValueOrDefault(rev.CsReviewId);
                                     <tr class="@(csApproved ? "sa-row-approved" : "sa-row-draft")">
                                         <td class="ps-4 py-2"><span class="fw-semibold sa-date">@FormatDate(rev.SessionDate)</span></td>
@@ -516,8 +516,8 @@
 
     private int _sessDraft    => _groups.Sum(g => g.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus != "Approved")));
     private int _sessApproved => _groups.Sum(g => g.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus == "Approved")));
-    private int _csDraft      => _csGroups.Sum(g => g.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus != "Approved")));
-    private int _csApproved   => _csGroups.Sum(g => g.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus == "Approved")));
+    private int _csDraft      => _csGroups.Sum(g => g.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus != "Done")));
+    private int _csApproved   => _csGroups.Sum(g => g.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus == "Done")));
 
     class PcDefaults { public int ChargeRate { get; set; } public int Salary { get; set; } }
     class RowEdit     { public int ChargeRate { get; set; } public int Salary { get; set; } }
@@ -647,7 +647,7 @@
                                ?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
         if (pcGroup is null) return;
         foreach (var rev in pcGroup.Reviews)
-            if (rev.CsStatus != "Approved") _csRowEdits[rev.CsReviewId] = newCsSalary;
+            if (rev.CsStatus != "Done") _csRowEdits[rev.CsReviewId] = newCsSalary;
     }
 
     // ── Session submit ─────────────────────────────────────────────
@@ -750,7 +750,7 @@
                 if (_includeApproved)
                     pcGroup.Reviews[idx] = pcGroup.Reviews[idx] with
                     {
-                        CsStatus             = "Approved",
+                        CsStatus             = "Done",
                         CsSalaryCentsPerHour = salaryCents
                     };
                 else

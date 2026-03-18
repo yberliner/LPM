@@ -232,21 +232,12 @@
                                             ? dt2.ToString("dd/MM/yy HH:mm")
                                             : (DateOnly.TryParse(s.SessionDate, out var d2) ? d2.ToString("dd/MM/yy") : s.SessionDate);
                                         var statusClass = s.CsStatus switch {
-                                            "Waiting"          => "home-aud-st-waiting",
-                                            "Draft"            => "home-aud-st-done",
-                                            "Pending"          => "home-aud-st-done",
-                                            "Approved"         => "home-aud-st-approved",
-                                            "NeedsCorrection"  => "home-aud-st-correction",
-                                            _                  => ""
+                                            "Waiting"  => "home-aud-st-waiting",
+                                            "Not_Done" => "home-aud-st-done",
+                                            "Done"     => "home-aud-st-approved",
+                                            _          => ""
                                         };
-                                        var statusLabel = s.CsStatus switch {
-                                            "Waiting"          => "Waiting for CS",
-                                            "Draft"            => "CS Done",
-                                            "Pending"          => "CS Done",
-                                            "Approved"         => "Approved",
-                                            "NeedsCorrection"  => "Correction Needed",
-                                            _                  => s.CsStatus
-                                        };
+                                        var statusLabel = _csStatusLabels.TryGetValue(s.CsStatus ?? "", out var lbl) ? lbl : (s.CsStatus ?? "");
                                         <tr class="@rowClass home-pcs-row" @onclick="() => OpenAuditorSession(s)">
                                             <td class="home-pcs-pcname">
                                                 @if (isNewPc)
@@ -1269,6 +1260,7 @@
     List<PcInfo>   _allPcs = [];
     HashSet<int>   _unapprovedPcIds = [];
     Dictionary<(int, int), int> _grid = [];
+    Dictionary<string, string> _csStatusLabels = [];
 
     bool   _hideEmpty;
 
@@ -1406,6 +1398,7 @@
                 _soloSelf = DashSvc.GetSoloAuditorInfo(_userId.Value);
         }
         _weekStart = TodayWeekStart;
+        _csStatusLabels = DashSvc.GetCsStatusLabels();
         await RefreshAsync();
 
         // Subscribe to cross-user CS notifications
@@ -1766,7 +1759,7 @@
         Console.WriteLine($"[Home] Updated CS review {_editReviewId} — duration={_editRevDuration} by '{_username}'");
         int secs = ParseTime(_editRevDuration);
         if (secs <= 0) { _editRevError = "Invalid duration — use H:MM (e.g. 0:30)."; return; }
-        DashSvc.UpdateCsReview(_editReviewId!.Value, secs, "Pending",
+        DashSvc.UpdateCsReview(_editReviewId!.Value, secs, "Not_Done",
             string.IsNullOrWhiteSpace(_editRevNotes) ? null : _editRevNotes);
         _editReviewId = null;
         _detail = DashSvc.GetDayDetail(_userId!.Value, _selPcId!.Value,
@@ -2131,8 +2124,8 @@
                                                 </span>
                                                 <span>@rev.Status</span>
                                                 <button class="btn btn-link btn-sm py-0 px-1 ms-auto" style="font-size:0.75rem;"
-                                                        title="@(rev.Status == "Approved" ? LS.T("home.cannotEditReviewApproved") : LS.T("home.editReview"))"
-                                                        disabled="@(rev.Status == "Approved")"
+                                                        title="@(rev.Status == "Done" ? LS.T("home.cannotEditReviewApproved") : LS.T("home.editReview"))"
+                                                        disabled="@(rev.Status == "Done")"
                                                         @onclick="() => OpenEditReview(rev)">
                                                     <i class="ri-edit-line"></i> @LS.T("common.edit")
                                                 </button>

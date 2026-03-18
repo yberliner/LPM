@@ -44,19 +44,7 @@ public class PcService
         // Schema managed directly in DB — no CREATE TABLE statements here.
     }
 
-    public List<string> GetStatuses()
-    {
-        using var conn = new SqliteConnection(_connectionString);
-        conn.Open();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Name FROM lkp_statuses ORDER BY StatusId";
-        var list = new List<string>();
-        using var r = cmd.ExecuteReader();
-        while (r.Read()) list.Add(r.GetString(0));
-        return list;
-    }
-
-    public List<PcListItem> GetAllPcs()
+public List<PcListItem> GetAllPcs()
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();

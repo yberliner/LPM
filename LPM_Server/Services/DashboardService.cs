@@ -32,7 +32,7 @@ public record CsReviewerGroup(int CsId, string CsName, List<PcCsGroup> PcGroups)
 public record StaffMember(int PersonId, string FullName);
 public record StaffMessage(int Id, int FromId, string FromName, int ToId, string ToName, string MsgText, string CreatedAt, string? AcknowledgedAt);
 
-public record PermissionRequest(int Id, int AuditorId, string AuditorName, int PcId, string PcName, string RequestedAt);
+public record PermissionRequest(int Id, int UserId, string AuditorName, int PcId, string PcName, string RequestedAt);
 public record ApprovedPcEntry(int Id, int PcId, string PcName);
 public record AuditorPermGroup(int AuditorId, string AuditorName, bool AllowAll, List<ApprovedPcEntry> ApprovedPcs);
 
@@ -127,10 +127,10 @@ public class DashboardService
         {
             cmd.CommandText = $@"
                 SELECT pc.PcId, {FullNameExpr} AS FullName
-                FROM sys_auditor_pc_permissions ap
-                JOIN core_pcs pc ON pc.PcId = ap.PcId
+                FROM sys_staff_pc_list spl
+                JOIN core_pcs pc ON pc.PcId = spl.PcId
                 JOIN core_persons p ON p.PersonId = pc.PcId
-                WHERE ap.AuditorId = @uid AND ap.IsApproved = 1
+                WHERE spl.UserId = @uid AND spl.IsApproved = 1
                 ORDER BY p.FirstName, p.LastName";
             cmd.Parameters.AddWithValue("@uid", userId);
         }
@@ -221,7 +221,7 @@ public class DashboardService
         using var crCmd = conn.CreateCommand();
         crCmd.CommandText = @"
             INSERT INTO cs_reviews (SessionId, CsId, ReviewLengthSeconds, ReviewedAt, Status)
-            VALUES (@sid, @csId, 0, @reviewedAt, 'Approved')";
+            VALUES (@sid, @csId, 0, @reviewedAt, 'Done')";
         crCmd.Parameters.AddWithValue("@sid", sessionId);
         crCmd.Parameters.AddWithValue("@csId", verifiedByUserId);
         crCmd.Parameters.AddWithValue("@reviewedAt", createdAt);
@@ -271,7 +271,7 @@ public class DashboardService
 
         // Check existing permission
         using var chkCmd = conn.CreateCommand();
-        chkCmd.CommandText = "SELECT IsApproved FROM sys_auditor_pc_permissions WHERE AuditorId = @aud AND PcId = @pc";
+        chkCmd.CommandText = "SELECT IsApproved FROM sys_staff_pc_list WHERE UserId = @aud AND PcId = @pc";
         chkCmd.Parameters.AddWithValue("@aud", auditorId);
         chkCmd.Parameters.AddWithValue("@pc",  pcId);
         var existing = chkCmd.ExecuteScalar();
@@ -285,8 +285,8 @@ public class DashboardService
         // No existing record — create a pending request
         using var insCmd = conn.CreateCommand();
         insCmd.CommandText = @"
-            INSERT OR IGNORE INTO sys_auditor_pc_permissions (AuditorId, PcId, IsApproved)
-            VALUES (@aud, @pc, 0)";
+            INSERT OR IGNORE INTO sys_staff_pc_list (UserId, PcId, WorkCapacity, IsApproved)
+            VALUES (@aud, @pc, 'Auditor', 0)";
         insCmd.Parameters.AddWithValue("@aud", auditorId);
         insCmd.Parameters.AddWithValue("@pc",  pcId);
         var inserted = insCmd.ExecuteNonQuery();
@@ -362,14 +362,7 @@ public class DashboardService
 
         // Any PC in StaffPcList without an IsApproved=1 entry is unapproved
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
-            SELECT spl.PcId
-            FROM sys_staff_pc_list spl
-            WHERE spl.UserId = @aud
-              AND NOT EXISTS (
-                  SELECT 1 FROM sys_auditor_pc_permissions ap
-                  WHERE ap.AuditorId = @aud AND ap.PcId = spl.PcId AND ap.IsApproved = 1
-              )";
+        cmd.CommandText = "SELECT PcId FROM sys_staff_pc_list WHERE UserId = @aud AND IsApproved = 0";
         cmd.Parameters.AddWithValue("@aud", auditorId);
         var set = new HashSet<int>();
         using var r = cmd.ExecuteReader();
@@ -383,16 +376,16 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $@"
-            SELECT ap.Id, ap.AuditorId,
+            SELECT spl.Id, spl.UserId,
                    TRIM(pa.FirstName || ' ' || COALESCE(NULLIF(pa.LastName,''), '')) AS AuditorName,
-                   ap.PcId,
+                   spl.PcId,
                    TRIM(pp.FirstName || ' ' || COALESCE(NULLIF(pp.LastName,''), '')) AS PcName,
-                   ap.RequestedAt
-            FROM sys_auditor_pc_permissions ap
-            JOIN core_persons pa ON pa.PersonId = ap.AuditorId
-            JOIN core_persons pp ON pp.PersonId = ap.PcId
-            WHERE ap.IsApproved = 0
-            ORDER BY ap.RequestedAt DESC, pa.FirstName";
+                   spl.RequestedAt
+            FROM sys_staff_pc_list spl
+            JOIN core_persons pa ON pa.PersonId = spl.UserId
+            JOIN core_persons pp ON pp.PersonId = spl.PcId
+            WHERE spl.IsApproved = 0
+            ORDER BY spl.RequestedAt DESC, pa.FirstName";
         var list = new List<PermissionRequest>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -407,7 +400,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE sys_auditor_pc_permissions SET IsApproved = 1 WHERE Id = @id";
+        cmd.CommandText = "UPDATE sys_staff_pc_list SET IsApproved = 1 WHERE Id = @id";
         cmd.Parameters.AddWithValue("@id", id);
         cmd.ExecuteNonQuery();
         Console.WriteLine($"[DashboardService] Approved permission request {id}");
@@ -417,27 +410,11 @@ public class DashboardService
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
-        // Remove from StaffPcList too so it disappears from the auditor's dashboard
-        using var getCmd = conn.CreateCommand();
-        getCmd.CommandText = "SELECT AuditorId, PcId FROM sys_auditor_pc_permissions WHERE Id = @id";
-        getCmd.Parameters.AddWithValue("@id", id);
-        using var r = getCmd.ExecuteReader();
-        if (!r.Read()) return;
-        int auditorId = r.GetInt32(0);
-        int pcId      = r.GetInt32(1);
-        r.Close();
-
-        using var delPerm = conn.CreateCommand();
-        delPerm.CommandText = "DELETE FROM sys_auditor_pc_permissions WHERE Id = @id";
-        delPerm.Parameters.AddWithValue("@id", id);
-        delPerm.ExecuteNonQuery();
-
-        using var delSpl = conn.CreateCommand();
-        delSpl.CommandText = "DELETE FROM sys_staff_pc_list WHERE UserId = @uid AND PcId = @pc";
-        delSpl.Parameters.AddWithValue("@uid", auditorId);
-        delSpl.Parameters.AddWithValue("@pc",  pcId);
-        delSpl.ExecuteNonQuery();
-        Console.WriteLine($"[DashboardService] Rejected permission request {id} for auditor {auditorId}, PC {pcId}");
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM sys_staff_pc_list WHERE Id = @id AND IsApproved = 0";
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] Rejected permission request {id}");
     }
 
     public List<AuditorPermGroup> GetAuditorPermGroups()
@@ -463,11 +440,11 @@ public class DashboardService
         // Get approved permissions per auditor
         using var permCmd = conn.CreateCommand();
         permCmd.CommandText = @"
-            SELECT ap.Id, ap.AuditorId, ap.PcId,
+            SELECT spl.Id, spl.UserId, spl.PcId,
                    TRIM(pp.FirstName || ' ' || COALESCE(NULLIF(pp.LastName,''), '')) AS PcName
-            FROM sys_auditor_pc_permissions ap
-            JOIN core_persons pp ON pp.PersonId = ap.PcId
-            WHERE ap.IsApproved = 1
+            FROM sys_staff_pc_list spl
+            JOIN core_persons pp ON pp.PersonId = spl.PcId
+            WHERE spl.IsApproved = 1
             ORDER BY pp.FirstName, pp.LastName";
         var permsByAuditor = new Dictionary<int, List<ApprovedPcEntry>>();
         using var pr = permCmd.ExecuteReader();
@@ -502,9 +479,9 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO sys_auditor_pc_permissions (AuditorId, PcId, IsApproved)
-            VALUES (@aud, @pc, 1)
-            ON CONFLICT(AuditorId, PcId) DO UPDATE SET IsApproved = 1";
+            INSERT INTO sys_staff_pc_list (UserId, PcId, WorkCapacity, IsApproved)
+            VALUES (@aud, @pc, 'Auditor', 1)
+            ON CONFLICT(UserId, PcId) DO UPDATE SET IsApproved = 1";
         cmd.Parameters.AddWithValue("@aud", auditorId);
         cmd.Parameters.AddWithValue("@pc",  pcId);
         cmd.ExecuteNonQuery();
@@ -516,7 +493,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM sys_auditor_pc_permissions WHERE Id = @id";
+        cmd.CommandText = "DELETE FROM sys_staff_pc_list WHERE Id = @id";
         cmd.Parameters.AddWithValue("@id", id);
         cmd.ExecuteNonQuery();
         Console.WriteLine($"[DashboardService] Removed permission {id}");
@@ -548,22 +525,15 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        // Must have the PC on their staff list
-        using var splCmd = conn.CreateCommand();
-        splCmd.CommandText = "SELECT 1 FROM sys_staff_pc_list WHERE UserId = @uid AND PcId = @pid";
-        splCmd.Parameters.AddWithValue("@uid", userId);
-        splCmd.Parameters.AddWithValue("@pid", pcId);
-        if (splCmd.ExecuteScalar() is null) return false;
-
         // Check AllowAll flag
         using var aaCmd = conn.CreateCommand();
         aaCmd.CommandText = "SELECT COALESCE(AllowAll,0) FROM core_users WHERE PersonId = @uid AND IsActive = 1 LIMIT 1";
         aaCmd.Parameters.AddWithValue("@uid", userId);
         if (aaCmd.ExecuteScalar() is long a && a == 1) return true;
 
-        // Check approved permission
+        // Must have approved entry in staff list
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT 1 FROM sys_auditor_pc_permissions WHERE AuditorId = @uid AND PcId = @pid AND IsApproved = 1";
+        cmd.CommandText = "SELECT 1 FROM sys_staff_pc_list WHERE UserId = @uid AND PcId = @pid AND IsApproved = 1";
         cmd.Parameters.AddWithValue("@uid", userId);
         cmd.Parameters.AddWithValue("@pid", pcId);
         return cmd.ExecuteScalar() is not null;
@@ -583,7 +553,7 @@ public class DashboardService
 
         // Check approved permission
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT 1 FROM sys_auditor_pc_permissions WHERE AuditorId = @aid AND PcId = @pid AND IsApproved = 1";
+        cmd.CommandText = "SELECT 1 FROM sys_staff_pc_list WHERE UserId = @aid AND PcId = @pid AND IsApproved = 1";
         cmd.Parameters.AddWithValue("@aid", personId);
         cmd.Parameters.AddWithValue("@pid", pcId);
         return cmd.ExecuteScalar() is not null;
@@ -681,7 +651,7 @@ public class DashboardService
         }
         else
         {
-            cmd.CommandText = "UPDATE sys_staff_pc_list SET WorkCapacity = @cap WHERE UserId = @uid AND PcId = @pcId";
+            cmd.CommandText = "UPDATE sys_staff_pc_list SET WorkCapacity = @cap, IsApproved = 1 WHERE UserId = @uid AND PcId = @pcId";
         }
         cmd.Parameters.AddWithValue("@uid",  userId);
         cmd.Parameters.AddWithValue("@pcId", pcId);
@@ -1556,6 +1526,19 @@ public class DashboardService
     }
 
     /// Returns a map of pcId → first name of the CS who last reviewed a session for that PC.
+    public Dictionary<string, string> GetCsStatusLabels()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Code, Label FROM lkp_cs_status ORDER BY SortOrder";
+        var result = new Dictionary<string, string>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            result[r.GetString(0)] = r.GetString(1);
+        return result;
+    }
+
     public Dictionary<int, string> GetLastCsNamesByPc(List<int> pcIds)
     {
         var result = new Dictionary<int, string>();
@@ -1732,7 +1715,7 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
 
         var where = new System.Text.StringBuilder(
-            includeApproved ? "1=1" : "cr.Status != 'Approved'");
+            includeApproved ? "1=1" : "cr.Status != 'Done'");
 
         if (includeApproved && from.HasValue)
         {
@@ -1840,7 +1823,7 @@ public class DashboardService
             SELECT cr.CsSalaryCentsPerHour
             FROM cs_reviews cr
             JOIN sess_sessions s ON s.SessionId = cr.SessionId
-            WHERE s.PcId = @pc AND cr.Status = 'Approved'
+            WHERE s.PcId = @pc AND cr.Status = 'Done'
             ORDER BY s.SessionDate DESC, s.SequenceInDay DESC
             LIMIT 1";
         cmd.Parameters.AddWithValue("@pc", pcId);
@@ -1873,7 +1856,7 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             UPDATE cs_reviews
-            SET Status = 'Approved', CsSalaryCentsPerHour = @salary
+            SET Status = 'Done', CsSalaryCentsPerHour = @salary
             WHERE CsReviewId = @id";
         cmd.Parameters.AddWithValue("@salary", csSalaryCents);
         cmd.Parameters.AddWithValue("@id",     csReviewId);
