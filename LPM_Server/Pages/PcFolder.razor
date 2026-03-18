@@ -312,14 +312,18 @@
             @if (!_wsCtxIsAttachment)
             {
                 <button @onclick="WsCtxAddPinkSheet"><i class="ri-file-add-line me-2" style="color:#ec4899 !important;"></i>Add Pink Sheet</button>
+                <button @onclick='() => WsCtxAddWhiteSheet("Instruct")'><i class="ri-file-add-line me-2" style="color:#60a5fa !important;"></i>Add Instruct</button>
+                <button @onclick='() => WsCtxAddWhiteSheet("Cramming")'><i class="ri-file-add-line me-2" style="color:#34d399 !important;"></i>Add Cramming</button>
             }
             else
             {
                 <button @onclick="WsCtxRenameAtt"><i class="ri-edit-line me-2"></i>Rename</button>
-                @if (_wsCtxAttRelPath.Contains("PinkSheet", StringComparison.OrdinalIgnoreCase))
+                @if (_wsCtxAttRelPath.Contains("PinkSheet", StringComparison.OrdinalIgnoreCase)
+                  || _wsCtxAttRelPath.Contains("Instruct",  StringComparison.OrdinalIgnoreCase)
+                  || _wsCtxAttRelPath.Contains("Cramming",  StringComparison.OrdinalIgnoreCase))
                 {
                     <div class="pcf-ctx-divider"></div>
-                    <button class="pcf-ctx-danger" @onclick="WsCtxDeletePinkSheet"><i class="ri-delete-bin-line me-2"></i>Delete Pink Sheet</button>
+                    <button class="pcf-ctx-danger" @onclick="WsCtxDeletePinkSheet"><i class="ri-delete-bin-line me-2"></i>Delete</button>
                 }
             }
         </div>
@@ -354,24 +358,17 @@
     }
 
     @* ── New menu popover ── *@
+    @* Hidden file input — always in DOM, triggered programmatically *@
+    <InputFile id="pcf-upload-input" accept=".pdf,.doc,.docx" multiple OnChange="NewMenuUploadFile"
+               style="display:none;" />
+
     @if (_newMenuSection != null)
     {
         <div class="pcf-ctx-backdrop" @onclick="CloseNewMenu"></div>
         <div class="pcf-new-popover" style="top:@(_newMenuY)px;left:@(_newMenuX)px;">
-            @if (_newMenuUpload)
-            {
-                <div style="padding:8px 12px;">
-                    <InputFile accept=".pdf" multiple OnChange="NewMenuUploadFile"
-                               class="form-control form-control-sm"
-                               style="background:#0f172a; color:#e2e8f0; border-color:#475569; font-size:.78rem;" />
-                </div>
-            }
-            else
-            {
-                <button @onclick="NewMenuFolder"><i class="ri-folder-add-line me-2"></i>New Folder</button>
-                <button @onclick="() => _newMenuUpload = true"><i class="ri-upload-2-line me-2"></i>Upload File</button>
-                <button @onclick="NewMenuEmptyPdf"><i class="ri-file-add-line me-2"></i>New Empty PDF</button>
-            }
+            <button @onclick="NewMenuFolder"><i class="ri-folder-add-line me-2"></i>New Folder</button>
+            <button @onclick="NewMenuUploadClick"><i class="ri-upload-2-line me-2"></i>Upload File</button>
+            <button @onclick="NewMenuEmptyPdf"><i class="ri-file-add-line me-2"></i>New Empty PDF</button>
         </div>
     }
 
@@ -1691,7 +1688,68 @@
         .pcf-modal-sm { max-width: 92vw; }
         .pcf-modal-move { max-width: 92vw; }
     }
+    /* ── Conversion toasts ── */
+    .pcf-toast-panel {
+        position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+        display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+    }
+    .pcf-toast {
+        display: flex; align-items: center; gap: 10px;
+        padding: 10px 14px; border-radius: 10px; font-size: .82rem;
+        background: #1e293b; border: 1px solid #334155;
+        color: #e2e8f0; box-shadow: 0 4px 20px rgba(0,0,0,.4);
+        pointer-events: auto; min-width: 240px; max-width: 320px;
+        animation: pcf-ctx-pop .2s ease-out;
+    }
+    .pcf-toast-done  { border-color: #22c55e; }
+    .pcf-toast-error { border-color: #ef4444; }
+    .pcf-toast-icon  { font-size: 1rem; flex-shrink: 0; }
+    .pcf-toast-text  { flex: 1; overflow: hidden; }
+    .pcf-toast-name  { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pcf-toast-sub   { font-size: .72rem; color: #94a3b8; }
+    .pcf-toast-close { background: none; border: none; color: #64748b; cursor: pointer; padding: 0 2px; font-size: .9rem; flex-shrink: 0; }
+    .pcf-toast-close:hover { color: #e2e8f0; }
 </style>
+
+@* ── Conversion toast panel ── *@
+@if (_conversionToasts.Count > 0)
+{
+    <div class="pcf-toast-panel">
+        @foreach (var toast in _conversionToasts)
+        {
+            <div class="pcf-toast @(toast.Status == ConvStatus.Done ? "pcf-toast-done" : toast.Status == ConvStatus.Failed ? "pcf-toast-error" : "")">
+                <span class="pcf-toast-icon">
+                    @if (toast.Status == ConvStatus.Running)
+                    {
+                        <span class="spinner-border spinner-border-sm text-info" role="status"></span>
+                    }
+                    else if (toast.Status == ConvStatus.Done)
+                    {
+                        <i class="ri-checkbox-circle-line text-success"></i>
+                    }
+                    else
+                    {
+                        <i class="ri-error-warning-line text-danger"></i>
+                    }
+                </span>
+                <div class="pcf-toast-text">
+                    <div class="pcf-toast-name">@toast.FileName</div>
+                    <div class="pcf-toast-sub">
+                        @if (toast.Status == ConvStatus.Running) { <span>Converting to PDF...</span> }
+                        else if (toast.Status == ConvStatus.Done) { <span>Added to folder</span> }
+                        else { <span>Conversion failed</span> }
+                    </div>
+                </div>
+                @if (toast.Status != ConvStatus.Running)
+                {
+                    <button class="pcf-toast-close" @onclick="() => _conversionToasts.Remove(toast)">
+                        <i class="ri-close-line"></i>
+                    </button>
+                }
+            </div>
+        }
+    </div>
+}
 
 @code {
     [Parameter] public int PcId { get; set; }
@@ -1788,6 +1846,11 @@
     bool _showOverwriteConfirm;
     List<(string Name, byte[] Data)> _uploadPendingFiles = [];
     List<string> _uploadDuplicateNames = [];
+
+    // Doc→PDF conversion toasts
+    enum ConvStatus { Running, Done, Failed }
+    record ConversionToast(Guid Id, string FileName) { public ConvStatus Status { get; set; } = ConvStatus.Running; }
+    List<ConversionToast> _conversionToasts = [];
 
     // Worksheet context menu
     bool _showWsCtxMenu;
@@ -2866,6 +2929,38 @@
         SelectFile(pinkAtt.RelativePath, pinkAtt.FileName, "WorkSheet");
     }
 
+    void WsCtxAddWhiteSheet(string name)
+    {
+        Console.WriteLine($"[PcFolder] Adding {name} sheet to session '{_wsCtxSessionFileName}' by '{_userName}' — PC {PcId}");
+        var sessionFileName = _wsCtxSessionFileName;
+        var pdfBytes = FolderSvc.CreateEmptyPdf();
+        FolderSvc.SaveAttachment(PcId, sessionFileName, $"{name}.pdf", pdfBytes);
+        _folder = FolderSvc.GetPcFolder(PcId);
+        CloseWsCtxMenu();
+
+        var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
+        var wsItem = _folder!.WorkSheets.FirstOrDefault(w =>
+            Path.GetFileNameWithoutExtension(w.File.FileName).Equals(sessionNoExt, StringComparison.OrdinalIgnoreCase));
+        var att = wsItem?.Attachments.LastOrDefault(a =>
+            a.FileName.Contains(name, StringComparison.OrdinalIgnoreCase));
+        if (att == null) return;
+
+        _collapsedAttachments.Remove(wsItem!.File.RelativePath);
+
+        int targetIdx;
+        if (_paneCount < 3)
+        {
+            _paneCount++;
+            targetIdx = _paneCount - 1;
+        }
+        else
+        {
+            targetIdx = 2;
+        }
+        _activeIdx = targetIdx;
+        SelectFile(att.RelativePath, att.FileName, "WorkSheet");
+    }
+
     void WsCtxDeletePinkSheet()
     {
         var path = _wsCtxAttRelPath;
@@ -3240,13 +3335,13 @@
         await JS.InvokeVoidAsync("eval", js);
     }
 
-    void CtxUploadFile()
+    async Task CtxUploadFile()
     {
         if (_ctxNode == null) return;
         _newMenuParentFolder = _ctxNode.IsFolder ? _ctxNode.RelativePath : Path.GetDirectoryName(_ctxNode.RelativePath)!.Replace('\\', '/');
         _newMenuSection = _ctxSection;
-        _newMenuUpload = true;
         CloseCtxMenu();
+        await JS.InvokeVoidAsync("eval", "document.getElementById('pcf-upload-input').click()");
     }
 
     void CtxNewEmptyPdf()
@@ -3315,6 +3410,12 @@
         _newMenuY = e.ClientY - 100; // position above the click
     }
 
+    async Task NewMenuUploadClick()
+    {
+        CloseNewMenu();
+        await JS.InvokeVoidAsync("eval", "document.getElementById('pcf-upload-input').click()");
+    }
+
     void CloseNewMenu() { _newMenuSection = null; _newMenuUpload = false; }
 
     void NewMenuFolder()
@@ -3343,20 +3444,43 @@
         _uploadDuplicateNames.Clear();
         var parentFolder = _newMenuParentFolder;
 
+        var pdfsToSave = new List<(string Name, byte[] Data)>();
+
         foreach (var file in e.GetMultipleFiles(20))
         {
             using var ms = new MemoryStream();
             await file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024).CopyToAsync(ms);
-            var data = ms.ToArray();
-            if (FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, file.Name))
+            var rawBytes = ms.ToArray();
+
+            var ext = Path.GetExtension(file.Name);
+            if (FolderService.ConvertibleExtensions.Contains(ext))
             {
-                _uploadPendingFiles.Add((file.Name, data));
-                _uploadDuplicateNames.Add(file.Name);
+                // Fire background conversion — close menu immediately
+                var toast = new ConversionToast(Guid.NewGuid(), file.Name);
+                _conversionToasts.Add(toast);
+                var capturedName = file.Name;
+                var capturedBytes = rawBytes;
+                var capturedParent = parentFolder;
+                _ = RunConversionAsync(toast, capturedBytes, capturedName, capturedParent);
             }
             else
             {
-                Console.WriteLine($"[PcFolder] Uploaded file '{file.Name}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
-                FolderSvc.SaveSectionFileToPath(PcId, parentFolder, file.Name, data);
+                pdfsToSave.Add((file.Name, rawBytes));
+            }
+        }
+
+        // Handle plain PDF uploads synchronously (existing behaviour)
+        foreach (var (name, data) in pdfsToSave)
+        {
+            if (FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, name))
+            {
+                _uploadPendingFiles.Add((name, data));
+                _uploadDuplicateNames.Add(name);
+            }
+            else
+            {
+                Console.WriteLine($"[PcFolder] Uploaded file '{name}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
+                FolderSvc.SaveSectionFileToPath(PcId, parentFolder, name, data);
             }
         }
 
@@ -3369,6 +3493,41 @@
         {
             _folder = FolderSvc.GetPcFolder(PcId);
             CloseNewMenu();
+        }
+    }
+
+    async Task RunConversionAsync(ConversionToast toast, byte[] docBytes, string originalName, string parentFolder)
+    {
+        var pdfName = Path.GetFileNameWithoutExtension(originalName) + ".pdf";
+        try
+        {
+            var pdfBytes = await Task.Run(() => FolderSvc.ConvertToPdf(docBytes, originalName));
+            if (pdfBytes == null)
+            {
+                toast.Status = ConvStatus.Failed;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            // Save (overwrite if exists — doc upload implies intent to replace)
+            var overwrite = FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, pdfName);
+            FolderSvc.SaveSectionFileToPath(PcId, parentFolder, pdfName, pdfBytes, overwrite: overwrite);
+            Console.WriteLine($"[PcFolder] Converted+saved '{pdfName}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
+
+            toast.Status = ConvStatus.Done;
+            _folder = FolderSvc.GetPcFolder(PcId);
+            await InvokeAsync(StateHasChanged);
+
+            // Auto-dismiss the Done toast after 3 s
+            await Task.Delay(3000);
+            _conversionToasts.Remove(toast);
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PcFolder] Conversion error for '{originalName}': {ex.Message}");
+            toast.Status = ConvStatus.Failed;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
