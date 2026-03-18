@@ -698,8 +698,9 @@
                     var tbDual = _dualPanes.Contains(PaneIds[0]);
                     <button class="pcf-tool-btn @(tbDual ? "pcf-tool-active" : "")"
                             title="@(tbDual ? "Exit side-by-side view" : "Side-by-side view — 2 pages at a time")"
+                            style="color:@(tbDual ? "#fb923c" : "#fbbf24");"
                             @onclick="() => ToggleDualMode(PaneIds[0])">
-                        <i class="@(tbDual ? "ri-layout-column-line" : "ri-book-open-line")"></i>
+                        <i class="@(tbDual ? "ri-book-open-fill" : "ri-book-open-line")"></i>
                     </button>
                 }
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
@@ -767,7 +768,7 @@
                                         title="@(isDual ? "Exit side-by-side view" : "Side-by-side view — 2 pages at a time")"
                                         @onclick:stopPropagation="true"
                                         @onclick="() => ToggleDualMode(PaneIds[idx])">
-                                    <i class="@(isDual ? "ri-layout-column-line" : "ri-book-open-line")"></i>
+                                    <i class="@(isDual ? "ri-book-open-fill" : "ri-book-open-line")"></i>
                                 </button>
                             }
                         </div>
@@ -1331,12 +1332,12 @@
         font-size: .65rem; opacity: .85; white-space: nowrap; flex-shrink: 0;
     }
     .pcf-dual-toggle {
-        background: transparent; border: none; color: #e2e8f0;
+        background: transparent; border: none; color: #fbbf24;
         padding: 2px 5px; border-radius: 4px; cursor: pointer; flex-shrink: 0;
-        opacity: .65; transition: opacity .15s, background .15s; font-size: .85rem; line-height: 1;
+        opacity: .75; transition: opacity .15s, background .15s; font-size: .85rem; line-height: 1;
     }
-    .pcf-dual-toggle:hover { opacity: 1; background: rgba(255,255,255,.15); }
-    .pcf-dual-toggle.pcf-dual-active { opacity: 1; color: #60a5fa; }
+    .pcf-dual-toggle:hover { opacity: 1; background: rgba(251,191,36,.15); }
+    .pcf-dual-toggle.pcf-dual-active { opacity: 1; color: #fb923c; }
     .pcf-dual-nav {
         position: absolute; top: 50%; transform: translateY(-50%);
         background: rgba(0,0,0,.55); border: none; color: #e2e8f0;
