@@ -45,6 +45,9 @@ window.pcfViewer = {
         const u = new URL(url, location.origin);
         pane.filePath = u.searchParams.get('path');
 
+        // Folder summary files are served via a distinct endpoint — mark read-only
+        pane.readOnly = url.includes('/api/pc-file-folder-summary');
+
         let viewer = document.getElementById('pcf-viewer-' + paneId);
         // Wait for the viewer element to exist and have a valid width
         for (let attempt = 0; attempt < 50 && (!viewer || viewer.clientWidth < 10); attempt++) {
@@ -127,14 +130,38 @@ window.pcfViewer = {
         const self = this;
         let drawing = false;
 
-        // Helper: get pointer position in canvas coordinates, accounting for CSS zoom
+        // Helper: get pointer position in canvas coordinates.
+        // Uses overlay.width/r.width ratio which accounts for CSS zoom, dualScale,
+        // AND any max-width CSS constraint — no divisor guessing needed.
         function canvasXY(e) {
-            const r    = overlay.getBoundingClientRect();
-            const zoom = (self.panes[paneId] && self.panes[paneId].zoomLevel) || 1;
-            const ds   = (self.panes[paneId] && self.panes[paneId].dualScale)  || 1;
+            const r = overlay.getBoundingClientRect();
             return {
-                x: (e.clientX - r.left) / (zoom * ds),
-                y: (e.clientY - r.top)  / (zoom * ds)
+                x: (e.clientX - r.left) * (overlay.width  / r.width),
+                y: (e.clientY - r.top)  * (overlay.height / r.height)
+            };
+        }
+
+        // Helper: convert a viewport point (clientX, clientY) to wrapper-relative coords
+        // for DOM element positioning (accounting for wrapper CSS zoom).
+        function wrapperXY(clientX, clientY) {
+            const wr = overlay.parentElement.getBoundingClientRect();
+            const wz = parseFloat(overlay.parentElement.style.zoom) || 1;
+            return {
+                wx: (clientX - wr.left) / wz,
+                wy: (clientY - wr.top)  / wz
+            };
+        }
+
+        // Helper: convert a canvas coordinate to wrapper-relative coords.
+        function canvasToWrapperXY(cx, cy) {
+            const r  = overlay.getBoundingClientRect();
+            const wr = overlay.parentElement.getBoundingClientRect();
+            const wz = parseFloat(overlay.parentElement.style.zoom) || 1;
+            const vx = r.left + cx * r.width  / overlay.width;
+            const vy = r.top  + cy * r.height / overlay.height;
+            return {
+                wx: (vx - wr.left) / wz,
+                wy: (vy - wr.top)  / wz
             };
         }
 
@@ -145,6 +172,7 @@ window.pcfViewer = {
             if (!pane) return;
 
             if (self.textInputEl) return;
+            if (pane.readOnly) return; // folder summary — no annotations allowed
 
             if (self.toolMode === 'draw' || self.toolMode === 'brush') {
                 drawing = true;
@@ -159,18 +187,20 @@ window.pcfViewer = {
                 };
             } else if (self.toolMode === 'text') {
                 const { x, y } = canvasXY(e);
-                self._showTextInput(overlay.parentElement, pageIdx, x, y, paneId);
+                const { wx, wy } = wrapperXY(e.clientX, e.clientY);
+                self._showTextInput(overlay.parentElement, pageIdx, x, y, paneId, undefined, undefined, wx, wy);
             }
         });
 
         overlay.addEventListener('dblclick', (e) => {
             const pane = self.panes[paneId];
-            if (!pane || self.textInputEl) return;
+            if (!pane || self.textInputEl || pane.readOnly) return;
             const { x, y } = canvasXY(e);
             const hit = self._hitTestText(pane, pageIdx, x, y);
             if (hit) {
                 e.preventDefault();
-                self._showTextInput(overlay.parentElement, pageIdx, hit.ann.x, hit.ann.y, paneId, hit.ann, hit.idx);
+                const { wx, wy } = canvasToWrapperXY(hit.ann.x, hit.ann.y);
+                self._showTextInput(overlay.parentElement, pageIdx, hit.ann.x, hit.ann.y, paneId, hit.ann, hit.idx, wx, wy);
             }
         });
 
@@ -273,7 +303,7 @@ window.pcfViewer = {
         return null;
     },
 
-    _showTextInput(wrapper, pageIdx, x, y, paneId, existingAnn, existingIdx) {
+    _showTextInput(wrapper, pageIdx, x, y, paneId, existingAnn, existingIdx, inputX, inputY) {
         if (this.textInputEl) {
             this.textInputEl.remove();
             this.textInputEl = null;
@@ -283,11 +313,16 @@ window.pcfViewer = {
         const color = isEditing ? existingAnn.color : this.drawColor;
         const fontSize = isEditing ? (existingAnn.fontSize || 14) : this.fontSize;
 
+        // Use wrapper-relative coords for positioning when provided (correct when
+        // CSS zoom / max-width constraint is active); fall back to canvas coords.
+        const posX = inputX !== undefined ? inputX : x;
+        const posY = inputY !== undefined ? inputY : y;
+
         const input = document.createElement('textarea');
         input.className = 'pcf-text-input';
         input.rows = 1;
-        input.style.left = x + 'px';
-        input.style.top = (y - 18) + 'px';
+        input.style.left = posX + 'px';
+        input.style.top = (posY - 18) + 'px';
         input.placeholder = 'Type here... (Shift+Enter for new line)';
         input.style.color = color;
         input.style.fontSize = fontSize + 'px';

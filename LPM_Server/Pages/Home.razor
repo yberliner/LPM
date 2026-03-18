@@ -233,8 +233,8 @@
                                             : (DateOnly.TryParse(s.SessionDate, out var d2) ? d2.ToString("dd/MM/yy") : s.SessionDate);
                                         var statusClass = s.CsStatus switch {
                                             "Waiting"  => "home-aud-st-waiting",
-                                            "Not_Done" => "home-aud-st-done",
-                                            "Done"     => "home-aud-st-approved",
+                                            "Not_Done" => "home-aud-st-waiting",
+                                            "Done"     => "home-aud-st-done",
                                             _          => ""
                                         };
                                         var statusLabel = _csStatusLabels.TryGetValue(s.CsStatus ?? "", out var lbl) ? lbl : (s.CsStatus ?? "");
@@ -1701,8 +1701,8 @@
         q = _pcsSortCol switch
         {
             "date" => _pcsSortAsc
-                ? q.OrderBy(s => s.SessionDate).ThenBy(s => s.PcName)
-                : q.OrderByDescending(s => s.SessionDate).ThenBy(s => s.PcName),
+                ? q.OrderBy(s => DateTime.TryParse(s.CreatedAt, out var dt) ? dt : DateTime.MinValue).ThenBy(s => s.PcName)
+                : q.OrderByDescending(s => DateTime.TryParse(s.CreatedAt, out var dt) ? dt : DateTime.MinValue).ThenBy(s => s.PcName),
             "dur" => _pcsSortAsc
                 ? q.OrderBy(s => s.TotalSeconds).ThenBy(s => s.PcName)
                 : q.OrderByDescending(s => s.TotalSeconds).ThenBy(s => s.PcName),
@@ -1731,8 +1731,8 @@
         q = _audSortCol switch
         {
             "date" => _audSortAsc
-                ? q.OrderBy(s => s.SessionDate).ThenBy(s => s.PcName)
-                : q.OrderByDescending(s => s.SessionDate).ThenBy(s => s.PcName),
+                ? q.OrderBy(s => DateTime.TryParse(s.CreatedAt, out var dt) ? dt : DateTime.MinValue).ThenBy(s => s.PcName)
+                : q.OrderByDescending(s => DateTime.TryParse(s.CreatedAt, out var dt) ? dt : DateTime.MinValue).ThenBy(s => s.PcName),
             "dur" => _audSortAsc
                 ? q.OrderBy(s => s.TotalSeconds).ThenBy(s => s.PcName)
                 : q.OrderByDescending(s => s.TotalSeconds).ThenBy(s => s.PcName),

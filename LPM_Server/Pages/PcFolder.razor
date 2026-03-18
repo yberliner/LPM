@@ -2764,7 +2764,7 @@
             {
                 var reviewSec = _csReviewMinutes * 60;
                 DashSvc.AddCsReview(csId: UserPersonId, sessionId: _csSessionId,
-                    reviewSec: reviewSec, status: "Draft", notes: null);
+                    reviewSec: reviewSec, status: "Done", notes: null);
             }
 
             Console.WriteLine($"[PcFolder] CS review created by '{_userName}' — session {_csSessionId} ('{_csSessionName}'), review time: {_csReviewMinutes} min, for PC {PcId}");
