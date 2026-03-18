@@ -570,6 +570,7 @@
                     {
                         @* ── Step 2: Auditor Report Form (digitized from paper page 4) ── *@
                         <div class="arf">
+                            <div class="arf-subtitle">Dror Center, Haifa, Israel</div>
                             <div class="arf-title">Auditor Report Form</div>
 
                             @* Row 1: PC's Name + Date *@
@@ -601,11 +602,19 @@
                             @* Row 3: Admin Time + Total TA *@
                             <div class="arf-row">
                                 <div class="arf-field arf-left-col">
-                                    <span class="arf-lbl arf-lbl-fixed">Admin Time</span>
+                                    <span class="arf-lbl arf-lbl-fixed">
+                                        Admin Time
+                                        @if (string.IsNullOrWhiteSpace(_arfAdminTime))
+                                        {
+                                            <span style="color:#ef4444;font-weight:700;margin-left:2px;">*</span>
+                                        }
+                                    </span>
                                     <input type="text" inputmode="numeric" maxlength="5"
                                            class="form-control form-control-sm arf-input-short arf-time-input @(!IsValidArfTime(_arfAdminTime) ? "arf-invalid" : "")"
+                                           style="@(string.IsNullOrWhiteSpace(_arfAdminTime) ? "border:2px solid #ef4444 !important;background:rgba(239,68,68,.08) !important;" : "")"
                                            placeholder="H:MM"
                                            value="@_arfAdminTime"
+                                           @oninput="e => _arfAdminTime = e.Value?.ToString() ?? string.Empty"
                                            @onchange="e => _arfAdminTime = FormatArfTime(e.Value?.ToString()?.Trim() ?? string.Empty)" />
                                 </div>
                                 <div class="arf-field">
@@ -641,7 +650,7 @@
                                             <td>
                                                 <input type="text" class="arf-cell-input"
                                                        value="@_arfRows[idx].Process"
-                                                       @oninput="e => { _arfRows[idx].Process = e.Value?.ToString() ?? string.Empty; RebuildArfSummary(); }"/>
+                                                       @oninput="e => { _arfRows[idx].Process = e.Value?.ToString() ?? string.Empty; var _kw = HasAutoUncheckKeyword(_arfRows[idx].Process); if (!_kw) _arfRows[idx].AutoUnchecked = false; if (_kw && !_arfRows[idx].AutoUnchecked && _arfRows[idx].Checked) { _arfRows[idx].Checked = false; _arfRows[idx].AutoUnchecked = true; } RebuildArfSummary(); }"/>
                                             </td>
                                             <td>
                                                 <input type="text" inputmode="numeric" maxlength="5"
@@ -683,10 +692,43 @@
                             <div class="arf-row mt-3">
                                 <div class="arf-field">
                                     <span class="arf-lbl">TA Range</span>
-                                    <input type="number" step="any"
-                                           class="form-control form-control-sm arf-input-short"
-                                           placeholder="e.g. 2.7"
-                                           @bind="_arfTaRange" @bind:event="oninput" />
+                                    <div class="d-flex align-items-center gap-2">
+                                        <input type="text" inputmode="decimal" id="arf-ta-from"
+                                               class="form-control form-control-sm arf-input-short"
+                                               placeholder="from"
+                                               value="@_arfTaRangeFrom"
+                                               @oninput="SetTaRangeFrom" />
+                                        <span style="font-weight:600;">-</span>
+                                        <input type="text" inputmode="decimal" id="arf-ta-to"
+                                               class="form-control form-control-sm arf-input-short"
+                                               placeholder="to"
+                                               value="@_arfTaRangeTo"
+                                               @oninput="SetTaRangeTo" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            @* ── Exam Report ── *@
+                            <div class="arf-row mt-2">
+                                <div class="arf-field">
+                                    <span class="arf-lbl">Exam report</span>
+                                    <div class="d-flex gap-2">
+                                        @foreach (var opt in new[] { "F/N", "RT", "YT", "PT" })
+                                        {
+                                            var examColor = opt switch {
+                                                "F/N" => "#16a34a",
+                                                "RT"  => "#dc2626",
+                                                "YT"  => "#ca8a04",
+                                                "PT"  => "#db2777",
+                                                _     => "#64748b"
+                                            };
+                                            <button class="btn btn-sm @(_arfExamReport == opt ? "" : "btn-outline-secondary")"
+                                                    style="@(_arfExamReport == opt ? $"background:{examColor};border-color:{examColor};color:#fff;font-weight:600;" : $"color:{examColor};border-color:{examColor};")"
+                                                    @onclick="() => { _arfExamReport = opt; RebuildArfSummary(); }">
+                                                @opt
+                                            </button>
+                                        }
+                                    </div>
                                 </div>
                             </div>
 
@@ -1239,8 +1281,12 @@
         background: rgba(255,255,255,.03); border: 1px solid #334155; border-radius: 8px;
         padding: 16px 18px;
     }
+    .arf-subtitle {
+        text-align: center; font-size: .85rem; font-weight: 500; color: #94a3b8;
+        margin-bottom: 2px; letter-spacing: .3px;
+    }
     .arf-title {
-        text-align: center; font-size: 1.05rem; font-weight: 700; color: #e2e8f0;
+        text-align: center; font-size: 1.2rem; font-weight: 700; color: #e2e8f0;
         text-decoration: underline; text-underline-offset: 4px;
         margin-bottom: 16px; letter-spacing: .3px;
     }
@@ -1313,7 +1359,9 @@
     #arf-summary-wrap .ql-editor {
         min-height: 70px; font-size: .82rem;
         background: #f8fafc !important; color: #1e293b !important;
+        line-height: 1.35;
     }
+    #arf-summary-wrap .ql-editor p { margin: 0; }
     #arf-summary-wrap .ql-toolbar.ql-snow {
         padding: 3px 6px; background: #e2e8f0 !important;
         border-top-left-radius: 4px; border-top-right-radius: 4px;
@@ -1383,17 +1431,45 @@
     string _arfSessionLength = "";  // read-only, calculated
     string _arfAdminTime     = "";
     string _arfTotalTa       = "";
-    string _arfTaRange       = "";
+    string _arfTaRangeFrom   = "";
+    string _arfTaRangeTo     = "";
+    string _arfExamReport    = "F/N";
     string _arfSummary       = "";
     List<ArfRow> _arfRows    = [new()];
 
     class ArfRow
     {
-        public bool   Checked = true;
-        public string Process = "";
-        public string Time    = "";
-        public string ToneArm = "";
-        public string Results = "";
+        public bool   Checked       = true;
+        public bool   AutoUnchecked = false;
+        public string Process       = "";
+        public string Time          = "";
+        public string ToneArm       = "";
+        public string Results       = "";
+    }
+
+    static bool HasAutoUncheckKeyword(string text) =>
+        System.Text.RegularExpressions.Regex.IsMatch(
+            text ?? "", @"\b(TITS|EOS)\b",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    static string FilterNumericDot(string? raw) =>
+        new string((raw ?? "").Where(c => char.IsDigit(c) || c == '.').ToArray());
+
+    async Task SetTaRangeFrom(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        _arfTaRangeFrom = FilterNumericDot(raw);
+        if (_arfTaRangeFrom != raw)
+            await JSRuntime.InvokeVoidAsync("eval",
+                $"var el=document.getElementById('arf-ta-from');if(el)el.value={System.Text.Json.JsonSerializer.Serialize(_arfTaRangeFrom)};");
+    }
+    async Task SetTaRangeTo(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        _arfTaRangeTo = FilterNumericDot(raw);
+        if (_arfTaRangeTo != raw)
+            await JSRuntime.InvokeVoidAsync("eval",
+                $"var el=document.getElementById('arf-ta-to');if(el)el.value={System.Text.Json.JsonSerializer.Serialize(_arfTaRangeTo)};");
     }
 
     bool CanAddArfRow => _arfRows.Count == 0 || _arfRows.All(r =>
@@ -1411,9 +1487,20 @@
             {
                 var proc = System.Net.WebUtility.HtmlEncode(r.Process.Trim());
                 var res  = System.Net.WebUtility.HtmlEncode(r.Results.Trim());
-                return string.IsNullOrWhiteSpace(res) ? proc : $"{proc} TO: {res}";
-            });
-        _arfSummary = string.Join("<br>", lines);
+                return string.IsNullOrWhiteSpace(res) ? proc : $"{proc} TO {res}";
+            })
+            .ToList();
+
+        var examColor = _arfExamReport switch {
+            "F/N" => "#16a34a",
+            "RT"  => "#dc2626",
+            "YT"  => "#ca8a04",
+            "PT"  => "#db2777",
+            _     => "#64748b"
+        };
+        lines.Add($"<span style=\"color:{examColor};\">Exam report: {System.Net.WebUtility.HtmlEncode(_arfExamReport)}</span>");
+
+        _arfSummary = string.Join("", lines.Select(l => $"<p style=\"margin:0;line-height:1.35;\">{l}</p>"));
         if (pushToEditor)
         {
             _ = JSRuntime.InvokeVoidAsync("eval",
@@ -1542,7 +1629,7 @@
         _importDuplicate = false;
         _importFreeSession = false;
         _importStep = 1;
-        _arfDate = ""; _arfGrade = ""; _arfSessionLength = ""; _arfAdminTime = ""; _arfTotalTa = ""; _arfTaRange = ""; _arfSummary = "";
+        _arfDate = ""; _arfGrade = ""; _arfSessionLength = ""; _arfAdminTime = ""; _arfTotalTa = ""; _arfTaRangeFrom = ""; _arfTaRangeTo = ""; _arfExamReport = "F/N"; _arfSummary = "";
         _arfRows = [new ArfRow()];
         _showImportWizard = true;
     }
@@ -1583,6 +1670,7 @@
                     });
                 }
             ");
+            await InvokeAsync(() => RebuildArfSummary(pushToEditor: true));
         });
     }
 
@@ -1693,7 +1781,7 @@
             var arfPdfBytes = PdfSvc.GenerateArfPdf(
                 pcName, DateTime.Today.ToString("dd/MM/yyyy"),
                 _arfGrade, _arfSessionLength, _arfAdminTime,
-                _arfTotalTa, _arfTaRange,
+                _arfTotalTa, string.IsNullOrWhiteSpace(_arfTaRangeTo) ? _arfTaRangeFrom : $"{_arfTaRangeFrom}-{_arfTaRangeTo}",
                 _arfRows.Select(r => new PdfService.ArfRowData(r.Checked, r.Process, r.Time, r.ToneArm, r.Results)).ToList(),
                 summaryHtml);
             FolderSvc.SaveAttachment(_importPcId, savedSessionFileName, "arf.pdf", arfPdfBytes);
