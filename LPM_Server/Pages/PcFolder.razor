@@ -1,5 +1,6 @@
 @inject LPM.Services.FolderService FolderSvc
 @inject LPM.Services.DashboardService DashSvc
+@inject PdfService PdfSvc
 @inject LPM.Services.CsNotificationService CsNotifySvc
 @inject LPM.Services.ShortcutService ShortcutSvc
 @inject IJSRuntime JS
@@ -1922,9 +1923,10 @@
     List<(string paneId, string file)>? _pendingReloads;
     HashSet<string>                     _dualPanes = new();
     Dictionary<string, (int page, int total)> _dualInfo = new();
-    bool   _showEditSummary;
-    int    _editSummaryId;
-    string _editSummaryHtml = "";
+    bool    _showEditSummary;
+    int     _editSummaryId;
+    string  _editSummaryHtml    = "";
+    string? _editSummaryArfJson = null;
 
     static readonly int[] _fontSizes = [10, 12, 14, 18, 24, 32, 40, 56];
     static readonly string[] _palette = [
@@ -2282,8 +2284,9 @@
     async Task OpenEditSummary()
     {
         var result = DashSvc.GetFolderSummaryBySession(_csSessionId);
-        _editSummaryId   = result?.id ?? 0;
-        _editSummaryHtml = result?.html ?? "";
+        _editSummaryId      = result?.id ?? 0;
+        _editSummaryHtml    = result?.html ?? "";
+        _editSummaryArfJson = result?.arfJson;
         _showEditSummary = true;
         StateHasChanged();
         await Task.Delay(80); // wait for DOM
@@ -2322,6 +2325,41 @@
         DashSvc.UpdateFolderSummary(_editSummaryId, html ?? "");
         _showEditSummary = false;
         Console.WriteLine($"[PcFolder] Session summary updated for session {_csSessionId} by '{_userName}'");
+
+        // Regenerate arf.pdf if ARF data was stored at session creation
+        if (!string.IsNullOrEmpty(_editSummaryArfJson))
+        {
+            try
+            {
+                var arfData = System.Text.Json.JsonSerializer.Deserialize<PdfService.ArfData>(_editSummaryArfJson);
+                var sessionFileName = DashSvc.GetSessionName(_csSessionId);
+                if (arfData != null && !string.IsNullOrEmpty(sessionFileName))
+                {
+                    var pdfBytes = PdfSvc.GenerateArfPdf(
+                        arfData.PcName, arfData.Date, arfData.Grade, arfData.SessionLength,
+                        arfData.AdminTime, arfData.TotalTa, arfData.TaRange,
+                        arfData.Rows, html);
+                    if (FolderSvc.TryOverwriteArfPdf(PcId, sessionFileName, pdfBytes))
+                    {
+                        // Reload any pane that currently shows arf.pdf
+                        var arfFileName = $"{Path.GetFileNameWithoutExtension(sessionFileName)}_att_arf.pdf";
+                        for (int i = 0; i < _paneCount; i++)
+                        {
+                            var pf = _panes[i].File;
+                            if (pf != null && Path.GetFileName(pf).Equals(arfFileName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(pf)}&_t={DateTime.UtcNow.Ticks}";
+                                await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, PaneIds[i]);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PcFolder] Failed to regenerate arf.pdf: {ex.Message}");
+            }
+        }
 
         // Reload folder summary pane if open
         for (int i = 0; i < _paneCount; i++)

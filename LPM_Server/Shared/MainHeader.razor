@@ -1763,9 +1763,20 @@
             var sessionId = DashSvc.CreateImportedSession(_importPcId, _msgUserId.Value, sessionName,
                 sessionLenSec, adminSec, _importFreeSession);
 
-            // Save folder summary to separate table
-            if (!string.IsNullOrWhiteSpace(summaryHtml))
-                DashSvc.AddFolderSummary(sessionId, _importPcId, _msgUserId.Value, summaryHtml);
+            // Save folder summary to separate table (with ARF data for later regeneration)
+            var arfData = new PdfService.ArfData
+            {
+                PcName        = _approvedPcs.FirstOrDefault(p => p.PcId == _importPcId)?.FullName ?? "",
+                Date          = DateTime.Today.ToString("dd/MM/yyyy"),
+                Grade         = _arfGrade,
+                SessionLength = _arfSessionLength,
+                AdminTime     = _arfAdminTime,
+                TotalTa       = _arfTotalTa,
+                TaRange       = string.IsNullOrWhiteSpace(_arfTaRangeTo) ? _arfTaRangeFrom : $"{_arfTaRangeFrom}-{_arfTaRangeTo}",
+                Rows          = _arfRows.Select(r => new PdfService.ArfRowData(r.Checked, r.Process, r.Time, r.ToneArm, r.Results)).ToList()
+            };
+            var arfJson = System.Text.Json.JsonSerializer.Serialize(arfData);
+            DashSvc.AddFolderSummary(sessionId, _importPcId, _msgUserId.Value, summaryHtml ?? "", arfJson);
 
             // Upload session file (from cached bytes)
             var savedSessionFileName = FolderSvc.SaveUploadedFile(_importPcId, _importSessionFileName, _importSessionBytes)!;

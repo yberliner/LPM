@@ -1924,15 +1924,15 @@ public class DashboardService
         return list;
     }
 
-    public (int id, string html)? GetFolderSummaryBySession(int sessionId)
+    public (int id, string html, string? arfJson)? GetFolderSummaryBySession(int sessionId)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Id, SummaryHtml FROM sess_folder_summary WHERE SessionId = @sid LIMIT 1";
+        cmd.CommandText = "SELECT Id, SummaryHtml, ArfJson FROM sess_folder_summary WHERE SessionId = @sid LIMIT 1";
         cmd.Parameters.AddWithValue("@sid", sessionId);
         using var r = cmd.ExecuteReader();
-        if (r.Read()) return (r.GetInt32(0), r.IsDBNull(1) ? "" : r.GetString(1));
+        if (r.Read()) return (r.GetInt32(0), r.IsDBNull(1) ? "" : r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2));
         return null;
     }
 
@@ -1947,18 +1947,19 @@ public class DashboardService
         cmd.ExecuteNonQuery();
     }
 
-    public void AddFolderSummary(int? sessionId, int pcId, int auditorId, string summaryHtml)
+    public void AddFolderSummary(int? sessionId, int pcId, int auditorId, string summaryHtml, string? arfJson = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO sess_folder_summary (SessionId, PcId, AuditorId, SummaryHtml, CreatedAt)
-            VALUES (@sid, @pcId, @audId, @html, datetime('now', '+2 hours'))";
+            INSERT INTO sess_folder_summary (SessionId, PcId, AuditorId, SummaryHtml, CreatedAt, ArfJson)
+            VALUES (@sid, @pcId, @audId, @html, datetime('now', '+2 hours'), @arfJson)";
         cmd.Parameters.AddWithValue("@sid", (object?)sessionId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@pcId", pcId);
         cmd.Parameters.AddWithValue("@audId", auditorId);
         cmd.Parameters.AddWithValue("@html", summaryHtml);
+        cmd.Parameters.AddWithValue("@arfJson", (object?)arfJson ?? DBNull.Value);
         cmd.ExecuteNonQuery();
     }
 

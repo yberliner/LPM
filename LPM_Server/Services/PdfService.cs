@@ -1543,6 +1543,18 @@ public class PdfService
 
     public record ArfRowData(bool Checked, string Process, string Time, string ToneArm, string Results);
 
+    public class ArfData
+    {
+        public string PcName        { get; set; } = "";
+        public string Date          { get; set; } = "";
+        public string Grade         { get; set; } = "";
+        public string SessionLength { get; set; } = "";
+        public string AdminTime     { get; set; } = "";
+        public string TotalTa       { get; set; } = "";
+        public string TaRange       { get; set; } = "";
+        public List<ArfRowData> Rows { get; set; } = [];
+    }
+
     public byte[] GenerateArfPdf(
         string pcName, string date, string grade, string sessionLength,
         string adminTime, string totalTa, string taRange,

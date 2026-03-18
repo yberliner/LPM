@@ -692,6 +692,21 @@ public class FolderService
         Console.WriteLine($"[FolderService] Saved attachment '{attFileName}' for session '{sessionFileName}', PC {pcId}");
     }
 
+    /// <summary>Overwrites the existing arf.pdf attachment for a session. Returns false if not found.</summary>
+    public bool TryOverwriteArfPdf(int pcId, string sessionFileName, byte[] pdfBytes)
+    {
+        var folder = FindPcFolder(pcId);
+        if (folder == null) return false;
+        var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
+        var fullPath = Path.Combine(folder, "WorkSheets", $"{sessionNoExt}_att_arf.pdf");
+        if (!File.Exists(fullPath)) return false;
+        File.WriteAllBytes(fullPath, pdfBytes);
+        TryShrinkPdf(fullPath);
+        EncryptFileInPlace(fullPath);
+        Console.WriteLine($"[FolderService] Overwrote arf.pdf for session '{sessionFileName}', PC {pcId}");
+        return true;
+    }
+
     /// <summary>Read a file from disk, encrypt its contents, and write back.</summary>
     private void EncryptFileInPlace(string path)
     {
