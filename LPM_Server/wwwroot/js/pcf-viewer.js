@@ -118,7 +118,7 @@ window.pcfViewer = {
             const ctx = canvas.getContext('2d');
             await page.render({ canvasContext: ctx, viewport: vp }).promise;
 
-            pane.pages.push({ canvas, overlay, vp, pageIdx: i, scale });
+            pane.pages.push({ canvas, overlay, vp, pageIdx: i, scale, srcDoc: pane.pdfDoc, srcPageNum: i + 1 });
             this._attachEvents(overlay, i, paneId);
         }
     },
@@ -547,10 +547,16 @@ window.pcfViewer = {
 
         const numPages = insertDoc.numPages;
         const refPg = pane.pages[0]; // use first page for reference dimensions
+        // Target canvas width = same as the first original page so zoom works uniformly
+        const refCanvasWidth = refPg ? refPg.canvas.width : null;
 
         for (let i = 1; i <= numPages; i++) {
             const page = await insertDoc.getPage(i);
-            const vp = page.getViewport({ scale: pane.baseScale || 1 });
+            const naturalVp = page.getViewport({ scale: 1 });
+            const insertScale = refCanvasWidth
+                ? (refCanvasWidth / naturalVp.width)
+                : (pane.baseScale || 1);
+            const vp = page.getViewport({ scale: insertScale });
 
             const wrapper = document.createElement('div');
             wrapper.className = 'pcf-page-wrapper';
@@ -584,7 +590,7 @@ window.pcfViewer = {
                 viewer.appendChild(wrapper);
             }
 
-            const newPage = { canvas, overlay, vp, pageIdx: insertIdx, scale: pane.baseScale || 1 };
+            const newPage = { canvas, overlay, vp, pageIdx: insertIdx, scale: insertScale, srcDoc: insertDoc, srcPageNum: i };
             pane.pages.splice(insertIdx, 0, newPage);
 
             this._attachEvents(overlay, insertIdx, paneId);
@@ -830,16 +836,16 @@ window.pcfViewer = {
         snapshot.getContext('2d').drawImage(pg.canvas, 0, 0);
         pane.annotations.push({ type: 'bg-change', pageIdx, snapshot });
 
-        // Check if this page exists in the original PDF (blank pages added later won't)
-        const isOriginalPage = pane.pdfDoc && (pageIdx + 1) <= pane.pdfDoc.numPages;
+        // Use per-page source doc/page tracking set at render time
+        const hasSrc = pg.srcDoc && pg.srcPageNum;
 
-        if (isOriginalPage) {
-            // Render PDF to a temp canvas first
+        if (hasSrc) {
+            // Render from the exact source doc/page (correct even after insertions)
             const tmpCanvas = document.createElement('canvas');
             tmpCanvas.width = w;
             tmpCanvas.height = h;
             const tmpCtx = tmpCanvas.getContext('2d');
-            const page = await pane.pdfDoc.getPage(pageIdx + 1);
+            const page = await pg.srcDoc.getPage(pg.srcPageNum);
             await page.render({ canvasContext: tmpCtx, viewport: pg.vp }).promise;
 
             ctx.clearRect(0, 0, w, h);
@@ -855,7 +861,7 @@ window.pcfViewer = {
             ctx.drawImage(tmpCanvas, 0, 0);
             ctx.globalCompositeOperation = 'source-over';
         } else {
-            // Blank/added page — just fill with the color directly
+            // Blank page (no source doc) — just fill with the color directly
             ctx.clearRect(0, 0, w, h);
             ctx.fillStyle = (color && color !== '' && color !== '#ffffff' && color !== '#FFFFFF') ? color : '#ffffff';
             ctx.fillRect(0, 0, w, h);

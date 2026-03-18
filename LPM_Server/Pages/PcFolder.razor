@@ -247,6 +247,9 @@
                 <button class="pcf-ctx-item" @onclick="ShowInsertFormFromCtx">
                     <i class="ri-file-add-line me-2"></i>Insert Form
                 </button>
+                <button class="pcf-ctx-item" @onclick="InsertFileAboveClick">
+                    <i class="ri-upload-2-line me-2"></i>Insert file above
+                </button>
             }
             <button class="pcf-ctx-item" @onclick="ShowPageBgFromCtx">
                 <i class="ri-palette-line me-2"></i>Change Background
@@ -360,6 +363,9 @@
     @* ── New menu popover ── *@
     @* Hidden file input — always in DOM, triggered programmatically *@
     <InputFile id="pcf-upload-input" accept=".pdf,.doc,.docx" multiple OnChange="NewMenuUploadFile"
+               style="display:none;" />
+    @* Hidden file input for "Insert file above" in program pages *@
+    <InputFile id="pcf-insert-input" accept=".pdf,.doc,.docx" OnChange="OnInsertFileSelected"
                style="display:none;" />
 
     @if (_newMenuSection != null)
@@ -2871,6 +2877,78 @@
         var count = await JS.InvokeAsync<int>("pcfViewer.insertPdfPages", _pageBgPaneId, _pageBgPageIdx, url);
         Console.WriteLine($"[PcFolder] Inserted {count} pages from '{fileName}'");
         _hasAnnotations = true;
+    }
+
+    async Task InsertFileAboveClick()
+    {
+        _showPageCtxMenu = false;
+        // _pageBgPaneId and _pageBgPageIdx are already set from OnPageRightClick
+        await JS.InvokeVoidAsync("eval", "document.getElementById('pcf-insert-input').click()");
+    }
+
+    async Task OnInsertFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.GetMultipleFiles(1).FirstOrDefault();
+        if (file == null) return;
+
+        using var ms = new MemoryStream();
+        await file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024).CopyToAsync(ms);
+        var rawBytes = ms.ToArray();
+
+        var ext = Path.GetExtension(file.Name);
+        if (FolderService.ConvertibleExtensions.Contains(ext))
+        {
+            // Background conversion with toast, then insert
+            var toast = new ConversionToast(Guid.NewGuid(), file.Name);
+            _conversionToasts.Add(toast);
+            var paneId = _pageBgPaneId;
+            var pageIdx = _pageBgPageIdx;
+            _ = RunInsertConversionAsync(toast, rawBytes, file.Name, paneId, pageIdx);
+        }
+        else
+        {
+            // PDF — insert directly as data URL
+            var dataUrl = "data:application/pdf;base64," + Convert.ToBase64String(rawBytes);
+            var count = await JS.InvokeAsync<int>("pcfViewer.insertPdfPages", _pageBgPaneId, _pageBgPageIdx, dataUrl);
+            Console.WriteLine($"[PcFolder] Inserted {count} pages from '{file.Name}' above page {_pageBgPageIdx + 1} in pane {_pageBgPaneId} by '{_userName}' — PC {PcId}");
+            if (count > 0) _hasAnnotations = true;
+        }
+    }
+
+    async Task RunInsertConversionAsync(ConversionToast toast, byte[] docBytes, string originalName, string paneId, int pageIdx)
+    {
+        try
+        {
+            var pdfBytes = await Task.Run(() => FolderSvc.ConvertToPdf(docBytes, originalName));
+            if (pdfBytes == null)
+            {
+                toast.Status = ConvStatus.Failed;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            toast.Status = ConvStatus.Done;
+            await InvokeAsync(StateHasChanged);
+
+            var dataUrl = "data:application/pdf;base64," + Convert.ToBase64String(pdfBytes);
+            int count = 0;
+            await InvokeAsync(async () =>
+            {
+                count = await JS.InvokeAsync<int>("pcfViewer.insertPdfPages", paneId, pageIdx, dataUrl);
+            });
+            Console.WriteLine($"[PcFolder] Inserted {count} pages from '{originalName}' above page {pageIdx + 1} in pane {paneId} by '{_userName}' — PC {PcId}");
+            if (count > 0) _hasAnnotations = true;
+
+            await Task.Delay(3000);
+            _conversionToasts.Remove(toast);
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PcFolder] Insert conversion error for '{originalName}': {ex.Message}");
+            toast.Status = ConvStatus.Failed;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     async Task SetPageBgColor(string color)
