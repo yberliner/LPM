@@ -11,9 +11,6 @@
         <div class="d-flex gap-1 mb-2">
             <input class="form-control form-control-sm" placeholder="@LS.T("common.search")"
                    @bind="_search" @bind:event="oninput" />
-            <button class="btn btn-sm btn-success text-nowrap" title="@LS.T("auditors.addNew")" @onclick="ShowAddForm">
-                <i class="ri-user-add-line"></i>
-            </button>
         </div>
         <div class="overflow-y-auto flex-grow-1">
             @if (!FilteredAuditors.Any())
@@ -27,14 +24,14 @@
                      style="cursor:pointer;"
                      @onclick="() => SelectAuditor(a.AuditorId)">
                     <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 text-white fw-bold"
-                         style="width:30px;height:30px;font-size:0.8rem;background:@TypeColor(a.Type);">
+                         style="width:30px;height:30px;font-size:0.8rem;background:@RoleColor(a.StaffRole);">
                         @(a.FullName.Length > 0 ? a.FullName[0].ToString().ToUpper() : "?")
                     </div>
                     <div class="overflow-hidden">
                         <div class="fw-semibold text-truncate" style="font-size:0.82rem;">@a.FullName</div>
                         <div class="text-truncate @(_selId == a.AuditorId ? "text-white-50" : "text-muted")"
                              style="font-size:0.7rem;">
-                            @(a.GradeCode ?? "—") · @TypeLabel(a.Type)
+                            @(a.GradeCode ?? "—") · @RoleLabel(a.StaffRole)
                         </div>
                     </div>
                 </div>
@@ -45,63 +42,14 @@
     @* ── RIGHT PANEL ── *@
     <div class="flex-grow-1 overflow-y-auto">
 
-        @if (_showAddForm)
-        {
-            <div class="card shadow-sm">
-                <div class="card-header fw-semibold py-2">
-                    <i class="ri-user-add-line me-1"></i> @LS.T("auditors.addNewAuditor")
-                </div>
-                <div class="card-body">
-                    <div class="row g-2">
-                        <div class="col-md-4">
-                            <label class="form-label small mb-1">@LS.T("members.firstName") <span class="text-danger">*</span></label>
-                            <input class="form-control form-control-sm" @bind="_addFirstName" placeholder="@LS.T("members.firstName")" />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label small mb-1">@LS.T("members.lastName")</label>
-                            <input class="form-control form-control-sm" @bind="_addLastName" placeholder="@LS.T("members.lastName")" />
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label small mb-1">@LS.T("auditors.grade")</label>
-                            <select class="form-select form-select-sm" @bind="_addGradeId">
-                                <option value="">— @LS.T("common.none") —</option>
-                                @foreach (var g in _grades)
-                                {
-                                    <option value="@g.GradeId">@g.Code</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label small mb-1">@LS.T("auditors.type")</label>
-                            <select class="form-select form-select-sm" @bind="_addType">
-                                <option value="0">@LS.T("auditors.typeInactive")</option>
-                                <option value="1">@LS.T("auditors.typeRegular")</option>
-                                <option value="2">@LS.T("auditors.typeSolo")</option>
-                                <option value="3">@LS.T("auditors.typeRegularSolo")</option>
-                            </select>
-                        </div>
-                    </div>
-                    @if (!string.IsNullOrEmpty(_addError))
-                    {
-                        <div class="alert alert-danger py-1 px-2 mt-2 small">@_addError</div>
-                    }
-                    <div class="mt-3 d-flex gap-2">
-                        <button class="btn btn-sm btn-primary" @onclick="SaveNewAuditor">
-                            <i class="ri-save-line me-1"></i>@LS.T("common.save")
-                        </button>
-                        <button class="btn btn-sm btn-link text-muted" @onclick="() => _showAddForm = false">@LS.T("common.cancel")</button>
-                    </div>
-                </div>
-            </div>
-        }
-        else if (_selId.HasValue && _detail != null)
+        @if (_selId.HasValue && _detail != null)
         {
             @* Header card *@
             <div class="card shadow-sm mb-3">
                 <div class="card-body py-2 px-3">
                     <div class="d-flex align-items-start gap-3">
                         <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0"
-                             style="width:60px;height:60px;background:@TypeColor(_detail.Type);font-size:1.5rem;">
+                             style="width:60px;height:60px;background:@RoleColor(_detail.StaffRole);font-size:1.5rem;">
                             @(_detail.FirstName.Length > 0 ? _detail.FirstName[0].ToString().ToUpper() : "?")
                         </div>
                         <div class="flex-grow-1">
@@ -128,11 +76,10 @@
                                     </div>
                                     <div class="col-auto">
                                         <label class="form-label small mb-0">@LS.T("auditors.type")</label>
-                                        <select class="form-select form-select-sm" @bind="_editType">
-                                            <option value="0">@LS.T("auditors.typeInactive")</option>
-                                            <option value="1">@LS.T("auditors.typeRegular")</option>
-                                            <option value="2">@LS.T("auditors.typeSolo")</option>
-                                            <option value="3">@LS.T("auditors.typeRegularSolo")</option>
+                                        <select class="form-select form-select-sm" @bind="_editStaffRole">
+                                            <option value="Auditor">@LS.T("auditors.typeRegular")</option>
+                                            <option value="CS">Auditor + CS</option>
+                                            <option value="Solo">@LS.T("auditors.typeSolo")</option>
                                         </select>
                                     </div>
                                     <div class="col-auto d-flex align-items-end pb-1">
@@ -153,7 +100,7 @@
                                     <span class="fs-5 fw-semibold" style="color:var(--default-text-color);">
                                         @(_detail.FirstName + (string.IsNullOrEmpty(_detail.LastName) ? "" : " " + _detail.LastName))
                                     </span>
-                                    <span class="badge @TypeBadgeClass(_detail.Type)">@TypeLabel(_detail.Type)</span>
+                                    <span class="badge @RoleBadgeClass(_detail.StaffRole)">@RoleLabel(_detail.StaffRole)</span>
                                     @if (!string.IsNullOrEmpty(_detail.GradeCode))
                                     {
                                         <span class="badge bg-info text-dark">@LS.T("auditors.grade"): @_detail.GradeCode</span>
@@ -221,7 +168,7 @@
                 </div>
             }
         }
-        else if (!_showAddForm)
+        else
         {
             <div class="d-flex flex-column align-items-center justify-content-center text-muted"
                  style="height:60vh;">
@@ -267,15 +214,10 @@
     AuditorDetail? _detail;
     AuditorStats?  _stats;
 
-    // Add form
-    bool   _showAddForm;
-    string _addFirstName = "", _addLastName = "", _addGradeId = "", _addError = "";
-    int    _addType = 1;
-
     // Edit mode
     bool   _editMode;
     string _editFirstName = "", _editLastName = "", _editGradeId = "", _editError = "";
-    int    _editType;
+    string _editStaffRole = "Auditor";
     bool   _editIsActive;
 
     IEnumerable<AuditorListItem> FilteredAuditors => string.IsNullOrWhiteSpace(_search)
@@ -292,10 +234,9 @@
 
     void SelectAuditor(int id)
     {
-        _selId       = id;
-        _showAddForm = false;
-        _editMode    = false;
-        _editError   = "";
+        _selId     = id;
+        _editMode  = false;
+        _editError = "";
         LoadDetail();
     }
 
@@ -306,38 +247,16 @@
         _stats  = AuditorSvc.GetAuditorStats(_selId.Value);
     }
 
-    void ShowAddForm()
-    {
-        _showAddForm  = true;
-        _selId        = null;
-        _editMode     = false;
-        _addFirstName = _addLastName = _addGradeId = _addError = "";
-        _addType      = 1;
-    }
-
-    void SaveNewAuditor()
-    {
-        if (string.IsNullOrWhiteSpace(_addFirstName))
-        { _addError = LS.T("members.firstNameRequired"); return; }
-
-        int? gradeId = int.TryParse(_addGradeId, out var g) ? g : null;
-        Console.WriteLine($"[Auditors] Added auditor '{_addFirstName} {_addLastName}' type={_addType} by 'admin'");
-        var newId = AuditorSvc.AddAuditor(_addFirstName, _addLastName, gradeId, _addType);
-        _allAuditors = AuditorSvc.GetAllAuditors();
-        _showAddForm = false;
-        SelectAuditor(newId);
-    }
-
     void StartEdit()
     {
         if (_detail == null) return;
-        _editMode      = true;
-        _editError     = "";
-        _editFirstName = _detail.FirstName;
-        _editLastName  = _detail.LastName;
-        _editGradeId   = _detail.CurrentGradeId?.ToString() ?? "";
-        _editType      = _detail.Type;
-        _editIsActive  = _detail.IsActive;
+        _editMode       = true;
+        _editError      = "";
+        _editFirstName  = _detail.FirstName;
+        _editLastName   = _detail.LastName;
+        _editGradeId    = _detail.CurrentGradeId?.ToString() ?? "";
+        _editStaffRole  = _detail.StaffRole;
+        _editIsActive   = _detail.IsActive;
     }
 
     void CancelEdit() { _editMode = false; _editError = ""; }
@@ -348,9 +267,9 @@
         { _editError = LS.T("members.firstNameRequired"); return; }
 
         int? gradeId = int.TryParse(_editGradeId, out var g) ? g : null;
-        Console.WriteLine($"[Auditors] Updated auditor {_selId!.Value} — '{_editFirstName} {_editLastName}' type={_editType} active={_editIsActive} by 'admin'");
+        Console.WriteLine($"[Auditors] Updated auditor {_selId!.Value} — '{_editFirstName} {_editLastName}' role={_editStaffRole} active={_editIsActive} by 'admin'");
         AuditorSvc.UpdateAuditor(_selId!.Value, _editFirstName, _editLastName,
-            gradeId, _editType, _editIsActive);
+            gradeId, _editStaffRole, _editIsActive);
         _editMode    = false;
         _editError   = "";
         _allAuditors = AuditorSvc.GetAllAuditors();
@@ -358,7 +277,7 @@
     }
 
     static string Hmm(int secs) { int s = Math.Abs(secs); return $"{s / 3600}:{(s % 3600) / 60:00}"; }
-    string TypeLabel(int t) => t switch { 0 => LS.T("auditors.typeInactive"), 1 => LS.T("auditors.typeRegular"), 2 => LS.T("auditors.typeSolo"), 3 => LS.T("auditors.typeRegularSolo"), _ => "?" };
-    static string TypeColor(int t) => t switch { 0 => "#9e9e9e", 1 => "#3949ab", 2 => "#e65100", 3 => "#2e7d32", _ => "#999" };
-    static string TypeBadgeClass(int t) => t switch { 0 => "bg-secondary", 1 => "bg-primary", 2 => "bg-warning text-dark", 3 => "bg-success", _ => "bg-secondary" };
+    string RoleLabel(string r) => r switch { "Auditor" => LS.T("auditors.typeRegular"), "CS" => "Auditor + CS", "Solo" => LS.T("auditors.typeSolo"), _ => r };
+    static string RoleColor(string r) => r switch { "Auditor" => "#3949ab", "CS" => "#2e7d32", "Solo" => "#e65100", _ => "#9e9e9e" };
+    static string RoleBadgeClass(string r) => r switch { "Auditor" => "bg-primary", "CS" => "bg-success", "Solo" => "bg-warning text-dark", _ => "bg-secondary" };
 }

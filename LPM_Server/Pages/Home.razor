@@ -28,17 +28,10 @@
             <button class="btn btn-sm home-nav-btn" @onclick="PrintTable">
                 <i class="ri-printer-line me-1"></i>@LS.T("common.print")
             </button>
-            @if (!_soloMode)
+            @if (!_isSolo)
             {
                 <button class="btn btn-sm home-nav-btn-accent" @onclick="ShowAddPcModal">
                     <i class="ri-add-line me-1"></i>@LS.T("home.addPC")
-                </button>
-            }
-            @if (_auditorType == 3)
-            {
-                <button class="btn btn-sm @(_soloMode ? "home-solo-active" : "home-solo-btn")"
-                        @onclick="ToggleSoloMode">
-                    <i class="ri-user-line me-1"></i>@(_soloMode ? LS.T("home.solo") + " ✓" : LS.T("home.solo"))
                 </button>
             }
         </div>
@@ -297,7 +290,7 @@
                     <i class="ri-calendar-check-line me-1"></i>
                     <strong>Weekly Overview</strong>
                 </div>
-                @if (!_soloMode && _weeklyOverviewExpanded)
+                @if (!_isSolo && _weeklyOverviewExpanded)
                 {
                     <button class="btn btn-sm @(_hideEmpty?"home-filter-active":"home-filter-btn") ms-2 d-flex align-items-center gap-1"
                             title="@(_hideEmpty?LS.T("home.showEmpty"):LS.T("home.hideEmpty"))"
@@ -1269,8 +1262,7 @@
     int?          _userId;
     bool          _isAuditor, _isCS;
     bool          _isSoloAuditor;
-    int           _auditorType;   // 0=InActive 1=RegularOnly 2=SoloOnly 3=RegularAndSolo
-    bool          _soloMode;
+    bool          _isSolo;        // true = StaffRole is 'Solo' — always shows solo grid, no toggle
     PcInfo?       _soloSelf;
     DateOnly      _weekStart;
     List<PcInfo>   _myPcs  = [];
@@ -1290,12 +1282,14 @@
         .ToList();
 
     List<PcInfo> CsSoloPcs => _myPcs
-        .Where(pc => pc.WorkCapacity == "CSSolo")
+        .Where(pc => pc.WorkCapacity == "CSSolo" || pc.WorkCapacity == "CSAndCSSolo")
+        .Select(pc => pc.WorkCapacity == "CSAndCSSolo" ? pc with { WorkCapacity = "CSSolo" } : pc)
         .Where(pc => !_hideEmpty || HasWeekData(pc))
         .ToList();
 
     List<PcInfo> CsPcs => _myPcs
-        .Where(pc => pc.WorkCapacity == "CS")
+        .Where(pc => pc.WorkCapacity == "CS" || pc.WorkCapacity == "CSAndCSSolo")
+        .Select(pc => pc.WorkCapacity == "CSAndCSSolo" ? pc with { WorkCapacity = "CS" } : pc)
         .Where(pc => !_hideEmpty || HasWeekData(pc))
         .ToList();
     HashSet<(int, int)>      _pendingCs   = [];
@@ -1400,17 +1394,16 @@
             ? char.ToUpper(username[0]) + username[1..]
             : "LP Management";
 
+        var staffRole  = auth.User.FindFirst("StaffRole")?.Value ?? "None";
+        _isSolo        = staffRole == "Solo";
         _userId = DashSvc.GetUserIdByUsername(username);
         if (_userId.HasValue)
         {
-            _auditorType   = DashSvc.GetAuditorType(_userId.Value);
             _isAuditor     = DashSvc.IsAuditor(_userId.Value);
             _isCS          = DashSvc.IsCS(_userId.Value);
-            _isSoloAuditor = DashSvc.IsSoloAuditor(_userId.Value);
+            _isSoloAuditor = _isSolo;
             if (_isSoloAuditor)
                 _soloSelf = DashSvc.GetSoloAuditorInfo(_userId.Value);
-            // SoloOnly (2) auto-enters solo mode; RegularAndSolo (3) starts in regular mode with toggle
-            _soloMode = _auditorType == 2;
         }
         _weekStart = TodayWeekStart;
         await RefreshAsync();
@@ -1473,7 +1466,7 @@
     async Task RefreshAsync()
     {
         if (!_userId.HasValue) return;
-        if (_soloMode && _soloSelf != null)
+        if (_isSolo && _soloSelf != null)
         {
             _myPcs        = [_soloSelf];
             _allPcs       = [];
@@ -1557,13 +1550,6 @@
         await InvokeAsync(StateHasChanged);
     }
 
-    async Task ToggleSoloMode()
-    {
-        _soloMode = !_soloMode;
-        Console.WriteLine($"[Home] Toggled solo mode to {_soloMode} by '{_username}'");
-        _detail = null; _selPcId = null; _selDay = null;
-        await RefreshAsync();
-    }
 
     HashSet<int> GetPcIdsWithPendingSoloReviews() => DashSvc.GetPcIdsWithPendingSoloReviews();
     HashSet<int> GetPcIdsWithPendingRegularReviews() => DashSvc.GetPcIdsWithPendingRegularReviews();
@@ -1633,11 +1619,11 @@
         _editSessionId = null;
         _detail = DashSvc.GetDayDetail(_userId!.Value, _selPcId!.Value,
             _weekStart.AddDays(_selDay!.Value), _selRole);
-        _grid = _soloMode
+        _grid = _isSolo
             ? DashSvc.GetWeekGridSolo(_userId.Value, _weekStart)
             : DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
-        _pendingCs = _soloMode ? [] : DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
-        _weeklyTotals = _soloMode
+        _pendingCs = _isSolo ? [] : DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
+        _weeklyTotals = _isSolo
             ? DashSvc.GetWeeklyTotalsSolo(_userId.Value, ChartLatestWeekStart(), 20)
             : DashSvc.GetWeeklyTotals(_userId.Value, ChartLatestWeekStart(), 20, _myPcs);
         _chartKey++;
@@ -1785,11 +1771,11 @@
         _editReviewId = null;
         _detail = DashSvc.GetDayDetail(_userId!.Value, _selPcId!.Value,
             _weekStart.AddDays(_selDay!.Value), _selRole);
-        _grid = _soloMode
+        _grid = _isSolo
             ? DashSvc.GetWeekGridSolo(_userId.Value, _weekStart)
             : DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
-        _pendingCs = _soloMode ? [] : DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
-        _weeklyTotals = _soloMode
+        _pendingCs = _isSolo ? [] : DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
+        _weeklyTotals = _isSolo
             ? DashSvc.GetWeeklyTotalsSolo(_userId.Value, ChartLatestWeekStart(), 20)
             : DashSvc.GetWeeklyTotals(_userId.Value, ChartLatestWeekStart(), 20, _myPcs);
         _chartKey++;
@@ -2308,10 +2294,10 @@
 
         _detail = DashSvc.GetDayDetail(_userId!.Value, _selPcId!.Value,
             _weekStart.AddDays(_selDay ?? 0), _selRole);
-        _grid = _soloMode
+        _grid = _isSolo
             ? DashSvc.GetWeekGridSolo(_userId.Value, _weekStart)
             : DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
-        _pendingCs = _soloMode ? [] : DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
+        _pendingCs = _isSolo ? [] : DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
         RefreshWeeklyTotals();
     }
 
@@ -2437,7 +2423,7 @@
 
     void RefreshWeeklyTotals()
     {
-        _weeklyTotals = _soloMode
+        _weeklyTotals = _isSolo
             ? DashSvc.GetWeeklyTotalsSolo(_userId!.Value,
                   ChartLatestWeekStart(), 20)
             : DashSvc.GetWeeklyTotals(_userId!.Value,
@@ -2485,7 +2471,7 @@
 
         // Only show next week if something exists there
         var hasNextWeek =
-            _soloMode
+            _isSolo
                 ? DashSvc.HasAnyWorkInWeek(_userId!.Value, nextWeek, _myPcs, soloMode: true)
                 : DashSvc.HasAnyWorkInWeek(_userId!.Value, nextWeek, _myPcs, soloMode: false);
 

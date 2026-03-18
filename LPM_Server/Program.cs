@@ -162,9 +162,13 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db) =>
     var username = form["username"].ToString();
     var password = form["password"].ToString();
 
-    if (db.ValidateUser(username, password, out var roles))
+    if (db.ValidateUser(username, password, out var roles, out var staffRole))
     {
-        var claims = new List<Claim> { new Claim(ClaimTypes.Name, username) };
+        var claims = new List<Claim>
+        {
+            new Claim(ClaimTypes.Name, username),
+            new Claim("StaffRole", staffRole),
+        };
         foreach (var r in roles)
             claims.Add(new Claim(ClaimTypes.Role, r));
 
@@ -173,7 +177,7 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db) =>
             new ClaimsPrincipal(identity));
 
         var loginIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        Console.WriteLine($"[Login] Login success for '{username}' from {loginIp} — roles=[{string.Join(", ", roles)}]");
+        Console.WriteLine($"[Login] Login success for '{username}' from {loginIp} — roles=[{string.Join(", ", roles)}] staffRole={staffRole}");
         return Results.Redirect("/Home");
     }
 
@@ -335,7 +339,7 @@ app.MapPost("/api/backup-auth", async (HttpContext ctx, LPM.Auth.UserDb userDb) 
     var form = await ctx.Request.ReadFormAsync();
     var password = form["password"].ToString();
 
-    if (string.IsNullOrEmpty(password) || !userDb.ValidateUser(username, password, out _))
+    if (string.IsNullOrEmpty(password) || !userDb.ValidateUser(username, password, out _, out _))
     {
         var remaining = LPM.Services.BackupProgress.RecordFailure(ip);
         var isLocked = remaining == 0;

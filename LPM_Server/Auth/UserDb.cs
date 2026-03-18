@@ -3,6 +3,12 @@ using System.Security.Cryptography;
 
 namespace LPM.Auth;
 
+public record UserListItem(int Id, int PersonId, string Username, string FullName,
+    string StaffRole, string UserType, bool IsActive, string? GradeCode, bool AllowAll);
+
+public record UserDetail(int Id, int PersonId, string Username, string StaffRole,
+    string UserType, bool IsActive, int? GradeId, bool AllowAll);
+
 public class UserDb
 {
     private readonly string _connectionString;
@@ -93,6 +99,183 @@ public class UserDb
         return null;
     }
 
+    /// <summary>
+    /// Admin reset: sets a new password without requiring the current one.
+    /// Returns null on success, or an error message on failure.
+    /// </summary>
+    public string? AdminResetPassword(int userId, string newPwd)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM core_users WHERE Id = @id";
+        cmd.Parameters.AddWithValue("@id", userId);
+        if ((long)cmd.ExecuteScalar()! == 0) return "User not found.";
+
+        cmd.CommandText = "UPDATE core_users SET PasswordHash = @h WHERE Id = @id";
+        cmd.Parameters.Clear();
+        cmd.Parameters.AddWithValue("@h", HashPassword(newPwd));
+        cmd.Parameters.AddWithValue("@id", userId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[UserDb] Password reset by admin for userId={userId}");
+        return null;
+    }
+
+    /// <summary>
+    /// Validates credentials. On success populates roles ("Admin" if UserType='Admin')
+    /// and staffRole (the user's StaffRole value). Returns false if invalid or inactive.
+    /// </summary>
+    public bool ValidateUser(string username, string password, out List<string> roles, out string staffRole)
+    {
+        roles = new List<string>();
+        staffRole = "None";
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+            return false;
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        using var userCmd = conn.CreateCommand();
+        userCmd.CommandText = @"
+            SELECT Id, PasswordHash, IsActive, UserType, StaffRole
+            FROM core_users
+            WHERE Username = @u COLLATE NOCASE";
+        userCmd.Parameters.AddWithValue("@u", username);
+
+        string storedHash;
+        bool isActive;
+        string userType;
+
+        using (var r = userCmd.ExecuteReader())
+        {
+            if (!r.Read()) return false;
+            storedHash = r.GetString(1);
+            isActive   = r.GetInt32(2) == 1;
+            userType   = r.GetString(3);
+            staffRole  = r.GetString(4);
+        }
+
+        if (!isActive) return false;
+        if (!VerifyPbkdf2(storedHash, password)) return false;
+
+        if (userType == "Admin")
+            roles.Add("Admin");
+
+        return true;
+    }
+
+    // ── User management (Admin UI) ──────────────────────────────────────────
+
+    public List<UserListItem> GetAllUsers()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT u.Id, u.PersonId, u.Username,
+                   TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
+                   u.StaffRole, u.UserType, u.IsActive, g.Code, u.AllowAll
+            FROM core_users u
+            JOIN core_persons p ON p.PersonId = u.PersonId
+            LEFT JOIN lkp_grades g ON g.GradeId = u.GradeId
+            ORDER BY p.FirstName, u.Username";
+        var list = new List<UserListItem>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new UserListItem(
+                r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3),
+                r.GetString(4), r.GetString(5), r.GetInt32(6) != 0,
+                r.IsDBNull(7) ? null : r.GetString(7), r.GetInt32(8) != 0));
+        return list;
+    }
+
+    public UserDetail? GetUserDetail(int userId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT Id, PersonId, Username, StaffRole, UserType, IsActive, GradeId, AllowAll
+            FROM core_users WHERE Id = @id";
+        cmd.Parameters.AddWithValue("@id", userId);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return null;
+        return new UserDetail(
+            r.GetInt32(0), r.GetInt32(1), r.GetString(2),
+            r.GetString(3), r.GetString(4), r.GetInt32(5) != 0,
+            r.IsDBNull(6) ? null : r.GetInt32(6), r.GetInt32(7) != 0);
+    }
+
+    /// <summary>Creates a new user. Returns the new user Id, or throws on duplicate username.</summary>
+    public int CreateUser(int personId, string username, string password,
+        string staffRole, string userType, int? gradeId, bool allowAll)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO core_users (PersonId, Username, PasswordHash, StaffRole, UserType, GradeId, AllowAll, IsActive)
+            VALUES (@pid, @u, @h, @sr, @ut, @gid, @aa, 1)";
+        cmd.Parameters.AddWithValue("@pid", personId);
+        cmd.Parameters.AddWithValue("@u", username.Trim());
+        cmd.Parameters.AddWithValue("@h", HashPassword(password));
+        cmd.Parameters.AddWithValue("@sr", staffRole);
+        cmd.Parameters.AddWithValue("@ut", userType);
+        cmd.Parameters.AddWithValue("@gid", gradeId.HasValue ? (object)gradeId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@aa", allowAll ? 1 : 0);
+        cmd.ExecuteNonQuery();
+
+        cmd.CommandText = "SELECT last_insert_rowid()";
+        cmd.Parameters.Clear();
+        var newId = (int)(long)cmd.ExecuteScalar()!;
+        Console.WriteLine($"[UserDb] Created user '{username.Trim()}' (Id={newId}, StaffRole={staffRole})");
+        return newId;
+    }
+
+    public void UpdateUser(int userId, string staffRole, string userType, int? gradeId, bool allowAll, bool isActive)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE core_users
+            SET StaffRole=@sr, UserType=@ut, GradeId=@gid, AllowAll=@aa, IsActive=@active
+            WHERE Id=@id";
+        cmd.Parameters.AddWithValue("@sr", staffRole);
+        cmd.Parameters.AddWithValue("@ut", userType);
+        cmd.Parameters.AddWithValue("@gid", gradeId.HasValue ? (object)gradeId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@aa", allowAll ? 1 : 0);
+        cmd.Parameters.AddWithValue("@active", isActive ? 1 : 0);
+        cmd.Parameters.AddWithValue("@id", userId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[UserDb] Updated user Id={userId} StaffRole={staffRole} UserType={userType} IsActive={isActive}");
+    }
+
+    public void UpdateUsername(int userId, string newUsername)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE core_users SET Username=@u WHERE Id=@id";
+        cmd.Parameters.AddWithValue("@u", newUsername.Trim());
+        cmd.Parameters.AddWithValue("@id", userId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[UserDb] Username updated for Id={userId} → '{newUsername.Trim()}'");
+    }
+
+    public void DeactivateUser(int userId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE core_users SET IsActive=0 WHERE Id=@id";
+        cmd.Parameters.AddWithValue("@id", userId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[UserDb] Deactivated user Id={userId}");
+    }
+
+    // ── Private helpers ─────────────────────────────────────────────────────
+
     private static string HashPassword(string password)
     {
         const int iterations = 260000;
@@ -100,58 +283,6 @@ public class UserDb
         using var kdf = new Rfc2898DeriveBytes(password, salt, iterations, HashAlgorithmName.SHA256);
         byte[] hash = kdf.GetBytes(32);
         return $"pbkdf2_sha256${iterations}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
-    }
-
-    /// <summary>
-    /// Returns true if credentials are valid and the user is active.
-    /// roles is populated with all role codes assigned to the user.
-    /// </summary>
-    public bool ValidateUser(string username, string password, out List<string> roles)
-    {
-        roles = new List<string>();
-        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
-            return false;
-
-        using var conn = new SqliteConnection(_connectionString);
-        conn.Open();
-
-        // Fetch user record
-        using var userCmd = conn.CreateCommand();
-        userCmd.CommandText = @"
-            SELECT Id, PasswordHash, IsActive
-            FROM core_users
-            WHERE Username = @u COLLATE NOCASE";
-        userCmd.Parameters.AddWithValue("@u", username);
-
-        int userId;
-        string storedHash;
-        bool isActive;
-
-        using (var r = userCmd.ExecuteReader())
-        {
-            if (!r.Read()) return false;
-            userId     = r.GetInt32(0);
-            storedHash = r.GetString(1);
-            isActive   = r.GetInt32(2) == 1;
-        }
-
-        if (!isActive) return false;
-        if (!VerifyPbkdf2(storedHash, password)) return false;
-
-        // Fetch assigned roles
-        using var roleCmd = conn.CreateCommand();
-        roleCmd.CommandText = @"
-            SELECT r.Code
-            FROM core_user_roles ur
-            JOIN lkp_roles r ON r.RoleId = ur.RoleId
-            WHERE ur.UserId = @id";
-        roleCmd.Parameters.AddWithValue("@id", userId);
-
-        using var rr = roleCmd.ExecuteReader();
-        while (rr.Read())
-            roles.Add(rr.GetString(0));
-
-        return roles.Count > 0;
     }
 
     // Verifies a PBKDF2-SHA256 hash in the format:

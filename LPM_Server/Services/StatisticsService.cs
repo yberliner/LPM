@@ -55,30 +55,30 @@ public class StatisticsService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        // ── Active auditors ──────────────────────────────────────────────────
+        // ── Active staff names ───────────────────────────────────────────────
         var auditorNames = new Dictionary<int, string>();
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT a.AuditorId,
+                SELECT u.PersonId,
                        TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS Name
-                FROM sess_auditors a
-                JOIN core_persons p ON p.PersonId = a.AuditorId
-                WHERE a.IsActive = 1";
+                FROM core_users u
+                JOIN core_persons p ON p.PersonId = u.PersonId
+                WHERE u.IsActive = 1 AND u.StaffRole != 'None'";
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 auditorNames[r.GetInt32(0)] = r.GetString(1);
         }
 
         // ── Auditing seconds per (auditorId, dayIndex) ───────────────────────
-        // Includes both regular and solo (PcId=AuditorId) sessions
+        // Only regular sessions (AuditorId IS NOT NULL); solo sessions tracked separately
         var auditSecs = new Dictionary<(int pid, int day), int>();
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT AuditorId, SessionDate, SUM(LengthSeconds + AdminSeconds)
                 FROM sess_sessions
-                WHERE SessionDate >= @s AND SessionDate <= @e
+                WHERE SessionDate >= @s AND SessionDate <= @e AND AuditorId IS NOT NULL
                 GROUP BY AuditorId, SessionDate";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
@@ -93,18 +93,16 @@ public class StatisticsService
         }
 
         // ── Solo CS seconds per (csId, dayIndex) ─────────────────────────────
-        // Only for auditors of Type IN (2, 3) = SoloOnly or RegularAndSolo
+        // CS reviews on solo sessions (AuditorId IS NULL)
         var soloCsSecs = new Dictionary<(int pid, int day), int>();
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT cr.CsId, s.SessionDate, SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
-                JOIN sess_sessions s  ON s.SessionId   = cr.SessionId
-                JOIN sess_auditors a  ON a.AuditorId   = cr.CsId
+                JOIN sess_sessions s ON s.SessionId = cr.SessionId
                 WHERE s.SessionDate >= @s AND s.SessionDate <= @e
-                  AND s.PcId = s.AuditorId
-                  AND a.Type IN (2, 3)
+                  AND s.AuditorId IS NULL
                 GROUP BY cr.CsId, s.SessionDate";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
@@ -240,17 +238,15 @@ public class StatisticsService
             }
         }
 
-        // Solo CS time for solo-type auditors per date
+        // Solo CS time: CS reviews on solo sessions (AuditorId IS NULL) per date
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT s.SessionDate, SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
-                JOIN sess_sessions  s ON s.SessionId = cr.SessionId
-                JOIN sess_auditors  a ON a.AuditorId = cr.CsId
+                JOIN sess_sessions s ON s.SessionId = cr.SessionId
                 WHERE s.SessionDate >= @s AND s.SessionDate <= @e
-                  AND s.PcId = s.AuditorId
-                  AND a.Type IN (2, 3)
+                  AND s.AuditorId IS NULL
                 GROUP BY s.SessionDate";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
@@ -331,17 +327,15 @@ public class StatisticsService
             cmd.Parameters.AddWithValue("@e", endStr);
             totalSec = Convert.ToInt32(cmd.ExecuteScalar());
         }
-        // Solo CS time
+        // Solo CS time: CS reviews on solo sessions (AuditorId IS NULL)
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 SELECT COALESCE(SUM(cr.ReviewLengthSeconds), 0)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
-                JOIN sess_auditors a ON a.AuditorId = cr.CsId
                 WHERE s.SessionDate >= @s AND s.SessionDate <= @e
-                  AND s.PcId = s.AuditorId
-                  AND a.Type IN (2, 3)";
+                  AND s.AuditorId IS NULL";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
             totalSec += Convert.ToInt32(cmd.ExecuteScalar());
@@ -434,29 +428,29 @@ public class StatisticsService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        // Active auditor names
+        // Active staff names
         var auditorNames = new Dictionary<int, string>();
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT a.AuditorId,
+                SELECT u.PersonId,
                        TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS Name
-                FROM sess_auditors a
-                JOIN core_persons p ON p.PersonId = a.AuditorId
-                WHERE a.IsActive = 1";
+                FROM core_users u
+                JOIN core_persons p ON p.PersonId = u.PersonId
+                WHERE u.IsActive = 1 AND u.StaffRole != 'None'";
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 auditorNames[r.GetInt32(0)] = r.GetString(1);
         }
 
-        // Audit seconds per auditor
+        // Audit seconds per auditor (regular sessions only, AuditorId IS NOT NULL)
         var auditSecs = new Dictionary<int, int>();
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 SELECT AuditorId, SUM(LengthSeconds + AdminSeconds)
                 FROM sess_sessions
-                WHERE SessionDate >= @s AND SessionDate <= @e
+                WHERE SessionDate >= @s AND SessionDate <= @e AND AuditorId IS NOT NULL
                 GROUP BY AuditorId";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
@@ -465,7 +459,7 @@ public class StatisticsService
                 auditSecs[r.GetInt32(0)] = r.GetInt32(1);
         }
 
-        // Solo CS seconds per csId
+        // Solo CS seconds per csId (CS reviews on solo sessions where AuditorId IS NULL)
         var soloCsSecs = new Dictionary<int, int>();
         {
             using var cmd = conn.CreateCommand();
@@ -473,10 +467,8 @@ public class StatisticsService
                 SELECT cr.CsId, SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
-                JOIN sess_auditors a ON a.AuditorId = cr.CsId
                 WHERE s.SessionDate >= @s AND s.SessionDate <= @e
-                  AND s.PcId = s.AuditorId
-                  AND a.Type IN (2, 3)
+                  AND s.AuditorId IS NULL
                 GROUP BY cr.CsId";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
@@ -555,10 +547,8 @@ public class StatisticsService
                 SELECT s.SessionDate, SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
-                JOIN sess_auditors a ON a.AuditorId = cr.CsId
                 WHERE s.SessionDate >= @s AND s.SessionDate <= @e
-                  AND s.PcId = s.AuditorId
-                  AND a.Type IN (2, 3)
+                  AND s.AuditorId IS NULL
                 GROUP BY s.SessionDate";
             cmd.Parameters.AddWithValue("@s", globalStart);
             cmd.Parameters.AddWithValue("@e", globalEnd);

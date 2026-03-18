@@ -324,9 +324,7 @@ public class PcService
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS FullName
             FROM core_persons p
             WHERE p.PersonId IN (
-                SELECT AuditorId FROM sess_auditors WHERE COALESCE(Type,1) != 0
-                UNION
-                SELECT CsId FROM cs_case_supervisors WHERE COALESCE(IsActive,1) = 1
+                SELECT PersonId FROM core_users WHERE StaffRole != 'None' AND IsActive = 1
             )
             ORDER BY p.FirstName";
         var list = new List<(int, string)>();

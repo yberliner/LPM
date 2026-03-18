@@ -474,7 +474,7 @@ public class AcademyService
                    COALESCE(p.IsActive, 1) AS IsActive,
                    CASE WHEN pc.PcId IS NOT NULL THEN 1 ELSE 0 END AS IsPC,
                    CASE WHEN vis.PersonId IS NOT NULL THEN 1 ELSE 0 END AS IsAcademy,
-                   CASE WHEN aud.AuditorId IS NOT NULL OR cs.CsId IS NOT NULL THEN 1 ELSE 0 END AS IsStaff,
+                   CASE WHEN cu.PersonId IS NOT NULL THEN 1 ELSE 0 END AS IsStaff,
                    COALESCE(p.FirstName,'') AS FirstName,
                    COALESCE(p.LastName,'') AS LastName,
                    p.Nick,
@@ -482,8 +482,7 @@ public class AcademyService
             FROM core_persons p
             LEFT JOIN core_pcs pc ON pc.PcId = p.PersonId
             LEFT JOIN (SELECT DISTINCT PersonId FROM acad_attendance) vis ON vis.PersonId = p.PersonId
-            LEFT JOIN sess_auditors aud ON aud.AuditorId = p.PersonId
-            LEFT JOIN cs_case_supervisors cs ON cs.CsId = p.PersonId
+            LEFT JOIN (SELECT DISTINCT PersonId FROM core_users WHERE StaffRole != 'None' AND IsActive = 1) cu ON cu.PersonId = p.PersonId
             LEFT JOIN (SELECT PcId, MAX(SessionDate) AS LastSession FROM sess_sessions GROUP BY PcId) sess ON sess.PcId = p.PersonId
             LEFT JOIN (SELECT PersonId, MAX(VisitDate) AS LastAcademy FROM acad_attendance GROUP BY PersonId) acad ON acad.PersonId = p.PersonId
             ORDER BY COALESCE(p.IsActive,1) DESC, p.FirstName, p.LastName";
