@@ -147,7 +147,7 @@ public class DashboardService
 
     /// <summary>Insert a new session and return the SessionId.</summary>
     public int CreateImportedSession(int pcId, int auditorId, string sessionName,
-        int lengthSeconds = 0, int adminSeconds = 0)
+        int lengthSeconds = 0, int adminSeconds = 0, bool isFreeSession = false)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -168,8 +168,8 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO sess_sessions
-                (PcId, AuditorId, SessionDate, SequenceInDay, LengthSeconds, AdminSeconds, Name, CreatedByUserId, CreatedAt)
-            VALUES (@pc, @aud, @dt, @seq, @len, @admin, @name, @creator, datetime('now', '+2 hours'));
+                (PcId, AuditorId, SessionDate, SequenceInDay, LengthSeconds, AdminSeconds, IsFreeSession, Name, CreatedByUserId, CreatedAt)
+            VALUES (@pc, @aud, @dt, @seq, @len, @admin, @free, @name, @creator, datetime('now', '+2 hours'));
             SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("@pc", pcId);
         cmd.Parameters.AddWithValue("@aud", auditorId);
@@ -177,10 +177,11 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@seq", maxSeq + 1);
         cmd.Parameters.AddWithValue("@len", lengthSeconds);
         cmd.Parameters.AddWithValue("@admin", adminSeconds);
+        cmd.Parameters.AddWithValue("@free", isFreeSession ? 1 : 0);
         cmd.Parameters.AddWithValue("@name", sessionName);
         cmd.Parameters.AddWithValue("@creator", auditorId);
         var sessionId = Convert.ToInt32(cmd.ExecuteScalar());
-        Console.WriteLine($"[DashboardService] Created imported session for PC {pcId}, name: '{sessionName}', length: {lengthSeconds}s, admin: {adminSeconds}s");
+        Console.WriteLine($"[DashboardService] Created imported session for PC {pcId}, name: '{sessionName}', length: {lengthSeconds}s, admin: {adminSeconds}s, free: {isFreeSession}");
         return sessionId;
     }
 

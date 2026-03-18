@@ -401,6 +401,8 @@ app.MapGet("/api/backup-download", (HttpContext ctx, LPM.Services.FolderService 
     // Reset progress
     LPM.Services.BackupProgress.Current = 0;
     LPM.Services.BackupProgress.CurrentFile = "";
+    LPM.Services.BackupProgress.LastError = null;
+    LPM.Services.BackupProgress.WasStarted = true;
     LPM.Services.BackupProgress.Running = true;
     LPM.Services.BackupProgress.CancelRequested = false;
     int processed = 0;
@@ -487,8 +489,9 @@ app.MapGet("/api/backup-download", (HttpContext ctx, LPM.Services.FolderService 
             FileShare.None, 4096, FileOptions.DeleteOnClose);
         return Results.File(stream, "application/zip", fileName);
     }
-    catch
+    catch (Exception ex)
     {
+        LPM.Services.BackupProgress.LastError = ex.Message;
         LPM.Services.BackupProgress.Running = false;
         if (File.Exists(tempFile)) File.Delete(tempFile);
         throw;
@@ -502,7 +505,9 @@ app.MapGet("/api/backup-progress", (HttpContext ctx) =>
     return Results.Ok(new {
         current = LPM.Services.BackupProgress.Current,
         file = LPM.Services.BackupProgress.CurrentFile,
-        running = LPM.Services.BackupProgress.Running
+        running = LPM.Services.BackupProgress.Running,
+        wasStarted = LPM.Services.BackupProgress.WasStarted,
+        error = LPM.Services.BackupProgress.LastError
     });
 });
 

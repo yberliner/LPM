@@ -488,6 +488,17 @@
 
                         @if (_importPcId > 0)
                         {
+                            <div class="mb-3 d-flex align-items-center gap-2">
+                                <input type="checkbox" id="chk-free-session" class="form-check-input"
+                                       checked="@_importFreeSession"
+                                       @onchange="e => _importFreeSession = (bool)(e.Value ?? false)"
+                                       style="accent-color:#3b82f6; cursor:pointer; width:1rem; height:1rem;" />
+                                <label for="chk-free-session" class="form-check-label"
+                                       style="font-size:.82rem; color:#94a3b8; cursor:pointer; user-select:none;">
+                                    Free Session
+                                </label>
+                            </div>
+
                             <div class="mb-3">
                                 <label class="form-label" style="font-size:.82rem; color:#94a3b8;">
                                     Session File <span class="text-danger">*</span> <span class="text-muted">(PDF, single file)</span>
@@ -1361,6 +1372,7 @@
     List<DashboardService.ApprovedPc> _approvedPcs = [];
     bool   _importBusy;
     bool   _importDuplicate;
+    bool   _importFreeSession;
     string _importFileWarning = "";  // duplicate or _att_ warning
     string _importError   = "";
     string _importSuccess = "";
@@ -1528,6 +1540,7 @@
         _importSuccess = "";
         _importBusy = false;
         _importDuplicate = false;
+        _importFreeSession = false;
         _importStep = 1;
         _arfDate = ""; _arfGrade = ""; _arfSessionLength = ""; _arfAdminTime = ""; _arfTotalTa = ""; _arfTaRange = ""; _arfSummary = "";
         _arfRows = [new ArfRow()];
@@ -1660,7 +1673,7 @@
 
             // Create session record
             var sessionId = DashSvc.CreateImportedSession(_importPcId, _msgUserId.Value, sessionName,
-                sessionLenSec, adminSec);
+                sessionLenSec, adminSec, _importFreeSession);
 
             // Save folder summary to separate table
             if (!string.IsNullOrWhiteSpace(summaryHtml))

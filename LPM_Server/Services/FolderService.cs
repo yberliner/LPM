@@ -17,6 +17,8 @@ public static class BackupProgress
     public static string CurrentFile = "";
     public static string? AuthToken;
     public static DateTime AuthExpiry;
+    public static string? LastError;      // set on failure, cleared at start
+    public static volatile bool WasStarted; // true once Running is first set to true
 
     // Brute-force protection: IP → (failCount, lockedUntil)
     static readonly Dictionary<string, (int Fails, DateTime LockedUntil)> _ipLocks = new();
@@ -421,7 +423,9 @@ public class FolderService
     {
         using var source = new SqliteConnection(_connectionString);
         source.Open();
-        using var dest = new SqliteConnection($"Data Source={destinationPath}");
+        // Pooling=False ensures the file handle is released immediately on Dispose,
+        // not returned to the connection pool (which would keep the file locked).
+        using var dest = new SqliteConnection($"Data Source={destinationPath};Pooling=False");
         dest.Open();
         source.BackupDatabase(dest);
     }
