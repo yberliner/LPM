@@ -64,3 +64,10 @@ RKS
 .claude/
 LPM_Server/users.db
 LPM_Server/PC-Folders/
+
+# SQLite journal/WAL files
+LPM_Server/lifepower.db-wal
+LPM_Server/lifepower.db-shm
+
+# DB backups
+LPM_Server/db-backups/
