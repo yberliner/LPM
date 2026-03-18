@@ -21,10 +21,10 @@
                     <i class="ri-time-line me-1"></i>@_sessDraft @LS.T("sessions.sessionPending")
                 </span>
             }
-            @if (_csDraft > 0)
+            @if (_csNotDone > 0)
             {
                 <span class="badge rounded-pill sa-badge-cs-draft px-3 py-2" style="font-size:0.77rem;">
-                    <i class="ri-user-star-line me-1"></i>@_csDraft @LS.T("sessions.csPending")
+                    <i class="ri-user-star-line me-1"></i>@_csNotDone @LS.T("sessions.csPending")
                 </span>
             }
             <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
@@ -239,8 +239,8 @@
             <i class="ri-arrow-down-s-line sa-chevron @(_csCollapsed ? "sa-chevron-collapsed" : "")"></i>
             <i class="ri-user-star-line" style="font-size:1.05rem;"></i>
             <span>@LS.T("sessions.csReviews")</span>
-            @if (_csDraft > 0)    { <span class="badge rounded-pill sa-badge-pending ms-2">@_csDraft @LS.T("sessions.pending")</span> }
-            @if (_csApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm ms-1">@_csApproved @LS.T("sessions.approved")</span> }
+            @if (_csNotDone > 0)    { <span class="badge rounded-pill sa-badge-pending ms-2">@_csNotDone @LS.T("sessions.pending")</span> }
+            @if (_csDone > 0) { <span class="badge rounded-pill sa-badge-approved-sm ms-1">@_csDone @LS.T("sessions.approved")</span> }
         </div>
     </div>
 
@@ -257,8 +257,8 @@
     {
         @foreach (var csGroup in _csGroups)
         {
-            int cgDraft    = csGroup.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus != "Done"));
-            int cgApproved = csGroup.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus == "Done"));
+            int cgNotDone = csGroup.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus != "Done"));
+            int cgDone    = csGroup.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus == "Done"));
             var csAvatar   = _csAvatars.GetValueOrDefault(csGroup.CsId);
 
             <div class="card border-0 shadow-sm mb-4 sa-auditor-card">
@@ -269,8 +269,8 @@
                         <div class="fw-semibold" style="font-size:1rem;">@csGroup.CsName</div>
                         <div style="font-size:0.71rem;opacity:.72;">
                             @csGroup.PcGroups.Count PC@(csGroup.PcGroups.Count != 1 ? "s" : "")
-                            @if (cgDraft > 0)    { <span> · @cgDraft @LS.T("sessions.pending")</span> }
-                            @if (cgApproved > 0) { <span> · @cgApproved @LS.T("sessions.approved")</span> }
+                            @if (cgNotDone > 0) { <span> · @cgNotDone @LS.T("sessions.pending")</span> }
+                            @if (cgDone > 0)    { <span> · @cgDone @LS.T("sessions.approved")</span> }
                         </div>
                     </div>
                 </div>
@@ -281,8 +281,8 @@
                     var csPcKey    = (csGroup.CsId, pcGroup.PcId);
                     int csPcDef    = _csPcDefaults.GetValueOrDefault(csPcKey);
                     int csPcTotal  = pcGroup.Reviews.Count;
-                    int csPcDraft  = pcGroup.Reviews.Count(r => r.CsStatus != "Done");
-                    int csPcApprv  = pcGroup.Reviews.Count(r => r.CsStatus == "Done");
+                    int csPcNotDone = pcGroup.Reviews.Count(r => r.CsStatus != "Done");
+                    int csPcDone    = pcGroup.Reviews.Count(r => r.CsStatus == "Done");
 
                     @if (!firstCsPc) { <div class="sa-pc-divider"></div> }
                     firstCsPc = false;
@@ -291,8 +291,8 @@
                         <div class="d-flex align-items-center gap-2">
                             <div class="sa-pc-dot sa-pc-dot-cs"></div>
                             <span class="fw-semibold sa-pc-name">@pcGroup.PcName</span>
-                            @if (csPcDraft > 0) { <span class="badge rounded-pill sa-badge-pending">@csPcDraft @LS.T("sessions.pending")</span> }
-                            @if (csPcApprv > 0) { <span class="badge rounded-pill sa-badge-approved-sm">@csPcApprv @LS.T("sessions.approved")</span> }
+                            @if (csPcNotDone > 0) { <span class="badge rounded-pill sa-badge-pending">@csPcNotDone @LS.T("sessions.pending")</span> }
+                            @if (csPcDone > 0)    { <span class="badge rounded-pill sa-badge-approved-sm">@csPcDone @LS.T("sessions.approved")</span> }
                         </div>
                         <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
                             <span class="sa-input-label" style="color:#6b7280;">Set all:</span>
@@ -516,8 +516,8 @@
 
     private int _sessDraft    => _groups.Sum(g => g.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus != "Approved")));
     private int _sessApproved => _groups.Sum(g => g.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus == "Approved")));
-    private int _csDraft      => _csGroups.Sum(g => g.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus != "Done")));
-    private int _csApproved   => _csGroups.Sum(g => g.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus == "Done")));
+    private int _csNotDone => _csGroups.Sum(g => g.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus != "Done")));
+    private int _csDone    => _csGroups.Sum(g => g.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus == "Done")));
 
     class PcDefaults { public int ChargeRate { get; set; } public int Salary { get; set; } }
     class RowEdit     { public int ChargeRate { get; set; } public int Salary { get; set; } }

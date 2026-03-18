@@ -692,6 +692,30 @@ public class FolderService
         Console.WriteLine($"[FolderService] Saved attachment '{attFileName}' for session '{sessionFileName}', PC {pcId}");
     }
 
+    /// <summary>
+    /// Returns which special attachment types exist for a session.
+    /// Possible values: "PinkSheet", "Instruct", "Cramming".
+    /// </summary>
+    public HashSet<string> GetSessionAttachmentTypes(int pcId, string sessionFileName)
+    {
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var folder = FindPcFolder(pcId);
+        if (folder == null || string.IsNullOrEmpty(sessionFileName)) return result;
+
+        var wsPath = Path.Combine(folder, "WorkSheets");
+        if (!Directory.Exists(wsPath)) return result;
+
+        var prefix = Path.GetFileNameWithoutExtension(sessionFileName) + "_att_";
+        foreach (var file in Directory.EnumerateFiles(wsPath, prefix + "*.pdf"))
+        {
+            var lower = Path.GetFileName(file).ToLowerInvariant();
+            if      (lower.Contains("pinksheet")) result.Add("PinkSheet");
+            else if (lower.Contains("instruct"))  result.Add("Instruct");
+            else if (lower.Contains("cramming"))  result.Add("Cramming");
+        }
+        return result;
+    }
+
     /// <summary>Overwrites the existing arf.pdf attachment for a session. Returns false if not found.</summary>
     public bool TryOverwriteArfPdf(int pcId, string sessionFileName, byte[] pdfBytes)
     {

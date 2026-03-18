@@ -711,18 +711,21 @@
                         <i class="ri-edit-2-line me-1"></i><span style="font-size:.72rem;">Summary</span>
                     </button>
                 }
-                @if (_csDone)
+                @if (CsMode && _csSessionId > 0)
                 {
-                    <button class="pcf-done-btn pcf-done-success" disabled>
-                        <i class="ri-check-line me-1"></i>CS Done
-                    </button>
-                }
-                else
-                {
-                    <button class="pcf-done-btn" title="@(_csLocked ? "Another tab is already CSing this session" : "Mark CS Done — saves all annotations, records the CS review with the displayed time, and closes the tab")"
-                            @onclick="DoneCs" disabled="@(_csSessionId == 0 || _csLocked)">
-                        <i class="ri-check-double-line me-1"></i>Mark CS Done
-                    </button>
+                    @if (_csDone)
+                    {
+                        <button class="pcf-done-btn pcf-done-success" disabled>
+                            <i class="ri-check-line me-1"></i>CS Done
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="pcf-done-btn" title="@(_csLocked ? "Another tab is already CSing this session" : "Mark CS Done — saves all annotations, records the CS review with the displayed time, and closes the tab")"
+                                @onclick="DoneCs" disabled="@_csLocked">
+                            <i class="ri-check-double-line me-1"></i>Mark CS Done
+                        </button>
+                    }
                 }
             </div>
         </div>
@@ -951,13 +954,6 @@
     </div>
 }
 
-@if (_csDone)
-{
-    <div class="pcf-toast-success">
-        <i class="ri-check-double-line me-2" style="font-size:1.2rem;"></i>
-        CS review marked as done! You can close this tab.
-    </div>
-}
 
 @if (!string.IsNullOrEmpty(_errorToast))
 {
@@ -1762,6 +1758,7 @@
 @code {
     [Parameter] public int PcId { get; set; }
     [Parameter] public int SessionId { get; set; }
+    [Parameter] public bool CsMode { get; set; }   // true only when opened from CS queue
     [Parameter] public int UserPersonId { get; set; }
 
     // ── Active CS session tracker (shared across all circuits) ──
@@ -2781,8 +2778,8 @@
             // Notify all connected users who have permission for this PC
             _ = CsNotifySvc.NotifyCsDone(PcId, DashSvc.UserHasApprovedPcOnDashboard);
 
-            // Try to close the tab (works if opened via window.open)
-            await JS.InvokeVoidAsync("window.close");
+            // Show closing animation then close the tab
+            await JS.InvokeVoidAsync("showCsDoneAndClose", _pcName, _csSessionName);
         }
         catch (Exception ex)
         {

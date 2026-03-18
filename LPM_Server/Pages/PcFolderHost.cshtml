@@ -16,6 +16,7 @@
     int sessionId = 0;
     if (int.TryParse(ViewContext.HttpContext.Request.Query["sessionId"], out var qsid))
         sessionId = qsid;
+    bool csMode = ViewContext.HttpContext.Request.Query["csMode"] == "true";
 
     // Resolve current user's PersonId
     var dashSvc = ViewContext.HttpContext.RequestServices.GetRequiredService<LPM.Services.DashboardService>();
@@ -54,6 +55,6 @@
 else
 {
     <component type="typeof(PcFolder)" render-mode="Server"
-               param-PcId="pcId" param-SessionId="sessionId"
+               param-PcId="pcId" param-SessionId="sessionId" param-CsMode="csMode"
                param-UserPersonId="userPersonId" />
 }

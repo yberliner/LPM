@@ -172,7 +172,6 @@ window.pcfViewer = {
             if (!pane) return;
 
             if (self.textInputEl) return;
-            if (pane.readOnly) return; // folder summary — no annotations allowed
 
             if (self.toolMode === 'draw' || self.toolMode === 'brush') {
                 drawing = true;
@@ -194,7 +193,7 @@ window.pcfViewer = {
 
         overlay.addEventListener('dblclick', (e) => {
             const pane = self.panes[paneId];
-            if (!pane || self.textInputEl || pane.readOnly) return;
+            if (!pane || self.textInputEl) return;
             const { x, y } = canvasXY(e);
             const hit = self._hitTestText(pane, pageIdx, x, y);
             if (hit) {
@@ -844,7 +843,7 @@ window.pcfViewer = {
     // Async save for a pane (used when switching files)
     async savePane(paneId) {
         const pane = this.panes[paneId];
-        if (!pane || pane.annotations.length === 0 || !pane.filePath || !this._pcId) return;
+        if (!pane || pane.readOnly || pane.annotations.length === 0 || !pane.filePath || !this._pcId) return;
 
         const pagesJson = await this.getAnnotatedPdf(paneId);
         await window.pcfSaveAnnotatedPdf(this._pcId, pane.filePath, pagesJson);

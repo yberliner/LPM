@@ -8,6 +8,7 @@
 @inject IJSRuntime JS
 @inject PdfService PdfService
 @inject CsNotificationService CsNotifySvc
+@inject FolderService FolderSvc
 @implements IDisposable
 
 <div @onclick="DismissMenu">
@@ -238,6 +239,11 @@
                                             _          => ""
                                         };
                                         var statusLabel = _csStatusLabels.TryGetValue(s.CsStatus ?? "", out var lbl) ? lbl : (s.CsStatus ?? "");
+                                        var attTypes = _audAttachTypes.GetValueOrDefault(s.SessionId);
+                                        var attColor = attTypes != null && attTypes.Contains("PinkSheet") ? "#9333ea"
+                                                     : attTypes != null && attTypes.Contains("Cramming")  ? "#f97316"
+                                                     : attTypes != null && attTypes.Contains("Instruct")  ? "#ca8a04"
+                                                     : (string?)null;
                                         <tr class="@rowClass home-pcs-row" @onclick="() => OpenAuditorSession(s)">
                                             <td class="home-pcs-pcname">
                                                 @if (isNewPc)
@@ -251,7 +257,8 @@
                                                 <i class="ri-time-line me-1" style="opacity:.4;"></i>@durStr
                                             </td>
                                             <td>
-                                                <span class="home-aud-st-badge @statusClass">@statusLabel</span>
+                                                <span class="home-aud-st-badge @statusClass"
+                                                      style="@(attColor != null ? $"color:{attColor};border-color:{attColor};" : "")">@statusLabel</span>
                                             </td>
                                             <td style="font-size:.78rem;color:#64748b;">
                                                 @(s.CsName ?? "—")
@@ -1291,6 +1298,7 @@
     bool _weeklyOverviewExpanded = true;
     int _csQueueDays = 0;
     List<DashboardService.AuditorSessionStatus> _auditorStatuses = [];
+    Dictionary<int, HashSet<string>> _audAttachTypes = new();
     bool _audStatusExpanded = true;
     int _audStatusDays = 0;
     string _pcsSortCol = "pc";   // "pc", "date", "dur"
@@ -1487,7 +1495,11 @@
             _pendingCsSessions = DashSvc.GetPendingCsSessions(_csQueueDays);
 
         if (_isAuditor)
+        {
             _auditorStatuses = DashSvc.GetAuditorSessionStatuses(_userId.Value, _audStatusDays);
+            _audAttachTypes  = _auditorStatuses.ToDictionary(s => s.SessionId,
+                                   s => FolderSvc.GetSessionAttachmentTypes(s.PcId, s.SessionName));
+        }
 
         _weekRemarks = DashSvc.GetWeeklyRemarks(_userId.Value, _weekStart.ToString("yyyy-MM-dd")) ?? "";
         _remarksSaved = false;
@@ -1627,7 +1639,7 @@
     {
         Console.WriteLine($"[Home] CS The Session — sessionId={sessionId}, sessionName={sessionName}, pcId={_selPcId} by '{_username}'");
         if (!_selPcId.HasValue) return;
-        var url = $"/PcFolder/{_selPcId.Value}?sessionId={sessionId}";
+        var url = $"/PcFolder/{_selPcId.Value}?sessionId={sessionId}&csMode=true";
         if (!string.IsNullOrWhiteSpace(sessionName))
             url += $"&file={Uri.EscapeDataString(sessionName)}";
         await JS.InvokeVoidAsync("pcfOpenTab", url);
@@ -1651,7 +1663,7 @@
     async Task OpenPendingCs(DashboardService.PendingCsSession s)
     {
         Console.WriteLine($"[Home] Opened pending CS for session {s.SessionId} (PC {s.PcId}, {s.PcName}) by '{_username}'");
-        var url = $"/PcFolder/{s.PcId}?sessionId={s.SessionId}";
+        var url = $"/PcFolder/{s.PcId}?sessionId={s.SessionId}&csMode=true";
         if (!string.IsNullOrWhiteSpace(s.SessionName))
             url += $"&file={Uri.EscapeDataString(s.SessionName)}";
         await JS.InvokeVoidAsync("pcfOpenTab", url);
@@ -1680,6 +1692,8 @@
         _audStatusDays = int.TryParse(e.Value?.ToString(), out var v) ? v : 10;
         Console.WriteLine($"[Home] Changed auditor status range to {_audStatusDays} days by '{_username}'");
         _auditorStatuses = DashSvc.GetAuditorSessionStatuses(_userId.Value, _audStatusDays);
+        _audAttachTypes  = _auditorStatuses.ToDictionary(s => s.SessionId,
+                               s => FolderSvc.GetSessionAttachmentTypes(s.PcId, s.SessionName));
         await InvokeAsync(StateHasChanged);
     }
 
