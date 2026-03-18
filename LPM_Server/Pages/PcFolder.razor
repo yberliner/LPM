@@ -447,6 +447,32 @@
         </div>
     }
 
+    @* ── Edit Session Summary modal ── *@
+    @if (_showEditSummary)
+    {
+        <div class="pcf-modal-backdrop" @onclick="() => _showEditSummary = false">
+            <div class="pcf-modal-summary" @onclick:stopPropagation="true">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <div style="font-weight:700; font-size:.95rem;">
+                        <i class="ri-edit-2-line me-2" style="color:#60a5fa;"></i>Edit Session Summary
+                        @if (!string.IsNullOrEmpty(_csSessionName))
+                        {
+                            <span style="font-size:.8rem; font-weight:400; opacity:.7;"> — @_csSessionName</span>
+                        }
+                    </div>
+                    <button class="btn-close btn-close-white btn-sm" @onclick="() => _showEditSummary = false"></button>
+                </div>
+                <div id="pcf-summary-editor" style="background:#fff; border-radius:4px; min-height:200px; max-height:420px; overflow-y:auto;"></div>
+                <div class="d-flex gap-2 justify-content-end mt-3">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showEditSummary = false">Cancel</button>
+                    <button class="btn btn-sm btn-primary" @onclick="SaveEditSummary">
+                        <i class="ri-save-line me-1"></i>Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
     @* ── Move-to modal ── *@
     @if (_showMoveModal && _folder != null)
     {
@@ -663,7 +689,23 @@
                     <i class="ri-layout-column-line"></i>
                     <span style="font-size:.7rem;margin-left:2px;">@_paneCount</span>
                 </button>
+                @if (_paneCount == 1 && _panes[0].File?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    var tbDual = _dualPanes.Contains(PaneIds[0]);
+                    <button class="pcf-tool-btn @(tbDual ? "pcf-tool-active" : "")"
+                            title="@(tbDual ? "Exit side-by-side view" : "Side-by-side view — 2 pages at a time")"
+                            @onclick="() => ToggleDualMode(PaneIds[0])">
+                        <i class="@(tbDual ? "ri-layout-column-line" : "ri-book-open-line")"></i>
+                    </button>
+                }
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
+                @if (_csSessionId > 0 && !_csDone)
+                {
+                    <button class="pcf-tool-btn" title="Edit the session summary text"
+                            @onclick="OpenEditSummary">
+                        <i class="ri-edit-2-line me-1"></i><span style="font-size:.72rem;">Summary</span>
+                    </button>
+                }
                 @if (_csDone)
                 {
                     <button class="pcf-done-btn pcf-done-success" disabled>
@@ -699,13 +741,31 @@
                      @onclick="() => SetActiveIdx(idx)">
                     @if (_paneCount > 1)
                     {
+                        var isDual = _dualPanes.Contains(PaneIds[idx]);
+                        var isPdf  = p.File?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) == true;
+                        _dualInfo.TryGetValue(PaneIds[idx], out var di);
                         <div class="pcf-pane-header pcf-pane-hdr-@PaneIds[idx]">
-                            <i class="ri-file-pdf-2-line me-1"></i>
-                            @if (!string.IsNullOrEmpty(p.Section))
+                            <span class="pcf-pane-hdr-name">
+                                <i class="ri-file-pdf-2-line me-1"></i>
+                                @if (!string.IsNullOrEmpty(p.Section))
+                                {
+                                    <span class="pcf-toolbar-section" style="font-size:.65rem;">@p.Section</span>
+                                }
+                                @(p.FileName ?? "Empty")
+                            </span>
+                            @if (isDual)
                             {
-                                <span class="pcf-toolbar-section" style="font-size:.65rem;">@p.Section</span>
+                                <span class="pcf-dual-counter">@di.page–@(Math.Min(di.page + 1, di.total)) / @di.total</span>
                             }
-                            @(p.FileName ?? "Empty")
+                            @if (isPdf)
+                            {
+                                <button class="pcf-dual-toggle @(isDual ? "pcf-dual-active" : "")"
+                                        title="@(isDual ? "Exit side-by-side view" : "Side-by-side view — 2 pages at a time")"
+                                        @onclick:stopPropagation="true"
+                                        @onclick="() => ToggleDualMode(PaneIds[idx])">
+                                    <i class="@(isDual ? "ri-layout-column-line" : "ri-book-open-line")"></i>
+                                </button>
+                            }
                         </div>
                     }
                     @{
@@ -829,6 +889,26 @@
                                 </div>
                             </div>
                         </div>
+                    }
+                    @{
+                        var dualActive = _dualPanes.Contains(PaneIds[idx]);
+                        _dualInfo.TryGetValue(PaneIds[idx], out var dualNavInfo);
+                    }
+                    @if (dualActive)
+                    {
+                        var canBack  = dualNavInfo.page > 1;
+                        var canFwd   = dualNavInfo.page + 2 <= dualNavInfo.total;
+                        var navPaneId = PaneIds[idx];
+                        <button class="pcf-dual-nav pcf-dual-prev" disabled="@(!canBack)"
+                                @onclick:stopPropagation="true"
+                                @onclick="() => DualNav(navPaneId, -1)">
+                            <i class="ri-arrow-left-s-line"></i>
+                        </button>
+                        <button class="pcf-dual-nav pcf-dual-next" disabled="@(!canFwd)"
+                                @onclick:stopPropagation="true"
+                                @onclick="() => DualNav(navPaneId, 1)">
+                            <i class="ri-arrow-right-s-line"></i>
+                        </button>
                     }
                 </div>
             }
@@ -1232,13 +1312,39 @@
         flex: 1; display: flex; flex-direction: column;
         min-width: 0; min-height: 0; overflow: hidden;
         border: 2px solid transparent; transition: border-color .15s;
+        position: relative;
     }
     .pcf-pane-active { border-color: #3b82f6; }
     .pcf-pane-header {
-        padding: 4px 12px; font-size: .78rem; font-weight: 600;
-        color: #e2e8f0; white-space: nowrap; overflow: hidden;
-        text-overflow: ellipsis; flex-shrink: 0;
+        padding: 3px 8px; font-size: .78rem; font-weight: 600;
+        color: #e2e8f0; flex-shrink: 0;
+        display: flex; align-items: center; gap: 4px; min-width: 0;
     }
+    .pcf-pane-hdr-name {
+        flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+    }
+    .pcf-dual-counter {
+        font-size: .65rem; opacity: .85; white-space: nowrap; flex-shrink: 0;
+    }
+    .pcf-dual-toggle {
+        background: transparent; border: none; color: #e2e8f0;
+        padding: 2px 5px; border-radius: 4px; cursor: pointer; flex-shrink: 0;
+        opacity: .65; transition: opacity .15s, background .15s; font-size: .85rem; line-height: 1;
+    }
+    .pcf-dual-toggle:hover { opacity: 1; background: rgba(255,255,255,.15); }
+    .pcf-dual-toggle.pcf-dual-active { opacity: 1; color: #60a5fa; }
+    .pcf-dual-nav {
+        position: absolute; top: 50%; transform: translateY(-50%);
+        background: rgba(0,0,0,.55); border: none; color: #e2e8f0;
+        width: 32px; height: 72px; border-radius: 4px; z-index: 10;
+        cursor: pointer; font-size: 1.3rem;
+        display: flex; align-items: center; justify-content: center;
+        opacity: .55; transition: opacity .15s, background .15s;
+    }
+    .pcf-dual-nav:hover:not([disabled]) { background: rgba(0,0,0,.8); opacity: 1; }
+    .pcf-dual-nav[disabled] { opacity: .18; cursor: default; pointer-events: none; }
+    .pcf-dual-prev { left: 4px; }
+    .pcf-dual-next { right: 4px; }
     .pcf-pane-hdr-p1 { background: #1e40af; }
     .pcf-pane-hdr-p2 { background: #5b21b6; }
     .pcf-pane-hdr-p3 { background: #92400e; }
@@ -1443,6 +1549,15 @@
         color: #e2e8f0; box-shadow: 0 20px 60px rgba(0,0,0,.4);
         animation: pcf-ctx-pop .2s ease-out;
     }
+    .pcf-modal-summary {
+        background: #1e293b; border: 1px solid #334155; border-radius: 14px;
+        padding: 20px; width: min(700px, 95vw);
+        color: #e2e8f0; box-shadow: 0 20px 60px rgba(0,0,0,.4);
+        animation: pcf-ctx-pop .2s ease-out;
+    }
+    .pcf-modal-summary .ql-toolbar { background: #f1f5f9; border-radius: 4px 4px 0 0; }
+    .pcf-modal-summary .ql-container { font-size: 14px; }
+    .pcf-modal-summary .ql-editor { color: #1e293b; background: #fff; }
     .pcf-move-folder {
         display: flex; align-items: center; gap: 6px;
         padding: 7px 10px; border-radius: 6px; cursor: pointer;
@@ -1725,7 +1840,7 @@
     int _wsPage;
     const int WsPageSize = 10;
     string _toolMode = "";
-    string _drawColor = "#e11d48";
+    string _drawColor = "#22c55e";
     double _drawWidth = 2.5;
     int _fontSize = 14;
     bool _showColors;
@@ -1736,6 +1851,11 @@
     bool _saving;
     int _zoomPercent = 100;
     List<(string paneId, string file)>? _pendingReloads;
+    HashSet<string>                     _dualPanes = new();
+    Dictionary<string, (int page, int total)> _dualInfo = new();
+    bool   _showEditSummary;
+    int    _editSummaryId;
+    string _editSummaryHtml = "";
 
     static readonly int[] _fontSizes = [10, 12, 14, 18, 24, 32, 40, 56];
     static readonly string[] _palette = [
@@ -1953,6 +2073,17 @@
                     }
                 });
             ");
+
+            // Arrow keys → dual-page navigation
+            await JS.InvokeVoidAsync("eval", @"
+                document.addEventListener('keydown', function(e) {
+                    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+                    var el = document.activeElement;
+                    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) return;
+                    if (window.pcfViewer && window.pcfViewer.dotNetRef)
+                        window.pcfViewer.dotNetRef.invokeMethodAsync('OnArrowKey', e.key === 'ArrowRight' ? 1 : -1);
+                });
+            ");
         }
 
         if (_pendingReloads != null)
@@ -2020,9 +2151,120 @@
     {
         await Task.Yield(); // release the Blazor sync context immediately
         if (gen != _selectGeneration) return;
+        bool wasDual = _dualPanes.Contains(paneId);
+        // loadPdf resets dual state in JS; remove tracking before reload
+        _dualPanes.Remove(paneId);
+        _dualInfo.Remove(paneId);
         await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId);
         if (gen != _selectGeneration) return;
         await JS.InvokeVoidAsync("pcfViewer.setTool", "");
+        // restore dual mode if it was active before the file change
+        if (wasDual)
+        {
+            var result = await JS.InvokeAsync<int[]>("pcfViewer.enterDualMode", paneId);
+            if (result != null && result.Length == 2 && result[1] > 0)
+            {
+                _dualPanes.Add(paneId);
+                _dualInfo[paneId] = (result[0], result[1]);
+                StateHasChanged();
+            }
+        }
+    }
+
+    // ── Dual-page mode ──
+
+    async Task ToggleDualMode(string paneId)
+    {
+        if (_dualPanes.Contains(paneId))
+        {
+            _dualPanes.Remove(paneId);
+            _dualInfo.Remove(paneId);
+            await JS.InvokeVoidAsync("pcfViewer.exitDualMode", paneId);
+        }
+        else
+        {
+            var result = await JS.InvokeAsync<int[]>("pcfViewer.enterDualMode", paneId);
+            if (result?.Length == 2)
+            {
+                _dualPanes.Add(paneId);
+                _dualInfo[paneId] = (result[0], result[1]);
+            }
+        }
+    }
+
+    async Task DualNav(string paneId, int delta)
+    {
+        var result = await JS.InvokeAsync<int[]>("pcfViewer.dualPageNav", paneId, delta);
+        if (result?.Length == 2)
+            _dualInfo[paneId] = (result[0], result[1]);
+    }
+
+    [JSInvokable]
+    public async Task OnArrowKey(int delta)
+    {
+        var paneId = PaneIds[_activeIdx];
+        if (!_dualPanes.Contains(paneId)) return;
+        await DualNav(paneId, delta);
+        StateHasChanged();
+    }
+
+    // ── Edit Session Summary ──
+
+    async Task OpenEditSummary()
+    {
+        var result = DashSvc.GetFolderSummaryBySession(_csSessionId);
+        _editSummaryId   = result?.id ?? 0;
+        _editSummaryHtml = result?.html ?? "";
+        _showEditSummary = true;
+        StateHasChanged();
+        await Task.Delay(80); // wait for DOM
+        var html = System.Text.Json.JsonSerializer.Serialize(_editSummaryHtml);
+        await JS.InvokeVoidAsync("eval", $@"
+            (function() {{
+                var el = document.getElementById('pcf-summary-editor');
+                if (!el) return;
+                if (window._pcfSummaryQuill) {{
+                    try {{ window._pcfSummaryQuill.container.previousSibling.remove(); window._pcfSummaryQuill.container.remove(); }} catch(e) {{}}
+                    window._pcfSummaryQuill = null;
+                }}
+                window._pcfSummaryQuill = new Quill(el, {{
+                    theme: 'snow',
+                    placeholder: 'Session summary...',
+                    modules: {{ toolbar: [
+                        [{{ 'size': ['10px', '14px', '18px', '24px'] }}],
+                        ['bold', 'italic', 'underline'],
+                        [{{ 'color': [] }}, {{ 'background': [] }}],
+                        [{{ 'list': 'ordered' }}, {{ 'list': 'bullet' }}],
+                        [{{ 'direction': 'rtl' }}, {{ 'align': [] }}],
+                        ['clean']
+                    ]}}
+                }});
+                var initialHtml = {html};
+                if (initialHtml && initialHtml.trim()) window._pcfSummaryQuill.root.innerHTML = initialHtml;
+            }})();
+        ");
+    }
+
+    async Task SaveEditSummary()
+    {
+        if (_editSummaryId <= 0) { _showEditSummary = false; return; }
+        var html = await JS.InvokeAsync<string>("eval",
+            "window._pcfSummaryQuill ? window._pcfSummaryQuill.root.innerHTML : ''");
+        DashSvc.UpdateFolderSummary(_editSummaryId, html ?? "");
+        _showEditSummary = false;
+        Console.WriteLine($"[PcFolder] Session summary updated for session {_csSessionId} by '{_userName}'");
+
+        // Reload folder summary pane if open
+        for (int i = 0; i < _paneCount; i++)
+        {
+            var f = _panes[i].File;
+            var fn = _panes[i].FileName;
+            if (f != null && fn != null && IsFolderSummaryFile(fn, f))
+            {
+                var url = $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(f)}&_t={DateTime.UtcNow.Ticks}";
+                await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, PaneIds[i]);
+            }
+        }
     }
 
     void SetActiveIdx(int idx)

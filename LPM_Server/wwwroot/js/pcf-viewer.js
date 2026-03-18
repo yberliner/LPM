@@ -3,7 +3,7 @@ window.pcfViewer = {
     panes: {},       // keyed by paneId ('left', 'right')
     activePane: 'left',
     toolMode: null,
-    drawColor: '#e11d48',
+    drawColor: '#22c55e',
     drawWidth: 2.5,
     fontSize: 14,
     textInputEl: null,
@@ -21,7 +21,10 @@ window.pcfViewer = {
                 currentStroke: null,
                 filePath: null,
                 baseScale: 1,
-                zoomLevel: 1.0
+                zoomLevel: 1.0,
+                dualMode: false,
+                dualPage: 0,
+                dualScale: 1
             };
         }
         return this.panes[paneId];
@@ -53,6 +56,14 @@ window.pcfViewer = {
         pane.pages = [];
         pane.annotations = [];
         pane.currentStroke = null;
+
+        // Reset dual mode state when loading a new file
+        pane.dualMode  = false;
+        pane.dualScale = 1;
+        viewer.style.flexDirection  = '';
+        viewer.style.alignItems     = '';
+        viewer.style.justifyContent = '';
+        viewer.style.flexWrap       = '';
 
         const pdfjsLib = window['pdfjs-dist/build/pdf'];
         if (!pdfjsLib) { viewer.innerHTML = '<div style="color:#fff;padding:40px;">PDF.js not loaded</div>'; return; }
@@ -118,11 +129,12 @@ window.pcfViewer = {
 
         // Helper: get pointer position in canvas coordinates, accounting for CSS zoom
         function canvasXY(e) {
-            const r = overlay.getBoundingClientRect();
+            const r    = overlay.getBoundingClientRect();
             const zoom = (self.panes[paneId] && self.panes[paneId].zoomLevel) || 1;
+            const ds   = (self.panes[paneId] && self.panes[paneId].dualScale)  || 1;
             return {
-                x: (e.clientX - r.left) / zoom,
-                y: (e.clientY - r.top) / zoom
+                x: (e.clientX - r.left) / (zoom * ds),
+                y: (e.clientY - r.top)  / (zoom * ds)
             };
         }
 
@@ -654,9 +666,10 @@ window.pcfViewer = {
         const pane = this.panes[paneId];
         if (!pane) return 100;
         pane.zoomLevel = level;
+        const ds = pane.dualScale || 1;
         for (const pg of pane.pages) {
             const wrapper = pg.canvas.parentElement;
-            if (wrapper) wrapper.style.zoom = level;
+            if (wrapper) wrapper.style.zoom = level * ds;
         }
         return Math.round(level * 100);
     },
@@ -850,6 +863,87 @@ window.pcfViewer = {
 
         // Notify Blazor
         if (this.dotNetRef) this.dotNetRef.invokeMethodAsync('OnAnnotationChanged');
+    },
+
+    // ── Dual-page (side-by-side) mode ──
+
+    enterDualMode(paneId) {
+        const pane = this.panes[paneId];
+        if (!pane || !pane.pages.length) return [0, 0];
+        const viewer = document.getElementById('pcf-viewer-' + paneId);
+        if (!viewer) return [0, 0];
+
+        pane.dualMode = true;
+        pane.dualPage = 0;
+
+        // Scale so each page fits half the viewer width AND the viewer height
+        const zl             = pane.zoomLevel || 1;
+        const renderedWidth  = pane.pages[0].canvas.width  * zl;
+        const renderedHeight = pane.pages[0].canvas.height * zl;
+        const scaleByWidth   = (viewer.clientWidth  / 2 - 24) / renderedWidth;
+        const scaleByHeight  = (viewer.clientHeight - 16)     / renderedHeight;
+        pane.dualScale       = Math.min(1, scaleByWidth, scaleByHeight);
+
+        viewer.style.flexDirection  = 'row';
+        viewer.style.alignItems     = 'flex-start';
+        viewer.style.justifyContent = 'center';
+        viewer.style.flexWrap       = 'nowrap';
+
+        this._applyDualVisibility(paneId);
+        return [1, pane.pages.length];
+    },
+
+    exitDualMode(paneId) {
+        const pane = this.panes[paneId];
+        if (!pane) return;
+        const viewer = document.getElementById('pcf-viewer-' + paneId);
+
+        pane.dualMode  = false;
+        pane.dualScale = 1;
+
+        if (viewer) {
+            viewer.style.flexDirection  = '';
+            viewer.style.alignItems     = '';
+            viewer.style.justifyContent = '';
+            viewer.style.flexWrap       = '';
+        }
+
+        const zl = pane.zoomLevel || 1;
+        for (const pg of pane.pages) {
+            const wrapper = pg.canvas.parentElement;
+            if (!wrapper) continue;
+            wrapper.style.display = '';
+            wrapper.style.zoom    = zl !== 1 ? String(zl) : '';
+        }
+    },
+
+    dualPageNav(paneId, delta) {
+        const pane = this.panes[paneId];
+        if (!pane || !pane.dualMode) return [0, 0];
+        const total      = pane.pages.length;
+        const maxPage    = Math.floor((total - 1) / 2) * 2;   // last even starting index
+        pane.dualPage    = Math.max(0, Math.min(pane.dualPage + delta * 2, maxPage));
+        this._applyDualVisibility(paneId);
+        return [pane.dualPage + 1, total];
+    },
+
+    _applyDualVisibility(paneId) {
+        const pane = this.panes[paneId];
+        if (!pane) return;
+        const p0 = pane.dualPage;
+        const p1 = p0 + 1;
+        const ds = pane.dualScale || 1;
+        const zl = pane.zoomLevel || 1;
+        for (let i = 0; i < pane.pages.length; i++) {
+            const wrapper = pane.pages[i].canvas.parentElement;
+            if (!wrapper) continue;
+            if (i === p0 || i === p1) {
+                wrapper.style.display = '';
+                wrapper.style.zoom    = String(ds * zl);
+            } else {
+                wrapper.style.display = 'none';
+            }
+        }
     },
 
     getPageCount(paneId) {

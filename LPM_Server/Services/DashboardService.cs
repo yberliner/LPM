@@ -1924,6 +1924,29 @@ public class DashboardService
         return list;
     }
 
+    public (int id, string html)? GetFolderSummaryBySession(int sessionId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Id, SummaryHtml FROM sess_folder_summary WHERE SessionId = @sid LIMIT 1";
+        cmd.Parameters.AddWithValue("@sid", sessionId);
+        using var r = cmd.ExecuteReader();
+        if (r.Read()) return (r.GetInt32(0), r.IsDBNull(1) ? "" : r.GetString(1));
+        return null;
+    }
+
+    public void UpdateFolderSummary(int id, string html)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE sess_folder_summary SET SummaryHtml = @html WHERE Id = @id";
+        cmd.Parameters.AddWithValue("@html", html);
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.ExecuteNonQuery();
+    }
+
     public void AddFolderSummary(int? sessionId, int pcId, int auditorId, string summaryHtml)
     {
         using var conn = new SqliteConnection(_connectionString);
