@@ -5,6 +5,7 @@
 @inject PcService PcSvc
 @inject DashboardService DashSvc
 @inject ImportJobService ImportJob
+@inject LPM.Auth.UserDb UserDb
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
 @implements IDisposable
@@ -99,6 +100,19 @@
             }
         </div>
 
+        @if (_bulkMode)
+        {
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="namesOnlyCheck"
+                       checked="@_namesOnly"
+                       @onchange="e => { _namesOnly = (bool)(e.Value ?? false); ResetState(); }" />
+                <label class="form-check-label" for="namesOnlyCheck" style="font-size:.85rem; color:#e2e8f0; cursor:pointer;">
+                    Import PC Names Only
+                    <span style="font-size:.75rem; color:#94a3b8; margin-left:6px;">(adds PCs to database without importing files)</span>
+                </label>
+            </div>
+        }
+
         <input type="file" id="import-folder-input" webkitdirectory directory multiple
                style="display:none;" @onchange="OnFolderSelected" />
 
@@ -108,9 +122,130 @@
         </button>
 
         @* ════════════════════════════════════════════════════════════
+           NAMES-ONLY PREVIEW
+           ════════════════════════════════════════════════════════════ *@
+        @if (_namesOnly && _namesOnlyRows.Count > 0)
+        {
+            <div class="card mt-3" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
+                <div class="card-header py-2 d-flex align-items-center gap-2"
+                     style="background:rgba(99,102,241,.15); color:#a5b4fc; font-size:.85rem; border-color:rgba(99,102,241,.2);">
+                    <i class="ri-user-add-line"></i>
+                    <strong>@_namesOnlyRows.Count(r => !r.IsArchive) PC(s) to process — @_namesOnlyRows.Count(r => r.IsArchive) archive(s) ignored</strong>
+                </div>
+                <div class="card-body p-0" style="overflow-x:auto;">
+                    <table class="table table-sm mb-0" style="font-size:.78rem; color:#e2e8f0; min-width:780px;">
+                        <thead>
+                            <tr style="background:rgba(0,0,0,.25); color:#94a3b8;">
+                                <th style="padding:7px 12px;">Folder Name</th>
+                                <th style="padding:7px 12px;">First Name</th>
+                                <th style="padding:7px 12px;">Last Name</th>
+                                <th style="padding:7px 12px;">Nick</th>
+                                <th style="padding:7px 12px; text-align:center;">Solo?</th>
+                                <th style="padding:7px 12px;">Username</th>
+                                <th style="padding:7px 12px;">Password</th>
+                                <th style="padding:7px 12px;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _namesOnlyRows)
+                            {
+                                @if (row.IsArchive)
+                                {
+                                    <tr style="opacity:.35; border-bottom:1px solid rgba(255,255,255,.04);">
+                                        <td style="padding:5px 12px; text-decoration:line-through; color:#94a3b8;">
+                                            <i class="ri-archive-line me-1"></i>@row.FolderName
+                                        </td>
+                                        <td style="padding:5px 12px; color:#475569;">—</td>
+                                        <td style="padding:5px 12px; color:#475569;">—</td>
+                                        <td style="padding:5px 12px; color:#475569;">—</td>
+                                        <td style="padding:5px 12px; text-align:center; color:#475569;">—</td>
+                                        <td style="padding:5px 12px; color:#64748b; font-style:italic;">Archive [@row.FolderName]</td>
+                                        <td style="padding:5px 12px; color:#475569;">—</td>
+                                        <td style="padding:5px 12px;">
+                                            <span style="color:#475569; font-size:.72rem;">Ignored</span>
+                                        </td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    <tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+                                        <td style="padding:5px 12px; color:#94a3b8; font-size:.74rem;">@row.FolderName</td>
+                                        <td style="padding:5px 12px;">@row.FirstName</td>
+                                        <td style="padding:5px 12px;">@row.LastName</td>
+                                        <td style="padding:5px 12px; color:#a5b4fc;">@row.Nick</td>
+                                        <td style="padding:5px 12px; text-align:center;">
+                                            @if (row.IsSolo)
+                                            { <i class="ri-checkbox-circle-fill" style="color:#22c55e;"></i> }
+                                            else
+                                            { <span style="color:#475569;">—</span> }
+                                        </td>
+                                        <td style="padding:5px 12px; font-family:monospace; font-size:.76rem; color:#7dd3fc;">
+                                            @(row.IsSolo ? row.Username : "—")
+                                        </td>
+                                        <td style="padding:5px 12px; font-family:monospace; font-size:.76rem; color:#fde68a;">
+                                            @(row.IsSolo ? row.Password : "—")
+                                        </td>
+                                        <td style="padding:5px 12px;">
+                                            @if (row.ResultMessage != null)
+                                            {
+                                                <span style="color:@(row.ResultOk ? "#22c55e" : "#f87171"); font-size:.72rem;">
+                                                    @row.ResultMessage
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                @if (row.PcAlreadyExists)
+                                                {
+                                                    <span style="color:#fbbf24; font-size:.72rem;">Existing PC</span>
+                                                }
+                                                else
+                                                {
+                                                    <span style="color:#22c55e; font-size:.72rem;">New PC</span>
+                                                }
+                                                @if (row.IsSolo)
+                                                {
+                                                    <span style="color:@(row.UserAlreadyExists ? "#fbbf24" : "#22c55e"); font-size:.72rem; margin-left:4px;">
+                                                        · @(row.UserAlreadyExists ? "User Exists" : "New User")
+                                                    </span>
+                                                }
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="card-footer py-2 d-flex align-items-center gap-2" style="border-color:#334155;">
+                    @if (!_namesOnlyDone)
+                    {
+                        <button class="btn btn-sm btn-success d-flex align-items-center gap-1"
+                                disabled="@_namesOnlyBusy"
+                                @onclick="ExecuteNamesOnlyImport">
+                            @if (_namesOnlyBusy)
+                            { <span class="spinner-border spinner-border-sm"></span> }
+                            else
+                            { <i class="ri-check-line"></i> }
+                            Go
+                        </button>
+                    }
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="CancelNamesOnly">
+                        <i class="ri-close-line me-1"></i>@(_namesOnlyDone ? "Close" : "Cancel")
+                    </button>
+                    @if (_namesOnlyDone)
+                    {
+                        <span style="font-size:.78rem; color:#22c55e;">
+                            <i class="ri-checkbox-circle-fill me-1"></i>Done — @_namesOnlyRows.Count(r => !r.IsArchive && r.ResultOk) PC(s) processed.
+                        </span>
+                    }
+                </div>
+            </div>
+        }
+
+        @* ════════════════════════════════════════════════════════════
            PC NAMES + SUMMARY (both modes)
            ════════════════════════════════════════════════════════════ *@
-        @if (_manifest.Count > 0 && !_uploading)
+        @if (_manifest.Count > 0 && !_uploading && !_namesOnly)
         {
             <div class="card mt-3" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
                 <div class="card-header py-2" style="background:rgba(34,197,94,.12); color:#22c55e; font-size:.85rem; border-color:rgba(34,197,94,.2);">
@@ -266,7 +401,7 @@
         @* ════════════════════════════════════════════════════════════
            DISK SPACE + START IMPORT
            ════════════════════════════════════════════════════════════ *@
-        @if (_manifest.Count > 0 && !_uploading)
+        @if (_manifest.Count > 0 && !_uploading && !_namesOnly)
         {
             <div class="card mt-3" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
                 <div class="card-body py-3">
@@ -343,6 +478,11 @@
 
 @code {
     bool _bulkMode;
+    bool _namesOnly;
+    bool _namesOnlyBusy;
+    bool _namesOnlyDone;
+    List<NamesOnlyRow> _namesOnlyRows = [];
+
     bool _uploading;
     string _errorMessage = "";
     int _uploadedCount, _totalFileCount;
@@ -354,6 +494,23 @@
     List<DashboardService.FolderItem> _folderItems = [];
     List<LocalPcManifest> _manifest = [];
     List<CoverMappingLocal> _coverMappings = [];
+
+    class NamesOnlyRow
+    {
+        public string FolderName    { get; set; } = "";
+        public string PcName        { get; set; } = "";
+        public string FirstName     { get; set; } = "";
+        public string LastName      { get; set; } = "";
+        public string Nick          { get; set; } = "";
+        public bool   IsSolo        { get; set; }
+        public bool   IsArchive     { get; set; }
+        public string Username      { get; set; } = "";
+        public string Password      { get; set; } = "";
+        public bool   PcAlreadyExists   { get; set; }
+        public bool   UserAlreadyExists { get; set; }
+        public string? ResultMessage    { get; set; }
+        public bool    ResultOk         { get; set; }
+    }
 
     class LocalFileEntry
     {
@@ -419,6 +576,9 @@
     {
         _manifest.Clear();
         _coverMappings.Clear();
+        _namesOnlyRows.Clear();
+        _namesOnlyBusy = false;
+        _namesOnlyDone = false;
         _errorMessage = "";
         _uploadedCount = _totalFileCount = 0;
         _totalSizeBytes = _freeSpaceBytes = 0;
@@ -435,6 +595,14 @@
         _errorMessage = "";
         var entries = await JS.InvokeAsync<List<ManifestEntry>>("folderImport.readManifest", "import-folder-input");
         if (entries == null || entries.Count == 0) { _errorMessage = "No files found."; return; }
+
+        // Names-only mode: just scan folder names, no file content needed
+        if (_namesOnly && _bulkMode)
+        {
+            BuildNamesOnlyPreview(entries);
+            StateHasChanged();
+            return;
+        }
 
         var supportedExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             { ".pdf", ".doc", ".docx", ".odt", ".rtf" };
@@ -453,6 +621,137 @@
         _freeSpaceBytes = FolderSvc.GetFreeSpaceBytes();
 
         StateHasChanged();
+    }
+
+    void BuildNamesOnlyPreview(List<ManifestEntry> entries)
+    {
+        _namesOnlyRows.Clear();
+        _namesOnlyDone = false;
+
+        // Use the same section-detection logic as ParseManifest to find the actual PC folder
+        // (the folder immediately above WorkSheets / Front Cover / Back Cover),
+        // regardless of nesting depth. Deduplicate by folder name (case insensitive).
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var e in entries)
+        {
+            var parts = e.relativePath.Split('/');
+            if (parts.Length < 3) continue;
+
+            string? section = null;
+            int sectionIdx = -1;
+
+            for (int i = 0; i < parts.Length - 1; i++)
+            {
+                var seg = parts[i];
+                if (seg.EndsWith("_att", StringComparison.OrdinalIgnoreCase))
+                {
+                    section = "Attachment";
+                    break;
+                }
+                var detected = DetectSection(seg);
+                if (detected != null) { section = detected; sectionIdx = i; }
+            }
+
+            // For attachments, find the WorkSheets parent index
+            if (section == "Attachment")
+                for (int i = 0; i < parts.Length - 1; i++)
+                    if (DetectSection(parts[i]) != null) sectionIdx = i;
+
+            if (section == null || sectionIdx <= 0) continue;
+
+            var pcFolder = parts[sectionIdx - 1];
+
+            // Deduplicate — same folder name already handled
+            if (!seen.Add(pcFolder)) continue;
+
+            // If ANY segment in the path contains "archive" → show as ignored
+            var isArchive = parts.Any(p => p.Contains("archive", StringComparison.OrdinalIgnoreCase));
+            if (isArchive)
+            {
+                _namesOnlyRows.Add(new NamesOnlyRow { FolderName = pcFolder, IsArchive = true });
+                continue;
+            }
+
+            var isSolo = System.Text.RegularExpressions.Regex.IsMatch(
+                pcFolder, @"(?<!\w)solo(?!\w)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            var stripped = System.Text.RegularExpressions.Regex.Replace(pcFolder.Trim(), @"^\d+-\s*", "");
+            var pcName = PcService.StripNoiseWords(stripped);
+            if (string.IsNullOrWhiteSpace(pcName)) pcName = stripped.Trim();
+
+            var nameParts = pcName.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var firstName = nameParts.Length > 0 ? nameParts[0] : pcName;
+            var lastName  = nameParts.Length > 1 ? nameParts[1] : "Unknown";
+
+            var (existingId, _) = TryFindPc(pcName);
+
+            var row = new NamesOnlyRow
+            {
+                FolderName      = pcFolder,
+                PcName          = pcName,
+                FirstName       = firstName,
+                LastName        = lastName,
+                Nick            = isSolo ? "Solo" : "",
+                IsSolo          = isSolo,
+                PcAlreadyExists = existingId.HasValue,
+            };
+
+            if (isSolo)
+            {
+                var fn = ImportJobService.NormalizeToAscii(firstName);
+                var ln = ImportJobService.NormalizeToAscii(lastName);
+                row.Username          = $"{fn}.{ln}";
+                row.Password          = $"{fn}1992";
+                row.UserAlreadyExists = UserDb.UsernameExists(row.Username);
+            }
+
+            _namesOnlyRows.Add(row);
+        }
+
+        // Sort: regular PCs first (alphabetical), archives at the bottom
+        _namesOnlyRows = [.. _namesOnlyRows.OrderBy(r => r.IsArchive).ThenBy(r => r.FolderName)];
+    }
+
+    async Task ExecuteNamesOnlyImport()
+    {
+        _namesOnlyBusy = true;
+        StateHasChanged();
+        await Task.Yield();
+
+        foreach (var row in _namesOnlyRows.Where(r => !r.IsArchive))
+        {
+            try
+            {
+                var (pcId, wasCreated) = PcSvc.FindOrCreatePcByName(row.PcName, row.IsSolo);
+
+                if (row.IsSolo && !row.UserAlreadyExists)
+                {
+                    UserDb.CreateUser(pcId, row.Username, row.Password, "Solo", "Staff", null, true);
+                    row.ResultMessage = wasCreated ? "PC + User created" : "User created";
+                }
+                else
+                {
+                    row.ResultMessage = wasCreated ? "PC created" : "Already exists";
+                }
+                row.ResultOk = true;
+            }
+            catch (Exception ex)
+            {
+                row.ResultMessage = $"Error: {ex.Message}";
+                row.ResultOk = false;
+            }
+        }
+
+        _namesOnlyBusy = false;
+        _namesOnlyDone = true;
+        StateHasChanged();
+    }
+
+    void CancelNamesOnly()
+    {
+        _namesOnlyRows.Clear();
+        _namesOnlyDone = false;
     }
 
     // ── Parsing ──
