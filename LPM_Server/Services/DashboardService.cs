@@ -1912,7 +1912,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        var soloFilter = isSolo ? "AND s.AuditorId IS NULL" : "AND (s.AuditorId IS NOT NULL OR s.SessionId IS NULL)";
+        var soloFilter = isSolo ? "AND fs.AuditorId IS NULL" : "AND fs.AuditorId IS NOT NULL";
         cmd.CommandText = $@"
             SELECT COALESCE(s.Name, ''),
                    COALESCE(s.SessionDate, SUBSTR(fs.CreatedAt, 1, 10)),
@@ -1955,7 +1955,7 @@ public class DashboardService
         cmd.ExecuteNonQuery();
     }
 
-    public void AddFolderSummary(int? sessionId, int pcId, int auditorId, string summaryHtml, string? arfJson = null)
+    public void AddFolderSummary(int? sessionId, int pcId, int? auditorId, string summaryHtml, string? arfJson = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -1965,7 +1965,7 @@ public class DashboardService
             VALUES (@sid, @pcId, @audId, @html, datetime('now', '+2 hours'), @arfJson)";
         cmd.Parameters.AddWithValue("@sid", (object?)sessionId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@pcId", pcId);
-        cmd.Parameters.AddWithValue("@audId", auditorId);
+        cmd.Parameters.AddWithValue("@audId", (object?)auditorId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@html", summaryHtml);
         cmd.Parameters.AddWithValue("@arfJson", (object?)arfJson ?? DBNull.Value);
         cmd.ExecuteNonQuery();
