@@ -129,7 +129,7 @@ public List<PcListItem> GetAllPcs()
         return System.Text.RegularExpressions.Regex.Replace(name.Trim(), @"\s+", " ").Trim();
     }
 
-    public (int PcId, bool WasCreated) FindOrCreatePcByName(string folderName, bool isSolo = false)
+    public (int PcId, bool WasCreated) FindOrCreatePcByName(string folderName)
     {
         // Strip numeric prefix like "25-" from folder name, then noise words
         var name = System.Text.RegularExpressions.Regex.Replace(folderName.Trim(), @"^\d+-\s*", "");
@@ -154,24 +154,48 @@ public List<PcListItem> GetAllPcs()
         findCmd.Parameters.AddWithValue("@ln", lastName);
         var existing = findCmd.ExecuteScalar();
         if (existing is long existingId)
-        {
-            // Update Nick to Solo if not already set
-            if (isSolo)
-            {
-                using var nickCmd = conn.CreateCommand();
-                nickCmd.CommandText = @"
-                    UPDATE core_persons SET Nick = 'Solo'
-                    WHERE PersonId = @id AND (Nick IS NULL OR TRIM(Nick) = '')";
-                nickCmd.Parameters.AddWithValue("@id", (int)existingId);
-                nickCmd.ExecuteNonQuery();
-            }
             return ((int)existingId, false);
-        }
 
         // Create new
-        var newId = AddPcWithPerson(firstName, lastName, "", "", "", "", nick: isSolo ? "Solo" : "");
-        Console.WriteLine($"[PcService] Created new PC {newId} from folder name '{folderName}' (solo={isSolo})");
+        var newId = AddPcWithPerson(firstName, lastName, "", "", "", "");
+        Console.WriteLine($"[PcService] Created new PC {newId} from folder name '{folderName}'");
         return (newId, true);
+    }
+
+    /// <summary>Find an existing PC by folder/pc name. Returns PcId or null. Does not create.</summary>
+    public int? FindPcByName(string folderName)
+    {
+        var name = System.Text.RegularExpressions.Regex.Replace(folderName.Trim(), @"^\d+-\s*", "");
+        name = StripNoiseWords(name);
+        var parts = name.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var firstName = parts.Length > 0 ? parts[0] : name;
+        var lastName  = parts.Length > 1 ? parts[1] : "Unknown";
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT pc.PcId FROM core_pcs pc
+            JOIN core_persons p ON p.PersonId = pc.PcId
+            WHERE LOWER(TRIM(p.FirstName)) = LOWER(@fn)
+              AND LOWER(COALESCE(TRIM(p.LastName),'')) = LOWER(@ln)
+            LIMIT 1";
+        cmd.Parameters.AddWithValue("@fn", firstName);
+        cmd.Parameters.AddWithValue("@ln", lastName);
+        var result = cmd.ExecuteScalar();
+        return result is long id ? (int)id : null;
+    }
+
+    /// <summary>Mark a PC as also having a solo import folder.</summary>
+    public void SetIsAlsoSolo(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE core_pcs SET IsAlsoSolo = 1 WHERE PcId = @id";
+        cmd.Parameters.AddWithValue("@id", pcId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[PcService] Set IsAlsoSolo=1 for PC {pcId}");
     }
 
     public int AddPcWithPerson(string firstName, string lastName,

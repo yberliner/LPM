@@ -25,6 +25,7 @@ public class ImportJobState
     public int SessionsCreated { get; set; }
     public string CurrentFileName { get; set; } = "";
     public string? ErrorMessage { get; set; }
+    public List<string> UnmatchedSoloPcs { get; } = new();
     public DateTime StartedAt { get; init; }
     public DateTime LastActivity { get; set; }
 }
@@ -159,17 +160,37 @@ public class ImportJobService
     {
         try
         {
-            foreach (var pc in manifest)
+            // Process non-solo first, then solo — preserving the table order within each group
+            var ordered = manifest
+                .Select((pc, idx) => (pc, idx))
+                .OrderBy(x => x.pc.IsSolo ? 1 : 0)
+                .ThenBy(x => x.idx)
+                .Select(x => x.pc)
+                .ToList();
+
+            foreach (var pc in ordered)
             {
                 UpdateStatus(jobId, $"Processing PC: {pc.PcName}...");
 
-                var (pcId, wasCreated) = _pcSvc.FindOrCreatePcByName(pc.PcName, pc.IsSolo);
-                if (wasCreated && CurrentJob != null) CurrentJob.NewPcsCreated++;
-                Console.WriteLine($"[ImportJobService] Processing PC: {pc.PcName} (id={pcId}, new={wasCreated}, solo={pc.IsSolo})");
+                int pcId;
+                bool wasCreated = false;
 
-                // Create Solo user account if needed
                 if (pc.IsSolo)
                 {
+                    // Resolve at job time: non-solo PCs already processed so newly created ones are in DB
+                    var resolvedId = pc.ExistingPcId ?? _pcSvc.FindPcByName(pc.PcName);
+                    if (resolvedId == null)
+                    {
+                        // No match found — create an empty regular PC automatically
+                        Console.WriteLine($"[ImportJobService] Solo PC '{pc.PcName}' has no regular PC — creating empty PC");
+                        var (newId, _) = _pcSvc.FindOrCreatePcByName(pc.PcName);
+                        resolvedId = newId;
+                        if (CurrentJob != null) CurrentJob.NewPcsCreated++;
+                    }
+                    pcId = resolvedId.Value;
+                    _pcSvc.SetIsAlsoSolo(pcId);
+
+                    // Create solo user account if needed
                     var nameParts = pc.PcName.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                     var fn = nameParts.Length > 0 ? NormalizeToAscii(nameParts[0]) : "unknown";
                     var ln = nameParts.Length > 1 ? NormalizeToAscii(nameParts[1]) : "unknown";
@@ -178,96 +199,141 @@ public class ImportJobService
                     if (!_userDb.UsernameExists(username))
                     {
                         _userDb.CreateUser(pcId, username, password, "Solo", "Staff", null, true);
-                        Console.WriteLine($"[ImportJobService] Created Solo user '{username}' for PC {pcId} — default password set (weak, should be changed)");
+                        Console.WriteLine($"[ImportJobService] Created Solo user '{username}' for PC {pcId}");
                     }
                     else
                     {
                         Console.WriteLine($"[ImportJobService] Solo user '{username}' already exists for PC {pcId} — skipped");
                     }
-                }
 
-                // Front_Cover and Back_Cover
-                foreach (var file in pc.Files.Where(f => f.Section is "Front_Cover" or "Back_Cover"))
-                {
-                    UpdateStatus(jobId, $"{pc.PcName}: {file.FileName}");
+                    Console.WriteLine($"[ImportJobService] Processing Solo PC: {pc.PcName} (matched id={pcId})");
 
-                    var tempFile = Path.Combine(tempJobPath, pc.FolderName, file.Section, file.FileName);
-                    var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
-                    if (bytes == null) { IncrementSkipped(jobId); continue; }
-
-                    if (_folderSvc.SectionFileExists(pcId, file.Section, finalName))
+                    // Front_Cover and Back_Cover → solo folder, always overwrite on re-import
+                    foreach (var file in pc.Files.Where(f => f.Section is "Front_Cover" or "Back_Cover"))
                     {
-                        if (file.OverrideExisting)
+                        UpdateStatus(jobId, $"{pc.PcName} [Solo]: {file.FileName}");
+                        var tempFile = Path.Combine(tempJobPath, pc.FolderName, file.Section, file.FileName);
+                        var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
+                        if (bytes == null) { IncrementSkipped(jobId); continue; }
+                        if (_folderSvc.SoloSectionFileExists(pcId, file.Section, finalName))
+                            _folderSvc.OverwriteSoloSectionFile(pcId, file.Section, finalName, bytes);
+                        else
+                            _folderSvc.SaveSoloSectionFile(pcId, file.Section, finalName, bytes);
+                        IncrementProcessed(jobId);
+                    }
+
+                    // WorkSheets → solo folder, session with AuditorId=NULL
+                    foreach (var file in pc.Files.Where(f => f.Section == "WorkSheets"))
+                    {
+                        UpdateStatus(jobId, $"{pc.PcName} [Solo]: {file.FileName}");
+                        var tempFile = Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName);
+                        var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
+                        if (bytes == null) { IncrementSkipped(jobId); continue; }
+                        if (_folderSvc.SoloSectionFileExists(pcId, "WorkSheets", finalName))
+                        { IncrementSkipped(jobId); continue; }
+                        _folderSvc.SaveSoloSectionFile(pcId, "WorkSheets", finalName, bytes);
+                        var sessionName = Path.GetFileNameWithoutExtension(finalName);
+                        var sessionDate = ParseSessionDate(file);
+                        var createdAt = ParseCreatedAt(file);
+                        _dashSvc.CreateImportedSessionWithDate(pcId, userId, sessionName, sessionDate, createdAt, userId, isSolo: true);
+                        if (CurrentJob != null) CurrentJob.SessionsCreated++;
+                        Console.WriteLine($"[ImportJobService] Created solo session for PC {pcId}: '{sessionName}'");
+                        IncrementProcessed(jobId);
+                    }
+
+                    // Attachments → solo folder
+                    foreach (var file in pc.Files.Where(f => f.Section == "Attachment"))
+                    {
+                        UpdateStatus(jobId, $"{pc.PcName} [Solo]: {file.FileName} (attachment)");
+                        var parentNoExt = file.ParentSessionFile != null
+                            ? Path.GetFileNameWithoutExtension(file.ParentSessionFile) : null;
+                        var tempFile = parentNoExt != null
+                            ? Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", $"{parentNoExt}_att", file.FileName)
+                            : Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName);
+                        var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
+                        if (bytes == null) { IncrementSkipped(jobId); continue; }
+                        if (file.ParentSessionFile != null)
+                        {
+                            if (_folderSvc.SoloAttachmentFileExists(pcId, file.ParentSessionFile, finalName))
+                            { IncrementSkipped(jobId); continue; }
+                            _folderSvc.SaveSoloImportedAttachment(pcId, file.ParentSessionFile, finalName, bytes);
+                        }
+                        else
+                        {
+                            if (_folderSvc.SoloSectionFileExists(pcId, "WorkSheets", finalName))
+                            { IncrementSkipped(jobId); continue; }
+                            _folderSvc.SaveSoloSectionFile(pcId, "WorkSheets", finalName, bytes);
+                        }
+                        IncrementProcessed(jobId);
+                    }
+                }
+                else
+                {
+                    // Regular (non-solo) PC
+                    (pcId, wasCreated) = _pcSvc.FindOrCreatePcByName(pc.PcName);
+                    if (wasCreated && CurrentJob != null) CurrentJob.NewPcsCreated++;
+                    Console.WriteLine($"[ImportJobService] Processing PC: {pc.PcName} (id={pcId}, new={wasCreated})");
+
+                    // Front_Cover and Back_Cover — always overwrite on re-import
+                    foreach (var file in pc.Files.Where(f => f.Section is "Front_Cover" or "Back_Cover"))
+                    {
+                        UpdateStatus(jobId, $"{pc.PcName}: {file.FileName}");
+                        var tempFile = Path.Combine(tempJobPath, pc.FolderName, file.Section, file.FileName);
+                        var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
+                        if (bytes == null) { IncrementSkipped(jobId); continue; }
+                        if (_folderSvc.SectionFileExists(pcId, file.Section, finalName))
                             _folderSvc.OverwriteSectionFile(pcId, file.Section, finalName, bytes);
                         else
-                        { IncrementSkipped(jobId); continue; }
-                    }
-                    else
-                    {
-                        _folderSvc.SaveSectionFile(pcId, file.Section, finalName, bytes);
-                    }
-                    IncrementProcessed(jobId);
-                }
-
-                // WorkSheets — create session record for each
-                foreach (var file in pc.Files.Where(f => f.Section == "WorkSheets"))
-                {
-                    UpdateStatus(jobId, $"{pc.PcName}: {file.FileName}");
-
-                    var tempFile = Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName);
-                    var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
-                    if (bytes == null) { IncrementSkipped(jobId); continue; }
-
-                    if (_folderSvc.SectionFileExists(pcId, "WorkSheets", finalName))
-                    {
-                        IncrementSkipped(jobId);
-                        continue;
+                            _folderSvc.SaveSectionFile(pcId, file.Section, finalName, bytes);
+                        IncrementProcessed(jobId);
                     }
 
-                    _folderSvc.SaveSectionFile(pcId, "WorkSheets", finalName, bytes);
-
-                    // Create session record
-                    var sessionName = Path.GetFileNameWithoutExtension(finalName);
-                    var sessionDate = ParseSessionDate(file);
-                    var createdAt = ParseCreatedAt(file);
-                    _dashSvc.CreateImportedSessionWithDate(pcId, userId, sessionName,
-                        sessionDate, createdAt, userId, pc.IsSolo);
-                    if (CurrentJob != null) CurrentJob.SessionsCreated++;
-                    Console.WriteLine($"[ImportJobService] Created session for PC {pcId}: '{sessionName}'");
-
-                    IncrementProcessed(jobId);
-                }
-
-                // Attachments
-                foreach (var file in pc.Files.Where(f => f.Section == "Attachment"))
-                {
-                    UpdateStatus(jobId, $"{pc.PcName}: {file.FileName} (attachment)");
-
-                    var parentNoExt = file.ParentSessionFile != null
-                        ? Path.GetFileNameWithoutExtension(file.ParentSessionFile) : null;
-                    var tempFile = parentNoExt != null
-                        ? Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", $"{parentNoExt}_att", file.FileName)
-                        : Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName);
-
-                    var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
-                    if (bytes == null) { IncrementSkipped(jobId); continue; }
-
-                    if (file.ParentSessionFile != null)
+                    // WorkSheets — create session record for each
+                    foreach (var file in pc.Files.Where(f => f.Section == "WorkSheets"))
                     {
-                        if (_folderSvc.AttachmentFileExists(pcId, file.ParentSessionFile, finalName))
-                        { IncrementSkipped(jobId); continue; }
-                        _folderSvc.SaveImportedAttachment(pcId, file.ParentSessionFile, finalName, bytes);
-                    }
-                    else
-                    {
+                        UpdateStatus(jobId, $"{pc.PcName}: {file.FileName}");
+                        var tempFile = Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName);
+                        var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
+                        if (bytes == null) { IncrementSkipped(jobId); continue; }
                         if (_folderSvc.SectionFileExists(pcId, "WorkSheets", finalName))
                         { IncrementSkipped(jobId); continue; }
                         _folderSvc.SaveSectionFile(pcId, "WorkSheets", finalName, bytes);
+                        var sessionName = Path.GetFileNameWithoutExtension(finalName);
+                        var sessionDate = ParseSessionDate(file);
+                        var createdAt = ParseCreatedAt(file);
+                        _dashSvc.CreateImportedSessionWithDate(pcId, userId, sessionName, sessionDate, createdAt, userId, isSolo: false);
+                        if (CurrentJob != null) CurrentJob.SessionsCreated++;
+                        Console.WriteLine($"[ImportJobService] Created session for PC {pcId}: '{sessionName}'");
+                        IncrementProcessed(jobId);
                     }
 
-                    IncrementProcessed(jobId);
-                }
-            }
+                    // Attachments
+                    foreach (var file in pc.Files.Where(f => f.Section == "Attachment"))
+                    {
+                        UpdateStatus(jobId, $"{pc.PcName}: {file.FileName} (attachment)");
+                        var parentNoExt = file.ParentSessionFile != null
+                            ? Path.GetFileNameWithoutExtension(file.ParentSessionFile) : null;
+                        var tempFile = parentNoExt != null
+                            ? Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", $"{parentNoExt}_att", file.FileName)
+                            : Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName);
+                        var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
+                        if (bytes == null) { IncrementSkipped(jobId); continue; }
+                        if (file.ParentSessionFile != null)
+                        {
+                            if (_folderSvc.AttachmentFileExists(pcId, file.ParentSessionFile, finalName))
+                            { IncrementSkipped(jobId); continue; }
+                            _folderSvc.SaveImportedAttachment(pcId, file.ParentSessionFile, finalName, bytes);
+                        }
+                        else
+                        {
+                            if (_folderSvc.SectionFileExists(pcId, "WorkSheets", finalName))
+                            { IncrementSkipped(jobId); continue; }
+                            _folderSvc.SaveSectionFile(pcId, "WorkSheets", finalName, bytes);
+                        }
+                        IncrementProcessed(jobId);
+                    }
+                } // end else (non-solo)
+            } // end foreach pc
 
             if (CurrentJob != null && CurrentJob.JobId == jobId)
             {

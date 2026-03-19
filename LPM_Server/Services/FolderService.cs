@@ -638,6 +638,100 @@ public class FolderService
         Console.WriteLine($"[FolderService] Saved imported attachment '{attFileName}' for session '{sessionFileName}', PC {pcId}");
     }
 
+    // ── Solo PC folder helpers ─────────────────────────────────────
+
+    /// <summary>Returns the display folder name for a Solo PC: "{pcId}-{name} Solo"</summary>
+    public string GetSoloFolderName(int pcId)
+    {
+        var name = GetPcName(pcId) ?? $"PC {pcId}";
+        return $"{pcId}-{name.Trim()} Solo";
+    }
+
+    /// <summary>Find the PC's Solo folder on disk (starts with "{pcId}-", ends with " Solo").</summary>
+    public string? FindSoloPcFolder(int pcId)
+    {
+        if (!Directory.Exists(_basePath)) return null;
+        var prefix = $"{pcId}-";
+        return Directory.GetDirectories(_basePath)
+            .FirstOrDefault(d =>
+            {
+                var n = Path.GetFileName(d);
+                return n.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                    && n.EndsWith(" Solo", StringComparison.OrdinalIgnoreCase);
+            });
+    }
+
+    /// <summary>Get or create the Solo folder path: "{basePath}/{pcId}-{name} Solo"</summary>
+    public string GetOrCreateSoloPcFolderPath(int pcId)
+    {
+        var existing = FindSoloPcFolder(pcId);
+        if (existing != null) return existing;
+        var path = Path.Combine(_basePath, GetSoloFolderName(pcId));
+        Directory.CreateDirectory(path);
+        return path;
+    }
+
+    public bool SoloSectionFileExists(int pcId, string section, string fileName)
+    {
+        var folder = FindSoloPcFolder(pcId);
+        if (folder == null) return false;
+        return File.Exists(Path.Combine(folder, section, fileName));
+    }
+
+    public void SaveSoloSectionFile(int pcId, string section, string fileName, byte[] fileBytes)
+    {
+        if (!ValidSections.Contains(section)) return;
+        var folderPath = GetOrCreateSoloPcFolderPath(pcId);
+        var sectionPath = Path.Combine(folderPath, section);
+        Directory.CreateDirectory(sectionPath);
+        var safeName = string.Join("_", fileName.Split(Path.GetInvalidFileNameChars()));
+        var fullPath = Path.Combine(sectionPath, safeName);
+        if (File.Exists(fullPath)) return;
+        File.WriteAllBytes(fullPath, fileBytes);
+        TryShrinkPdf(fullPath);
+        EncryptFileInPlace(fullPath);
+        Console.WriteLine($"[FolderService] Saved solo section file '{fileName}' to {section} for PC {pcId}");
+    }
+
+    public void OverwriteSoloSectionFile(int pcId, string section, string fileName, byte[] fileBytes)
+    {
+        if (!ValidSections.Contains(section)) return;
+        var folderPath = GetOrCreateSoloPcFolderPath(pcId);
+        var sectionPath = Path.Combine(folderPath, section);
+        Directory.CreateDirectory(sectionPath);
+        var safeName = string.Join("_", fileName.Split(Path.GetInvalidFileNameChars()));
+        var fullPath = Path.Combine(sectionPath, safeName);
+        File.WriteAllBytes(fullPath, fileBytes);
+        TryShrinkPdf(fullPath);
+        EncryptFileInPlace(fullPath);
+        Console.WriteLine($"[FolderService] Overwrote solo section file '{fileName}' in {section} for PC {pcId}");
+    }
+
+    public bool SoloAttachmentFileExists(int pcId, string sessionFileName, string attFileName)
+    {
+        var folder = FindSoloPcFolder(pcId);
+        if (folder == null) return false;
+        var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
+        var flatName = $"{sessionNoExt}_att_{attFileName}";
+        return File.Exists(Path.Combine(folder, "WorkSheets", flatName));
+    }
+
+    public void SaveSoloImportedAttachment(int pcId, string sessionFileName, string attFileName, byte[] fileBytes)
+    {
+        var folderPath = GetOrCreateSoloPcFolderPath(pcId);
+        var wsPath = Path.Combine(folderPath, "WorkSheets");
+        Directory.CreateDirectory(wsPath);
+        var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
+        var safeName = string.Join("_", attFileName.Split(Path.GetInvalidFileNameChars()));
+        var flatName = $"{sessionNoExt}_att_{safeName}";
+        var fullPath = Path.Combine(wsPath, flatName);
+        if (File.Exists(fullPath)) return;
+        File.WriteAllBytes(fullPath, fileBytes);
+        TryShrinkPdf(fullPath);
+        EncryptFileInPlace(fullPath);
+        Console.WriteLine($"[FolderService] Saved solo imported attachment '{attFileName}' for session '{sessionFileName}', PC {pcId}");
+    }
+
     /// <summary>Save an uploaded session file to WorkSheets. Returns the saved filename.</summary>
     public string? SaveUploadedFile(int pcId, string fileName, byte[] fileBytes)
     {
