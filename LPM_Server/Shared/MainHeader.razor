@@ -1004,10 +1004,13 @@
                         @foreach (var pc in _actionAllPcs.Where(p => string.IsNullOrEmpty(_actionPcSearch) || p.FullName.Contains(_actionPcSearch, StringComparison.OrdinalIgnoreCase)))
                         {
                             var thisPc = pc;
-                            <div class="act-pc-item" @onclick="() => OnActionFolderPcSelected(thisPc.PcId, false)">
-                                <i class="ri-user-line" style="color:#3b82f6; opacity:.6;"></i>
-                                <span>@thisPc.FullName</span>
-                            </div>
+                            @if (!(_isSoloUser && thisPc.IsAlsoSolo))
+                            {
+                                <div class="act-pc-item" @onclick="() => OnActionFolderPcSelected(thisPc.PcId, false)">
+                                    <i class="ri-user-line" style="color:#3b82f6; opacity:.6;"></i>
+                                    <span>@thisPc.FullName</span>
+                                </div>
+                            }
                             @if (thisPc.IsAlsoSolo)
                             {
                                 <div class="act-pc-item" @onclick="() => OnActionFolderPcSelected(thisPc.PcId, true)">
@@ -1088,10 +1091,13 @@
                             @foreach (var pc in _actionAllPcs.Where(p => string.IsNullOrEmpty(_actionPcSearch) || p.FullName.Contains(_actionPcSearch, StringComparison.OrdinalIgnoreCase)))
                             {
                                 var thisPc = pc;
-                                <div class="act-pc-item" @onclick="() => OnActionSummaryPcSelected(thisPc.PcId, thisPc.FullName, false)">
-                                    <i class="ri-user-line" style="color:#8b5cf6; opacity:.6;"></i>
-                                    <span>@thisPc.FullName</span>
-                                </div>
+                                @if (!(_isSoloUser && thisPc.IsAlsoSolo))
+                                {
+                                    <div class="act-pc-item" @onclick="() => OnActionSummaryPcSelected(thisPc.PcId, thisPc.FullName, false)">
+                                        <i class="ri-user-line" style="color:#8b5cf6; opacity:.6;"></i>
+                                        <span>@thisPc.FullName</span>
+                                    </div>
+                                }
                                 @if (thisPc.IsAlsoSolo)
                                 {
                                     <div class="act-pc-item" @onclick="() => OnActionSummaryPcSelected(thisPc.PcId, thisPc.FullName, true)">

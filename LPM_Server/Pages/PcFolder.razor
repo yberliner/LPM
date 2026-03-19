@@ -4,6 +4,7 @@
 @inject LPM.Services.CsNotificationService CsNotifySvc
 @inject LPM.Services.ShortcutService ShortcutSvc
 @inject IJSRuntime JS
+@inject NavigationManager NavManager
 @using LPM.Services
 @implements IDisposable
 
@@ -1991,6 +1992,26 @@
 
     protected override void OnInitialized()
     {
+        // Guard: enforce folder access rules
+        if (DashSvc.IsSoloAuditor(UserPersonId))
+        {
+            // Solo user: can only open their own PC's solo folder
+            if (PcId != UserPersonId || !Solo)
+            {
+                NavManager.NavigateTo($"/PcFolder/{UserPersonId}?solo=true", replace: true);
+                return;
+            }
+        }
+        else
+        {
+            // Non-solo user: must have permission for the requested PC
+            if (!DashSvc.CanAccessPcFolder(UserPersonId, PcId))
+            {
+                NavManager.NavigateTo("/Home", replace: true);
+                return;
+            }
+        }
+
         _userName = DashSvc.GetPersonName(UserPersonId) ?? $"User {UserPersonId}";
         RefreshFolder();
         _pcName = _folder?.PcName ?? $"PC {PcId}";
