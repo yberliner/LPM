@@ -1004,10 +1004,20 @@
                         @foreach (var pc in _actionAllPcs.Where(p => string.IsNullOrEmpty(_actionPcSearch) || p.FullName.Contains(_actionPcSearch, StringComparison.OrdinalIgnoreCase)))
                         {
                             var thisPc = pc;
-                            <div class="act-pc-item" @onclick="() => OnActionFolderPcSelected(thisPc.PcId)">
+                            <div class="act-pc-item" @onclick="() => OnActionFolderPcSelected(thisPc.PcId, false)">
                                 <i class="ri-user-line" style="color:#3b82f6; opacity:.6;"></i>
                                 <span>@thisPc.FullName</span>
                             </div>
+                            @if (thisPc.IsAlsoSolo)
+                            {
+                                <div class="act-pc-item" @onclick="() => OnActionFolderPcSelected(thisPc.PcId, true)">
+                                    <i class="ri-user-line" style="color:#ef4444; opacity:.7;"></i>
+                                    <span>@thisPc.FullName</span>
+                                    <span style="font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+                                                 color:#fff; background:linear-gradient(135deg,#ef4444,#b91c1c);
+                                                 border-radius:999px; padding:2px 8px; margin-left:4px;">Solo</span>
+                                </div>
+                            }
                         }
                     </div>
                 </div>
@@ -1078,10 +1088,20 @@
                             @foreach (var pc in _actionAllPcs.Where(p => string.IsNullOrEmpty(_actionPcSearch) || p.FullName.Contains(_actionPcSearch, StringComparison.OrdinalIgnoreCase)))
                             {
                                 var thisPc = pc;
-                                <div class="act-pc-item" @onclick="() => OnActionSummaryPcSelected(thisPc.PcId, thisPc.FullName)">
+                                <div class="act-pc-item" @onclick="() => OnActionSummaryPcSelected(thisPc.PcId, thisPc.FullName, false)">
                                     <i class="ri-user-line" style="color:#8b5cf6; opacity:.6;"></i>
                                     <span>@thisPc.FullName</span>
                                 </div>
+                                @if (thisPc.IsAlsoSolo)
+                                {
+                                    <div class="act-pc-item" @onclick="() => OnActionSummaryPcSelected(thisPc.PcId, thisPc.FullName, true)">
+                                        <i class="ri-user-line" style="color:#ef4444; opacity:.7;"></i>
+                                        <span>@thisPc.FullName</span>
+                                        <span style="font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+                                                     color:#fff; background:linear-gradient(135deg,#ef4444,#b91c1c);
+                                                     border-radius:999px; padding:2px 8px; margin-left:4px;">Solo</span>
+                                    </div>
+                                }
                             }
                         </div>
                     }
@@ -1091,7 +1111,7 @@
                              style="background:#f0f4ff; border-radius:8px; border:1px solid #e2e8f0;">
                             <i class="ri-user-line" style="color:#8b5cf6;"></i>
                             <span style="font-weight:700; font-size:.92rem; color:#1e293b;">@_actionSummaryPcName</span>
-                            @if (_isSoloUser)
+                            @if (_actionSummaryIsSoloFolder)
                             {
                                 <span style="font-size:.65rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
                                              color:#fff; background:linear-gradient(135deg,#ef4444 0%,#b91c1c 100%);
@@ -1986,11 +2006,12 @@
     int    _actionSummaryStep = 1;   // 1 = pick PC, 2 = write summary
     int    _actionSummaryPcId;
     string _actionSummaryPcName = "";
-    string _actionPcSearch = "";
+    bool   _actionSummaryIsSoloFolder;
+string _actionPcSearch = "";
     string _actionPermMsg = "";
     string _actionSuccessMsg = "";
     bool   _actionSummaryBusy;
-    List<PcInfo> _actionAllPcs = [];
+    List<DashboardService.ApprovedPc> _actionAllPcs = [];
 
     // ── Messaging state ──
     int?   _msgUserId;
@@ -2249,9 +2270,7 @@
     void LoadAllPcs()
     {
         if (!_msgUserId.HasValue) return;
-        _actionAllPcs = DashSvc.GetApprovedPcsForUser(_msgUserId.Value)
-            .Select(p => new PcInfo(p.PcId, p.FullName, ""))
-            .ToList();
+        _actionAllPcs = DashSvc.GetApprovedPcsForUser(_msgUserId.Value);
     }
 
     void OpenActionFolder()
@@ -2263,14 +2282,15 @@
         _showActionOpenFolder = true;
     }
 
-    async Task OnActionFolderPcSelected(int pcId)
+    async Task OnActionFolderPcSelected(int pcId, bool solo)
     {
         if (!_msgUserId.HasValue) return;
         var hasPermission = DashSvc.CanAccessPcFolder(_msgUserId.Value, pcId);
         if (hasPermission)
         {
             _showActionOpenFolder = false;
-            var url = NavigationManager.ToAbsoluteUri($"/PcFolder/{pcId}").ToString();
+            var soloParam = solo ? "?solo=true" : "";
+            var url = NavigationManager.ToAbsoluteUri($"/PcFolder/{pcId}{soloParam}").ToString();
             await JSRuntime.InvokeVoidAsync("open", url, "_blank");
         }
         else
@@ -2291,11 +2311,12 @@
         _actionSummaryStep = 1;
         _actionSummaryPcId = 0;
         _actionSummaryPcName = "";
+        _actionSummaryIsSoloFolder = false;
         _actionSummaryBusy = false;
         _showActionSummary = true;
     }
 
-    void OnActionSummaryPcSelected(int pcId, string pcName)
+    void OnActionSummaryPcSelected(int pcId, string pcName, bool isSoloFolder)
     {
         if (!_msgUserId.HasValue) return;
         var hasPermission = DashSvc.CanAccessPcFolder(_msgUserId.Value, pcId);
@@ -2308,6 +2329,7 @@
         _actionPermMsg = "";
         _actionSummaryPcId = pcId;
         _actionSummaryPcName = pcName;
+        _actionSummaryIsSoloFolder = isSoloFolder;
         _actionSummaryStep = 2;
         // Init Quill editor after render
         _ = Task.Run(async () =>
@@ -2348,7 +2370,7 @@
                 _actionPermMsg = "Please write something before saving.";
                 return;
             }
-            DashSvc.AddFolderSummary(null, _actionSummaryPcId, _isSoloUser ? null : _msgUserId.Value, html);
+            DashSvc.AddFolderSummary(null, _actionSummaryPcId, _actionSummaryIsSoloFolder ? null : _msgUserId.Value, html);
             Console.WriteLine($"[MainHeader] Folder summary saved for PC {_actionSummaryPcId} by '{_logUsername}'");
             _actionSummaryBusy = false;
             _actionSummaryStep = 0; // show success screen

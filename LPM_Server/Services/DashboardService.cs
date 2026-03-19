@@ -101,7 +101,7 @@ public class DashboardService
 
     // ── Import Session ─────────────────────────────────────────
 
-    public record ApprovedPc(int PcId, string FullName);
+    public record ApprovedPc(int PcId, string FullName, bool IsAlsoSolo = false);
 
     /// <summary>Returns PCs the user is allowed to access (AllowAll or approved permission).</summary>
     public List<ApprovedPc> GetApprovedPcsForUser(int userId)
@@ -123,7 +123,7 @@ public class DashboardService
         if (allowAll)
         {
             cmd.CommandText = $@"
-                SELECT pc.PcId, {FullNameExpr} AS FullName
+                SELECT pc.PcId, {FullNameExpr} AS FullName, COALESCE(pc.IsAlsoSolo, 0)
                 FROM core_pcs pc
                 JOIN core_persons p ON p.PersonId = pc.PcId
                 ORDER BY p.FirstName, p.LastName";
@@ -132,7 +132,7 @@ public class DashboardService
         {
             // Solo user: only their own PC
             cmd.CommandText = $@"
-                SELECT pc.PcId, {FullNameExpr} AS FullName
+                SELECT pc.PcId, {FullNameExpr} AS FullName, COALESCE(pc.IsAlsoSolo, 0)
                 FROM core_pcs pc
                 JOIN core_persons p ON p.PersonId = pc.PcId
                 WHERE pc.PcId = @uid";
@@ -141,7 +141,7 @@ public class DashboardService
         else
         {
             cmd.CommandText = $@"
-                SELECT pc.PcId, {FullNameExpr} AS FullName
+                SELECT pc.PcId, {FullNameExpr} AS FullName, COALESCE(pc.IsAlsoSolo, 0)
                 FROM sys_staff_pc_list spl
                 JOIN core_pcs pc ON pc.PcId = spl.PcId
                 JOIN core_persons p ON p.PersonId = pc.PcId
@@ -152,7 +152,7 @@ public class DashboardService
         var list = new List<ApprovedPc>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add(new ApprovedPc(r.GetInt32(0), r.GetString(1)));
+            list.Add(new ApprovedPc(r.GetInt32(0), r.GetString(1), r.GetInt32(2) == 1));
         return list;
     }
 
