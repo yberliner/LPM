@@ -1091,6 +1091,13 @@
                              style="background:#f0f4ff; border-radius:8px; border:1px solid #e2e8f0;">
                             <i class="ri-user-line" style="color:#8b5cf6;"></i>
                             <span style="font-weight:700; font-size:.92rem; color:#1e293b;">@_actionSummaryPcName</span>
+                            @if (_isSoloUser)
+                            {
+                                <span style="font-size:.65rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+                                             color:#fff; background:linear-gradient(135deg,#ef4444 0%,#b91c1c 100%);
+                                             border-radius:999px; padding:2px 9px;
+                                             box-shadow:0 0 8px rgba(239,68,68,0.5);">Solo Folder</span>
+                            }
                             <button class="btn btn-sm ms-auto p-0" style="color:#64748b; font-size:.8rem;"
                                     @onclick="() => { _actionSummaryStep = 1; _actionPcSearch = string.Empty; _actionSuccessMsg = string.Empty; }">
                                 <i class="ri-arrow-left-s-line me-1"></i>Change
@@ -2241,7 +2248,10 @@
 
     void LoadAllPcs()
     {
-        _actionAllPcs = DashSvc.GetAllPcs();
+        if (!_msgUserId.HasValue) return;
+        _actionAllPcs = DashSvc.GetApprovedPcsForUser(_msgUserId.Value)
+            .Select(p => new PcInfo(p.PcId, p.FullName, ""))
+            .ToList();
     }
 
     void OpenActionFolder()

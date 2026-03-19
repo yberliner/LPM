@@ -109,11 +109,15 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        // Check AllowAll — if true, return all PCs
+        // Check AllowAll and StaffRole
         using var aaCmd = conn.CreateCommand();
-        aaCmd.CommandText = "SELECT COALESCE(AllowAll, 0) FROM core_users WHERE PersonId = @id AND IsActive = 1 LIMIT 1";
+        aaCmd.CommandText = "SELECT COALESCE(AllowAll, 0), COALESCE(StaffRole, '') FROM core_users WHERE PersonId = @id AND IsActive = 1 LIMIT 1";
         aaCmd.Parameters.AddWithValue("@id", userId);
-        var allowAll = aaCmd.ExecuteScalar() is long a && a == 1;
+        using var aaR = aaCmd.ExecuteReader();
+        bool allowAll = false;
+        bool isSolo = false;
+        if (aaR.Read()) { allowAll = aaR.GetInt32(0) == 1; isSolo = aaR.GetString(1) == "Solo"; }
+        aaR.Close();
 
         using var cmd = conn.CreateCommand();
         if (allowAll)
@@ -123,6 +127,16 @@ public class DashboardService
                 FROM core_pcs pc
                 JOIN core_persons p ON p.PersonId = pc.PcId
                 ORDER BY p.FirstName, p.LastName";
+        }
+        else if (isSolo)
+        {
+            // Solo user: only their own PC
+            cmd.CommandText = $@"
+                SELECT pc.PcId, {FullNameExpr} AS FullName
+                FROM core_pcs pc
+                JOIN core_persons p ON p.PersonId = pc.PcId
+                WHERE pc.PcId = @uid";
+            cmd.Parameters.AddWithValue("@uid", userId);
         }
         else
         {
