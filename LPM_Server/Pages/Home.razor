@@ -178,6 +178,7 @@
                             <option value="1">Last 1 day</option>
                             <option value="3">Last 3 days</option>
                             <option value="10">Last 10 days</option>
+                            <option value="30">Last 30 days</option>
                             <option value="0">All</option>
                         </select>
                     </div>
@@ -1300,7 +1301,7 @@
     List<DashboardService.AuditorSessionStatus> _auditorStatuses = [];
     Dictionary<int, HashSet<string>> _audAttachTypes = new();
     bool _audStatusExpanded = true;
-    int _audStatusDays = 0;
+    int _audStatusDays = 10;
     string _pcsSortCol = "pc";   // "pc", "date", "dur"
     bool _pcsSortAsc = true;
     string _audSortCol = "pc";   // "pc", "date", "dur"
