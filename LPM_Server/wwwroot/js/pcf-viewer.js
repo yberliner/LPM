@@ -11,6 +11,7 @@ window.pcfViewer = {
     _pcId: 0,
 
     _zoomLevels: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.5, 3.0],
+    _panMode: false,
 
     _initPane(paneId) {
         if (!this.panes[paneId]) {
@@ -56,6 +57,10 @@ window.pcfViewer = {
             viewer = document.getElementById('pcf-viewer-' + paneId);
         }
         if (!viewer) return;
+        if (!viewer._panInited) {
+            viewer._panInited = true;
+            this._initPanOnViewer(viewer);
+        }
         viewer.innerHTML = '';
         pane.pages = [];
         pane.annotations = [];
@@ -721,6 +726,48 @@ window.pcfViewer = {
         paneId = paneId || this.activePane;
         const pane = this.panes[paneId];
         return pane ? Math.round((pane.zoomLevel || 1) * 100) : 100;
+    },
+
+    // ── Pan (drag-to-scroll) mode ──
+
+    setPanMode(enabled) {
+        this._panMode = enabled;
+        for (const paneId of Object.keys(this.panes)) {
+            const viewer = document.getElementById('pcf-viewer-' + paneId);
+            if (viewer) viewer.classList.toggle('pcf-pan-mode', enabled);
+        }
+    },
+
+    _initPanOnViewer(viewer) {
+        let dragging = false;
+        let startX, startY, scrollL, scrollT;
+        const self = this;
+
+        viewer.addEventListener('mousedown', (e) => {
+            if (!self._panMode) return;
+            dragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            scrollL = viewer.scrollLeft;
+            scrollT = viewer.scrollTop;
+            viewer.classList.add('pcf-panning');
+            e.preventDefault();
+            e.stopPropagation();
+        });
+
+        viewer.addEventListener('mousemove', (e) => {
+            if (!dragging || !self._panMode) return;
+            viewer.scrollLeft = scrollL - (e.clientX - startX);
+            viewer.scrollTop  = scrollT  - (e.clientY - startY);
+        });
+
+        const stopDrag = () => {
+            if (!dragging) return;
+            dragging = false;
+            viewer.classList.remove('pcf-panning');
+        };
+        viewer.addEventListener('mouseup',    stopDrag);
+        viewer.addEventListener('mouseleave', stopDrag);
     },
 
     // ── Extract pages mode ──

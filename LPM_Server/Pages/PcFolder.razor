@@ -675,6 +675,12 @@
                         disabled="@(_zoomPercent >= 300)">
                     <i class="ri-add-line"></i>
                 </button>
+                <button class="pcf-tool-btn @(_panMode ? "pcf-tool-active" : "")"
+                        title="@(_panMode ? "Pan mode ON — click again to turn off" : "Pan — drag to scroll when zoomed in")"
+                        style="@(_panMode ? "color:#fb923c;" : "")"
+                        @onclick="TogglePan">
+                    <i class="ri-drag-move-line"></i>
+                </button>
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
                 <button class="pcf-save-btn" title="Save — save annotations to the PDF now (also auto-saves when switching files or closing)"
                         @onclick="SaveAnnotations"
@@ -1356,6 +1362,9 @@
         padding: 20px; gap: 12px; background: #64748b;
         scrollbar-width: auto; scrollbar-color: #475569 #64748b;
     }
+    .pcf-viewer.pcf-pan-mode { cursor: grab; }
+    .pcf-viewer.pcf-pan-mode.pcf-panning { cursor: grabbing; }
+    .pcf-viewer.pcf-pan-mode .pcf-annotation-canvas { pointer-events: none; }
     .pcf-viewer::-webkit-scrollbar { width: 10px; }
     .pcf-viewer::-webkit-scrollbar-track { background: #64748b; }
     .pcf-viewer::-webkit-scrollbar-thumb {
@@ -1922,6 +1931,7 @@
     static readonly double[] _strokeWidths = [1, 2, 3, 5, 8, 12, 20];
     bool _saving;
     int _zoomPercent = 100;
+    bool _panMode;
     List<(string paneId, string file)>? _pendingReloads;
     HashSet<string>                     _dualPanes = new();
     Dictionary<string, (int page, int total)> _dualInfo = new();
@@ -2463,6 +2473,11 @@
     {
         _toolMode = _toolMode == mode ? "" : mode;
         Console.WriteLine($"[PcFolder] Set tool to '{(_toolMode == "" ? "none" : _toolMode)}' by '{_userName}' — for PC {PcId}");
+        if (_panMode && _toolMode != "")
+        {
+            _panMode = false;
+            await JS.InvokeVoidAsync("pcfViewer.setPanMode", false);
+        }
         await JS.InvokeVoidAsync("pcfViewer.setTool", _toolMode);
     }
 
@@ -2492,6 +2507,17 @@
     async Task ResetZoom()
     {
         _zoomPercent = await JS.InvokeAsync<int>("pcfViewer._setZoom", PaneIds[_activeIdx], 1.0);
+    }
+
+    async Task TogglePan()
+    {
+        _panMode = !_panMode;
+        if (_panMode && _toolMode != "")
+        {
+            _toolMode = "";
+            await JS.InvokeVoidAsync("pcfViewer.setTool", "");
+        }
+        await JS.InvokeVoidAsync("pcfViewer.setPanMode", _panMode);
     }
 
     bool _showAddPageMenu;
