@@ -73,9 +73,11 @@ window.pcfViewer = {
         if (!pdfjsLib) { viewer.innerHTML = '<div style="color:#fff;padding:40px;">PDF.js not loaded</div>'; return; }
 
         try {
-            pane.pdfDoc = await pdfjsLib.getDocument(url).promise;
+            pane.pdfDoc = await pdfjsLib.getDocument({ url, withCredentials: true }).promise;
         } catch (e) {
-            viewer.innerHTML = '<div style="color:#fff;padding:40px;">Failed to load PDF: ' + e.message + '</div>';
+            const msg = e.status ? `HTTP ${e.status} — ${e.message}` : e.message;
+            viewer.innerHTML = '<div style="color:#fff;padding:40px;">Failed to load PDF: ' + msg + '</div>';
+            console.error('[pcf-viewer] loadPdf error', url, e);
             return;
         }
 

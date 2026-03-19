@@ -1352,7 +1352,7 @@
     .pcf-pane-hdr-p3 { background: #92400e; }
     .pcf-viewer {
         flex-grow: 1; overflow-y: scroll; overflow-x: auto;
-        display: flex; flex-direction: column; align-items: center;
+        display: flex; flex-direction: column; align-items: flex-start;
         padding: 20px; gap: 12px; background: #64748b;
         scrollbar-width: auto; scrollbar-color: #475569 #64748b;
     }
@@ -1371,9 +1371,9 @@
     /* ── PDF page wrapper ── */
     .pcf-page-wrapper {
         position: relative; box-shadow: 0 4px 20px rgba(0,0,0,.3); background: #fff;
-        max-width: 100%;
+        margin-left: auto; margin-right: auto; flex-shrink: 0;
     }
-    .pcf-page-wrapper canvas { display: block; max-width: 100%; height: auto !important; }
+    .pcf-page-wrapper canvas { display: block; }
     .pcf-annotation-canvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
 
     .pcf-text-input {
@@ -1413,8 +1413,7 @@
         .pcf-toast-success { padding: 10px 16px; font-size: .82rem; max-width: 90vw; }
         .pcf-lock-banner { flex-wrap: wrap; font-size: .78rem; }
         .pcf-text-input { min-width: 80px; }
-        .pcf-page-wrapper { max-width: 100%; overflow: hidden; }
-        .pcf-page-wrapper canvas { max-width: 100%; height: auto !important; }
+        .pcf-page-wrapper { max-width: calc(100vw - 40px); overflow: hidden; }
     }
 
     /* ── Phone ── */

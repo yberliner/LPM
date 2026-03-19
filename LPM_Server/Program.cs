@@ -225,7 +225,12 @@ app.MapFallbackToPage("/_Host");
 static bool CanAccessPcFile(HttpContext ctx, int pcId, bool solo, LPM.Services.DashboardService dashSvc)
 {
     if (!int.TryParse(ctx.User.FindFirst("PersonId")?.Value, out var userId) || userId == 0)
-        return false;
+    {
+        // Fallback for session cookies predating the PersonId claim — look up by username
+        var username = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
+        userId = dashSvc.GetUserIdByUsername(username) ?? 0;
+        if (userId == 0) return false;
+    }
     var staffRole = ctx.User.FindFirst("StaffRole")?.Value ?? "";
     if (staffRole == "Solo")
         return pcId == userId && solo;   // solo user: own PC, solo folder only
