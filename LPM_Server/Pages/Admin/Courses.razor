@@ -1,5 +1,5 @@
 @page "/Admin/Courses"
-@attribute [Authorize]
+@attribute [Authorize(Roles = "Admin")]
 @inject LPM.Services.CourseService CourseSvc
 @using Microsoft.AspNetCore.Authorization
 @using LPM.Services

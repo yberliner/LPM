@@ -1166,21 +1166,23 @@ public class DashboardService
         Console.WriteLine($"[DashboardService] Updated session {sessionId}");
     }
 
-    public void UpdateCsReview(int csReviewId, int reviewSec, string status, string? notes)
+    public void UpdateCsReview(int csReviewId, int callerCsId, int reviewSec, string status, string? notes)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
+        // Ownership check: only the assigned CS user may update their own review
         cmd.CommandText = @"
             UPDATE cs_reviews
             SET ReviewLengthSeconds=@rev, Status=@status, Notes=@notes
-            WHERE CsReviewId=@id";
+            WHERE CsReviewId=@id AND CsId=@csId";
         cmd.Parameters.AddWithValue("@rev",    reviewSec);
         cmd.Parameters.AddWithValue("@status", status);
         cmd.Parameters.AddWithValue("@notes",  (object?)notes ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@id",     csReviewId);
+        cmd.Parameters.AddWithValue("@csId",   callerCsId);
         cmd.ExecuteNonQuery();
-        Console.WriteLine($"[DashboardService] Updated CS review {csReviewId}");
+        Console.WriteLine($"[DashboardService] Updated CS review {csReviewId} by csId={callerCsId}");
     }
 
     /// <summary>
@@ -1985,6 +1987,17 @@ public class DashboardService
         cmd.ExecuteNonQuery();
     }
 
+    public bool SessionBelongsToPc(int sessionId, int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT 1 FROM sess_sessions WHERE SessionId = @sid AND PcId = @pcId LIMIT 1";
+        cmd.Parameters.AddWithValue("@sid", sessionId);
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        return cmd.ExecuteScalar() is not null;
+    }
+
     public string? GetSessionName(int sessionId)
     {
         using var conn = new SqliteConnection(_connectionString);
@@ -2184,15 +2197,17 @@ public class DashboardService
         return (int)(long)(cmd.ExecuteScalar() ?? 0L);
     }
 
-    public void AcknowledgeMessage(int messageId)
+    public void AcknowledgeMessage(int messageId, int toStaffId)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE sys_staff_messages SET AcknowledgedAt = datetime('now', '+2 hours') WHERE Id = @id";
+        // Ownership check: only acknowledge if the message belongs to toStaffId
+        cmd.CommandText = "UPDATE sys_staff_messages SET AcknowledgedAt = datetime('now', '+2 hours') WHERE Id = @id AND ToStaffId = @toId";
         cmd.Parameters.AddWithValue("@id", messageId);
+        cmd.Parameters.AddWithValue("@toId", toStaffId);
         cmd.ExecuteNonQuery();
-        Console.WriteLine($"[DashboardService] Acknowledged message {messageId}");
+        Console.WriteLine($"[DashboardService] Acknowledged message {messageId} for staffId={toStaffId}");
     }
 
     // ── Weekly Remarks ───────────────────────────────────────────────

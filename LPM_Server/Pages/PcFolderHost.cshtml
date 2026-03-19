@@ -13,13 +13,15 @@
     }
 
     var pcId = int.Parse(RouteData.Values["pcId"]!.ToString()!);
-    int sessionId = 0;
-    if (int.TryParse(ViewContext.HttpContext.Request.Query["sessionId"], out var qsid))
-        sessionId = qsid;
     bool csMode = ViewContext.HttpContext.Request.Query["csMode"] == "true";
+    bool solo   = ViewContext.HttpContext.Request.Query["solo"]   == "true";
 
     // Resolve current user's PersonId
     var dashSvc = ViewContext.HttpContext.RequestServices.GetRequiredService<LPM.Services.DashboardService>();
+
+    int sessionId = 0;
+    if (int.TryParse(ViewContext.HttpContext.Request.Query["sessionId"], out var qsid) && qsid > 0)
+        sessionId = dashSvc.SessionBelongsToPc(qsid, pcId) ? qsid : 0;
     var username = User.FindFirst(ClaimTypes.Name)?.Value ?? "";
     var userPersonId = dashSvc.GetUserIdByUsername(username) ?? 0;
 
@@ -27,9 +29,12 @@
     var isAdmin = User.IsInRole("Admin");
     var authorized = isAdmin;
 
-    if (!authorized)
+    if (!authorized && userPersonId > 0)
     {
-        if (userPersonId > 0)
+        var staffRole = User.FindFirst("StaffRole")?.Value ?? "";
+        if (staffRole == "Solo")
+            authorized = (pcId == userPersonId); // solo user: only their own PC (solo param handled by OnInitialized redirect)
+        else
             authorized = dashSvc.CanAccessPcFolder(userPersonId, pcId);
     }
 }
@@ -56,5 +61,5 @@ else
 {
     <component type="typeof(PcFolder)" render-mode="Server"
                param-PcId="pcId" param-SessionId="sessionId" param-CsMode="csMode"
-               param-UserPersonId="userPersonId" />
+               param-Solo="solo" param-UserPersonId="userPersonId" />
 }

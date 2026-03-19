@@ -145,6 +145,14 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.Use(async (ctx, next) =>
+{
+    ctx.Response.Headers["X-Frame-Options"] = "DENY";
+    ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    await next();
+});
+
 app.UseSession();
 
 app.UseStaticFiles();
@@ -158,16 +166,27 @@ app.MapRazorPages();
 // Login endpoint — validates credentials and sets auth cookie
 app.MapPost("/loginpost", async (HttpContext ctx, UserDb db) =>
 {
+    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+    if (LPM.Services.LoginRateLimit.IsLockedOut(ip))
+    {
+        Console.WriteLine($"[Login] BLOCKED (locked out) attempt from {ip} at {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        return Results.Redirect("/login?error=2");
+    }
+
     var form = await ctx.Request.ReadFormAsync();
     var username = form["username"].ToString();
     var password = form["password"].ToString();
 
     if (db.ValidateUser(username, password, out var roles, out var staffRole))
     {
+        LPM.Services.LoginRateLimit.ClearFailures(ip);
+        var personId = db.GetPersonId(username);
         var claims = new List<Claim>
         {
             new Claim(ClaimTypes.Name, username),
             new Claim("StaffRole", staffRole),
+            new Claim("PersonId", personId?.ToString() ?? "0"),
         };
         foreach (var r in roles)
             claims.Add(new Claim(ClaimTypes.Role, r));
@@ -176,14 +195,16 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db) =>
         await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
             new ClaimsPrincipal(identity));
 
-        var loginIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        Console.WriteLine($"[Login] Login success for '{username}' from {loginIp} — roles=[{string.Join(", ", roles)}] staffRole={staffRole}");
+        Console.WriteLine($"[Login] Login success for '{username}' from {ip} — roles=[{string.Join(", ", roles)}] staffRole={staffRole}");
         return Results.Redirect("/Home");
     }
 
-    var failIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-    Console.WriteLine($"[Login] Login failure for '{username}' from {failIp}");
-    return Results.Redirect($"/login?error=1&username={Uri.EscapeDataString(username)}");
+    var remaining = LPM.Services.LoginRateLimit.RecordFailure(ip);
+    var isLocked = remaining == 0;
+    Console.WriteLine($"[Login] Login failure for '{username}' from {ip} ({remaining} attempts remaining)");
+    return Results.Redirect(isLocked
+        ? "/login?error=2"
+        : $"/login?error=1&username={Uri.EscapeDataString(username)}");
 }).DisableAntiforgery();
 
 // Logout endpoint — clears auth cookie and redirects to login
@@ -198,60 +219,41 @@ app.Map("/logout", async (HttpContext ctx) =>
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 
-// -----------------------------------------------------------
-//  DOWNLOAD END-POINTS
-// -----------------------------------------------------------
-app.MapGet("/download/Scripts/{fileName}", DownloadHandler("Scripts"));
-app.MapGet("/download/Results/{fileName}", DownloadHandler("Results"));
-app.MapGet("/download/RwsScripts/{fileName}", DownloadHandler("RwsScripts"));
-app.MapGet("/download/RwsResults/{fileName}", DownloadHandler("RwsResults"));
-app.MapGet("/download/BitConfigs/{fileName}", DownloadHandler("BitConfigs"));
-
-Func<HttpContext, string, Task<IResult>> DownloadHandler(string bucket) =>
-    (HttpContext ctx, string fileName) =>
-    {
-        if (string.IsNullOrWhiteSpace(fileName))
-            return Task.FromResult<IResult>(Results.BadRequest("File name is required."));
-
-        var store = ctx.RequestServices.GetRequiredService<AllScriptResServices>();
-
-        var fullPath = bucket switch
-        {
-            "Scripts"    => Path.Combine(store.FullScripts!.Scripts.DirectoryPath, fileName),
-            "Results"    => Path.Combine(store.FullScripts!.Results.DirectoryPath, fileName),
-            "RwsScripts" => Path.Combine(store.RwsScripts!.Scripts.DirectoryPath, fileName),
-            "RwsResults" => Path.Combine(store.RwsScripts!.Results.DirectoryPath, fileName),
-            "BitConfigs" => Path.Combine(store.IniFileServices!.DirectoryPath, fileName),
-            _            => null
-        };
-
-        if (fullPath is null || !System.IO.File.Exists(fullPath))
-            return Task.FromResult<IResult>(Results.NotFound());
-
-        const string mime = "application/octet-stream";
-        return Task.FromResult<IResult>(Results.File(fullPath, mime, fileName));
-    };
-
 // ── PC Folder file endpoints ──
-app.MapGet("/api/pc-file", (int pcId, string path, LPM.Services.FolderService svc, bool solo = false) =>
+
+// Returns true if the authenticated user may access the given pcId/solo combination.
+static bool CanAccessPcFile(HttpContext ctx, int pcId, bool solo, LPM.Services.DashboardService dashSvc)
 {
+    if (!int.TryParse(ctx.User.FindFirst("PersonId")?.Value, out var userId) || userId == 0)
+        return false;
+    var staffRole = ctx.User.FindFirst("StaffRole")?.Value ?? "";
+    if (staffRole == "Solo")
+        return pcId == userId && solo;   // solo user: own PC, solo folder only
+    return dashSvc.CanAccessPcFolder(userId, pcId);  // non-solo: must have permission
+}
+
+app.MapGet("/api/pc-file", (int pcId, string path, LPM.Services.FolderService svc,
+    LPM.Services.DashboardService dashSvc, HttpContext ctx, bool solo = false) =>
+{
+    if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
     var bytes = svc.ReadFileBytes(pcId, path, solo);
     if (bytes == null) return Results.NotFound();
     return Results.File(bytes, "application/pdf");
-});
+}).RequireAuthorization();
 
 app.MapGet("/api/program-insert", (string name, LPM.Services.FolderService svc) =>
 {
     var bytes = svc.GetProgramInsertFileBytes(name);
     if (bytes == null) return Results.NotFound();
     return Results.File(bytes, "application/pdf");
-});
+}).RequireAuthorization();
 
 app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
     LPM.Services.FolderService folderSvc,
     LPM.Services.DashboardService dashSvc,
-    PdfService pdfSvc, bool solo = false) =>
+    PdfService pdfSvc, HttpContext ctx, bool solo = false) =>
 {
+    if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
     var originalBytes = folderSvc.ReadFileBytes(pcId, path, solo);
     if (originalBytes == null) return Results.NotFound();
 
@@ -265,27 +267,32 @@ app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
     var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
     var combined = pdfSvc.CombinePdfs(summaryPdf, originalBytes);
     return Results.File(combined, "application/pdf");
-});
+}).RequireAuthorization();
 
-app.MapPost("/api/pc-file-save", async (HttpContext ctx, LPM.Services.FolderService svc) =>
-{
-    if (!int.TryParse(ctx.Request.Query["pcId"], out var pcId)) return Results.BadRequest();
-    var path = ctx.Request.Query["path"].ToString();
-    if (string.IsNullOrEmpty(path)) return Results.BadRequest();
-
-    using var ms = new MemoryStream();
-    await ctx.Request.Body.CopyToAsync(ms);
-    var saveUser = ctx.User?.Identity?.Name ?? "unknown";
-    Console.WriteLine($"[PcFile] Saved PC file pcId={pcId}: {path} by '{saveUser}'");
-    return svc.SaveFile(pcId, path, ms.ToArray()) ? Results.Ok() : Results.NotFound();
-});
-
-app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.FolderService svc) =>
+app.MapPost("/api/pc-file-save", async (HttpContext ctx, LPM.Services.FolderService svc,
+    LPM.Services.DashboardService dashSvc) =>
 {
     if (!int.TryParse(ctx.Request.Query["pcId"], out var pcId)) return Results.BadRequest();
     var path = ctx.Request.Query["path"].ToString();
     if (string.IsNullOrEmpty(path)) return Results.BadRequest();
     var solo = ctx.Request.Query["solo"].ToString() == "true";
+    if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
+
+    using var ms = new MemoryStream();
+    await ctx.Request.Body.CopyToAsync(ms);
+    var saveUser = ctx.User?.Identity?.Name ?? "unknown";
+    Console.WriteLine($"[PcFile] Saved PC file pcId={pcId}: {path} by '{saveUser}'");
+    return svc.SaveFile(pcId, path, ms.ToArray(), solo) ? Results.Ok() : Results.NotFound();
+}).RequireAuthorization();
+
+app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.FolderService svc,
+    LPM.Services.DashboardService dashSvc) =>
+{
+    if (!int.TryParse(ctx.Request.Query["pcId"], out var pcId)) return Results.BadRequest();
+    var path = ctx.Request.Query["path"].ToString();
+    if (string.IsNullOrEmpty(path)) return Results.BadRequest();
+    var solo = ctx.Request.Query["solo"].ToString() == "true";
+    if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
 
     var form = await ctx.Request.ReadFormAsync();
     if (!int.TryParse(form["pageCount"], out var pageCount) || pageCount == 0)
@@ -322,7 +329,7 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
     Console.WriteLine($"[PcFile] Saved annotated PDF pcId={pcId}: {path} solo={solo} by '{annotUser}'");
     var saved = svc.SaveFile(pcId, path, outputMs.ToArray(), solo);
     return saved ? Results.Ok() : Results.NotFound();
-});
+}).RequireAuthorization();
 
 // ── Backup: password verification → one-time token ──
 app.MapPost("/api/backup-auth", async (HttpContext ctx, LPM.Auth.UserDb userDb) =>

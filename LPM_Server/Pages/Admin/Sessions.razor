@@ -1,6 +1,8 @@
 @page "/Admin/Sessions"
+@attribute [Authorize(Roles = "Admin")]
 @using LPM.Services
 @using LPM.Auth
+@using Microsoft.AspNetCore.Authorization
 @inject DashboardService DashSvc
 @inject UserDb UserDb
 @inject AuthenticationStateProvider AuthStateProvider

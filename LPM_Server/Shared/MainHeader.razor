@@ -2241,17 +2241,19 @@ string _actionPcSearch = "";
 
     void AcknowledgeMsg(int messageId)
     {
+        if (!_msgUserId.HasValue) return;
         Console.WriteLine($"[MainHeader] Acknowledged message {messageId} by '{_logUsername}'");
-        DashSvc.AcknowledgeMessage(messageId);
+        DashSvc.AcknowledgeMessage(messageId, _msgUserId.Value);
         _pendingMessages = _pendingMessages.Where(m => m.Id != messageId).ToList();
         _pendingMsgCount = _pendingMessages.Count;
     }
 
     void AcknowledgeAllMsgs()
     {
+        if (!_msgUserId.HasValue) return;
         foreach (var msg in _pendingMessages)
         {
-            DashSvc.AcknowledgeMessage(msg.Id);
+            DashSvc.AcknowledgeMessage(msg.Id, _msgUserId.Value);
         }
         Console.WriteLine($"[MainHeader] Acknowledged all {_pendingMessages.Count} messages by '{_logUsername}'");
         _pendingMessages.Clear();

@@ -52,7 +52,13 @@
                             </div>
                         </div>
 
-                        @if (_error)
+                        @if (_locked)
+                        {
+                            <div class="alert alert-danger text-center mt-3 @(_shake ? "shake" : "")" role="alert">
+                                <i class="ri-lock-line me-1"></i> Too many failed attempts. Try again in 10 minutes.
+                            </div>
+                        }
+                        else if (_error)
                         {
                             <div class="alert alert-danger text-center mt-3 @(_shake ? "shake" : "")" role="alert">
                                 <i class="ri-error-warning-line me-1"></i> @LS.T("login.invalidCredentials")
@@ -95,6 +101,7 @@
     private string _username = "";
     private string _password = "";
     private bool _error;
+    private bool _locked;
     private bool _shake;
     private bool _loading;
 
@@ -103,12 +110,13 @@
         var uri = new Uri(Nav.Uri);
         var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
         _error = query["error"] == "1";
+        _locked = query["error"] == "2";
         _username = query["username"] ?? "";
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && _error)
+        if (firstRender && (_error || _locked))
             await ShowErrorAsync();
     }
 

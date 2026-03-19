@@ -1,5 +1,5 @@
 @page "/Admin/Members"
-@attribute [Authorize]
+@attribute [Authorize(Roles = "Admin")]
 @inject LPM.Services.AcademyService AcademySvc
 @inject LPM.Services.PcService PcSvc
 @using Microsoft.AspNetCore.Authorization

@@ -164,6 +164,17 @@ public class UserDb
         return true;
     }
 
+    public int? GetPersonId(string username)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT PersonId FROM core_users WHERE Username = @u COLLATE NOCASE AND IsActive = 1 LIMIT 1";
+        cmd.Parameters.AddWithValue("@u", username);
+        var result = cmd.ExecuteScalar();
+        return result is long v ? (int)v : null;
+    }
+
     // ── User management (Admin UI) ──────────────────────────────────────────
 
     public List<UserListItem> GetAllUsers()

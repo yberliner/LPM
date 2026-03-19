@@ -1775,7 +1775,7 @@
         Console.WriteLine($"[Home] Updated CS review {_editReviewId} — duration={_editRevDuration} by '{_username}'");
         int secs = ParseTime(_editRevDuration);
         if (secs <= 0) { _editRevError = "Invalid duration — use H:MM (e.g. 0:30)."; return; }
-        DashSvc.UpdateCsReview(_editReviewId!.Value, secs, "Not_Done",
+        DashSvc.UpdateCsReview(_editReviewId!.Value, _userId!.Value, secs, "Not_Done",
             string.IsNullOrWhiteSpace(_editRevNotes) ? null : _editRevNotes);
         _editReviewId = null;
         _detail = DashSvc.GetDayDetail(_userId!.Value, _selPcId!.Value,

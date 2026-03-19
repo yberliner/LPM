@@ -2,17 +2,23 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @implements IDisposable
 
-<Router AppAssembly="@typeof(App).Assembly">
-    <Found Context="routeData">
-        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
-        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
-    </Found>
-    <NotFound>
-        <LayoutView Layout="@typeof(MainLayout)">
-            <p>Page not found.</p>
-        </LayoutView>
-    </NotFound>
-</Router>
+<CascadingAuthenticationState>
+    <Router AppAssembly="@typeof(App).Assembly">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+                <NotAuthorized>
+                    @{ Navigation.NavigateTo("/login", forceLoad: true); }
+                </NotAuthorized>
+            </AuthorizeRouteView>
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+        <NotFound>
+            <LayoutView Layout="@typeof(MainLayout)">
+                <p>Page not found.</p>
+            </LayoutView>
+        </NotFound>
+    </Router>
+</CascadingAuthenticationState>
 
 @code {
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -21,25 +27,9 @@
 
         try
         {
-            Console.WriteLine($"[App] OnAfterRenderAsync — URI: {Navigation.Uri}");
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var user = authState.User;
-
-            if (user.Identity?.IsAuthenticated != true)
-            {
-                var currentPath = Navigation.ToBaseRelativePath(Navigation.Uri)
-                                            .ToLowerInvariant().Trim('/');
-                bool isLoginPage = string.IsNullOrEmpty(currentPath)
-                                   || currentPath == "index"
-                                   || currentPath == "login";
-
-                if (!isLoginPage)
-                {
-                    Console.WriteLine($"[App] Not authenticated, path='{currentPath}' → /login");
-                    Navigation.NavigateTo("/login", forceLoad: true);
-                }
-            }
-            else
+            if (user.Identity?.IsAuthenticated == true)
             {
                 var username = user.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
                 var role     = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
@@ -52,8 +42,5 @@
         }
     }
 
-    public void Dispose()
-    {
-        
-    }
+    public void Dispose() { }
 }
