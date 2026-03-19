@@ -184,7 +184,7 @@ public class DashboardService
 
     /// <summary>Insert a session with a specific date, and mark it verified. Returns SessionId.</summary>
     public int CreateImportedSessionWithDate(int pcId, int auditorId, string sessionName,
-        string sessionDate, string createdAt, int verifiedByUserId)
+        string sessionDate, string createdAt, int verifiedByUserId, bool isSolo = false)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -204,10 +204,11 @@ public class DashboardService
             INSERT INTO sess_sessions
                 (PcId, AuditorId, SessionDate, SequenceInDay, LengthSeconds, Name,
                  CreatedByUserId, CreatedAt, VerifiedStatus, VerifiedByUserId, VerifiedAt, IsImported)
-            VALUES (@pc, -1, @dt, @seq, 0, @name,
+            VALUES (@pc, @aud, @dt, @seq, 0, @name,
                     @creator, @createdAt, 'Verified', @verifier, @verifiedAt, 1);
             SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("@pc", pcId);
+        cmd.Parameters.AddWithValue("@aud", isSolo ? DBNull.Value : (object)(-1));
         cmd.Parameters.AddWithValue("@dt", sessionDate);
         cmd.Parameters.AddWithValue("@seq", maxSeq + 1);
         cmd.Parameters.AddWithValue("@name", sessionName);

@@ -373,6 +373,7 @@
         public string FolderName { get; set; } = "";
         public string PcName { get; set; } = "";
         public int? ExistingPcId { get; set; }
+        public bool IsSolo { get; set; }
         public List<LocalFileEntry> Files { get; set; } = [];
     }
     class CoverMappingLocal
@@ -406,7 +407,8 @@
     {
         if (idx < 0 || idx >= _manifest.Count || string.IsNullOrWhiteSpace(newName)) return;
         var pc = _manifest[idx];
-        pc.PcName = newName.Trim();
+        pc.PcName = PcService.StripNoiseWords(newName.Trim());
+        if (string.IsNullOrWhiteSpace(pc.PcName)) pc.PcName = newName.Trim();
         var (existingId, _) = TryFindPc(pc.PcName);
         pc.ExistingPcId = existingId;
         foreach (var cm in _coverMappings.Where(c => c.PcFolderName == pc.FolderName))
@@ -474,6 +476,9 @@
             var parts = e.relativePath.Split('/');
             if (parts.Length < 3) continue;
 
+            // Skip any file under an "Archive" folder (case insensitive)
+            if (parts.Any(p => p.Contains("archive", StringComparison.OrdinalIgnoreCase))) continue;
+
             var fileName = parts[^1];
             string? section = null;
             string? pcFolder = null;
@@ -514,7 +519,11 @@
 
         foreach (var (folder, files) in pcGroups)
         {
-            var pcName = System.Text.RegularExpressions.Regex.Replace(folder.Trim(), @"^\d+-\s*", "");
+            var isSolo = System.Text.RegularExpressions.Regex.IsMatch(
+                folder, @"(?<!\w)solo(?!\w)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            var stripped = System.Text.RegularExpressions.Regex.Replace(folder.Trim(), @"^\d+-\s*", "");
+            var pcName = PcService.StripNoiseWords(stripped);
+            if (string.IsNullOrWhiteSpace(pcName)) pcName = stripped.Trim();
             var (existingId, _) = TryFindPc(pcName);
             var importFiles = files.Select(f => new LocalFileEntry
             {
@@ -526,7 +535,7 @@
             _manifest.Add(new LocalPcManifest
             {
                 FolderName = folder, PcName = pcName,
-                ExistingPcId = existingId, Files = importFiles
+                ExistingPcId = existingId, IsSolo = isSolo, Files = importFiles
             });
         }
     }
@@ -684,7 +693,8 @@
                     pc.FolderName, pc.PcName, pc.ExistingPcId,
                     pc.Files.Where(f => f.Include).Select(f => new ImportFileManifest(
                         f.RelativePath, f.FileName, f.Section, f.ParentSessionFile, f.LastModified, f.OverrideExisting
-                    )).ToList()
+                    )).ToList(),
+                    pc.IsSolo
                 ))
                 .Where(pc => pc.Files.Count > 0)
                 .ToList();

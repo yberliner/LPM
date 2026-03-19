@@ -274,6 +274,16 @@ public class UserDb
         Console.WriteLine($"[UserDb] Deactivated user Id={userId}");
     }
 
+    public bool UsernameExists(string username)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM core_users WHERE Username = @u COLLATE NOCASE";
+        cmd.Parameters.AddWithValue("@u", username.Trim());
+        return (long)cmd.ExecuteScalar()! > 0;
+    }
+
     // ── Private helpers ─────────────────────────────────────────────────────
 
     private static string HashPassword(string password)

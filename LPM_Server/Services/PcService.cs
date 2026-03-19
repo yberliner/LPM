@@ -118,13 +118,26 @@ public List<PcListItem> GetAllPcs()
     }
 
     /// <summary>Find an existing PC by name or create a new one. Returns (PcId, wasCreated).</summary>
-    public (int PcId, bool WasCreated) FindOrCreatePcByName(string folderName)
+    private static readonly string[] _noiseWords = { "solo", "review", "folder", "confidential" };
+
+    public static string StripNoiseWords(string name)
     {
-        // Strip numeric prefix like "25-" from folder name
+        foreach (var word in _noiseWords)
+            name = System.Text.RegularExpressions.Regex.Replace(
+                name, $@"(?<!\w){System.Text.RegularExpressions.Regex.Escape(word)}(?!\w)",
+                "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return System.Text.RegularExpressions.Regex.Replace(name.Trim(), @"\s+", " ").Trim();
+    }
+
+    public (int PcId, bool WasCreated) FindOrCreatePcByName(string folderName, bool isSolo = false)
+    {
+        // Strip numeric prefix like "25-" from folder name, then noise words
         var name = System.Text.RegularExpressions.Regex.Replace(folderName.Trim(), @"^\d+-\s*", "");
+        name = StripNoiseWords(name);
+
         var parts = name.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var firstName = parts.Length > 0 ? parts[0] : name;
-        var lastName = parts.Length > 1 ? parts[1] : "";
+        var lastName  = parts.Length > 1 ? parts[1] : "Unknown";
 
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -140,12 +153,24 @@ public List<PcListItem> GetAllPcs()
         findCmd.Parameters.AddWithValue("@fn", firstName);
         findCmd.Parameters.AddWithValue("@ln", lastName);
         var existing = findCmd.ExecuteScalar();
-        if (existing is long id)
-            return ((int)id, false);
+        if (existing is long existingId)
+        {
+            // Update Nick to Solo if not already set
+            if (isSolo)
+            {
+                using var nickCmd = conn.CreateCommand();
+                nickCmd.CommandText = @"
+                    UPDATE core_persons SET Nick = 'Solo'
+                    WHERE PersonId = @id AND (Nick IS NULL OR TRIM(Nick) = '')";
+                nickCmd.Parameters.AddWithValue("@id", (int)existingId);
+                nickCmd.ExecuteNonQuery();
+            }
+            return ((int)existingId, false);
+        }
 
         // Create new
-        var newId = AddPcWithPerson(firstName, lastName, "", "", "", "");
-        Console.WriteLine($"[PcService] Created new PC {newId} from folder name '{folderName}'");
+        var newId = AddPcWithPerson(firstName, lastName, "", "", "", "", nick: isSolo ? "Solo" : "");
+        Console.WriteLine($"[PcService] Created new PC {newId} from folder name '{folderName}' (solo={isSolo})");
         return (newId, true);
     }
 

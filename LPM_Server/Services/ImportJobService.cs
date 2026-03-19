@@ -8,7 +8,7 @@ public record ImportFileManifest(
 
 public record ImportPcManifest(
     string FolderName, string PcName, int? ExistingPcId,
-    List<ImportFileManifest> Files);
+    List<ImportFileManifest> Files, bool IsSolo = false);
 
 public record ImportCoverMapping(string FileName, string Section, string PcFolderName, int AssignedItemId);
 
@@ -34,17 +34,19 @@ public class ImportJobService
     private readonly FolderService _folderSvc;
     private readonly PcService _pcSvc;
     private readonly DashboardService _dashSvc;
+    private readonly LPM.Auth.UserDb _userDb;
     private readonly string _tempBasePath;
     private readonly object _lock = new();
 
     public ImportJobState? CurrentJob { get; private set; }
     public event Action? OnProgressChanged;
 
-    public ImportJobService(FolderService folderSvc, PcService pcSvc, DashboardService dashSvc)
+    public ImportJobService(FolderService folderSvc, PcService pcSvc, DashboardService dashSvc, LPM.Auth.UserDb userDb)
     {
         _folderSvc = folderSvc;
         _pcSvc = pcSvc;
         _dashSvc = dashSvc;
+        _userDb = userDb;
         _tempBasePath = Path.Combine(Directory.GetCurrentDirectory(), "PC-Folders", "_import_temp");
     }
 
@@ -161,9 +163,28 @@ public class ImportJobService
             {
                 UpdateStatus(jobId, $"Processing PC: {pc.PcName}...");
 
-                var (pcId, wasCreated) = _pcSvc.FindOrCreatePcByName(pc.PcName);
+                var (pcId, wasCreated) = _pcSvc.FindOrCreatePcByName(pc.PcName, pc.IsSolo);
                 if (wasCreated && CurrentJob != null) CurrentJob.NewPcsCreated++;
-                Console.WriteLine($"[ImportJobService] Processing PC: {pc.PcName} (id={pcId}, new={wasCreated})");
+                Console.WriteLine($"[ImportJobService] Processing PC: {pc.PcName} (id={pcId}, new={wasCreated}, solo={pc.IsSolo})");
+
+                // Create Solo user account if needed
+                if (pc.IsSolo)
+                {
+                    var nameParts = pc.PcName.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    var fn = nameParts.Length > 0 ? NormalizeToAscii(nameParts[0]) : "unknown";
+                    var ln = nameParts.Length > 1 ? NormalizeToAscii(nameParts[1]) : "unknown";
+                    var username = $"{fn}.{ln}";
+                    var password = $"{fn}1992";
+                    if (!_userDb.UsernameExists(username))
+                    {
+                        _userDb.CreateUser(pcId, username, password, "Solo", "Staff", null, true);
+                        Console.WriteLine($"[ImportJobService] Created Solo user '{username}' for PC {pcId} — default password set (weak, should be changed)");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[ImportJobService] Solo user '{username}' already exists for PC {pcId} — skipped");
+                    }
+                }
 
                 // Front_Cover and Back_Cover
                 foreach (var file in pc.Files.Where(f => f.Section is "Front_Cover" or "Back_Cover"))
@@ -210,7 +231,7 @@ public class ImportJobService
                     var sessionDate = ParseSessionDate(file);
                     var createdAt = ParseCreatedAt(file);
                     _dashSvc.CreateImportedSessionWithDate(pcId, userId, sessionName,
-                        sessionDate, createdAt, userId);
+                        sessionDate, createdAt, userId, pc.IsSolo);
                     if (CurrentJob != null) CurrentJob.SessionsCreated++;
                     Console.WriteLine($"[ImportJobService] Created session for PC {pcId}: '{sessionName}'");
 
@@ -319,6 +340,19 @@ public class ImportJobService
                 Directory.Delete(path, recursive: true);
         }
         catch { }
+    }
+
+    // ── Name helpers ──
+
+    internal static string NormalizeToAscii(string input)
+    {
+        var normalized = input.Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder();
+        foreach (var c in normalized)
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) !=
+                System.Globalization.UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+        return sb.ToString().Normalize(System.Text.NormalizationForm.FormC).ToLowerInvariant();
     }
 
     // ── Date parsing helpers ──
