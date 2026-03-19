@@ -87,6 +87,7 @@ public class DashboardService
         bugCmd.CommandText = @"
             SELECT DISTINCT s.PcId FROM sess_sessions s
             WHERE s.AuditorId IS NULL
+              AND s.IsImported = 0
               AND NOT EXISTS (
                   SELECT 1 FROM core_users u
                   WHERE u.PersonId = s.PcId AND u.StaffRole = 'Solo' AND u.IsActive = 1
@@ -202,12 +203,11 @@ public class DashboardService
         cmd.CommandText = @"
             INSERT INTO sess_sessions
                 (PcId, AuditorId, SessionDate, SequenceInDay, LengthSeconds, Name,
-                 CreatedByUserId, CreatedAt, VerifiedStatus, VerifiedByUserId, VerifiedAt)
-            VALUES (@pc, @aud, @dt, @seq, 0, @name,
-                    @creator, @createdAt, 'Verified', @verifier, @verifiedAt);
+                 CreatedByUserId, CreatedAt, VerifiedStatus, VerifiedByUserId, VerifiedAt, IsImported)
+            VALUES (@pc, -1, @dt, @seq, 0, @name,
+                    @creator, @createdAt, 'Verified', @verifier, @verifiedAt, 1);
             SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("@pc", pcId);
-        cmd.Parameters.AddWithValue("@aud", auditorId);
         cmd.Parameters.AddWithValue("@dt", sessionDate);
         cmd.Parameters.AddWithValue("@seq", maxSeq + 1);
         cmd.Parameters.AddWithValue("@name", sessionName);
@@ -217,13 +217,12 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@verifiedAt", createdAt);
         var sessionId = Convert.ToInt32(cmd.ExecuteScalar());
 
-        // Mark as CS reviewed (imported sessions are considered fully done)
+        // Mark CS review as done by import mechanism (CsId = -1)
         using var crCmd = conn.CreateCommand();
         crCmd.CommandText = @"
             INSERT INTO cs_reviews (SessionId, CsId, ReviewLengthSeconds, ReviewedAt, Status)
-            VALUES (@sid, @csId, 0, @reviewedAt, 'Done')";
+            VALUES (@sid, -1, 0, @reviewedAt, 'Done')";
         crCmd.Parameters.AddWithValue("@sid", sessionId);
-        crCmd.Parameters.AddWithValue("@csId", verifiedByUserId);
         crCmd.Parameters.AddWithValue("@reviewedAt", createdAt);
         crCmd.ExecuteNonQuery();
 
