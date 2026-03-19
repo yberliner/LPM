@@ -1660,8 +1660,8 @@ public class DashboardService
 
         var where = new System.Text.StringBuilder(
             includeApproved
-                ? "s.VerifiedStatus IN ('Pending','Approved')"
-                : "s.VerifiedStatus != 'Approved'");
+                ? "s.AuditorId IS NOT NULL AND s.VerifiedStatus IN ('Pending','Approved')"
+                : "s.AuditorId IS NOT NULL AND s.VerifiedStatus != 'Approved'");
 
         if (includeApproved && from.HasValue)
         {
