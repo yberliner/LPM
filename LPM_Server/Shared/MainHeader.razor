@@ -773,22 +773,55 @@
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showImportWizard = false">Cancel</button>
                         <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                                disabled="@(_importBusy || ArfHasTimeErrors || !IsValidArfTime(_arfAdminTime) || string.IsNullOrWhiteSpace(_arfAdminTime) || ArfHasIncompleteRows)"
+                                disabled="@(ArfHasTimeErrors || !IsValidArfTime(_arfAdminTime) || string.IsNullOrWhiteSpace(_arfAdminTime) || ArfHasIncompleteRows)"
                                 @onclick="ExecuteImport">
-                            @if (_importBusy)
-                            {
-                                <span class="spinner-border spinner-border-sm"></span>
-                            }
-                            else
-                            {
-                                <i class="ri-upload-2-line"></i>
-                            }
+                            <i class="ri-upload-2-line"></i>
                             Go
                         </button>
                     }
                 </div>
             </div>
         </div>
+    </div>
+}
+
+@* ── Background Import Toast ── *@
+@if (_bgImportRunning || _bgImportDone || !string.IsNullOrEmpty(_bgImportError))
+{
+    <div style="position:fixed;bottom:24px;right:24px;z-index:99999;min-width:280px;max-width:360px;
+                border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.22);
+                background:#1e293b;color:#f1f5f9;padding:16px 20px;
+                display:flex;align-items:flex-start;gap:12px;
+                animation:bgImportSlideIn .25s cubic-bezier(.175,.885,.32,1.275) both;">
+        <style>
+            @@keyframes bgImportSlideIn { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+        </style>
+        @if (_bgImportRunning)
+        {
+            <span class="spinner-border spinner-border-sm mt-1 flex-shrink-0" style="color:#60a5fa;"></span>
+            <div>
+                <div style="font-weight:600;font-size:.9rem;">Uploading session&hellip;</div>
+                <div style="font-size:.78rem;color:#94a3b8;margin-top:3px;word-break:break-all;">@_bgImportLabel</div>
+            </div>
+        }
+        else if (_bgImportDone)
+        {
+            <i class="ri-checkbox-circle-fill flex-shrink-0" style="font-size:1.4rem;color:#22c55e;line-height:1;"></i>
+            <div>
+                <div style="font-weight:600;font-size:.9rem;color:#22c55e;">Session imported!</div>
+                <div style="font-size:.78rem;color:#94a3b8;margin-top:3px;">Refreshing dashboard&hellip;</div>
+            </div>
+        }
+        else
+        {
+            <i class="ri-error-warning-fill flex-shrink-0" style="font-size:1.4rem;color:#f87171;line-height:1;"></i>
+            <div style="flex:1;">
+                <div style="font-weight:600;font-size:.9rem;color:#f87171;">Import failed</div>
+                <div style="font-size:.78rem;color:#94a3b8;margin-top:3px;word-break:break-all;">@_bgImportError</div>
+                <button class="btn btn-sm btn-outline-secondary mt-2" style="font-size:.75rem;padding:2px 10px;"
+                        @onclick="() => _bgImportError = string.Empty">Dismiss</button>
+            </div>
+        }
     </div>
 }
 
@@ -1425,6 +1458,12 @@
     string _importError   = "";
     string _importSuccess = "";
 
+    // Background import toast state
+    bool   _bgImportRunning;
+    bool   _bgImportDone;
+    string _bgImportError   = "";
+    string _bgImportLabel   = "";
+
     // Auditor Report Form fields (step 2)
     string _arfDate          = "";
     string _arfGrade         = "";
@@ -1740,94 +1779,126 @@
     async Task ExecuteImport()
     {
         if (!_msgUserId.HasValue || _importPcId == 0 || _importSessionBytes == null) return;
-        // Read final summary from Quill editor before saving
+        // Read final summary from Quill editor before closing modal
         await ReadArfSummaryFromEditor();
-        _importBusy = true;
-        _importError = "";
+
+        // Capture all needed data now (fields will be reset)
+        var capturedPcId        = _importPcId;
+        var capturedUserId      = _msgUserId.Value;
+        var capturedFileName    = _importSessionFileName;
+        var capturedBytes       = _importSessionBytes;
+        var capturedAttachments = _importAttachmentBytes.ToList();
+        var capturedFreeSession = _importFreeSession;
+        var capturedGrade       = _arfGrade;
+        var capturedSessLen     = _arfSessionLength;
+        var capturedAdminTime   = _arfAdminTime;
+        var capturedTotalTa     = _arfTotalTa;
+        var capturedTaFrom      = _arfTaRangeFrom;
+        var capturedTaTo        = _arfTaRangeTo;
+        var capturedDate        = _arfDate;
+        var capturedSummary     = string.IsNullOrWhiteSpace(_arfSummary) ? null : _arfSummary;
+        var capturedRows        = _arfRows.Select(r => new PdfService.ArfRowData(r.Checked, r.Process, r.Time, r.ToneArm, r.Results)).ToList();
+        var capturedPcName      = _approvedPcs.FirstOrDefault(p => p.PcId == _importPcId)?.FullName ?? "";
+        var capturedUsername    = _logUsername;
+
+        // Close modal immediately and reset fields
+        _showImportWizard = false;
+        _importSessionFile    = null;
+        _importSessionBytes   = null;
+        _importSessionFileName = "";
+        _importAttachments.Clear();
+        _importAttachmentBytes.Clear();
+        _importPcId   = 0;
+        _importStep   = 1;
+        _importError  = "";
         _importSuccess = "";
+
+        // Start background toast
+        _bgImportRunning = true;
+        _bgImportDone    = false;
+        _bgImportError   = "";
+        _bgImportLabel   = capturedFileName;
         StateHasChanged();
 
-        try
+        _ = Task.Run(async () =>
         {
-            // Use session file name (without extension) as session name
-            var sessionName = Path.GetFileNameWithoutExtension(_importSessionFileName);
-
-            // Parse session length and admin time to seconds
-            var sessionLenSec = ArfTimeToMinutes(_arfSessionLength) * 60;
-            if (sessionLenSec < 0) sessionLenSec = 0;
-            var adminSec = ArfTimeToMinutes(_arfAdminTime) * 60;
-            if (adminSec < 0) adminSec = 0;
-            var summaryHtml = string.IsNullOrWhiteSpace(_arfSummary) ? null : _arfSummary;
-
-            // Create session record
-            var sessionId = DashSvc.CreateImportedSession(_importPcId, _msgUserId.Value, sessionName,
-                sessionLenSec, adminSec, _importFreeSession);
-
-            // Save folder summary to separate table (with ARF data for later regeneration)
-            var arfData = new PdfService.ArfData
+            try
             {
-                PcName        = _approvedPcs.FirstOrDefault(p => p.PcId == _importPcId)?.FullName ?? "",
-                Date          = DateTime.Today.ToString("dd/MM/yyyy"),
-                Grade         = _arfGrade,
-                SessionLength = _arfSessionLength,
-                AdminTime     = _arfAdminTime,
-                TotalTa       = _arfTotalTa,
-                TaRange       = string.IsNullOrWhiteSpace(_arfTaRangeTo) ? _arfTaRangeFrom : $"{_arfTaRangeFrom}-{_arfTaRangeTo}",
-                Rows          = _arfRows.Select(r => new PdfService.ArfRowData(r.Checked, r.Process, r.Time, r.ToneArm, r.Results)).ToList()
-            };
-            var arfJson = System.Text.Json.JsonSerializer.Serialize(arfData);
-            DashSvc.AddFolderSummary(sessionId, _importPcId, _msgUserId.Value, summaryHtml ?? "", arfJson);
+                var sessionName   = Path.GetFileNameWithoutExtension(capturedFileName);
+                var sessionLenSec = ArfTimeToMinutes(capturedSessLen) * 60;
+                if (sessionLenSec < 0) sessionLenSec = 0;
+                var adminSec = ArfTimeToMinutes(capturedAdminTime) * 60;
+                if (adminSec < 0) adminSec = 0;
+                var taRange = string.IsNullOrWhiteSpace(capturedTaTo) ? capturedTaFrom : $"{capturedTaFrom}-{capturedTaTo}";
 
-            // Upload session file (from cached bytes)
-            var savedSessionFileName = FolderSvc.SaveUploadedFile(_importPcId, _importSessionFileName, _importSessionBytes)!;
+                // Create session record
+                var sessionId = DashSvc.CreateImportedSession(capturedPcId, capturedUserId, sessionName,
+                    sessionLenSec, adminSec, capturedFreeSession);
 
-            // Upload attachments (from cached bytes)
-            foreach (var (name, data) in _importAttachmentBytes)
-            {
-                FolderSvc.SaveAttachment(_importPcId, savedSessionFileName, name, data);
+                // Save folder summary
+                var arfData = new PdfService.ArfData
+                {
+                    PcName        = capturedPcName,
+                    Date          = DateTime.Today.ToString("dd/MM/yyyy"),
+                    Grade         = capturedGrade,
+                    SessionLength = capturedSessLen,
+                    AdminTime     = capturedAdminTime,
+                    TotalTa       = capturedTotalTa,
+                    TaRange       = taRange,
+                    Rows          = capturedRows
+                };
+                var arfJson = System.Text.Json.JsonSerializer.Serialize(arfData);
+                DashSvc.AddFolderSummary(sessionId, capturedPcId, capturedUserId, capturedSummary ?? "", arfJson);
+
+                // Upload session file
+                var savedSessionFileName = FolderSvc.SaveUploadedFile(capturedPcId, capturedFileName, capturedBytes)!;
+
+                // Upload attachments
+                foreach (var (name, data) in capturedAttachments)
+                    FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, name, data);
+
+                // Generate ARF PDF
+                var arfPdfBytes = PdfSvc.GenerateArfPdf(
+                    capturedPcName, DateTime.Today.ToString("dd/MM/yyyy"),
+                    capturedGrade, capturedSessLen, capturedAdminTime,
+                    capturedTotalTa, taRange, capturedRows, capturedSummary);
+                FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, "arf.pdf", arfPdfBytes);
+
+                // Append TAA row
+                var sessionMinutes = sessionLenSec / 60;
+                var taaDate = !string.IsNullOrEmpty(capturedDate) ? capturedDate : DateTime.Today.ToString("d.M.yy");
+                if (DateTime.TryParseExact(taaDate, "dd/MM/yyyy", null, System.Globalization.DateTimeStyles.None, out var parsedDate))
+                    taaDate = parsedDate.ToString("d.M.yy");
+                FolderSvc.AppendTaaRow(capturedPcId, taaDate, sessionMinutes, capturedTotalTa);
+
+                Console.WriteLine($"[MainHeader] Imported session '{capturedFileName}' for PC {capturedPcId} with {capturedAttachments.Count} attachments by '{capturedUsername}'");
+
+                await InvokeAsync(() =>
+                {
+                    _bgImportRunning = false;
+                    _bgImportDone    = true;
+                    StateHasChanged();
+                });
+
+                await Task.Delay(2500);
+                await InvokeAsync(() =>
+                {
+                    _bgImportDone = false;
+                    StateHasChanged();
+                    NavigationManager.NavigateTo("/Home", forceLoad: true);
+                });
             }
-
-            // Generate ARF PDF and save as attachment
-            var pcName = _approvedPcs.FirstOrDefault(p => p.PcId == _importPcId)?.FullName ?? "";
-            var arfPdfBytes = PdfSvc.GenerateArfPdf(
-                pcName, DateTime.Today.ToString("dd/MM/yyyy"),
-                _arfGrade, _arfSessionLength, _arfAdminTime,
-                _arfTotalTa, string.IsNullOrWhiteSpace(_arfTaRangeTo) ? _arfTaRangeFrom : $"{_arfTaRangeFrom}-{_arfTaRangeTo}",
-                _arfRows.Select(r => new PdfService.ArfRowData(r.Checked, r.Process, r.Time, r.ToneArm, r.Results)).ToList(),
-                summaryHtml);
-            FolderSvc.SaveAttachment(_importPcId, savedSessionFileName, "arf.pdf", arfPdfBytes);
-
-            // Append row to TAA Action.xlsx
-            var sessionMinutes = sessionLenSec / 60;
-            var taaDate = !string.IsNullOrEmpty(_arfDate) ? _arfDate : DateTime.Today.ToString("d.M.yy");
-            // Convert dd/MM/yyyy to d.M.yy format for the Excel
-            if (DateTime.TryParseExact(taaDate, "dd/MM/yyyy", null, System.Globalization.DateTimeStyles.None, out var parsedDate))
-                taaDate = parsedDate.ToString("d.M.yy");
-            FolderSvc.AppendTaaRow(_importPcId, taaDate, sessionMinutes, _arfTotalTa);
-
-            var totalFiles = 1 + _importAttachmentBytes.Count + 1; // +1 for ARF PDF
-            Console.WriteLine($"[MainHeader] Imported session '{_importSessionFileName}' for PC {_importPcId} with {_importAttachmentBytes.Count} attachments by '{_logUsername}'");
-            _importSuccess = $"Session imported ({totalFiles} file(s) uploaded)";
-            _importSessionFile = null;
-            _importSessionBytes = null;
-            _importSessionFileName = "";
-            _importAttachments.Clear();
-            _importAttachmentBytes.Clear();
-            _importPcId = 0;
-
-            // Refresh dashboard
-            await Task.Delay(1500);
-            _showImportWizard = false;
-            NavigationManager.NavigateTo("/Home", forceLoad: true);
-        }
-        catch (Exception ex)
-        {
-            _importError = ex.Message;
-        }
-        finally
-        {
-            _importBusy = false;
-        }
+            catch (Exception ex)
+            {
+                await InvokeAsync(() =>
+                {
+                    _bgImportRunning = false;
+                    _bgImportDone    = false;
+                    _bgImportError   = ex.Message;
+                    StateHasChanged();
+                });
+            }
+        });
     }
 
     static string FormatFileSize(long bytes)

@@ -391,7 +391,8 @@ public class DashboardService
         while (r.Read())
             list.Add(new PermissionRequest(
                 r.GetInt32(0), r.GetInt32(1), r.GetString(2),
-                r.GetInt32(3), r.GetString(4), r.GetString(5)));
+                r.GetInt32(3), r.GetString(4),
+                r.IsDBNull(5) ? "" : r.GetString(5)));
         return list;
     }
 
@@ -647,11 +648,13 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         if (current is null)
         {
-            cmd.CommandText = "INSERT INTO sys_staff_pc_list (UserId, PcId, WorkCapacity) VALUES (@uid, @pcId, @cap)";
+            // New entry — start as pending (IsApproved=0); CheckOrRequestPermission handles approval
+            cmd.CommandText = "INSERT INTO sys_staff_pc_list (UserId, PcId, WorkCapacity, IsApproved) VALUES (@uid, @pcId, @cap, 0)";
         }
         else
         {
-            cmd.CommandText = "UPDATE sys_staff_pc_list SET WorkCapacity = @cap, IsApproved = 1 WHERE UserId = @uid AND PcId = @pcId";
+            // Existing entry — only update WorkCapacity, never touch IsApproved
+            cmd.CommandText = "UPDATE sys_staff_pc_list SET WorkCapacity = @cap WHERE UserId = @uid AND PcId = @pcId";
         }
         cmd.Parameters.AddWithValue("@uid",  userId);
         cmd.Parameters.AddWithValue("@pcId", pcId);
