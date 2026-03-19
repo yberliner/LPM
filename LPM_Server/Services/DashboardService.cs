@@ -142,23 +142,24 @@ public class DashboardService
         return list;
     }
 
-    /// <summary>Insert a new session and return the SessionId.</summary>
+    /// <summary>Insert a new session and return the SessionId. Pass isSolo=true for solo auditors (AuditorId stored as NULL).</summary>
     public int CreateImportedSession(int pcId, int auditorId, string sessionName,
-        int lengthSeconds = 0, int adminSeconds = 0, bool isFreeSession = false)
+        int lengthSeconds = 0, int adminSeconds = 0, bool isFreeSession = false, bool isSolo = false)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
         var today = DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd");
+        object audParam = isSolo ? DBNull.Value : (object)auditorId;
 
         // Calculate SequenceInDay
         using var seqCmd = conn.CreateCommand();
         seqCmd.CommandText = @"
             SELECT COALESCE(MAX(SequenceInDay), 0)
             FROM sess_sessions
-            WHERE PcId = @pc AND AuditorId = @aud AND SessionDate = @dt";
+            WHERE PcId = @pc AND AuditorId IS @aud AND SessionDate = @dt";
         seqCmd.Parameters.AddWithValue("@pc", pcId);
-        seqCmd.Parameters.AddWithValue("@aud", auditorId);
+        seqCmd.Parameters.AddWithValue("@aud", audParam);
         seqCmd.Parameters.AddWithValue("@dt", today);
         var maxSeq = (long)(seqCmd.ExecuteScalar() ?? 0L);
 
@@ -169,7 +170,7 @@ public class DashboardService
             VALUES (@pc, @aud, @dt, @seq, @len, @admin, @free, @name, @creator, datetime('now', '+2 hours'));
             SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("@pc", pcId);
-        cmd.Parameters.AddWithValue("@aud", auditorId);
+        cmd.Parameters.AddWithValue("@aud", audParam);
         cmd.Parameters.AddWithValue("@dt", today);
         cmd.Parameters.AddWithValue("@seq", maxSeq + 1);
         cmd.Parameters.AddWithValue("@len", lengthSeconds);
@@ -178,7 +179,7 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@name", sessionName);
         cmd.Parameters.AddWithValue("@creator", auditorId);
         var sessionId = Convert.ToInt32(cmd.ExecuteScalar());
-        Console.WriteLine($"[DashboardService] Created imported session for PC {pcId}, name: '{sessionName}', length: {lengthSeconds}s, admin: {adminSeconds}s, free: {isFreeSession}");
+        Console.WriteLine($"[DashboardService] Created session for PC {pcId}, name: '{sessionName}', length: {lengthSeconds}s, solo: {isSolo}");
         return sessionId;
     }
 
@@ -1867,16 +1868,17 @@ public class DashboardService
         Console.WriteLine($"[DashboardService] Approved CS review {csReviewId}");
     }
 
-    /// Returns session IDs that have a cs_review for a given PC.
-    public HashSet<int> GetCsedSessionIdsForPc(int pcId)
+    /// Returns session IDs that have a cs_review for a given PC (filtered to solo or non-solo).
+    public HashSet<int> GetCsedSessionIdsForPc(int pcId, bool isSolo = false)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
+        var soloFilter = isSolo ? "AND s.AuditorId IS NULL" : "AND s.AuditorId IS NOT NULL";
+        cmd.CommandText = $@"
             SELECT cr.SessionId FROM cs_reviews cr
             JOIN sess_sessions s ON s.SessionId = cr.SessionId
-            WHERE s.PcId = @pcId";
+            WHERE s.PcId = @pcId {soloFilter}";
         cmd.Parameters.AddWithValue("@pcId", pcId);
         var set = new HashSet<int>();
         using var r = cmd.ExecuteReader();
@@ -1885,15 +1887,16 @@ public class DashboardService
         return set;
     }
 
-    /// Returns all sessions for a PC: (SessionId, Name).
-    public List<(int SessionId, string Name, string CreatedAt)> GetSessionsForPc(int pcId)
+    /// Returns all sessions for a PC: (SessionId, Name), filtered to solo or non-solo.
+    public List<(int SessionId, string Name, string CreatedAt)> GetSessionsForPc(int pcId, bool isSolo = false)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
+        var soloFilter = isSolo ? "AND AuditorId IS NULL" : "AND AuditorId IS NOT NULL";
+        cmd.CommandText = $@"
             SELECT SessionId, COALESCE(Name,''), COALESCE(CreatedAt,'') FROM sess_sessions
-            WHERE PcId = @pcId";
+            WHERE PcId = @pcId {soloFilter}";
         cmd.Parameters.AddWithValue("@pcId", pcId);
         var list = new List<(int, string, string)>();
         using var r = cmd.ExecuteReader();
@@ -1904,12 +1907,13 @@ public class DashboardService
 
     public record SessionSummaryInfo(string Name, string SessionDate, string? SummaryHtml, int LengthSeconds, int AdminSeconds);
 
-    public List<SessionSummaryInfo> GetSessionSummariesForPc(int pcId)
+    public List<SessionSummaryInfo> GetSessionSummariesForPc(int pcId, bool isSolo = false)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
+        var soloFilter = isSolo ? "AND s.AuditorId IS NULL" : "AND (s.AuditorId IS NOT NULL OR s.SessionId IS NULL)";
+        cmd.CommandText = $@"
             SELECT COALESCE(s.Name, ''),
                    COALESCE(s.SessionDate, SUBSTR(fs.CreatedAt, 1, 10)),
                    fs.SummaryHtml,
@@ -1917,6 +1921,7 @@ public class DashboardService
             FROM sess_folder_summary fs
             LEFT JOIN sess_sessions s ON s.SessionId = fs.SessionId
             WHERE fs.PcId = @pcId AND fs.SummaryHtml IS NOT NULL AND fs.SummaryHtml != ''
+            {soloFilter}
             ORDER BY fs.CreatedAt DESC";
         cmd.Parameters.AddWithValue("@pcId", pcId);
         var list = new List<SessionSummaryInfo>();

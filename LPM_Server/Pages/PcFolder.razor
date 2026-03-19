@@ -1759,7 +1759,11 @@
     [Parameter] public int PcId { get; set; }
     [Parameter] public int SessionId { get; set; }
     [Parameter] public bool CsMode { get; set; }   // true only when opened from CS queue
+    [Parameter] public bool Solo { get; set; }      // true when opening a solo session
     [Parameter] public int UserPersonId { get; set; }
+
+    void RefreshFolder() => _folder = FolderSvc.GetFolderInfo(PcId, Solo);
+    string SoloParam => Solo ? "&solo=true" : "";
 
     // ── Active CS session tracker (shared across all circuits) ──
     static readonly System.Collections.Concurrent.ConcurrentDictionary<int, string> _activeCsSessions = new();
@@ -1988,12 +1992,12 @@
     protected override void OnInitialized()
     {
         _userName = DashSvc.GetPersonName(UserPersonId) ?? $"User {UserPersonId}";
-        _folder = FolderSvc.GetPcFolder(PcId);
+        RefreshFolder();
         _pcName = _folder?.PcName ?? $"PC {PcId}";
         _programInsertFiles = FolderSvc.GetProgramInsertFiles();
         Console.WriteLine($"[PcFolder] Opened PC folder for '{_pcName}' (PC {PcId}) by '{_userName}'{(SessionId > 0 ? $" — CS session {SessionId}" : "")}");
-        _csedSessionIds = DashSvc.GetCsedSessionIdsForPc(PcId);
-        foreach (var pair in DashSvc.GetSessionsForPc(PcId))
+        _csedSessionIds = DashSvc.GetCsedSessionIdsForPc(PcId, isSolo: Solo);
+        foreach (var pair in DashSvc.GetSessionsForPc(PcId, isSolo: Solo))
         {
             if (!string.IsNullOrEmpty(pair.Name))
             {
@@ -2085,7 +2089,7 @@
             {
                 if (!string.IsNullOrEmpty(_panes[i].File))
                 {
-                    var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_panes[i].File!)}&_t={DateTime.UtcNow.Ticks}";
+                    var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_panes[i].File!)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
                     await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, PaneIds[i]);
                 }
             }
@@ -2161,7 +2165,7 @@
             _pendingReloads = null;
             foreach (var (paneId, file) in reloads)
             {
-                var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}&_t={DateTime.UtcNow.Ticks}";
+                var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
                 await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId);
             }
         }
@@ -2194,7 +2198,7 @@
         if (fileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
         {
             _excelRelPath = relativePath;
-            _excelData = FolderSvc.ReadExcelFile(PcId, relativePath);
+            _excelData = FolderSvc.ReadExcelFile(PcId, relativePath, Solo);
             _excelEdits.Clear();
             _excelDirty = false;
             // Clear the PDF viewer for this pane
@@ -2211,8 +2215,8 @@
 
         // Fire-and-forget the PDF load — use special endpoint for folder summary files (Front Cover only)
         var apiPath = IsFolderSummaryFile(fileName, relativePath)
-            ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}&_t={DateTime.UtcNow.Ticks}"
-            : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}&_t={DateTime.UtcNow.Ticks}";
+            ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}{SoloParam}&_t={DateTime.UtcNow.Ticks}"
+            : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
         _ = LoadPdfAsync(gen, apiPath, paneId);
     }
 
@@ -2337,7 +2341,7 @@
                         arfData.PcName, arfData.Date, arfData.Grade, arfData.SessionLength,
                         arfData.AdminTime, arfData.TotalTa, arfData.TaRange,
                         arfData.Rows, html);
-                    if (FolderSvc.TryOverwriteArfPdf(PcId, sessionFileName, pdfBytes))
+                    if (FolderSvc.TryOverwriteArfPdf(PcId, sessionFileName, pdfBytes, Solo))
                     {
                         // Reload any pane that currently shows arf.pdf
                         var arfFileName = $"{Path.GetFileNameWithoutExtension(sessionFileName)}_att_arf.pdf";
@@ -2346,7 +2350,7 @@
                             var pf = _panes[i].File;
                             if (pf != null && Path.GetFileName(pf).Equals(arfFileName, StringComparison.OrdinalIgnoreCase))
                             {
-                                var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(pf)}&_t={DateTime.UtcNow.Ticks}";
+                                var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(pf)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
                                 await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, PaneIds[i]);
                             }
                         }
@@ -2366,7 +2370,7 @@
             var fn = _panes[i].FileName;
             if (f != null && fn != null && IsFolderSummaryFile(fn, f))
             {
-                var url = $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(f)}&_t={DateTime.UtcNow.Ticks}";
+                var url = $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(f)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
                 await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, PaneIds[i]);
             }
         }
@@ -2555,10 +2559,10 @@
             if (indices == null || indices.Length == 0) return;
 
             // Backup the original file before modifying
-            FolderSvc.BackupFile(PcId, file);
+            FolderSvc.BackupFile(PcId, file, Solo);
 
             // Read the original PDF (decrypted)
-            var srcBytes = FolderSvc.ReadFileBytes(PcId, file);
+            var srcBytes = FolderSvc.ReadFileBytes(PcId, file, Solo);
             if (srcBytes == null) return;
 
             // Extract selected pages using PdfSharpCore
@@ -2580,7 +2584,7 @@
             var nameNoExt = System.IO.Path.GetFileNameWithoutExtension(sessionFileName);
             var safeName = string.Join("_", _extractAttName.Trim().Split(System.IO.Path.GetInvalidFileNameChars()));
             var attFileName = $"{safeName}.pdf";
-            FolderSvc.SaveAttachment(PcId, sessionFileName, attFileName, outStream.ToArray());
+            FolderSvc.SaveAttachment(PcId, sessionFileName, attFileName, outStream.ToArray(), Solo);
 
             // Remove extracted pages from the original PDF
             var selectedSet = new HashSet<int>(indices);
@@ -2594,7 +2598,7 @@
             }
             using var remainingStream = new System.IO.MemoryStream();
             remainingDoc.Save(remainingStream);
-            FolderSvc.SaveFile(PcId, file, remainingStream.ToArray());
+            FolderSvc.SaveFile(PcId, file, remainingStream.ToArray(), Solo);
 
             Console.WriteLine($"[PcFolder] Extracted {indices.Length} pages from '{file}' by '{_userName}' — for PC {PcId}, attachment: '{_extractAttName}'");
 
@@ -2604,11 +2608,11 @@
             _extractCount = 0;
 
             // Reload the original (now trimmed) PDF in the current pane
-            var reloadUrl = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}&_t={DateTime.UtcNow.Ticks}";
+            var reloadUrl = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
             await JS.InvokeVoidAsync("pcfViewer.loadPdf", reloadUrl, paneId);
 
             // Refresh sidebar to show the new attachment
-            _folder = FolderSvc.GetPcFolder(PcId);
+            RefreshFolder();
 
             // Find the session worksheet and load the new attachment into a pane
             var sessionNoExt = System.IO.Path.GetFileNameWithoutExtension(sessionFileName);
@@ -2687,10 +2691,10 @@
         {
             var paneId = PaneIds[_activeIdx];
             var pagesJson = await JS.InvokeAsync<string>("pcfViewer.getAnnotatedPdf", paneId);
-            await JS.InvokeVoidAsync("pcfSaveAnnotatedPdf", PcId, file, pagesJson);
+            await JS.InvokeVoidAsync("pcfSaveAnnotatedPdf", PcId, file, pagesJson, Solo);
 
             _hasAnnotations = false;
-            var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}&_t={DateTime.UtcNow.Ticks}";
+            var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
             await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId);
         }
         finally
@@ -2709,8 +2713,8 @@
         Console.WriteLine($"[PcFolder] Downloaded file '{fileName}' by '{_userName}' — for PC {PcId}");
 
         var apiEndpoint = IsFolderSummaryFile(fileName, file)
-            ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(file)}&_t={DateTime.UtcNow.Ticks}"
-            : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}&_t={DateTime.UtcNow.Ticks}";
+            ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(file)}{SoloParam}&_t={DateTime.UtcNow.Ticks}"
+            : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
         var js = "var a=document.createElement('a');a.href='" + apiEndpoint + "';a.download='" + fileName.Replace("'", "\\'") + "';document.body.appendChild(a);a.click();document.body.removeChild(a);";
         await JS.InvokeVoidAsync("eval", js);
     }
@@ -2767,7 +2771,7 @@
             Console.WriteLine($"[PcFolder] CS review created by '{_userName}' — session {_csSessionId} ('{_csSessionName}'), review time: {_csReviewMinutes} min, for PC {PcId}");
 
             // Refresh the CSed session IDs so sidebar turns green
-            _csedSessionIds = DashSvc.GetCsedSessionIdsForPc(PcId);
+            _csedSessionIds = DashSvc.GetCsedSessionIdsForPc(PcId, isSolo: Solo);
             _csDone = true;
             StateHasChanged();
 
@@ -3013,8 +3017,8 @@
         Console.WriteLine($"[PcFolder] Adding pink sheet to session '{_wsCtxSessionFileName}' by '{_userName}' — PC {PcId}");
         var sessionFileName = _wsCtxSessionFileName;
         var pinkBytes = FolderSvc.CreatePinkPdf();
-        FolderSvc.SaveAttachment(PcId, sessionFileName, "PinkSheet.pdf", pinkBytes);
-        _folder = FolderSvc.GetPcFolder(PcId);
+        FolderSvc.SaveAttachment(PcId, sessionFileName, "PinkSheet.pdf", pinkBytes, Solo);
+        RefreshFolder();
         CloseWsCtxMenu();
 
         // Find the newly created pink sheet attachment
@@ -3048,8 +3052,8 @@
         Console.WriteLine($"[PcFolder] Adding {name} sheet to session '{_wsCtxSessionFileName}' by '{_userName}' — PC {PcId}");
         var sessionFileName = _wsCtxSessionFileName;
         var pdfBytes = FolderSvc.CreateEmptyPdf();
-        FolderSvc.SaveAttachment(PcId, sessionFileName, $"{name}.pdf", pdfBytes);
-        _folder = FolderSvc.GetPcFolder(PcId);
+        FolderSvc.SaveAttachment(PcId, sessionFileName, $"{name}.pdf", pdfBytes, Solo);
+        RefreshFolder();
         CloseWsCtxMenu();
 
         var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
@@ -3111,8 +3115,8 @@
         {
             Console.WriteLine($"[PcFolder] Renamed attachment '{_renameAttPath}' suffix to '{_renameAttValue}' by '{_userName}' — PC {PcId}");
             var oldPath = _renameAttPath;
-            FolderSvc.RenameAttachment(PcId, _renameAttPath, _renameAttValue);
-            _folder = FolderSvc.GetPcFolder(PcId);
+            FolderSvc.RenameAttachment(PcId, _renameAttPath, _renameAttValue, Solo);
+            RefreshFolder();
 
             // Update pane if renamed file is currently displayed
             // Build expected new filename: same prefix up to _att_ + new suffix
@@ -3213,9 +3217,9 @@
         if (_excelActionEdit != null)
             updates.Add(new FolderService.ExcelCellUpdate(4, 2, _excelActionEdit));
         Console.WriteLine($"[PcFolder] Saving {updates.Count} Excel changes to '{_excelRelPath}' by '{_userName}' — PC {PcId}");
-        FolderSvc.SaveExcelChanges(PcId, _excelRelPath, updates);
+        FolderSvc.SaveExcelChanges(PcId, _excelRelPath, updates, Solo);
         // Reload
-        _excelData = FolderSvc.ReadExcelFile(PcId, _excelRelPath);
+        _excelData = FolderSvc.ReadExcelFile(PcId, _excelRelPath, Solo);
         _excelEdits.Clear();
         _formulaOverrides.Clear();
         _excelActionEdit = null;
@@ -3228,8 +3232,8 @@
         // Save pending edits first
         if (_excelDirty) SaveExcelChanges();
         Console.WriteLine($"[PcFolder] Adding Excel row to '{_excelRelPath}' by '{_userName}' — PC {PcId}");
-        FolderSvc.AddExcelRow(PcId, _excelRelPath);
-        _excelData = FolderSvc.ReadExcelFile(PcId, _excelRelPath);
+        FolderSvc.AddExcelRow(PcId, _excelRelPath, Solo);
+        _excelData = FolderSvc.ReadExcelFile(PcId, _excelRelPath, Solo);
         _excelEdits.Clear();
         _formulaOverrides.Clear();
         _excelDirty = false;
@@ -3239,8 +3243,8 @@
     {
         if (string.IsNullOrEmpty(_excelRelPath)) return;
         Console.WriteLine($"[PcFolder] Deleting Excel row {row} from '{_excelRelPath}' by '{_userName}' — PC {PcId}");
-        FolderSvc.DeleteExcelRow(PcId, _excelRelPath, row);
-        _excelData = FolderSvc.ReadExcelFile(PcId, _excelRelPath);
+        FolderSvc.DeleteExcelRow(PcId, _excelRelPath, row, Solo);
+        _excelData = FolderSvc.ReadExcelFile(PcId, _excelRelPath, Solo);
         _excelEdits.Clear();
         _formulaOverrides.Clear();
         _excelDirty = false;
@@ -3443,8 +3447,8 @@
         var fileName = _ctxNode.Name;
         CloseCtxMenu();
         var apiEndpoint = IsFolderSummaryFile(fileName, relPath)
-            ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(relPath)}&_t={DateTime.UtcNow.Ticks}"
-            : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relPath)}&_t={DateTime.UtcNow.Ticks}";
+            ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(relPath)}{SoloParam}&_t={DateTime.UtcNow.Ticks}"
+            : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relPath)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
         var js = $"var a=document.createElement('a');a.href='{apiEndpoint}';a.download='{fileName.Replace("'", "\\'")}';document.body.appendChild(a);a.click();document.body.removeChild(a);";
         await JS.InvokeVoidAsync("eval", js);
     }
@@ -3465,8 +3469,8 @@
         var pdfBytes = FolderSvc.CreateEmptyPdf();
         var fileName = $"new-{DateTime.Now:yyMMdd-HHmmss}.pdf";
         Console.WriteLine($"[PcFolder] Created empty PDF '{fileName}' in '{parent}' by '{_userName}' — PC {PcId}");
-        FolderSvc.SaveSectionFileToPath(PcId, parent, fileName, pdfBytes);
-        _folder = FolderSvc.GetPcFolder(PcId);
+        FolderSvc.SaveSectionFileToPath(PcId, parent, fileName, pdfBytes, solo: Solo);
+        RefreshFolder();
         CloseCtxMenu();
     }
 
@@ -3480,10 +3484,10 @@
             {
                 Console.WriteLine($"[PcFolder] Renamed '{_renameTargetPath}' to '{_renameValue}' (isFolder={isFolder}) by '{_userName}' — PC {PcId}");
                 if (isFolder)
-                    FolderSvc.RenameFolder(PcId, _renameTargetPath, _renameValue);
+                    FolderSvc.RenameFolder(PcId, _renameTargetPath, _renameValue, Solo);
                 else
-                    FolderSvc.RenameFile(PcId, _renameTargetPath, _renameValue);
-                _folder = FolderSvc.GetPcFolder(PcId);
+                    FolderSvc.RenameFile(PcId, _renameTargetPath, _renameValue, Solo);
+                RefreshFolder();
             }
             CancelRename();
         }
@@ -3505,8 +3509,8 @@
         if (!string.IsNullOrWhiteSpace(_createFolderName))
         {
             Console.WriteLine($"[PcFolder] Created folder '{_createFolderName}' in '{_createFolderParent}' by '{_userName}' — PC {PcId}");
-            FolderSvc.CreateSubfolder(PcId, _createFolderParent, _createFolderName);
-            _folder = FolderSvc.GetPcFolder(PcId);
+            FolderSvc.CreateSubfolder(PcId, _createFolderParent, _createFolderName, Solo);
+            RefreshFolder();
         }
         CancelCreateFolder();
     }
@@ -3547,8 +3551,8 @@
     {
         var pdfBytes = FolderSvc.CreateEmptyPdf();
         var fileName = $"new-{DateTime.Now:yyMMdd-HHmmss}.pdf";
-        FolderSvc.SaveSectionFileToPath(PcId, _newMenuParentFolder, fileName, pdfBytes);
-        _folder = FolderSvc.GetPcFolder(PcId);
+        FolderSvc.SaveSectionFileToPath(PcId, _newMenuParentFolder, fileName, pdfBytes, solo: Solo);
+        RefreshFolder();
         CloseNewMenu();
     }
 
@@ -3586,7 +3590,7 @@
         // Handle plain PDF uploads synchronously (existing behaviour)
         foreach (var (name, data) in pdfsToSave)
         {
-            if (FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, name))
+            if (FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, name, Solo))
             {
                 _uploadPendingFiles.Add((name, data));
                 _uploadDuplicateNames.Add(name);
@@ -3594,7 +3598,7 @@
             else
             {
                 Console.WriteLine($"[PcFolder] Uploaded file '{name}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
-                FolderSvc.SaveSectionFileToPath(PcId, parentFolder, name, data);
+                FolderSvc.SaveSectionFileToPath(PcId, parentFolder, name, data, solo: Solo);
             }
         }
 
@@ -3605,7 +3609,7 @@
         }
         else
         {
-            _folder = FolderSvc.GetPcFolder(PcId);
+            RefreshFolder();
             CloseNewMenu();
         }
     }
@@ -3624,12 +3628,12 @@
             }
 
             // Save (overwrite if exists — doc upload implies intent to replace)
-            var overwrite = FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, pdfName);
-            FolderSvc.SaveSectionFileToPath(PcId, parentFolder, pdfName, pdfBytes, overwrite: overwrite);
+            var overwrite = FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, pdfName, Solo);
+            FolderSvc.SaveSectionFileToPath(PcId, parentFolder, pdfName, pdfBytes, overwrite, Solo);
             Console.WriteLine($"[PcFolder] Converted+saved '{pdfName}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
 
             toast.Status = ConvStatus.Done;
-            _folder = FolderSvc.GetPcFolder(PcId);
+            RefreshFolder();
             await InvokeAsync(StateHasChanged);
 
             // Auto-dismiss the Done toast after 3 s
@@ -3650,12 +3654,12 @@
         foreach (var (name, data) in _uploadPendingFiles)
         {
             Console.WriteLine($"[PcFolder] Overwriting file '{name}' in '{_newMenuParentFolder}' by '{_userName}' — PC {PcId}");
-            FolderSvc.SaveSectionFileToPath(PcId, _newMenuParentFolder, name, data, overwrite: true);
+            FolderSvc.SaveSectionFileToPath(PcId, _newMenuParentFolder, name, data, overwrite: true, solo: Solo);
         }
         _uploadPendingFiles.Clear();
         _uploadDuplicateNames.Clear();
         _showOverwriteConfirm = false;
-        _folder = FolderSvc.GetPcFolder(PcId);
+        RefreshFolder();
     }
 
     void CancelOverwrite()
@@ -3663,7 +3667,7 @@
         _uploadPendingFiles.Clear();
         _uploadDuplicateNames.Clear();
         _showOverwriteConfirm = false;
-        _folder = FolderSvc.GetPcFolder(PcId); // still refresh for non-duplicate files that were saved
+        RefreshFolder(); // still refresh for non-duplicate files that were saved
     }
 
     // ── Delete ──
@@ -3672,10 +3676,10 @@
     {
         Console.WriteLine($"[PcFolder] Deleted '{_deleteTargetName}' (isFolder={_deleteIsFolder}) by '{_userName}' — PC {PcId}");
         if (_deleteIsFolder)
-            FolderSvc.DeleteEmptyFolder(PcId, _deleteTargetPath);
+            FolderSvc.DeleteEmptyFolder(PcId, _deleteTargetPath, Solo);
         else
         {
-            FolderSvc.DeleteFileToBackup(PcId, _deleteTargetPath);
+            FolderSvc.DeleteFileToBackup(PcId, _deleteTargetPath, Solo);
             // Clear pane if showing deleted file, and close the pane if possible
             for (int i = _paneCount - 1; i >= 0; i--)
             {
@@ -3692,7 +3696,7 @@
                 }
             }
         }
-        _folder = FolderSvc.GetPcFolder(PcId);
+        RefreshFolder();
         _showDeleteConfirm = false;
     }
 
@@ -3722,7 +3726,7 @@
     {
         if (string.IsNullOrEmpty(_moveSelectedFolder)) return;
         Console.WriteLine($"[PcFolder] Moved '{_moveFileName}' to '{_moveSelectedFolder}' by '{_userName}' — PC {PcId}");
-        var ok = FolderSvc.MoveFile(PcId, _moveFilePath, _moveSelectedFolder);
+        var ok = FolderSvc.MoveFile(PcId, _moveFilePath, _moveSelectedFolder, Solo);
         if (!ok)
         {
             ShowErrorToast($"A file named '{_moveFileName}' already exists in the destination folder.");
@@ -3730,7 +3734,7 @@
             return;
         }
         ExpandPathHierarchy(_moveSelectedFolder);
-        _folder = FolderSvc.GetPcFolder(PcId);
+        RefreshFolder();
         _showMoveModal = false;
     }
 
@@ -3740,8 +3744,8 @@
         var parent = string.IsNullOrEmpty(_moveSelectedFolder)
             ? _moveFileSection
             : _moveSelectedFolder;
-        FolderSvc.CreateSubfolder(PcId, parent, _moveNewFolderName);
-        _folder = FolderSvc.GetPcFolder(PcId);
+        FolderSvc.CreateSubfolder(PcId, parent, _moveNewFolderName, Solo);
+        RefreshFolder();
         _moveNewFolderName = "";
         _moveNewFolderMode = false;
     }
@@ -3787,7 +3791,7 @@
     {
         if (_dragNode == null) return;
         Console.WriteLine($"[PcFolder] Drag move confirmed: '{_dragNode.RelativePath}' → '{_dragConfirmToPath}' by '{_userName}' — PC {PcId}");
-        var ok = FolderSvc.MoveFile(PcId, _dragNode.RelativePath, _dragConfirmToPath);
+        var ok = FolderSvc.MoveFile(PcId, _dragNode.RelativePath, _dragConfirmToPath, Solo);
         if (!ok)
         {
             ShowErrorToast($"A file named '{_dragNode.Name}' already exists in the destination folder.");
@@ -3796,7 +3800,7 @@
             return;
         }
         ExpandPathHierarchy(_dragConfirmToPath);
-        _folder = FolderSvc.GetPcFolder(PcId);
+        RefreshFolder();
         _showDragConfirm = false;
         _dragNode = null; _dragSection = "";
     }

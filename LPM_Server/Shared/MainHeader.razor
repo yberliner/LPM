@@ -475,15 +475,25 @@
                     {
                         @* ── Step 1: Select PC + Files ── *@
                         <div class="mb-3">
-                            <label class="form-label" style="font-size:.82rem; color:#94a3b8;">Select PC</label>
-                            <select class="form-select form-select-sm" style="background:#0f172a; color:#e2e8f0; border-color:#475569;"
-                                    value="@_importPcId" @onchange="OnPcChanged">
-                                <option value="0">— Choose a PC —</option>
-                                @foreach (var pc in _approvedPcs)
-                                {
-                                    <option value="@pc.PcId">@pc.FullName</option>
-                                }
-                            </select>
+                            <label class="form-label" style="font-size:.82rem; color:#94a3b8;">PC</label>
+                            @if (_isSoloUser)
+                            {
+                                <div class="form-control form-control-sm" style="background:#0f172a; color:#e2e8f0; border-color:#475569;">
+                                    @(_approvedPcs.FirstOrDefault(p => p.PcId == _importPcId)?.FullName ?? "Solo")
+                                    <span class="badge bg-primary ms-2" style="font-size:.7rem;">Solo</span>
+                                </div>
+                            }
+                            else
+                            {
+                                <select class="form-select form-select-sm" style="background:#0f172a; color:#e2e8f0; border-color:#475569;"
+                                        value="@_importPcId" @onchange="OnPcChanged">
+                                    <option value="0">— Choose a PC —</option>
+                                    @foreach (var pc in _approvedPcs)
+                                    {
+                                        <option value="@pc.PcId">@pc.FullName</option>
+                                    }
+                                </select>
+                            }
                         </div>
 
                         @if (_importPcId > 0)
@@ -1436,6 +1446,7 @@
     private string _displayName = "";
     private string _logUsername = "";
     private string? _avatarUrl;
+    private bool _isSoloUser;   // true when logged-in user has StaffRole = "Solo"
 
     // ── Add PC state ──
     SpkNewPersonModal _addPcModal = default!;
@@ -1656,7 +1667,8 @@
     {
         if (!_msgUserId.HasValue) return;
         _approvedPcs = DashSvc.GetApprovedPcsForUser(_msgUserId.Value);
-        _importPcId = 0;
+        // Solo user: always their own PC (PersonId == PcId)
+        _importPcId = _isSoloUser ? _msgUserId.Value : 0;
         _importSessionFile = null;
         _importSessionBytes = null;
         _importSessionFileName = "";
@@ -1756,7 +1768,8 @@
             return;
         }
 
-        if (FolderSvc.SessionFileExistsByName(_importPcId, sessionName))
+        var exists = FolderSvc.SessionFileExistsByName(_importPcId, sessionName, _isSoloUser);
+        if (exists)
         {
             _importDuplicate = true;
             _importFileWarning = $"A session named \"{sessionName}\" already exists for this PC.";
@@ -1800,6 +1813,7 @@
         var capturedRows        = _arfRows.Select(r => new PdfService.ArfRowData(r.Checked, r.Process, r.Time, r.ToneArm, r.Results)).ToList();
         var capturedPcName      = _approvedPcs.FirstOrDefault(p => p.PcId == _importPcId)?.FullName ?? "";
         var capturedUsername    = _logUsername;
+        var capturedIsSolo      = _isSoloUser;
 
         // Close modal immediately and reset fields
         _showImportWizard = false;
@@ -1831,9 +1845,9 @@
                 if (adminSec < 0) adminSec = 0;
                 var taRange = string.IsNullOrWhiteSpace(capturedTaTo) ? capturedTaFrom : $"{capturedTaFrom}-{capturedTaTo}";
 
-                // Create session record
+                // Create session record (AuditorId = NULL for solo users)
                 var sessionId = DashSvc.CreateImportedSession(capturedPcId, capturedUserId, sessionName,
-                    sessionLenSec, adminSec, capturedFreeSession);
+                    sessionLenSec, adminSec, capturedFreeSession, isSolo: capturedIsSolo);
 
                 // Save folder summary
                 var arfData = new PdfService.ArfData
@@ -1850,19 +1864,21 @@
                 var arfJson = System.Text.Json.JsonSerializer.Serialize(arfData);
                 DashSvc.AddFolderSummary(sessionId, capturedPcId, capturedUserId, capturedSummary ?? "", arfJson);
 
-                // Upload session file
-                var savedSessionFileName = FolderSvc.SaveUploadedFile(capturedPcId, capturedFileName, capturedBytes)!;
+                // Upload session file to the correct folder
+                var savedSessionFileName = capturedIsSolo
+                    ? FolderSvc.SaveSoloUploadedFile(capturedPcId, capturedFileName, capturedBytes)!
+                    : FolderSvc.SaveUploadedFile(capturedPcId, capturedFileName, capturedBytes)!;
 
                 // Upload attachments
                 foreach (var (name, data) in capturedAttachments)
-                    FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, name, data);
+                    FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, name, data, capturedIsSolo);
 
                 // Generate ARF PDF
                 var arfPdfBytes = PdfSvc.GenerateArfPdf(
                     capturedPcName, DateTime.Today.ToString("dd/MM/yyyy"),
                     capturedGrade, capturedSessLen, capturedAdminTime,
                     capturedTotalTa, taRange, capturedRows, capturedSummary);
-                FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, "arf.pdf", arfPdfBytes);
+                FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, "arf.pdf", arfPdfBytes, capturedIsSolo);
 
                 // Append TAA row
                 var sessionMinutes = sessionLenSec / 60;
@@ -1944,6 +1960,7 @@
             ? char.ToUpper(name[0]) + name[1..]
             : "LP Management";
         _avatarUrl = UserDb.GetAvatarPath(name.ToLower());
+        _isSoloUser = auth.User.FindFirst("StaffRole")?.Value == "Solo";
 
         // Load existing PC names for duplicate detection
         _existingPcNames = new HashSet<string>(

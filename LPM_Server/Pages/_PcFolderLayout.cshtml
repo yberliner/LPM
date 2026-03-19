@@ -81,7 +81,7 @@
     <!-- PC Folder viewer -->
     <script src="/js/pcf-viewer.js?v=11"></script>
     <script>
-        window.pcfSaveAnnotatedPdf = async function(pcId, filePath, pagesJson) {
+        window.pcfSaveAnnotatedPdf = async function(pcId, filePath, pagesJson, solo) {
             const pages = JSON.parse(pagesJson);
             const formData = new FormData();
             for (let i = 0; i < pages.length; i++) {
@@ -93,7 +93,8 @@
             formData.append('widths', JSON.stringify(pages.map(p => p.width)));
             formData.append('heights', JSON.stringify(pages.map(p => p.height)));
 
-            const saveResp = await fetch('/api/pc-file-save-annotated?pcId=' + pcId + '&path=' + encodeURIComponent(filePath), {
+            const soloParam = solo ? '&solo=true' : '';
+            const saveResp = await fetch('/api/pc-file-save-annotated?pcId=' + pcId + '&path=' + encodeURIComponent(filePath) + soloParam, {
                 method: 'POST',
                 body: formData
             });

@@ -41,9 +41,10 @@ window.pcfViewer = {
         const pane = this._initPane(paneId);
         pane.zoomLevel = 1.0; // reset zoom on new PDF
 
-        // Extract filePath from the URL for auto-save
+        // Extract filePath and solo flag from the URL for auto-save
         const u = new URL(url, location.origin);
         pane.filePath = u.searchParams.get('path');
+        pane.solo = u.searchParams.get('solo') === 'true';
 
         // Folder summary files are served via a distinct endpoint — mark read-only
         pane.readOnly = url.includes('/api/pc-file-folder-summary');
@@ -826,7 +827,8 @@ window.pcfViewer = {
         formData.append('heights', JSON.stringify(pagesData.map(p => p.height)));
 
         const xhr = new XMLHttpRequest();
-        xhr.open('POST', '/api/pc-file-save-annotated?pcId=' + this._pcId + '&path=' + encodeURIComponent(pane.filePath), false);
+        const soloParam = pane.solo ? '&solo=true' : '';
+        xhr.open('POST', '/api/pc-file-save-annotated?pcId=' + this._pcId + '&path=' + encodeURIComponent(pane.filePath) + soloParam, false);
         xhr.send(formData);
 
         // Clear annotations after saving
@@ -846,7 +848,7 @@ window.pcfViewer = {
         if (!pane || pane.readOnly || pane.annotations.length === 0 || !pane.filePath || !this._pcId) return;
 
         const pagesJson = await this.getAnnotatedPdf(paneId);
-        await window.pcfSaveAnnotatedPdf(this._pcId, pane.filePath, pagesJson);
+        await window.pcfSaveAnnotatedPdf(this._pcId, pane.filePath, pagesJson, pane.solo);
         pane.annotations = [];
     },
 

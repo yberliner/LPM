@@ -233,9 +233,9 @@ Func<HttpContext, string, Task<IResult>> DownloadHandler(string bucket) =>
     };
 
 // ── PC Folder file endpoints ──
-app.MapGet("/api/pc-file", (int pcId, string path, LPM.Services.FolderService svc) =>
+app.MapGet("/api/pc-file", (int pcId, string path, LPM.Services.FolderService svc, bool solo = false) =>
 {
-    var bytes = svc.ReadFileBytes(pcId, path);
+    var bytes = svc.ReadFileBytes(pcId, path, solo);
     if (bytes == null) return Results.NotFound();
     return Results.File(bytes, "application/pdf");
 });
@@ -250,14 +250,14 @@ app.MapGet("/api/program-insert", (string name, LPM.Services.FolderService svc) 
 app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
     LPM.Services.FolderService folderSvc,
     LPM.Services.DashboardService dashSvc,
-    PdfService pdfSvc) =>
+    PdfService pdfSvc, bool solo = false) =>
 {
-    var originalBytes = folderSvc.ReadFileBytes(pcId, path);
+    var originalBytes = folderSvc.ReadFileBytes(pcId, path, solo);
     if (originalBytes == null) return Results.NotFound();
 
     var pcName = dashSvc.GetPersonName(pcId) ?? $"PC {pcId}";
-    var summaries = dashSvc.GetSessionSummariesForPc(pcId);
-    Console.WriteLine($"[FolderSummary] PC {pcId} ({pcName}): {summaries.Count} summaries found");
+    var summaries = dashSvc.GetSessionSummariesForPc(pcId, isSolo: solo);
+    Console.WriteLine($"[FolderSummary] PC {pcId} ({pcName}) solo={solo}: {summaries.Count} summaries found");
     if (summaries.Count == 0)
         return Results.File(originalBytes, "application/pdf");
 
@@ -285,6 +285,7 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
     if (!int.TryParse(ctx.Request.Query["pcId"], out var pcId)) return Results.BadRequest();
     var path = ctx.Request.Query["path"].ToString();
     if (string.IsNullOrEmpty(path)) return Results.BadRequest();
+    var solo = ctx.Request.Query["solo"].ToString() == "true";
 
     var form = await ctx.Request.ReadFormAsync();
     if (!int.TryParse(form["pageCount"], out var pageCount) || pageCount == 0)
@@ -318,8 +319,9 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
     using var outputMs = new MemoryStream();
     pdfDoc.Save(outputMs);
     var annotUser = ctx.User?.Identity?.Name ?? "unknown";
-    Console.WriteLine($"[PcFile] Saved annotated PDF pcId={pcId}: {path} by '{annotUser}'");
-    return svc.SaveFile(pcId, path, outputMs.ToArray()) ? Results.Ok() : Results.NotFound();
+    Console.WriteLine($"[PcFile] Saved annotated PDF pcId={pcId}: {path} solo={solo} by '{annotUser}'");
+    var saved = svc.SaveFile(pcId, path, outputMs.ToArray(), solo);
+    return saved ? Results.Ok() : Results.NotFound();
 });
 
 // ── Backup: password verification → one-time token ──

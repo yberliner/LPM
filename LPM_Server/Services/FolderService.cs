@@ -283,22 +283,21 @@ public class FolderService
     }
 
     /// <summary>Read a file and return decrypted bytes. Handles both encrypted and legacy unencrypted files.</summary>
-    public byte[]? ReadFileBytes(int pcId, string relativePath)
+    public byte[]? ReadFileBytes(int pcId, string relativePath, bool solo = false)
     {
-        var folder = FindPcFolder(pcId);
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return null;
 
         var fullPath = SafeResolvePath(folder, relativePath);
         if (fullPath == null || !File.Exists(fullPath)) return null;
 
-        var raw = File.ReadAllBytes(fullPath);
-        return DecryptBytes(raw);
+        return DecryptBytes(File.ReadAllBytes(fullPath));
     }
 
     /// <summary>Save annotated PDF bytes back to disk (encrypted)</summary>
-    public bool SaveFile(int pcId, string relativePath, byte[] pdfBytes)
+    public bool SaveFile(int pcId, string relativePath, byte[] pdfBytes, bool solo = false)
     {
-        var folder = FindPcFolder(pcId);
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return false;
 
         var fullPath = SafeResolvePath(folder, relativePath);
@@ -311,14 +310,16 @@ public class FolderService
 
     // ── Backup ────────────────────────────────────────────────
 
-    /// <summary>
-    /// Copy a PC file (encrypted on disk) to _backups/ before modifying it.
-    /// Cleans up backup files older than 10 days.
-    /// </summary>
-    public void BackupFile(int pcId, string relativePath)
+    /// <summary>Copy a PC file to _backups/ before modifying it.</summary>
+    public void BackupFile(int pcId, string relativePath, bool solo = false)
     {
-        var folder = FindPcFolder(pcId);
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return;
+        BackupFromFolder(pcId, folder, relativePath);
+    }
+
+    private void BackupFromFolder(int pcId, string folder, string relativePath)
+    {
 
         var fullPath = SafeResolvePath(folder, relativePath);
         if (fullPath == null || !File.Exists(fullPath)) return;
@@ -540,19 +541,17 @@ public class FolderService
     }
 
     /// <summary>Check if a worksheet with the given session name exists.</summary>
-    public bool SessionFileExistsByName(int pcId, string sessionName)
+    public bool SessionFileExistsByName(int pcId, string sessionName, bool solo = false)
     {
-        var folder = FindPcFolder(pcId);
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return false;
         var wsPath = Path.Combine(folder, "WorkSheets");
         if (!Directory.Exists(wsPath)) return false;
-
         foreach (var f in Directory.GetFiles(wsPath, "*.pdf"))
         {
             var name = Path.GetFileNameWithoutExtension(Path.GetFileName(f));
             if (name.Contains("_att_", StringComparison.OrdinalIgnoreCase)) continue;
-            if (name.Equals(sessionName, StringComparison.OrdinalIgnoreCase))
-                return true;
+            if (name.Equals(sessionName, StringComparison.OrdinalIgnoreCase)) return true;
         }
         return false;
     }
@@ -645,6 +644,39 @@ public class FolderService
     {
         var name = GetPcName(pcId) ?? $"PC {pcId}";
         return $"{pcId}-{name.Trim()} Solo";
+    }
+
+    /// <summary>Return PcFolderInfo for a PC folder. Regular folder is created if missing; solo folder is not.</summary>
+    public PcFolderInfo? GetFolderInfo(int pcId, bool solo = false)
+    {
+        var pcName = GetPcName(pcId) ?? $"PC {pcId}";
+        string? folder;
+        if (solo)
+        {
+            folder = FindSoloPcFolder(pcId);
+            if (folder == null) return null;
+        }
+        else
+        {
+            folder = FindPcFolder(pcId);
+            if (folder == null)
+            {
+                folder = Path.Combine(_basePath, $"{pcId}-{pcName}");
+                Directory.CreateDirectory(folder);
+                Directory.CreateDirectory(Path.Combine(folder, "Front_Cover"));
+                Directory.CreateDirectory(Path.Combine(folder, "Back_Cover"));
+                Directory.CreateDirectory(Path.Combine(folder, "WorkSheets"));
+            }
+        }
+
+        var frontCover  = GetFilesForSection(folder, "Front_Cover");
+        var backCover   = GetFilesForSection(folder, "Back_Cover");
+        var workSheets  = GetWorkSheets(folder);
+        var frontTree   = BuildSectionTree(folder, "Front_Cover");
+        var backTree    = BuildSectionTree(folder, "Back_Cover");
+        var displayName = solo ? $"{pcName} [Solo]" : pcName;
+
+        return new PcFolderInfo(pcId, displayName, folder, frontCover, backCover, workSheets, frontTree, backTree);
     }
 
     /// <summary>Find the PC's Solo folder on disk (starts with "{pcId}-", ends with " Solo").</summary>
@@ -757,10 +789,36 @@ public class FolderService
         return Path.GetFileName(fullPath);
     }
 
-    /// <summary>Save an attachment file as flat file in WorkSheets: {session}_att_{name}.</summary>
-    public void SaveAttachment(int pcId, string sessionFileName, string attFileName, byte[] fileBytes)
+    /// <summary>Save an uploaded session file to the solo folder WorkSheets. Returns the saved filename.</summary>
+    public string? SaveSoloUploadedFile(int pcId, string fileName, byte[] fileBytes)
     {
-        var folder = FindPcFolder(pcId);
+        var folderPath = GetOrCreateSoloPcFolderPath(pcId);
+        var wsPath = Path.Combine(folderPath, "WorkSheets");
+        Directory.CreateDirectory(wsPath);
+
+        var safeName = string.Join("_", fileName.Split(Path.GetInvalidFileNameChars()));
+        var fullPath = Path.Combine(wsPath, safeName);
+
+        var counter = 2;
+        var nameNoExt = Path.GetFileNameWithoutExtension(safeName);
+        var ext = Path.GetExtension(safeName);
+        while (File.Exists(fullPath))
+        {
+            fullPath = Path.Combine(wsPath, $"{nameNoExt}({counter}){ext}");
+            counter++;
+        }
+
+        File.WriteAllBytes(fullPath, fileBytes);
+        TryShrinkPdf(fullPath);
+        EncryptFileInPlace(fullPath);
+        Console.WriteLine($"[FolderService] Saved solo uploaded file '{fileName}' for PC {pcId}");
+        return Path.GetFileName(fullPath);
+    }
+
+    /// <summary>Save an attachment file as flat file in WorkSheets: {session}_att_{name}.</summary>
+    public void SaveAttachment(int pcId, string sessionFileName, string attFileName, byte[] fileBytes, bool solo = false)
+    {
+        var folder = solo ? GetOrCreateSoloPcFolderPath(pcId) : FindPcFolder(pcId);
         if (folder == null) return;
 
         var wsPath = Path.Combine(folder, "WorkSheets");
@@ -811,9 +869,9 @@ public class FolderService
     }
 
     /// <summary>Overwrites the existing arf.pdf attachment for a session. Returns false if not found.</summary>
-    public bool TryOverwriteArfPdf(int pcId, string sessionFileName, byte[] pdfBytes)
+    public bool TryOverwriteArfPdf(int pcId, string sessionFileName, byte[] pdfBytes, bool solo = false)
     {
-        var folder = FindPcFolder(pcId);
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return false;
         var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
         var fullPath = Path.Combine(folder, "WorkSheets", $"{sessionNoExt}_att_arf.pdf");
@@ -982,9 +1040,9 @@ public class FolderService
         return new FolderTreeNode(name, relativePath, true, null, children);
     }
 
-    public bool CreateSubfolder(int pcId, string parentRelativePath, string folderName)
+    public bool CreateSubfolder(int pcId, string parentRelativePath, string folderName, bool solo = false)
     {
-        var folder = FindPcFolder(pcId);
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return false;
         var sanitized = SanitizeName(folderName);
         if (string.IsNullOrWhiteSpace(sanitized)) return false;
@@ -997,9 +1055,9 @@ public class FolderService
         return true;
     }
 
-    public bool MoveFile(int pcId, string sourceRelativePath, string destFolderRelativePath)
+    public bool MoveFile(int pcId, string sourceRelativePath, string destFolderRelativePath, bool solo = false)
     {
-        var folder = FindPcFolder(pcId);
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return false;
         var srcPath = SafeResolvePath(folder, sourceRelativePath);
         if (srcPath == null || !File.Exists(srcPath)) return false;
@@ -1013,9 +1071,9 @@ public class FolderService
         return true;
     }
 
-    public bool RenameFile(int pcId, string relativePath, string newName)
+    public bool RenameFile(int pcId, string relativePath, string newName, bool solo = false)
     {
-        var folder = FindPcFolder(pcId);
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return false;
         var sanitized = SanitizeName(newName);
         if (string.IsNullOrWhiteSpace(sanitized)) return false;
@@ -1031,9 +1089,9 @@ public class FolderService
         return true;
     }
 
-    public bool RenameFolder(int pcId, string relativePath, string newName)
+    public bool RenameFolder(int pcId, string relativePath, string newName, bool solo = false)
     {
-        var folder = FindPcFolder(pcId);
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return false;
         var sanitized = SanitizeName(newName);
         if (string.IsNullOrWhiteSpace(sanitized)) return false;
@@ -1047,21 +1105,21 @@ public class FolderService
         return true;
     }
 
-    public bool DeleteFileToBackup(int pcId, string relativePath)
+    public bool DeleteFileToBackup(int pcId, string relativePath, bool solo = false)
     {
-        var folder = FindPcFolder(pcId);
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return false;
         var fullPath = SafeResolvePath(folder, relativePath);
         if (fullPath == null || !File.Exists(fullPath)) return false;
-        BackupFile(pcId, relativePath);
+        BackupFile(pcId, relativePath, solo);
         File.Delete(fullPath);
         Console.WriteLine($"[FolderService] Deleted (backed up) '{relativePath}' for PC {pcId}");
         return true;
     }
 
-    public bool DeleteEmptyFolder(int pcId, string relativePath)
+    public bool DeleteEmptyFolder(int pcId, string relativePath, bool solo = false)
     {
-        var folder = FindPcFolder(pcId);
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return false;
         var fullPath = SafeResolvePath(folder, relativePath);
         if (fullPath == null || !Directory.Exists(fullPath)) return false;
@@ -1085,9 +1143,9 @@ public class FolderService
         return ms.ToArray();
     }
 
-    public bool RenameAttachment(int pcId, string relativePath, string newSuffix)
+    public bool RenameAttachment(int pcId, string relativePath, string newSuffix, bool solo = false)
     {
-        var folder = FindPcFolder(pcId);
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return false;
         var fullPath = SafeResolvePath(folder, relativePath);
         if (fullPath == null || !File.Exists(fullPath)) return false;
@@ -1118,9 +1176,9 @@ public class FolderService
         return ms.ToArray();
     }
 
-    public bool SectionFileExistsAtPath(int pcId, string relativeFolder, string fileName)
+    public bool SectionFileExistsAtPath(int pcId, string relativeFolder, string fileName, bool solo = false)
     {
-        var folder = FindPcFolder(pcId);
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return false;
         var targetDir = SafeResolvePath(folder, relativeFolder);
         if (targetDir == null) return false;
@@ -1130,9 +1188,9 @@ public class FolderService
         return File.Exists(Path.Combine(targetDir, safeName));
     }
 
-    public bool SaveSectionFileToPath(int pcId, string relativeFolder, string fileName, byte[] fileBytes, bool overwrite = false)
+    public bool SaveSectionFileToPath(int pcId, string relativeFolder, string fileName, byte[] fileBytes, bool overwrite = false, bool solo = false)
     {
-        var folder = FindPcFolder(pcId);
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return false;
         var targetDir = SafeResolvePath(folder, relativeFolder);
         if (targetDir == null) return false;
@@ -1144,9 +1202,8 @@ public class FolderService
         if (File.Exists(fullPath))
         {
             if (!overwrite) return false;
-            // Backup existing file before overwriting
             var relPath = Path.GetRelativePath(folder, fullPath).Replace('\\', '/');
-            BackupFile(pcId, relPath);
+            BackupFile(pcId, relPath, solo);
             File.Delete(fullPath);
         }
         File.WriteAllBytes(fullPath, fileBytes);
@@ -1325,9 +1382,9 @@ public class FolderService
         List<ExcelCellData> Cells        // all cells
     );
 
-    public ExcelSheetData? ReadExcelFile(int pcId, string relativePath)
+    public ExcelSheetData? ReadExcelFile(int pcId, string relativePath, bool solo = false)
     {
-        var folder = FindPcFolder(pcId);
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return null;
         var fullPath = SafeResolvePath(folder, relativePath);
         if (fullPath == null || !File.Exists(fullPath)) return null;
@@ -1369,9 +1426,9 @@ public class FolderService
 
     public record ExcelCellUpdate(int Row, int Col, string Value);
 
-    public bool SaveExcelChanges(int pcId, string relativePath, List<ExcelCellUpdate> updates)
+    public bool SaveExcelChanges(int pcId, string relativePath, List<ExcelCellUpdate> updates, bool solo = false)
     {
-        var folder = FindPcFolder(pcId);
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return false;
         var fullPath = SafeResolvePath(folder, relativePath);
         if (fullPath == null || !File.Exists(fullPath)) return false;
@@ -1431,9 +1488,9 @@ public class FolderService
         }
     }
 
-    public bool AddExcelRow(int pcId, string relativePath)
+    public bool AddExcelRow(int pcId, string relativePath, bool solo = false)
     {
-        var folder = FindPcFolder(pcId);
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return false;
         var fullPath = SafeResolvePath(folder, relativePath);
         if (fullPath == null || !File.Exists(fullPath)) return false;
@@ -1458,10 +1515,10 @@ public class FolderService
         }
     }
 
-    public bool DeleteExcelRow(int pcId, string relativePath, int row)
+    public bool DeleteExcelRow(int pcId, string relativePath, int row, bool solo = false)
     {
         if (row < 7) return false; // can't delete header rows
-        var folder = FindPcFolder(pcId);
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return false;
         var fullPath = SafeResolvePath(folder, relativePath);
         if (fullPath == null || !File.Exists(fullPath)) return false;

@@ -1665,6 +1665,7 @@
     {
         Console.WriteLine($"[Home] Opened pending CS for session {s.SessionId} (PC {s.PcId}, {s.PcName}) by '{_username}'");
         var url = $"/PcFolder/{s.PcId}?sessionId={s.SessionId}&csMode=true";
+        if (s.IsSolo) url += "&solo=true";
         if (!string.IsNullOrWhiteSpace(s.SessionName))
             url += $"&file={Uri.EscapeDataString(s.SessionName)}";
         await JS.InvokeVoidAsync("pcfOpenTab", url);
