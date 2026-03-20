@@ -17,6 +17,9 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using LPM.Auth;
 
+// Unique ID for this server process — changes on every restart
+var _serverRunId = Guid.NewGuid().ToString("N");
+
 // Save the original console output
 var originalConsoleOut = Console.Out;
 var originalConsoleError = Console.Error;
@@ -388,6 +391,12 @@ app.Map("/logout", async (HttpContext ctx) =>
 
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
+
+// Server-run identity — client polls this to detect restarts
+app.MapGet("/_lpm/ping", (HttpContext ctx) => {
+    ctx.Response.Headers["Cache-Control"] = "no-store";
+    return Results.Ok(_serverRunId);
+});
 
 // ── PC Folder file endpoints ──
 
