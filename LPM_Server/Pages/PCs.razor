@@ -78,11 +78,6 @@
                             <button class="pc-edit-btn" @onclick="OpenEditModal">
                                 <i class="ri-edit-line"></i>@LS.T("common.edit")
                             </button>
-                            <button class="pc-solo-btn @(_isSolo ? "pc-solo-btn-active" : "")"
-                                    @onclick="AskToggleSolo"
-                                    title="@(_isSolo ? "Revoke solo auditor access" : "Grant solo auditor access")">
-                                <i class="ri-user-star-line"></i>Solo Access
-                            </button>
                             @if (!string.IsNullOrEmpty(_detail.Nick))
                             {
                                 <span class="pc-header-tag pc-tag-id"><i class="ri-hashtag"></i>@_detail.Nick</span>
@@ -91,6 +86,11 @@
                             {
                                 <span class="pc-header-tag pc-tag-org"><i class="ri-building-line"></i>@_detail.Org</span>
                             }
+                            <button class="pc-solo-btn @(_isSolo ? "pc-solo-btn-active" : "")"
+                                    @onclick="AskToggleSolo"
+                                    title="@(_isSolo ? "Revoke solo auditor access" : "Grant solo auditor access")">
+                                <i class="ri-user-star-line"></i>Solo Access
+                            </button>
                         </div>
                         <div class="pc-header-meta">
                             @if (!string.IsNullOrEmpty(_detail.Phone))
@@ -793,17 +793,30 @@
         border: 1.5px solid #d1d5db; background: transparent;
         color: #9ca3af; font-size: .75rem; font-weight: 500;
         cursor: pointer; padding: 4px 10px; border-radius: 6px;
-        transition: all .15s ease;
+        transition: all .18s ease;
         min-height: 32px;
         touch-action: manipulation;
         -webkit-tap-highlight-color: transparent;
+        animation: soloIdlePulse 3.5s ease-in-out infinite;
     }
     .pc-solo-btn i { font-size: .85rem; }
-    .pc-solo-btn:hover { border-color: #ea580c; color: #ea580c; background: #fff7ed; }
+    .pc-solo-btn:hover {
+        border-color: #ea580c; color: #ea580c; background: #fff7ed;
+        animation: none;
+    }
     .pc-solo-btn-active {
         border-color: #ea580c; background: #fff7ed; color: #ea580c; font-weight: 600;
+        animation: soloActivePulse 3s ease-in-out infinite;
     }
-    .pc-solo-btn-active:hover { background: #ffedd5; }
+    .pc-solo-btn-active:hover { background: #ffedd5; animation: none; }
+    @@keyframes soloIdlePulse {
+        0%, 70%, 100% { box-shadow: 0 0 0 0 rgba(156,163,175,0); border-color: #d1d5db; }
+        35%            { box-shadow: 0 0 0 3px rgba(156,163,175,0.18); border-color: #9ca3af; }
+    }
+    @@keyframes soloActivePulse {
+        0%, 70%, 100% { box-shadow: 0 0 0 0 rgba(234,88,12,0); }
+        35%            { box-shadow: 0 0 0 3px rgba(234,88,12,0.18); }
+    }
 
     /* Solo confirm modal icon */
     .pc-solo-confirm-icon {
