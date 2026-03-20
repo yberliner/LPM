@@ -79,6 +79,17 @@
         font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
         color: #6b7280; display: flex; align-items: center; gap: 4px; margin-bottom: 8px;
     }
+    @@media (max-width: 768px) {
+        .px-3 { padding-left: 10px !important; padding-right: 10px !important; }
+        .day-tab-btn { font-size: .75rem; padding: 3px 8px; }
+    }
+    @@media (max-width: 480px) {
+        .day-tab-btn { font-size: .72rem; padding: 2px 6px; min-height: 36px; touch-action: manipulation; }
+        .stat-card-gradient-purple, .stat-card-gradient-green, .stat-card-gradient-blue { padding: 10px 12px !important; }
+        .av-avatar { width: 28px !important; height: 28px !important; font-size: .7rem !important; }
+        .av-name { font-size: .73rem; }
+        .av-sub  { font-size: .65rem; }
+    }
     @@media print {
         .no-print { display: none !important; }
         .card { box-shadow: none !important; border: 1px solid #dee2e6 !important; }

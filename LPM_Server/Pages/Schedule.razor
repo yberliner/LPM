@@ -48,7 +48,7 @@
 <!-- Right-click context menu -->
 @if (_ctxMeetingId.HasValue)
 {
-    <div style="position:fixed;z-index:9999;left:@(_ctxX)px;top:@(_ctxY)px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.2);min-width:160px;overflow:hidden;padding:4px 0;font-size:.84rem;"
+    <div style="position:fixed;z-index:9999;left:min(@(_ctxX)px, calc(100vw - 172px));top:min(@(_ctxY)px, calc(100vh - 90px));background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.2);min-width:160px;max-width:calc(100vw - 16px);overflow:hidden;padding:4px 0;font-size:.84rem;"
          @onclick:stopPropagation="true">
         <div class="sched-ctx-item" style="color:#374151;" @onclick="EditCtx">
             <i class="ri-edit-line" style="color:#3b82f6;"></i><span>Edit</span>
