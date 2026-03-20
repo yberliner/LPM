@@ -41,7 +41,7 @@
                             <tr class="@(_selPcId == pc.PcId ? "table-primary" : "")"
                                 style="cursor:pointer;"
                                 @onclick="() => SelectPc(pc.PcId)">
-                                <td class="small ps-2 text-truncate" style="max-width:120px;">@pc.FullName@if (!string.IsNullOrEmpty(pc.Nick)) { <span class="text-muted" style="font-size:.7rem;"> (@pc.Nick)</span> }</td>
+                                <td class="small ps-2 text-truncate" style="max-width:120px;@(_soloPcIds.Contains(pc.PcId) ? "color:#ea580c;font-weight:600;" : "")">@pc.FullName@if (_soloPcIds.Contains(pc.PcId)) { <span style="display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:3px;background:#ea580c;color:#fff;font-size:.58rem;font-weight:700;margin-left:3px;vertical-align:middle;">S</span> }@if (!string.IsNullOrEmpty(pc.Nick)) { <span class="text-muted" style="font-size:.7rem;"> (@pc.Nick)</span> }</td>
                                 <td class="small text-center fw-semibold"
                                     style="color:@(pc.RemainSec >= 0 ? "#4ade80" : "#f87171");">
                                     @HrsLabel(pc.RemainSec)
@@ -878,6 +878,7 @@
 
 @code {
     List<PcListItemEx> _allPcsEx    = [];
+    HashSet<int>       _soloPcIds   = new();
     int?               _selPcId;
     string             _search      = "";
 
@@ -1008,6 +1009,7 @@
     protected override async Task OnInitializedAsync()
     {
         _allPcsEx   = PcSvc.GetAllPcsExtended();
+        _soloPcIds  = DashSvc.GetSoloPcIds();
         _allCourses = CourseSvc.GetAllCourses();
         _staff      = PcSvc.GetStaff();
         _allPersons = PcSvc.GetAllPersons();

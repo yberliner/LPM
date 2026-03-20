@@ -96,111 +96,200 @@
         }
 
         @* ══════════════════════════════════════════════════════════
-           SECTION 2 — PER-AUDITOR PERMISSIONS
+           SECTION 2 — PERMISSION MATRIX
            ══════════════════════════════════════════════════════════ *@
-        <div class="sp-section-label mb-3">
-            <i class="ri-team-line me-2"></i>@LS.T("staffperm.auditorPermissions")
+        <div class="sp-section-label mb-3 sp-section-toggle mt-4"
+             @onclick="() => _matrixSectionCollapsed = !_matrixSectionCollapsed">
+            <i class="ri-arrow-down-s-line sp-section-chevron @(_matrixSectionCollapsed ? "sp-chevron-collapsed" : "") me-1"></i>
+            <i class="ri-grid-line me-2"></i>Permission Matrix
+            <span class="ms-2 text-muted" style="font-size:0.75rem;font-weight:400;text-transform:none;letter-spacing:0;">
+                (@_allPcs.Count PCs · @_matrixAuditors.Count auditors)
+            </span>
         </div>
 
-        @foreach (var aud in _auditors)
+        @if (!_matrixSectionCollapsed)
         {
-            var audCollapsed = _collapsedAuditors.Contains(aud.AuditorId);
-            <div class="card border-0 shadow-sm mb-4 sp-card">
-                @* Card header *@
-                <div class="card-header d-flex align-items-center gap-3 py-3 px-4 border-0 sp-aud-header"
-                     style="cursor:pointer;" @onclick="() => ToggleAuditorCollapse(aud.AuditorId)">
-                    <i class="ri-arrow-down-s-line text-white sp-chevron @(audCollapsed ? "sp-chevron-collapsed" : "")"></i>
-                    <div class="sp-avatar">@(aud.AuditorName.Length > 0 ? char.ToUpper(aud.AuditorName[0]) : '?')</div>
-                    <div class="text-white lh-sm flex-grow-1">
-                        <div class="fw-semibold" style="font-size:1rem;">@aud.AuditorName</div>
-                        <div style="font-size:0.71rem;opacity:.72;">
-                            @if (aud.AllowAll)
-                            { <span>Allowed all PCs</span> }
-                            else
-                            { <span>@aud.ApprovedPcs.Count approved PC@(aud.ApprovedPcs.Count != 1 ? "s" : "")</span> }
-                        </div>
-                    </div>
-                    @* Allow All toggle — stop propagation so clicking the switch doesn't toggle collapse *@
-                    <div class="d-flex align-items-center gap-2" @onclick:stopPropagation="true">
-                        <span class="text-white-50" style="font-size:0.78rem;">@LS.T("staffperm.allowAll")</span>
-                        <div class="form-check form-switch mb-0">
-                            <input class="form-check-input sp-switch" type="checkbox"
-                                   checked="@aud.AllowAll"
-                                   @onchange="e => ToggleAllowAll(aud.AuditorId, (bool)(e.Value ?? false))"
-                                   disabled="@_busy" />
-                        </div>
-                    </div>
-                </div>
-
-                @* Approved PCs list *@
-                @if (!audCollapsed)
-                {
-                <div class="card-body p-0">
-                    @if (aud.AllowAll)
-                    {
-                        <div class="px-4 py-3 text-muted fst-italic" style="font-size:0.87rem;">
-                            <i class="ri-checkbox-circle-line text-success me-1"></i>
-                            This auditor is allowed to add any PC without approval.
-                        </div>
-                    }
-                    else if (aud.ApprovedPcs.Count == 0)
-                    {
-                        <div class="px-4 py-3 text-muted fst-italic" style="font-size:0.87rem;">
-                            @LS.T("staffperm.noSpecificPCs")
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="table-responsive">
-                            <table class="table table-sm align-middle mb-0 sp-table">
-                                <thead>
-                                    <tr class="sp-sub-thead">
-                                        <th class="ps-4">@LS.T("staffperm.pcPerson")</th>
-                                        <th class="pe-4 text-end" style="width:80px;"></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var pc in aud.ApprovedPcs)
-                                    {
-                                        <tr class="sp-row-approved">
-                                            <td class="ps-4 py-2">
-                                                <i class="ri-user-line me-1" style="color:#6b7280;"></i>@pc.PcName
-                                            </td>
-                                            <td class="pe-4 py-1 text-end">
-                                                <button class="btn btn-sm sp-btn-remove"
-                                                        @onclick="() => RemovePermission(pc.Id)" disabled="@_busy"
-                                                        title="Remove permission">
-                                                    <i class="ri-delete-bin-line"></i>
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    }
-
-                    @* Add PC row *@
-                    @if (!aud.AllowAll)
-                    {
-                        <div class="d-flex align-items-center gap-2 px-4 py-3 sp-add-row">
-                            <select class="form-select form-select-sm sp-pc-select"
-                                    @bind="_addPcSelection[aud.AuditorId]">
-                                <option value="0">— select a PC to add —</option>
-                                @foreach (var pc in _allPcs.Where(p => !aud.ApprovedPcs.Any(ap => ap.PcId == p.PcId)))
+            <div class="card border-0 shadow-sm sp-card mb-5">
+                <div class="sp-matrix-wrap">
+                    <table class="sp-matrix-table">
+                        <thead>
+                            <tr>
+                                @* sticky PC name header *@
+                                <th class="sp-mx-pc-col sp-mx-head-pc">PC</th>
+                                @foreach (var aud in _matrixAuditors)
                                 {
-                                    <option value="@pc.PcId">@pc.FullName</option>
+                                    <th class="sp-mx-aud-col">
+                                        <div class="sp-mx-aud-label" title="@aud.AuditorName">
+                                            @aud.AuditorName
+                                        </div>
+                                    </th>
                                 }
-                            </select>
-                            <button class="btn btn-sm sp-btn-add d-flex align-items-center gap-1"
-                                    @onclick="() => AddPermission(aud.AuditorId)" disabled="@_busy">
-                                <i class="ri-add-line"></i>@LS.T("common.add")
-                            </button>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var pc in _allPcs)
+                            {
+                                <tr class="@(!pc.IsActive ? "sp-mx-row-inactive" : "")">
+                                    <td class="sp-mx-pc-col sp-mx-pc-name @(_soloPcIds.Contains(pc.PcId) ? "sp-mx-solo-pc" : "")">
+                                        @pc.FullName
+                                        @if (_soloPcIds.Contains(pc.PcId))
+                                        {
+                                            <span class="sp-mx-solo-badge" title="Has solo auditor">S</span>
+                                        }
+                                        @if (!pc.IsActive)
+                                        {
+                                            <span class="sp-mx-inactive-badge">inactive</span>
+                                        }
+                                    </td>
+                                    @foreach (var aud in _matrixAuditors)
+                                    {
+                                        var hasPerm = HasPermission(aud, pc.PcId);
+                                        var cellKey = (aud.AuditorId, pc.PcId);
+                                        var flashing = _flashingCells.Contains(cellKey);
+                                        <td class="sp-mx-cell @(flashing ? "sp-mx-flash" : "")"
+                                            @onclick="() => MatrixToggle(aud, pc.PcId, !hasPerm)"
+                                            title="@aud.AuditorName — @pc.FullName">
+                                            @if (aud.AllowAll)
+                                            {
+                                                <span class="sp-mx-allow-all" title="Allow All"></span>
+                                            }
+                                            else if (hasPerm)
+                                            {
+                                                <span class="sp-mx-check"></span>
+                                            }
+                                            else
+                                            {
+                                                <span class="sp-mx-empty"></span>
+                                            }
+                                        </td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="d-flex align-items-center gap-3 px-4 py-2 sp-mx-legend">
+                    <span class="d-flex align-items-center gap-1"><span class="sp-mx-check sp-lg"></span> Has permission</span>
+                    <span class="d-flex align-items-center gap-1"><span class="sp-mx-allow-all sp-lg"></span> Allow all</span>
+                    <span class="d-flex align-items-center gap-1"><span class="sp-mx-empty sp-lg"></span> No permission</span>
+                </div>
+            </div>
+        }
+
+        @* ══════════════════════════════════════════════════════════
+           SECTION 3 — PER-AUDITOR PERMISSIONS (collapsible section)
+           ══════════════════════════════════════════════════════════ *@
+        <div class="sp-section-label mb-3 sp-section-toggle"
+             @onclick="() => _auditorsSectionCollapsed = !_auditorsSectionCollapsed">
+            <i class="ri-arrow-down-s-line sp-section-chevron @(_auditorsSectionCollapsed ? "sp-chevron-collapsed" : "") me-1"></i>
+            <i class="ri-team-line me-2"></i>@LS.T("staffperm.auditorPermissions")
+            <span class="ms-2 text-muted" style="font-size:0.75rem;font-weight:400;text-transform:none;letter-spacing:0;">
+                (@_auditors.Count)
+            </span>
+        </div>
+
+        @if (!_auditorsSectionCollapsed)
+        {
+            @foreach (var aud in _auditors)
+            {
+                var audCollapsed = _collapsedAuditors.Contains(aud.AuditorId);
+                <div class="card border-0 shadow-sm mb-4 sp-card">
+                    @* Card header *@
+                    <div class="card-header d-flex align-items-center gap-3 py-3 px-4 border-0 sp-aud-header"
+                         style="cursor:pointer;" @onclick="() => ToggleAuditorCollapse(aud.AuditorId)">
+                        <i class="ri-arrow-down-s-line text-white sp-chevron @(audCollapsed ? "sp-chevron-collapsed" : "")"></i>
+                        <div class="sp-avatar">@(aud.AuditorName.Length > 0 ? char.ToUpper(aud.AuditorName[0]) : '?')</div>
+                        <div class="text-white lh-sm flex-grow-1">
+                            <div class="fw-semibold" style="font-size:1rem;">@aud.AuditorName</div>
+                            <div style="font-size:0.71rem;opacity:.72;">
+                                @if (aud.AllowAll)
+                                { <span>Allowed all PCs</span> }
+                                else
+                                { <span>@aud.ApprovedPcs.Count approved PC@(aud.ApprovedPcs.Count != 1 ? "s" : "")</span> }
+                            </div>
                         </div>
+                        @* Allow All toggle *@
+                        <div class="d-flex align-items-center gap-2" @onclick:stopPropagation="true">
+                            <span class="text-white-50" style="font-size:0.78rem;">@LS.T("staffperm.allowAll")</span>
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input sp-switch" type="checkbox"
+                                       checked="@aud.AllowAll"
+                                       @onchange="e => ToggleAllowAll(aud.AuditorId, (bool)(e.Value ?? false))"
+                                       disabled="@_busy" />
+                            </div>
+                        </div>
+                    </div>
+
+                    @* Approved PCs list *@
+                    @if (!audCollapsed)
+                    {
+                    <div class="card-body p-0">
+                        @if (aud.AllowAll)
+                        {
+                            <div class="px-4 py-3 text-muted fst-italic" style="font-size:0.87rem;">
+                                <i class="ri-checkbox-circle-line text-success me-1"></i>
+                                This auditor is allowed to add any PC without approval.
+                            </div>
+                        }
+                        else if (aud.ApprovedPcs.Count == 0)
+                        {
+                            <div class="px-4 py-3 text-muted fst-italic" style="font-size:0.87rem;">
+                                @LS.T("staffperm.noSpecificPCs")
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-sm align-middle mb-0 sp-table">
+                                    <thead>
+                                        <tr class="sp-sub-thead">
+                                            <th class="ps-4">@LS.T("staffperm.pcPerson")</th>
+                                            <th class="pe-4 text-end" style="width:80px;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var pc in aud.ApprovedPcs)
+                                        {
+                                            <tr class="sp-row-approved">
+                                                <td class="ps-4 py-2">
+                                                    <i class="ri-user-line me-1" style="color:#6b7280;"></i>@pc.PcName
+                                                </td>
+                                                <td class="pe-4 py-1 text-end">
+                                                    <button class="btn btn-sm sp-btn-remove"
+                                                            @onclick="() => RemovePermission(pc.Id)" disabled="@_busy"
+                                                            title="Remove permission">
+                                                        <i class="ri-delete-bin-line"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+
+                        @* Add PC row *@
+                        @if (!aud.AllowAll)
+                        {
+                            <div class="d-flex align-items-center gap-2 px-4 py-3 sp-add-row">
+                                <select class="form-select form-select-sm sp-pc-select"
+                                        @bind="_addPcSelection[aud.AuditorId]">
+                                    <option value="0">— select a PC to add —</option>
+                                    @foreach (var pc in _allPcs.Where(p => !aud.ApprovedPcs.Any(ap => ap.PcId == p.PcId)))
+                                    {
+                                        <option value="@pc.PcId">@pc.FullName</option>
+                                    }
+                                </select>
+                                <button class="btn btn-sm sp-btn-add d-flex align-items-center gap-1"
+                                        @onclick="() => AddPermission(aud.AuditorId)" disabled="@_busy">
+                                    <i class="ri-add-line"></i>@LS.T("common.add")
+                                </button>
+                            </div>
+                        }
+                    </div>
                     }
                 </div>
-                }
-            </div>
+            }
         }
     }
 
@@ -225,11 +314,14 @@
 }
 
 <style>
-    .sp-page  { max-width: 900px; }
+    .sp-page  { max-width: 1400px; }
     .sp-title { color: var(--default-text-color); }
 
     /* Section labels */
     .sp-section-label { display: flex; align-items: center; font-size: 0.9rem; font-weight: 700; color: var(--default-text-color); text-transform: uppercase; letter-spacing: .08em; border-bottom: 2px solid #dce3f0; padding-bottom: 8px; }
+    .sp-section-toggle { cursor: pointer; user-select: none; }
+    .sp-section-toggle:hover { color: #2d6a9f; border-bottom-color: #2d6a9f; }
+    .sp-section-chevron { font-size: 1.1rem; transition: transform .2s ease; flex-shrink: 0; }
 
     /* Empty block */
     .sp-empty-block { text-align: center; padding: 36px; background: #f8faff; border-radius: 12px; border: 1px dashed #c7d7f0; color: #212529; }
@@ -286,20 +378,232 @@
     /* Spinner */
     .sp-spin { display: inline-block; animation: sp-spin-anim 1s linear infinite; }
     @@keyframes sp-spin-anim { to { transform: rotate(360deg); } }
+
+    /* ── MATRIX ── */
+    .sp-matrix-wrap {
+        overflow-x: scroll;
+        overflow-y: auto;
+        max-height: 70vh;
+        scrollbar-width: thin;
+        scrollbar-color: #94a3b8 #f1f5f9;
+    }
+    .sp-matrix-wrap::-webkit-scrollbar { width: 8px; height: 8px; }
+    .sp-matrix-wrap::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+    .sp-matrix-wrap::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+    .sp-matrix-wrap::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    .sp-matrix-wrap::-webkit-scrollbar-corner { background: #f1f5f9; }
+    .sp-matrix-table {
+        border-collapse: separate;
+        border-spacing: 0;
+        font-size: 0.8rem;
+        table-layout: fixed;
+        width: max-content;
+    }
+
+    /* Sticky header row */
+    .sp-matrix-table thead tr {
+        position: sticky;
+        top: 0;
+        z-index: 3;
+        background: #eef1f8;
+    }
+
+    /* Sticky PC name column */
+    .sp-mx-pc-col {
+        position: sticky;
+        left: 0;
+        z-index: 2;
+        width: 155px;
+        min-width: 155px;
+        max-width: 155px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .sp-mx-head-pc {
+        background: #eef1f8;
+        z-index: 4 !important;
+        font-size: 0.69rem;
+        font-weight: 700;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        color: #6c757d;
+        padding: 10px 14px;
+        border-bottom: 2px solid #dce3f0;
+        border-right: 2px solid #dce3f0;
+    }
+    .sp-mx-pc-name {
+        background: #f8faff;
+        padding: 5px 14px;
+        font-size: 0.82rem;
+        font-weight: 500;
+        color: #1e3a5f;
+        border-right: 2px solid #e0e8f4;
+        border-bottom: 1px solid #e8edf5;
+    }
+    .sp-mx-row-inactive .sp-mx-pc-name {
+        color: #9ca3af;
+        font-weight: 400;
+    }
+    .sp-mx-solo-pc { color: #ea580c !important; font-weight: 600 !important; }
+    .sp-mx-solo-badge {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 14px; height: 14px; border-radius: 3px;
+        background: #ea580c; color: #fff; font-size: 0.58rem; font-weight: 700;
+        margin-left: 4px; vertical-align: middle; flex-shrink: 0;
+    }
+    .sp-mx-inactive-badge {
+        display: inline-block;
+        font-size: 0.62rem;
+        background: #f3f4f6;
+        color: #9ca3af;
+        border: 1px solid #e5e7eb;
+        border-radius: 4px;
+        padding: 1px 5px;
+        margin-left: 5px;
+        vertical-align: middle;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+    }
+
+    /* Auditor column headers — rotated diagonal text */
+    .sp-mx-aud-col {
+        min-width: 38px;
+        max-width: 38px;
+        width: 38px;
+        padding: 0;
+        vertical-align: bottom;
+        text-align: center;
+        border-bottom: 2px solid #dce3f0;
+        border-right: 1px solid #e8edf5;
+        height: 110px;
+    }
+    .sp-mx-aud-label {
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        white-space: nowrap;
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: #374151;
+        letter-spacing: .02em;
+        padding: 8px 10px 6px;
+        max-height: 100px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* Matrix cells */
+    .sp-mx-cell {
+        width: 38px;
+        min-width: 38px;
+        text-align: center;
+        vertical-align: middle;
+        padding: 4px 0;
+        cursor: pointer;
+        border-bottom: 1px solid #e8edf5;
+        border-right: 1px solid #e8edf5;
+        transition: background 0.08s ease;
+        user-select: none;
+    }
+    .sp-mx-cell:hover { background: #dbeafe; }
+    .sp-mx-row-inactive .sp-mx-cell { background: #fafafa; }
+    .sp-mx-row-inactive .sp-mx-cell:hover { background: #f0f0f0; }
+
+    /* Flash animation — very fast */
+    @@keyframes sp-cell-flash {
+        0%   { background: #bfdbfe; }
+        50%  { background: #93c5fd; }
+        100% { background: transparent; }
+    }
+    .sp-mx-flash { animation: sp-cell-flash 0.15s ease-out forwards; }
+
+    /* Permission indicators */
+    .sp-mx-check {
+        display: inline-block;
+        width: 18px; height: 18px;
+        border-radius: 5px;
+        background: #2d6a9f;
+        position: relative;
+    }
+    .sp-mx-check::after {
+        content: '';
+        position: absolute;
+        left: 5px; top: 2px;
+        width: 5px; height: 9px;
+        border: 2px solid #fff;
+        border-top: none; border-left: none;
+        transform: rotate(45deg);
+    }
+    .sp-mx-allow-all {
+        display: inline-block;
+        width: 18px; height: 18px;
+        border-radius: 5px;
+        background: #16a34a;
+        position: relative;
+    }
+    .sp-mx-allow-all::after {
+        content: '∞';
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        color: #fff;
+        line-height: 1;
+    }
+    .sp-mx-empty {
+        display: inline-block;
+        width: 18px; height: 18px;
+        border-radius: 5px;
+        border: 1.5px solid #d1d5db;
+        background: #fff;
+    }
+
+    /* Responsive */
+    @@media (max-width: 768px) {
+        .sp-page { max-width: 100%; }
+        .sp-mx-pc-col { width: 110px; min-width: 110px; max-width: 110px; font-size: 0.73rem; }
+        .sp-mx-pc-name { padding: 4px 8px; }
+        .sp-mx-aud-col { min-width: 32px; max-width: 32px; width: 32px; }
+        .sp-mx-cell { min-width: 32px; width: 32px; }
+        .sp-mx-check, .sp-mx-allow-all, .sp-mx-empty { width: 15px; height: 15px; }
+        .sp-matrix-wrap { max-height: 60vh; }
+        .sp-mx-aud-label { font-size: 0.65rem; padding: 6px 8px 4px; }
+    }
+
+    /* Legend */
+    .sp-mx-legend {
+        background: #f8faff;
+        border-top: 1px solid #e8edf5;
+        font-size: 0.75rem;
+        color: #6b7280;
+        flex-wrap: wrap;
+    }
+    .sp-mx-check.sp-lg, .sp-mx-allow-all.sp-lg, .sp-mx-empty.sp-lg {
+        width: 14px; height: 14px;
+    }
 </style>
 
 @code {
-    private List<PermissionRequest> _pending  = new();
-    private List<AuditorPermGroup>  _auditors = new();
-    private List<PcInfo>            _allPcs   = new();
-    private Dictionary<int, int>    _addPcSelection = new();   // AuditorId → selected PcId
+    private List<PermissionRequest> _pending   = new();
+    private List<AuditorPermGroup>  _auditors  = new();
+    private List<PcInfo>            _allPcs    = new();
+    private List<AuditorPermGroup>  _matrixAuditors = new();
+    private HashSet<int>            _soloPcIds = new();
+    private Dictionary<int, int>    _addPcSelection = new();
 
     private bool    _loading = true;
     private bool    _busy;
     private string? _msg;
     private bool    _msgIsError;
     private HashSet<int> _collapsedAuditors = new();
-    private string _username = "";
+    private bool    _auditorsSectionCollapsed = false;
+    private bool    _matrixSectionCollapsed   = false;
+    private string  _username = "";
+
+    // Tracks cells currently showing the flash animation
+    private HashSet<(int AuditorId, int PcId)> _flashingCells = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -322,8 +626,9 @@
         _pending  = DashSvc.GetPendingPermissionRequests();
         _auditors = DashSvc.GetAuditorPermGroups();
         _allPcs   = DashSvc.GetAllPcs().Where(p => p.WorkCapacity != "CSSolo").ToList();
+        _matrixAuditors = _auditors.Where(a => a.StaffRole != "Solo").ToList();
+        _soloPcIds = _auditors.Where(a => a.StaffRole == "Solo").Select(a => a.AuditorId).ToHashSet();
 
-        // Init add-PC dropdowns (default 0 = none selected)
         foreach (var aud in _auditors)
             _addPcSelection.TryAdd(aud.AuditorId, 0);
 
@@ -338,8 +643,8 @@
         DashSvc.ApprovePermissionRequest(id);
         _busy = false;
         _pending.RemoveAll(r => r.Id == id);
-        // Reload the auditor list so the approved PC appears in their section
         _auditors = DashSvc.GetAuditorPermGroups();
+        _matrixAuditors = _auditors.Where(a => a.StaffRole != "Solo").ToList();
         ShowMsg("Permission approved.", false);
     }
 
@@ -369,6 +674,7 @@
         var idx = _auditors.FindIndex(a => a.AuditorId == auditorId);
         if (idx >= 0)
             _auditors[idx] = _auditors[idx] with { AllowAll = allow };
+        _matrixAuditors = _auditors.Where(a => a.StaffRole != "Solo").ToList();
     }
 
     private void AddPermission(int auditorId)
@@ -381,16 +687,10 @@
         _busy = true;
         DashSvc.AddApprovedPermission(auditorId, pcId);
         _busy = false;
-
-        var idx = _auditors.FindIndex(a => a.AuditorId == auditorId);
-        if (idx >= 0)
-        {
-            var updated = _auditors[idx].ApprovedPcs.ToList();
-            // Re-query to get the new Id
-            _auditors = DashSvc.GetAuditorPermGroups();
-        }
+        _auditors = DashSvc.GetAuditorPermGroups();
+        _matrixAuditors = _auditors.Where(a => a.StaffRole != "Solo").ToList();
         _addPcSelection[auditorId] = 0;
-        ShowMsg($"{pc.FullName} added to {_auditors.FirstOrDefault(a => a.AuditorId == auditorId)?.AuditorName}.", false);
+        ShowMsg($"{pc.FullName} added.", false);
     }
 
     private void RemovePermission(int id)
@@ -401,7 +701,43 @@
         _busy = false;
         foreach (var aud in _auditors)
             aud.ApprovedPcs.RemoveAll(p => p.Id == id);
+        _matrixAuditors = _auditors.Where(a => a.StaffRole != "Solo").ToList();
         ShowMsg("Permission removed.", false);
+    }
+
+    private bool HasPermission(AuditorPermGroup aud, int pcId)
+        => aud.AllowAll || aud.ApprovedPcs.Any(p => p.PcId == pcId);
+
+    private async Task MatrixToggle(AuditorPermGroup aud, int pcId, bool grant)
+    {
+        if (aud.AllowAll) return; // AllowAll cells are read-only
+
+        var cellKey = (aud.AuditorId, pcId);
+        // Trigger flash
+        _flashingCells.Add(cellKey);
+        StateHasChanged();
+        _ = Task.Delay(150).ContinueWith(_ =>
+        {
+            _flashingCells.Remove(cellKey);
+            InvokeAsync(StateHasChanged);
+        });
+
+        if (grant)
+        {
+            DashSvc.AddApprovedPermission(aud.AuditorId, pcId);
+            _auditors = DashSvc.GetAuditorPermGroups();
+        }
+        else
+        {
+            var perm = aud.ApprovedPcs.FirstOrDefault(p => p.PcId == pcId);
+            if (perm is not null)
+            {
+                DashSvc.RemovePermission(perm.Id);
+                foreach (var a in _auditors)
+                    a.ApprovedPcs.RemoveAll(p => p.PcId == pcId && a.AuditorId == aud.AuditorId);
+            }
+        }
+        _matrixAuditors = _auditors.Where(a => a.StaffRole != "Solo").ToList();
     }
 
     private void ShowMsg(string msg, bool isError) { _msg = msg; _msgIsError = isError; }

@@ -4,7 +4,7 @@ using System.Globalization;
 
 namespace LPM.Services;
 
-public record PcInfo(int PcId, string FullName, string WorkCapacity, string Nick = "");
+public record PcInfo(int PcId, string FullName, string WorkCapacity, string Nick = "", bool IsActive = true);
 public record SessionRow(int SessionId, int LengthSec, int AdminSec, bool IsFree, string? Summary, string CreatedAt, string AuditorName, string VerifiedStatus = "Pending", string? Name = null);
 public record CsReviewRow(int CsReviewId, int SessionId, int ReviewSec, string Status, string? Notes);
 public record CsWorkRow(int CsWorkLogId, int LengthSec, string? Notes, string CreatedAt);
@@ -34,7 +34,7 @@ public record StaffMessage(int Id, int FromId, string FromName, int ToId, string
 
 public record PermissionRequest(int Id, int UserId, string AuditorName, int PcId, string PcName, string RequestedAt);
 public record ApprovedPcEntry(int Id, int PcId, string PcName);
-public record AuditorPermGroup(int AuditorId, string AuditorName, bool AllowAll, List<ApprovedPcEntry> ApprovedPcs);
+public record AuditorPermGroup(int AuditorId, string AuditorName, bool AllowAll, List<ApprovedPcEntry> ApprovedPcs, string StaffRole = "Auditor");
 
 public class DashboardService
 {
@@ -443,15 +443,16 @@ public class DashboardService
         audCmd.CommandText = @"
             SELECT u.PersonId,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS Name,
-                   COALESCE(u.AllowAll, 0)
+                   COALESCE(u.AllowAll, 0),
+                   COALESCE(u.StaffRole, 'Auditor')
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
             WHERE u.IsActive = 1 AND u.StaffRole IN ('Auditor','CS','Solo')
             ORDER BY p.FirstName, p.LastName";
-        var auditors = new List<(int Id, string Name, bool AllowAll)>();
+        var auditors = new List<(int Id, string Name, bool AllowAll, string StaffRole)>();
         using var ar = audCmd.ExecuteReader();
         while (ar.Read())
-            auditors.Add((ar.GetInt32(0), ar.GetString(1), ar.GetInt32(2) == 1));
+            auditors.Add((ar.GetInt32(0), ar.GetString(1), ar.GetInt32(2) == 1, ar.GetString(3)));
 
         // Get approved permissions per auditor
         using var permCmd = conn.CreateCommand();
@@ -473,7 +474,8 @@ public class DashboardService
 
         return auditors.Select(a => new AuditorPermGroup(
             a.Id, a.Name, a.AllowAll,
-            permsByAuditor.GetValueOrDefault(a.Id) ?? new())).ToList();
+            permsByAuditor.GetValueOrDefault(a.Id) ?? new(),
+            a.StaffRole)).ToList();
     }
 
     public void SetAuditorAllowAll(int auditorId, bool allow)
@@ -623,6 +625,19 @@ public class DashboardService
         return list;
     }
 
+    /// Returns PcIds that also have a Solo user (PersonId matches a core_users Solo row).
+    public HashSet<int> GetSoloPcIds()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT PersonId FROM core_users WHERE StaffRole = 'Solo' AND IsActive = 1";
+        var set = new HashSet<int>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) set.Add(r.GetInt32(0));
+        return set;
+    }
+
     public List<PcInfo> GetAllPcs()
     {
         using var conn = new SqliteConnection(_connectionString);
@@ -633,14 +648,15 @@ public class DashboardService
         cmd.CommandText = $@"
             SELECT pc.PcId,
                    {FullNameExpr} AS FullName,
-                   COALESCE(p.Nick, '') AS Nick
+                   COALESCE(p.Nick, '') AS Nick,
+                   COALESCE(p.IsActive, 1) AS IsActive
             FROM core_pcs     pc
             JOIN core_persons p ON p.PersonId = pc.PcId
-            ORDER BY p.FirstName, p.LastName";
+            ORDER BY COALESCE(p.IsActive,1) DESC, p.FirstName, p.LastName";
         var list = new List<PcInfo>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add(new PcInfo(r.GetInt32(0), r.GetString(1), "Auditor", r.GetString(2)));
+            list.Add(new PcInfo(r.GetInt32(0), r.GetString(1), "Auditor", r.GetString(2), r.GetInt32(3) == 1));
 
         return list;
     }

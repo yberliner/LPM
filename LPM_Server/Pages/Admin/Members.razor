@@ -2,6 +2,7 @@
 @attribute [Authorize(Roles = "Admin")]
 @inject LPM.Services.AcademyService AcademySvc
 @inject LPM.Services.PcService PcSvc
+@inject LPM.Services.DashboardService DashSvc
 @using Microsoft.AspNetCore.Authorization
 @using LPM.Services
 
@@ -127,8 +128,12 @@
                         @foreach (var m in Filtered)
                         {
                             <tr style="opacity:@(m.IsActive ? "1" : ".55");">
-                                <td class="ps-3 align-middle fw-medium" style="color:var(--default-text-color);">
+                                <td class="ps-3 align-middle fw-medium" style="color:@(m.IsPC && _soloPcIds.Contains(m.PersonId) ? "#ea580c" : "var(--default-text-color)");">
                                     @m.FullName
+                                    @if (m.IsPC && _soloPcIds.Contains(m.PersonId))
+                                    {
+                                        <span style="display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:3px;background:#ea580c;color:#fff;font-size:.58rem;font-weight:700;margin-left:3px;vertical-align:middle;">S</span>
+                                    }
                                     @if (!string.IsNullOrEmpty(m.Nick))
                                     {
                                         <span class="ms-1 text-muted" style="font-size:.72rem;font-weight:400;">(@m.Nick)</span>
@@ -220,6 +225,7 @@
 
 @code {
     List<MemberAdminItem> _members = [];
+    HashSet<int> _soloPcIds = new();
     string _search = "";
     string _filter = "all";
     string _sortBy = "name";
@@ -275,7 +281,11 @@
         else { _sortBy = col; _sortAsc = col == "name"; }
     }
 
-    protected override void OnInitialized() => _members = AcademySvc.GetAllMembersForAdmin();
+    protected override void OnInitialized()
+    {
+        _members   = AcademySvc.GetAllMembersForAdmin();
+        _soloPcIds = DashSvc.GetSoloPcIds();
+    }
 
     void Toggle(int personId, bool active)
     {
