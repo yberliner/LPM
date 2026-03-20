@@ -1,5 +1,5 @@
 @page "/Auditors"
-@attribute [Authorize]
+@attribute [Authorize(Roles = "Admin,Customer")]
 @inject LPM.Services.AuditorService AuditorSvc
 @using Microsoft.AspNetCore.Authorization
 @using LPM.Services

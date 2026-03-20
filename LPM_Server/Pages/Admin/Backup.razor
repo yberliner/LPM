@@ -1,5 +1,5 @@
 @page "/Admin/Backup"
-@attribute [Authorize]
+@attribute [Authorize(Roles = "Admin,Customer")]
 @using LPM.Services
 @using Microsoft.AspNetCore.Authorization
 @inject FolderService FolderSvc

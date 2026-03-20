@@ -1,5 +1,5 @@
 @page "/Admin/Payments"
-@attribute [Authorize]
+@attribute [Authorize(Roles = "Admin,Customer")]
 @using LPM.Services
 @using LPM.Auth
 @using Microsoft.AspNetCore.Authorization

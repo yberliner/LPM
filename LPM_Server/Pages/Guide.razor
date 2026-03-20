@@ -1,5 +1,5 @@
 @page "/Guide"
-@attribute [Authorize]
+@attribute [Authorize(Roles = "Admin,Customer")]
 @using Microsoft.AspNetCore.Authorization
 
 <div class="guide-root">

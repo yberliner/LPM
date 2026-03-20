@@ -1,5 +1,5 @@
 @page "/Schedule"
-@attribute [Authorize]
+@attribute [Authorize(Roles = "Admin,Customer")]
 @using LPM.Services
 @inject MeetingService MeetingSvc
 @inject IJSRuntime JS

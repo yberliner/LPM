@@ -1,5 +1,5 @@
 @page "/Academy"
-@attribute [Authorize]
+@attribute [Authorize(Roles = "Admin,Customer")]
 @inject LPM.Services.AcademyService AcademySvc
 @inject LPM.Services.CourseService CourseSvc
 @inject PdfService PdfService

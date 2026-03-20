@@ -19,6 +19,7 @@ public class MenuDataService
             path: "/PCs",
             type: "link",
             title: "PCs",
+            requiredRole: "Admin,Customer",
             icon: "",
             svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><path d='M32 58c0-12.15 9.85-22 22-22' fill='none'/><ellipse cx='32' cy='56' rx='24' ry='6' fill='#e8eaf6' opacity='.3'/><path d='M18 56c0-7.732 6.268-14 14-14s14 6.268 14 14v4H18v-4z' fill='#1565c0'/><path d='M26 56v4h12v-4c0-3-2-6-6-6s-6 3-6 6z' fill='#0d47a1'/><path d='M28 42h8v6a4 4 0 01-8 0v-6z' fill='#ffcc80'/><circle cx='32' cy='28' r='14' fill='#5d4037'/><circle cx='32' cy='30' r='11' fill='#ffcc80'/><ellipse cx='32' cy='32' rx='4' ry='2.5' fill='#ffb74d'/><circle cx='27.5' cy='29' r='1.3' fill='#3e2723'/><circle cx='36.5' cy='29' r='1.3' fill='#3e2723'/><circle cx='27.5' cy='28.6' r='.5' fill='#fff'/><circle cx='36.5' cy='28.6' r='.5' fill='#fff'/><path d='M29.5 35.5q2.5 2 5 0' stroke='#bf360c' stroke-width='1' fill='none' stroke-linecap='round'/><path d='M18 25c0-8 6-15 14-15s14 7 14 15c0 0-2-8-14-8s-14 8-14 8z' fill='#4e342e'/><path d='M20 24c2-5 7-8 12-8s10 3 12 8' fill='#5d4037'/><path d='M29 42l3 3 3-3' stroke='#0d47a1' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>",
             selected: false,
@@ -29,6 +30,7 @@ public class MenuDataService
             path: "/Academy",
             type: "link",
             title: "Academy",
+            requiredRole: "Admin,Customer",
             icon: "",
             svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><path d='M32 6L2 22l30 16 30-16z' fill='#ffb74d'/><path d='M32 22L2 22l30 16z' fill='#ffa726'/><path d='M10 28v18l22 12 22-12V28L32 38z' fill='#42a5f5'/><path d='M32 38L10 28v18l22 12z' fill='#1e88e5'/><rect x='52' y='22' width='4' height='28' rx='2' fill='#ef5350'/><circle cx='54' cy='52' r='4' fill='#e53935'/><path d='M50 52h8v3a4 4 0 01-8 0v-3z' fill='#c62828'/></svg>",
             selected: false,
@@ -39,6 +41,7 @@ public class MenuDataService
             path: "/Statistics",
             type: "link",
             title: "Statistics",
+            requiredRole: "Admin,Customer",
             icon: "",
             svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><rect x='6' y='36' width='10' height='22' rx='2' fill='#66bb6a'/><rect x='20' y='24' width='10' height='34' rx='2' fill='#42a5f5'/><rect x='34' y='14' width='10' height='44' rx='2' fill='#ffa726'/><rect x='48' y='6' width='10' height='52' rx='2' fill='#ef5350'/><path d='M8 36l14-12 14 6 16-20' stroke='#5c6bc0' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/><circle cx='8' cy='36' r='3' fill='#5c6bc0'/><circle cx='22' cy='24' r='3' fill='#5c6bc0'/><circle cx='36' cy='30' r='3' fill='#5c6bc0'/><circle cx='52' cy='10' r='3' fill='#5c6bc0'/></svg>",
             selected: false,
@@ -46,12 +49,14 @@ public class MenuDataService
             dirChange: false
         ),
         new MainMenuItems(
-            menuTitle: "Management"
+            menuTitle: "Management",
+            requiredRole: "Admin,Customer"
         ),
         new MainMenuItems (
             path: "/Auditors",
             type: "link",
             title: "Auditors",
+            requiredRole: "Admin,Customer",
             icon: "",
             svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><circle cx='32' cy='18' r='12' fill='#ffa726'/><circle cx='32' cy='18' r='8' fill='#ffb74d'/><path d='M12 56c0-11.046 8.954-20 20-20s20 8.954 20 20v2H12v-2z' fill='#ab47bc'/><path d='M28 8l4-4 4 4' stroke='#ffa726' stroke-width='2' fill='none' stroke-linecap='round'/><path d='M24 44h16v14H24z' fill='#7b1fa2'/><path d='M30 44h4v8h-4z' fill='#e1bee7'/></svg>",
             selected: false,
@@ -62,6 +67,7 @@ public class MenuDataService
             path: "/Admin/Courses",
             type: "link",
             title: "Courses",
+            requiredRole: "Admin,Customer",
             icon: "",
             svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><rect x='10' y='8' width='36' height='48' rx='4' fill='#42a5f5'/><rect x='10' y='8' width='36' height='48' rx='4' fill='#42a5f5'/><rect x='14' y='12' width='28' height='6' rx='1' fill='#1565c0'/><rect x='14' y='22' width='20' height='3' rx='1' fill='#bbdefb'/><rect x='14' y='28' width='24' height='3' rx='1' fill='#bbdefb'/><rect x='14' y='34' width='16' height='3' rx='1' fill='#bbdefb'/><rect x='14' y='40' width='22' height='3' rx='1' fill='#bbdefb'/><rect x='40' y='32' width='18' height='24' rx='3' fill='#ffb74d'/><path d='M44 38h10M44 42h10M44 46h8' stroke='#fff' stroke-width='1.5' stroke-linecap='round'/><circle cx='49' cy='34' r='2' fill='#ef5350'/></svg>",
             selected: false,
@@ -72,6 +78,7 @@ public class MenuDataService
             path: "/Admin/Members",
             type: "link",
             title: "Members",
+            requiredRole: "Admin,Customer",
             icon: "",
             svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><circle cx='22' cy='20' r='10' fill='#7986cb'/><circle cx='42' cy='20' r='10' fill='#ef5350'/><circle cx='22' cy='20' r='6' fill='#9fa8da'/><circle cx='42' cy='20' r='6' fill='#e57373'/><path d='M4 56c0-9.941 8.059-18 18-18 4.97 0 9.47 2.015 12.728 5.272' fill='none'/><path d='M4 56c0-9.941 8.059-18 18-18s18 8.059 18 18v2H4v-2z' fill='#5c6bc0'/><path d='M24 56c0-9.941 8.059-18 18-18s18 8.059 18 18v2H24v-2z' fill='#e53935'/></svg>",
             selected: false,
@@ -82,6 +89,7 @@ public class MenuDataService
             path: "/ShortCuts",
             type: "link",
             title: "Shortcuts",
+            requiredRole: "Admin,Customer",
             icon: "",
             svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><rect x='6' y='20' width='52' height='30' rx='5' fill='#78909c' stroke='#546e7a' stroke-width='2'/><rect x='12' y='26' width='8' height='7' rx='1.5' fill='#eceff1'/><rect x='22' y='26' width='8' height='7' rx='1.5' fill='#eceff1'/><rect x='32' y='26' width='8' height='7' rx='1.5' fill='#eceff1'/><rect x='42' y='26' width='8' height='7' rx='1.5' fill='#eceff1'/><rect x='12' y='36' width='8' height='7' rx='1.5' fill='#eceff1'/><rect x='22' y='36' width='20' height='7' rx='1.5' fill='#bbdefb'/><rect x='44' y='36' width='8' height='7' rx='1.5' fill='#eceff1'/></svg>",
             selected: false,
@@ -92,6 +100,7 @@ public class MenuDataService
             path: "/Import",
             type: "link",
             title: "Import",
+            requiredRole: "Admin,Customer",
             icon: "",
             svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><rect x='10' y='8' width='32' height='44' rx='4' fill='#42a5f5'/><rect x='14' y='14' width='24' height='3' rx='1' fill='#bbdefb'/><rect x='14' y='20' width='18' height='3' rx='1' fill='#bbdefb'/><rect x='14' y='26' width='22' height='3' rx='1' fill='#bbdefb'/><path d='M46 32l8-8v6h6v4h-6v6z' fill='#66bb6a'/></svg>",
             selected: false,
@@ -102,6 +111,7 @@ public class MenuDataService
             path: "/Schedule",
             type: "link",
             title: "Schedule",
+            requiredRole: "Admin,Customer",
             icon: "",
             svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><rect x='8' y='14' width='48' height='44' rx='5' fill='#42a5f5'/><rect x='8' y='14' width='48' height='18' rx='5' fill='#1565c0'/><rect x='8' y='26' width='48' height='6' fill='#1565c0'/><rect x='20' y='6' width='5' height='14' rx='2.5' fill='#78909c'/><rect x='39' y='6' width='5' height='14' rx='2.5' fill='#78909c'/><rect x='14' y='36' width='9' height='8' rx='1.5' fill='#bbdefb'/><rect x='27' y='36' width='9' height='8' rx='1.5' fill='#bbdefb'/><rect x='41' y='36' width='9' height='8' rx='1.5' fill='#ef5350'/><rect x='14' y='48' width='9' height='8' rx='1.5' fill='#bbdefb'/><rect x='27' y='48' width='9' height='8' rx='1.5' fill='#bbdefb'/></svg>",
             selected: false,
@@ -168,12 +178,14 @@ public class MenuDataService
             requiredRole: "Admin"
         ),
         new MainMenuItems(
-            menuTitle: "User Guide"
+            menuTitle: "User Guide",
+            requiredRole: "Admin,Customer"
         ),
         new MainMenuItems(
             path: "/Guide",
             type: "link",
             title: "User Guide",
+            requiredRole: "Admin,Customer",
             icon: "",
             svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><rect x='12' y='6' width='40' height='52' rx='4' fill='#78909c'/><rect x='12' y='6' width='20' height='52' fill='#90a4ae'/><rect x='18' y='14' width='28' height='4' rx='1' fill='#eceff1'/><rect x='18' y='22' width='20' height='2' rx='1' fill='#b0bec5'/><rect x='18' y='28' width='24' height='2' rx='1' fill='#b0bec5'/><rect x='18' y='34' width='16' height='2' rx='1' fill='#b0bec5'/><circle cx='44' cy='46' r='10' fill='#ffb74d'/><text x='44' y='51' text-anchor='middle' font-size='14' font-weight='bold' fill='#fff'>?</text></svg>",
             selected: false,

@@ -1,6 +1,6 @@
 @page "/ShortCuts"
 @using LPM.Services
-@attribute [Authorize]
+@attribute [Authorize(Roles = "Admin,Customer")]
 @inject ShortcutService ShortcutSvc
 @inject IJSRuntime JS
 

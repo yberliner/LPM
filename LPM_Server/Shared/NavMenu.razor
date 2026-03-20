@@ -546,9 +546,10 @@
     protected override async Task OnInitializedAsync()
     {
         var authState = await _authStateProvider.GetAuthenticationStateAsync();
-        var isAdmin = authState.User.IsInRole("Admin");
+        var user = authState.User;
         menuVal = MenuDataService.GetMenuData()
-            .Where(item => item.RequiredRole == null || isAdmin)
+            .Where(item => item.RequiredRole == null ||
+                           item.RequiredRole.Split(',').Any(r => user.IsInRole(r.Trim())))
             .ToList();
         await Random(menuVal);
            
