@@ -729,6 +729,13 @@
         .acad-right-panel { width: 100% !important; min-width: 0 !important; }
         .acad-visit-card .card-body { overflow-x: hidden; }
     }
+    @@media (max-width: 480px) {
+        .acad-nav-bar { flex-wrap: wrap; gap: 4px !important; }
+        .acad-nav-bar .btn { font-size: 0.78rem; padding: 5px 10px; min-height: 36px; touch-action: manipulation; }
+        .acad-persons-card .table { font-size: 0.76rem; }
+        .acad-persons-card .table td, .acad-persons-card .table th { padding: 5px 4px; }
+        .acad-visit-card .card-body { padding: 10px 8px !important; }
+    }
 
     /* ── Persons scrollbar ── */
     .acad-persons-scroll { scrollbar-width: thin; scrollbar-color: #c4c4c4 transparent; }

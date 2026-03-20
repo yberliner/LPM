@@ -1,0 +1,616 @@
+@page "/WelcomeContact"
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using System.Text.RegularExpressions
+@implements IDisposable
+@inject AuthenticationStateProvider AuthStateProvider
+@inject LPM.Auth.UserDb UserDb
+@inject LPM.Services.PcService PcSvc
+@inject NavigationManager Nav
+
+<PageTitle>Welcome — LPM</PageTitle>
+
+<div class="wc-overlay">
+    <div class="wc-card @(_submitted ? "wc-thankyou-state" : "")">
+
+        @if (_submitted)
+        {
+            <div class="wc-thankyou">
+                <svg class="wc-checkmark" viewBox="0 0 52 52">
+                    <circle class="wc-checkmark-circle" cx="26" cy="26" r="25" fill="none" />
+                    <path class="wc-checkmark-path" fill="none" d="M14 27 l8 8 l16-16" />
+                </svg>
+                <h2 class="wc-ty-title">Thank you!</h2>
+                <p class="wc-ty-sub">Your contact information has been saved.</p>
+            </div>
+        }
+        else
+        {
+            <div class="wc-header">
+                <div class="wc-logo-ring"><i class="ri-shield-check-line"></i></div>
+                <h1 class="wc-title">Welcome to LPM</h1>
+                <p class="wc-subtitle">Before you continue, please provide your contact details.</p>
+            </div>
+
+            <div class="wc-callout @(_isSolo ? "wc-callout-solo" : "wc-callout-staff")">
+                <i class="ri-lock-line wc-callout-icon"></i>
+                <div>
+                    <strong>Why do we need this?</strong>
+                    <p>Your contact information is used for secure account recovery and important notifications. It is never shared with third parties.</p>
+                    @if (_isSolo)
+                    {
+                        <p class="wc-callout-solo-msg"><i class="ri-user-star-line"></i> As a solo auditor, keeping your contact details current ensures uninterrupted access to your personal folder.</p>
+                    }
+                </div>
+            </div>
+
+            <div class="wc-form">
+                <!-- Email -->
+                <div class="wc-field">
+                    <label class="wc-label">Email address</label>
+                    <div class="wc-input-wrap">
+                        <input class="@EmailInputClass"
+                               type="email"
+                               placeholder="your@email.com"
+                               value="@_email"
+                               @oninput="OnEmailInput" />
+                        @if (_emailTouched && _emailValid)
+                        {
+                            <span class="wc-valid-icon"><i class="ri-check-line"></i></span>
+                        }
+                        @if (_emailTouched && !_emailValid && !string.IsNullOrEmpty(_email))
+                        {
+                            <span class="wc-invalid-icon"><i class="ri-close-line"></i></span>
+                        }
+                    </div>
+                </div>
+
+                <!-- Phone -->
+                <div class="wc-field">
+                    <label class="wc-label">Phone number</label>
+                    <div class="wc-phone-row">
+                        <select class="wc-country-select" @bind="_selectedCountryIndex">
+                            @for (int i = 0; i < _countries.Length; i++)
+                            {
+                                var idx = i;
+                                <option value="@idx">@_countries[idx].Flag @_countries[idx].Name (+@_countries[idx].DialCode)</option>
+                            }
+                        </select>
+                        <input class="wc-input wc-phone-input"
+                               type="tel"
+                               placeholder="054 499 4470"
+                               @bind="_localPhone"
+                               @bind:event="oninput" />
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(_normalizedPhone))
+                    {
+                        <div class="wc-phone-preview">Will be saved as: <strong>@_normalizedPhone</strong></div>
+                    }
+                </div>
+
+                <button class="wc-submit-btn" @onclick="Submit" disabled="@(!CanSubmit)">
+                    <i class="ri-send-plane-line"></i> Save &amp; Continue
+                </button>
+
+                @if (!string.IsNullOrEmpty(_error))
+                {
+                    <div class="wc-error">@_error</div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .wc-overlay {
+        position: fixed;
+        inset: 0;
+        background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        overflow-y: auto;
+        padding: 24px 16px;          /* horizontal padding so card never touches edges */
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .wc-card {
+        background: rgba(255,255,255,0.07);
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 24px;
+        padding: 48px 44px;
+        max-width: 520px;
+        width: 100%;               /* fill available width (capped by overlay padding) */
+        color: #f1f5f9;
+        box-shadow: 0 25px 60px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.12);
+        animation: wc-slide-in 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        transition: all 0.4s ease;
+        box-sizing: border-box;
+    }
+
+    @@keyframes wc-slide-in {
+        from { opacity: 0; transform: translateY(40px) scale(0.95); }
+        to   { opacity: 1; transform: translateY(0)   scale(1); }
+    }
+
+    .wc-header { text-align: center; margin-bottom: 28px; }
+
+    .wc-logo-ring {
+        width: 64px; height: 64px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 28px;
+        margin-bottom: 16px;
+        box-shadow: 0 0 0 8px rgba(99,102,241,0.15);
+    }
+
+    .wc-title {
+        font-size: 1.8rem;
+        font-weight: 700;
+        margin: 0 0 8px;
+        background: linear-gradient(90deg, #a5b4fc, #e879f9);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .wc-subtitle {
+        font-size: 0.95rem;
+        color: #94a3b8;
+        margin: 0;
+    }
+
+    .wc-callout {
+        display: flex;
+        gap: 14px;
+        padding: 16px 18px;
+        border-radius: 14px;
+        margin-bottom: 28px;
+        font-size: 0.88rem;
+        line-height: 1.55;
+    }
+
+    .wc-callout-staff {
+        background: rgba(99,102,241,0.12);
+        border: 1px solid rgba(99,102,241,0.3);
+    }
+
+    .wc-callout-solo {
+        background: rgba(234,88,12,0.12);
+        border: 1px solid rgba(234,88,12,0.3);
+    }
+
+    .wc-callout-icon {
+        font-size: 20px;
+        margin-top: 2px;
+        flex-shrink: 0;
+        color: #a5b4fc;
+    }
+
+    .wc-callout-solo .wc-callout-icon { color: #fb923c; }
+
+    .wc-callout p { margin: 6px 0 0; color: #cbd5e1; }
+    .wc-callout strong { color: #e2e8f0; }
+
+    .wc-callout-solo-msg {
+        color: #fdba74 !important;
+        margin-top: 8px !important;
+    }
+
+    .wc-form { display: flex; flex-direction: column; gap: 20px; }
+
+    .wc-field { display: flex; flex-direction: column; gap: 8px; }
+
+    .wc-label {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #94a3b8;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .wc-input-wrap { position: relative; }
+
+    .wc-input {
+        width: 100%;
+        background: rgba(255,255,255,0.07);
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 10px;
+        padding: 13px 16px;          /* 13px top/bottom ≈ 46px total — good touch target */
+        color: #f1f5f9;
+        font-size: 1rem;             /* 16px prevents iOS zoom-on-focus */
+        outline: none;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+        appearance: none;
+        -webkit-appearance: none;
+    }
+
+    .wc-input::placeholder { color: #475569; }
+
+    .wc-input:focus {
+        border-color: rgba(99,102,241,0.6);
+        box-shadow: 0 0 0 3px rgba(99,102,241,0.2);
+    }
+
+    .wc-input-valid {
+        border-color: rgba(34,197,94,0.6) !important;
+        padding-right: 40px;
+    }
+
+    .wc-input-invalid {
+        border-color: rgba(239,68,68,0.6) !important;
+        padding-right: 40px;
+    }
+
+    .wc-valid-icon {
+        position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+        color: #22c55e; font-size: 18px;
+    }
+
+    .wc-invalid-icon {
+        position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+        color: #ef4444; font-size: 18px;
+    }
+
+    @@keyframes wc-shake {
+        0%, 100% { transform: translateX(0); }
+        20%       { transform: translateX(-6px); }
+        40%       { transform: translateX(6px); }
+        60%       { transform: translateX(-4px); }
+        80%       { transform: translateX(4px); }
+    }
+
+    .wc-shake { animation: wc-shake 0.35s ease-in-out; }
+
+    .wc-phone-row {
+        display: flex;
+        gap: 10px;
+    }
+
+    .wc-country-select {
+        flex: 0 0 auto;
+        max-width: 220px;
+        background: rgba(255,255,255,0.07);
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 10px;
+        padding: 13px 10px;          /* match input height */
+        color: #f1f5f9;
+        font-size: 1rem;             /* 16px prevents iOS zoom */
+        outline: none;
+        cursor: pointer;
+        transition: border-color 0.2s;
+        -webkit-tap-highlight-color: transparent;
+        min-height: 46px;
+        box-sizing: border-box;
+    }
+
+    .wc-country-select:focus { border-color: rgba(99,102,241,0.6); }
+
+    .wc-country-select option {
+        background: #1e293b;
+        color: #f1f5f9;
+    }
+
+    .wc-phone-input { flex: 1; }
+
+    .wc-phone-preview {
+        font-size: 0.82rem;
+        color: #64748b;
+        padding: 4px 2px;
+    }
+
+    .wc-phone-preview strong { color: #94a3b8; }
+
+    /* ── Tablet (768px and below) ── */
+    @@media (max-width: 768px) {
+        .wc-card {
+            padding: 40px 32px;
+        }
+        .wc-country-select {
+            max-width: 200px;
+        }
+    }
+
+    /* ── Mobile (480px and below) ── */
+    @@media (max-width: 480px) {
+        .wc-overlay {
+            align-items: flex-start;   /* let card sit near top so keyboard doesn't push it off screen */
+            padding: 20px 12px 40px;
+        }
+        .wc-card {
+            padding: 28px 18px;
+            border-radius: 18px;
+        }
+        .wc-logo-ring {
+            width: 52px; height: 52px; font-size: 22px;
+            margin-bottom: 12px;
+        }
+        .wc-title { font-size: 1.45rem; }
+        .wc-subtitle { font-size: 0.88rem; }
+        .wc-callout { padding: 13px 14px; font-size: 0.85rem; gap: 10px; }
+        .wc-phone-row { flex-direction: column; gap: 8px; }
+        .wc-country-select { max-width: 100%; width: 100%; }
+        .wc-header { margin-bottom: 20px; }
+        .wc-form { gap: 16px; }
+    }
+
+    /* ── Very small phones (360px and below) ── */
+    @@media (max-width: 360px) {
+        .wc-card { padding: 22px 14px; border-radius: 14px; }
+        .wc-title { font-size: 1.3rem; }
+        .wc-label { font-size: 0.78rem; }
+    }
+
+    .wc-submit-btn {
+        margin-top: 8px;
+        padding: 15px 24px;
+        width: 100%;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        border: none;
+        border-radius: 12px;
+        color: white;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+        box-shadow: 0 4px 15px rgba(99,102,241,0.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 50px;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+    }
+
+    .wc-submit-btn:hover:not(:disabled) {
+        opacity: 0.92;
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px rgba(99,102,241,0.45);
+    }
+
+    .wc-submit-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    .wc-error {
+        font-size: 0.87rem;
+        color: #f87171;
+        text-align: center;
+        padding: 10px;
+        background: rgba(239,68,68,0.1);
+        border-radius: 8px;
+        border: 1px solid rgba(239,68,68,0.25);
+    }
+
+    /* Thank-you state */
+    .wc-thankyou {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 20px 0;
+        text-align: center;
+        min-height: 200px;
+    }
+
+    .wc-checkmark {
+        width: 80px; height: 80px;
+        margin-bottom: 24px;
+    }
+
+    .wc-checkmark-circle {
+        stroke: #22c55e;
+        stroke-width: 2;
+        stroke-dasharray: 166;
+        stroke-dashoffset: 166;
+        animation: wc-stroke 0.6s cubic-bezier(0.65, 0, 0.45, 1) 0.1s forwards;
+    }
+
+    .wc-checkmark-path {
+        stroke: #22c55e;
+        stroke-width: 3;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-dasharray: 48;
+        stroke-dashoffset: 48;
+        animation: wc-stroke 0.4s cubic-bezier(0.65, 0, 0.45, 1) 0.65s forwards;
+    }
+
+    @@keyframes wc-stroke {
+        100% { stroke-dashoffset: 0; }
+    }
+
+    .wc-ty-title {
+        font-size: 1.7rem;
+        font-weight: 700;
+        color: #f1f5f9;
+        margin: 0 0 10px;
+    }
+
+    .wc-ty-sub {
+        color: #94a3b8;
+        font-size: 0.97rem;
+        margin: 0;
+    }
+</style>
+
+@code {
+    private record Country(string Flag, string Name, string DialCode);
+
+    private static readonly Country[] _countries =
+    [
+        new("🇮🇱", "Israel",               "972"),
+        new("🇺🇸", "United States",        "1"),
+        new("🇬🇧", "United Kingdom",       "44"),
+        new("🇦🇺", "Australia",            "61"),
+        new("🇦🇹", "Austria",              "43"),
+        new("🇧🇪", "Belgium",              "32"),
+        new("🇧🇷", "Brazil",               "55"),
+        new("🇨🇦", "Canada",               "1"),
+        new("🇨🇳", "China",                "86"),
+        new("🇩🇰", "Denmark",              "45"),
+        new("🇪🇬", "Egypt",                "20"),
+        new("🇫🇷", "France",               "33"),
+        new("🇩🇪", "Germany",              "49"),
+        new("🇬🇷", "Greece",               "30"),
+        new("🇭🇺", "Hungary",              "36"),
+        new("🇮🇳", "India",                "91"),
+        new("🇮🇪", "Ireland",              "353"),
+        new("🇮🇹", "Italy",                "39"),
+        new("🇯🇵", "Japan",                "81"),
+        new("🇯🇴", "Jordan",               "962"),
+        new("🇱🇧", "Lebanon",              "961"),
+        new("🇲🇽", "Mexico",               "52"),
+        new("🇳🇱", "Netherlands",          "31"),
+        new("🇳🇿", "New Zealand",          "64"),
+        new("🇳🇴", "Norway",               "47"),
+        new("🇵🇱", "Poland",               "48"),
+        new("🇵🇹", "Portugal",             "351"),
+        new("🇷🇺", "Russia",               "7"),
+        new("🇸🇦", "Saudi Arabia",         "966"),
+        new("🇿🇦", "South Africa",         "27"),
+        new("🇪🇸", "Spain",                "34"),
+        new("🇸🇪", "Sweden",               "46"),
+        new("🇨🇭", "Switzerland",          "41"),
+        new("🇹🇷", "Turkey",               "90"),
+        new("🇺🇦", "Ukraine",              "380"),
+        new("🇦🇪", "United Arab Emirates", "971"),
+    ];
+
+    private int _userId;
+    private int _personId;
+    private bool _isSolo;
+    private string _email = "";
+    private bool _emailTouched;
+    private bool _emailValid;
+    private bool _emailShake;
+    private System.Threading.Timer? _emailTimer;
+    private int _selectedCountryIndex = 0; // Israel default
+    private string _localPhone = "";
+    private bool _submitted;
+    private string _error = "";
+
+    private string EmailInputClass
+    {
+        get
+        {
+            if (!_emailTouched) return "wc-input";
+            if (_emailValid) return "wc-input wc-input-valid";
+            var shake = _emailShake ? " wc-shake" : "";
+            return $"wc-input wc-input-invalid{shake}";
+        }
+    }
+
+    private string _normalizedPhone
+    {
+        get
+        {
+            var local = _localPhone.Trim();
+            if (string.IsNullOrEmpty(local)) return "";
+            // Strip leading 0
+            if (local.StartsWith("0")) local = local[1..];
+            // Strip spaces/dashes
+            local = Regex.Replace(local, @"[\s\-\(\)]", "");
+            if (string.IsNullOrEmpty(local)) return "";
+            return $"+{_countries[_selectedCountryIndex].DialCode}{local}";
+        }
+    }
+
+    private bool CanSubmit => _emailValid && !string.IsNullOrWhiteSpace(_normalizedPhone);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (!user.Identity?.IsAuthenticated ?? false)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+
+        if (!int.TryParse(user.FindFirst("PersonId")?.Value, out _personId) || _personId == 0)
+        {
+            var username = user.FindFirst(ClaimTypes.Name)?.Value ?? "";
+            _personId = UserDb.GetPersonId(username) ?? 0;
+        }
+
+        var username2 = user.FindFirst(ClaimTypes.Name)?.Value ?? "";
+        var flags = UserDb.GetLoginFlags(username2);
+        if (flags is not null)
+        {
+            _userId = flags.UserId;
+            _isSolo = flags.StaffRole == "Solo";
+            // If already confirmed, skip straight to Home
+            if (!UserDb.NeedsContactConfirm(_userId))
+            {
+                Nav.NavigateTo("/Home");
+                return;
+            }
+        }
+    }
+
+    private void OnEmailInput(ChangeEventArgs e)
+    {
+        _email = e.Value?.ToString() ?? "";
+        _emailTouched = true;
+        _emailShake = false;
+        _emailTimer?.Dispose();
+        _emailTimer = new System.Threading.Timer(_ => InvokeAsync(() =>
+        {
+            var valid = IsValidEmail(_email);
+            if (_emailTouched && !valid && !string.IsNullOrEmpty(_email))
+                TriggerShake();
+            _emailValid = valid;
+            StateHasChanged();
+        }), null, 400, System.Threading.Timeout.Infinite);
+    }
+
+    private async void TriggerShake()
+    {
+        _emailShake = true;
+        StateHasChanged();
+        await Task.Delay(400);
+        _emailShake = false;
+        StateHasChanged();
+    }
+
+    private static bool IsValidEmail(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email)) return false;
+        return Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$");
+    }
+
+    private async Task Submit()
+    {
+        if (!CanSubmit) return;
+        _error = "";
+        try
+        {
+            PcSvc.SaveContactInfo(_personId, _email, _normalizedPhone);
+            if (_userId > 0)
+                UserDb.SetContactConfirmed(_userId);
+            _submitted = true;
+            StateHasChanged();
+            await Task.Delay(2500);
+            Nav.NavigateTo("/Home");
+        }
+        catch (Exception ex)
+        {
+            _error = "An error occurred. Please try again.";
+            Console.WriteLine($"[WelcomeContact] Error: {ex.Message}");
+        }
+    }
+
+    public void Dispose()
+    {
+        _emailTimer?.Dispose();
+    }
+}

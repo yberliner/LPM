@@ -35,6 +35,14 @@ public class UserDb
             cmd.ExecuteNonQuery();
         }
 
+        // Add ContactConfirmed column if missing (DEFAULT 1 = already confirmed; 0 = must fill in on first login)
+        cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('core_users') WHERE name='ContactConfirmed'";
+        if ((long)cmd.ExecuteScalar()! == 0)
+        {
+            cmd.CommandText = "ALTER TABLE core_users ADD COLUMN ContactConfirmed INTEGER NOT NULL DEFAULT 1";
+            cmd.ExecuteNonQuery();
+        }
+
         // One-time fix: rename "camela" → "carmela" with corrected password
         cmd.CommandText = "SELECT COUNT(*) FROM core_users WHERE LOWER(Username)='camela'";
         if ((long)cmd.ExecuteScalar()! > 0)
@@ -88,7 +96,15 @@ public class UserDb
         cmd.Parameters.AddWithValue("@u", username);
         var storedHash = cmd.ExecuteScalar() as string;
         if (storedHash is null) return "User not found.";
-        if (!VerifyPbkdf2(storedHash, currentPwd)) return "Current password is incorrect.";
+        bool currentOk = VerifyPbkdf2(storedHash, currentPwd);
+        if (!currentOk && currentPwd.Length > 0)
+        {
+            var toggled = char.IsUpper(currentPwd[0])
+                ? char.ToLower(currentPwd[0]) + currentPwd[1..]
+                : char.ToUpper(currentPwd[0]) + currentPwd[1..];
+            currentOk = VerifyPbkdf2(storedHash, toggled);
+        }
+        if (!currentOk) return "Current password is incorrect.";
 
         var newHash = HashPassword(newPwd);
         using var updateCmd = conn.CreateCommand();
@@ -157,7 +173,16 @@ public class UserDb
         }
 
         if (!isActive) return false;
-        if (!VerifyPbkdf2(storedHash, password)) return false;
+
+        bool verified = VerifyPbkdf2(storedHash, password);
+        if (!verified && password.Length > 0)
+        {
+            var toggled = char.IsUpper(password[0])
+                ? char.ToLower(password[0]) + password[1..]
+                : char.ToUpper(password[0]) + password[1..];
+            verified = VerifyPbkdf2(storedHash, toggled);
+        }
+        if (!verified) return false;
 
         if (userType == "Admin")
             roles.Add("Admin");
@@ -487,6 +512,121 @@ public class UserDb
         cmd.CommandText = "SELECT COUNT(*) FROM sys_trusted_devices WHERE UserId=@u";
         cmd.Parameters.AddWithValue("@u", userId);
         return (int)(long)cmd.ExecuteScalar()!;
+    }
+
+    // ── Solo auditor management ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Activates or creates a Solo auditor account for the given PC.
+    /// If a Solo row already exists for pcId, reactivates it.
+    /// Otherwise creates a new user: username=first.last, password=First1992.
+    /// Returns the username that was used.
+    /// </summary>
+    public string EnableSoloAuditor(int pcId, string firstName, string lastName)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Check if a Solo row already exists for this PC
+        using var checkCmd = conn.CreateCommand();
+        checkCmd.CommandText = "SELECT Id FROM core_users WHERE PersonId = @pid AND StaffRole = 'Solo' LIMIT 1";
+        checkCmd.Parameters.AddWithValue("@pid", pcId);
+        var existingId = checkCmd.ExecuteScalar();
+
+        if (existingId is not null)
+        {
+            using var reactivateCmd = conn.CreateCommand();
+            reactivateCmd.CommandText = "UPDATE core_users SET IsActive = 1, MustChangePassword = 1 WHERE Id = @id";
+            reactivateCmd.Parameters.AddWithValue("@id", existingId);
+            reactivateCmd.ExecuteNonQuery();
+
+            using var nameCmd = conn.CreateCommand();
+            nameCmd.CommandText = "SELECT Username FROM core_users WHERE Id = @id";
+            nameCmd.Parameters.AddWithValue("@id", existingId);
+            var username = (string)nameCmd.ExecuteScalar()!;
+            Console.WriteLine($"[UserDb] Reactivated Solo user '{username}' for PC {pcId}");
+            return username;
+        }
+
+        // Build username and password
+        var fn = firstName.Trim().ToLower();
+        var ln = lastName.Trim().ToLower();
+        var baseUsername = string.IsNullOrEmpty(ln) ? fn : $"{fn}.{ln}";
+        var password = fn.Length > 0
+            ? char.ToUpper(fn[0]) + fn[1..] + "1992"
+            : "User1992";
+
+        // Ensure unique username
+        var finalUsername = baseUsername;
+        int suffix = 2;
+        using var existsCmd = conn.CreateCommand();
+        existsCmd.CommandText = "SELECT COUNT(*) FROM core_users WHERE Username = @u COLLATE NOCASE";
+        while (true)
+        {
+            existsCmd.Parameters.Clear();
+            existsCmd.Parameters.AddWithValue("@u", finalUsername);
+            if ((long)existsCmd.ExecuteScalar()! == 0) break;
+            finalUsername = $"{baseUsername}{suffix++}";
+        }
+
+        using var insertCmd = conn.CreateCommand();
+        insertCmd.CommandText = @"
+            INSERT INTO core_users (PersonId, Username, PasswordHash, StaffRole, UserType, IsActive, MustChangePassword, ContactConfirmed)
+            VALUES (@pid, @u, @h, 'Solo', 'Staff', 1, 1, 0)";
+        insertCmd.Parameters.AddWithValue("@pid", pcId);
+        insertCmd.Parameters.AddWithValue("@u", finalUsername);
+        insertCmd.Parameters.AddWithValue("@h", HashPassword(password));
+        insertCmd.ExecuteNonQuery();
+        Console.WriteLine($"[UserDb] Created Solo user '{finalUsername}' for PC {pcId}");
+        return finalUsername;
+    }
+
+    // ── Contact confirmation ─────────────────────────────────────────────────
+
+    /// <summary>Returns true if the user must fill in contact info on this login.</summary>
+    public bool NeedsContactConfirm(int userId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COALESCE(ContactConfirmed,1) FROM core_users WHERE Id=@id LIMIT 1";
+        cmd.Parameters.AddWithValue("@id", userId);
+        var result = cmd.ExecuteScalar();
+        return result is long v && v == 0;
+    }
+
+    /// <summary>Marks the user's contact info as confirmed.</summary>
+    public void SetContactConfirmed(int userId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE core_users SET ContactConfirmed=1 WHERE Id=@id";
+        cmd.Parameters.AddWithValue("@id", userId);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>Marks the user as needing to confirm contact info on next login.</summary>
+    public void SetContactConfirmNeeded(int userId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE core_users SET ContactConfirmed=0 WHERE Id=@id";
+        cmd.Parameters.AddWithValue("@id", userId);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>Deactivates the Solo auditor account for the given PC (sets IsActive=0).</summary>
+    public void DisableSoloAuditor(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE core_users SET IsActive = 0 WHERE PersonId = @pid AND StaffRole = 'Solo'";
+        cmd.Parameters.AddWithValue("@pid", pcId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[UserDb] Disabled Solo user for PC {pcId}");
     }
 
     // ── AES-256-GCM helpers ──────────────────────────────────────────────────

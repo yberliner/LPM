@@ -79,7 +79,7 @@
                     </div>
                     @if (_pendingCsExpanded)
                     {
-                        <div class="card-body p-0">
+                        <div class="card-body p-0 table-responsive">
                             <table class="table table-sm table-hover mb-0 home-pending-cs-table">
                                 <thead>
                                     <tr>
@@ -190,7 +190,7 @@
                     </div>
                     @if (_audStatusExpanded)
                     {
-                        <div class="card-body p-0">
+                        <div class="card-body p-0 table-responsive">
                             <table class="table table-sm table-hover mb-0 home-aud-status-table">
                                 <thead>
                                     <tr>
@@ -1259,6 +1259,14 @@
     }
     .home-aud-st-correction {
         background: rgba(239,68,68,.2); color: #ef4444;
+    }
+
+    @@media (max-width: 480px) {
+        .home-pending-cs-table, .home-aud-status-table { font-size: .72rem; }
+        .home-pending-cs-table thead th, .home-aud-status-table thead th { padding: 6px 8px; }
+        .home-pcs-row td, .home-aud-status-table td { padding: 5px 8px; }
+        .home-pcs-cs-btn { padding: 4px 10px; min-height: 32px; touch-action: manipulation; }
+        .home-range-select { font-size: .65rem; }
     }
 </style>
 

@@ -65,12 +65,10 @@
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <span class="text-muted" style="font-size:0.8rem;">@LS.T("common.from")</span>
                         <input type="date" class="form-control form-control-sm sa-date-input"
-                               style="width:145px;"
                                value="@_fromDateStr"
                                @onchange="e => _fromDateStr = e.Value?.ToString() ?? string.Empty" />
                         <span class="text-muted" style="font-size:0.8rem;">@LS.T("common.to")</span>
                         <input type="date" class="form-control form-control-sm sa-date-input"
-                               style="width:145px;"
                                value="@_toDateStr"
                                @onchange="e => _toDateStr = e.Value?.ToString() ?? string.Empty" />
                         <button class="btn btn-sm sa-btn-apply d-flex align-items-center gap-1"
@@ -419,8 +417,15 @@
     .sa-seg-inactive:hover { background: #f1f3f9 !important; color: #1e3a5f !important; }
 
     /* Date input / Apply */
-    .sa-date-input { font-size: 0.83rem; border-color: #ced4da; color: #212529; background-color: #fff; }
+    .sa-date-input { font-size: 0.83rem; border-color: #ced4da; color: #212529; background-color: #fff; min-width: 130px; flex: 1 1 130px; max-width: 160px; min-height: 38px; touch-action: manipulation; }
     .sa-date-input:focus { border-color: #2d6a9f; box-shadow: none; }
+
+    @@media (max-width: 480px) {
+        .sa-page { padding-left: 10px !important; padding-right: 10px !important; }
+        .sa-date-input { max-width: 100%; font-size: 1rem; }
+        .sa-filter-card .card-body { padding: 10px 12px !important; }
+        .sa-page .table { font-size: 0.78rem; }
+    }
     .sa-btn-apply { background: #2d6a9f; color: #fff; border: none; border-radius: 7px; font-size: 0.8rem; font-weight: 600; }
     .sa-btn-apply:hover:not(:disabled) { background: #1e3a5f; color: #fff; }
 

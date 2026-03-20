@@ -3,6 +3,7 @@
 @inject LPM.Services.PcService PcSvc
 @inject LPM.Services.CourseService CourseSvc
 @inject LPM.Services.DashboardService DashSvc
+@inject LPM.Auth.UserDb UserDb
 @inject AuthenticationStateProvider AuthState
 @inject IJSRuntime JS
 @using Microsoft.AspNetCore.Authorization
@@ -76,6 +77,11 @@
                             <span class="pc-header-name">@_detail.FullName</span>
                             <button class="pc-edit-btn" @onclick="OpenEditModal">
                                 <i class="ri-edit-line"></i>@LS.T("common.edit")
+                            </button>
+                            <button class="pc-solo-btn @(_isSolo ? "pc-solo-btn-active" : "")"
+                                    @onclick="AskToggleSolo"
+                                    title="@(_isSolo ? "Revoke solo auditor access" : "Grant solo auditor access")">
+                                <i class="ri-user-star-line"></i>Solo Access
                             </button>
                             @if (!string.IsNullOrEmpty(_detail.Nick))
                             {
@@ -632,6 +638,54 @@
     </div>
 }
 
+@* ── Solo Access Confirm Modal ── *@
+@if (_showSoloConfirm && _detail != null)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.45);z-index:1060;">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content" style="border-radius:14px;background:#fff;color:#212529;">
+                <div class="modal-body p-4 text-center">
+                    @if (_soloConfirmEnable)
+                    {
+                        <div class="pc-solo-confirm-icon" style="background:linear-gradient(135deg,#ea580c,#f97316);">
+                            <i class="ri-user-star-line"></i>
+                        </div>
+                        <div class="fw-bold mt-3 mb-1" style="font-size:1rem;">Grant Solo Access?</div>
+                        <div class="small mb-1" style="color:#374151;">
+                            A login account will be created for <strong>@_detail.FullName</strong>.
+                        </div>
+                        <div class="small mb-3" style="color:#6b7280;">
+                            Username: <code>@_soloConfirmUsername</code><br/>
+                            Password: <code>@((_detail.FirstName.Trim().Length > 0 ? char.ToUpper(_detail.FirstName.Trim()[0]) + _detail.FirstName.Trim()[1..].ToLower() : "User") + "1992")</code>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="pc-solo-confirm-icon" style="background:linear-gradient(135deg,#dc2626,#ef4444);">
+                            <i class="ri-user-unfollow-line"></i>
+                        </div>
+                        <div class="fw-bold mt-3 mb-1" style="font-size:1rem;">Revoke Solo Access?</div>
+                        <div class="small mb-3" style="color:#6b7280;">
+                            <strong>@_detail.FullName</strong>'s solo auditor account will be deactivated.
+                            They will no longer be able to log in.
+                        </div>
+                    }
+                    <div class="d-flex gap-2 justify-content-center">
+                        <button class="btn btn-sm btn-secondary px-3" @onclick="() => _showSoloConfirm = false">
+                            Cancel
+                        </button>
+                        <button class="btn btn-sm px-3 @(_soloConfirmEnable ? "btn-warning" : "btn-danger")"
+                                @onclick="ConfirmToggleSolo">
+                            <i class="@(_soloConfirmEnable ? "ri-user-star-line" : "ri-user-unfollow-line") me-1"></i>
+                            @(_soloConfirmEnable ? "Grant Access" : "Revoke Access")
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 <SpkNewPersonModal @ref="_editModal" Title="@LS.T("common.edit")" RequireAllFields="true" ExistingFullNames="_existingPcNames" OnSaved="SaveEditFromModal" />
 
 @* ── Finish Course Confirmation ── *@
@@ -665,6 +719,13 @@
     @@media (max-width: 768px) {
         .pc-layout { flex-direction: column; height: auto; overflow: visible; }
         .pc-left-panel { width: 100% !important; min-width: 0 !important; max-height: 40vh; overflow-y: auto; }
+    }
+
+    @@media (max-width: 480px) {
+        .pc-header-top { padding: 10px 12px; gap: 10px; }
+        .pc-header-avatar { width: 42px; height: 42px; font-size: 1.1rem; border-radius: 10px; }
+        .pc-header-name { font-size: 1rem; }
+        .pc-solo-btn { font-size: 0.72rem; padding: 4px 8px; }
     }
 
     /* ── Header card ── */
@@ -724,6 +785,32 @@
     .pc-edit-btn i { font-size: .8rem; }
     .pc-edit-btn:hover {
         background: #f1f5f9; color: #6366f1;
+    }
+
+    /* Solo access toggle button */
+    .pc-solo-btn {
+        display: inline-flex; align-items: center; gap: 3px;
+        border: 1.5px solid #d1d5db; background: transparent;
+        color: #9ca3af; font-size: .75rem; font-weight: 500;
+        cursor: pointer; padding: 4px 10px; border-radius: 6px;
+        transition: all .15s ease;
+        min-height: 32px;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .pc-solo-btn i { font-size: .85rem; }
+    .pc-solo-btn:hover { border-color: #ea580c; color: #ea580c; background: #fff7ed; }
+    .pc-solo-btn-active {
+        border-color: #ea580c; background: #fff7ed; color: #ea580c; font-weight: 600;
+    }
+    .pc-solo-btn-active:hover { background: #ffedd5; }
+
+    /* Solo confirm modal icon */
+    .pc-solo-confirm-icon {
+        width: 52px; height: 52px; border-radius: 14px;
+        display: flex; align-items: center; justify-content: center;
+        margin: 0 auto; font-size: 1.5rem; color: #fff;
+        box-shadow: 0 4px 14px rgba(234,88,12,.3);
     }
 
     /* ── Purchase button ── */
@@ -880,7 +967,13 @@
     List<PcListItemEx> _allPcsEx    = [];
     HashSet<int>       _soloPcIds   = new();
     int?               _selPcId;
+    bool               _isSolo;
     string             _search      = "";
+
+    // Solo toggle confirm
+    bool   _showSoloConfirm;
+    bool   _soloConfirmEnable; // true = enabling, false = disabling
+    string _soloConfirmUsername = "";
 
     // Sort state
     string _sortCol  = "hoursLeft";
@@ -1029,6 +1122,7 @@
     {
         if (!_selPcId.HasValue) return;
         _detail            = PcSvc.GetPcDetail(_selPcId.Value);
+        _isSolo            = _soloPcIds.Contains(_selPcId.Value);
         _pcPurchases       = PcSvc.GetAllPurchasesForPc(_selPcId.Value);
         var allCourses     = CourseSvc.GetStudentCourses(_selPcId.Value);
         _activeCourses     = allCourses.Where(c => c.DateFinished == null).ToList();
@@ -1418,5 +1512,39 @@
     static string FormatDate(string dateStr) =>
         DateOnly.TryParse(dateStr, out var d) ? d.ToString("dd/MM/yy") : dateStr;
 
+    // ── Solo access toggle ──
 
+    void AskToggleSolo()
+    {
+        if (_detail == null) return;
+        _soloConfirmEnable = !_isSolo;
+        // Pre-compute the username preview for the enable dialog
+        if (_soloConfirmEnable)
+        {
+            var fn = _detail.FirstName.Trim().ToLower();
+            var ln = _detail.LastName.Trim().ToLower();
+            _soloConfirmUsername = string.IsNullOrEmpty(ln) ? fn : $"{fn}.{ln}";
+        }
+        _showSoloConfirm = true;
+    }
+
+    void ConfirmToggleSolo()
+    {
+        if (_detail == null || !_selPcId.HasValue) return;
+        _showSoloConfirm = false;
+
+        if (_soloConfirmEnable)
+        {
+            var username = UserDb.EnableSoloAuditor(_selPcId.Value, _detail.FirstName, _detail.LastName);
+            Console.WriteLine($"[PCs] Solo access granted for PC {_selPcId.Value} ('{username}') by '{_username}'");
+        }
+        else
+        {
+            UserDb.DisableSoloAuditor(_selPcId.Value);
+            Console.WriteLine($"[PCs] Solo access revoked for PC {_selPcId.Value} by '{_username}'");
+        }
+
+        _soloPcIds = DashSvc.GetSoloPcIds();
+        _isSolo    = _soloPcIds.Contains(_selPcId.Value);
+    }
 }

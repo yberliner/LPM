@@ -357,18 +357,18 @@
     .sp-badge-pending { background: #fef3c7; color: #92400e; font-size: 0.72rem; }
 
     /* Add row */
-    .sp-add-row { background: #f8faff; border-top: 1px solid #e8edf5; }
-    .sp-pc-select { font-size: 0.83rem; max-width: 320px; border-color: #ced4da; }
+    .sp-add-row { background: #f8faff; border-top: 1px solid #e8edf5; flex-wrap: wrap; }
+    .sp-pc-select { font-size: 0.83rem; flex: 1 1 200px; max-width: 320px; border-color: #ced4da; min-height: 38px; }
     .sp-pc-select:focus { border-color: #2d6a9f; box-shadow: none; }
 
     /* Buttons */
-    .sp-btn-approve { background: #2d6a9f; color: #fff; border: none; border-radius: 7px; font-size: 0.78rem; font-weight: 600; }
+    .sp-btn-approve { background: #2d6a9f; color: #fff; border: none; border-radius: 7px; font-size: 0.78rem; font-weight: 600; touch-action: manipulation; min-height: 36px; }
     .sp-btn-approve:hover:not(:disabled) { background: #1e3a5f; color: #fff; }
-    .sp-btn-reject  { background: transparent; color: #dc3545; border: 1px solid #dc3545; border-radius: 7px; font-size: 0.78rem; font-weight: 600; }
+    .sp-btn-reject  { background: transparent; color: #dc3545; border: 1px solid #dc3545; border-radius: 7px; font-size: 0.78rem; font-weight: 600; touch-action: manipulation; min-height: 36px; }
     .sp-btn-reject:hover:not(:disabled)  { background: #dc3545; color: #fff; }
-    .sp-btn-remove  { background: transparent; color: #adb5bd; border: 1px solid #dee2e6; border-radius: 6px; font-size: 0.78rem; padding: 2px 7px; }
+    .sp-btn-remove  { background: transparent; color: #adb5bd; border: 1px solid #dee2e6; border-radius: 6px; font-size: 0.78rem; padding: 2px 7px; touch-action: manipulation; min-height: 34px; }
     .sp-btn-remove:hover:not(:disabled)  { background: #dc3545; color: #fff; border-color: #dc3545; }
-    .sp-btn-add     { background: #2d6a9f; color: #fff; border: none; border-radius: 7px; font-size: 0.78rem; font-weight: 600; white-space: nowrap; }
+    .sp-btn-add     { background: #2d6a9f; color: #fff; border: none; border-radius: 7px; font-size: 0.78rem; font-weight: 600; white-space: nowrap; touch-action: manipulation; min-height: 36px; }
     .sp-btn-add:hover:not(:disabled)     { background: #1e3a5f; color: #fff; }
 
     /* Collapse chevron */
@@ -498,12 +498,14 @@
         min-width: 38px;
         text-align: center;
         vertical-align: middle;
-        padding: 4px 0;
+        padding: 6px 0;               /* 6px gives ~30px row height — more touch-friendly */
         cursor: pointer;
         border-bottom: 1px solid #e8edf5;
         border-right: 1px solid #e8edf5;
         transition: background 0.08s ease;
         user-select: none;
+        touch-action: manipulation;   /* eliminates 300ms tap delay on iOS/Android */
+        -webkit-tap-highlight-color: transparent;
     }
     .sp-mx-cell:hover { background: #dbeafe; }
     .sp-mx-row-inactive .sp-mx-cell { background: #fafafa; }
@@ -560,16 +562,63 @@
         background: #fff;
     }
 
-    /* Responsive */
+    /* Responsive — tablet ≤768px */
     @@media (max-width: 768px) {
         .sp-page { max-width: 100%; }
         .sp-mx-pc-col { width: 110px; min-width: 110px; max-width: 110px; font-size: 0.73rem; }
         .sp-mx-pc-name { padding: 4px 8px; }
-        .sp-mx-aud-col { min-width: 32px; max-width: 32px; width: 32px; }
-        .sp-mx-cell { min-width: 32px; width: 32px; }
-        .sp-mx-check, .sp-mx-allow-all, .sp-mx-empty { width: 15px; height: 15px; }
-        .sp-matrix-wrap { max-height: 60vh; }
+        .sp-mx-aud-col { min-width: 34px; max-width: 34px; width: 34px; }
+        .sp-mx-cell { min-width: 34px; width: 34px; }
+        .sp-mx-check, .sp-mx-allow-all, .sp-mx-empty { width: 16px; height: 16px; }
+        .sp-matrix-wrap { max-height: 55vh; }
         .sp-mx-aud-label { font-size: 0.65rem; padding: 6px 8px 4px; }
+        .sp-aud-header { padding-left: 12px !important; padding-right: 12px !important; }
+    }
+
+    /* Responsive — mobile ≤480px */
+    @@media (max-width: 480px) {
+        .sp-page { padding: 12px !important; }
+
+        /* Section label */
+        .sp-section-label { font-size: 0.78rem; letter-spacing: .04em; }
+
+        /* Auditor card header — let Allow-All toggle wrap to its own line */
+        .sp-aud-header {
+            flex-wrap: wrap !important;
+            gap: 8px !important;
+            padding: 10px 12px !important;
+        }
+        .sp-avatar { width: 34px; height: 34px; font-size: 0.95rem; }
+        /* Allow-All block stretches to full width when wrapped */
+        .sp-aud-header > div[onclick\:stoppropagation] {
+            width: 100%;
+            justify-content: flex-end;
+            border-top: 1px solid rgba(255,255,255,.15);
+            padding-top: 6px;
+        }
+
+        /* Add-PC row — stack select above button */
+        .sp-add-row {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            padding: 10px 12px !important;
+            gap: 8px !important;
+        }
+        .sp-pc-select { max-width: 100% !important; width: 100%; font-size: 1rem; min-height: 44px; }
+        .sp-btn-add { width: 100%; justify-content: center; min-height: 40px; }
+
+        /* Pending request buttons — stack them */
+        .sp-btn-approve, .sp-btn-reject { font-size: 0.75rem; padding: 5px 10px; min-height: 36px; }
+
+        /* Matrix */
+        .sp-mx-pc-col { width: 90px; min-width: 90px; max-width: 90px; }
+        .sp-mx-pc-name { font-size: 0.72rem; padding: 4px 6px; }
+        .sp-matrix-wrap { max-height: 50vh; }
+        .sp-mx-aud-col { min-width: 36px; max-width: 36px; width: 36px; height: 90px; }
+        .sp-mx-cell { min-width: 36px; width: 36px; padding: 8px 0; }  /* taller touch targets */
+
+        /* Toast full width on mobile */
+        .toast { min-width: calc(100vw - 32px) !important; }
     }
 
     /* Legend */

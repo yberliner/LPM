@@ -192,6 +192,15 @@
 <style>
     .bk-page { max-width: 800px; }
 
+    @@media (max-width: 480px) {
+        .bk-page { padding-left: 10px !important; padding-right: 10px !important; }
+        .bk-page .d-flex.gap-4 { gap: 16px !important; }
+        .bk-warning-banner { gap: 10px; padding: 12px 14px; }
+        .bk-warning-icon { font-size: 1.6rem; }
+        .bk-warning-title { font-size: 0.9rem; }
+        .bk-page .btn { min-height: 40px; touch-action: manipulation; }
+    }
+
     .bk-warning-banner {
         display: flex; align-items: flex-start; gap: 16px;
         padding: 16px 20px;

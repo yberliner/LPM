@@ -177,6 +177,9 @@ static CookieOptions TrustCookieOpts() => new()
     Expires = DateTimeOffset.UtcNow.AddYears(100)
 };
 
+static string HomeOrContact(UserDb db, int userId)
+    => db.NeedsContactConfirm(userId) ? "/WelcomeContact" : "/Home";
+
 static async Task SignInUser(HttpContext ctx, UserDb db, string username,
     LPM.Auth.UserDb.LoginFlags flags)
 {
@@ -255,7 +258,7 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db, IConfiguration conf
         {
             await SignInUser(ctx, db, username, flags);
             Console.WriteLine($"[Login] '{username}' signed in via trusted device");
-            return Results.Redirect("/Home");
+            return Results.Redirect(HomeOrContact(db, flags.UserId));
         }
         ctx.Response.Cookies.Append("lpm_pending", flags.UserId.ToString(), PendingCookieOpts());
         Console.WriteLine($"[Login] '{username}' needs 2FA verification");
@@ -265,7 +268,7 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db, IConfiguration conf
     // No security steps required — sign in directly
     await SignInUser(ctx, db, username, flags);
     Console.WriteLine($"[Login] '{username}' signed in (no 2FA/pwd-chg required)");
-    return Results.Redirect("/Home");
+    return Results.Redirect(HomeOrContact(db, flags.UserId));
 }).DisableAntiforgery();
 
 // ── /loginpost-changepwd ──────────────────────────────────────────────────
@@ -302,14 +305,14 @@ app.MapPost("/loginpost-changepwd", async (HttpContext ctx, UserDb db, IConfigur
         if (trustedToken != null && db.GetTrustedDeviceUserId(trustedToken) == userId)
         {
             await SignInUser(ctx, db, flags2.Username, flags2);
-            return Results.Redirect("/Home");
+            return Results.Redirect(HomeOrContact(db, flags2.UserId));
         }
         ctx.Response.Cookies.Append("lpm_pending", userId.ToString(), PendingCookieOpts());
         return Results.Redirect("/Login2FA");
     }
 
     await SignInUser(ctx, db, flags2.Username, flags2);
-    return Results.Redirect("/Home");
+    return Results.Redirect(HomeOrContact(db, flags2.UserId));
 }).DisableAntiforgery();
 
 // ── /loginpost-setup2fa ───────────────────────────────────────────────────
@@ -343,7 +346,7 @@ app.MapPost("/loginpost-setup2fa", async (HttpContext ctx, UserDb db, IConfigura
     SetTrustCookie(ctx, db, userId);
     await SignInUser(ctx, db, flags.Username, flags);
     Console.WriteLine($"[2FA] Setup complete for userId={userId}");
-    return Results.Redirect("/Home");
+    return Results.Redirect(HomeOrContact(db, userId));
 }).DisableAntiforgery();
 
 // ── /loginpost-verify2fa ──────────────────────────────────────────────────
@@ -371,7 +374,7 @@ app.MapPost("/loginpost-verify2fa", async (HttpContext ctx, UserDb db, IConfigur
     SetTrustCookie(ctx, db, userId);
     await SignInUser(ctx, db, flags.Username, flags);
     Console.WriteLine($"[2FA] Verify success for userId={userId}");
-    return Results.Redirect("/Home");
+    return Results.Redirect(HomeOrContact(db, userId));
 }).DisableAntiforgery();
 
 // Logout endpoint — clears auth cookie and redirects to login

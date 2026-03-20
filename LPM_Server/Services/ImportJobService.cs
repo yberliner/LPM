@@ -195,10 +195,11 @@ public class ImportJobService
                     var fn = nameParts.Length > 0 ? NormalizeToAscii(nameParts[0]) : "unknown";
                     var ln = nameParts.Length > 1 ? NormalizeToAscii(nameParts[1]) : "unknown";
                     var username = $"{fn}.{ln}";
-                    var password = $"{fn}1992";
+                    var password = fn.Length > 0 ? char.ToUpper(fn[0]) + fn[1..] + "1992" : "User1992";
                     if (!_userDb.UsernameExists(username))
                     {
-                        _userDb.CreateUser(pcId, username, password, "Solo", "Staff", null, true);
+                        var newUserId = _userDb.CreateUser(pcId, username, password, "Solo", "Staff", null, true);
+                        _userDb.SetContactConfirmNeeded(newUserId);
                         Console.WriteLine($"[ImportJobService] Created Solo user '{username}' for PC {pcId}");
                     }
                     else

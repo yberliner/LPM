@@ -19,8 +19,10 @@
 - Use custom CSS or Blazor CSS isolation for small gaps instead of adding another UI library.
 - NEVER create DB tables from code — manage schema directly in the database
 - No backward compatibility needed — just change the code, no shims or migration paths
+- All UI (new pages, modified pages, refactored components) MUST be responsive and work correctly on mobile and tablet. Use Bootstrap responsive classes and/or CSS media queries (breakpoints: 480px mobile, 768px tablet). Minimum touch target size 44px. Font sizes must be at least 16px on inputs to prevent iOS auto-zoom.
 
 ## Build
 - Solution: `LPM_Server/LPM.sln`
 - Publish: linux-x64, self-contained → `C:\PublishedApps\LPM\`
+- Do NOT run `dotnet build` automatically after every change — it is slow. Only build when the user explicitly asks, or when you are already building for another reason.
 - When checking build errors, grep for BOTH `error CS` (C# errors) and `error RZ` (Razor errors)

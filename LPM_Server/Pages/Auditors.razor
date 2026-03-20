@@ -188,6 +188,13 @@
         .aud-layout { flex-direction: column; height: auto; overflow: visible; }
         .aud-left-panel { width: 100% !important; min-width: 0 !important; max-height: 40vh; overflow-y: auto; border-end: none !important; }
     }
+    @@media (max-width: 480px) {
+        .aud-layout { padding: 8px !important; gap: 8px !important; }
+        .aud-stat-card { padding: 12px 8px; }
+        .aud-stat-value { font-size: 1.4rem !important; }
+        .aud-detail-card { padding: 12px !important; }
+        .aud-detail-card .btn { min-height: 36px; touch-action: manipulation; }
+    }
 
     .aud-stat-card {
         border-radius: 14px; padding: 16px 12px; text-align: center; color: #fff;

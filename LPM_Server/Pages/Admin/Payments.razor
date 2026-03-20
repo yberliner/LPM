@@ -302,6 +302,13 @@
     .py-page  { max-width: 1000px; }
     .py-empty-block { text-align: center; padding: 36px; background: #f8faff; border-radius: 12px; border: 1px dashed #c7d7f0; color: #212529; }
 
+    @@media (max-width: 480px) {
+        .py-page { padding-left: 10px !important; padding-right: 10px !important; }
+        .py-table { font-size: 0.76rem; }
+        .py-page .modal-dialog { margin: 8px; max-width: calc(100vw - 16px) !important; }
+        .py-page .btn { min-height: 36px; touch-action: manipulation; }
+    }
+
     .py-table { font-size: 0.85rem; }
     .py-thead tr { background: #eef1f8; color: #212529; }
     .py-thead th { font-size: 0.69rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6c757d; padding-top: 7px; padding-bottom: 7px; border-bottom: 1px solid #dce3f0; border-top: none; }

@@ -289,6 +289,20 @@ public List<PcListItem> GetAllPcs()
         Console.WriteLine($"[PcService] Updated person data for {pcId}");
     }
 
+    /// <summary>Saves only the email and phone for a person (used in WelcomeContact).</summary>
+    public void SaveContactInfo(int personId, string email, string phone)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE core_persons SET Email=@em, Phone=@ph WHERE PersonId=@id";
+        cmd.Parameters.AddWithValue("@em", string.IsNullOrWhiteSpace(email) ? DBNull.Value : (object)email.Trim());
+        cmd.Parameters.AddWithValue("@ph", string.IsNullOrWhiteSpace(phone) ? DBNull.Value : (object)phone.Trim());
+        cmd.Parameters.AddWithValue("@id", personId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[PcService] Saved contact info for PersonId={personId}");
+    }
+
     public PcStats GetPcStats(int pcId)
     {
         using var conn = new SqliteConnection(_connectionString);
