@@ -13,7 +13,9 @@
 
 <div @onclick="DismissMenu">
 
-    @* ── Week navigation bar ── *@
+    @* ── Week navigation bar (hidden for solo users) ── *@
+    @if (!_isSolo)
+    {
     <div class="home-nav-bar d-flex align-items-center flex-wrap gap-2 px-3 py-2">
         @if (!_isSolo)
         {
@@ -43,6 +45,7 @@
             }
         </div>
     </div>
+    }
 
     @if (_userId == null)
     {
@@ -80,28 +83,33 @@
                     @if (_pendingCsExpanded)
                     {
                         <div class="card-body p-0 table-responsive">
-                            <table class="table table-sm table-hover mb-0 home-pending-cs-table">
+                            <table class="table table-sm table-hover mb-0 home-pending-cs-table home-dual-table">
+                                <colgroup>
+                                    <col style="width:18%;" /><col style="width:17%;" /><col style="width:13%;" />
+                                    <col style="width:11%;" /><col style="width:14%;" /><col style="width:13%;" />
+                                    <col style="width:14%;" />
+                                </colgroup>
                                 <thead>
                                     <tr>
-                                        <th style="width:18%;" class="home-pcs-sortable"
+                                        <th class="home-pcs-sortable"
                                             @onclick='() => TogglePcsSort("pc")'>
                                             PC Name
                                             <i class="@PcsSortIcon("pc")"></i>
                                         </th>
-                                        <th style="width:18%;">Name</th>
-                                        <th style="width:14%;" class="home-pcs-sortable"
+                                        <th>Name</th>
+                                        <th class="home-pcs-sortable"
                                             @onclick='() => TogglePcsSort("date")'>
                                             Date
                                             <i class="@PcsSortIcon("date")"></i>
                                         </th>
-                                        <th style="width:12%;" class="home-pcs-sortable"
+                                        <th class="home-pcs-sortable"
                                             @onclick='() => TogglePcsSort("dur")'>
                                             Duration
                                             <i class="@PcsSortIcon("dur")"></i>
                                         </th>
-                                        <th style="width:14%;">Auditor</th>
-                                        <th style="width:10%;">Type</th>
-                                        <th style="width:14%;text-align:center;">Action</th>
+                                        <th>Auditor</th>
+                                        <th>Type</th>
+                                        <th style="text-align:center;">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -201,28 +209,33 @@
                     @if (_audStatusExpanded)
                     {
                         <div class="card-body p-0 table-responsive">
-                            <table class="table table-sm table-hover mb-0 home-aud-status-table">
+                            <table class="table table-sm table-hover mb-0 home-aud-status-table home-dual-table">
+                                <colgroup>
+                                    <col style="width:18%;" /><col style="width:17%;" /><col style="width:13%;" />
+                                    <col style="width:11%;" /><col style="width:14%;" /><col style="width:13%;" />
+                                    <col style="width:14%;" />
+                                </colgroup>
                                 <thead>
                                     <tr>
-                                        <th style="width:18%;" class="home-pcs-sortable"
+                                        <th class="home-pcs-sortable"
                                             @onclick='() => ToggleAudSort("pc")'>
                                             PC Name
                                             <i class="@AudSortIcon("pc")"></i>
                                         </th>
-                                        <th style="width:18%;">Name</th>
-                                        <th style="width:12%;" class="home-pcs-sortable"
+                                        <th>Name</th>
+                                        <th class="home-pcs-sortable"
                                             @onclick='() => ToggleAudSort("date")'>
                                             Date
                                             <i class="@AudSortIcon("date")"></i>
                                         </th>
-                                        <th style="width:12%;" class="home-pcs-sortable"
+                                        <th class="home-pcs-sortable"
                                             @onclick='() => ToggleAudSort("dur")'>
                                             Duration
                                             <i class="@AudSortIcon("dur")"></i>
                                         </th>
-                                        <th style="width:14%;">CS Status</th>
-                                        <th style="width:14%;">CS By</th>
-                                        <th style="width:12%;text-align:center;">Action</th>
+                                        <th>CS Status</th>
+                                        <th>CS By</th>
+                                        <th style="text-align:center;">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -257,12 +270,26 @@
                                         };
                                         var statusLabel = _csStatusLabels.TryGetValue(s.CsStatus ?? "", out var lbl) ? lbl : (s.CsStatus ?? "");
                                         var attTypes = _audAttachTypes.GetValueOrDefault(s.SessionId);
-                                        var attColor = attTypes != null && attTypes.Contains("PinkSheet") ? "#9333ea"
-                                                     : attTypes != null && attTypes.Contains("Cramming")  ? "#f97316"
-                                                     : attTypes != null && attTypes.Contains("Instruct")  ? "#ca8a04"
-                                                     : (string?)null;
+                                        var hasPink    = attTypes != null && attTypes.Contains("PinkSheet");
+                                        var hasCram    = attTypes != null && attTypes.Contains("Cramming");
+                                        var hasInstruct= attTypes != null && attTypes.Contains("Instruct");
+                                        var attAnimClass = hasPink     ? "home-aud-att-pink"
+                                                         : hasCram     ? "home-aud-att-orange"
+                                                         : hasInstruct ? "home-aud-att-yellow"
+                                                         : "";
+                                        var attTooltip = s.CsStatus is "Waiting" or "Not_Done"
+                                            ? "CSing was not done yet"
+                                            : (hasPink && hasCram     ? "Pink Sheet + Cramming assignment from CS"
+                                            :  hasPink && hasInstruct ? "Pink Sheet + Instruction assignment from CS"
+                                            :  hasCram && hasInstruct ? "Cramming + Instruction assignment from CS"
+                                            :  hasPink    ? "Pink Sheet added by CS"
+                                            :  hasCram    ? "Cramming assignment from CS is pending"
+                                            :  hasInstruct? "Instruction assignment from CS is pending"
+                                            :  "No assignments from CS");
+                                        var attColor = (string?)null; // handled by animation class
                                         var audPendingStyle = s.IsPendingApproval ? "opacity:.4; pointer-events:none;" : "";
                                         <tr class="@rowClass home-pcs-row" style="@audPendingStyle"
+                                            title="@attTooltip"
                                             @onclick="() => { if (!s.IsPendingApproval) OpenAuditorSession(s); }">
                                             <td class="home-pcs-pcname">
                                                 @if (isNewPc)
@@ -284,8 +311,7 @@
                                                 <i class="ri-time-line me-1" style="opacity:.4;"></i>@durStr
                                             </td>
                                             <td>
-                                                <span class="home-aud-st-badge @statusClass"
-                                                      style="@(attColor != null ? $"color:{attColor};border-color:{attColor};" : "")">@statusLabel</span>
+                                                <span class="home-aud-st-badge @statusClass @attAnimClass">@statusLabel</span>
                                             </td>
                                             <td style="font-size:.78rem;color:#64748b;">
                                                 @(s.CsName ?? "—")
@@ -1158,8 +1184,8 @@
     .apc-th-pc { padding: 10px 16px; font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #64748b; }
     .apc-th-role { padding: 10px 12px; font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #64748b; white-space: nowrap; text-align: center; }
     .apc-th-remove { width: 44px; }
-    .apc-row { border-bottom: 1px solid #f1f5f9; animation: apc-row-in .22s ease both; transition: background .12s; }
-    .apc-row:hover { background: #f8fafc; }
+    .apc-row { border-bottom: 1px solid #f1f5f9; animation: apc-row-in .22s ease both; transition: background .12s; color: #1e293b; }
+    .apc-row:hover { background: #eef2ff; color: #1e293b; }
     .apc-row-pending { opacity: .55; }
     .apc-td-pc { padding: 11px 16px; font-size: .88rem; }
     .apc-td-role { padding: 6px 12px; text-align: center; white-space: nowrap; }
@@ -1275,6 +1301,7 @@
         0%, 100% { box-shadow: 0 0 4px rgba(236,72,153,.3); }
         50%      { box-shadow: 0 0 12px rgba(236,72,153,.6); }
     }
+    .home-dual-table { table-layout: fixed; width: 100%; }
     .home-pending-cs-table {
         font-size: .78rem; color: #e2e8f0;
     }
@@ -1411,6 +1438,23 @@
         background: rgba(239,68,68,.2); color: #ef4444;
     }
 
+    /* ── Attachment-type badge animations ── */
+    @@keyframes audAttPink {
+        0%,100% { background: rgba(236,72,153,.18); color: #ec4899; box-shadow: none; }
+        50%      { background: rgba(236,72,153,.38); color: #f472b6; box-shadow: 0 0 8px rgba(236,72,153,.55); }
+    }
+    @@keyframes audAttOrange {
+        0%,100% { background: rgba(249,115,22,.18); color: #f97316; box-shadow: none; }
+        50%      { background: rgba(249,115,22,.38); color: #fb923c; box-shadow: 0 0 8px rgba(249,115,22,.55); }
+    }
+    @@keyframes audAttYellow {
+        0%,100% { background: rgba(234,179,8,.18); color: #ca8a04; box-shadow: none; }
+        50%      { background: rgba(234,179,8,.38); color: #eab308; box-shadow: 0 0 8px rgba(234,179,8,.55); }
+    }
+    .home-aud-att-pink   { animation: audAttPink   2.4s ease-in-out infinite; cursor: help; }
+    .home-aud-att-orange { animation: audAttOrange 2.4s ease-in-out infinite; cursor: help; }
+    .home-aud-att-yellow { animation: audAttYellow 2.4s ease-in-out infinite; cursor: help; }
+
     @@media (max-width: 480px) {
         .home-pending-cs-table, .home-aud-status-table { font-size: .72rem; }
         .home-pending-cs-table thead th, .home-aud-status-table thead th { padding: 6px 8px; }
@@ -1467,7 +1511,7 @@
     List<DashboardService.PendingCsSession> _pendingCsSessions = [];
     bool _pendingCsExpanded = true;
     bool _weeklyOverviewExpanded = true;
-    int _csQueueDays = 0;
+    int _csQueueDays = 10;
     List<DashboardService.AuditorSessionStatus> _auditorStatuses = [];
     Dictionary<int, HashSet<string>> _audAttachTypes = new();
     bool _audStatusExpanded = true;

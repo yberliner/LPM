@@ -883,23 +883,33 @@ public class FolderService
     /// <summary>
     /// Returns which special attachment types exist for a session.
     /// Possible values: "PinkSheet", "Instruct", "Cramming".
+    /// Checks both regular and solo folder paths so the result is correct
+    /// regardless of which folder was used when the attachment was saved.
     /// </summary>
     public HashSet<string> GetSessionAttachmentTypes(int pcId, string sessionFileName)
     {
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var folder = FindPcFolder(pcId);
-        if (folder == null || string.IsNullOrEmpty(sessionFileName)) return result;
-
-        var wsPath = Path.Combine(folder, "WorkSheets");
-        if (!Directory.Exists(wsPath)) return result;
+        if (string.IsNullOrEmpty(sessionFileName)) return result;
 
         var prefix = Path.GetFileNameWithoutExtension(sessionFileName) + "_att_";
-        foreach (var file in Directory.EnumerateFiles(wsPath, prefix + "*.pdf"))
+
+        // Check both regular and solo folder — the CS may have saved to either
+        var foldersToCheck = new HashSet<string?>(StringComparer.OrdinalIgnoreCase)
+            { FindPcFolder(pcId), FindSoloPcFolder(pcId) };
+
+        foreach (var folder in foldersToCheck)
         {
-            var lower = Path.GetFileName(file).ToLowerInvariant();
-            if      (lower.Contains("pinksheet")) result.Add("PinkSheet");
-            else if (lower.Contains("instruct"))  result.Add("Instruct");
-            else if (lower.Contains("cramming"))  result.Add("Cramming");
+            if (folder == null) continue;
+            var wsPath = Path.Combine(folder, "WorkSheets");
+            if (!Directory.Exists(wsPath)) continue;
+
+            foreach (var file in Directory.EnumerateFiles(wsPath, prefix + "*.pdf"))
+            {
+                var lower = Path.GetFileName(file).ToLowerInvariant();
+                if      (lower.Contains("pinksheet")) result.Add("PinkSheet");
+                else if (lower.Contains("instruct"))  result.Add("Instruct");
+                else if (lower.Contains("cramming"))  result.Add("Cramming");
+            }
         }
         return result;
     }
