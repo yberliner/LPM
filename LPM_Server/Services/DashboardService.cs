@@ -1605,7 +1605,7 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
 
         var where = new System.Text.StringBuilder(
-            includeApproved ? "1=1" : "cr.Status != 'Done'");
+            includeApproved ? "1=1" : "cr.Status != 'Approved'");
 
         if (includeApproved && from.HasValue)
         {
@@ -1647,7 +1647,7 @@ public class DashboardService
             var row = new AdminCsRow(
                 r.GetInt32(0), r.GetInt32(1), pcId, pcName, csId, csName,
                 r.GetString(6), r.IsDBNull(7) ? 0 : r.GetInt32(7), r.IsDBNull(8) ? 0 : r.GetInt32(8),
-                r.IsDBNull(9) ? "Pending" : r.GetString(9));
+                r.IsDBNull(9) ? "Done" : r.GetString(9));
 
             csNames.TryAdd(csId, csName);
             pcNames.TryAdd(key, pcName);
@@ -1746,7 +1746,7 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             UPDATE cs_reviews
-            SET Status = 'Done', CsSalaryCentsPerHour = @salary
+            SET Status = 'Approved', CsSalaryCentsPerHour = @salary
             WHERE CsReviewId = @id";
         cmd.Parameters.AddWithValue("@salary", csSalaryCents);
         cmd.Parameters.AddWithValue("@id",     csReviewId);
