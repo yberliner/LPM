@@ -339,8 +339,12 @@ public class UserDb
         cmd.Parameters.AddWithValue("@u", username);
         using var r = cmd.ExecuteReader();
         if (!r.Read()) return null;
+        var userType  = r.GetString(4);
+        var staffRole = r.GetString(5);
         var roles = new List<string>();
-        if (r.GetString(4) == "Admin") roles.Add("Admin");
+        if (userType == "Admin")       roles.Add("Admin");
+        else if (staffRole != "Solo")  roles.Add("Customer");
+        // Solo → no roles (Dashboard only)
         return new LoginFlags(
             UserId: r.GetInt32(0),
             Username: username,
@@ -348,7 +352,7 @@ public class UserDb
             TotpEnabled: r.GetInt32(2) == 1,
             EncryptedTotpSecret: r.IsDBNull(3) ? null : r.GetString(3),
             Roles: roles,
-            StaffRole: r.GetString(5),
+            StaffRole: staffRole,
             PersonId: r.GetInt32(6));
     }
 
@@ -366,8 +370,12 @@ public class UserDb
         cmd.Parameters.AddWithValue("@id", userId);
         using var r = cmd.ExecuteReader();
         if (!r.Read()) return null;
+        var userTypeById  = r.GetString(5);
+        var staffRoleById = r.GetString(6);
         var roles = new List<string>();
-        if (r.GetString(5) == "Admin") roles.Add("Admin");
+        if (userTypeById == "Admin")        roles.Add("Admin");
+        else if (staffRoleById != "Solo")   roles.Add("Customer");
+        // Solo → no roles (Dashboard only)
         return new LoginFlags(
             UserId: r.GetInt32(0),
             Username: r.GetString(1),
@@ -375,7 +383,7 @@ public class UserDb
             TotpEnabled: r.GetInt32(3) == 1,
             EncryptedTotpSecret: r.IsDBNull(4) ? null : r.GetString(4),
             Roles: roles,
-            StaffRole: r.GetString(6),
+            StaffRole: staffRoleById,
             PersonId: r.GetInt32(7));
     }
 

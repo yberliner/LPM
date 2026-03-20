@@ -1853,7 +1853,7 @@
     void OpenImportSession()
     {
         if (!_msgUserId.HasValue) return;
-        _approvedPcs = DashSvc.GetApprovedPcsForUser(_msgUserId.Value);
+        _approvedPcs = DashSvc.GetSessionablePcsForUser(_msgUserId.Value);
         // Solo user: always their own PC (PersonId == PcId)
         _importPcId = _isSoloUser ? _msgUserId.Value : 0;
         _importSessionFile = null;
@@ -2126,7 +2126,7 @@ string _actionPcSearch = "";
     string _actionPermMsg = "";
     string _actionSuccessMsg = "";
     bool   _actionSummaryBusy;
-    List<DashboardService.ApprovedPc> _actionAllPcs = [];
+    List<DashboardService.ApprovedPc> _actionAllPcs = [];   // Open Folder + Write to Folder Summary (AllowAll respected)
 
     // ── Messaging state ──
     int?   _msgUserId;

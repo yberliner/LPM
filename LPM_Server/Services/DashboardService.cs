@@ -129,7 +129,17 @@ public class DashboardService
         aaR.Close();
 
         using var cmd = conn.CreateCommand();
-        if (allowAll)
+        if (isSolo)
+        {
+            // Solo user: only their own PC
+            cmd.CommandText = $@"
+                SELECT pc.PcId, {FullNameExpr} AS FullName, COALESCE(pc.IsAlsoSolo, 0)
+                FROM core_pcs pc
+                JOIN core_persons p ON p.PersonId = pc.PcId
+                WHERE pc.PcId = @uid";
+            cmd.Parameters.AddWithValue("@uid", userId);
+        }
+        else if (allowAll)
         {
             cmd.CommandText = $@"
                 SELECT pc.PcId, {FullNameExpr} AS FullName, COALESCE(pc.IsAlsoSolo, 0)
@@ -137,9 +147,42 @@ public class DashboardService
                 JOIN core_persons p ON p.PersonId = pc.PcId
                 ORDER BY p.FirstName, p.LastName";
         }
-        else if (isSolo)
+        else
         {
-            // Solo user: only their own PC
+            cmd.CommandText = $@"
+                SELECT pc.PcId, {FullNameExpr} AS FullName, COALESCE(pc.IsAlsoSolo, 0)
+                FROM sys_staff_pc_list spl
+                JOIN core_pcs pc ON pc.PcId = spl.PcId
+                JOIN core_persons p ON p.PersonId = pc.PcId
+                WHERE spl.UserId = @uid AND spl.IsApproved = 1
+                ORDER BY p.FirstName, p.LastName";
+            cmd.Parameters.AddWithValue("@uid", userId);
+        }
+        var list = new List<ApprovedPc>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new ApprovedPc(r.GetInt32(0), r.GetString(1), r.GetInt32(2) == 1));
+        return list;
+    }
+
+    /// <summary>
+    /// Returns PCs the user is allowed to SESSION on (Add Session / Write to Folder Summary).
+    /// Unlike GetApprovedPcsForUser, this ALWAYS uses sys_staff_pc_list — AllowAll is ignored.
+    /// Solo users can only session their own PC.
+    /// </summary>
+    public List<ApprovedPc> GetSessionablePcsForUser(int userId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        using var roleCmd = conn.CreateCommand();
+        roleCmd.CommandText = "SELECT COALESCE(StaffRole,'') FROM core_users WHERE PersonId = @id AND IsActive = 1 LIMIT 1";
+        roleCmd.Parameters.AddWithValue("@id", userId);
+        var staffRole = roleCmd.ExecuteScalar() as string ?? "";
+
+        using var cmd = conn.CreateCommand();
+        if (staffRole == "Solo")
+        {
             cmd.CommandText = $@"
                 SELECT pc.PcId, {FullNameExpr} AS FullName, COALESCE(pc.IsAlsoSolo, 0)
                 FROM core_pcs pc
@@ -588,8 +631,8 @@ public class DashboardService
         using var ar = cmdAllow.ExecuteReader();
         if (ar.Read())
         {
-            if (ar.GetInt32(0) == 1) return true;           // AllowAll
-            if (ar.GetString(1) == "Solo") return pcId == personId; // Solo can access own PC only
+            if (ar.GetString(1) == "Solo") return pcId == personId; // Solo: own PC only (ignore AllowAll)
+            if (ar.GetInt32(0) == 1) return true;                   // AllowAll (non-Solo only)
         }
         ar.Close();
 
