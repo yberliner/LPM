@@ -1457,7 +1457,7 @@
     public async Task OnCsDoneFromTab()
     {
         if (_isCS)
-            _pendingCsSessions = DashSvc.GetPendingCsSessions();
+            _pendingCsSessions = DashSvc.GetPendingCsSessions(_userId!.Value);
         await RefreshAsync();
     }
 
@@ -1466,7 +1466,7 @@
     public async Task OnTabFocused()
     {
         if (!_isCS) return;
-        var fresh = DashSvc.GetPendingCsSessions();
+        var fresh = DashSvc.GetPendingCsSessions(_userId!.Value);
         if (fresh.Count != _pendingCsSessions.Count)
         {
             _pendingCsSessions = fresh;
@@ -1511,7 +1511,7 @@
         }
 
         if (_isCS)
-            _pendingCsSessions = DashSvc.GetPendingCsSessions(_csQueueDays);
+            _pendingCsSessions = DashSvc.GetPendingCsSessions(_userId!.Value, _csQueueDays);
 
         if (_isAuditor || _isSolo)
         {
@@ -1704,7 +1704,7 @@
     {
         _csQueueDays = int.TryParse(e.Value?.ToString(), out var v) ? v : 10;
         Console.WriteLine($"[Home] Changed CS queue range to {_csQueueDays} days by '{_username}'");
-        _pendingCsSessions = DashSvc.GetPendingCsSessions(_csQueueDays);
+        _pendingCsSessions = DashSvc.GetPendingCsSessions(_userId!.Value, _csQueueDays);
         await InvokeAsync(StateHasChanged);
     }
 

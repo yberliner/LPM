@@ -2401,16 +2401,26 @@ string _actionPcSearch = "";
     void OpenActionSummary()
     {
         if (!_msgUserId.HasValue) return;
-        LoadAllPcs();
         _actionPcSearch = "";
         _actionPermMsg = "";
         _actionSuccessMsg = "";
-        _actionSummaryStep = 1;
-        _actionSummaryPcId = 0;
-        _actionSummaryPcName = "";
-        _actionSummaryIsSoloFolder = false;
         _actionSummaryBusy = false;
         _showActionSummary = true;
+
+        if (_isSoloUser)
+        {
+            // Solo users go straight to the editor — their own folder is the only option
+            var soloName = FolderSvc.GetPcName(_msgUserId.Value) ?? "";
+            OnActionSummaryPcSelected(_msgUserId.Value, soloName, isSoloFolder: true);
+        }
+        else
+        {
+            LoadAllPcs();
+            _actionSummaryStep = 1;
+            _actionSummaryPcId = 0;
+            _actionSummaryPcName = "";
+            _actionSummaryIsSoloFolder = false;
+        }
     }
 
     void OnActionSummaryPcSelected(int pcId, string pcName, bool isSoloFolder)

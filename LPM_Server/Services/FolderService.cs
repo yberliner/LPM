@@ -690,8 +690,7 @@ public class FolderService
         string? folder;
         if (solo)
         {
-            folder = FindSoloPcFolder(pcId);
-            if (folder == null) return null;
+            folder = GetOrCreateSoloPcFolderPath(pcId);
         }
         else
         {

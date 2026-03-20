@@ -14,6 +14,10 @@
         <div class="pcf-sidebar-header">
             <i class="ri-folder-user-line me-2"></i>
             <span class="pcf-pc-name">@_pcName</span>
+            @if (Solo)
+            {
+                <span class="pcf-solo-badge"><i class="ri-user-star-line"></i>Solo</span>
+            }
             <button class="pcf-sidebar-toggle" title="Collapse sidebar" @onclick="() => _sidebarOpen = false">
                 <i class="ri-arrow-left-double-line"></i>
             </button>
@@ -994,6 +998,14 @@
         border-bottom: 1px solid #334155;
         font-size: 1rem; font-weight: 700; color: #f8fafc;
     }
+    .pcf-solo-badge {
+        display: inline-flex; align-items: center; gap: 3px;
+        background: #ea580c; color: #fff;
+        font-size: .62rem; font-weight: 700; letter-spacing: .03em;
+        padding: 1px 6px; border-radius: 4px;
+        white-space: nowrap; flex-shrink: 0;
+    }
+    .pcf-solo-badge i { font-size: .7rem; }
     .pcf-sidebar-toggle {
         margin-left: auto; background: transparent; border: none;
         color: #94a3b8; cursor: pointer; font-size: .85rem;
@@ -2013,7 +2025,6 @@
         }
         else
         {
-            // Non-solo user: must have permission for the requested PC
             if (!DashSvc.CanAccessPcFolder(UserPersonId, PcId))
             {
                 NavManager.NavigateTo("/Home", replace: true);
@@ -2023,7 +2034,7 @@
 
         _userName = DashSvc.GetPersonName(UserPersonId) ?? $"User {UserPersonId}";
         RefreshFolder();
-        _pcName = _folder?.PcName ?? $"PC {PcId}";
+        _pcName = FolderSvc.GetPcName(PcId) ?? $"PC {PcId}";
         _programInsertFiles = FolderSvc.GetProgramInsertFiles();
         Console.WriteLine($"[PcFolder] Opened PC folder for '{_pcName}' (PC {PcId}) by '{_userName}'{(SessionId > 0 ? $" — CS session {SessionId}" : "")}");
         _csedSessionIds = DashSvc.GetCsedSessionIdsForPc(PcId, isSolo: Solo);

@@ -2054,8 +2054,9 @@ public class DashboardService
         int SessionId, int PcId, string PcName, string SessionName,
         string SessionDate, int TotalSeconds, bool IsSolo, string AuditorName, string CreatedAt);
 
-    /// Returns all sessions from the last <paramref name="lookbackDays"/> days that have no CS review yet.
-    public List<PendingCsSession> GetPendingCsSessions(int lookbackDays = 10)
+    /// Returns sessions from the last <paramref name="lookbackDays"/> days that have no CS review yet,
+    /// limited to PCs where <paramref name="csUserId"/> has an approved CS work-capacity assignment.
+    public List<PendingCsSession> GetPendingCsSessions(int csUserId, int lookbackDays = 10)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -2073,11 +2074,16 @@ public class DashboardService
                    COALESCE(s.CreatedAt, '') AS CreatedAt
             FROM sess_sessions s
             JOIN core_persons p ON p.PersonId = s.PcId
+            JOIN sys_staff_pc_list spl ON spl.PcId = s.PcId
+                AND spl.UserId = @csUserId
+                AND spl.IsApproved = 1
+                AND spl.WorkCapacity = 'CS'
             LEFT JOIN core_persons pa ON pa.PersonId = s.AuditorId
             LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
             WHERE cr.CsReviewId IS NULL
               {dateFilter}
             ORDER BY PcName, s.SessionDate, s.SequenceInDay";
+        cmd.Parameters.AddWithValue("@csUserId", csUserId);
         if (lookbackDays > 0)
             cmd.Parameters.AddWithValue("@cutoff",
                 DateOnly.FromDateTime(DateTime.Today.AddDays(-lookbackDays)).ToString("yyyy-MM-dd"));
