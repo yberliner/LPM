@@ -128,11 +128,21 @@
                                         var dateStr = DateTime.TryParse(s.CreatedAt, out var dt)
                                             ? dt.ToString("dd/MM/yy HH:mm")
                                             : (DateOnly.TryParse(s.SessionDate, out var d) ? d.ToString("dd/MM/yy") : s.SessionDate);
-                                        <tr class="@rowClass home-pcs-row" @onclick="() => OpenPendingCs(s)">
+                                        var pendingStyle = s.IsPendingApproval ? "opacity:.4; pointer-events:none;" : "";
+                                        <tr class="@rowClass home-pcs-row" style="@pendingStyle"
+                                            @onclick="() => { if (!s.IsPendingApproval) OpenPendingCs(s); }">
                                             <td class="home-pcs-pcname">
                                                 @if (isNewPc)
                                                 {
-                                                    <i class="ri-user-line me-1" style="opacity:.5;"></i>@s.PcName
+                                                    @if (s.IsPendingApproval)
+                                                    {
+                                                        <i class="ri-time-line me-1" style="opacity:.5;color:#f59e0b;"></i>
+                                                    }
+                                                    else
+                                                    {
+                                                        <i class="ri-user-line me-1" style="opacity:.5;"></i>
+                                                    }
+                                                    @s.PcName
                                                 }
                                             </td>
                                             <td style="font-size:.78rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;">@s.SessionName</td>
@@ -251,11 +261,21 @@
                                                      : attTypes != null && attTypes.Contains("Cramming")  ? "#f97316"
                                                      : attTypes != null && attTypes.Contains("Instruct")  ? "#ca8a04"
                                                      : (string?)null;
-                                        <tr class="@rowClass home-pcs-row" @onclick="() => OpenAuditorSession(s)">
+                                        var audPendingStyle = s.IsPendingApproval ? "opacity:.4; pointer-events:none;" : "";
+                                        <tr class="@rowClass home-pcs-row" style="@audPendingStyle"
+                                            @onclick="() => { if (!s.IsPendingApproval) OpenAuditorSession(s); }">
                                             <td class="home-pcs-pcname">
                                                 @if (isNewPc)
                                                 {
-                                                    <i class="ri-user-line me-1" style="opacity:.5;"></i>@s.PcName
+                                                    @if (s.IsPendingApproval)
+                                                    {
+                                                        <i class="ri-time-line me-1" style="opacity:.5;color:#f59e0b;"></i>
+                                                    }
+                                                    else
+                                                    {
+                                                        <i class="ri-user-line me-1" style="opacity:.5;"></i>
+                                                    }
+                                                    @s.PcName
                                                 }
                                             </td>
                                             <td style="font-size:.78rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;">@s.SessionName</td>
@@ -358,18 +378,7 @@
                                     var roleColBlocked = _unapprovedPcIds.Contains(pc.PcId);
                                     <th class="text-center py-1"
                                         style="@(roleColBlocked ? "opacity:.35; pointer-events:none;" : "")">
-                                        @if (pc.WorkCapacity == "Miscellaneous")
-                                        {
-                                            <span class="badge bg-secondary-transparent">@LS.T("home.other")</span>
-                                        }
-                                        else if (pc.WorkCapacity == "SoloAuditor")
-                                        {
-                                            <span class="badge bg-warning-transparent">@LS.T("home.solo")</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="badge bg-primary-transparent">@LS.T("home.aud")</span>
-                                        }
+                                        <span class="badge bg-primary-transparent">@LS.T("home.aud")</span>
                                     </th>
                                 }
                             </tr>
@@ -790,23 +799,6 @@
                  @onclick:stopPropagation="true">
                 <div class="home-ctx-header">Options</div>
                 <div class="list-group list-group-flush">
-                    @if (_ctxWorkCapacity != "CSSolo")
-                    {
-                        @if (ctxPc?.WorkCapacity == "Miscellaneous")
-                        {
-                            <button class="list-group-item list-group-item-action py-2"
-                                    @onclick="RemoveFromOthers">
-                                <i class="ri-corner-up-left-line me-2 text-primary"></i>Remove from Others
-                            </button>
-                        }
-                        else
-                        {
-                            <button class="list-group-item list-group-item-action py-2"
-                                    @onclick="SetAsOther">
-                                <i class="ri-shuffle-line me-2 text-secondary"></i>Set as Other
-                            </button>
-                        }
-                    }
                     @if (CanOpenPcFolder(_ctxPcId))
                     {
                         <button class="list-group-item list-group-item-action py-2"
@@ -849,84 +841,179 @@
             </div>
         }
 
-        @* ── Add-PC modal ── *@
+        @* ── Assign PC modal (redesigned) ── *@
         @if (_showAddPcModal)
         {
             <div class="modal show d-block" tabindex="-1"
-                 style="background:rgba(0,0,0,.4);"
-                 @onclick="() => _showAddPcModal = false">
-                <div class="modal-dialog modal-dialog-centered"
+                 style="background:rgba(0,0,0,.5);"
+                 @onclick="CloseAssignPcModal">
+                <div class="modal-dialog modal-dialog-centered modal-lg apc-modal-dialog"
                      @onclick:stopPropagation="true">
-                    <div class="modal-content" style="background:#fff;color:#212529;">
+                    <div class="modal-content apc-modal-content">
                         <div class="modal-header py-2 home-modal-header">
                             <h5 class="modal-title fs-15 text-white">
-                                <i class="ri-add-circle-line me-2"></i>@LS.T("home.addPcToDashboard")
+                                <i class="ri-shield-user-line me-2"></i>Manage PC Assignments
                             </h5>
                             <button type="button" class="btn-close btn-close-white"
-                                    @onclick="() => _showAddPcModal = false"></button>
+                                    @onclick="CloseAssignPcModal"></button>
                         </div>
-                        <div class="modal-body">
-                            @* ── Category selector ── *@
-                            <div class="btn-group w-100 mb-3" role="group">
-                                @if (_isAuditor)
-                                {
-                                    <button type="button"
-                                            class="btn btn-sm @(_addPcCategory == "Auditor" ? "btn-primary" : "btn-outline-secondary")"
-                                            @onclick='() => _addPcCategory = "Auditor"'>
-                                        <i class="ri-user-line me-1"></i>Auditor
-                                    </button>
-                                }
-                                @if (_isCS)
-                                {
-                                    <button type="button"
-                                            class="btn btn-sm @(_addPcCategory == "CSSolo" ? "btn-purple" : "btn-outline-secondary")"
-                                            style="@(_addPcCategory == "CSSolo" ? "background:#8e24aa; border-color:#8e24aa; color:#fff;" : "")"
-                                            @onclick='() => _addPcCategory = "CSSolo"'>
-                                        <i class="ri-shield-star-line me-1"></i>CS Solo
-                                    </button>
-                                    <button type="button"
-                                            class="btn btn-sm @(_addPcCategory == "CS" ? "btn-success" : "btn-outline-secondary")"
-                                            @onclick='() => _addPcCategory = "CS"'>
-                                        <i class="ri-briefcase-line me-1"></i>CS
-                                    </button>
-                                }
-                            </div>
-                            <input class="form-control mb-3" placeholder="Search..."
-                                   @bind="_pcSearch" @bind:event="oninput" />
-                            <div style="max-height:320px; overflow-y:auto;">
-                                @{
-                                    // Build set of PCs already in the user's list for this category
-                                    var myPcSet   = _myPcs.Select(p => (p.PcId, p.WorkCapacity)).ToHashSet();
-                                    var available = _allPcs
-                                        .Where(p => !myPcSet.Contains((p.PcId, _addPcCategory)))
-                                        .Where(p => string.IsNullOrEmpty(_pcSearch)
-                                                    || p.FullName.Contains(_pcSearch, StringComparison.OrdinalIgnoreCase)
+                        <div class="modal-body p-0">
+                            @{
+                                var myPcIds2 = _myPcs.Select(p => p.PcId).ToHashSet();
+                                // When empty → show all PCs (browse mode); when typing → filter
+                                var searchResults = string.IsNullOrWhiteSpace(_pcSearch)
+                                    ? _allPcs.ToList()
+                                    : _allPcs
+                                        .Where(p => p.FullName.Contains(_pcSearch, StringComparison.OrdinalIgnoreCase)
                                                     || p.Nick.Contains(_pcSearch, StringComparison.OrdinalIgnoreCase))
                                         .ToList();
-                                    // Get PCs with pending solo CS reviews (PcId=AuditorId sessions without review)
-                                    var pendingSoloPcIds = _addPcCategory == "CSSolo" ? GetPcIdsWithPendingSoloReviews() : new HashSet<int>();
-                                    // Get PCs with pending regular CS reviews (PcId!=AuditorId sessions without review)
-                                    var pendingRegularPcIds = _addPcCategory == "CS" ? GetPcIdsWithPendingRegularReviews() : new HashSet<int>();
-                                }
-                                @if (available.Count == 0)
+                                bool isFiltering = !string.IsNullOrWhiteSpace(_pcSearch);
+                            }
+                            @* ── Search / add new PC bar ── *@
+                            <div class="apc-search-bar px-3 pt-3 pb-2">
+                                <div class="input-group">
+                                    <span class="input-group-text apc-search-icon"><i class="ri-search-line"></i></span>
+                                    <input class="form-control apc-search-input"
+                                           placeholder="Type to filter, or scroll to browse all PCs..."
+                                           @bind="_pcSearch" @bind:event="oninput" />
+                                    @if (!string.IsNullOrEmpty(_pcSearch))
+                                    {
+                                        <button class="btn btn-outline-secondary apc-clear-btn"
+                                                @onclick='() => _pcSearch = ""'
+                                                title="Clear filter">
+                                            <i class="ri-close-line"></i>
+                                        </button>
+                                    }
+                                </div>
+                                @if (isFiltering)
                                 {
-                                    <p class="text-center" style="color:#6b7280;">No PCs available to add.</p>
+                                    <div class="apc-filter-hint">
+                                        <i class="ri-filter-line me-1"></i>@searchResults.Count result@(searchResults.Count != 1 ? "s" : "") for "@_pcSearch"
+                                    </div>
                                 }
-                                @foreach (var pc in available)
+                            </div>
+                            @* ── PC list (always visible, scrollable) ── *@
+                            <div class="apc-search-results">
+                                @if (searchResults.Count == 0)
                                 {
-                                    bool hasPending = (_addPcCategory == "CSSolo" && pendingSoloPcIds.Contains(pc.PcId))
-                                                   || (_addPcCategory == "CS"     && pendingRegularPcIds.Contains(pc.PcId));
-                                    <div class="home-pc-item"
-                                         style="@(hasPending ? "background:#e8f5e9; border-left:3px solid #4caf50;" : "")"
-                                         @onclick="() => AddPc(pc.PcId, _addPcCategory)">
-                                        <i class="ri-user-line me-2 opacity-50"></i>@pc.FullName@if (!string.IsNullOrEmpty(pc.Nick)) { <span style="font-size:.75rem;color:#6b7280;opacity:.85;"> (@pc.Nick)</span> }
-                                        @if (hasPending)
+                                    <div class="apc-search-empty">No PCs match "@_pcSearch"</div>
+                                }
+                                @foreach (var pc in searchResults)
+                                {
+                                    var alreadyAdded = myPcIds2.Contains(pc.PcId);
+                                    <div class="apc-search-item @(alreadyAdded ? "apc-search-item-added" : "")"
+                                         @onclick="async () => { if (!alreadyAdded) await AddPcFromModal(pc.PcId); }">
+                                        <i class="ri-user-line me-2 opacity-50"></i>
+                                        <span class="apc-item-name">@pc.FullName</span>
+                                        @if (!string.IsNullOrEmpty(pc.Nick))
                                         {
-                                            <span class="ms-auto badge bg-success" style="font-size:.7em;">pending</span>
+                                            <span class="apc-nick"> (@pc.Nick)</span>
+                                        }
+                                        @if (alreadyAdded)
+                                        {
+                                            <span class="ms-auto apc-already-badge">Added</span>
+                                        }
+                                        else
+                                        {
+                                            <i class="ri-add-circle-line ms-auto apc-add-icon"></i>
                                         }
                                     </div>
                                 }
                             </div>
+
+                            @* ── Current PC assignments table ── *@
+                            @{
+                                var assignedGroups = _myPcs
+                                    .GroupBy(p => p.PcId)
+                                    .Select(g => new {
+                                        PcId = g.Key,
+                                        FullName = g.First().FullName,
+                                        Nick = g.First().Nick,
+                                        HasAuditor = g.Any(p => p.WorkCapacity == "Auditor"),
+                                        HasCS = g.Any(p => p.WorkCapacity == "CS"),
+                                        IsPending = _unapprovedPcIds.Contains(g.Key)
+                                    })
+                                    .OrderBy(x => x.FullName)
+                                    .ToList();
+                            }
+                            @if (assignedGroups.Count == 0)
+                            {
+                                <div class="apc-empty text-center text-muted py-4">
+                                    <i class="ri-inbox-line d-block mb-2" style="font-size:2rem;opacity:.4;"></i>
+                                    No PCs assigned yet. Search above to add one.
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="apc-table-wrap">
+                                    <table class="apc-table w-100">
+                                        <thead>
+                                            <tr>
+                                                <th class="apc-th-pc">PC / Person</th>
+                                                @if (_isAuditor) { <th class="apc-th-role">Auditor</th> }
+                                                @if (_isCS)      { <th class="apc-th-role">CS</th> }
+                                                <th class="apc-th-remove"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @{ int apcRowIdx = 0; }
+                                            @foreach (var item in assignedGroups)
+                                            {
+                                                var ri = apcRowIdx++;
+                                                <tr class="apc-row @(item.IsPending ? "apc-row-pending" : "")"
+                                                    style="animation-delay:@(ri * 35)ms">
+                                                    <td class="apc-td-pc">
+                                                        @if (item.IsPending)
+                                                        {
+                                                            <i class="ri-time-line me-2" style="color:#f59e0b;opacity:.7;"></i>
+                                                        }
+                                                        else
+                                                        {
+                                                            <i class="ri-user-line me-2 opacity-40"></i>
+                                                        }
+                                                        <span>@item.FullName</span>
+                                                        @if (!string.IsNullOrEmpty(item.Nick))
+                                                        {
+                                                            <span class="apc-nick"> (@item.Nick)</span>
+                                                        }
+                                                        @if (item.IsPending)
+                                                        {
+                                                            <span class="apc-pending-badge ms-2">⏳ Pending</span>
+                                                        }
+                                                    </td>
+                                                    @if (_isAuditor)
+                                                    {
+                                                        <td class="apc-td-role">
+                                                            <button class="apc-role-pill @(item.HasAuditor ? "apc-pill-active-aud" : "apc-pill-inactive")"
+                                                                    title="@(item.HasAuditor ? "Remove Auditor role" : "Add as Auditor")"
+                                                                    @onclick='async () => await TogglePcRole(item.PcId, "Auditor", item.HasAuditor)'>
+                                                                <i class="@(item.HasAuditor ? "ri-checkbox-circle-fill" : "ri-add-circle-line") me-1"></i>Aud
+                                                            </button>
+                                                        </td>
+                                                    }
+                                                    @if (_isCS)
+                                                    {
+                                                        <td class="apc-td-role">
+                                                            <button class="apc-role-pill @(item.HasCS ? "apc-pill-active-cs" : "apc-pill-inactive")"
+                                                                    title="@(item.HasCS ? "Remove CS role" : "Add as CS")"
+                                                                    @onclick='async () => await TogglePcRole(item.PcId, "CS", item.HasCS)'>
+                                                                <i class="@(item.HasCS ? "ri-checkbox-circle-fill" : "ri-add-circle-line") me-1"></i>CS
+                                                            </button>
+                                                        </td>
+                                                    }
+                                                    <td class="apc-td-remove">
+                                                        <button class="apc-remove-btn"
+                                                                title="Remove all roles for this PC"
+                                                                @onclick="async () => await RemovePcAllRoles(item.PcId)">
+                                                            <i class="ri-delete-bin-line"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
                         </div>
                     </div>
                 </div>
@@ -1027,10 +1114,73 @@
     .home-ctx-menu .list-group-item:hover { background: #f3f4f6; }
     .home-ctx-menu .list-group-item.text-danger:hover { background: #fff5f5; }
 
-    /* ── Add-PC modal ── */
+    /* ── Assign PC modal ── */
     .home-modal-header {
         background: linear-gradient(135deg, #1a237e, #3949ab); border-bottom: none;
     }
+    .apc-modal-dialog { max-width: 620px; }
+    .apc-modal-content { border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.3); overflow: hidden; }
+    /* Search bar */
+    .apc-search-bar { background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+    .apc-search-icon { background: #f8fafc !important; border-right: none; color: #64748b; border-color: #e2e8f0; }
+    .apc-search-input {
+        border-left: none; border-color: #e2e8f0 !important;
+        background: #f8fafc !important; color: #1e293b !important;
+        font-size: .93rem;
+    }
+    .apc-search-input::placeholder { color: #94a3b8 !important; }
+    .apc-search-input:focus { box-shadow: none !important; border-color: #cbd5e1 !important; background: #fff !important; }
+    .apc-clear-btn { border-color: #e2e8f0; color: #64748b; background: #f8fafc; }
+    .apc-filter-hint { font-size: .75rem; color: #64748b; margin-top: 5px; padding-left: 2px; }
+    /* PC list — always visible, scrollable */
+    .apc-search-results {
+        background: #fff; border-bottom: 2px solid #e2e8f0;
+        max-height: 200px; overflow-y: auto;
+    }
+    .apc-search-item {
+        display: flex; align-items: center; padding: 9px 16px;
+        cursor: pointer; font-size: .88rem; transition: background .12s;
+        border-bottom: 1px solid #f1f5f9; color: #1e293b;
+    }
+    .apc-search-item:last-child { border-bottom: none; }
+    .apc-search-item:hover { background: #eef2ff; color: #1e40af; }
+    .apc-search-item-added { opacity: .5; cursor: default !important; }
+    .apc-search-item-added:hover { background: transparent !important; color: #1e293b !important; }
+    .apc-item-name { color: inherit; }
+    .apc-nick { font-size: .78rem; color: #94a3b8; }
+    .apc-already-badge { font-size: .72rem; color: #16a34a; background: #dcfce7; padding: 2px 7px; border-radius: 20px; margin-left: auto; flex-shrink: 0; }
+    .apc-add-icon { color: #3b82f6; font-size: 1.15rem; margin-left: auto; transition: transform .15s; flex-shrink: 0; }
+    .apc-search-item:hover .apc-add-icon { transform: scale(1.25); }
+    .apc-search-empty { padding: 14px 16px; font-size: .85rem; color: #94a3b8; font-style: italic; }
+    .apc-table-wrap { max-height: 260px; overflow-y: auto; }
+    .apc-table { border-collapse: collapse; }
+    .apc-table thead tr { background: #f8fafc; border-bottom: 2px solid #e2e8f0; }
+    .apc-th-pc { padding: 10px 16px; font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #64748b; }
+    .apc-th-role { padding: 10px 12px; font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #64748b; white-space: nowrap; text-align: center; }
+    .apc-th-remove { width: 44px; }
+    .apc-row { border-bottom: 1px solid #f1f5f9; animation: apc-row-in .22s ease both; transition: background .12s; }
+    .apc-row:hover { background: #f8fafc; }
+    .apc-row-pending { opacity: .55; }
+    .apc-td-pc { padding: 11px 16px; font-size: .88rem; }
+    .apc-td-role { padding: 6px 12px; text-align: center; white-space: nowrap; }
+    .apc-td-remove { padding: 6px 10px; text-align: center; }
+    .apc-role-pill {
+        display: inline-flex; align-items: center; padding: 5px 13px; border-radius: 20px;
+        font-size: .78rem; font-weight: 600; border: none; cursor: pointer; min-width: 68px;
+        justify-content: center; transition: all .18s cubic-bezier(.4,0,.2,1);
+    }
+    .apc-pill-active-aud { background: #3b82f6; color: #fff; box-shadow: 0 2px 8px rgba(59,130,246,.3); }
+    .apc-pill-active-aud:hover { background: #2563eb; }
+    .apc-pill-active-cs  { background: #16a34a; color: #fff; box-shadow: 0 2px 8px rgba(22,163,74,.3); }
+    .apc-pill-active-cs:hover  { background: #15803d; }
+    .apc-pill-inactive { background: #f1f5f9; color: #94a3b8; }
+    .apc-pill-inactive:hover { background: #e2e8f0; color: #64748b; }
+    .apc-remove-btn { background: none; border: none; color: #ef4444; opacity: .45; cursor: pointer; padding: 4px 8px; border-radius: 6px; transition: opacity .15s, background .15s; }
+    .apc-remove-btn:hover { opacity: 1; background: #fef2f2; }
+    .apc-pending-badge { font-size: .72rem; color: #d97706; background: #fef3c7; padding: 2px 7px; border-radius: 10px; }
+    .apc-empty { min-height: 120px; }
+    @@keyframes apc-row-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
     .home-pc-item {
         padding: 10px 14px; cursor: pointer; font-size: .9rem;
         border-bottom: 1px solid #f3f4f6;
@@ -1285,6 +1435,7 @@
     List<PcInfo>   _myPcs  = [];
     List<PcInfo>   _allPcs = [];
     HashSet<int>   _unapprovedPcIds = [];
+    HashSet<int>   _soloPcIds = [];
     Dictionary<(int, int), int> _grid = [];
     Dictionary<string, string> _csStatusLabels = [];
 
@@ -1295,19 +1446,20 @@
                || _pendingCs.Contains((DashboardService.GKey(pc), d)));
 
     List<PcInfo> AuditorPcs => _myPcs
-        .Where(pc => pc.WorkCapacity == "Auditor" || pc.WorkCapacity == "Miscellaneous" || pc.WorkCapacity == "SoloAuditor")
+        .Where(pc => pc.WorkCapacity == "Auditor")
         .Where(pc => !_hideEmpty || HasWeekData(pc))
         .ToList();
 
+    // CS-assigned PCs that are solo auditors — shown in the CS Solo table (negative GKey)
     List<PcInfo> CsSoloPcs => _myPcs
-        .Where(pc => pc.WorkCapacity == "CSSolo" || pc.WorkCapacity == "CSAndCSSolo")
-        .Select(pc => pc.WorkCapacity == "CSAndCSSolo" ? pc with { WorkCapacity = "CSSolo" } : pc)
+        .Where(pc => pc.WorkCapacity == "CS" && _soloPcIds.Contains(pc.PcId))
+        .Select(pc => pc with { WorkCapacity = "CSSolo" })
         .Where(pc => !_hideEmpty || HasWeekData(pc))
         .ToList();
 
+    // All CS-assigned PCs — shown in the CS table (positive GKey)
     List<PcInfo> CsPcs => _myPcs
-        .Where(pc => pc.WorkCapacity == "CS" || pc.WorkCapacity == "CSAndCSSolo")
-        .Select(pc => pc.WorkCapacity == "CSAndCSSolo" ? pc with { WorkCapacity = "CS" } : pc)
+        .Where(pc => pc.WorkCapacity == "CS")
         .Where(pc => !_hideEmpty || HasWeekData(pc))
         .ToList();
     HashSet<(int, int)>      _pendingCs   = [];
@@ -1500,6 +1652,7 @@
         {
             _myPcs           = DashSvc.GetUserPcs(_userId.Value);
             _allPcs          = DashSvc.GetAllPcs();
+            _soloPcIds       = DashSvc.GetSoloPcIds();
             _unapprovedPcIds = DashSvc.GetUnapprovedPcIds(_userId.Value);
             _grid          = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
             _weeklyTotals  = DashSvc.GetWeeklyTotals(_userId.Value,
@@ -1569,7 +1722,7 @@
 
         RefreshCsMetadata();
 
-        if (_selPcId == pcId && _selRole != "CSSolo") ClearSelection();
+        if (_selPcId == pcId) ClearSelection();
 
         await InvokeAsync(StateHasChanged);
     }
@@ -1582,7 +1735,7 @@
     {
         _pendingCs = DashSvc.GetPendingCsMarkers(_userId!.Value, _weekStart, _myPcs);
         _pcCsNames = DashSvc.GetLastCsNamesByPc(
-            _myPcs.Where(p => p.WorkCapacity != "Miscellaneous" && p.WorkCapacity != "CSSolo").Select(p => p.PcId).ToList());
+            _myPcs.Where(p => p.WorkCapacity == "Auditor").Select(p => p.PcId).ToList());
     }
 
     static DateOnly TodayWeekStart => DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
@@ -1812,30 +1965,6 @@
 
     static string SecsToHMM(int secs) => $"{secs / 3600}:{(secs % 3600) / 60:00}";
 
-    void SetAsOther()
-    {
-        Console.WriteLine($"[Home] Set PC {_ctxPcId} as Other (Miscellaneous) by '{_username}'");
-        // Solo columns cannot be set to Other — they are always CS
-        if (_ctxWorkCapacity == "CSSolo") { _showCtxMenu = false; return; }
-        DashSvc.SetUserPcRole(_userId!.Value, _ctxPcId, "Miscellaneous");
-        _showCtxMenu = false;
-        _myPcs = DashSvc.GetUserPcs(_userId.Value);
-        _grid  = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
-        RefreshCsMetadata();
-        if (_selPcId == _ctxPcId && _selRole != "CSSolo") ClearSelection();
-    }
-
-    void RemoveFromOthers()
-    {
-        Console.WriteLine($"[Home] Removed PC {_ctxPcId} from Others (back to Auditor) by '{_username}'");
-        DashSvc.SetUserPcRole(_userId!.Value, _ctxPcId, "Auditor");
-        _showCtxMenu = false;
-        _myPcs = DashSvc.GetUserPcs(_userId.Value);
-        _grid  = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
-        RefreshCsMetadata();
-        if (_selPcId == _ctxPcId && _selRole != "CSSolo") ClearSelection();
-    }
-
     void SaveRemarks()
     {
         if (!_userId.HasValue) return;
@@ -1847,20 +1976,20 @@
     async Task PrintTable()
     {
         Console.WriteLine($"[Home] Generated PDF report for week {_weekStart} by '{_username}'");
-        var pdfBytes = PdfService.GenerateWeeklyTablePdf(_displayName, _weekStart, _myPcs, _grid, _pcCsNames, _weekRemarks);
+        var pdfBytes = PdfService.GenerateWeeklyTablePdf(_displayName, _weekStart, _myPcs, _grid, _pcCsNames, _weekRemarks, _soloPcIds);
 
         var fileName = $"Week_{_weekStart:yyyy_MM_dd}.pdf";
         await JS.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(pdfBytes));
     }
 
-    // ── Add-PC modal ──
+    // ── Assign-PC modal ──
+    void CloseAssignPcModal() { _showAddPcModal = false; _pcSearch = ""; }
+
     void ShowAddPcModal()
     {
-        Console.WriteLine($"[Home] Opened Add PC dialog by '{_username}'");
+        Console.WriteLine($"[Home] Opened Assign PC dialog by '{_username}'");
         _showAddPcModal = true;
         _pcSearch = "";
-        // Default to the first available category the user can use
-        _addPcCategory = _isAuditor ? "Auditor" : _isCS ? "CSSolo" : "Auditor";
     }
 
     async Task AddPc(int pcId, string workCapacity = "Auditor")
@@ -1868,8 +1997,36 @@
         Console.WriteLine($"[Home] Added PC {pcId} as {workCapacity} by '{_username}'");
         DashSvc.AddUserPc(_userId!.Value, pcId, workCapacity);
         DashSvc.CheckOrRequestPermission(_userId!.Value, pcId);
-        _showAddPcModal = false;
         _pcSearch = "";
+        await RefreshAsync();
+    }
+
+    async Task AddPcFromModal(int pcId)
+    {
+        var workCapacity = _isAuditor ? "Auditor" : "CS";
+        _pcSearch = "";
+        await AddPc(pcId, workCapacity);
+    }
+
+    async Task TogglePcRole(int pcId, string workCapacity, bool currentlyActive)
+    {
+        if (currentlyActive)
+        {
+            Console.WriteLine($"[Home] Removed role {workCapacity} from PC {pcId} by '{_username}'");
+            DashSvc.RemoveUserPc(_userId!.Value, pcId, workCapacity);
+            await RefreshAsync();
+        }
+        else
+        {
+            await AddPc(pcId, workCapacity);
+        }
+    }
+
+    async Task RemovePcAllRoles(int pcId)
+    {
+        Console.WriteLine($"[Home] Removed all roles for PC {pcId} by '{_username}'");
+        foreach (var pc in _myPcs.Where(p => p.PcId == pcId).ToList())
+            DashSvc.RemoveUserPc(_userId!.Value, pcId, pc.WorkCapacity);
         await RefreshAsync();
     }
 

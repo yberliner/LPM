@@ -33,7 +33,7 @@ public record StaffMember(int PersonId, string FullName);
 public record StaffMessage(int Id, int FromId, string FromName, int ToId, string ToName, string MsgText, string CreatedAt, string? AcknowledgedAt);
 
 public record PermissionRequest(int Id, int UserId, string AuditorName, int PcId, string PcName, string RequestedAt);
-public record ApprovedPcEntry(int Id, int PcId, string PcName);
+public record ApprovedPcEntry(int Id, int PcId, string PcName, string WorkCapacity = "Auditor");
 public record AuditorPermGroup(int AuditorId, string AuditorName, bool AllowAll, List<ApprovedPcEntry> ApprovedPcs, string StaffRole = "Auditor");
 
 public class DashboardService
@@ -281,6 +281,14 @@ public class DashboardService
         if (allowAll)
         {
             Console.WriteLine($"[DashboardService] Permission check for user {auditorId} on PC {pcId}: AllowAll");
+            // Auto-approve: set IsApproved=1 for any pending entry (AllowAll users skip admin review)
+            using var approveCmd = conn.CreateCommand();
+            approveCmd.CommandText = @"
+                UPDATE sys_staff_pc_list SET IsApproved = 1
+                WHERE UserId = @aud AND PcId = @pc AND IsApproved = 0";
+            approveCmd.Parameters.AddWithValue("@aud", auditorId);
+            approveCmd.Parameters.AddWithValue("@pc", pcId);
+            approveCmd.ExecuteNonQuery();
             return true;
         }
 
@@ -300,8 +308,8 @@ public class DashboardService
         // No existing record — create a pending request
         using var insCmd = conn.CreateCommand();
         insCmd.CommandText = @"
-            INSERT OR IGNORE INTO sys_staff_pc_list (UserId, PcId, WorkCapacity, IsApproved)
-            VALUES (@aud, @pc, 'Auditor', 0)";
+            INSERT OR IGNORE INTO sys_staff_pc_list (UserId, PcId, WorkCapacity, IsApproved, RequestedAt)
+            VALUES (@aud, @pc, 'Auditor', 0, datetime('now'))";
         insCmd.Parameters.AddWithValue("@aud", auditorId);
         insCmd.Parameters.AddWithValue("@pc",  pcId);
         var inserted = insCmd.ExecuteNonQuery();
@@ -458,7 +466,8 @@ public class DashboardService
         using var permCmd = conn.CreateCommand();
         permCmd.CommandText = @"
             SELECT spl.Id, spl.UserId, spl.PcId,
-                   TRIM(pp.FirstName || ' ' || COALESCE(NULLIF(pp.LastName,''), '')) AS PcName
+                   TRIM(pp.FirstName || ' ' || COALESCE(NULLIF(pp.LastName,''), '')) AS PcName,
+                   spl.WorkCapacity
             FROM sys_staff_pc_list spl
             JOIN core_persons pp ON pp.PersonId = spl.PcId
             WHERE spl.IsApproved = 1
@@ -469,7 +478,7 @@ public class DashboardService
         {
             int audId = pr.GetInt32(1);
             if (!permsByAuditor.ContainsKey(audId)) permsByAuditor[audId] = new();
-            permsByAuditor[audId].Add(new ApprovedPcEntry(pr.GetInt32(0), pr.GetInt32(2), pr.GetString(3)));
+            permsByAuditor[audId].Add(new ApprovedPcEntry(pr.GetInt32(0), pr.GetInt32(2), pr.GetString(3), pr.GetString(4)));
         }
 
         return auditors.Select(a => new AuditorPermGroup(
@@ -491,19 +500,20 @@ public class DashboardService
     }
 
     /// Admin adds a PC permission directly (approved).
-    public void AddApprovedPermission(int auditorId, int pcId)
+    public void AddApprovedPermission(int auditorId, int pcId, string workCapacity = "Auditor")
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO sys_staff_pc_list (UserId, PcId, WorkCapacity, IsApproved)
-            VALUES (@aud, @pc, 'Auditor', 1)
-            ON CONFLICT(UserId, PcId) DO UPDATE SET IsApproved = 1";
+            INSERT INTO sys_staff_pc_list (UserId, PcId, WorkCapacity, IsApproved, RequestedAt)
+            VALUES (@aud, @pc, @cap, 1, datetime('now'))
+            ON CONFLICT(UserId, PcId) DO UPDATE SET IsApproved = 1, WorkCapacity = @cap";
         cmd.Parameters.AddWithValue("@aud", auditorId);
         cmd.Parameters.AddWithValue("@pc",  pcId);
+        cmd.Parameters.AddWithValue("@cap", workCapacity);
         cmd.ExecuteNonQuery();
-        Console.WriteLine($"[DashboardService] Added approved permission for auditor {auditorId}, PC {pcId}");
+        Console.WriteLine($"[DashboardService] Added approved permission for auditor {auditorId}, PC {pcId} as {workCapacity}");
     }
 
     public void RemovePermission(int id)
@@ -665,80 +675,29 @@ public class DashboardService
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
-
-        // Get current WorkCapacity for this (userId, pcId) if exists
-        using var curCmd = conn.CreateCommand();
-        curCmd.CommandText = "SELECT WorkCapacity FROM sys_staff_pc_list WHERE UserId = @uid AND PcId = @pcId";
-        curCmd.Parameters.AddWithValue("@uid",  userId);
-        curCmd.Parameters.AddWithValue("@pcId", pcId);
-        var current = curCmd.ExecuteScalar() as string;
-
-        // Determine effective WorkCapacity to store (mutual exclusivity rules)
-        string effective = workCapacity switch
-        {
-            "CS"    => current == "CSSolo"  ? "CSAndCSSolo" : "CS",
-            "CSSolo"=> current == "CS"      ? "CSAndCSSolo" : "CSSolo",
-            _       => workCapacity   // Auditor, Miscellaneous, CSAndCSSolo — replace outright
-        };
-
         using var cmd = conn.CreateCommand();
-        if (current is null)
-        {
-            // New entry — start as pending (IsApproved=0); CheckOrRequestPermission handles approval
-            cmd.CommandText = "INSERT INTO sys_staff_pc_list (UserId, PcId, WorkCapacity, IsApproved) VALUES (@uid, @pcId, @cap, 0)";
-        }
-        else
-        {
-            // Existing entry — only update WorkCapacity, never touch IsApproved
-            cmd.CommandText = "UPDATE sys_staff_pc_list SET WorkCapacity = @cap WHERE UserId = @uid AND PcId = @pcId";
-        }
+        // Insert new entry as pending; if already exists update WorkCapacity only (never touch IsApproved or RequestedAt)
+        cmd.CommandText = @"
+            INSERT INTO sys_staff_pc_list (UserId, PcId, WorkCapacity, IsApproved, RequestedAt)
+            VALUES (@uid, @pcId, @cap, 0, datetime('now'))
+            ON CONFLICT(UserId, PcId) DO UPDATE SET WorkCapacity = @cap";
         cmd.Parameters.AddWithValue("@uid",  userId);
         cmd.Parameters.AddWithValue("@pcId", pcId);
-        cmd.Parameters.AddWithValue("@cap",  effective);
+        cmd.Parameters.AddWithValue("@cap",  workCapacity);
         cmd.ExecuteNonQuery();
-        Console.WriteLine($"[DashboardService] Added PC {pcId} to user {userId} as {effective} (requested: {workCapacity})");
+        Console.WriteLine($"[DashboardService] Added PC {pcId} to user {userId} as {workCapacity}");
     }
 
-    /// <summary>
-    /// Removes workCapacity from a PC entry. If the entry is CSAndCSSolo and only one part
-    /// is removed, it downgrades to the remaining part. Otherwise the row is deleted.
-    /// </summary>
     public void RemoveUserPc(int userId, int pcId, string workCapacity = "Auditor")
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
-
-        using var curCmd = conn.CreateCommand();
-        curCmd.CommandText = "SELECT WorkCapacity FROM sys_staff_pc_list WHERE UserId = @uid AND PcId = @pcId";
-        curCmd.Parameters.AddWithValue("@uid",  userId);
-        curCmd.Parameters.AddWithValue("@pcId", pcId);
-        var current = curCmd.ExecuteScalar() as string;
-        if (current is null) return;
-
-        // CSAndCSSolo downgrade: removing one part leaves the other
-        string? downgrade = (current, workCapacity) switch
-        {
-            ("CSAndCSSolo", "CS")     => "CSSolo",
-            ("CSAndCSSolo", "CSSolo") => "CS",
-            _                         => null   // delete the row
-        };
-
         using var cmd = conn.CreateCommand();
-        if (downgrade is not null)
-        {
-            cmd.CommandText = "UPDATE sys_staff_pc_list SET WorkCapacity = @cap WHERE UserId = @uid AND PcId = @pcId";
-            cmd.Parameters.AddWithValue("@cap",  downgrade);
-            cmd.Parameters.AddWithValue("@uid",  userId);
-            cmd.Parameters.AddWithValue("@pcId", pcId);
-        }
-        else
-        {
-            cmd.CommandText = "DELETE FROM sys_staff_pc_list WHERE UserId = @uid AND PcId = @pcId";
-            cmd.Parameters.AddWithValue("@uid",  userId);
-            cmd.Parameters.AddWithValue("@pcId", pcId);
-        }
+        cmd.CommandText = "DELETE FROM sys_staff_pc_list WHERE UserId = @uid AND PcId = @pcId";
+        cmd.Parameters.AddWithValue("@uid",  userId);
+        cmd.Parameters.AddWithValue("@pcId", pcId);
         cmd.ExecuteNonQuery();
-        Console.WriteLine($"[DashboardService] Removed '{workCapacity}' for PC {pcId} from user {userId} (was: {current})");
+        Console.WriteLine($"[DashboardService] Removed PC {pcId} from user {userId}");
     }
 
     public void SetUserPcRole(int userId, int pcId, string role)
@@ -762,9 +721,8 @@ public class DashboardService
         var dateList = string.Join(",", dates.Select(d => $"'{d:yyyy-MM-dd}'"));
 
         var auditorPcIds = userPcs.Where(p => p.WorkCapacity == "Auditor").Select(p => p.PcId).ToList();
-        var csPcIds      = userPcs.Where(p => p.WorkCapacity == "CS" || p.WorkCapacity == "CSAndCSSolo").Select(p => p.PcId).ToList();
-        var soloCSPcIds  = userPcs.Where(p => p.WorkCapacity == "CSSolo" || p.WorkCapacity == "CSAndCSSolo").Select(p => p.PcId).ToList();
-        var miscPcIds    = userPcs.Where(p => p.WorkCapacity == "Miscellaneous").Select(p => p.PcId).ToList();
+        var csPcIds      = userPcs.Where(p => p.WorkCapacity == "CS").Select(p => p.PcId).ToList();
+        var soloAuditorIds = csPcIds.Count > 0 ? GetSoloPcIds().Intersect(csPcIds).ToList() : new List<int>();
 
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -836,11 +794,11 @@ public class DashboardService
             }
         }
 
-        // Solo CS columns: CS reviewing sessions where PcId = AuditorId (solo)
-        // Grid key uses -pcId to distinguish from the same person's regular column
-        if (soloCSPcIds.Count > 0)
+        // CS Solo columns: reviewing sessions where AuditorId IS NULL (solo self-sessions)
+        // Grid key uses -pcId to appear in a separate CS Solo table column
+        if (soloAuditorIds.Count > 0)
         {
-            var pcList = string.Join(",", soloCSPcIds);
+            var pcList = string.Join(",", soloAuditorIds);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT s.PcId, s.SessionDate, SUM(cr.ReviewLengthSeconds)
@@ -857,30 +815,7 @@ public class DashboardService
                 var secs   = r.GetInt32(2);
                 var dayIdx = dates.IndexOf(date);
                 if (dayIdx < 0) continue;
-                var key = (-pcId, dayIdx);   // negative key for solo column
-                result[key] = result.GetValueOrDefault(key) + secs;
-            }
-        }
-
-        if (miscPcIds.Count > 0)
-        {
-            var pcList = string.Join(",", miscPcIds);
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = $@"
-                SELECT PcId, ChargeDate, SUM(LengthSeconds + AdminSeconds)
-                FROM sess_misc_charges
-                WHERE AuditorId = @uid AND PcId IN ({pcList}) AND ChargeDate IN ({dateList})
-                GROUP BY PcId, ChargeDate";
-            cmd.Parameters.AddWithValue("@uid", userId);
-            using var r = cmd.ExecuteReader();
-            while (r.Read())
-            {
-                var pcId   = r.GetInt32(0);
-                var date   = DateOnly.Parse(r.GetString(1));
-                var secs   = r.GetInt32(2);
-                var dayIdx = dates.IndexOf(date);
-                if (dayIdx < 0) continue;
-                var key = (pcId, dayIdx);
+                var key = (-pcId, dayIdx);   // negative key for CS Solo column
                 result[key] = result.GetValueOrDefault(key) + secs;
             }
         }
@@ -929,56 +864,7 @@ public class DashboardService
                     r.IsDBNull(7) ? null : r.GetString(7)));
             }
         }
-        else if (role == "Miscellaneous")
-        {
-            // MiscCharge entries are per-auditor — each auditor sees only their own rows
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                SELECT MiscChargeId, LengthSeconds, AdminSeconds,
-                       IsFree, Summary, CreatedAt
-                FROM sess_misc_charges
-                WHERE AuditorId = @uid AND PcId = @pcId AND ChargeDate = @date
-                ORDER BY SequenceInDay";
-            cmd.Parameters.AddWithValue("@uid",  userId);
-            cmd.Parameters.AddWithValue("@pcId", pcId);
-            cmd.Parameters.AddWithValue("@date", dateStr);
-            using var r = cmd.ExecuteReader();
-            while (r.Read())
-            {
-                sessions.Add(new SessionRow(
-                    r.GetInt32(0), r.GetInt32(1), r.GetInt32(2),
-                    r.GetInt32(3) == 1,
-                    r.IsDBNull(4) ? null : r.GetString(4),
-                    r.IsDBNull(5) ? ""   : r.GetString(5),
-                    ""));
-            }
-        }
-        else if (role == "SoloAuditor")
-        {
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                SELECT SessionId, LengthSeconds, AdminSeconds,
-                       IsFreeSession, CreatedAt,
-                       VerifiedStatus, Name
-                FROM sess_sessions
-                WHERE AuditorId IS NULL AND PcId = @pcId AND SessionDate = @date
-                ORDER BY SequenceInDay";
-            cmd.Parameters.AddWithValue("@pcId", pcId);
-            cmd.Parameters.AddWithValue("@date", dateStr);
-            using var r = cmd.ExecuteReader();
-            while (r.Read())
-            {
-                sessions.Add(new SessionRow(
-                    r.GetInt32(0), r.GetInt32(1), r.GetInt32(2),
-                    r.GetInt32(3) == 1,
-                    null,
-                    r.IsDBNull(4) ? ""   : r.GetString(4),
-                    "",
-                    r.IsDBNull(5) ? "Pending" : r.GetString(5),
-                    r.IsDBNull(6) ? null : r.GetString(6)));
-            }
-        }
-        else  // CS role
+        else  // CS or CSSolo role
         {
             // All sessions for this PC+date, with auditor's first name
             // CSSolo column: only sessions where AuditorId IS NULL; CS: AuditorId IS NOT NULL
@@ -1223,7 +1109,6 @@ public class DashboardService
 
         var startStr = weeks[0].ToString("yyyy-MM-dd");
         var auditorPcIds = userPcs.Where(p => p.WorkCapacity == "Auditor").Select(p => p.PcId).ToList();
-        var miscPcIds    = userPcs.Where(p => p.WorkCapacity == "Miscellaneous").Select(p => p.PcId).ToList();
 
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -1262,24 +1147,6 @@ public class DashboardService
         }
 
         // CS columns intentionally excluded from weekly totals graph
-
-        if (miscPcIds.Count > 0)
-        {
-            var pcList = string.Join(",", miscPcIds);
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = $@"
-                SELECT m.ChargeDate,
-                       TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS FullName,
-                       SUM(m.LengthSeconds + m.AdminSeconds)
-                FROM sess_misc_charges m
-                JOIN core_persons p ON p.PersonId = m.PcId
-                WHERE m.AuditorId = @uid AND m.PcId IN ({pcList}) AND m.ChargeDate >= @start
-                GROUP BY m.ChargeDate, m.PcId";
-            cmd.Parameters.AddWithValue("@uid",   userId);
-            cmd.Parameters.AddWithValue("@start", startStr);
-            using var r = cmd.ExecuteReader();
-            while (r.Read()) Accumulate(r.GetString(0), r.GetInt32(2), r.GetString(1));
-        }
 
         return weeks.Select(w =>
         {
@@ -1334,14 +1201,10 @@ public class DashboardService
     {
         var result = new HashSet<(int pcId, int dayIndex)>();
 
-        var regularPcIds = userPcs
-            .Where(p => p.WorkCapacity == "CS" || p.WorkCapacity == "CSAndCSSolo")
-            .Select(p => p.PcId)
-            .ToList();
-        var soloPcIds = userPcs
-            .Where(p => p.WorkCapacity == "CSSolo" || p.WorkCapacity == "CSAndCSSolo")
-            .Select(p => p.PcId)
-            .ToList();
+        var allCsPcIds   = userPcs.Where(p => p.WorkCapacity == "CS").Select(p => p.PcId).ToList();
+        var soloSet      = allCsPcIds.Count > 0 ? GetSoloPcIds() : new HashSet<int>();
+        var soloPcIds    = allCsPcIds.Where(id => soloSet.Contains(id)).ToList();
+        var regularPcIds = allCsPcIds.Where(id => !soloSet.Contains(id)).ToList();
 
         if (regularPcIds.Count == 0 && soloPcIds.Count == 0)
             return result;
@@ -1632,9 +1495,8 @@ public class DashboardService
             return cmd.ExecuteScalar() is not null;
         }
 
-        // Regular mode: sessions + misc (CS excluded from graph)
+        // Regular mode: auditor sessions only (CS excluded from graph)
         var auditorPcIds = userPcs.Where(p => p.WorkCapacity == "Auditor").Select(p => p.PcId).ToList();
-        var miscPcIds = userPcs.Where(p => p.WorkCapacity == "Miscellaneous").Select(p => p.PcId).ToList();
 
         if (auditorPcIds.Count > 0)
         {
@@ -1647,19 +1509,6 @@ public class DashboardService
             LIMIT 1";
             sCmd.Parameters.AddWithValue("@uid", userId);
             if (sCmd.ExecuteScalar() is not null) return true;
-        }
-
-        if (miscPcIds.Count > 0)
-        {
-            var pcList = string.Join(",", miscPcIds);
-            using var mCmd = conn.CreateCommand();
-            mCmd.CommandText = $@"
-            SELECT 1
-            FROM sess_misc_charges
-            WHERE AuditorId = @uid AND PcId IN ({pcList}) AND ChargeDate IN ({dateList})
-            LIMIT 1";
-            mCmd.Parameters.AddWithValue("@uid", userId);
-            if (mCmd.ExecuteScalar() is not null) return true;
         }
 
         return false;
@@ -2052,7 +1901,8 @@ public class DashboardService
 
     public record PendingCsSession(
         int SessionId, int PcId, string PcName, string SessionName,
-        string SessionDate, int TotalSeconds, bool IsSolo, string AuditorName, string CreatedAt);
+        string SessionDate, int TotalSeconds, bool IsSolo, string AuditorName, string CreatedAt,
+        bool IsPendingApproval = false);
 
     /// Returns sessions from the last <paramref name="lookbackDays"/> days that have no CS review yet,
     /// limited to PCs where <paramref name="csUserId"/> has an approved CS work-capacity assignment.
@@ -2071,18 +1921,19 @@ public class DashboardService
                    COALESCE(s.LengthSeconds,0) + COALESCE(s.AdminSeconds,0) AS TotalSec,
                    CASE WHEN s.AuditorId IS NULL THEN 1 ELSE 0 END AS IsSolo,
                    COALESCE(TRIM(pa.FirstName || ' ' || COALESCE(NULLIF(pa.LastName,''), '')), 'Solo') AS AuditorName,
-                   COALESCE(s.CreatedAt, '') AS CreatedAt
+                   COALESCE(s.CreatedAt, '') AS CreatedAt,
+                   spl.IsApproved AS IsApproved
             FROM sess_sessions s
             JOIN core_persons p ON p.PersonId = s.PcId
             JOIN sys_staff_pc_list spl ON spl.PcId = s.PcId
                 AND spl.UserId = @csUserId
-                AND spl.IsApproved = 1
+                AND spl.IsApproved IN (0,1)
                 AND spl.WorkCapacity = 'CS'
             LEFT JOIN core_persons pa ON pa.PersonId = s.AuditorId
             LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
             WHERE cr.CsReviewId IS NULL
               {dateFilter}
-            ORDER BY PcName, s.SessionDate, s.SequenceInDay";
+            ORDER BY spl.IsApproved DESC, PcName, s.SessionDate, s.SequenceInDay";
         cmd.Parameters.AddWithValue("@csUserId", csUserId);
         if (lookbackDays > 0)
             cmd.Parameters.AddWithValue("@cutoff",
@@ -2094,7 +1945,8 @@ public class DashboardService
             list.Add(new PendingCsSession(
                 r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3),
                 r.GetString(4), r.IsDBNull(5) ? 0 : r.GetInt32(5),
-                r.GetInt32(6) == 1, r.GetString(7), r.GetString(8)));
+                r.GetInt32(6) == 1, r.GetString(7), r.GetString(8),
+                IsPendingApproval: r.GetInt32(9) == 0));
         }
         return list;
     }
@@ -2103,7 +1955,8 @@ public class DashboardService
 
     public record AuditorSessionStatus(
         int SessionId, int PcId, string PcName, string SessionName,
-        string SessionDate, int TotalSeconds, string CsStatus, string? CsName, string CreatedAt);
+        string SessionDate, int TotalSeconds, string CsStatus, string? CsName, string CreatedAt,
+        bool IsPendingApproval = false);
 
     /// <summary>
     /// Returns sessions the auditor conducted in the last <paramref name="lookbackDays"/> days
@@ -2116,28 +1969,52 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         var dateFilter = lookbackDays > 0
             ? "AND s.SessionDate >= @cutoff" : "";
-        var auditorFilter = isSolo
-            ? "s.PcId = @aid AND s.AuditorId IS NULL"
-            : "s.AuditorId = @aid";
-        cmd.CommandText = $@"
-            SELECT s.SessionId, s.PcId,
-                   {FullNameExpr} AS PcName,
-                   COALESCE(s.Name, '') AS SessionName,
-                   s.SessionDate,
-                   COALESCE(s.LengthSeconds,0) + COALESCE(s.AdminSeconds,0) AS TotalSec,
-                   CASE
-                       WHEN cr.CsReviewId IS NULL THEN 'Waiting'
-                       ELSE cr.Status
-                   END AS CsStatus,
-                   TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS CsName,
-                   COALESCE(s.CreatedAt, '') AS CreatedAt
-            FROM sess_sessions s
-            JOIN core_persons p ON p.PersonId = s.PcId
-            LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
-            LEFT JOIN core_persons pc ON pc.PersonId = cr.CsId
-            WHERE {auditorFilter}
-              {dateFilter}
-            ORDER BY PcName, s.SessionDate, s.SequenceInDay";
+        if (isSolo)
+        {
+            // Solo: sessions are on their own PcId, no permission check needed
+            cmd.CommandText = $@"
+                SELECT s.SessionId, s.PcId,
+                       {FullNameExpr} AS PcName,
+                       COALESCE(s.Name, '') AS SessionName,
+                       s.SessionDate,
+                       COALESCE(s.LengthSeconds,0) + COALESCE(s.AdminSeconds,0) AS TotalSec,
+                       CASE WHEN cr.CsReviewId IS NULL THEN 'Waiting' ELSE cr.Status END AS CsStatus,
+                       TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS CsName,
+                       COALESCE(s.CreatedAt, '') AS CreatedAt,
+                       1 AS IsApproved
+                FROM sess_sessions s
+                JOIN core_persons p ON p.PersonId = s.PcId
+                LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
+                LEFT JOIN core_persons pc ON pc.PersonId = cr.CsId
+                WHERE s.PcId = @aid AND s.AuditorId IS NULL
+                  {dateFilter}
+                ORDER BY PcName, s.SessionDate, s.SequenceInDay";
+        }
+        else
+        {
+            // Regular auditor: join sys_staff_pc_list (WorkCapacity=Auditor), include pending rows
+            cmd.CommandText = $@"
+                SELECT s.SessionId, s.PcId,
+                       {FullNameExpr} AS PcName,
+                       COALESCE(s.Name, '') AS SessionName,
+                       s.SessionDate,
+                       COALESCE(s.LengthSeconds,0) + COALESCE(s.AdminSeconds,0) AS TotalSec,
+                       CASE WHEN cr.CsReviewId IS NULL THEN 'Waiting' ELSE cr.Status END AS CsStatus,
+                       TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS CsName,
+                       COALESCE(s.CreatedAt, '') AS CreatedAt,
+                       spl.IsApproved AS IsApproved
+                FROM sess_sessions s
+                JOIN core_persons p ON p.PersonId = s.PcId
+                JOIN sys_staff_pc_list spl ON spl.PcId = s.PcId
+                    AND spl.UserId = @aid
+                    AND spl.WorkCapacity = 'Auditor'
+                    AND spl.IsApproved IN (0,1)
+                LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
+                LEFT JOIN core_persons pc ON pc.PersonId = cr.CsId
+                WHERE s.AuditorId = @aid
+                  {dateFilter}
+                ORDER BY spl.IsApproved DESC, PcName, s.SessionDate, s.SequenceInDay";
+        }
         cmd.Parameters.AddWithValue("@aid", auditorId);
         if (lookbackDays > 0)
             cmd.Parameters.AddWithValue("@cutoff",
@@ -2149,9 +2026,21 @@ public class DashboardService
             list.Add(new AuditorSessionStatus(
                 r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3),
                 r.GetString(4), r.IsDBNull(5) ? 0 : r.GetInt32(5),
-                r.GetString(6), r.IsDBNull(7) ? null : r.GetString(7), r.GetString(8)));
+                r.GetString(6), r.IsDBNull(7) ? null : r.GetString(7), r.GetString(8),
+                IsPendingApproval: r.GetInt32(9) == 0));
         }
         return list;
+    }
+
+    /// <summary>Returns whether the user has AllowAll=1 in core_users.</summary>
+    public bool GetAllowAllFlag(int userId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COALESCE(AllowAll,0) FROM core_users WHERE PersonId = @id AND IsActive = 1 LIMIT 1";
+        cmd.Parameters.AddWithValue("@id", userId);
+        return cmd.ExecuteScalar() is long aa && aa == 1;
     }
 
     // ── Staff Messaging ─────────────────────────────────────────

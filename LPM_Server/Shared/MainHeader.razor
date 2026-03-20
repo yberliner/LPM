@@ -147,6 +147,10 @@
                         {
                             <span class="solo-badge-inline">Solo</span>
                         }
+                        @if (_isAllowAll)
+                        {
+                            <span class="allowall-badge-inline">⚡ Full Access</span>
+                        }
                         <ul class="dropdown-menu dropdown-menu-end shadow-sm">
                             <li><h6 class="dropdown-header">@_displayName</h6></li>
                             <li><a class="dropdown-item" href="/Settings"><i class="ri-settings-3-line me-2"></i>@LS.T("header.settings")</a></li>
@@ -310,6 +314,28 @@
                         @@keyframes soloPulse {
                             0%,100% { box-shadow: 0 0 10px rgba(239,68,68,0.55), 0 2px 6px rgba(0,0,0,0.25); }
                             50%     { box-shadow: 0 0 18px rgba(239,68,68,0.9),  0 2px 6px rgba(0,0,0,0.25); }
+                        }
+                        /* ── AllowAll / Full Access badge ── */
+                        .allowall-badge-inline {
+                            display: inline-flex;
+                            align-items: center;
+                            font-size: 0.7rem;
+                            font-weight: 700;
+                            letter-spacing: 0.1em;
+                            text-transform: uppercase;
+                            color: #1a1a00;
+                            background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
+                            border-radius: 999px;
+                            padding: 3px 11px;
+                            box-shadow: 0 0 12px rgba(251,191,36,0.65), 0 2px 6px rgba(0,0,0,0.2);
+                            margin-left: 4px;
+                            vertical-align: middle;
+                            align-self: center;
+                            animation: allowAllPulse 3s ease-in-out infinite;
+                        }
+                        @@keyframes allowAllPulse {
+                            0%,100% { box-shadow: 0 0 12px rgba(251,191,36,0.65), 0 2px 6px rgba(0,0,0,0.2); }
+                            50%     { box-shadow: 0 0 22px rgba(251,191,36,1.0),  0 2px 6px rgba(0,0,0,0.2); }
                         }
                     </style>
 
@@ -1607,6 +1633,7 @@
     private string _logUsername = "";
     private string? _avatarUrl;
     private bool _isSoloUser;   // true when logged-in user has StaffRole = "Solo"
+    private bool _isAllowAll;   // true when logged-in user has AllowAll = 1 in core_users
 
     // ── Add PC state ──
     SpkNewPersonModal _addPcModal = default!;
@@ -2131,6 +2158,7 @@ string _actionPcSearch = "";
         _msgUserId = DashSvc.GetUserIdByUsername(name);
         if (_msgUserId.HasValue)
         {
+            _isAllowAll = DashSvc.GetAllowAllFlag(_msgUserId.Value);
             _pendingMsgCount = DashSvc.GetPendingMessageCount(_msgUserId.Value);
             // Subscribe to instant message notifications
             MsgNotifier.OnNewMessage += OnNewMessageReceived;

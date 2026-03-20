@@ -118,9 +118,11 @@
                                 <th class="sp-mx-pc-col sp-mx-head-pc">PC</th>
                                 @foreach (var aud in _matrixAuditors)
                                 {
-                                    <th class="sp-mx-aud-col">
-                                        <div class="sp-mx-aud-label" title="@aud.AuditorName">
+                                    <th class="sp-mx-aud-col @(aud.AllowAll ? "sp-mx-aud-col-priv" : "")">
+                                        <div class="sp-mx-aud-label @(aud.AllowAll ? "sp-mx-aud-label-priv" : "")"
+                                             title="@(aud.AuditorName + (aud.AllowAll ? " — Privileged (AllowAll)" : ""))">
                                             @aud.AuditorName
+                                            @if (aud.AllowAll) { <span class="sp-mx-priv-dot">⚡</span> }
                                         </div>
                                     </th>
                                 }
@@ -146,16 +148,13 @@
                                         var hasPerm = HasPermission(aud, pc.PcId);
                                         var cellKey = (aud.AuditorId, pc.PcId);
                                         var flashing = _flashingCells.Contains(cellKey);
-                                        <td class="sp-mx-cell @(flashing ? "sp-mx-flash" : "")"
-                                            @onclick="() => MatrixToggle(aud, pc.PcId, !hasPerm)"
+                                        <td class="sp-mx-cell @(flashing ? "sp-mx-flash" : "") @(aud.AllowAll ? "sp-mx-cell-priv" : "")"
+                                            @onclick="() => MatrixToggle(aud, pc.PcId)"
                                             title="@aud.AuditorName — @pc.FullName">
-                                            @if (aud.AllowAll)
+                                            @if (hasPerm)
                                             {
-                                                <span class="sp-mx-allow-all" title="Allow All"></span>
-                                            }
-                                            else if (hasPerm)
-                                            {
-                                                <span class="sp-mx-check"></span>
+                                                var cap = aud.ApprovedPcs.FirstOrDefault(p => p.PcId == pc.PcId)?.WorkCapacity ?? "Auditor";
+                                                <span class="@(cap == "CS" ? "sp-mx-cs" : "sp-mx-aud")">@(cap == "CS" ? "CS" : "A")</span>
                                             }
                                             else
                                             {
@@ -169,9 +168,10 @@
                     </table>
                 </div>
                 <div class="d-flex align-items-center gap-3 px-4 py-2 sp-mx-legend">
-                    <span class="d-flex align-items-center gap-1"><span class="sp-mx-check sp-lg"></span> Has permission</span>
-                    <span class="d-flex align-items-center gap-1"><span class="sp-mx-allow-all sp-lg"></span> Allow all</span>
+                    <span class="d-flex align-items-center gap-1"><span class="sp-mx-aud sp-lg">A</span> Auditor</span>
+                    <span class="d-flex align-items-center gap-1"><span class="sp-mx-cs sp-lg">CS</span> CS</span>
                     <span class="d-flex align-items-center gap-1"><span class="sp-mx-empty sp-lg"></span> No permission</span>
+                    <span class="d-flex align-items-center gap-1 ms-auto" style="font-size:.75rem;color:#92400e;"><span class="sp-privileged-badge me-1">✦ Privileged</span> = can open any folder regardless of assignments</span>
                 </div>
             </div>
         }
@@ -200,12 +200,16 @@
                         <i class="ri-arrow-down-s-line text-white sp-chevron @(audCollapsed ? "sp-chevron-collapsed" : "")"></i>
                         <div class="sp-avatar">@(aud.AuditorName.Length > 0 ? char.ToUpper(aud.AuditorName[0]) : '?')</div>
                         <div class="text-white lh-sm flex-grow-1">
-                            <div class="fw-semibold" style="font-size:1rem;">@aud.AuditorName</div>
-                            <div style="font-size:0.71rem;opacity:.72;">
+                            <div class="fw-semibold d-flex align-items-center gap-2" style="font-size:1rem;">
+                                @aud.AuditorName
                                 @if (aud.AllowAll)
-                                { <span>Allowed all PCs</span> }
-                                else
-                                { <span>@aud.ApprovedPcs.Count approved PC@(aud.ApprovedPcs.Count != 1 ? "s" : "")</span> }
+                                {
+                                    <span class="sp-privileged-badge">✦ Privileged</span>
+                                }
+                            </div>
+                            <div style="font-size:0.71rem;opacity:.72;">
+                                @aud.ApprovedPcs.Count approved PC@(aud.ApprovedPcs.Count != 1 ? "s" : "")
+                                @if (aud.AllowAll) { <span class="ms-1 opacity-75">· auto-approves new PCs</span> }
                             </div>
                         </div>
                         @* Allow All toggle *@
@@ -226,12 +230,13 @@
                     <div class="card-body p-0">
                         @if (aud.AllowAll)
                         {
-                            <div class="px-4 py-3 text-muted fst-italic" style="font-size:0.87rem;">
-                                <i class="ri-checkbox-circle-line text-success me-1"></i>
-                                This auditor is allowed to add any PC without approval.
+                            <div class="px-4 py-2 sp-allowall-info">
+                                <i class="ri-flashlight-line me-1"></i>
+                                <strong>Privileged user</strong> — can open any PC folder without approval.
+                                PCs listed below control which PCs appear in their dashboard tables.
                             </div>
                         }
-                        else if (aud.ApprovedPcs.Count == 0)
+                        @if (aud.ApprovedPcs.Count == 0)
                         {
                             <div class="px-4 py-3 text-muted fst-italic" style="font-size:0.87rem;">
                                 @LS.T("staffperm.noSpecificPCs")
@@ -269,23 +274,28 @@
                         }
 
                         @* Add PC row *@
-                        @if (!aud.AllowAll)
-                        {
-                            <div class="d-flex align-items-center gap-2 px-4 py-3 sp-add-row">
-                                <select class="form-select form-select-sm sp-pc-select"
-                                        @bind="_addPcSelection[aud.AuditorId]">
-                                    <option value="0">— select a PC to add —</option>
-                                    @foreach (var pc in _allPcs.Where(p => !aud.ApprovedPcs.Any(ap => ap.PcId == p.PcId)))
-                                    {
-                                        <option value="@pc.PcId">@pc.FullName</option>
-                                    }
-                                </select>
-                                <button class="btn btn-sm sp-btn-add d-flex align-items-center gap-1"
-                                        @onclick="() => AddPermission(aud.AuditorId)" disabled="@_busy">
-                                    <i class="ri-add-line"></i>@LS.T("common.add")
-                                </button>
-                            </div>
-                        }
+                        <div class="d-flex align-items-center gap-2 px-4 py-3 sp-add-row flex-wrap">
+                            <select class="form-select form-select-sm sp-pc-select"
+                                    @bind="_addPcSelection[aud.AuditorId]">
+                                <option value="0">— select a PC to add —</option>
+                                @foreach (var pc in _allPcs.Where(p => !aud.ApprovedPcs.Any(ap => ap.PcId == p.PcId)))
+                                {
+                                    <option value="@pc.PcId">@pc.FullName</option>
+                                }
+                            </select>
+                            <select class="form-select form-select-sm sp-cap-select"
+                                    @bind="_addPcCapacity[aud.AuditorId]">
+                                <option value="Auditor">Auditor</option>
+                                @if (aud.StaffRole == "CS")
+                                {
+                                    <option value="CS">CS</option>
+                                }
+                            </select>
+                            <button class="btn btn-sm sp-btn-add d-flex align-items-center gap-1"
+                                    @onclick="() => AddPermission(aud.AuditorId)" disabled="@_busy">
+                                <i class="ri-add-line"></i>@LS.T("common.add")
+                            </button>
+                        </div>
                     </div>
                     }
                 </div>
@@ -330,6 +340,35 @@
     .sp-card { border-radius: 14px; overflow: hidden; }
     .sp-card:hover { box-shadow: 0 6px 28px rgba(30,58,95,.13) !important; transition: box-shadow .25s; }
     .sp-aud-header { background: linear-gradient(135deg, #1e3a5f 0%, #2d6a9f 100%); }
+    .sp-mx-aud-col-priv {
+        background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
+        border-bottom: 3px solid #f59e0b !important;
+        border-right: 1px solid #fcd34d !important;
+    }
+    .sp-mx-aud-label-priv {
+        color: #92400e;
+        font-weight: 700;
+    }
+    .sp-mx-priv-dot { color: #d97706; font-size: .7rem; vertical-align: super; margin-left: 1px; }
+    .sp-mx-cell-priv { background: rgba(253,230,138,.18); border-right: 1px solid #fcd34d !important; }
+    .sp-allowall-info {
+        background: linear-gradient(90deg, #fefce8 0%, #fef9c3 100%);
+        border-left: 3px solid #f59e0b;
+        font-size: 0.82rem; color: #78350f;
+        padding-top: 8px; padding-bottom: 8px;
+    }
+    .sp-privileged-badge {
+        display: inline-flex; align-items: center; font-size: 0.62rem; font-weight: 800;
+        letter-spacing: 0.1em; text-transform: uppercase; color: #1a1200;
+        background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 60%, #d97706 100%);
+        border-radius: 999px; padding: 2px 9px;
+        box-shadow: 0 0 8px rgba(251,191,36,.6), 0 1px 4px rgba(0,0,0,.2);
+        animation: spPrivPulse 3s ease-in-out infinite;
+    }
+    @@keyframes spPrivPulse {
+        0%,100% { box-shadow: 0 0 8px rgba(251,191,36,.6), 0 1px 4px rgba(0,0,0,.2); }
+        50%     { box-shadow: 0 0 16px rgba(251,191,36,1.0), 0 1px 4px rgba(0,0,0,.2); }
+    }
 
     /* Avatar */
     .sp-avatar { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,.15); border: 2px solid rgba(255,255,255,.3); color: #fff; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -629,18 +668,21 @@
         color: #6b7280;
         flex-wrap: wrap;
     }
-    .sp-mx-check.sp-lg, .sp-mx-allow-all.sp-lg, .sp-mx-empty.sp-lg {
-        width: 14px; height: 14px;
-    }
+    .sp-mx-aud  { display:inline-flex; align-items:center; justify-content:center; width:22px; height:18px; background:#2d6a9f; color:#fff; border-radius:3px; font-size:.62rem; font-weight:700; }
+    .sp-mx-cs   { display:inline-flex; align-items:center; justify-content:center; width:22px; height:18px; background:#198754; color:#fff; border-radius:3px; font-size:.62rem; font-weight:700; }
+    .sp-mx-aud.sp-lg, .sp-mx-cs.sp-lg { width:28px; height:20px; font-size:.7rem; }
+    .sp-mx-allow-all.sp-lg, .sp-mx-empty.sp-lg { width: 14px; height: 14px; }
+    .sp-cap-select { width: auto; min-width: 90px; }
 </style>
 
 @code {
-    private List<PermissionRequest> _pending   = new();
-    private List<AuditorPermGroup>  _auditors  = new();
-    private List<PcInfo>            _allPcs    = new();
-    private List<AuditorPermGroup>  _matrixAuditors = new();
-    private HashSet<int>            _soloPcIds = new();
-    private Dictionary<int, int>    _addPcSelection = new();
+    private List<PermissionRequest>  _pending        = new();
+    private List<AuditorPermGroup>   _auditors       = new();
+    private List<PcInfo>             _allPcs         = new();
+    private List<AuditorPermGroup>   _matrixAuditors = new();
+    private HashSet<int>             _soloPcIds      = new();
+    private Dictionary<int, int>     _addPcSelection = new();
+    private Dictionary<int, string>  _addPcCapacity  = new();
 
     private bool    _loading = true;
     private bool    _busy;
@@ -674,12 +716,15 @@
 
         _pending  = DashSvc.GetPendingPermissionRequests();
         _auditors = DashSvc.GetAuditorPermGroups();
-        _allPcs   = DashSvc.GetAllPcs().Where(p => p.WorkCapacity != "CSSolo").ToList();
+        _allPcs   = DashSvc.GetAllPcs().ToList();
         _matrixAuditors = _auditors.Where(a => a.StaffRole != "Solo").ToList();
         _soloPcIds = _auditors.Where(a => a.StaffRole == "Solo").Select(a => a.AuditorId).ToHashSet();
 
         foreach (var aud in _auditors)
+        {
             _addPcSelection.TryAdd(aud.AuditorId, 0);
+            _addPcCapacity.TryAdd(aud.AuditorId, "Auditor");
+        }
 
         _loading = false;
     }
@@ -732,14 +777,15 @@
         var pc = _allPcs.FirstOrDefault(p => p.PcId == pcId);
         if (pc is null) return;
 
-        Console.WriteLine($"[StaffPermissions] Added permission for auditor {auditorId} -> PC {pcId} ({pc.FullName}) by '{_username}'");
+        var capacity = _addPcCapacity.GetValueOrDefault(auditorId, "Auditor");
+        Console.WriteLine($"[StaffPermissions] Added permission for auditor {auditorId} -> PC {pcId} ({pc.FullName}) as {capacity} by '{_username}'");
         _busy = true;
-        DashSvc.AddApprovedPermission(auditorId, pcId);
+        DashSvc.AddApprovedPermission(auditorId, pcId, capacity);
         _busy = false;
         _auditors = DashSvc.GetAuditorPermGroups();
         _matrixAuditors = _auditors.Where(a => a.StaffRole != "Solo").ToList();
         _addPcSelection[auditorId] = 0;
-        ShowMsg($"{pc.FullName} added.", false);
+        ShowMsg($"{pc.FullName} added as {capacity}.", false);
     }
 
     private void RemovePermission(int id)
@@ -755,37 +801,33 @@
     }
 
     private bool HasPermission(AuditorPermGroup aud, int pcId)
-        => aud.AllowAll || aud.ApprovedPcs.Any(p => p.PcId == pcId);
+        => aud.ApprovedPcs.Any(p => p.PcId == pcId);
 
-    private async Task MatrixToggle(AuditorPermGroup aud, int pcId, bool grant)
+    private async Task MatrixToggle(AuditorPermGroup aud, int pcId)
     {
-        if (aud.AllowAll) return; // AllowAll cells are read-only
 
         var cellKey = (aud.AuditorId, pcId);
-        // Trigger flash
         _flashingCells.Add(cellKey);
         StateHasChanged();
-        _ = Task.Delay(150).ContinueWith(_ =>
-        {
-            _flashingCells.Remove(cellKey);
-            InvokeAsync(StateHasChanged);
-        });
+        _ = Task.Delay(150).ContinueWith(_ => { _flashingCells.Remove(cellKey); InvokeAsync(StateHasChanged); });
 
-        if (grant)
+        var existing = aud.ApprovedPcs.FirstOrDefault(p => p.PcId == pcId);
+        if (existing is null)
         {
-            DashSvc.AddApprovedPermission(aud.AuditorId, pcId);
-            _auditors = DashSvc.GetAuditorPermGroups();
+            // No perm → grant as Auditor
+            DashSvc.AddApprovedPermission(aud.AuditorId, pcId, "Auditor");
+        }
+        else if (existing.WorkCapacity == "Auditor" && aud.StaffRole == "CS")
+        {
+            // Auditor → CS (only for CS staff)
+            DashSvc.AddApprovedPermission(aud.AuditorId, pcId, "CS");
         }
         else
         {
-            var perm = aud.ApprovedPcs.FirstOrDefault(p => p.PcId == pcId);
-            if (perm is not null)
-            {
-                DashSvc.RemovePermission(perm.Id);
-                foreach (var a in _auditors)
-                    a.ApprovedPcs.RemoveAll(p => p.PcId == pcId && a.AuditorId == aud.AuditorId);
-            }
+            // Auditor (non-CS staff) or CS → remove
+            DashSvc.RemovePermission(existing.Id);
         }
+        _auditors = DashSvc.GetAuditorPermGroups();
         _matrixAuditors = _auditors.Where(a => a.StaffRole != "Solo").ToList();
     }
 

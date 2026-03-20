@@ -13,14 +13,19 @@ public class PdfService
         List<PcInfo> pcs,
         Dictionary<(int pcId, int dayIdx), int> grid,
         Dictionary<int, string> pcCsNames,
-        string? weeklyRemarks = null)
+        string? weeklyRemarks = null,
+        HashSet<int>? soloPcIds = null)
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
         bool hasData(PcInfo pc) => Enumerable.Range(0, 7).Any(d => grid.GetValueOrDefault((DashboardService.GKey(pc), d)) > 0);
-        var csSoloPcs  = pcs.Where(pc => pc.WorkCapacity == "CSSolo" && hasData(pc)).ToList();
-        var csPcs      = pcs.Where(pc => pc.WorkCapacity == "CS" && hasData(pc)).ToList();
-        var audPcs     = pcs.Where(pc => !csSoloPcs.Contains(pc) && !csPcs.Contains(pc) && hasData(pc)).ToList();
+        // Solo CS PCs: CS-assigned PCs that are solo auditors — shown with negative GKey
+        var csSoloPcs = pcs
+            .Where(pc => pc.WorkCapacity == "CS" && (soloPcIds?.Contains(pc.PcId) ?? false))
+            .Select(pc => pc with { WorkCapacity = "CSSolo" })
+            .Where(hasData).ToList();
+        var csPcs  = pcs.Where(pc => pc.WorkCapacity == "CS" && hasData(pc)).ToList();
+        var audPcs = pcs.Where(pc => pc.WorkCapacity == "Auditor" && hasData(pc)).ToList();
 
         var weekEnd = weekStart.AddDays(6);
 
