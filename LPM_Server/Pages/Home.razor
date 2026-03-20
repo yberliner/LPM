@@ -288,11 +288,14 @@
                                             ? dt2.ToString("dd/MM/yy HH:mm")
                                             : (DateOnly.TryParse(s.SessionDate, out var d2) ? d2.ToString("dd/MM/yy") : s.SessionDate);
                                         var statusClass = s.CsStatus switch {
-                                            "Waiting" => "home-aud-st-waiting",
-                                            "Done"    => "home-aud-st-done",
-                                            _         => ""
+                                            "Waiting"  => "home-aud-st-waiting",
+                                            "Done"     => "home-aud-st-done",
+                                            "Approved" => "home-aud-st-done",
+                                            _          => ""
                                         };
-                                        var statusLabel = _csStatusLabels.TryGetValue(s.CsStatus ?? "", out var lbl) ? lbl : (s.CsStatus ?? "");
+                                        var statusLabel = s.CsStatus == "Approved"
+                                            ? (_csStatusLabels.TryGetValue("Done", out var doneLbl) ? doneLbl : "CS Done")
+                                            : (_csStatusLabels.TryGetValue(s.CsStatus ?? "", out var lbl) ? lbl : (s.CsStatus ?? ""));
                                         var attTypes = _audAttachTypes.GetValueOrDefault(s.SessionId);
                                         var hasPink    = attTypes != null && attTypes.Contains("PinkSheet");
                                         var hasCram    = attTypes != null && attTypes.Contains("Cramming");
