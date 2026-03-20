@@ -277,6 +277,11 @@
                                                          : hasCram     ? "home-aud-att-orange"
                                                          : hasInstruct ? "home-aud-att-yellow"
                                                          : "";
+                                        var hasAnyAtt = hasPink || hasCram || hasInstruct;
+                                        var rowBorderClass = hasPink     ? "home-aud-row-att-pink"
+                                                           : hasCram     ? "home-aud-row-att-orange"
+                                                           : hasInstruct ? "home-aud-row-att-yellow"
+                                                           : "";
                                         var attTooltip = s.CsStatus is "Waiting" or "Not_Done"
                                             ? "CSing was not done yet"
                                             : (hasPink && hasCram     ? "Pink Sheet + Cramming assignment from CS"
@@ -288,7 +293,7 @@
                                             :  "No assignments from CS");
                                         var attColor = (string?)null; // handled by animation class
                                         var audPendingStyle = s.IsPendingApproval ? "opacity:.4; pointer-events:none;" : "";
-                                        <tr class="@rowClass home-pcs-row" style="@audPendingStyle"
+                                        <tr class="@rowClass home-pcs-row @rowBorderClass" style="@audPendingStyle"
                                             title="@attTooltip"
                                             @onclick="() => { if (!s.IsPendingApproval) OpenAuditorSession(s); }">
                                             <td class="home-pcs-pcname">
@@ -310,8 +315,11 @@
                                             <td class="home-pcs-dur">
                                                 <i class="ri-time-line me-1" style="opacity:.4;"></i>@durStr
                                             </td>
-                                            <td>
+                                            <td class="home-aud-st-cell">
                                                 <span class="home-aud-st-badge @statusClass @attAnimClass">@statusLabel</span>
+                                                @if (hasPink)    { <span class="home-att-chip home-att-chip-pink">🩷 Pink</span> }
+                                                @if (hasCram)    { <span class="home-att-chip home-att-chip-orange">📙 Cram</span> }
+                                                @if (hasInstruct){ <span class="home-att-chip home-att-chip-yellow">📋 Instr</span> }
                                             </td>
                                             <td style="font-size:.78rem;color:#64748b;">
                                                 @(s.CsName ?? "—")
@@ -1178,13 +1186,13 @@
     .apc-add-icon { color: #3b82f6; font-size: 1.15rem; margin-left: auto; transition: transform .15s; flex-shrink: 0; }
     .apc-search-item:hover .apc-add-icon { transform: scale(1.25); }
     .apc-search-empty { padding: 14px 16px; font-size: .85rem; color: #94a3b8; font-style: italic; }
-    .apc-table-wrap { max-height: 260px; overflow-y: auto; }
-    .apc-table { border-collapse: collapse; }
+    .apc-table-wrap { max-height: 260px; overflow-y: auto; background: #fff; }
+    .apc-table { border-collapse: collapse; width: 100%; background: #fff; }
     .apc-table thead tr { background: #f8fafc; border-bottom: 2px solid #e2e8f0; }
     .apc-th-pc { padding: 10px 16px; font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #64748b; }
     .apc-th-role { padding: 10px 12px; font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #64748b; white-space: nowrap; text-align: center; }
     .apc-th-remove { width: 44px; }
-    .apc-row { border-bottom: 1px solid #f1f5f9; animation: apc-row-in .22s ease both; transition: background .12s; color: #1e293b; }
+    .apc-row { border-bottom: 1px solid #f1f5f9; animation: apc-row-in .22s ease both; transition: background .12s; background: #fff; color: #1e293b; }
     .apc-row:hover { background: #eef2ff; color: #1e293b; }
     .apc-row-pending { opacity: .55; }
     .apc-td-pc { padding: 11px 16px; font-size: .88rem; }
@@ -1437,6 +1445,21 @@
     .home-aud-st-correction {
         background: rgba(239,68,68,.2); color: #ef4444;
     }
+
+    /* ── Attachment row border stripes ── */
+    .home-aud-row-att-pink   { border-left: 4px solid #ec4899 !important; }
+    .home-aud-row-att-orange { border-left: 4px solid #f97316 !important; }
+    .home-aud-row-att-yellow { border-left: 4px solid #ca8a04 !important; }
+
+    /* ── Attachment chips ── */
+    .home-aud-st-cell { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+    .home-att-chip {
+        font-size: .6rem; font-weight: 700; padding: 1px 6px;
+        border-radius: 10px; white-space: nowrap; letter-spacing: .2px;
+    }
+    .home-att-chip-pink   { background: rgba(236,72,153,.2);  color: #ec4899; }
+    .home-att-chip-orange { background: rgba(249,115,22,.2);  color: #f97316; }
+    .home-att-chip-yellow { background: rgba(202,138,4,.2);   color: #ca8a04; }
 
     /* ── Attachment-type badge animations ── */
     @@keyframes audAttPink {
