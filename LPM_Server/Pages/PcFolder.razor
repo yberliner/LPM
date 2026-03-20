@@ -1784,6 +1784,19 @@
     [Parameter] public int UserPersonId { get; set; }
 
     void RefreshFolder() => _folder = FolderSvc.GetFolderInfo(PcId, Solo);
+
+    void EnsureFolderSummaryExists()
+    {
+        if (_folder == null) return;
+        bool hasSummary = _folder.FrontCover.Any(f => IsFolderSummaryFile(f.FileName, f.RelativePath));
+        if (!hasSummary)
+        {
+            var pdfBytes = FolderSvc.CreateEmptyPdf();
+            FolderSvc.SaveSectionFileToPath(PcId, "Front_Cover", "Folder Summary", pdfBytes, solo: Solo);
+            RefreshFolder();
+            Console.WriteLine($"[PcFolder] Auto-created 'Folder Summary' in Front_Cover for PC {PcId}");
+        }
+    }
     string SoloParam => Solo ? "&solo=true" : "";
 
     // ── Active CS session tracker (shared across all circuits) ──
@@ -2034,6 +2047,7 @@
 
         _userName = DashSvc.GetPersonName(UserPersonId) ?? $"User {UserPersonId}";
         RefreshFolder();
+        EnsureFolderSummaryExists();
         _pcName = FolderSvc.GetPcName(PcId) ?? $"PC {PcId}";
         _programInsertFiles = FolderSvc.GetProgramInsertFiles();
         Console.WriteLine($"[PcFolder] Opened PC folder for '{_pcName}' (PC {PcId}) by '{_userName}'{(SessionId > 0 ? $" — CS session {SessionId}" : "")}");
@@ -3487,6 +3501,12 @@
     void CtxMoveTo()
     {
         if (_ctxNode == null || _ctxNode.IsFolder) return;
+        if (IsFolderSummaryFile(_ctxNode.Name, _ctxNode.RelativePath))
+        {
+            CloseCtxMenu();
+            ShowErrorToast("Folder Summary file cannot be moved to a different location.");
+            return;
+        }
         _moveFilePath = _ctxNode.RelativePath;
         _moveFileName = _ctxNode.Name;
         _moveFileSection = _ctxSection;
@@ -3847,6 +3867,13 @@
     void ExecuteDragMove()
     {
         if (_dragNode == null) return;
+        if (IsFolderSummaryFile(_dragNode.Name, _dragNode.RelativePath))
+        {
+            ShowErrorToast("Folder Summary file cannot be moved to a different location.");
+            _showDragConfirm = false;
+            _dragNode = null; _dragSection = "";
+            return;
+        }
         Console.WriteLine($"[PcFolder] Drag move confirmed: '{_dragNode.RelativePath}' → '{_dragConfirmToPath}' by '{_userName}' — PC {PcId}");
         var ok = FolderSvc.MoveFile(PcId, _dragNode.RelativePath, _dragConfirmToPath, Solo);
         if (!ok)
