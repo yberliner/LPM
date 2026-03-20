@@ -249,65 +249,7 @@
             An error has occurred. <a href="" onclick="location.reload()">Reload</a>
         </div>
 
-        <script src="_framework/blazor.server.js" autostart="false"></script>
-        <script>
-            // Wrapped in try/catch so a missing blazor.server.js doesn't kill this block
-            try {
-                Blazor.start({
-                    reconnectionOptions: { maxRetries: 4, retryIntervalMilliseconds: 1500 },
-                    reconnectionHandler: {
-                        onConnectionDown: () => { window._lpmWasDown = true; },
-                        onConnectionUp:   () => { if (window._lpmWasDown) { window._lpmWasDown = false; window.location.reload(); } },
-                        onConnectionFailed: () => { window._lpmWasDown = false; window.location.reload(); }
-                    }
-                });
-            } catch (e) { /* blazor.server.js not yet loaded — ping poller will reload when ready */ }
-        </script>
-        <script>
-            // Runs in its own block — never killed by Blazor errors above.
-            (function () {
-                var _reloading = false;
-
-                // serverReady(): true only when Blazor JS AND a static CSS file
-                // are both served with correct content-types.
-                function serverReady() {
-                    return Promise.all([
-                        fetch('/_framework/blazor.server.js', { cache: 'no-store' }),
-                        fetch('/css/forsight-custom.css',      { cache: 'no-store' })
-                    ]).then(function (rs) {
-                        return rs[0].ok && (rs[0].headers.get('content-type') || '').includes('javascript')
-                            && rs[1].ok && (rs[1].headers.get('content-type') || '').includes('css');
-                    }).catch(function () { return false; });
-                }
-
-                function pollUntilReadyThenReload() {
-                    if (_reloading) return;
-                    serverReady().then(function (ready) {
-                        if (ready) { _reloading = true; window.location.reload(); }
-                        else setTimeout(pollUntilReadyThenReload, 700);
-                    });
-                }
-
-                // ── Self-heal: page loaded in broken state (statics failed) ──
-                if (typeof Blazor === 'undefined') {
-                    pollUntilReadyThenReload();
-                    return;
-                }
-
-                // ── Restart detector: ping poller ──
-                var knownId = null;
-                setInterval(function () {
-                    fetch('/_lpm/ping', { cache: 'no-store' })
-                        .then(function (r) { return r.text(); })
-                        .then(function (id) {
-                            if (knownId && knownId !== id) { knownId = id; pollUntilReadyThenReload(); }
-                            else { knownId = id; }
-                        })
-                        .catch(function () { /* server down */ });
-                }, 1500);
-
-            })();
-        </script>
+        <script src="_framework/blazor.server.js"></script>
 
         <script>
         function CaptureElementAndCallBlazorFunction(event, menuData) {

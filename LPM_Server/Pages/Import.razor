@@ -1,6 +1,6 @@
 @page "/Import"
 @using LPM.Services
-@attribute [Authorize(Roles = "Admin")]
+@attribute [Authorize(Roles = "Admin,Customer")]
 @inject FolderService FolderSvc
 @inject PcService PcSvc
 @inject DashboardService DashSvc

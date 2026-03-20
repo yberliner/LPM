@@ -1,5 +1,5 @@
 @page "/Admin/Members"
-@attribute [Authorize(Roles = "Admin")]
+@attribute [Authorize(Roles = "Admin,Customer")]
 @inject LPM.Services.AcademyService AcademySvc
 @inject LPM.Services.PcService PcSvc
 @inject LPM.Services.DashboardService DashSvc

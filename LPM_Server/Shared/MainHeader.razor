@@ -860,11 +860,14 @@
                     @if (_importStep == 1)
                     {
                         <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showImportWizard = false">Cancel</button>
-                        <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                                disabled="@(_importPcId == 0 || _importSessionFile == null || _importDuplicate)"
-                                @onclick="GoToExamStep">
-                            Next <i class="ri-arrow-right-s-line"></i>
-                        </button>
+                        @if (_isSoloUser || _approvedPcs.Count > 0)
+                        {
+                            <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
+                                    disabled="@(_importPcId == 0 || _importSessionFile == null || _importDuplicate)"
+                                    @onclick="GoToExamStep">
+                                Next <i class="ri-arrow-right-s-line"></i>
+                            </button>
+                        }
                     }
                     else
                     {
