@@ -523,8 +523,6 @@
   "home.duration": "משך (H:MM)",
   "home.adminMin": "דקות אדמין",
   "home.notes": "הערות",
-  "home.cannotEditReviewApproved": "לא ניתן לערוך — הסקירה אושרה",
-  "home.editReview": "עריכת סקירה",
   "home.csReview": "סקירת CS",
   "home.addCsReview": "הוסף סקירת CS",
   "home.generalCsWork": "עבודת CS כללית",

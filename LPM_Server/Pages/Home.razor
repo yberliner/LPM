@@ -288,10 +288,9 @@
                                             ? dt2.ToString("dd/MM/yy HH:mm")
                                             : (DateOnly.TryParse(s.SessionDate, out var d2) ? d2.ToString("dd/MM/yy") : s.SessionDate);
                                         var statusClass = s.CsStatus switch {
-                                            "Waiting"  => "home-aud-st-waiting",
-                                            "Not_Done" => "home-aud-st-waiting",
-                                            "Done"     => "home-aud-st-done",
-                                            _          => ""
+                                            "Waiting" => "home-aud-st-waiting",
+                                            "Done"    => "home-aud-st-done",
+                                            _         => ""
                                         };
                                         var statusLabel = _csStatusLabels.TryGetValue(s.CsStatus ?? "", out var lbl) ? lbl : (s.CsStatus ?? "");
                                         var attTypes = _audAttachTypes.GetValueOrDefault(s.SessionId);
@@ -307,7 +306,7 @@
                                                            : hasCram     ? "home-aud-row-att-orange"
                                                            : hasInstruct ? "home-aud-row-att-yellow"
                                                            : "";
-                                        var attTooltip = s.CsStatus is "Waiting" or "Not_Done"
+                                        var attTooltip = s.CsStatus is "Waiting"
                                             ? "CSing was not done yet"
                                             : (hasPink && hasCram     ? "Pink Sheet + Cramming assignment from CS"
                                             :  hasPink && hasInstruct ? "Pink Sheet + Instruction assignment from CS"
@@ -1626,12 +1625,6 @@
     string _editSummary  = "";
     string _editError    = "";
 
-    // Edit CS Review form
-    int?   _editReviewId;
-    string _editRevDuration = "";
-    string _editRevNotes    = "";
-    string _editRevError    = "";
-
     // Context menu
     bool   _showCtxMenu;
     int    _ctxPcId;
@@ -2054,37 +2047,6 @@
         return q.ToList();
     }
 
-    // ── Edit CS Review ──
-    void OpenEditReview(CsReviewRow rev)
-    {
-        _editReviewId    = rev.CsReviewId;
-        _editRevDuration = SecsToHMM(rev.ReviewSec);
-        _editRevNotes    = rev.Notes ?? "";
-        _editRevError    = "";
-    }
-
-    void CancelEditReview() { _editReviewId = null; _editRevError = ""; }
-
-    void SaveEditReview()
-    {
-        Console.WriteLine($"[Home] Updated CS review {_editReviewId} — duration={_editRevDuration} by '{_username}'");
-        int secs = ParseTime(_editRevDuration);
-        if (secs <= 0) { _editRevError = "Invalid duration — use H:MM (e.g. 0:30)."; return; }
-        DashSvc.UpdateCsReview(_editReviewId!.Value, _userId!.Value, secs, "Not_Done",
-            string.IsNullOrWhiteSpace(_editRevNotes) ? null : _editRevNotes);
-        _editReviewId = null;
-        _detail = DashSvc.GetDayDetail(_userId!.Value, _selPcId!.Value,
-            _weekStart.AddDays(_selDay!.Value), _selRole);
-        _grid = _isSolo
-            ? DashSvc.GetWeekGridSolo(_userId.Value, _weekStart)
-            : DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
-        _pendingCs = _isSolo ? [] : DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
-        _weeklyTotals = _isSolo
-            ? DashSvc.GetWeeklyTotalsSolo(_userId.Value, ChartLatestWeekStart(), 20)
-            : DashSvc.GetWeeklyTotals(_userId.Value, ChartLatestWeekStart(), 20, _myPcs);
-        _chartKey++;
-    }
-
     static string SecsToHMM(int secs) => $"{secs / 3600}:{(secs % 3600) / 60:00}";
 
     void SaveRemarks()
@@ -2166,7 +2128,6 @@
         _reviewError      = "";
         _generalCsError   = "";
         _editSessionId    = null;
-        _editReviewId     = null;
     }
 
     RenderFragment DetailPanel => __builder =>
@@ -2403,52 +2364,19 @@
                                     </div>
                                     @if (rev != null)
                                     {
-                                        @if (_editReviewId == rev.CsReviewId)
+                                        <div class="d-flex align-items-center flex-wrap gap-2 small">
+                                            <i class="ri-checkbox-circle-line text-success"></i>
+                                            <span class="fw-semibold small" style="color:#4ade80;">
+                                                <i class="ri-user-star-line me-1"></i>@_displayName
+                                            </span>
+                                            <span class="badge bg-success-transparent">
+                                                @DashboardService.Fmt(rev.ReviewSec)
+                                            </span>
+                                            <span>@rev.Status</span>
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(rev.Notes))
                                         {
-                                            <div class="home-form-box mt-1">
-                                                <div class="row g-2 align-items-center mb-2">
-                                                    <div class="col-auto">
-                                                        <label class="form-label mb-0 small">@LS.T("home.duration")</label>
-                                                        <input class="form-control form-control-sm" style="width:90px;"
-                                                               @bind="_editRevDuration" @bind:event="oninput" />
-                                                    </div>
-                                                    <div class="col-auto ms-auto">
-                                                        <button class="btn btn-sm btn-primary" @onclick="SaveEditReview">@LS.T("common.save")</button>
-                                                        <button class="btn btn-sm btn-link text-danger" @onclick="CancelEditReview">@LS.T("common.cancel")</button>
-                                                    </div>
-                                                </div>
-                                                <div class="mb-1">
-                                                    <label class="form-label mb-1 small">@LS.T("home.notes")</label>
-                                                    <SpkRichEditor Value="@_editRevNotes" ValueChanged="@(v => _editRevNotes = v)" />
-                                                </div>
-                                                @if (!string.IsNullOrEmpty(_editRevError))
-                                                {
-                                                    <div class="text-danger small mt-1">@_editRevError</div>
-                                                }
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <div class="d-flex align-items-center flex-wrap gap-2 small">
-                                                <i class="ri-checkbox-circle-line text-success"></i>
-                                                <span class="fw-semibold small" style="color:#4ade80;">
-                                                    <i class="ri-user-star-line me-1"></i>@_displayName
-                                                </span>
-                                                <span class="badge bg-success-transparent">
-                                                    @DashboardService.Fmt(rev.ReviewSec)
-                                                </span>
-                                                <span>@rev.Status</span>
-                                                <button class="btn btn-link btn-sm py-0 px-1 ms-auto" style="font-size:0.75rem;"
-                                                        title="@(rev.Status == "Done" ? LS.T("home.cannotEditReviewApproved") : LS.T("home.editReview"))"
-                                                        disabled="@(rev.Status == "Done")"
-                                                        @onclick="() => OpenEditReview(rev)">
-                                                    <i class="ri-edit-line"></i> @LS.T("common.edit")
-                                                </button>
-                                            </div>
-                                            @if (!string.IsNullOrWhiteSpace(rev.Notes))
-                                            {
-                                                <div class="text-muted small mt-1">@((MarkupString)rev.Notes)</div>
-                                            }
+                                            <div class="text-muted small mt-1">@((MarkupString)rev.Notes)</div>
                                         }
                                     }
                                     else

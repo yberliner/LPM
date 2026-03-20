@@ -330,6 +330,7 @@
                                         <td class="ps-4 py-2"><span class="fw-semibold sa-date">@FormatDate(rev.SessionDate)</span></td>
                                         <td class="text-center py-2">
                                             <span class="badge rounded-pill bg-light border text-dark px-2" style="font-size:0.78rem;">@DashboardService.Fmt(rev.ReviewLengthSeconds)</span>
+                                            @if (rev.IsSolo) { <span class="ms-1" style="background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;font-size:.65rem;font-weight:700;padding:2px 8px;border-radius:10px;letter-spacing:.3px;">Solo</span> }
                                         </td>
                                         <td class="py-1">
                                             <input type="number" class="form-control form-control-sm sa-row-input"

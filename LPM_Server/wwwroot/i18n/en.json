@@ -523,8 +523,6 @@
   "home.duration": "Duration (H:MM)",
   "home.adminMin": "Admin min",
   "home.notes": "Notes",
-  "home.cannotEditReviewApproved": "Cannot edit — review is approved",
-  "home.editReview": "Edit review",
   "home.csReview": "CS Review",
   "home.addCsReview": "Add CS Review",
   "home.generalCsWork": "General CS Work",
