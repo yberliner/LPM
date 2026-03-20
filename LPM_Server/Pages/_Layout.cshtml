@@ -218,6 +218,18 @@
             document.body.appendChild(form);
             form.submit();
         };
+        window.lpmPostForm = function (action, fields) {
+            var form = document.createElement('form');
+            form.method = 'POST';
+            form.action = action;
+            Object.keys(fields).forEach(function(k) {
+                var i = document.createElement('input');
+                i.type = 'hidden'; i.name = k; i.value = fields[k];
+                form.appendChild(i);
+            });
+            document.body.appendChild(form);
+            form.submit();
+        };
         </script>
 
         <!-- Quill rich text editor -->

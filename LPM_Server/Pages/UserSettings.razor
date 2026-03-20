@@ -130,6 +130,77 @@
             </div>
         </div>
 
+        @* ── 2FA Card ── *@
+        <div class="col-12">
+            <div class="card custom-card shadow-sm" style="border-radius:16px;border:none;">
+                <div class="card-header settings-card-header" style="background:linear-gradient(135deg,#7c3aed,#a855f7);">
+                    <div class="settings-card-header-icon">
+                        <i class="ri-shield-keyhole-fill"></i>
+                    </div>
+                    <div>
+                        <div class="settings-card-header-title">Two-Factor Authentication (2FA)</div>
+                        <div class="settings-card-header-sub">Protect your account with an authenticator app</div>
+                    </div>
+                    <div class="ms-auto d-flex align-items-center gap-2">
+                        @if (_totpEnabled)
+                        {
+                            <span class="badge" style="background:rgba(34,197,94,.2);color:#4ade80;border:1px solid rgba(34,197,94,.3);border-radius:999px;padding:4px 12px;font-size:.75rem;">
+                                <i class="ri-shield-check-line me-1"></i>Active
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="badge" style="background:rgba(239,68,68,.2);color:#f87171;border:1px solid rgba(239,68,68,.3);border-radius:999px;padding:4px 12px;font-size:.75rem;">
+                                <i class="ri-shield-cross-line me-1"></i>Not set up
+                            </span>
+                        }
+                    </div>
+                </div>
+                <div class="card-body p-4">
+                    @if (_twoFaMsg is not null)
+                    {
+                        <div class="alert @(_twoFaOk ? "alert-success" : "alert-danger") d-flex align-items-center gap-2 mb-3"
+                             style="border-radius:10px;border:none;font-size:.88rem;">
+                            <i class="@(_twoFaOk ? "ri-checkbox-circle-fill" : "ri-error-warning-fill")"></i>
+                            <span>@_twoFaMsg</span>
+                        </div>
+                    }
+
+                    @if (_totpEnabled)
+                    {
+                        <div class="d-flex flex-wrap gap-3 align-items-center">
+                            <div>
+                                <div class="fw-semibold" style="font-size:.9rem;">2FA is active on your account.</div>
+                                <div class="text-muted" style="font-size:.82rem;">
+                                    Trusted devices: <strong>@_trustedDeviceCount</strong>
+                                </div>
+                            </div>
+                            <div class="ms-auto d-flex gap-2 flex-wrap">
+                                <button class="btn btn-sm btn-outline-warning" @onclick="RevokeDevices">
+                                    <i class="ri-device-line me-1"></i>Revoke All Trusted Devices
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="Disable2FA">
+                                    <i class="ri-shield-cross-line me-1"></i>Disable 2FA
+                                </button>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-3" style="font-size:.88rem;">
+                            2FA adds an extra layer of security. After setup, you'll need your authenticator app code each time you log in from a new device.
+                        </p>
+                        <p class="text-muted mb-3" style="font-size:.82rem;">
+                            Works with: <strong>Google Authenticator</strong>, <strong>Microsoft Authenticator</strong>, Authy, 1Password, Bitwarden, and any TOTP-compatible app.
+                        </p>
+                        <a href="/Setup2FA" class="btn settings-save-btn" style="background:linear-gradient(135deg,#7c3aed,#a855f7);box-shadow:0 3px 14px rgba(168,85,247,.35);">
+                            <i class="ri-shield-keyhole-line me-2"></i>Set Up 2FA Now
+                        </a>
+                    }
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 
@@ -284,11 +355,44 @@
     private string? _picMsg;
     private bool _picOk;
 
+    // 2FA fields
+    private bool _totpEnabled;
+    private int _trustedDeviceCount;
+    private string? _twoFaMsg;
+    private bool _twoFaOk;
+    private int _userId;
+
     protected override async Task OnInitializedAsync()
     {
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         _username = auth.User.Identity?.Name?.ToLower() ?? "";
         _avatarUrl = UserDb.GetAvatarPath(_username);
+
+        var flags = UserDb.GetLoginFlags(_username);
+        if (flags != null)
+        {
+            _userId = flags.UserId;
+            _totpEnabled = flags.TotpEnabled;
+            _trustedDeviceCount = UserDb.GetTrustedDeviceCount(_userId);
+        }
+    }
+
+    private void RevokeDevices()
+    {
+        UserDb.RevokeAllTrustedDevices(_userId);
+        _trustedDeviceCount = 0;
+        _twoFaMsg = "All trusted devices have been revoked. You will need to verify with 2FA on next login.";
+        _twoFaOk = true;
+    }
+
+    private void Disable2FA()
+    {
+        UserDb.DisableTotp(_userId);
+        UserDb.RevokeAllTrustedDevices(_userId);
+        _totpEnabled = false;
+        _trustedDeviceCount = 0;
+        _twoFaMsg = "2FA has been disabled on your account.";
+        _twoFaOk = false;
     }
 
     private void HandleChangePassword()

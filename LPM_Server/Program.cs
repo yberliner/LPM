@@ -163,14 +163,52 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapRazorPages();
 
-// Login endpoint — validates credentials and sets auth cookie
-app.MapPost("/loginpost", async (HttpContext ctx, UserDb db) =>
+// ── Auth helpers ──────────────────────────────────────────────────────────
+
+static CookieOptions PendingCookieOpts() => new()
+{
+    HttpOnly = true, SameSite = SameSiteMode.Strict,
+    MaxAge = TimeSpan.FromMinutes(10)
+};
+
+static CookieOptions TrustCookieOpts() => new()
+{
+    HttpOnly = true, SameSite = SameSiteMode.Strict,
+    Expires = DateTimeOffset.UtcNow.AddYears(100)
+};
+
+static async Task SignInUser(HttpContext ctx, UserDb db, string username,
+    LPM.Auth.UserDb.LoginFlags flags)
+{
+    var claims = new List<Claim>
+    {
+        new(ClaimTypes.Name, username),
+        new("StaffRole", flags.StaffRole),
+        new("PersonId", flags.PersonId.ToString()),
+    };
+    foreach (var r in flags.Roles)
+        claims.Add(new Claim(ClaimTypes.Role, r));
+    var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+    await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+    ctx.Response.Cookies.Delete("lpm_pending");
+}
+
+static void SetTrustCookie(HttpContext ctx, UserDb db, int userId)
+{
+    var token = Guid.NewGuid().ToString("N");
+    db.AddTrustedDevice(userId, token);
+    ctx.Response.Cookies.Append("lpm_trusted", token, TrustCookieOpts());
+}
+
+// ── /loginpost ────────────────────────────────────────────────────────────
+
+app.MapPost("/loginpost", async (HttpContext ctx, UserDb db, IConfiguration config) =>
 {
     var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
     if (LPM.Services.LoginRateLimit.IsLockedOut(ip))
     {
-        Console.WriteLine($"[Login] BLOCKED (locked out) attempt from {ip} at {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        Console.WriteLine($"[Login] BLOCKED from {ip}");
         return Results.Redirect("/login?error=2");
     }
 
@@ -178,33 +216,162 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db) =>
     var username = form["username"].ToString();
     var password = form["password"].ToString();
 
-    if (db.ValidateUser(username, password, out var roles, out var staffRole))
+    if (!db.ValidateUser(username, password, out _, out _))
     {
-        LPM.Services.LoginRateLimit.ClearFailures(ip);
-        var personId = db.GetPersonId(username);
-        var claims = new List<Claim>
-        {
-            new Claim(ClaimTypes.Name, username),
-            new Claim("StaffRole", staffRole),
-            new Claim("PersonId", personId?.ToString() ?? "0"),
-        };
-        foreach (var r in roles)
-            claims.Add(new Claim(ClaimTypes.Role, r));
-
-        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-        await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
-            new ClaimsPrincipal(identity));
-
-        Console.WriteLine($"[Login] Login success for '{username}' from {ip} — roles=[{string.Join(", ", roles)}] staffRole={staffRole}");
-        return Results.Redirect("/Home");
+        var remaining = LPM.Services.LoginRateLimit.RecordFailure(ip);
+        Console.WriteLine($"[Login] Failure for '{username}' from {ip} ({remaining} remaining)");
+        return Results.Redirect(remaining == 0
+            ? "/login?error=2"
+            : $"/login?error=1&username={Uri.EscapeDataString(username)}");
     }
 
-    var remaining = LPM.Services.LoginRateLimit.RecordFailure(ip);
-    var isLocked = remaining == 0;
-    Console.WriteLine($"[Login] Login failure for '{username}' from {ip} ({remaining} attempts remaining)");
-    return Results.Redirect(isLocked
-        ? "/login?error=2"
-        : $"/login?error=1&username={Uri.EscapeDataString(username)}");
+    LPM.Services.LoginRateLimit.ClearFailures(ip);
+    var flags = db.GetLoginFlags(username)!;
+
+    bool require2fa     = config.GetValue<bool>("Security:Require2FA");
+    bool requirePwdChg  = config.GetValue<bool>("Security:RequirePasswordChangeOnFirstLogin");
+
+    // Step 1: force password change?
+    if (requirePwdChg && flags.MustChangePassword)
+    {
+        ctx.Response.Cookies.Append("lpm_pending", flags.UserId.ToString(), PendingCookieOpts());
+        Console.WriteLine($"[Login] '{username}' must change password");
+        return Results.Redirect("/ChangePassword");
+    }
+
+    // Step 2: 2FA not yet set up?
+    if (require2fa && !flags.TotpEnabled)
+    {
+        ctx.Response.Cookies.Append("lpm_pending", flags.UserId.ToString(), PendingCookieOpts());
+        Console.WriteLine($"[Login] '{username}' must set up 2FA");
+        return Results.Redirect("/Setup2FA");
+    }
+
+    // Step 3: 2FA enabled — check trusted device
+    if (require2fa && flags.TotpEnabled)
+    {
+        var trustedToken = ctx.Request.Cookies["lpm_trusted"];
+        if (trustedToken != null && db.GetTrustedDeviceUserId(trustedToken) == flags.UserId)
+        {
+            await SignInUser(ctx, db, username, flags);
+            Console.WriteLine($"[Login] '{username}' signed in via trusted device");
+            return Results.Redirect("/Home");
+        }
+        ctx.Response.Cookies.Append("lpm_pending", flags.UserId.ToString(), PendingCookieOpts());
+        Console.WriteLine($"[Login] '{username}' needs 2FA verification");
+        return Results.Redirect("/Login2FA");
+    }
+
+    // No security steps required — sign in directly
+    await SignInUser(ctx, db, username, flags);
+    Console.WriteLine($"[Login] '{username}' signed in (no 2FA/pwd-chg required)");
+    return Results.Redirect("/Home");
+}).DisableAntiforgery();
+
+// ── /loginpost-changepwd ──────────────────────────────────────────────────
+
+app.MapPost("/loginpost-changepwd", async (HttpContext ctx, UserDb db, IConfiguration config) =>
+{
+    if (!int.TryParse(ctx.Request.Cookies["lpm_pending"], out var userId))
+        return Results.Redirect("/login");
+
+    var form = await ctx.Request.ReadFormAsync();
+    var newPwd = form["newPassword"].ToString();
+    if (string.IsNullOrWhiteSpace(newPwd))
+        return Results.Redirect("/ChangePassword?error=empty");
+
+    db.ForceSetPassword(userId, newPwd);
+    Console.WriteLine($"[Login] userId={userId} changed password");
+
+    // Re-fetch flags (MustChangePassword now 0)
+    var username = ctx.User.Identity?.Name ?? "";
+    // Need to find username by userId
+    var flags2 = db.GetLoginFlagsById(userId);
+    if (flags2 == null) return Results.Redirect("/login");
+
+    bool require2fa = config.GetValue<bool>("Security:Require2FA");
+
+    if (require2fa && !flags2.TotpEnabled)
+    {
+        ctx.Response.Cookies.Append("lpm_pending", userId.ToString(), PendingCookieOpts());
+        return Results.Redirect("/Setup2FA");
+    }
+    if (require2fa && flags2.TotpEnabled)
+    {
+        var trustedToken = ctx.Request.Cookies["lpm_trusted"];
+        if (trustedToken != null && db.GetTrustedDeviceUserId(trustedToken) == userId)
+        {
+            await SignInUser(ctx, db, flags2.Username, flags2);
+            return Results.Redirect("/Home");
+        }
+        ctx.Response.Cookies.Append("lpm_pending", userId.ToString(), PendingCookieOpts());
+        return Results.Redirect("/Login2FA");
+    }
+
+    await SignInUser(ctx, db, flags2.Username, flags2);
+    return Results.Redirect("/Home");
+}).DisableAntiforgery();
+
+// ── /loginpost-setup2fa ───────────────────────────────────────────────────
+
+app.MapPost("/loginpost-setup2fa", async (HttpContext ctx, UserDb db, IConfiguration config) =>
+{
+    if (!int.TryParse(ctx.Request.Cookies["lpm_pending"], out var userId))
+        return Results.Redirect("/login");
+
+    var form = await ctx.Request.ReadFormAsync();
+    var code         = form["code"].ToString();
+    var rawSecretB64 = form["rawSecret"].ToString();
+
+    byte[] rawSecret;
+    try { rawSecret = Convert.FromBase64String(rawSecretB64); }
+    catch { return Results.Redirect("/Setup2FA?error=1"); }
+
+    if (!UserDb.VerifyTotpCodeRaw(rawSecret, code))
+    {
+        Console.WriteLine($"[2FA] Setup verification failed for userId={userId}");
+        return Results.Redirect($"/Setup2FA?error=1&rs={Uri.EscapeDataString(rawSecretB64)}");
+    }
+
+    var encKey = config["TotpEncryptionKey"] ?? throw new InvalidOperationException("TotpEncryptionKey not configured");
+    var encrypted = UserDb.EncryptTotpRaw(rawSecret, encKey);
+    db.SaveEncryptedTotpSecret(userId, encrypted);
+
+    var flags = db.GetLoginFlagsById(userId);
+    if (flags == null) return Results.Redirect("/login");
+
+    SetTrustCookie(ctx, db, userId);
+    await SignInUser(ctx, db, flags.Username, flags);
+    Console.WriteLine($"[2FA] Setup complete for userId={userId}");
+    return Results.Redirect("/Home");
+}).DisableAntiforgery();
+
+// ── /loginpost-verify2fa ──────────────────────────────────────────────────
+
+app.MapPost("/loginpost-verify2fa", async (HttpContext ctx, UserDb db, IConfiguration config) =>
+{
+    if (!int.TryParse(ctx.Request.Cookies["lpm_pending"], out var userId))
+        return Results.Redirect("/login");
+
+    var form = await ctx.Request.ReadFormAsync();
+    var code = form["code"].ToString();
+
+    var flags = db.GetLoginFlagsById(userId);
+    if (flags == null || flags.EncryptedTotpSecret == null)
+        return Results.Redirect("/login");
+
+    var encKey = config["TotpEncryptionKey"] ?? throw new InvalidOperationException("TotpEncryptionKey not configured");
+
+    if (!db.VerifyTotpCode(flags.EncryptedTotpSecret, code, encKey))
+    {
+        Console.WriteLine($"[2FA] Verify failed for userId={userId}");
+        return Results.Redirect("/Login2FA?error=1");
+    }
+
+    SetTrustCookie(ctx, db, userId);
+    await SignInUser(ctx, db, flags.Username, flags);
+    Console.WriteLine($"[2FA] Verify success for userId={userId}");
+    return Results.Redirect("/Home");
 }).DisableAntiforgery();
 
 // Logout endpoint — clears auth cookie and redirects to login

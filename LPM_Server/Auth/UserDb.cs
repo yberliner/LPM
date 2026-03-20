@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using System.Security.Cryptography;
+using OtpNet;
 
 namespace LPM.Auth;
 
@@ -293,6 +294,231 @@ public class UserDb
         cmd.CommandText = "SELECT COUNT(*) FROM core_users WHERE Username = @u COLLATE NOCASE";
         cmd.Parameters.AddWithValue("@u", username.Trim());
         return (long)cmd.ExecuteScalar()! > 0;
+    }
+
+    // ── 2FA / TOTP ──────────────────────────────────────────────────────────
+
+    public record LoginFlags(int UserId, string Username, bool MustChangePassword, bool TotpEnabled, string? EncryptedTotpSecret, List<string> Roles, string StaffRole, int PersonId);
+
+    /// <summary>Returns login flags for a user by username. Call only after ValidateUser succeeds.</summary>
+    public LoginFlags? GetLoginFlags(string username)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT u.Id, u.MustChangePassword, u.TotpEnabled, u.TotpSecret,
+                   u.UserType, u.StaffRole, u.PersonId
+            FROM core_users u
+            WHERE u.Username = @u COLLATE NOCASE AND u.IsActive = 1 LIMIT 1";
+        cmd.Parameters.AddWithValue("@u", username);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return null;
+        var roles = new List<string>();
+        if (r.GetString(4) == "Admin") roles.Add("Admin");
+        return new LoginFlags(
+            UserId: r.GetInt32(0),
+            Username: username,
+            MustChangePassword: r.GetInt32(1) == 1,
+            TotpEnabled: r.GetInt32(2) == 1,
+            EncryptedTotpSecret: r.IsDBNull(3) ? null : r.GetString(3),
+            Roles: roles,
+            StaffRole: r.GetString(5),
+            PersonId: r.GetInt32(6));
+    }
+
+    /// <summary>Same as GetLoginFlags but looks up by UserId (core_users.Id).</summary>
+    public LoginFlags? GetLoginFlagsById(int userId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT u.Id, u.Username, u.MustChangePassword, u.TotpEnabled, u.TotpSecret,
+                   u.UserType, u.StaffRole, u.PersonId
+            FROM core_users u
+            WHERE u.Id = @id AND u.IsActive = 1 LIMIT 1";
+        cmd.Parameters.AddWithValue("@id", userId);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return null;
+        var roles = new List<string>();
+        if (r.GetString(5) == "Admin") roles.Add("Admin");
+        return new LoginFlags(
+            UserId: r.GetInt32(0),
+            Username: r.GetString(1),
+            MustChangePassword: r.GetInt32(2) == 1,
+            TotpEnabled: r.GetInt32(3) == 1,
+            EncryptedTotpSecret: r.IsDBNull(4) ? null : r.GetString(4),
+            Roles: roles,
+            StaffRole: r.GetString(6),
+            PersonId: r.GetInt32(7));
+    }
+
+    /// <summary>Forces a password change (no current password required) and clears MustChangePassword.</summary>
+    public void ForceSetPassword(int userId, string newPassword)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE core_users SET PasswordHash=@h, MustChangePassword=0 WHERE Id=@id";
+        cmd.Parameters.AddWithValue("@h", HashPassword(newPassword));
+        cmd.Parameters.AddWithValue("@id", userId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[UserDb] Forced password change for userId={userId}");
+    }
+
+    /// <summary>Generates a new TOTP secret, encrypts it, saves it, sets TotpEnabled=1.</summary>
+    public string SetupTotp(int userId, string encKey)
+    {
+        var rawSecret = KeyGeneration.GenerateRandomKey(20); // 160-bit secret
+        var encrypted = EncryptTotp(rawSecret, encKey);
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE core_users SET TotpSecret=@s, TotpEnabled=1 WHERE Id=@id";
+        cmd.Parameters.AddWithValue("@s", encrypted);
+        cmd.Parameters.AddWithValue("@id", userId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[UserDb] TOTP enabled for userId={userId}");
+        return Base32Encoding.ToString(rawSecret); // return raw base32 for QR
+    }
+
+    /// <summary>Generates a new secret without saving — for the setup preview step.</summary>
+    public static (byte[] RawSecret, string Base32Secret) GenerateTotpSecret()
+    {
+        var raw = KeyGeneration.GenerateRandomKey(20);
+        return (raw, Base32Encoding.ToString(raw));
+    }
+
+    /// <summary>Verifies a 6-digit code against the encrypted secret. Allows ±1 time window.</summary>
+    public bool VerifyTotpCode(string encryptedSecret, string code, string encKey)
+    {
+        try
+        {
+            var rawSecret = DecryptTotp(encryptedSecret, encKey);
+            var totp = new Totp(rawSecret);
+            return totp.VerifyTotp(code, out _, new VerificationWindow(1, 1));
+        }
+        catch { return false; }
+    }
+
+    /// <summary>Verifies a code against a raw (not yet saved) base32 secret. Used during setup.</summary>
+    public static bool VerifyTotpCodeRaw(byte[] rawSecret, string code)
+    {
+        try
+        {
+            var totp = new Totp(rawSecret);
+            return totp.VerifyTotp(code, out _, new VerificationWindow(1, 1));
+        }
+        catch { return false; }
+    }
+
+    /// <summary>Saves an already-encrypted TOTP secret and enables TOTP for the user.</summary>
+    public void SaveEncryptedTotpSecret(int userId, string encryptedSecret)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE core_users SET TotpSecret=@s, TotpEnabled=1 WHERE Id=@id";
+        cmd.Parameters.AddWithValue("@s", encryptedSecret);
+        cmd.Parameters.AddWithValue("@id", userId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[UserDb] TOTP secret saved for userId={userId}");
+    }
+
+    /// <summary>Encrypts a raw TOTP secret byte array using AES-256-GCM. Public for use in setup flow.</summary>
+    public static string EncryptTotpRaw(byte[] rawSecret, string encKey)
+        => EncryptTotp(rawSecret, encKey); // returns base64 string
+
+    public void DisableTotp(int userId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE core_users SET TotpSecret=NULL, TotpEnabled=0 WHERE Id=@id";
+        cmd.Parameters.AddWithValue("@id", userId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[UserDb] TOTP disabled for userId={userId}");
+    }
+
+    // ── Trusted devices ──────────────────────────────────────────────────────
+
+    /// <summary>Returns the UserId (core_users.Id) that owns this trust token, or null if invalid.</summary>
+    public int? GetTrustedDeviceUserId(string token)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT UserId FROM sys_trusted_devices WHERE DeviceToken=@t LIMIT 1";
+        cmd.Parameters.AddWithValue("@t", token);
+        var result = cmd.ExecuteScalar();
+        return result is long v ? (int)v : null;
+    }
+
+    public void AddTrustedDevice(int userId, string token)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "INSERT OR REPLACE INTO sys_trusted_devices (DeviceToken, UserId, CreatedAt) VALUES (@t,@u,@c)";
+        cmd.Parameters.AddWithValue("@t", token);
+        cmd.Parameters.AddWithValue("@u", userId);
+        cmd.Parameters.AddWithValue("@c", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"));
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[UserDb] Trusted device added for userId={userId}");
+    }
+
+    public void RevokeAllTrustedDevices(int userId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM sys_trusted_devices WHERE UserId=@u";
+        cmd.Parameters.AddWithValue("@u", userId);
+        var n = cmd.ExecuteNonQuery();
+        Console.WriteLine($"[UserDb] Revoked {n} trusted devices for userId={userId}");
+    }
+
+    public int GetTrustedDeviceCount(int userId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM sys_trusted_devices WHERE UserId=@u";
+        cmd.Parameters.AddWithValue("@u", userId);
+        return (int)(long)cmd.ExecuteScalar()!;
+    }
+
+    // ── AES-256-GCM helpers ──────────────────────────────────────────────────
+
+    private static string EncryptTotp(byte[] plaintext, string base64Key)
+    {
+        var key = Convert.FromBase64String(base64Key);
+        var nonce = RandomNumberGenerator.GetBytes(AesGcm.NonceByteSizes.MaxSize);
+        var tag = new byte[AesGcm.TagByteSizes.MaxSize];
+        var cipher = new byte[plaintext.Length];
+        using var aes = new AesGcm(key, AesGcm.TagByteSizes.MaxSize);
+        aes.Encrypt(nonce, plaintext, cipher, tag);
+        // format: nonce(12) + tag(16) + cipher
+        var result = new byte[nonce.Length + tag.Length + cipher.Length];
+        nonce.CopyTo(result, 0);
+        tag.CopyTo(result, nonce.Length);
+        cipher.CopyTo(result, nonce.Length + tag.Length);
+        return Convert.ToBase64String(result);
+    }
+
+    private static byte[] DecryptTotp(string base64Cipher, string base64Key)
+    {
+        var data = Convert.FromBase64String(base64Cipher);
+        var key = Convert.FromBase64String(base64Key);
+        const int nonceSize = 12, tagSize = 16;
+        var nonce = data[..nonceSize];
+        var tag   = data[nonceSize..(nonceSize + tagSize)];
+        var cipher = data[(nonceSize + tagSize)..];
+        var plain = new byte[cipher.Length];
+        using var aes = new AesGcm(key, tagSize);
+        aes.Decrypt(nonce, cipher, tag, plain);
+        return plain;
     }
 
     // ── Private helpers ─────────────────────────────────────────────────────
