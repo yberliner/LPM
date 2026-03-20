@@ -1775,7 +1775,7 @@ public class DashboardService
         return result is long l ? (int)l : 0;
     }
 
-    public void ApproveSession(int sessionId, int chargedRateCents, int auditorSalaryCents)
+    public void ApproveSession(int sessionId, int chargedRateCents, int auditorSalaryCents, int verifiedByUserId = 0)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -1785,13 +1785,17 @@ public class DashboardService
             SET VerifiedStatus = 'Approved',
                 ChargedRateCentsPerHour = @rate,
                 AuditorSalaryCentsPerHour = @salary,
-                ChargeSeconds = CASE WHEN IsFreeSession = 1 THEN 0 ELSE LengthSeconds + AdminSeconds END
+                ChargeSeconds = CASE WHEN IsFreeSession = 1 THEN 0 ELSE LengthSeconds + AdminSeconds END,
+                VerifiedByUserId = @verifier,
+                VerifiedAt = @verifiedAt
             WHERE SessionId = @id";
-        cmd.Parameters.AddWithValue("@rate",   chargedRateCents);
-        cmd.Parameters.AddWithValue("@salary", auditorSalaryCents);
-        cmd.Parameters.AddWithValue("@id",     sessionId);
+        cmd.Parameters.AddWithValue("@rate",       chargedRateCents);
+        cmd.Parameters.AddWithValue("@salary",     auditorSalaryCents);
+        cmd.Parameters.AddWithValue("@verifier",   verifiedByUserId > 0 ? (object)verifiedByUserId : DBNull.Value);
+        cmd.Parameters.AddWithValue("@verifiedAt", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"));
+        cmd.Parameters.AddWithValue("@id",         sessionId);
         cmd.ExecuteNonQuery();
-        Console.WriteLine($"[DashboardService] Approved session {sessionId}");
+        Console.WriteLine($"[DashboardService] Approved session {sessionId} by userId={verifiedByUserId}");
     }
 
     public void ApproveCsReview(int csReviewId, int csSalaryCents)
@@ -2015,7 +2019,7 @@ public class DashboardService
     public record AuditorSessionStatus(
         int SessionId, int PcId, string PcName, string SessionName,
         string SessionDate, int TotalSeconds, string CsStatus, string? CsName, string CreatedAt,
-        bool IsPendingApproval = false);
+        bool IsPendingApproval = false, bool IsSessionVerified = false);
 
     /// <summary>
     /// Returns sessions the auditor conducted in the last <paramref name="lookbackDays"/> days
@@ -2040,7 +2044,8 @@ public class DashboardService
                        CASE WHEN cr.CsReviewId IS NULL THEN 'Waiting' ELSE cr.Status END AS CsStatus,
                        TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS CsName,
                        COALESCE(s.CreatedAt, '') AS CreatedAt,
-                       1 AS IsApproved
+                       1 AS IsApproved,
+                       CASE WHEN s.VerifiedStatus = 'Approved' THEN 1 ELSE 0 END AS IsSessionVerified
                 FROM sess_sessions s
                 JOIN core_persons p ON p.PersonId = s.PcId
                 LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
@@ -2061,7 +2066,8 @@ public class DashboardService
                        CASE WHEN cr.CsReviewId IS NULL THEN 'Waiting' ELSE cr.Status END AS CsStatus,
                        TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS CsName,
                        COALESCE(s.CreatedAt, '') AS CreatedAt,
-                       spl.IsApproved AS IsApproved
+                       spl.IsApproved AS IsApproved,
+                       CASE WHEN s.VerifiedStatus = 'Approved' THEN 1 ELSE 0 END AS IsSessionVerified
                 FROM sess_sessions s
                 JOIN core_persons p ON p.PersonId = s.PcId
                 JOIN sys_staff_pc_list spl ON spl.PcId = s.PcId
@@ -2086,7 +2092,8 @@ public class DashboardService
                 r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3),
                 r.GetString(4), r.IsDBNull(5) ? 0 : r.GetInt32(5),
                 r.GetString(6), r.IsDBNull(7) ? null : r.GetString(7), r.GetString(8),
-                IsPendingApproval: r.GetInt32(9) == 0));
+                IsPendingApproval: r.GetInt32(9) == 0,
+                IsSessionVerified: r.GetInt32(10) == 1));
         }
         return list;
     }

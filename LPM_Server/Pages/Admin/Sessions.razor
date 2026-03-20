@@ -521,6 +521,7 @@
     private bool _sessCollapsed = false;
     private bool _csCollapsed   = false;
     private string _username = "";
+    private int    _userId   = 0;
 
     private int _sessDraft    => _groups.Sum(g => g.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus != "Approved")));
     private int _sessApproved => _groups.Sum(g => g.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus == "Approved")));
@@ -540,6 +541,7 @@
             return;
         }
         _username = authState.User.Identity?.Name ?? "";
+        _userId   = DashSvc.GetUserIdByUsername(_username) ?? 0;
         await LoadData();
     }
 
@@ -664,7 +666,7 @@
         if (!_rowEdits.TryGetValue(sessionId, out var edit)) return;
         Console.WriteLine($"[Sessions] Submitted session {sessionId} — rate={edit.ChargeRate}, salary={edit.Salary} by '{_username}'");
         _busy = true;
-        DashSvc.ApproveSession(sessionId, edit.ChargeRate * 100, edit.Salary * 100);
+        DashSvc.ApproveSession(sessionId, edit.ChargeRate * 100, edit.Salary * 100, _userId);
         _busy = false;
         ApplySessionApprovalInMemory(sessionId, edit.ChargeRate * 100, edit.Salary * 100);
         ShowMsg("Session saved.", false);
@@ -682,7 +684,7 @@
         foreach (var s in pcGroup.Sessions.ToList())
         {
             if (!_rowEdits.TryGetValue(s.SessionId, out var edit)) continue;
-            DashSvc.ApproveSession(s.SessionId, edit.ChargeRate * 100, edit.Salary * 100);
+            DashSvc.ApproveSession(s.SessionId, edit.ChargeRate * 100, edit.Salary * 100, _userId);
             ApplySessionApprovalInMemory(s.SessionId, edit.ChargeRate * 100, edit.Salary * 100);
             count++;
         }
