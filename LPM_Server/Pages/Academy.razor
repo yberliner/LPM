@@ -1283,6 +1283,7 @@
         StateHasChanged();
 
         await Task.Delay(700);
+        _clickedPersonId   = null;
         _lastAddedPersonId = null;
         StateHasChanged();
     }
@@ -1290,7 +1291,9 @@
     void CancelNoCourseWarning()
     {
         _showNoCourseWarning = false;
-        _pendingVisitPerson = null;
+        _pendingVisitPerson  = null;
+        _clickedPersonId     = null;
+        StateHasChanged();
     }
 
     void AddVisit(PersonItem p)
