@@ -1733,7 +1733,8 @@ public class DashboardService
             UPDATE sess_sessions
             SET VerifiedStatus = 'Approved',
                 ChargedRateCentsPerHour = @rate,
-                AuditorSalaryCentsPerHour = @salary
+                AuditorSalaryCentsPerHour = @salary,
+                ChargeSeconds = CASE WHEN IsFreeSession = 1 THEN 0 ELSE LengthSeconds + AdminSeconds END
             WHERE SessionId = @id";
         cmd.Parameters.AddWithValue("@rate",   chargedRateCents);
         cmd.Parameters.AddWithValue("@salary", auditorSalaryCents);
