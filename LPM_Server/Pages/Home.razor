@@ -70,12 +70,19 @@
                            style="font-size:1rem;"></i>
                         <i class="ri-clipboard-line me-1"></i>
                         <strong>My CS Queue</strong>
-                        <span class="home-pending-cs-badge">@_pendingCsSessions.Count</span>
+                        <span class="home-pending-cs-badge">@_pendingCsSessions.Count(s => string.IsNullOrEmpty(s.CsStatus))</span>
+                        <button class="home-done-toggle @(_showDoneCs ? "home-done-toggle-on" : "")"
+                                @onclick:stopPropagation="true"
+                                @onclick="ToggleShowDoneCs"
+                                title="@(_showDoneCs ? "Hide completed CSes" : "Show completed CSes")">
+                            <i class="ri-eye-@(_showDoneCs ? "off-" : "")line me-1"></i>Done
+                        </button>
                         <select class="home-range-select" value="@_csQueueDays"
                                 @onclick:stopPropagation="true"
                                 @onchange="OnCsQueueRangeChanged">
                             <option value="1">Last 1 day</option>
                             <option value="3">Last 3 days</option>
+                            <option value="7">Last 7 days</option>
                             <option value="10">Last 10 days</option>
                             <option value="0">All</option>
                         </select>
@@ -136,8 +143,9 @@
                                         var dateStr = DateTime.TryParse(s.CreatedAt, out var dt)
                                             ? dt.ToString("dd/MM/yy HH:mm")
                                             : (DateOnly.TryParse(s.SessionDate, out var d) ? d.ToString("dd/MM/yy") : s.SessionDate);
-                                        var pendingStyle = s.IsPendingApproval ? "opacity:.4; pointer-events:none;" : "";
-                                        <tr class="@rowClass home-pcs-row" style="@pendingStyle"
+                                        var isDoneCs = !string.IsNullOrEmpty(s.CsStatus);
+                                        var pendingStyle = s.IsPendingApproval ? "opacity:.4; pointer-events:none;" : (isDoneCs ? "opacity:.55;" : "");
+                                        <tr class="@rowClass home-pcs-row @(isDoneCs ? "home-csq-done-row" : "")" style="@pendingStyle"
                                             @onclick="() => { if (!s.IsPendingApproval) OpenPendingCs(s); }">
                                             <td class="home-pcs-pcname">
                                                 @if (isNewPc)
@@ -172,9 +180,18 @@
                                                 }
                                             </td>
                                             <td style="text-align:center;">
-                                                <button class="home-pcs-cs-btn" title="Open CS for this session">
-                                                    <i class="ri-eye-line me-1"></i>CS
-                                                </button>
+                                                @if (isDoneCs)
+                                                {
+                                                    <span class="home-csq-done-chip">
+                                                        <i class="ri-check-double-line me-1"></i>Done
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <button class="home-pcs-cs-btn" title="Open CS for this session">
+                                                        <i class="ri-eye-line me-1"></i>CS
+                                                    </button>
+                                                }
                                             </td>
                                         </tr>
                                     }
@@ -201,6 +218,7 @@
                                 @onchange="OnAudStatusRangeChanged">
                             <option value="1">Last 1 day</option>
                             <option value="3">Last 3 days</option>
+                            <option value="7">Last 7 days</option>
                             <option value="10">Last 10 days</option>
                             <option value="30">Last 30 days</option>
                             <option value="0">All</option>
@@ -1298,6 +1316,24 @@
         border-color: rgba(244,114,182,.2);
         display: flex; align-items: center; gap: 4px;
     }
+    /* Done-CS toggle button */
+    .home-done-toggle {
+        font-size: .7rem; font-weight: 600; padding: 1px 9px; border-radius: 10px;
+        border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08);
+        color: #94a3b8; cursor: pointer; transition: all .15s; white-space: nowrap;
+    }
+    .home-done-toggle:hover { background: rgba(255,255,255,.15); color: #e2e8f0; }
+    .home-done-toggle-on {
+        background: rgba(34,197,94,.2) !important; border-color: #22c55e !important;
+        color: #22c55e !important;
+    }
+    /* Done rows in CS Queue */
+    .home-csq-done-row td { text-decoration: line-through; text-decoration-color: rgba(148,163,184,.4); text-decoration-thickness: 2px; }
+    .home-csq-done-chip {
+        font-size: .68rem; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+        background: rgba(34,197,94,.15); color: #22c55e; white-space: nowrap;
+    }
+
     .home-pending-cs-badge {
         background: #ec4899; color: #fff;
         border-radius: 10px; padding: 0 8px;
@@ -1534,11 +1570,12 @@
     List<DashboardService.PendingCsSession> _pendingCsSessions = [];
     bool _pendingCsExpanded = true;
     bool _weeklyOverviewExpanded = true;
-    int _csQueueDays = 10;
+    int  _csQueueDays = 7;
+    bool _showDoneCs  = false;
     List<DashboardService.AuditorSessionStatus> _auditorStatuses = [];
     Dictionary<int, HashSet<string>> _audAttachTypes = new();
     bool _audStatusExpanded = true;
-    int _audStatusDays = 10;
+    int _audStatusDays = 7;
     string _pcsSortCol = "pc";   // "pc", "date", "dur"
     bool _pcsSortAsc = true;
     string _audSortCol = "pc";   // "pc", "date", "dur"
@@ -1676,7 +1713,7 @@
     public async Task OnCsDoneFromTab()
     {
         if (_isCS)
-            _pendingCsSessions = DashSvc.GetPendingCsSessions(_userId!.Value);
+            _pendingCsSessions = DashSvc.GetPendingCsSessions(_userId!.Value, _csQueueDays, _showDoneCs);
         await RefreshAsync();
     }
 
@@ -1685,7 +1722,7 @@
     public async Task OnTabFocused()
     {
         if (!_isCS) return;
-        var fresh = DashSvc.GetPendingCsSessions(_userId!.Value);
+        var fresh = DashSvc.GetPendingCsSessions(_userId!.Value, _csQueueDays, _showDoneCs);
         if (fresh.Count != _pendingCsSessions.Count)
         {
             _pendingCsSessions = fresh;
@@ -1731,7 +1768,7 @@
         }
 
         if (_isCS)
-            _pendingCsSessions = DashSvc.GetPendingCsSessions(_userId!.Value, _csQueueDays);
+            _pendingCsSessions = DashSvc.GetPendingCsSessions(_userId!.Value, _csQueueDays, _showDoneCs);
 
         if (_isAuditor || _isSolo)
         {
@@ -1922,9 +1959,16 @@
 
     async Task OnCsQueueRangeChanged(ChangeEventArgs e)
     {
-        _csQueueDays = int.TryParse(e.Value?.ToString(), out var v) ? v : 10;
+        _csQueueDays = int.TryParse(e.Value?.ToString(), out var v) ? v : 7;
         Console.WriteLine($"[Home] Changed CS queue range to {_csQueueDays} days by '{_username}'");
-        _pendingCsSessions = DashSvc.GetPendingCsSessions(_userId!.Value, _csQueueDays);
+        _pendingCsSessions = DashSvc.GetPendingCsSessions(_userId!.Value, _csQueueDays, _showDoneCs);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task ToggleShowDoneCs()
+    {
+        _showDoneCs = !_showDoneCs;
+        _pendingCsSessions = DashSvc.GetPendingCsSessions(_userId!.Value, _csQueueDays, _showDoneCs);
         await InvokeAsync(StateHasChanged);
     }
 

@@ -1902,17 +1902,18 @@ public class DashboardService
     public record PendingCsSession(
         int SessionId, int PcId, string PcName, string SessionName,
         string SessionDate, int TotalSeconds, bool IsSolo, string AuditorName, string CreatedAt,
-        bool IsPendingApproval = false);
+        bool IsPendingApproval = false, string CsStatus = "");
 
-    /// Returns sessions from the last <paramref name="lookbackDays"/> days that have no CS review yet,
+    /// Returns sessions from the last <paramref name="lookbackDays"/> days,
     /// limited to PCs where <paramref name="csUserId"/> has an approved CS work-capacity assignment.
-    public List<PendingCsSession> GetPendingCsSessions(int csUserId, int lookbackDays = 10)
+    /// When <paramref name="includeDone"/> is false (default), only sessions without a CS review are returned.
+    public List<PendingCsSession> GetPendingCsSessions(int csUserId, int lookbackDays = 10, bool includeDone = false)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        var dateFilter = lookbackDays > 0
-            ? "AND s.SessionDate >= @cutoff" : "";
+        var dateFilter  = lookbackDays > 0 ? "AND s.SessionDate >= @cutoff" : "";
+        var doneFilter  = includeDone ? "" : "AND cr.CsReviewId IS NULL";
         cmd.CommandText = $@"
             SELECT s.SessionId, s.PcId,
                    {FullNameExpr} AS PcName,
@@ -1922,7 +1923,8 @@ public class DashboardService
                    CASE WHEN s.AuditorId IS NULL THEN 1 ELSE 0 END AS IsSolo,
                    COALESCE(TRIM(pa.FirstName || ' ' || COALESCE(NULLIF(pa.LastName,''), '')), 'Solo') AS AuditorName,
                    COALESCE(s.CreatedAt, '') AS CreatedAt,
-                   spl.IsApproved AS IsApproved
+                   spl.IsApproved AS IsApproved,
+                   COALESCE(cr.Status, '') AS CsStatus
             FROM sess_sessions s
             JOIN core_persons p ON p.PersonId = s.PcId
             JOIN sys_staff_pc_list spl ON spl.PcId = s.PcId
@@ -1931,9 +1933,10 @@ public class DashboardService
                 AND spl.WorkCapacity = 'CS'
             LEFT JOIN core_persons pa ON pa.PersonId = s.AuditorId
             LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
-            WHERE cr.CsReviewId IS NULL
+            WHERE 1=1
+              {doneFilter}
               {dateFilter}
-            ORDER BY spl.IsApproved DESC, PcName, s.SessionDate, s.SequenceInDay";
+            ORDER BY spl.IsApproved DESC, cr.CsReviewId IS NULL DESC, PcName, s.SessionDate, s.SequenceInDay";
         cmd.Parameters.AddWithValue("@csUserId", csUserId);
         if (lookbackDays > 0)
             cmd.Parameters.AddWithValue("@cutoff",
@@ -1946,7 +1949,8 @@ public class DashboardService
                 r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3),
                 r.GetString(4), r.IsDBNull(5) ? 0 : r.GetInt32(5),
                 r.GetInt32(6) == 1, r.GetString(7), r.GetString(8),
-                IsPendingApproval: r.GetInt32(9) == 0));
+                IsPendingApproval: r.GetInt32(9) == 0,
+                CsStatus: r.GetString(10)));
         }
         return list;
     }
