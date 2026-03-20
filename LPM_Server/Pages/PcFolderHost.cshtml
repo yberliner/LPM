@@ -33,7 +33,7 @@
     {
         var staffRole = User.FindFirst("StaffRole")?.Value ?? "";
         if (staffRole == "Solo")
-            authorized = (pcId == userPersonId); // solo user: only their own PC (solo param handled by OnInitialized redirect)
+            authorized = (pcId == userPersonId && solo); // solo user: own PC, solo mode only
         else
             authorized = dashSvc.CanAccessPcFolder(userPersonId, pcId);
     }

@@ -560,12 +560,17 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        // Check AllowAll flag
+        // Check AllowAll flag and StaffRole
         using var cmdAllow = conn.CreateCommand();
-        cmdAllow.CommandText = "SELECT COALESCE(AllowAll,0) FROM core_users WHERE PersonId = @aid AND IsActive = 1 LIMIT 1";
+        cmdAllow.CommandText = "SELECT COALESCE(AllowAll,0), COALESCE(StaffRole,'') FROM core_users WHERE PersonId = @aid AND IsActive = 1 LIMIT 1";
         cmdAllow.Parameters.AddWithValue("@aid", personId);
-        var allowAll = cmdAllow.ExecuteScalar();
-        if (allowAll is long a && a == 1) return true;
+        using var ar = cmdAllow.ExecuteReader();
+        if (ar.Read())
+        {
+            if (ar.GetInt32(0) == 1) return true;           // AllowAll
+            if (ar.GetString(1) == "Solo") return pcId == personId; // Solo can access own PC only
+        }
+        ar.Close();
 
         // Check approved permission
         using var cmd = conn.CreateCommand();
@@ -2082,13 +2087,16 @@ public class DashboardService
     /// Returns sessions the auditor conducted in the last <paramref name="lookbackDays"/> days
     /// with their CS review status: Waiting / Done / Approved / Correction.
     /// </summary>
-    public List<AuditorSessionStatus> GetAuditorSessionStatuses(int auditorId, int lookbackDays = 10)
+    public List<AuditorSessionStatus> GetAuditorSessionStatuses(int auditorId, int lookbackDays = 10, bool isSolo = false)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
         var dateFilter = lookbackDays > 0
             ? "AND s.SessionDate >= @cutoff" : "";
+        var auditorFilter = isSolo
+            ? "s.PcId = @aid AND s.AuditorId IS NULL"
+            : "s.AuditorId = @aid";
         cmd.CommandText = $@"
             SELECT s.SessionId, s.PcId,
                    {FullNameExpr} AS PcName,
@@ -2105,7 +2113,7 @@ public class DashboardService
             JOIN core_persons p ON p.PersonId = s.PcId
             LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
             LEFT JOIN core_persons pc ON pc.PersonId = cr.CsId
-            WHERE s.AuditorId = @aid
+            WHERE {auditorFilter}
               {dateFilter}
             ORDER BY PcName, s.SessionDate, s.SequenceInDay";
         cmd.Parameters.AddWithValue("@aid", auditorId);

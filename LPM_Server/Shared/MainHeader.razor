@@ -320,6 +320,8 @@
                     <ul class="header-content-right list-unstyled">
 
                         <!-- Start::header-element new-pc -->
+                        @if (!_isSoloUser)
+                        {
                         <li class="header-element me-2">
                             <button class="btn btn-sm btn-success d-flex align-items-center gap-1"
                                     style="border-radius:8px; font-weight:600; font-size:.82rem; color:#fff !important;"
@@ -327,6 +329,7 @@
                                 <i class="ri-user-add-line"></i>@LS.T("pcs.newPc")
                             </button>
                         </li>
+                        }
                         <!-- End::header-element new-pc -->
 
                         <!-- Start::header-element import-session -->
@@ -361,12 +364,15 @@
                                             <i class="ri-file-edit-line" style="color:#8b5cf6;"></i>Write to Folder Summary
                                         </a>
                                     </li>
+                                    @if (!_isSoloUser)
+                                    {
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenScheduleMeeting">
                                             <i class="ri-calendar-event-line" style="color:#f59e0b;"></i>Schedule Meeting
                                         </a>
                                     </li>
+                                    }
                                 </ul>
                             </div>
                         </li>
@@ -1033,7 +1039,7 @@
                                 var thisPc = pc;
                                 @if (!(_isSoloUser && thisPc.IsAlsoSolo))
                                 {
-                                    <div class="act-pc-item" @onclick="() => OnActionFolderPcSelected(thisPc.PcId, false)">
+                                    <div class="act-pc-item" @onclick="() => OnActionFolderPcSelected(thisPc.PcId, _isSoloUser)">
                                         <i class="ri-user-line" style="color:#3b82f6; opacity:.6;"></i>
                                         <span>@thisPc.FullName</span>
                                     </div>
@@ -1134,7 +1140,7 @@
                                     var thisPc = pc;
                                     @if (!(_isSoloUser && thisPc.IsAlsoSolo))
                                     {
-                                        <div class="act-pc-item" @onclick="() => OnActionSummaryPcSelected(thisPc.PcId, thisPc.FullName, false)">
+                                        <div class="act-pc-item" @onclick="() => OnActionSummaryPcSelected(thisPc.PcId, thisPc.FullName, _isSoloUser)">
                                             <i class="ri-user-line" style="color:#8b5cf6; opacity:.6;"></i>
                                             <span>@thisPc.FullName</span>
                                         </div>
@@ -2357,9 +2363,16 @@ string _actionPcSearch = "";
         _actionAllPcs = DashSvc.GetApprovedPcsForUser(_msgUserId.Value);
     }
 
-    void OpenActionFolder()
+    async Task OpenActionFolder()
     {
         if (!_msgUserId.HasValue) return;
+        if (_isSoloUser)
+        {
+            // Solo user: open their own solo folder immediately, no selection needed
+            var url = NavigationManager.ToAbsoluteUri($"/PcFolder/{_msgUserId.Value}?solo=true").ToString();
+            await JSRuntime.InvokeVoidAsync("open", url, "_blank");
+            return;
+        }
         LoadAllPcs();
         _actionPcSearch = "";
         _actionPermMsg = "";

@@ -15,16 +15,22 @@
 
     @* ── Week navigation bar ── *@
     <div class="home-nav-bar d-flex align-items-center flex-wrap gap-2 px-3 py-2">
+        @if (!_isSolo)
+        {
         <button class="btn btn-sm home-nav-btn" @onclick="PrevWeek">
             <i class="ri-arrow-left-s-line"></i> @LS.T("common.prev")
         </button>
+        }
         <span class="home-nav-week">
             <i class="ri-calendar-2-line me-1 opacity-75"></i>@DayLabel(_weekStart) – @DayLabel(_weekStart.AddDays(6))
         </span>
+        @if (!_isSolo)
+        {
         <button class="btn btn-sm home-nav-btn" @onclick="NextWeek"
                 disabled="@(_weekStart >= DashboardService.GetWeekStart(MaxAllowedDate()))">
             @LS.T("common.next") <i class="ri-arrow-right-s-line"></i>
         </button>
+        }
         <div class="d-flex align-items-center gap-2 ms-auto">
             <button class="btn btn-sm home-nav-btn" @onclick="PrintTable">
                 <i class="ri-printer-line me-1"></i>@LS.T("common.print")
@@ -162,7 +168,7 @@
             }
 
             @* ══════ MY AUDITING STATUS ══════ *@
-            @if (_isAuditor)
+            @if (_isAuditor || _isSolo)
             {
                 <div class="card mx-3 mt-3 mb-2 home-aud-status-card">
                     <div class="card-header py-2 home-aud-status-header"
@@ -280,6 +286,8 @@
                 </div>
             }
 
+            @if (!_isSolo)
+            {
             @* ══════ WEEKLY OVERVIEW (collapsible) ══════ *@
             <div class="home-overview-header px-3 mt-1 mb-1 d-flex align-items-center"
                  style="cursor:pointer;">
@@ -768,6 +776,8 @@
                     </div>
                 </div>
             </div>
+
+            } @* end !_isSolo *@
 
         </div>
 
@@ -1495,9 +1505,9 @@
         if (_isCS)
             _pendingCsSessions = DashSvc.GetPendingCsSessions(_csQueueDays);
 
-        if (_isAuditor)
+        if (_isAuditor || _isSolo)
         {
-            _auditorStatuses = DashSvc.GetAuditorSessionStatuses(_userId.Value, _audStatusDays);
+            _auditorStatuses = DashSvc.GetAuditorSessionStatuses(_userId.Value, _audStatusDays, isSolo: _isSolo);
             _audAttachTypes  = _auditorStatuses.ToDictionary(s => s.SessionId,
                                    s => FolderSvc.GetSessionAttachmentTypes(s.PcId, s.SessionName));
         }
@@ -1577,6 +1587,7 @@
     // ── Context menu ──
     void ShowCtxMenu(MouseEventArgs e, PcInfo pc)
     {
+        if (_isSolo) return;
         _showCtxMenu      = true;
         _ctxPcId          = pc.PcId;
         _ctxWorkCapacity  = pc.WorkCapacity;
@@ -1657,7 +1668,7 @@
     {
         Console.WriteLine($"[Home] Opened PC folder for PC {pcId} by '{_username}'");
         _showCtxMenu = false;
-        var url = $"/PcFolder/{pcId}";
+        var url = _isSolo ? $"/PcFolder/{pcId}?solo=true" : $"/PcFolder/{pcId}";
         await JS.InvokeVoidAsync("pcfOpenTab", url);
     }
 
@@ -1675,6 +1686,7 @@
     {
         Console.WriteLine($"[Home] Opened auditor session {s.SessionId} (PC {s.PcId}, {s.PcName}) by '{_username}'");
         var url = $"/PcFolder/{s.PcId}?sessionId={s.SessionId}";
+        if (_isSolo) url += "&solo=true";
         if (!string.IsNullOrWhiteSpace(s.SessionName))
             url += $"&file={Uri.EscapeDataString(s.SessionName)}";
         await JS.InvokeVoidAsync("pcfOpenTab", url);
@@ -1693,7 +1705,7 @@
         if (!_userId.HasValue) return;
         _audStatusDays = int.TryParse(e.Value?.ToString(), out var v) ? v : 10;
         Console.WriteLine($"[Home] Changed auditor status range to {_audStatusDays} days by '{_username}'");
-        _auditorStatuses = DashSvc.GetAuditorSessionStatuses(_userId.Value, _audStatusDays);
+        _auditorStatuses = DashSvc.GetAuditorSessionStatuses(_userId.Value, _audStatusDays, isSolo: _isSolo);
         _audAttachTypes  = _auditorStatuses.ToDictionary(s => s.SessionId,
                                s => FolderSvc.GetSessionAttachmentTypes(s.PcId, s.SessionName));
         await InvokeAsync(StateHasChanged);
