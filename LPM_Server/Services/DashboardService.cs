@@ -31,6 +31,14 @@ public record PcCsGroup(int PcId, string PcName, List<AdminCsRow> Reviews);
 public record CsReviewerGroup(int CsId, string CsName, List<PcCsGroup> PcGroups);
 
 public record StaffMember(int PersonId, string FullName);
+
+public record SalarySessionRow(string Date, string PcName, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved);
+public record SalaryCsRow(string Date, string PcName, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved);
+public record UserSalaryGroup(int PersonId, string FullName, List<SalarySessionRow> Sessions, List<SalaryCsRow> CsReviews)
+{
+    public long TotalCents => Sessions.Where(s => s.IsApproved).Sum(s => s.PaymentCents)
+                            + CsReviews.Where(c => c.IsApproved).Sum(c => c.PaymentCents);
+}
 public record StaffMessage(int Id, int FromId, string FromName, int ToId, string ToName, string MsgText, string CreatedAt, string? AcknowledgedAt);
 
 public record PermissionRequest(int Id, int UserId, string AuditorName, int PcId, string PcName, string RequestedAt);
@@ -2165,5 +2173,115 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@rem", remarks ?? "");
         cmd.ExecuteNonQuery();
         Console.WriteLine($"[DashboardService] Saved weekly remarks for auditor {auditorId}, week {weekDate}");
+    }
+
+    // ── Salary Report ──────────────────────────────────────────────────────────
+    public List<UserSalaryGroup> GetSalaryReport(DateOnly from, DateOnly to)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        var fromStr = from.ToString("yyyy-MM-dd");
+        var toStr   = to.ToString("yyyy-MM-dd");
+
+        // Sessions per auditor
+        var sessCmd = conn.CreateCommand();
+        sessCmd.CommandText = @"
+            SELECT s.AuditorId,
+                   s.SessionDate,
+                   TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS PcName,
+                   s.ChargeSeconds,
+                   s.AuditorSalaryCentsPerHour,
+                   s.VerifiedStatus
+            FROM sess_sessions s
+            JOIN core_persons pc ON pc.PersonId = s.PcId
+            WHERE s.AuditorId IS NOT NULL
+              AND s.SessionDate >= @from AND s.SessionDate <= @to
+            ORDER BY s.AuditorId, s.SessionDate, s.SequenceInDay";
+        sessCmd.Parameters.AddWithValue("@from", fromStr);
+        sessCmd.Parameters.AddWithValue("@to",   toStr);
+
+        var sessionsByUser = new Dictionary<int, List<SalarySessionRow>>();
+        using (var r = sessCmd.ExecuteReader())
+        {
+            while (r.Read())
+            {
+                var audId      = r.GetInt32(0);
+                var isApproved = r.GetString(5) == "Approved";
+                var chargeSec  = r.IsDBNull(3) ? 0 : r.GetInt32(3);
+                var rateCents  = r.IsDBNull(4) ? 0 : r.GetInt32(4);
+                var payment    = isApproved ? (long)rateCents * chargeSec / 3600L : 0L;
+                var row = new SalarySessionRow(
+                    r.GetString(1), r.GetString(2),
+                    chargeSec, rateCents, payment, isApproved);
+                if (!sessionsByUser.ContainsKey(audId)) sessionsByUser[audId] = new();
+                sessionsByUser[audId].Add(row);
+            }
+        }
+
+        // CS reviews per CS user
+        var csCmd = conn.CreateCommand();
+        csCmd.CommandText = @"
+            SELECT cr.CsId,
+                   s.SessionDate,
+                   TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS PcName,
+                   cr.ReviewLengthSeconds,
+                   cr.CsSalaryCentsPerHour,
+                   cr.Status
+            FROM cs_reviews cr
+            JOIN sess_sessions s  ON s.SessionId  = cr.SessionId
+            JOIN core_persons  pc ON pc.PersonId  = s.PcId
+            WHERE s.SessionDate >= @from AND s.SessionDate <= @to
+            ORDER BY cr.CsId, s.SessionDate";
+        csCmd.Parameters.AddWithValue("@from", fromStr);
+        csCmd.Parameters.AddWithValue("@to",   toStr);
+
+        var csByUser = new Dictionary<int, List<SalaryCsRow>>();
+        using (var r = csCmd.ExecuteReader())
+        {
+            while (r.Read())
+            {
+                var csId       = r.GetInt32(0);
+                var isApproved = r.GetString(5) == "Approved";
+                var durSec     = r.IsDBNull(3) ? 0 : r.GetInt32(3);
+                var rateCents  = r.IsDBNull(4) ? 0 : r.GetInt32(4);
+                var payment    = isApproved ? (long)rateCents * durSec / 3600L : 0L;
+                var row = new SalaryCsRow(
+                    r.GetString(1), r.GetString(2),
+                    durSec, rateCents, payment, isApproved);
+                if (!csByUser.ContainsKey(csId)) csByUser[csId] = new();
+                csByUser[csId].Add(row);
+            }
+        }
+
+        // Load non-solo staff users who appear in either set
+        var allPersonIds = sessionsByUser.Keys.Union(csByUser.Keys).ToHashSet();
+        if (allPersonIds.Count == 0) return new();
+
+        var inClause = string.Join(",", allPersonIds);
+        var userCmd  = conn.CreateCommand();
+        userCmd.CommandText = $@"
+            SELECT cu.PersonId,
+                   TRIM(cp.FirstName || ' ' || COALESCE(NULLIF(cp.LastName,''), '')) AS FullName
+            FROM core_users cu
+            JOIN core_persons cp ON cp.PersonId = cu.PersonId
+            WHERE cu.PersonId IN ({inClause})
+              AND cu.StaffRole != 'Solo'
+            ORDER BY cp.FirstName, cp.LastName";
+
+        var result = new List<UserSalaryGroup>();
+        using (var r = userCmd.ExecuteReader())
+        {
+            while (r.Read())
+            {
+                var personId = r.GetInt32(0);
+                var fullName = r.GetString(1);
+                result.Add(new UserSalaryGroup(
+                    personId, fullName,
+                    sessionsByUser.GetValueOrDefault(personId) ?? new(),
+                    csByUser.GetValueOrDefault(personId) ?? new()));
+            }
+        }
+        return result;
     }
 }

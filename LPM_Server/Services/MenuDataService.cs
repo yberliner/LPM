@@ -167,6 +167,17 @@ public class MenuDataService
             requiredRole: "Admin"
         ),
         new MainMenuItems(
+            path: "/Admin/Salary",
+            type: "link",
+            title: "Salary",
+            icon: "",
+            svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><rect x='12' y='8' width='40' height='50' rx='4' fill='#6366f1'/><rect x='12' y='8' width='40' height='14' rx='4' fill='#4338ca'/><rect x='18' y='26' width='28' height='3' rx='1.5' fill='#c7d2fe'/><rect x='18' y='33' width='20' height='3' rx='1.5' fill='#c7d2fe'/><rect x='18' y='40' width='14' height='3' rx='1.5' fill='#c7d2fe'/><circle cx='44' cy='48' r='10' fill='#10b981'/><text x='44' y='53' text-anchor='middle' font-size='13' font-weight='bold' fill='#fff'>₪</text></svg>",
+            selected: false,
+            active: false,
+            dirChange: false,
+            requiredRole: "Admin"
+        ),
+        new MainMenuItems(
             path: "/Admin/Backup",
             type: "link",
             title: "Backup",

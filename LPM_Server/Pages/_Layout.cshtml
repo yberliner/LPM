@@ -247,7 +247,20 @@
             An error has occurred. <a href="" onclick="location.reload()">Reload</a>
         </div>
 
-        <script src="_framework/blazor.server.js"></script>
+        <script src="_framework/blazor.server.js" autostart="false"></script>
+        <script>
+            Blazor.start({
+                reconnectionOptions: {
+                    maxRetries: 5,
+                    retryIntervalMilliseconds: 2000
+                },
+                reconnectionHandler: {
+                    onConnectionDown: () => {},
+                    onConnectionUp:   () => {},
+                    onConnectionFailed: () => { window.location.reload(); }
+                }
+            });
+        </script>
 
         <script>
         function CaptureElementAndCallBlazorFunction(event, menuData) {
