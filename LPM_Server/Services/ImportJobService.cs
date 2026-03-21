@@ -209,7 +209,7 @@ public class ImportJobService
                         var (_, phone) = _pcSvc.GetPersonContact(pcId);
                         if (!string.IsNullOrWhiteSpace(phone))
                         {
-                            var msg = $"Welcome to LPM! Username: {username} | Password: {password} | Site: lpmanager.cv";
+                            var msg = $"Welcome to LPM!\nUsername: {username}\nPassword: {password}\nSite: lpmanager.cv";
                             _ = _smsSvc.SendSmsAsync(phone, msg);
                         }
                         else

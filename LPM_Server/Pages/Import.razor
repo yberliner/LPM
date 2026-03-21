@@ -913,7 +913,7 @@
                         var (_, phone) = PcSvc.GetPersonContact(pcId);
                         if (!string.IsNullOrWhiteSpace(phone))
                         {
-                            var msg = $"Welcome to LPM! Username: {row.Username} | Password: {row.Password} | Site: lpmanager.cv";
+                            var msg = $"Welcome to LPM!\nUsername: {row.Username}\nPassword: {row.Password}\nSite: lpmanager.cv";
                             _ = SmsSvc.SendSmsAsync(phone, msg);
                         }
                     }

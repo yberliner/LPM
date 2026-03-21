@@ -541,10 +541,18 @@ public class UserDb
         checkCmd.Parameters.AddWithValue("@pid", pcId);
         var existingId = checkCmd.ExecuteScalar();
 
+        // Build initial password (same formula used for new users)
+        var fn = firstName.Trim().ToLower();
+        var ln = lastName.Trim().ToLower();
+        var resetPassword = fn.Length > 0
+            ? char.ToUpper(fn[0]) + fn[1..] + "1992"
+            : "User1992";
+
         if (existingId is not null)
         {
             using var reactivateCmd = conn.CreateCommand();
-            reactivateCmd.CommandText = "UPDATE core_users SET IsActive = 1, MustChangePassword = 1 WHERE Id = @id";
+            reactivateCmd.CommandText = "UPDATE core_users SET IsActive = 1, MustChangePassword = 1, PasswordHash = @h WHERE Id = @id";
+            reactivateCmd.Parameters.AddWithValue("@h", HashPassword(resetPassword));
             reactivateCmd.Parameters.AddWithValue("@id", existingId);
             reactivateCmd.ExecuteNonQuery();
 
@@ -552,13 +560,9 @@ public class UserDb
             nameCmd.CommandText = "SELECT Username FROM core_users WHERE Id = @id";
             nameCmd.Parameters.AddWithValue("@id", existingId);
             var username = (string)nameCmd.ExecuteScalar()!;
-            Console.WriteLine($"[UserDb] Reactivated Solo user '{username}' for PC {pcId}");
-            return (username, null); // null = reactivated, no new password to SMS
+            Console.WriteLine($"[UserDb] Reactivated Solo user '{username}' for PC {pcId} with reset password");
+            return (username, resetPassword); // return password so caller can SMS it
         }
-
-        // Build username and password
-        var fn = firstName.Trim().ToLower();
-        var ln = lastName.Trim().ToLower();
         var baseUsername = string.IsNullOrEmpty(ln) ? fn : $"{fn}.{ln}";
         var password = fn.Length > 0
             ? char.ToUpper(fn[0]) + fn[1..] + "1992"

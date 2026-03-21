@@ -1556,7 +1556,7 @@
                 var (_, phone) = PcSvc.GetPersonContact(_selPcId.Value);
                 if (!string.IsNullOrWhiteSpace(phone))
                 {
-                    var msg = $"Welcome to LPM! Username: {username} | Password: {newPassword} | Site: lpmanager.cv";
+                    var msg = $"Welcome to LPM!\nUsername: {username}\nPassword: {newPassword}\nSite: lpmanager.cv";
                     _ = SmsSvc.SendSmsAsync(phone, msg);
                 }
             }
