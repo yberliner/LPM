@@ -1,10 +1,8 @@
 ﻿@using Microsoft.AspNetCore.Components.Web
 @namespace Xintra.Pages
 @addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
-@inject Microsoft.AspNetCore.Components.NavigationManager NavigationManager // This line is used to generate URLs dynamically //
 @inject StateService stateService
 @using System.Text.Json;
-@inject IHttpContextAccessor HttpContextAccessor
 @{ 
     var appState = stateService.GetAppState();
 
@@ -100,13 +98,13 @@
         <title>LP Management</title>
 
         <!-- FAVICON -->
-        <link rel="icon" href="@($"{NavigationManager.BaseUri}assets/images/brand-logos/lp-favicon.svg")" type="image/svg+xml">
+        <link rel="icon" href="/assets/images/brand-logos/lp-favicon.svg" type="image/svg+xml">
 
         <!-- Style Css -->
-        <link href="@($"{NavigationManager.BaseUri}assets/css/styles.css")" rel="stylesheet" >
-        
+        <link href="/assets/css/styles.css" rel="stylesheet" >
+
         <!-- ICONS CSS -->
-        <link href="@($"{NavigationManager.BaseUri}assets/css/icons.css")" rel="stylesheet">
+        <link href="/assets/css/icons.css" rel="stylesheet">
 @*
         <!-- node waves CSS -->
         <link rel="stylesheet" href="@($"{NavigationManager.BaseUri}assets/libs/node-waves/dist/waves.min.css")">
@@ -145,7 +143,7 @@
         <script src="@($"{NavigationManager.BaseUri}assets/libs/@popperjs/core/dist/umd/popper.min.js")"></script>
 *@
         <!-- BOOTSTRAP JS -->
-        <script src="@($"{NavigationManager.BaseUri}assets/libs/bootstrap/dist/js/bootstrap.bundle.min.js")"></script>
+        <script src="/assets/libs/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 @*
         <!-- AUTO COMPLETE JS -->
         <script src="@($"{NavigationManager.BaseUri}assets/libs/@tarekraafat/autocomplete.js/dist/autoComplete.min.js")"></script>
