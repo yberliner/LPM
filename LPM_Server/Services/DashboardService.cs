@@ -209,6 +209,24 @@ public class DashboardService
     }
 
     /// <summary>Insert a new session and return the SessionId. Pass isSolo=true for solo auditors (AuditorId stored as NULL).</summary>
+    /// <summary>
+    /// Returns the SessionId of an existing session with the same (PcId, AuditorId, Name),
+    /// or null if none exists. AuditorId comparison uses IS (handles NULL correctly).
+    /// </summary>
+    private static int? FindDuplicateSession(SqliteConnection conn, int pcId, object audParam, string name)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT SessionId FROM sess_sessions
+            WHERE PcId = @pc AND AuditorId IS @aud AND Name = @name
+            LIMIT 1";
+        cmd.Parameters.AddWithValue("@pc", pcId);
+        cmd.Parameters.AddWithValue("@aud", audParam);
+        cmd.Parameters.AddWithValue("@name", name);
+        var result = cmd.ExecuteScalar();
+        return result is null ? null : Convert.ToInt32(result);
+    }
+
     public int CreateImportedSession(int pcId, int auditorId, string sessionName,
         int lengthSeconds = 0, int adminSeconds = 0, bool isFreeSession = false, bool isSolo = false)
     {
@@ -217,6 +235,14 @@ public class DashboardService
 
         var today = DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd");
         object audParam = isSolo ? DBNull.Value : (object)auditorId;
+
+        // Guard: return existing session if same (PcId, AuditorId, Name) already exists
+        var existing = FindDuplicateSession(conn, pcId, audParam, sessionName);
+        if (existing.HasValue)
+        {
+            Console.WriteLine($"[DashboardService] Duplicate session skipped — PC {pcId}, name: '{sessionName}', existing SessionId: {existing.Value}");
+            return existing.Value;
+        }
 
         // Calculate SequenceInDay
         using var seqCmd = conn.CreateCommand();
@@ -255,6 +281,16 @@ public class DashboardService
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
+
+        object audParam = isSolo ? DBNull.Value : (object)(-1);
+
+        // Guard: return existing session if same (PcId, AuditorId, Name) already exists
+        var existing = FindDuplicateSession(conn, pcId, audParam, sessionName);
+        if (existing.HasValue)
+        {
+            Console.WriteLine($"[DashboardService] Duplicate session skipped — PC {pcId}, name: '{sessionName}', existing SessionId: {existing.Value}");
+            return existing.Value;
+        }
 
         using var seqCmd = conn.CreateCommand();
         seqCmd.CommandText = @"
