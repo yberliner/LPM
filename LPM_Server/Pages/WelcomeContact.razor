@@ -29,7 +29,7 @@
             <div class="wc-header">
                 <div class="wc-logo-ring"><i class="ri-shield-check-line"></i></div>
                 <h1 class="wc-title">Welcome to LPM</h1>
-                <p class="wc-subtitle">Before you continue, please provide your contact details.</p>
+                <p class="wc-subtitle">@(_hasExistingData ? "Please review your contact details — update if needed, then press Go." : "Before you continue, please provide your contact details.")</p>
             </div>
 
             <div class="wc-callout @(_isSolo ? "wc-callout-solo" : "wc-callout-staff")">
@@ -76,20 +76,25 @@
                                 <option value="@idx">@_countries[idx].Flag @_countries[idx].Name (+@_countries[idx].DialCode)</option>
                             }
                         </select>
-                        <input class="wc-input wc-phone-input"
+                        <input class="wc-input wc-phone-input @(_phoneTouched && !IsPhoneValid() ? "wc-input-invalid" : (_phoneTouched && IsPhoneValid() ? "wc-input-valid" : ""))"
                                type="tel"
                                placeholder="054 499 4470"
-                               @bind="_localPhone"
-                               @bind:event="oninput" />
+                               value="@_localPhone"
+                               @oninput="OnPhoneInput" />
                     </div>
-                    @if (!string.IsNullOrWhiteSpace(_normalizedPhone))
+                    @if (_phoneTouched && !IsPhoneValid() && !string.IsNullOrWhiteSpace(_localPhone))
+                    {
+                        <div class="wc-phone-error">@PhoneErrorMessage()</div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(_normalizedPhone) && IsPhoneValid())
                     {
                         <div class="wc-phone-preview">Will be saved as: <strong>@_normalizedPhone</strong></div>
                     }
                 </div>
 
                 <button class="wc-submit-btn" @onclick="Submit" disabled="@(!CanSubmit)">
-                    <i class="ri-send-plane-line"></i> Save &amp; Continue
+                    <i class="@(_hasExistingData ? "ri-arrow-right-circle-line" : "ri-send-plane-line")"></i>
+                    @(_hasExistingData ? "Go" : "Save & Continue")
                 </button>
 
                 @if (!string.IsNullOrEmpty(_error))
@@ -307,6 +312,12 @@
 
     .wc-phone-preview strong { color: #94a3b8; }
 
+    .wc-phone-error {
+        font-size: 0.82rem;
+        color: #f87171;
+        padding: 4px 2px;
+    }
+
     /* ── Tablet (768px and below) ── */
     @@media (max-width: 768px) {
         .wc-card {
@@ -488,6 +499,7 @@
     private int _userId;
     private int _personId;
     private bool _isSolo;
+    private bool _hasExistingData;
     private string _email = "";
     private bool _emailTouched;
     private bool _emailValid;
@@ -495,6 +507,7 @@
     private System.Threading.Timer? _emailTimer;
     private int _selectedCountryIndex = 0; // Israel default
     private string _localPhone = "";
+    private bool _phoneTouched;
     private bool _submitted;
     private string _error = "";
 
@@ -515,16 +528,58 @@
         {
             var local = _localPhone.Trim();
             if (string.IsNullOrEmpty(local)) return "";
-            // Strip leading 0
             if (local.StartsWith("0")) local = local[1..];
-            // Strip spaces/dashes
             local = Regex.Replace(local, @"[\s\-\(\)]", "");
             if (string.IsNullOrEmpty(local)) return "";
             return $"+{_countries[_selectedCountryIndex].DialCode}{local}";
         }
     }
 
-    private bool CanSubmit => _emailValid && !string.IsNullOrWhiteSpace(_normalizedPhone);
+    private bool IsPhoneValid()
+    {
+        var local = _localPhone.Trim();
+        if (string.IsNullOrEmpty(local)) return false;
+        if (local.StartsWith("0")) local = local[1..];
+        local = Regex.Replace(local, @"[\s\-\(\)]", "");
+        if (!local.All(char.IsDigit)) return false;
+        bool isIsrael = _countries[_selectedCountryIndex].DialCode == "972";
+        return isIsrael ? local.Length == 9 : local.Length >= 7;
+    }
+
+    private string PhoneErrorMessage()
+    {
+        var local = _localPhone.Trim();
+        if (string.IsNullOrEmpty(local)) return "";
+        if (local.StartsWith("0")) local = local[1..];
+        local = Regex.Replace(local, @"[\s\-\(\)]", "");
+        if (!local.All(char.IsDigit)) return "Digits only — no letters or special characters.";
+        bool isIsrael = _countries[_selectedCountryIndex].DialCode == "972";
+        if (isIsrael && local.Length != 9) return $"Israeli number must be exactly 9 digits (entered: {local.Length}).";
+        if (!isIsrael && local.Length < 7) return "At least 7 digits required.";
+        return "";
+    }
+
+    private void ParseStoredPhone(string stored)
+    {
+        if (string.IsNullOrEmpty(stored)) return;
+        if (!stored.StartsWith("+")) { _localPhone = stored; return; }
+        var digits = stored[1..];
+        // Try longest dial code first to avoid ambiguity
+        var sorted = _countries.Select((c, i) => (c, i))
+                               .OrderByDescending(x => x.c.DialCode.Length);
+        foreach (var (c, i) in sorted)
+        {
+            if (digits.StartsWith(c.DialCode))
+            {
+                _selectedCountryIndex = i;
+                _localPhone = digits[c.DialCode.Length..];
+                return;
+            }
+        }
+        _localPhone = stored;
+    }
+
+    private bool CanSubmit => _emailValid && IsPhoneValid();
 
     protected override async Task OnInitializedAsync()
     {
@@ -555,6 +610,30 @@
                 return;
             }
         }
+
+        // Pre-populate existing contact data if available
+        if (_personId > 0)
+        {
+            var (email, phone) = PcSvc.GetPersonContact(_personId);
+            if (!string.IsNullOrEmpty(email))
+            {
+                _email        = email;
+                _emailTouched = true;
+                _emailValid   = IsValidEmail(email);
+            }
+            if (!string.IsNullOrEmpty(phone))
+            {
+                ParseStoredPhone(phone);
+                _phoneTouched = true;
+            }
+            _hasExistingData = !string.IsNullOrEmpty(email) || !string.IsNullOrEmpty(phone);
+        }
+    }
+
+    private void OnPhoneInput(ChangeEventArgs e)
+    {
+        _localPhone   = e.Value?.ToString() ?? "";
+        _phoneTouched = true;
     }
 
     private void OnEmailInput(ChangeEventArgs e)

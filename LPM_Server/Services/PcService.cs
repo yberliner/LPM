@@ -290,6 +290,18 @@ public List<PcListItem> GetAllPcs()
     }
 
     /// <summary>Saves only the email and phone for a person (used in WelcomeContact).</summary>
+    public (string Email, string Phone) GetPersonContact(int personId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COALESCE(Email,''), COALESCE(Phone,'') FROM core_persons WHERE PersonId=@id LIMIT 1";
+        cmd.Parameters.AddWithValue("@id", personId);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return ("", "");
+        return (r.GetString(0), r.GetString(1));
+    }
+
     public void SaveContactInfo(int personId, string email, string phone)
     {
         using var conn = new SqliteConnection(_connectionString);
