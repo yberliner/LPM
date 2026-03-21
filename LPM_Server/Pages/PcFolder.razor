@@ -2316,8 +2316,22 @@
                     ? "/api/pc-file-folder-summary"
                     : "/api/pc-file";
                 var url = $"{endpoint}?pcId={PcId}&path={Uri.EscapeDataString(file)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
+                // loadPdf resets dual state in JS — capture, reload, then restore
+                bool wasDual = _dualPanes.Contains(paneId);
+                _dualPanes.Remove(paneId);
+                _dualInfo.Remove(paneId);
                 await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId);
+                if (wasDual)
+                {
+                    var result = await JS.InvokeAsync<int[]>("pcfViewer.enterDualMode", paneId);
+                    if (result != null && result.Length == 2 && result[1] > 0)
+                    {
+                        _dualPanes.Add(paneId);
+                        _dualInfo[paneId] = (result[0], result[1]);
+                    }
+                }
             }
+            StateHasChanged();
         }
     }
 
