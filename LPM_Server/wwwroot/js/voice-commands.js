@@ -1,19 +1,30 @@
 // LPM Voice Commands (PCFolder) — en-US for best accuracy
 window.lpmVoice = (function () {
 
-    var _dotNetRef = null;
-    var _paneId    = null;
-    var _recog     = null;
-    var _running   = false;
+    var _dotNetRef  = null;
+    var _paneId     = null;
+    var _recog      = null;
+    var _running    = false;
     var _lastCursor = { x: 0, y: 0 };
-    var _uttFired  = false;
+    var _uttFired   = false;
+    var _watchdog   = null;
+
+    function resetWatchdog() {
+        if (_watchdog) clearTimeout(_watchdog);
+        if (!_running) return;
+        _watchdog = setTimeout(function () {
+            if (!_running) return;
+            console.log("[lpmVoice] watchdog restart");
+            try { _recog.stop(); } catch (e) {}   // onend will restart it
+        }, 4000);
+    }
 
     var _commands = [
         { words: ["double","side"],              cmd: "dual",     direct: false },
         { words: ["split"],                      cmd: "split",    direct: false },
         { words: ["text"],                       cmd: "text",     direct: false },
-        { words: ["next"],                       cmd: "next",     direct: true  },
-        { words: ["back","previous"],            cmd: "prev",     direct: true  },
+        { words: ["next","right","forward"],      cmd: "next",     direct: true  },
+        { words: ["back","previous","left","black","bag","pack","go back"], cmd: "prev", direct: true },
         { words: ["zoom in"],                    cmd: "zoomin",   direct: false },
         { words: ["zoom out"],                   cmd: "zoomout",  direct: false },
         { words: ["summary"],                    cmd: "summary",  direct: false },
@@ -79,8 +90,10 @@ window.lpmVoice = (function () {
         for (var i = 0; i < _commands.length; i++) {
             var entry = _commands[i];
             for (var j = 0; j < entry.words.length; j++) {
-                if (t === entry.words[j] || t.indexOf(entry.words[j]) !== -1)
-                    return entry;
+                var w = entry.words[j];
+                // Whole-word match: word boundary on each side
+                var re = new RegExp("(^|\\s)" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(\\s|$)");
+                if (re.test(t)) return entry;
             }
         }
         return null;
@@ -91,16 +104,17 @@ window.lpmVoice = (function () {
         if (!SR) { console.warn("[lpmVoice] SpeechRecognition not supported"); return null; }
         var r = new SR();
         r.lang = "en-US";
-        r.continuous = true;
+        r.continuous = false;       // false = more reliable; onend fires after each utterance
         r.interimResults = true;
         r.maxAlternatives = 3;
 
         r.onresult = function (e) {
+            resetWatchdog();
             for (var i = e.resultIndex; i < e.results.length; i++) {
                 var isFinal     = e.results[i].isFinal;
                 var alreadyFired = _uttFired;
-                if (isFinal) _uttFired = false;   // reset for the NEXT utterance
-                if (alreadyFired) continue;        // this utterance already handled
+                if (isFinal) _uttFired = false;
+                if (alreadyFired) continue;
 
                 // Check all alternatives for a match
                 var entry = null;
@@ -122,10 +136,14 @@ window.lpmVoice = (function () {
             }
         };
 
-        r.onend = function () { if (_running) { try { r.start(); } catch (ex) {} } };
+        r.onend = function () {
+            resetWatchdog();
+            if (_running) { try { r.start(); } catch (ex) {} }
+        };
         r.onerror = function (e) {
             if (e.error === "not-allowed" || e.error === "service-not-allowed") {
                 _running = false;
+                if (_watchdog) { clearTimeout(_watchdog); _watchdog = null; }
                 if (_dotNetRef) _dotNetRef.invokeMethodAsync("OnVoiceMicBlocked");
             }
         };
@@ -144,10 +162,11 @@ window.lpmVoice = (function () {
             if (!_recog) _recog = buildRecog();
             if (!_recog) return;
             _running = true;
-            try { _recog.start(); } catch (ex) {}
+            try { _recog.start(); resetWatchdog(); } catch (ex) {}
         },
         stop: function () {
             _running = false;
+            if (_watchdog) { clearTimeout(_watchdog); _watchdog = null; }
             if (_recog) { try { _recog.stop(); } catch (ex) {} }
         },
         triggerClickAtCursor: triggerPointerAtCursor,

@@ -704,16 +704,15 @@
                     <i class="ri-layout-column-line"></i>
                     <span style="font-size:.7rem;margin-left:2px;">@_paneCount</span>
                 </button>
-                @if (_paneCount == 1 && _panes[0].File?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) == true)
-                {
-                    var tbDual = _dualPanes.Contains(PaneIds[0]);
-                    <button class="pcf-tool-btn @(tbDual ? "pcf-tool-active" : "")"
-                            title="@(tbDual ? "Exit side-by-side view" : "Side-by-side view — 2 pages at a time")"
-                            style="color:@(tbDual ? "#fb923c" : "#fbbf24");"
-                            @onclick="() => ToggleDualMode(PaneIds[0])">
-                        <i class="@(tbDual ? "ri-book-open-fill" : "ri-book-open-line")"></i>
-                    </button>
+                @{
+                    var tbDual = _paneCount == 1 && _dualPanes.Contains(PaneIds[0]);
                 }
+                <button class="pcf-tool-btn @(tbDual ? "pcf-tool-active" : "")"
+                        title="@(tbDual ? "Exit side-by-side view" : "Side-by-side view — 2 pages at a time")"
+                        style="color:@(tbDual ? "#fb923c" : "#fbbf24");"
+                        @onclick="VoiceDual">
+                    <i class="@(tbDual ? "ri-book-open-fill" : "ri-book-open-line")"></i>
+                </button>
                 <button class="pcf-tool-btn pcf-voice-btn @(_voiceOn ? "pcf-voice-active" : "")"
                         title="@(_voiceOn ? "Voice commands ON — click to turn off" : "Voice commands OFF — click to turn on")"
                         @onclick="ToggleVoice">
@@ -2379,6 +2378,73 @@
         }
     }
 
+    // Voice "Double" command: collapse to single pane, show the right file, enter dual mode.
+    async Task VoiceDual()
+    {
+        string? targetFile = null;
+        string? targetFileName = null;
+        string targetSection = "";
+
+        // CS mode: use the session being CS'd
+        if (_csSessionId > 0 && !string.IsNullOrEmpty(_csSessionName) && _folder != null)
+        {
+            var match = _folder.WorkSheets
+                .FirstOrDefault(ws => SessionDisplayName(ws.File.FileName)
+                    .Equals(_csSessionName, StringComparison.OrdinalIgnoreCase));
+            if (match != null)
+            {
+                targetFile = match.File.RelativePath;
+                targetFileName = SessionDisplayName(match.File.FileName);
+                targetSection = "WorkSheet";
+            }
+        }
+
+        // Non-CS mode (or CS file not found): use the current active pane
+        if (targetFile == null)
+        {
+            targetFile     = _panes[_activeIdx].File;
+            targetFileName = _panes[_activeIdx].FileName;
+            targetSection  = _panes[_activeIdx].Section;
+        }
+
+        if (string.IsNullOrEmpty(targetFile) || !targetFile.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        // Already in single-pane dual mode with the right file → toggle off
+        if (_paneCount == 1 && _panes[0].File == targetFile && _dualPanes.Contains(PaneIds[0]))
+        {
+            _dualPanes.Remove(PaneIds[0]);
+            _dualInfo.Remove(PaneIds[0]);
+            await JS.InvokeVoidAsync("pcfViewer.exitDualMode", PaneIds[0]);
+            return;
+        }
+
+        // Collapse to single pane with the target file if needed
+        bool sameFile = _paneCount == 1 && _panes[0].File == targetFile;
+        if (!sameFile)
+        {
+            for (int i = 0; i < 3; i++) { _panes[i].File = null; _panes[i].FileName = null; _panes[i].Section = ""; }
+            _dualPanes.Clear();
+            _dualInfo.Clear();
+            _paneCount = 1;
+            _activeIdx = 0;
+            _panes[0].File     = targetFile;
+            _panes[0].FileName = targetFileName;
+            _panes[0].Section  = targetSection;
+            StateHasChanged();
+            var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(targetFile)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
+            await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, PaneIds[0]);
+        }
+
+        // Enter dual mode
+        var result = await JS.InvokeAsync<int[]>("pcfViewer.enterDualMode", PaneIds[0]);
+        if (result?.Length == 2)
+        {
+            _dualPanes.Add(PaneIds[0]);
+            _dualInfo[PaneIds[0]] = (result[0], result[1]);
+        }
+    }
+
     async Task DualNav(string paneId, int delta)
     {
         var result = await JS.InvokeAsync<int[]>("pcfViewer.dualPageNav", paneId, delta);
@@ -2942,7 +3008,7 @@
         switch (cmd)
         {
             case "dual":
-                await ToggleDualMode(PaneIds[_activeIdx]);
+                await VoiceDual();
                 break;
             case "split":
                 await CyclePanes();
