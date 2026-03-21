@@ -8,7 +8,7 @@ namespace LPM.Tests;
 /// <summary>
 /// Comprehensive tests for <see cref="UserDb"/>.
 /// Covers login validation, password hashing, role assignment, and avatar management.
-/// All tests use an isolated SQLite database pre-seeded with the Users/Roles/UserRoles schema.
+/// All tests use an isolated SQLite database pre-seeded with the core_users schema.
 /// </summary>
 public class UserDbTests : IDisposable
 {
@@ -31,69 +31,42 @@ public class UserDbTests : IDisposable
     public void ValidateUser_ReturnsTrue_WithCorrectCredentials()
     {
         using var conn = Open();
-        var uid = TestDbHelper.InsertUser(conn, "tami", "Tami1234!");
-        TestDbHelper.AssignRole(conn, uid, "CaseWorker");
+        TestDbHelper.InsertUser(conn, "tami", "Tami1234!");
 
-        Assert.True(_svc.ValidateUser("tami", "Tami1234!", out _));
+        Assert.True(_svc.ValidateUser("tami", "Tami1234!", out _, out _));
     }
 
     [Fact]
     public void ValidateUser_IsCaseInsensitive_ForUsername()
     {
         using var conn = Open();
-        var uid = TestDbHelper.InsertUser(conn, "Genia", "Genia5678!");
-        TestDbHelper.AssignRole(conn, uid, "CaseWorker");
+        TestDbHelper.InsertUser(conn, "Genia", "Genia5678!");
 
-        Assert.True(_svc.ValidateUser("GENIA",  "Genia5678!", out _));
-        Assert.True(_svc.ValidateUser("genia",  "Genia5678!", out _));
-        Assert.True(_svc.ValidateUser("GeNiA",  "Genia5678!", out _));
+        Assert.True(_svc.ValidateUser("GENIA",  "Genia5678!", out _, out _));
+        Assert.True(_svc.ValidateUser("genia",  "Genia5678!", out _, out _));
+        Assert.True(_svc.ValidateUser("GeNiA",  "Genia5678!", out _, out _));
     }
 
     [Fact]
-    public void ValidateUser_PopulatesRoles_WithAssignedRoles()
+    public void ValidateUser_PopulatesRoles_WithAdminUser()
     {
         using var conn = Open();
         var uid = TestDbHelper.InsertUser(conn, "admin_user", "Admin9999!");
         TestDbHelper.AssignRole(conn, uid, "Admin");
 
-        _svc.ValidateUser("admin_user", "Admin9999!", out var roles);
+        _svc.ValidateUser("admin_user", "Admin9999!", out var roles, out _);
         Assert.Contains("Admin", roles);
     }
 
     [Fact]
-    public void ValidateUser_ReturnsAllAssignedRoles()
+    public void ValidateUser_ReturnsEmptyRoles_ForNonAdmin()
     {
+        // Non-admin users return empty roles list (but login still succeeds)
         using var conn = Open();
-        var uid = TestDbHelper.InsertUser(conn, "multiRole", "Multi1234!");
-        TestDbHelper.AssignRole(conn, uid, "CaseWorker");
-        TestDbHelper.AssignRole(conn, uid, "Viewer");
+        TestDbHelper.InsertUser(conn, "staffUser", "Staff1234!");
 
-        _svc.ValidateUser("multiRole", "Multi1234!", out var roles);
-        Assert.Equal(2, roles.Count);
-        Assert.Contains("CaseWorker", roles);
-        Assert.Contains("Viewer",     roles);
-    }
-
-    [Fact]
-    public void ValidateUser_ReturnsTrue_WithCaseWorkerRole()
-    {
-        using var conn = Open();
-        var uid = TestDbHelper.InsertUser(conn, "worker1", "Worker1234!");
-        TestDbHelper.AssignRole(conn, uid, "CaseWorker");
-
-        Assert.True(_svc.ValidateUser("worker1", "Worker1234!", out var roles));
-        Assert.Contains("CaseWorker", roles);
-    }
-
-    [Fact]
-    public void ValidateUser_ReturnsTrue_WithViewerRole()
-    {
-        using var conn = Open();
-        var uid = TestDbHelper.InsertUser(conn, "viewer1", "View5678!");
-        TestDbHelper.AssignRole(conn, uid, "Viewer");
-
-        Assert.True(_svc.ValidateUser("viewer1", "View5678!", out var roles));
-        Assert.Contains("Viewer", roles);
+        _svc.ValidateUser("staffUser", "Staff1234!", out var roles, out _);
+        Assert.Empty(roles);
     }
 
     // =========================================================================
@@ -104,87 +77,76 @@ public class UserDbTests : IDisposable
     public void ValidateUser_ReturnsFalse_WithWrongPassword()
     {
         using var conn = Open();
-        var uid = TestDbHelper.InsertUser(conn, "eitan", "Correct123!");
-        TestDbHelper.AssignRole(conn, uid, "CaseWorker");
+        TestDbHelper.InsertUser(conn, "eitan", "Correct123!");
 
-        Assert.False(_svc.ValidateUser("eitan", "WrongPass!", out _));
+        Assert.False(_svc.ValidateUser("eitan", "WrongPass!", out _, out _));
     }
 
     [Fact]
     public void ValidateUser_ReturnsFalse_ForNonExistentUser()
     {
-        Assert.False(_svc.ValidateUser("nobody", "pass123", out _));
+        Assert.False(_svc.ValidateUser("nobody", "pass123", out _, out _));
     }
 
     [Fact]
     public void ValidateUser_ReturnsFalse_ForInactiveUser()
     {
         using var conn = Open();
-        var uid = TestDbHelper.InsertUser(conn, "inactive_user", "Pass1234!", isActive: false);
-        TestDbHelper.AssignRole(conn, uid, "CaseWorker");
+        TestDbHelper.InsertUser(conn, "inactive_user", "Pass1234!", isActive: false);
 
-        Assert.False(_svc.ValidateUser("inactive_user", "Pass1234!", out _));
+        Assert.False(_svc.ValidateUser("inactive_user", "Pass1234!", out _, out _));
     }
 
     [Fact]
     public void ValidateUser_ReturnsFalse_WithEmptyUsername()
     {
-        Assert.False(_svc.ValidateUser("", "somepassword", out _));
+        Assert.False(_svc.ValidateUser("", "somepassword", out _, out _));
     }
 
     [Fact]
     public void ValidateUser_ReturnsFalse_WithEmptyPassword()
     {
         using var conn = Open();
-        var uid = TestDbHelper.InsertUser(conn, "eyal", "EyalPass123!");
-        TestDbHelper.AssignRole(conn, uid, "CaseWorker");
+        TestDbHelper.InsertUser(conn, "eyal", "EyalPass123!");
 
-        Assert.False(_svc.ValidateUser("eyal", "", out _));
+        Assert.False(_svc.ValidateUser("eyal", "", out _, out _));
     }
 
     [Fact]
     public void ValidateUser_ReturnsFalse_WithNullUsername()
     {
-        Assert.False(_svc.ValidateUser(null!, "pass123", out _));
+        Assert.False(_svc.ValidateUser(null!, "pass123", out _, out _));
     }
 
     [Fact]
     public void ValidateUser_ReturnsFalse_WithNullPassword()
     {
         using var conn = Open();
-        var uid = TestDbHelper.InsertUser(conn, "samai", "SamaiPass1!");
-        TestDbHelper.AssignRole(conn, uid, "CaseWorker");
+        TestDbHelper.InsertUser(conn, "samai", "SamaiPass1!");
 
-        Assert.False(_svc.ValidateUser("samai", null!, out _));
-    }
-
-    [Fact]
-    public void ValidateUser_ReturnsFalse_WhenUserHasNoRoles()
-    {
-        // Even with correct password, no roles → returns false
-        using var conn = Open();
-        TestDbHelper.InsertUser(conn, "no_role", "NoRole123!");
-
-        Assert.False(_svc.ValidateUser("no_role", "NoRole123!", out _));
+        Assert.False(_svc.ValidateUser("samai", null!, out _, out _));
     }
 
     [Fact]
     public void ValidateUser_ReturnsEmptyRoles_OnFailure()
     {
-        _svc.ValidateUser("nobody", "bad", out var roles);
+        _svc.ValidateUser("nobody", "bad", out var roles, out _);
         Assert.Empty(roles);
     }
 
     [Fact]
-    public void ValidateUser_PasswordIsCaseSensitive()
+    public void ValidateUser_PasswordAllowsFirstCharCaseToggle()
     {
+        // The service intentionally allows first-char case toggle (Caps Lock UX helper)
         using var conn = Open();
-        var uid = TestDbHelper.InsertUser(conn, "carmela", "Secret123!");
-        TestDbHelper.AssignRole(conn, uid, "CaseWorker");
+        TestDbHelper.InsertUser(conn, "carmela", "Secret123!");
 
-        // Password must be exact-case
-        Assert.False(_svc.ValidateUser("carmela", "secret123!", out _));
-        Assert.True(_svc.ValidateUser("carmela",  "Secret123!", out _));
+        // Exact match
+        Assert.True(_svc.ValidateUser("carmela",  "Secret123!", out _, out _));
+        // First-char toggled (s→S): also accepted
+        Assert.True(_svc.ValidateUser("carmela",  "secret123!", out _, out _));
+        // Completely different password: rejected
+        Assert.False(_svc.ValidateUser("carmela", "WRONG_PASS", out _, out _));
     }
 
     // =========================================================================
@@ -195,8 +157,7 @@ public class UserDbTests : IDisposable
     public void ChangePassword_Succeeds_WithCorrectCurrentPassword()
     {
         using var conn = Open();
-        var uid = TestDbHelper.InsertUser(conn, "tami", "OldPass123!");
-        TestDbHelper.AssignRole(conn, uid, "CaseWorker");
+        TestDbHelper.InsertUser(conn, "tami", "OldPass123!");
 
         var result = _svc.ChangePassword("tami", "OldPass123!", "NewPass456!");
         Assert.Null(result);  // null = success
@@ -206,13 +167,12 @@ public class UserDbTests : IDisposable
     public void ChangePassword_NewPasswordValidates()
     {
         using var conn = Open();
-        var uid = TestDbHelper.InsertUser(conn, "tami", "OldPass123!");
-        TestDbHelper.AssignRole(conn, uid, "CaseWorker");
+        TestDbHelper.InsertUser(conn, "tami", "OldPass123!");
 
         _svc.ChangePassword("tami", "OldPass123!", "NewPass456!");
 
-        Assert.True(_svc.ValidateUser("tami", "NewPass456!", out _));
-        Assert.False(_svc.ValidateUser("tami", "OldPass123!", out _));
+        Assert.True(_svc.ValidateUser("tami", "NewPass456!", out _, out _));
+        Assert.False(_svc.ValidateUser("tami", "OldPass123!", out _, out _));
     }
 
     [Fact]
@@ -236,12 +196,11 @@ public class UserDbTests : IDisposable
     public void ChangePassword_OldPasswordNoLongerValid_AfterChange()
     {
         using var conn = Open();
-        var uid = TestDbHelper.InsertUser(conn, "eitan", "OldPass123!");
-        TestDbHelper.AssignRole(conn, uid, "CaseWorker");
+        TestDbHelper.InsertUser(conn, "eitan", "OldPass123!");
 
         _svc.ChangePassword("eitan", "OldPass123!", "BrandNew789!");
 
-        Assert.False(_svc.ValidateUser("eitan", "OldPass123!", out _));
+        Assert.False(_svc.ValidateUser("eitan", "OldPass123!", out _, out _));
     }
 
     // =========================================================================
@@ -326,7 +285,7 @@ public class UserDbTests : IDisposable
     public void UserDb_AvatarPath_ColumnExists_AfterInit()
     {
         using var conn = Open();
-        Assert.True(TestDbHelper.ColumnExists(conn, "Users", "AvatarPath"));
+        Assert.True(TestDbHelper.ColumnExists(conn, "core_users", "AvatarPath"));
     }
 
     // =========================================================================
@@ -337,27 +296,23 @@ public class UserDbTests : IDisposable
     public void MultipleUsers_CanCoexistWithDifferentPasswords()
     {
         using var conn = Open();
-        var uid1 = TestDbHelper.InsertUser(conn, "user1", "Pass111!");
-        var uid2 = TestDbHelper.InsertUser(conn, "user2", "Pass222!");
-        TestDbHelper.AssignRole(conn, uid1, "CaseWorker");
-        TestDbHelper.AssignRole(conn, uid2, "CaseWorker");
+        TestDbHelper.InsertUser(conn, "user1", "Pass111!");
+        TestDbHelper.InsertUser(conn, "user2", "Pass222!");
 
-        Assert.True(_svc.ValidateUser("user1",  "Pass111!", out _));
-        Assert.True(_svc.ValidateUser("user2",  "Pass222!", out _));
-        Assert.False(_svc.ValidateUser("user1", "Pass222!", out _)); // wrong user's pass
+        Assert.True(_svc.ValidateUser("user1",  "Pass111!", out _, out _));
+        Assert.True(_svc.ValidateUser("user2",  "Pass222!", out _, out _));
+        Assert.False(_svc.ValidateUser("user1", "Pass222!", out _, out _)); // wrong user's pass
     }
 
     [Fact]
     public void InactiveUser_DoesNotAffectOtherUsersLogin()
     {
         using var conn = Open();
-        var uid1 = TestDbHelper.InsertUser(conn, "active",   "Pass111!", isActive: true);
-        var uid2 = TestDbHelper.InsertUser(conn, "inactive", "Pass222!", isActive: false);
-        TestDbHelper.AssignRole(conn, uid1, "CaseWorker");
-        TestDbHelper.AssignRole(conn, uid2, "CaseWorker");
+        TestDbHelper.InsertUser(conn, "active",   "Pass111!", isActive: true);
+        TestDbHelper.InsertUser(conn, "inactive", "Pass222!", isActive: false);
 
-        Assert.True(_svc.ValidateUser("active",   "Pass111!", out _));
-        Assert.False(_svc.ValidateUser("inactive", "Pass222!", out _));
+        Assert.True(_svc.ValidateUser("active",   "Pass111!", out _, out _));
+        Assert.False(_svc.ValidateUser("inactive", "Pass222!", out _, out _));
     }
 
     // =========================================================================

@@ -69,7 +69,7 @@ public class StatisticsServiceTests : IDisposable
     {
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "Tami", "Cohen");
-        TestDbHelper.InsertAuditor(conn, audId, type: 1, isActive: true);
+        TestDbHelper.InsertAuditor(conn, audId, staffRole: "Auditor", isActive: true);
         var pcId  = TestDbHelper.InsertPerson(conn, "Client1");
         TestDbHelper.InsertPC(conn, pcId);
 
@@ -93,7 +93,7 @@ public class StatisticsServiceTests : IDisposable
     {
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "Genia");
-        TestDbHelper.InsertAuditor(conn, audId, type: 1, isActive: true);
+        TestDbHelper.InsertAuditor(conn, audId, staffRole: "Auditor", isActive: true);
         var pcId  = TestDbHelper.InsertPerson(conn, "Client1");
         TestDbHelper.InsertPC(conn, pcId);
 
@@ -117,8 +117,8 @@ public class StatisticsServiceTests : IDisposable
         using var conn = Open();
         var aud1 = TestDbHelper.InsertPerson(conn, "Tami");
         var aud2 = TestDbHelper.InsertPerson(conn, "Genia");
-        TestDbHelper.InsertAuditor(conn, aud1, type: 1, isActive: true);
-        TestDbHelper.InsertAuditor(conn, aud2, type: 1, isActive: true);
+        TestDbHelper.InsertAuditor(conn, aud1, staffRole: "Auditor", isActive: true);
+        TestDbHelper.InsertAuditor(conn, aud2, staffRole: "Auditor", isActive: true);
         var pcId = TestDbHelper.InsertPerson(conn, "Client1");
         TestDbHelper.InsertPC(conn, pcId);
 
@@ -136,8 +136,8 @@ public class StatisticsServiceTests : IDisposable
         using var conn = Open();
         var aud1 = TestDbHelper.InsertPerson(conn, "Low");
         var aud2 = TestDbHelper.InsertPerson(conn, "High");
-        TestDbHelper.InsertAuditor(conn, aud1, type: 1, isActive: true);
-        TestDbHelper.InsertAuditor(conn, aud2, type: 1, isActive: true);
+        TestDbHelper.InsertAuditor(conn, aud1, staffRole: "Auditor", isActive: true);
+        TestDbHelper.InsertAuditor(conn, aud2, staffRole: "Auditor", isActive: true);
         var pcId = TestDbHelper.InsertPerson(conn, "Client1");
         TestDbHelper.InsertPC(conn, pcId);
 
@@ -158,7 +158,7 @@ public class StatisticsServiceTests : IDisposable
     {
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "Aud1");
-        TestDbHelper.InsertAuditor(conn, audId, type: 1, isActive: true);
+        TestDbHelper.InsertAuditor(conn, audId, staffRole: "Auditor", isActive: true);
         var pc1   = TestDbHelper.InsertPerson(conn, "Client1");
         var pc2   = TestDbHelper.InsertPerson(conn, "Client2");
         TestDbHelper.InsertPC(conn, pc1);
@@ -177,7 +177,7 @@ public class StatisticsServiceTests : IDisposable
     {
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "Aud1");
-        TestDbHelper.InsertAuditor(conn, audId, type: 1, isActive: true);
+        TestDbHelper.InsertAuditor(conn, audId, staffRole: "Auditor", isActive: true);
         var pcId  = TestDbHelper.InsertPerson(conn, "Client1");
         TestDbHelper.InsertPC(conn, pcId);
 
@@ -197,30 +197,31 @@ public class StatisticsServiceTests : IDisposable
     public void GetWeekDayStats_SoloCsSeconds_AppearsInSoloCsSec_Field()
     {
         using var conn = Open();
-        // Solo-type auditor (type=3) does a CS review on a solo session
-        var soloAudId = TestDbHelper.InsertPerson(conn, "Aviv");
-        TestDbHelper.InsertAuditor(conn, soloAudId, type: 3, isActive: true);
+        // A CS auditor does a review on a solo session (AuditorId IS NULL)
+        var csAudId = TestDbHelper.InsertPerson(conn, "Aviv");
+        TestDbHelper.InsertAuditor(conn, csAudId, staffRole: "Auditor", isActive: true);
 
         var pcId = TestDbHelper.InsertPerson(conn, "Client1");
         TestDbHelper.InsertPC(conn, pcId);
 
-        // Solo session on Thursday (PcId == AuditorId)
-        var sid = TestDbHelper.InsertSession(conn, soloAudId, soloAudId, "2024-01-11", 3600);
+        // Solo session on Thursday — AuditorId IS NULL (that's what makes it "solo" in the DB)
+        var sid = TestDbHelper.InsertSession(conn, pcId, (int?)null, "2024-01-11", 3600);
 
         // CS review by the solo-type auditor on that session
         using var csReviewCmd = conn.CreateCommand();
         csReviewCmd.CommandText = @"
-            INSERT INTO CsReviews (SessionId, CsId, ReviewLengthSeconds, Status)
+            INSERT INTO cs_reviews (SessionId, CsId, ReviewLengthSeconds, Status)
             VALUES (@sid, @csId, 1800, 'Draft')";
         csReviewCmd.Parameters.AddWithValue("@sid",  sid);
-        csReviewCmd.Parameters.AddWithValue("@csId", soloAudId);
+        csReviewCmd.Parameters.AddWithValue("@csId", csAudId);
         csReviewCmd.ExecuteNonQuery();
 
         var result = _svc.GetWeekDayStats(new DateOnly(2024, 1, 11));
         var thu    = result[0];
         var row    = thu.Staff.Single(s => s.Name.Contains("Aviv"));
         Assert.Equal(1800, row.SoloCsSec);
-        Assert.Equal(3600 + 1800, row.TotalSec);
+        // AuditSec=0 (no regular sessions), SoloCsSec=1800 → TotalSec=1800
+        Assert.Equal(1800, row.TotalSec);
     }
 
     // =========================================================================
@@ -232,7 +233,7 @@ public class StatisticsServiceTests : IDisposable
     {
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "Aud1");
-        TestDbHelper.InsertAuditor(conn, audId, type: 1, isActive: true);
+        TestDbHelper.InsertAuditor(conn, audId, staffRole: "Auditor", isActive: true);
         var pcId    = TestDbHelper.InsertPerson(conn, "Client1");
         TestDbHelper.InsertPC(conn, pcId);
         var studentId = TestDbHelper.InsertPerson(conn, "Student1");
@@ -242,7 +243,7 @@ public class StatisticsServiceTests : IDisposable
 
         // Student visits on Thursday
         using var sc = conn.CreateCommand();
-        sc.CommandText = "INSERT INTO AcademyAttendance (PersonId, VisitDate) VALUES (@pid, '2024-01-11')";
+        sc.CommandText = "INSERT INTO acad_attendance (PersonId, VisitDate) VALUES (@pid, '2024-01-11')";
         sc.Parameters.AddWithValue("@pid", studentId);
         sc.ExecuteNonQuery();
 
@@ -256,14 +257,14 @@ public class StatisticsServiceTests : IDisposable
     {
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "Aud1");
-        TestDbHelper.InsertAuditor(conn, audId, type: 1, isActive: true);
+        TestDbHelper.InsertAuditor(conn, audId, staffRole: "Auditor", isActive: true);
         var personId = TestDbHelper.InsertPerson(conn, "SameGuy");
         TestDbHelper.InsertPC(conn, personId);
 
         // Same person has both a session AND an academy visit on Thursday
         TestDbHelper.InsertSession(conn, personId, audId, "2024-01-11", 3600);
         using var sc = conn.CreateCommand();
-        sc.CommandText = "INSERT INTO AcademyAttendance (PersonId, VisitDate) VALUES (@pid, '2024-01-11')";
+        sc.CommandText = "INSERT INTO acad_attendance (PersonId, VisitDate) VALUES (@pid, '2024-01-11')";
         sc.Parameters.AddWithValue("@pid", personId);
         sc.ExecuteNonQuery();
 
@@ -318,7 +319,7 @@ public class StatisticsServiceTests : IDisposable
     {
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "Aud1");
-        TestDbHelper.InsertAuditor(conn, audId, type: 1, isActive: true);
+        TestDbHelper.InsertAuditor(conn, audId, staffRole: "Auditor", isActive: true);
         var pcId  = TestDbHelper.InsertPerson(conn, "Client1");
         TestDbHelper.InsertPC(conn, pcId);
 

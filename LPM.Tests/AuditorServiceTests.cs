@@ -6,7 +6,8 @@ using Xunit;
 namespace LPM.Tests;
 
 /// <summary>
-/// Tests for <see cref="AuditorService"/> – auditor CRUD, grades, stats, and type logic.
+/// Tests for <see cref="AuditorService"/> – auditor read, grades, stats.
+/// Auditors are created directly via TestDbHelper (no AddAuditor service method exists).
 /// Each test gets a fresh isolated SQLite database.
 /// </summary>
 public class AuditorServiceTests : IDisposable
@@ -23,60 +24,6 @@ public class AuditorServiceTests : IDisposable
     public void Dispose() => TestDbHelper.Cleanup(_dbPath);
 
     // =========================================================================
-    // AddAuditor
-    // =========================================================================
-
-    [Fact]
-    public void AddAuditor_CreatesPersonAndAuditorRecord()
-    {
-        var id = _svc.AddAuditor("Tami", "Cohen", null, 1);
-
-        using var conn = Open();
-        Assert.Equal(1L, TestDbHelper.Scalar(conn, $"SELECT COUNT(*) FROM Persons  WHERE PersonId={id}"));
-        Assert.Equal(1L, TestDbHelper.Scalar(conn, $"SELECT COUNT(*) FROM Auditors WHERE AuditorId={id}"));
-    }
-
-    [Fact]
-    public void AddAuditor_DefaultsToActive()
-    {
-        var id = _svc.AddAuditor("Genia", "L", null, 1);
-
-        using var conn = Open();
-        var isActive = TestDbHelper.Scalar(conn, $"SELECT IsActive FROM Auditors WHERE AuditorId={id}");
-        Assert.Equal(1L, isActive);
-    }
-
-    [Fact]
-    public void AddAuditor_WithGrade_AssignsGradeId()
-    {
-        // Grades are seeded with GradeId 1=BA, 2=MA, 3=PHD by TestDbHelper
-        var id = _svc.AddAuditor("Eitan", "G", gradeId: 2, type: 1);
-
-        var detail = _svc.GetAuditorDetail(id)!;
-        Assert.Equal(2, detail.CurrentGradeId);
-        Assert.Equal("MA", detail.GradeCode);
-    }
-
-    [Fact]
-    public void AddAuditor_WithNullGrade_Succeeds()
-    {
-        var id     = _svc.AddAuditor("Eyal", "S", null, 1);
-        var detail = _svc.GetAuditorDetail(id)!;
-        Assert.Null(detail.CurrentGradeId);
-        Assert.Null(detail.GradeCode);
-    }
-
-    [Fact]
-    public void AddAuditor_MultipleAuditors_EachGetUniqueId()
-    {
-        var id1 = _svc.AddAuditor("A1", "", null, 1);
-        var id2 = _svc.AddAuditor("A2", "", null, 1);
-        var id3 = _svc.AddAuditor("A3", "", null, 1);
-        Assert.NotEqual(id1, id2);
-        Assert.NotEqual(id2, id3);
-    }
-
-    // =========================================================================
     // GetAllAuditors
     // =========================================================================
 
@@ -89,9 +36,13 @@ public class AuditorServiceTests : IDisposable
     [Fact]
     public void GetAllAuditors_ReturnsAllAddedAuditors()
     {
-        _svc.AddAuditor("Tami",  "C", null, 1);
-        _svc.AddAuditor("Genia", "L", null, 1);
-        _svc.AddAuditor("Eitan", "G", null, 1);
+        using var conn = Open();
+        var id1 = TestDbHelper.InsertPerson(conn, "Tami",  "C");
+        var id2 = TestDbHelper.InsertPerson(conn, "Genia", "L");
+        var id3 = TestDbHelper.InsertPerson(conn, "Eitan", "G");
+        TestDbHelper.InsertAuditor(conn, id1, staffRole: "Auditor");
+        TestDbHelper.InsertAuditor(conn, id2, staffRole: "Auditor");
+        TestDbHelper.InsertAuditor(conn, id3, staffRole: "Auditor");
 
         Assert.Equal(3, _svc.GetAllAuditors().Count);
     }
@@ -99,9 +50,13 @@ public class AuditorServiceTests : IDisposable
     [Fact]
     public void GetAllAuditors_OrderedByFirstName()
     {
-        _svc.AddAuditor("Zara",  "", null, 1);
-        _svc.AddAuditor("Alice", "", null, 1);
-        _svc.AddAuditor("Mike",  "", null, 1);
+        using var conn = Open();
+        var id1 = TestDbHelper.InsertPerson(conn, "Zara",  "Z");
+        var id2 = TestDbHelper.InsertPerson(conn, "Alice", "A");
+        var id3 = TestDbHelper.InsertPerson(conn, "Mike",  "M");
+        TestDbHelper.InsertAuditor(conn, id1, staffRole: "Auditor");
+        TestDbHelper.InsertAuditor(conn, id2, staffRole: "Auditor");
+        TestDbHelper.InsertAuditor(conn, id3, staffRole: "Auditor");
 
         var list  = _svc.GetAllAuditors();
         var names = list.Select(a => a.FullName).ToList();
@@ -109,12 +64,27 @@ public class AuditorServiceTests : IDisposable
     }
 
     [Fact]
-    public void GetAllAuditors_IncludesTypeAndIsActive()
+    public void GetAllAuditors_IncludesStaffRoleAndIsActive()
     {
-        var id = _svc.AddAuditor("Tami", "C", null, type: 3);
-        var a  = _svc.GetAllAuditors().Single(x => x.AuditorId == id);
-        Assert.Equal(3, a.Type);
+        using var conn = Open();
+        var id = TestDbHelper.InsertPerson(conn, "Tami", "C");
+        TestDbHelper.InsertAuditor(conn, id, staffRole: "CS", isActive: true);
+
+        var a = _svc.GetAllAuditors().Single(x => x.AuditorId == id);
+        Assert.Equal("CS", a.StaffRole);
         Assert.True(a.IsActive);
+    }
+
+    [Fact]
+    public void GetAllAuditors_IncludesSoloStaff()
+    {
+        using var conn = Open();
+        var id = TestDbHelper.InsertPerson(conn, "SoloUser", "S");
+        TestDbHelper.InsertAuditor(conn, id, staffRole: "Solo", isActive: true);
+
+        var list = _svc.GetAllAuditors();
+        Assert.Single(list);
+        Assert.Equal("Solo", list[0].StaffRole);
     }
 
     // =========================================================================
@@ -130,15 +100,29 @@ public class AuditorServiceTests : IDisposable
     [Fact]
     public void GetAuditorDetail_ReturnsCorrectFields()
     {
-        var id     = _svc.AddAuditor("Carmela", "D", gradeId: 1, type: 3);
-        var detail = _svc.GetAuditorDetail(id)!;
+        using var conn = Open();
+        var id = TestDbHelper.InsertPerson(conn, "Carmela", "D");
+        TestDbHelper.InsertAuditor(conn, id, staffRole: "CS", isActive: true, gradeId: 1);
 
+        var detail = _svc.GetAuditorDetail(id)!;
         Assert.Equal("Carmela", detail.FirstName);
         Assert.Equal("D",       detail.LastName);
-        Assert.Equal(3,         detail.Type);
+        Assert.Equal("CS",      detail.StaffRole);
         Assert.True(detail.IsActive);
-        Assert.Equal(1,   detail.CurrentGradeId);
+        Assert.Equal(1,    detail.CurrentGradeId);
         Assert.Equal("BA", detail.GradeCode);
+    }
+
+    [Fact]
+    public void GetAuditorDetail_WithNullGrade_ReturnsNulls()
+    {
+        using var conn = Open();
+        var id = TestDbHelper.InsertPerson(conn, "Eyal", "S");
+        TestDbHelper.InsertAuditor(conn, id, staffRole: "Auditor");
+
+        var detail = _svc.GetAuditorDetail(id)!;
+        Assert.Null(detail.CurrentGradeId);
+        Assert.Null(detail.GradeCode);
     }
 
     // =========================================================================
@@ -148,8 +132,11 @@ public class AuditorServiceTests : IDisposable
     [Fact]
     public void UpdateAuditor_ChangesNameAndGrade()
     {
-        var id = _svc.AddAuditor("OldFirst", "OldLast", null, 1);
-        _svc.UpdateAuditor(id, "NewFirst", "NewLast", gradeId: 3, type: 1, isActive: true);
+        using var conn = Open();
+        var id = TestDbHelper.InsertPerson(conn, "OldFirst", "OldLast");
+        TestDbHelper.InsertAuditor(conn, id, staffRole: "Auditor");
+
+        _svc.UpdateAuditor(id, "NewFirst", "NewLast", gradeId: 3, staffRole: "Auditor", isActive: true);
 
         var detail = _svc.GetAuditorDetail(id)!;
         Assert.Equal("NewFirst", detail.FirstName);
@@ -161,47 +148,27 @@ public class AuditorServiceTests : IDisposable
     [Fact]
     public void UpdateAuditor_CanSetInactive()
     {
-        var id = _svc.AddAuditor("Active", "A", null, 1);
-        _svc.UpdateAuditor(id, "Active", "A", null, 0, isActive: false);
+        using var conn = Open();
+        var id = TestDbHelper.InsertPerson(conn, "Active", "A");
+        TestDbHelper.InsertAuditor(conn, id, staffRole: "Auditor", isActive: true);
+
+        _svc.UpdateAuditor(id, "Active", "A", null, staffRole: "Auditor", isActive: false);
 
         var detail = _svc.GetAuditorDetail(id)!;
         Assert.False(detail.IsActive);
     }
 
     [Fact]
-    public void UpdateAuditor_CanChangeType()
+    public void UpdateAuditor_CanChangeStaffRole()
     {
-        var id = _svc.AddAuditor("Solo", "S", null, type: 1);
-        _svc.UpdateAuditor(id, "Solo", "S", null, type: 2, isActive: true);
+        using var conn = Open();
+        var id = TestDbHelper.InsertPerson(conn, "Staff", "S");
+        TestDbHelper.InsertAuditor(conn, id, staffRole: "Auditor");
+
+        _svc.UpdateAuditor(id, "Staff", "S", null, staffRole: "CS", isActive: true);
 
         var detail = _svc.GetAuditorDetail(id)!;
-        Assert.Equal(2, detail.Type);
-    }
-
-    // =========================================================================
-    // Auditor Type semantics
-    // =========================================================================
-    //   0 = InActive, 1 = RegularOnly, 2 = SoloOnly, 3 = RegularAndSolo
-
-    [Fact]
-    public void AuditorType_RegularOnly_Type1_CorrectlySaved()
-    {
-        var id = _svc.AddAuditor("Reg", "R", null, type: 1);
-        Assert.Equal(1, _svc.GetAuditorDetail(id)!.Type);
-    }
-
-    [Fact]
-    public void AuditorType_SoloOnly_Type2_CorrectlySaved()
-    {
-        var id = _svc.AddAuditor("Solo", "S", null, type: 2);
-        Assert.Equal(2, _svc.GetAuditorDetail(id)!.Type);
-    }
-
-    [Fact]
-    public void AuditorType_RegularAndSolo_Type3_CorrectlySaved()
-    {
-        var id = _svc.AddAuditor("Both", "B", null, type: 3);
-        Assert.Equal(3, _svc.GetAuditorDetail(id)!.Type);
+        Assert.Equal("CS", detail.StaffRole);
     }
 
     // =========================================================================
@@ -211,9 +178,11 @@ public class AuditorServiceTests : IDisposable
     [Fact]
     public void GetAuditorStats_AllZero_WhenNoSessions()
     {
-        var id    = _svc.AddAuditor("Tami", "", null, 1);
-        var stats = _svc.GetAuditorStats(id);
+        using var conn = Open();
+        var id = TestDbHelper.InsertPerson(conn, "Tami", "C");
+        TestDbHelper.InsertAuditor(conn, id, staffRole: "Auditor");
 
+        var stats = _svc.GetAuditorStats(id);
         Assert.Equal(0, stats.TotalSessions);
         Assert.Equal(0, stats.FreeSessions);
         Assert.Equal(0L, stats.TotalSec);
@@ -223,9 +192,9 @@ public class AuditorServiceTests : IDisposable
     [Fact]
     public void GetAuditorStats_CountsNonFreeSessionsAndTime()
     {
-        var audId = _svc.AddAuditor("Tami", "", null, 1);
-
         using var conn = Open();
+        var audId = TestDbHelper.InsertPerson(conn, "Tami", "C");
+        TestDbHelper.InsertAuditor(conn, audId, staffRole: "Auditor");
         var pcId = TestDbHelper.InsertPerson(conn, "Client1");
         TestDbHelper.InsertPC(conn, pcId);
         TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-10", 3600, seqInDay: 1);
@@ -241,9 +210,9 @@ public class AuditorServiceTests : IDisposable
     [Fact]
     public void GetAuditorStats_CountsFreeSessions()
     {
-        var audId = _svc.AddAuditor("Genia", "", null, 1);
-
         using var conn = Open();
+        var audId = TestDbHelper.InsertPerson(conn, "Genia", "L");
+        TestDbHelper.InsertAuditor(conn, audId, staffRole: "Auditor");
         var pcId = TestDbHelper.InsertPerson(conn, "Client2");
         TestDbHelper.InsertPC(conn, pcId);
         TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-10", 3600, seqInDay: 1, isFree: false);
@@ -255,23 +224,23 @@ public class AuditorServiceTests : IDisposable
     }
 
     [Fact]
-    public void GetAuditorStats_ExcludesSoloSessions()
+    public void GetAuditorStats_CountsAllSessionsWithAuditorId()
     {
-        // AuditorStats should only count non-solo sessions.
-        // Solo is detected by PcId = AuditorId pattern.
-        var audId = _svc.AddAuditor("Aviv", "", null, type: 3);
-
+        // GetAuditorStats counts ALL sessions WHERE AuditorId=@id, including solo-style ones
         using var conn = Open();
+        var audId = TestDbHelper.InsertPerson(conn, "Aviv", "A");
+        TestDbHelper.InsertAuditor(conn, audId, staffRole: "Auditor");
         var pcId = TestDbHelper.InsertPerson(conn, "Client3");
         TestDbHelper.InsertPC(conn, pcId);
-        // Regular session: PcId != AuditorId
+
+        // Regular session (PcId != AuditorId)
         TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-10", 3600, seqInDay: 1);
-        // Solo session: PcId == AuditorId
+        // "Solo-style" session (PcId == AuditorId), AuditorId is still set
         TestDbHelper.InsertSession(conn, audId, audId, "2024-01-10", 1800, seqInDay: 2);
 
         var stats = _svc.GetAuditorStats(audId);
-        Assert.Equal(1,     stats.TotalSessions);
-        Assert.Equal(3600L, stats.TotalSec);
+        // Both sessions have AuditorId=audId so both are counted
+        Assert.Equal(2, stats.TotalSessions);
     }
 
     // =========================================================================

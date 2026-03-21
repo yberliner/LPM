@@ -82,14 +82,14 @@ public class PurchaseTests : IDisposable
     }
 
     [Fact]
-    public void CreatePurchase_CreatesLegacyPaymentRows()
+    public void CreatePurchase_InsertsItemInPurchaseItems()
     {
         var pcId = SetupPc("Eve", "E");
         var items = MakeItems(("Auditing", null, 10, 500));
         var purchaseId = _svc.CreatePurchase(pcId, "2024-06-01", null, null, null, items);
 
         using var conn = Open();
-        var count = TestDbHelper.Scalar(conn, $"SELECT COUNT(*) FROM Payments WHERE PurchaseId = {purchaseId}");
+        var count = TestDbHelper.Scalar(conn, $"SELECT COUNT(*) FROM fin_purchase_items WHERE PurchaseId = {purchaseId}");
         Assert.Equal(1, count);
     }
 
@@ -333,7 +333,7 @@ public class PurchaseTests : IDisposable
     }
 
     [Fact]
-    public void UpdatePurchase_ResetsStatusToDraft()
+    public void UpdatePurchase_ResetsStatusToPending()
     {
         var pcId = SetupPc("Tom", "T");
         var items = MakeItems(("Auditing", null, 5, 300));
@@ -343,11 +343,11 @@ public class PurchaseTests : IDisposable
 
         _svc.UpdatePurchase(id, "2024-06-01", null, items, pms);
         var detail = _svc.GetPurchaseDetail(id);
-        Assert.Equal("Draft", detail!.ApprovedStatus);
+        Assert.Equal("Pending", detail!.ApprovedStatus);
     }
 
     [Fact]
-    public void UpdatePurchase_ReplacesLegacyPayments()
+    public void UpdatePurchase_ReplacesItems()
     {
         var pcId = SetupPc("Uma", "U");
         var items = MakeItems(("Auditing", null, 5, 300));
@@ -355,13 +355,13 @@ public class PurchaseTests : IDisposable
         var id = _svc.CreatePurchase(pcId, "2024-06-01", null, null, null, items, pms);
 
         using var conn = Open();
-        var before = TestDbHelper.Scalar(conn, $"SELECT COUNT(*) FROM Payments WHERE PurchaseId = {id}");
+        var before = TestDbHelper.Scalar(conn, $"SELECT COUNT(*) FROM fin_purchase_items WHERE PurchaseId = {id}");
         Assert.Equal(1, before);
 
         var newItems = MakeItems(("Auditing", null, 3, 200), ("Auditing", null, 7, 400));
         _svc.UpdatePurchase(id, "2024-06-01", null, newItems, pms);
 
-        var after = TestDbHelper.Scalar(conn, $"SELECT COUNT(*) FROM Payments WHERE PurchaseId = {id}");
+        var after = TestDbHelper.Scalar(conn, $"SELECT COUNT(*) FROM fin_purchase_items WHERE PurchaseId = {id}");
         Assert.Equal(2, after);
     }
 
@@ -494,10 +494,10 @@ public class PurchaseTests : IDisposable
         return pid;
     }
 
-    private static List<(string itemType, int? courseId, int hoursBought, int amountPaid, int? registrarId, int? referralId)>
+    private static List<(string itemType, int? courseId, int hoursBought, int amountPaid)>
         MakeItems(params (string type, int? courseId, int hours, int amount)[] raw)
     {
-        return raw.Select(r => (r.type, r.courseId, r.hours, r.amount, (int?)null, (int?)null)).ToList();
+        return raw.Select(r => (r.type, r.courseId, r.hours, r.amount)).ToList();
     }
 
     private static List<(string methodType, int amount, string? paymentDate)>

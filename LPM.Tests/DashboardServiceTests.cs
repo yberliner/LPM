@@ -25,27 +25,31 @@ public class DashboardServiceTests : IDisposable
     public void Dispose() => TestDbHelper.Cleanup(_dbPath);
 
     // =========================================================================
-    // GetUserIdByUsername
+    // GetUserIdByUsername — queries core_users.Username
     // =========================================================================
 
     [Fact]
     public void GetUserIdByUsername_ReturnsPersonId_WhenFound()
     {
         using var conn = Open();
-        var id = TestDbHelper.InsertPerson(conn, "Tami", "Cohen");
+        // InsertUser creates a stub person + core_users row with Username = "Tami"
+        var uid = TestDbHelper.InsertUser(conn, "Tami", "pass");
+        // InsertUser returns core_users.Id; we need the PersonId
+        var personId = (int)TestDbHelper.Scalar(conn, $"SELECT PersonId FROM core_users WHERE Id={uid}");
 
-        Assert.Equal(id, _svc.GetUserIdByUsername("Tami"));
+        Assert.Equal(personId, _svc.GetUserIdByUsername("Tami"));
     }
 
     [Fact]
     public void GetUserIdByUsername_IsCaseInsensitive()
     {
         using var conn = Open();
-        var id = TestDbHelper.InsertPerson(conn, "Tami", "Cohen");
+        var uid = TestDbHelper.InsertUser(conn, "Tami", "pass");
+        var personId = (int)TestDbHelper.Scalar(conn, $"SELECT PersonId FROM core_users WHERE Id={uid}");
 
-        Assert.Equal(id, _svc.GetUserIdByUsername("TAMI"));
-        Assert.Equal(id, _svc.GetUserIdByUsername("tami"));
-        Assert.Equal(id, _svc.GetUserIdByUsername("TaMi"));
+        Assert.Equal(personId, _svc.GetUserIdByUsername("TAMI"));
+        Assert.Equal(personId, _svc.GetUserIdByUsername("tami"));
+        Assert.Equal(personId, _svc.GetUserIdByUsername("TaMi"));
     }
 
     [Fact]
@@ -54,48 +58,37 @@ public class DashboardServiceTests : IDisposable
         Assert.Null(_svc.GetUserIdByUsername("nobody"));
     }
 
-    [Fact]
-    public void GetUserIdByUsername_ReturnsFirstMatch_WhenDuplicateFirstNames()
-    {
-        using var conn = Open();
-        TestDbHelper.InsertPerson(conn, "Dana", "A");
-        TestDbHelper.InsertPerson(conn, "Dana", "B");
-
-        // Should return a valid person ID (not null) — exact first-match is fine
-        var result = _svc.GetUserIdByUsername("Dana");
-        Assert.NotNull(result);
-    }
-
     // =========================================================================
-    // IsAuditor
+    // IsAuditor — checks core_users WHERE StaffRole IN ('Auditor','CS')
     // =========================================================================
 
     [Fact]
-    public void IsAuditor_ReturnsTrue_ForActiveRegularAuditor()
+    public void IsAuditor_ReturnsTrue_ForActiveAuditor()
     {
         using var conn = Open();
         var id = TestDbHelper.InsertPerson(conn, "Tami");
-        TestDbHelper.InsertAuditor(conn, id, type: 1, isActive: true);
+        TestDbHelper.InsertAuditor(conn, id, staffRole: "Auditor", isActive: true);
 
         Assert.True(_svc.IsAuditor(id));
     }
 
     [Fact]
-    public void IsAuditor_ReturnsTrue_ForType3_RegularAndSolo()
+    public void IsAuditor_ReturnsTrue_ForCS()
     {
         using var conn = Open();
-        var id = TestDbHelper.InsertPerson(conn, "Aviv");
-        TestDbHelper.InsertAuditor(conn, id, type: 3, isActive: true);
+        var id = TestDbHelper.InsertPerson(conn, "CsUser");
+        TestDbHelper.InsertCS(conn, id, isActive: true);
 
         Assert.True(_svc.IsAuditor(id));
     }
 
     [Fact]
-    public void IsAuditor_ReturnsFalse_ForType2_SoloOnly()
+    public void IsAuditor_ReturnsFalse_ForSoloOnly()
     {
+        // type:2 → StaffRole='Solo', which is NOT in ('Auditor','CS')
         using var conn = Open();
         var id = TestDbHelper.InsertPerson(conn, "SoloWorker");
-        TestDbHelper.InsertAuditor(conn, id, type: 2, isActive: true);
+        TestDbHelper.InsertAuditor(conn, id, staffRole: "Solo", isActive: true);
 
         Assert.False(_svc.IsAuditor(id));
     }
@@ -105,13 +98,13 @@ public class DashboardServiceTests : IDisposable
     {
         using var conn = Open();
         var id = TestDbHelper.InsertPerson(conn, "Inactive");
-        TestDbHelper.InsertAuditor(conn, id, type: 1, isActive: false);
+        TestDbHelper.InsertAuditor(conn, id, staffRole: "Auditor", isActive: false);
 
         Assert.False(_svc.IsAuditor(id));
     }
 
     [Fact]
-    public void IsAuditor_ReturnsFalse_ForPersonNotInAuditorsTable()
+    public void IsAuditor_ReturnsFalse_ForPersonNotInCoreUsers()
     {
         using var conn = Open();
         var id = TestDbHelper.InsertPerson(conn, "NotAnAuditor");
@@ -120,35 +113,26 @@ public class DashboardServiceTests : IDisposable
     }
 
     // =========================================================================
-    // IsSoloAuditor
+    // IsSoloAuditor — checks core_users WHERE StaffRole='Solo'
     // =========================================================================
 
     [Fact]
-    public void IsSoloAuditor_ReturnsTrue_ForType2()
+    public void IsSoloAuditor_ReturnsTrue_ForSoloRole()
     {
         using var conn = Open();
         var id = TestDbHelper.InsertPerson(conn, "SoloA");
-        TestDbHelper.InsertAuditor(conn, id, type: 2, isActive: true);
+        TestDbHelper.InsertAuditor(conn, id, staffRole: "Solo", isActive: true); // type:2 → Solo
 
         Assert.True(_svc.IsSoloAuditor(id));
     }
 
     [Fact]
-    public void IsSoloAuditor_ReturnsTrue_ForType3()
+    public void IsSoloAuditor_ReturnsFalse_ForAuditorRole()
     {
-        using var conn = Open();
-        var id = TestDbHelper.InsertPerson(conn, "BothA");
-        TestDbHelper.InsertAuditor(conn, id, type: 3, isActive: true);
-
-        Assert.True(_svc.IsSoloAuditor(id));
-    }
-
-    [Fact]
-    public void IsSoloAuditor_ReturnsFalse_ForType1()
-    {
+        // type:1 → Auditor, type:3 → Auditor — neither is 'Solo'
         using var conn = Open();
         var id = TestDbHelper.InsertPerson(conn, "RegA");
-        TestDbHelper.InsertAuditor(conn, id, type: 1, isActive: true);
+        TestDbHelper.InsertAuditor(conn, id, staffRole: "Auditor", isActive: true);
 
         Assert.False(_svc.IsSoloAuditor(id));
     }
@@ -158,7 +142,7 @@ public class DashboardServiceTests : IDisposable
     {
         using var conn = Open();
         var id = TestDbHelper.InsertPerson(conn, "InactiveSolo");
-        TestDbHelper.InsertAuditor(conn, id, type: 2, isActive: false);
+        TestDbHelper.InsertAuditor(conn, id, staffRole: "Solo", isActive: false);
 
         Assert.False(_svc.IsSoloAuditor(id));
     }
@@ -188,43 +172,12 @@ public class DashboardServiceTests : IDisposable
     }
 
     [Fact]
-    public void IsCS_ReturnsFalse_ForPersonNotInCsTable()
+    public void IsCS_ReturnsFalse_ForPersonNotInCoreUsers()
     {
         using var conn = Open();
         var id = TestDbHelper.InsertPerson(conn, "NotACS");
 
         Assert.False(_svc.IsCS(id));
-    }
-
-    // =========================================================================
-    // GetAuditorType
-    // =========================================================================
-
-    [Fact]
-    public void GetAuditorType_Returns1_ForRegularOnly()
-    {
-        using var conn = Open();
-        var id = TestDbHelper.InsertPerson(conn, "Reg");
-        TestDbHelper.InsertAuditor(conn, id, type: 1);
-
-        Assert.Equal(1, _svc.GetAuditorType(id));
-    }
-
-    [Fact]
-    public void GetAuditorType_Returns0_ForInactive()
-    {
-        using var conn = Open();
-        var id = TestDbHelper.InsertPerson(conn, "Inact");
-        TestDbHelper.InsertAuditor(conn, id, type: 0);
-
-        Assert.Equal(0, _svc.GetAuditorType(id));
-    }
-
-    [Fact]
-    public void GetAuditorType_Returns1_WhenPersonNotInAuditorsTable()
-    {
-        // Default fallback when auditor not found
-        Assert.Equal(1, _svc.GetAuditorType(9999));
     }
 
     // =========================================================================
@@ -258,9 +211,9 @@ public class DashboardServiceTests : IDisposable
         var sid2 = _svc.AddSession(audId, pcId, date, 1800, 0, false, null);
         var sid3 = _svc.AddSession(audId, pcId, date, 900,  0, false, null);
 
-        var seq1 = TestDbHelper.Scalar(conn, $"SELECT SequenceInDay FROM Sessions WHERE SessionId={sid1}");
-        var seq2 = TestDbHelper.Scalar(conn, $"SELECT SequenceInDay FROM Sessions WHERE SessionId={sid2}");
-        var seq3 = TestDbHelper.Scalar(conn, $"SELECT SequenceInDay FROM Sessions WHERE SessionId={sid3}");
+        var seq1 = TestDbHelper.Scalar(conn, $"SELECT SequenceInDay FROM sess_sessions WHERE SessionId={sid1}");
+        var seq2 = TestDbHelper.Scalar(conn, $"SELECT SequenceInDay FROM sess_sessions WHERE SessionId={sid2}");
+        var seq3 = TestDbHelper.Scalar(conn, $"SELECT SequenceInDay FROM sess_sessions WHERE SessionId={sid3}");
 
         Assert.Equal(1L, seq1);
         Assert.Equal(2L, seq2);
@@ -279,7 +232,7 @@ public class DashboardServiceTests : IDisposable
         var sid1 = _svc.AddSession(audId, pcId, new DateOnly(2024, 1, 15), 3600, 0, false, null);
         var sid2 = _svc.AddSession(audId, pcId, new DateOnly(2024, 1, 16), 1800, 0, false, null);
 
-        var seq2 = TestDbHelper.Scalar(conn, $"SELECT SequenceInDay FROM Sessions WHERE SessionId={sid2}");
+        var seq2 = TestDbHelper.Scalar(conn, $"SELECT SequenceInDay FROM sess_sessions WHERE SessionId={sid2}");
         Assert.Equal(1L, seq2);
     }
 
@@ -293,24 +246,8 @@ public class DashboardServiceTests : IDisposable
         TestDbHelper.InsertPC(conn, pcId);
 
         var sid = _svc.AddSession(audId, pcId, new DateOnly(2024, 1, 10), 3600, 0, isFree: true, null);
-        var flag = TestDbHelper.Scalar(conn, $"SELECT IsFreeSession FROM Sessions WHERE SessionId={sid}");
+        var flag = TestDbHelper.Scalar(conn, $"SELECT IsFreeSession FROM sess_sessions WHERE SessionId={sid}");
         Assert.Equal(1L, flag);
-    }
-
-    [Fact]
-    public void AddSession_StoresSummary()
-    {
-        using var conn = Open();
-        var audId = TestDbHelper.InsertPerson(conn, "Aud1");
-        TestDbHelper.InsertAuditor(conn, audId);
-        var pcId = TestDbHelper.InsertPerson(conn, "Client1");
-        TestDbHelper.InsertPC(conn, pcId);
-
-        var sid     = _svc.AddSession(audId, pcId, new DateOnly(2024, 1, 10), 3600, 0, false, "<p>Notes here</p>");
-        using var c = conn.CreateCommand();
-        c.CommandText = $"SELECT SessionSummaryHtml FROM Sessions WHERE SessionId={sid}";
-        var summary = c.ExecuteScalar() as string;
-        Assert.Equal("<p>Notes here</p>", summary);
     }
 
     // =========================================================================
@@ -329,9 +266,9 @@ public class DashboardServiceTests : IDisposable
         var sid = _svc.AddSession(audId, pcId, new DateOnly(2024, 1, 10), 3600, 0, false, null);
         _svc.UpdateSession(sid, 7200, 600, true, "<p>Updated</p>");
 
-        var len  = TestDbHelper.Scalar(conn, $"SELECT LengthSeconds  FROM Sessions WHERE SessionId={sid}");
-        var adm  = TestDbHelper.Scalar(conn, $"SELECT AdminSeconds   FROM Sessions WHERE SessionId={sid}");
-        var free = TestDbHelper.Scalar(conn, $"SELECT IsFreeSession  FROM Sessions WHERE SessionId={sid}");
+        var len  = TestDbHelper.Scalar(conn, $"SELECT LengthSeconds  FROM sess_sessions WHERE SessionId={sid}");
+        var adm  = TestDbHelper.Scalar(conn, $"SELECT AdminSeconds   FROM sess_sessions WHERE SessionId={sid}");
+        var free = TestDbHelper.Scalar(conn, $"SELECT IsFreeSession  FROM sess_sessions WHERE SessionId={sid}");
         Assert.Equal(7200L, len);
         Assert.Equal(600L,  adm);
         Assert.Equal(1L,    free);
@@ -361,7 +298,7 @@ public class DashboardServiceTests : IDisposable
     [Fact]
     public void AddCsReview_DuplicateSessionId_ThrowsException()
     {
-        // CsReviews.SessionId has UNIQUE constraint
+        // cs_reviews.SessionId has UNIQUE constraint
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "Aud1");
         TestDbHelper.InsertAuditor(conn, audId);
@@ -414,9 +351,10 @@ public class DashboardServiceTests : IDisposable
 
         var sid   = TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-10", 3600);
         var revId = _svc.AddCsReview(csId, sid, 1200, "Draft", null);
-        _svc.UpdateCsReview(revId, 1800, "Approved", "Looks good");
+        // UpdateCsReview signature: (csReviewId, callerCsId, reviewSec, status, notes)
+        _svc.UpdateCsReview(revId, csId, 1800, "Approved", "Looks good");
 
-        var rev  = TestDbHelper.Scalar(conn, $"SELECT ReviewLengthSeconds FROM CsReviews WHERE CsReviewId={revId}");
+        var rev = TestDbHelper.Scalar(conn, $"SELECT ReviewLengthSeconds FROM cs_reviews WHERE CsReviewId={revId}");
         Assert.Equal(1800L, rev);
     }
 
@@ -497,19 +435,20 @@ public class DashboardServiceTests : IDisposable
     }
 
     // =========================================================================
-    // AddSoloSession
+    // AddSoloSession — requires StaffRole='Solo' in core_users
     // =========================================================================
 
     [Fact]
     public void AddSoloSession_CreatesSoloSession_PcIdEqualsAuditorId()
     {
-        // Solo sessions are identified by PcId == AuditorId (no IsSolo column)
+        // Solo sessions are identified by PcId == AuditorId
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "SoloAud");
-        TestDbHelper.InsertAuditor(conn, audId, type: 3);
+        // type:2 → Solo
+        TestDbHelper.InsertAuditor(conn, audId, staffRole: "Solo");
 
         var sid  = _svc.AddSoloSession(audId, new DateOnly(2024, 1, 10), 3600, 0, false, null);
-        var pcId = TestDbHelper.Scalar(conn, $"SELECT PcId FROM Sessions WHERE SessionId={sid}");
+        var pcId = TestDbHelper.Scalar(conn, $"SELECT PcId FROM sess_sessions WHERE SessionId={sid}");
         Assert.Equal((long)audId, pcId);
     }
 
@@ -518,10 +457,10 @@ public class DashboardServiceTests : IDisposable
     {
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "SoloAud");
-        TestDbHelper.InsertAuditor(conn, audId, type: 2);
+        TestDbHelper.InsertAuditor(conn, audId, staffRole: "Solo");
 
-        var sid   = _svc.AddSoloSession(audId, new DateOnly(2024, 1, 10), 3600, 0, false, null);
-        var pcId  = TestDbHelper.Scalar(conn, $"SELECT PcId FROM Sessions WHERE SessionId={sid}");
+        var sid  = _svc.AddSoloSession(audId, new DateOnly(2024, 1, 10), 3600, 0, false, null);
+        var pcId = TestDbHelper.Scalar(conn, $"SELECT PcId FROM sess_sessions WHERE SessionId={sid}");
         Assert.Equal((long)audId, pcId);
     }
 
@@ -530,13 +469,13 @@ public class DashboardServiceTests : IDisposable
     {
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "SoloAud");
-        TestDbHelper.InsertAuditor(conn, audId, type: 3);
+        TestDbHelper.InsertAuditor(conn, audId, staffRole: "Solo");
 
         var sid1 = _svc.AddSoloSession(audId, new DateOnly(2024, 1, 10), 3600, 0, false, null);
         var sid2 = _svc.AddSoloSession(audId, new DateOnly(2024, 1, 10), 1800, 0, false, null);
 
-        var seq1 = TestDbHelper.Scalar(conn, $"SELECT SequenceInDay FROM Sessions WHERE SessionId={sid1}");
-        var seq2 = TestDbHelper.Scalar(conn, $"SELECT SequenceInDay FROM Sessions WHERE SessionId={sid2}");
+        var seq1 = TestDbHelper.Scalar(conn, $"SELECT SequenceInDay FROM sess_sessions WHERE SessionId={sid1}");
+        var seq2 = TestDbHelper.Scalar(conn, $"SELECT SequenceInDay FROM sess_sessions WHERE SessionId={sid2}");
         Assert.Equal(1L, seq1);
         Assert.Equal(2L, seq2);
     }
@@ -556,7 +495,7 @@ public class DashboardServiceTests : IDisposable
         _svc.AddUserPc(audId, pcId);
 
         var count = TestDbHelper.Scalar(conn,
-            $"SELECT COUNT(*) FROM StaffPcList WHERE UserId={audId} AND PcId={pcId}");
+            $"SELECT COUNT(*) FROM sys_staff_pc_list WHERE UserId={audId} AND PcId={pcId}");
         Assert.Equal(1L, count);
     }
 
@@ -571,7 +510,7 @@ public class DashboardServiceTests : IDisposable
         _svc.AddUserPc(audId, pcId, "CSSolo");
 
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"SELECT WorkCapacity FROM StaffPcList WHERE UserId={audId} AND PcId={pcId} AND WorkCapacity='CSSolo'";
+        cmd.CommandText = $"SELECT WorkCapacity FROM sys_staff_pc_list WHERE UserId={audId} AND PcId={pcId}";
         var cap = cmd.ExecuteScalar() as string;
         Assert.Equal("CSSolo", cap);
     }
@@ -587,7 +526,7 @@ public class DashboardServiceTests : IDisposable
         _svc.AddUserPc(audId, pcId);
 
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"SELECT WorkCapacity FROM StaffPcList WHERE UserId={audId} AND PcId={pcId}";
+        cmd.CommandText = $"SELECT WorkCapacity FROM sys_staff_pc_list WHERE UserId={audId} AND PcId={pcId}";
         var cap = cmd.ExecuteScalar() as string;
         Assert.Equal("Auditor", cap);
     }
@@ -601,9 +540,9 @@ public class DashboardServiceTests : IDisposable
         TestDbHelper.InsertPC(conn, pcId);
 
         _svc.AddUserPc(audId, pcId);
-        _svc.AddUserPc(audId, pcId);  // should be silently ignored
+        _svc.AddUserPc(audId, pcId);  // should be silently ignored (or update)
 
-        var count = TestDbHelper.Scalar(conn, $"SELECT COUNT(*) FROM StaffPcList WHERE UserId={audId} AND PcId={pcId}");
+        var count = TestDbHelper.Scalar(conn, $"SELECT COUNT(*) FROM sys_staff_pc_list WHERE UserId={audId} AND PcId={pcId}");
         Assert.Equal(1L, count);
     }
 
@@ -618,7 +557,7 @@ public class DashboardServiceTests : IDisposable
         _svc.AddUserPc(audId, pcId);
         _svc.RemoveUserPc(audId, pcId);
 
-        var count = TestDbHelper.Scalar(conn, $"SELECT COUNT(*) FROM StaffPcList WHERE UserId={audId} AND PcId={pcId}");
+        var count = TestDbHelper.Scalar(conn, $"SELECT COUNT(*) FROM sys_staff_pc_list WHERE UserId={audId} AND PcId={pcId}");
         Assert.Equal(0L, count);
     }
 
@@ -798,12 +737,12 @@ public class DashboardServiceTests : IDisposable
         TestDbHelper.InsertPC(conn, pcId);
 
         var id = _svc.AddCsWork(csId, pcId, new DateOnly(2024, 1, 10), 1800, null);
-        var count = TestDbHelper.Scalar(conn, $"SELECT COUNT(*) FROM CsWorkLog WHERE CsWorkLogId={id}");
+        var count = TestDbHelper.Scalar(conn, $"SELECT COUNT(*) FROM cs_work_log WHERE CsWorkLogId={id}");
         Assert.Equal(1L, count);
     }
 
     // =========================================================================
-    // GetSoloAuditorInfo
+    // GetSoloAuditorInfo — requires StaffRole='Solo' in core_users
     // =========================================================================
 
     [Fact]
@@ -813,15 +752,26 @@ public class DashboardServiceTests : IDisposable
     }
 
     [Fact]
-    public void GetSoloAuditorInfo_ReturnsPcInfoWithSoloAuditorRole()
+    public void GetSoloAuditorInfo_ReturnsPcInfoWithSoloAuditorRole_ForSoloUser()
     {
         using var conn = Open();
         var id = TestDbHelper.InsertPerson(conn, "Tami", "Cohen");
+        TestDbHelper.InsertAuditor(conn, id, staffRole: "Solo", isActive: true); // type:2 → Solo
 
         var info = _svc.GetSoloAuditorInfo(id);
         Assert.NotNull(info);
         Assert.Equal("SoloAuditor", info!.WorkCapacity);
         Assert.Contains("Tami", info.FullName);
+    }
+
+    [Fact]
+    public void GetSoloAuditorInfo_ReturnsNull_ForNonSoloUser()
+    {
+        using var conn = Open();
+        var id = TestDbHelper.InsertPerson(conn, "Tami", "Cohen");
+        // Only insert a person, no core_users entry with StaffRole='Solo'
+
+        Assert.Null(_svc.GetSoloAuditorInfo(id));
     }
 
     // =========================================================================

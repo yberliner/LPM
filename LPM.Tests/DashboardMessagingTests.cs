@@ -72,7 +72,7 @@ public class DashboardMessagingTests : IDisposable
     }
 
     // =========================================================================
-    // AcknowledgeMessage
+    // AcknowledgeMessage — requires (messageId, toStaffId)
     // =========================================================================
 
     [Fact]
@@ -87,7 +87,7 @@ public class DashboardMessagingTests : IDisposable
         var msgs = _svc.GetPendingMessages(to);
         Assert.Single(msgs);
 
-        _svc.AcknowledgeMessage(msgs[0].Id);
+        _svc.AcknowledgeMessage(msgs[0].Id, to);
 
         Assert.Empty(_svc.GetPendingMessages(to));
         Assert.Equal(0, _svc.GetPendingMessageCount(to));
@@ -106,7 +106,7 @@ public class DashboardMessagingTests : IDisposable
         var msgs = _svc.GetPendingMessages(to);
         Assert.Equal(2, msgs.Count);
 
-        _svc.AcknowledgeMessage(msgs[0].Id);
+        _svc.AcknowledgeMessage(msgs[0].Id, to);
 
         Assert.Single(_svc.GetPendingMessages(to));
     }
@@ -121,19 +121,19 @@ public class DashboardMessagingTests : IDisposable
         using var conn = Open();
         var sender = TestDbHelper.InsertPerson(conn, "Worker", "W");
 
-        // Create two admin users
-        var admin1 = TestDbHelper.InsertPerson(conn, "Admin1", "A1");
+        // Create two admin users (InsertUser creates stub person + core_users)
         var userId1 = TestDbHelper.InsertUser(conn, "Admin1", "pass1");
         TestDbHelper.AssignRole(conn, userId1, "Admin");
+        var admin1PersonId = (int)TestDbHelper.Scalar(conn, $"SELECT PersonId FROM core_users WHERE Id={userId1}");
 
-        var admin2 = TestDbHelper.InsertPerson(conn, "Admin2", "A2");
         var userId2 = TestDbHelper.InsertUser(conn, "Admin2", "pass2");
         TestDbHelper.AssignRole(conn, userId2, "Admin");
+        var admin2PersonId = (int)TestDbHelper.Scalar(conn, $"SELECT PersonId FROM core_users WHERE Id={userId2}");
 
         _svc.SendAutoMessageToAdmins(sender, "Auto notification");
 
-        Assert.True(_svc.GetPendingMessageCount(admin1) >= 1);
-        Assert.True(_svc.GetPendingMessageCount(admin2) >= 1);
+        Assert.True(_svc.GetPendingMessageCount(admin1PersonId) >= 1);
+        Assert.True(_svc.GetPendingMessageCount(admin2PersonId) >= 1);
     }
 
     // =========================================================================
@@ -150,7 +150,6 @@ public class DashboardMessagingTests : IDisposable
         TestDbHelper.InsertPC(conn, pc);
 
         // Need an admin user so SendAutoMessageToAdmins doesn't fail silently
-        var adm = TestDbHelper.InsertPerson(conn, "Adm", "X");
         var admUsr = TestDbHelper.InsertUser(conn, "Adm", "pass");
         TestDbHelper.AssignRole(conn, admUsr, "Admin");
 
@@ -163,8 +162,8 @@ public class DashboardMessagingTests : IDisposable
         using var conn = Open();
         var auditor = TestDbHelper.InsertPerson(conn, "AllAud", "AA");
         TestDbHelper.InsertAuditor(conn, auditor);
-        // Set AllowAll flag
-        TestDbHelper.Exec(conn, $"UPDATE Auditors SET AllowAll = 1 WHERE AuditorId = {auditor}");
+        // Set AllowAll flag in core_users
+        TestDbHelper.Exec(conn, $"UPDATE core_users SET AllowAll = 1 WHERE PersonId = {auditor}");
         var pc = TestDbHelper.InsertPerson(conn, "AnyPc", "AP");
         TestDbHelper.InsertPC(conn, pc);
 
@@ -204,7 +203,6 @@ public class DashboardMessagingTests : IDisposable
         var pc = TestDbHelper.InsertPerson(conn, "ReqPc", "RP");
         TestDbHelper.InsertPC(conn, pc);
 
-        var adm = TestDbHelper.InsertPerson(conn, "ReqAdm", "RX");
         var admUsr = TestDbHelper.InsertUser(conn, "ReqAdm", "pass");
         TestDbHelper.AssignRole(conn, admUsr, "Admin");
 
@@ -212,7 +210,8 @@ public class DashboardMessagingTests : IDisposable
 
         var pending = _svc.GetPendingPermissionRequests();
         Assert.Single(pending);
-        Assert.Equal(auditor, pending[0].AuditorId);
+        // PermissionRequest has UserId (not AuditorId)
+        Assert.Equal(auditor, pending[0].UserId);
         Assert.Equal(pc, pending[0].PcId);
     }
 
@@ -225,7 +224,6 @@ public class DashboardMessagingTests : IDisposable
         var pc = TestDbHelper.InsertPerson(conn, "ApvPc", "AP2");
         TestDbHelper.InsertPC(conn, pc);
 
-        var adm = TestDbHelper.InsertPerson(conn, "ApvAdm", "AX2");
         var admUsr = TestDbHelper.InsertUser(conn, "ApvAdm", "pass");
         TestDbHelper.AssignRole(conn, admUsr, "Admin");
 
@@ -247,7 +245,6 @@ public class DashboardMessagingTests : IDisposable
         var pc = TestDbHelper.InsertPerson(conn, "RejPc", "RJP");
         TestDbHelper.InsertPC(conn, pc);
 
-        var adm = TestDbHelper.InsertPerson(conn, "RejAdm", "RJX");
         var admUsr = TestDbHelper.InsertUser(conn, "RejAdm", "pass");
         TestDbHelper.AssignRole(conn, admUsr, "Admin");
 
@@ -285,14 +282,13 @@ public class DashboardMessagingTests : IDisposable
 
         _svc.AddApprovedPermission(auditor, pc);
 
-        // Get the permission ID
+        // Get the permission ID from sys_staff_pc_list (UserId = auditor)
         var permId = (int)TestDbHelper.Scalar(conn,
-            $"SELECT Id FROM AuditorPcPermissions WHERE AuditorId = {auditor} AND PcId = {pc}");
+            $"SELECT Id FROM sys_staff_pc_list WHERE UserId = {auditor} AND PcId = {pc}");
 
         _svc.RemovePermission(permId);
 
         // Need admin for auto-message on re-request
-        var adm = TestDbHelper.InsertPerson(conn, "RmAdm", "RMX");
         var admUsr = TestDbHelper.InsertUser(conn, "RmAdm", "pass");
         TestDbHelper.AssignRole(conn, admUsr, "Admin");
 
@@ -361,7 +357,7 @@ public class DashboardMessagingTests : IDisposable
     }
 
     // =========================================================================
-    // GetUserIdByUsername
+    // GetUserIdByUsername — queries core_users.Username
     // =========================================================================
 
     [Fact]
@@ -371,14 +367,16 @@ public class DashboardMessagingTests : IDisposable
     }
 
     [Fact]
-    public void GetUserIdByUsername_FindsByFirstName_CaseInsensitive()
+    public void GetUserIdByUsername_FindsByUsername_CaseInsensitive()
     {
         using var conn = Open();
-        var pid = TestDbHelper.InsertPerson(conn, "Tami", "Cohen");
+        // InsertUser creates stub person + core_users with Username="tami"
+        var uid = TestDbHelper.InsertUser(conn, "tami", "pass");
+        var personId = (int)TestDbHelper.Scalar(conn, $"SELECT PersonId FROM core_users WHERE Id={uid}");
 
-        Assert.Equal(pid, _svc.GetUserIdByUsername("tami"));
-        Assert.Equal(pid, _svc.GetUserIdByUsername("TAMI"));
-        Assert.Equal(pid, _svc.GetUserIdByUsername("Tami"));
+        Assert.Equal(personId, _svc.GetUserIdByUsername("tami"));
+        Assert.Equal(personId, _svc.GetUserIdByUsername("TAMI"));
+        Assert.Equal(personId, _svc.GetUserIdByUsername("Tami"));
     }
 
     // =========================================================================

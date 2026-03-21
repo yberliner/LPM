@@ -32,7 +32,7 @@ public class AcademyServiceTests : IDisposable
         var id = _svc.AddPersonForAcademy("Alice", "Green", "050-111", "alice@x.com", "1990-01-15", "F");
 
         using var conn = Open();
-        Assert.Equal(1L, TestDbHelper.Scalar(conn, $"SELECT COUNT(*) FROM Persons WHERE PersonId={id}"));
+        Assert.Equal(1L, TestDbHelper.Scalar(conn, $"SELECT COUNT(*) FROM core_persons WHERE PersonId={id}"));
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public class AcademyServiceTests : IDisposable
 
         using var conn = Open();
         using var cmd  = conn.CreateCommand();
-        cmd.CommandText = $"SELECT FirstName,LastName,Phone,Email,DateOfBirth,Gender FROM Persons WHERE PersonId={id}";
+        cmd.CommandText = $"SELECT FirstName,LastName,Phone,Email,DateOfBirth,Gender FROM core_persons WHERE PersonId={id}";
         using var r = cmd.ExecuteReader();
         Assert.True(r.Read());
         Assert.Equal("Dana",       r.GetString(0));
@@ -68,7 +68,7 @@ public class AcademyServiceTests : IDisposable
 
         using var conn = Open();
         using var cmd  = conn.CreateCommand();
-        cmd.CommandText = $"SELECT Phone FROM Persons WHERE PersonId={id}";
+        cmd.CommandText = $"SELECT Phone FROM core_persons WHERE PersonId={id}";
         var phone = cmd.ExecuteScalar();
         Assert.True(phone is DBNull || phone is null);
     }
@@ -80,7 +80,7 @@ public class AcademyServiceTests : IDisposable
 
         using var conn = Open();
         using var cmd  = conn.CreateCommand();
-        cmd.CommandText = $"SELECT FirstName,LastName FROM Persons WHERE PersonId={id}";
+        cmd.CommandText = $"SELECT FirstName,LastName FROM core_persons WHERE PersonId={id}";
         using var r = cmd.ExecuteReader();
         r.Read();
         Assert.Equal("Zara", r.GetString(0));
@@ -428,10 +428,16 @@ public class AcademyServiceTests : IDisposable
     [Fact]
     public void PersonAddedViaAcademy_VisibleInDashboardService_GetUserIdByUsername()
     {
+        // GetUserIdByUsername queries core_users.Username (not core_persons.FirstName).
+        // AddPersonForAcademy only creates a core_persons row; we must also create a core_users entry.
         var id  = _svc.AddPersonForAcademy("Miriam", "Katz", "", "", "", "");
         var svc = new DashboardService(TestConfig.For(_dbPath), new LPM.Services.MessageNotifier());
 
-        Assert.Equal(id, svc.GetUserIdByUsername("Miriam"));
+        using var conn = Open();
+        TestDbHelper.InsertCoreUser(conn, id, "miriam", "pass1234");
+
+        var result = svc.GetUserIdByUsername("miriam");
+        Assert.Equal(id, result);
     }
 
     [Fact]
