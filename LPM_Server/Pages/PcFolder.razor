@@ -546,6 +546,13 @@
                     </button>
                     <div class="vr mx-0" style="border-color:rgba(255,255,255,.3);"></div>
                 }
+                <button class="pcf-tool-btn @(_paneCount > 1 ? "pcf-tool-active" : "")"
+                        title="Split view — currently @_paneCount pane(s). Click to cycle between 1, 2, or 3 side-by-side panes"
+                        @onclick="CyclePanes">
+                    <i class="ri-layout-column-line"></i>
+                    <span style="font-size:.7rem;margin-left:2px;">@_paneCount</span>
+                </button>
+                <div class="vr mx-0" style="border-color:rgba(255,255,255,.3);"></div>
             </div>
             @if (!string.IsNullOrEmpty(_csSessionName))
             {
@@ -640,6 +647,7 @@
                 <button class="pcf-tool-btn" title="Undo — remove the last annotation on the active pane (Ctrl+Z)" @onclick="Undo">
                     <i class="ri-arrow-go-back-line"></i>
                 </button>
+                <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
                 <div class="pcf-addpage-wrap">
                     <button class="pcf-tool-btn" title="Add blank page" @onclick="ToggleAddPageMenu">
                         <i class="ri-file-add-line"></i>
@@ -708,41 +716,36 @@
                         disabled="@(string.IsNullOrEmpty(_panes[_activeIdx].File))">
                     <i class="ri-download-2-line"></i>
                 </button>
-                <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
-                @* Pane count toggle: cycles 1→2→3→1 *@
-                <button class="pcf-tool-btn @(_paneCount > 1 ? "pcf-tool-active" : "")"
-                        title="Split view — currently @_paneCount pane(s). Click to cycle between 1, 2, or 3 side-by-side panes for comparing files"
-                        @onclick="CyclePanes">
-                    <i class="ri-layout-column-line"></i>
-                    <span style="font-size:.7rem;margin-left:2px;">@_paneCount</span>
-                </button>
                 <button class="pcf-tool-btn pcf-voice-btn @(_voiceOn ? "pcf-voice-active" : "")"
                         title="@(_voiceOn ? "Voice commands ON — click to turn off" : "Voice commands OFF — click to turn on")"
                         @onclick="ToggleVoice">
                     <i class="ri-mic-@(_voiceOn ? "fill" : "line")"></i>
                 </button>
-                <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
-                @if (_csSessionId > 0 && !_csDone)
+                @if (_csSessionId > 0)
                 {
-                    <button class="pcf-tool-btn" title="Edit the session summary text"
-                            @onclick="OpenEditSummary">
-                        <i class="ri-edit-2-line me-1"></i><span style="font-size:.72rem;">FS</span>
-                    </button>
-                }
-                @if (CsMode && _csSessionId > 0)
-                {
-                    @if (_csDone)
+                    <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
+                    @if (!_csDone)
                     {
-                        <button class="pcf-done-btn pcf-done-success" disabled>
-                            <i class="ri-check-line me-1"></i>CS Done
+                        <button class="pcf-tool-btn" title="Edit the session summary text"
+                                @onclick="OpenEditSummary">
+                            <i class="ri-edit-2-line me-1"></i><span style="font-size:.72rem;">FS</span>
                         </button>
                     }
-                    else
+                    @if (CsMode)
                     {
-                        <button class="pcf-done-btn" title="@(_csLocked ? "Another tab is already CSing this session" : "Done — saves all annotations, records the CS review with the displayed time, and closes the tab")"
-                                @onclick="DoneCs" disabled="@_csLocked">
-                            <i class="ri-check-double-line me-1"></i>Done
-                        </button>
+                        @if (_csDone)
+                        {
+                            <button class="pcf-done-btn pcf-done-success" disabled>
+                                <i class="ri-check-line me-1"></i>CS Done
+                            </button>
+                        }
+                        else
+                        {
+                            <button class="pcf-done-btn" title="@(_csLocked ? "Another tab is already CSing this session" : "Done — saves all annotations, records the CS review with the displayed time, and closes the tab")"
+                                    @onclick="DoneCs" disabled="@_csLocked">
+                                <i class="ri-check-double-line me-1"></i>Done
+                            </button>
+                        }
                     }
                 }
             </div>
