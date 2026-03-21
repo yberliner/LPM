@@ -5,6 +5,7 @@
 @inject LPM.Services.ShortcutService ShortcutSvc
 @inject IJSRuntime JS
 @inject NavigationManager NavManager
+@inject IHttpContextAccessor HttpContextAccessor
 @using LPM.Services
 @implements IDisposable
 
@@ -2077,6 +2078,14 @@
             }
         }
 
+        // Restore preferences from cookies (before first render — no flicker)
+        var cookies = HttpContextAccessor.HttpContext?.Request.Cookies;
+        if (cookies != null)
+        {
+            if (cookies.TryGetValue("lpmVoiceOn", out var vc) && vc == "false") _voiceOn = false;
+            if (cookies.TryGetValue("lpmFontSize", out var fc) && int.TryParse(fc, out var fs) && _fontSizes.Contains(fs)) _fontSize = fs;
+        }
+
         _userName = DashSvc.GetPersonName(UserPersonId) ?? $"User {UserPersonId}";
         RefreshFolder();
         EnsureFolderSummaryExists();
@@ -2244,6 +2253,10 @@
                         window.pcfViewer.dotNetRef.invokeMethodAsync('OnArrowKey', e.key === 'ArrowRight' ? 1 : -1);
                 });
             ");
+
+            // Apply restored font size preference to the JS viewer
+            if (_fontSize != 14)
+                await JS.InvokeVoidAsync("pcfViewer.setFontSize", _fontSize);
 
             // Voice commands — dynamically load script if not already present
             try
@@ -2866,6 +2879,7 @@
         _fontSize = size;
         _showSizes = false;
         await JS.InvokeVoidAsync("pcfViewer.setFontSize", size);
+        _ = JS.InvokeVoidAsync("eval", $"document.cookie=\"lpmFontSize={size}; path=/; max-age=31536000; SameSite=Strict\";");
     }
 
     async Task PickWidth(double width)
@@ -2990,6 +3004,7 @@
     async Task ToggleVoice()
     {
         _voiceOn = !_voiceOn;
+        _ = JS.InvokeVoidAsync("eval", $"document.cookie=\"lpmVoiceOn={(_voiceOn ? "true" : "false")}; path=/; max-age=31536000; SameSite=Strict\";");
         try
         {
             if (_voiceOn) await JS.InvokeVoidAsync("lpmVoice.start");
