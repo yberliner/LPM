@@ -1,0 +1,639 @@
+@page "/Admin/Auditors"
+@attribute [Authorize(Roles = "Admin")]
+@inject LPM.Services.AuditorService AuditorSvc
+@using Microsoft.AspNetCore.Authorization
+@using LPM.Services
+
+<div class="d-flex gap-3 aud-layout">
+
+    @* ── LEFT PANEL: Auditor List ── *@
+    <div class="d-flex flex-column border-end pe-2 aud-left-panel">
+        <button class="aud-add-btn mb-2 w-100" @onclick="OpenWizard">
+            <i class="ri-user-add-line me-1"></i>Add Auditor
+        </button>
+        <div class="d-flex gap-1 mb-2">
+            <input class="form-control form-control-sm" placeholder="@LS.T("common.search")"
+                   @bind="_search" @bind:event="oninput" />
+        </div>
+        <div class="overflow-y-auto flex-grow-1">
+            @if (!FilteredAuditors.Any())
+            {
+                <div class="text-muted small text-center mt-4">@LS.T("auditors.noAuditorsFound")</div>
+            }
+            @foreach (var a in FilteredAuditors)
+            {
+                <div class="d-flex align-items-center gap-2 px-2 py-2 rounded mb-1
+                            @(_selId == a.AuditorId ? "bg-primary text-white" : "bg-light")"
+                     style="cursor:pointer;"
+                     @onclick="() => SelectAuditor(a.AuditorId)">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 text-white fw-bold"
+                         style="width:30px;height:30px;font-size:0.8rem;background:@RoleColor(a.StaffRole);">
+                        @(a.FullName.Length > 0 ? a.FullName[0].ToString().ToUpper() : "?")
+                    </div>
+                    <div class="overflow-hidden">
+                        <div class="fw-semibold text-truncate" style="font-size:0.82rem;">@a.FullName</div>
+                        <div class="text-truncate @(_selId == a.AuditorId ? "text-white-50" : "text-muted")"
+                             style="font-size:0.7rem;">
+                            @(a.GradeCode ?? "—") · @RoleLabel(a.StaffRole)
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* ── RIGHT PANEL ── *@
+    <div class="flex-grow-1 overflow-y-auto">
+
+        @if (_selId.HasValue && _detail != null)
+        {
+            @* Header card *@
+            <div class="card shadow-sm mb-3">
+                <div class="card-body py-2 px-3">
+                    <div class="d-flex align-items-start gap-3">
+                        <div class="rounded-circle d-flex align-items-center justify-content-center text-white fw-bold flex-shrink-0"
+                             style="width:60px;height:60px;background:@RoleColor(_detail.StaffRole);font-size:1.5rem;">
+                            @(_detail.FirstName.Length > 0 ? _detail.FirstName[0].ToString().ToUpper() : "?")
+                        </div>
+                        <div class="flex-grow-1">
+                            @if (_editMode)
+                            {
+                                <div class="row g-2">
+                                    <div class="col-auto">
+                                        <label class="form-label small mb-0">@LS.T("members.firstName")</label>
+                                        <input class="form-control form-control-sm" @bind="_editFirstName" />
+                                    </div>
+                                    <div class="col-auto">
+                                        <label class="form-label small mb-0">@LS.T("members.lastName")</label>
+                                        <input class="form-control form-control-sm" @bind="_editLastName" />
+                                    </div>
+                                    <div class="col-auto">
+                                        <label class="form-label small mb-0">@LS.T("auditors.grade")</label>
+                                        <select class="form-select form-select-sm" @bind="_editGradeId">
+                                            <option value="">— @LS.T("common.none") —</option>
+                                            @foreach (var g in _grades)
+                                            {
+                                                <option value="@g.GradeId">@g.Code</option>
+                                            }
+                                        </select>
+                                    </div>
+                                    <div class="col-auto">
+                                        <label class="form-label small mb-0">Role</label>
+                                        <select class="form-select form-select-sm" @bind="_editStaffRole">
+                                            <option value="Auditor">Auditor</option>
+                                            <option value="CS">Auditor + CS</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-auto d-flex align-items-end pb-1">
+                                        <div class="form-check form-switch mb-0">
+                                            <input class="form-check-input" type="checkbox" @bind="_editIsActive" />
+                                            <label class="form-check-label small aud-edit-label">@LS.T("common.active")</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-auto d-flex align-items-end pb-1">
+                                        <div class="form-check form-switch mb-0">
+                                            <input class="form-check-input" type="checkbox" @bind="_editIsAdmin" />
+                                            <label class="form-check-label small aud-edit-label">Admin</label>
+                                        </div>
+                                    </div>
+                                </div>
+                                @if (!string.IsNullOrEmpty(_editError))
+                                {
+                                    <div class="alert alert-danger py-1 px-2 mt-2 small">@_editError</div>
+                                }
+                            }
+                            else
+                            {
+                                <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+                                    <span class="fs-5 fw-semibold" style="color:var(--default-text-color);">
+                                        @(_detail.FirstName + (string.IsNullOrEmpty(_detail.LastName) ? "" : " " + _detail.LastName))
+                                    </span>
+                                    <span class="badge @RoleBadgeClass(_detail.StaffRole)">@RoleLabel(_detail.StaffRole)</span>
+                                    @if (!string.IsNullOrEmpty(_detail.GradeCode))
+                                    {
+                                        <span class="badge bg-info text-dark">@LS.T("auditors.grade"): @_detail.GradeCode</span>
+                                    }
+                                    @if (!_detail.IsActive)
+                                    {
+                                        <span class="badge bg-secondary">@LS.T("common.inactive")</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div class="ms-auto d-flex gap-2 flex-shrink-0">
+                            @if (_editMode)
+                            {
+                                <button class="btn btn-sm btn-primary" @onclick="SaveEdit">
+                                    <i class="ri-save-line me-1"></i>@LS.T("auditors.saveChanges")
+                                </button>
+                                <button class="btn btn-sm btn-link text-muted" @onclick="CancelEdit">@LS.T("common.cancel")</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="StartEdit">
+                                    <i class="ri-edit-line me-1"></i>@LS.T("common.edit")
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="AskDelete">
+                                    <i class="ri-delete-bin-line me-1"></i>Delete
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* Stats row *@
+            @if (_stats != null)
+            {
+                <div class="row g-2 mb-3">
+                    <div class="col-6 col-md-3">
+                        <div class="aud-stat-card" style="background:linear-gradient(135deg,#1e40af,#6366f1);">
+                            <div class="aud-stat-icon"><i class="ri-calendar-check-line"></i></div>
+                            <div class="aud-stat-value">@_stats.TotalSessions</div>
+                            <div class="aud-stat-label">@LS.T("auditors.totalSessions")</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="aud-stat-card" style="background:linear-gradient(135deg,#0d9488,#22c55e);">
+                            <div class="aud-stat-icon"><i class="ri-timer-line"></i></div>
+                            <div class="aud-stat-value">@Hmm((int)_stats.TotalSec)</div>
+                            <div class="aud-stat-label">@LS.T("auditors.hoursWorked")</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="aud-stat-card" style="background:linear-gradient(135deg,#d97706,#f59e0b);">
+                            <div class="aud-stat-icon"><i class="ri-gift-line"></i></div>
+                            <div class="aud-stat-value">@_stats.FreeSessions</div>
+                            <div class="aud-stat-label">@LS.T("auditors.freeSessions")</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="aud-stat-card" style="background:linear-gradient(135deg,#7c3aed,#a855f7);">
+                            <div class="aud-stat-icon"><i class="ri-history-line"></i></div>
+                            <div class="aud-stat-value" style="font-size:@(_stats.LastSessionDate != null ? "1rem" : "1.6rem");">
+                                @(_stats.LastSessionDate ?? "—")
+                            </div>
+                            <div class="aud-stat-label">@LS.T("auditors.lastSession")</div>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+        else
+        {
+            <div class="d-flex flex-column align-items-center justify-content-center text-muted"
+                 style="height:60vh;">
+                <i class="ri-user-star-line" style="font-size:3.5rem;opacity:0.2;"></i>
+                <p class="mt-2 small">@LS.T("auditors.selectPrompt")</p>
+            </div>
+        }
+
+    </div>
+</div>
+
+@* ── Delete Confirmation ── *@
+@if (_showDeleteConfirm && _detail != null)
+{
+    <div class="aud-wizard-backdrop" @onclick="CancelDelete"></div>
+    <div class="aud-confirm-modal" @onclick:stopPropagation>
+        <div class="aud-confirm-icon"><i class="ri-error-warning-line"></i></div>
+        <div class="aud-confirm-title">Delete Auditor</div>
+        <div class="aud-confirm-msg">
+            Are you sure you want to delete <strong>@(_detail.FirstName) @(_detail.LastName)</strong>?
+            <br /><span class="text-danger small">This will remove their staff account. Their session history is preserved.</span>
+        </div>
+        <div class="aud-confirm-footer">
+            <button class="btn btn-outline-secondary btn-sm" @onclick="CancelDelete">Cancel</button>
+            <button class="btn btn-danger btn-sm" @onclick="ConfirmDelete">
+                <i class="ri-delete-bin-line me-1"></i>Yes, Delete
+            </button>
+        </div>
+    </div>
+}
+
+@* ── Add Auditor Wizard ── *@
+@if (_showWizard)
+{
+    <div class="aud-wizard-backdrop" @onclick="CloseWizard"></div>
+    <div class="aud-wizard-modal" @onclick:stopPropagation>
+        <div class="aud-wizard-header">
+            <span class="fw-semibold">Add Auditor</span>
+            <span class="text-muted small ms-2">Step @_wizStep of 2</span>
+            <button class="btn-close ms-auto" @onclick="CloseWizard"></button>
+        </div>
+
+        @if (_wizStep == 1)
+        {
+            <div class="aud-wizard-body">
+                <p class="text-muted small mb-2">Select a PC to promote to staff:</p>
+                <input class="form-control form-control-sm mb-2" placeholder="Search…"
+                       @bind="_wizSearch" @bind:event="oninput" />
+                <div class="aud-wizard-list">
+                    @foreach (var pc in WizardFilteredPcs)
+                    {
+                        <div class="aud-wizard-pc-row @(_wizSelectedPcId == pc.PcId ? "aud-wizard-pc-selected" : "")"
+                             @onclick="() => WizSelectPc(pc)">
+                            <div class="aud-wizard-pc-avatar">
+                                @(pc.FullName.Length > 0 ? pc.FullName[0].ToString().ToUpper() : "?")
+                            </div>
+                            <span>@pc.FullName</span>
+                            @if (_wizSelectedPcId == pc.PcId)
+                            {
+                                <i class="ri-check-line ms-auto text-primary"></i>
+                            }
+                        </div>
+                    }
+                    @if (!WizardFilteredPcs.Any())
+                    {
+                        <div class="text-muted small text-center py-3">No PCs available</div>
+                    }
+                </div>
+            </div>
+            <div class="aud-wizard-footer">
+                <button class="btn btn-link text-muted btn-sm" @onclick="CloseWizard">Cancel</button>
+                <button class="btn btn-primary btn-sm ms-auto" @onclick="WizNext"
+                        disabled="@(!_wizSelectedPcId.HasValue)">
+                    Next <i class="ri-arrow-right-line ms-1"></i>
+                </button>
+            </div>
+        }
+        else
+        {
+            <div class="aud-wizard-body">
+                <div class="d-flex align-items-center gap-2 mb-3 p-2 rounded"
+                     style="background:#f1f5f9;color:#1e293b;">
+                    <div class="aud-wizard-pc-avatar">
+                        @(_wizSelectedPcName.Length > 0 ? _wizSelectedPcName[0].ToString().ToUpper() : "?")
+                    </div>
+                    <span class="fw-semibold" style="color:#1e293b;">@_wizSelectedPcName</span>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold mb-1">Role</label>
+                    <div class="d-flex gap-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" id="wiz-role-aud"
+                                   value="Auditor" checked="@(_wizRole == "Auditor")"
+                                   @onchange='() => WizSetRole("Auditor")' />
+                            <label class="form-check-label" for="wiz-role-aud">Auditor</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" id="wiz-role-cs"
+                                   value="CS" checked="@(_wizRole == "CS")"
+                                   @onchange='() => WizSetRole("CS")' />
+                            <label class="form-check-label" for="wiz-role-cs">Auditor + CS</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="wiz-admin"
+                               @bind="_wizIsAdmin" />
+                        <label class="form-check-label" for="wiz-admin">
+                            Admin account
+                            <span class="text-muted small ms-1">(full system access)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="aud-creds-box">
+                    <div class="aud-creds-title"><i class="ri-key-line me-1"></i>Generated credentials</div>
+                    <div class="aud-creds-row">
+                        <span class="aud-creds-label">Username</span>
+                        <code class="aud-creds-value">@_wizUsername</code>
+                    </div>
+                    <div class="aud-creds-row">
+                        <span class="aud-creds-label">Password</span>
+                        <code class="aud-creds-value">@_wizPassword</code>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrEmpty(_wizError))
+                {
+                    <div class="alert alert-danger py-1 px-2 mt-2 small">@_wizError</div>
+                }
+            </div>
+            <div class="aud-wizard-footer">
+                <button class="btn btn-link text-muted btn-sm" @onclick="WizBack">
+                    <i class="ri-arrow-left-line me-1"></i>Back
+                </button>
+                <button class="btn btn-success btn-sm ms-auto" @onclick="WizCreate">
+                    <i class="ri-user-add-line me-1"></i>Create
+                </button>
+            </div>
+        }
+    </div>
+}
+
+<style>
+    /* ── Responsive two-panel layout ── */
+    .aud-layout { height: calc(100vh - 130px); overflow: hidden; }
+    .aud-left-panel { width: 240px; min-width: 240px; }
+    @@media (max-width: 768px) {
+        .aud-layout { flex-direction: column; height: auto; overflow: visible; }
+        .aud-left-panel { width: 100% !important; min-width: 0 !important; max-height: 40vh; overflow-y: auto; border-end: none !important; }
+    }
+    @@media (max-width: 480px) {
+        .aud-layout { padding: 8px !important; gap: 8px !important; }
+        .aud-stat-card { padding: 12px 8px; }
+        .aud-stat-value { font-size: 1.4rem !important; }
+        .aud-detail-card { padding: 12px !important; }
+        .aud-detail-card .btn { min-height: 36px; touch-action: manipulation; }
+    }
+
+    .aud-stat-card {
+        border-radius: 14px; padding: 16px 12px; text-align: center; color: #fff;
+        position: relative; overflow: hidden;
+        box-shadow: 0 4px 16px rgba(0,0,0,.14);
+        transition: transform .18s, box-shadow .18s;
+    }
+    .aud-stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+    .aud-stat-card::before {
+        content:''; position:absolute; top:-28px; right:-28px;
+        width:80px; height:80px; border-radius:50%; background:rgba(255,255,255,.1);
+    }
+    .aud-stat-icon { font-size:1.4rem; opacity:.75; margin-bottom:4px; }
+    .aud-stat-value { font-size:1.7rem; font-weight:800; line-height:1.1; }
+    .aud-stat-label { font-size:.72rem; opacity:.82; margin-top:4px; letter-spacing:.03em; text-transform:uppercase; }
+
+    /* ── Add Auditor button ── */
+    @@keyframes aud-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(99,102,241,.5); }
+        60%       { box-shadow: 0 0 0 8px rgba(99,102,241,0); }
+    }
+    .aud-add-btn {
+        display: flex; align-items: center; justify-content: center; gap: 6px;
+        padding: 8px 16px; border: none; border-radius: 10px; cursor: pointer;
+        font-size: .84rem; font-weight: 600; color: #fff;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        box-shadow: 0 4px 14px rgba(99,102,241,.4);
+        transition: transform .15s, box-shadow .15s;
+        animation: aud-pulse 2.4s ease-in-out infinite;
+        min-height: 44px;
+    }
+    .aud-add-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(99,102,241,.5);
+        animation: none;
+    }
+    .aud-add-btn:active { transform: translateY(0); }
+
+    /* ── Wizard ── */
+    .aud-wizard-backdrop {
+        position: fixed; inset: 0; z-index: 1040;
+        background: rgba(0,0,0,.55);
+    }
+    .aud-wizard-modal {
+        position: fixed; z-index: 1041;
+        top: 50%; left: 50%; transform: translate(-50%, -50%);
+        background: #ffffff; border-radius: 14px;
+        box-shadow: 0 20px 60px rgba(0,0,0,.35);
+        width: 440px; max-width: calc(100vw - 24px);
+        display: flex; flex-direction: column;
+        max-height: calc(100vh - 48px);
+        color: #1e293b !important;
+    }
+    .aud-wizard-modal * { color: inherit; }
+    .aud-wizard-header {
+        display: flex; align-items: center; gap: 6px;
+        padding: 16px 20px 12px; border-bottom: 1px solid #e2e8f0;
+        flex-shrink: 0; color: #1e293b;
+    }
+    .aud-wizard-header .text-muted { color: #64748b !important; }
+    .aud-wizard-body {
+        padding: 20px; overflow-y: auto; flex: 1; color: #1e293b;
+    }
+    .aud-wizard-body .text-muted { color: #64748b !important; }
+    .aud-wizard-footer {
+        display: flex; align-items: center;
+        padding: 12px 20px; border-top: 1px solid #e2e8f0;
+        flex-shrink: 0; background: #f8fafc; border-radius: 0 0 14px 14px;
+    }
+    .aud-wizard-list {
+        max-height: 320px; overflow-y: auto;
+        border: 1px solid #e2e8f0; border-radius: 8px;
+        background: #fff;
+    }
+    .aud-wizard-pc-row {
+        display: flex; align-items: center; gap: 10px;
+        padding: 8px 12px; cursor: pointer; color: #1e293b;
+        border-bottom: 1px solid #f1f5f9;
+        transition: background .1s;
+        min-height: 44px; background: #fff;
+    }
+    .aud-wizard-pc-row:last-child { border-bottom: none; }
+    .aud-wizard-pc-row:hover { background: #f8fafc; }
+    .aud-wizard-pc-selected { background: #eff6ff !important; color: #1e40af !important; }
+    .aud-wizard-pc-avatar {
+        width: 30px; height: 30px; border-radius: 50%;
+        background: #6366f1; color: #fff !important;
+        display: flex; align-items: center; justify-content: center;
+        font-size: .78rem; font-weight: 700; flex-shrink: 0;
+    }
+    .aud-creds-box {
+        background: #f1f5f9; border: 1px solid #e2e8f0;
+        border-radius: 8px; padding: 12px 14px;
+    }
+    .aud-creds-title { font-size: .78rem; font-weight: 600; color: #64748b !important; margin-bottom: 8px; }
+    .aud-creds-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .aud-creds-row:last-child { margin-bottom: 0; }
+    .aud-creds-label { font-size: .75rem; color: #94a3b8 !important; width: 72px; }
+    .aud-creds-value { font-size: .85rem; color: #1e293b !important; background: transparent; }
+    .aud-wizard-modal .form-check-label { color: #1e293b !important; }
+    .aud-wizard-modal .form-check-label .text-muted { color: #64748b !important; }
+    .aud-wizard-modal label.form-label { color: #1e293b !important; }
+    .aud-wizard-modal .fw-semibold { color: #1e293b !important; }
+
+    /* ── Edit form label fix (dark theme) ── */
+    .aud-edit-label { color: var(--default-text-color, #1e293b) !important; }
+    .card .form-check-label { color: var(--default-text-color, #1e293b) !important; }
+    .card label.form-label { color: var(--default-text-color, #1e293b) !important; }
+
+    /* ── Delete confirm modal ── */
+    .aud-confirm-modal {
+        position: fixed; z-index: 1041;
+        top: 50%; left: 50%; transform: translate(-50%, -50%);
+        background: #ffffff; border-radius: 14px;
+        box-shadow: 0 20px 60px rgba(0,0,0,.35);
+        width: 380px; max-width: calc(100vw - 24px);
+        padding: 28px 24px 20px;
+        display: flex; flex-direction: column; align-items: center; text-align: center;
+        color: #1e293b;
+    }
+    .aud-confirm-icon { font-size: 2.8rem; color: #ef4444; margin-bottom: 10px; }
+    .aud-confirm-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; color: #1e293b; }
+    .aud-confirm-msg { font-size: .88rem; color: #475569; margin-bottom: 20px; line-height: 1.5; }
+    .aud-confirm-msg strong { color: #1e293b; }
+    .aud-confirm-footer { display: flex; gap: 10px; justify-content: center; width: 100%; }
+    .aud-confirm-footer .btn { min-height: 38px; min-width: 90px; }
+</style>
+
+@code {
+    List<AuditorListItem>    _allAuditors = [];
+    List<GradeItem>          _grades      = [];
+    List<AvailablePcItem>    _availPcs    = [];
+    int?                     _selId;
+    string                   _search      = "";
+
+    AuditorDetail? _detail;
+    AuditorStats?  _stats;
+
+    // Edit mode
+    bool   _editMode;
+    string _editFirstName = "", _editLastName = "", _editGradeId = "", _editError = "";
+    string _editStaffRole = "Auditor";
+    bool   _editIsActive;
+    bool   _editIsAdmin;
+
+    // Delete confirm
+    bool _showDeleteConfirm;
+
+    // Wizard
+    bool   _showWizard;
+    int    _wizStep = 1;
+    string _wizSearch          = "";
+    int?   _wizSelectedPcId;
+    string _wizSelectedPcName  = "";
+    string _wizRole            = "Auditor";
+    bool   _wizIsAdmin;
+    string _wizUsername        = "";
+    string _wizPassword        = "";
+    string _wizError           = "";
+
+    IEnumerable<AuditorListItem> FilteredAuditors => string.IsNullOrWhiteSpace(_search)
+        ? _allAuditors
+        : _allAuditors.Where(a =>
+            a.FullName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+            (a.GradeCode ?? "").Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    IEnumerable<AvailablePcItem> WizardFilteredPcs => string.IsNullOrWhiteSpace(_wizSearch)
+        ? _availPcs
+        : _availPcs.Where(p => p.FullName.Contains(_wizSearch, StringComparison.OrdinalIgnoreCase));
+
+    protected override void OnInitialized()
+    {
+        _allAuditors = AuditorSvc.GetAllAuditors()
+            .Where(a => a.StaffRole != "Solo").ToList();
+        _grades = AuditorSvc.GetAllGrades();
+    }
+
+    void SelectAuditor(int id)
+    {
+        _selId     = id;
+        _editMode  = false;
+        _editError = "";
+        LoadDetail();
+    }
+
+    void LoadDetail()
+    {
+        if (!_selId.HasValue) return;
+        _detail = AuditorSvc.GetAuditorDetail(_selId.Value);
+        _stats  = AuditorSvc.GetAuditorStats(_selId.Value);
+    }
+
+    void StartEdit()
+    {
+        if (_detail == null) return;
+        _editMode       = true;
+        _editError      = "";
+        _editFirstName  = _detail.FirstName;
+        _editLastName   = _detail.LastName;
+        _editGradeId    = _detail.CurrentGradeId?.ToString() ?? "";
+        _editStaffRole  = _detail.StaffRole is "Auditor" or "CS" ? _detail.StaffRole : "Auditor";
+        _editIsActive   = _detail.IsActive;
+        _editIsAdmin    = _detail.IsAdmin;
+    }
+
+    void CancelEdit() { _editMode = false; _editError = ""; }
+
+    void AskDelete() { _showDeleteConfirm = true; }
+    void CancelDelete() { _showDeleteConfirm = false; }
+    void ConfirmDelete()
+    {
+        if (!_selId.HasValue) return;
+        AuditorSvc.DeleteAuditor(_selId.Value);
+        _showDeleteConfirm = false;
+        _selId   = null;
+        _detail  = null;
+        _stats   = null;
+        _editMode = false;
+        _allAuditors = AuditorSvc.GetAllAuditors().Where(a => a.StaffRole != "Solo").ToList();
+    }
+
+    void SaveEdit()
+    {
+        if (string.IsNullOrWhiteSpace(_editFirstName))
+        { _editError = LS.T("members.firstNameRequired"); return; }
+
+        int? gradeId = int.TryParse(_editGradeId, out var g) ? g : null;
+        Console.WriteLine($"[Auditors] Updated auditor {_selId!.Value} — '{_editFirstName} {_editLastName}' role={_editStaffRole} active={_editIsActive}");
+        AuditorSvc.UpdateAuditor(_selId!.Value, _editFirstName, _editLastName,
+            gradeId, _editStaffRole, _editIsActive, _editIsAdmin);
+        _editMode    = false;
+        _editError   = "";
+        _allAuditors = AuditorSvc.GetAllAuditors().Where(a => a.StaffRole != "Solo").ToList();
+        LoadDetail();
+    }
+
+    // ── Wizard ──────────────────────────────────────────────────────────────
+
+    void OpenWizard()
+    {
+        _availPcs         = AuditorSvc.GetPcsAvailableForStaff();
+        _wizStep          = 1;
+        _wizSearch        = "";
+        _wizSelectedPcId  = null;
+        _wizSelectedPcName = "";
+        _wizRole          = "Auditor";
+        _wizIsAdmin       = false;
+        _wizUsername      = "";
+        _wizPassword      = "";
+        _wizError         = "";
+        _showWizard       = true;
+    }
+
+    void CloseWizard() { _showWizard = false; }
+
+    void WizSelectPc(AvailablePcItem pc)
+    {
+        _wizSelectedPcId   = pc.PcId;
+        _wizSelectedPcName = pc.FullName;
+    }
+
+    void WizNext()
+    {
+        if (!_wizSelectedPcId.HasValue) return;
+        var (u, p) = AuditorSvc.PreviewStaffCredentials(_wizSelectedPcId.Value);
+        _wizUsername = u;
+        _wizPassword = p;
+        _wizError    = "";
+        _wizStep     = 2;
+    }
+
+    void WizBack() { _wizStep = 1; _wizError = ""; }
+
+    void WizSetRole(string role) { _wizRole = role; }
+
+    void WizCreate()
+    {
+        if (!_wizSelectedPcId.HasValue) return;
+        try
+        {
+            AuditorSvc.CreateStaffUser(_wizSelectedPcId.Value, _wizRole, _wizIsAdmin);
+            _showWizard  = false;
+            _allAuditors = AuditorSvc.GetAllAuditors().Where(a => a.StaffRole != "Solo").ToList();
+            Console.WriteLine($"[Auditors] Created staff user for PC {_wizSelectedPcId.Value}, role={_wizRole}, admin={_wizIsAdmin}");
+        }
+        catch (Exception ex)
+        {
+            _wizError = ex.Message;
+        }
+    }
+
+    static string Hmm(int secs) { int s = Math.Abs(secs); return $"{s / 3600}:{(s % 3600) / 60:00}"; }
+    static string RoleLabel(string r) => r switch { "Auditor" => "Auditor", "CS" => "Auditor + CS", _ => r };
+    static string RoleColor(string r) => r switch { "Auditor" => "#3949ab", "CS" => "#2e7d32", _ => "#9e9e9e" };
+    static string RoleBadgeClass(string r) => r switch { "Auditor" => "bg-primary", "CS" => "bg-success", _ => "bg-secondary" };
+}

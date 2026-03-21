@@ -1,15 +1,19 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
+using System.Globalization;
+using System.Text;
+using LPM.Auth;
 
 namespace LPM.Services;
 
 public record AuditorListItem(int AuditorId, string FullName, string StaffRole, bool IsActive, string? GradeCode);
 public record GradeItem(int GradeId, string Code);
 public record AuditorDetail(int AuditorId, string FirstName, string LastName,
-    string StaffRole, bool IsActive, int? CurrentGradeId, string? GradeCode);
+    string StaffRole, bool IsActive, int? CurrentGradeId, string? GradeCode, bool IsAdmin);
 public record AuditorStats(int TotalSessions, int FreeSessions, long TotalSec, string? LastSessionDate);
+public record AvailablePcItem(int PcId, string FullName);
 
-public class AuditorService(IConfiguration config)
+public class AuditorService(IConfiguration config, UserDb userDb)
 {
     private readonly string _connectionString =
         $"Data Source={config["Database:Path"] ?? "lifepower.db"}";
@@ -57,7 +61,7 @@ public class AuditorService(IConfiguration config)
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT u.PersonId, p.FirstName, COALESCE(p.LastName,''),
-                   u.StaffRole, u.IsActive, u.GradeId, g.Code
+                   u.StaffRole, u.IsActive, u.GradeId, g.Code, u.UserType
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
             LEFT JOIN lkp_grades g ON g.GradeId = u.GradeId
@@ -70,11 +74,12 @@ public class AuditorService(IConfiguration config)
             r.GetInt32(0), r.GetString(1), r.GetString(2),
             r.GetString(3), r.GetInt32(4) != 0,
             r.IsDBNull(5) ? null : r.GetInt32(5),
-            r.IsDBNull(6) ? null : r.GetString(6));
+            r.IsDBNull(6) ? null : r.GetString(6),
+            r.IsDBNull(7) ? false : r.GetString(7) == "Admin");
     }
 
     public void UpdateAuditor(int auditorId, string firstName, string lastName,
-        int? gradeId, string staffRole, bool isActive)
+        int? gradeId, string staffRole, bool isActive, bool isAdmin)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -88,14 +93,26 @@ public class AuditorService(IConfiguration config)
 
         using var uCmd = conn.CreateCommand();
         uCmd.CommandText = @"
-            UPDATE core_users SET GradeId=@gid, StaffRole=@role, IsActive=@active
+            UPDATE core_users SET GradeId=@gid, StaffRole=@role, IsActive=@active, UserType=@ut
             WHERE PersonId=@id AND StaffRole IN ('Auditor','CS','Solo')";
         uCmd.Parameters.AddWithValue("@gid",    gradeId.HasValue ? (object)gradeId.Value : DBNull.Value);
         uCmd.Parameters.AddWithValue("@role",   staffRole);
         uCmd.Parameters.AddWithValue("@active", isActive ? 1 : 0);
+        uCmd.Parameters.AddWithValue("@ut",     isAdmin ? "Admin" : "Standard");
         uCmd.Parameters.AddWithValue("@id",     auditorId);
         uCmd.ExecuteNonQuery();
-        Console.WriteLine($"[AuditorService] Updated auditor {auditorId}");
+        Console.WriteLine($"[AuditorService] Updated auditor {auditorId} isAdmin={isAdmin}");
+    }
+
+    public void DeleteAuditor(int auditorId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM core_users WHERE PersonId=@id AND StaffRole IN ('Auditor','CS','Solo')";
+        cmd.Parameters.AddWithValue("@id", auditorId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[AuditorService] Deleted auditor {auditorId}");
     }
 
     public AuditorStats GetAuditorStats(int auditorId)
@@ -103,8 +120,6 @@ public class AuditorService(IConfiguration config)
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        // Regular sessions: AuditorId = auditor's PersonId (non-null)
-        // Solo sessions (AuditorId IS NULL) are excluded here; use solo stats separately if needed
         cmd.CommandText = @"
             SELECT COUNT(*),
                    COALESCE(SUM(CASE WHEN IsFreeSession=1 THEN 1 ELSE 0 END), 0),
@@ -118,5 +133,102 @@ public class AuditorService(IConfiguration config)
         return new AuditorStats(
             r.GetInt32(0), r.GetInt32(1), r.GetInt64(2),
             r.IsDBNull(3) ? null : r.GetString(3));
+    }
+
+    /// Returns PCs that have no active core_users row with StaffRole in Auditor/CS/Solo.
+    public List<AvailablePcItem> GetPcsAvailableForStaff()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT cp.PersonId,
+                   TRIM(cp.FirstName || ' ' || COALESCE(NULLIF(cp.LastName,''), '')) AS FullName
+            FROM core_persons cp
+            JOIN core_pcs pc ON pc.PcId = cp.PersonId
+            WHERE NOT EXISTS (
+                SELECT 1 FROM core_users cu
+                WHERE cu.PersonId = cp.PersonId
+                  AND cu.StaffRole IN ('Auditor','CS','Solo')
+                  AND cu.IsActive = 1
+            )
+            ORDER BY cp.FirstName";
+        var list = new List<AvailablePcItem>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new AvailablePcItem(r.GetInt32(0), r.GetString(1)));
+        return list;
+    }
+
+    /// Computes the would-be username and password for a PC without inserting.
+    public (string Username, string Password) PreviewStaffCredentials(int pcId)
+    {
+        var (fn, _) = GetPersonNameParts(pcId);
+        var (username, password) = BuildCredentials(fn, GetLastName(pcId));
+        // Resolve collision preview
+        var candidate = username;
+        int suffix = 2;
+        while (userDb.UsernameExists(candidate))
+            candidate = username + suffix++;
+        return (candidate, password);
+    }
+
+    /// Creates a core_users staff row for the given PC. Returns the generated username.
+    public string CreateStaffUser(int pcId, string staffRole, bool isAdmin)
+    {
+        var (fn, ln) = GetPersonNameParts(pcId);
+        var (baseUsername, password) = BuildCredentials(fn, ln);
+        var username = baseUsername;
+        int suffix = 2;
+        while (userDb.UsernameExists(username))
+            username = baseUsername + suffix++;
+
+        userDb.CreateUser(pcId, username, password, staffRole,
+            isAdmin ? "Admin" : "Standard", null, false);
+        Console.WriteLine($"[AuditorService] Created staff user '{username}' for PC {pcId}, role={staffRole}, admin={isAdmin}");
+        return username;
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
+    private (string FirstName, string LastName) GetPersonNameParts(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT FirstName, COALESCE(LastName,'') FROM core_persons WHERE PersonId=@id LIMIT 1";
+        cmd.Parameters.AddWithValue("@id", pcId);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return ("", "");
+        return (r.GetString(0), r.GetString(1));
+    }
+
+    private string GetLastName(int pcId)
+    {
+        var (_, ln) = GetPersonNameParts(pcId);
+        return ln;
+    }
+
+    private static (string Username, string Password) BuildCredentials(string firstName, string lastName)
+    {
+        var fn = NormalizeToAscii(firstName).ToLower().Trim();
+        var ln = NormalizeToAscii(lastName).ToLower().Trim();
+        var username = string.IsNullOrEmpty(ln) ? fn : $"{fn}.{ln}";
+        if (string.IsNullOrEmpty(username)) username = "staff";
+        var password = fn.Length > 0
+            ? char.ToUpper(fn[0]) + (fn.Length > 1 ? fn[1..] : "") + "1992"
+            : "Staff1992";
+        return (username, password);
+    }
+
+    private static string NormalizeToAscii(string input)
+    {
+        if (string.IsNullOrEmpty(input)) return "";
+        var normalized = input.Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder();
+        foreach (var c in normalized)
+            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+        return sb.ToString().Normalize(NormalizationForm.FormC);
     }
 }

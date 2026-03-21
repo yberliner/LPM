@@ -52,17 +52,6 @@ public class MenuDataService
             menuTitle: "Management",
             requiredRole: "Admin,Customer"
         ),
-        new MainMenuItems (
-            path: "/Auditors",
-            type: "link",
-            title: "Auditors",
-            requiredRole: "Admin,Customer",
-            icon: "",
-            svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><circle cx='32' cy='18' r='12' fill='#ffa726'/><circle cx='32' cy='18' r='8' fill='#ffb74d'/><path d='M12 56c0-11.046 8.954-20 20-20s20 8.954 20 20v2H12v-2z' fill='#ab47bc'/><path d='M28 8l4-4 4 4' stroke='#ffa726' stroke-width='2' fill='none' stroke-linecap='round'/><path d='M24 44h16v14H24z' fill='#7b1fa2'/><path d='M30 44h4v8h-4z' fill='#e1bee7'/></svg>",
-            selected: false,
-            active: false,
-            dirChange: false
-        ),
         new MainMenuItems(
             path: "/Admin/Courses",
             type: "link",
@@ -187,6 +176,17 @@ public class MenuDataService
             active: false,
             dirChange: false,
             requiredRole: "Admin"
+        ),
+        new MainMenuItems (
+            path: "/Admin/Auditors",
+            type: "link",
+            title: "Auditors",
+            requiredRole: "Admin",
+            icon: "",
+            svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><circle cx='32' cy='18' r='12' fill='#ffa726'/><circle cx='32' cy='18' r='8' fill='#ffb74d'/><path d='M12 56c0-11.046 8.954-20 20-20s20 8.954 20 20v2H12v-2z' fill='#ab47bc'/><path d='M28 8l4-4 4 4' stroke='#ffa726' stroke-width='2' fill='none' stroke-linecap='round'/><path d='M24 44h16v14H24z' fill='#7b1fa2'/><path d='M30 44h4v8h-4z' fill='#e1bee7'/></svg>",
+            selected: false,
+            active: false,
+            dirChange: false
         ),
         new MainMenuItems(
             menuTitle: "User Guide",
