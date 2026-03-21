@@ -1595,10 +1595,10 @@
         .pcf-viewer { padding: 10px; gap: 8px; }
         .pcf-timer-num { width: 32px; font-size: 16px; } /* 16px prevents iOS auto-zoom on tablets */
         .pcf-cs-session-label { font-size: .75rem; padding: 2px 8px; min-height: 44px; display: inline-flex; align-items: center; }
-        .pcf-color-popup { right: auto; left: 0; }
-        .pcf-size-popup { right: auto; left: 0; }
-        .pcf-annot-popup { right: auto; left: 0; }
-        .pcf-zoom-menu { right: auto; left: 0; }
+        .pcf-color-popup { right: 0; left: auto; max-width: calc(100vw - 10px); }
+        .pcf-size-popup { right: 0; left: auto; max-width: calc(100vw - 10px); }
+        .pcf-annot-popup { right: 0; left: auto; max-width: calc(100vw - 10px); }
+        .pcf-zoom-menu { right: 0; left: auto; max-width: calc(100vw - 10px); }
         .pcf-viewer-area.pcf-split { flex-direction: column; }
         .pcf-toast-success { padding: 10px 16px; font-size: .82rem; max-width: 90vw; }
         .pcf-lock-banner { flex-wrap: wrap; font-size: .78rem; }
@@ -1636,10 +1636,10 @@
         .pcf-color-swatch { width: 28px; height: 28px; }
         .pcf-ws-pager button { padding: 6px 12px; min-height: 44px; }
         .pcf-annotation-canvas { cursor: default; }
-        .pcf-annot-popup { max-width: calc(100vw - 20px); left: 0; right: auto; }
-        .pcf-zoom-menu { max-width: calc(100vw - 20px); left: 0; right: auto; }
-        .pcf-color-popup { max-width: calc(100vw - 20px); left: 0; right: auto; }
-        .pcf-size-popup { max-width: calc(100vw - 20px); left: 0; right: auto; }
+        .pcf-annot-popup { right: 0; left: auto; max-width: calc(100vw - 10px); }
+        .pcf-zoom-menu { right: 0; left: auto; max-width: calc(100vw - 10px); }
+        .pcf-color-popup { right: 0; left: auto; max-width: calc(100vw - 10px); }
+        .pcf-size-popup { right: 0; left: auto; max-width: calc(100vw - 10px); }
         .pcf-pagebg-picker { max-width: calc(100vw - 20px); }
         .pcf-insertform-picker { max-width: calc(100vw - 20px); }
         .pcf-ws-search input { font-size: 16px; } /* 16px prevents iOS auto-zoom */
@@ -2485,6 +2485,7 @@
     void SelectFile(string relativePath, string fileName, string section = "")
     {
         Console.WriteLine($"[PcFolder] Selected file '{fileName}' (section: {section}) by '{_userName}' — for PC {PcId}");
+        if (_extractMode) _ = CancelExtract();
         var gen = ++_selectGeneration;
         var idx = _paneCount == 1 ? 0 : _activeIdx;
         var paneId = PaneIds[idx];
@@ -2552,12 +2553,14 @@
     {
         if (_dualPanes.Contains(paneId))
         {
+            Console.WriteLine($"[PcFolder] Exited dual-page mode on pane '{paneId}' by '{_userName}' — PC {PcId}");
             _dualPanes.Remove(paneId);
             _dualInfo.Remove(paneId);
             await JS.InvokeVoidAsync("pcfViewer.exitDualMode", paneId);
         }
         else
         {
+            Console.WriteLine($"[PcFolder] Entered dual-page mode on pane '{paneId}' by '{_userName}' — PC {PcId}");
             var result = await JS.InvokeAsync<int[]>("pcfViewer.enterDualMode", paneId);
             if (result?.Length == 2)
             {
@@ -2758,6 +2761,7 @@
     void SetActiveIdx(int idx)
     {
         if (_activeIdx == idx) return;
+        if (_extractMode) _ = CancelExtract();
         _activeIdx = idx;
         var paneId = PaneIds[idx];
         _ = Task.Run(async () =>
@@ -2828,6 +2832,7 @@
     async Task MaximizePane(int idx)
     {
         if (_paneCount == 1) return;
+        Console.WriteLine($"[PcFolder] Maximized pane {idx} ('{_panes[idx].FileName}') by '{_userName}' — PC {PcId}");
 
         // Auto-save all panes except the one being maximized
         for (int i = 0; i < _paneCount; i++)
@@ -2869,6 +2874,7 @@
 
     async Task ClosePane(int idx)
     {
+        Console.WriteLine($"[PcFolder] Closed pane {idx} ('{_panes[idx].FileName}') by '{_userName}' — PC {PcId}");
         // Auto-save the pane being closed
         if (!string.IsNullOrEmpty(_panes[idx].File))
             await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[idx]);
@@ -2971,6 +2977,7 @@
     async Task TogglePan()
     {
         _panMode = !_panMode;
+        Console.WriteLine($"[PcFolder] Pan mode {(_panMode ? "ON" : "OFF")} by '{_userName}' — PC {PcId}");
         if (_panMode && _toolMode != "")
         {
             _toolMode = "";
@@ -3189,6 +3196,7 @@
 
     async Task PickWidth(double width)
     {
+        Console.WriteLine($"[PcFolder] Picked stroke width {width} by '{_userName}' — PC {PcId}");
         _drawWidth = width;
         _showWidths = false;
         await JS.InvokeVoidAsync("pcfViewer.setWidth", width);
@@ -3310,6 +3318,7 @@
     async Task ToggleVoice()
     {
         _voiceOn = !_voiceOn;
+        Console.WriteLine($"[PcFolder] Voice {(_voiceOn ? "ON" : "OFF")} by '{_userName}' — PC {PcId}");
         _ = JS.InvokeVoidAsync("eval", $"document.cookie=\"lpmVoiceOn={(_voiceOn ? "true" : "false")}; path=/; max-age=31536000; SameSite=Strict\";");
         try
         {
@@ -4030,6 +4039,7 @@
         if (_ctxNode == null || _ctxNode.IsFolder) return;
         var relPath = _ctxNode.RelativePath;
         var fileName = _ctxNode.Name;
+        Console.WriteLine($"[PcFolder] Downloaded (ctx) '{fileName}' by '{_userName}' — PC {PcId}");
         CloseCtxMenu();
         var apiEndpoint = IsFolderSummaryFile(fileName, relPath)
             ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(relPath)}{SoloParam}&_t={DateTime.UtcNow.Ticks}"
@@ -4136,6 +4146,7 @@
     {
         var pdfBytes = FolderSvc.CreateEmptyPdf();
         var fileName = $"new-{DateTime.Now:yyMMdd-HHmmss}.pdf";
+        Console.WriteLine($"[PcFolder] Created empty PDF '{fileName}' in '{_newMenuParentFolder}' (new menu) by '{_userName}' — PC {PcId}");
         FolderSvc.SaveSectionFileToPath(PcId, _newMenuParentFolder, fileName, pdfBytes, solo: Solo);
         RefreshFolder();
         CloseNewMenu();
@@ -4329,6 +4340,7 @@
         var parent = string.IsNullOrEmpty(_moveSelectedFolder)
             ? _moveFileSection
             : _moveSelectedFolder;
+        Console.WriteLine($"[PcFolder] Created destination folder '{_moveNewFolderName}' under '{parent}' by '{_userName}' — PC {PcId}");
         FolderSvc.CreateSubfolder(PcId, parent, _moveNewFolderName, Solo);
         RefreshFolder();
         _moveNewFolderName = "";
