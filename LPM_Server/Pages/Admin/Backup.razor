@@ -58,20 +58,58 @@
                     Do NOT close this tab, navigate away, or let your computer go to sleep.
                     The backup will fail if the connection is interrupted.
                 </div>
-                <div class="mt-3">
-                    <div class="d-flex justify-content-between mb-1" style="font-size:.78rem;">
-                        <span style="color:#e2e8f0;">@_progressCurrent / @_totalFiles files</span>
-                        <span style="color:#94a3b8;">@(_totalFiles > 0 ? (_progressCurrent * 100 / _totalFiles) : 0)%</span>
+                @* ── User Backup bar ── *@
+                <div class="bk-phase-row mt-3">
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        @if (_userDone)
+                        {   <i class="ri-checkbox-circle-fill" style="color:#22c55e;font-size:1rem;"></i> }
+                        else if (_userActive)
+                        {   <span class="spinner-border spinner-border-sm" style="color:#fbbf24;width:14px;height:14px;border-width:2px;"></span> }
+                        else
+                        {   <i class="ri-time-line" style="color:#475569;font-size:1rem;"></i> }
+                        <span style="font-size:.8rem;font-weight:600;color:@(_userDone?"#22c55e":_userActive?"#fbbf24":"#64748b");">
+                            User Backup (1/2)
+                        </span>
+                        <span class="ms-auto" style="font-size:.75rem;color:#94a3b8;">
+                            @(_userTotal>0 ? $"{_userCurrent}/{_userTotal}" : (_userActive?"counting…":""))
+                        </span>
                     </div>
-                    <div class="progress" style="height:8px; background:#1e293b; border-radius:4px;">
-                        <div class="progress-bar" role="progressbar"
-                             style="width:@(_totalFiles > 0 ? (_progressCurrent * 100 / _totalFiles) : 0)%; background:#3b82f6; transition:width .3s ease;">
-                        </div>
+                    <div class="progress" style="height:7px;background:#0f172a;border-radius:4px;">
+                        <div class="progress-bar" style="width:@(_userTotal>0?(_userCurrent*100/_userTotal):0)%;
+                             background:@(_userDone?"#22c55e":"#3b82f6");transition:width .3s ease;"></div>
                     </div>
-                    @if (!string.IsNullOrEmpty(_progressFile))
+                    @if (_userActive && !string.IsNullOrEmpty(_userFile))
                     {
-                        <div style="font-size:.72rem; color:#64748b; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                            @_progressFile
+                        <div style="font-size:.7rem;color:#64748b;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                            @_userFile
+                        </div>
+                    }
+                </div>
+
+                @* ── Server Backup bar ── *@
+                <div class="bk-phase-row mt-2">
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        @if (_serverDone)
+                        {   <i class="ri-checkbox-circle-fill" style="color:#22c55e;font-size:1rem;"></i> }
+                        else if (_serverActive)
+                        {   <span class="spinner-border spinner-border-sm" style="color:#fbbf24;width:14px;height:14px;border-width:2px;"></span> }
+                        else
+                        {   <i class="ri-time-line" style="color:#475569;font-size:1rem;"></i> }
+                        <span style="font-size:.8rem;font-weight:600;color:@(_serverDone?"#22c55e":_serverActive?"#fbbf24":"#64748b");">
+                            Server Backup (2/2)
+                        </span>
+                        <span class="ms-auto" style="font-size:.75rem;color:#94a3b8;">
+                            @(_serverTotal>0 ? $"{_serverCurrent}/{_serverTotal}" : (_serverActive?"counting…":"Waiting…"))
+                        </span>
+                    </div>
+                    <div class="progress" style="height:7px;background:#0f172a;border-radius:4px;opacity:@(_serverActive||_serverDone?"1":".35");">
+                        <div class="progress-bar" style="width:@(_serverTotal>0?(_serverCurrent*100/_serverTotal):0)%;
+                             background:@(_serverDone?"#22c55e":"#3b82f6");transition:width .3s ease;"></div>
+                    </div>
+                    @if (_serverActive && !string.IsNullOrEmpty(_serverFile))
+                    {
+                        <div style="font-size:.7rem;color:#64748b;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                            @_serverFile
                         </div>
                     }
                 </div>
@@ -104,7 +142,7 @@
         {
             <button class="btn btn-secondary btn-lg" disabled>
                 <span class="spinner-border spinner-border-sm me-2"></span>
-                Preparing backup...
+                Backup in progress…
             </button>
             <button class="btn btn-outline-danger btn-lg d-flex align-items-center gap-2"
                     @onclick="CancelBackup">
@@ -184,7 +222,7 @@
     {
         <div class="alert alert-success mt-3 d-flex align-items-center gap-2" style="max-width:600px;">
             <i class="ri-check-double-line" style="font-size:1.2rem;"></i>
-            Backup complete. Check your browser downloads.
+            Both backups complete. Check your browser downloads (2 files: User Backup + Server Backup).
         </div>
     }
 </div>
@@ -240,9 +278,11 @@
     bool _downloading;
     bool _done;
     string _error = "";
-    int _progressCurrent;
-    string _progressFile = "";
     System.Threading.Timer? _pollTimer;
+
+    // Per-phase progress
+    int    _userCurrent;  int    _userTotal;  string _userFile   = ""; bool _userActive;  bool _userDone;
+    int    _serverCurrent; int   _serverTotal; string _serverFile = ""; bool _serverActive; bool _serverDone;
 
     string _integrityWarning = "";
 
@@ -350,61 +390,57 @@
     async Task StartBackup(string token)
     {
         Console.WriteLine($"[Backup] Backup started by '{_username}'");
-        _downloading = true;
-        _done = false;
-        _error = "";
-        _progressCurrent = 0;
-        _progressFile = "";
-        BackupProgress.WasStarted = false;
-        BackupProgress.LastError = null;
+        _downloading   = true;
+        _done          = false;
+        _error         = "";
+        _userCurrent   = 0; _userTotal   = 0; _userFile   = ""; _userActive   = false; _userDone   = false;
+        _serverCurrent = 0; _serverTotal = 0; _serverFile = ""; _serverActive = false; _serverDone = false;
+        BackupProgress.CurrentTempFile = null;
         StateHasChanged();
 
         try
         {
-            // Request Wake Lock to prevent sleep
             await JS.InvokeVoidAsync("eval", "navigator.wakeLock?.request('screen').catch(()=>{})");
-
-            // Start polling progress
             _pollTimer = new System.Threading.Timer(PollProgress, null, 500, 800);
 
-            // Trigger the download with the one-time token
-            var dlJs = "var a=document.createElement('a');a.href='/api/backup-download?token=" + token
-                + "';a.download='';document.body.appendChild(a);a.click();document.body.removeChild(a);";
-            await JS.InvokeVoidAsync("eval", dlJs);
-
-            // Wait up to 8 seconds for the server to start the backup
-            var startWait = 0;
-            while (!BackupProgress.WasStarted && startWait < 8000)
+            // Phase 1: User Backup
+            _userActive = true;
+            await TriggerAndWait(token, "/api/user-backup-download", "user");
+            _userActive = false;
+            if (!string.IsNullOrEmpty(_error) || BackupProgress.CancelRequested)
             {
-                await Task.Delay(500);
-                startWait += 500;
-            }
-
-            if (!BackupProgress.WasStarted)
-            {
-                _error = "Backup did not start — the download request may have failed (check auth or server logs).";
+                if (BackupProgress.CancelRequested) _error = "Backup was cancelled.";
                 return;
             }
+            _userCurrent = _userTotal; // snap to 100%
+            _userDone = true;
+            StateHasChanged();
 
-            // Wait for the server-side zip creation to finish
-            while (BackupProgress.Running)
-                await Task.Delay(1000);
+            // Wait for the phase-1 zip to be fully downloaded and deleted from disk
+            // before building phase 2 — prevents both ~60GB zips existing simultaneously.
+            var waitMs = 0;
+            while (BackupProgress.CurrentTempFile != null
+                   && File.Exists(BackupProgress.CurrentTempFile)
+                   && waitMs < 86_400_000) // cap at 24 hours
+            {
+                await Task.Delay(2000);
+                waitMs += 2000;
+            }
 
-            if (!string.IsNullOrEmpty(BackupProgress.LastError))
+            // Phase 2: Server Backup
+            _serverActive = true;
+            await TriggerAndWait(token, "/api/server-backup-download", "server");
+            _serverActive = false;
+            if (!string.IsNullOrEmpty(_error) || BackupProgress.CancelRequested)
             {
-                Console.WriteLine($"[Backup] Backup FAILED: {BackupProgress.LastError} by '{_username}'");
-                _error = $"Backup failed: {BackupProgress.LastError}";
+                if (BackupProgress.CancelRequested) _error = "Backup was cancelled.";
+                return;
             }
-            else if (BackupProgress.CancelRequested)
-            {
-                Console.WriteLine($"[Backup] Backup cancelled by '{_username}'");
-                _error = "Backup was cancelled.";
-            }
-            else
-            {
-                Console.WriteLine($"[Backup] Backup completed successfully by '{_username}'");
-                _done = true;
-            }
+            _serverCurrent = _serverTotal; // snap to 100%
+            _serverDone = true;
+
+            Console.WriteLine($"[Backup] Both backups completed successfully by '{_username}'");
+            _done = true;
         }
         catch (Exception ex)
         {
@@ -412,6 +448,8 @@
         }
         finally
         {
+            _userActive   = false;
+            _serverActive = false;
             _pollTimer?.Dispose();
             _pollTimer = null;
             _downloading = false;
@@ -419,10 +457,47 @@
         }
     }
 
+    async Task TriggerAndWait(string token, string endpoint, string expectedPhase)
+    {
+        var dlJs = "var a=document.createElement('a');a.href='" + endpoint + "?token=" + token
+            + "';a.download='';document.body.appendChild(a);a.click();document.body.removeChild(a);";
+        await JS.InvokeVoidAsync("eval", dlJs);
+
+        // Wait up to 8 seconds for the server to start this phase
+        var startWait = 0;
+        while (BackupProgress.Phase != expectedPhase && startWait < 8000)
+        {
+            await Task.Delay(500);
+            startWait += 500;
+        }
+        if (BackupProgress.Phase != expectedPhase)
+        {
+            _error = $"Backup phase '{expectedPhase}' did not start — the download request may have failed.";
+            return;
+        }
+
+        while (BackupProgress.Running)
+            await Task.Delay(1000);
+
+        if (!string.IsNullOrEmpty(BackupProgress.LastError))
+            _error = $"Backup failed: {BackupProgress.LastError}";
+    }
+
     void PollProgress(object? state)
     {
-        _progressCurrent = BackupProgress.Current;
-        _progressFile = BackupProgress.CurrentFile;
+        var phase = BackupProgress.Phase;
+        if (phase == "user")
+        {
+            _userCurrent = BackupProgress.Current;
+            _userTotal   = BackupProgress.TotalFiles;
+            _userFile    = BackupProgress.CurrentFile;
+        }
+        else if (phase == "server")
+        {
+            _serverCurrent = BackupProgress.Current;
+            _serverTotal   = BackupProgress.TotalFiles;
+            _serverFile    = BackupProgress.CurrentFile;
+        }
         _ = InvokeAsync(StateHasChanged);
     }
 

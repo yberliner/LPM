@@ -19,6 +19,22 @@ public static class BackupProgress
     public static DateTime AuthExpiry;
     public static string? LastError;      // set on failure, cleared at start
     public static volatile bool WasStarted; // true once Running is first set to true
+    public static string Phase = "";                   // "user" | "server"
+    public static volatile int TotalFiles;             // set at start of each phase
+    public static volatile int AuthTokenUsesRemaining; // starts at 2 per auth
+    public static string? CurrentTempFile;             // path of the zip being served; null once deleted
+
+    public static bool ConsumeToken(string token)
+    {
+        lock (_lockObj)
+        {
+            if (string.IsNullOrEmpty(token) || token != AuthToken
+                || DateTime.UtcNow > AuthExpiry
+                || AuthTokenUsesRemaining <= 0) return false;
+            AuthTokenUsesRemaining--;
+            return true;
+        }
+    }
 
     // Brute-force protection: IP → (failCount, lockedUntil)
     static readonly Dictionary<string, (int Fails, DateTime LockedUntil)> _ipLocks = new();
@@ -566,6 +582,26 @@ public class FolderService
     {
         var raw = File.ReadAllBytes(fullPath);
         return DecryptBytes(raw);
+    }
+
+    /// <summary>
+    /// Yields config files and avatars for the server backup.
+    /// ZipPath mirrors the app folder so the zip can be unzipped directly into the deployment directory.
+    /// </summary>
+    public IEnumerable<(string ZipPath, string FullPath)> GetServerBackupExtras()
+    {
+        var appDir = Directory.GetCurrentDirectory();
+        foreach (var name in new[] { "appsettings.json", "appsettings.Production.json", "appsettings.secret.json" })
+        {
+            var path = Path.Combine(appDir, name);
+            if (File.Exists(path)) yield return (name, path);
+        }
+        var avatarsDir = Path.Combine(appDir, "wwwroot", "avatars");
+        if (Directory.Exists(avatarsDir))
+        {
+            foreach (var f in Directory.GetFiles(avatarsDir, "*", SearchOption.AllDirectories))
+                yield return ("wwwroot/avatars/" + Path.GetFileName(f), f);
+        }
     }
 
     // ── Import helpers ────────────────────────────────────────

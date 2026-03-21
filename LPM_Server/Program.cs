@@ -533,11 +533,12 @@ app.MapPost("/api/backup-auth", async (HttpContext ctx, LPM.Auth.UserDb userDb) 
         return Results.Json(new { ok = false, locked = isLocked, remaining }, statusCode: isLocked ? 429 : 401);
     }
 
-    // Success — clear failures and generate a one-time token valid for 5 minutes
+    // Success — clear failures and generate a token valid for 2 uses (user + server backup) within 10 minutes
     LPM.Services.BackupProgress.ClearFailures(ip);
     var token = Guid.NewGuid().ToString("N");
     LPM.Services.BackupProgress.AuthToken = token;
-    LPM.Services.BackupProgress.AuthExpiry = DateTime.UtcNow.AddMinutes(5);
+    LPM.Services.BackupProgress.AuthExpiry = DateTime.UtcNow.AddMinutes(10);
+    LPM.Services.BackupProgress.AuthTokenUsesRemaining = 2;
     Console.WriteLine($"[Backup] Auth OK for '{username}' from {ip} at {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
     return Results.Ok(new { ok = true, token });
 });
@@ -550,50 +551,48 @@ app.MapGet("/api/backup-integrity", (HttpContext ctx, LPM.Services.FolderService
     return Results.Ok(new { ok = result == "ok", detail = result });
 });
 
-// ── Backup: build zip to temp file, then serve it ──
-app.MapGet("/api/backup-download", (HttpContext ctx, LPM.Services.FolderService svc, IConfiguration cfg) =>
+// ── Backup: User Backup (DB snapshot + auto-backups + decrypted PC files) ──
+app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderService svc, IConfiguration cfg) =>
 {
     if (ctx.User?.IsInRole("Admin") != true) return Results.Forbid();
 
-    // Verify one-time token
     var token = ctx.Request.Query["token"].ToString();
-    if (string.IsNullOrEmpty(token)
-        || token != LPM.Services.BackupProgress.AuthToken
-        || DateTime.UtcNow > LPM.Services.BackupProgress.AuthExpiry)
+    if (!LPM.Services.BackupProgress.ConsumeToken(token))
     {
-        var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        Console.WriteLine($"[Backup] REJECTED download (bad/expired token) from {ip} at {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        Console.WriteLine($"[Backup] REJECTED user-backup (bad/expired token) from {ctx.Connection.RemoteIpAddress} at {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         return Results.Unauthorized();
     }
-    // Invalidate the token (one-time use)
-    LPM.Services.BackupProgress.AuthToken = null;
 
-    // Check free space on temp drive
     var tempDir = Path.GetTempPath();
     var tempRoot = Path.GetPathRoot(Path.GetFullPath(tempDir));
     if (!string.IsNullOrEmpty(tempRoot))
     {
         var drive = new DriveInfo(tempRoot);
         var (dbSize, pcSize, _) = svc.GetBackupSizeInfo();
-        var needed = dbSize + pcSize;
-        if (drive.AvailableFreeSpace < needed)
-            return Results.Problem($"Not enough disk space on server. Need {needed / (1024*1024)}MB, have {drive.AvailableFreeSpace / (1024*1024)}MB free.");
+        if (drive.AvailableFreeSpace < dbSize + pcSize)
+            return Results.Problem($"Not enough disk space. Need {(dbSize+pcSize)/(1024*1024)}MB, have {drive.AvailableFreeSpace/(1024*1024)}MB free.");
     }
 
-    // Clean up any stale backup zips from previous runs
     foreach (var stale in Directory.GetFiles(tempDir, "lpm-backup-*.zip"))
         try { File.Delete(stale); } catch { }
 
-    // Integrity check — always proceed, embed result in filename
-    var integrity = svc.CheckIntegrity();
+    var integrity    = svc.CheckIntegrity();
     var integrityTag = integrity == "ok" ? "OK" : "CORRUPT";
 
-    // Reset progress
-    LPM.Services.BackupProgress.Current = 0;
-    LPM.Services.BackupProgress.CurrentFile = "";
-    LPM.Services.BackupProgress.LastError = null;
-    LPM.Services.BackupProgress.WasStarted = true;
-    LPM.Services.BackupProgress.Running = true;
+    var backupFolder     = svc.GetAutoBackupFolder(cfg["Database:BackupFolder"]);
+    var autoBackupFiles  = Directory.Exists(backupFolder)
+        ? Directory.GetFiles(backupFolder, "lifepower_*.db").OrderByDescending(f => f).ToArray()
+        : [];
+    var pcFiles   = svc.EnumerateBackupFiles().ToList();
+    var totalFiles = 1 + autoBackupFiles.Length + pcFiles.Count;
+
+    LPM.Services.BackupProgress.Phase          = "user";
+    LPM.Services.BackupProgress.TotalFiles     = totalFiles;
+    LPM.Services.BackupProgress.Current        = 0;
+    LPM.Services.BackupProgress.CurrentFile    = "";
+    LPM.Services.BackupProgress.LastError      = null;
+    LPM.Services.BackupProgress.WasStarted     = true;
+    LPM.Services.BackupProgress.Running        = true;
     LPM.Services.BackupProgress.CancelRequested = false;
     int processed = 0;
 
@@ -602,7 +601,7 @@ app.MapGet("/api/backup-download", (HttpContext ctx, LPM.Services.FolderService 
     {
         using (var zip = System.IO.Compression.ZipFile.Open(tempFile, System.IO.Compression.ZipArchiveMode.Create))
         {
-            // 1. Live DB snapshot → db-live/lifepower.db
+            // 1. Live DB snapshot
             var dbPath = svc.GetDbFilePath();
             if (File.Exists(dbPath))
             {
@@ -612,39 +611,29 @@ app.MapGet("/api/backup-download", (HttpContext ctx, LPM.Services.FolderService 
                 {
                     svc.BackupDbTo(tempDbCopy);
                     var entry = zip.CreateEntry("db-live/lifepower.db", System.IO.Compression.CompressionLevel.Fastest);
-                    using var entryStream = entry.Open();
-                    using var dbStream = File.OpenRead(tempDbCopy);
-                    dbStream.CopyTo(entryStream);
+                    using var es = entry.Open(); using var fs = File.OpenRead(tempDbCopy); fs.CopyTo(es);
                 }
                 finally { try { File.Delete(tempDbCopy); } catch { } }
-                processed++;
-                LPM.Services.BackupProgress.Current = processed;
+                LPM.Services.BackupProgress.Current = ++processed;
             }
 
             // 2. Auto-backup files → db-autobackups/
-            var backupFolder = svc.GetAutoBackupFolder(cfg["Database:BackupFolder"]);
-            if (Directory.Exists(backupFolder))
+            foreach (var bf in autoBackupFiles)
             {
-                foreach (var bf in Directory.GetFiles(backupFolder, "lifepower_*.db").OrderByDescending(f => f))
+                if (LPM.Services.BackupProgress.CancelRequested) break;
+                var bfName = Path.GetFileName(bf);
+                LPM.Services.BackupProgress.CurrentFile = $"db-autobackups/{bfName}";
+                try
                 {
-                    if (LPM.Services.BackupProgress.CancelRequested) break;
-                    var bfName = Path.GetFileName(bf);
-                    LPM.Services.BackupProgress.CurrentFile = $"db-autobackups/{bfName}";
-                    try
-                    {
-                        var entry = zip.CreateEntry($"db-autobackups/{bfName}", System.IO.Compression.CompressionLevel.Fastest);
-                        using var entryStream = entry.Open();
-                        using var bfStream = File.OpenRead(bf);
-                        bfStream.CopyTo(entryStream);
-                        processed++;
-                        LPM.Services.BackupProgress.Current = processed;
-                    }
-                    catch { /* skip unreadable */ }
+                    var entry = zip.CreateEntry($"db-autobackups/{bfName}", System.IO.Compression.CompressionLevel.Fastest);
+                    using var es = entry.Open(); using var fs = File.OpenRead(bf); fs.CopyTo(es);
+                    LPM.Services.BackupProgress.Current = ++processed;
                 }
+                catch { }
             }
 
-            // 3. PC-Folder files
-            foreach (var (relPath, fullPath) in svc.EnumerateBackupFiles())
+            // 3. PC files — decrypted for portability
+            foreach (var (relPath, fullPath) in pcFiles)
             {
                 if (LPM.Services.BackupProgress.CancelRequested) break;
                 try
@@ -652,12 +641,10 @@ app.MapGet("/api/backup-download", (HttpContext ctx, LPM.Services.FolderService 
                     LPM.Services.BackupProgress.CurrentFile = relPath;
                     var decrypted = svc.DecryptFileForBackup(fullPath);
                     var entry = zip.CreateEntry(relPath, System.IO.Compression.CompressionLevel.Fastest);
-                    using var entryStream = entry.Open();
-                    entryStream.Write(decrypted);
-                    processed++;
-                    LPM.Services.BackupProgress.Current = processed;
+                    using var es = entry.Open(); es.Write(decrypted);
+                    LPM.Services.BackupProgress.Current = ++processed;
                 }
-                catch { /* skip unreadable files */ }
+                catch { }
             }
         }
 
@@ -667,16 +654,143 @@ app.MapGet("/api/backup-download", (HttpContext ctx, LPM.Services.FolderService 
 
         if (LPM.Services.BackupProgress.CancelRequested)
         {
-            Console.WriteLine($"[Backup] CANCELLED by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files processed before cancel");
+            Console.WriteLine($"[Backup] User backup CANCELLED by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files");
             if (File.Exists(tempFile)) File.Delete(tempFile);
-            return Results.StatusCode(499); // Client Closed Request
+            return Results.StatusCode(499);
         }
 
-        Console.WriteLine($"[Backup] Completed by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files — integrity={integrityTag}");
+        Console.WriteLine($"[Backup] User backup complete by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files — {integrityTag}");
+        var fileName = $"LPM-UserBackup-{integrityTag}-{DateTime.Now:yyyy-MM-dd_HHmm}.zip";
+        LPM.Services.BackupProgress.CurrentTempFile = tempFile; // Blazor waits for this to disappear before starting phase 2
+        var stream = new FileStream(tempFile, FileMode.Open, FileAccess.Read, FileShare.None, 4096, FileOptions.DeleteOnClose);
+        return Results.File(stream, "application/zip", fileName);
+    }
+    catch (Exception ex)
+    {
+        LPM.Services.BackupProgress.LastError = ex.Message;
+        LPM.Services.BackupProgress.Running = false;
+        if (File.Exists(tempFile)) File.Delete(tempFile);
+        throw;
+    }
+});
 
-        var fileName = $"LPM-Backup-{integrityTag}-{DateTime.Now:yyyy-MM-dd_HHmm}.zip";
-        var stream = new FileStream(tempFile, FileMode.Open, FileAccess.Read,
-            FileShare.None, 4096, FileOptions.DeleteOnClose);
+// ── Backup: Server Backup (DB + auto-backups + config + raw PC files + avatars) ──
+app.MapGet("/api/server-backup-download", (HttpContext ctx, LPM.Services.FolderService svc, IConfiguration cfg) =>
+{
+    if (ctx.User?.IsInRole("Admin") != true) return Results.Forbid();
+
+    var token = ctx.Request.Query["token"].ToString();
+    if (!LPM.Services.BackupProgress.ConsumeToken(token))
+    {
+        Console.WriteLine($"[Backup] REJECTED server-backup (bad/expired token) from {ctx.Connection.RemoteIpAddress} at {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        return Results.Unauthorized();
+    }
+
+    var tempDir = Path.GetTempPath();
+    foreach (var stale in Directory.GetFiles(tempDir, "lpm-backup-*.zip"))
+        try { File.Delete(stale); } catch { }
+
+    var integrity    = svc.CheckIntegrity();
+    var integrityTag = integrity == "ok" ? "OK" : "CORRUPT";
+
+    var backupFolder     = svc.GetAutoBackupFolder(cfg["Database:BackupFolder"]);
+    var backupFolderName = Path.GetFileName(backupFolder.TrimEnd('/', '\\'));
+    var autoBackupFiles  = Directory.Exists(backupFolder)
+        ? Directory.GetFiles(backupFolder, "lifepower_*.db").OrderByDescending(f => f).ToArray()
+        : [];
+    var extras    = svc.GetServerBackupExtras().ToList();
+    var rawPcFiles = svc.EnumerateBackupFiles().ToList();
+    var totalFiles = 1 + autoBackupFiles.Length + extras.Count + rawPcFiles.Count;
+
+    LPM.Services.BackupProgress.Phase          = "server";
+    LPM.Services.BackupProgress.TotalFiles     = totalFiles;
+    LPM.Services.BackupProgress.Current        = 0;
+    LPM.Services.BackupProgress.CurrentFile    = "";
+    LPM.Services.BackupProgress.LastError      = null;
+    LPM.Services.BackupProgress.WasStarted     = true;
+    LPM.Services.BackupProgress.Running        = true;
+    LPM.Services.BackupProgress.CancelRequested = false;
+    int processed = 0;
+
+    var tempFile = Path.Combine(tempDir, $"lpm-backup-{Guid.NewGuid():N}.zip");
+    try
+    {
+        using (var zip = System.IO.Compression.ZipFile.Open(tempFile, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            // 1. Live DB at root (ready to drop into app folder)
+            var dbPath = svc.GetDbFilePath();
+            if (File.Exists(dbPath))
+            {
+                LPM.Services.BackupProgress.CurrentFile = "lifepower.db";
+                var tempDbCopy = Path.Combine(tempDir, $"db-snap-{Guid.NewGuid():N}.db");
+                try
+                {
+                    svc.BackupDbTo(tempDbCopy);
+                    var entry = zip.CreateEntry("lifepower.db", System.IO.Compression.CompressionLevel.Fastest);
+                    using var es = entry.Open(); using var fs = File.OpenRead(tempDbCopy); fs.CopyTo(es);
+                }
+                finally { try { File.Delete(tempDbCopy); } catch { } }
+                LPM.Services.BackupProgress.Current = ++processed;
+            }
+
+            // 2. Auto-backup files (under configured folder name, e.g. db-backups/)
+            foreach (var bf in autoBackupFiles)
+            {
+                if (LPM.Services.BackupProgress.CancelRequested) break;
+                var bfName = Path.GetFileName(bf);
+                LPM.Services.BackupProgress.CurrentFile = $"{backupFolderName}/{bfName}";
+                try
+                {
+                    var entry = zip.CreateEntry($"{backupFolderName}/{bfName}", System.IO.Compression.CompressionLevel.Fastest);
+                    using var es = entry.Open(); using var fs = File.OpenRead(bf); fs.CopyTo(es);
+                    LPM.Services.BackupProgress.Current = ++processed;
+                }
+                catch { }
+            }
+
+            // 3. Config files + avatars
+            foreach (var (zipPath, fullPath) in extras)
+            {
+                if (LPM.Services.BackupProgress.CancelRequested) break;
+                try
+                {
+                    LPM.Services.BackupProgress.CurrentFile = zipPath;
+                    var entry = zip.CreateEntry(zipPath, System.IO.Compression.CompressionLevel.Fastest);
+                    using var es = entry.Open(); using var fs = File.OpenRead(fullPath); fs.CopyTo(es);
+                    LPM.Services.BackupProgress.Current = ++processed;
+                }
+                catch { }
+            }
+
+            // 4. PC files — raw/encrypted, preserving exact server state
+            foreach (var (relPath, fullPath) in rawPcFiles)
+            {
+                if (LPM.Services.BackupProgress.CancelRequested) break;
+                try
+                {
+                    LPM.Services.BackupProgress.CurrentFile = relPath;
+                    var entry = zip.CreateEntry(relPath, System.IO.Compression.CompressionLevel.Fastest);
+                    using var es = entry.Open(); using var fs = File.OpenRead(fullPath); fs.CopyTo(es);
+                    LPM.Services.BackupProgress.Current = ++processed;
+                }
+                catch { }
+            }
+        }
+
+        LPM.Services.BackupProgress.Running = false;
+        var user = ctx.User.Identity?.Name ?? "unknown";
+        var dlIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+        if (LPM.Services.BackupProgress.CancelRequested)
+        {
+            Console.WriteLine($"[Backup] Server backup CANCELLED by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files");
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+            return Results.StatusCode(499);
+        }
+
+        Console.WriteLine($"[Backup] Server backup complete by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files — {integrityTag}");
+        var fileName = $"LPM-ServerBackup-{integrityTag}-{DateTime.Now:yyyy-MM-dd_HHmm}.zip";
+        var stream = new FileStream(tempFile, FileMode.Open, FileAccess.Read, FileShare.None, 4096, FileOptions.DeleteOnClose);
         return Results.File(stream, "application/zip", fileName);
     }
     catch (Exception ex)
@@ -693,11 +807,13 @@ app.MapGet("/api/backup-progress", (HttpContext ctx) =>
 {
     if (ctx.User?.IsInRole("Admin") != true) return Results.Forbid();
     return Results.Ok(new {
-        current = LPM.Services.BackupProgress.Current,
-        file = LPM.Services.BackupProgress.CurrentFile,
-        running = LPM.Services.BackupProgress.Running,
+        current    = LPM.Services.BackupProgress.Current,
+        file       = LPM.Services.BackupProgress.CurrentFile,
+        running    = LPM.Services.BackupProgress.Running,
         wasStarted = LPM.Services.BackupProgress.WasStarted,
-        error = LPM.Services.BackupProgress.LastError
+        error      = LPM.Services.BackupProgress.LastError,
+        phase      = LPM.Services.BackupProgress.Phase,
+        totalFiles = LPM.Services.BackupProgress.TotalFiles
     });
 });
 

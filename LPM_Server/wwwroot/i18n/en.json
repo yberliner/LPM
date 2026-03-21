@@ -558,6 +558,7 @@
   "menu.Payments": "Incoming Payments",
   "menu.Salary": "Salary",
   "menu.Backup": "Backup",
+  "menu.Create Empty DB": "Create Empty DB",
   "menu.Shortcuts": "Shortcuts",
   "menu.Import": "Import",
   "pcs.purchase": "Purchase",
