@@ -71,3 +71,8 @@ LPM_Server/lifepower.db-shm
 
 # DB backups
 LPM_Server/db-backups/
+
+# Temp empty DB files (created by CreateEmptyDb page)
+LPM_Server/lifepower_empty_*.db
+LPM_Server/lifepower_empty_*.db-wal
+LPM_Server/lifepower_empty_*.db-shm
