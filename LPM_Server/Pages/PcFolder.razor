@@ -244,6 +244,18 @@
         <div class="pcf-sidebar-backdrop" @onclick="() => _sidebarOpen = false"></div>
     }
 
+    @* ── Annotation settings / zoom menu backdrops ── *@
+    @if (_showAnnotSettings)
+    {
+        <div style="position:fixed;top:0;left:0;right:0;bottom:0;z-index:99;"
+             @onclick="() => _showAnnotSettings = false"></div>
+    }
+    @if (_showZoomMenu)
+    {
+        <div style="position:fixed;top:0;left:0;right:0;bottom:0;z-index:99;"
+             @onclick="() => _showZoomMenu = false"></div>
+    }
+
     @* ── Page right-click context menu ── *@
     @if (_showPageCtxMenu)
     {
@@ -577,60 +589,51 @@
                     <i class="ri-text"></i>
                 </button>
                 <div class="pcf-color-wrap">
-                    <button class="pcf-tool-btn" title="Stroke width"
-                            @onclick="() => _showWidths = !_showWidths"
-                            style="font-size:.7rem;min-width:36px;">
-                        <i class="ri-line-height"></i>
+                    <button class="pcf-tool-btn" title="Annotation settings — stroke width, color, text size"
+                            style="border-bottom: 3px solid @_drawColor;"
+                            @onclick="() => _showAnnotSettings = !_showAnnotSettings">
+                        <i class="ri-settings-3-line"></i>
                     </button>
-                    @if (_showWidths)
+                    @if (_showAnnotSettings)
                     {
-                        <div class="pcf-size-popup">
-                            @foreach (var w in _strokeWidths)
-                            {
-                                <div class="pcf-size-item @(w == _drawWidth ? "pcf-size-active" : "")"
-                                     @onclick="() => PickWidth(w)">
-                                    <span style="display:inline-block;width:24px;height:@(w)px;background:@_drawColor;border-radius:@(w)px;"></span>
-                                    <span>@(w)px</span>
-                                </div>
-                            }
-                        </div>
-                    }
-                </div>
-                <div class="pcf-color-wrap">
-                    <button class="pcf-tool-btn" title="Pick color — choose a color for drawing and text annotations"
-                            @onclick="() => _showColors = !_showColors"
-                            style="border-bottom: 3px solid @_drawColor;">
-                        <i class="ri-palette-line"></i>
-                    </button>
-                    @if (_showColors)
-                    {
-                        <div class="pcf-color-popup">
-                            @foreach (var c in _palette)
-                            {
-                                <div class="pcf-color-swatch @(c == _drawColor ? "pcf-swatch-active" : "")"
-                                     style="background:@c;" title="@c"
-                                     @onclick="() => PickColor(c)"></div>
-                            }
-                        </div>
-                    }
-                </div>
-                <div class="pcf-color-wrap">
-                    <button class="pcf-tool-btn" title="Text size — change the font size for text annotations"
-                            @onclick="() => _showSizes = !_showSizes"
-                            style="font-size:.75rem;min-width:36px;">
-                        @(_fontSize)px
-                    </button>
-                    @if (_showSizes)
-                    {
-                        <div class="pcf-size-popup">
-                            @foreach (var s in _fontSizes)
-                            {
-                                <div class="pcf-size-item @(s == _fontSize ? "pcf-size-active" : "")"
-                                     @onclick="() => PickSize(s)">
-                                    <span style="font-size:@(Math.Min(s, 20))px;">A</span>
-                                    <span>@(s)px</span>
-                                </div>
-                            }
+                        <div class="pcf-annot-popup" @onclick:stopPropagation="true">
+                            <div class="d-flex align-items-center justify-content-between mb-1">
+                                <span class="pcf-annot-section-label" style="margin:0;">Annotation Settings</span>
+                                <button class="pcf-annot-close" @onclick="() => _showAnnotSettings = false" title="Close">
+                                    <i class="ri-close-line"></i>
+                                </button>
+                            </div>
+                            <div class="pcf-annot-section-label">Stroke Width</div>
+                            <div class="pcf-annot-widths">
+                                @foreach (var w in _strokeWidths)
+                                {
+                                    <div class="pcf-size-item @(w == _drawWidth ? "pcf-size-active" : "")"
+                                         @onclick="() => PickWidth(w)">
+                                        <span style="display:inline-block;width:20px;height:@(Math.Min(w,8))px;background:@_drawColor;border-radius:@(w)px;"></span>
+                                        <span>@(w)px</span>
+                                    </div>
+                                }
+                            </div>
+                            <div class="pcf-annot-section-label">Color</div>
+                            <div class="pcf-annot-colors">
+                                @foreach (var c in _palette)
+                                {
+                                    <div class="pcf-color-swatch @(c == _drawColor ? "pcf-swatch-active" : "")"
+                                         style="background:@c;" title="@c"
+                                         @onclick="() => PickColor(c)"></div>
+                                }
+                            </div>
+                            <div class="pcf-annot-section-label">Text Size</div>
+                            <div class="pcf-annot-sizes">
+                                @foreach (var s in _fontSizes)
+                                {
+                                    <div class="pcf-size-item @(s == _fontSize ? "pcf-size-active" : "")"
+                                         @onclick="() => PickSize(s)">
+                                        <span style="font-size:@(Math.Min(s, 20))px;">A</span>
+                                        <span>@(s)px</span>
+                                    </div>
+                                }
+                            </div>
                         </div>
                     }
                 </div>
@@ -661,25 +664,33 @@
                         <i class="ri-scissors-line"></i>
                     </button>
                 }
-                else
-                {
-                    <button class="pcf-tool-btn" style="opacity:.3;cursor:not-allowed;"
-                            title="Extract is only available on the CS session file"
-                            disabled>
-                        <i class="ri-scissors-line"></i>
+                <div class="pcf-color-wrap">
+                    <button class="pcf-zoom-single" title="Zoom — click to set zoom level"
+                            @onclick="() => _showZoomMenu = !_showZoomMenu">
+                        @(_zoomPercent)%
                     </button>
-                }
-                <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
-                <button class="pcf-tool-btn" title="Zoom out (show smaller)" @onclick="ZoomOut"
-                        disabled="@(_zoomPercent <= 10)">
-                    <i class="ri-subtract-line"></i>
-                </button>
-                <span class="pcf-zoom-label" title="Zoom level — click to reset to 100% (fit to width)"
-                      @onclick="ResetZoom">@(_zoomPercent)%</span>
-                <button class="pcf-tool-btn" title="Zoom in (show larger)" @onclick="ZoomIn"
-                        disabled="@(_zoomPercent >= 300)">
-                    <i class="ri-add-line"></i>
-                </button>
+                    @if (_showZoomMenu)
+                    {
+                        <div class="pcf-zoom-menu" @onclick:stopPropagation="true">
+                            <div class="pcf-zoom-row">
+                                <button class="pcf-zoom-icon-btn" title="Zoom out" @onclick="ZoomOut" disabled="@(_zoomPercent <= 10)">
+                                    <i class="ri-subtract-line"></i>
+                                </button>
+                                <span class="pcf-zoom-current">@(_zoomPercent)%</span>
+                                <button class="pcf-zoom-icon-btn" title="Zoom in" @onclick="ZoomIn" disabled="@(_zoomPercent >= 300)">
+                                    <i class="ri-add-line"></i>
+                                </button>
+                            </div>
+                            <div class="pcf-zoom-chips">
+                                @foreach (var pct in new[]{ 50, 75, 100, 125, 150, 200 })
+                                {
+                                    <button class="pcf-zoom-chip @(_zoomPercent == pct ? "pcf-zoom-chip-active" : "")"
+                                            @onclick="() => SetZoom(pct)">@(pct)%</button>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
                 <button class="pcf-tool-btn @(_panMode ? "pcf-tool-active" : "")"
                         title="@(_panMode ? "Pan mode ON — click again to turn off" : "Pan — drag to scroll when zoomed in")"
                         style="@(_panMode ? "color:#fb923c;" : "")"
@@ -773,6 +784,15 @@
                                     @onclick:stopPropagation="true"
                                     @onclick="() => ToggleDualMode(PaneIds[idx])">
                                 <i class="@(isDual ? "ri-book-open-fill" : "ri-book-open-line")"></i>
+                            </button>
+                        }
+                        @if (CanExtractPane(idx))
+                        {
+                            <button class="pcf-overlay-btn @(_extractMode ? "pcf-overlay-btn-active" : "")"
+                                    title="Extract pages"
+                                    @onclick:stopPropagation="true"
+                                    @onclick="() => { SetActiveIdx(idx); _ = ToggleExtractMode(); }">
+                                <i class="ri-scissors-line"></i>
                             </button>
                         }
                         <button class="pcf-overlay-btn"
@@ -1152,13 +1172,66 @@
         height: 30px; box-sizing: border-box;
     }
     .pcf-tool-btn:hover { background: rgba(255,255,255,.3); }
-    .pcf-zoom-label {
-        font-size: .75rem; font-weight: 600; color: rgba(255,255,255,.9);
-        min-width: 38px; text-align: center; cursor: pointer;
-        padding: 2px 4px; border-radius: 4px; transition: background .12s;
-        user-select: none;
+    .pcf-zoom-single {
+        background: rgba(255,255,255,.1); border: none; color: rgba(255,255,255,.9);
+        font-size: .75rem; font-weight: 600; min-width: 46px; height: 30px;
+        border-radius: 6px; cursor: pointer; padding: 0 7px;
+        transition: background .12s; user-select: none;
     }
-    .pcf-zoom-label:hover { background: rgba(255,255,255,.15); }
+    .pcf-zoom-single:hover { background: rgba(255,255,255,.2); }
+    .pcf-zoom-menu {
+        position: absolute; top: calc(100% + 6px); right: 0; z-index: 100;
+        background: #1e293b; border: 1px solid #334155;
+        border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.55);
+        padding: 10px; min-width: 158px;
+    }
+    .pcf-zoom-row {
+        display: flex; align-items: center; justify-content: space-between;
+        background: #0f172a; border-radius: 8px; padding: 3px 6px; margin-bottom: 9px;
+    }
+    .pcf-zoom-icon-btn {
+        background: transparent; border: none; color: #94a3b8;
+        width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        font-size: .9rem; transition: background .12s, color .12s;
+    }
+    .pcf-zoom-icon-btn:hover:not([disabled]) { background: rgba(255,255,255,.1); color: #fff; }
+    .pcf-zoom-icon-btn[disabled] { opacity: .25; cursor: default; }
+    .pcf-zoom-current {
+        font-size: .85rem; font-weight: 700; color: #e2e8f0;
+        min-width: 44px; text-align: center; user-select: none;
+    }
+    .pcf-zoom-chips {
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 8px;
+    }
+    .pcf-zoom-chip {
+        background: #0f172a; border: 1px solid #334155; color: #94a3b8;
+        border-radius: 6px; padding: 5px 2px; font-size: .76rem; font-weight: 600;
+        cursor: pointer; transition: background .12s, color .12s, border-color .12s;
+        text-align: center;
+    }
+    .pcf-zoom-chip:hover { background: rgba(59,130,246,.2); border-color: #3b82f6; color: #fff; }
+    .pcf-zoom-chip-active { background: #3b82f6 !important; border-color: #3b82f6 !important; color: #fff !important; }
+    .pcf-annot-popup {
+        position: absolute; top: 110%; right: 0; z-index: 100;
+        padding: 10px 12px; background: #1e293b; border: 1px solid #475569;
+        border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.4); min-width: 190px;
+    }
+    .pcf-annot-close {
+        background: transparent; border: none; color: #64748b;
+        width: 20px; height: 20px; border-radius: 4px; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        font-size: .85rem; transition: background .12s, color .12s; padding: 0;
+    }
+    .pcf-annot-close:hover { background: rgba(248,113,113,.18); color: #f87171; }
+    .pcf-annot-section-label {
+        font-size: .62rem; font-weight: 700; color: #64748b;
+        text-transform: uppercase; letter-spacing: .05em;
+        margin-bottom: 5px; margin-top: 10px;
+    }
+    .pcf-annot-section-label:first-child { margin-top: 0; }
+    .pcf-annot-widths, .pcf-annot-sizes { display: flex; flex-direction: column; gap: 2px; }
+    .pcf-annot-colors { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
     .pcf-addpage-wrap { position: relative; display: inline-block; }
     .pcf-addpage-menu {
         position: absolute; top: 100%; left: 0; z-index: 9999;
@@ -2001,6 +2074,8 @@
     bool _showColors;
     bool _showSizes;
     bool _showWidths;
+    bool _showAnnotSettings;
+    bool _showZoomMenu;
     bool _hasAnnotations;
     static readonly double[] _strokeWidths = [1, 2, 3, 5, 8, 12, 20];
     bool _saving;
@@ -2017,10 +2092,9 @@
 
     static readonly int[] _fontSizes = [10, 12, 14, 18, 24, 32, 40, 56];
     static readonly string[] _palette = [
-        "#000000", "#ffffff", "#e11d48", "#f97316",
-        "#eab308", "#22c55e", "#06b6d4", "#3b82f6",
-        "#8b5cf6", "#ec4899", "#78716c", "#475569",
-        "#dc2626", "#16a34a", "#2563eb", "#7c3aed"
+        "#000000", "#ffffff", "#e11d48", "#f97316", "#eab308",
+        "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899",
+        "#78716c", "#475569", "#dc2626", "#16a34a", "#2563eb"
     ];
 
     List<WorkSheetItem> GetWsPage(out int totalPages)
@@ -2813,6 +2887,12 @@
         _zoomPercent = await JS.InvokeAsync<int>("pcfViewer._setZoom", PaneIds[_activeIdx], 1.0);
     }
 
+    async Task SetZoom(int pct)
+    {
+        _zoomPercent = await JS.InvokeAsync<int>("pcfViewer._setZoom", PaneIds[_activeIdx], pct / 100.0);
+        _showZoomMenu = false;
+    }
+
     async Task TogglePan()
     {
         _panMode = !_panMode;
@@ -2848,6 +2928,15 @@
     string _extractAttName = "extract";
 
     // Extraction only allowed on the file being CSed (active pane must show the CS session worksheet)
+    bool CanExtractPane(int idx)
+    {
+        if (_csSessionId <= 0 || string.IsNullOrEmpty(_csSessionName)) return false;
+        var file = _panes[idx].File;
+        if (string.IsNullOrEmpty(file) || _panes[idx].Section != "WorkSheet") return false;
+        return SessionDisplayName(Path.GetFileName(file))
+            .Equals(_csSessionName, StringComparison.OrdinalIgnoreCase);
+    }
+
     bool CanExtract
     {
         get
