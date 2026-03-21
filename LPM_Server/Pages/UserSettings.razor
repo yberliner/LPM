@@ -3,8 +3,10 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Forms
 @using LPM._Spk
+@using System.Text.RegularExpressions
 @inject AuthenticationStateProvider AuthStateProvider
 @inject LPM.Auth.UserDb UserDb
+@inject LPM.Services.PcService PcSvc
 @inject IWebHostEnvironment Env
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -126,6 +128,76 @@
                             <i class="ri-delete-bin-line me-1"></i>@LS.T("settings.removePhoto")
                         </button>
                     }
+                </div>
+            </div>
+        </div>
+
+        @* ── Contact Info Card ── *@
+        <div class="col-12">
+            <div class="card custom-card shadow-sm" style="border-radius:16px;border:none;">
+                <div class="card-header settings-card-header" style="background:linear-gradient(135deg,#ea580c,#f59e0b);">
+                    <div class="settings-card-header-icon">
+                        <i class="ri-contacts-fill"></i>
+                    </div>
+                    <div>
+                        <div class="settings-card-header-title">Contact Information</div>
+                        <div class="settings-card-header-sub">Email address and phone number</div>
+                    </div>
+                </div>
+                <div class="card-body p-4">
+                    @if (_contactMsg is not null)
+                    {
+                        <div class="alert @(_contactOk ? "alert-success" : "alert-danger") alert-dismissible d-flex align-items-center gap-2 mb-3"
+                             style="border-radius:10px;border:none;font-size:.88rem;">
+                            <i class="@(_contactOk ? "ri-checkbox-circle-fill" : "ri-error-warning-fill")"></i>
+                            <span class="flex-grow-1">@_contactMsg</span>
+                            <button type="button" class="btn-close" @onclick="() => _contactMsg = null"></button>
+                        </div>
+                    }
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label settings-label">Email address</label>
+                            <input class="form-control @(_contactEmailTouched ? (_contactEmailValid ? "is-valid" : "is-invalid") : "")"
+                                   type="email" placeholder="your@email.com"
+                                   value="@_contactEmail"
+                                   @oninput="OnContactEmailInput" />
+                            @if (_contactEmailTouched && !_contactEmailValid && !string.IsNullOrEmpty(_contactEmail))
+                            {
+                                <div class="invalid-feedback">Please enter a valid email address.</div>
+                            }
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label settings-label">Phone number</label>
+                            <div class="d-flex gap-2">
+                                <select class="form-select" style="flex:0 0 auto;max-width:190px;font-size:1rem;"
+                                        @bind="_contactCountryIdx">
+                                    @for (int i = 0; i < _contactCountries.Length; i++)
+                                    {
+                                        var idx = i;
+                                        <option value="@idx">@_contactCountries[idx].Flag @_contactCountries[idx].Name (+@_contactCountries[idx].DialCode)</option>
+                                    }
+                                </select>
+                                <input class="form-control @(_contactPhoneTouched ? (IsContactPhoneValid() ? "is-valid" : "is-invalid") : "")"
+                                       type="tel" placeholder="054 499 4470"
+                                       value="@_contactLocalPhone"
+                                       @oninput="OnContactPhoneInput" />
+                            </div>
+                            @if (_contactPhoneTouched && !IsContactPhoneValid() && !string.IsNullOrWhiteSpace(_contactLocalPhone))
+                            {
+                                <div class="text-danger mt-1" style="font-size:.82rem;">@ContactPhoneErrorMessage()</div>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(ContactPhoneNormalized) && IsContactPhoneValid())
+                            {
+                                <div class="text-muted mt-1" style="font-size:.82rem;">Will be saved as: <strong>@ContactPhoneNormalized</strong></div>
+                            }
+                        </div>
+                    </div>
+                    <button class="btn settings-save-btn mt-3"
+                            style="background:linear-gradient(135deg,#ea580c,#f59e0b);box-shadow:0 3px 14px rgba(234,88,12,.3);"
+                            @onclick="HandleSaveContact"
+                            disabled="@(!_contactEmailValid || !IsContactPhoneValid())">
+                        <i class="ri-save-line me-2"></i>Save Contact Info
+                    </button>
                 </div>
             </div>
         </div>
@@ -357,8 +429,26 @@
 </style>
 
 @code {
+    private record ContactCountry(string Flag, string Name, string DialCode);
+    private static readonly ContactCountry[] _contactCountries =
+    [
+        new("🇮🇱","Israel","972"), new("🇺🇸","United States","1"), new("🇬🇧","United Kingdom","44"),
+        new("🇦🇺","Australia","61"), new("🇦🇹","Austria","43"), new("🇧🇪","Belgium","32"),
+        new("🇧🇷","Brazil","55"), new("🇨🇦","Canada","1"), new("🇨🇳","China","86"),
+        new("🇩🇰","Denmark","45"), new("🇪🇬","Egypt","20"), new("🇫🇷","France","33"),
+        new("🇩🇪","Germany","49"), new("🇬🇷","Greece","30"), new("🇭🇺","Hungary","36"),
+        new("🇮🇳","India","91"), new("🇮🇪","Ireland","353"), new("🇮🇹","Italy","39"),
+        new("🇯🇵","Japan","81"), new("🇯🇴","Jordan","962"), new("🇱🇧","Lebanon","961"),
+        new("🇲🇽","Mexico","52"), new("🇳🇱","Netherlands","31"), new("🇳🇿","New Zealand","64"),
+        new("🇳🇴","Norway","47"), new("🇵🇱","Poland","48"), new("🇵🇹","Portugal","351"),
+        new("🇷🇺","Russia","7"), new("🇸🇦","Saudi Arabia","966"), new("🇿🇦","South Africa","27"),
+        new("🇪🇸","Spain","34"), new("🇸🇪","Sweden","46"), new("🇨🇭","Switzerland","41"),
+        new("🇹🇷","Turkey","90"), new("🇺🇦","Ukraine","380"), new("🇦🇪","United Arab Emirates","971"),
+    ];
+
     private string _username = "";
     private string? _avatarUrl;
+    private int _personId;
 
     // Password fields
     private string? _currentPwd;
@@ -370,6 +460,16 @@
     // Picture fields
     private string? _picMsg;
     private bool _picOk;
+
+    // Contact fields
+    private string  _contactEmail      = "";
+    private bool    _contactEmailTouched;
+    private bool    _contactEmailValid;
+    private string  _contactLocalPhone = "";
+    private bool    _contactPhoneTouched;
+    private int     _contactCountryIdx = 0;
+    private string? _contactMsg;
+    private bool    _contactOk;
 
     // 2FA fields
     private bool _totpEnabled;
@@ -387,9 +487,119 @@
         var flags = UserDb.GetLoginFlags(_username);
         if (flags != null)
         {
-            _userId = flags.UserId;
+            _userId   = flags.UserId;
+            _personId = flags.PersonId;
             _totpEnabled = flags.TotpEnabled;
             _trustedDeviceCount = UserDb.GetTrustedDeviceCount(_userId);
+        }
+
+        // Pre-populate contact info
+        if (_personId > 0)
+        {
+            var (email, phone) = PcSvc.GetPersonContact(_personId);
+            if (!string.IsNullOrEmpty(email))
+            {
+                _contactEmail        = email;
+                _contactEmailTouched = true;
+                _contactEmailValid   = IsContactEmailValid(email);
+            }
+            if (!string.IsNullOrEmpty(phone))
+            {
+                ParseContactPhone(phone);
+                _contactPhoneTouched = true;
+            }
+        }
+    }
+
+    // ── Contact helpers ──
+    private static bool IsContactEmailValid(string email) =>
+        !string.IsNullOrWhiteSpace(email) &&
+        Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$");
+
+    private bool IsContactPhoneValid()
+    {
+        var local = _contactLocalPhone.Trim();
+        if (string.IsNullOrEmpty(local)) return false;
+        if (local.StartsWith("0")) local = local[1..];
+        local = Regex.Replace(local, @"[\s\-\(\)]", "");
+        if (!local.All(char.IsDigit)) return false;
+        bool isIsrael = _contactCountries[_contactCountryIdx].DialCode == "972";
+        return isIsrael ? local.Length == 9 : local.Length >= 7;
+    }
+
+    private string ContactPhoneErrorMessage()
+    {
+        var local = _contactLocalPhone.Trim();
+        if (string.IsNullOrEmpty(local)) return "";
+        if (local.StartsWith("0")) local = local[1..];
+        local = Regex.Replace(local, @"[\s\-\(\)]", "");
+        if (!local.All(char.IsDigit)) return "Digits only — no letters or special characters.";
+        bool isIsrael = _contactCountries[_contactCountryIdx].DialCode == "972";
+        if (isIsrael && local.Length != 9) return $"Israeli number must be exactly 9 digits (entered: {local.Length}).";
+        if (!isIsrael && local.Length < 7) return "At least 7 digits required.";
+        return "";
+    }
+
+    private string ContactPhoneNormalized
+    {
+        get
+        {
+            var local = _contactLocalPhone.Trim();
+            if (string.IsNullOrEmpty(local)) return "";
+            if (local.StartsWith("0")) local = local[1..];
+            local = Regex.Replace(local, @"[\s\-\(\)]", "");
+            if (string.IsNullOrEmpty(local)) return "";
+            return $"+{_contactCountries[_contactCountryIdx].DialCode}{local}";
+        }
+    }
+
+    private void ParseContactPhone(string stored)
+    {
+        if (string.IsNullOrEmpty(stored)) return;
+        if (!stored.StartsWith("+")) { _contactLocalPhone = stored; return; }
+        var digits = stored[1..];
+        var sorted = _contactCountries.Select((c, i) => (c, i))
+                                      .OrderByDescending(x => x.c.DialCode.Length);
+        foreach (var (c, i) in sorted)
+        {
+            if (digits.StartsWith(c.DialCode))
+            {
+                _contactCountryIdx  = i;
+                _contactLocalPhone  = digits[c.DialCode.Length..];
+                return;
+            }
+        }
+        _contactLocalPhone = stored;
+    }
+
+    private void OnContactEmailInput(ChangeEventArgs e)
+    {
+        _contactEmail        = e.Value?.ToString() ?? "";
+        _contactEmailTouched = true;
+        _contactEmailValid   = IsContactEmailValid(_contactEmail);
+    }
+
+    private void OnContactPhoneInput(ChangeEventArgs e)
+    {
+        _contactLocalPhone   = e.Value?.ToString() ?? "";
+        _contactPhoneTouched = true;
+    }
+
+    private void HandleSaveContact()
+    {
+        _contactMsg = null;
+        if (!_contactEmailValid || !IsContactPhoneValid()) return;
+        try
+        {
+            PcSvc.SaveContactInfo(_personId, _contactEmail, ContactPhoneNormalized);
+            _contactMsg = "Contact information saved successfully.";
+            _contactOk  = true;
+        }
+        catch (Exception ex)
+        {
+            _contactMsg = "Failed to save. Please try again.";
+            _contactOk  = false;
+            Console.WriteLine($"[UserSettings] Contact save error: {ex.Message}");
         }
     }
 
