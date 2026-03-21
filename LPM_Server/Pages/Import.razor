@@ -847,9 +847,11 @@
         }
 
         // Second pass: resolve solo matches (DB + batch)
-        var batchNonSoloNames = _namesOnlyRows
+        // Keyed by Unicode-normalized name so "Cveigelis" matches "Cveiģelis"
+        var batchNonSoloByNorm2 = _namesOnlyRows
             .Where(r => !r.IsSolo && !r.IsArchive)
-            .ToLookup(r => r.PcName, StringComparer.OrdinalIgnoreCase);
+            .GroupBy(r => ImportJobService.NormalizeToAscii(r.PcName))
+            .ToDictionary(g => g.Key, g => g.First());
 
         foreach (var row in _namesOnlyRows.Where(r => r.IsSolo && !r.IsArchive))
         {
@@ -861,11 +863,11 @@
                 row.SoloTargetPath    = FolderSvc.GetSoloFolderName(matchedId.Value);
                 row.UserAlreadyExists = UserDb.UsernameExists(row.Username);
             }
-            else if (batchNonSoloNames.Contains(row.PcName))
+            else if (batchNonSoloByNorm2.TryGetValue(ImportJobService.NormalizeToAscii(row.PcName), out var batchMatch2))
             {
                 row.SoloMatchedViaBatch = true;
-                row.MatchedPcName       = row.PcName;
-                row.SoloTargetPath      = $"(new) {row.PcName} Solo";
+                row.MatchedPcName       = batchMatch2.PcName;
+                row.SoloTargetPath      = $"(new) {batchMatch2.PcName} Solo";
                 row.UserAlreadyExists   = UserDb.UsernameExists(row.Username);
             }
             else
@@ -1043,9 +1045,11 @@
     void ResolveSoloMatches()
     {
         // Build a lookup of non-solo PC names in this batch (may not exist in DB yet)
-        var batchNonSoloNames = _manifest
+        // Keyed by Unicode-normalized name so "Cveigelis" matches "Cveiģelis"
+        var batchNonSoloByNorm = _manifest
             .Where(p => !p.IsSolo)
-            .ToLookup(p => p.PcName, StringComparer.OrdinalIgnoreCase);
+            .GroupBy(p => ImportJobService.NormalizeToAscii(p.PcName))
+            .ToDictionary(g => g.Key, g => g.First());
 
         foreach (var pc in _manifest.Where(p => p.IsSolo))
         {
@@ -1058,12 +1062,12 @@
                 pc.MatchedPcName  = FolderSvc.GetPcName(pc.MatchedPcId.Value) ?? pc.PcName;
                 pc.SoloTargetPath = FolderSvc.GetSoloFolderName(pc.MatchedPcId.Value);
             }
-            else if (batchNonSoloNames.Contains(pc.PcName))
+            else if (batchNonSoloByNorm.TryGetValue(ImportJobService.NormalizeToAscii(pc.PcName), out var batchMatch))
             {
                 // Matched via a non-solo PC being imported in the same batch
                 pc.SoloMatchedViaBatch = true;
-                pc.MatchedPcName  = pc.PcName;
-                pc.SoloTargetPath = $"(new) {pc.PcName} Solo";
+                pc.MatchedPcName  = batchMatch.PcName;
+                pc.SoloTargetPath = $"(new) {batchMatch.PcName} Solo";
                 pc.SoloUnmatched  = false;
             }
             else

@@ -120,6 +120,18 @@ public List<PcListItem> GetAllPcs()
     /// <summary>Find an existing PC by name or create a new one. Returns (PcId, wasCreated).</summary>
     private static readonly string[] _noiseWords = { "solo", "review", "folder", "confidential" };
 
+    /// <summary>Strip diacritics (ģ→g, é→e, etc.) while preserving original casing.</summary>
+    public static string StripDiacritics(string s)
+    {
+        var d = s.Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder(d.Length);
+        foreach (var c in d)
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) !=
+                System.Globalization.UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+        return sb.ToString().Normalize(System.Text.NormalizationForm.FormC);
+    }
+
     public static string StripNoiseWords(string name)
     {
         foreach (var word in _noiseWords)
@@ -159,6 +171,11 @@ public List<PcListItem> GetAllPcs()
         if (existing is long existingId)
             return ((int)existingId, false);
 
+        // Normalized fallback: compare with Unicode-stripped names in C#
+        var normalizedId = FindPcByNormalizedName(conn, firstName, lastName);
+        if (normalizedId.HasValue)
+            return (normalizedId.Value, false);
+
         // Create new
         var newId = AddPcWithPerson(firstName, lastName, "", "", "", "");
         Console.WriteLine($"[PcService] Created new PC {newId} from folder name '{folderName}'");
@@ -188,7 +205,28 @@ public List<PcListItem> GetAllPcs()
         cmd.Parameters.AddWithValue("@fn", firstName);
         cmd.Parameters.AddWithValue("@ln", lastName);
         var result = cmd.ExecuteScalar();
-        return result is long id ? (int)id : null;
+        if (result is long id) return (int)id;
+
+        // Normalized fallback: compare with Unicode-stripped names in C#
+        return FindPcByNormalizedName(conn, firstName, lastName);
+    }
+
+    private static int? FindPcByNormalizedName(SqliteConnection conn, string firstName, string lastName)
+    {
+        var fnNorm = ImportJobService.NormalizeToAscii(firstName);
+        var lnNorm = ImportJobService.NormalizeToAscii(lastName);
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT pc.PcId, p.FirstName, COALESCE(p.LastName,'') AS LastName
+            FROM core_pcs pc JOIN core_persons p ON p.PersonId = pc.PcId";
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            if (ImportJobService.NormalizeToAscii(reader.GetString(1)) == fnNorm &&
+                ImportJobService.NormalizeToAscii(reader.GetString(2)) == lnNorm)
+                return (int)reader.GetInt64(0);
+        }
+        return null;
     }
 
 
