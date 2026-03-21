@@ -761,43 +761,36 @@
             {
                 var idx = pi;
                 var p = _panes[idx];
-                <div class="pcf-pane @(_activeIdx == idx ? "pcf-pane-active" : "")"
+                <div class="pcf-pane pcf-pane-@PaneIds[idx] @(_activeIdx == idx ? "pcf-pane-active" : "")"
                      @onclick="() => SetActiveIdx(idx)">
                     @{
                         var isDual = _dualPanes.Contains(PaneIds[idx]);
                         var isPdf  = p.File?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) == true;
                         _dualInfo.TryGetValue(PaneIds[idx], out var di);
                     }
-                    <div class="pcf-pane-header pcf-pane-hdr-@PaneIds[idx]">
-                        <span class="pcf-pane-hdr-name">
-                            <i class="ri-file-pdf-2-line me-1"></i>
-                            @if (!string.IsNullOrEmpty(p.Section))
-                            {
-                                <span class="pcf-toolbar-section" style="font-size:.65rem;">@p.Section</span>
-                            }
-                            @(p.FileName ?? "Empty")
-                        </span>
+                    @* ── Floating pane button overlay ── *@
+                    <div class="pcf-pane-overlay">
                         @if (isDual)
                         {
-                            <span class="pcf-dual-counter">@di.page–@(Math.Min(di.page + 1, di.total)) / @di.total</span>
+                            <span class="pcf-overlay-counter">@di.page–@(Math.Min(di.page + 1, di.total)) / @di.total</span>
                         }
                         @if (isPdf)
                         {
-                            <button class="pcf-dual-toggle @(isDual ? "pcf-dual-active" : "")"
-                                    title="@(isDual ? "Exit side-by-side view" : "Side-by-side view — 2 pages at a time")"
+                            <button class="pcf-overlay-btn @(isDual ? "pcf-overlay-btn-active" : "")"
+                                    title="@(isDual ? "Exit side-by-side view" : "Side-by-side view")"
                                     @onclick:stopPropagation="true"
                                     @onclick="() => ToggleDualMode(PaneIds[idx])">
                                 <i class="@(isDual ? "ri-book-open-fill" : "ri-book-open-line")"></i>
                             </button>
                         }
-                        <button class="pcf-pane-max-btn"
-                                title="Maximize — close all other panes and show only this one"
+                        <button class="pcf-overlay-btn"
+                                title="Maximize — close all other panes"
                                 disabled="@(_paneCount == 1)"
                                 @onclick:stopPropagation="true"
                                 @onclick="() => MaximizePane(idx)">
                             <i class="ri-fullscreen-line"></i>
                         </button>
-                        <button class="pcf-pane-close-btn"
+                        <button class="pcf-overlay-btn pcf-overlay-close"
                                 title="Close pane"
                                 @onclick:stopPropagation="true"
                                 @onclick="() => ClosePane(idx)">
@@ -1379,35 +1372,37 @@
         position: relative;
     }
     .pcf-pane-active { border-color: #3b82f6; }
-    .pcf-pane-header {
-        padding: 3px 8px; font-size: .78rem; font-weight: 600;
-        color: #e2e8f0; flex-shrink: 0;
-        display: flex; align-items: center; gap: 4px; min-width: 0;
+    /* Thin top-border color to distinguish panes in multi-pane mode */
+    .pcf-split .pcf-pane-p1 { border-top-color: #3b82f6; }
+    .pcf-split .pcf-pane-p2 { border-top-color: #8b5cf6; }
+    .pcf-split .pcf-pane-p3 { border-top-color: #f59e0b; }
+    /* ── Floating overlay ── */
+    .pcf-pane-overlay {
+        position: absolute; top: 6px; right: 6px; z-index: 20;
+        display: flex; align-items: center; gap: 2px;
+        background: rgba(15,23,42,.72); backdrop-filter: blur(4px);
+        border-radius: 6px; padding: 2px 3px;
+        opacity: 0; transition: opacity .18s;
+        pointer-events: none;
     }
-    .pcf-pane-hdr-name {
-        flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+    .pcf-pane:hover .pcf-pane-overlay { opacity: 1; pointer-events: auto; }
+    /* Always slightly visible on touch devices */
+    @@media (hover: none) { .pcf-pane-overlay { opacity: .55; pointer-events: auto; } }
+    .pcf-overlay-counter {
+        font-size: .62rem; color: #cbd5e1; padding: 0 4px; white-space: nowrap;
     }
-    .pcf-dual-counter {
-        font-size: .65rem; opacity: .85; white-space: nowrap; flex-shrink: 0;
+    .pcf-overlay-btn {
+        background: transparent; border: none; color: #cbd5e1;
+        width: 26px; height: 26px; border-radius: 4px; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        font-size: .85rem; transition: background .12s, color .12s;
+        flex-shrink: 0;
     }
-    .pcf-dual-toggle {
-        background: transparent; border: none; color: #fbbf24;
-        padding: 2px 5px; border-radius: 4px; cursor: pointer; flex-shrink: 0;
-        opacity: .75; transition: opacity .15s, background .15s; font-size: .85rem; line-height: 1;
-    }
-    .pcf-dual-toggle:hover { opacity: 1; background: rgba(251,191,36,.15); }
-    .pcf-dual-toggle.pcf-dual-active { opacity: 1; color: #fb923c; }
-    .pcf-pane-max-btn, .pcf-pane-close-btn {
-        background: transparent; border: none; padding: 2px 5px; border-radius: 4px;
-        cursor: pointer; flex-shrink: 0; opacity: .6;
-        transition: opacity .15s, background .15s; font-size: .85rem; line-height: 1;
-        min-width: 24px; min-height: 24px;
-    }
-    .pcf-pane-max-btn { color: #94a3b8; }
-    .pcf-pane-max-btn:hover:not([disabled]) { opacity: 1; background: rgba(148,163,184,.15); }
-    .pcf-pane-max-btn[disabled] { opacity: .2; cursor: default; }
-    .pcf-pane-close-btn { color: #f87171; }
-    .pcf-pane-close-btn:hover { opacity: 1; background: rgba(248,113,113,.15); }
+    .pcf-overlay-btn:hover:not([disabled]) { background: rgba(255,255,255,.12); color: #fff; }
+    .pcf-overlay-btn[disabled] { opacity: .2; cursor: default; }
+    .pcf-overlay-btn.pcf-overlay-btn-active { color: #fb923c; }
+    .pcf-overlay-close:hover:not([disabled]) { background: rgba(248,113,113,.18); color: #f87171; }
+    .pcf-dual-counter { display: none; } /* legacy — kept for compat, now in overlay */
     .pcf-dual-nav {
         position: absolute; top: 50%; transform: translateY(-50%);
         background: rgba(0,0,0,.55); border: none; color: #e2e8f0;
@@ -1420,9 +1415,6 @@
     .pcf-dual-nav[disabled] { opacity: .18; cursor: default; pointer-events: none; }
     .pcf-dual-prev { left: 4px; }
     .pcf-dual-next { right: 4px; }
-    .pcf-pane-hdr-p1 { background: #1e40af; }
-    .pcf-pane-hdr-p2 { background: #5b21b6; }
-    .pcf-pane-hdr-p3 { background: #92400e; }
     .pcf-viewer {
         flex-grow: 1; overflow-y: scroll; overflow-x: auto;
         display: flex; flex-direction: column; align-items: flex-start;
