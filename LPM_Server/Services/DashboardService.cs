@@ -296,9 +296,9 @@ public class DashboardService
         seqCmd.CommandText = @"
             SELECT COALESCE(MAX(SequenceInDay), 0)
             FROM sess_sessions
-            WHERE PcId = @pc AND AuditorId = @aud AND SessionDate = @dt";
+            WHERE PcId = @pc AND AuditorId IS @aud AND SessionDate = @dt";
         seqCmd.Parameters.AddWithValue("@pc", pcId);
-        seqCmd.Parameters.AddWithValue("@aud", auditorId);
+        seqCmd.Parameters.AddWithValue("@aud", audParam);   // must match what INSERT writes
         seqCmd.Parameters.AddWithValue("@dt", sessionDate);
         var maxSeq = (long)(seqCmd.ExecuteScalar() ?? 0L);
 

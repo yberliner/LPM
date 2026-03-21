@@ -132,8 +132,11 @@ public List<PcListItem> GetAllPcs()
     public (int PcId, bool WasCreated) FindOrCreatePcByName(string folderName)
     {
         // Strip numeric prefix like "25-" from folder name, then noise words
-        var name = System.Text.RegularExpressions.Regex.Replace(folderName.Trim(), @"^\d+-\s*", "");
-        name = StripNoiseWords(name);
+        var stripped = System.Text.RegularExpressions.Regex.Replace(folderName.Trim(), @"^\d+-\s*", "");
+        var name = StripNoiseWords(stripped);
+        // Fallback: if noise stripping removed everything, use the pre-strip name
+        if (string.IsNullOrWhiteSpace(name)) name = stripped.Trim();
+        if (string.IsNullOrWhiteSpace(name)) name = folderName.Trim();
 
         var parts = name.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var firstName = parts.Length > 0 ? parts[0] : name;
@@ -165,8 +168,10 @@ public List<PcListItem> GetAllPcs()
     /// <summary>Find an existing PC by folder/pc name. Returns PcId or null. Does not create.</summary>
     public int? FindPcByName(string folderName)
     {
-        var name = System.Text.RegularExpressions.Regex.Replace(folderName.Trim(), @"^\d+-\s*", "");
-        name = StripNoiseWords(name);
+        var stripped = System.Text.RegularExpressions.Regex.Replace(folderName.Trim(), @"^\d+-\s*", "");
+        var name = StripNoiseWords(stripped);
+        if (string.IsNullOrWhiteSpace(name)) name = stripped.Trim();
+        if (string.IsNullOrWhiteSpace(name)) name = folderName.Trim();
         var parts = name.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var firstName = parts.Length > 0 ? parts[0] : name;
         var lastName  = parts.Length > 1 ? parts[1] : "Unknown";
