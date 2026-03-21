@@ -746,9 +746,10 @@
                         }
                         else
                         {
-                            <button class="pcf-done-btn" title="@(_csLocked ? "Another tab is already CSing this session" : "Done — saves all annotations, records the CS review with the displayed time, and closes the tab")"
-                                    @onclick="DoneCs" disabled="@_csLocked">
-                                <i class="ri-check-double-line me-1"></i>Done
+                            <button class="pcf-done-btn @(_csAlreadyDone ? "pcf-done-already" : "")"
+                                    title="@(_csAlreadyDone ? "CS was already done" : _csLocked ? "Another tab is already CSing this session" : "Done — saves all annotations, records the CS review with the displayed time, and closes the tab")"
+                                    @onclick="DoneCs" disabled="@(_csLocked || _csAlreadyDone)">
+                                <i class="@(_csAlreadyDone ? "ri-check-double-line me-1" : "ri-check-double-line me-1")"></i>Done
                             </button>
                         }
                     }
@@ -762,6 +763,14 @@
                 <i class="ri-lock-line me-2"></i>
                 This session is already being CSed by <strong>@_csLockedBy</strong> in another tab.
                 You can view the files but cannot mark CS as done.
+            </div>
+        }
+        @if (_csAlreadyDone && !_csAlreadyDoneBannerDismissed)
+        {
+            <div class="pcf-already-done-banner">
+                <i class="ri-checkbox-circle-line me-2" style="font-size:1.1rem;flex-shrink:0;"></i>
+                This session was already CS reviewed. The <strong style="margin:0 3px;">Done</strong> button is disabled.
+                <button class="pcf-banner-dismiss" @onclick="@(() => _csAlreadyDoneBannerDismissed = true)" title="Dismiss">&times;</button>
             </div>
         }
 
@@ -1437,6 +1446,19 @@
         font-size: .82rem; display: flex; align-items: center;
         flex-shrink: 0;
     }
+    .pcf-already-done-banner {
+        background: linear-gradient(135deg, #065f46, #047857);
+        color: #d1fae5; padding: 8px 16px;
+        font-size: .82rem; display: flex; align-items: center;
+        flex-shrink: 0; gap: 0;
+    }
+    .pcf-banner-dismiss {
+        margin-left: auto; background: none; border: none; color: inherit;
+        opacity: .7; font-size: 1.2rem; line-height: 1; cursor: pointer;
+        padding: 0 2px; flex-shrink: 0;
+    }
+    .pcf-banner-dismiss:hover { opacity: 1; }
+    .pcf-done-already { opacity: .5; cursor: default; }
 
     /* ── Viewer area ── */
     .pcf-viewer-area {
@@ -1580,6 +1602,7 @@
         .pcf-viewer-area.pcf-split { flex-direction: column; }
         .pcf-toast-success { padding: 10px 16px; font-size: .82rem; max-width: 90vw; }
         .pcf-lock-banner { flex-wrap: wrap; font-size: .78rem; }
+        .pcf-already-done-banner { flex-wrap: wrap; font-size: .78rem; }
         .pcf-text-input { min-width: 80px; font-size: 16px; } /* 16px prevents iOS auto-zoom on tablets */
         .pcf-page-wrapper { max-width: calc(100vw - 40px); overflow: hidden; }
     }
@@ -1604,6 +1627,7 @@
         .pcf-viewer { padding: 4px; gap: 4px; -webkit-overflow-scrolling: touch; }
         .pcf-pane-header { padding: 3px 8px; font-size: .7rem; }
         .pcf-lock-banner { font-size: .72rem; padding: 6px 8px; }
+        .pcf-already-done-banner { font-size: .72rem; padding: 6px 8px; }
         .pcf-toast-success { padding: 8px 12px; font-size: .78rem; max-width: 95vw; border-radius: 8px; }
         .pcf-empty i { font-size: 2rem !important; }
         .pcf-empty div { font-size: .8rem !important; }
@@ -1970,6 +1994,8 @@
     int _csSessionId;            // session ID passed from Dashboard (0 = not from CS button)
     string? _csSessionName;      // name of the session being CSed
     bool _csDone;                // true after "Mark CS Done" was executed
+    bool _csAlreadyDone;         // true if this session already has a cs_review on load
+    bool _csAlreadyDoneBannerDismissed;
     string _errorToast = "";
     int _csReviewMinutes;        // editable review time (session + admin) in minutes
     HashSet<int> _csedSessionIds = new();                    // session IDs that have cs_reviews
@@ -2253,6 +2279,9 @@
                 _activeCsSessions[_csSessionId] = userName;
                 Console.WriteLine($"[PcFolder] CS session {_csSessionId} ('{_csSessionName}') started by '{_userName}' for PC {PcId}");
             }
+            _csAlreadyDone = _csedSessionIds.Contains(_csSessionId);
+            if (_csAlreadyDone)
+                Console.WriteLine($"[PcFolder] CS session {_csSessionId} already reviewed — Done button disabled for '{_userName}'");
         }
 
         WorkSheetItem? match = null;
