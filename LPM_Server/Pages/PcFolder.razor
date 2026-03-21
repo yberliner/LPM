@@ -763,35 +763,47 @@
                 var p = _panes[idx];
                 <div class="pcf-pane @(_activeIdx == idx ? "pcf-pane-active" : "")"
                      @onclick="() => SetActiveIdx(idx)">
-                    @if (_paneCount > 1)
-                    {
+                    @{
                         var isDual = _dualPanes.Contains(PaneIds[idx]);
                         var isPdf  = p.File?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) == true;
                         _dualInfo.TryGetValue(PaneIds[idx], out var di);
-                        <div class="pcf-pane-header pcf-pane-hdr-@PaneIds[idx]">
-                            <span class="pcf-pane-hdr-name">
-                                <i class="ri-file-pdf-2-line me-1"></i>
-                                @if (!string.IsNullOrEmpty(p.Section))
-                                {
-                                    <span class="pcf-toolbar-section" style="font-size:.65rem;">@p.Section</span>
-                                }
-                                @(p.FileName ?? "Empty")
-                            </span>
-                            @if (isDual)
-                            {
-                                <span class="pcf-dual-counter">@di.page–@(Math.Min(di.page + 1, di.total)) / @di.total</span>
-                            }
-                            @if (isPdf)
-                            {
-                                <button class="pcf-dual-toggle @(isDual ? "pcf-dual-active" : "")"
-                                        title="@(isDual ? "Exit side-by-side view" : "Side-by-side view — 2 pages at a time")"
-                                        @onclick:stopPropagation="true"
-                                        @onclick="() => ToggleDualMode(PaneIds[idx])">
-                                    <i class="@(isDual ? "ri-book-open-fill" : "ri-book-open-line")"></i>
-                                </button>
-                            }
-                        </div>
                     }
+                    <div class="pcf-pane-header pcf-pane-hdr-@PaneIds[idx]">
+                        <span class="pcf-pane-hdr-name">
+                            <i class="ri-file-pdf-2-line me-1"></i>
+                            @if (!string.IsNullOrEmpty(p.Section))
+                            {
+                                <span class="pcf-toolbar-section" style="font-size:.65rem;">@p.Section</span>
+                            }
+                            @(p.FileName ?? "Empty")
+                        </span>
+                        @if (isDual)
+                        {
+                            <span class="pcf-dual-counter">@di.page–@(Math.Min(di.page + 1, di.total)) / @di.total</span>
+                        }
+                        @if (isPdf)
+                        {
+                            <button class="pcf-dual-toggle @(isDual ? "pcf-dual-active" : "")"
+                                    title="@(isDual ? "Exit side-by-side view" : "Side-by-side view — 2 pages at a time")"
+                                    @onclick:stopPropagation="true"
+                                    @onclick="() => ToggleDualMode(PaneIds[idx])">
+                                <i class="@(isDual ? "ri-book-open-fill" : "ri-book-open-line")"></i>
+                            </button>
+                        }
+                        <button class="pcf-pane-max-btn"
+                                title="Maximize — close all other panes and show only this one"
+                                disabled="@(_paneCount == 1)"
+                                @onclick:stopPropagation="true"
+                                @onclick="() => MaximizePane(idx)">
+                            <i class="ri-fullscreen-line"></i>
+                        </button>
+                        <button class="pcf-pane-close-btn"
+                                title="Close pane"
+                                @onclick:stopPropagation="true"
+                                @onclick="() => ClosePane(idx)">
+                            <i class="ri-close-line"></i>
+                        </button>
+                    </div>
                     @{
                         var isExcelPane = _excelData != null && p.File == _excelRelPath && idx == _activeIdx;
                         var isPdfPane = !string.IsNullOrEmpty(p.File) && !isExcelPane;
@@ -1385,6 +1397,17 @@
     }
     .pcf-dual-toggle:hover { opacity: 1; background: rgba(251,191,36,.15); }
     .pcf-dual-toggle.pcf-dual-active { opacity: 1; color: #fb923c; }
+    .pcf-pane-max-btn, .pcf-pane-close-btn {
+        background: transparent; border: none; padding: 2px 5px; border-radius: 4px;
+        cursor: pointer; flex-shrink: 0; opacity: .6;
+        transition: opacity .15s, background .15s; font-size: .85rem; line-height: 1;
+        min-width: 24px; min-height: 24px;
+    }
+    .pcf-pane-max-btn { color: #94a3b8; }
+    .pcf-pane-max-btn:hover:not([disabled]) { opacity: 1; background: rgba(148,163,184,.15); }
+    .pcf-pane-max-btn[disabled] { opacity: .2; cursor: default; }
+    .pcf-pane-close-btn { color: #f87171; }
+    .pcf-pane-close-btn:hover { opacity: 1; background: rgba(248,113,113,.15); }
     .pcf-dual-nav {
         position: absolute; top: 50%; transform: translateY(-50%);
         background: rgba(0,0,0,.55); border: none; color: #e2e8f0;
@@ -2626,6 +2649,103 @@
             if (!string.IsNullOrEmpty(_panes[i].File) && !_panes[i].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
                 reloads.Add((PaneIds[i], _panes[i].File!));
         }
+        if (reloads.Count > 0)
+            _pendingReloads = reloads;
+
+        await JS.InvokeVoidAsync("pcfViewer.setActivePane", PaneIds[_activeIdx]);
+    }
+
+    async Task MaximizePane(int idx)
+    {
+        if (_paneCount == 1) return;
+
+        // Auto-save all panes except the one being maximized
+        for (int i = 0; i < _paneCount; i++)
+            if (i != idx && !string.IsNullOrEmpty(_panes[i].File))
+                await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]);
+
+        // Move the target pane's state into slot 0
+        if (idx != 0)
+        {
+            _panes[0].File     = _panes[idx].File;
+            _panes[0].FileName = _panes[idx].FileName;
+            _panes[0].Section  = _panes[idx].Section;
+
+            // Carry dual state from PaneIds[idx] → PaneIds[0]
+            bool wasDual = _dualPanes.Contains(PaneIds[idx]);
+            _dualPanes.Remove(PaneIds[idx]);
+            _dualInfo.Remove(PaneIds[idx]);
+            _dualPanes.Remove(PaneIds[0]);
+            _dualInfo.Remove(PaneIds[0]);
+            if (wasDual) _dualPanes.Add(PaneIds[0]);
+        }
+
+        // Clear slots 1 and 2
+        for (int i = 1; i < 3; i++)
+        {
+            _panes[i].File = null; _panes[i].FileName = null; _panes[i].Section = "";
+            _dualPanes.Remove(PaneIds[i]); _dualInfo.Remove(PaneIds[i]);
+        }
+
+        _paneCount = 1;
+        _activeIdx = 0;
+
+        // Reload pane 0 to fill new width
+        if (!string.IsNullOrEmpty(_panes[0].File) && !_panes[0].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+            _pendingReloads = [(PaneIds[0], _panes[0].File!)];
+
+        await JS.InvokeVoidAsync("pcfViewer.setActivePane", PaneIds[0]);
+    }
+
+    async Task ClosePane(int idx)
+    {
+        // Auto-save the pane being closed
+        if (!string.IsNullOrEmpty(_panes[idx].File))
+            await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[idx]);
+
+        _dualPanes.Remove(PaneIds[idx]);
+        _dualInfo.Remove(PaneIds[idx]);
+
+        // Last pane — just clear it to empty (reopen with no file selected)
+        if (_paneCount == 1)
+        {
+            _panes[0].File = null; _panes[0].FileName = null; _panes[0].Section = "";
+            return;
+        }
+
+        // Shift panes down
+        for (int i = idx; i < _paneCount - 1; i++)
+        {
+            _panes[i].File     = _panes[i + 1].File;
+            _panes[i].FileName = _panes[i + 1].FileName;
+            _panes[i].Section  = _panes[i + 1].Section;
+
+            // Carry dual state
+            _dualPanes.Remove(PaneIds[i]);
+            _dualInfo.Remove(PaneIds[i]);
+            if (_dualPanes.Contains(PaneIds[i + 1]))
+            {
+                _dualPanes.Remove(PaneIds[i + 1]);
+                _dualInfo.TryGetValue(PaneIds[i + 1], out var di);
+                _dualInfo.Remove(PaneIds[i + 1]);
+                _dualPanes.Add(PaneIds[i]);
+                _dualInfo[PaneIds[i]] = di;
+            }
+        }
+
+        // Clear the vacated last slot
+        int last = _paneCount - 1;
+        _panes[last].File = null; _panes[last].FileName = null; _panes[last].Section = "";
+        _dualPanes.Remove(PaneIds[last]); _dualInfo.Remove(PaneIds[last]);
+
+        _paneCount--;
+        if (_activeIdx >= _paneCount) _activeIdx = _paneCount - 1;
+
+        // Reload remaining PDF panes to fill new width
+        var reloads = new List<(string, string)>();
+        for (int i = 0; i < _paneCount; i++)
+            if (!string.IsNullOrEmpty(_panes[i].File) && !_panes[i].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                reloads.Add((PaneIds[i], _panes[i].File!));
         if (reloads.Count > 0)
             _pendingReloads = reloads;
 
