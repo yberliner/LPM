@@ -133,7 +133,7 @@ public class DashboardService
         {
             // Solo user: only their own PC
             cmd.CommandText = $@"
-                SELECT pc.PcId, {FullNameExpr} AS FullName, COALESCE(pc.IsAlsoSolo, 0)
+                SELECT pc.PcId, {FullNameExpr} AS FullName, CASE WHEN EXISTS (SELECT 1 FROM core_users cu WHERE cu.PersonId = pc.PcId AND cu.StaffRole = 'Solo' AND cu.IsActive = 1) THEN 1 ELSE 0 END
                 FROM core_pcs pc
                 JOIN core_persons p ON p.PersonId = pc.PcId
                 WHERE pc.PcId = @uid";
@@ -142,7 +142,7 @@ public class DashboardService
         else if (allowAll)
         {
             cmd.CommandText = $@"
-                SELECT pc.PcId, {FullNameExpr} AS FullName, COALESCE(pc.IsAlsoSolo, 0)
+                SELECT pc.PcId, {FullNameExpr} AS FullName, CASE WHEN EXISTS (SELECT 1 FROM core_users cu WHERE cu.PersonId = pc.PcId AND cu.StaffRole = 'Solo' AND cu.IsActive = 1) THEN 1 ELSE 0 END
                 FROM core_pcs pc
                 JOIN core_persons p ON p.PersonId = pc.PcId
                 ORDER BY p.FirstName, p.LastName";
@@ -150,7 +150,7 @@ public class DashboardService
         else
         {
             cmd.CommandText = $@"
-                SELECT pc.PcId, {FullNameExpr} AS FullName, COALESCE(pc.IsAlsoSolo, 0)
+                SELECT pc.PcId, {FullNameExpr} AS FullName, CASE WHEN EXISTS (SELECT 1 FROM core_users cu WHERE cu.PersonId = pc.PcId AND cu.StaffRole = 'Solo' AND cu.IsActive = 1) THEN 1 ELSE 0 END
                 FROM sys_staff_pc_list spl
                 JOIN core_pcs pc ON pc.PcId = spl.PcId
                 JOIN core_persons p ON p.PersonId = pc.PcId
@@ -184,7 +184,7 @@ public class DashboardService
         if (staffRole == "Solo")
         {
             cmd.CommandText = $@"
-                SELECT pc.PcId, {FullNameExpr} AS FullName, COALESCE(pc.IsAlsoSolo, 0)
+                SELECT pc.PcId, {FullNameExpr} AS FullName, CASE WHEN EXISTS (SELECT 1 FROM core_users cu WHERE cu.PersonId = pc.PcId AND cu.StaffRole = 'Solo' AND cu.IsActive = 1) THEN 1 ELSE 0 END
                 FROM core_pcs pc
                 JOIN core_persons p ON p.PersonId = pc.PcId
                 WHERE pc.PcId = @uid";
@@ -193,7 +193,7 @@ public class DashboardService
         else
         {
             cmd.CommandText = $@"
-                SELECT pc.PcId, {FullNameExpr} AS FullName, COALESCE(pc.IsAlsoSolo, 0)
+                SELECT pc.PcId, {FullNameExpr} AS FullName, CASE WHEN EXISTS (SELECT 1 FROM core_users cu WHERE cu.PersonId = pc.PcId AND cu.StaffRole = 'Solo' AND cu.IsActive = 1) THEN 1 ELSE 0 END
                 FROM sys_staff_pc_list spl
                 JOIN core_pcs pc ON pc.PcId = spl.PcId
                 JOIN core_persons p ON p.PersonId = pc.PcId

@@ -905,7 +905,6 @@
                         createdEmpty = true;
                     }
                     var pcId = resolvedId.Value;
-                    PcSvc.SetIsAlsoSolo(pcId);
                     if (!row.UserAlreadyExists && !string.IsNullOrEmpty(row.Username))
                     {
                         UserDb.CreateUser(pcId, row.Username, row.Password, "Solo", "Staff", null, true);

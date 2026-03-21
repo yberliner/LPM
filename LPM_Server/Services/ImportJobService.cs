@@ -191,7 +191,6 @@ public class ImportJobService
                         if (CurrentJob != null) CurrentJob.NewPcsCreated++;
                     }
                     pcId = resolvedId.Value;
-                    _pcSvc.SetIsAlsoSolo(pcId);
 
                     // Create solo user account if needed
                     var nameParts = pc.PcName.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

@@ -186,17 +186,6 @@ public List<PcListItem> GetAllPcs()
         return result is long id ? (int)id : null;
     }
 
-    /// <summary>Mark a PC as also having a solo import folder.</summary>
-    public void SetIsAlsoSolo(int pcId)
-    {
-        using var conn = new SqliteConnection(_connectionString);
-        conn.Open();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE core_pcs SET IsAlsoSolo = 1 WHERE PcId = @id";
-        cmd.Parameters.AddWithValue("@id", pcId);
-        cmd.ExecuteNonQuery();
-        Console.WriteLine($"[PcService] Set IsAlsoSolo=1 for PC {pcId}");
-    }
 
     public int AddPcWithPerson(string firstName, string lastName,
         string phone, string email, string dateOfBirth, string gender,
