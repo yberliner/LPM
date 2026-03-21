@@ -2312,7 +2312,10 @@
             _pendingReloads = null;
             foreach (var (paneId, file) in reloads)
             {
-                var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
+                var endpoint = IsFolderSummaryFile(Path.GetFileName(file), file)
+                    ? "/api/pc-file-folder-summary"
+                    : "/api/pc-file";
+                var url = $"{endpoint}?pcId={PcId}&path={Uri.EscapeDataString(file)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
                 await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId);
             }
         }
