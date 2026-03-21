@@ -705,15 +705,6 @@
                     <i class="ri-layout-column-line"></i>
                     <span style="font-size:.7rem;margin-left:2px;">@_paneCount</span>
                 </button>
-                @{
-                    var tbDual = _paneCount == 1 && _dualPanes.Contains(PaneIds[0]);
-                }
-                <button class="pcf-tool-btn @(tbDual ? "pcf-tool-active" : "")"
-                        title="@(tbDual ? "Exit side-by-side view" : "Side-by-side view — 2 pages at a time")"
-                        style="color:@(tbDual ? "#fb923c" : "#fbbf24");"
-                        @onclick="VoiceDual">
-                    <i class="@(tbDual ? "ri-book-open-fill" : "ri-book-open-line")"></i>
-                </button>
                 <button class="pcf-tool-btn pcf-voice-btn @(_voiceOn ? "pcf-voice-active" : "")"
                         title="@(_voiceOn ? "Voice commands ON — click to turn off" : "Voice commands OFF — click to turn on")"
                         @onclick="ToggleVoice">
@@ -724,7 +715,7 @@
                 {
                     <button class="pcf-tool-btn" title="Edit the session summary text"
                             @onclick="OpenEditSummary">
-                        <i class="ri-edit-2-line me-1"></i><span style="font-size:.72rem;">Summary</span>
+                        <i class="ri-edit-2-line me-1"></i><span style="font-size:.72rem;">FS</span>
                     </button>
                 }
                 @if (CsMode && _csSessionId > 0)
