@@ -37,6 +37,8 @@ public class ImportJobService
     private readonly DashboardService _dashSvc;
     private readonly LPM.Auth.UserDb _userDb;
     private readonly string _tempBasePath;
+    private readonly string _dbPath;
+    private readonly string _dbBackupFolder;
     private readonly object _lock = new();
 
     public ImportJobState? CurrentJob { get; private set; }
@@ -44,7 +46,8 @@ public class ImportJobService
 
     private readonly SmsService _smsSvc;
 
-    public ImportJobService(FolderService folderSvc, PcService pcSvc, DashboardService dashSvc, LPM.Auth.UserDb userDb, SmsService smsSvc)
+    public ImportJobService(FolderService folderSvc, PcService pcSvc, DashboardService dashSvc,
+        LPM.Auth.UserDb userDb, SmsService smsSvc, Microsoft.Extensions.Configuration.IConfiguration config)
     {
         _folderSvc = folderSvc;
         _pcSvc = pcSvc;
@@ -52,6 +55,30 @@ public class ImportJobService
         _userDb = userDb;
         _smsSvc = smsSvc;
         _tempBasePath = Path.Combine(Directory.GetCurrentDirectory(), "PC-Folders", "_import_temp");
+        _dbPath = config["Database:Path"] ?? "lifepower.db";
+        _dbBackupFolder = config["Database:BackupFolder"] ?? "db-backups";
+    }
+
+    /// <summary>Snapshot the live DB to db-backups/ before any import writes.</summary>
+    private void BackupDbBeforeImport()
+    {
+        try
+        {
+            Directory.CreateDirectory(_dbBackupFolder);
+            var timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            var destPath = Path.Combine(_dbBackupFolder, $"lifepower-{timestamp}-BeforeImport.db");
+            using var src = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_dbPath}");
+            using var dst = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={destPath}");
+            src.Open();
+            dst.Open();
+            src.BackupDatabase(dst);
+            Console.WriteLine($"[ImportJobService] DB backed up to '{destPath}' before import");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ImportJobService] DB backup before import FAILED: {ex.Message}");
+            // Non-fatal — import proceeds but operator is warned in the log
+        }
     }
 
     /// <summary>Start a new upload job. Returns jobId or null if a job is already running.</summary>
@@ -163,6 +190,9 @@ public class ImportJobService
     {
         try
         {
+            // Snapshot DB before any writes so import can be rolled back manually if needed
+            BackupDbBeforeImport();
+
             // Process non-solo first, then solo — preserving the table order within each group
             var ordered = manifest
                 .Select((pc, idx) => (pc, idx))
