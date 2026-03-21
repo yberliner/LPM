@@ -1,0 +1,175 @@
+@page "/Admin/CreateEmptyDb"
+@attribute [Authorize(Roles = "Admin")]
+@using System.Security.Cryptography
+@inject IConfiguration Config
+
+<PageTitle>Create Empty DB — LPM</PageTitle>
+
+<div class="container-fluid py-4" style="max-width:640px;">
+    <h4 class="fw-bold mb-1">Create Empty DB Copy</h4>
+    <p class="text-muted mb-4" style="font-size:.85rem;">
+        Creates a new copy of the current database with all data tables cleared and a single
+        <strong>admin / Admin1992</strong> user seeded. The live database is never touched.
+    </p>
+
+    @if (!string.IsNullOrEmpty(_resultPath))
+    {
+        <div class="alert alert-success d-flex align-items-center gap-2">
+            <i class="ri-checkbox-circle-line" style="font-size:1.3rem;"></i>
+            <div>
+                <strong>Done.</strong> File created:<br />
+                <code style="font-size:.82rem; word-break:break-all;">@_resultPath</code>
+            </div>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
+
+    <button class="btn btn-primary d-flex align-items-center gap-2"
+            disabled="@_busy"
+            @onclick="CreateEmptyDbCopy">
+        @if (_busy)
+        {
+            <span class="spinner-border spinner-border-sm"></span>
+            <span>Working…</span>
+        }
+        else
+        {
+            <i class="ri-database-2-line"></i>
+            <span>Create Empty DB Copy</span>
+        }
+    </button>
+</div>
+
+@code {
+    bool _busy;
+    string _resultPath = "";
+    string _error = "";
+
+    async Task CreateEmptyDbCopy()
+    {
+        _busy = true; _resultPath = ""; _error = "";
+        try
+        {
+            await Task.Run(DoCreate);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed: {ex.Message}";
+            Console.WriteLine($"[CreateEmptyDb] Error: {ex}");
+        }
+        finally { _busy = false; }
+    }
+
+    void DoCreate()
+    {
+        var srcPath = Config["Database:Path"] ?? "lifepower.db";
+        var timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        var dir = Path.GetDirectoryName(Path.GetFullPath(srcPath)) ?? ".";
+        var name = Path.GetFileNameWithoutExtension(srcPath);
+        var destPath = Path.Combine(dir, $"{name}_empty_{timestamp}.db");
+
+        // 1. Copy the live DB via the SQLite backup API so the result is a fully
+        //    checkpointed, self-contained file (no -wal / -shm companion files).
+        using var src = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={srcPath}");
+        src.Open();
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={destPath};Pooling=False");
+        conn.Open();
+        src.BackupDatabase(conn);
+        src.Close();
+        Console.WriteLine($"[CreateEmptyDb] Copied '{srcPath}' → '{destPath}'");
+
+        // 2. Clear all data tables
+        using var cmd = conn.CreateCommand();
+
+        cmd.CommandText = "PRAGMA foreign_keys = OFF";
+        cmd.ExecuteNonQuery();
+
+        foreach (var table in new[]
+        {
+            // Financial
+            "fin_payment_methods", "fin_purchase_items", "fin_purchases", "fin_payments",
+            // Academic
+            "acad_attendance", "acad_student_courses",
+            // Sessions
+            "sess_folder_summary", "sess_misc_charges", "sess_sessions", "sess_auditors",
+            // CS
+            "cs_work_log", "cs_reviews", "cs_case_supervisors",
+            // System
+            "sys_weekly_remarks", "sys_auditor_pc_permissions",
+            "sys_staff_messages", "sys_staff_pc_list", "sys_trusted_devices",
+            // Core (last — referenced by others)
+            "core_user_roles", "core_users", "core_pcs", "core_persons",
+        })
+        {
+            cmd.CommandText = $"DELETE FROM {table}";
+            cmd.Parameters.Clear();
+            try { cmd.ExecuteNonQuery(); }
+            catch (Exception ex)
+            {
+                // Table may not exist in older schema versions — skip silently
+                Console.WriteLine($"[CreateEmptyDb] Skipped table '{table}': {ex.Message}");
+            }
+        }
+
+        // Reset SQLite auto-increment counters
+        cmd.CommandText = "DELETE FROM sqlite_sequence WHERE name IN " +
+            "('core_persons','core_pcs','core_users','sess_sessions','cs_reviews'," +
+            "'fin_purchases','fin_purchase_items','fin_payments','fin_payment_methods')";
+        try { cmd.ExecuteNonQuery(); } catch { /* sqlite_sequence may not exist */ }
+
+        // 3. Seed admin user
+        //    core_persons row
+        cmd.CommandText = @"
+            INSERT INTO core_persons (FirstName, LastName, Phone, Email, DateOfBirth, Gender, Org, Source, Notes, Nick)
+            VALUES ('Admin', '', '', '', '', '', NULL, NULL, '', '')";
+        cmd.Parameters.Clear();
+        cmd.ExecuteNonQuery();
+
+        cmd.CommandText = "SELECT last_insert_rowid()";
+        var personId = (long)cmd.ExecuteScalar()!;
+
+        //    core_pcs row (admin is also a PC entry to satisfy FK)
+        cmd.CommandText = "INSERT INTO core_pcs (PcId) VALUES (@pid)";
+        cmd.Parameters.Clear();
+        cmd.Parameters.AddWithValue("@pid", personId);
+        try { cmd.ExecuteNonQuery(); } catch { /* core_pcs may not require every person */ }
+
+        //    core_users row
+        var passwordHash = HashPassword("Admin1992");
+        cmd.CommandText = @"
+            INSERT INTO core_users
+                (PersonId, Username, PasswordHash, StaffRole, UserType, GradeId, AllowAll,
+                 IsActive, MustChangePassword, ContactConfirmed)
+            VALUES (@pid, 'admin', @h, 'Admin', 'Admin', NULL, 1, 1, 0, 1)";
+        cmd.Parameters.Clear();
+        cmd.Parameters.AddWithValue("@pid", personId);
+        cmd.Parameters.AddWithValue("@h", passwordHash);
+        cmd.ExecuteNonQuery();
+
+        cmd.CommandText = "PRAGMA foreign_keys = ON";
+        cmd.Parameters.Clear();
+        cmd.ExecuteNonQuery();
+
+        // Switch to DELETE journal mode — ensures the output is a single portable file
+        // with no -wal / -shm companion files that would appear when it is opened elsewhere.
+        cmd.CommandText = "PRAGMA journal_mode=DELETE;";
+        cmd.ExecuteNonQuery();
+
+        Console.WriteLine($"[CreateEmptyDb] Seeded admin user. Empty DB ready at '{destPath}'");
+        _resultPath = destPath;
+    }
+
+    // PBKDF2-SHA256 — identical to UserDb.HashPassword
+    static string HashPassword(string password)
+    {
+        const int iterations = 260000;
+        byte[] salt = RandomNumberGenerator.GetBytes(16);
+        using var kdf = new Rfc2898DeriveBytes(password, salt, iterations, HashAlgorithmName.SHA256);
+        byte[] hash = kdf.GetBytes(32);
+        return $"pbkdf2_sha256${iterations}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
+    }
+}

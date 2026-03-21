@@ -466,6 +466,11 @@ public class FolderService
         using var dest = new SqliteConnection($"Data Source={destinationPath};Pooling=False");
         dest.Open();
         source.BackupDatabase(dest);
+        // Switch to DELETE journal mode so the backup is a single self-contained file
+        // with no companion -wal / -shm files.
+        using var cmd = dest.CreateCommand();
+        cmd.CommandText = "PRAGMA journal_mode=DELETE;";
+        cmd.ExecuteNonQuery();
     }
 
     /// <summary>Runs integrity check on any arbitrary SQLite file (e.g. a backup).</summary>
