@@ -770,6 +770,7 @@
                     }
                     @* ── Floating pane button overlay ── *@
                     <div class="pcf-pane-overlay">
+                        <span class="pcf-overlay-name" title="@p.FileName">@(p.FileName ?? "Empty")</span>
                         @if (isDual)
                         {
                             <span class="pcf-overlay-counter">@di.page–@(Math.Min(di.page + 1, di.total)) / @di.total</span>
@@ -1388,6 +1389,11 @@
     .pcf-pane:hover .pcf-pane-overlay { opacity: 1; pointer-events: auto; }
     /* Always slightly visible on touch devices */
     @@media (hover: none) { .pcf-pane-overlay { opacity: .55; pointer-events: auto; } }
+    .pcf-overlay-name {
+        font-size: .68rem; color: #e2e8f0; font-weight: 600;
+        padding: 0 4px; max-width: 160px;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
     .pcf-overlay-counter {
         font-size: .62rem; color: #cbd5e1; padding: 0 4px; white-space: nowrap;
     }
