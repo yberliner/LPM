@@ -37,9 +37,23 @@ window.pcfViewer = {
     setFontSize(size) { this.fontSize = size; },
     setActivePane(paneId) { this.activePane = paneId; },
 
+    // Proactively cancel any in-flight loadPdf for a pane.
+    // Call this before changing the pane layout so the stale render
+    // detects the mismatch immediately rather than finishing at wrong scale.
+    cancelLoad(paneId) {
+        const pane = this._initPane(paneId);
+        pane.loadGen = (pane.loadGen || 0) + 1;
+    },
+
     async loadPdf(url, paneId) {
         paneId = paneId || this.activePane;
         const pane = this._initPane(paneId);
+
+        // Generation counter — if a newer loadPdf starts while this one is mid-await,
+        // the stale call detects the mismatch and exits without touching the DOM.
+        pane.loadGen = (pane.loadGen || 0) + 1;
+        const myGen = pane.loadGen;
+
         pane.zoomLevel = 1.0; // reset zoom on new PDF
 
         // Extract filePath and solo flag from the URL for auto-save
@@ -51,12 +65,24 @@ window.pcfViewer = {
         pane.readOnly = url.includes('/api/pc-file-folder-summary');
 
         let viewer = document.getElementById('pcf-viewer-' + paneId);
-        // Wait for the viewer element to exist and have a valid width
-        for (let attempt = 0; attempt < 50 && (!viewer || viewer.clientWidth < 10); attempt++) {
+        // Wait for the viewer element to exist AND its width to stabilize across
+        // multiple consecutive animation frames. We capture the width here and
+        // use it later for scale calculation — never re-read clientWidth after
+        // async operations, since the layout could change in between.
+        let prevWidth = -1, stableFrames = 0, stableWidth = 0;
+        for (let attempt = 0; attempt < 60; attempt++) {
             await new Promise(r => requestAnimationFrame(r));
+            if (pane.loadGen !== myGen) return; // superseded
             viewer = document.getElementById('pcf-viewer-' + paneId);
+            if (!viewer) continue;
+            const w = viewer.clientWidth;
+            if (w >= 50 && w === prevWidth) {
+                if (++stableFrames >= 4) { stableWidth = w; break; }
+            } else { stableFrames = 0; }
+            prevWidth = w;
         }
-        if (!viewer) return;
+        if (!viewer || pane.loadGen !== myGen || stableWidth < 50) return;
+
         if (!viewer._panInited) {
             viewer._panInited = true;
             this._initPanOnViewer(viewer);
@@ -77,32 +103,40 @@ window.pcfViewer = {
         const pdfjsLib = window['pdfjs-dist/build/pdf'];
         if (!pdfjsLib) { viewer.innerHTML = '<div style="color:#fff;padding:40px;">PDF.js not loaded</div>'; return; }
 
+        let pdfDoc;
         try {
-            pane.pdfDoc = await pdfjsLib.getDocument({ url, withCredentials: true }).promise;
+            pdfDoc = await pdfjsLib.getDocument({ url, withCredentials: true }).promise;
         } catch (e) {
+            if (pane.loadGen !== myGen) return;
             const msg = e.status ? `HTTP ${e.status} — ${e.message}` : e.message;
             viewer.innerHTML = '<div style="color:#fff;padding:40px;">Failed to load PDF: ' + msg + '</div>';
             console.error('[pcf-viewer] loadPdf error', url, e);
             return;
         }
+        if (pane.loadGen !== myGen) return; // superseded while fetching
+        pane.pdfDoc = pdfDoc;
 
         // Scan ALL pages to find the widest one for scale calculation
         const allPages = [];
         let maxNaturalWidth = 0;
         for (let i = 1; i <= pane.pdfDoc.numPages; i++) {
             const page = await pane.pdfDoc.getPage(i);
+            if (pane.loadGen !== myGen) return; // superseded
             const naturalVp = page.getViewport({ scale: 1 });
             if (naturalVp.width > maxNaturalWidth) maxNaturalWidth = naturalVp.width;
             allPages.push(page);
         }
 
-        // Calculate scale to fit the WIDEST page within viewer width
-        const viewerWidth = viewer.clientWidth - 40; // 20px padding each side
+        // Calculate scale to fit the WIDEST page within viewer width.
+        // Use stableWidth captured in the RAF loop — not viewer.clientWidth here,
+        // since async operations above could let layout changes slip through.
+        const viewerWidth = stableWidth - 40; // 20px padding each side
         const fitScale = Math.min(viewerWidth / maxNaturalWidth, 3); // cap at 3x
         const scale = Math.max(fitScale, 0.5); // min 0.5x
         pane.baseScale = scale;
 
         for (let i = 0; i < allPages.length; i++) {
+            if (pane.loadGen !== myGen) return; // superseded mid-render
             const page = allPages[i];
             const vp = page.getViewport({ scale });
 
@@ -128,6 +162,7 @@ window.pcfViewer = {
 
             const ctx = canvas.getContext('2d');
             await page.render({ canvasContext: ctx, viewport: vp }).promise;
+            if (pane.loadGen !== myGen) return; // superseded after render
 
             pane.pages.push({ canvas, overlay, vp, pageIdx: i, scale, srcDoc: pane.pdfDoc, srcPageNum: i + 1 });
             this._attachEvents(overlay, i, paneId);

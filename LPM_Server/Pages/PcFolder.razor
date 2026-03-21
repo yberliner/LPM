@@ -2718,6 +2718,13 @@
         var newCount = oldCount >= 3 ? 1 : oldCount + 1;
         Console.WriteLine($"[PcFolder] Changed pane count to {newCount} by '{_userName}' — for PC {PcId}");
 
+        // Cancel any in-flight PDF renders BEFORE the layout changes.
+        // This ensures stale loadPdf calls detect the cancellation and exit
+        // rather than finishing at the wrong scale for the old pane width.
+        for (int i = 0; i < oldCount; i++)
+            if (!string.IsNullOrEmpty(_panes[i].File) && !_panes[i].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                await JS.InvokeVoidAsync("pcfViewer.cancelLoad", PaneIds[i]);
+
         // Auto-save panes being removed
         for (int i = newCount; i < oldCount; i++)
             await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]);
