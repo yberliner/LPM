@@ -557,15 +557,16 @@
                     <button type="button" class="btn-close btn-close-white"
                             @onclick="CloseAssignPcModal"></button>
                 </div>
-                <div class="modal-body p-0">
+                <div class="modal-body p-0" style="display:flex;flex-direction:column;overflow:hidden;min-height:0;flex:1;">
                     @{
                         var myPcIds2 = _apcMyPcs.Select(p => p.PcId).ToHashSet();
-                        var searchResults = string.IsNullOrWhiteSpace(_apcSearch)
-                            ? _apcAllPcs.ToList()
+                        var searchResults = (string.IsNullOrWhiteSpace(_apcSearch)
+                            ? _apcAllPcs
                             : _apcAllPcs
                                 .Where(p => p.FullName.Contains(_apcSearch, StringComparison.OrdinalIgnoreCase)
-                                            || p.Nick.Contains(_apcSearch, StringComparison.OrdinalIgnoreCase))
-                                .ToList();
+                                            || p.Nick.Contains(_apcSearch, StringComparison.OrdinalIgnoreCase)))
+                            .Where(p => p.PcId != _apcUserId)
+                            .ToList();
                         bool isFiltering = !string.IsNullOrWhiteSpace(_apcSearch);
                     }
                     <div class="apc-search-bar px-3 pt-3 pb-2">
@@ -654,7 +655,8 @@
                                     @foreach (var item in assignedGroups)
                                     {
                                         var ri = apcRowIdx++;
-                                        <tr class="apc-row @(item.IsPending ? "apc-row-pending" : "")"
+                                        <tr id="apc-row-@item.PcId"
+                                            class="apc-row @(item.IsPending ? "apc-row-pending" : "") @(item.PcId == _apcNewPcId ? "apc-row-new" : "")"
                                             style="animation-delay:@(ri * 35)ms">
                                             <td class="apc-td-pc">
                                                 @if (item.IsPending)
@@ -1817,7 +1819,7 @@
     /* ── Assign PC modal ── */
     .apc-modal-header { background: linear-gradient(135deg, #1a237e, #3949ab); border-bottom: none; }
     .apc-modal-dialog { max-width: 620px; }
-    .apc-modal-content { border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.3); overflow: hidden; }
+    .apc-modal-content { border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.3); overflow: hidden; display: flex; flex-direction: column; max-height: 85vh; }
     .apc-search-bar { background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
     .apc-search-icon { background: #f8fafc !important; border-right: none; color: #64748b; border-color: #e2e8f0; }
     .apc-search-input { border-left: none; border-color: #e2e8f0 !important; background: #f8fafc !important; color: #1e293b !important; font-size: .93rem; }
@@ -1837,7 +1839,7 @@
     .apc-add-icon { color: #3b82f6; font-size: 1.15rem; margin-left: auto; transition: transform .15s; flex-shrink: 0; }
     .apc-search-item:hover .apc-add-icon { transform: scale(1.25); }
     .apc-search-empty { padding: 14px 16px; font-size: .85rem; color: #94a3b8; font-style: italic; }
-    .apc-table-wrap { max-height: 260px; overflow-y: auto; background: #fff; }
+    .apc-table-wrap { flex: 1; overflow-y: auto; min-height: 120px; background: #fff; }
     .apc-table { border-collapse: collapse; width: 100%; background: #fff; }
     .apc-table thead tr { background: #f8fafc; border-bottom: 2px solid #e2e8f0; }
     .apc-th-pc { padding: 10px 16px; font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #64748b; }
@@ -1861,6 +1863,8 @@
     .apc-pending-badge { font-size: .72rem; color: #d97706; background: #fef3c7; padding: 2px 7px; border-radius: 10px; }
     .apc-empty { min-height: 120px; }
     @@keyframes apc-row-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+    @@keyframes apc-row-highlight { 0%,60% { background: #fef9c3; } 100% { background: #fff; } }
+    .apc-row-new { animation: apc-row-highlight 1.6s ease forwards !important; }
 </style>
 
 <SpkScheduleMeetingModal @ref="_meetingModal" OnSaved="StateHasChanged" />
@@ -1886,6 +1890,7 @@
     bool            _apcIsAuditor;
     bool            _apcIsCS;
     int             _apcUserId;
+    int             _apcNewPcId;
 
     // ── Add Session state ──
     bool _showImportWizard;
@@ -2828,9 +2833,15 @@ string _actionPcSearch = "";
             DashSvc.AddUserPc(_apcUserId, pcId, "CS");
             DashSvc.CheckOrRequestPermission(_apcUserId, pcId);
         }
-        _apcSearch = "";
+        _apcSearch  = "";
+        _apcNewPcId = pcId;
         ApcRefreshData();
         await InvokeAsync(StateHasChanged);
+        // Scroll new row into view
+        await JSRuntime.InvokeVoidAsync("eval",
+            $"setTimeout(()=>document.getElementById('apc-row-{pcId}')?.scrollIntoView({{behavior:'smooth',block:'nearest'}}),50)");
+        // Clear highlight after animation completes
+        _ = Task.Delay(1800).ContinueWith(_ => InvokeAsync(() => { _apcNewPcId = 0; StateHasChanged(); }));
     }
 
     async Task ApcTogglePcRole(int pcId, string workCapacity, bool currentlyActive)
