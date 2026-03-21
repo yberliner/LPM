@@ -100,6 +100,8 @@ builder.Services.AddSingleton<LPM.Services.MeetingService>();
 builder.Services.AddHostedService<LPM.Services.DbBackupService>();
 builder.Services.AddSingleton<LPM.Services.CsNotificationService>();
 builder.Services.AddSingleton<LPM.Services.ShortcutService>();
+builder.Services.AddHttpClient("sms");
+builder.Services.AddSingleton<LPM.Services.SmsService>();
 builder.Services.AddSingleton<LPM.Services.ImportJobService>();
 
 // Add session services

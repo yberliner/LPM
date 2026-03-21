@@ -530,7 +530,7 @@ public class UserDb
     /// Otherwise creates a new user: username=first.last, password=First1992.
     /// Returns the username that was used.
     /// </summary>
-    public string EnableSoloAuditor(int pcId, string firstName, string lastName)
+    public (string Username, string? NewPassword) EnableSoloAuditor(int pcId, string firstName, string lastName)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -553,7 +553,7 @@ public class UserDb
             nameCmd.Parameters.AddWithValue("@id", existingId);
             var username = (string)nameCmd.ExecuteScalar()!;
             Console.WriteLine($"[UserDb] Reactivated Solo user '{username}' for PC {pcId}");
-            return username;
+            return (username, null); // null = reactivated, no new password to SMS
         }
 
         // Build username and password
@@ -586,7 +586,7 @@ public class UserDb
         insertCmd.Parameters.AddWithValue("@h", HashPassword(password));
         insertCmd.ExecuteNonQuery();
         Console.WriteLine($"[UserDb] Created Solo user '{finalUsername}' for PC {pcId}");
-        return finalUsername;
+        return (finalUsername, password); // password returned so caller can SMS it
     }
 
     // ── Contact confirmation ─────────────────────────────────────────────────

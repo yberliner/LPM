@@ -42,12 +42,15 @@ public class ImportJobService
     public ImportJobState? CurrentJob { get; private set; }
     public event Action? OnProgressChanged;
 
-    public ImportJobService(FolderService folderSvc, PcService pcSvc, DashboardService dashSvc, LPM.Auth.UserDb userDb)
+    private readonly SmsService _smsSvc;
+
+    public ImportJobService(FolderService folderSvc, PcService pcSvc, DashboardService dashSvc, LPM.Auth.UserDb userDb, SmsService smsSvc)
     {
         _folderSvc = folderSvc;
         _pcSvc = pcSvc;
         _dashSvc = dashSvc;
         _userDb = userDb;
+        _smsSvc = smsSvc;
         _tempBasePath = Path.Combine(Directory.GetCurrentDirectory(), "PC-Folders", "_import_temp");
     }
 
@@ -201,6 +204,18 @@ public class ImportJobService
                         var newUserId = _userDb.CreateUser(pcId, username, password, "Solo", "Staff", null, true);
                         _userDb.SetContactConfirmNeeded(newUserId);
                         Console.WriteLine($"[ImportJobService] Created Solo user '{username}' for PC {pcId}");
+
+                        // Send welcome SMS if phone is on file
+                        var (_, phone) = _pcSvc.GetPersonContact(pcId);
+                        if (!string.IsNullOrWhiteSpace(phone))
+                        {
+                            var msg = $"Welcome to LPM! Username: {username} | Password: {password} | Site: lpmanager.cv";
+                            _ = _smsSvc.SendSmsAsync(phone, msg);
+                        }
+                        else
+                        {
+                            Console.WriteLine($"[ImportJobService] No phone for Solo '{username}' — SMS skipped");
+                        }
                     }
                     else
                     {

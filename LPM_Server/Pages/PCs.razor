@@ -4,6 +4,7 @@
 @inject LPM.Services.CourseService CourseSvc
 @inject LPM.Services.DashboardService DashSvc
 @inject LPM.Auth.UserDb UserDb
+@inject LPM.Services.SmsService SmsSvc
 @inject AuthenticationStateProvider AuthState
 @inject IJSRuntime JS
 @using Microsoft.AspNetCore.Authorization
@@ -1548,8 +1549,17 @@
 
         if (_soloConfirmEnable)
         {
-            var username = UserDb.EnableSoloAuditor(_selPcId.Value, _detail.FirstName, _detail.LastName);
+            var (username, newPassword) = UserDb.EnableSoloAuditor(_selPcId.Value, _detail.FirstName, _detail.LastName);
             Console.WriteLine($"[PCs] Solo access granted for PC {_selPcId.Value} ('{username}') by '{_username}'");
+            if (newPassword is not null)
+            {
+                var (_, phone) = PcSvc.GetPersonContact(_selPcId.Value);
+                if (!string.IsNullOrWhiteSpace(phone))
+                {
+                    var msg = $"Welcome to LPM! Username: {username} | Password: {newPassword} | Site: lpmanager.cv";
+                    _ = SmsSvc.SendSmsAsync(phone, msg);
+                }
+            }
         }
         else
         {
