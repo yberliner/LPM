@@ -144,7 +144,7 @@
             INSERT INTO core_users
                 (PersonId, Username, PasswordHash, StaffRole, UserType, GradeId, AllowAll,
                  IsActive, MustChangePassword, ContactConfirmed)
-            VALUES (@pid, 'admin', @h, 'Admin', 'Admin', NULL, 1, 1, 0, 1)";
+            VALUES (@pid, 'admin', @h, 'Auditor', 'Admin', NULL, 1, 1, 0, 1)";
         cmd.Parameters.Clear();
         cmd.Parameters.AddWithValue("@pid", personId);
         cmd.Parameters.AddWithValue("@h", passwordHash);

@@ -12,6 +12,8 @@ public record ImportPcManifest(
 
 public record ImportCoverMapping(string FileName, string Section, string PcFolderName, int AssignedItemId);
 
+public record SkippedFileRecord(string PcName, string FileName, string Section, string Reason);
+
 public class ImportJobState
 {
     public string JobId { get; init; } = "";
@@ -20,12 +22,13 @@ public class ImportJobState
     public int TotalFiles { get; set; }
     public int UploadedFiles { get; set; }
     public int ProcessedFiles { get; set; }
-    public int SkippedFiles { get; set; }
+    public int SkippedCount { get; set; }
     public int NewPcsCreated { get; set; }
     public int SessionsCreated { get; set; }
     public string CurrentFileName { get; set; } = "";
     public string? ErrorMessage { get; set; }
     public List<string> UnmatchedSoloPcs { get; } = new();
+    public List<SkippedFileRecord> SkippedList { get; } = new();
     public DateTime StartedAt { get; init; }
     public DateTime LastActivity { get; set; }
 }
@@ -259,7 +262,7 @@ public class ImportJobService
                         UpdateStatus(jobId, $"{pc.PcName} [Solo]: {file.FileName}");
                         var tempFile = Path.Combine(tempJobPath, pc.FolderName, file.Section, file.FileName);
                         var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
-                        if (bytes == null) { IncrementSkipped(jobId); continue; }
+                        if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, file.Section, "Conversion failed"); continue; }
                         if (_folderSvc.SoloSectionFileExists(pcId, file.Section, finalName))
                             _folderSvc.OverwriteSoloSectionFile(pcId, file.Section, finalName, bytes);
                         else
@@ -273,9 +276,9 @@ public class ImportJobService
                         UpdateStatus(jobId, $"{pc.PcName} [Solo]: {file.FileName}");
                         var tempFile = Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName);
                         var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
-                        if (bytes == null) { IncrementSkipped(jobId); continue; }
+                        if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, "WorkSheets", "Conversion failed"); continue; }
                         if (_folderSvc.SoloSectionFileExists(pcId, "WorkSheets", finalName))
-                        { IncrementSkipped(jobId); continue; }
+                        { IncrementSkipped(jobId, pc.PcName, finalName, "WorkSheets", "Already exists"); continue; }
                         _folderSvc.SaveSoloSectionFile(pcId, "WorkSheets", finalName, bytes);
                         var sessionName = Path.GetFileNameWithoutExtension(finalName);
                         var sessionDate = ParseSessionDate(file);
@@ -296,17 +299,17 @@ public class ImportJobService
                             ? Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", $"{parentNoExt}_att", file.FileName)
                             : Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName);
                         var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
-                        if (bytes == null) { IncrementSkipped(jobId); continue; }
+                        if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, "Attachment", "Conversion failed"); continue; }
                         if (file.ParentSessionFile != null)
                         {
                             if (_folderSvc.SoloAttachmentFileExists(pcId, file.ParentSessionFile, finalName))
-                            { IncrementSkipped(jobId); continue; }
+                            { IncrementSkipped(jobId, pc.PcName, finalName, "Attachment", "Already exists"); continue; }
                             _folderSvc.SaveSoloImportedAttachment(pcId, file.ParentSessionFile, finalName, bytes);
                         }
                         else
                         {
                             if (_folderSvc.SoloSectionFileExists(pcId, "WorkSheets", finalName))
-                            { IncrementSkipped(jobId); continue; }
+                            { IncrementSkipped(jobId, pc.PcName, finalName, "Attachment", "Already exists"); continue; }
                             _folderSvc.SaveSoloSectionFile(pcId, "WorkSheets", finalName, bytes);
                         }
                         IncrementProcessed(jobId);
@@ -325,7 +328,7 @@ public class ImportJobService
                         UpdateStatus(jobId, $"{pc.PcName}: {file.FileName}");
                         var tempFile = Path.Combine(tempJobPath, pc.FolderName, file.Section, file.FileName);
                         var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
-                        if (bytes == null) { IncrementSkipped(jobId); continue; }
+                        if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, file.Section, "Conversion failed"); continue; }
                         if (_folderSvc.SectionFileExists(pcId, file.Section, finalName))
                             _folderSvc.OverwriteSectionFile(pcId, file.Section, finalName, bytes);
                         else
@@ -339,9 +342,9 @@ public class ImportJobService
                         UpdateStatus(jobId, $"{pc.PcName}: {file.FileName}");
                         var tempFile = Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName);
                         var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
-                        if (bytes == null) { IncrementSkipped(jobId); continue; }
+                        if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, "WorkSheets", "Conversion failed"); continue; }
                         if (_folderSvc.SectionFileExists(pcId, "WorkSheets", finalName))
-                        { IncrementSkipped(jobId); continue; }
+                        { IncrementSkipped(jobId, pc.PcName, finalName, "WorkSheets", "Already exists"); continue; }
                         _folderSvc.SaveSectionFile(pcId, "WorkSheets", finalName, bytes);
                         var sessionName = Path.GetFileNameWithoutExtension(finalName);
                         var sessionDate = ParseSessionDate(file);
@@ -362,17 +365,17 @@ public class ImportJobService
                             ? Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", $"{parentNoExt}_att", file.FileName)
                             : Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName);
                         var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
-                        if (bytes == null) { IncrementSkipped(jobId); continue; }
+                        if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, "Attachment", "Conversion failed"); continue; }
                         if (file.ParentSessionFile != null)
                         {
                             if (_folderSvc.AttachmentFileExists(pcId, file.ParentSessionFile, finalName))
-                            { IncrementSkipped(jobId); continue; }
+                            { IncrementSkipped(jobId, pc.PcName, finalName, "Attachment", "Already exists"); continue; }
                             _folderSvc.SaveImportedAttachment(pcId, file.ParentSessionFile, finalName, bytes);
                         }
                         else
                         {
                             if (_folderSvc.SectionFileExists(pcId, "WorkSheets", finalName))
-                            { IncrementSkipped(jobId); continue; }
+                            { IncrementSkipped(jobId, pc.PcName, finalName, "Attachment", "Already exists"); continue; }
                             _folderSvc.SaveSectionFile(pcId, "WorkSheets", finalName, bytes);
                         }
                         IncrementProcessed(jobId);
@@ -422,12 +425,14 @@ public class ImportJobService
         }
     }
 
-    private void IncrementSkipped(string jobId)
+    private void IncrementSkipped(string jobId, string pcName, string fileName, string section, string reason)
     {
         if (CurrentJob != null && CurrentJob.JobId == jobId)
         {
-            CurrentJob.SkippedFiles++;
+            CurrentJob.SkippedList.Add(new SkippedFileRecord(pcName, fileName, section, reason));
+            CurrentJob.SkippedCount++;
             CurrentJob.ProcessedFiles++;
+            Console.WriteLine($"[Import] SKIPPED ({reason}): PC='{pcName}' File='{fileName}' Section='{section}'");
             OnProgressChanged?.Invoke();
         }
     }

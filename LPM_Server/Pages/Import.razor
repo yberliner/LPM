@@ -48,10 +48,44 @@
                 </div>
                 <div style="font-size:.75rem; color:#94a3b8;">
                     @job.ProcessedFiles / @job.TotalFiles files —
-                    @job.SkippedFiles skipped —
+                    @job.SkippedCount skipped —
                     @job.NewPcsCreated new PCs —
                     @job.SessionsCreated sessions
                 </div>
+                @if (job.SkippedList.Count > 0)
+                {
+                    <div class="mt-3">
+                        <div class="d-flex align-items-center gap-2 mb-1">
+                            <i class="ri-skip-forward-line" style="color:#f59e0b;"></i>
+                            <span style="font-size:.8rem; font-weight:600; color:#f59e0b;">Skipped Files (@job.SkippedList.Count)</span>
+                        </div>
+                        <div style="max-height:220px; overflow-y:auto; border:1px solid #334155; border-radius:6px;">
+                            <table class="table table-sm mb-0" style="font-size:.73rem; color:#cbd5e1; background:#0f172a;">
+                                <thead style="position:sticky; top:0; background:#1e293b; color:#94a3b8;">
+                                    <tr>
+                                        <th style="padding:5px 10px; font-weight:600;">PC Name</th>
+                                        <th style="padding:5px 10px; font-weight:600;">File Name</th>
+                                        <th style="padding:5px 10px; font-weight:600;">Section</th>
+                                        <th style="padding:5px 10px; font-weight:600;">Reason</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var s in job.SkippedList)
+                                    {
+                                        <tr style="border-color:#1e293b;">
+                                            <td style="padding:4px 10px;">@s.PcName</td>
+                                            <td style="padding:4px 10px; font-family:monospace;">@s.FileName</td>
+                                            <td style="padding:4px 10px; color:#64748b;">@s.Section.Replace("_", " ")</td>
+                                            <td style="padding:4px 10px;">
+                                                <span style="color:@(s.Reason == "Already exists" ? "#94a3b8" : "#f87171");">@s.Reason</span>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
                 @if (job.Status == ImportStatus.Failed && !string.IsNullOrEmpty(job.ErrorMessage))
                 {
                     <div class="alert alert-danger mt-2 py-1" style="font-size:.8rem;">
@@ -79,7 +113,7 @@
     {
         @* ── Normal import UI ── *@
 
-        <div class="btn-group mt-3 mb-3" role="group">
+        <div class="btn-group mt-3 mb-2" role="group">
             <button class="btn btn-sm @(_bulkMode ? "btn-outline-primary" : "btn-primary")"
                     @onclick="() => { _bulkMode = false; ResetState(); }">
                 <i class="ri-folder-line me-1"></i>Single PC
@@ -88,6 +122,11 @@
                     @onclick="() => { _bulkMode = true; ResetState(); }">
                 <i class="ri-folders-line me-1"></i>All PC Folders
             </button>
+        </div>
+        <div class="mb-3">
+            <span style="font-size:1.45rem; font-weight:700; color:@(_bulkMode ? "#3b82f6" : "#8b5cf6");">
+                <i class="@(_bulkMode ? "ri-folders-line" : "ri-folder-line") me-2"></i>@(_bulkMode ? "All PC Folders" : "Single PC")
+            </span>
         </div>
 
         <div class="mb-2" style="font-size:.82rem; color:#64748b;">

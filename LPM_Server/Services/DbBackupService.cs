@@ -19,6 +19,15 @@ public class DbBackupService(
         // Brief startup delay so the rest of the app initialises first
         await Task.Delay(TimeSpan.FromSeconds(30), ct);
 
+        // If a recent backup already exists, wait out the remaining interval instead
+        // of backing up immediately (prevents a backup on every app restart).
+        var firstDelay = TimeUntilNextBackup();
+        if (firstDelay > TimeSpan.Zero)
+        {
+            Console.WriteLine($"[DbBackup] Recent backup found — next backup in {firstDelay:hh\\:mm\\:ss}");
+            await Task.Delay(firstDelay, ct);
+        }
+
         while (!ct.IsCancellationRequested)
         {
             try { RunCycle(); }
@@ -26,6 +35,25 @@ public class DbBackupService(
 
             await Task.Delay(TimeSpan.FromHours(IntervalHours), ct);
         }
+    }
+
+    /// Returns how long to wait before the first backup is due, based on the newest
+    /// existing backup file. Returns Zero if no recent backup exists.
+    private TimeSpan TimeUntilNextBackup()
+    {
+        try
+        {
+            var folder = GetBackupFolder();
+            var newest = Directory.GetFiles(folder, "lifepower_*.db")
+                                  .OrderByDescending(f => f)
+                                  .FirstOrDefault();
+            if (newest is null) return TimeSpan.Zero;
+
+            var age = DateTime.Now - File.GetLastWriteTime(newest);
+            var remaining = TimeSpan.FromHours(IntervalHours) - age;
+            return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
+        }
+        catch { return TimeSpan.Zero; }
     }
 
     private void RunCycle()

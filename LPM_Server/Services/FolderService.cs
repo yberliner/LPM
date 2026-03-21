@@ -1025,7 +1025,15 @@ public class FolderService
             };
 
             process.Start();
-            process.WaitForExit(30_000);
+            bool exited = process.WaitForExit(30_000);
+            if (!exited)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+                process.WaitForExit(3_000); // brief grace period for GS to release file handles
+                Console.WriteLine($"[PDF Shrink] Ghostscript timed out on '{Path.GetFileName(pdfPath)}' — process killed");
+                if (File.Exists(tempOutput)) File.Delete(tempOutput);
+                return;
+            }
 
             if (process.ExitCode == 0 && File.Exists(tempOutput))
             {
