@@ -664,7 +664,9 @@
     private void SubmitOne(int sessionId)
     {
         if (!_rowEdits.TryGetValue(sessionId, out var edit)) return;
-        Console.WriteLine($"[Sessions] Submitted session {sessionId} — rate={edit.ChargeRate}, salary={edit.Salary} by '{_username}'");
+        var s = _groups.SelectMany(g => g.PcGroups).SelectMany(p => p.Sessions)
+                       .FirstOrDefault(x => x.SessionId == sessionId);
+        Console.WriteLine($"[Sessions] Approved session {sessionId} — PC='{s?.PcName}' auditor='{s?.AuditorName}' date={s?.SessionDate} rate=₪{edit.ChargeRate}/hr auditorSalary=₪{edit.Salary}/hr by '{_username}'");
         _busy = true;
         DashSvc.ApproveSession(sessionId, edit.ChargeRate * 100, edit.Salary * 100, _userId);
         _busy = false;
@@ -677,13 +679,14 @@
         var audGroup = _groups.FirstOrDefault(g => g.AuditorId == auditorId);
         var pcGroup  = audGroup?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
         if (pcGroup is null) return;
-        Console.WriteLine($"[Sessions] Submitted all sessions for auditor {auditorId}, PC {pcId} by '{_username}'");
+        Console.WriteLine($"[Sessions] Approve ALL sessions — auditor='{audGroup?.AuditorName}' (id={auditorId}) PC='{pcGroup.PcName}' (id={pcId}) by '{_username}'");
         _busy = true;
         int count = 0;
         string pcName = pcGroup.PcName;
         foreach (var s in pcGroup.Sessions.ToList())
         {
             if (!_rowEdits.TryGetValue(s.SessionId, out var edit)) continue;
+            Console.WriteLine($"[Sessions]   → session {s.SessionId} date={s.SessionDate} rate=₪{edit.ChargeRate}/hr auditorSalary=₪{edit.Salary}/hr");
             DashSvc.ApproveSession(s.SessionId, edit.ChargeRate * 100, edit.Salary * 100, _userId);
             ApplySessionApprovalInMemory(s.SessionId, edit.ChargeRate * 100, edit.Salary * 100);
             count++;
@@ -696,7 +699,9 @@
     private void SubmitOneCsReview(int csReviewId)
     {
         if (!_csRowEdits.TryGetValue(csReviewId, out var salary)) return;
-        Console.WriteLine($"[Sessions] Submitted CS review {csReviewId} — salary={salary} by '{_username}'");
+        var rev = _csGroups.SelectMany(g => g.PcGroups).SelectMany(p => p.Reviews)
+                           .FirstOrDefault(r => r.CsReviewId == csReviewId);
+        Console.WriteLine($"[Sessions] Approved CS review {csReviewId} — PC='{rev?.PcName}' CS='{rev?.CsName}' sessionDate={rev?.SessionDate} csSalary=₪{salary}/hr by '{_username}'");
         _busy = true;
         DashSvc.ApproveCsReview(csReviewId, salary * 100);
         _busy = false;
@@ -706,16 +711,17 @@
 
     private void SubmitAllCsForPc(int csId, int pcId)
     {
-        var pcGroup = _csGroups.FirstOrDefault(g => g.CsId == csId)
-                               ?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
+        var csGroup = _csGroups.FirstOrDefault(g => g.CsId == csId);
+        var pcGroup = csGroup?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
         if (pcGroup is null) return;
-        Console.WriteLine($"[Sessions] Submitted all CS reviews for CS {csId}, PC {pcId} by '{_username}'");
+        Console.WriteLine($"[Sessions] Approve ALL CS reviews — CS='{csGroup?.CsName}' (id={csId}) PC='{pcGroup.PcName}' (id={pcId}) by '{_username}'");
         _busy = true;
         int count = 0;
         string pcName = pcGroup.PcName;
         foreach (var rev in pcGroup.Reviews.ToList())
         {
             if (!_csRowEdits.TryGetValue(rev.CsReviewId, out var salary)) continue;
+            Console.WriteLine($"[Sessions]   → CS review {rev.CsReviewId} sessionId={rev.SessionId} date={rev.SessionDate} csSalary=₪{salary}/hr");
             DashSvc.ApproveCsReview(rev.CsReviewId, salary * 100);
             ApplyCsApprovalInMemory(rev.CsReviewId, salary * 100);
             count++;

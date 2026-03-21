@@ -714,6 +714,7 @@
 
     void CancelScanning()
     {
+        Console.WriteLine($"[Import] Scanning cancelled by '{_logUsername}'");
         _scanning = false;
         StateHasChanged();
     }
@@ -884,6 +885,9 @@
 
     async Task ExecuteNamesOnlyImport()
     {
+        var totalRows = _namesOnlyRows.Count(r => !r.IsArchive);
+        var soloRows  = _namesOnlyRows.Count(r => !r.IsArchive && r.IsSolo);
+        Console.WriteLine($"[Import] Names-only import started: {totalRows} PCs ({soloRows} solo) by '{_logUsername}'");
         _namesOnlyBusy = true;
         StateHasChanged();
         await Task.Yield();
@@ -938,11 +942,15 @@
 
         _namesOnlyBusy = false;
         _namesOnlyDone = true;
+        var ok  = _namesOnlyRows.Count(r => r.ResultOk);
+        var err = _namesOnlyRows.Count(r => r.ResultMessage != null && !r.ResultOk);
+        Console.WriteLine($"[Import] Names-only import done: {ok} OK, {err} errors by '{_logUsername}'");
         StateHasChanged();
     }
 
     void CancelNamesOnly()
     {
+        Console.WriteLine($"[Import] Names-only import cancelled/closed by '{_logUsername}'");
         _namesOnlyRows.Clear();
         _namesOnlyDone = false;
     }

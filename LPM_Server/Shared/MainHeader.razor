@@ -2898,6 +2898,7 @@ string _actionPcSearch = "";
         {
             // Solo user: open their own solo folder immediately, no selection needed
             var url = NavigationManager.ToAbsoluteUri($"/PcFolder/{_msgUserId.Value}?solo=true").ToString();
+            Console.WriteLine($"[MainHeader] Open Folder (solo): PC={_msgUserId.Value} user='{_logUsername}'");
             await JSRuntime.InvokeVoidAsync("open", url, "_blank");
             return;
         }
@@ -2911,11 +2912,13 @@ string _actionPcSearch = "";
     {
         if (!_msgUserId.HasValue) return;
         var hasPermission = DashSvc.CanAccessPcFolder(_msgUserId.Value, pcId);
+        var pcName = _apcAllPcs.FirstOrDefault(p => p.PcId == pcId)?.FullName ?? $"PC {pcId}";
         if (hasPermission)
         {
             _showActionOpenFolder = false;
             var soloParam = solo ? "?solo=true" : "";
             var url = NavigationManager.ToAbsoluteUri($"/PcFolder/{pcId}{soloParam}").ToString();
+            Console.WriteLine($"[MainHeader] Open Folder: PC='{pcName}' (id={pcId}) solo={solo} user='{_logUsername}'");
             await JSRuntime.InvokeVoidAsync("open", url, "_blank");
         }
         else
@@ -2923,6 +2926,7 @@ string _actionPcSearch = "";
             // Request permission (creates pending request + auto-message to admins)
             DashSvc.CheckOrRequestPermission(_msgUserId.Value, pcId);
             _actionPermMsg = "You do not have permissions for this PC. An approval request was sent to admin.";
+            Console.WriteLine($"[MainHeader] Open Folder DENIED + permission requested: PC='{pcName}' (id={pcId}) user='{_logUsername}'");
         }
     }
 
@@ -2959,8 +2963,10 @@ string _actionPcSearch = "";
         {
             DashSvc.CheckOrRequestPermission(_msgUserId.Value, pcId);
             _actionPermMsg = "You do not have permissions for this PC. An approval request was sent to admin.";
+            Console.WriteLine($"[MainHeader] Write Folder Summary DENIED + permission requested: PC='{pcName}' (id={pcId}) user='{_logUsername}'");
             return;
         }
+        Console.WriteLine($"[MainHeader] Write Folder Summary: opened editor for PC='{pcName}' (id={pcId}) solo={isSoloFolder} user='{_logUsername}'");
         _actionPermMsg = "";
         _actionSummaryPcId = pcId;
         _actionSummaryPcName = pcName;
@@ -3037,9 +3043,14 @@ string _actionPcSearch = "";
                     string Notes, int CourseId, string Nick) d)
     {
         var dup = PcSvc.CheckDuplicatePc(d.FirstName, d.LastName, d.Nick);
-        if (dup == "ACTIVE_DUPLICATE") return; // modal validation should catch this
+        if (dup == "ACTIVE_DUPLICATE")
+        {
+            Console.WriteLine($"[MainHeader] New PC BLOCKED (duplicate): '{d.FirstName} {d.LastName}' nick='{d.Nick}' by '{_logUsername}'");
+            return;
+        }
         PcSvc.AddPcWithPerson(d.FirstName, d.LastName, d.Phone, d.Email,
             d.DateOfBirth, d.Gender, orgId: d.OrgId > 0 ? d.OrgId : null, notes: d.Notes, nick: d.Nick);
+        Console.WriteLine($"[MainHeader] New PC created: '{d.FirstName} {d.LastName}' nick='{d.Nick}' phone='{d.Phone}' dob='{d.DateOfBirth}' by '{_logUsername}'");
         // Refresh duplicate-detection set
         _existingPcNames = new HashSet<string>(
             PcSvc.GetAllPcs().Select(p => p.FullName), StringComparer.OrdinalIgnoreCase);
@@ -3067,15 +3078,18 @@ string _actionPcSearch = "";
 
     async Task ApcAddPcFromModal(int pcId)
     {
+        var pcName = _apcAllPcs.FirstOrDefault(p => p.PcId == pcId)?.FullName ?? $"PC {pcId}";
         if (_apcIsAuditor)
         {
             DashSvc.AddUserPc(_apcUserId, pcId, "Auditor");
             DashSvc.CheckOrRequestPermission(_apcUserId, pcId);
+            Console.WriteLine($"[MainHeader] Assign PC: added PC='{pcName}' (id={pcId}) as Auditor to userId={_apcUserId} by '{_logUsername}'");
         }
         if (_apcIsCS)
         {
             DashSvc.AddUserPc(_apcUserId, pcId, "CS");
             DashSvc.CheckOrRequestPermission(_apcUserId, pcId);
+            Console.WriteLine($"[MainHeader] Assign PC: added PC='{pcName}' (id={pcId}) as CS to userId={_apcUserId} by '{_logUsername}'");
         }
         _apcSearch  = "";
         _apcNewPcId = pcId;
@@ -3090,12 +3104,17 @@ string _actionPcSearch = "";
 
     async Task ApcTogglePcRole(int pcId, string workCapacity, bool currentlyActive)
     {
+        var pcName = _apcAllPcs.FirstOrDefault(p => p.PcId == pcId)?.FullName ?? $"PC {pcId}";
         if (currentlyActive)
+        {
             DashSvc.RemoveUserPc(_apcUserId, pcId, workCapacity);
+            Console.WriteLine($"[MainHeader] Assign PC: removed role '{workCapacity}' from PC='{pcName}' (id={pcId}) userId={_apcUserId} by '{_logUsername}'");
+        }
         else
         {
             DashSvc.AddUserPc(_apcUserId, pcId, workCapacity);
             DashSvc.CheckOrRequestPermission(_apcUserId, pcId);
+            Console.WriteLine($"[MainHeader] Assign PC: added role '{workCapacity}' to PC='{pcName}' (id={pcId}) userId={_apcUserId} by '{_logUsername}'");
         }
         ApcRefreshData();
         await InvokeAsync(StateHasChanged);
@@ -3103,8 +3122,11 @@ string _actionPcSearch = "";
 
     async Task ApcRemovePcAllRoles(int pcId)
     {
+        var pcName = _apcAllPcs.FirstOrDefault(p => p.PcId == pcId)?.FullName ?? $"PC {pcId}";
+        var roles = string.Join(", ", _apcMyPcs.Where(p => p.PcId == pcId).Select(p => p.WorkCapacity));
         foreach (var pc in _apcMyPcs.Where(p => p.PcId == pcId).ToList())
             DashSvc.RemoveUserPc(_apcUserId, pcId, pc.WorkCapacity);
+        Console.WriteLine($"[MainHeader] Assign PC: removed all roles ({roles}) from PC='{pcName}' (id={pcId}) userId={_apcUserId} by '{_logUsername}'");
         ApcRefreshData();
         await InvokeAsync(StateHasChanged);
     }

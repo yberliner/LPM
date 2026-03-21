@@ -251,10 +251,12 @@
     string _backupPassword = "";
     string _passwordError = "";
     bool _authBusy;
+    string _username = "";
 
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _username = authState.User.Identity?.Name ?? "";
         if (!authState.User.IsInRole("Admin"))
         {
             Navigation.NavigateTo("/Home", forceLoad: false);
@@ -307,6 +309,7 @@
 
             if (result == "LOCKED")
             {
+                Console.WriteLine($"[Backup] Auth LOCKED (too many attempts) by '{_username}'");
                 _passwordError = "Too many failed attempts. Locked for 15 minutes.";
                 _authBusy = false;
                 return;
@@ -316,6 +319,7 @@
             {
                 var remaining = result != null && result.StartsWith("FAIL:")
                     ? result.Substring(5) : "?";
+                Console.WriteLine($"[Backup] Auth FAILED ({remaining} attempts remaining) by '{_username}'");
                 _passwordError = $"Incorrect password. {remaining} attempt(s) remaining.";
                 _authBusy = false;
                 return;
@@ -345,6 +349,7 @@
 
     async Task StartBackup(string token)
     {
+        Console.WriteLine($"[Backup] Backup started by '{_username}'");
         _downloading = true;
         _done = false;
         _error = "";
@@ -386,11 +391,20 @@
                 await Task.Delay(1000);
 
             if (!string.IsNullOrEmpty(BackupProgress.LastError))
+            {
+                Console.WriteLine($"[Backup] Backup FAILED: {BackupProgress.LastError} by '{_username}'");
                 _error = $"Backup failed: {BackupProgress.LastError}";
+            }
             else if (BackupProgress.CancelRequested)
+            {
+                Console.WriteLine($"[Backup] Backup cancelled by '{_username}'");
                 _error = "Backup was cancelled.";
+            }
             else
+            {
+                Console.WriteLine($"[Backup] Backup completed successfully by '{_username}'");
                 _done = true;
+            }
         }
         catch (Exception ex)
         {
@@ -414,6 +428,7 @@
 
     void CancelBackup()
     {
+        Console.WriteLine($"[Backup] Backup cancel requested by '{_username}'");
         BackupProgress.CancelRequested = true;
     }
 

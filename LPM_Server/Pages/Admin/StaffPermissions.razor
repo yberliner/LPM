@@ -811,20 +811,24 @@
         StateHasChanged();
         _ = Task.Delay(150).ContinueWith(_ => { _flashingCells.Remove(cellKey); InvokeAsync(StateHasChanged); });
 
+        var pcName = _allPcs.FirstOrDefault(p => p.PcId == pcId)?.FullName ?? $"PC {pcId}";
         var existing = aud.ApprovedPcs.FirstOrDefault(p => p.PcId == pcId);
         if (existing is null)
         {
             // No perm → grant as Auditor
+            Console.WriteLine($"[StaffPermissions] MatrixToggle: granted Auditor — auditor='{aud.AuditorName}' (id={aud.AuditorId}) PC='{pcName}' (id={pcId}) by '{_username}'");
             DashSvc.AddApprovedPermission(aud.AuditorId, pcId, "Auditor");
         }
         else if (existing.WorkCapacity == "Auditor" && aud.StaffRole == "CS")
         {
             // Auditor → CS (only for CS staff)
+            Console.WriteLine($"[StaffPermissions] MatrixToggle: upgraded Auditor→CS — auditor='{aud.AuditorName}' (id={aud.AuditorId}) PC='{pcName}' (id={pcId}) by '{_username}'");
             DashSvc.AddApprovedPermission(aud.AuditorId, pcId, "CS");
         }
         else
         {
             // Auditor (non-CS staff) or CS → remove
+            Console.WriteLine($"[StaffPermissions] MatrixToggle: removed '{existing.WorkCapacity}' — auditor='{aud.AuditorName}' (id={aud.AuditorId}) PC='{pcName}' (id={pcId}) by '{_username}'");
             DashSvc.RemovePermission(existing.Id);
         }
         _auditors = DashSvc.GetAuditorPermGroups();

@@ -244,7 +244,7 @@
         <div class="pcf-sidebar-backdrop" @onclick="() => _sidebarOpen = false"></div>
     }
 
-    @* ── Annotation settings / zoom menu backdrops ── *@
+    @* ── Annotation settings / zoom menu / add-page menu backdrops ── *@
     @if (_showAnnotSettings)
     {
         <div style="position:fixed;top:0;left:0;right:0;bottom:0;z-index:99;"
@@ -254,6 +254,11 @@
     {
         <div style="position:fixed;top:0;left:0;right:0;bottom:0;z-index:99;"
              @onclick="() => _showZoomMenu = false"></div>
+    }
+    @if (_showAddPageMenu)
+    {
+        <div style="position:fixed;top:0;left:0;right:0;bottom:0;z-index:99;"
+             @onclick="() => _showAddPageMenu = false"></div>
     }
 
     @* ── Page right-click context menu ── *@
@@ -1245,7 +1250,7 @@
     .pcf-addpage-menu button {
         display: block; width: 100%; text-align: left; padding: 8px 14px;
         background: none; border: none; color: #e2e8f0; font-size: .85rem;
-        cursor: pointer; white-space: nowrap;
+        cursor: pointer; white-space: nowrap; min-height: 44px;
     }
     .pcf-addpage-menu button:hover { background: rgba(255,255,255,.15); }
     .pcf-tool-active { background: #fff !important; color: #1e40af !important; font-weight: 700; }
@@ -1460,7 +1465,21 @@
     }
     .pcf-pane:hover .pcf-pane-overlay { opacity: 1; pointer-events: auto; }
     /* Always slightly visible on touch devices */
-    @@media (hover: none) { .pcf-pane-overlay { opacity: .55; pointer-events: auto; } }
+    @@media (hover: none) {
+        .pcf-pane-overlay { opacity: .55; pointer-events: auto; }
+        /* Enlarge touch targets inside the pane overlay */
+        .pcf-overlay-btn { width: 36px; height: 36px; }
+        /* Popup controls — bigger tap targets on touch screens */
+        .pcf-annot-close { width: 36px; height: 36px; font-size: 1rem; }
+        .pcf-color-swatch { width: 36px; height: 36px; }
+        .pcf-annot-popup { min-width: 210px; }
+        .pcf-annot-colors { gap: 6px; }
+        .pcf-size-item { min-height: 40px; padding: 8px 12px; }
+        .pcf-zoom-icon-btn { width: 40px; height: 40px; }
+        .pcf-zoom-chip { min-height: 36px; font-size: .85rem; }
+        /* Create-folder confirm/cancel buttons */
+        .pcf-create-folder-ok, .pcf-create-folder-cancel { width: 36px; height: 36px; }
+    }
     .pcf-overlay-name {
         font-size: .68rem; color: #e2e8f0; font-weight: 600;
         padding: 0 4px; max-width: 160px;
@@ -1548,17 +1567,20 @@
         .pcf-toolbar > .pcf-tools-right { flex-wrap: wrap; gap: 4px; }
         .pcf-toolbar .vr { display: none; }
         .pcf-toolbar-file { font-size: .78rem; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
-        .pcf-tool-btn { padding: 4px 8px; font-size: .78rem; min-height: 36px; }
-        .pcf-save-btn, .pcf-done-btn { padding: 4px 10px; font-size: .78rem; min-height: 36px; }
+        .pcf-tool-btn { padding: 4px 8px; font-size: .78rem; min-height: 44px; }
+        .pcf-save-btn, .pcf-done-btn { padding: 4px 10px; font-size: .78rem; min-height: 44px; }
+        .pcf-zoom-single { height: 44px; }
         .pcf-viewer { padding: 10px; gap: 8px; }
-        .pcf-timer-num { width: 20px; font-size: .65rem; }
-        .pcf-cs-session-label { font-size: .75rem; padding: 2px 8px; }
+        .pcf-timer-num { width: 32px; font-size: 16px; } /* 16px prevents iOS auto-zoom on tablets */
+        .pcf-cs-session-label { font-size: .75rem; padding: 2px 8px; min-height: 44px; display: inline-flex; align-items: center; }
         .pcf-color-popup { right: auto; left: 0; }
         .pcf-size-popup { right: auto; left: 0; }
+        .pcf-annot-popup { right: auto; left: 0; }
+        .pcf-zoom-menu { right: auto; left: 0; }
         .pcf-viewer-area.pcf-split { flex-direction: column; }
         .pcf-toast-success { padding: 10px 16px; font-size: .82rem; max-width: 90vw; }
         .pcf-lock-banner { flex-wrap: wrap; font-size: .78rem; }
-        .pcf-text-input { min-width: 80px; }
+        .pcf-text-input { min-width: 80px; font-size: 16px; } /* 16px prevents iOS auto-zoom on tablets */
         .pcf-page-wrapper { max-width: calc(100vw - 40px); overflow: hidden; }
     }
 
@@ -1571,23 +1593,34 @@
         .pcf-toolbar { padding: 5px 8px; gap: 3px 6px; }
         .pcf-toolbar-file { font-size: .72rem; max-width: 100px; }
         .pcf-toolbar-section { font-size: .65rem; padding: 1px 5px; }
-        .pcf-tool-btn { padding: 4px 8px; font-size: .78rem; min-height: 36px; min-width: 36px;
+        .pcf-tool-btn { padding: 4px 8px; font-size: .78rem; min-height: 44px; min-width: 44px;
                         display: inline-flex; align-items: center; justify-content: center; }
-        .pcf-save-btn { padding: 4px 10px; font-size: .72rem; min-height: 36px; }
-        .pcf-done-btn { padding: 4px 10px; font-size: .72rem; white-space: nowrap; min-height: 36px; }
-        .pcf-cs-session-label { font-size: .65rem; padding: 2px 6px; }
+        .pcf-save-btn { padding: 4px 10px; font-size: .72rem; min-height: 44px; }
+        .pcf-done-btn { padding: 4px 10px; font-size: .72rem; white-space: nowrap; min-height: 44px; }
+        .pcf-zoom-single { height: 44px; min-width: 54px; }
+        .pcf-cs-session-label { font-size: .65rem; padding: 2px 6px; min-height: 44px; display: inline-flex; align-items: center; }
         .pcf-timer { padding: 1px 4px; }
-        .pcf-timer-num { width: 18px; font-size: .6rem; }
+        .pcf-timer-num { width: 32px; font-size: 16px; } /* 16px prevents iOS auto-zoom on focus */
         .pcf-viewer { padding: 4px; gap: 4px; -webkit-overflow-scrolling: touch; }
         .pcf-pane-header { padding: 3px 8px; font-size: .7rem; }
         .pcf-lock-banner { font-size: .72rem; padding: 6px 8px; }
         .pcf-toast-success { padding: 8px 12px; font-size: .78rem; max-width: 95vw; border-radius: 8px; }
         .pcf-empty i { font-size: 2rem !important; }
         .pcf-empty div { font-size: .8rem !important; }
-        .pcf-text-input { min-width: 60px; font-size: 12px; }
+        .pcf-text-input { min-width: 60px; font-size: 16px; } /* 16px prevents iOS auto-zoom */
+        .pcf-rename-input { font-size: 16px; } /* 16px prevents iOS auto-zoom */
         .pcf-color-swatch { width: 28px; height: 28px; }
-        .pcf-ws-pager button { padding: 6px 12px; min-height: 36px; }
+        .pcf-ws-pager button { padding: 6px 12px; min-height: 44px; }
         .pcf-annotation-canvas { cursor: default; }
+        .pcf-annot-popup { max-width: calc(100vw - 20px); left: 0; right: auto; }
+        .pcf-zoom-menu { max-width: calc(100vw - 20px); left: 0; right: auto; }
+        .pcf-color-popup { max-width: calc(100vw - 20px); left: 0; right: auto; }
+        .pcf-size-popup { max-width: calc(100vw - 20px); left: 0; right: auto; }
+        .pcf-pagebg-picker { max-width: calc(100vw - 20px); }
+        .pcf-insertform-picker { max-width: calc(100vw - 20px); }
+        .pcf-ws-search input { font-size: 16px; } /* 16px prevents iOS auto-zoom */
+        .pcf-excel-input { font-size: 16px; } /* 16px prevents iOS auto-zoom */
+        .pcf-excel-action-input { font-size: 16px; } /* 16px prevents iOS auto-zoom */
     }
 
     /* ── Tree file manager ── */
@@ -1624,7 +1657,7 @@
 
     .pcf-new-btn {
         display: flex; align-items: center; gap: 4px;
-        padding: 6px 28px; font-size: .74rem; color: #64748b;
+        padding: 6px 28px; font-size: .74rem; color: #64748b; min-height: 44px;
         cursor: pointer; transition: all .12s; border-top: 1px dashed rgba(255,255,255,.06);
         margin-top: 2px;
     }
@@ -1641,7 +1674,7 @@
     .pcf-ctx-menu button {
         display: flex; align-items: center; width: 100%; text-align: left; padding: 9px 16px;
         background: none; border: none; color: #e2e8f0; font-size: .84rem;
-        cursor: pointer; white-space: nowrap; transition: background .1s;
+        cursor: pointer; white-space: nowrap; transition: background .1s; min-height: 44px;
     }
     .pcf-ctx-menu button:hover { background: rgba(255,255,255,.12); }
     .pcf-ctx-menu button i { color: #60a5fa; }
@@ -1662,7 +1695,7 @@
     .pcf-new-popover button {
         display: flex; align-items: center; width: 100%; text-align: left; padding: 9px 16px;
         background: none; border: none; color: #e2e8f0; font-size: .84rem;
-        cursor: pointer; white-space: nowrap; transition: background .1s;
+        cursor: pointer; white-space: nowrap; transition: background .1s; min-height: 44px;
     }
     .pcf-new-popover button:hover { background: rgba(255,255,255,.12); }
     .pcf-new-popover button i { color: #60a5fa; }
@@ -2086,7 +2119,7 @@
     bool _panMode;
     List<(string paneId, string file)>? _pendingReloads;
     HashSet<string>                     _dualPanes = new();
-    bool _voiceOn        = true;
+    bool _voiceOn        = false;
     Dictionary<string, (int page, int total)> _dualInfo = new();
     bool    _showEditSummary;
     int     _editSummaryId;
@@ -2176,8 +2209,9 @@
         var cookies = HttpContextAccessor.HttpContext?.Request.Cookies;
         if (cookies != null)
         {
-            if (cookies.TryGetValue("lpmVoiceOn", out var vc) && vc == "false") _voiceOn = false;
+            if (cookies.TryGetValue("lpmVoiceOn", out var vc) && vc == "true") _voiceOn = true;
             if (cookies.TryGetValue("lpmFontSize", out var fc) && int.TryParse(fc, out var fs) && _fontSizes.Contains(fs)) _fontSize = fs;
+            if (cookies.TryGetValue("lpmStrokeWidth", out var wc) && double.TryParse(wc, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var dw) && _strokeWidths.Contains(dw)) _drawWidth = dw;
         }
 
         _userName = DashSvc.GetPersonName(UserPersonId) ?? $"User {UserPersonId}";
@@ -2348,9 +2382,11 @@
                 });
             ");
 
-            // Apply restored font size preference to the JS viewer
+            // Apply restored preferences to the JS viewer
             if (_fontSize != 14)
                 await JS.InvokeVoidAsync("pcfViewer.setFontSize", _fontSize);
+            if (_drawWidth != 2.5)
+                await JS.InvokeVoidAsync("pcfViewer.setWidth", _drawWidth);
 
             // Voice commands — dynamically load script if not already present
             try
@@ -3127,6 +3163,7 @@
         _drawWidth = width;
         _showWidths = false;
         await JS.InvokeVoidAsync("pcfViewer.setWidth", width);
+        _ = JS.InvokeVoidAsync("eval", $"document.cookie=\"lpmStrokeWidth={width.ToString(System.Globalization.CultureInfo.InvariantCulture)}; path=/; max-age=31536000; SameSite=Strict\";");
     }
 
     async Task SaveAnnotations()

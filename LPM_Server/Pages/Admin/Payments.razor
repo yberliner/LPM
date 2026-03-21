@@ -501,7 +501,8 @@
 
     async Task ToggleBank(int paymentMethodId, bool newValue)
     {
-        Console.WriteLine($"[Payments] Toggled money-in-bank for payment {paymentMethodId} to {newValue} by '{_username}'");
+        var row = _rows.FirstOrDefault(r => r.PaymentMethodId == paymentMethodId);
+        Console.WriteLine($"[Payments] Money-in-bank {(newValue ? "CONFIRMED" : "UNDONE")}: paymentId={paymentMethodId} PC='{row?.PcName}' method={row?.MethodType} amount=₪{row?.Amount} paymentDate={row?.PaymentDate} by '{_username}'");
         PcSvc.SetMoneyInBank(paymentMethodId, newValue);
 
         // Play exit animation before updating state (row slides out)
@@ -513,13 +514,14 @@
             _exitId = null;
         }
 
-        var row = _rows.FirstOrDefault(r => r.PaymentMethodId == paymentMethodId);
         if (row != null) row.IsMoneyInBank = newValue;
     }
 
     async Task ToggleDetailBank(int paymentMethodId, bool newValue)
     {
-        Console.WriteLine($"[Payments] Toggled money-in-bank (detail) for payment {paymentMethodId} to {newValue} by '{_username}'");
+        var pm  = _viewDetail?.PaymentMethods.FirstOrDefault(p => p.PaymentMethodId == paymentMethodId);
+        var row = _rows.FirstOrDefault(r => r.PaymentMethodId == paymentMethodId);
+        Console.WriteLine($"[Payments] Money-in-bank {(newValue ? "CONFIRMED" : "UNDONE")} (detail): paymentId={paymentMethodId} PC='{row?.PcName ?? _viewDetail?.PcName}' method={pm?.MethodType ?? row?.MethodType} amount=₪{pm?.Amount ?? row?.Amount} paymentDate={pm?.PaymentDate ?? row?.PaymentDate} by '{_username}'");
         PcSvc.SetMoneyInBank(paymentMethodId, newValue);
 
         if (newValue && !_showBankCol)
@@ -536,8 +538,8 @@
             _viewDetail = PcSvc.GetPurchaseDetail(_viewDetail.PurchaseId);
         }
 
-        var row = _rows.FirstOrDefault(r => r.PaymentMethodId == paymentMethodId);
-        if (row != null) row.IsMoneyInBank = newValue;
+        var rowD = _rows.FirstOrDefault(r => r.PaymentMethodId == paymentMethodId);
+        if (rowD != null) rowD.IsMoneyInBank = newValue;
     }
 
     void ViewPurchase(int purchaseId)

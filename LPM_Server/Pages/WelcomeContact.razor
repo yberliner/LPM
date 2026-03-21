@@ -498,6 +498,7 @@
 
     private int _userId;
     private int _personId;
+    private string _username = "";
     private bool _isSolo;
     private bool _hasExistingData;
     private string _email = "";
@@ -598,6 +599,7 @@
         }
 
         var username2 = user.FindFirst(ClaimTypes.Name)?.Value ?? "";
+        _username = username2;
         var flags = UserDb.GetLoginFlags(username2);
         if (flags is not null)
         {
@@ -676,6 +678,7 @@
             PcSvc.SaveContactInfo(_personId, _email, _normalizedPhone);
             if (_userId > 0)
                 UserDb.SetContactConfirmed(_userId);
+            Console.WriteLine($"[WelcomeContact] Contact confirmed: user='{_username}' email='{_email}' phone='{_normalizedPhone}' solo={_isSolo} firstTime={!_hasExistingData}");
             _submitted = true;
             StateHasChanged();
             await Task.Delay(2500);

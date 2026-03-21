@@ -4,6 +4,7 @@
 @inject LPM.Services.CourseService CourseSvc
 @inject PdfService PdfService
 @inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthStateProvider
 @using LPM.Services
 @using Microsoft.AspNetCore.Authorization
 @using System.Globalization
@@ -947,6 +948,8 @@
 
 @code {
 
+    string _username = "";
+
     DateOnly                _weekStart;
     int                     _selDay;
     Dictionary<int, int>    _dayCounts       = [];
@@ -1043,8 +1046,10 @@
         _                 => "#16a34a",  // Don / default
     };
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        _username = auth.User.Identity?.Name ?? "";
         _allPersons = AcademySvc.GetAllPersons();
         _allCourses = CourseSvc.GetAllCourses();
         _weekStart  = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
@@ -1060,7 +1065,7 @@
         LoadWeek();
     }
 
-    void PrevWeek() { _weekStart = _weekStart.AddDays(-7); LoadWeek(); }
+    void PrevWeek() { _weekStart = _weekStart.AddDays(-7); Console.WriteLine($"[Academy] Week → {_weekStart} by '{_username}'"); LoadWeek(); }
 
     void NextWeek()
     {
@@ -1068,6 +1073,7 @@
         if (_weekStart >= maxWeek) return;
         var next = _weekStart.AddDays(7);
         _weekStart = next > maxWeek ? maxWeek : next;
+        Console.WriteLine($"[Academy] Week → {_weekStart} by '{_username}'");
         var today = DateOnly.FromDateTime(DateTime.Today);
         for (int i = 6; i >= 0; i--)
             if (_weekStart.AddDays(i) <= today) { _selDay = i; break; }
@@ -1278,7 +1284,10 @@
     {
         _showNoCourseWarning = false;
         if (_pendingVisitPerson != null)
+        {
+            Console.WriteLine($"[Academy] Add visit without course confirmed: person='{_pendingVisitPerson.FullName}' (id={_pendingVisitPerson.PersonId}) date={SelectedDate} by '{_username}'");
             AddVisit(_pendingVisitPerson);
+        }
         _pendingVisitPerson = null;
         StateHasChanged();
 
@@ -1298,6 +1307,7 @@
 
     void AddVisit(PersonItem p)
     {
+        Console.WriteLine($"[Academy] Add visit: person='{p.FullName}' (id={p.PersonId}) date={SelectedDate} by '{_username}'");
         _lastAddedPersonId = p.PersonId;
         AcademySvc.AddVisit(p.PersonId, SelectedDate);
         _dayCounts[_selDay] = AcademySvc.GetVisitsForDay(SelectedDate).Count;
@@ -1307,6 +1317,8 @@
 
     void DoRemoveVisit(int visitId)
     {
+        var v = _visits.FirstOrDefault(x => x.VisitId == visitId);
+        Console.WriteLine($"[Academy] Remove visit: visitId={visitId} person='{v?.FullName}' (id={v?.PersonId}) date={SelectedDate} by '{_username}'");
         AcademySvc.RemoveVisit(visitId);
         _dayCounts[_selDay] = AcademySvc.GetVisitsForDay(SelectedDate).Count;
         LoadVisits();
@@ -1315,6 +1327,8 @@
 
     async void DoCycleVisits(int visitId)
     {
+        var v = _visits.FirstOrDefault(x => x.VisitId == visitId);
+        Console.WriteLine($"[Academy] Cycle visits: visitId={visitId} person='{v?.FullName}' (id={v?.PersonId}) date={SelectedDate} by '{_username}'");
         _tappedVisitId = visitId;
         StateHasChanged();
 
@@ -1357,6 +1371,7 @@
 
     async Task PrintWeek()
     {
+        Console.WriteLine($"[Academy] Print week: {_weekStart} by '{_username}'");
         var students = AcademySvc.GetStudentVisitsForWeek(_weekStart);
         var (byRef, byOrg) = AcademySvc.GetWeeklyStudentBreakdown(_weekStart);
         var personIds = students.Select(s => s.PersonId);
@@ -1387,6 +1402,8 @@
     {
         if (_newEnrollCourseId <= 0) { _enrollError = "Select a course."; return; }
         _enrollError = "";
+        var courseName = _allCourses.FirstOrDefault(c => c.CourseId == _newEnrollCourseId)?.Name ?? $"id={_newEnrollCourseId}";
+        Console.WriteLine($"[Academy] Enroll in course: person='{_courseMgmtPersonName}' (id={_courseMgmtPersonId}) course='{courseName}' startDate={_newEnrollDate:yyyy-MM-dd} by '{_username}'");
         CourseSvc.AddStudentCourse(_courseMgmtPersonId!.Value, _newEnrollCourseId,
             _newEnrollDate.ToString("yyyy-MM-dd"));
         _newEnrollCourseId = 0;
@@ -1402,6 +1419,8 @@
 
     void ConfirmFinish(int studentCourseId)
     {
+        var courseName = _personCourseList.FirstOrDefault(c => c.StudentCourseId == studentCourseId)?.CourseName ?? $"id={studentCourseId}";
+        Console.WriteLine($"[Academy] Finish course: person='{_courseMgmtPersonName}' (id={_courseMgmtPersonId}) course='{courseName}' finishDate={_finishDate:yyyy-MM-dd} by '{_username}'");
         CourseSvc.FinishStudentCourse(studentCourseId, _finishDate.ToString("yyyy-MM-dd"));
         _finishingCourseId = null;
         _personCourseList  = CourseSvc.GetStudentCourses(_courseMgmtPersonId!.Value);
@@ -1410,6 +1429,8 @@
 
     void DeleteStudentCourse(int studentCourseId)
     {
+        var courseName = _personCourseList.FirstOrDefault(c => c.StudentCourseId == studentCourseId)?.CourseName ?? $"id={studentCourseId}";
+        Console.WriteLine($"[Academy] Delete course enrollment: person='{_courseMgmtPersonName}' (id={_courseMgmtPersonId}) course='{courseName}' by '{_username}'");
         CourseSvc.DeleteStudentCourse(studentCourseId);
         _personCourseList = CourseSvc.GetStudentCourses(_courseMgmtPersonId!.Value);
         ReloadOpenCourses();

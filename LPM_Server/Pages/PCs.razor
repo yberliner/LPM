@@ -1403,7 +1403,9 @@
                 _purchaseError = LS.T("purchases.nothingChanged");
                 return;
             }
-            Console.WriteLine($"[PCs] Updated purchase {_editingPurchaseId.Value} for PC {_selPcId} by '{_username}'");
+            var itemsLog = string.Join("; ", items.Select(x => x.itemType == "Course" ? $"Course(id={x.courseId}) ₪{x.amountPaid}" : $"Auditing {x.hoursBought}h ₪{x.amountPaid}"));
+            var pmLog    = string.Join("; ", pmList.Select(m => $"{m.MethodType} ₪{m.Amount} on {m.paymentDate}"));
+            Console.WriteLine($"[PCs] Updated purchase {_editingPurchaseId.Value} for PC {_selPcId} date={_purchaseDate:yyyy-MM-dd} items=[{itemsLog}] payments=[{pmLog}] reg={regId} ref={refId} notes='{_purchaseNotes}' by '{_username}'");
             PcSvc.UpdatePurchase(_editingPurchaseId.Value,
                 _purchaseDate.ToString("yyyy-MM-dd"),
                 string.IsNullOrWhiteSpace(_purchaseNotes) ? null : _purchaseNotes,
@@ -1411,7 +1413,9 @@
         }
         else
         {
-            Console.WriteLine($"[PCs] Created purchase for PC {_selPcId!.Value} — {items.Count} items by '{_username}'");
+            var itemsLog = string.Join("; ", items.Select(x => x.itemType == "Course" ? $"Course(id={x.courseId}) ₪{x.amountPaid}" : $"Auditing {x.hoursBought}h ₪{x.amountPaid}"));
+            var pmLog    = string.Join("; ", pmList.Select(m => $"{m.MethodType} ₪{m.Amount} on {m.paymentDate}"));
+            Console.WriteLine($"[PCs] Created purchase for PC {_selPcId!.Value} date={_purchaseDate:yyyy-MM-dd} items=[{itemsLog}] payments=[{pmLog}] reg={regId} ref={refId} notes='{_purchaseNotes}' by '{_username}'");
             PcSvc.CreatePurchase(
                 _selPcId!.Value,
                 _purchaseDate.ToString("yyyy-MM-dd"),
