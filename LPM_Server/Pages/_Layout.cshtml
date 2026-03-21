@@ -371,6 +371,12 @@
             };
         </script>
         <script src="js/folder-import.js"></script>
+        <script>
+        // ── LPM Voice Commands (PCFolder) — loaded inline for reliability ──────
+        // Full implementation is in voice-commands.js; this is the inline copy.
+        // If already defined (e.g. by dynamic loader), skip.
+        if (!window.lpmVoice) { var s = document.createElement('script'); s.src='/js/voice-commands.js'; document.head.appendChild(s); }
+        </script>
 
         <!-- FullCalendar v6 + Schedule bridge -->
         <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>

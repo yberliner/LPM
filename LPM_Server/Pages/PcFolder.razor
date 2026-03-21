@@ -714,6 +714,11 @@
                         <i class="@(tbDual ? "ri-book-open-fill" : "ri-book-open-line")"></i>
                     </button>
                 }
+                <button class="pcf-tool-btn pcf-voice-btn @(_voiceOn ? "pcf-voice-active" : "")"
+                        title="@(_voiceOn ? "Voice commands ON — click to turn off" : "Voice commands OFF — click to turn on")"
+                        @onclick="ToggleVoice">
+                    <i class="ri-mic-@(_voiceOn ? "fill" : "line")"></i>
+                </button>
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
                 @if (_csSessionId > 0 && !_csDone)
                 {
@@ -1171,6 +1176,33 @@
     }
     .pcf-addpage-menu button:hover { background: rgba(255,255,255,.15); }
     .pcf-tool-active { background: #fff !important; color: #1e40af !important; font-weight: 700; }
+
+    /* ── Voice mic button ── */
+    .pcf-voice-btn { position: relative; }
+    .pcf-voice-active { background: rgba(34,197,94,.25) !important; color: #4ade80 !important; border-color: rgba(34,197,94,.5) !important; }
+    .pcf-voice-active::after {
+        content: ''; position: absolute; inset: -3px; border-radius: 8px;
+        border: 2px solid rgba(34,197,94,.5);
+        animation: voicePulse 1.6s ease-in-out infinite;
+        pointer-events: none;
+    }
+    @@keyframes voicePulse {
+        0%,100% { opacity: .7; transform: scale(1); }
+        50%      { opacity: 0; transform: scale(1.45); }
+    }
+
+    /* ── Voice command badge ── */
+    .lpm-voice-badge {
+        position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(12px);
+        background: rgba(15,23,42,.92); color: #4ade80;
+        border: 1px solid rgba(34,197,94,.4); border-radius: 20px;
+        padding: 7px 18px; font-size: .82rem; font-weight: 600;
+        display: flex; align-items: center; gap: 4px;
+        z-index: 99999; pointer-events: none;
+        opacity: 0; transition: opacity .2s ease, transform .2s ease;
+    }
+    .lpm-voice-badge-show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .lpm-voice-badge-hide { opacity: 0; transform: translateX(-50%) translateY(-8px); }
     .pcf-color-wrap { position: relative; }
     .pcf-color-popup {
         position: absolute; top: 110%; right: 0; z-index: 100;
@@ -1959,6 +1991,7 @@
     bool _panMode;
     List<(string paneId, string file)>? _pendingReloads;
     HashSet<string>                     _dualPanes = new();
+    bool _voiceOn        = true;
     Dictionary<string, (int page, int total)> _dualInfo = new();
     bool    _showEditSummary;
     int     _editSummaryId;
@@ -2212,6 +2245,32 @@
                         window.pcfViewer.dotNetRef.invokeMethodAsync('OnArrowKey', e.key === 'ArrowRight' ? 1 : -1);
                 });
             ");
+
+            // Voice commands — dynamically load script if not already present
+            try
+            {
+                // Inject loader helper once, then call it — handles both pre-loaded and missing script
+                await JS.InvokeVoidAsync("eval", @"
+                    window._lpmEnsureVoice = window._lpmEnsureVoice || function() {
+                        return new Promise(function(resolve) {
+                            if (window.lpmVoice) { resolve(); return; }
+                            var s = document.createElement('script');
+                            s.src = '/js/voice-commands.js';
+                            s.onload = function() { console.log('[lpmVoice] loaded dynamically'); resolve(); };
+                            s.onerror = function() { console.error('[lpmVoice] failed to load /js/voice-commands.js'); resolve(); };
+                            document.head.appendChild(s);
+                        });
+                    };
+                ");
+                await JS.InvokeVoidAsync("_lpmEnsureVoice");
+                await JS.InvokeVoidAsync("lpmVoice.init", _dotNetRef, PaneIds[_activeIdx]);
+                if (_voiceOn) await JS.InvokeVoidAsync("lpmVoice.start");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PcFolder] Voice init error: {ex.Message}");
+                await JS.InvokeVoidAsync("console.error", "[PcFolder] Voice init error: " + ex.Message);
+            }
         }
 
         if (_pendingReloads != null)
@@ -2862,9 +2921,71 @@
         }
     }
 
+    async Task ToggleVoice()
+    {
+        _voiceOn = !_voiceOn;
+        try
+        {
+            if (_voiceOn) await JS.InvokeVoidAsync("lpmVoice.start");
+            else          await JS.InvokeVoidAsync("lpmVoice.stop");
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("console.error", "[PcFolder] ToggleVoice error: " + ex.Message);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnVoiceCommand(string cmd)
+    {
+        Console.WriteLine($"[PcFolder] Voice command: '{cmd}' by '{_userName}' — PC {PcId}");
+        switch (cmd)
+        {
+            case "dual":
+                await ToggleDualMode(PaneIds[_activeIdx]);
+                break;
+            case "split":
+                await CyclePanes();
+                break;
+            case "text":
+                if (_toolMode != "text") await SetTool("text");
+                await JS.InvokeVoidAsync("lpmVoice.triggerClickAtCursor");
+                break;
+            case "next":
+            case "prev":
+                // Executed directly in JS by lpmVoice for instant response — no round-trip needed
+                break;
+            case "zoomin":
+                _zoomPercent = await JS.InvokeAsync<int>("pcfViewer.zoomIn", PaneIds[_activeIdx]);
+                break;
+            case "zoomout":
+                _zoomPercent = await JS.InvokeAsync<int>("pcfViewer.zoomOut", PaneIds[_activeIdx]);
+                break;
+            case "summary":
+                await OpenEditSummary();
+                break;
+            case "undo":
+                await Undo();
+                break;
+            case "download":
+                await DownloadFile();
+                break;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnVoiceMicBlocked()
+    {
+        _voiceOn = false;
+        Console.WriteLine($"[PcFolder] Voice mic blocked/denied for '{_userName}' — PC {PcId}");
+        InvokeAsync(StateHasChanged);
+    }
+
     public void Dispose()
     {
         Console.WriteLine($"[PcFolder] Closed PC folder for '{_pcName}' (PC {PcId}) by '{_userName}'{(_csSessionId > 0 ? $" — CS session {_csSessionId} released" : "")}");
+        try { JS.InvokeVoidAsync("lpmVoice.stop"); } catch { }
         // Unregister this session from active CS tracker (only if we own it)
         if (_csSessionId > 0 && !_csLocked)
             _activeCsSessions.TryRemove(_csSessionId, out _);
