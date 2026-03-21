@@ -1124,6 +1124,18 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
+        // Guard: if a review already exists for this session, return its id instead of inserting
+        using var checkCmd = conn.CreateCommand();
+        checkCmd.CommandText = "SELECT CsReviewId FROM cs_reviews WHERE SessionId = @sid LIMIT 1";
+        checkCmd.Parameters.AddWithValue("@sid", sessionId);
+        var existing = checkCmd.ExecuteScalar();
+        if (existing is not null)
+        {
+            var existingId = Convert.ToInt32(existing);
+            Console.WriteLine($"[DashboardService] Duplicate cs_review skipped for session {sessionId}, existing CsReviewId: {existingId}");
+            return existingId;
+        }
+
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO cs_reviews
