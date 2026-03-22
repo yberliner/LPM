@@ -33,6 +33,22 @@ public class ImportJobState
     public DateTime LastActivity { get; set; }
 }
 
+public record AdjustResultRow(
+    int SessionId, int PcId, string PcName,
+    string Part,   // "Auditor" | "CS (non-solo)" | "CS (solo)"
+    string Result  // "Set → User X" | "No staff match" | "No review row"
+);
+
+public record AdjustResult(
+    // Part 1 — auditors
+    int P1Found, int P1Set, int P1NoMatch,
+    // Part 2 — CS for non-solo imported sessions
+    int P2Found, int P2ReviewsFound, int P2Set, int P2NoMatch,
+    // Part 3 — CS for solo imported sessions
+    int P3Found, int P3ReviewsFound, int P3Set, int P3NoMatch,
+    List<AdjustResultRow> Rows
+);
+
 public class ImportJobService
 {
     private readonly FolderService _folderSvc;
@@ -162,10 +178,15 @@ public class ImportJobService
         _ = Task.Run(() => ProcessInBackground(jobId, tempJobPath, manifest, coverMappings, userId));
     }
 
-    /// <summary>Read a temp file and convert to PDF if it's a doc/docx. Returns (bytes, finalFileName).</summary>
-    private (byte[]? Bytes, string FileName) ReadAndConvert(string tempFilePath, string originalFileName)
+    /// <summary>Read a temp file and convert to PDF if it's a doc/docx. Returns (bytes, finalFileName, skipReason).
+    /// skipReason is null on success; "Upload error" if temp file is missing; "Conversion failed" if LibreOffice failed.</summary>
+    private (byte[]? Bytes, string FileName, string SkipReason) ReadAndConvert(string tempFilePath, string originalFileName)
     {
-        if (!File.Exists(tempFilePath)) return (null, originalFileName);
+        if (!File.Exists(tempFilePath))
+        {
+            Console.WriteLine($"[Import] Upload error — temp file missing: '{originalFileName}'");
+            return (null, originalFileName, "Upload error");
+        }
 
         var ext = Path.GetExtension(originalFileName);
         var bytes = File.ReadAllBytes(tempFilePath);
@@ -177,15 +198,15 @@ public class ImportJobService
             {
                 var pdfName = Path.GetFileNameWithoutExtension(originalFileName) + ".pdf";
                 File.Delete(tempFilePath);
-                return (pdfBytes, pdfName);
+                return (pdfBytes, pdfName, null!);
             }
-            Console.WriteLine($"[Import] Could not convert {originalFileName} to PDF — skipping");
+            Console.WriteLine($"[Import] Could not convert '{originalFileName}' to PDF — skipping");
             File.Delete(tempFilePath);
-            return (null, originalFileName);
+            return (null, originalFileName, "Conversion failed");
         }
 
         File.Delete(tempFilePath);
-        return (bytes, originalFileName);
+        return (bytes, originalFileName, null!);
     }
 
     private void ProcessInBackground(string jobId, string tempJobPath,
@@ -261,8 +282,8 @@ public class ImportJobService
                     {
                         UpdateStatus(jobId, $"{pc.PcName} [Solo]: {file.FileName}");
                         var tempFile = Path.Combine(tempJobPath, pc.FolderName, file.Section, file.FileName);
-                        var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
-                        if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, file.Section, "Conversion failed"); continue; }
+                        var (bytes, finalName, skipReason) = ReadAndConvert(tempFile, file.FileName);
+                        if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, file.Section, skipReason); continue; }
                         if (_folderSvc.SoloSectionFileExists(pcId, file.Section, finalName))
                             _folderSvc.OverwriteSoloSectionFile(pcId, file.Section, finalName, bytes);
                         else
@@ -275,8 +296,8 @@ public class ImportJobService
                     {
                         UpdateStatus(jobId, $"{pc.PcName} [Solo]: {file.FileName}");
                         var tempFile = Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName);
-                        var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
-                        if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, "WorkSheets", "Conversion failed"); continue; }
+                        var (bytes, finalName, skipReason) = ReadAndConvert(tempFile, file.FileName);
+                        if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, "WorkSheets", skipReason); continue; }
                         if (_folderSvc.SoloSectionFileExists(pcId, "WorkSheets", finalName))
                         { IncrementSkipped(jobId, pc.PcName, finalName, "WorkSheets", "Already exists"); continue; }
                         _folderSvc.SaveSoloSectionFile(pcId, "WorkSheets", finalName, bytes);
@@ -298,8 +319,8 @@ public class ImportJobService
                         var tempFile = parentNoExt != null
                             ? Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", $"{parentNoExt}_att", file.FileName)
                             : Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName);
-                        var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
-                        if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, "Attachment", "Conversion failed"); continue; }
+                        var (bytes, finalName, skipReason) = ReadAndConvert(tempFile, file.FileName);
+                        if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, "Attachment", skipReason); continue; }
                         if (file.ParentSessionFile != null)
                         {
                             if (_folderSvc.SoloAttachmentFileExists(pcId, file.ParentSessionFile, finalName))
@@ -327,8 +348,8 @@ public class ImportJobService
                     {
                         UpdateStatus(jobId, $"{pc.PcName}: {file.FileName}");
                         var tempFile = Path.Combine(tempJobPath, pc.FolderName, file.Section, file.FileName);
-                        var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
-                        if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, file.Section, "Conversion failed"); continue; }
+                        var (bytes, finalName, skipReason) = ReadAndConvert(tempFile, file.FileName);
+                        if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, file.Section, skipReason); continue; }
                         if (_folderSvc.SectionFileExists(pcId, file.Section, finalName))
                             _folderSvc.OverwriteSectionFile(pcId, file.Section, finalName, bytes);
                         else
@@ -341,8 +362,8 @@ public class ImportJobService
                     {
                         UpdateStatus(jobId, $"{pc.PcName}: {file.FileName}");
                         var tempFile = Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName);
-                        var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
-                        if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, "WorkSheets", "Conversion failed"); continue; }
+                        var (bytes, finalName, skipReason) = ReadAndConvert(tempFile, file.FileName);
+                        if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, "WorkSheets", skipReason); continue; }
                         if (_folderSvc.SectionFileExists(pcId, "WorkSheets", finalName))
                         { IncrementSkipped(jobId, pc.PcName, finalName, "WorkSheets", "Already exists"); continue; }
                         _folderSvc.SaveSectionFile(pcId, "WorkSheets", finalName, bytes);
@@ -364,8 +385,8 @@ public class ImportJobService
                         var tempFile = parentNoExt != null
                             ? Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", $"{parentNoExt}_att", file.FileName)
                             : Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName);
-                        var (bytes, finalName) = ReadAndConvert(tempFile, file.FileName);
-                        if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, "Attachment", "Conversion failed"); continue; }
+                        var (bytes, finalName, skipReason) = ReadAndConvert(tempFile, file.FileName);
+                        if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, "Attachment", skipReason); continue; }
                         if (file.ParentSessionFile != null)
                         {
                             if (_folderSvc.AttachmentFileExists(pcId, file.ParentSessionFile, finalName))
@@ -456,6 +477,200 @@ public class ImportJobService
                 Directory.Delete(path, recursive: true);
         }
         catch { }
+    }
+
+    // ── Adjust Auditors/CS ──
+
+    private void BackupDbBeforeAdjust()
+    {
+        try
+        {
+            Directory.CreateDirectory(_dbBackupFolder);
+            var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+            var destPath = Path.Combine(_dbBackupFolder, $"lifepower_{timestamp}_Before adjusting auditors.db");
+            using var src = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_dbPath}");
+            using var dst = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={destPath}");
+            src.Open();
+            dst.Open();
+            src.BackupDatabase(dst);
+            Console.WriteLine($"[ImportJobService] DB backed up to '{destPath}' before adjust");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ImportJobService] DB backup before adjust FAILED: {ex.Message}");
+            throw; // fatal — do not proceed without backup
+        }
+    }
+
+    public AdjustResult AdjustAuditorsAndCs()
+    {
+        BackupDbBeforeAdjust();
+
+        var rows = new List<AdjustResultRow>();
+        int p1Found = 0, p1Set = 0, p1NoMatch = 0;
+        int p2Found = 0, p2ReviewsFound = 0, p2Set = 0, p2NoMatch = 0;
+        int p3Found = 0, p3ReviewsFound = 0, p3Set = 0, p3NoMatch = 0;
+
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_dbPath}");
+        conn.Open();
+
+        // ── Load sessions ──
+        var nonSoloSessions = new List<(int SessionId, int PcId)>();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "SELECT SessionId, PcId FROM sess_sessions WHERE AuditorId = -1 AND IsImported = 1";
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) nonSoloSessions.Add((r.GetInt32(0), r.GetInt32(1)));
+        }
+        p1Found = nonSoloSessions.Count;
+        p2Found = nonSoloSessions.Count;
+
+        var soloSessions = new List<(int SessionId, int PcId)>();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "SELECT SessionId, PcId FROM sess_sessions WHERE AuditorId IS NULL AND IsImported = 1";
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) soloSessions.Add((r.GetInt32(0), r.GetInt32(1)));
+        }
+        p3Found = soloSessions.Count;
+
+        // ── Batch-load PC names ──
+        var allPcIds = nonSoloSessions.Select(s => s.PcId)
+            .Concat(soloSessions.Select(s => s.PcId))
+            .Distinct().ToList();
+
+        var pcNames = new Dictionary<int, string>();
+        if (allPcIds.Count > 0)
+        {
+            var idList = string.Join(",", allPcIds);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                SELECT p.PersonId, p.FirstName || ' ' || COALESCE(p.LastName, '')
+                FROM core_persons p
+                WHERE p.PersonId IN ({idList})";
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) pcNames[r.GetInt32(0)] = r.GetString(1).Trim();
+        }
+
+        // ── Part 1: Fix Auditors ──
+        foreach (var (sessionId, pcId) in nonSoloSessions)
+        {
+            var pcName = pcNames.GetValueOrDefault(pcId, $"PC#{pcId}");
+            int? auditorUserId = null;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT UserId FROM sys_staff_pc_list WHERE PcId = @p AND WorkCapacity = 'Auditor' ORDER BY Id LIMIT 1";
+                cmd.Parameters.AddWithValue("@p", pcId);
+                var res = cmd.ExecuteScalar();
+                if (res != null && res != DBNull.Value) auditorUserId = Convert.ToInt32(res);
+            }
+            if (auditorUserId.HasValue)
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "UPDATE sess_sessions SET AuditorId = @a WHERE SessionId = @s";
+                cmd.Parameters.AddWithValue("@a", auditorUserId.Value);
+                cmd.Parameters.AddWithValue("@s", sessionId);
+                cmd.ExecuteNonQuery();
+                p1Set++;
+                rows.Add(new AdjustResultRow(sessionId, pcId, pcName, "Auditor", $"Set → User {auditorUserId}"));
+            }
+            else
+            {
+                p1NoMatch++;
+                rows.Add(new AdjustResultRow(sessionId, pcId, pcName, "Auditor", "No staff match"));
+            }
+        }
+
+        // ── Part 2: Fix CS for non-solo sessions ──
+        foreach (var (sessionId, pcId) in nonSoloSessions)
+        {
+            var pcName = pcNames.GetValueOrDefault(pcId, $"PC#{pcId}");
+            int? csReviewId = null;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT CsReviewId FROM cs_reviews WHERE SessionId = @s";
+                cmd.Parameters.AddWithValue("@s", sessionId);
+                var res = cmd.ExecuteScalar();
+                if (res != null && res != DBNull.Value) csReviewId = Convert.ToInt32(res);
+            }
+            if (!csReviewId.HasValue)
+            {
+                rows.Add(new AdjustResultRow(sessionId, pcId, pcName, "CS (non-solo)", "No review row"));
+                continue;
+            }
+            p2ReviewsFound++;
+
+            int? csUserId = null;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT UserId FROM sys_staff_pc_list WHERE PcId = @p AND WorkCapacity = 'CS' ORDER BY Id LIMIT 1";
+                cmd.Parameters.AddWithValue("@p", pcId);
+                var res = cmd.ExecuteScalar();
+                if (res != null && res != DBNull.Value) csUserId = Convert.ToInt32(res);
+            }
+            if (csUserId.HasValue)
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "UPDATE cs_reviews SET CsId = @c WHERE CsReviewId = @r";
+                cmd.Parameters.AddWithValue("@c", csUserId.Value);
+                cmd.Parameters.AddWithValue("@r", csReviewId.Value);
+                cmd.ExecuteNonQuery();
+                p2Set++;
+                rows.Add(new AdjustResultRow(sessionId, pcId, pcName, "CS (non-solo)", $"Set → User {csUserId}"));
+            }
+            else
+            {
+                p2NoMatch++;
+                rows.Add(new AdjustResultRow(sessionId, pcId, pcName, "CS (non-solo)", "No staff match"));
+            }
+        }
+
+        // ── Part 3: Fix CS for solo sessions ──
+        foreach (var (sessionId, pcId) in soloSessions)
+        {
+            var pcName = pcNames.GetValueOrDefault(pcId, $"PC#{pcId}");
+            int? csReviewId = null;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT CsReviewId FROM cs_reviews WHERE SessionId = @s";
+                cmd.Parameters.AddWithValue("@s", sessionId);
+                var res = cmd.ExecuteScalar();
+                if (res != null && res != DBNull.Value) csReviewId = Convert.ToInt32(res);
+            }
+            if (!csReviewId.HasValue)
+            {
+                rows.Add(new AdjustResultRow(sessionId, pcId, pcName, "CS (solo)", "No review row"));
+                continue;
+            }
+            p3ReviewsFound++;
+
+            int? csUserId = null;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT UserId FROM sys_staff_pc_list WHERE PcId = @p AND WorkCapacity = 'CS' ORDER BY Id LIMIT 1";
+                cmd.Parameters.AddWithValue("@p", pcId);
+                var res = cmd.ExecuteScalar();
+                if (res != null && res != DBNull.Value) csUserId = Convert.ToInt32(res);
+            }
+            if (csUserId.HasValue)
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "UPDATE cs_reviews SET CsId = @c WHERE CsReviewId = @r";
+                cmd.Parameters.AddWithValue("@c", csUserId.Value);
+                cmd.Parameters.AddWithValue("@r", csReviewId.Value);
+                cmd.ExecuteNonQuery();
+                p3Set++;
+                rows.Add(new AdjustResultRow(sessionId, pcId, pcName, "CS (solo)", $"Set → User {csUserId}"));
+            }
+            else
+            {
+                p3NoMatch++;
+                rows.Add(new AdjustResultRow(sessionId, pcId, pcName, "CS (solo)", "No staff match"));
+            }
+        }
+
+        Console.WriteLine($"[ImportJobService] AdjustAuditorsAndCs done — P1: {p1Found} found, {p1Set} set | P2: {p2Found} found, {p2Set} set | P3: {p3Found} found, {p3Set} set");
+        return new AdjustResult(p1Found, p1Set, p1NoMatch, p2Found, p2ReviewsFound, p2Set, p2NoMatch, p3Found, p3ReviewsFound, p3Set, p3NoMatch, rows);
     }
 
     // ── Name helpers ──

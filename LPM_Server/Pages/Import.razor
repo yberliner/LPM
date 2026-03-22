@@ -631,6 +631,175 @@
             </div>
         }
     }
+
+    @* ════════════════════════════════════════════════════════════
+       ADJUST AUDITORS / CS SECTION
+       ════════════════════════════════════════════════════════════ *@
+    <hr class="my-4" style="border-color:#334155; border-width:2px;" />
+
+    <div class="mb-2">
+        <span style="font-size:1.2rem; font-weight:700; color:#f59e0b;">
+            <i class="ri-user-settings-line me-2"></i>Adjust Auditors / CS
+        </span>
+        <div class="text-muted mt-1" style="font-size:.8rem;">
+            Recalculates AuditorId and CsId for all imported sessions based on <code>sys_staff_pc_list</code>.
+        </div>
+    </div>
+
+    @if (!_adjustConfirming && _adjustResult == null && !_adjustBusy)
+    {
+        <button class="btn btn-warning d-flex align-items-center gap-2"
+                @onclick="() => _adjustConfirming = true">
+            <i class="ri-refresh-line"></i>Adjust Auditors / CS
+        </button>
+    }
+
+    @if (_adjustConfirming)
+    {
+        <div class="d-flex align-items-center gap-3 mt-2 p-3 rounded-3"
+             style="background:rgba(245,158,11,.1); border:1px solid rgba(245,158,11,.4);">
+            <i class="ri-error-warning-fill" style="color:#f59e0b; font-size:1.4rem;"></i>
+            <div>
+                <div style="font-size:.9rem; font-weight:600; color:#f59e0b;">Are you sure?</div>
+                <div style="font-size:.78rem; color:#94a3b8;">
+                    This will update <strong>AuditorId</strong> in <code>sess_sessions</code> and <strong>CsId</strong> in <code>cs_reviews</code>
+                    for all imported sessions. A DB backup will be created first.
+                </div>
+            </div>
+            <div class="ms-auto d-flex gap-2">
+                <button class="btn btn-sm btn-warning" @onclick="RunAdjust">
+                    <i class="ri-check-line me-1"></i>Yes, Adjust
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="() => _adjustConfirming = false">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    }
+
+    @if (_adjustBusy)
+    {
+        <div class="d-flex align-items-center gap-3 mt-3" style="font-size:.85rem; color:#94a3b8;">
+            <span class="spinner-border spinner-border-sm" style="color:#f59e0b;"></span>
+            <span>Running adjustment&hellip; backing up DB and updating records.</span>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_adjustError))
+    {
+        <div class="alert alert-danger mt-3 py-2" style="font-size:.82rem;">
+            <i class="ri-error-warning-line me-1"></i>@_adjustError
+            <button class="btn btn-sm btn-outline-secondary ms-3" @onclick="DismissAdjustError">Dismiss</button>
+        </div>
+    }
+
+    @if (_adjustResult != null)
+    {
+        var res = _adjustResult;
+
+        @* ── Summary cards ── *@
+        <div class="row g-2 mt-2">
+            @* Part 1 *@
+            <div class="col-12 col-md-4">
+                <div class="p-3 rounded-3 h-100" style="background:#1e293b; border:1px solid #334155;">
+                    <div style="font-size:.75rem; font-weight:700; color:#60a5fa; text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px;">
+                        Part 1 — Auditors
+                    </div>
+                    <div class="d-flex flex-column gap-1" style="font-size:.82rem; color:#e2e8f0;">
+                        <div><span style="color:#94a3b8;">Sessions found:</span> <strong>@res.P1Found</strong></div>
+                        <div><span style="color:#94a3b8;">Auditors set:</span> <strong style="color:#22c55e;">@res.P1Set</strong></div>
+                        <div><span style="color:#94a3b8;">No staff match:</span> <strong style="color:@(res.P1NoMatch > 0 ? "#f87171" : "#94a3b8");">@res.P1NoMatch</strong></div>
+                    </div>
+                </div>
+            </div>
+            @* Part 2 *@
+            <div class="col-12 col-md-4">
+                <div class="p-3 rounded-3 h-100" style="background:#1e293b; border:1px solid #334155;">
+                    <div style="font-size:.75rem; font-weight:700; color:#a78bfa; text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px;">
+                        Part 2 — CS (non-solo)
+                    </div>
+                    <div class="d-flex flex-column gap-1" style="font-size:.82rem; color:#e2e8f0;">
+                        <div><span style="color:#94a3b8;">Sessions found:</span> <strong>@res.P2Found</strong></div>
+                        <div><span style="color:#94a3b8;">CS reviews found:</span> <strong>@res.P2ReviewsFound</strong></div>
+                        <div><span style="color:#94a3b8;">CS set:</span> <strong style="color:#22c55e;">@res.P2Set</strong></div>
+                        <div><span style="color:#94a3b8;">No staff match:</span> <strong style="color:@(res.P2NoMatch > 0 ? "#f87171" : "#94a3b8");">@res.P2NoMatch</strong></div>
+                        <div><span style="color:#94a3b8;">No review row:</span> <strong style="color:@(res.P2Found - res.P2ReviewsFound > 0 ? "#fbbf24" : "#94a3b8");">@(res.P2Found - res.P2ReviewsFound)</strong></div>
+                    </div>
+                </div>
+            </div>
+            @* Part 3 *@
+            <div class="col-12 col-md-4">
+                <div class="p-3 rounded-3 h-100" style="background:#1e293b; border:1px solid #334155;">
+                    <div style="font-size:.75rem; font-weight:700; color:#34d399; text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px;">
+                        Part 3 — CS (solo)
+                    </div>
+                    <div class="d-flex flex-column gap-1" style="font-size:.82rem; color:#e2e8f0;">
+                        <div><span style="color:#94a3b8;">Sessions found:</span> <strong>@res.P3Found</strong></div>
+                        <div><span style="color:#94a3b8;">CS reviews found:</span> <strong>@res.P3ReviewsFound</strong></div>
+                        <div><span style="color:#94a3b8;">CS set:</span> <strong style="color:#22c55e;">@res.P3Set</strong></div>
+                        <div><span style="color:#94a3b8;">No staff match:</span> <strong style="color:@(res.P3NoMatch > 0 ? "#f87171" : "#94a3b8");">@res.P3NoMatch</strong></div>
+                        <div><span style="color:#94a3b8;">No review row:</span> <strong style="color:@(res.P3Found - res.P3ReviewsFound > 0 ? "#fbbf24" : "#94a3b8");">@(res.P3Found - res.P3ReviewsFound)</strong></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* ── Filter bar ── *@
+        <div class="d-flex align-items-center gap-2 mt-3 flex-wrap">
+            <span style="font-size:.8rem; color:#94a3b8;">Filter:</span>
+            @foreach (var f in new[] { "All", "Has issues", "Fully matched" })
+            {
+                var filter = f;
+                <button class="btn btn-sm @(_adjustFilter == filter ? "btn-primary" : "btn-outline-secondary")"
+                        style="font-size:.75rem; padding:2px 10px;"
+                        @onclick="() => _adjustFilter = filter">
+                    @filter
+                    <span class="ms-1" style="opacity:.7;">(@AdjustPcFilterCount(filter))</span>
+                </button>
+            }
+            <button class="btn btn-sm btn-outline-secondary ms-auto" style="font-size:.75rem;"
+                    @onclick="ClearAdjustResult">
+                <i class="ri-close-line me-1"></i>Clear
+            </button>
+        </div>
+
+        @* ── Results table per PC (virtualized) ── *@
+        <div class="mt-2" style="border:1px solid #334155; border-radius:6px; overflow:hidden;">
+            <div style="overflow-y:auto; max-height:480px;">
+                <table class="table table-sm mb-0" style="font-size:.76rem; color:#e2e8f0; background:#0f172a; min-width:700px;">
+                    <thead style="position:sticky; top:0; background:#1e293b; color:#94a3b8; z-index:1;">
+                        <tr>
+                            <th style="padding:6px 10px; font-weight:600; width:6%;">PC ID</th>
+                            <th style="padding:6px 10px; font-weight:600; width:20%;">PC Name</th>
+                            <th style="padding:6px 10px; font-weight:600; width:24%; color:#60a5fa;">Auditor</th>
+                            <th style="padding:6px 10px; font-weight:600; width:25%; color:#a78bfa;">CS (non-solo)</th>
+                            <th style="padding:6px 10px; font-weight:600; width:25%; color:#34d399;">CS (solo)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <Virtualize Items="AdjustFilteredPcRows()" Context="pc">
+                            <tr style="border-color:#1e293b; @(pc.HasIssues ? "background:rgba(248,113,113,.04);" : "")">
+                                <td style="padding:5px 10px; color:#64748b;">@pc.PcId</td>
+                                <td style="padding:5px 10px; font-weight:500;">@pc.PcName</td>
+                                <td style="padding:5px 10px;">@AdjustCell(pc.AuditorSet, pc.AuditorNoMatch, 0)</td>
+                                <td style="padding:5px 10px;">@AdjustCell(pc.CsNonSoloSet, pc.CsNonSoloNoMatch, pc.CsNonSoloNoReview)</td>
+                                <td style="padding:5px 10px;">@AdjustCell(pc.CsSoloSet, pc.CsSoloNoMatch, pc.CsSoloNoReview)</td>
+                            </tr>
+                        </Virtualize>
+                    </tbody>
+                </table>
+            </div>
+            <div style="padding:6px 12px; background:#1e293b; border-top:1px solid #334155; font-size:.73rem; color:#64748b;">
+                Showing @AdjustFilteredPcRows().Count PCs
+            </div>
+        </div>
+
+        <div class="mt-2">
+            <button class="btn btn-sm btn-warning" @onclick="() => _adjustConfirming = true">
+                <i class="ri-refresh-line me-1"></i>Run Again
+            </button>
+        </div>
+    }
 </div>
 
 @code {
@@ -1007,6 +1176,45 @@
         return null;
     }
 
+    // Extension priority: lower number = higher priority
+    static readonly Dictionary<string, int> _extPriority = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".pdf"] = 1, [".docx"] = 2, [".doc"] = 2, [".rtf"] = 3, [".odt"] = 4
+    };
+
+    static List<LocalFileEntry> DeduplicateByBaseName(List<LocalFileEntry> files, string pcName)
+    {
+        var result = new List<LocalFileEntry>();
+        var groups = files.GroupBy(f => (
+            Section: f.Section,
+            Parent: f.ParentSessionFile ?? "",
+            Base: Path.GetFileNameWithoutExtension(f.FileName).ToLowerInvariant()
+        ));
+
+        foreach (var group in groups)
+        {
+            if (group.Count() == 1) { result.Add(group.First()); continue; }
+
+            var sorted = group
+                .OrderBy(f => _extPriority.GetValueOrDefault(Path.GetExtension(f.FileName), 99))
+                .ThenBy(f => f.FileIndex) // stable: first uploaded wins within same rank
+                .ToList();
+
+            var winner = sorted[0];
+            var winnerRank = _extPriority.GetValueOrDefault(Path.GetExtension(winner.FileName), 99);
+            result.Add(winner);
+
+            foreach (var dup in sorted.Skip(1))
+            {
+                var dupRank = _extPriority.GetValueOrDefault(Path.GetExtension(dup.FileName), 99);
+                var reason = dupRank == winnerRank ? "same rank — keeping first" : "lower priority";
+                Console.WriteLine($"[Import] DUPLICATE dropped ({reason}): PC='{pcName}' Section='{group.Key.Section}' Base='{group.Key.Base}' Kept='{winner.FileName}' Dropped='{dup.FileName}'");
+            }
+        }
+
+        return result;
+    }
+
     void ParseManifest(List<ManifestEntry> entries)
     {
         _manifest.Clear();
@@ -1073,6 +1281,7 @@
                 ParentSessionFile = f.ParentSession, Size = f.Entry.size,
                 LastModified = f.Entry.lastModified
             }).ToList();
+            importFiles = DeduplicateByBaseName(importFiles, pcName);
             _manifest.Add(new LocalPcManifest
             {
                 FolderName = folder, PcName = pcName,
@@ -1330,4 +1539,125 @@
         if (bytes < 1073741824) return $"{bytes / 1048576.0:F1} MB";
         return $"{bytes / 1073741824.0:F2} GB";
     }
+
+    // ── Adjust Auditors/CS ──
+
+    bool _adjustConfirming;
+    bool _adjustBusy;
+    string _adjustError = "";
+    AdjustResult? _adjustResult;
+    string _adjustFilter = "All";
+
+    async Task RunAdjust()
+    {
+        _adjustConfirming = false;
+        _adjustBusy = true;
+        _adjustError = "";
+        _adjustResult = null;
+        StateHasChanged();
+        await Task.Yield();
+
+        try
+        {
+            var result = await Task.Run(() => ImportJob.AdjustAuditorsAndCs());
+            _adjustResult = result;
+            _adjustFilter = "All";
+        }
+        catch (Exception ex)
+        {
+            _adjustError = $"Adjustment failed: {ex.Message}";
+            Console.WriteLine($"[Import] AdjustAuditorsAndCs error: {ex}");
+        }
+        finally
+        {
+            _adjustBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    void DismissAdjustError() { _adjustError = ""; _adjustConfirming = false; }
+    void ClearAdjustResult() { _adjustResult = null; _adjustConfirming = false; _adjustError = ""; }
+
+    record AdjustPcRow(
+        int PcId, string PcName,
+        int AuditorSet, int AuditorNoMatch,
+        int CsNonSoloSet, int CsNonSoloNoMatch, int CsNonSoloNoReview,
+        int CsSoloSet,    int CsSoloNoMatch,    int CsSoloNoReview)
+    {
+        public bool HasIssues => AuditorNoMatch > 0 || CsNonSoloNoMatch > 0 || CsNonSoloNoReview > 0 || CsSoloNoMatch > 0 || CsSoloNoReview > 0;
+    }
+
+    List<AdjustPcRow> BuildAdjustPcRows()
+    {
+        if (_adjustResult == null) return [];
+        return _adjustResult.Rows
+            .GroupBy(r => r.PcId)
+            .Select(g =>
+            {
+                var auditor     = g.Where(r => r.Part == "Auditor");
+                var csNonSolo   = g.Where(r => r.Part == "CS (non-solo)");
+                var csSolo      = g.Where(r => r.Part == "CS (solo)");
+                return new AdjustPcRow(
+                    g.Key,
+                    g.First().PcName,
+                    auditor.Count(r => r.Result.StartsWith("Set")),
+                    auditor.Count(r => r.Result == "No staff match"),
+                    csNonSolo.Count(r => r.Result.StartsWith("Set")),
+                    csNonSolo.Count(r => r.Result == "No staff match"),
+                    csNonSolo.Count(r => r.Result == "No review row"),
+                    csSolo.Count(r => r.Result.StartsWith("Set")),
+                    csSolo.Count(r => r.Result == "No staff match"),
+                    csSolo.Count(r => r.Result == "No review row")
+                );
+            })
+            .OrderBy(r => r.PcName)
+            .ToList();
+    }
+
+    List<AdjustPcRow> AdjustFilteredPcRows()
+    {
+        var all = BuildAdjustPcRows();
+        return _adjustFilter switch
+        {
+            "Has issues"     => all.Where(r => r.HasIssues).ToList(),
+            "Fully matched"  => all.Where(r => !r.HasIssues).ToList(),
+            _                => all
+        };
+    }
+
+    int AdjustPcFilterCount(string filter)
+    {
+        var all = BuildAdjustPcRows();
+        return filter switch
+        {
+            "Has issues"    => all.Count(r => r.HasIssues),
+            "Fully matched" => all.Count(r => !r.HasIssues),
+            _               => all.Count
+        };
+    }
+
+    RenderFragment AdjustCell(int set, int noMatch, int noReview) => __builder =>
+    {
+        if (set == 0 && noMatch == 0 && noReview == 0)
+        {
+            __builder.AddContent(0, "—");
+            return;
+        }
+        // Always show both matched and unmatched counts
+        __builder.OpenElement(1, "span");
+        __builder.AddAttribute(2, "style", "color:#22c55e; margin-right:6px;");
+        __builder.AddContent(3, $"✓ {set}");
+        __builder.CloseElement();
+        __builder.OpenElement(4, "span");
+        __builder.AddAttribute(5, "style", $"color:{(noMatch > 0 ? "#f87171" : "#475569")}; margin-right:6px;");
+        __builder.AddContent(6, $"✗ {noMatch}");
+        __builder.CloseElement();
+        if (noReview > 0)
+        {
+            __builder.OpenElement(7, "span");
+            __builder.AddAttribute(8, "style", "color:#fbbf24;");
+            __builder.AddContent(9, $"⚠ {noReview} no review");
+            __builder.CloseElement();
+        }
+    };
 }
