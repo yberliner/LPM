@@ -35,6 +35,10 @@
                         <div class="text-truncate @(_selId == a.AuditorId ? "text-white-50" : "text-muted")"
                              style="font-size:0.7rem;">
                             @(a.GradeCode ?? "—") · @RoleLabel(a.StaffRole)
+                            @if (!string.IsNullOrEmpty(a.Username))
+                            {
+                                <span style="opacity:.7;"> · @a.Username</span>
+                            }
                         </div>
                     </div>
                 </div>
@@ -118,6 +122,12 @@
                                         <span class="badge bg-secondary">@LS.T("common.inactive")</span>
                                     }
                                 </div>
+                                @if (!string.IsNullOrEmpty(_detail.Username))
+                                {
+                                    <div class="text-muted" style="font-size:.78rem;">
+                                        <i class="ri-user-line me-1"></i>@_detail.Username
+                                    </div>
+                                }
                             }
                         </div>
                         <div class="ms-auto d-flex gap-2 flex-shrink-0">

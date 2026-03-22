@@ -6,10 +6,10 @@ using LPM.Auth;
 
 namespace LPM.Services;
 
-public record AuditorListItem(int AuditorId, string FullName, string StaffRole, bool IsActive, string? GradeCode);
+public record AuditorListItem(int AuditorId, string FullName, string StaffRole, bool IsActive, string? GradeCode, string Username = "");
 public record GradeItem(int GradeId, string Code);
 public record AuditorDetail(int AuditorId, string FirstName, string LastName,
-    string StaffRole, bool IsActive, int? CurrentGradeId, string? GradeCode, bool IsAdmin);
+    string StaffRole, bool IsActive, int? CurrentGradeId, string? GradeCode, bool IsAdmin, string Username = "");
 public record AuditorStats(int TotalSessions, int FreeSessions, long TotalSec, string? LastSessionDate);
 public record AvailablePcItem(int PcId, string FullName);
 
@@ -26,7 +26,7 @@ public class AuditorService(IConfiguration config, UserDb userDb)
         cmd.CommandText = @"
             SELECT u.PersonId,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
-                   u.StaffRole, u.IsActive, g.Code
+                   u.StaffRole, u.IsActive, g.Code, u.Username
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
             LEFT JOIN lkp_grades g ON g.GradeId = u.GradeId
@@ -37,7 +37,8 @@ public class AuditorService(IConfiguration config, UserDb userDb)
         while (r.Read())
             list.Add(new AuditorListItem(
                 r.GetInt32(0), r.GetString(1), r.GetString(2),
-                r.GetInt32(3) != 0, r.IsDBNull(4) ? null : r.GetString(4)));
+                r.GetInt32(3) != 0, r.IsDBNull(4) ? null : r.GetString(4),
+                r.IsDBNull(5) ? "" : r.GetString(5)));
         return list;
     }
 
@@ -61,7 +62,7 @@ public class AuditorService(IConfiguration config, UserDb userDb)
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT u.PersonId, p.FirstName, COALESCE(p.LastName,''),
-                   u.StaffRole, u.IsActive, u.GradeId, g.Code, u.UserType
+                   u.StaffRole, u.IsActive, u.GradeId, g.Code, u.UserType, u.Username
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
             LEFT JOIN lkp_grades g ON g.GradeId = u.GradeId
@@ -75,7 +76,8 @@ public class AuditorService(IConfiguration config, UserDb userDb)
             r.GetString(3), r.GetInt32(4) != 0,
             r.IsDBNull(5) ? null : r.GetInt32(5),
             r.IsDBNull(6) ? null : r.GetString(6),
-            r.IsDBNull(7) ? false : r.GetString(7) == "Admin");
+            r.IsDBNull(7) ? false : r.GetString(7) == "Admin",
+            r.IsDBNull(8) ? "" : r.GetString(8));
     }
 
     public void UpdateAuditor(int auditorId, string firstName, string lastName,
@@ -149,7 +151,7 @@ public class AuditorService(IConfiguration config, UserDb userDb)
             WHERE NOT EXISTS (
                 SELECT 1 FROM core_users cu
                 WHERE cu.PersonId = cp.PersonId
-                  AND cu.StaffRole IN ('Auditor','CS','Solo')
+                  AND cu.StaffRole IN ('Auditor','CS')
                   AND cu.IsActive = 1
             )
             ORDER BY cp.FirstName";
@@ -163,25 +165,55 @@ public class AuditorService(IConfiguration config, UserDb userDb)
     /// Computes the would-be username and password for a PC without inserting.
     public (string Username, string Password) PreviewStaffCredentials(int pcId)
     {
-        var (fn, _) = GetPersonNameParts(pcId);
-        var (username, password) = BuildCredentials(fn, GetLastName(pcId));
-        // Resolve collision preview
-        var candidate = username;
-        int suffix = 2;
-        while (userDb.UsernameExists(candidate))
-            candidate = username + suffix++;
-        return (candidate, password);
+        var (fn, ln) = GetPersonNameParts(pcId);
+        var normFn = NormalizeToAscii(fn).ToLower().Trim();
+        var normLn = NormalizeToAscii(ln).ToLower().Trim();
+
+        string username;
+        if (!userDb.UsernameExists(normFn))
+        {
+            username = normFn;
+        }
+        else
+        {
+            var firstLast = string.IsNullOrEmpty(normLn) ? normFn : $"{normFn}.{normLn}";
+            username = firstLast;
+            int suffix = 2;
+            while (userDb.UsernameExists(username))
+                username = firstLast + suffix++;
+        }
+
+        var password = normFn.Length > 0
+            ? char.ToUpper(normFn[0]) + (normFn.Length > 1 ? normFn[1..] : "") + "1992"
+            : "Staff1992";
+        return (username, password);
     }
 
     /// Creates a core_users staff row for the given PC. Returns the generated username.
     public string CreateStaffUser(int pcId, string staffRole, bool isAdmin)
     {
         var (fn, ln) = GetPersonNameParts(pcId);
-        var (baseUsername, password) = BuildCredentials(fn, ln);
-        var username = baseUsername;
-        int suffix = 2;
-        while (userDb.UsernameExists(username))
-            username = baseUsername + suffix++;
+        var normFn = NormalizeToAscii(fn).ToLower().Trim();
+        var normLn = NormalizeToAscii(ln).ToLower().Trim();
+
+        // Try first name only; fall back to first.last; then first.last2, first.last3…
+        string username;
+        if (!userDb.UsernameExists(normFn))
+        {
+            username = normFn;
+        }
+        else
+        {
+            var firstLast = string.IsNullOrEmpty(normLn) ? normFn : $"{normFn}.{normLn}";
+            username = firstLast;
+            int suffix = 2;
+            while (userDb.UsernameExists(username))
+                username = firstLast + suffix++;
+        }
+
+        var password = normFn.Length > 0
+            ? char.ToUpper(normFn[0]) + (normFn.Length > 1 ? normFn[1..] : "") + "1992"
+            : "Staff1992";
 
         userDb.CreateUser(pcId, username, password, staffRole,
             isAdmin ? "Admin" : "Standard", null, false);
