@@ -1193,6 +1193,22 @@ public class DashboardService
     }
 
     /// <summary>
+    /// Deletes the cs_reviews row for a given session. Returns rows affected (must be 1).
+    /// Throws if more than 1 row would be affected (safety guard).
+    /// </summary>
+    public int DeleteCsReview(int sessionId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM cs_reviews WHERE SessionId = @s";
+        cmd.Parameters.AddWithValue("@s", sessionId);
+        var affected = cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] DeleteCsReview sessionId={sessionId} — {affected} row(s) deleted");
+        return affected;
+    }
+
+    /// <summary>
     /// Returns total seconds worked per week for the last <paramref name="weekCount"/> weeks,
     /// ending with <paramref name="latestWeekStart"/>. Respects each PC's role.
     /// </summary>

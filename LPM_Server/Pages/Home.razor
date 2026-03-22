@@ -114,7 +114,9 @@
                                         var isApprovedCs = s.CsStatus == "Approved";
                                         var pendingStyle = s.IsPendingApproval ? "opacity:.4; pointer-events:none;" : (isDoneCs ? "opacity:.55;" : "");
                                         <tr class="@rowClass home-pcs-row @(isDoneCs ? "home-csq-done-row" : "")" style="@pendingStyle"
-                                            @onclick="() => { if (!s.IsPendingApproval) OpenPendingCs(s); }">
+                                            @onclick="() => { if (!s.IsPendingApproval) OpenPendingCs(s); }"
+                                            @oncontextmenu="e => ShowCsCtxMenu(e, s)"
+                                            @oncontextmenu:preventDefault="true">
                                             <td class="home-pcs-pcname">
                                                 @if (isNewPc)
                                                 {
@@ -174,6 +176,44 @@
                         </div>
                     }
                 </div>
+            }
+
+            @* ── CS Queue context menu ── *@
+            @if (_csCtxVisible && _csCtxSession != null)
+            {
+                var ctxSession = _csCtxSession;
+                var canUndo = ctxSession.CsStatus is "Done" or "Approved";
+                <div class="home-cs-ctx-menu" style="top:@(_csCtxY)px; left:@(_csCtxX)px;"
+                     @onclick:stopPropagation="true">
+                    @if (_csCtxConfirming)
+                    {
+                        <div class="home-cs-ctx-confirm">
+                            <div class="home-cs-ctx-confirm-text">Mark as undone?</div>
+                            <div class="d-flex gap-2 mt-2">
+                                <button class="btn btn-sm btn-danger py-0 px-2" style="font-size:.78rem;"
+                                        disabled="@_csCtxBusy"
+                                        @onclick="ConfirmMarkUndone">
+                                    @if (_csCtxBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                    Yes, delete
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:.78rem;"
+                                        @onclick="CloseCsCtxMenu">Cancel</button>
+                            </div>
+                            @if (!string.IsNullOrEmpty(_csCtxError))
+                            {
+                                <div style="color:#f87171; font-size:.72rem; margin-top:6px;">@_csCtxError</div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="home-cs-ctx-item @(canUndo ? "" : "home-cs-ctx-item-disabled")"
+                             @onclick="() => { if (canUndo) _csCtxConfirming = true; }">
+                            <i class="ri-arrow-go-back-line me-2"></i>Mark Session as Undone
+                        </div>
+                    }
+                </div>
+                <div class="home-cs-ctx-backdrop" @onclick="CloseCsCtxMenu"></div>
             }
 
             @* ══════ MY AUDITING STATUS ══════ *@
@@ -1054,6 +1094,34 @@
         100% { left: 150%; }
     }
 
+    /* ── CS Queue context menu ── */
+    .home-cs-ctx-backdrop {
+        position: fixed; inset: 0; z-index: 1039;
+    }
+    .home-cs-ctx-menu {
+        position: fixed; z-index: 1040;
+        background: #1e293b; border: 1px solid #334155;
+        border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.5);
+        min-width: 210px; padding: 4px 0; font-size: .83rem;
+    }
+    .home-cs-ctx-item {
+        padding: 9px 16px; cursor: pointer; color: #e2e8f0;
+        display: flex; align-items: center;
+        transition: background .12s;
+    }
+    .home-cs-ctx-item:hover {
+        background: rgba(239,68,68,.15); color: #f87171;
+    }
+    .home-cs-ctx-item-disabled {
+        opacity: .35; cursor: default; pointer-events: none;
+    }
+    .home-cs-ctx-confirm {
+        padding: 10px 14px;
+    }
+    .home-cs-ctx-confirm-text {
+        font-size: .82rem; color: #e2e8f0; font-weight: 600;
+    }
+
     /* ── Pending CS Table ── */
     .home-pending-cs-card {
         border: 1px solid rgba(244,114,182,.25);
@@ -1673,6 +1741,63 @@
         if (!string.IsNullOrWhiteSpace(sessionName))
             url += $"&file={Uri.EscapeDataString(sessionName)}";
         await JS.InvokeVoidAsync("pcfOpenTab", url);
+    }
+
+    // ── CS Queue context menu ──
+
+    DashboardService.PendingCsSession? _csCtxSession;
+    bool _csCtxVisible;
+    double _csCtxX, _csCtxY;
+    bool _csCtxConfirming;
+    bool _csCtxBusy;
+    string _csCtxError = "";
+
+    void ShowCsCtxMenu(MouseEventArgs e, DashboardService.PendingCsSession s)
+    {
+        _csCtxSession    = s;
+        _csCtxX          = e.ClientX;
+        _csCtxY          = e.ClientY;
+        _csCtxVisible    = true;
+        _csCtxConfirming = false;
+        _csCtxBusy       = false;
+        _csCtxError      = "";
+    }
+
+    void CloseCsCtxMenu()
+    {
+        _csCtxVisible    = false;
+        _csCtxConfirming = false;
+        _csCtxError      = "";
+    }
+
+    async Task ConfirmMarkUndone()
+    {
+        if (_csCtxSession == null) return;
+        _csCtxBusy  = true;
+        _csCtxError = "";
+        StateHasChanged();
+
+        try
+        {
+            var sessionId = _csCtxSession.SessionId;
+            var affected  = await Task.Run(() => DashSvc.DeleteCsReview(sessionId));
+            if (affected != 1)
+            {
+                _csCtxError = $"Unexpected: {affected} row(s) deleted (expected 1). No change applied.";
+                return;
+            }
+            CloseCsCtxMenu();
+            _pendingCsSessions = DashSvc.GetPendingCsSessions(_userId!.Value, _csQueueDays, _showDoneCs);
+        }
+        catch (Exception ex)
+        {
+            _csCtxError = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _csCtxBusy = false;
+            StateHasChanged();
+        }
     }
 
     // ── Pending CS table ──
