@@ -581,7 +581,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE core_users SET AllowAll = @v WHERE PersonId = @id";
+        cmd.CommandText = "UPDATE core_users SET AllowAll = @v WHERE PersonId = @id AND StaffRole IN ('Auditor','CS')";
         cmd.Parameters.AddWithValue("@v",  allow ? 1 : 0);
         cmd.Parameters.AddWithValue("@id", auditorId);
         cmd.ExecuteNonQuery();
@@ -644,7 +644,7 @@ public class DashboardService
 
         // Check AllowAll flag
         using var aaCmd = conn.CreateCommand();
-        aaCmd.CommandText = "SELECT COALESCE(AllowAll,0) FROM core_users WHERE PersonId = @uid AND IsActive = 1 LIMIT 1";
+        aaCmd.CommandText = "SELECT COALESCE(AllowAll,0) FROM core_users WHERE PersonId = @uid AND IsActive = 1 AND StaffRole IN ('Auditor','CS') LIMIT 1";
         aaCmd.Parameters.AddWithValue("@uid", userId);
         if (aaCmd.ExecuteScalar() is long a && a == 1) return true;
 
@@ -656,15 +656,15 @@ public class DashboardService
         return cmd.ExecuteScalar() is not null;
     }
 
-    public bool CanAccessPcFolder(int personId, int pcId)
+    public bool CanAccessPcFolder(int personId, int pcId, string username)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        // Check AllowAll flag and StaffRole
+        // Query the exact row for this username (unique) — avoids picking wrong row for dual-role users
         using var cmdAllow = conn.CreateCommand();
-        cmdAllow.CommandText = "SELECT COALESCE(AllowAll,0), COALESCE(StaffRole,'') FROM core_users WHERE PersonId = @aid AND IsActive = 1 LIMIT 1";
-        cmdAllow.Parameters.AddWithValue("@aid", personId);
+        cmdAllow.CommandText = "SELECT COALESCE(AllowAll,0), COALESCE(StaffRole,'') FROM core_users WHERE LOWER(Username) = LOWER(@user) AND IsActive = 1";
+        cmdAllow.Parameters.AddWithValue("@user", username);
         using var ar = cmdAllow.ExecuteReader();
         if (ar.Read())
         {

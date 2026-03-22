@@ -1804,7 +1804,7 @@
     bool CanOpenPcFolder(int pcId)
     {
         if (!_userId.HasValue) return false;
-        return DashSvc.CanAccessPcFolder(_userId.Value, pcId);
+        return DashSvc.CanAccessPcFolder(_userId.Value, pcId, _username);
     }
 
     async Task OpenPcFolder(int pcId)

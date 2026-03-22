@@ -406,7 +406,8 @@ static bool CanAccessPcFile(HttpContext ctx, int pcId, bool solo, LPM.Services.D
     var staffRole = ctx.User.FindFirst("StaffRole")?.Value ?? "";
     if (staffRole == "Solo")
         return pcId == userId && solo;   // solo user: own PC, solo folder only
-    return dashSvc.CanAccessPcFolder(userId, pcId);  // non-solo: must have permission
+    var uname = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
+    return dashSvc.CanAccessPcFolder(userId, pcId, uname);  // non-solo: must have permission
 }
 
 app.MapGet("/api/pc-file", (int pcId, string path, LPM.Services.FolderService svc,

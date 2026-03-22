@@ -2212,8 +2212,11 @@
 
     protected override void OnInitialized()
     {
-        // Guard: enforce folder access rules
-        if (DashSvc.IsSoloAuditor(UserPersonId))
+        // Guard: enforce folder access rules — use cookie StaffRole claim (unique per login)
+        // NOT IsSoloAuditor(PersonId) which returns true for dual-role users (Auditor + Solo)
+        var _pcfStaffRole = HttpContextAccessor.HttpContext?.User.FindFirst("StaffRole")?.Value ?? "";
+        var _pcfUsername  = HttpContextAccessor.HttpContext?.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
+        if (_pcfStaffRole == "Solo")
         {
             // Solo user: can only open their own PC's solo folder
             if (PcId != UserPersonId || !Solo)
@@ -2224,7 +2227,7 @@
         }
         else
         {
-            if (!DashSvc.CanAccessPcFolder(UserPersonId, PcId))
+            if (!DashSvc.CanAccessPcFolder(UserPersonId, PcId, _pcfUsername))
             {
                 NavManager.NavigateTo("/Home", replace: true);
                 return;

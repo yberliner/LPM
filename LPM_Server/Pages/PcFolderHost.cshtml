@@ -35,7 +35,7 @@
         if (staffRole == "Solo")
             authorized = (pcId == userPersonId && solo); // solo user: own PC, solo mode only
         else
-            authorized = dashSvc.CanAccessPcFolder(userPersonId, pcId);
+            authorized = dashSvc.CanAccessPcFolder(userPersonId, pcId, username);
     }
 }
 

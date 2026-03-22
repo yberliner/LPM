@@ -2911,7 +2911,7 @@ string _actionPcSearch = "";
     async Task OnActionFolderPcSelected(int pcId, bool solo)
     {
         if (!_msgUserId.HasValue) return;
-        var hasPermission = DashSvc.CanAccessPcFolder(_msgUserId.Value, pcId);
+        var hasPermission = DashSvc.CanAccessPcFolder(_msgUserId.Value, pcId, _logUsername);
         var pcName = _apcAllPcs.FirstOrDefault(p => p.PcId == pcId)?.FullName ?? $"PC {pcId}";
         if (hasPermission)
         {
@@ -2958,7 +2958,7 @@ string _actionPcSearch = "";
     void OnActionSummaryPcSelected(int pcId, string pcName, bool isSoloFolder)
     {
         if (!_msgUserId.HasValue) return;
-        var hasPermission = DashSvc.CanAccessPcFolder(_msgUserId.Value, pcId);
+        var hasPermission = DashSvc.CanAccessPcFolder(_msgUserId.Value, pcId, _logUsername);
         if (!hasPermission)
         {
             DashSvc.CheckOrRequestPermission(_msgUserId.Value, pcId, _logUsername);
