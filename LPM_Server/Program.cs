@@ -173,9 +173,10 @@ static CookieOptions PendingCookieOpts() => new()
     MaxAge = TimeSpan.FromMinutes(10)
 };
 
-static CookieOptions TrustCookieOpts() => new()
+static CookieOptions TrustCookieOpts(bool secure) => new()
 {
     HttpOnly = true, SameSite = SameSiteMode.Strict,
+    Secure = secure,
     Expires = DateTimeOffset.UtcNow.AddYears(100)
 };
 
@@ -202,7 +203,7 @@ static void SetTrustCookie(HttpContext ctx, UserDb db, int userId)
 {
     var token = Guid.NewGuid().ToString("N");
     db.AddTrustedDevice(userId, token);
-    ctx.Response.Cookies.Append("lpm_trusted", token, TrustCookieOpts());
+    ctx.Response.Cookies.Append("lpm_trusted", token, TrustCookieOpts(ctx.Request.IsHttps));
 }
 
 // ── /loginpost ────────────────────────────────────────────────────────────

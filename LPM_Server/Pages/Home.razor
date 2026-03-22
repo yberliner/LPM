@@ -9,6 +9,8 @@
 @inject PdfService PdfService
 @inject CsNotificationService CsNotifySvc
 @inject FolderService FolderSvc
+@inject LPM.Auth.UserDb UserDb
+@inject NavigationManager Nav
 @implements IDisposable
 
 <div @onclick="DismissMenu">
@@ -1495,6 +1497,11 @@
         var staffRole  = auth.User.FindFirst("StaffRole")?.Value ?? "None";
         _isSolo        = staffRole == "Solo";
         _userId = DashSvc.GetUserIdByUsername(username);
+        if (_userId.HasValue && UserDb.NeedsContactConfirm(_userId.Value))
+        {
+            Nav.NavigateTo("/WelcomeContact");
+            return;
+        }
         if (_userId.HasValue)
         {
             _isAuditor     = DashSvc.IsAuditor(_userId.Value);
