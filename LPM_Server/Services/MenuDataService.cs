@@ -177,17 +177,6 @@ public class MenuDataService
             dirChange: false,
             requiredRole: "Admin"
         ),
-        new MainMenuItems(
-            path: "/Admin/CreateEmptyDb",
-            type: "link",
-            title: "Create Empty DB",
-            icon: "",
-            svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><ellipse cx='32' cy='20' rx='20' ry='8' fill='#5c6bc0'/><path d='M12 20v24c0 4.4 8.95 8 20 8s20-3.6 20-8V20' fill='#3949ab'/><path d='M12 32c0 4.4 8.95 8 20 8s20-3.6 20-8' fill='none' stroke='#7986cb' stroke-width='1.5'/><line x1='32' y1='36' x2='32' y2='46' stroke='#e8eaf6' stroke-width='2.5' stroke-linecap='round'/><line x1='27' y1='41' x2='37' y2='41' stroke='#e8eaf6' stroke-width='2.5' stroke-linecap='round'/></svg>",
-            selected: false,
-            active: false,
-            dirChange: false,
-            requiredRole: "Admin"
-        ),
         new MainMenuItems (
             path: "/Admin/Auditors",
             type: "link",
@@ -198,6 +187,17 @@ public class MenuDataService
             selected: false,
             active: false,
             dirChange: false
+        ),
+        new MainMenuItems(
+            path: "/Admin/Diagnostics",
+            type: "link",
+            title: "Diagnostics",
+            icon: "",
+            svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><ellipse cx='32' cy='20' rx='20' ry='8' fill='#5c6bc0'/><path d='M12 20v24c0 4.4 8.95 8 20 8s20-3.6 20-8V20' fill='#3949ab'/><path d='M12 32c0 4.4 8.95 8 20 8s20-3.6 20-8' fill='none' stroke='#7986cb' stroke-width='1.5'/><line x1='32' y1='36' x2='32' y2='46' stroke='#e8eaf6' stroke-width='2.5' stroke-linecap='round'/><line x1='27' y1='41' x2='37' y2='41' stroke='#e8eaf6' stroke-width='2.5' stroke-linecap='round'/></svg>",
+            selected: false,
+            active: false,
+            dirChange: false,
+            requiredRole: "Admin"
         ),
         new MainMenuItems(
             menuTitle: "User Guide",

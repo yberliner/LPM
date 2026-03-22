@@ -1,13 +1,13 @@
-@page "/Admin/CreateEmptyDb"
+@page "/Admin/Diagnostics"
 @attribute [Authorize(Roles = "Admin")]
 @using System.Security.Cryptography
 @using Microsoft.Data.Sqlite
 @inject IConfiguration Config
 
-<PageTitle>Create Empty DB — LPM</PageTitle>
+<PageTitle>Diagnostics — LPM</PageTitle>
 
-<div class="container-fluid py-4" style="max-width:640px;">
-    <h4 class="fw-bold mb-1">Create Empty DB Copy</h4>
+<div class="container-fluid py-4" style="max-width:900px;">
+    <h4 class="fw-bold mb-1">Diagnostics</h4>
     <p class="text-muted mb-4" style="font-size:.85rem;">
         Creates a new copy of the current database with all data tables cleared and a single
         <strong>admin / Admin1992</strong> user seeded. The live database is never touched.
@@ -44,116 +44,111 @@
         }
     </button>
 
-    @* ── core_users ── *@
-    <div class="cedb-section mt-4">
-        <div class="cedb-section-title"><i class="ri-user-settings-line me-1"></i>core_users <span class="cedb-count">@_coreUsers.Count rows</span></div>
-        @if (_coreUsers.Count == 0)
-        {
-            <div class="cedb-empty">No rows</div>
-        }
-        else
-        {
-            <div class="cedb-table-wrap">
-                <table class="cedb-table">
-                    <thead>
-                        <tr>
-                            <th>Id</th><th>PersonId</th><th>Username</th><th>StaffRole</th>
-                            <th>UserType</th><th>Active</th><th>AllowAll</th><th>MustChangePwd</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var u in _coreUsers)
-                        {
-                            <tr>
-                                <td>@u.Id</td>
-                                <td>@u.PersonId</td>
-                                <td><code>@u.Username</code></td>
-                                <td><span class="cedb-role cedb-role-@u.StaffRole.ToLower()">@u.StaffRole</span></td>
-                                <td>@u.UserType</td>
-                                <td>@(u.IsActive ? "✓" : "—")</td>
-                                <td>@(u.AllowAll ? "✓" : "—")</td>
-                                <td>@(u.MustChangePwd ? "✓" : "—")</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        }
+    @* ── core_* tables ── *@
+    <div class="cedb-group-header mt-4">
+        <i class="ri-user-line me-1"></i>core_* tables
     </div>
+    @foreach (var t in _coreTables) { @TableSection(t) }
 
-    @* ── core_persons ── *@
-    <div class="cedb-section mt-3">
-        <div class="cedb-section-title"><i class="ri-contacts-line me-1"></i>core_persons <span class="cedb-count">@_corePersons.Count rows</span></div>
-        @if (_corePersons.Count == 0)
-        {
-            <div class="cedb-empty">No rows</div>
-        }
-        else
-        {
-            <div class="cedb-table-wrap">
-                <table class="cedb-table">
-                    <thead>
-                        <tr>
-                            <th>PersonId</th><th>FirstName</th><th>LastName</th>
-                            <th>Phone</th><th>Email</th><th>Gender</th><th>Nick</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var p in _corePersons)
-                        {
-                            <tr>
-                                <td>@p.PersonId</td>
-                                <td>@p.FirstName</td>
-                                <td>@p.LastName</td>
-                                <td>@p.Phone</td>
-                                <td>@p.Email</td>
-                                <td>@p.Gender</td>
-                                <td>@p.Nick</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        }
+    @* ── sys_* tables ── *@
+    <div class="cedb-group-header mt-3">
+        <i class="ri-settings-3-line me-1"></i>sys_* tables
     </div>
+    @foreach (var t in _sysTables) { @TableSection(t) }
+
+    @* ── lkp_* tables ── *@
+    <div class="cedb-group-header mt-3">
+        <i class="ri-price-tag-3-line me-1"></i>lkp_* tables
+    </div>
+    @foreach (var t in _lkpTables) { @TableSection(t) }
+
+    @* ── sess_* tables ── *@
+    <div class="cedb-group-header mt-3">
+        <i class="ri-calendar-line me-1"></i>sess_* tables <span style="font-weight:400;font-size:.6rem;color:#94a3b8;text-transform:none;letter-spacing:0;">(last 200 rows)</span>
+    </div>
+    @foreach (var t in _sessTables) { @TableSection(t) }
+
+    @* ── cs_* tables ── *@
+    <div class="cedb-group-header mt-3">
+        <i class="ri-user-star-line me-1"></i>cs_* tables <span style="font-weight:400;font-size:.6rem;color:#94a3b8;text-transform:none;letter-spacing:0;">(last 200 rows)</span>
+    </div>
+    @foreach (var t in _csTables) { @TableSection(t) }
+
+    @* ── fin_* tables ── *@
+    <div class="cedb-group-header mt-3">
+        <i class="ri-money-dollar-circle-line me-1"></i>fin_* tables <span style="font-weight:400;font-size:.6rem;color:#94a3b8;text-transform:none;letter-spacing:0;">(last 200 rows)</span>
+    </div>
+    @foreach (var t in _finTables) { @TableSection(t) }
+
+    @* ── acad_* tables ── *@
+    <div class="cedb-group-header mt-3">
+        <i class="ri-graduation-cap-line me-1"></i>acad_* tables <span style="font-weight:400;font-size:.6rem;color:#94a3b8;text-transform:none;letter-spacing:0;">(last 200 rows)</span>
+    </div>
+    @foreach (var t in _acadTables) { @TableSection(t) }
 </div>
 
-<style>
-    .cedb-section { }
-    .cedb-section-title {
-        font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
-        color: #64748b; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
-    }
-    .cedb-section-title::after { content:''; flex:1; height:1px; background:#e2e8f0; }
-    .cedb-count { font-weight: 400; font-size: .68rem; color: #94a3b8; text-transform: none; letter-spacing: 0; }
-    .cedb-empty { font-size: .75rem; color: #94a3b8; font-style: italic; padding: 4px 0; }
-    .cedb-table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #e2e8f0; }
-    .cedb-table { width: 100%; border-collapse: collapse; font-size: .72rem; }
-    .cedb-table th {
-        padding: 4px 10px; background: #f8fafc; color: #94a3b8;
-        font-weight: 700; font-size: .6rem; text-transform: uppercase; letter-spacing: .05em;
-        border-bottom: 1px solid #e2e8f0; white-space: nowrap;
-    }
-    .cedb-table td { padding: 3px 10px; border-bottom: 1px solid #f1f5f9; color: var(--default-text-color, #1e293b); white-space: nowrap; }
-    .cedb-table tbody tr:last-child td { border-bottom: none; }
-    .cedb-table tbody tr:hover { background: rgba(99,102,241,.04); }
-    .cedb-table code { font-size: .68rem; background: rgba(0,0,0,.06); padding: 0 4px; border-radius: 3px; color: #6366f1; }
-    .cedb-role { font-size: .65rem; font-weight: 700; padding: 1px 7px; border-radius: 20px; }
-    .cedb-role-auditor { background: #dbeafe; color: #1e40af; }
-    .cedb-role-cs      { background: #dcfce7; color: #166534; }
-    .cedb-role-solo    { background: #fef3c7; color: #92400e; }
-    .cedb-role-admin   { background: #f3e8ff; color: #7c3aed; }
-</style>
-
+@* Inline component so we don't need a separate file *@
 @code {
-    record CoreUserRow(int Id, int PersonId, string Username, string StaffRole, string UserType, bool IsActive, bool AllowAll, bool MustChangePwd);
-    record CorePersonRow(int PersonId, string FirstName, string LastName, string Phone, string Email, string Gender, string Nick);
+    // ── Generic table display ──────────────────────────────────────────────
+    record TableData(string Name, string Icon, List<string> Columns, List<List<string>> Rows);
+
+    RenderFragment<TableData> TableSection => t =>
+        @<div class="cedb-section mt-3">
+            <div class="cedb-section-title cedb-section-toggle" @onclick="() => ToggleSection(t.Name)">
+                <i class="@t.Icon me-1"></i>@t.Name
+                <span class="cedb-count">@t.Rows.Count row@(t.Rows.Count != 1 ? "s" : "")</span>
+                <i class="ri-arrow-down-s-line cedb-chevron @(_collapsed.Contains(t.Name) ? "cedb-chevron-up" : "")"></i>
+            </div>
+            @if (!_collapsed.Contains(t.Name))
+            {
+                @if (t.Rows.Count == 0)
+                {
+                    <div class="cedb-empty">No rows</div>
+                }
+                else
+                {
+                    <div class="cedb-table-wrap">
+                        <table class="cedb-table">
+                            <thead>
+                                <tr>
+                                    @foreach (var col in t.Columns)
+                                    {
+                                        <th>@col</th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in t.Rows)
+                                {
+                                    <tr>
+                                        @for (int i = 0; i < t.Columns.Count; i++)
+                                        {
+                                            var val = i < row.Count ? row[i] : "";
+                                            <td>@val</td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
+        </div>;
+
+    // ── State ────────────────────────────────────────────────────────────────
+    HashSet<string> _collapsed = [];
+    void ToggleSection(string name) { if (!_collapsed.Remove(name)) _collapsed.Add(name); }
 
     bool _busy;
     string _resultPath = "";
     string _error = "";
-    List<CoreUserRow>   _coreUsers   = [];
-    List<CorePersonRow> _corePersons = [];
+    List<TableData> _coreTables = [];
+    List<TableData> _sysTables  = [];
+    List<TableData> _lkpTables  = [];
+    List<TableData> _sessTables = [];
+    List<TableData> _csTables   = [];
+    List<TableData> _finTables  = [];
+    List<TableData> _acadTables = [];
 
     protected override void OnInitialized() => LoadLiveTables();
 
@@ -163,31 +158,93 @@
         using var conn = new SqliteConnection(cs);
         conn.Open();
 
-        using var uCmd = conn.CreateCommand();
-        uCmd.CommandText = @"
-            SELECT Id, PersonId, COALESCE(Username,''), COALESCE(StaffRole,''),
-                   COALESCE(UserType,''), COALESCE(IsActive,0), COALESCE(AllowAll,0), COALESCE(MustChangePassword,0)
-            FROM core_users ORDER BY Id";
-        _coreUsers = [];
-        using var uR = uCmd.ExecuteReader();
-        while (uR.Read())
-            _coreUsers.Add(new CoreUserRow(
-                uR.GetInt32(0), uR.GetInt32(1), uR.GetString(2), uR.GetString(3),
-                uR.GetString(4), uR.GetInt32(5) != 0, uR.GetInt32(6) != 0, uR.GetInt32(7) != 0));
+        // PasswordHash and TotpSecret omitted — sensitive
+        _coreTables =
+        [
+            Load(conn, "core_users",   "ri-user-settings-line",  "ORDER BY Id",       ["PasswordHash", "TotpSecret"]),
+            Load(conn, "core_persons", "ri-contacts-line",        "ORDER BY PersonId"),
+            Load(conn, "core_pcs",     "ri-computer-line",        "ORDER BY PcId"),
+        ];
 
-        using var pCmd = conn.CreateCommand();
-        pCmd.CommandText = @"
-            SELECT PersonId, COALESCE(FirstName,''), COALESCE(LastName,''),
-                   COALESCE(Phone,''), COALESCE(Email,''), COALESCE(Gender,''), COALESCE(Nick,'')
-            FROM core_persons ORDER BY PersonId";
-        _corePersons = [];
-        using var pR = pCmd.ExecuteReader();
-        while (pR.Read())
-            _corePersons.Add(new CorePersonRow(
-                pR.GetInt32(0), pR.GetString(1), pR.GetString(2),
-                pR.GetString(3), pR.GetString(4), pR.GetString(5), pR.GetString(6)));
+        _sysTables =
+        [
+            Load(conn, "sys_staff_pc_list",   "ri-shield-check-line",   "ORDER BY Id"),
+            Load(conn, "sys_staff_messages",  "ri-message-2-line",      "ORDER BY Id"),
+            Load(conn, "sys_weekly_remarks",  "ri-calendar-check-line", "ORDER BY Id"),
+            Load(conn, "sys_trusted_devices", "ri-device-line",         "ORDER BY CreatedAt"),
+        ];
+
+        _lkpTables =
+        [
+            Load(conn, "lkp_grades",           "ri-medal-line",         "ORDER BY SortOrder"),
+            Load(conn, "lkp_courses",          "ri-book-line",          "ORDER BY CourseId"),
+            Load(conn, "lkp_cs_status",        "ri-flag-line",          "ORDER BY SortOrder"),
+            Load(conn, "lkp_folder_items",     "ri-folder-line",        "ORDER BY Section, ItemId"),
+            Load(conn, "lkp_organizations",    "ri-building-line",      "ORDER BY OrgId"),
+            Load(conn, "lkp_referral_sources", "ri-link-m",             "ORDER BY ReferralId"),
+            Load(conn, "lkp_shortcuts",        "ri-keyboard-line",      "ORDER BY Id"),
+        ];
+
+        _sessTables =
+        [
+            Load(conn, "sess_sessions",       "ri-calendar-event-line", "ORDER BY SessionId       DESC LIMIT 200"),
+            Load(conn, "sess_misc_charges",   "ri-coins-line",          "ORDER BY MiscChargeId    DESC LIMIT 200"),
+            Load(conn, "sess_folder_summary", "ri-file-text-line",      "ORDER BY Id              DESC LIMIT 200"),
+            Load(conn, "sess_meetings",       "ri-time-line",           "ORDER BY MeetingId       DESC LIMIT 200"),
+        ];
+
+        _csTables =
+        [
+            Load(conn, "cs_reviews",          "ri-shield-star-line",    "ORDER BY CsReviewId      DESC LIMIT 200"),
+            Load(conn, "cs_work_log",         "ri-todo-line",           "ORDER BY CsWorkLogId     DESC LIMIT 200"),
+            Load(conn, "cs_case_supervisors", "ri-user-star-line",      "ORDER BY CsId            DESC LIMIT 200"),
+        ];
+
+        _finTables =
+        [
+            Load(conn, "fin_purchases",       "ri-shopping-cart-line",  "ORDER BY PurchaseId      DESC LIMIT 200"),
+            Load(conn, "fin_purchase_items",  "ri-list-check",          "ORDER BY PurchaseItemId  DESC LIMIT 200"),
+            Load(conn, "fin_payments",        "ri-bank-card-line",      "ORDER BY PaymentId       DESC LIMIT 200"),
+            Load(conn, "fin_payment_methods", "ri-secure-payment-line", "ORDER BY PaymentMethodId DESC LIMIT 200"),
+        ];
+
+        _acadTables =
+        [
+            Load(conn, "acad_attendance",      "ri-check-double-line",  "ORDER BY StudentId       DESC LIMIT 200"),
+            Load(conn, "acad_student_courses", "ri-book-open-line",     "ORDER BY StudentCourseId DESC LIMIT 200"),
+        ];
     }
 
+    TableData Load(SqliteConnection conn, string table, string icon,
+                   string orderBy = "", string[]? skipCols = null)
+    {
+        var skip = new HashSet<string>(skipCols ?? [], StringComparer.OrdinalIgnoreCase);
+        var cols = new List<string>();
+        var rows = new List<List<string>>();
+        try
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"SELECT * FROM {table} {orderBy}";
+            using var r = cmd.ExecuteReader();
+            for (int i = 0; i < r.FieldCount; i++)
+                if (!skip.Contains(r.GetName(i))) cols.Add(r.GetName(i));
+            while (r.Read())
+            {
+                var row = new List<string>();
+                for (int i = 0; i < r.FieldCount; i++)
+                    if (!skip.Contains(r.GetName(i)))
+                        row.Add(r.IsDBNull(i) ? "" : r.GetValue(i).ToString() ?? "");
+                rows.Add(row);
+            }
+        }
+        catch (Exception ex)
+        {
+            cols = [$"Error: {ex.Message}"];
+        }
+        return new TableData(table, icon, cols, rows);
+    }
+
+    // ── Create action ────────────────────────────────────────────────────────
     async Task CreateEmptyDbCopy()
     {
         _busy = true; _resultPath = ""; _error = "";
@@ -238,7 +295,7 @@
             // Academic
             "acad_attendance", "acad_student_courses",
             // Sessions
-            "sess_folder_summary", "sess_misc_charges", "sess_sessions", "sess_auditors",
+            "sess_folder_summary", "sess_misc_charges", "sess_sessions", "sess_auditors", "sess_meetings",
             // CS
             "cs_work_log", "cs_reviews", "cs_case_supervisors",
             // System
@@ -316,3 +373,35 @@
         return $"pbkdf2_sha256${iterations}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
     }
 }
+
+<style>
+    .cedb-group-header {
+        font-size: .65rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em;
+        color: #475569; padding: 4px 0 2px;
+        border-bottom: 2px solid #e2e8f0; margin-bottom: 2px;
+    }
+    .cedb-section { }
+    .cedb-section-title {
+        font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+        color: #64748b; margin-bottom: 6px; margin-top: 10px;
+        display: flex; align-items: center; gap: 6px;
+    }
+    .cedb-section-title::after { content:''; flex:1; height:1px; background:#e2e8f0; }
+    .cedb-section-toggle { cursor: pointer; user-select: none; }
+    .cedb-section-toggle:hover { color: #3b82f6; }
+    .cedb-chevron { font-size: .9rem; margin-left: 2px; transition: transform .2s ease; transform: rotate(0deg); flex-shrink: 0; }
+    .cedb-chevron-up { transform: rotate(-180deg); }
+    .cedb-count { font-weight: 400; font-size: .68rem; color: #94a3b8; text-transform: none; letter-spacing: 0; }
+    .cedb-empty { font-size: .75rem; color: #94a3b8; font-style: italic; padding: 4px 0; }
+    .cedb-table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #e2e8f0; }
+    .cedb-table { width: 100%; border-collapse: collapse; font-size: .72rem; }
+    .cedb-table th {
+        padding: 4px 10px; background: #f8fafc; color: #94a3b8;
+        font-weight: 700; font-size: .6rem; text-transform: uppercase; letter-spacing: .05em;
+        border-bottom: 1px solid #e2e8f0; white-space: nowrap;
+    }
+    .cedb-table td { padding: 3px 10px; border-bottom: 1px solid #f1f5f9; color: var(--default-text-color, #1e293b); white-space: nowrap; line-height: 1.3; }
+    .cedb-table tbody tr:last-child td { border-bottom: none; }
+    .cedb-table tbody tr:hover { background: rgba(99,102,241,.04); }
+    .cedb-table code { font-size: .68rem; background: rgba(0,0,0,.06); padding: 0 4px; border-radius: 3px; color: #6366f1; }
+</style>
