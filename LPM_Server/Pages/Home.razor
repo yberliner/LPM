@@ -1578,7 +1578,7 @@
         {
             _myPcs           = DashSvc.GetUserPcs(_userId.Value);
             _soloPcIds       = DashSvc.GetSoloPcIds();
-            _unapprovedPcIds = DashSvc.GetUnapprovedPcIds(_userId.Value);
+            _unapprovedPcIds = DashSvc.GetUnapprovedPcIds(_userId.Value, _username);
             _grid          = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
             _weeklyTotals  = DashSvc.GetWeeklyTotals(_userId.Value,
                                  ChartLatestWeekStart(),
@@ -1944,7 +1944,7 @@
     {
         Console.WriteLine($"[Home] Added PC {pcId} as {workCapacity} by '{_username}'");
         DashSvc.AddUserPc(_userId!.Value, pcId, workCapacity);
-        DashSvc.CheckOrRequestPermission(_userId!.Value, pcId);
+        DashSvc.CheckOrRequestPermission(_userId!.Value, pcId, _username);
         await RefreshAsync();
     }
 

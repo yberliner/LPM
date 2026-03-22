@@ -113,15 +113,15 @@ public class DashboardService
     public record ApprovedPc(int PcId, string FullName, bool IsAlsoSolo = false);
 
     /// <summary>Returns PCs the user is allowed to access (AllowAll or approved permission).</summary>
-    public List<ApprovedPc> GetApprovedPcsForUser(int userId)
+    public List<ApprovedPc> GetApprovedPcsForUser(int userId, string username)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        // Check AllowAll and StaffRole
+        // Query by username (unique) to always get the correct row — avoids ambiguity when a PersonId has both Auditor and Solo rows
         using var aaCmd = conn.CreateCommand();
-        aaCmd.CommandText = "SELECT COALESCE(AllowAll, 0), COALESCE(StaffRole, '') FROM core_users WHERE PersonId = @id AND IsActive = 1 LIMIT 1";
-        aaCmd.Parameters.AddWithValue("@id", userId);
+        aaCmd.CommandText = "SELECT COALESCE(AllowAll, 0), COALESCE(StaffRole, '') FROM core_users WHERE LOWER(Username) = LOWER(@user) AND IsActive = 1";
+        aaCmd.Parameters.AddWithValue("@user", username);
         using var aaR = aaCmd.ExecuteReader();
         bool allowAll = false;
         bool isSolo = false;
@@ -170,14 +170,15 @@ public class DashboardService
     /// Unlike GetApprovedPcsForUser, this ALWAYS uses sys_staff_pc_list — AllowAll is ignored.
     /// Solo users can only session their own PC.
     /// </summary>
-    public List<ApprovedPc> GetSessionablePcsForUser(int userId)
+    public List<ApprovedPc> GetSessionablePcsForUser(int userId, string username)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
+        // Query by username (unique) to always get the correct row
         using var roleCmd = conn.CreateCommand();
-        roleCmd.CommandText = "SELECT COALESCE(StaffRole,'') FROM core_users WHERE PersonId = @id AND IsActive = 1 LIMIT 1";
-        roleCmd.Parameters.AddWithValue("@id", userId);
+        roleCmd.CommandText = "SELECT COALESCE(StaffRole,'') FROM core_users WHERE LOWER(Username) = LOWER(@user) AND IsActive = 1";
+        roleCmd.Parameters.AddWithValue("@user", username);
         var staffRole = roleCmd.ExecuteScalar() as string ?? "";
 
         using var cmd = conn.CreateCommand();
@@ -356,15 +357,15 @@ public class DashboardService
     /// permitted (AllowAll=1 or existing approved permission). Returns false if a pending
     /// request was created and the PC should appear grayed out.
     /// </summary>
-    public bool CheckOrRequestPermission(int auditorId, int pcId)
+    public bool CheckOrRequestPermission(int auditorId, int pcId, string username)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        // Check AllowAll flag
+        // Query by username (unique) to always get the correct row
         using var aaCmd = conn.CreateCommand();
-        aaCmd.CommandText = "SELECT COALESCE(AllowAll,0) FROM core_users WHERE PersonId = @id AND IsActive = 1 LIMIT 1";
-        aaCmd.Parameters.AddWithValue("@id", auditorId);
+        aaCmd.CommandText = "SELECT COALESCE(AllowAll,0) FROM core_users WHERE LOWER(Username) = LOWER(@user) AND IsActive = 1";
+        aaCmd.Parameters.AddWithValue("@user", username);
         var allowAll = aaCmd.ExecuteScalar() is long aa && aa == 1;
         if (allowAll)
         {
@@ -460,15 +461,15 @@ public class DashboardService
 
     /// Returns all PcIds in the auditor's StaffPcList that are NOT explicitly approved.
     /// Includes PCs added before the permission system existed.
-    public HashSet<int> GetUnapprovedPcIds(int auditorId)
+    public HashSet<int> GetUnapprovedPcIds(int auditorId, string username)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        // AllowAll=1 → nothing blocked
+        // Query by username (unique) to always get the correct row
         using var aaCmd = conn.CreateCommand();
-        aaCmd.CommandText = "SELECT COALESCE(AllowAll, 0) FROM core_users WHERE PersonId = @id AND IsActive = 1 LIMIT 1";
-        aaCmd.Parameters.AddWithValue("@id", auditorId);
+        aaCmd.CommandText = "SELECT COALESCE(AllowAll, 0) FROM core_users WHERE LOWER(Username) = LOWER(@user) AND IsActive = 1";
+        aaCmd.Parameters.AddWithValue("@user", username);
         if (aaCmd.ExecuteScalar() is long aa && aa == 1) return [];
 
         // Any PC in StaffPcList without an IsApproved=1 entry is unapproved
@@ -2162,14 +2163,14 @@ public class DashboardService
         return list;
     }
 
-    /// <summary>Returns whether the user has AllowAll=1 in core_users.</summary>
-    public bool GetAllowAllFlag(int userId)
+    /// <summary>Returns whether the user has AllowAll=1 in core_users (looked up by unique username).</summary>
+    public bool GetAllowAllFlag(string username)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT COALESCE(AllowAll,0) FROM core_users WHERE PersonId = @id AND IsActive = 1 LIMIT 1";
-        cmd.Parameters.AddWithValue("@id", userId);
+        cmd.CommandText = "SELECT COALESCE(AllowAll,0) FROM core_users WHERE LOWER(Username) = LOWER(@user) AND IsActive = 1";
+        cmd.Parameters.AddWithValue("@user", username);
         return cmd.ExecuteScalar() is long aa && aa == 1;
     }
 

@@ -2350,7 +2350,7 @@
     void OpenImportSession()
     {
         if (!_msgUserId.HasValue) return;
-        _approvedPcs = DashSvc.GetSessionablePcsForUser(_msgUserId.Value);
+        _approvedPcs = DashSvc.GetSessionablePcsForUser(_msgUserId.Value, _logUsername);
         // Solo user: always their own PC (PersonId == PcId)
         _importPcId = _isSoloUser ? _msgUserId.Value : 0;
         _importSessionFile = null;
@@ -2645,8 +2645,8 @@ string _actionPcSearch = "";
             ? char.ToUpper(name[0]) + name[1..]
             : "LP Management";
         _avatarUrl = UserDb.GetAvatarPath(name.ToLower());
-        _isSoloUser   = auth.User.FindFirst("StaffRole")?.Value == "Solo";
         var apcStaffRole = auth.User.FindFirst("StaffRole")?.Value ?? "";
+        _isSoloUser   = apcStaffRole == "Solo";
         _apcIsAuditor = apcStaffRole is "Auditor" or "CS" || auth.User.IsInRole("Admin");
         _apcIsCS      = apcStaffRole is "CS"              || auth.User.IsInRole("Admin");
 
@@ -2658,7 +2658,7 @@ string _actionPcSearch = "";
         _msgUserId = DashSvc.GetUserIdByUsername(name);
         if (_msgUserId.HasValue)
         {
-            _isAllowAll = DashSvc.GetAllowAllFlag(_msgUserId.Value);
+            _isAllowAll = DashSvc.GetAllowAllFlag(_logUsername);
             _pendingMsgCount = DashSvc.GetPendingMessageCount(_msgUserId.Value);
             // Subscribe to instant message notifications
             MsgNotifier.OnNewMessage += OnNewMessageReceived;
@@ -2888,7 +2888,7 @@ string _actionPcSearch = "";
     void LoadAllPcs()
     {
         if (!_msgUserId.HasValue) return;
-        _actionAllPcs = DashSvc.GetApprovedPcsForUser(_msgUserId.Value);
+        _actionAllPcs = DashSvc.GetApprovedPcsForUser(_msgUserId.Value, _logUsername);
     }
 
     async Task OpenActionFolder()
@@ -2924,7 +2924,7 @@ string _actionPcSearch = "";
         else
         {
             // Request permission (creates pending request + auto-message to admins)
-            DashSvc.CheckOrRequestPermission(_msgUserId.Value, pcId);
+            DashSvc.CheckOrRequestPermission(_msgUserId.Value, pcId, _logUsername);
             _actionPermMsg = "You do not have permissions for this PC. An approval request was sent to admin.";
             Console.WriteLine($"[MainHeader] Open Folder DENIED + permission requested: PC='{pcName}' (id={pcId}) user='{_logUsername}'");
         }
@@ -2961,7 +2961,7 @@ string _actionPcSearch = "";
         var hasPermission = DashSvc.CanAccessPcFolder(_msgUserId.Value, pcId);
         if (!hasPermission)
         {
-            DashSvc.CheckOrRequestPermission(_msgUserId.Value, pcId);
+            DashSvc.CheckOrRequestPermission(_msgUserId.Value, pcId, _logUsername);
             _actionPermMsg = "You do not have permissions for this PC. An approval request was sent to admin.";
             Console.WriteLine($"[MainHeader] Write Folder Summary DENIED + permission requested: PC='{pcName}' (id={pcId}) user='{_logUsername}'");
             return;
@@ -3076,7 +3076,7 @@ string _actionPcSearch = "";
     {
         _apcMyPcs      = DashSvc.GetUserPcs(_apcUserId);
         _apcAllPcs     = DashSvc.GetAllPcs();
-        _apcUnapproved = DashSvc.GetUnapprovedPcIds(_apcUserId);
+        _apcUnapproved = DashSvc.GetUnapprovedPcIds(_apcUserId, _logUsername);
     }
 
     async Task ApcAddPcFromModal(int pcId)
@@ -3085,13 +3085,13 @@ string _actionPcSearch = "";
         if (_apcIsAuditor)
         {
             DashSvc.AddUserPc(_apcUserId, pcId, "Auditor");
-            DashSvc.CheckOrRequestPermission(_apcUserId, pcId);
+            DashSvc.CheckOrRequestPermission(_apcUserId, pcId, _logUsername);
             Console.WriteLine($"[MainHeader] Assign PC: added PC='{pcName}' (id={pcId}) as Auditor to userId={_apcUserId} by '{_logUsername}'");
         }
         if (_apcIsCS)
         {
             DashSvc.AddUserPc(_apcUserId, pcId, "CS");
-            DashSvc.CheckOrRequestPermission(_apcUserId, pcId);
+            DashSvc.CheckOrRequestPermission(_apcUserId, pcId, _logUsername);
             Console.WriteLine($"[MainHeader] Assign PC: added PC='{pcName}' (id={pcId}) as CS to userId={_apcUserId} by '{_logUsername}'");
         }
         _apcSearch  = "";
@@ -3116,7 +3116,7 @@ string _actionPcSearch = "";
         else
         {
             DashSvc.AddUserPc(_apcUserId, pcId, workCapacity);
-            DashSvc.CheckOrRequestPermission(_apcUserId, pcId);
+            DashSvc.CheckOrRequestPermission(_apcUserId, pcId, _logUsername);
             Console.WriteLine($"[MainHeader] Assign PC: added role '{workCapacity}' to PC='{pcName}' (id={pcId}) userId={_apcUserId} by '{_logUsername}'");
         }
         ApcRefreshData();
