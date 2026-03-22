@@ -100,6 +100,12 @@
                                             <label class="form-check-label small aud-edit-label">Admin</label>
                                         </div>
                                     </div>
+                                    <div class="col-auto d-flex align-items-end pb-1">
+                                        <div class="form-check form-switch mb-0">
+                                            <input class="form-check-input" type="checkbox" @bind="_editAllowAll" />
+                                            <label class="form-check-label small aud-edit-label">Unrestricted folder access</label>
+                                        </div>
+                                    </div>
                                 </div>
                                 @if (!string.IsNullOrEmpty(_editError))
                                 {
@@ -122,12 +128,26 @@
                                         <span class="badge bg-secondary">@LS.T("common.inactive")</span>
                                     }
                                 </div>
-                                @if (!string.IsNullOrEmpty(_detail.Username))
-                                {
-                                    <div class="text-muted" style="font-size:.78rem;">
-                                        <i class="ri-user-line me-1"></i>@_detail.Username
-                                    </div>
-                                }
+                                <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
+                                    @if (!string.IsNullOrEmpty(_detail.Username))
+                                    {
+                                        <div class="text-muted" style="font-size:.78rem;">
+                                            <i class="ri-user-line me-1"></i>@_detail.Username
+                                        </div>
+                                    }
+                                    @if (_detail.AllowAll)
+                                    {
+                                        <span class="badge bg-warning text-dark" style="font-size:.7rem;">
+                                            <i class="ri-folder-open-line me-1"></i>Unrestricted folder access
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-light text-secondary border" style="font-size:.7rem;">
+                                            <i class="ri-folder-lock-line me-1"></i>Restricted access
+                                        </span>
+                                    }
+                                </div>
                             }
                         </div>
                         <div class="ms-auto d-flex gap-2 flex-shrink-0">
@@ -197,6 +217,170 @@
                 <p class="mt-2 small">@LS.T("auditors.selectPrompt")</p>
             </div>
         }
+
+    </div>
+</div>
+
+@* ── Security Panel ── *@
+<div class="aud-sec-panel mt-3">
+    <div class="aud-sec-panel-title">
+        <i class="ri-shield-keyhole-line me-1"></i>Security Overview
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+
+        @* ── Solo permissions ── *@
+        <div class="aud-sec-card @(_soloViolations.Count > 0 ? "aud-sec-card-danger" : "aud-sec-card-ok")">
+            <div class="aud-sec-card-hdr">
+                <i class="@(_soloViolations.Count > 0 ? "ri-error-warning-fill" : "ri-shield-check-line") me-1"></i>
+                Solo permissions
+                <span class="aud-sec-badge @(_soloViolations.Count > 0 ? "aud-sec-badge-danger" : "aud-sec-badge-ok")">
+                    @(_soloViolations.Count > 0 ? _soloViolations.Count.ToString() : "OK")
+                </span>
+            </div>
+            @if (_soloViolations.Count == 0)
+            {
+                <div class="aud-sec-ok-row"><i class="ri-check-line me-1"></i>All solo users are correctly configured</div>
+            }
+            else
+            {
+                <table class="aud-sec-table">
+                    <thead><tr><th>Name</th><th>Username</th><th>Issue</th></tr></thead>
+                    <tbody>
+                        @foreach (var v in _soloViolations)
+                        {
+                            <tr>
+                                <td>@v.FullName</td>
+                                <td><code>@v.Username</code></td>
+                                <td class="text-danger">
+                                    @if (v.BadAllowAll) { <span>AllowAll=1 </span> }
+                                    @if (v.BadUserType) { <span>UserType≠Standard</span> }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        @* ── Duplicate Auditor/CS rows ── *@
+        <div class="aud-sec-card @(_duplicateStaff.Count > 0 ? "aud-sec-card-danger" : "aud-sec-card-ok")">
+            <div class="aud-sec-card-hdr">
+                <i class="@(_duplicateStaff.Count > 0 ? "ri-error-warning-fill" : "ri-shield-check-line") me-1"></i>
+                Duplicate staff rows
+                <span class="aud-sec-badge @(_duplicateStaff.Count > 0 ? "aud-sec-badge-danger" : "aud-sec-badge-ok")">
+                    @(_duplicateStaff.Count > 0 ? _duplicateStaff.Count.ToString() : "OK")
+                </span>
+            </div>
+            @if (_duplicateStaff.Count == 0)
+            {
+                <div class="aud-sec-ok-row"><i class="ri-check-line me-1"></i>Each person has at most one Auditor/CS row</div>
+            }
+            else
+            {
+                <table class="aud-sec-table">
+                    <thead><tr><th>Name</th><th>Duplicate rows</th></tr></thead>
+                    <tbody>
+                        @foreach (var d in _duplicateStaff)
+                        {
+                            <tr>
+                                <td>@d.FullName</td>
+                                <td><code>@d.Roles</code></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        @* ── Admin users ── *@
+        <div class="aud-sec-card aud-sec-card-blue">
+            <div class="aud-sec-card-hdr">
+                <i class="ri-shield-user-line me-1"></i>Admin users
+                <span class="aud-sec-badge aud-sec-badge-blue">
+                    @(_secSummary?.AdminUsers.Count.ToString() ?? "…")
+                </span>
+            </div>
+            @if (_secSummary == null)
+            {
+                <div class="aud-sec-loading"><span class="spinner-border spinner-border-sm me-1" style="width:.65rem;height:.65rem;border-width:2px;"></span>Loading…</div>
+            }
+            else if (_secSummary.AdminUsers.Count == 0)
+            {
+                <div class="aud-sec-ok-row aud-sec-reveal">No admin users</div>
+            }
+            else
+            {
+                <table class="aud-sec-table aud-sec-reveal">
+                    <thead><tr><th>Name</th><th>Username</th><th>Role</th></tr></thead>
+                    <tbody>
+                        @foreach (var u in _secSummary.AdminUsers)
+                        {
+                            <tr><td>@u.FullName</td><td><code>@u.Username</code></td><td>@u.StaffRole</td></tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        @* ── Unrestricted folder access ── *@
+        <div class="aud-sec-card aud-sec-card-amber">
+            <div class="aud-sec-card-hdr">
+                <i class="ri-folder-open-line me-1"></i>Unrestricted folder access
+                <span class="aud-sec-badge aud-sec-badge-amber">
+                    @(_secSummary?.AllowAllUsers.Count.ToString() ?? "…")
+                </span>
+            </div>
+            @if (_secSummary == null)
+            {
+                <div class="aud-sec-loading"><span class="spinner-border spinner-border-sm me-1" style="width:.65rem;height:.65rem;border-width:2px;"></span>Loading…</div>
+            }
+            else if (_secSummary.AllowAllUsers.Count == 0)
+            {
+                <div class="aud-sec-ok-row aud-sec-reveal">No unrestricted users</div>
+            }
+            else
+            {
+                <table class="aud-sec-table aud-sec-reveal">
+                    <thead><tr><th>Name</th><th>Username</th><th>Role</th></tr></thead>
+                    <tbody>
+                        @foreach (var u in _secSummary.AllowAllUsers)
+                        {
+                            <tr><td>@u.FullName</td><td><code>@u.Username</code></td><td>@u.StaffRole</td></tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        @* ── Default password ── *@
+        <div class="aud-sec-card @(_secSummary?.DefaultPasswordUsers.Count > 0 ? "aud-sec-card-danger" : "aud-sec-card-ok")">
+            <div class="aud-sec-card-hdr">
+                <i class="ri-lock-password-line me-1"></i>Default password not changed
+                <span class="aud-sec-badge @(_secSummary?.DefaultPasswordUsers.Count > 0 ? "aud-sec-badge-danger" : "aud-sec-badge-ok")">
+                    @(_secSummary == null ? "…" : _secSummary.DefaultPasswordUsers.Count == 0 ? "OK" : _secSummary.DefaultPasswordUsers.Count.ToString())
+                </span>
+            </div>
+            @if (_secSummary == null)
+            {
+                <div class="aud-sec-loading"><span class="spinner-border spinner-border-sm me-1" style="width:.65rem;height:.65rem;border-width:2px;"></span>Verifying password hashes…</div>
+            }
+            else if (_secSummary.DefaultPasswordUsers.Count == 0)
+            {
+                <div class="aud-sec-ok-row aud-sec-reveal"><i class="ri-check-line me-1"></i>All users have changed their password</div>
+            }
+            else
+            {
+                <table class="aud-sec-table aud-sec-reveal">
+                    <thead><tr><th>Name</th><th>Username</th><th>Role</th></tr></thead>
+                    <tbody>
+                        @foreach (var u in _secSummary.DefaultPasswordUsers)
+                        {
+                            <tr><td>@u.FullName</td><td><code>@u.Username</code></td><td>@u.StaffRole</td></tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
 
     </div>
 </div>
@@ -296,13 +480,23 @@
                     </div>
                 </div>
 
-                <div class="mb-3">
+                <div class="mb-2">
                     <div class="form-check form-switch">
                         <input class="form-check-input" type="checkbox" id="wiz-admin"
                                @bind="_wizIsAdmin" />
                         <label class="form-check-label" for="wiz-admin">
                             Admin account
                             <span class="text-muted small ms-1">(full system access)</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="wiz-allowall"
+                               @bind="_wizAllowAll" />
+                        <label class="form-check-label" for="wiz-allowall">
+                            Unrestricted folder access
+                            <span class="text-muted small ms-1">(no per-PC approval required)</span>
                         </label>
                     </div>
                 </div>
@@ -455,6 +649,84 @@
     .aud-wizard-modal label.form-label { color: #1e293b !important; }
     .aud-wizard-modal .fw-semibold { color: #1e293b !important; }
 
+    /* ── Security panel ── */
+    .aud-sec-panel { border-top: 1px solid rgba(0,0,0,.07); padding-top: 12px; margin-top: 10px; }
+    .aud-sec-panel-title {
+        font-size: .65rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: .08em; color: #94a3b8; margin-bottom: 8px;
+        display: flex; align-items: center; gap: 5px;
+    }
+    .aud-sec-panel-title::after {
+        content: ''; flex: 1; height: 1px; background: #e2e8f0;
+    }
+
+    /* Cards */
+    .aud-sec-card {
+        flex: 1 1 190px; border-radius: 12px; overflow: hidden;
+        border: 1px solid rgba(0,0,0,.08);
+        box-shadow: 0 1px 4px rgba(0,0,0,.05);
+        background: var(--body-bg, #fff);
+    }
+    .aud-sec-card-hdr {
+        display: flex; align-items: center; gap: 5px;
+        font-size: .7rem; font-weight: 700; padding: 7px 10px;
+        border-bottom: 1px solid rgba(0,0,0,.07);
+    }
+    .aud-sec-badge {
+        margin-left: auto; font-size: .62rem; font-weight: 800;
+        padding: 1px 7px; border-radius: 20px; letter-spacing: .02em;
+    }
+
+    .aud-sec-card-ok     .aud-sec-card-hdr { background: linear-gradient(90deg,#f0fdf4,#dcfce7); color: #15803d; }
+    .aud-sec-card-danger .aud-sec-card-hdr { background: linear-gradient(90deg,#fef2f2,#fee2e2); color: #b91c1c; }
+    .aud-sec-card-blue   .aud-sec-card-hdr { background: linear-gradient(90deg,#eff6ff,#dbeafe); color: #1d4ed8; }
+    .aud-sec-card-amber  .aud-sec-card-hdr { background: linear-gradient(90deg,#fffbeb,#fef3c7); color: #b45309; }
+
+    .aud-sec-badge-ok     { background: #bbf7d0; color: #14532d; }
+    .aud-sec-badge-danger { background: #fecaca; color: #991b1b; }
+    .aud-sec-badge-blue   { background: #bfdbfe; color: #1e3a8a; }
+    .aud-sec-badge-amber  { background: #fde68a; color: #78350f; }
+
+    /* Table — tight rows, no bloat */
+    .aud-sec-table { width: 100%; border-collapse: collapse; font-size: .71rem; line-height: 1.3; }
+    .aud-sec-table th {
+        padding: 3px 10px; font-weight: 700; color: #94a3b8;
+        background: rgba(248,250,252,.9); border-bottom: 1px solid rgba(0,0,0,.07);
+        text-transform: uppercase; font-size: .6rem; letter-spacing: .05em;
+    }
+    .aud-sec-table td {
+        padding: 3px 10px; border-bottom: 1px solid rgba(0,0,0,.04);
+        color: var(--default-text-color, #1e293b); white-space: nowrap;
+    }
+    .aud-sec-table tbody tr:last-child td { border-bottom: none; }
+    .aud-sec-table tbody tr:hover { background: rgba(99,102,241,.04); }
+    .aud-sec-table code {
+        font-size: .68rem; background: rgba(0,0,0,.06);
+        padding: 0 4px; border-radius: 3px; color: #6366f1;
+    }
+
+    .aud-sec-ok-row {
+        font-size: .71rem; color: #64748b; padding: 9px 10px;
+        display: flex; align-items: center; gap: 4px;
+    }
+    .aud-sec-loading {
+        font-size: .71rem; color: #94a3b8; padding: 9px 10px;
+        display: flex; align-items: center; gap: 5px;
+    }
+
+    @@keyframes aud-fadein {
+        from { opacity: 0; transform: translateY(5px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    .aud-sec-reveal { animation: aud-fadein .3s cubic-bezier(.2,.8,.4,1) both; }
+
+    @@keyframes aud-pulse-ring {
+        0%   { opacity: .6; }
+        50%  { opacity: 1;  }
+        100% { opacity: .6; }
+    }
+    .aud-sec-loading .spinner-border { animation: spinner-border .8s linear infinite; opacity: .6; }
+
     /* ── Edit form label fix (dark theme) ── */
     .aud-edit-label { color: var(--default-text-color, #1e293b) !important; }
     .card .form-check-label { color: var(--default-text-color, #1e293b) !important; }
@@ -480,11 +752,14 @@
 </style>
 
 @code {
-    List<AuditorListItem>    _allAuditors = [];
-    List<GradeItem>          _grades      = [];
-    List<AvailablePcItem>    _availPcs    = [];
-    int?                     _selId;
-    string                   _search      = "";
+    List<AuditorListItem>          _allAuditors       = [];
+    List<GradeItem>                _grades            = [];
+    List<AvailablePcItem>          _availPcs          = [];
+    List<SoloPermissionViolation>  _soloViolations    = [];
+    List<DuplicateStaffUser>       _duplicateStaff    = [];
+    SecuritySummary?               _secSummary;
+    int?                           _selId;
+    string                         _search            = "";
 
     AuditorDetail? _detail;
     AuditorStats?  _stats;
@@ -495,6 +770,7 @@
     string _editStaffRole = "Auditor";
     bool   _editIsActive;
     bool   _editIsAdmin;
+    bool   _editAllowAll;
 
     // Delete confirm
     bool _showDeleteConfirm;
@@ -507,6 +783,7 @@
     string _wizSelectedPcName  = "";
     string _wizRole            = "Auditor";
     bool   _wizIsAdmin;
+    bool   _wizAllowAll;
     string _wizUsername        = "";
     string _wizPassword        = "";
     string _wizError           = "";
@@ -521,11 +798,15 @@
         ? _availPcs
         : _availPcs.Where(p => p.FullName.Contains(_wizSearch, StringComparison.OrdinalIgnoreCase));
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        _allAuditors = AuditorSvc.GetAllAuditors()
-            .Where(a => a.StaffRole != "Solo").ToList();
-        _grades = AuditorSvc.GetAllGrades();
+        _allAuditors    = AuditorSvc.GetAllAuditors();
+        _grades         = AuditorSvc.GetAllGrades();
+        _soloViolations  = AuditorSvc.CheckSoloUserIntegrity();
+        _duplicateStaff  = AuditorSvc.GetDuplicateStaffUsers();
+        // GetSecuritySummary verifies password hashes (PBKDF2 — slow) — run off the UI thread
+        _secSummary = await Task.Run(() => AuditorSvc.GetSecuritySummary());
+        StateHasChanged();
     }
 
     void SelectAuditor(int id)
@@ -554,6 +835,7 @@
         _editStaffRole  = _detail.StaffRole is "Auditor" or "CS" ? _detail.StaffRole : "Auditor";
         _editIsActive   = _detail.IsActive;
         _editIsAdmin    = _detail.IsAdmin;
+        _editAllowAll   = _detail.AllowAll;
     }
 
     void CancelEdit() { _editMode = false; _editError = ""; }
@@ -569,7 +851,7 @@
         _detail  = null;
         _stats   = null;
         _editMode = false;
-        _allAuditors = AuditorSvc.GetAllAuditors().Where(a => a.StaffRole != "Solo").ToList();
+        _allAuditors = AuditorSvc.GetAllAuditors();
     }
 
     void SaveEdit()
@@ -580,10 +862,10 @@
         int? gradeId = int.TryParse(_editGradeId, out var g) ? g : null;
         Console.WriteLine($"[Auditors] Updated auditor {_selId!.Value} — '{_editFirstName} {_editLastName}' role={_editStaffRole} active={_editIsActive}");
         AuditorSvc.UpdateAuditor(_selId!.Value, _editFirstName, _editLastName,
-            gradeId, _editStaffRole, _editIsActive, _editIsAdmin);
+            gradeId, _editStaffRole, _editIsActive, _editIsAdmin, _editAllowAll);
         _editMode    = false;
         _editError   = "";
-        _allAuditors = AuditorSvc.GetAllAuditors().Where(a => a.StaffRole != "Solo").ToList();
+        _allAuditors = AuditorSvc.GetAllAuditors();
         LoadDetail();
     }
 
@@ -598,6 +880,7 @@
         _wizSelectedPcName = "";
         _wizRole          = "Auditor";
         _wizIsAdmin       = false;
+        _wizAllowAll      = false;
         _wizUsername      = "";
         _wizPassword      = "";
         _wizError         = "";
@@ -631,9 +914,9 @@
         if (!_wizSelectedPcId.HasValue) return;
         try
         {
-            AuditorSvc.CreateStaffUser(_wizSelectedPcId.Value, _wizRole, _wizIsAdmin);
+            AuditorSvc.CreateStaffUser(_wizSelectedPcId.Value, _wizRole, _wizIsAdmin, _wizAllowAll);
             _showWizard  = false;
-            _allAuditors = AuditorSvc.GetAllAuditors().Where(a => a.StaffRole != "Solo").ToList();
+            _allAuditors = AuditorSvc.GetAllAuditors();
             Console.WriteLine($"[Auditors] Created staff user for PC {_wizSelectedPcId.Value}, role={_wizRole}, admin={_wizIsAdmin}");
         }
         catch (Exception ex)

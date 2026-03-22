@@ -684,6 +684,9 @@ public class UserDb
         return $"pbkdf2_sha256${iterations}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
     }
 
+    /// <summary>Public wrapper — verifies a stored PBKDF2 hash against a plain-text password.</summary>
+    public static bool VerifyPassword(string storedHash, string password) => VerifyPbkdf2(storedHash, password);
+
     // Verifies a PBKDF2-SHA256 hash in the format:
     //   pbkdf2_sha256$<iterations>$<base64-salt>$<base64-hash>
     private static bool VerifyPbkdf2(string storedHash, string password)

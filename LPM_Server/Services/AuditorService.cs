@@ -9,8 +9,12 @@ namespace LPM.Services;
 public record AuditorListItem(int AuditorId, string FullName, string StaffRole, bool IsActive, string? GradeCode, string Username = "");
 public record GradeItem(int GradeId, string Code);
 public record AuditorDetail(int AuditorId, string FirstName, string LastName,
-    string StaffRole, bool IsActive, int? CurrentGradeId, string? GradeCode, bool IsAdmin, string Username = "");
+    string StaffRole, bool IsActive, int? CurrentGradeId, string? GradeCode, bool IsAdmin, string Username = "", bool AllowAll = false);
 public record AuditorStats(int TotalSessions, int FreeSessions, long TotalSec, string? LastSessionDate);
+public record SoloPermissionViolation(string FullName, string Username, bool BadAllowAll, bool BadUserType);
+public record SecuritySummaryItem(string FullName, string Username, string StaffRole);
+public record SecuritySummary(List<SecuritySummaryItem> AdminUsers, List<SecuritySummaryItem> AllowAllUsers, List<SecuritySummaryItem> DefaultPasswordUsers);
+public record DuplicateStaffUser(string FullName, string Roles);
 public record AvailablePcItem(int PcId, string FullName);
 
 public class AuditorService(IConfiguration config, UserDb userDb)
@@ -30,7 +34,7 @@ public class AuditorService(IConfiguration config, UserDb userDb)
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
             LEFT JOIN lkp_grades g ON g.GradeId = u.GradeId
-            WHERE u.StaffRole IN ('Auditor','CS','Solo')
+            WHERE u.StaffRole IN ('Auditor','CS')
             ORDER BY p.FirstName";
         var list = new List<AuditorListItem>();
         using var r = cmd.ExecuteReader();
@@ -62,11 +66,11 @@ public class AuditorService(IConfiguration config, UserDb userDb)
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT u.PersonId, p.FirstName, COALESCE(p.LastName,''),
-                   u.StaffRole, u.IsActive, u.GradeId, g.Code, u.UserType, u.Username
+                   u.StaffRole, u.IsActive, u.GradeId, g.Code, u.UserType, u.Username, u.AllowAll
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
             LEFT JOIN lkp_grades g ON g.GradeId = u.GradeId
-            WHERE u.PersonId = @id AND u.StaffRole IN ('Auditor','CS','Solo')
+            WHERE u.PersonId = @id AND u.StaffRole IN ('Auditor','CS')
             LIMIT 1";
         cmd.Parameters.AddWithValue("@id", auditorId);
         using var r = cmd.ExecuteReader();
@@ -77,11 +81,12 @@ public class AuditorService(IConfiguration config, UserDb userDb)
             r.IsDBNull(5) ? null : r.GetInt32(5),
             r.IsDBNull(6) ? null : r.GetString(6),
             r.IsDBNull(7) ? false : r.GetString(7) == "Admin",
-            r.IsDBNull(8) ? "" : r.GetString(8));
+            r.IsDBNull(8) ? "" : r.GetString(8),
+            r.IsDBNull(9) ? false : r.GetInt32(9) != 0);
     }
 
     public void UpdateAuditor(int auditorId, string firstName, string lastName,
-        int? gradeId, string staffRole, bool isActive, bool isAdmin)
+        int? gradeId, string staffRole, bool isActive, bool isAdmin, bool allowAll)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -95,15 +100,16 @@ public class AuditorService(IConfiguration config, UserDb userDb)
 
         using var uCmd = conn.CreateCommand();
         uCmd.CommandText = @"
-            UPDATE core_users SET GradeId=@gid, StaffRole=@role, IsActive=@active, UserType=@ut
-            WHERE PersonId=@id AND StaffRole IN ('Auditor','CS','Solo')";
+            UPDATE core_users SET GradeId=@gid, StaffRole=@role, IsActive=@active, UserType=@ut, AllowAll=@aa
+            WHERE PersonId=@id AND StaffRole IN ('Auditor','CS')";
         uCmd.Parameters.AddWithValue("@gid",    gradeId.HasValue ? (object)gradeId.Value : DBNull.Value);
         uCmd.Parameters.AddWithValue("@role",   staffRole);
         uCmd.Parameters.AddWithValue("@active", isActive ? 1 : 0);
         uCmd.Parameters.AddWithValue("@ut",     isAdmin ? "Admin" : "Standard");
+        uCmd.Parameters.AddWithValue("@aa",     allowAll ? 1 : 0);
         uCmd.Parameters.AddWithValue("@id",     auditorId);
         uCmd.ExecuteNonQuery();
-        Console.WriteLine($"[AuditorService] Updated auditor {auditorId} isAdmin={isAdmin}");
+        Console.WriteLine($"[AuditorService] Updated auditor {auditorId} isAdmin={isAdmin} allowAll={allowAll}");
     }
 
     public void DeleteAuditor(int auditorId)
@@ -111,7 +117,7 @@ public class AuditorService(IConfiguration config, UserDb userDb)
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM core_users WHERE PersonId=@id AND StaffRole IN ('Auditor','CS','Solo')";
+        cmd.CommandText = "DELETE FROM core_users WHERE PersonId=@id AND StaffRole IN ('Auditor','CS')";
         cmd.Parameters.AddWithValue("@id", auditorId);
         cmd.ExecuteNonQuery();
         Console.WriteLine($"[AuditorService] Deleted auditor {auditorId}");
@@ -135,6 +141,112 @@ public class AuditorService(IConfiguration config, UserDb userDb)
         return new AuditorStats(
             r.GetInt32(0), r.GetInt32(1), r.GetInt64(2),
             r.IsDBNull(3) ? null : r.GetString(3));
+    }
+
+    /// Returns Solo users that violate the expected permissions (AllowAll=0, UserType='Standard').
+    public List<SoloPermissionViolation> CheckSoloUserIntegrity()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
+                   u.Username, COALESCE(u.AllowAll, 0), COALESCE(u.UserType, 'Standard')
+            FROM core_users u
+            JOIN core_persons p ON p.PersonId = u.PersonId
+            WHERE u.StaffRole = 'Solo'
+              AND (COALESCE(u.AllowAll, 0) != 0 OR COALESCE(u.UserType, 'Standard') != 'Standard')
+            ORDER BY p.FirstName";
+        var list = new List<SoloPermissionViolation>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new SoloPermissionViolation(
+                r.GetString(0), r.GetString(1),
+                r.GetInt32(2) != 0,
+                r.GetString(3) != "Standard"));
+        return list;
+    }
+
+    /// Returns PersonIds that have more than one Auditor/CS row in core_users (should never happen).
+    public List<DuplicateStaffUser> GetDuplicateStaffUsers()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
+                   GROUP_CONCAT(u.Username || ' (' || u.StaffRole || ')', ', ') AS Roles
+            FROM core_users u
+            JOIN core_persons p ON p.PersonId = u.PersonId
+            WHERE u.StaffRole IN ('Auditor','CS')
+            GROUP BY u.PersonId
+            HAVING COUNT(*) > 1
+            ORDER BY p.FirstName";
+        var list = new List<DuplicateStaffUser>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new DuplicateStaffUser(r.GetString(0), r.GetString(1)));
+        return list;
+    }
+
+    /// Returns security summary: admin users, AllowAll users, and users still on their default password.
+    /// NOTE: Default password check uses hash verification (slow — run on a background thread).
+    public SecuritySummary GetSecuritySummary()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        static List<SecuritySummaryItem> Query(SqliteConnection c, string where)
+        {
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = $@"
+                SELECT TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
+                       u.Username, COALESCE(u.StaffRole, '')
+                FROM core_users u
+                JOIN core_persons p ON p.PersonId = u.PersonId
+                WHERE {where}
+                ORDER BY p.FirstName";
+            var list = new List<SecuritySummaryItem>();
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                list.Add(new SecuritySummaryItem(r.GetString(0), r.GetString(1), r.GetString(2)));
+            return list;
+        }
+
+        // Default password check: compute {First}1992 from the person's first name and verify against hash
+        var defaultPwdUsers = new List<SecuritySummaryItem>();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
+                       u.Username, COALESCE(u.StaffRole, ''), u.PasswordHash, p.FirstName
+                FROM core_users u
+                JOIN core_persons p ON p.PersonId = u.PersonId
+                WHERE u.IsActive = 1
+                ORDER BY p.FirstName";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var fullName = r.GetString(0);
+                var username = r.GetString(1);
+                var staffRole = r.GetString(2);
+                var hash = r.IsDBNull(3) ? "" : r.GetString(3);
+                var firstName = r.GetString(4);
+                if (string.IsNullOrEmpty(hash)) continue;
+
+                var normFn = NormalizeToAscii(firstName).ToLower().Trim();
+                if (normFn.Length == 0) continue;
+                var expectedPwd = char.ToUpper(normFn[0]) + (normFn.Length > 1 ? normFn[1..] : "") + "1992";
+
+                if (UserDb.VerifyPassword(hash, expectedPwd))
+                    defaultPwdUsers.Add(new SecuritySummaryItem(fullName, username, staffRole));
+            }
+        }
+
+        return new SecuritySummary(
+            Query(conn, "u.UserType = 'Admin'"),
+            Query(conn, "COALESCE(u.AllowAll, 0) = 1"),
+            defaultPwdUsers);
     }
 
     /// Returns PCs that have no active core_users row with StaffRole in Auditor/CS/Solo.
@@ -190,7 +302,7 @@ public class AuditorService(IConfiguration config, UserDb userDb)
     }
 
     /// Creates a core_users staff row for the given PC. Returns the generated username.
-    public string CreateStaffUser(int pcId, string staffRole, bool isAdmin)
+    public string CreateStaffUser(int pcId, string staffRole, bool isAdmin, bool allowAll)
     {
         var (fn, ln) = GetPersonNameParts(pcId);
         var normFn = NormalizeToAscii(fn).ToLower().Trim();
@@ -216,8 +328,8 @@ public class AuditorService(IConfiguration config, UserDb userDb)
             : "Staff1992";
 
         userDb.CreateUser(pcId, username, password, staffRole,
-            isAdmin ? "Admin" : "Standard", null, false);
-        Console.WriteLine($"[AuditorService] Created staff user '{username}' for PC {pcId}, role={staffRole}, admin={isAdmin}");
+            isAdmin ? "Admin" : "Standard", null, allowAll);
+        Console.WriteLine($"[AuditorService] Created staff user '{username}' for PC {pcId}, role={staffRole}, admin={isAdmin}, allowAll={allowAll}");
         return username;
     }
 

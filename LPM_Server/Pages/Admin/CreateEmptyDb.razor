@@ -1,6 +1,7 @@
 @page "/Admin/CreateEmptyDb"
 @attribute [Authorize(Roles = "Admin")]
 @using System.Security.Cryptography
+@using Microsoft.Data.Sqlite
 @inject IConfiguration Config
 
 <PageTitle>Create Empty DB — LPM</PageTitle>
@@ -28,7 +29,7 @@
         <div class="alert alert-danger">@_error</div>
     }
 
-    <button class="btn btn-primary d-flex align-items-center gap-2"
+    <button class="btn btn-danger d-flex align-items-center gap-2"
             disabled="@_busy"
             @onclick="CreateEmptyDbCopy">
         @if (_busy)
@@ -42,12 +43,150 @@
             <span>Create Empty DB Copy</span>
         }
     </button>
+
+    @* ── core_users ── *@
+    <div class="cedb-section mt-4">
+        <div class="cedb-section-title"><i class="ri-user-settings-line me-1"></i>core_users <span class="cedb-count">@_coreUsers.Count rows</span></div>
+        @if (_coreUsers.Count == 0)
+        {
+            <div class="cedb-empty">No rows</div>
+        }
+        else
+        {
+            <div class="cedb-table-wrap">
+                <table class="cedb-table">
+                    <thead>
+                        <tr>
+                            <th>Id</th><th>PersonId</th><th>Username</th><th>StaffRole</th>
+                            <th>UserType</th><th>Active</th><th>AllowAll</th><th>MustChangePwd</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var u in _coreUsers)
+                        {
+                            <tr>
+                                <td>@u.Id</td>
+                                <td>@u.PersonId</td>
+                                <td><code>@u.Username</code></td>
+                                <td><span class="cedb-role cedb-role-@u.StaffRole.ToLower()">@u.StaffRole</span></td>
+                                <td>@u.UserType</td>
+                                <td>@(u.IsActive ? "✓" : "—")</td>
+                                <td>@(u.AllowAll ? "✓" : "—")</td>
+                                <td>@(u.MustChangePwd ? "✓" : "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    @* ── core_persons ── *@
+    <div class="cedb-section mt-3">
+        <div class="cedb-section-title"><i class="ri-contacts-line me-1"></i>core_persons <span class="cedb-count">@_corePersons.Count rows</span></div>
+        @if (_corePersons.Count == 0)
+        {
+            <div class="cedb-empty">No rows</div>
+        }
+        else
+        {
+            <div class="cedb-table-wrap">
+                <table class="cedb-table">
+                    <thead>
+                        <tr>
+                            <th>PersonId</th><th>FirstName</th><th>LastName</th>
+                            <th>Phone</th><th>Email</th><th>Gender</th><th>Nick</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in _corePersons)
+                        {
+                            <tr>
+                                <td>@p.PersonId</td>
+                                <td>@p.FirstName</td>
+                                <td>@p.LastName</td>
+                                <td>@p.Phone</td>
+                                <td>@p.Email</td>
+                                <td>@p.Gender</td>
+                                <td>@p.Nick</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
 </div>
 
+<style>
+    .cedb-section { }
+    .cedb-section-title {
+        font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+        color: #64748b; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+    }
+    .cedb-section-title::after { content:''; flex:1; height:1px; background:#e2e8f0; }
+    .cedb-count { font-weight: 400; font-size: .68rem; color: #94a3b8; text-transform: none; letter-spacing: 0; }
+    .cedb-empty { font-size: .75rem; color: #94a3b8; font-style: italic; padding: 4px 0; }
+    .cedb-table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #e2e8f0; }
+    .cedb-table { width: 100%; border-collapse: collapse; font-size: .72rem; }
+    .cedb-table th {
+        padding: 4px 10px; background: #f8fafc; color: #94a3b8;
+        font-weight: 700; font-size: .6rem; text-transform: uppercase; letter-spacing: .05em;
+        border-bottom: 1px solid #e2e8f0; white-space: nowrap;
+    }
+    .cedb-table td { padding: 3px 10px; border-bottom: 1px solid #f1f5f9; color: var(--default-text-color, #1e293b); white-space: nowrap; }
+    .cedb-table tbody tr:last-child td { border-bottom: none; }
+    .cedb-table tbody tr:hover { background: rgba(99,102,241,.04); }
+    .cedb-table code { font-size: .68rem; background: rgba(0,0,0,.06); padding: 0 4px; border-radius: 3px; color: #6366f1; }
+    .cedb-role { font-size: .65rem; font-weight: 700; padding: 1px 7px; border-radius: 20px; }
+    .cedb-role-auditor { background: #dbeafe; color: #1e40af; }
+    .cedb-role-cs      { background: #dcfce7; color: #166534; }
+    .cedb-role-solo    { background: #fef3c7; color: #92400e; }
+    .cedb-role-admin   { background: #f3e8ff; color: #7c3aed; }
+</style>
+
 @code {
+    record CoreUserRow(int Id, int PersonId, string Username, string StaffRole, string UserType, bool IsActive, bool AllowAll, bool MustChangePwd);
+    record CorePersonRow(int PersonId, string FirstName, string LastName, string Phone, string Email, string Gender, string Nick);
+
     bool _busy;
     string _resultPath = "";
     string _error = "";
+    List<CoreUserRow>   _coreUsers   = [];
+    List<CorePersonRow> _corePersons = [];
+
+    protected override void OnInitialized() => LoadLiveTables();
+
+    void LoadLiveTables()
+    {
+        var cs = $"Data Source={Config["Database:Path"] ?? "lifepower.db"}";
+        using var conn = new SqliteConnection(cs);
+        conn.Open();
+
+        using var uCmd = conn.CreateCommand();
+        uCmd.CommandText = @"
+            SELECT Id, PersonId, COALESCE(Username,''), COALESCE(StaffRole,''),
+                   COALESCE(UserType,''), COALESCE(IsActive,0), COALESCE(AllowAll,0), COALESCE(MustChangePassword,0)
+            FROM core_users ORDER BY Id";
+        _coreUsers = [];
+        using var uR = uCmd.ExecuteReader();
+        while (uR.Read())
+            _coreUsers.Add(new CoreUserRow(
+                uR.GetInt32(0), uR.GetInt32(1), uR.GetString(2), uR.GetString(3),
+                uR.GetString(4), uR.GetInt32(5) != 0, uR.GetInt32(6) != 0, uR.GetInt32(7) != 0));
+
+        using var pCmd = conn.CreateCommand();
+        pCmd.CommandText = @"
+            SELECT PersonId, COALESCE(FirstName,''), COALESCE(LastName,''),
+                   COALESCE(Phone,''), COALESCE(Email,''), COALESCE(Gender,''), COALESCE(Nick,'')
+            FROM core_persons ORDER BY PersonId";
+        _corePersons = [];
+        using var pR = pCmd.ExecuteReader();
+        while (pR.Read())
+            _corePersons.Add(new CorePersonRow(
+                pR.GetInt32(0), pR.GetString(1), pR.GetString(2),
+                pR.GetString(3), pR.GetString(4), pR.GetString(5), pR.GetString(6)));
+    }
 
     async Task CreateEmptyDbCopy()
     {
@@ -61,7 +200,11 @@
             _error = $"Failed: {ex.Message}";
             Console.WriteLine($"[CreateEmptyDb] Error: {ex}");
         }
-        finally { _busy = false; }
+        finally
+        {
+            _busy = false;
+            LoadLiveTables();
+        }
     }
 
     void DoCreate()
