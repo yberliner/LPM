@@ -1121,7 +1121,7 @@
                     var pcId = resolvedId.Value;
                     if (!row.UserAlreadyExists && !string.IsNullOrEmpty(row.Username))
                     {
-                        UserDb.CreateUser(pcId, row.Username, row.Password, "Solo", "Standard", null, true);
+                        UserDb.CreateUser(pcId, row.Username, row.Password, "Solo", "Standard", null, false);
                         row.ResultMessage = createdEmpty ? "Empty PC created + user created" : "Solo matched + user created";
                         var (_, phone) = PcSvc.GetPersonContact(pcId);
                         if (!string.IsNullOrWhiteSpace(phone))

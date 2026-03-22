@@ -583,8 +583,8 @@ public class UserDb
 
         using var insertCmd = conn.CreateCommand();
         insertCmd.CommandText = @"
-            INSERT INTO core_users (PersonId, Username, PasswordHash, StaffRole, UserType, IsActive, MustChangePassword, ContactConfirmed)
-            VALUES (@pid, @u, @h, 'Solo', 'Standard', 1, 1, 0)";
+            INSERT INTO core_users (PersonId, Username, PasswordHash, StaffRole, UserType, IsActive, MustChangePassword, ContactConfirmed, AllowAll)
+            VALUES (@pid, @u, @h, 'Solo', 'Standard', 1, 1, 0, 0)";
         insertCmd.Parameters.AddWithValue("@pid", pcId);
         insertCmd.Parameters.AddWithValue("@u", finalUsername);
         insertCmd.Parameters.AddWithValue("@h", HashPassword(password));

@@ -254,7 +254,7 @@ public class ImportJobService
                     var password = fn.Length > 0 ? char.ToUpper(fn[0]) + fn[1..] + "1992" : "User1992";
                     if (!_userDb.UsernameExists(username))
                     {
-                        var newUserId = _userDb.CreateUser(pcId, username, password, "Solo", "Standard", null, true);
+                        var newUserId = _userDb.CreateUser(pcId, username, password, "Solo", "Standard", null, false);
                         _userDb.SetContactConfirmNeeded(newUserId);
                         Console.WriteLine($"[ImportJobService] Created Solo user '{username}' for PC {pcId}");
 
@@ -560,6 +560,15 @@ public class ImportJobService
             using (var cmd = conn.CreateCommand())
             {
                 cmd.CommandText = "SELECT UserId FROM sys_staff_pc_list WHERE PcId = @p AND WorkCapacity = 'Auditor' ORDER BY Id LIMIT 1";
+                cmd.Parameters.AddWithValue("@p", pcId);
+                var res = cmd.ExecuteScalar();
+                if (res != null && res != DBNull.Value) auditorUserId = Convert.ToInt32(res);
+            }
+            // Fallback: if no Auditor entry, try CS (CS may act as sole auditor for this PC)
+            if (!auditorUserId.HasValue)
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT UserId FROM sys_staff_pc_list WHERE PcId = @p AND WorkCapacity = 'CS' ORDER BY Id LIMIT 1";
                 cmd.Parameters.AddWithValue("@p", pcId);
                 var res = cmd.ExecuteScalar();
                 if (res != null && res != DBNull.Value) auditorUserId = Convert.ToInt32(res);
