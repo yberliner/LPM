@@ -1,0 +1,1199 @@
+@page "/Admin/Diagnosis"
+@attribute [Authorize(Roles = "Admin")]
+@using System.Security.Cryptography
+@using System.Security.Claims
+@using Microsoft.Data.Sqlite
+@inject IConfiguration Config
+@inject Microsoft.AspNetCore.Http.IHttpContextAccessor HttpCtx
+
+<PageTitle>Diagnosis — LPM</PageTitle>
+
+<div class="container-fluid py-4" style="max-width:960px;">
+    <h4 class="fw-bold mb-1">Diagnosis</h4>
+    <p class="text-muted mb-4" style="font-size:.85rem;">
+        Creates a new copy of the current database with all data tables cleared and a single
+        <strong>admin / Admin1992</strong> user seeded. The live database is never touched.
+    </p>
+
+    @if (!string.IsNullOrEmpty(_resultPath))
+    {
+        <div class="alert alert-success d-flex align-items-center gap-2">
+            <i class="ri-checkbox-circle-line" style="font-size:1.3rem;"></i>
+            <div>
+                <strong>Done.</strong> File created:<br />
+                <code style="font-size:.82rem; word-break:break-all;">@_resultPath</code>
+            </div>
+        </div>
+    }
+    @if (!string.IsNullOrEmpty(_cedbError))
+    {
+        <div class="alert alert-danger">@_cedbError</div>
+    }
+
+    <button class="btn btn-danger d-flex align-items-center gap-2 mb-4"
+            disabled="@_busy" @onclick="CreateEmptyDbCopy">
+        @if (_busy)
+        {
+            <span class="spinner-border spinner-border-sm"></span><span>Working…</span>
+        }
+        else
+        {
+            <i class="ri-database-2-line"></i><span>Create Empty DB Copy</span>
+        }
+    </button>
+
+    @* ── User Editor ──────────────────────────────────────────────────────── *@
+    <div class="diag-editor-card mb-4">
+        <div class="diag-editor-header">
+            <i class="ri-user-settings-line me-2"></i>Edit User
+            <span class="diag-editor-sub">core_users</span>
+        </div>
+        <div class="diag-editor-body">
+            <div class="row g-2 mb-3">
+                <div class="col-12 col-sm-7 col-md-5">
+                    <label class="diag-lbl">Select user</label>
+                    <select class="form-select form-select-sm" @onchange="OnUserSelected">
+                        <option value="0">— choose user —</option>
+                        @foreach (var u in _userList)
+                        {
+                            <option value="@u.Id">@u.Id — @u.Username (@u.StaffRole / @u.UserType)</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            @if (_selectedUserId > 0 && _userEditCols.Count > 0)
+            {
+                <div class="row g-2 mb-3">
+                    @foreach (var col in _userEditCols)
+                    {
+                        var cc = col;
+                        bool ro = cc == "Id";
+                        <div class="col-6 col-sm-4 col-md-3">
+                            <label class="diag-lbl">@cc</label>
+                            @if (ro)
+                            {
+                                <input type="text" class="form-control form-control-sm diag-input-ro" disabled value="@_userEditVals[cc]" />
+                            }
+                            else
+                            {
+                                <input type="text" class="form-control form-control-sm" @bind="_userEditVals[cc]" @bind:event="oninput" />
+                            }
+                        </div>
+                    }
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+                    <button class="btn btn-primary btn-sm diag-action-btn" disabled="@_userBusy" @onclick="SaveUserFields">
+                        @if (_userBusy) { <span class="spinner-border spinner-border-sm me-1"></span> } else { <i class="ri-save-line me-1"></i> }
+                        Save Fields
+                    </button>
+                </div>
+                <div class="border-top pt-3">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-12 col-sm-5 col-md-4">
+                            <label class="diag-lbl">New password</label>
+                            <input type="password" class="form-control form-control-sm" placeholder="Enter new password"
+                                   @bind="_newPassword" @bind:event="oninput" />
+                        </div>
+                        <div class="col-auto">
+                            <button class="btn btn-warning btn-sm diag-action-btn"
+                                    disabled="@(_userBusy || string.IsNullOrWhiteSpace(_newPassword))" @onclick="SaveUserPassword">
+                                @if (_userBusy) { <span class="spinner-border spinner-border-sm me-1"></span> } else { <i class="ri-key-2-line me-1"></i> }
+                                Set Password
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                @if (!string.IsNullOrEmpty(_userMsg))
+                {
+                    <div class="alert @(_userMsgOk ? "alert-success" : "alert-danger") py-1 px-3 mt-3 mb-0 diag-feedback">@_userMsg</div>
+                }
+            }
+        </div>
+    </div>
+
+    @* ── core_pcs Editor ──────────────────────────────────────────────────── *@
+    <div class="diag-editor-card mb-4">
+        <div class="diag-editor-header">
+            <i class="ri-computer-line me-2"></i>Edit PCs
+            <span class="diag-editor-sub">core_pcs</span>
+        </div>
+        <div class="diag-editor-body">
+            @if (!string.IsNullOrEmpty(_pcsMsg))
+            {
+                <div class="alert @(_pcsMsgOk ? "alert-success" : "alert-danger") py-1 px-3 mb-3 diag-feedback">@_pcsMsg</div>
+            }
+            <div class="cedb-table-wrap mb-3">
+                <table class="cedb-table">
+                    <thead><tr><th>PcId</th><th>Name</th><th></th></tr></thead>
+                    <tbody>
+                        @if (_pcsRows.Count == 0)
+                        {
+                            <tr><td colspan="3" class="cedb-empty text-center py-2">No rows</td></tr>
+                        }
+                        @foreach (var row in _pcsRows)
+                        {
+                            var r = row;
+                            bool pcsDelPending = _pendingDeletePcId == r.PcId;
+                            <tr>
+                                <td><span style="color:#64748b;">@r.PcId</span></td>
+                                <td>@r.PersonName</td>
+                                <td class="text-end" style="white-space:nowrap;">
+                                    @if (pcsDelPending)
+                                    {
+                                        <span class="me-1" style="font-size:.8rem;">Sure?</span>
+                                        <button class="btn btn-danger btn-sm py-0 px-1 me-1" title="Confirm delete"
+                                                disabled="@_pcsBusy" @onclick="() => DeletePcsRow(r.PcId)">
+                                            <i class="ri-check-line"></i>
+                                        </button>
+                                        <button class="btn btn-outline-secondary btn-sm py-0 px-1"
+                                                @onclick="() => _pendingDeletePcId = 0">
+                                            <i class="ri-close-line"></i>
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-outline-primary btn-sm py-0 px-1 me-1" title="Edit"
+                                                disabled="@_pcsBusy"
+                                                @onclick="() => OpenPcsModal(r.PcId)">
+                                            <i class="ri-pencil-line"></i>
+                                        </button>
+                                        <button class="btn btn-outline-danger btn-sm py-0 px-1" title="Delete"
+                                                disabled="@_pcsBusy"
+                                                @onclick="() => { _pendingDeletePcId = r.PcId; _pcsMsg = string.Empty; }">
+                                            <i class="ri-delete-bin-line"></i>
+                                        </button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="row g-2 align-items-end">
+                <div class="col-auto">
+                    <label class="diag-lbl">Add new PcId (= PersonId)</label>
+                    <input type="number" class="form-control form-control-sm" style="width:130px;" placeholder="e.g. 5"
+                           @bind="_newPcIdStr" @bind:event="oninput" />
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-success btn-sm diag-action-btn"
+                            disabled="@(_pcsBusy || string.IsNullOrWhiteSpace(_newPcIdStr))" @onclick="AddPcsRow">
+                        @if (_pcsBusy) { <span class="spinner-border spinner-border-sm me-1"></span> } else { <i class="ri-add-line me-1"></i> }
+                        Add PC
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── core_* tables ── *@
+    <div class="cedb-group-header mt-4"><i class="ri-user-line me-1"></i>core_* tables</div>
+    @foreach (var t in _coreTables)
+    {
+        @if (t.Name == "core_persons")
+        {
+            @EditableSection(new EditInfo(t, "PersonId"))
+        }
+        else
+        {
+            @TableSection(t)
+        }
+    }
+
+    @* ── sys_* tables ── *@
+    <div class="cedb-group-header mt-3"><i class="ri-settings-3-line me-1"></i>sys_* tables</div>
+    @foreach (var t in _sysTables) { @TableSection(t) }
+
+    @* ── lkp_* tables ── *@
+    <div class="cedb-group-header mt-3"><i class="ri-price-tag-3-line me-1"></i>lkp_* tables</div>
+    @foreach (var t in _lkpTables) { @TableSection(t) }
+
+    @* ── sess_* tables (editable) ── *@
+    <div class="cedb-group-header mt-3">
+        <i class="ri-calendar-line me-1"></i>sess_* tables
+        <span style="font-weight:400;font-size:.6rem;color:#94a3b8;text-transform:none;letter-spacing:0;">(last 200 rows · editable)</span>
+    </div>
+    @foreach (var t in _sessTables)
+    {
+        var pk = t.Name switch
+        {
+            "sess_sessions"       => "SessionId",
+            "sess_misc_charges"   => "MiscChargeId",
+            "sess_folder_summary" => "Id",
+            "sess_meetings"       => "MeetingId",
+            _                     => "Id"
+        };
+        @EditableSection(new EditInfo(t, pk))
+    }
+
+    @* ── cs_* tables (editable) ── *@
+    <div class="cedb-group-header mt-3">
+        <i class="ri-user-star-line me-1"></i>cs_* tables
+        <span style="font-weight:400;font-size:.6rem;color:#94a3b8;text-transform:none;letter-spacing:0;">(last 200 rows · editable)</span>
+    </div>
+    @foreach (var t in _csTables)
+    {
+        var pk = t.Name switch
+        {
+            "cs_reviews"          => "CsReviewId",
+            "cs_work_log"         => "CsWorkLogId",
+            "cs_case_supervisors" => "CsId",
+            _                     => "Id"
+        };
+        @EditableSection(new EditInfo(t, pk))
+    }
+
+    @* ── fin_* tables ── *@
+    <div class="cedb-group-header mt-3">
+        <i class="ri-money-dollar-circle-line me-1"></i>fin_* tables
+        <span style="font-weight:400;font-size:.6rem;color:#94a3b8;text-transform:none;letter-spacing:0;">(last 200 rows)</span>
+    </div>
+    @foreach (var t in _finTables) { @TableSection(t) }
+
+    @* ── acad_* tables ── *@
+    <div class="cedb-group-header mt-3">
+        <i class="ri-graduation-cap-line me-1"></i>acad_* tables
+        <span style="font-weight:400;font-size:.6rem;color:#94a3b8;text-transform:none;letter-spacing:0;">(last 200 rows)</span>
+    </div>
+    @foreach (var t in _acadTables) { @TableSection(t) }
+
+    @* ── Recent PC-Folder Files (< 7 days) ────────────────────────────────── *@
+    <div class="diag-editor-card mb-4 mt-4">
+        <div class="diag-editor-header">
+            <i class="ri-file-list-3-line me-2"></i>Recent Files — last @_recentDays day@(_recentDays != 1 ? "s" : "")
+            <span class="diag-editor-sub">PC-Folders</span>
+            <select class="form-select form-select-sm ms-auto me-2" style="width:auto;font-size:.75rem;"
+                    @bind="_recentDays" @bind:after="LoadRecentFiles">
+                <option value="1">1 day</option>
+                <option value="3">3 days</option>
+                <option value="7">7 days</option>
+                <option value="30">30 days</option>
+            </select>
+            <button class="btn btn-outline-secondary btn-sm py-0" style="font-size:.72rem;"
+                    @onclick="LoadRecentFiles">
+                <i class="ri-refresh-line me-1"></i>Refresh
+            </button>
+        </div>
+        <div class="diag-editor-body">
+            @if (!string.IsNullOrEmpty(_recentMsg))
+            {
+                <div class="alert @(_recentMsgOk ? "alert-success" : "alert-danger") py-1 px-3 mb-3 diag-feedback">@_recentMsg</div>
+            }
+            @if (_recentGroups.Count == 0)
+            {
+                <div class="cedb-empty">No files modified in the last @_recentDays day@(_recentDays != 1 ? "s" : "").</div>
+            }
+            else
+            {
+                @foreach (var g in _recentGroups)
+                {
+                    var grp = g;
+                    <div class="mb-3">
+                        <div class="diag-lbl mb-1"><i class="ri-folder-3-line me-1"></i>@grp.PcName <span style="font-weight:400;color:#94a3b8;">(@grp.Files.Count file@(grp.Files.Count != 1 ? "s" : ""))</span></div>
+                        <div class="cedb-table-wrap">
+                            <table class="cedb-table">
+                                <thead>
+                                    <tr><th>File</th><th>Modified</th><th>Size</th><th></th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var file in grp.Files)
+                                    {
+                                        var f = file;
+                                        bool filePending = _pendingDeleteFile == f.FullPath;
+                                        <tr class="@(filePending ? "table-danger" : "")">
+                                            <td>@f.RelPath</td>
+                                            <td style="white-space:nowrap;">@f.Modified.ToString("yyyy-MM-dd HH:mm")</td>
+                                            <td style="white-space:nowrap;">@FormatSize(f.Size)</td>
+                                            <td class="text-end" style="white-space:nowrap;">
+                                                @if (filePending)
+                                                {
+                                                    <span class="me-1" style="font-size:.65rem;color:#dc3545;vertical-align:middle;">Sure?</span>
+                                                    <button class="btn btn-danger btn-sm py-0 px-1 me-1" @onclick="() => DeleteRecentFile(f.FullPath)">
+                                                        <i class="ri-check-line"></i>
+                                                    </button>
+                                                    <button class="btn btn-outline-secondary btn-sm py-0 px-1" @onclick="() => _pendingDeleteFile = null">
+                                                        <i class="ri-close-line"></i>
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <button class="btn btn-outline-danger btn-sm py-0 px-2"
+                                                            title="Delete" @onclick="() => _pendingDeleteFile = f.FullPath">
+                                                        <i class="ri-delete-bin-line"></i>
+                                                    </button>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@* ── Edit Row Modal ───────────────────────────────────────────────────────── *@
+@if (_editModalVisible)
+{
+    <div class="diag-modal-backdrop" @onclick="CloseEditModal"></div>
+    <div class="diag-modal">
+        <div class="diag-modal-header">
+            <span><i class="ri-pencil-line me-2"></i>Edit row — <code style="font-size:.8rem;">@_editModalTable</code></span>
+            <button class="btn-close btn-close-sm" @onclick="CloseEditModal"></button>
+        </div>
+        <div class="diag-modal-body">
+            <div class="row g-2">
+                @foreach (var col in _editModalCols)
+                {
+                    var cc = col;
+                    bool ro = cc == _editModalPkCol;
+                    <div class="col-12 col-sm-6 col-md-4">
+                        <label class="diag-lbl">@cc @(ro ? "(PK)" : "")</label>
+                        @if (ro)
+                        {
+                            <input type="text" class="form-control form-control-sm diag-input-ro" disabled value="@_editModalVals[cc]" />
+                        }
+                        else
+                        {
+                            <input type="text" class="form-control form-control-sm" @bind="_editModalVals[cc]" @bind:event="oninput" />
+                        }
+                    </div>
+                }
+            </div>
+            @if (!string.IsNullOrEmpty(_editModalMsg))
+            {
+                <div class="alert @(_editModalOk ? "alert-success" : "alert-danger") py-1 px-3 mt-3 mb-0 diag-feedback">@_editModalMsg</div>
+            }
+        </div>
+        <div class="diag-modal-footer">
+            <button class="btn btn-secondary btn-sm" @onclick="CloseEditModal">Cancel</button>
+            <button class="btn btn-primary btn-sm diag-action-btn" disabled="@_editModalBusy" @onclick="SaveEditModal">
+                @if (_editModalBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Save
+            </button>
+        </div>
+    </div>
+}
+
+@* ── core_pcs Edit Modal ───────────────────────────────────────────────────── *@
+@if (_pcsModalVisible)
+{
+    <div class="diag-modal-backdrop" @onclick="ClosePcsModal"></div>
+    <div class="diag-modal">
+        <div class="diag-modal-header">
+            <span><i class="ri-computer-line me-2"></i>Edit PC — <code style="font-size:.8rem;">core_pcs</code></span>
+            <button class="btn-close btn-close-sm" @onclick="ClosePcsModal"></button>
+        </div>
+        <div class="diag-modal-body">
+            <div class="row g-2">
+                <div class="col-12 col-sm-6">
+                    <label class="diag-lbl">PcId (current)</label>
+                    <input type="text" class="form-control form-control-sm diag-input-ro" disabled value="@_pcsModalOldId" />
+                </div>
+                <div class="col-12 col-sm-6">
+                    <label class="diag-lbl">PcId (new)</label>
+                    <input type="number" class="form-control form-control-sm" @bind="_pcsModalNewStr" @bind:event="oninput" />
+                </div>
+            </div>
+            @if (!string.IsNullOrEmpty(_pcsModalMsg))
+            {
+                <div class="alert @(_pcsModalOk ? "alert-success" : "alert-danger") py-1 px-3 mt-3 mb-0 diag-feedback">@_pcsModalMsg</div>
+            }
+        </div>
+        <div class="diag-modal-footer">
+            <button class="btn btn-secondary btn-sm" @onclick="ClosePcsModal">Cancel</button>
+            <button class="btn btn-primary btn-sm diag-action-btn" disabled="@_pcsModalBusy" @onclick="SavePcsModal">
+                @if (_pcsModalBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Save
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    // ── Read-only table display ────────────────────────────────────────────
+    record TableData(string Name, string Icon, List<string> Columns, List<List<string>> Rows);
+
+    RenderFragment<TableData> TableSection => t =>
+        @<div class="cedb-section mt-3">
+            <div class="cedb-section-title cedb-section-toggle" @onclick="() => ToggleSection(t.Name)">
+                <i class="@t.Icon me-1"></i>@t.Name
+                <span class="cedb-count">@t.Rows.Count row@(t.Rows.Count != 1 ? "s" : "")</span>
+                <i class="ri-arrow-down-s-line cedb-chevron @(_collapsed.Contains(t.Name) ? "cedb-chevron-up" : "")"></i>
+            </div>
+            @if (!_collapsed.Contains(t.Name))
+            {
+                @if (t.Rows.Count == 0)
+                {
+                    <div class="cedb-empty">No rows</div>
+                }
+                else
+                {
+                    <div class="cedb-table-wrap">
+                        <table class="cedb-table">
+                            <thead>
+                                <tr>@foreach (var col in t.Columns) { <th>@col</th> }</tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in t.Rows)
+                                {
+                                    <tr>
+                                        @for (int i = 0; i < t.Columns.Count; i++)
+                                        {
+                                            var val = i < row.Count ? row[i] : "";
+                                            <td>@val</td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
+        </div>;
+
+    // ── Editable table display (sess_* / cs_*) ────────────────────────────
+    record EditInfo(TableData Table, string PkCol);
+    RenderFragment<EditInfo> EditableSection => args =>
+        @<div class="cedb-section mt-3">
+            <div class="cedb-section-title cedb-section-toggle" @onclick="() => ToggleSection(args.Table.Name)">
+                <i class="@args.Table.Icon me-1"></i>@args.Table.Name
+                <span class="cedb-count">@args.Table.Rows.Count row@(args.Table.Rows.Count != 1 ? "s" : "")</span>
+                <i class="ri-arrow-down-s-line cedb-chevron @(_collapsed.Contains(args.Table.Name) ? "cedb-chevron-up" : "")"></i>
+            </div>
+            @if (!_collapsed.Contains(args.Table.Name))
+            {
+                @if (args.Table.Rows.Count == 0)
+                {
+                    <div class="cedb-empty">No rows</div>
+                }
+                else
+                {
+                    <div class="cedb-table-wrap">
+                        <table class="cedb-table">
+                            <thead>
+                                <tr>
+                                    @foreach (var col in args.Table.Columns) { <th>@col</th> }
+                                    <th style="width:88px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in args.Table.Rows)
+                                {
+                                    var capturedRow = row;
+                                    int pkIdx = args.Table.Columns.IndexOf(args.PkCol);
+                                    string pkVal = pkIdx >= 0 && pkIdx < row.Count ? row[pkIdx] : "";
+                                    bool isPending = _pendingDelete?.Table == args.Table.Name && _pendingDelete?.PkVal == pkVal;
+                                    <tr class="@(isPending ? "table-danger" : "")">
+                                        @for (int i = 0; i < args.Table.Columns.Count; i++)
+                                        {
+                                            var val = i < row.Count ? row[i] : "";
+                                            <td>@val</td>
+                                        }
+                                        <td class="text-end" style="white-space:nowrap;">
+                                            @if (isPending)
+                                            {
+                                                <span class="me-1" style="font-size:.65rem;color:#dc3545;vertical-align:middle;">Sure?</span>
+                                                <button class="btn btn-danger btn-sm py-0 px-1 me-1"
+                                                        @onclick="() => DeleteRow(args.Table.Name, args.PkCol, pkVal)">
+                                                    <i class="ri-check-line"></i>
+                                                </button>
+                                                <button class="btn btn-outline-secondary btn-sm py-0 px-1"
+                                                        @onclick="() => _pendingDelete = null">
+                                                    <i class="ri-close-line"></i>
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <button class="btn btn-outline-primary btn-sm py-0 px-1 me-1" title="Edit"
+                                                        @onclick="() => OpenEditModal(args.Table, args.PkCol, capturedRow)">
+                                                    <i class="ri-pencil-line"></i>
+                                                </button>
+                                                <button class="btn btn-outline-danger btn-sm py-0 px-1" title="Delete"
+                                                        @onclick="() => _pendingDelete = (args.Table.Name, pkVal)">
+                                                    <i class="ri-delete-bin-line"></i>
+                                                </button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
+        </div>;
+
+    // ── State ──────────────────────────────────────────────────────────────
+    HashSet<string> _collapsed = [];
+    void ToggleSection(string name) { if (!_collapsed.Remove(name)) _collapsed.Add(name); }
+
+    bool   _busy;
+    string _resultPath = "";
+    string _cedbError  = "";
+    List<TableData> _coreTables = [];
+    List<TableData> _sysTables  = [];
+    List<TableData> _lkpTables  = [];
+    List<TableData> _sessTables = [];
+    List<TableData> _csTables   = [];
+    List<TableData> _finTables  = [];
+    List<TableData> _acadTables = [];
+
+    // ── Inline delete confirmation (sess_* / cs_* rows) ───────────────────
+    (string Table, string PkVal)? _pendingDelete;
+
+    // ── Edit modal ────────────────────────────────────────────────────────
+    bool                       _editModalVisible;
+    string                     _editModalTable  = "";
+    string                     _editModalPkCol  = "";
+    List<string>               _editModalCols   = [];
+    Dictionary<string, string> _editModalVals   = new();
+    string                     _editModalMsg    = "";
+    bool                       _editModalOk;
+    bool                       _editModalBusy;
+
+    void OpenEditModal(TableData t, string pkCol, List<string> row)
+    {
+        _editModalTable = t.Name;
+        _editModalPkCol = pkCol;
+        _editModalCols  = t.Columns;
+        _editModalVals  = new();
+        for (int i = 0; i < t.Columns.Count; i++)
+            _editModalVals[t.Columns[i]] = i < row.Count ? row[i] : "";
+        _editModalMsg     = "";
+        _editModalVisible = true;
+    }
+
+    void CloseEditModal() { _editModalVisible = false; _editModalMsg = ""; }
+
+    async Task SaveEditModal()
+    {
+        _editModalBusy = true; _editModalMsg = "";
+        var editableCols = _editModalCols.Where(c => c != _editModalPkCol).ToList();
+        var editableVals = editableCols.Select(c => _editModalVals[c]).ToList();
+        var pkVal        = _editModalVals.GetValueOrDefault(_editModalPkCol, "");
+        var table        = _editModalTable;
+        var pkCol        = _editModalPkCol;
+        var admin        = AdminUser();
+        try
+        {
+            await Task.Run(() =>
+            {
+                var setClauses = editableCols.Select((c, i) => $"{c}=@p{i}");
+                using var conn = new SqliteConnection(DbCs());
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"UPDATE {table} SET {string.Join(", ", setClauses)} WHERE {pkCol}=@pk";
+                for (int i = 0; i < editableCols.Count; i++)
+                    cmd.Parameters.AddWithValue($"@p{i}",
+                        string.IsNullOrEmpty(editableVals[i]) ? DBNull.Value : (object)editableVals[i]);
+                cmd.Parameters.AddWithValue("@pk", long.TryParse(pkVal, out var pkLong1) ? (object)pkLong1 : pkVal);
+                cmd.ExecuteNonQuery();
+
+                Console.WriteLine($"[Diagnosis] Admin '{admin}' updated {table} {pkCol}={pkVal}: " +
+                    string.Join(", ", editableCols.Select((c, i) => $"{c}='{editableVals[i]}'")));
+            });
+            _editModalMsg = "Saved."; _editModalOk = true;
+            LoadLiveTables();
+        }
+        catch (Exception ex)
+        {
+            _editModalMsg = $"Error: {ex.Message}"; _editModalOk = false;
+            Console.WriteLine($"[Diagnosis] Admin '{admin}' failed to update {table} {pkCol}={pkVal}: {ex.Message}");
+        }
+        finally { _editModalBusy = false; }
+    }
+
+    async Task DeleteRow(string tableName, string pkCol, string pkVal)
+    {
+        _pendingDelete = null;
+        var admin = AdminUser();
+        try
+        {
+            await Task.Run(() =>
+            {
+                using var conn = new SqliteConnection(DbCs());
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"DELETE FROM {tableName} WHERE {pkCol}=@pk";
+                cmd.Parameters.AddWithValue("@pk", long.TryParse(pkVal, out var pkLong2) ? (object)pkLong2 : pkVal);
+                cmd.ExecuteNonQuery();
+                Console.WriteLine($"[Diagnosis] Admin '{admin}' deleted row from {tableName} where {pkCol}={pkVal}");
+            });
+            LoadLiveTables();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Diagnosis] Admin '{admin}' failed to delete from {tableName} {pkCol}={pkVal}: {ex.Message}");
+        }
+    }
+
+    // ── User editor state ──────────────────────────────────────────────────
+    record UserDropdownItem(int Id, string Username, string StaffRole, string UserType);
+    static readonly HashSet<string> _hiddenCols =
+        new(StringComparer.OrdinalIgnoreCase) { "PasswordHash", "TotpSecret" };
+
+    List<UserDropdownItem>     _userList     = [];
+    int                        _selectedUserId;
+    List<string>               _userEditCols = [];
+    Dictionary<string, string> _userEditVals = new();
+    string _newPassword = "";
+    string _userMsg     = "";
+    bool   _userMsgOk;
+    bool   _userBusy;
+
+    // ── core_pcs editor state ──────────────────────────────────────────────
+    record PcDisplayRow(int PcId, string PersonName);
+    List<PcDisplayRow> _pcsRows          = [];
+    string             _newPcIdStr       = "";
+    string             _pcsMsg           = "";
+    bool               _pcsMsgOk;
+    bool               _pcsBusy;
+    int                _pendingDeletePcId = 0;
+    // pcs edit modal
+    bool               _pcsModalVisible  = false;
+    int                _pcsModalOldId;
+    string             _pcsModalNewStr   = "";
+    string             _pcsModalMsg      = "";
+    bool               _pcsModalOk;
+    bool               _pcsModalBusy;
+
+    // ── Recent files state ─────────────────────────────────────────────────
+    record RecentFile(string FullPath, string RelPath, DateTime Modified, long Size);
+    record PcRecentGroup(string PcName, List<RecentFile> Files);
+    List<PcRecentGroup> _recentGroups     = [];
+    string?             _pendingDeleteFile;
+    string              _recentMsg        = "";
+    bool                _recentMsgOk;
+    int                 _recentDays       = 7;
+
+    // ── Init ───────────────────────────────────────────────────────────────
+    protected override void OnInitialized()
+    {
+        LoadUserList();
+        LoadPcsRows();
+        LoadRecentFiles();
+        LoadLiveTables();
+    }
+
+    string DbCs()     => $"Data Source={Config["Database:Path"] ?? "lifepower.db"}";
+    string AdminUser()=> HttpCtx.HttpContext?.User?.FindFirst(ClaimTypes.Name)?.Value ?? "admin";
+
+    static string FormatSize(long bytes)
+    {
+        if (bytes < 1024)           return $"{bytes} B";
+        if (bytes < 1024 * 1024)    return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024):F1} MB";
+    }
+
+    // ── User editor methods ────────────────────────────────────────────────
+    void LoadUserList()
+    {
+        using var conn = new SqliteConnection(DbCs());
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Id, Username, StaffRole, UserType FROM core_users ORDER BY Id";
+        using var r = cmd.ExecuteReader();
+        _userList = [];
+        while (r.Read())
+            _userList.Add(new(r.GetInt32(0),
+                r.IsDBNull(1) ? "" : r.GetString(1),
+                r.IsDBNull(2) ? "" : r.GetString(2),
+                r.IsDBNull(3) ? "" : r.GetString(3)));
+    }
+
+    void OnUserSelected(ChangeEventArgs e)
+    {
+        int.TryParse(e.Value?.ToString(), out var uid);
+        _selectedUserId = uid; _userMsg = ""; _newPassword = "";
+        _userEditCols = []; _userEditVals = new();
+        if (uid == 0) return;
+
+        using var conn = new SqliteConnection(DbCs());
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT * FROM core_users WHERE Id=@id";
+        cmd.Parameters.AddWithValue("@id", uid);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return;
+        for (int i = 0; i < r.FieldCount; i++)
+        {
+            var col = r.GetName(i);
+            if (_hiddenCols.Contains(col)) continue;
+            _userEditCols.Add(col);
+            _userEditVals[col] = r.IsDBNull(i) ? "" : r.GetValue(i).ToString() ?? "";
+        }
+    }
+
+    async Task SaveUserFields()
+    {
+        if (_selectedUserId == 0) return;
+        _userBusy = true; _userMsg = "";
+        var editableCols = _userEditCols.Where(c => c != "Id").ToList();
+        var editableVals = editableCols.Select(c => _userEditVals[c]).ToList();
+        var targetUser   = _userList.FirstOrDefault(u => u.Id == _selectedUserId)?.Username ?? _selectedUserId.ToString();
+        var admin        = AdminUser();
+        try
+        {
+            await Task.Run(() =>
+            {
+                var setClauses = editableCols.Select((c, i) => $"{c}=@p{i}");
+                using var conn = new SqliteConnection(DbCs());
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"UPDATE core_users SET {string.Join(", ", setClauses)} WHERE Id=@id";
+                for (int i = 0; i < editableCols.Count; i++)
+                    cmd.Parameters.AddWithValue($"@p{i}",
+                        string.IsNullOrEmpty(editableVals[i]) ? DBNull.Value : (object)editableVals[i]);
+                cmd.Parameters.AddWithValue("@id", _selectedUserId);
+                cmd.ExecuteNonQuery();
+                Console.WriteLine($"[Diagnosis] Admin '{admin}' updated core_users user '{targetUser}' (Id={_selectedUserId}): " +
+                    string.Join(", ", editableCols.Select((c, i) => $"{c}='{editableVals[i]}'")));
+            });
+            _userMsg = "Saved."; _userMsgOk = true;
+            LoadUserList(); LoadLiveTables();
+        }
+        catch (Exception ex)
+        {
+            _userMsg = $"Error: {ex.Message}"; _userMsgOk = false;
+            Console.WriteLine($"[Diagnosis] Admin '{admin}' failed to update user '{targetUser}': {ex.Message}");
+        }
+        finally { _userBusy = false; }
+    }
+
+    async Task SaveUserPassword()
+    {
+        if (_selectedUserId == 0 || string.IsNullOrWhiteSpace(_newPassword)) return;
+        _userBusy = true; _userMsg = "";
+        var pwd        = _newPassword;
+        var targetUser = _userList.FirstOrDefault(u => u.Id == _selectedUserId)?.Username ?? _selectedUserId.ToString();
+        var admin      = AdminUser();
+        try
+        {
+            await Task.Run(() =>
+            {
+                var hash = HashPassword(pwd);
+                using var conn = new SqliteConnection(DbCs());
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "UPDATE core_users SET PasswordHash=@h, MustChangePassword=0 WHERE Id=@id";
+                cmd.Parameters.AddWithValue("@h", hash);
+                cmd.Parameters.AddWithValue("@id", _selectedUserId);
+                cmd.ExecuteNonQuery();
+                Console.WriteLine($"[Diagnosis] Admin '{admin}' changed password for user '{targetUser}' (Id={_selectedUserId})");
+            });
+            _newPassword = "";
+            _userMsg = "Password changed."; _userMsgOk = true;
+            LoadLiveTables();
+        }
+        catch (Exception ex)
+        {
+            _userMsg = $"Error: {ex.Message}"; _userMsgOk = false;
+            Console.WriteLine($"[Diagnosis] Admin '{admin}' failed password change for user '{targetUser}': {ex.Message}");
+        }
+        finally { _userBusy = false; }
+    }
+
+    // ── core_pcs editor methods ────────────────────────────────────────────
+    void LoadPcsRows()
+    {
+        using var conn = new SqliteConnection(DbCs());
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT p.PcId, TRIM(COALESCE(cp.FirstName,'') || ' ' || COALESCE(cp.LastName,''))
+            FROM core_pcs p
+            LEFT JOIN core_persons cp ON cp.PersonId = p.PcId
+            ORDER BY p.PcId";
+        using var r = cmd.ExecuteReader();
+        _pcsRows = [];
+        while (r.Read())
+            _pcsRows.Add(new(r.GetInt32(0), r.IsDBNull(1) ? "" : r.GetString(1)));
+    }
+
+    async Task DeletePcsRow(int pcId)
+    {
+        _pcsBusy = true; _pcsMsg = "";
+        var admin = AdminUser();
+        var name  = _pcsRows.FirstOrDefault(x => x.PcId == pcId)?.PersonName ?? "";
+        try
+        {
+            await Task.Run(() =>
+            {
+                using var conn = new SqliteConnection(DbCs());
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "DELETE FROM core_pcs WHERE PcId=@id";
+                cmd.Parameters.AddWithValue("@id", pcId);
+                cmd.ExecuteNonQuery();
+                Console.WriteLine($"[Diagnosis] Admin '{admin}' deleted core_pcs PcId={pcId} ('{name}')");
+            });
+            _pendingDeletePcId = 0;
+            _pcsMsg = $"Deleted PcId {pcId}."; _pcsMsgOk = true;
+            LoadPcsRows(); LoadLiveTables();
+        }
+        catch (Exception ex)
+        {
+            _pcsMsg = $"Error: {ex.Message}"; _pcsMsgOk = false;
+            Console.WriteLine($"[Diagnosis] Admin '{admin}' failed to delete PcId={pcId}: {ex.Message}");
+        }
+        finally { _pcsBusy = false; }
+    }
+
+    async Task AddPcsRow()
+    {
+        if (!int.TryParse(_newPcIdStr, out var newId) || newId <= 0)
+        { _pcsMsg = "Enter a valid positive integer PcId."; _pcsMsgOk = false; return; }
+        _pcsBusy = true; _pcsMsg = "";
+        var admin = AdminUser();
+        try
+        {
+            await Task.Run(() =>
+            {
+                using var conn = new SqliteConnection(DbCs());
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "INSERT INTO core_pcs (PcId) VALUES (@id)";
+                cmd.Parameters.AddWithValue("@id", newId);
+                cmd.ExecuteNonQuery();
+                Console.WriteLine($"[Diagnosis] Admin '{admin}' added core_pcs PcId={newId}");
+            });
+            _newPcIdStr = "";
+            _pcsMsg = $"Added PcId {newId}."; _pcsMsgOk = true;
+            LoadPcsRows(); LoadLiveTables();
+        }
+        catch (Exception ex)
+        {
+            _pcsMsg = $"Error: {ex.Message}"; _pcsMsgOk = false;
+            Console.WriteLine($"[Diagnosis] Admin '{admin}' failed to add PcId={newId}: {ex.Message}");
+        }
+        finally { _pcsBusy = false; }
+    }
+
+    void OpenPcsModal(int pcId)
+    {
+        _pcsModalOldId  = pcId;
+        _pcsModalNewStr = pcId.ToString();
+        _pcsModalMsg    = "";
+        _pcsModalVisible = true;
+    }
+
+    void ClosePcsModal() { _pcsModalVisible = false; _pcsModalMsg = ""; }
+
+    async Task SavePcsModal()
+    {
+        if (!int.TryParse(_pcsModalNewStr, out var newId) || newId <= 0)
+        { _pcsModalMsg = "Enter a valid positive integer PcId."; _pcsModalOk = false; return; }
+        var oldId = _pcsModalOldId;
+        if (newId == oldId) { ClosePcsModal(); return; }
+        _pcsModalBusy = true; _pcsModalMsg = "";
+        var admin = AdminUser();
+        try
+        {
+            await Task.Run(() =>
+            {
+                using var conn = new SqliteConnection(DbCs());
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "UPDATE core_pcs SET PcId=@newId WHERE PcId=@oldId";
+                cmd.Parameters.AddWithValue("@newId", newId);
+                cmd.Parameters.AddWithValue("@oldId", oldId);
+                cmd.ExecuteNonQuery();
+                Console.WriteLine($"[Diagnosis] Admin '{admin}' changed core_pcs PcId {oldId} → {newId}");
+            });
+            _pcsModalMsg = $"Saved: PcId {oldId} → {newId}."; _pcsModalOk = true;
+            _pcsModalOldId = newId;
+            _pcsModalNewStr = newId.ToString();
+            LoadPcsRows(); LoadLiveTables();
+        }
+        catch (Exception ex)
+        {
+            _pcsModalMsg = $"Error: {ex.Message}"; _pcsModalOk = false;
+            Console.WriteLine($"[Diagnosis] Admin '{admin}' failed to change PcId {oldId} → {newId}: {ex.Message}");
+        }
+        finally { _pcsModalBusy = false; }
+    }
+
+    // ── Recent files methods ───────────────────────────────────────────────
+    void LoadRecentFiles()
+    {
+        var basePath = Path.Combine(Directory.GetCurrentDirectory(), "PC-Folders");
+        var cutoff   = DateTime.Now.AddDays(-_recentDays);
+        _recentGroups = [];
+        if (!Directory.Exists(basePath)) return;
+
+        var groups = new Dictionary<string, List<RecentFile>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in Directory.EnumerateFiles(basePath, "*", SearchOption.AllDirectories))
+        {
+            // skip backup/temp dirs
+            var rel = Path.GetRelativePath(basePath, file);
+            var parts = rel.Split(Path.DirectorySeparatorChar);
+            if (parts.Any(p => p.StartsWith("_", StringComparison.Ordinal))) continue;
+
+            var modified = File.GetLastWriteTime(file);
+            if (modified < cutoff) continue;
+
+            var pcName  = parts[0];
+            var relPath = string.Join("/", parts.Skip(1));
+            if (!groups.ContainsKey(pcName)) groups[pcName] = [];
+            groups[pcName].Add(new(file, relPath, modified, new FileInfo(file).Length));
+        }
+
+        _recentGroups = groups
+            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new PcRecentGroup(g.Key,
+                g.Value.OrderByDescending(f => f.Modified).ToList()))
+            .ToList();
+    }
+
+    async Task DeleteRecentFile(string fullPath)
+    {
+        _pendingDeleteFile = null;
+        var admin = AdminUser();
+        try
+        {
+            await Task.Run(() =>
+            {
+                File.Delete(fullPath);
+                Console.WriteLine($"[Diagnosis] Admin '{admin}' deleted file: {fullPath}");
+            });
+            _recentMsg = "File deleted."; _recentMsgOk = true;
+            LoadRecentFiles();
+        }
+        catch (Exception ex)
+        {
+            _recentMsg = $"Error: {ex.Message}"; _recentMsgOk = false;
+            Console.WriteLine($"[Diagnosis] Admin '{admin}' failed to delete file '{fullPath}': {ex.Message}");
+        }
+    }
+
+    // ── Table loading ──────────────────────────────────────────────────────
+    void LoadLiveTables()
+    {
+        using var conn = new SqliteConnection(DbCs());
+        conn.Open();
+        _coreTables =
+        [
+            Load(conn, "core_users",   "ri-user-settings-line",  "ORDER BY Id",       ["PasswordHash", "TotpSecret"]),
+            Load(conn, "core_persons", "ri-contacts-line",        "ORDER BY PersonId"),
+            Load(conn, "core_pcs",     "ri-computer-line",        "ORDER BY PcId"),
+        ];
+        _sysTables =
+        [
+            Load(conn, "sys_staff_pc_list",   "ri-shield-check-line",   "ORDER BY Id"),
+            Load(conn, "sys_staff_messages",  "ri-message-2-line",      "ORDER BY Id"),
+            Load(conn, "sys_weekly_remarks",  "ri-calendar-check-line", "ORDER BY Id"),
+            Load(conn, "sys_trusted_devices", "ri-device-line",         "ORDER BY CreatedAt"),
+        ];
+        _lkpTables =
+        [
+            Load(conn, "lkp_grades",           "ri-medal-line",         "ORDER BY SortOrder"),
+            Load(conn, "lkp_courses",          "ri-book-line",          "ORDER BY CourseId"),
+            Load(conn, "lkp_cs_status",        "ri-flag-line",          "ORDER BY SortOrder"),
+            Load(conn, "lkp_folder_items",     "ri-folder-line",        "ORDER BY Section, ItemId"),
+            Load(conn, "lkp_organizations",    "ri-building-line",      "ORDER BY OrgId"),
+            Load(conn, "lkp_referral_sources", "ri-link-m",             "ORDER BY ReferralId"),
+            Load(conn, "lkp_shortcuts",        "ri-keyboard-line",      "ORDER BY Id"),
+        ];
+        _sessTables =
+        [
+            Load(conn, "sess_sessions",       "ri-calendar-event-line", "ORDER BY SessionId       DESC LIMIT 200"),
+            Load(conn, "sess_misc_charges",   "ri-coins-line",          "ORDER BY MiscChargeId    DESC LIMIT 200"),
+            Load(conn, "sess_folder_summary", "ri-file-text-line",      "ORDER BY Id              DESC LIMIT 200"),
+            Load(conn, "sess_meetings",       "ri-time-line",           "ORDER BY MeetingId       DESC LIMIT 200"),
+        ];
+        _csTables =
+        [
+            Load(conn, "cs_reviews",          "ri-shield-star-line",    "ORDER BY CsReviewId      DESC LIMIT 200"),
+            Load(conn, "cs_work_log",         "ri-todo-line",           "ORDER BY CsWorkLogId     DESC LIMIT 200"),
+            Load(conn, "cs_case_supervisors", "ri-user-star-line",      "ORDER BY CsId            DESC LIMIT 200"),
+        ];
+        _finTables =
+        [
+            Load(conn, "fin_purchases",       "ri-shopping-cart-line",  "ORDER BY PurchaseId      DESC LIMIT 200"),
+            Load(conn, "fin_purchase_items",  "ri-list-check",          "ORDER BY PurchaseItemId  DESC LIMIT 200"),
+            Load(conn, "fin_payments",        "ri-bank-card-line",      "ORDER BY PaymentId       DESC LIMIT 200"),
+            Load(conn, "fin_payment_methods", "ri-secure-payment-line", "ORDER BY PaymentMethodId DESC LIMIT 200"),
+        ];
+        _acadTables =
+        [
+            Load(conn, "acad_attendance",      "ri-check-double-line",  "ORDER BY StudentId       DESC LIMIT 200"),
+            Load(conn, "acad_student_courses", "ri-book-open-line",     "ORDER BY StudentCourseId DESC LIMIT 200"),
+        ];
+    }
+
+    TableData Load(SqliteConnection conn, string table, string icon,
+                   string orderBy = "", string[]? skipCols = null)
+    {
+        var skip = new HashSet<string>(skipCols ?? [], StringComparer.OrdinalIgnoreCase);
+        var cols = new List<string>();
+        var rows = new List<List<string>>();
+        try
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"SELECT * FROM {table} {orderBy}";
+            using var r = cmd.ExecuteReader();
+            for (int i = 0; i < r.FieldCount; i++)
+                if (!skip.Contains(r.GetName(i))) cols.Add(r.GetName(i));
+            while (r.Read())
+            {
+                var row = new List<string>();
+                for (int i = 0; i < r.FieldCount; i++)
+                    if (!skip.Contains(r.GetName(i)))
+                        row.Add(r.IsDBNull(i) ? "" : r.GetValue(i).ToString() ?? "");
+                rows.Add(row);
+            }
+        }
+        catch (Exception ex) { cols = [$"Error: {ex.Message}"]; }
+        return new TableData(table, icon, cols, rows);
+    }
+
+    // ── Create Empty DB ────────────────────────────────────────────────────
+    async Task CreateEmptyDbCopy()
+    {
+        _busy = true; _resultPath = ""; _cedbError = "";
+        var admin = AdminUser();
+        Console.WriteLine($"[Diagnosis] Admin '{admin}' started Create Empty DB Copy");
+        try
+        {
+            await Task.Run(DoCreate);
+            Console.WriteLine($"[Diagnosis] Admin '{admin}' Create Empty DB Copy completed: {_resultPath}");
+        }
+        catch (Exception ex)
+        {
+            _cedbError = $"Failed: {ex.Message}";
+            Console.WriteLine($"[Diagnosis] Admin '{admin}' Create Empty DB Copy failed: {ex}");
+        }
+        finally { _busy = false; LoadLiveTables(); }
+    }
+
+    void DoCreate()
+    {
+        var srcPath  = Config["Database:Path"] ?? "lifepower.db";
+        var timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        var dir      = Path.GetDirectoryName(Path.GetFullPath(srcPath)) ?? ".";
+        var name     = Path.GetFileNameWithoutExtension(srcPath);
+        var destPath = Path.Combine(dir, $"{name}_empty_{timestamp}.db");
+
+        using var src = new SqliteConnection($"Data Source={srcPath}");
+        src.Open();
+        using var conn = new SqliteConnection($"Data Source={destPath};Pooling=False");
+        conn.Open();
+        src.BackupDatabase(conn);
+        src.Close();
+        Console.WriteLine($"[Diagnosis] Copied '{srcPath}' → '{destPath}'");
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "PRAGMA foreign_keys = OFF"; cmd.ExecuteNonQuery();
+
+        foreach (var table in new[]
+        {
+            "fin_payment_methods", "fin_purchase_items", "fin_purchases", "fin_payments",
+            "acad_attendance", "acad_student_courses",
+            "sess_folder_summary", "sess_misc_charges", "sess_sessions", "sess_auditors", "sess_meetings",
+            "cs_work_log", "cs_reviews", "cs_case_supervisors",
+            "sys_weekly_remarks", "sys_auditor_pc_permissions",
+            "sys_staff_messages", "sys_staff_pc_list", "sys_trusted_devices",
+            "core_user_roles", "core_users", "core_pcs", "core_persons",
+        })
+        {
+            cmd.CommandText = $"DELETE FROM {table}"; cmd.Parameters.Clear();
+            try { cmd.ExecuteNonQuery(); }
+            catch (Exception ex) { Console.WriteLine($"[Diagnosis] Skipped '{table}': {ex.Message}"); }
+        }
+
+        cmd.CommandText = "DELETE FROM sqlite_sequence WHERE name IN " +
+            "('core_persons','core_pcs','core_users','sess_sessions','cs_reviews'," +
+            "'fin_purchases','fin_purchase_items','fin_payments','fin_payment_methods')";
+        try { cmd.ExecuteNonQuery(); } catch { }
+
+        cmd.CommandText = @"
+            INSERT INTO core_persons (FirstName, LastName, Phone, Email, DateOfBirth, Gender, Org, Source, Notes, Nick)
+            VALUES ('Admin', '', '', '', '', '', NULL, NULL, '', '')";
+        cmd.Parameters.Clear(); cmd.ExecuteNonQuery();
+        cmd.CommandText = "SELECT last_insert_rowid()";
+        var personId = (long)cmd.ExecuteScalar()!;
+
+        cmd.CommandText = "INSERT INTO core_pcs (PcId) VALUES (@pid)";
+        cmd.Parameters.Clear(); cmd.Parameters.AddWithValue("@pid", personId);
+        try { cmd.ExecuteNonQuery(); } catch { }
+
+        var passwordHash = HashPassword("Admin1992");
+        cmd.CommandText = @"
+            INSERT INTO core_users
+                (PersonId, Username, PasswordHash, StaffRole, UserType, GradeId, AllowAll,
+                 IsActive, MustChangePassword, ContactConfirmed)
+            VALUES (@pid, 'admin', @h, 'Auditor', 'Admin', NULL, 1, 1, 0, 1)";
+        cmd.Parameters.Clear();
+        cmd.Parameters.AddWithValue("@pid", personId);
+        cmd.Parameters.AddWithValue("@h", passwordHash);
+        cmd.ExecuteNonQuery();
+
+        cmd.CommandText = "PRAGMA foreign_keys = ON"; cmd.Parameters.Clear(); cmd.ExecuteNonQuery();
+        cmd.CommandText = "PRAGMA journal_mode=DELETE;"; cmd.ExecuteNonQuery();
+        Console.WriteLine($"[Diagnosis] Seeded admin user. Empty DB ready at '{destPath}'");
+        _resultPath = destPath;
+    }
+
+    static string HashPassword(string password)
+    {
+        const int iterations = 260000;
+        byte[] salt = RandomNumberGenerator.GetBytes(16);
+        using var kdf = new Rfc2898DeriveBytes(password, salt, iterations, HashAlgorithmName.SHA256);
+        byte[] hash = kdf.GetBytes(32);
+        return $"pbkdf2_sha256${iterations}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
+    }
+}
+
+<style>
+    .diag-editor-card { border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+    .diag-editor-header {
+        background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+        padding: 10px 16px; font-size: .78rem; font-weight: 700; color: #475569;
+        display: flex; align-items: center; gap: 4px;
+    }
+    .diag-editor-sub { font-weight: 400; font-size: .68rem; color: #94a3b8; margin-left: 6px; font-family: monospace; }
+    .diag-editor-body { padding: 16px; }
+    .diag-lbl { display: block; font-size: .7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 3px; }
+    .diag-input-ro { background: #f8fafc !important; color: #94a3b8 !important; }
+    .diag-action-btn { min-height: 36px; }
+    .diag-feedback { font-size: .82rem; }
+
+    /* Modal */
+    .diag-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1040; }
+    .diag-modal {
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+        z-index: 1050; background: #fff; border-radius: 16px;
+        box-shadow: 0 24px 64px rgba(0,0,0,.25);
+        width: min(760px, 95vw); max-height: 85vh; display: flex; flex-direction: column;
+    }
+    .diag-modal-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 14px 18px; border-bottom: 1px solid #e2e8f0;
+        font-size: .85rem; font-weight: 600; color: #1e293b;
+    }
+    .diag-modal-body { padding: 18px; overflow-y: auto; flex: 1; }
+    .diag-modal-footer { padding: 12px 18px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 8px; }
+
+    /* Table groups */
+    .cedb-group-header { font-size: .65rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; color: #475569; padding: 4px 0 2px; border-bottom: 2px solid #e2e8f0; margin-bottom: 2px; }
+    .cedb-section { }
+    .cedb-section-title { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: #64748b; margin-bottom: 6px; margin-top: 10px; display: flex; align-items: center; gap: 6px; }
+    .cedb-section-title::after { content:''; flex:1; height:1px; background:#e2e8f0; }
+    .cedb-section-toggle { cursor: pointer; user-select: none; }
+    .cedb-section-toggle:hover { color: #3b82f6; }
+    .cedb-chevron { font-size: .9rem; margin-left: 2px; transition: transform .2s ease; transform: rotate(0deg); flex-shrink: 0; }
+    .cedb-chevron-up { transform: rotate(-180deg); }
+    .cedb-count { font-weight: 400; font-size: .68rem; color: #94a3b8; text-transform: none; letter-spacing: 0; }
+    .cedb-empty { font-size: .75rem; color: #94a3b8; font-style: italic; padding: 4px 0; }
+    .cedb-table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #e2e8f0; }
+    .cedb-table { width: 100%; border-collapse: collapse; font-size: .72rem; }
+    .cedb-table th { padding: 4px 10px; background: #f8fafc; color: #94a3b8; font-weight: 700; font-size: .6rem; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
+    .cedb-table td { padding: 3px 10px; border-bottom: 1px solid #f1f5f9; color: var(--default-text-color, #1e293b); white-space: nowrap; line-height: 1.3; }
+    .cedb-table tbody tr:last-child td { border-bottom: none; }
+    .cedb-table tbody tr:hover { background: rgba(99,102,241,.04); }
+    .cedb-table tbody tr.table-danger { background: rgba(239,68,68,.06) !important; }
+</style>
