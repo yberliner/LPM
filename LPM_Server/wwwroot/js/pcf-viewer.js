@@ -697,26 +697,57 @@ window.pcfViewer = {
         return numPages;
     },
 
-    async getAnnotatedPdf(paneId) {
+    // Build annotation data: transparent overlays for draw/text pages,
+    // full composites only for bg-changed/blank/inserted pages, nothing for unchanged originals.
+    getAnnotationData(paneId) {
         paneId = paneId || this.activePane;
         const pane = this.panes[paneId];
-        if (!pane) return JSON.stringify([]);
+        if (!pane) return JSON.stringify({ totalPages: 0, pages: [] });
 
-        const finalCanvas = document.createElement('canvas');
+        // Collect which page indices have each annotation type
+        const bgChangePages = new Set(
+            pane.annotations.filter(a => a.type === 'bg-change').map(a => a.pageIdx)
+        );
+        const overlayPages = new Set(
+            pane.annotations.filter(a => a.type === 'draw' || a.type === 'text').map(a => a.pageIdx)
+        );
+
         const pages = [];
+        for (let i = 0; i < pane.pages.length; i++) {
+            const pg = pane.pages[i];
+            // Original pages have srcDoc === pane.pdfDoc; blank/inserted pages have no srcDoc or a different one
+            const isOriginal = pg.srcDoc != null && pg.srcDoc === pane.pdfDoc;
+            const srcPageIdx = isOriginal ? (pg.srcPageNum - 1) : -1;
+            const hasBgChange = bgChangePages.has(i);
+            const hasOverlay  = overlayPages.has(i);
 
-        for (const pg of pane.pages) {
-            const w = pg.canvas.width;
-            const h = pg.canvas.height;
-            finalCanvas.width = w;
-            finalCanvas.height = h;
-            const ctx = finalCanvas.getContext('2d');
-            ctx.drawImage(pg.canvas, 0, 0);
-            ctx.drawImage(pg.overlay, 0, 0);
-            const dataUrl = finalCanvas.toDataURL('image/png');
-            pages.push({ width: w, height: h, dataUrl });
+            if (!isOriginal || hasBgChange) {
+                // Blank/inserted page or bg-changed original: send full composite
+                const fc = document.createElement('canvas');
+                fc.width = pg.canvas.width; fc.height = pg.canvas.height;
+                const fctx = fc.getContext('2d');
+                fctx.drawImage(pg.canvas, 0, 0);
+                fctx.drawImage(pg.overlay, 0, 0);
+                pages.push({
+                    action: isOriginal ? 'full_replace' : 'full_new',
+                    srcPageIdx,
+                    w: fc.width, h: fc.height,
+                    dataUrl: fc.toDataURL('image/png')
+                });
+            } else if (hasOverlay) {
+                // Original page with draw/text: send transparent annotation overlay only
+                pages.push({
+                    action: 'overlay',
+                    srcPageIdx,
+                    w: pg.overlay.width, h: pg.overlay.height,
+                    dataUrl: pg.overlay.toDataURL('image/png')
+                });
+            } else {
+                // Original page with no changes: server keeps as-is
+                pages.push({ action: 'original', srcPageIdx });
+            }
         }
-        return JSON.stringify(pages);
+        return JSON.stringify({ totalPages: pane.pages.length, pages });
     },
 
     // ── Zoom ──
@@ -885,37 +916,30 @@ window.pcfViewer = {
         const pane = this.panes[paneId];
         if (!pane || pane.annotations.length === 0 || !pane.filePath || !this._pcId) return;
 
-        const finalCanvas = document.createElement('canvas');
-        const pagesData = [];
-        for (const pg of pane.pages) {
-            const w = pg.canvas.width;
-            const h = pg.canvas.height;
-            finalCanvas.width = w;
-            finalCanvas.height = h;
-            const ctx = finalCanvas.getContext('2d');
-            ctx.drawImage(pg.canvas, 0, 0);
-            ctx.drawImage(pg.overlay, 0, 0);
-            pagesData.push({ width: w, height: h, dataUrl: finalCanvas.toDataURL('image/png') });
-        }
-
-        // Use synchronous XHR to ensure it completes before tab closes
+        const meta = JSON.parse(this.getAnnotationData(paneId));
         const formData = new FormData();
-        for (let i = 0; i < pagesData.length; i++) {
-            const byteStr = atob(pagesData[i].dataUrl.split(',')[1]);
-            const arr = new Uint8Array(byteStr.length);
-            for (let j = 0; j < byteStr.length; j++) arr[j] = byteStr.charCodeAt(j);
-            formData.append('page_' + i, new Blob([arr], { type: 'image/png' }), 'page_' + i + '.png');
+        const metaForSend = { totalPages: meta.totalPages, pages: [] };
+        let imgIdx = 0;
+
+        for (const p of meta.pages) {
+            if (p.action === 'original') {
+                metaForSend.pages.push({ action: 'original', srcPageIdx: p.srcPageIdx });
+            } else {
+                const byteStr = atob(p.dataUrl.split(',')[1]);
+                const arr = new Uint8Array(byteStr.length);
+                for (let j = 0; j < byteStr.length; j++) arr[j] = byteStr.charCodeAt(j);
+                formData.append('img_' + imgIdx, new Blob([arr], { type: 'image/png' }), 'img_' + imgIdx + '.png');
+                metaForSend.pages.push({ action: p.action, srcPageIdx: p.srcPageIdx ?? -1, w: p.w, h: p.h, imgIdx });
+                imgIdx++;
+            }
         }
-        formData.append('pageCount', pagesData.length.toString());
-        formData.append('widths', JSON.stringify(pagesData.map(p => p.width)));
-        formData.append('heights', JSON.stringify(pagesData.map(p => p.height)));
+        formData.append('meta', JSON.stringify(metaForSend));
 
         const xhr = new XMLHttpRequest();
         const soloParam = pane.solo ? '&solo=true' : '';
         xhr.open('POST', '/api/pc-file-save-annotated?pcId=' + this._pcId + '&path=' + encodeURIComponent(pane.filePath) + soloParam, false);
         xhr.send(formData);
 
-        // Clear annotations after saving
         pane.annotations = [];
     },
 
@@ -931,8 +955,8 @@ window.pcfViewer = {
         const pane = this.panes[paneId];
         if (!pane || pane.readOnly || pane.annotations.length === 0 || !pane.filePath || !this._pcId) return;
 
-        const pagesJson = await this.getAnnotatedPdf(paneId);
-        await window.pcfSaveAnnotatedPdf(this._pcId, pane.filePath, pagesJson, pane.solo);
+        const dataJson = this.getAnnotationData(paneId);
+        await window.pcfSaveAnnotatedPdf(this._pcId, pane.filePath, dataJson, pane.solo);
         pane.annotations = [];
     },
 

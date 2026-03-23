@@ -79,19 +79,26 @@
     <script src="/js/quill-interop.js"></script>
 
     <!-- PC Folder viewer -->
-    <script src="/js/pcf-viewer.js?v=12"></script>
+    <script src="/js/pcf-viewer.js?v=13"></script>
     <script>
-        window.pcfSaveAnnotatedPdf = async function(pcId, filePath, pagesJson, solo) {
-            const pages = JSON.parse(pagesJson);
+        window.pcfSaveAnnotatedPdf = async function(pcId, filePath, dataJson, solo) {
+            const meta = JSON.parse(dataJson);
             const formData = new FormData();
-            for (let i = 0; i < pages.length; i++) {
-                const resp = await fetch(pages[i].dataUrl);
-                const blob = await resp.blob();
-                formData.append('page_' + i, blob, 'page_' + i + '.png');
+            const metaForSend = { totalPages: meta.totalPages, pages: [] };
+            let imgIdx = 0;
+
+            for (const p of meta.pages) {
+                if (p.action === 'original') {
+                    metaForSend.pages.push({ action: 'original', srcPageIdx: p.srcPageIdx });
+                } else {
+                    const resp = await fetch(p.dataUrl);
+                    const blob = await resp.blob();
+                    formData.append('img_' + imgIdx, blob, 'img_' + imgIdx + '.png');
+                    metaForSend.pages.push({ action: p.action, srcPageIdx: p.srcPageIdx ?? -1, w: p.w, h: p.h, imgIdx });
+                    imgIdx++;
+                }
             }
-            formData.append('pageCount', pages.length.toString());
-            formData.append('widths', JSON.stringify(pages.map(p => p.width)));
-            formData.append('heights', JSON.stringify(pages.map(p => p.height)));
+            formData.append('meta', JSON.stringify(metaForSend));
 
             const soloParam = solo ? '&solo=true' : '';
             const saveResp = await fetch('/api/pc-file-save-annotated?pcId=' + pcId + '&path=' + encodeURIComponent(filePath) + soloParam, {

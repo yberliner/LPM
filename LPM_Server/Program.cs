@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 using System.IO;
 using System.Text;
+using PdfSharpCore.Pdf.IO;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using LPM.Auth;
@@ -475,8 +476,7 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
     var solo = ctx.Request.Query["solo"].ToString() == "true";
     if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
 
-    // Remove body size limit for large annotated PDFs (many pages → large multipart upload)
-    var sizeFeat = ctx.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+    var sizeFeat = ctx.Features.Get<IHttpMaxRequestBodySizeFeature>();
     if (sizeFeat != null) sizeFeat.MaxRequestBodySize = null;
 
     var form = await ctx.Request.ReadFormAsync(new FormOptions
@@ -484,36 +484,73 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
         MultipartBodyLengthLimit = long.MaxValue,
         ValueLengthLimit = int.MaxValue
     });
-    if (!int.TryParse(form["pageCount"], out var pageCount) || pageCount == 0)
-        return Results.BadRequest("No pages");
 
-    var widths = System.Text.Json.JsonSerializer.Deserialize<int[]>(form["widths"].ToString()) ?? [];
-    var heights = System.Text.Json.JsonSerializer.Deserialize<int[]>(form["heights"].ToString()) ?? [];
+    var metaJson = form["meta"].ToString();
+    if (string.IsNullOrEmpty(metaJson)) return Results.BadRequest("No meta");
 
-    // Build a new PDF from the annotated page images using PdfSharpCore
-    using var pdfDoc = new PdfSharpCore.Pdf.PdfDocument();
-    for (int i = 0; i < pageCount; i++)
+    var jOpts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+    var meta = System.Text.Json.JsonSerializer.Deserialize<AnnSaveMeta>(metaJson, jOpts);
+    if (meta?.Pages == null) return Results.BadRequest("Invalid meta");
+
+    // Load the original PDF so unchanged pages are preserved as vectors
+    var originalBytes = svc.ReadFileBytes(pcId, path, solo);
+    if (originalBytes == null) return Results.NotFound();
+
+    using var inputMs = new MemoryStream(originalBytes);
+    using var originalDoc = PdfReader.Open(inputMs, PdfDocumentOpenMode.Import);
+    using var newDoc = new PdfSharpCore.Pdf.PdfDocument();
+    const double pxScale = 1.5;
+
+    foreach (var pg in meta.Pages)
     {
-        var file = form.Files[$"page_{i}"];
-        if (file == null) continue;
+        switch (pg.Action)
+        {
+            case "original":
+                // Copy original page as-is (vectors preserved)
+                if (pg.SrcPageIdx >= 0 && pg.SrcPageIdx < originalDoc.PageCount)
+                    newDoc.AddPage(originalDoc.Pages[pg.SrcPageIdx]);
+                break;
 
-        using var imgStream = new MemoryStream();
-        await file.CopyToAsync(imgStream);
-        imgStream.Position = 0;
+            case "overlay":
+            {
+                // Copy original page then draw transparent annotation layer on top
+                if (pg.SrcPageIdx < 0 || pg.SrcPageIdx >= originalDoc.PageCount) break;
+                var page = newDoc.AddPage(originalDoc.Pages[pg.SrcPageIdx]);
+                var imgFile = form.Files["img_" + pg.ImgIdx];
+                if (imgFile != null)
+                {
+                    using var imgMs = new MemoryStream();
+                    await imgFile.CopyToAsync(imgMs);
+                    var imgBytes = imgMs.ToArray();
+                    using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page, PdfSharpCore.Drawing.XGraphicsPdfPageOptions.Append);
+                    var xImg = PdfSharpCore.Drawing.XImage.FromStream(() => new MemoryStream(imgBytes));
+                    gfx.DrawImage(xImg, 0, 0, page.Width, page.Height);
+                }
+                break;
+            }
 
-        var page = pdfDoc.AddPage();
-        // Scale from rendered pixels (at 1.5x) back to PDF points
-        double pxScale = 1.5;
-        page.Width = PdfSharpCore.Drawing.XUnit.FromPoint(widths[i] / pxScale);
-        page.Height = PdfSharpCore.Drawing.XUnit.FromPoint(heights[i] / pxScale);
-
-        using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page);
-        var img = PdfSharpCore.Drawing.XImage.FromStream(() => new MemoryStream(imgStream.ToArray()));
-        gfx.DrawImage(img, 0, 0, page.Width, page.Height);
+            case "full_replace":
+            case "full_new":
+            {
+                // Full raster: bg-changed original page or new blank/inserted page
+                var imgFile = form.Files["img_" + pg.ImgIdx];
+                if (imgFile == null) break;
+                using var imgMs = new MemoryStream();
+                await imgFile.CopyToAsync(imgMs);
+                var imgBytes = imgMs.ToArray();
+                var page = newDoc.AddPage();
+                page.Width  = PdfSharpCore.Drawing.XUnit.FromPoint(pg.W / pxScale);
+                page.Height = PdfSharpCore.Drawing.XUnit.FromPoint(pg.H / pxScale);
+                using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page);
+                var xImg = PdfSharpCore.Drawing.XImage.FromStream(() => new MemoryStream(imgBytes));
+                gfx.DrawImage(xImg, 0, 0, page.Width, page.Height);
+                break;
+            }
+        }
     }
 
     using var outputMs = new MemoryStream();
-    pdfDoc.Save(outputMs);
+    newDoc.Save(outputMs);
     var annotUser = ctx.User?.Identity?.Name ?? "unknown";
     Console.WriteLine($"[PcFile] Saved annotated PDF pcId={pcId}: {path} solo={solo} by '{annotUser}'");
     var saved = svc.SaveFile(pcId, path, outputMs.ToArray(), solo);
@@ -840,3 +877,7 @@ foreach (var stale in Directory.GetFiles(Path.GetTempPath(), "lpm-backup-*.zip")
 LPM.Services.FolderService.EnsureDummyProgramInserts();
 
 app.Run();
+
+// Models for overlay-based annotation save
+record AnnPageInfo(string Action, int SrcPageIdx, int W, int H, int ImgIdx);
+record AnnSaveMeta(int TotalPages, AnnPageInfo[] Pages);
