@@ -834,8 +834,7 @@
 @if (_showImportWizard)
 {
     <div class="modal show d-block" tabindex="-1"
-         style="background:rgba(0,0,0,.5); z-index:9999;"
-         @onclick="() => _showImportWizard = false">
+         style="background:rgba(0,0,0,.5); z-index:9999;">
         <div class="modal-dialog modal-dialog-centered @(_importStep == 2 ? "modal-lg" : "modal-md")"
              @onclick:stopPropagation="true">
             <div class="modal-content" style="background:#1e293b; color:#e2e8f0; border:1px solid #334155;">
@@ -1103,7 +1102,8 @@
                                             <td>
                                                 <input type="text" class="arf-cell-input"
                                                        value="@_arfRows[idx].Results"
-                                                       @oninput="e => { _arfRows[idx].Results = e.Value?.ToString() ?? string.Empty; RebuildArfSummary(); }"/>
+                                                       @oninput="e => { _arfRows[idx].Results = e.Value?.ToString() ?? string.Empty; RebuildArfSummary(); }"
+                                                       @onkeydown="e => OnArfResultsKeyDown(e)"/>
                                             </td>
                                             <td style="text-align:center; vertical-align:middle;">
                                                 @if (_arfRows.Count > 1)
@@ -2176,6 +2176,7 @@
 
     void AddArfRow() { if (CanAddArfRow) { _arfRows.Add(new ArfRow()); RebuildArfSummary(); } }
     void RemoveArfRow(int idx) { if (_arfRows.Count > 1) { _arfRows.RemoveAt(idx); RecalcSessionLength(); RebuildArfSummary(); } }
+    void OnArfResultsKeyDown(KeyboardEventArgs e) { if ((e.Key == "Enter" || e.Key == "Tab") && CanAddArfRow) AddArfRow(); }
 
     void RebuildArfSummary(bool pushToEditor = true)
     {
