@@ -1570,11 +1570,41 @@ public class FolderService
         return true;
     }
 
-    public byte[] CreatePinkPdf()
+    /// <summary>
+    /// Returns the first page's dimensions (in points) of a session file stored in WorkSheets.
+    /// Falls back to A4 (595.28 × 841.89 pt) if the file cannot be read.
+    /// </summary>
+    public (double Width, double Height) GetSessionPageSizePt(int pcId, string sessionFileName, bool solo = false)
+    {
+        const double A4W = 595.28, A4H = 841.89;
+        try
+        {
+            var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
+            if (folder == null) return (A4W, A4H);
+            var fullPath = Path.Combine(folder, "WorkSheets", sessionFileName);
+            if (!File.Exists(fullPath)) return (A4W, A4H);
+
+            var bytes = DecryptBytes(File.ReadAllBytes(fullPath));
+            using var ms = new MemoryStream(bytes);
+            using var doc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
+            if (doc.PageCount == 0) return (A4W, A4H);
+            var p = doc.Pages[0];
+            var w = p.Width.Point;
+            var h = p.Height.Point;
+            // Guard against degenerate values
+            if (w < 50 || h < 50) return (A4W, A4H);
+            return (w, h);
+        }
+        catch { return (A4W, A4H); }
+    }
+
+    public byte[] CreatePinkPdf(double widthPt = 595.28, double heightPt = 841.89)
     {
         using var ms = new MemoryStream();
         var doc = new PdfSharpCore.Pdf.PdfDocument();
         var page = doc.AddPage();
+        page.Width  = PdfSharpCore.Drawing.XUnit.FromPoint(widthPt);
+        page.Height = PdfSharpCore.Drawing.XUnit.FromPoint(heightPt);
         var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page);
         gfx.DrawRectangle(new PdfSharpCore.Drawing.XSolidBrush(
             PdfSharpCore.Drawing.XColor.FromArgb(252, 231, 243)), // #fce7f3 pink
@@ -1608,11 +1638,13 @@ public class FolderService
         return true;
     }
 
-    public byte[] CreateEmptyPdf()
+    public byte[] CreateEmptyPdf(double widthPt = 595.28, double heightPt = 841.89)
     {
         using var ms = new System.IO.MemoryStream();
         var doc = new PdfSharpCore.Pdf.PdfDocument();
-        doc.AddPage(); // blank A4 page
+        var page = doc.AddPage();
+        page.Width  = PdfSharpCore.Drawing.XUnit.FromPoint(widthPt);
+        page.Height = PdfSharpCore.Drawing.XUnit.FromPoint(heightPt);
         doc.Save(ms);
         return ms.ToArray();
     }

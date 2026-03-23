@@ -2555,7 +2555,7 @@
 
     int _selectGeneration; // incremented on each click to detect stale loads
 
-    void SelectFile(string relativePath, string fileName, string section = "")
+    void SelectFile(string relativePath, string fileName, string section = "", bool fitAfterLoad = false)
     {
         Console.WriteLine($"[PcFolder] Selected file '{fileName}' (section: {section}) by '{_userName}' — for PC {PcId}");
         if (_extractMode) _ = CancelExtract();
@@ -2593,10 +2593,10 @@
         var apiPath = IsFolderSummaryFile(fileName, relativePath)
             ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}{SoloParam}&_t={DateTime.UtcNow.Ticks}"
             : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
-        _ = LoadPdfAsync(gen, apiPath, paneId);
+        _ = LoadPdfAsync(gen, apiPath, paneId, fitAfterLoad);
     }
 
-    async Task LoadPdfAsync(int gen, string url, string paneId)
+    async Task LoadPdfAsync(int gen, string url, string paneId, bool fitAfterLoad = false)
     {
         await Task.Yield(); // release the Blazor sync context immediately
         if (gen != _selectGeneration) return;
@@ -2607,6 +2607,13 @@
         await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId);
         if (gen != _selectGeneration) return;
         await JS.InvokeVoidAsync("pcfViewer.setTool", "");
+        if (fitAfterLoad)
+        {
+            var pct = await JS.InvokeAsync<int>("pcfViewer.fitPage", paneId);
+            _zoomPercent = pct;
+            _fitMode = true;
+            await InvokeAsync(StateHasChanged);
+        }
         // restore dual mode if it was active before the file change
         if (wasDual)
         {
@@ -2615,7 +2622,7 @@
             {
                 _dualPanes.Add(paneId);
                 _dualInfo[paneId] = (result[0], result[1]);
-                StateHasChanged();
+                await InvokeAsync(StateHasChanged);
             }
         }
     }
@@ -3715,7 +3722,8 @@
     {
         Console.WriteLine($"[PcFolder] Adding pink sheet to session '{_wsCtxSessionFileName}' by '{_userName}' — PC {PcId}");
         var sessionFileName = _wsCtxSessionFileName;
-        var pinkBytes = FolderSvc.CreatePinkPdf();
+        var (w, h) = FolderSvc.GetSessionPageSizePt(PcId, sessionFileName, Solo);
+        var pinkBytes = FolderSvc.CreatePinkPdf(w, h);
         FolderSvc.SaveAttachment(PcId, sessionFileName, "PinkSheet.pdf", pinkBytes, Solo);
         RefreshFolder();
         CloseWsCtxMenu();
@@ -3743,14 +3751,15 @@
             targetIdx = 2; // 3rd pane (index 2)
         }
         _activeIdx = targetIdx;
-        SelectFile(pinkAtt.RelativePath, pinkAtt.FileName, "WorkSheet");
+        SelectFile(pinkAtt.RelativePath, pinkAtt.FileName, "WorkSheet", fitAfterLoad: true);
     }
 
     void WsCtxAddWhiteSheet(string name)
     {
         Console.WriteLine($"[PcFolder] Adding {name} sheet to session '{_wsCtxSessionFileName}' by '{_userName}' — PC {PcId}");
         var sessionFileName = _wsCtxSessionFileName;
-        var pdfBytes = FolderSvc.CreateEmptyPdf();
+        var (w, h) = FolderSvc.GetSessionPageSizePt(PcId, sessionFileName, Solo);
+        var pdfBytes = FolderSvc.CreateEmptyPdf(w, h);
         FolderSvc.SaveAttachment(PcId, sessionFileName, $"{name}.pdf", pdfBytes, Solo);
         RefreshFolder();
         CloseWsCtxMenu();
@@ -3775,7 +3784,7 @@
             targetIdx = 2;
         }
         _activeIdx = targetIdx;
-        SelectFile(att.RelativePath, att.FileName, "WorkSheet");
+        SelectFile(att.RelativePath, att.FileName, "WorkSheet", fitAfterLoad: true);
     }
 
     async Task WsCtxUploadAttachment()
