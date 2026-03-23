@@ -249,13 +249,30 @@ public class FolderService
             });
     }
 
-    /// <summary>Check if a file exists in a section of a known PC folder path (no pcId needed).</summary>
+    /// <summary>Check if a file exists anywhere in a section (ignores subpath). For WorkSheets.</summary>
     public bool SectionFileExistsByFolderPath(string folderPath, string section, string fileName)
     {
         var sectionPath = Directory.GetDirectories(folderPath)
             .FirstOrDefault(d => Path.GetFileName(d).Equals(section, StringComparison.OrdinalIgnoreCase));
         if (sectionPath == null) return false;
         return FileExistsByBaseName(sectionPath, fileName);
+    }
+
+    /// <summary>Check if a file exists at a specific subpath within a section (path-exact, extension-agnostic).
+    /// For Front_Cover / Back_Cover where two files can share the same name in different subdirs.</summary>
+    public bool SectionFileExistsByFolderPathAndSubPath(string folderPath, string section, string subPath, string fileName)
+    {
+        var sectionPath = Directory.GetDirectories(folderPath)
+            .FirstOrDefault(d => Path.GetFileName(d).Equals(section, StringComparison.OrdinalIgnoreCase));
+        if (sectionPath == null) return false;
+        // Resolve exact target directory (empty subPath = section root)
+        var targetDir = string.IsNullOrEmpty(subPath)
+            ? sectionPath
+            : Path.Combine(sectionPath, SafeSubPath(subPath).Replace('/', Path.DirectorySeparatorChar));
+        if (!Directory.Exists(targetDir)) return false;
+        var baseName = Path.GetFileNameWithoutExtension(fileName);
+        return Directory.GetFiles(targetDir)  // NOT AllDirectories — exact directory only
+            .Any(f => Path.GetFileNameWithoutExtension(f).Equals(baseName, StringComparison.OrdinalIgnoreCase));
     }
 
     static string StripIdPrefix(string folderName) =>

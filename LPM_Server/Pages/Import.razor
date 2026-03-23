@@ -483,19 +483,27 @@
             var totalFront = _manifest.Sum(pc => pc.Files.Count(f => f.Include && f.Section == "Front_Cover"));
             var totalBack  = _manifest.Sum(pc => pc.Files.Count(f => f.Include && f.Section == "Back_Cover"));
             var totalWs    = _manifest.Sum(pc => pc.Files.Count(f => f.Include && f.Section == "WorkSheets"));
-            if (totalIncluded > 0)
-            {
-                <div class="card mt-3" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
-                    <div class="card-header py-2" style="background:rgba(99,102,241,.12); color:#a5b4fc; font-size:.85rem; border-color:rgba(99,102,241,.2);">
-                        <i class="ri-file-list-3-line me-1"></i>
-                        <strong>Files to import — @totalIncluded file(s) across @_manifest.Count PC(s)</strong>
-                        <span class="ms-3 d-inline-flex gap-3" style="font-size:.78rem; font-weight:400;">
-                            <span style="color:#60a5fa;"><i class="ri-file-2-line me-1"></i>Front Cover: <strong>@totalFront</strong></span>
-                            <span style="color:#60a5fa;"><i class="ri-file-2-line me-1"></i>Back Cover: <strong>@totalBack</strong></span>
-                            <span style="color:#34d399;"><i class="ri-file-2-line me-1"></i>Worksheets: <strong>@totalWs</strong></span>
-                        </span>
-                    </div>
-                    <div class="card-body p-0" style="max-height:420px; overflow-y:auto;">
+            <div class="card mt-3" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
+                <div class="card-header py-2" style="background:rgba(99,102,241,.12); color:#a5b4fc; font-size:.85rem; border-color:rgba(99,102,241,.2);">
+                    <i class="ri-file-list-3-line me-1"></i>
+                    <strong>Files to import — @totalIncluded file(s) across @_manifest.Count PC(s)</strong>
+                    <span class="ms-3 d-inline-flex gap-3" style="font-size:.78rem; font-weight:400;">
+                        <span style="color:#60a5fa;"><i class="ri-file-2-line me-1"></i>Front Cover: <strong>@totalFront</strong></span>
+                        <span style="color:#60a5fa;"><i class="ri-file-2-line me-1"></i>Back Cover: <strong>@totalBack</strong></span>
+                        <span style="color:#34d399;"><i class="ri-file-2-line me-1"></i>Worksheets: <strong>@totalWs</strong></span>
+                    </span>
+                </div>
+                <div class="card-body p-0" style="max-height:420px; overflow-y:auto;">
+                    @if (totalIncluded == 0)
+                    {
+                        <div class="p-3 text-center" style="color:#64748b; font-size:.85rem;">
+                            <i class="ri-checkbox-circle-line me-1" style="color:#22c55e;"></i>
+                            All files already exist on server — nothing to import.
+                            Use "Delete all cover folders" below to force re-import of Front/Back Cover.
+                        </div>
+                    }
+                    else
+                    {
                         <table class="table table-sm mb-0" style="font-size:.75rem; color:#e2e8f0;">
                             <thead style="position:sticky; top:0; background:#1e293b; z-index:1; color:#94a3b8;">
                                 <tr>
@@ -558,36 +566,36 @@
                                 }
                             </tbody>
                         </table>
-                    </div>
-                    <div class="card-footer py-2 d-flex align-items-center gap-2" style="border-color:#334155;">
-                        @if (_coverFoldersDeleted)
-                        {
-                            <span style="font-size:.82rem; color:#22c55e;">
-                                <i class="ri-check-circle-line me-1"></i>All cover folders deleted — files will be imported as new
-                            </span>
-                        }
-                        else if (_deleteCoverConfirming)
-                        {
-                            <span style="font-size:.82rem; color:#f87171;">Delete ALL Front/Back Cover folders on server?</span>
-                            <button class="btn btn-sm btn-danger d-flex align-items-center gap-1"
-                                    disabled="@_deleteCoverBusy" @onclick="DeleteAllCoverFoldersNow">
-                                @if (_deleteCoverBusy) { <span class="spinner-border spinner-border-sm"></span> }
-                                Yes, Delete
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary"
-                                    disabled="@_deleteCoverBusy"
-                                    @onclick="() => _deleteCoverConfirming = false">Cancel</button>
-                        }
-                        else
-                        {
-                            <button class="btn btn-sm btn-outline-danger d-flex align-items-center gap-1"
-                                    @onclick="() => _deleteCoverConfirming = true">
-                                <i class="ri-delete-bin-line"></i>Delete all cover folders on server
-                            </button>
-                        }
-                    </div>
+                    }
                 </div>
-            }
+                <div class="card-footer py-2 d-flex align-items-center gap-2" style="border-color:#334155;">
+                    @if (_coverFoldersDeleted)
+                    {
+                        <span style="font-size:.82rem; color:#22c55e;">
+                            <i class="ri-check-circle-line me-1"></i>All cover folders deleted — files will be imported as new
+                        </span>
+                    }
+                    else if (_deleteCoverConfirming)
+                    {
+                        <span style="font-size:.82rem; color:#f87171;">Delete ALL Front/Back Cover folders on server?</span>
+                        <button class="btn btn-sm btn-danger d-flex align-items-center gap-1"
+                                disabled="@_deleteCoverBusy" @onclick="DeleteAllCoverFoldersNow">
+                            @if (_deleteCoverBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                            Yes, Delete
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary"
+                                disabled="@_deleteCoverBusy"
+                                @onclick="() => _deleteCoverConfirming = false">Cancel</button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-sm btn-outline-danger d-flex align-items-center gap-1"
+                                @onclick="() => _deleteCoverConfirming = true">
+                            <i class="ri-delete-bin-line"></i>Delete all cover folders on server
+                        </button>
+                    }
+                </div>
+            </div>
         }
 
         @* ════════════════════════════════════════════════════════════
@@ -1532,8 +1540,14 @@
                         ? FolderSvc.SoloAttachmentFileExists(checkId.Value, file.ParentSessionFile, file.FileName)
                         : FolderSvc.AttachmentFileExists(checkId.Value, file.ParentSessionFile, file.FileName);
                 }
-                else if (file.Section is "Front_Cover" or "Back_Cover" or "WorkSheets")
+                else if (file.Section is "Front_Cover" or "Back_Cover")
                 {
+                    // Path-exact: same subdir + same base name (ignoring extension for doc→pdf)
+                    exists = FolderSvc.SectionFileExistsByFolderPathAndSubPath(serverFolder, file.Section, file.SubPath, file.FileName);
+                }
+                else if (file.Section == "WorkSheets")
+                {
+                    // Base-name only across entire section tree (flat vs subdir doesn't matter)
                     exists = FolderSvc.SectionFileExistsByFolderPath(serverFolder, file.Section, file.FileName);
                 }
                 else
