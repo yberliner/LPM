@@ -3332,6 +3332,12 @@
 
     async Task CloseToHome()
     {
+        // Save unsaved annotations in all open panes before navigating away
+        for (int i = 0; i < _paneCount; i++)
+        {
+            if (!string.IsNullOrEmpty(_panes[i].File))
+                await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]);
+        }
         await JS.InvokeVoidAsync("eval", "window.location.href='/Home'");
     }
 
