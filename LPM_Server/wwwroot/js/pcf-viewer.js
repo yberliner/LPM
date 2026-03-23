@@ -1206,15 +1206,23 @@ window.pcfViewer = {
         const fileName = pane.filePath ? pane.filePath.split(/[\\/]/).pop() : 'Document';
         const title    = fileName + ' — Page ' + (pageIdx + 1) + '  (read only)';
 
-        // Default size: width = one pane's width (or half-viewport if single pane),
-        // height = viewer height
+        // Size the window so the page image fills it exactly (no black bars).
+        // Overhead inside the window:
+        //   title bar ≈ 33px (padding 6+6 + line ~20 + 1px border)
+        //   body padding: 8px top + 8px bottom = 16px vertical, 8px left + 8px right = 16px horizontal
+        //   outer border: 2px × 2 = 4px each axis
+        const OVERHEAD_H = 53; // titleBar(33) + bodyPad_V(16) + border_V(4)
+        const OVERHEAD_W = 20; // bodyPad_H(16) + border_H(4)
+        const pageAspect = pg.canvas.height / pg.canvas.width; // H/W ratio
+
+        const maxW = window.innerWidth  - 40;
+        const maxH = window.innerHeight - 80;
+
+        // Base width: one pane's width (or half-viewport for single pane)
         const viewerEl = document.getElementById('pcf-viewer-' + paneId);
         let defW = Math.round(window.innerWidth / 2);
-        let defH = Math.round(window.innerHeight * 0.8);
         if (viewerEl) {
             const r = viewerEl.getBoundingClientRect();
-            defH = Math.round(r.height);
-            // Count visible panes (those whose viewer element is visible)
             const paneIds = ['left', 'center', 'right'];
             let visiblePanes = 0;
             for (const pid of paneIds) {
@@ -1222,10 +1230,20 @@ window.pcfViewer = {
                 if (vEl && vEl.offsetWidth > 0) visiblePanes++;
             }
             defW = visiblePanes >= 2 ? Math.round(r.width) : Math.round(window.innerWidth / 2);
-            defW = Math.round(defW * 0.75); // 25% narrower than one pane
         }
-        defW = Math.max(240, Math.min(defW, window.innerWidth  - 40));
-        defH = Math.max(180, Math.min(defH, window.innerHeight - 80));
+        defW = Math.max(200, Math.min(defW, maxW));
+
+        // Height = exactly what the image needs to fill the body at this width
+        let defH = Math.round(OVERHEAD_H + (defW - OVERHEAD_W) * pageAspect);
+
+        // If that's too tall for the viewport, shrink width until it fits
+        if (defH > maxH) {
+            defW = Math.round(OVERHEAD_W + (maxH - OVERHEAD_H) / pageAspect);
+            defH = maxH;
+        }
+
+        defW = Math.max(200, Math.min(defW, maxW));
+        defH = Math.max(150, Math.min(defH, maxH));
 
         // Position: top-right, near the viewer area
         const posX = window.innerWidth  - defW - 20;
