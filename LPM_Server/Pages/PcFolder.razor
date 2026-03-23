@@ -2860,29 +2860,48 @@
             if (!string.IsNullOrEmpty(_panes[i].File) && !_panes[i].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
                 await JS.InvokeVoidAsync("pcfViewer.cancelLoad", PaneIds[i]);
 
-        // Auto-save panes being removed
-        for (int i = newCount; i < oldCount; i++)
-            await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]);
+        // Save panes being hidden in parallel (keep File/FileName — just hidden, not closed)
+        await Task.WhenAll(Enumerable.Range(newCount, oldCount - newCount)
+            .Select(i => JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]).AsTask()));
 
-        // Clear removed panes
-        for (int i = newCount; i < 3; i++)
+        // Pane count is show/hide only — do NOT clear hidden panes' state.
+        // Exception: if a hidden pane holds the same file as a currently-visible pane,
+        // clear it to prevent two panes editing the same file simultaneously (data mismatch).
+        if (newCount > oldCount)
         {
-            _panes[i].File = null;
-            _panes[i].FileName = null;
-            _panes[i].Section = "";
+            var visibleFiles = Enumerable.Range(0, oldCount)
+                                         .Where(i => !string.IsNullOrEmpty(_panes[i].File))
+                                         .Select(i => _panes[i].File!)
+                                         .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            for (int i = oldCount; i < newCount; i++)
+            {
+                if (!string.IsNullOrEmpty(_panes[i].File) && visibleFiles.Contains(_panes[i].File!))
+                {
+                    _panes[i].File     = null;
+                    _panes[i].FileName = null;
+                    _panes[i].Section  = "";
+                    _dualPanes.Remove(PaneIds[i]);
+                    _dualInfo.Remove(PaneIds[i]);
+                }
+            }
         }
 
         _paneCount = newCount;
 
-        // Clamp active pane
+        // Clamp active pane to visible range
         if (_activeIdx >= newCount)
             _activeIdx = 0;
 
-        // When adding panes, set active to the new empty one
+        // When revealing panes, move focus to the first newly-visible empty slot (if any)
         if (newCount > oldCount)
-            _activeIdx = newCount - 1;
+        {
+            var firstEmpty = Enumerable.Range(oldCount, newCount - oldCount)
+                                       .FirstOrDefault(i => string.IsNullOrEmpty(_panes[i].File), -1);
+            if (firstEmpty >= 0) _activeIdx = firstEmpty;
+        }
 
-        // Schedule reload of all existing PDF panes to fit new width (skip .xlsx)
+        // Reload all visible panes so they re-render at the new width
         var reloads = new List<(string, string)>();
         for (int i = 0; i < newCount; i++)
         {
@@ -3335,9 +3354,9 @@
             return;
         }
 
-        // Auto-save all visible panes
-        for (int i = 0; i < _paneCount; i++)
-            await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]);
+        // Auto-save all visible panes in parallel
+        await Task.WhenAll(Enumerable.Range(0, _paneCount)
+            .Select(i => JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]).AsTask()));
 
         var confirmed = await JS.InvokeAsync<bool>("confirm",
             $"Mark this session's CS review as done?\nReview time: {_csReviewMinutes} minutes");
@@ -3379,12 +3398,10 @@
 
     async Task CloseToHome()
     {
-        // Save unsaved annotations in all open panes before navigating away
-        for (int i = 0; i < _paneCount; i++)
-        {
-            if (!string.IsNullOrEmpty(_panes[i].File))
-                await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]);
-        }
+        // Save all open panes in parallel before navigating away
+        await Task.WhenAll(Enumerable.Range(0, _paneCount)
+            .Where(i => !string.IsNullOrEmpty(_panes[i].File))
+            .Select(i => JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]).AsTask()));
         await JS.InvokeVoidAsync("eval", "window.location.href='/Home'");
     }
 
