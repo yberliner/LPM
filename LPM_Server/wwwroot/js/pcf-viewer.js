@@ -33,7 +33,10 @@ window.pcfViewer = {
 
     setDotNetRef(ref) { this.dotNetRef = ref; },
     setPcId(pcId) { this._pcId = pcId; },
-    setColor(color) { this.drawColor = color; },
+    setColor(color) {
+        this.drawColor = color;
+        if (this.textInputEl) this.textInputEl.style.color = color;
+    },
     setFontSize(size) { this.fontSize = size; },
     setActivePane(paneId) { this.activePane = paneId; },
 
@@ -216,21 +219,41 @@ window.pcfViewer = {
 
             if (self.textInputEl) return;
 
-            if (self.toolMode === 'draw' || self.toolMode === 'brush') {
+            // Always allow dragging existing text annotations, regardless of tool mode
+            const { x: pdX, y: pdY } = canvasXY(e);
+            const textHit = self._hitTestText(pane, pageIdx, pdX, pdY);
+            if (textHit) {
+                overlay.setPointerCapture(e.pointerId);
+                const ann = textHit.ann;
+                const startX = pdX, startY = pdY;
+                const origX = ann.x, origY = ann.y;
+                let moved = false;
+                const onMove = (me) => {
+                    const { x: mx, y: my } = canvasXY(me);
+                    ann.x = origX + (mx - startX);
+                    ann.y = origY + (my - startY);
+                    self._redrawOverlay(pageIdx, paneId);
+                    moved = true;
+                };
+                const onUp = () => {
+                    overlay.removeEventListener('pointermove', onMove);
+                    overlay.removeEventListener('pointerup', onUp);
+                    if (moved) self._notifyChange();
+                };
+                overlay.addEventListener('pointermove', onMove);
+                overlay.addEventListener('pointerup', onUp);
+            } else if (self.toolMode === 'draw' || self.toolMode === 'brush') {
                 drawing = true;
                 overlay.setPointerCapture(e.pointerId);
-                const { x, y } = canvasXY(e);
-                const isBrush = self.toolMode === 'brush';
                 pane.currentStroke = {
-                    pageIdx, points: [{ x, y }],
+                    pageIdx, points: [{ x: pdX, y: pdY }],
                     color: self.drawColor,
-                    width: isBrush ? Math.max(self.drawWidth * 4, 16) : self.drawWidth,
-                    brush: isBrush
+                    width: self.toolMode === 'brush' ? Math.max(self.drawWidth * 4, 16) : self.drawWidth,
+                    brush: self.toolMode === 'brush'
                 };
             } else if (self.toolMode === 'text') {
-                const { x, y } = canvasXY(e);
                 const { wx, wy } = wrapperXY(e.clientX, e.clientY);
-                self._showTextInput(overlay.parentElement, pageIdx, x, y, paneId, undefined, undefined, wx, wy);
+                self._showTextInput(overlay.parentElement, pageIdx, pdX, pdY, paneId, undefined, undefined, wx, wy);
             }
         });
 
@@ -306,18 +329,35 @@ window.pcfViewer = {
         ctx.globalCompositeOperation = prevComposite;
     },
 
+    // Word-wrap text respecting explicit \n and maxWidth
+    _wrapText(ctx, text, maxWidth) {
+        const raw = (text || '').split('\n');
+        const lines = [];
+        for (const segment of raw) {
+            if (!maxWidth) { lines.push(segment); continue; }
+            const words = segment.split(' ');
+            let cur = '';
+            for (const word of words) {
+                const test = cur ? cur + ' ' + word : word;
+                if (cur && ctx.measureText(test).width > maxWidth) { lines.push(cur); cur = word; }
+                else cur = test;
+            }
+            lines.push(cur);
+        }
+        return lines;
+    },
+
     _drawText(ctx, ann) {
         ctx.font = (ann.fontSize || 14) + 'px Arial';
         ctx.fillStyle = ann.color || '#1e293b';
-        const lines = (ann.text || '').split('\n');
         const lineHeight = (ann.fontSize || 14) * 1.3;
+        const lines = this._wrapText(ctx, ann.text, ann.maxWidth || 0);
         for (let i = 0; i < lines.length; i++) {
             ctx.fillText(lines[i], ann.x, ann.y + i * lineHeight);
         }
     },
 
     _hitTestText(pane, pageIdx, x, y) {
-        // Create a temporary canvas context for measuring text
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         for (let i = pane.annotations.length - 1; i >= 0; i--) {
@@ -325,22 +365,16 @@ window.pcfViewer = {
             if (ann.type !== 'text' || ann.pageIdx !== pageIdx) continue;
             const fontSize = ann.fontSize || 14;
             ctx.font = fontSize + 'px Arial';
-            const lines = (ann.text || '').split('\n');
+            const lines = this._wrapText(ctx, ann.text, ann.maxWidth || 0);
             const lineHeight = fontSize * 1.3;
             const totalHeight = lines.length * lineHeight;
-            let maxWidth = 0;
-            for (const line of lines) {
-                const w = ctx.measureText(line).width;
-                if (w > maxWidth) maxWidth = w;
-            }
-            // Text baseline is at ann.y, so bounding box goes from ann.y - fontSize to ann.y - fontSize + totalHeight
+            let maxW = 0;
+            for (const line of lines) { const w = ctx.measureText(line).width; if (w > maxW) maxW = w; }
             const top = ann.y - fontSize;
             const bottom = top + totalHeight + 4;
             const left = ann.x - 4;
-            const right = ann.x + maxWidth + 4;
-            if (x >= left && x <= right && y >= top && y <= bottom) {
-                return { ann, idx: i };
-            }
+            const right = ann.x + maxW + 4;
+            if (x >= left && x <= right && y >= top && y <= bottom) return { ann, idx: i };
         }
         return null;
     },
@@ -352,7 +386,7 @@ window.pcfViewer = {
         }
 
         const isEditing = existingAnn != null;
-        const color = isEditing ? existingAnn.color : this.drawColor;
+        const color = this.drawColor;
         const fontSize = isEditing ? (existingAnn.fontSize || 14) : this.fontSize;
 
         // Use wrapper-relative coords for positioning when provided (correct when
@@ -364,7 +398,8 @@ window.pcfViewer = {
         input.className = 'pcf-text-input';
         input.rows = 1;
         input.style.left = posX + 'px';
-        input.style.top = (posY - 18) + 'px';
+        input.style.top = (posY - fontSize) + 'px';
+        input.style.width = '220px';
         input.placeholder = 'Type here... (Shift+Enter for new line)';
         input.style.color = color;
         input.style.fontSize = fontSize + 'px';
@@ -402,15 +437,18 @@ window.pcfViewer = {
             if (pane) {
                 if (isEditing) {
                     if (text) {
-                        // Update existing annotation
+                        // Update existing annotation — apply current color/fontSize from toolbar
                         pane.annotations[existingIdx].text = text;
+                        pane.annotations[existingIdx].color = self.drawColor;
+                        pane.annotations[existingIdx].fontSize = self.fontSize;
+                        pane.annotations[existingIdx].maxWidth = input.offsetWidth;
                     } else {
                         // Empty text = delete annotation
                         pane.annotations.splice(existingIdx, 1);
                     }
                 } else if (text) {
-                    // New annotation
-                    pane.annotations.push({ pageIdx, type: 'text', text, x, y, color: color, fontSize: fontSize });
+                    // New annotation — store maxWidth so word-wrap matches the textarea
+                    pane.annotations.push({ pageIdx, type: 'text', text, x, y, color, fontSize, maxWidth: input.offsetWidth });
                 }
                 self._redrawOverlay(pageIdx, paneId);
                 self._notifyChange();
