@@ -77,7 +77,7 @@ public class DbBackupService(
         logger.LogInformation("[DbBackup] Backup saved: {File}", Path.GetFileName(backupPath));
         Console.WriteLine($"[DbBackup {DateTime.Now:yyyy-MM-dd HH:mm:ss}] Integrity OK. Backup saved: {Path.GetFileName(backupPath)}");
 
-        // Prune: keep only the newest MaxBackups files
+        // Prune regular backups: keep only the newest MaxBackups files
         var all = Directory.GetFiles(backupFolder, "lifepower_*.db")
                            .OrderByDescending(f => f)
                            .ToList();
@@ -86,6 +86,17 @@ public class DbBackupService(
         {
             try   { File.Delete(old); logger.LogInformation("[DbBackup] Deleted old backup: {File}", Path.GetFileName(old)); }
             catch (Exception ex) { logger.LogWarning(ex, "[DbBackup] Could not delete: {File}", Path.GetFileName(old)); }
+        }
+
+        // Prune BeforeImport snapshots: keep only the newest MaxBackups files
+        var importSnaps = Directory.GetFiles(backupFolder, "*BeforeImport*.db")
+                                   .OrderByDescending(f => f)
+                                   .ToList();
+
+        foreach (var old in importSnaps.Skip(MaxBackups))
+        {
+            try   { File.Delete(old); logger.LogInformation("[DbBackup] Deleted old BeforeImport snapshot: {File}", Path.GetFileName(old)); }
+            catch (Exception ex) { logger.LogWarning(ex, "[DbBackup] Could not delete BeforeImport snapshot: {File}", Path.GetFileName(old)); }
         }
     }
 
