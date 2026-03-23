@@ -3313,6 +3313,7 @@
 
             // Notify all connected users who have permission for this PC
             _ = CsNotifySvc.NotifyCsDone(PcId, DashSvc.UserHasApprovedPcOnDashboard);
+            DashSvc.NotifyDataChanged();
 
             // Show done animation then navigate back to Home
             await JS.InvokeVoidAsync("showCsDoneAndClose", _pcName, _csSessionName);
