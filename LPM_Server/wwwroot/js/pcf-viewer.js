@@ -826,6 +826,25 @@ window.pcfViewer = {
         return Math.round(level * 100);
     },
 
+    fitPage(paneId) {
+        const pane = this.panes[paneId];
+        if (!pane || !pane.pages.length) return 100;
+        const viewer = document.getElementById('pcf-viewer-' + paneId);
+        if (!viewer) return 100;
+
+        // Find the tallest rendered page
+        let maxPageH = 0;
+        for (const pg of pane.pages) {
+            if (pg.canvas.height > maxPageH) maxPageH = pg.canvas.height;
+        }
+        if (maxPageH === 0) return 100;
+
+        const viewerH = viewer.clientHeight - 40; // 20px padding each side
+        // Fit height; also cap at 1.0 so it never exceeds fit-to-width
+        const fitLevel = Math.min(1.0, viewerH / maxPageH);
+        return this._setZoom(paneId, fitLevel);
+    },
+
     getZoomPercent(paneId) {
         paneId = paneId || this.activePane;
         const pane = this.panes[paneId];

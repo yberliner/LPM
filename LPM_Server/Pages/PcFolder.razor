@@ -685,7 +685,7 @@
                 <div class="pcf-color-wrap">
                     <button class="pcf-zoom-single" title="Zoom — click to set zoom level"
                             @onclick="() => _showZoomMenu = !_showZoomMenu">
-                        @(_zoomPercent)%
+                        @(_fitMode ? "Fit" : $"{_zoomPercent}%")
                     </button>
                     @if (_showZoomMenu)
                     {
@@ -702,9 +702,11 @@
                             <div class="pcf-zoom-chips">
                                 @foreach (var pct in new[]{ 50, 75, 100, 125, 150, 200 })
                                 {
-                                    <button class="pcf-zoom-chip @(_zoomPercent == pct ? "pcf-zoom-chip-active" : "")"
+                                    <button class="pcf-zoom-chip @(!_fitMode && _zoomPercent == pct ? "pcf-zoom-chip-active" : "")"
                                             @onclick="() => SetZoom(pct)">@(pct)%</button>
                                 }
+                                <button class="pcf-zoom-chip @(_fitMode ? "pcf-zoom-chip-active" : "")"
+                                        @onclick="FitToPage">Fit Page</button>
                             </div>
                         </div>
                     }
@@ -2153,6 +2155,7 @@
     static readonly double[] _strokeWidths = [1, 2, 3, 5, 8, 12, 20];
     bool _saving;
     int _zoomPercent = 100;
+    bool _fitMode;
     bool _panMode;
     List<(string paneId, string file)>? _pendingReloads;
     HashSet<string>                     _dualPanes = new();
@@ -2969,22 +2972,33 @@
 
     async Task ZoomIn()
     {
+        _fitMode = false;
         _zoomPercent = await JS.InvokeAsync<int>("pcfViewer.zoomIn", PaneIds[_activeIdx]);
     }
 
     async Task ZoomOut()
     {
+        _fitMode = false;
         _zoomPercent = await JS.InvokeAsync<int>("pcfViewer.zoomOut", PaneIds[_activeIdx]);
     }
 
     async Task ResetZoom()
     {
+        _fitMode = false;
         _zoomPercent = await JS.InvokeAsync<int>("pcfViewer._setZoom", PaneIds[_activeIdx], 1.0);
     }
 
     async Task SetZoom(int pct)
     {
+        _fitMode = false;
         _zoomPercent = await JS.InvokeAsync<int>("pcfViewer._setZoom", PaneIds[_activeIdx], pct / 100.0);
+        _showZoomMenu = false;
+    }
+
+    async Task FitToPage()
+    {
+        _fitMode = true;
+        _zoomPercent = await JS.InvokeAsync<int>("pcfViewer.fitPage", PaneIds[_activeIdx]);
         _showZoomMenu = false;
     }
 
@@ -3378,9 +3392,11 @@
                 // Executed directly in JS by lpmVoice for instant response — no round-trip needed
                 break;
             case "zoomin":
+                _fitMode = false;
                 _zoomPercent = await JS.InvokeAsync<int>("pcfViewer.zoomIn", PaneIds[_activeIdx]);
                 break;
             case "zoomout":
+                _fitMode = false;
                 _zoomPercent = await JS.InvokeAsync<int>("pcfViewer.zoomOut", PaneIds[_activeIdx]);
                 break;
             case "summary":
