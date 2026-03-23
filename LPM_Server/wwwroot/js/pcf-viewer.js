@@ -135,7 +135,7 @@ window.pcfViewer = {
         // since async operations above could let layout changes slip through.
         const viewerWidth = stableWidth - 40; // 20px padding each side
         const fitScale = Math.min(viewerWidth / maxNaturalWidth, 3); // cap at 3x
-        const scale = Math.max(fitScale, 0.5); // min 0.5x
+        const scale = fitScale; // always fit to pane width — no minimum (narrow panes must be allowed to go below 0.5)
         pane.baseScale = scale;
 
         for (let i = 0; i < allPages.length; i++) {
