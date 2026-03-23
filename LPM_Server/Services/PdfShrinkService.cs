@@ -72,6 +72,7 @@ public class PdfShrinkService(
                     try { await RunCycleAsync(ct); }
                     finally { Interlocked.Exchange(ref _running, 0); }
                 }
+
             }
             catch (Exception ex) { logger.LogError(ex, "[PdfShrink] Unhandled error in shrink cycle"); }
 
