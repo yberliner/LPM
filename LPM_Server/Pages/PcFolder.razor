@@ -280,8 +280,14 @@
                     <i class="ri-upload-2-line me-2"></i>Insert file above
                 </button>
             }
-            <button class="pcf-ctx-item" @onclick="ShowPageBgFromCtx">
-                <i class="ri-palette-line me-2"></i>Change Background
+            @if (_pageCtxIsCover)
+            {
+                <button class="pcf-ctx-item" @onclick="ShowPageBgFromCtx">
+                    <i class="ri-palette-line me-2"></i>Change Background
+                </button>
+            }
+            <button class="pcf-ctx-item" @onclick="FloatPage">
+                <i class="ri-lock-line me-2"></i>Float Page
             </button>
         </div>
     }
@@ -2152,6 +2158,7 @@
     bool _showInsertFormPicker;
     bool _showPageCtxMenu;
     bool _pageCtxIsProgram;
+    bool _pageCtxIsCover;
     double _pageBgX, _pageBgY;
     string _pageBgPaneId = "";
     int _pageBgPageIdx;
@@ -2400,13 +2407,7 @@
                 }
             }
 
-            // Attach right-click handler for page background color
-            try
-            {
-                for (int i = 0; i < 3; i++)
-                    await JS.InvokeVoidAsync("pcfViewer.attachPageContextMenu", PaneIds[i]);
-            }
-            catch { /* JS not yet loaded — will work after page refresh */ }
+            // (context menu attachment happens for all renders below)
 
             // Load Ctrl+key shortcuts
             try
@@ -2534,6 +2535,15 @@
 
             StateHasChanged();
         }
+
+        // Attach right-click handler for any newly-rendered pane viewers.
+        // Called every render; JS guards against double-attachment via _ctxMenuAttached flag.
+        try
+        {
+            for (int i = 0; i < 3; i++)
+                await JS.InvokeVoidAsync("pcfViewer.attachPageContextMenu", PaneIds[i]);
+        }
+        catch { }
     }
 
     [JSInvokable]
@@ -2861,8 +2871,11 @@
                 await JS.InvokeVoidAsync("pcfViewer.cancelLoad", PaneIds[i]);
 
         // Save panes being hidden in parallel (keep File/FileName — just hidden, not closed)
-        await Task.WhenAll(Enumerable.Range(newCount, oldCount - newCount)
-            .Select(i => JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]).AsTask()));
+        if (newCount < oldCount)
+        {
+            await Task.WhenAll(Enumerable.Range(newCount, oldCount - newCount)
+                .Select(i => JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]).AsTask()));
+        }
 
         // Pane count is show/hide only — do NOT clear hidden panes' state.
         // Exception: if a hidden pane holds the same file as a currently-visible pane,
@@ -3398,7 +3411,8 @@
 
     async Task CloseToHome()
     {
-        // Save all open panes in parallel before navigating away
+        // Close float window and save all open panes in parallel before navigating away
+        await JS.InvokeVoidAsync("pcfViewer.closeFloat");
         await Task.WhenAll(Enumerable.Range(0, _paneCount)
             .Where(i => !string.IsNullOrEmpty(_panes[i].File))
             .Select(i => JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]).AsTask()));
@@ -3548,6 +3562,7 @@
     {
         var paneIndex = Array.IndexOf(PaneIds, paneId);
         if (paneIndex < 0) return;
+        _activeIdx = paneIndex; // activate pane on right-click
         var section = _panes[paneIndex].Section;
         var fileName = _panes[paneIndex].FileName ?? "";
         var lower = fileName.ToLowerInvariant();
@@ -3560,14 +3575,12 @@
         bool isProgram = lower.Contains("program") || lower.Contains("prog");
         bool isCover = section == "Front Cover" || section == "Back Cover";
 
-        if (isProgram || isCover)
-        {
-            _showPageCtxMenu = true;
-            _pageCtxIsProgram = isProgram;
-            _showPageBgPicker = false;
-            _showInsertFormPicker = false;
-            await InvokeAsync(StateHasChanged);
-        }
+        _showPageCtxMenu = true;
+        _pageCtxIsProgram = isProgram;
+        _pageCtxIsCover = isCover;
+        _showPageBgPicker = false;
+        _showInsertFormPicker = false;
+        await InvokeAsync(StateHasChanged);
     }
 
     [JSInvokable]
@@ -3604,6 +3617,12 @@
         _showPageCtxMenu = false;
         // _pageBgPaneId and _pageBgPageIdx are already set from OnPageRightClick
         await JS.InvokeVoidAsync("eval", "document.getElementById('pcf-insert-input').click()");
+    }
+
+    async Task FloatPage()
+    {
+        _showPageCtxMenu = false;
+        await JS.InvokeVoidAsync("pcfViewer.floatPage", _pageBgPaneId, _pageBgPageIdx);
     }
 
     async Task OnInsertFileSelected(InputFileChangeEventArgs e)

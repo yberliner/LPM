@@ -1161,7 +1161,8 @@ window.pcfViewer = {
 
     attachPageContextMenu(paneId) {
         const viewer = document.getElementById('pcf-viewer-' + paneId);
-        if (!viewer) return;
+        if (!viewer || viewer._ctxMenuAttached) return;
+        viewer._ctxMenuAttached = true;
         viewer.addEventListener('contextmenu', (e) => {
             // Find which page was right-clicked
             const wrapper = e.target.closest('.pcf-page-wrapper');
@@ -1171,14 +1172,178 @@ window.pcfViewer = {
             const idx = Array.from(viewer.querySelectorAll('.pcf-page-wrapper')).indexOf(wrapper);
             if (idx < 0) return;
             e.preventDefault();
+            this.activePane = paneId; // activate pane on right-click
             if (this.dotNetRef) {
                 this.dotNetRef.invokeMethodAsync('OnPageRightClick', paneId, idx, e.clientX, e.clientY);
             }
         });
+    },
+
+    // ── Float Page ──────────────────────────────────────────
+
+    _floatWin: null,
+
+    floatPage(paneId, pageIdx) {
+        try {
+        const pane = this.panes[paneId];
+        if (!pane || !pane.pages.length) { console.warn('[pcfViewer] floatPage: no pages in pane', paneId); return; }
+        const pg = pane.pages[Math.min(pageIdx, pane.pages.length - 1)];
+        if (!pg) { console.warn('[pcfViewer] floatPage: page not found', pageIdx); return; }
+
+        // Close any existing float first
+        this.closeFloat();
+
+        // Composite: page canvas + annotation overlay → single snapshot
+        const offscreen = document.createElement('canvas');
+        offscreen.width  = pg.canvas.width;
+        offscreen.height = pg.canvas.height;
+        const ctx = offscreen.getContext('2d');
+        ctx.drawImage(pg.canvas,  0, 0);
+        ctx.drawImage(pg.overlay, 0, 0);
+        const dataUrl = offscreen.toDataURL('image/png');
+
+        // Title: filename + page number
+        const fileName = pane.filePath ? pane.filePath.split(/[\\/]/).pop() : 'Document';
+        const title    = fileName + ' — Page ' + (pageIdx + 1) + '  (read only)';
+
+        // Default size: width = one pane's width (or half-viewport if single pane),
+        // height = viewer height
+        const viewerEl = document.getElementById('pcf-viewer-' + paneId);
+        let defW = Math.round(window.innerWidth / 2);
+        let defH = Math.round(window.innerHeight * 0.8);
+        if (viewerEl) {
+            const r = viewerEl.getBoundingClientRect();
+            defH = Math.round(r.height);
+            // Count visible panes (those whose viewer element is visible)
+            const paneIds = ['left', 'center', 'right'];
+            let visiblePanes = 0;
+            for (const pid of paneIds) {
+                const vEl = document.getElementById('pcf-viewer-' + pid);
+                if (vEl && vEl.offsetWidth > 0) visiblePanes++;
+            }
+            defW = visiblePanes >= 2 ? Math.round(r.width) : Math.round(window.innerWidth / 2);
+            defW = Math.round(defW * 0.75); // 25% narrower than one pane
+        }
+        defW = Math.max(240, Math.min(defW, window.innerWidth  - 40));
+        defH = Math.max(180, Math.min(defH, window.innerHeight - 80));
+
+        // Position: top-right, near the viewer area
+        const posX = window.innerWidth  - defW - 20;
+        const posY = 60;
+
+        // Build the floating window element
+        const win = document.createElement('div');
+        win.id = 'pcf-float-win';
+        win.style.cssText =
+            'position:fixed;z-index:10007;top:' + posY + 'px;left:' + posX + 'px;' +
+            'width:' + defW + 'px;height:' + defH + 'px;' +
+            'display:flex;flex-direction:column;' +
+            'border:2px solid #3b82f6;border-radius:6px;' +
+            'background:#1e1e2e;box-shadow:0 8px 32px rgba(0,0,0,.6);' +
+            'overflow:hidden;min-width:200px;min-height:150px;';
+
+        // Title bar
+        const titleBar = document.createElement('div');
+        titleBar.style.cssText =
+            'flex-shrink:0;cursor:move;background:#1e293b;color:#e2e8f0;' +
+            'padding:6px 10px;display:flex;align-items:center;gap:8px;' +
+            'font-size:13px;user-select:none;border-bottom:1px solid #334155;';
+        titleBar.innerHTML =
+            '<i class="ri-lock-line" style="color:#94a3b8;flex-shrink:0;font-size:14px;"></i>' +
+            '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + title + '">' + title + '</span>' +
+            '<button id="pcf-float-close" style="background:transparent;border:none;color:#94a3b8;' +
+            'cursor:pointer;font-size:20px;line-height:1;padding:0 2px;" title="Close (Esc)">&times;</button>';
+
+        // Body: scrollable image
+        const body = document.createElement('div');
+        body.style.cssText =
+            'flex:1;overflow:auto;display:flex;justify-content:center;' +
+            'align-items:flex-start;padding:8px;background:#0f172a;';
+
+        const img = document.createElement('img');
+        img.src = dataUrl;
+        img.style.cssText = 'max-width:100%;height:auto;display:block;';
+        img.draggable = false;
+        body.appendChild(img);
+
+        win.appendChild(titleBar);
+        win.appendChild(body);
+        document.body.appendChild(win);
+        this._floatWin = win;
+
+        // Close button
+        win.querySelector('#pcf-float-close').addEventListener('click', () => this.closeFloat());
+
+        // Drag via title bar
+        titleBar.addEventListener('mousedown', (e) => {
+            if (e.target.closest('button')) return;
+            e.preventDefault();
+            const sx = e.clientX, sy = e.clientY;
+            const ox = parseInt(win.style.left) || 0, oy = parseInt(win.style.top) || 0;
+            const onMv = (e) => {
+                win.style.left = Math.max(0, ox + e.clientX - sx) + 'px';
+                win.style.top  = Math.max(0, oy + e.clientY - sy) + 'px';
+            };
+            const onUp = () => { document.removeEventListener('mousemove', onMv); document.removeEventListener('mouseup', onUp); };
+            document.addEventListener('mousemove', onMv);
+            document.addEventListener('mouseup', onUp);
+        });
+
+        // Edge + corner resize handles (8 directions)
+        const resizeHandles = [
+            ['n',  'top:0;left:6px;right:6px;height:5px;cursor:n-resize;'],
+            ['s',  'bottom:0;left:6px;right:6px;height:5px;cursor:s-resize;'],
+            ['e',  'right:0;top:6px;bottom:6px;width:5px;cursor:e-resize;'],
+            ['w',  'left:0;top:6px;bottom:6px;width:5px;cursor:w-resize;'],
+            ['ne', 'top:0;right:0;width:10px;height:10px;cursor:ne-resize;'],
+            ['nw', 'top:0;left:0;width:10px;height:10px;cursor:nw-resize;'],
+            ['se', 'bottom:0;right:0;width:10px;height:10px;cursor:se-resize;'],
+            ['sw', 'bottom:0;left:0;width:10px;height:10px;cursor:sw-resize;'],
+        ];
+        for (const [pos, hStyle] of resizeHandles) {
+            const h = document.createElement('div');
+            h.style.cssText = 'position:absolute;z-index:2;' + hStyle;
+            h.addEventListener('mousedown', (e) => {
+                e.preventDefault(); e.stopPropagation();
+                const sx = e.clientX, sy = e.clientY;
+                const r = win.getBoundingClientRect();
+                const ol = r.left, ot = r.top, ow = r.width, oh = r.height;
+                const onMv = (e) => {
+                    const dx = e.clientX - sx, dy = e.clientY - sy;
+                    let nl = ol, nt = ot, nw = ow, nh = oh;
+                    if (pos.includes('e')) nw = Math.max(200, ow + dx);
+                    if (pos.includes('s')) nh = Math.max(150, oh + dy);
+                    if (pos.includes('w')) { nw = Math.max(200, ow - dx); nl = ol + (ow - nw); }
+                    if (pos.includes('n')) { nh = Math.max(150, oh - dy); nt = ot + (oh - nh); }
+                    win.style.left = nl + 'px'; win.style.top  = nt + 'px';
+                    win.style.width = nw + 'px'; win.style.height = nh + 'px';
+                };
+                const onUp = () => { document.removeEventListener('mousemove', onMv); document.removeEventListener('mouseup', onUp); };
+                document.addEventListener('mousemove', onMv);
+                document.addEventListener('mouseup', onUp);
+            });
+            win.appendChild(h);
+        }
+
+        } catch (e) { console.error('[pcfViewer] floatPage error:', e); }
+    },
+
+    closeFloat() {
+        if (this._floatWin) {
+            this._floatWin.remove();
+            this._floatWin = null;
+        }
     }
 };
 
 // ── Auto-save on tab close / navigation ──
 window.addEventListener('beforeunload', function () {
     window.pcfViewer.saveAllSync();
+});
+
+// ── Close float window on Escape ──
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && window.pcfViewer._floatWin) {
+        window.pcfViewer.closeFloat();
+    }
 });

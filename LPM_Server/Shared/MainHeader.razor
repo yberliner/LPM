@@ -900,7 +900,15 @@
                                     Free Session
                                 </label>
                             </div>
+                        }
+                        } @* end else (has approved PCs) *@
+                    }
+                    else
+                    {
+                        @* ── Step 2: File Upload + Auditor Report Form ── *@
 
+                        @* Files section *@
+                        <div class="mb-2">
                             <div class="mb-3">
                                 <label class="form-label" style="font-size:.82rem; color:#94a3b8;">
                                     Session File <span class="text-danger">*</span> <span class="text-muted">(PDF, single file)</span>
@@ -912,7 +920,7 @@
 
                             @if (_importSessionFile != null)
                             {
-                                <div class="imp-file-card @(_importDuplicate ? "imp-file-dup imp-shake" : "")" >
+                                <div class="imp-file-card @(_importDuplicate ? "imp-file-dup imp-shake" : "")">
                                     <i class="ri-file-pdf-2-line" style="color:@(_importDuplicate ? "#ef4444" : "#3b82f6");"></i>
                                     <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                                         @_importSessionFile.Name
@@ -929,9 +937,32 @@
                                         <i class="ri-error-warning-fill me-1"></i>@_importFileWarning
                                     </div>
                                 }
+                                @if (!_importDuplicate && !string.IsNullOrEmpty(_importNormalizedFileName)
+                                     && _importNormalizedFileName != Path.GetFileNameWithoutExtension(_importSessionFile.Name))
+                                {
+                                    <div style="font-size:.75rem; color:#f59e0b; margin-top:6px;">
+                                        <div style="display:flex; align-items:center; gap:5px;">
+                                            <i class="ri-edit-line"></i>
+                                            <span>Will be saved as:</span>
+                                            <strong>@(_importNormalizedFileName).pdf</strong>
+                                        </div>
+                                        @if (_importDateWasPrepended)
+                                        {
+                                            <div style="display:flex; align-items:center; gap:5px; margin-top:4px; padding-left:16px;">
+                                                <i class="ri-calendar-line" style="color:#94a3b8;"></i>
+                                                <span style="color:#94a3b8;">Change date:</span>
+                                                <input type="date"
+                                                       value="@_importNormalizedDate.ToString("yyyy-MM-dd")"
+                                                       @onchange="OnNormalizedDateChanged"
+                                                       style="background:#0f172a; color:#e2e8f0; border:1px solid #475569;
+                                                              border-radius:4px; padding:1px 4px; font-size:.75rem; cursor:pointer;" />
+                                            </div>
+                                        }
+                                    </div>
+                                }
                             }
 
-                            <div class="mb-3">
+                            <div class="mb-2">
                                 <label class="form-label" style="font-size:.82rem; color:#94a3b8;">
                                     Attachments <span class="text-muted">(optional, multiple PDFs)</span>
                                 </label>
@@ -942,7 +973,7 @@
 
                             @if (_importAttachments.Count > 0)
                             {
-                                <div class="mb-3">
+                                <div class="mb-2">
                                     <div style="font-size:.78rem; color:#94a3b8;" class="mb-1">
                                         <i class="ri-attachment-line me-1"></i>@_importAttachments.Count attachment(s):
                                     </div>
@@ -966,12 +997,9 @@
                                     }
                                 </div>
                             }
-                        }
-                        } @* end else (has approved PCs) *@
-                    }
-                    else
-                    {
-                        @* ── Step 2: Auditor Report Form (digitized from paper page 4) ── *@
+                        </div>
+                        <hr style="border-color:#334155; margin:4px 0 12px;" />
+
                         <div class="arf">
                             <div class="arf-subtitle">Dror Center, Haifa, Israel</div>
                             <div class="arf-title">Auditor Report Form</div>
@@ -1169,7 +1197,7 @@
                         @if (_isSoloUser || _approvedPcs.Count > 0)
                         {
                             <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                                    disabled="@(_importPcId == 0 || _importSessionFile == null || _importDuplicate)"
+                                    disabled="@(_importPcId == 0)"
                                     @onclick="GoToExamStep">
                                 Next <i class="ri-arrow-right-s-line"></i>
                             </button>
@@ -1183,7 +1211,7 @@
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showImportWizard = false">Cancel</button>
                         <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                                disabled="@(ArfHasTimeErrors || !IsValidArfTime(_arfAdminTime) || string.IsNullOrWhiteSpace(_arfAdminTime) || !IsValidArfTime(_arfSessionLength) || ArfHasIncompleteRows)"
+                                disabled="@(_importSessionBytes == null || _importDuplicate || ArfHasTimeErrors || !IsValidArfTime(_arfAdminTime) || string.IsNullOrWhiteSpace(_arfAdminTime) || !IsValidArfTime(_arfSessionLength) || ArfHasIncompleteRows)"
                                 @onclick="ExecuteImport">
                             <i class="ri-upload-2-line"></i>
                             Go
@@ -2074,7 +2102,11 @@
     int  _importPcId;
     IBrowserFile? _importSessionFile;
     byte[]? _importSessionBytes;
-    string _importSessionFileName = "";
+    string   _importSessionFileName    = "";            // original filename (display only)
+    string   _importNormalizedFileName  = "";           // normalized base name (no extension) — used for saving
+    string   _importNormalizedSuffix    = "";           // part after the yymmdd prefix (empty if name is date-only)
+    bool     _importDateWasPrepended;                   // true when we auto-added a yymmdd prefix
+    DateTime _importNormalizedDate      = DateTime.Today; // date used in the prefix (user-changeable)
     List<IBrowserFile> _importAttachments = [];
     List<(string Name, byte[] Data)> _importAttachmentBytes = [];
     List<DashboardService.ApprovedPc> _approvedPcs = [];
@@ -2358,9 +2390,13 @@
         _approvedPcs = DashSvc.GetSessionablePcsForUser(_msgUserId.Value, _logUsername);
         // Solo user: always their own PC (PersonId == PcId)
         _importPcId = _isSoloUser ? _msgUserId.Value : 0;
-        _importSessionFile = null;
-        _importSessionBytes = null;
-        _importSessionFileName = "";
+        _importSessionFile       = null;
+        _importSessionBytes      = null;
+        _importSessionFileName   = "";
+        _importNormalizedFileName = "";
+        _importNormalizedSuffix  = "";
+        _importDateWasPrepended  = false;
+        _importNormalizedDate    = DateTime.Today;
         _importAttachments.Clear();
         _importAttachmentBytes.Clear();
         _importError = "";
@@ -2376,17 +2412,16 @@
 
     void GoToExamStep()
     {
-        if (_importPcId == 0 || _importSessionFile == null || _importDuplicate) return;
-        // Try to parse date from file name (e.g. "260315" → 15/03/2026)
+        if (_importPcId == 0) return;
+        // Try to parse date from normalized file name (always starts with yymmdd if valid)
         _arfDate = "";
-        if (_importSessionFile != null)
+        if (!string.IsNullOrEmpty(_importNormalizedFileName) && _importNormalizedFileName.Length >= 6
+            && int.TryParse(_importNormalizedFileName[..6], out _))
         {
-            var name = Path.GetFileNameWithoutExtension(_importSessionFile.Name);
-            if (name.Length == 6 && int.TryParse(name, out _))
-            {
-                var yy = name[..2]; var mm = name[2..4]; var dd = name[4..6];
-                _arfDate = $"{dd}/{mm}/20{yy}";
-            }
+            var yy = _importNormalizedFileName[..2];
+            var mm = _importNormalizedFileName[2..4];
+            var dd = _importNormalizedFileName[4..6];
+            _arfDate = $"{dd}/{mm}/20{yy}";
         }
         _importStep = 2;
         // Initialize Quill on summary editor after render
@@ -2423,16 +2458,91 @@
         await e.File.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024).CopyToAsync(ms);
         _importSessionBytes = ms.ToArray();
         _importSessionFileName = e.File.Name;
+        ComputeNormalizedFileName(Path.GetFileNameWithoutExtension(e.File.Name));
+        CheckDuplicateSession();
+    }
+
+    // Scanner app name strings to strip from uploaded filenames
+    static readonly string[] _scannerAppNames =
+    [
+        "evernote scannable", "scannable document", "scannable",
+        "adobe scan", "adobe_scan",
+        "office lens", "microsoft lens", "microsoft office lens",
+        "camscanner",
+        "swiftscan",
+        "genius scan",
+        "turboscan",
+        "scanner pro",
+        "scanbot",
+        "docscan",
+        "scanned documents", "scanned document", "scanned",
+        "doc-",   // WhatsApp document prefix
+        "scan",
+    ];
+
+    void ComputeNormalizedFileName(string rawBaseName)
+    {
+        var name = rawBaseName;
+
+        // Strip known scanner app name strings (case-insensitive)
+        foreach (var app in _scannerAppNames)
+            name = System.Text.RegularExpressions.Regex.Replace(
+                name,
+                System.Text.RegularExpressions.Regex.Escape(app),
+                "",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        // Trim leading residue only (scanner names leave leading separators; trailing chars are intentional)
+        name = name.TrimStart(' ', '-', '_');
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            _importDateWasPrepended  = true;
+            _importNormalizedSuffix  = "";
+            _importNormalizedDate    = DateTime.Today;
+            _importNormalizedFileName = DateTime.Today.ToString("yyMMdd");
+            return;
+        }
+
+        // Already starts with yymmdd (6 digits)? Accept as-is, no further changes
+        if (System.Text.RegularExpressions.Regex.IsMatch(name, @"^\d{6}"))
+        {
+            _importDateWasPrepended  = false;
+            _importNormalizedSuffix  = "";
+            _importNormalizedDate    = DateTime.Today;
+            _importNormalizedFileName = name;
+            return;
+        }
+
+        // Need to prepend date — collapse separators in the suffix first
+        name = System.Text.RegularExpressions.Regex.Replace(name, @"[\s\-_]+", " ").Trim();
+        _importDateWasPrepended  = true;
+        _importNormalizedSuffix  = name;
+        _importNormalizedDate    = DateTime.Today;
+        _importNormalizedFileName = $"{DateTime.Today:yyMMdd} {name}";
+    }
+
+    void OnNormalizedDateChanged(ChangeEventArgs e)
+    {
+        if (!DateTime.TryParse(e.Value?.ToString(), out var d)) return;
+        _importNormalizedDate    = d;
+        _importNormalizedFileName = string.IsNullOrEmpty(_importNormalizedSuffix)
+            ? d.ToString("yyMMdd")
+            : $"{d:yyMMdd} {_importNormalizedSuffix}";
         CheckDuplicateSession();
     }
 
     void ClearSessionFile()
     {
-        _importSessionFile = null;
-        _importSessionBytes = null;
-        _importSessionFileName = "";
-        _importDuplicate = false;
-        _importFileWarning = "";
+        _importSessionFile       = null;
+        _importSessionBytes      = null;
+        _importSessionFileName   = "";
+        _importNormalizedFileName = "";
+        _importNormalizedSuffix  = "";
+        _importDateWasPrepended  = false;
+        _importNormalizedDate    = DateTime.Today;
+        _importDuplicate         = false;
+        _importFileWarning       = "";
     }
 
     void OnPcChanged(ChangeEventArgs e)
@@ -2446,22 +2556,32 @@
         _importDuplicate = false;
         _importFileWarning = "";
         if (_importPcId <= 0 || _importSessionFile == null) return;
-        var fileName = _importSessionFile.Name;
-        var sessionName = Path.GetFileNameWithoutExtension(fileName);
+
+        var originalName   = Path.GetFileNameWithoutExtension(_importSessionFile.Name);
+        var normalizedName = string.IsNullOrEmpty(_importNormalizedFileName) ? originalName : _importNormalizedFileName;
 
         // Block files containing "_att_" — reserved for attachment naming
-        if (fileName.Contains("_att_", StringComparison.OrdinalIgnoreCase))
+        if (originalName.Contains("_att_", StringComparison.OrdinalIgnoreCase) ||
+            normalizedName.Contains("_att_", StringComparison.OrdinalIgnoreCase))
         {
             _importDuplicate = true;
             _importFileWarning = "File name cannot contain \"_att_\" — this is reserved for attachments.";
             return;
         }
 
-        var exists = FolderSvc.SessionFileExistsByName(_importPcId, sessionName, _isSoloUser);
-        if (exists)
+        // Check original filename
+        if (FolderSvc.SessionFileExistsByName(_importPcId, originalName, _isSoloUser))
         {
             _importDuplicate = true;
-            _importFileWarning = $"A session named \"{sessionName}\" already exists for this PC.";
+            _importFileWarning = $"A session named \"{originalName}\" already exists for this PC.";
+            return;
+        }
+
+        // Check normalized filename (what will actually be saved)
+        if (normalizedName != originalName && FolderSvc.SessionFileExistsByName(_importPcId, normalizedName, _isSoloUser))
+        {
+            _importDuplicate = true;
+            _importFileWarning = $"A session named \"{normalizedName}\" already exists for this PC.";
         }
     }
 
@@ -2487,7 +2607,7 @@
         // Capture all needed data now (fields will be reset)
         var capturedPcId        = _importPcId;
         var capturedUserId      = _msgUserId.Value;
-        var capturedFileName    = _importSessionFileName;
+        var capturedFileName    = _importNormalizedFileName + ".pdf";
         var capturedBytes       = _importSessionBytes;
         var capturedAttachments = _importAttachmentBytes.ToList();
         var capturedFreeSession = _importFreeSession;
@@ -2505,10 +2625,14 @@
         var capturedIsSolo      = _isSoloUser;
 
         // Close modal immediately and reset fields
-        _showImportWizard = false;
-        _importSessionFile    = null;
-        _importSessionBytes   = null;
-        _importSessionFileName = "";
+        _showImportWizard        = false;
+        _importSessionFile       = null;
+        _importSessionBytes      = null;
+        _importSessionFileName   = "";
+        _importNormalizedFileName = "";
+        _importNormalizedSuffix  = "";
+        _importDateWasPrepended  = false;
+        _importNormalizedDate    = DateTime.Today;
         _importAttachments.Clear();
         _importAttachmentBytes.Clear();
         _importPcId   = 0;
