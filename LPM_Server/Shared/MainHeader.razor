@@ -2553,6 +2553,9 @@
                 var arfJson = System.Text.Json.JsonSerializer.Serialize(arfData);
                 DashSvc.AddFolderSummary(sessionId, capturedPcId, capturedIsSolo ? null : capturedUserId, capturedSummary ?? "", arfJson);
 
+                // Normalise page sizes before saving (centres smaller pages on the largest canvas)
+                capturedBytes = FolderSvc.NormalizePdfPageSizes(capturedBytes);
+
                 // Upload session file to the correct folder
                 var savedSessionFileName = capturedIsSolo
                     ? FolderSvc.SaveSoloUploadedFile(capturedPcId, capturedFileName, capturedBytes)!

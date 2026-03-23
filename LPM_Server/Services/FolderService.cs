@@ -1116,6 +1116,170 @@ public class FolderService
     /// Decrypts to a temp plain PDF, runs Ghostscript, and if smaller re-encrypts back in place.
     /// Returns (true, originalKb, shrunkKb) if the file was actually replaced; (false, 0, 0) otherwise.
     /// </summary>
+    // ── PDF page-size normalisation ──────────────────────────────────────────
+
+    /// <summary>
+    /// If the PDF has pages whose width or height differ by more than 5% from the largest page,
+    /// returns a new PDF where every page is padded to the largest dimensions (content centred).
+    /// Returns the original bytes unchanged when no normalisation is needed.
+    /// </summary>
+    public byte[] NormalizePdfPageSizes(byte[] pdfBytes)
+    {
+        // Step 1: Repair via Ghostscript — fixes broken XRef tables and other issues
+        // that prevent PdfSharpCore from opening the file.
+        var workBytes = RepairPdfViaGhostscript(pdfBytes);
+
+        using var ms = new MemoryStream(workBytes);
+        PdfSharpCore.Pdf.PdfDocument doc;
+        try { doc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Modify); }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FolderService] NormalizePdfPageSizes: could not open PDF — {ex.Message}");
+            return workBytes;
+        }
+
+        using (doc)
+        {
+            if (doc.PageCount <= 1) return workBytes;
+
+            // ── Find maximum page dimensions ──────────────────────────────
+            double maxW = 0, maxH = 0;
+            for (int i = 0; i < doc.PageCount; i++)
+            {
+                double w = doc.Pages[i].Width.Point;
+                double h = doc.Pages[i].Height.Point;
+                Console.WriteLine($"[FolderService] NormalizePdfPageSizes: page {i} = {w:F1}×{h:F1}pt");
+                maxW = Math.Max(maxW, w);
+                maxH = Math.Max(maxH, h);
+            }
+
+            // ── Check whether any page differs by >5% in either dimension ─
+            bool needsNorm = false;
+            for (int i = 0; i < doc.PageCount; i++)
+            {
+                double w = doc.Pages[i].Width.Point;
+                double h = doc.Pages[i].Height.Point;
+                if (Math.Abs(w - maxW) / maxW > 0.05 || Math.Abs(h - maxH) / maxH > 0.05)
+                {
+                    needsNorm = true;
+                    break;
+                }
+            }
+
+            if (!needsNorm)
+            {
+                Console.WriteLine($"[FolderService] NormalizePdfPageSizes: no normalisation needed (max {maxW:F1}×{maxH:F1}pt)");
+                return workBytes;
+            }
+
+            Console.WriteLine($"[FolderService] NormalizePdfPageSizes: normalising {doc.PageCount} pages → {maxW:F0}×{maxH:F0}pt");
+
+            // ── Modify MediaBox of each undersized page in-place ──────────
+            for (int i = 0; i < doc.PageCount; i++)
+            {
+                double srcW = doc.Pages[i].Width.Point;
+                double srcH = doc.Pages[i].Height.Point;
+                if (Math.Abs(srcW - maxW) / maxW <= 0.05 && Math.Abs(srcH - maxH) / maxH <= 0.05)
+                    continue;
+
+                // Expand MediaBox symmetrically so content is centred.
+                // PDF origin is bottom-left: subtract offset from X1/Y1, add to X2/Y2.
+                double offsetX = (maxW - srcW) / 2.0;
+                double offsetY = (maxH - srcH) / 2.0;
+
+                var mb = doc.Pages[i].MediaBox;
+                var mArr = new PdfSharpCore.Pdf.PdfArray();
+                mArr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(mb.X1 - offsetX));
+                mArr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(mb.Y1 - offsetY));
+                mArr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(mb.X2 + offsetX));
+                mArr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(mb.Y2 + offsetY));
+                doc.Pages[i].Elements["/MediaBox"] = mArr;
+
+                // Remove all box constraints that could clip back to the old size
+                foreach (var key in new[] { "/CropBox", "/TrimBox", "/BleedBox", "/ArtBox" })
+                    if (doc.Pages[i].Elements.ContainsKey(key))
+                        doc.Pages[i].Elements.Remove(key);
+
+                Console.WriteLine($"[FolderService] NormalizePdfPageSizes: page {i} expanded {srcW:F1}×{srcH:F1} → {maxW:F0}×{maxH:F0}pt");
+            }
+
+            using var outMs = new MemoryStream();
+            doc.Save(outMs);
+            var result = outMs.ToArray();
+            Console.WriteLine($"[FolderService] NormalizePdfPageSizes: done — {pdfBytes.Length / 1024}KB → {result.Length / 1024}KB");
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// Passes the PDF through Ghostscript for a clean re-encode, repairing broken XRef tables
+    /// and other structural issues that prevent PdfSharpCore from opening the file.
+    /// Returns the original bytes unchanged if Ghostscript is unavailable or fails.
+    /// </summary>
+    private byte[] RepairPdfViaGhostscript(byte[] pdfBytes)
+    {
+        if (string.IsNullOrEmpty(_ghostscriptExe) || !File.Exists(_ghostscriptExe))
+            return pdfBytes;
+
+        var tempIn  = Path.Combine(Path.GetTempPath(), $"lpm_pdf_in_{Guid.NewGuid():N}.pdf");
+        var tempOut = Path.Combine(Path.GetTempPath(), $"lpm_pdf_out_{Guid.NewGuid():N}.pdf");
+
+        try
+        {
+            File.WriteAllBytes(tempIn, pdfBytes);
+
+            var args = string.Join(' ', new[]
+            {
+                "-sDEVICE=pdfwrite",
+                "-dCompatibilityLevel=1.4",
+                "-dNOPAUSE", "-dQUIET", "-dBATCH",
+                $"-sOutputFile=\"{tempOut}\"",
+                $"\"{tempIn}\""
+            });
+
+            using var process = new Process();
+            process.StartInfo = new ProcessStartInfo
+            {
+                FileName               = _ghostscriptExe,
+                Arguments              = args,
+                UseShellExecute        = false,
+                CreateNoWindow         = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError  = true
+            };
+
+            process.Start();
+            bool exited = process.WaitForExit(30_000);
+            if (!exited)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+                process.WaitForExit(3_000);
+                Console.WriteLine("[FolderService] NormalizePdfPageSizes: Ghostscript repair timed out");
+                return pdfBytes;
+            }
+
+            if (process.ExitCode == 0 && File.Exists(tempOut) && new FileInfo(tempOut).Length > 0)
+            {
+                var repaired = File.ReadAllBytes(tempOut);
+                Console.WriteLine($"[FolderService] NormalizePdfPageSizes: repaired via Ghostscript ({pdfBytes.Length / 1024}KB → {repaired.Length / 1024}KB)");
+                return repaired;
+            }
+
+            Console.WriteLine($"[FolderService] NormalizePdfPageSizes: Ghostscript repair exited {process.ExitCode}");
+            return pdfBytes;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FolderService] NormalizePdfPageSizes: Ghostscript repair error — {ex.Message}");
+            return pdfBytes;
+        }
+        finally
+        {
+            try { if (File.Exists(tempIn))  File.Delete(tempIn);  } catch { }
+            try { if (File.Exists(tempOut)) File.Delete(tempOut); } catch { }
+        }
+    }
+
     internal (bool Shrunk, long OriginalKb, long ShrunkKb) TryShrinkEncryptedPdf(string pdfPath)
     {
         if (!File.Exists(pdfPath)) return (false, 0, 0);
