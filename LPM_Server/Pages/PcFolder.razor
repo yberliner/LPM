@@ -2501,27 +2501,37 @@
         {
             var reloads = _pendingReloads;
             _pendingReloads = null;
-            foreach (var (paneId, file) in reloads)
+
+            // Prepare urls + capture dual state synchronously before any awaits
+            var items = reloads.Select(item =>
             {
+                var (paneId, file) = item;
                 var endpoint = IsFolderSummaryFile(Path.GetFileName(file), file)
                     ? "/api/pc-file-folder-summary"
                     : "/api/pc-file";
                 var url = $"{endpoint}?pcId={PcId}&path={Uri.EscapeDataString(file)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
-                // loadPdf resets dual state in JS — capture, reload, then restore
                 bool wasDual = _dualPanes.Contains(paneId);
                 _dualPanes.Remove(paneId);
                 _dualInfo.Remove(paneId);
-                await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId);
-                if (wasDual)
+                return (paneId, url, wasDual);
+            }).ToList();
+
+            // Load all panes in parallel
+            await Task.WhenAll(items.Select(i =>
+                JS.InvokeVoidAsync("pcfViewer.loadPdf", i.url, i.paneId).AsTask()));
+
+            // Restore dual mode after all panes are loaded
+            foreach (var (paneId, _, wasDual) in items)
+            {
+                if (!wasDual) continue;
+                var result = await JS.InvokeAsync<int[]>("pcfViewer.enterDualMode", paneId);
+                if (result != null && result.Length == 2 && result[1] > 0)
                 {
-                    var result = await JS.InvokeAsync<int[]>("pcfViewer.enterDualMode", paneId);
-                    if (result != null && result.Length == 2 && result[1] > 0)
-                    {
-                        _dualPanes.Add(paneId);
-                        _dualInfo[paneId] = (result[0], result[1]);
-                    }
+                    _dualPanes.Add(paneId);
+                    _dualInfo[paneId] = (result[0], result[1]);
                 }
             }
+
             StateHasChanged();
         }
     }
