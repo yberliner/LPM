@@ -255,6 +255,11 @@
         <div style="position:fixed;top:0;left:0;right:0;bottom:0;z-index:99;"
              @onclick="() => _showZoomMenu = false"></div>
     }
+    @if (_showPaneMenu)
+    {
+        <div style="position:fixed;top:0;left:0;right:0;bottom:0;z-index:99;"
+             @onclick="() => _showPaneMenu = false"></div>
+    }
     @if (_showAddPageMenu)
     {
         <div style="position:fixed;top:0;left:0;right:0;bottom:0;z-index:99;"
@@ -547,7 +552,7 @@
     <div class="pcf-main">
         @* ── Toolbar ── *@
         <div class="pcf-toolbar">
-            <div class="d-flex align-items-center gap-2" style="min-width:0;overflow:hidden;flex-shrink:1;">
+            <div class="d-flex align-items-center gap-2" style="min-width:0;overflow:hidden;flex-shrink:0;">
                 @if (!_sidebarOpen)
                 {
                     <button class="pcf-tool-btn" title="Open sidebar — show file list"
@@ -556,14 +561,31 @@
                     </button>
                     <div class="vr mx-0" style="border-color:rgba(255,255,255,.3);"></div>
                 }
+            </div>
+            @* Pane dropdown must be OUTSIDE the overflow:hidden group so the menu is not clipped *@
+            <div style="position:relative;flex-shrink:0;">
                 <button class="pcf-tool-btn @(_paneCount > 1 ? "pcf-tool-active" : "")"
-                        title="Split view — currently @_paneCount pane(s). Click to cycle between 1, 2, or 3 side-by-side panes"
-                        @onclick="CyclePanes">
+                        title="Split view — choose 1, 2, or 3 side-by-side panes"
+                        @onclick="() => _showPaneMenu = !_showPaneMenu">
                     <i class="ri-layout-column-line"></i>
                     <span style="font-size:.7rem;margin-left:2px;">@_paneCount</span>
                 </button>
-                <div class="vr mx-0" style="border-color:rgba(255,255,255,.3);"></div>
+                @if (_showPaneMenu)
+                {
+                    <div class="pcf-zoom-menu" style="min-width:0;" @onclick:stopPropagation="true">
+                        <div class="pcf-zoom-chips">
+                            @foreach (var n in new[]{ 1, 2, 3 })
+                            {
+                                <button class="pcf-zoom-chip @(_paneCount == n ? "pcf-zoom-chip-active" : "")"
+                                        @onclick="async () => { _showPaneMenu = false; await SetPaneCount(n); }">
+                                    @n
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
             </div>
+            <div class="vr mx-0" style="border-color:rgba(255,255,255,.3);flex-shrink:0;"></div>
             @if (!string.IsNullOrEmpty(_csSessionName))
             {
                 <div class="flex-grow-1 d-flex justify-content-center align-items-center gap-3">
@@ -791,7 +813,7 @@
             {
                 var idx = pi;
                 var p = _panes[idx];
-                <div class="pcf-pane pcf-pane-@PaneIds[idx] @(_activeIdx == idx ? "pcf-pane-active" : "")"
+                <div class="pcf-pane pcf-pane-@PaneIds[idx] @(_activeIdx == idx ? "pcf-pane-active" : "") @(_maximizedPane.HasValue && _maximizedPane.Value != idx ? "d-none" : "")"
                      @onclick="() => SetActiveIdx(idx)">
                     @{
                         var isDual = _dualPanes.Contains(PaneIds[idx]);
@@ -823,13 +845,25 @@
                                 <i class="ri-scissors-line"></i>
                             </button>
                         }
-                        <button class="pcf-overlay-btn"
-                                title="Maximize — close all other panes"
-                                disabled="@(_paneCount == 1)"
-                                @onclick:stopPropagation="true"
-                                @onclick="() => MaximizePane(idx)">
-                            <i class="ri-fullscreen-line"></i>
-                        </button>
+                        @if (_maximizedPane == idx)
+                        {
+                            <button class="pcf-overlay-btn pcf-overlay-btn-active"
+                                    title="Restore — return to split view"
+                                    @onclick:stopPropagation="true"
+                                    @onclick="RestorePane">
+                                <i class="ri-fullscreen-exit-line"></i>
+                            </button>
+                        }
+                        else
+                        {
+                            <button class="pcf-overlay-btn"
+                                    title="Maximize pane"
+                                    disabled="@(_paneCount == 1)"
+                                    @onclick:stopPropagation="true"
+                                    @onclick="() => MaximizePane(idx)">
+                                <i class="ri-fullscreen-line"></i>
+                            </button>
+                        }
                         <button class="pcf-overlay-btn pcf-overlay-close"
                                 title="Close pane"
                                 @onclick:stopPropagation="true"
@@ -2020,6 +2054,7 @@
 
     int _paneCount = 1;   // 1, 2, or 3
     int _activeIdx = 0;   // index into _panes / PaneIds
+    int? _maximizedPane;  // which pane slot is fullscreen-maximized (null = normal)
 
     bool _sidebarOpen = true;
     bool _frontExpanded = true;
@@ -2151,6 +2186,7 @@
     bool _showWidths;
     bool _showAnnotSettings;
     bool _showZoomMenu;
+    bool _showPaneMenu;
     bool _hasAnnotations;
     static readonly double[] _strokeWidths = [1, 2, 3, 5, 8, 12, 20];
     bool _saving;
@@ -2798,15 +2834,18 @@
         });
     }
 
-    async Task CyclePanes()
+    async Task CyclePanes() =>
+        await SetPaneCount(_paneCount >= 3 ? 1 : _paneCount + 1);
+
+    async Task SetPaneCount(int newCount)
     {
+        _maximizedPane = null; // always exit maximize mode when changing pane layout
+        if (newCount == _paneCount) return;
+        newCount = Math.Clamp(newCount, 1, 3);
         var oldCount = _paneCount;
-        var newCount = oldCount >= 3 ? 1 : oldCount + 1;
         Console.WriteLine($"[PcFolder] Changed pane count to {newCount} by '{_userName}' — for PC {PcId}");
 
         // Cancel any in-flight PDF renders BEFORE the layout changes.
-        // This ensures stale loadPdf calls detect the cancellation and exit
-        // rather than finishing at the wrong scale for the old pane width.
         for (int i = 0; i < oldCount; i++)
             if (!string.IsNullOrEmpty(_panes[i].File) && !_panes[i].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
                 await JS.InvokeVoidAsync("pcfViewer.cancelLoad", PaneIds[i]);
@@ -2850,43 +2889,27 @@
     {
         if (_paneCount == 1) return;
         Console.WriteLine($"[PcFolder] Maximized pane {idx} ('{_panes[idx].FileName}') by '{_userName}' — PC {PcId}");
+        _maximizedPane = idx;
+        _activeIdx = idx;
+        // Reload so it re-renders to fit the now-wider viewport
+        if (!string.IsNullOrEmpty(_panes[idx].File) && !_panes[idx].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+            _pendingReloads = [(PaneIds[idx], _panes[idx].File!)];
+        await JS.InvokeVoidAsync("pcfViewer.setActivePane", PaneIds[idx]);
+    }
 
-        // Auto-save all panes except the one being maximized
+    async Task RestorePane()
+    {
+        var idx = _maximizedPane ?? _activeIdx;
+        Console.WriteLine($"[PcFolder] Restored from maximize by '{_userName}' — PC {PcId}");
+        _maximizedPane = null;
+        // Reload all visible panes so they re-fit their now-narrower viewports
+        var reloads = new List<(string, string)>();
         for (int i = 0; i < _paneCount; i++)
-            if (i != idx && !string.IsNullOrEmpty(_panes[i].File))
-                await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]);
-
-        // Move the target pane's state into slot 0
-        if (idx != 0)
-        {
-            _panes[0].File     = _panes[idx].File;
-            _panes[0].FileName = _panes[idx].FileName;
-            _panes[0].Section  = _panes[idx].Section;
-
-            // Carry dual state from PaneIds[idx] → PaneIds[0]
-            bool wasDual = _dualPanes.Contains(PaneIds[idx]);
-            _dualPanes.Remove(PaneIds[idx]);
-            _dualInfo.Remove(PaneIds[idx]);
-            _dualPanes.Remove(PaneIds[0]);
-            _dualInfo.Remove(PaneIds[0]);
-            if (wasDual) _dualPanes.Add(PaneIds[0]);
-        }
-
-        // Clear slots 1 and 2
-        for (int i = 1; i < 3; i++)
-        {
-            _panes[i].File = null; _panes[i].FileName = null; _panes[i].Section = "";
-            _dualPanes.Remove(PaneIds[i]); _dualInfo.Remove(PaneIds[i]);
-        }
-
-        _paneCount = 1;
-        _activeIdx = 0;
-
-        // Reload pane 0 to fill new width
-        if (!string.IsNullOrEmpty(_panes[0].File) && !_panes[0].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
-            _pendingReloads = [(PaneIds[0], _panes[0].File!)];
-
-        await JS.InvokeVoidAsync("pcfViewer.setActivePane", PaneIds[0]);
+            if (!string.IsNullOrEmpty(_panes[i].File) && !_panes[i].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                reloads.Add((PaneIds[i], _panes[i].File!));
+        if (reloads.Count > 0)
+            _pendingReloads = reloads;
+        await JS.InvokeVoidAsync("pcfViewer.setActivePane", PaneIds[idx]);
     }
 
     async Task ClosePane(int idx)
