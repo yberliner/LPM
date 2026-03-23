@@ -4,7 +4,8 @@ public enum ImportStatus { Uploading, Processing, Complete, Failed }
 
 public record ImportFileManifest(
     string RelativePath, string FileName, string Section,
-    string? ParentSessionFile, string? LastModified, bool OverrideExisting = false);
+    string? ParentSessionFile, string? LastModified, bool OverrideExisting = false,
+    string SubPath = "");
 
 public record ImportPcManifest(
     string FolderName, string PcName, int? ExistingPcId,
@@ -137,15 +138,20 @@ public class ImportJobService
 
     /// <summary>Save a single uploaded file to the temp folder.</summary>
     public void RecordFileUploaded(string jobId, string pcFolderName, string section,
-        string fileName, byte[] bytes, string? parentSessionFile)
+        string fileName, byte[] bytes, string? parentSessionFile, string subPath = "")
     {
         if (CurrentJob == null || CurrentJob.JobId != jobId) return;
 
         string targetDir;
         if (parentSessionFile != null)
         {
+            // Attachments — unchanged, _att convention
             var sessionNoExt = Path.GetFileNameWithoutExtension(parentSessionFile);
             targetDir = Path.Combine(_tempBasePath, jobId, pcFolderName, section, $"{sessionNoExt}_att");
+        }
+        else if (!string.IsNullOrEmpty(subPath))
+        {
+            targetDir = Path.Combine(_tempBasePath, jobId, pcFolderName, section, subPath);
         }
         else
         {
@@ -163,7 +169,7 @@ public class ImportJobService
 
     /// <summary>Start background processing after all files are uploaded.</summary>
     public void StartProcessing(string jobId, List<ImportPcManifest> manifest,
-        List<ImportCoverMapping> coverMappings)
+        List<ImportCoverMapping> coverMappings, bool overrideCoverFolders = false)
     {
         if (CurrentJob == null || CurrentJob.JobId != jobId) return;
 
@@ -175,7 +181,7 @@ public class ImportJobService
         var userId = CurrentJob.UserId;
         var tempJobPath = Path.Combine(_tempBasePath, jobId);
 
-        _ = Task.Run(() => ProcessInBackground(jobId, tempJobPath, manifest, coverMappings, userId));
+        _ = Task.Run(() => ProcessInBackground(jobId, tempJobPath, manifest, coverMappings, userId, overrideCoverFolders));
     }
 
     /// <summary>Read a temp file and convert to PDF if it's a doc/docx. Returns (bytes, finalFileName, skipReason).
@@ -210,12 +216,19 @@ public class ImportJobService
     }
 
     private void ProcessInBackground(string jobId, string tempJobPath,
-        List<ImportPcManifest> manifest, List<ImportCoverMapping> coverMappings, int userId)
+        List<ImportPcManifest> manifest, List<ImportCoverMapping> coverMappings, int userId,
+        bool overrideCoverFolders = false)
     {
         try
         {
             // Snapshot DB before any writes so import can be rolled back manually if needed
             BackupDbBeforeImport();
+
+            if (overrideCoverFolders)
+            {
+                Console.WriteLine("[ImportJobService] Override flag set — deleting all Front_Cover and Back_Cover dirs...");
+                _folderSvc.DeleteAllCoverDirectories();
+            }
 
             // Process non-solo first, then solo — preserving the table order within each group
             var ordered = manifest
@@ -281,13 +294,15 @@ public class ImportJobService
                     foreach (var file in pc.Files.Where(f => f.Section is "Front_Cover" or "Back_Cover"))
                     {
                         UpdateStatus(jobId, $"{pc.PcName} [Solo]: {file.FileName}");
-                        var tempFile = Path.Combine(tempJobPath, pc.FolderName, file.Section, file.FileName);
+                        var tempFile = string.IsNullOrEmpty(file.SubPath)
+                            ? Path.Combine(tempJobPath, pc.FolderName, file.Section, file.FileName)
+                            : Path.Combine(tempJobPath, pc.FolderName, file.Section, file.SubPath, file.FileName);
                         var (bytes, finalName, skipReason) = ReadAndConvert(tempFile, file.FileName);
                         if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, file.Section, skipReason); continue; }
-                        if (_folderSvc.SoloSectionFileExists(pcId, file.Section, finalName))
-                            _folderSvc.OverwriteSoloSectionFile(pcId, file.Section, finalName, bytes);
+                        if (_folderSvc.SoloSectionFileExists(pcId, file.Section, finalName, file.SubPath))
+                            _folderSvc.OverwriteSoloSectionFile(pcId, file.Section, finalName, bytes, file.SubPath);
                         else
-                            _folderSvc.SaveSoloSectionFile(pcId, file.Section, finalName, bytes);
+                            _folderSvc.SaveSoloSectionFile(pcId, file.Section, finalName, bytes, file.SubPath);
                         IncrementProcessed(jobId);
                     }
 
@@ -295,12 +310,14 @@ public class ImportJobService
                     foreach (var file in pc.Files.Where(f => f.Section == "WorkSheets"))
                     {
                         UpdateStatus(jobId, $"{pc.PcName} [Solo]: {file.FileName}");
-                        var tempFile = Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName);
+                        var tempFile = string.IsNullOrEmpty(file.SubPath)
+                            ? Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName)
+                            : Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.SubPath, file.FileName);
                         var (bytes, finalName, skipReason) = ReadAndConvert(tempFile, file.FileName);
                         if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, "WorkSheets", skipReason); continue; }
-                        if (_folderSvc.SoloSectionFileExists(pcId, "WorkSheets", finalName))
+                        if (_folderSvc.SoloSectionFileExists(pcId, "WorkSheets", finalName, file.SubPath))
                         { IncrementSkipped(jobId, pc.PcName, finalName, "WorkSheets", "Already exists"); continue; }
-                        _folderSvc.SaveSoloSectionFile(pcId, "WorkSheets", finalName, bytes);
+                        _folderSvc.SaveSoloSectionFile(pcId, "WorkSheets", finalName, bytes, file.SubPath);
                         var sessionName = Path.GetFileNameWithoutExtension(finalName);
                         var sessionDate = ParseSessionDate(file);
                         var createdAt = ParseCreatedAt(file);
@@ -347,13 +364,15 @@ public class ImportJobService
                     foreach (var file in pc.Files.Where(f => f.Section is "Front_Cover" or "Back_Cover"))
                     {
                         UpdateStatus(jobId, $"{pc.PcName}: {file.FileName}");
-                        var tempFile = Path.Combine(tempJobPath, pc.FolderName, file.Section, file.FileName);
+                        var tempFile = string.IsNullOrEmpty(file.SubPath)
+                            ? Path.Combine(tempJobPath, pc.FolderName, file.Section, file.FileName)
+                            : Path.Combine(tempJobPath, pc.FolderName, file.Section, file.SubPath, file.FileName);
                         var (bytes, finalName, skipReason) = ReadAndConvert(tempFile, file.FileName);
                         if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, file.Section, skipReason); continue; }
-                        if (_folderSvc.SectionFileExists(pcId, file.Section, finalName))
-                            _folderSvc.OverwriteSectionFile(pcId, file.Section, finalName, bytes);
+                        if (_folderSvc.SectionFileExists(pcId, file.Section, finalName, file.SubPath))
+                            _folderSvc.OverwriteSectionFile(pcId, file.Section, finalName, bytes, file.SubPath);
                         else
-                            _folderSvc.SaveSectionFile(pcId, file.Section, finalName, bytes);
+                            _folderSvc.SaveSectionFile(pcId, file.Section, finalName, bytes, file.SubPath);
                         IncrementProcessed(jobId);
                     }
 
@@ -361,12 +380,14 @@ public class ImportJobService
                     foreach (var file in pc.Files.Where(f => f.Section == "WorkSheets"))
                     {
                         UpdateStatus(jobId, $"{pc.PcName}: {file.FileName}");
-                        var tempFile = Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName);
+                        var tempFile = string.IsNullOrEmpty(file.SubPath)
+                            ? Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.FileName)
+                            : Path.Combine(tempJobPath, pc.FolderName, "WorkSheets", file.SubPath, file.FileName);
                         var (bytes, finalName, skipReason) = ReadAndConvert(tempFile, file.FileName);
                         if (bytes == null) { IncrementSkipped(jobId, pc.PcName, file.FileName, "WorkSheets", skipReason); continue; }
-                        if (_folderSvc.SectionFileExists(pcId, "WorkSheets", finalName))
+                        if (_folderSvc.SectionFileExists(pcId, "WorkSheets", finalName, file.SubPath))
                         { IncrementSkipped(jobId, pc.PcName, finalName, "WorkSheets", "Already exists"); continue; }
-                        _folderSvc.SaveSectionFile(pcId, "WorkSheets", finalName, bytes);
+                        _folderSvc.SaveSectionFile(pcId, "WorkSheets", finalName, bytes, file.SubPath);
                         var sessionName = Path.GetFileNameWithoutExtension(finalName);
                         var sessionDate = ParseSessionDate(file);
                         var createdAt = ParseCreatedAt(file);

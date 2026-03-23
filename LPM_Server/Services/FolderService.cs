@@ -207,13 +207,95 @@ public class FolderService
         return cmd.ExecuteScalar() as string;
     }
 
-    /// <summary>Find the PC's folder on disk (pattern: {pcId}-{name})</summary>
+    /// <summary>Scan all PC folders on the server and build a lookup set for existence checking.
+    /// Each entry: (normalizedFolderName, normalizedSection, normalizedBaseName) — all lowercase, ID prefix stripped.
+    /// Single filesystem scan; handles case differences, extension mismatches (docx→pdf), and subdirectories.</summary>
+    public HashSet<(string Folder, string Section, string Base)> BuildExistingFilesIndex()
+    {
+        var index = new HashSet<(string, string, string)>();
+        if (!Directory.Exists(_basePath)) return index;
+        foreach (var pcDir in Directory.GetDirectories(_basePath))
+        {
+            var folderName = Path.GetFileName(pcDir);
+            if (folderName.StartsWith("_")) continue;
+            var folderNorm = NormalizeForComparison(StripIdPrefix(folderName));
+            if (!Directory.Exists(pcDir)) continue;
+            foreach (var sectionDir in Directory.GetDirectories(pcDir))
+            {
+                var sectionNorm = Path.GetFileName(sectionDir).ToLowerInvariant();
+                foreach (var file in Directory.GetFiles(sectionDir, "*", SearchOption.AllDirectories))
+                {
+                    var baseNorm = Path.GetFileNameWithoutExtension(Path.GetFileName(file)).ToLowerInvariant();
+                    index.Add((folderNorm, sectionNorm, baseNorm));
+                }
+            }
+        }
+        Console.WriteLine($"[FolderService] BuildExistingFilesIndex: {index.Count} entries from {_basePath}");
+        return index;
+    }
+
+    /// <summary>Find any PC folder (regular or solo) by matching the source folder name.</summary>
+    /// Strips numeric ID prefix from both sides before comparing, then normalizes to ASCII lowercase.
+    /// e.g. source "don schaul" or "42-Don Schaul" both match server folder "42-Don Schaul".</summary>
+    public string? FindFolderBySourceName(string sourceFolderName)
+    {
+        if (!Directory.Exists(_basePath)) return null;
+        var sourceNorm = NormalizeForComparison(StripIdPrefix(sourceFolderName));
+        return Directory.GetDirectories(_basePath)
+            .FirstOrDefault(d =>
+            {
+                if (Path.GetFileName(d).StartsWith("_")) return false; // skip _import_temp etc.
+                return NormalizeForComparison(StripIdPrefix(Path.GetFileName(d))) == sourceNorm;
+            });
+    }
+
+    /// <summary>Check if a file exists in a section of a known PC folder path (no pcId needed).</summary>
+    public bool SectionFileExistsByFolderPath(string folderPath, string section, string fileName)
+    {
+        var sectionPath = Directory.GetDirectories(folderPath)
+            .FirstOrDefault(d => Path.GetFileName(d).Equals(section, StringComparison.OrdinalIgnoreCase));
+        if (sectionPath == null) return false;
+        return FileExistsByBaseName(sectionPath, fileName);
+    }
+
+    static string StripIdPrefix(string folderName) =>
+        System.Text.RegularExpressions.Regex.Replace(folderName.Trim(), @"^\d+-\s*", "");
+
+    static string NormalizeForComparison(string s) =>
+        System.Text.RegularExpressions.Regex.Replace(
+            ImportJobService.NormalizeToAscii(s).ToLowerInvariant().Trim(), @"\s+", " ");
+
+    /// <summary>Find the PC's regular (non-solo) folder on disk (pattern: {pcId}-{name}, NOT ending with " Solo").</summary>
     public string? FindPcFolder(int pcId)
     {
         if (!Directory.Exists(_basePath)) return null;
         var prefix = $"{pcId}-";
         return Directory.GetDirectories(_basePath)
-            .FirstOrDefault(d => Path.GetFileName(d).StartsWith(prefix));
+            .FirstOrDefault(d =>
+            {
+                var n = Path.GetFileName(d);
+                return n.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                    && !n.EndsWith(" Solo", StringComparison.OrdinalIgnoreCase);
+            });
+    }
+
+    /// <summary>Delete Front_Cover and Back_Cover for every PC folder (regular and solo) on the server.</summary>
+    public void DeleteAllCoverDirectories()
+    {
+        if (!Directory.Exists(_basePath)) return;
+        foreach (var pcDir in Directory.GetDirectories(_basePath))
+        {
+            if (Path.GetFileName(pcDir).StartsWith("_")) continue; // skip _import_temp etc.
+            foreach (var section in new[] { "Front_Cover", "Back_Cover" })
+            {
+                var sectionPath = Path.Combine(pcDir, section);
+                if (Directory.Exists(sectionPath))
+                {
+                    Directory.Delete(sectionPath, recursive: true);
+                    Console.WriteLine($"[FolderService] Deleted {sectionPath}");
+                }
+            }
+        }
     }
 
     public PcFolderInfo? GetPcFolder(int pcId)
@@ -609,13 +691,48 @@ public class FolderService
     public static readonly HashSet<string> ValidSections = new(StringComparer.OrdinalIgnoreCase)
         { "Front_Cover", "Back_Cover", "WorkSheets" };
 
-    /// <summary>Check if a file already exists in a PC section folder.</summary>
-    public bool SectionFileExists(int pcId, string section, string fileName)
+    /// <summary>Sanitize a browser-supplied sub-path: strips "..", ".", and invalid filename chars per segment.
+    /// Returns OS-native path separators. Empty input returns "".</summary>
+    static string SafeSubPath(string subPath)
+    {
+        if (string.IsNullOrEmpty(subPath)) return "";
+        var segments = subPath.Split('/', StringSplitOptions.RemoveEmptyEntries)
+            .Where(s => s != ".." && s != ".")
+            .Select(s => string.Join("_", s.Split(Path.GetInvalidFileNameChars())));
+        return string.Join(Path.DirectorySeparatorChar.ToString(), segments);
+    }
+
+    /// <summary>Case-insensitive, extension-agnostic file existence check searching the entire directory tree.
+    /// Returns true if any file anywhere under dirPath has the same base name as fileName (ignoring extension and case).
+    /// Handles: Linux case-sensitivity, doc→pdf conversion, and files stored in different subdirs than the source.</summary>
+    static bool FileExistsByBaseName(string dirPath, string fileName)
+    {
+        if (!Directory.Exists(dirPath)) return false;
+        var baseName = Path.GetFileNameWithoutExtension(fileName);
+        return Directory.GetFiles(dirPath, "*", SearchOption.AllDirectories)
+            .Any(f => Path.GetFileNameWithoutExtension(f).Equals(baseName, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Returns the target directory inside sectionPath, creating subdirs if needed.</summary>
+    static string ResolveSubDir(string sectionPath, string safeSubPath)
+    {
+        var dir = string.IsNullOrEmpty(safeSubPath)
+            ? sectionPath
+            : Path.Combine(sectionPath, safeSubPath);
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    /// <summary>Check if a file already exists in a PC section folder (optionally in a subdirectory).</summary>
+    public bool SectionFileExists(int pcId, string section, string fileName, string subPath = "")
     {
         var folder = FindPcFolder(pcId);
         if (folder == null) return false;
-        var path = Path.Combine(folder, section, fileName);
-        return File.Exists(path);
+        // Find section directory case-insensitively (Linux: "worksheets" ≠ "WorkSheets")
+        var sectionPath = Directory.GetDirectories(folder)
+            .FirstOrDefault(d => Path.GetFileName(d).Equals(section, StringComparison.OrdinalIgnoreCase));
+        if (sectionPath == null) return false;
+        return FileExistsByBaseName(sectionPath, fileName);
     }
 
     /// <summary>Check if a worksheet with the given session name exists.</summary>
@@ -645,8 +762,8 @@ public class FolderService
         return File.Exists(path);
     }
 
-    /// <summary>Save an imported file to a PC section (Front_Cover, Back_Cover, WorkSheets). Keeps original name. Shrinks + encrypts.</summary>
-    public void SaveSectionFile(int pcId, string section, string fileName, byte[] fileBytes)
+    /// <summary>Save an imported file to a PC section (Front_Cover, Back_Cover, WorkSheets), preserving subdirectory. Keeps original name. Shrinks + encrypts.</summary>
+    public void SaveSectionFile(int pcId, string section, string fileName, byte[] fileBytes, string subPath = "")
     {
         if (!ValidSections.Contains(section)) return;
 
@@ -654,10 +771,10 @@ public class FolderService
         if (folder == null) return;
 
         var sectionPath = Path.Combine(folder.FolderPath, section);
-        Directory.CreateDirectory(sectionPath);
+        var targetDir   = ResolveSubDir(sectionPath, SafeSubPath(subPath));
 
         var safeName = string.Join("_", fileName.Split(Path.GetInvalidFileNameChars()));
-        var fullPath = Path.Combine(sectionPath, safeName);
+        var fullPath = Path.Combine(targetDir, safeName);
 
         // Skip if already exists
         if (File.Exists(fullPath)) return;
@@ -665,24 +782,29 @@ public class FolderService
         File.WriteAllBytes(fullPath, fileBytes);
         TryShrinkPdf(fullPath);
         EncryptFileInPlace(fullPath);
-        Console.WriteLine($"[FolderService] Saved section file '{fileName}' to {section} for PC {pcId}");
+        Console.WriteLine($"[FolderService] Saved section file '{fileName}' to {section}/{subPath} for PC {pcId}");
     }
 
-    /// <summary>Overwrite an existing section file. Backs up the old file first.</summary>
-    public void OverwriteSectionFile(int pcId, string section, string fileName, byte[] fileBytes)
+    /// <summary>Overwrite an existing section file (optionally in a subdirectory). Backs up the old file first.</summary>
+    public void OverwriteSectionFile(int pcId, string section, string fileName, byte[] fileBytes, string subPath = "")
     {
         if (!ValidSections.Contains(section)) return;
 
         var folder = GetPcFolder(pcId);
         if (folder == null) return;
 
-        var sectionPath = Path.Combine(folder.FolderPath, section);
-        var safeName = string.Join("_", fileName.Split(Path.GetInvalidFileNameChars()));
-        var fullPath = Path.Combine(sectionPath, safeName);
+        var sectionPath  = Path.Combine(folder.FolderPath, section);
+        var safeSubPath  = SafeSubPath(subPath);
+        var targetDir    = ResolveSubDir(sectionPath, safeSubPath);
+        var safeName     = string.Join("_", fileName.Split(Path.GetInvalidFileNameChars()));
+        var fullPath     = Path.Combine(targetDir, safeName);
+        var backupRef    = string.IsNullOrEmpty(safeSubPath)
+            ? $"{section}/{safeName}"
+            : $"{section}/{safeSubPath}/{safeName}";
 
         // Backup the existing file before overwriting
         if (File.Exists(fullPath))
-            BackupFile(pcId, $"{section}/{safeName}");
+            BackupFile(pcId, backupRef);
 
         // Backup the original upload
         BackupBytes(pcId, safeName, fileBytes);
@@ -690,7 +812,7 @@ public class FolderService
         File.WriteAllBytes(fullPath, fileBytes);
         TryShrinkPdf(fullPath);
         EncryptFileInPlace(fullPath);
-        Console.WriteLine($"[FolderService] Overwrote section file '{fileName}' in {section} for PC {pcId}");
+        Console.WriteLine($"[FolderService] Overwrote section file '{fileName}' in {section}/{subPath} for PC {pcId}");
     }
 
     /// <summary>Save an imported attachment file. Flat naming in WorkSheets. Shrinks + encrypts.</summary>
@@ -780,40 +902,43 @@ public class FolderService
         return path;
     }
 
-    public bool SoloSectionFileExists(int pcId, string section, string fileName)
+    public bool SoloSectionFileExists(int pcId, string section, string fileName, string subPath = "")
     {
         var folder = FindSoloPcFolder(pcId);
         if (folder == null) return false;
-        return File.Exists(Path.Combine(folder, section, fileName));
+        var sectionPath = Directory.GetDirectories(folder)
+            .FirstOrDefault(d => Path.GetFileName(d).Equals(section, StringComparison.OrdinalIgnoreCase));
+        if (sectionPath == null) return false;
+        return FileExistsByBaseName(sectionPath, fileName);
     }
 
-    public void SaveSoloSectionFile(int pcId, string section, string fileName, byte[] fileBytes)
+    public void SaveSoloSectionFile(int pcId, string section, string fileName, byte[] fileBytes, string subPath = "")
     {
         if (!ValidSections.Contains(section)) return;
-        var folderPath = GetOrCreateSoloPcFolderPath(pcId);
+        var folderPath  = GetOrCreateSoloPcFolderPath(pcId);
         var sectionPath = Path.Combine(folderPath, section);
-        Directory.CreateDirectory(sectionPath);
-        var safeName = string.Join("_", fileName.Split(Path.GetInvalidFileNameChars()));
-        var fullPath = Path.Combine(sectionPath, safeName);
+        var targetDir   = ResolveSubDir(sectionPath, SafeSubPath(subPath));
+        var safeName    = string.Join("_", fileName.Split(Path.GetInvalidFileNameChars()));
+        var fullPath    = Path.Combine(targetDir, safeName);
         if (File.Exists(fullPath)) return;
         File.WriteAllBytes(fullPath, fileBytes);
         TryShrinkPdf(fullPath);
         EncryptFileInPlace(fullPath);
-        Console.WriteLine($"[FolderService] Saved solo section file '{fileName}' to {section} for PC {pcId}");
+        Console.WriteLine($"[FolderService] Saved solo section file '{fileName}' to {section}/{subPath} for PC {pcId}");
     }
 
-    public void OverwriteSoloSectionFile(int pcId, string section, string fileName, byte[] fileBytes)
+    public void OverwriteSoloSectionFile(int pcId, string section, string fileName, byte[] fileBytes, string subPath = "")
     {
         if (!ValidSections.Contains(section)) return;
-        var folderPath = GetOrCreateSoloPcFolderPath(pcId);
+        var folderPath  = GetOrCreateSoloPcFolderPath(pcId);
         var sectionPath = Path.Combine(folderPath, section);
-        Directory.CreateDirectory(sectionPath);
-        var safeName = string.Join("_", fileName.Split(Path.GetInvalidFileNameChars()));
-        var fullPath = Path.Combine(sectionPath, safeName);
+        var targetDir   = ResolveSubDir(sectionPath, SafeSubPath(subPath));
+        var safeName    = string.Join("_", fileName.Split(Path.GetInvalidFileNameChars()));
+        var fullPath    = Path.Combine(targetDir, safeName);
         File.WriteAllBytes(fullPath, fileBytes);
         TryShrinkPdf(fullPath);
         EncryptFileInPlace(fullPath);
-        Console.WriteLine($"[FolderService] Overwrote solo section file '{fileName}' in {section} for PC {pcId}");
+        Console.WriteLine($"[FolderService] Overwrote solo section file '{fileName}' in {section}/{subPath} for PC {pcId}");
     }
 
     public bool SoloAttachmentFileExists(int pcId, string sessionFileName, string attFileName)

@@ -211,7 +211,7 @@
     @* ── sess_* tables (editable) ── *@
     <div class="cedb-group-header mt-3">
         <i class="ri-calendar-line me-1"></i>sess_* tables
-        <span style="font-weight:400;font-size:.6rem;color:#94a3b8;text-transform:none;letter-spacing:0;">(last 200 rows · editable)</span>
+        <span style="font-weight:400;font-size:.6rem;color:#94a3b8;text-transform:none;letter-spacing:0;">(editable)</span>
     </div>
     @foreach (var t in _sessTables)
     {
@@ -229,7 +229,7 @@
     @* ── cs_* tables (editable) ── *@
     <div class="cedb-group-header mt-3">
         <i class="ri-user-star-line me-1"></i>cs_* tables
-        <span style="font-weight:400;font-size:.6rem;color:#94a3b8;text-transform:none;letter-spacing:0;">(last 200 rows · editable)</span>
+        <span style="font-weight:400;font-size:.6rem;color:#94a3b8;text-transform:none;letter-spacing:0;">(editable)</span>
     </div>
     @foreach (var t in _csTables)
     {
@@ -246,14 +246,12 @@
     @* ── fin_* tables ── *@
     <div class="cedb-group-header mt-3">
         <i class="ri-money-dollar-circle-line me-1"></i>fin_* tables
-        <span style="font-weight:400;font-size:.6rem;color:#94a3b8;text-transform:none;letter-spacing:0;">(last 200 rows)</span>
     </div>
     @foreach (var t in _finTables) { @TableSection(t) }
 
     @* ── acad_* tables ── *@
     <div class="cedb-group-header mt-3">
         <i class="ri-graduation-cap-line me-1"></i>acad_* tables
-        <span style="font-weight:400;font-size:.6rem;color:#94a3b8;text-transform:none;letter-spacing:0;">(last 200 rows)</span>
     </div>
     @foreach (var t in _acadTables) { @TableSection(t) }
 
@@ -422,6 +420,17 @@
             <div class="cedb-section-title cedb-section-toggle" @onclick="() => ToggleSection(t.Name)">
                 <i class="@t.Icon me-1"></i>@t.Name
                 <span class="cedb-count">@t.Rows.Count row@(t.Rows.Count != 1 ? "s" : "")</span>
+                <select class="form-select form-select-sm ms-auto me-2" style="width:auto;font-size:.72rem;"
+                        @onclick:stopPropagation="true"
+                        value="@(_tableLimit.TryGetValue(t.Name, out var tl) ? tl : 200)"
+                        @onchange="e => { _tableLimit[t.Name] = int.Parse(e.Value!.ToString()!); }">
+                    <option value="10">10</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                    <option value="1000">1000</option>
+                    <option value="0">All</option>
+                </select>
                 <i class="ri-arrow-down-s-line cedb-chevron @(_collapsed.Contains(t.Name) ? "cedb-chevron-up" : "")"></i>
             </div>
             @if (!_collapsed.Contains(t.Name))
@@ -438,7 +447,9 @@
                                 <tr>@foreach (var col in t.Columns) { <th>@col</th> }</tr>
                             </thead>
                             <tbody>
-                                @foreach (var row in t.Rows)
+                                @{ int tsLimit = _tableLimit.TryGetValue(t.Name, out var tsl) ? tsl : 200;
+                                   var tsRows  = tsLimit > 0 ? t.Rows.Take(tsLimit) : t.Rows; }
+                                @foreach (var row in tsRows)
                                 {
                                     <tr>
                                         @for (int i = 0; i < t.Columns.Count; i++)
@@ -455,13 +466,60 @@
             }
         </div>;
 
-    // ── Editable table display (sess_* / cs_*) ────────────────────────────
+    // ── Editable table display (sess_* / cs_* / core_persons) ────────────────
     record EditInfo(TableData Table, string PkCol);
+    // sort state per table name: (column, ascending)
+    Dictionary<string, (string Col, bool Asc)> _sortState = new();
+    // row limit per table name: 0 = all, default 200
+    Dictionary<string, int> _tableLimit = new();
+
+    void SetSort(string tableName, string col)
+    {
+        if (_sortState.TryGetValue(tableName, out var cur) && cur.Col == col)
+            _sortState[tableName] = (col, !cur.Asc);
+        else
+            _sortState[tableName] = (col, true);
+    }
+
+    IEnumerable<List<string>> SortedRows(TableData t)
+    {
+        IEnumerable<List<string>> rows = t.Rows;
+        if (_sortState.TryGetValue(t.Name, out var s))
+        {
+            int idx = t.Columns.IndexOf(s.Col);
+            if (idx >= 0)
+                rows = s.Asc
+                    ? rows.OrderBy(r => SortKey(r, idx))
+                    : rows.OrderByDescending(r => SortKey(r, idx));
+        }
+        int limit = _tableLimit.TryGetValue(t.Name, out var lim) ? lim : 200;
+        if (limit > 0) rows = rows.Take(limit);
+        return rows;
+    }
+
+    static IComparable SortKey(List<string> row, int idx)
+    {
+        var v = idx < row.Count ? row[idx] : "";
+        if (double.TryParse(v, out var d)) return d;
+        return v;
+    }
+
     RenderFragment<EditInfo> EditableSection => args =>
         @<div class="cedb-section mt-3">
             <div class="cedb-section-title cedb-section-toggle" @onclick="() => ToggleSection(args.Table.Name)">
                 <i class="@args.Table.Icon me-1"></i>@args.Table.Name
                 <span class="cedb-count">@args.Table.Rows.Count row@(args.Table.Rows.Count != 1 ? "s" : "")</span>
+                <select class="form-select form-select-sm ms-auto me-2" style="width:auto;font-size:.72rem;"
+                        @onclick:stopPropagation="true"
+                        value="@(_tableLimit.TryGetValue(args.Table.Name, out var curLim) ? curLim : 200)"
+                        @onchange="e => { _tableLimit[args.Table.Name] = int.Parse(e.Value!.ToString()!); }">
+                    <option value="10">10</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                    <option value="1000">1000</option>
+                    <option value="0">All</option>
+                </select>
                 <i class="ri-arrow-down-s-line cedb-chevron @(_collapsed.Contains(args.Table.Name) ? "cedb-chevron-up" : "")"></i>
             </div>
             @if (!_collapsed.Contains(args.Table.Name))
@@ -476,12 +534,24 @@
                         <table class="cedb-table">
                             <thead>
                                 <tr>
-                                    @foreach (var col in args.Table.Columns) { <th>@col</th> }
+                                    @foreach (var col in args.Table.Columns)
+                                    {
+                                        var c = col;
+                                        bool isSort = _sortState.TryGetValue(args.Table.Name, out var ss) && ss.Col == c;
+                                        <th style="cursor:pointer;user-select:none;" @onclick:stopPropagation="true"
+                                            @onclick="() => SetSort(args.Table.Name, c)">
+                                            @c
+                                            @if (isSort)
+                                            {
+                                                <i class="@(ss.Asc ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line") ms-1" style="font-size:.8rem;"></i>
+                                            }
+                                        </th>
+                                    }
                                     <th style="width:88px;"></th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var row in args.Table.Rows)
+                                @foreach (var row in SortedRows(args.Table))
                                 {
                                     var capturedRow = row;
                                     int pkIdx = args.Table.Columns.IndexOf(args.PkCol);
@@ -1000,28 +1070,28 @@
         ];
         _sessTables =
         [
-            Load(conn, "sess_sessions",       "ri-calendar-event-line", "ORDER BY SessionId       DESC LIMIT 200"),
-            Load(conn, "sess_misc_charges",   "ri-coins-line",          "ORDER BY MiscChargeId    DESC LIMIT 200"),
-            Load(conn, "sess_folder_summary", "ri-file-text-line",      "ORDER BY Id              DESC LIMIT 200"),
-            Load(conn, "sess_meetings",       "ri-time-line",           "ORDER BY MeetingId       DESC LIMIT 200"),
+            Load(conn, "sess_sessions",       "ri-calendar-event-line", "ORDER BY SessionId       DESC"),
+            Load(conn, "sess_misc_charges",   "ri-coins-line",          "ORDER BY MiscChargeId    DESC"),
+            Load(conn, "sess_folder_summary", "ri-file-text-line",      "ORDER BY Id              DESC"),
+            Load(conn, "sess_meetings",       "ri-time-line",           "ORDER BY MeetingId       DESC"),
         ];
         _csTables =
         [
-            Load(conn, "cs_reviews",          "ri-shield-star-line",    "ORDER BY CsReviewId      DESC LIMIT 200"),
-            Load(conn, "cs_work_log",         "ri-todo-line",           "ORDER BY CsWorkLogId     DESC LIMIT 200"),
-            Load(conn, "cs_case_supervisors", "ri-user-star-line",      "ORDER BY CsId            DESC LIMIT 200"),
+            Load(conn, "cs_reviews",          "ri-shield-star-line",    "ORDER BY CsReviewId      DESC"),
+            Load(conn, "cs_work_log",         "ri-todo-line",           "ORDER BY CsWorkLogId     DESC"),
+            Load(conn, "cs_case_supervisors", "ri-user-star-line",      "ORDER BY CsId            DESC"),
         ];
         _finTables =
         [
-            Load(conn, "fin_purchases",       "ri-shopping-cart-line",  "ORDER BY PurchaseId      DESC LIMIT 200"),
-            Load(conn, "fin_purchase_items",  "ri-list-check",          "ORDER BY PurchaseItemId  DESC LIMIT 200"),
-            Load(conn, "fin_payments",        "ri-bank-card-line",      "ORDER BY PaymentId       DESC LIMIT 200"),
-            Load(conn, "fin_payment_methods", "ri-secure-payment-line", "ORDER BY PaymentMethodId DESC LIMIT 200"),
+            Load(conn, "fin_purchases",       "ri-shopping-cart-line",  "ORDER BY PurchaseId      DESC"),
+            Load(conn, "fin_purchase_items",  "ri-list-check",          "ORDER BY PurchaseItemId  DESC"),
+            Load(conn, "fin_payments",        "ri-bank-card-line",      "ORDER BY PaymentId       DESC"),
+            Load(conn, "fin_payment_methods", "ri-secure-payment-line", "ORDER BY PaymentMethodId DESC"),
         ];
         _acadTables =
         [
-            Load(conn, "acad_attendance",      "ri-check-double-line",  "ORDER BY StudentId       DESC LIMIT 200"),
-            Load(conn, "acad_student_courses", "ri-book-open-line",     "ORDER BY StudentCourseId DESC LIMIT 200"),
+            Load(conn, "acad_attendance",      "ri-check-double-line",  "ORDER BY StudentId       DESC"),
+            Load(conn, "acad_student_courses", "ri-book-open-line",     "ORDER BY StudentCourseId DESC"),
         ];
     }
 

@@ -153,6 +153,22 @@
             </div>
         }
 
+        @if (!_namesOnly)
+        {
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="overrideCoverCheck"
+                       checked="@_overrideCoverFolders"
+                       @onchange="e => OnOverrideCoverChanged((bool)(e.Value ?? false))" />
+                <label class="form-check-label fw-semibold" for="overrideCoverCheck"
+                       style="font-size:.85rem; color:#f87171; cursor:pointer;">
+                    Override all front/back cover folders
+                    <span style="font-weight:400; color:#94a3b8; margin-left:6px;">
+                        (deletes ALL existing Front/Back Cover files on the server before import)
+                    </span>
+                </label>
+            </div>
+        }
+
         <input type="file" id="import-folder-input" webkitdirectory directory multiple
                style="display:none;" @onchange="OnFolderSelected" />
 
@@ -456,6 +472,122 @@
                     </table>
                 </div>
             </div>
+        }
+
+        @* ════════════════════════════════════════════════════════════
+           FILE LIST (all included files, grouped by PC)
+           ════════════════════════════════════════════════════════════ *@
+        @if (_manifest.Count > 0 && !_uploading && !_namesOnly)
+        {
+            var totalIncluded = _manifest.Sum(pc => pc.Files.Count(f => f.Include));
+            var totalFront = _manifest.Sum(pc => pc.Files.Count(f => f.Include && f.Section == "Front_Cover"));
+            var totalBack  = _manifest.Sum(pc => pc.Files.Count(f => f.Include && f.Section == "Back_Cover"));
+            var totalWs    = _manifest.Sum(pc => pc.Files.Count(f => f.Include && f.Section == "WorkSheets"));
+            if (totalIncluded > 0)
+            {
+                <div class="card mt-3" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
+                    <div class="card-header py-2" style="background:rgba(99,102,241,.12); color:#a5b4fc; font-size:.85rem; border-color:rgba(99,102,241,.2);">
+                        <i class="ri-file-list-3-line me-1"></i>
+                        <strong>Files to import — @totalIncluded file(s) across @_manifest.Count PC(s)</strong>
+                        <span class="ms-3 d-inline-flex gap-3" style="font-size:.78rem; font-weight:400;">
+                            <span style="color:#60a5fa;"><i class="ri-file-2-line me-1"></i>Front Cover: <strong>@totalFront</strong></span>
+                            <span style="color:#60a5fa;"><i class="ri-file-2-line me-1"></i>Back Cover: <strong>@totalBack</strong></span>
+                            <span style="color:#34d399;"><i class="ri-file-2-line me-1"></i>Worksheets: <strong>@totalWs</strong></span>
+                        </span>
+                    </div>
+                    <div class="card-body p-0" style="max-height:420px; overflow-y:auto;">
+                        <table class="table table-sm mb-0" style="font-size:.75rem; color:#e2e8f0;">
+                            <thead style="position:sticky; top:0; background:#1e293b; z-index:1; color:#94a3b8;">
+                                <tr>
+                                    <th style="padding:6px 12px; width:22%;">PC</th>
+                                    <th style="padding:6px 12px; width:14%;">Section</th>
+                                    <th style="padding:6px 12px;">File</th>
+                                    <th style="padding:6px 12px; width:9%; text-align:right;">Size</th>
+                                    <th style="padding:6px 12px; width:8%;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var pc in _manifest)
+                                {
+                                    var pcIncluded = pc.Files.Where(f => f.Include)
+                                        .OrderBy(f => f.Section == "Front_Cover" ? 0 : f.Section == "Back_Cover" ? 1 : f.Section == "WorkSheets" ? 2 : 3)
+                                        .ThenBy(f => f.SubPath)
+                                        .ThenBy(f => f.FileName)
+                                        .ToList();
+                                    if (pcIncluded.Count == 0) continue;
+
+                                    var displayName = pc.IsSolo && !string.IsNullOrEmpty(pc.MatchedPcName) ? pc.MatchedPcName : pc.PcName;
+                                    <tr style="background:rgba(99,102,241,.08); border-top:1px solid #334155;">
+                                        <td colspan="5" style="padding:4px 12px; font-weight:600; color:#a5b4fc; font-size:.8rem;">
+                                            <i class="@(pc.IsSolo ? "ri-user-line" : "ri-folder-line") me-1"></i>
+                                            @displayName
+                                            @if (pc.IsSolo)
+                                            {
+                                                <span class="badge ms-1" style="background:rgba(168,85,247,.3); color:#c4b5fd; font-size:.65rem;">Solo</span>
+                                            }
+                                            <span class="ms-2" style="font-weight:400; color:#64748b; font-size:.72rem;">@pcIncluded.Count file(s)</span>
+                                        </td>
+                                    </tr>
+                                    @foreach (var f in pcIncluded)
+                                    {
+                                        <tr style="border-bottom:1px solid rgba(255,255,255,.03);">
+                                            <td style="padding:3px 12px;"></td>
+                                            <td style="padding:3px 12px; font-size:.72rem; color:@(f.Section == "WorkSheets" ? "#34d399" : f.Section == "Attachment" ? "#94a3b8" : "#60a5fa");">
+                                                @f.Section.Replace("_", " ")
+                                            </td>
+                                            <td style="padding:3px 12px; font-family:monospace; font-size:.72rem;">
+                                                @if (!string.IsNullOrEmpty(f.SubPath))
+                                                {
+                                                    <span style="color:#64748b;">@f.SubPath/</span>
+                                                }
+                                                @f.FileName
+                                            </td>
+                                            <td style="padding:3px 12px; text-align:right; color:#64748b;">@FormatBytes(f.Size)</td>
+                                            <td style="padding:3px 12px;">
+                                                @if (f.AlreadyExists && f.OverrideExisting)
+                                                {
+                                                    <span style="color:#fbbf24; font-size:.7rem;">Override</span>
+                                                }
+                                                else
+                                                {
+                                                    <span style="color:#22c55e; font-size:.7rem;">New</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="card-footer py-2 d-flex align-items-center gap-2" style="border-color:#334155;">
+                        @if (_coverFoldersDeleted)
+                        {
+                            <span style="font-size:.82rem; color:#22c55e;">
+                                <i class="ri-check-circle-line me-1"></i>All cover folders deleted — files will be imported as new
+                            </span>
+                        }
+                        else if (_deleteCoverConfirming)
+                        {
+                            <span style="font-size:.82rem; color:#f87171;">Delete ALL Front/Back Cover folders on server?</span>
+                            <button class="btn btn-sm btn-danger d-flex align-items-center gap-1"
+                                    disabled="@_deleteCoverBusy" @onclick="DeleteAllCoverFoldersNow">
+                                @if (_deleteCoverBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                                Yes, Delete
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary"
+                                    disabled="@_deleteCoverBusy"
+                                    @onclick="() => _deleteCoverConfirming = false">Cancel</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-sm btn-outline-danger d-flex align-items-center gap-1"
+                                    @onclick="() => _deleteCoverConfirming = true">
+                                <i class="ri-delete-bin-line"></i>Delete all cover folders on server
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
         }
 
         @* ════════════════════════════════════════════════════════════
@@ -809,6 +941,10 @@
     bool _namesOnlyDone;
     List<NamesOnlyRow> _namesOnlyRows = [];
 
+    bool _overrideCoverFolders;
+    bool _deleteCoverConfirming;
+    bool _deleteCoverBusy;
+    bool _coverFoldersDeleted;
     bool _scanning;
     bool _uploading;
     string _errorMessage = "";
@@ -852,6 +988,7 @@
         public string RelativePath { get; set; } = "";
         public string FileName { get; set; } = "";
         public string Section { get; set; } = "";
+        public string SubPath { get; set; } = "";   // subdirectory within section, "" = root
         public string? ParentSessionFile { get; set; }
         public long Size { get; set; }
         public string? LastModified { get; set; }
@@ -900,6 +1037,36 @@
     void ClearJob() => ImportJob.ClearJob();
 
 
+    async Task DeleteAllCoverFoldersNow()
+    {
+        _deleteCoverBusy = true;
+        await InvokeAsync(StateHasChanged);
+        await Task.Run(() => FolderSvc.DeleteAllCoverDirectories());
+        // Mark all cover files in manifest as new — counts and file list update immediately
+        foreach (var pc in _manifest)
+            foreach (var f in pc.Files.Where(f => f.Section is "Front_Cover" or "Back_Cover"))
+            {
+                f.AlreadyExists = false;
+                f.Include = true;
+                f.OverrideExisting = false;
+            }
+        _coverFoldersDeleted = true;
+        _deleteCoverConfirming = false;
+        _deleteCoverBusy = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    void OnOverrideCoverChanged(bool value)
+    {
+        _overrideCoverFolders = value;
+        foreach (var pc in _manifest)
+            foreach (var f in pc.Files.Where(f => f.Section is "Front_Cover" or "Back_Cover"))
+            {
+                f.Include = value || !f.AlreadyExists;
+                f.OverrideExisting = value && f.AlreadyExists;
+            }
+    }
+
     void ResetState()
     {
         _manifest.Clear();
@@ -907,6 +1074,9 @@
         _namesOnlyRows.Clear();
         _namesOnlyBusy = false;
         _namesOnlyDone = false;
+        _deleteCoverConfirming = false;
+        _deleteCoverBusy = false;
+        _coverFoldersDeleted = false;
         _errorMessage = "";
         _uploadedCount = _totalFileCount = 0;
         _totalSizeBytes = _freeSpaceBytes = 0;
@@ -1023,8 +1193,8 @@
                 pcFolder, @"(?<!\w)solo(?!\w)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
             var stripped = System.Text.RegularExpressions.Regex.Replace(pcFolder.Trim(), @"^\d+-\s*", "");
-            var pcName = PcService.StripNoiseWords(stripped);
-            if (string.IsNullOrWhiteSpace(pcName)) pcName = stripped.Trim();
+            var pcName = ImportJobService.NormalizeToAscii(PcService.StripNoiseWords(stripped));
+            if (string.IsNullOrWhiteSpace(pcName)) pcName = ImportJobService.NormalizeToAscii(stripped.Trim());
 
             var nameParts = pcName.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             var firstName = nameParts.Length > 0 ? nameParts[0] : pcName;
@@ -1218,7 +1388,7 @@
     void ParseManifest(List<ManifestEntry> entries)
     {
         _manifest.Clear();
-        var pcGroups = new Dictionary<string, List<(ManifestEntry Entry, string Section, string FileName, string? ParentSession)>>(StringComparer.OrdinalIgnoreCase);
+        var pcGroups = new Dictionary<string, List<(ManifestEntry Entry, string Section, string FileName, string? ParentSession, string SubPath)>>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var e in entries)
         {
@@ -1263,7 +1433,10 @@
             pcFolder = parts[sectionIdx - 1];
 
             if (!pcGroups.ContainsKey(pcFolder)) pcGroups[pcFolder] = [];
-            pcGroups[pcFolder].Add((e, section, fileName, parentSession));
+            var subPath = (section != "Attachment" && sectionIdx >= 0)
+                ? string.Join("/", parts[(sectionIdx + 1)..^1])
+                : "";
+            pcGroups[pcFolder].Add((e, section, fileName, parentSession, subPath));
         }
 
         foreach (var (folder, files) in pcGroups)
@@ -1271,13 +1444,13 @@
             var isSolo = System.Text.RegularExpressions.Regex.IsMatch(
                 folder, @"(?<!\w)solo(?!\w)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             var stripped = System.Text.RegularExpressions.Regex.Replace(folder.Trim(), @"^\d+-\s*", "");
-            var pcName = PcService.StripNoiseWords(stripped);
-            if (string.IsNullOrWhiteSpace(pcName)) pcName = stripped.Trim();
+            var pcName = ImportJobService.NormalizeToAscii(PcService.StripNoiseWords(stripped));
+            if (string.IsNullOrWhiteSpace(pcName)) pcName = ImportJobService.NormalizeToAscii(stripped.Trim());
             var (existingId, _) = TryFindPc(pcName);
             var importFiles = files.Select(f => new LocalFileEntry
             {
                 FileIndex = f.Entry.index, RelativePath = f.Entry.relativePath,
-                FileName = f.FileName, Section = f.Section,
+                FileName = f.FileName, Section = f.Section, SubPath = f.SubPath,
                 ParentSessionFile = f.ParentSession, Size = f.Entry.size,
                 LastModified = f.Entry.lastModified
             }).ToList();
@@ -1336,47 +1509,36 @@
         foreach (var pc in _manifest)
         {
             int? checkId = pc.IsSolo ? pc.MatchedPcId : pc.ExistingPcId;
-            if (!checkId.HasValue) continue;
-            var pcId = checkId.Value;
+
+            // Resolve server folder: first by pcId, then fall back to source folder name
+            // (covers PCs not yet in DB, or name-normalization mismatches)
+            string? serverFolder = null;
+            if (checkId.HasValue)
+                serverFolder = pc.IsSolo
+                    ? FolderSvc.FindSoloPcFolder(checkId.Value)
+                    : FolderSvc.FindPcFolder(checkId.Value);
+            if (serverFolder == null)
+                serverFolder = FolderSvc.FindFolderBySourceName(pc.FolderName);
+            if (serverFolder == null) continue;
 
             foreach (var file in pc.Files)
             {
                 bool exists;
-                if (pc.IsSolo)
+                if (file.Section == "Attachment" && file.ParentSessionFile != null)
                 {
-                    if (file.Section == "Attachment" && file.ParentSessionFile != null)
-                        exists = FolderSvc.SoloAttachmentFileExists(pcId, file.ParentSessionFile, file.FileName);
-                    else if (file.Section is "Front_Cover" or "Back_Cover" or "WorkSheets")
-                        exists = FolderSvc.SoloSectionFileExists(pcId, file.Section, file.FileName);
-                    else
-                        exists = false;
-
-                    if (!exists && FolderService.ConvertibleExtensions.Contains(Path.GetExtension(file.FileName)))
-                    {
-                        var pdfName = Path.GetFileNameWithoutExtension(file.FileName) + ".pdf";
-                        if (file.Section == "Attachment" && file.ParentSessionFile != null)
-                            exists = FolderSvc.SoloAttachmentFileExists(pcId, file.ParentSessionFile, pdfName);
-                        else if (file.Section is "Front_Cover" or "Back_Cover" or "WorkSheets")
-                            exists = FolderSvc.SoloSectionFileExists(pcId, file.Section, pdfName);
-                    }
+                    // Attachments still need pcId for the _att_ naming convention
+                    if (!checkId.HasValue) continue;
+                    exists = pc.IsSolo
+                        ? FolderSvc.SoloAttachmentFileExists(checkId.Value, file.ParentSessionFile, file.FileName)
+                        : FolderSvc.AttachmentFileExists(checkId.Value, file.ParentSessionFile, file.FileName);
+                }
+                else if (file.Section is "Front_Cover" or "Back_Cover" or "WorkSheets")
+                {
+                    exists = FolderSvc.SectionFileExistsByFolderPath(serverFolder, file.Section, file.FileName);
                 }
                 else
                 {
-                    if (file.Section == "Attachment" && file.ParentSessionFile != null)
-                        exists = FolderSvc.AttachmentFileExists(pcId, file.ParentSessionFile, file.FileName);
-                    else if (file.Section is "Front_Cover" or "Back_Cover" or "WorkSheets")
-                        exists = FolderSvc.SectionFileExists(pcId, file.Section, file.FileName);
-                    else
-                        exists = false;
-
-                    if (!exists && FolderService.ConvertibleExtensions.Contains(Path.GetExtension(file.FileName)))
-                    {
-                        var pdfName = Path.GetFileNameWithoutExtension(file.FileName) + ".pdf";
-                        if (file.Section == "Attachment" && file.ParentSessionFile != null)
-                            exists = FolderSvc.AttachmentFileExists(pcId, file.ParentSessionFile, pdfName);
-                        else if (file.Section is "Front_Cover" or "Back_Cover" or "WorkSheets")
-                            exists = FolderSvc.SectionFileExists(pcId, file.Section, pdfName);
-                    }
+                    exists = false;
                 }
 
                 if (exists)
@@ -1396,6 +1558,10 @@
         var parts = pcName.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var fullName = $"{(parts.Length > 0 ? parts[0] : pcName)} {(parts.Length > 1 ? parts[1] : "")}".Trim();
         match = allPcs.FirstOrDefault(p => p.FullName.Equals(fullName, StringComparison.OrdinalIgnoreCase));
+        if (match != null) return (match.PcId, true);
+        // Normalized fallback: strip diacritics on both sides (e.g. "Cveigelis" matches "Cveiģelis" in DB)
+        var pcNameNorm = ImportJobService.NormalizeToAscii(pcName).ToLowerInvariant();
+        match = allPcs.FirstOrDefault(p => ImportJobService.NormalizeToAscii(p.FullName).ToLowerInvariant() == pcNameNorm);
         return match != null ? (match.PcId, true) : (null, false);
     }
 
@@ -1469,6 +1635,17 @@
     {
         if (!_userId.HasValue) { _errorMessage = "User not identified."; return; }
 
+        // Override flag: force-include all front/back cover files regardless of AlreadyExists
+        if (_overrideCoverFolders)
+        {
+            foreach (var pc in _manifest)
+                foreach (var f in pc.Files.Where(f => f.Section is "Front_Cover" or "Back_Cover"))
+                {
+                    f.Include = true;
+                    f.OverrideExisting = true;
+                }
+        }
+
         // Filter to included files only
         var includedFiles = _manifest
             .SelectMany(pc => pc.Files.Where(f => f.Include).Select(f => (Pc: pc, File: f)))
@@ -1494,7 +1671,7 @@
                 {
                     var bytes = Convert.FromBase64String(base64);
                     ImportJob.RecordFileUploaded(jobId, pc.FolderName, file.Section,
-                        file.FileName, bytes, file.ParentSessionFile);
+                        file.FileName, bytes, file.ParentSessionFile, file.SubPath);
                 }
                 _uploadedCount++;
                 await InvokeAsync(StateHasChanged);
@@ -1506,7 +1683,7 @@
                     pc.FolderName, pc.PcName,
                     pc.IsSolo ? pc.MatchedPcId : pc.ExistingPcId, // solo: null = batch match, resolved at job time
                     pc.Files.Where(f => f.Include).Select(f => new ImportFileManifest(
-                        f.RelativePath, f.FileName, f.Section, f.ParentSessionFile, f.LastModified, f.OverrideExisting
+                        f.RelativePath, f.FileName, f.Section, f.ParentSessionFile, f.LastModified, f.OverrideExisting, f.SubPath
                     )).ToList(),
                     pc.IsSolo
                 ))
@@ -1517,7 +1694,7 @@
                 new ImportCoverMapping(m.FileName, m.Section, m.PcFolderName, m.AssignedItemId)
             ).ToList();
 
-            ImportJob.StartProcessing(jobId, svcManifest, svcCoverMappings);
+            ImportJob.StartProcessing(jobId, svcManifest, svcCoverMappings, _overrideCoverFolders);
             _manifest.Clear();
             _coverMappings.Clear();
         }
