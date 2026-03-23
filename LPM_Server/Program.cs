@@ -101,6 +101,8 @@ builder.Services.AddSingleton<LPM.Services.MessageNotifier>();
 builder.Services.AddSingleton<LPM.Services.FolderService>();
 builder.Services.AddSingleton<LPM.Services.MeetingService>();
 builder.Services.AddHostedService<LPM.Services.DbBackupService>();
+builder.Services.AddSingleton<LPM.Services.PdfShrinkService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<LPM.Services.PdfShrinkService>());
 builder.Services.AddSingleton<LPM.Services.CsNotificationService>();
 builder.Services.AddSingleton<LPM.Services.ShortcutService>();
 builder.Services.AddHttpClient("sms");

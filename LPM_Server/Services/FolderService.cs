@@ -130,6 +130,9 @@ public class FolderService
             _encKey = Convert.FromBase64String(keyStr);
     }
 
+    /// <summary>Returns the absolute path to the PC-Folders root directory.</summary>
+    public string GetPcFoldersRoot() => _basePath;
+
     /// <summary>Returns free space in bytes on the drive where PC-Folders is located.</summary>
     public long GetFreeSpaceBytes()
     {
@@ -797,7 +800,6 @@ public class FolderService
         if (File.Exists(fullPath)) return;
 
         File.WriteAllBytes(fullPath, fileBytes);
-        TryShrinkPdf(fullPath);
         EncryptFileInPlace(fullPath);
         Console.WriteLine($"[FolderService] Saved section file '{fileName}' to {section}/{subPath} for PC {pcId}");
     }
@@ -827,7 +829,6 @@ public class FolderService
         BackupBytes(pcId, safeName, fileBytes);
 
         File.WriteAllBytes(fullPath, fileBytes);
-        TryShrinkPdf(fullPath);
         EncryptFileInPlace(fullPath);
         Console.WriteLine($"[FolderService] Overwrote section file '{fileName}' in {section}/{subPath} for PC {pcId}");
     }
@@ -849,7 +850,6 @@ public class FolderService
         if (File.Exists(fullPath)) return;
 
         File.WriteAllBytes(fullPath, fileBytes);
-        TryShrinkPdf(fullPath);
         EncryptFileInPlace(fullPath);
         Console.WriteLine($"[FolderService] Saved imported attachment '{attFileName}' for session '{sessionFileName}', PC {pcId}");
     }
@@ -939,7 +939,6 @@ public class FolderService
         var fullPath    = Path.Combine(targetDir, safeName);
         if (File.Exists(fullPath)) return;
         File.WriteAllBytes(fullPath, fileBytes);
-        TryShrinkPdf(fullPath);
         EncryptFileInPlace(fullPath);
         Console.WriteLine($"[FolderService] Saved solo section file '{fileName}' to {section}/{subPath} for PC {pcId}");
     }
@@ -953,7 +952,6 @@ public class FolderService
         var safeName    = string.Join("_", fileName.Split(Path.GetInvalidFileNameChars()));
         var fullPath    = Path.Combine(targetDir, safeName);
         File.WriteAllBytes(fullPath, fileBytes);
-        TryShrinkPdf(fullPath);
         EncryptFileInPlace(fullPath);
         Console.WriteLine($"[FolderService] Overwrote solo section file '{fileName}' in {section}/{subPath} for PC {pcId}");
     }
@@ -978,7 +976,6 @@ public class FolderService
         var fullPath = Path.Combine(wsPath, flatName);
         if (File.Exists(fullPath)) return;
         File.WriteAllBytes(fullPath, fileBytes);
-        TryShrinkPdf(fullPath);
         EncryptFileInPlace(fullPath);
         Console.WriteLine($"[FolderService] Saved solo imported attachment '{attFileName}' for session '{sessionFileName}', PC {pcId}");
     }
@@ -999,10 +996,7 @@ public class FolderService
         // Backup the original upload before shrink+encrypt
         BackupBytes(pcId, finalName, fileBytes);
 
-        // Write plaintext first so Ghostscript can shrink it
         File.WriteAllBytes(fullPath, fileBytes);
-        TryShrinkPdf(fullPath);
-        // Now encrypt the (possibly shrunk) file in-place
         EncryptFileInPlace(fullPath);
         Console.WriteLine($"[FolderService] Saved uploaded file '{fileName}' for PC {pcId}");
         return Path.GetFileName(fullPath);
@@ -1028,7 +1022,6 @@ public class FolderService
         }
 
         File.WriteAllBytes(fullPath, fileBytes);
-        TryShrinkPdf(fullPath);
         EncryptFileInPlace(fullPath);
         Console.WriteLine($"[FolderService] Saved solo uploaded file '{fileName}' for PC {pcId}");
         return Path.GetFileName(fullPath);
@@ -1058,7 +1051,6 @@ public class FolderService
         }
 
         File.WriteAllBytes(fullPath, fileBytes);
-        TryShrinkPdf(fullPath);
         EncryptFileInPlace(fullPath);
         Console.WriteLine($"[FolderService] Saved attachment '{attFileName}' for session '{sessionFileName}', PC {pcId}");
     }
@@ -1106,7 +1098,6 @@ public class FolderService
         var fullPath = Path.Combine(folder, "WorkSheets", $"{sessionNoExt}_att_arf.pdf");
         if (!File.Exists(fullPath)) return false;
         File.WriteAllBytes(fullPath, pdfBytes);
-        TryShrinkPdf(fullPath);
         EncryptFileInPlace(fullPath);
         Console.WriteLine($"[FolderService] Overwrote arf.pdf for session '{sessionFileName}', PC {pcId}");
         return true;
@@ -1120,11 +1111,57 @@ public class FolderService
         File.WriteAllBytes(path, EncryptBytes(plain));
     }
 
-    /// <summary>Shrink a PDF in-place using Ghostscript. Keeps the original if shrinking fails or produces a larger file.</summary>
-    private void TryShrinkPdf(string pdfPath)
+    /// <summary>
+    /// Decrypt-shrink-encrypt cycle for files that are already encrypted on disk (nightly shrink service).
+    /// Decrypts to a temp plain PDF, runs Ghostscript, and if smaller re-encrypts back in place.
+    /// Returns (true, originalKb, shrunkKb) if the file was actually replaced; (false, 0, 0) otherwise.
+    /// </summary>
+    internal (bool Shrunk, long OriginalKb, long ShrunkKb) TryShrinkEncryptedPdf(string pdfPath)
     {
-        if (string.IsNullOrEmpty(_ghostscriptExe) || !File.Exists(_ghostscriptExe)) return;
-        if (!File.Exists(pdfPath)) return;
+        if (!File.Exists(pdfPath)) return (false, 0, 0);
+
+        var originalEncryptedSize = new FileInfo(pdfPath).Length;
+        var tempPlain  = pdfPath + ".plain";
+        var tempShrunk = pdfPath + ".shrunk";
+
+        try
+        {
+            // Decrypt to temp plain file so Ghostscript can read it
+            var plainBytes = DecryptBytes(File.ReadAllBytes(pdfPath));
+            File.WriteAllBytes(tempPlain, plainBytes);
+
+            var (shrunk, _, shrunkKb) = TryShrinkPdf(tempPlain);
+            if (!shrunk)
+            {
+                if (File.Exists(tempPlain)) File.Delete(tempPlain);
+                return (false, 0, 0);
+            }
+
+            // tempPlain was replaced in-place by TryShrinkPdf with the shrunk plain bytes
+            var shrunkPlainBytes = File.ReadAllBytes(tempPlain);
+            File.WriteAllBytes(pdfPath, EncryptBytes(shrunkPlainBytes));
+            File.Delete(tempPlain);
+
+            var newEncryptedKb = new FileInfo(pdfPath).Length / 1024;
+            return (true, originalEncryptedSize / 1024, newEncryptedKb);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PDF Shrink] Decrypt-shrink error on '{Path.GetFileName(pdfPath)}': {ex.Message}");
+            if (File.Exists(tempPlain))  File.Delete(tempPlain);
+            if (File.Exists(tempShrunk)) File.Delete(tempShrunk);
+            return (false, 0, 0);
+        }
+    }
+
+    /// <summary>
+    /// Shrink a PDF in-place using Ghostscript. Keeps the original if shrinking fails or produces a larger file.
+    /// Returns (true, originalKb, shrunkKb) if the file was actually replaced; (false, 0, 0) otherwise.
+    /// </summary>
+    internal (bool Shrunk, long OriginalKb, long ShrunkKb) TryShrinkPdf(string pdfPath)
+    {
+        if (string.IsNullOrEmpty(_ghostscriptExe) || !File.Exists(_ghostscriptExe)) return (false, 0, 0);
+        if (!File.Exists(pdfPath)) return (false, 0, 0);
 
         var originalSize = new FileInfo(pdfPath).Length;
         var tempOutput = pdfPath + ".shrunk";
@@ -1174,7 +1211,7 @@ public class FolderService
                 process.WaitForExit(3_000); // brief grace period for GS to release file handles
                 Console.WriteLine($"[PDF Shrink] Ghostscript timed out on '{Path.GetFileName(pdfPath)}' — process killed");
                 if (File.Exists(tempOutput)) File.Delete(tempOutput);
-                return;
+                return (false, 0, 0);
             }
 
             if (process.ExitCode == 0 && File.Exists(tempOutput))
@@ -1184,22 +1221,25 @@ public class FolderService
                 {
                     File.Delete(pdfPath);
                     File.Move(tempOutput, pdfPath);
-                    Console.WriteLine($"[PDF Shrink] {Path.GetFileName(pdfPath)}: {originalSize / 1024}KB → {shrunkSize / 1024}KB ({100 - shrunkSize * 100 / originalSize}% smaller)");
+                    return (true, originalSize / 1024, shrunkSize / 1024);
                 }
                 else
                 {
                     File.Delete(tempOutput);
+                    return (false, 0, 0);
                 }
             }
             else
             {
                 if (File.Exists(tempOutput)) File.Delete(tempOutput);
+                return (false, 0, 0);
             }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[PDF Shrink] Error: {ex.Message}");
             if (File.Exists(tempOutput)) File.Delete(tempOutput);
+            return (false, 0, 0);
         }
     }
 
@@ -1444,7 +1484,6 @@ public class FolderService
             File.Delete(fullPath);
         }
         File.WriteAllBytes(fullPath, fileBytes);
-        TryShrinkPdf(fullPath);
         EncryptFileInPlace(fullPath);
         Console.WriteLine($"[FolderService] Saved '{safeName}' to {relativeFolder} for PC {pcId}{(overwrite ? " (overwrite)" : "")}");
         return true;

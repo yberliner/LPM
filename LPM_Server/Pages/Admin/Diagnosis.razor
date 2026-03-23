@@ -5,6 +5,7 @@
 @using Microsoft.Data.Sqlite
 @inject IConfiguration Config
 @inject Microsoft.AspNetCore.Http.IHttpContextAccessor HttpCtx
+@inject LPM.Services.PdfShrinkService PdfShrinkSvc
 
 <PageTitle>Diagnosis — LPM</PageTitle>
 
@@ -30,17 +31,35 @@
         <div class="alert alert-danger">@_cedbError</div>
     }
 
-    <button class="btn btn-danger d-flex align-items-center gap-2 mb-4"
-            disabled="@_busy" @onclick="CreateEmptyDbCopy">
-        @if (_busy)
-        {
-            <span class="spinner-border spinner-border-sm"></span><span>Working…</span>
-        }
-        else
-        {
-            <i class="ri-database-2-line"></i><span>Create Empty DB Copy</span>
-        }
-    </button>
+    <div class="d-flex flex-wrap gap-3 mb-4">
+        <button class="btn btn-danger d-flex align-items-center gap-2"
+                disabled="@_busy" @onclick="CreateEmptyDbCopy">
+            @if (_busy)
+            {
+                <span class="spinner-border spinner-border-sm"></span><span>Working…</span>
+            }
+            else
+            {
+                <i class="ri-database-2-line"></i><span>Create Empty DB Copy</span>
+            }
+        </button>
+
+        <button class="btn btn-warning d-flex align-items-center gap-2"
+                disabled="@_shrinkBusy" @onclick="RunShrinkPdf">
+            @if (_shrinkBusy)
+            {
+                <span class="spinner-border spinner-border-sm"></span><span>Shrinking…</span>
+            }
+            else
+            {
+                <i class="ri-file-reduce-line"></i><span>Run Shrink PDF Service</span>
+            }
+        </button>
+    </div>
+    @if (!string.IsNullOrEmpty(_shrinkResult))
+    {
+        <div class="alert @(_shrinkResult.StartsWith("Error") ? "alert-danger" : "alert-success") mb-4">@_shrinkResult</div>
+    }
 
     @* ── User Editor ──────────────────────────────────────────────────────── *@
     <div class="diag-editor-card mb-4">
@@ -604,6 +623,9 @@
     bool   _busy;
     string _resultPath = "";
     string _cedbError  = "";
+
+    bool   _shrinkBusy;
+    string _shrinkResult = "";
     List<TableData> _coreTables = [];
     List<TableData> _sysTables  = [];
     List<TableData> _lkpTables  = [];
@@ -1057,6 +1079,7 @@
             Load(conn, "sys_staff_messages",  "ri-message-2-line",      "ORDER BY Id"),
             Load(conn, "sys_weekly_remarks",  "ri-calendar-check-line", "ORDER BY Id"),
             Load(conn, "sys_trusted_devices", "ri-device-line",         "ORDER BY CreatedAt"),
+            Load(conn, "sys_shrunk_files",    "ri-file-reduce-line",    "ORDER BY Id DESC"),
         ];
         _lkpTables =
         [
@@ -1119,6 +1142,18 @@
         }
         catch (Exception ex) { cols = [$"Error: {ex.Message}"]; }
         return new TableData(table, icon, cols, rows);
+    }
+
+    // ── Run Shrink PDF Service ──────────────────────────────────────────────
+    async Task RunShrinkPdf()
+    {
+        _shrinkBusy = true; _shrinkResult = "";
+        StateHasChanged();
+        var admin = AdminUser();
+        Console.WriteLine($"[Diagnosis] Admin '{admin}' manually triggered PDF shrink service");
+        _shrinkResult = await PdfShrinkSvc.RunManualAsync();
+        Console.WriteLine($"[Diagnosis] PDF shrink service manual run finished: {_shrinkResult}");
+        _shrinkBusy = false;
     }
 
     // ── Create Empty DB ────────────────────────────────────────────────────
