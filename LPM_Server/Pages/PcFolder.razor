@@ -341,6 +341,8 @@
                 <button @onclick="WsCtxAddPinkSheet"><i class="ri-file-add-line me-2" style="color:#ec4899 !important;"></i>Add Pink Sheet</button>
                 <button @onclick='() => WsCtxAddWhiteSheet("Instruct")'><i class="ri-file-add-line me-2" style="color:#60a5fa !important;"></i>Add Instruct</button>
                 <button @onclick='() => WsCtxAddWhiteSheet("Cramming")'><i class="ri-file-add-line me-2" style="color:#34d399 !important;"></i>Add Cramming</button>
+                <div class="pcf-ctx-divider"></div>
+                <button @onclick="WsCtxUploadAttachment"><i class="ri-upload-2-line me-2"></i>Upload Attachment</button>
             }
             else
             {
@@ -390,6 +392,9 @@
                style="display:none;" />
     @* Hidden file input for "Insert file above" in program pages *@
     <InputFile id="pcf-insert-input" accept=".pdf,.doc,.docx" OnChange="OnInsertFileSelected"
+               style="display:none;" />
+    @* Hidden file input for worksheet "Upload Attachment" context menu *@
+    <InputFile id="pcf-ws-att-input" accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.xls,.xlsx,.png,.jpg,.jpeg" OnChange="OnWsAttFileSelected"
                style="display:none;" />
 
     @if (_newMenuSection != null)
@@ -2090,6 +2095,7 @@
     string _wsCtxSessionFileName = "";  // for "Add Pink Sheet"
     string _wsCtxAttRelPath = "";       // for attachment rename
     bool _wsCtxIsAttachment;
+    string _wsAttTargetSession = "";    // for "Upload Attachment"
 
     // Attachment rename
     bool _isRenamingAtt;
@@ -3679,6 +3685,72 @@
         }
         _activeIdx = targetIdx;
         SelectFile(att.RelativePath, att.FileName, "WorkSheet");
+    }
+
+    async Task WsCtxUploadAttachment()
+    {
+        _wsAttTargetSession = _wsCtxSessionFileName;
+        CloseWsCtxMenu();
+        await JS.InvokeVoidAsync("eval", "document.getElementById('pcf-ws-att-input').click()");
+    }
+
+    async Task OnWsAttFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        using var ms = new MemoryStream();
+        await file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024).CopyToAsync(ms);
+        var rawBytes = ms.ToArray();
+
+        var ext = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (FolderService.ConvertibleExtensions.Contains(ext))
+        {
+            var toast = new ConversionToast(Guid.NewGuid(), file.Name);
+            _conversionToasts.Add(toast);
+            var capturedName = file.Name;
+            var capturedBytes = rawBytes;
+            var capturedSession = _wsAttTargetSession;
+            _ = RunAttConversionAsync(toast, capturedBytes, capturedName, capturedSession);
+        }
+        else
+        {
+            Console.WriteLine($"[PcFolder] Upload attachment '{file.Name}' to session '{_wsAttTargetSession}' by '{_userName}' — PC {PcId}");
+            FolderSvc.SaveAttachment(PcId, _wsAttTargetSession, file.Name, rawBytes, Solo);
+            RefreshFolder();
+        }
+    }
+
+    async Task RunAttConversionAsync(ConversionToast toast, byte[] docBytes, string originalName, string sessionFileName)
+    {
+        var pdfName = Path.GetFileNameWithoutExtension(originalName) + ".pdf";
+        try
+        {
+            var pdfBytes = await Task.Run(() => FolderSvc.ConvertToPdf(docBytes, originalName));
+            if (pdfBytes == null)
+            {
+                toast.Status = ConvStatus.Failed;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            Console.WriteLine($"[PcFolder] Converted+saved attachment '{pdfName}' to session '{sessionFileName}' by '{_userName}' — PC {PcId}");
+            FolderSvc.SaveAttachment(PcId, sessionFileName, pdfName, pdfBytes, Solo);
+
+            toast.Status = ConvStatus.Done;
+            RefreshFolder();
+            await InvokeAsync(StateHasChanged);
+
+            await Task.Delay(3000);
+            _conversionToasts.Remove(toast);
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PcFolder] Attachment conversion error for '{originalName}': {ex.Message}");
+            toast.Status = ConvStatus.Failed;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     void WsCtxDeletePinkSheet()

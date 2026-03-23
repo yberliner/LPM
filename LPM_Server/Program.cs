@@ -7,6 +7,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using ApexCharts;
 using Index1;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -40,6 +41,7 @@ builder.Configuration.AddJsonFile("appsettings.secret.json", optional: true, rel
 builder.WebHost.ConfigureKestrel((context, options) =>
 {
     options.Configure(context.Configuration.GetSection("Kestrel"));
+    options.Limits.MaxRequestBodySize = 200 * 1024 * 1024; // 200 MB — supports large annotated PDF saves
 });
 
 // Add services to the container.
@@ -473,7 +475,15 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
     var solo = ctx.Request.Query["solo"].ToString() == "true";
     if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
 
-    var form = await ctx.Request.ReadFormAsync();
+    // Remove body size limit for large annotated PDFs (many pages → large multipart upload)
+    var sizeFeat = ctx.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+    if (sizeFeat != null) sizeFeat.MaxRequestBodySize = null;
+
+    var form = await ctx.Request.ReadFormAsync(new FormOptions
+    {
+        MultipartBodyLengthLimit = long.MaxValue,
+        ValueLengthLimit = int.MaxValue
+    });
     if (!int.TryParse(form["pageCount"], out var pageCount) || pageCount == 0)
         return Results.BadRequest("No pages");
 

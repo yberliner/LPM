@@ -997,8 +997,12 @@
                                 </div>
                                 <div class="arf-field">
                                     <span class="arf-lbl arf-lbl-right-fixed">Session Length</span>
-                                    <input type="text" class="form-control form-control-sm arf-input-xs arf-readonly"
-                                           value="@_arfSessionLength" readonly />
+                                    <input type="text" inputmode="numeric" maxlength="5"
+                                           class="form-control form-control-sm arf-input-xs arf-time-input @(!IsValidArfTime(_arfSessionLength) ? "arf-invalid" : "")"
+                                           placeholder="H:MM"
+                                           value="@_arfSessionLength"
+                                           @oninput="e => _arfSessionLength = e.Value?.ToString() ?? string.Empty"
+                                           @onchange="e => _arfSessionLength = FormatArfTime(e.Value?.ToString()?.Trim() ?? string.Empty)" />
                                 </div>
                             </div>
 
@@ -1179,7 +1183,7 @@
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showImportWizard = false">Cancel</button>
                         <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                                disabled="@(ArfHasTimeErrors || !IsValidArfTime(_arfAdminTime) || string.IsNullOrWhiteSpace(_arfAdminTime) || ArfHasIncompleteRows)"
+                                disabled="@(ArfHasTimeErrors || !IsValidArfTime(_arfAdminTime) || string.IsNullOrWhiteSpace(_arfAdminTime) || !IsValidArfTime(_arfSessionLength) || ArfHasIncompleteRows)"
                                 @onclick="ExecuteImport">
                             <i class="ri-upload-2-line"></i>
                             Go
@@ -2090,7 +2094,7 @@
     // Auditor Report Form fields (step 2)
     string _arfDate          = "";
     string _arfGrade         = "";
-    string _arfSessionLength = "";  // read-only, calculated
+    string _arfSessionLength = "";  // auto-calculated from TA rows; user may override
     string _arfAdminTime     = "";
     string _arfTotalTa       = "";
     string _arfTaRangeFrom   = "";
