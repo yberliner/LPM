@@ -747,13 +747,17 @@
                         else
                         {
                             <button class="pcf-done-btn @(_csAlreadyDone ? "pcf-done-already" : "")"
-                                    title="@(_csAlreadyDone ? "CS was already done" : _csLocked ? "Another tab is already CSing this session" : "Done — saves all annotations, records the CS review with the displayed time, and closes the tab")"
+                                    title="@(_csAlreadyDone ? "CS was already done" : _csLocked ? "Another tab is already CSing this session" : "Done — saves all annotations, records the CS review with the displayed time, and returns to Home")"
                                     @onclick="DoneCs" disabled="@(_csLocked || _csAlreadyDone)">
                                 <i class="@(_csAlreadyDone ? "ri-check-double-line me-1" : "ri-check-double-line me-1")"></i>Done
                             </button>
                         }
                     }
                 }
+                <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
+                <button class="pcf-tool-btn pcf-close-btn" title="Close — return to Home" @onclick="CloseToHome">
+                    <i class="ri-close-line"></i>
+                </button>
             </div>
         </div>
 
@@ -1189,6 +1193,7 @@
         height: 30px; box-sizing: border-box;
     }
     .pcf-tool-btn:hover { background: rgba(255,255,255,.3); }
+    .pcf-close-btn:hover { background: rgba(239,68,68,.55) !important; border-color: rgba(239,68,68,.7) !important; }
     .pcf-zoom-single {
         background: rgba(255,255,255,.1); border: none; color: rgba(255,255,255,.9);
         font-size: .75rem; font-weight: 600; min-width: 46px; height: 30px;
@@ -3309,13 +3314,18 @@
             // Notify all connected users who have permission for this PC
             _ = CsNotifySvc.NotifyCsDone(PcId, DashSvc.UserHasApprovedPcOnDashboard);
 
-            // Show closing animation then close the tab
+            // Show done animation then navigate back to Home
             await JS.InvokeVoidAsync("showCsDoneAndClose", _pcName, _csSessionName);
         }
         catch (Exception ex)
         {
             await JS.InvokeVoidAsync("alert", $"Failed to mark CS done: {ex.Message}");
         }
+    }
+
+    async Task CloseToHome()
+    {
+        await JS.InvokeVoidAsync("eval", "window.location.href='/Home'");
     }
 
     async Task ToggleVoice()

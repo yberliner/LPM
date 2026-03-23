@@ -182,13 +182,13 @@
                     <div id="cs-done-sub">${pcName || ''}${sessionName ? ' &nbsp;·&nbsp; ' + sessionName : ''}</div>
                     <div id="cs-done-progress">
                         <div id="cs-done-track"><div id="cs-done-fill"></div></div>
-                        <div id="cs-done-closing">Closing tab&hellip;</div>
+                        <div id="cs-done-closing">Returning to Home&hellip;</div>
                     </div>
                 </div>`;
             document.body.appendChild(overlay);
             setTimeout(() => {
                 overlay.style.animation = 'csDoneFadeOut 0.25s ease forwards';
-                setTimeout(() => window.close(), 240);
+                setTimeout(() => window.location.href = '/Home', 240);
             }, 1600);
         };
     </script>

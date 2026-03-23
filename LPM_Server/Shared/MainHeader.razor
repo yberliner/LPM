@@ -2321,6 +2321,7 @@
             using var ms = new MemoryStream();
             await stream.CopyToAsync(ms);
             FolderSvc.SaveSectionFile(_ufcPcId, "Front_Cover", _ufcFile.Name, ms.ToArray());
+            DashSvc.NotifyDataChanged();
             _ufcSuccessFileName = _ufcFile.Name;
             _ufcSuccessPcName   = _ufcAllPcs.FirstOrDefault(p => p.PcId == _ufcPcId)?.FullName ?? "";
             Console.WriteLine($"[MainHeader] Front Cover upload: '{_ufcSuccessFileName}' → PC '{_ufcSuccessPcName}' (id={_ufcPcId}) by '{_logUsername}'");
@@ -2572,6 +2573,8 @@
                 FolderSvc.AppendTaaRow(capturedPcId, taaDate, sessionMinutes, capturedTotalTa);
 
                 Console.WriteLine($"[MainHeader] Imported session '{capturedFileName}' for PC {capturedPcId} with {capturedAttachments.Count} attachments by '{capturedUsername}'");
+
+                DashSvc.NotifyDataChanged();
 
                 await InvokeAsync(() =>
                 {
@@ -2838,6 +2841,7 @@ string _actionPcSearch = "";
         if (!_msgUserId.HasValue || _msgRecipientId == 0 || string.IsNullOrWhiteSpace(_msgText)) return;
         Console.WriteLine($"[MainHeader] Sent message to recipientId={_msgRecipientId} by '{_logUsername}'");
         DashSvc.SendMessage(_msgUserId.Value, _msgRecipientId, _msgText.Trim());
+        DashSvc.NotifyDataChanged();
         _msgText        = "";
         _msgRecipientId = 0;
         _msgStatus      = LS.T("msg.sentSuccess");
@@ -2854,6 +2858,7 @@ string _actionPcSearch = "";
         if (!_msgUserId.HasValue) return;
         Console.WriteLine($"[MainHeader] Acknowledged message {messageId} by '{_logUsername}'");
         DashSvc.AcknowledgeMessage(messageId, _msgUserId.Value);
+        DashSvc.NotifyDataChanged();
         _pendingMessages = _pendingMessages.Where(m => m.Id != messageId).ToList();
         _pendingMsgCount = _pendingMessages.Count;
     }
@@ -2865,6 +2870,7 @@ string _actionPcSearch = "";
         {
             DashSvc.AcknowledgeMessage(msg.Id, _msgUserId.Value);
         }
+        DashSvc.NotifyDataChanged();
         Console.WriteLine($"[MainHeader] Acknowledged all {_pendingMessages.Count} messages by '{_logUsername}'");
         _pendingMessages.Clear();
         _pendingMsgCount = 0;
@@ -3012,6 +3018,7 @@ string _actionPcSearch = "";
                 return;
             }
             DashSvc.AddFolderSummary(null, _actionSummaryPcId, _actionSummaryIsSoloFolder ? null : _msgUserId.Value, html);
+            DashSvc.NotifyDataChanged();
             Console.WriteLine($"[MainHeader] Folder summary saved for PC {_actionSummaryPcId} by '{_logUsername}'");
             _actionSummaryBusy = false;
             _actionSummaryStep = 0; // show success screen
@@ -3097,6 +3104,7 @@ string _actionPcSearch = "";
         _apcSearch  = "";
         _apcNewPcId = pcId;
         ApcRefreshData();
+        DashSvc.NotifyDataChanged();
         await InvokeAsync(StateHasChanged);
         // Scroll new row into view
         await JSRuntime.InvokeVoidAsync("eval",
@@ -3120,6 +3128,7 @@ string _actionPcSearch = "";
             Console.WriteLine($"[MainHeader] Assign PC: added role '{workCapacity}' to PC='{pcName}' (id={pcId}) userId={_apcUserId} by '{_logUsername}'");
         }
         ApcRefreshData();
+        DashSvc.NotifyDataChanged();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -3131,6 +3140,7 @@ string _actionPcSearch = "";
             DashSvc.RemoveUserPc(_apcUserId, pcId, pc.WorkCapacity);
         Console.WriteLine($"[MainHeader] Assign PC: removed all roles ({roles}) from PC='{pcName}' (id={pcId}) userId={_apcUserId} by '{_logUsername}'");
         ApcRefreshData();
+        DashSvc.NotifyDataChanged();
         await InvokeAsync(StateHasChanged);
     }
 

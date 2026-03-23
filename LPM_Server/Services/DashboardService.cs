@@ -50,6 +50,10 @@ public class DashboardService
     private readonly string _connectionString;
     private readonly MessageNotifier _messageNotifier;
 
+    /// <summary>Fired after any data-mutating operation in MainHeader. Subscribers should refresh their view.</summary>
+    public event Action? OnDataChanged;
+    public void NotifyDataChanged() => OnDataChanged?.Invoke();
+
     // Reusable SQL expression for a person's display name (requires alias p for Persons)
     private const string FullNameExpr =
         "TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), ''))";

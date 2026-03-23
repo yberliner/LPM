@@ -1526,6 +1526,14 @@
                 });
             });
         }
+
+        // Refresh on any MainHeader data mutation
+        DashSvc.OnDataChanged += _onDataChanged;
+    }
+
+    private async void _onDataChanged()
+    {
+        await InvokeAsync(async () => { await RefreshAsync(); StateHasChanged(); });
     }
 
     DotNetObjectReference<Home>? _dotNetRef;
@@ -1565,6 +1573,7 @@
         _dotNetRef?.Dispose();
         if (_csNotifyKey != null)
             CsNotifySvc.Unsubscribe(_csNotifyKey);
+        DashSvc.OnDataChanged -= _onDataChanged;
     }
 
     DateOnly AllowedWeekStart => DashboardService.GetWeekStart(MaxAllowedDate());
@@ -1740,14 +1749,14 @@
     }
 
     // ── CS The Session ──
-    async Task OnCsTheSession(int sessionId, string? sessionName)
+    void OnCsTheSession(int sessionId, string? sessionName)
     {
         Console.WriteLine($"[Home] CS The Session — sessionId={sessionId}, sessionName={sessionName}, pcId={_selPcId} by '{_username}'");
         if (!_selPcId.HasValue) return;
         var url = $"/PcFolder/{_selPcId.Value}?sessionId={sessionId}&csMode=true";
         if (!string.IsNullOrWhiteSpace(sessionName))
             url += $"&file={Uri.EscapeDataString(sessionName)}";
-        await JS.InvokeVoidAsync("pcfOpenTab", url);
+        Nav.NavigateTo(url, forceLoad: true);
     }
 
     // ── CS Queue context menu ──
@@ -1814,32 +1823,32 @@
         return DashSvc.CanAccessPcFolder(_userId.Value, pcId, _username);
     }
 
-    async Task OpenPcFolder(int pcId)
+    void OpenPcFolder(int pcId)
     {
         Console.WriteLine($"[Home] Opened PC folder for PC {pcId} by '{_username}'");
         _showCtxMenu = false;
         var url = _isSolo ? $"/PcFolder/{pcId}?solo=true" : $"/PcFolder/{pcId}";
-        await JS.InvokeVoidAsync("pcfOpenTab", url);
+        Nav.NavigateTo(url, forceLoad: true);
     }
 
-    async Task OpenPendingCs(DashboardService.PendingCsSession s)
+    void OpenPendingCs(DashboardService.PendingCsSession s)
     {
         Console.WriteLine($"[Home] Opened pending CS for session {s.SessionId} (PC {s.PcId}, {s.PcName}) by '{_username}'");
         var url = $"/PcFolder/{s.PcId}?sessionId={s.SessionId}&csMode=true";
         if (s.IsSolo) url += "&solo=true";
         if (!string.IsNullOrWhiteSpace(s.SessionName))
             url += $"&file={Uri.EscapeDataString(s.SessionName)}";
-        await JS.InvokeVoidAsync("pcfOpenTab", url);
+        Nav.NavigateTo(url, forceLoad: true);
     }
 
-    async Task OpenAuditorSession(DashboardService.AuditorSessionStatus s)
+    void OpenAuditorSession(DashboardService.AuditorSessionStatus s)
     {
         Console.WriteLine($"[Home] Opened auditor session {s.SessionId} (PC {s.PcId}, {s.PcName}) by '{_username}'");
         var url = $"/PcFolder/{s.PcId}?sessionId={s.SessionId}";
         if (_isSolo) url += "&solo=true";
         if (!string.IsNullOrWhiteSpace(s.SessionName))
             url += $"&file={Uri.EscapeDataString(s.SessionName)}";
-        await JS.InvokeVoidAsync("pcfOpenTab", url);
+        Nav.NavigateTo(url, forceLoad: true);
     }
 
     async Task OnCsQueueRangeChanged(ChangeEventArgs e)
