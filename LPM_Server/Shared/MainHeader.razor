@@ -3518,9 +3518,9 @@ string _actionPcSearch = "";
         }
     }
 
-    async Task SendMessage()
+    Task SendMessage()
     {
-        if (!_msgUserId.HasValue || _msgRecipientId == 0 || string.IsNullOrWhiteSpace(_msgText)) return;
+        if (!_msgUserId.HasValue || _msgRecipientId == 0 || string.IsNullOrWhiteSpace(_msgText)) return Task.CompletedTask;
         try
         {
             Console.WriteLine($"[MainHeader] Sending message to recipientId={_msgRecipientId} by '{_logUsername}'");
@@ -3539,6 +3539,7 @@ string _actionPcSearch = "";
             _msgStatus = $"Error: {ex.Message}";
             _msgStatusIsError = true;
         }
+        return Task.CompletedTask;
     }
 
     async Task MsgKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)

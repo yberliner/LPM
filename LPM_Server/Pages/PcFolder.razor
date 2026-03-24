@@ -3991,7 +3991,7 @@
         await SelectFile(pinkAtt.RelativePath, pinkAtt.FileName, "WorkSheet", fitAfterLoad: true);
     }
 
-    void WsCtxAddWhiteSheet(string name)
+    async Task WsCtxAddWhiteSheet(string name)
     {
         Console.WriteLine($"[PcFolder] Adding {name} sheet to session '{_wsCtxSessionFileName}' by '{_userName}' — PC {PcId}");
         var sessionFileName = _wsCtxSessionFileName;
@@ -4021,7 +4021,7 @@
             targetIdx = 2;
         }
         _activeIdx = targetIdx;
-        SelectFile(att.RelativePath, att.FileName, "WorkSheet", fitAfterLoad: true);
+        await SelectFile(att.RelativePath, att.FileName, "WorkSheet", fitAfterLoad: true);
     }
 
     async Task WsCtxUploadAttachment()

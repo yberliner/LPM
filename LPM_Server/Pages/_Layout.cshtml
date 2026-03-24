@@ -95,7 +95,7 @@
 
     
         <!-- TITLE -->
-        <title>LP Management</title>
+        <title>LP Management [@Context.Request.Host.Host]</title>
 
         <!-- FAVICON -->
         <link rel="icon" href="/assets/images/brand-logos/lp-favicon.svg" type="image/svg+xml">
@@ -349,6 +349,25 @@
                         el.dispatchEvent(new Event('input', { bubbles: true }));
                         el.dispatchEvent(new Event('change', { bubbles: true }));
                     }
+                }
+            });
+
+            // Fullscreen toggle
+            window.openFullscreen = function() {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(function() {});
+                    document.querySelector('.full-screen-open')?.classList.add('d-none');
+                    document.querySelector('.full-screen-close')?.classList.remove('d-none');
+                } else {
+                    document.exitFullscreen().catch(function() {});
+                    document.querySelector('.full-screen-open')?.classList.remove('d-none');
+                    document.querySelector('.full-screen-close')?.classList.add('d-none');
+                }
+            };
+            document.addEventListener('fullscreenchange', function() {
+                if (!document.fullscreenElement) {
+                    document.querySelector('.full-screen-open')?.classList.remove('d-none');
+                    document.querySelector('.full-screen-close')?.classList.add('d-none');
                 }
             });
 

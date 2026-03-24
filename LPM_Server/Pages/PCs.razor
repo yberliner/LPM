@@ -712,6 +712,31 @@
 
 <SpkNewPersonModal @ref="_editModal" Title="@LS.T("common.edit")" RequireAllFields="true" ExistingFullNames="_existingPcNames" OnSaved="SaveEditFromModal" />
 
+@* ── Solo Access — Admin Only Notice ── *@
+@if (_showSoloAdminOnly)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.45);z-index:1060;"
+         @onclick="() => _showSoloAdminOnly = false">
+        <div class="modal-dialog modal-sm modal-dialog-centered" @onclick:stopPropagation="true">
+            <div class="modal-content" style="border-radius:14px;background:#fff;color:#212529;">
+                <div class="modal-body p-4 text-center">
+                    <div style="display:inline-flex;align-items:center;justify-content:center;
+                                width:52px;height:52px;border-radius:50%;
+                                background:linear-gradient(135deg,#6366f1,#818cf8);margin-bottom:12px;">
+                        <i class="ri-shield-keyhole-line" style="font-size:1.5rem;color:#fff;"></i>
+                    </div>
+                    <div class="fw-bold mb-2" style="font-size:1rem;">Admin Only</div>
+                    <div class="small mb-3" style="color:#4b5563;">
+                        Only an <strong>Admin</strong> can grant or revoke Solo Access for a PC.
+                    </div>
+                    <button class="btn btn-sm btn-primary px-4"
+                            @onclick="() => _showSoloAdminOnly = false">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @* ── SMS Compose Modal ── *@
 @if (_showSmsModal && _detail != null)
 {
@@ -1350,6 +1375,8 @@
     bool   _showSoloConfirm;
     bool   _soloConfirmEnable; // true = enabling, false = disabling
     string _soloConfirmUsername = "";
+    bool   _showSoloAdminOnly;  // non-admin clicked Solo Access button
+    bool   _isAdmin;
 
     // Sort state
     string _sortCol  = "hoursLeft";
@@ -1490,6 +1517,7 @@
 
         var auth = await AuthState.GetAuthenticationStateAsync();
         _username = auth.User.Identity?.Name ?? "";
+        _isAdmin  = auth.User.IsInRole("Admin");
         _currentPersonId = !string.IsNullOrEmpty(_username) ? PcSvc.GetPersonIdByUsername(_username) : null;
     }
 
@@ -1902,6 +1930,7 @@
     void AskToggleSolo()
     {
         if (_detail == null) return;
+        if (!_isAdmin) { _showSoloAdminOnly = true; return; }
         _soloConfirmEnable = !_isSolo;
         // Pre-compute the username preview for the enable dialog
         if (_soloConfirmEnable)

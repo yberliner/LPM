@@ -573,15 +573,15 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
         {
             case "original":
                 // Copy original page as-is (vectors preserved)
-                if (pg.SrcPageIdx >= 0 && pg.SrcPageIdx < originalDoc.PageCount)
-                    newDoc.AddPage(originalDoc.Pages[pg.SrcPageIdx]);
+                if (pg.SrcPageIdx >= 0 && pg.SrcPageIdx < originalDoc!.PageCount)
+                    newDoc.AddPage(originalDoc.Pages[pg.SrcPageIdx]!);
                 break;
 
             case "overlay":
             {
                 // Copy original page then draw transparent annotation layer on top
-                if (pg.SrcPageIdx < 0 || pg.SrcPageIdx >= originalDoc.PageCount) break;
-                var page = newDoc.AddPage(originalDoc.Pages[pg.SrcPageIdx]);
+                if (pg.SrcPageIdx < 0 || pg.SrcPageIdx >= originalDoc!.PageCount) break;
+                var page = newDoc.AddPage(originalDoc.Pages[pg.SrcPageIdx]!);
                 var imgFile = form.Files["img_" + pg.ImgIdx];
                 if (imgFile != null)
                 {
