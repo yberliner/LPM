@@ -2346,7 +2346,7 @@ public class DashboardService
             SELECT s.AuditorId,
                    s.SessionDate,
                    TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS PcName,
-                   s.ChargeSeconds,
+                   COALESCE(s.LengthSeconds,0) + COALESCE(s.AdminSeconds,0) AS DurationSec,
                    s.AuditorSalaryCentsPerHour,
                    s.VerifiedStatus
             FROM sess_sessions s

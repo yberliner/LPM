@@ -150,37 +150,40 @@
                     @if (!firstPc) { <div class="sa-pc-divider"></div> }
                     firstPc = false;
 
-                    <div class="d-flex align-items-center gap-3 px-4 py-2 sa-pc-header flex-wrap">
-                        <div class="d-flex align-items-center gap-2">
-                            <div class="sa-pc-dot"></div>
-                            <span class="fw-semibold sa-pc-name">@pcGroup.PcName</span>
-                            @if (pcDraft > 0)    { <span class="badge rounded-pill sa-badge-pending">@pcDraft @LS.T("sessions.pending")</span> }
-                            @if (pcApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm">@pcApproved @LS.T("sessions.approved")</span> }
-                        </div>
-                        <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
-                            <span class="sa-input-label" style="color:#6b7280;">Set all:</span>
-                            <div class="input-group input-group-sm sa-rate-input" style="width:125px;">
-                                <span class="input-group-text">₪ Rate</span>
-                                <input type="number" class="form-control" placeholder="0" min="0" step="1"
-                                       value="@pcDef.ChargeRate"
-                                       @onchange="e => PropagateRate(group.AuditorId, pcGroup.PcId,
-                                           int.TryParse(e.Value?.ToString(), out var rv) ? rv : pcDef.ChargeRate,
-                                           pcDef.Salary)" />
+                    @if (pcTotal > 1)
+                    {
+                        <div class="d-flex align-items-center gap-3 px-4 py-2 sa-pc-header flex-wrap">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="sa-pc-dot"></div>
+                                <span class="fw-semibold sa-pc-name">@pcGroup.PcName</span>
+                                @if (pcDraft > 0)    { <span class="badge rounded-pill sa-badge-pending">@pcDraft @LS.T("sessions.pending")</span> }
+                                @if (pcApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm">@pcApproved @LS.T("sessions.approved")</span> }
                             </div>
-                            <div class="input-group input-group-sm sa-rate-input" style="width:135px;">
-                                <span class="input-group-text">₪ Sal.</span>
-                                <input type="number" class="form-control" placeholder="0" min="0" step="1"
-                                       value="@pcDef.Salary"
-                                       @onchange="e => PropagateRate(group.AuditorId, pcGroup.PcId,
-                                           pcDef.ChargeRate,
-                                           int.TryParse(e.Value?.ToString(), out var sv) ? sv : pcDef.Salary)" />
+                            <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
+                                <span class="sa-input-label" style="color:#6b7280;">Set all:</span>
+                                <div class="input-group input-group-sm sa-rate-input" style="width:125px;">
+                                    <span class="input-group-text">₪ Rate</span>
+                                    <input type="number" class="form-control" placeholder="0" min="0" step="1"
+                                           value="@pcDef.ChargeRate"
+                                           @onchange="e => PropagateRate(group.AuditorId, pcGroup.PcId,
+                                               int.TryParse(e.Value?.ToString(), out var rv) ? rv : pcDef.ChargeRate,
+                                               pcDef.Salary)" />
+                                </div>
+                                <div class="input-group input-group-sm sa-rate-input" style="width:135px;">
+                                    <span class="input-group-text">₪ Sal.</span>
+                                    <input type="number" class="form-control" placeholder="0" min="0" step="1"
+                                           value="@pcDef.Salary"
+                                           @onchange="e => PropagateRate(group.AuditorId, pcGroup.PcId,
+                                               pcDef.ChargeRate,
+                                               int.TryParse(e.Value?.ToString(), out var sv) ? sv : pcDef.Salary)" />
+                                </div>
+                                <button class="btn btn-sm sa-btn-approve-all d-flex align-items-center gap-1"
+                                        @onclick="() => SubmitAllForPc(group.AuditorId, pcGroup.PcId)" disabled="@_busy">
+                                    <i class="ri-check-double-line"></i>@LS.T("common.submitAll") (@pcTotal)
+                                </button>
                             </div>
-                            <button class="btn btn-sm sa-btn-approve-all d-flex align-items-center gap-1"
-                                    @onclick="() => SubmitAllForPc(group.AuditorId, pcGroup.PcId)" disabled="@_busy">
-                                <i class="ri-check-double-line"></i>@LS.T("common.submitAll") (@pcTotal)
-                            </button>
                         </div>
-                    </div>
+                    }
 
                     <div class="table-responsive">
                         <table class="table table-sm align-middle mb-0 sa-table">
@@ -202,7 +205,18 @@
                                     bool isApproved = s.VerifiedStatus == "Approved";
                                     var edit = _rowEdits[s.SessionId];
                                     <tr class="@(isApproved ? "sa-row-approved" : "sa-row-draft")">
-                                        <td class="ps-4 py-2"><span class="fw-semibold sa-date">@FormatDate(s.SessionDate)</span></td>
+                                        <td class="ps-4 py-2">
+                                            @if (pcTotal == 1)
+                                            {
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <div class="sa-pc-dot"></div>
+                                                    <span class="fw-semibold sa-pc-name">@pcGroup.PcName</span>
+                                                    @if (isApproved) { <span class="badge rounded-pill sa-badge-approved-sm">@LS.T("sessions.approved")</span> }
+                                                    else             { <span class="badge rounded-pill sa-badge-pending">@LS.T("sessions.pending")</span> }
+                                                </div>
+                                            }
+                                            <span class="fw-semibold sa-date">@FormatDate(s.SessionDate)</span>
+                                        </td>
                                         <td class="text-center py-2">
                                             <span class="badge rounded-pill bg-light border text-dark px-2" style="font-size:0.78rem;">@DashboardService.Fmt(s.LengthSec)</span>
                                         </td>
