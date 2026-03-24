@@ -142,7 +142,7 @@
                             }
                         </div>
                         </div>
-                        <span style="font-size:2.3rem; font-weight:000; letter-spacing:0.03em; color:var(--default-text-color);">@_displayName</span>
+                        <span class="lpm-username-shimmer">@_displayName</span>
                         @if (_isSoloUser)
                         {
                             <span class="solo-badge-inline">Solo</span>
@@ -160,6 +160,24 @@
                     </div>
 
                     <style>
+                        .lpm-username-shimmer {
+                            font-size: 2.3rem; font-weight: 000; letter-spacing: 0.03em;
+                            background: linear-gradient(90deg,
+                                var(--default-text-color) 0%,
+                                var(--default-text-color) 35%,
+                                #a5b4fc 50%,
+                                var(--default-text-color) 65%,
+                                var(--default-text-color) 100%);
+                            background-size: 300% 100%;
+                            -webkit-background-clip: text;
+                            -webkit-text-fill-color: transparent;
+                            background-clip: text;
+                            animation: lpm-name-shimmer 6s ease-in-out infinite;
+                        }
+                        @@keyframes lpm-name-shimmer {
+                            0%, 100% { background-position: 100% 0; }
+                            50%       { background-position:   0% 0; }
+                        }
                         .avatar-trigger {
                             display: flex;
                             flex-direction: column;
