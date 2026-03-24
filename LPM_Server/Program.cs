@@ -446,8 +446,15 @@ static bool CanAccessPcFile(HttpContext ctx, int pcId, bool solo, LPM.Services.D
 app.MapGet("/api/pc-file", (int pcId, string path, LPM.Services.FolderService svc,
     LPM.Services.DashboardService dashSvc, HttpContext ctx, bool solo = false) =>
 {
-    if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
+    var user = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "(unknown)";
+    Console.WriteLine($"[api/pc-file] user='{user}' pcId={pcId} solo={solo} path='{path}'");
+    if (!CanAccessPcFile(ctx, pcId, solo, dashSvc))
+    {
+        Console.WriteLine($"[api/pc-file] FORBIDDEN for user='{user}' pcId={pcId}");
+        return Results.Forbid();
+    }
     var bytes = svc.ReadFileBytes(pcId, path, solo);
+    Console.WriteLine($"[api/pc-file] bytes={(bytes == null ? "NULL (not found)" : bytes.Length + " bytes")}");
     if (bytes == null) return Results.NotFound();
     return Results.File(bytes, "application/pdf", enableRangeProcessing: true);
 }).RequireAuthorization();
@@ -478,6 +485,18 @@ app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
     var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
     var combined = pdfSvc.CombinePdfs(summaryPdf, originalBytes);
     return Results.File(combined, "application/pdf", enableRangeProcessing: true);
+}).RequireAuthorization();
+
+app.MapGet("/api/pc-session-merged", (int pcId, string session, LPM.Services.FolderService folderSvc,
+    LPM.Services.DashboardService dashSvc, HttpContext ctx, bool solo = false) =>
+{
+    if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
+    var merged = folderSvc.MergeSessionPdfs(pcId, session, solo);
+    if (merged == null) return Results.NotFound();
+    var pcName = folderSvc.GetPcName(pcId) ?? $"PC {pcId}";
+    var sessionNoExt = System.IO.Path.GetFileNameWithoutExtension(session);
+    var downloadName = $"{pcName} - {sessionNoExt}.pdf";
+    return Results.File(merged, "application/pdf", downloadName);
 }).RequireAuthorization();
 
 app.MapPost("/api/pc-file-save", async (HttpContext ctx, LPM.Services.FolderService svc,

@@ -842,6 +842,64 @@
                     <h5 class="modal-title fs-15 text-white d-flex align-items-center gap-2">
                         <i class="ri-upload-2-line"></i>Add Session
                     </h5>
+                    <div class="d-flex align-items-center gap-2 ms-auto me-2">
+                        @if (_importStep >= 2 && _importPcId > 0)
+                        {
+                            <div style="position:relative;">
+                                <button class="btn btn-sm py-0 px-2"
+                                        style="background:rgba(255,255,255,.15); color:#e2e8f0; border:1px solid rgba(255,255,255,.25); font-size:.75rem; border-radius:4px;"
+                                        @onclick="OpenRefBrowser"
+                                        title="Open a reference file from this PC's folder">
+                                    <i class="ri-eye-line me-1"></i>Reference
+                                </button>
+                                @if (_refBrowserOpen)
+                                {
+                                    <div style="position:absolute; right:0; top:calc(100% + 6px);
+                                                background:#1e293b; border:1px solid #3b82f6; border-radius:6px;
+                                                min-width:290px; max-height:320px; overflow-y:auto;
+                                                z-index:10001; box-shadow:0 8px 24px rgba(0,0,0,.6);"
+                                         @onclick:stopPropagation="true">
+                                        <div style="padding:6px 10px; border-bottom:1px solid #334155;
+                                                    font-size:.73rem; color:#94a3b8;
+                                                    display:flex; justify-content:space-between; align-items:center;">
+                                            <span><i class="ri-folder-open-line me-1"></i>Choose reference file</span>
+                                            <button class="btn btn-sm p-0" style="color:#94a3b8; line-height:1;"
+                                                    @onclick="() => _refBrowserOpen = false">
+                                                <i class="ri-close-line"></i>
+                                            </button>
+                                        </div>
+                                        @if (!_refFileList.Any())
+                                        {
+                                            <div style="padding:14px; color:#64748b; font-size:.8rem; text-align:center;">
+                                                No files found in Front/Back Cover
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var grp in _refFileList.GroupBy(f => f.Section))
+                                            {
+                                                <div style="padding:4px 10px; font-size:.68rem; color:#64748b;
+                                                            text-transform:uppercase; letter-spacing:.5px;
+                                                            background:rgba(255,255,255,.03); border-bottom:1px solid #0f172a;">
+                                                    <i class="ri-folder-line me-1"></i>@grp.Key
+                                                </div>
+                                                @foreach (var f in grp)
+                                                {
+                                                    var rf = f;
+                                                    <button class="btn btn-sm w-100 text-start px-3 py-1"
+                                                            style="color:#e2e8f0; font-size:.8rem; border-radius:0;
+                                                                   border:none; background:transparent; border-bottom:1px solid #0f172a;"
+                                                            @onclick="async () => await OpenRefFile(rf.RelPath, rf.Name)">
+                                                        <i class="ri-file-pdf-2-line me-2" style="color:#ef5350;"></i>@rf.Name
+                                                    </button>
+                                                }
+                                            }
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
                     <button type="button" class="btn-close btn-close-white"
                             @onclick="() => _showImportWizard = false"></button>
                 </div>
@@ -2237,6 +2295,10 @@
     string _importError   = "";
     string _importSuccess = "";
 
+    // Reference browser state
+    bool _refBrowserOpen;
+    List<(string Section, string Name, string RelPath)> _refFileList = [];
+
     // Background import toast state
     bool   _bgImportRunning;
     bool   _bgImportDone;
@@ -2806,6 +2868,21 @@
         _importError = "";
     }
 
+    void OpenRefBrowser()
+    {
+        if (_importPcId <= 0) return;
+        _refFileList = FolderSvc.GetCoverFiles(_importPcId, _isSoloUser);
+        _refBrowserOpen = true;
+    }
+
+    async Task OpenRefFile(string relPath, string name)
+    {
+        _refBrowserOpen = false;
+        var url = $"/api/pc-file?pcId={_importPcId}&path={Uri.EscapeDataString(relPath)}&solo={_isSoloUser.ToString().ToLower()}";
+        Console.WriteLine($"[WizRef] OpenRefFile: pcId={_importPcId} solo={_isSoloUser} relPath='{relPath}' url='{url}'");
+        await JSRuntime.InvokeVoidAsync("wizardRef.openFloat", url, name);
+    }
+
     async Task ExecuteImport()
     {
         if (!_msgUserId.HasValue || _importPcId == 0 || _importSessionBytes == null) return;
@@ -2836,6 +2913,10 @@
         var capturedStep3Bottom = _step3BottomHtml;
         var capturedAuditorName = string.IsNullOrWhiteSpace(_importAuditorFullName) ? _logUsername : _importAuditorFullName;
 
+        // Close reference float if open
+        await JSRuntime.InvokeVoidAsync("wizardRef.closeFloat");
+        _refBrowserOpen = false;
+
         // Close modal immediately and reset fields
         _showImportWizard        = false;
         _importSessionFile       = null;
@@ -2849,10 +2930,12 @@
         _step3BottomHtml         = "";
         _importAttachments.Clear();
         _importAttachmentBytes.Clear();
-        _importPcId   = 0;
-        _importStep   = 1;
-        _importError  = "";
-        _importSuccess = "";
+        _importPcId      = 0;
+        _importStep      = 1;
+        _importError     = "";
+        _importSuccess   = "";
+        _refBrowserOpen  = false;
+        _refFileList.Clear();
 
         // Start background toast
         _bgImportRunning = true;

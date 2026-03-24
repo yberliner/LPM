@@ -369,6 +369,28 @@ public class FolderService
         return new PcFolderInfo(pcId, pcName, folder, frontCover, backCover, workSheets, frontTree, backTree);
     }
 
+    public List<(string Section, string FileName, string RelPath)> GetCoverFiles(int pcId, bool solo = false)
+    {
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
+        if (folder == null) return [];
+
+        var result = new List<(string, string, string)>();
+        foreach (var (dirName, label) in new[] { ("Front_Cover", "Front Cover"), ("Back_Cover", "Back Cover") })
+        {
+            var secPath = Path.Combine(folder, dirName);
+            if (!Directory.Exists(secPath)) continue;
+            var files = Directory.GetFiles(secPath, "*.pdf", SearchOption.AllDirectories)
+                .Concat(Directory.GetFiles(secPath, "*.xlsx", SearchOption.AllDirectories))
+                .OrderBy(f => f);
+            foreach (var f in files)
+            {
+                var relPath = Path.GetRelativePath(folder, f).Replace('\\', '/');
+                result.Add((label, Path.GetFileName(f), relPath));
+            }
+        }
+        return result;
+    }
+
     private List<WorkSheetItem> GetWorkSheets(string pcFolder)
     {
         var wsPath = Path.Combine(pcFolder, "WorkSheets");
@@ -1130,6 +1152,69 @@ public class FolderService
         EncryptFileInPlace(fullPath);
         Console.WriteLine($"[FolderService] Overwrote arf.pdf for session '{sessionFileName}', PC {pcId}");
         return true;
+    }
+
+    /// <summary>
+    /// Merges all PDFs for a session into one document in order:
+    /// Next CS → Exam → ARF → session itself → remaining attachments.
+    /// Returns null if the session file is not found.
+    /// </summary>
+    public byte[]? MergeSessionPdfs(int pcId, string sessionFileName, bool solo = false)
+    {
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
+        if (folder == null) return null;
+
+        var wsPath = Path.Combine(folder, "WorkSheets");
+        var sessionPath = Path.Combine(wsPath, sessionFileName);
+        if (!File.Exists(sessionPath)) return null;
+
+        var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
+        var prefix = $"{sessionNoExt}_att_";
+
+        // Collect all attachment full paths
+        var allAtt = Directory.GetFiles(wsPath, $"{prefix}*.pdf")
+            .OrderBy(p => Path.GetFileName(p))
+            .ToList();
+
+        // Ordered buckets
+        string? nextCsPath = allAtt.FirstOrDefault(p => Path.GetFileName(p).Contains("Next CS", StringComparison.OrdinalIgnoreCase));
+        string? examPath   = allAtt.FirstOrDefault(p => Path.GetFileName(p).Contains("exam",    StringComparison.OrdinalIgnoreCase));
+        string? arfPath    = allAtt.FirstOrDefault(p => Path.GetFileName(p).Contains("_att_arf", StringComparison.OrdinalIgnoreCase));
+
+        var prioritised = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (nextCsPath != null) prioritised.Add(nextCsPath);
+        if (examPath   != null) prioritised.Add(examPath);
+        if (arfPath    != null) prioritised.Add(arfPath);
+
+        var ordered = new List<string>();
+        if (nextCsPath != null) ordered.Add(nextCsPath);
+        if (examPath   != null) ordered.Add(examPath);
+        if (arfPath    != null) ordered.Add(arfPath);
+        ordered.Add(sessionPath); // session itself
+        ordered.AddRange(allAtt.Where(p => !prioritised.Contains(p))); // remaining attachments
+
+        using var output = new PdfSharpCore.Pdf.PdfDocument();
+        foreach (var filePath in ordered)
+        {
+            if (!File.Exists(filePath)) continue;
+            try
+            {
+                var bytes = ReadAndCache(filePath);
+                using var ms = new MemoryStream(bytes);
+                using var doc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
+                for (int i = 0; i < doc.PageCount; i++)
+                    output.AddPage(doc.Pages[i]);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[FolderService] MergeSessionPdfs: skipping '{filePath}': {ex.Message}");
+            }
+        }
+
+        if (output.PageCount == 0) return null;
+        using var result = new MemoryStream();
+        output.Save(result);
+        return result.ToArray();
     }
 
     /// <summary>Read a file from disk, encrypt its contents, and write back.</summary>

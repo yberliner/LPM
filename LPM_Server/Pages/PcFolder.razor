@@ -354,6 +354,8 @@
                 <button @onclick='() => WsCtxAddWhiteSheet("Cramming")'><i class="ri-file-add-line me-2" style="color:#34d399 !important;"></i>Add Cramming</button>
                 <div class="pcf-ctx-divider"></div>
                 <button @onclick="WsCtxUploadAttachment"><i class="ri-upload-2-line me-2"></i>Upload Attachment</button>
+                <div class="pcf-ctx-divider"></div>
+                <button @onclick="WsCtxDownloadSession"><i class="ri-download-2-line me-2"></i>Download entire session</button>
             }
             else
             {
@@ -3836,6 +3838,18 @@
         _wsAttTargetSession = _wsCtxSessionFileName;
         CloseWsCtxMenu();
         await JS.InvokeVoidAsync("eval", "document.getElementById('pcf-ws-att-input').click()");
+    }
+
+    async Task WsCtxDownloadSession()
+    {
+        var session = _wsCtxSessionFileName;
+        Console.WriteLine($"[PcFolder] Download entire session '{session}' by '{_userName}' — PC {PcId}");
+        CloseWsCtxMenu();
+        var sessionNoExt = System.IO.Path.GetFileNameWithoutExtension(session);
+        var url = $"/api/pc-session-merged?pcId={PcId}&session={Uri.EscapeDataString(session)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
+        var downloadName = $"{sessionNoExt}.pdf";
+        var js = $"var a=document.createElement('a');a.href='{url}';a.download='{downloadName.Replace("'", "\\'")}';document.body.appendChild(a);a.click();document.body.removeChild(a);";
+        await JS.InvokeVoidAsync("eval", js);
     }
 
     async Task OnWsAttFileSelected(InputFileChangeEventArgs e)
