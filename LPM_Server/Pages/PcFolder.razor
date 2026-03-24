@@ -2588,14 +2588,13 @@
                     paneTasks.Add(JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId).AsTask());
                 }
             }
-            await Task.WhenAll(paneTasks);
-
-            // If 3rd attachment couldn't fit in a pane, open it in the float window
+            // If 3rd attachment couldn't fit in a pane, open it in the float window — in parallel with pane loads
             if (!string.IsNullOrEmpty(_floatAttFile))
             {
                 var floatUrl = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_floatAttFile)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
-                await JS.InvokeVoidAsync("pcfViewer.floatFile", floatUrl, _floatAttName ?? _floatAttFile);
+                paneTasks.Add(JS.InvokeVoidAsync("pcfViewer.floatFile", floatUrl, _floatAttName ?? _floatAttFile).AsTask());
             }
+            await Task.WhenAll(paneTasks);
 
             // (context menu attachment happens for all renders below)
 
