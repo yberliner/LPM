@@ -1386,38 +1386,113 @@
 @* ── Background Import Toast ── *@
 @if (_bgImportRunning || _bgImportDone || !string.IsNullOrEmpty(_bgImportError))
 {
-    <div style="position:fixed;bottom:24px;right:24px;z-index:99999;min-width:280px;max-width:360px;
-                border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.22);
-                background:#1e293b;color:#f1f5f9;padding:16px 20px;
-                display:flex;align-items:flex-start;gap:12px;
-                animation:bgImportSlideIn .25s cubic-bezier(.175,.885,.32,1.275) both;">
+    var _bgDoneCount  = _bgSteps.Count(s => s.Status == 2);
+    var _bgTotalCount = _bgSteps.Count;
+    var _bgPct        = _bgTotalCount > 0 ? (int)(_bgDoneCount * 100.0 / _bgTotalCount) : 0;
+
+    <div style="position:fixed;bottom:24px;right:24px;z-index:99999;min-width:310px;max-width:390px;
+                border-radius:14px;box-shadow:0 16px 48px rgba(0,0,0,.45);
+                background:#0f172a;color:#f1f5f9;overflow:hidden;
+                animation:bgImportSlideIn .3s cubic-bezier(.175,.885,.32,1.275) both;">
         <style>
-            @@keyframes bgImportSlideIn { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+            @@keyframes bgImportSlideIn { from{opacity:0;transform:translateY(24px) scale(.97)} to{opacity:1;transform:translateY(0) scale(1)} }
+            @@keyframes bgBarPulse { 0%,100%{opacity:1} 50%{opacity:.65} }
         </style>
-        @if (_bgImportRunning)
-        {
-            <span class="spinner-border spinner-border-sm mt-1 flex-shrink-0" style="color:#60a5fa;"></span>
-            <div>
-                <div style="font-weight:600;font-size:.9rem;">Uploading session&hellip;</div>
-                <div style="font-size:.78rem;color:#94a3b8;margin-top:3px;word-break:break-all;">@_bgImportLabel</div>
+
+        @* ── Header ── *@
+        <div style="padding:13px 16px 11px;border-bottom:1px solid #1e293b;display:flex;align-items:center;gap:10px;">
+            @if (_bgImportRunning)
+            {
+                <span class="spinner-border spinner-border-sm flex-shrink-0" style="color:#60a5fa;width:15px;height:15px;border-width:2px;"></span>
+            }
+            else if (_bgImportDone)
+            {
+                <i class="ri-checkbox-circle-fill flex-shrink-0" style="font-size:1.15rem;color:#22c55e;line-height:1;"></i>
+            }
+            else
+            {
+                <i class="ri-error-warning-fill flex-shrink-0" style="font-size:1.15rem;color:#f87171;line-height:1;"></i>
+            }
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:700;font-size:.875rem;letter-spacing:.01em;line-height:1.3;">
+                    @if (_bgImportRunning)      { <text>Uploading Session&hellip;</text> }
+                    else if (_bgImportDone)     { <span style="color:#22c55e;">Session Imported!</span> }
+                    else                        { <span style="color:#f87171;">Import Failed</span> }
+                </div>
+                <div style="font-size:.71rem;color:#475569;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@_bgImportLabel">
+                    @_bgImportLabel
+                </div>
             </div>
-        }
-        else if (_bgImportDone)
+        </div>
+
+        @* ── Step list (running or done) ── *@
+        @if (_bgImportRunning || _bgImportDone)
         {
-            <i class="ri-checkbox-circle-fill flex-shrink-0" style="font-size:1.4rem;color:#22c55e;line-height:1;"></i>
-            <div>
-                <div style="font-weight:600;font-size:.9rem;color:#22c55e;">Session imported!</div>
-                <div style="font-size:.78rem;color:#94a3b8;margin-top:3px;">Refreshing dashboard&hellip;</div>
+            <div style="padding:10px 16px 4px;display:flex;flex-direction:column;gap:5px;">
+                @foreach (var _bgStep in _bgSteps)
+                {
+                    var _sc = _bgStep.Status switch {
+                        1 => "#e2e8f0",
+                        2 => "#22c55e",
+                        3 => "#f87171",
+                        _ => "#334155"
+                    };
+                    <div style="display:flex;align-items:center;gap:8px;font-size:.78rem;color:@_sc;">
+                        <span style="width:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+                            @if (_bgStep.Status == 1)
+                            {
+                                <span class="spinner-border" style="width:10px;height:10px;border-width:1.5px;color:#60a5fa;flex-shrink:0;"></span>
+                            }
+                            else if (_bgStep.Status == 2)
+                            {
+                                <i class="ri-check-line" style="color:#22c55e;font-size:.8rem;"></i>
+                            }
+                            else if (_bgStep.Status == 3)
+                            {
+                                <i class="ri-close-line" style="color:#f87171;font-size:.8rem;"></i>
+                            }
+                            else
+                            {
+                                <span style="width:5px;height:5px;border-radius:50%;background:#1e293b;display:inline-block;"></span>
+                            }
+                        </span>
+                        <span style="@(_bgStep.Status == 1 ? "font-weight:600;" : "")">@_bgStep.Label</span>
+                    </div>
+                }
+            </div>
+
+            @* ── Progress bar ── *@
+            <div style="margin:10px 16px 14px;height:3px;background:#1e293b;border-radius:2px;overflow:hidden;">
+                <div style="height:100%;width:@(_bgPct)%;border-radius:2px;
+                            background:linear-gradient(90deg,#2563eb,#60a5fa);
+                            transition:width .35s ease;
+                            @(_bgImportRunning && _bgPct < 100 ? "animation:bgBarPulse 1.8s ease-in-out infinite;" : "")"></div>
             </div>
         }
         else
         {
-            <i class="ri-error-warning-fill flex-shrink-0" style="font-size:1.4rem;color:#f87171;line-height:1;"></i>
-            <div style="flex:1;">
-                <div style="font-weight:600;font-size:.9rem;color:#f87171;">Import failed</div>
-                <div style="font-size:.78rem;color:#94a3b8;margin-top:3px;word-break:break-all;">@_bgImportError</div>
-                <button class="btn btn-sm btn-outline-secondary mt-2" style="font-size:.75rem;padding:2px 10px;"
-                        @onclick="() => _bgImportError = string.Empty">Dismiss</button>
+            @* ── Error detail ── *@
+            <div style="padding:10px 16px 14px;">
+                @if (_bgSteps.Any(s => s.Status == 3))
+                {
+                    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:8px;">
+                        @foreach (var _bgStep in _bgSteps)
+                        {
+                            var _sc2 = _bgStep.Status switch { 2 => "#22c55e", 3 => "#f87171", 1 => "#60a5fa", _ => "#334155" };
+                            <div style="display:flex;align-items:center;gap:8px;font-size:.77rem;color:@_sc2;">
+                                <span style="width:14px;flex-shrink:0;text-align:center;">
+                                    @if (_bgStep.Status == 2) { <i class="ri-check-line"></i> }
+                                    else if (_bgStep.Status == 3) { <i class="ri-close-line"></i> }
+                                    else { <span style="opacity:.4;">·</span> }
+                                </span>
+                                @_bgStep.Label
+                            </div>
+                        }
+                    </div>
+                }
+                <div style="font-size:.75rem;color:#94a3b8;word-break:break-all;">@_bgImportError</div>
+                <button class="btn btn-sm btn-outline-secondary mt-2" style="font-size:.72rem;padding:2px 10px;"
+                        @onclick="() => { _bgImportError = string.Empty; _bgSteps.Clear(); }">Dismiss</button>
             </div>
         }
     </div>
@@ -2302,8 +2377,16 @@
     // Background import toast state
     bool   _bgImportRunning;
     bool   _bgImportDone;
-    string _bgImportError   = "";
-    string _bgImportLabel   = "";
+    string _bgImportError = "";
+    string _bgImportLabel = "";
+
+    sealed class BgStep
+    {
+        public string Label;
+        public int Status; // 0=pending  1=running  2=done  3=error
+        public BgStep(string label) { Label = label; }
+    }
+    List<BgStep> _bgSteps = new();
 
     // Auditor Report Form fields (step 2)
     string _arfDate          = "";
@@ -2937,6 +3020,20 @@
         _refBrowserOpen  = false;
         _refFileList.Clear();
 
+        // Build step list
+        var saveLabel = capturedAttachments.Count > 0
+            ? $"Saving to folder (+{capturedAttachments.Count} attachment{(capturedAttachments.Count == 1 ? "" : "s")})"
+            : "Saving to folder";
+        _bgSteps = new List<BgStep>
+        {
+            new("Creating session"),
+            new("Normalizing pages"),
+            new("Generating ARF"),
+            new("Generating Next C/S"),
+            new(saveLabel),
+            new("Updating TAA Excel"),
+        };
+
         // Start background toast
         _bgImportRunning = true;
         _bgImportDone    = false;
@@ -2946,6 +3043,13 @@
 
         _ = Task.Run(async () =>
         {
+            // Helper: mark a step status and push a render
+            async Task Advance(BgStep s, int status)
+            {
+                s.Status = status;
+                await InvokeAsync(StateHasChanged);
+            }
+
             try
             {
                 var sessionName   = Path.GetFileNameWithoutExtension(capturedFileName);
@@ -2955,60 +3059,97 @@
                 if (adminSec < 0) adminSec = 0;
                 var taRange = string.IsNullOrWhiteSpace(capturedTaTo) ? capturedTaFrom : $"{capturedTaFrom}-{capturedTaTo}";
 
-                // Create session record (AuditorId = NULL for solo users)
-                var sessionId = DashSvc.CreateImportedSession(capturedPcId, capturedUserId, sessionName,
-                    sessionLenSec, adminSec, capturedFreeSession, isSolo: capturedIsSolo);
+                var sCreate = _bgSteps[0];
+                var sNorm   = _bgSteps[1];
+                var sArf    = _bgSteps[2];
+                var sNextCs = _bgSteps[3];
+                var sSave   = _bgSteps[4];
+                var sTaa    = _bgSteps[5];
 
-                // Save folder summary
-                var arfData = new PdfService.ArfData
-                {
-                    PcName        = capturedPcName,
-                    Date          = DateTime.Today.ToString("dd/MM/yyyy"),
-                    Grade         = capturedGrade,
-                    SessionLength = capturedSessLen,
-                    AdminTime     = capturedAdminTime,
-                    TotalTa       = capturedTotalTa,
-                    TaRange       = taRange,
-                    Rows          = capturedRows
-                };
-                var arfJson = System.Text.Json.JsonSerializer.Serialize(arfData);
-                DashSvc.AddFolderSummary(sessionId, capturedPcId, capturedIsSolo ? null : capturedUserId, capturedSummary ?? "", arfJson);
+                // ── Phase 1: run all independent work in parallel ──────────────
+                // Creating session, normalizing pages, and generating both PDFs
+                // are independent — run them simultaneously for maximum speed.
+                sCreate.Status = 1; sNorm.Status = 1; sArf.Status = 1; sNextCs.Status = 1;
+                await InvokeAsync(StateHasChanged);
 
-                // Normalise page sizes before saving (centres smaller pages on the largest canvas)
-                capturedBytes = FolderSvc.NormalizePdfPageSizes(capturedBytes);
+                int    sessionId       = 0;
+                byte[] normalizedBytes = capturedBytes;
+                byte[] arfPdfBytes     = Array.Empty<byte>();
+                byte[] nextCsPdfBytes  = Array.Empty<byte>();
 
-                // Upload session file to the correct folder
+                await Task.WhenAll(
+                    Task.Run(async () =>
+                    {
+                        sessionId = DashSvc.CreateImportedSession(capturedPcId, capturedUserId, sessionName,
+                            sessionLenSec, adminSec, capturedFreeSession, isSolo: capturedIsSolo);
+                        var arfData = new PdfService.ArfData
+                        {
+                            PcName        = capturedPcName,
+                            Date          = DateTime.Today.ToString("dd/MM/yyyy"),
+                            Grade         = capturedGrade,
+                            SessionLength = capturedSessLen,
+                            AdminTime     = capturedAdminTime,
+                            TotalTa       = capturedTotalTa,
+                            TaRange       = taRange,
+                            Rows          = capturedRows
+                        };
+                        DashSvc.AddFolderSummary(sessionId, capturedPcId,
+                            capturedIsSolo ? null : capturedUserId,
+                            capturedSummary ?? "",
+                            System.Text.Json.JsonSerializer.Serialize(arfData));
+                        await Advance(sCreate, 2);
+                    }),
+                    Task.Run(async () =>
+                    {
+                        normalizedBytes = FolderSvc.NormalizePdfPageSizes(capturedBytes);
+                        await Advance(sNorm, 2);
+                    }),
+                    Task.Run(async () =>
+                    {
+                        arfPdfBytes = PdfSvc.GenerateArfPdf(
+                            capturedPcName, DateTime.Today.ToString("dd/MM/yyyy"),
+                            capturedGrade, capturedSessLen, capturedAdminTime,
+                            capturedTotalTa, taRange, capturedRows, capturedSummary);
+                        await Advance(sArf, 2);
+                    }),
+                    Task.Run(async () =>
+                    {
+                        nextCsPdfBytes = PdfSvc.GenerateNextCsPdf(
+                            capturedPcName, DateTime.Today.ToString("dd/MM/yyyy"),
+                            capturedAuditorName, capturedStep3Top, capturedStep3Bottom);
+                        await Advance(sNextCs, 2);
+                    })
+                );
+
+                // ── Phase 2: save everything to the PC folder ─────────────────
+                await Advance(sSave, 1);
+
                 var savedSessionFileName = capturedIsSolo
-                    ? FolderSvc.SaveSoloUploadedFile(capturedPcId, capturedFileName, capturedBytes)!
-                    : FolderSvc.SaveUploadedFile(capturedPcId, capturedFileName, capturedBytes)!;
+                    ? FolderSvc.SaveSoloUploadedFile(capturedPcId, capturedFileName, normalizedBytes)!
+                    : FolderSvc.SaveUploadedFile(capturedPcId, capturedFileName, normalizedBytes)!;
 
-                // Upload attachments
                 foreach (var (name, data) in capturedAttachments)
                     FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, name, data, capturedIsSolo);
 
-                // Generate ARF PDF
-                var arfPdfBytes = PdfSvc.GenerateArfPdf(
-                    capturedPcName, DateTime.Today.ToString("dd/MM/yyyy"),
-                    capturedGrade, capturedSessLen, capturedAdminTime,
-                    capturedTotalTa, taRange, capturedRows, capturedSummary);
                 FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, "arf.pdf", arfPdfBytes, capturedIsSolo);
 
-                // Save Next C/S bottom text to DB
                 if (!string.IsNullOrWhiteSpace(capturedStep3Bottom))
                     DashSvc.SaveNextCs(sessionId, capturedStep3Bottom);
 
-                // Generate Next C/S PDF and attach
-                var nextCsPdfBytes = PdfSvc.GenerateNextCsPdf(
-                    capturedPcName, DateTime.Today.ToString("dd/MM/yyyy"),
-                    capturedAuditorName, capturedStep3Top, capturedStep3Bottom);
                 FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, "Next CS.pdf", nextCsPdfBytes, capturedIsSolo);
 
-                // Append TAA row
+                await Advance(sSave, 2);
+
+                // ── Phase 3: append TAA Excel row ─────────────────────────────
+                await Advance(sTaa, 1);
+
                 var sessionMinutes = sessionLenSec / 60;
                 var taaDate = !string.IsNullOrEmpty(capturedDate) ? capturedDate : DateTime.Today.ToString("d.M.yy");
                 if (DateTime.TryParseExact(taaDate, "dd/MM/yyyy", null, System.Globalization.DateTimeStyles.None, out var parsedDate))
                     taaDate = parsedDate.ToString("d.M.yy");
                 FolderSvc.AppendTaaRow(capturedPcId, taaDate, sessionMinutes, capturedTotalTa);
+
+                await Advance(sTaa, 2);
 
                 Console.WriteLine($"[MainHeader] Imported session '{capturedFileName}' for PC {capturedPcId} with {capturedAttachments.Count} attachments by '{capturedUsername}'");
 
@@ -3033,6 +3174,9 @@
             }
             catch (Exception ex)
             {
+                // Mark any still-running step as failed
+                foreach (var s in _bgSteps.Where(s => s.Status == 1))
+                    s.Status = 3;
                 await InvokeAsync(() =>
                 {
                     _bgImportRunning = false;

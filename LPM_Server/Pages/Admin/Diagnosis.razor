@@ -6,6 +6,8 @@
 @inject IConfiguration Config
 @inject Microsoft.AspNetCore.Http.IHttpContextAccessor HttpCtx
 @inject LPM.Services.PdfShrinkService PdfShrinkSvc
+@inject LPM.Services.FolderService FolderSvc
+@inject IJSRuntime JS
 
 <PageTitle>Diagnosis — LPM</PageTitle>
 
@@ -60,6 +62,114 @@
     {
         <div class="alert @(_shrinkResult.StartsWith("Error") ? "alert-danger" : "alert-success") mb-4">@_shrinkResult</div>
     }
+
+    @* ── Test PDF File ─────────────────────────────────────────────────────── *@
+    <div class="diag-editor-card mb-4">
+        <div class="diag-editor-header">
+            <i class="ri-file-search-line me-2"></i>Test PDF File
+            <span class="diag-editor-sub">PdfSharp vs Ghostscript</span>
+        </div>
+        <div class="diag-editor-body">
+            <div class="d-flex align-items-center gap-3 flex-wrap mb-3">
+                <InputFile id="pdf-diag-input" OnChange="OnPdfDiagFileSelected" accept=".pdf" style="display:none;" />
+                <button class="btn btn-outline-primary d-flex align-items-center gap-2"
+                        disabled="@_pdfDiagBusy"
+                        @onclick='() => JS.InvokeVoidAsync("eval", "document.getElementById(\"pdf-diag-input\").click()")'>
+                    <i class="ri-upload-cloud-line"></i>Choose PDF…
+                </button>
+                @if (_pdfDiagBusy)
+                {
+                    <span class="spinner-border spinner-border-sm text-primary"></span>
+                    <span class="text-muted" style="font-size:.85rem;">Analysing…</span>
+                }
+                @if (!string.IsNullOrEmpty(_pdfDiagFileName))
+                {
+                    <span style="font-size:.82rem;color:#64748b;">
+                        <i class="ri-file-pdf-2-line me-1" style="color:#ef4444;"></i>@_pdfDiagFileName
+                        (@FormatSize(_pdfDiagFileSize))
+                    </span>
+                }
+            </div>
+
+            @if (_pdfDiagResult != null)
+            {
+                var r = _pdfDiagResult;
+                <div style="display:flex;flex-direction:column;gap:10px;">
+
+                    @* Overall verdict *@
+                    @if (r.CanOpenWithPdfSharp)
+                    {
+                        <div class="alert alert-success d-flex align-items-center gap-2 py-2 mb-0">
+                            <i class="ri-checkbox-circle-fill" style="font-size:1.2rem;"></i>
+                            <div>
+                                <strong>PdfSharp can open this file.</strong>
+                                @if (!r.GhostscriptNeeded)
+                                {
+                                    <span class="ms-1">Ghostscript will be <strong>skipped</strong> for this file — fast path.</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-danger d-flex align-items-center gap-2 py-2 mb-0">
+                            <i class="ri-error-warning-fill" style="font-size:1.2rem;"></i>
+                            <div>
+                                <strong>PdfSharp cannot open this file.</strong>
+                                Ghostscript repair will be <strong>required</strong> (slow path).
+                                <div style="font-size:.78rem;margin-top:3px;color:#7f1d1d;">Error: @r.PdfSharpError</div>
+                            </div>
+                        </div>
+                    }
+
+                    @* Detail grid *@
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;">
+                        <div class="diag-stat-box">
+                            <div class="diag-stat-label">Pages</div>
+                            <div class="diag-stat-value">@r.PageCount</div>
+                        </div>
+                        <div class="diag-stat-box">
+                            <div class="diag-stat-label">Max size (pt)</div>
+                            <div class="diag-stat-value">@r.MaxWidthPt.ToString("F0") × @r.MaxHeightPt.ToString("F0")</div>
+                        </div>
+                        <div class="diag-stat-box">
+                            <div class="diag-stat-label">Pages uniform</div>
+                            <div class="diag-stat-value" style="color:@(r.PagesUniform ? "#22c55e" : "#f59e0b");">
+                                @(r.PagesUniform ? "Yes — no normalisation needed" : "No — will be normalised")
+                            </div>
+                        </div>
+                        <div class="diag-stat-box">
+                            <div class="diag-stat-label">Ghostscript available</div>
+                            <div class="diag-stat-value" style="color:@(r.GhostscriptAvailable ? "#22c55e" : "#94a3b8");">
+                                @(r.GhostscriptAvailable ? "Yes" : "Not installed")
+                            </div>
+                        </div>
+                    </div>
+
+                    @* Per-page sizes (only if non-uniform or <= 20 pages) *@
+                    @if (!r.PagesUniform || r.PageCount <= 20)
+                    {
+                        <div>
+                            <div class="diag-lbl mb-1">Page dimensions</div>
+                            <div style="display:flex;flex-wrap:wrap;gap:5px;">
+                                @foreach (var (pg, w, h) in r.PageSizes)
+                                {
+                                    bool differs = Math.Abs(w - r.MaxWidthPt) / r.MaxWidthPt > 0.05
+                                               || Math.Abs(h - r.MaxHeightPt) / r.MaxHeightPt > 0.05;
+                                    <span style="font-size:.72rem;padding:2px 7px;border-radius:4px;
+                                                 background:@(differs ? "#7f1d1d" : "#1e293b");
+                                                 color:@(differs ? "#fca5a5" : "#94a3b8");
+                                                 border:1px solid @(differs ? "#ef4444" : "#334155");">
+                                        p@pg: @w.ToString("F0")×@h.ToString("F0")
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
 
     @* ── User Editor ──────────────────────────────────────────────────────── *@
     <div class="diag-editor-card mb-4">
@@ -626,6 +736,12 @@
 
     bool   _shrinkBusy;
     string _shrinkResult = "";
+
+    // PDF test
+    bool   _pdfDiagBusy;
+    string _pdfDiagFileName = "";
+    long   _pdfDiagFileSize;
+    LPM.Services.FolderService.PdfDiagResult? _pdfDiagResult;
     List<TableData> _coreTables = [];
     List<TableData> _sysTables  = [];
     List<TableData> _lkpTables  = [];
@@ -1157,6 +1273,38 @@
         _shrinkBusy = false;
     }
 
+    // ── PDF Test ───────────────────────────────────────────────────────────
+    async Task OnPdfDiagFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+        _pdfDiagBusy     = true;
+        _pdfDiagResult   = null;
+        _pdfDiagFileName = file.Name;
+        _pdfDiagFileSize = file.Size;
+        StateHasChanged();
+        try
+        {
+            using var stream = file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024); // 50 MB cap
+            using var ms     = new System.IO.MemoryStream();
+            await stream.CopyToAsync(ms);
+            var bytes    = ms.ToArray();
+            _pdfDiagResult = await Task.Run(() => FolderSvc.DiagnosePdf(bytes));
+        }
+        catch (Exception ex)
+        {
+            _pdfDiagResult = new LPM.Services.FolderService.PdfDiagResult(
+                CanOpenWithPdfSharp: false,
+                PdfSharpError: ex.Message,
+                PageCount: 0, PagesUniform: false,
+                MaxWidthPt: 0, MaxHeightPt: 0,
+                PageSizes: [],
+                GhostscriptAvailable: false,
+                GhostscriptNeeded: true);
+        }
+        finally { _pdfDiagBusy = false; }
+    }
+
     // ── Create Empty DB ────────────────────────────────────────────────────
     async Task CreateEmptyDbCopy()
     {
@@ -1267,6 +1415,9 @@
     .diag-input-ro { background: #f8fafc !important; color: #94a3b8 !important; }
     .diag-action-btn { min-height: 36px; }
     .diag-feedback { font-size: .82rem; }
+    .diag-stat-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; }
+    .diag-stat-label { font-size: .68rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+    .diag-stat-value { font-size: .85rem; font-weight: 600; color: #1e293b; }
 
     /* Modal */
     .diag-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1040; }
