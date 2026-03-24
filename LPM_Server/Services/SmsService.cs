@@ -7,7 +7,7 @@ namespace LPM.Services;
 public class SmsService(IHttpClientFactory httpClientFactory)
 {
     private const string ApiKey      = "w#3M$Wq5B8@bdR58316@D$s2#4Pj7Tm$";
-    private const string Originator  = "0538205689";
+    private const string Originator  = "0525567826";
     private const string EndpointUrl = "https://sapi.itnewsletter.co.il/webservices/wssms.asmx";
     private const string SoapAction  = "apiGlobalSms/sendSmsToRecipients";
 
