@@ -1499,6 +1499,149 @@ window.pcfViewer = {
         } catch (e) { console.error('[pcfViewer] floatPage error:', e); }
     },
 
+    // ── Float File (read-only PDF loaded from URL) ──────────
+    async floatFile(url, fileName) {
+        this.closeFloat();
+
+        const OVERHEAD_H = 53;
+        const OVERHEAD_W = 20;
+        const maxW = window.innerWidth  - 40;
+        const maxH = window.innerHeight - 80;
+
+        // Base width: ~1/3 of viewport so it sits beside the panes
+        let defW = Math.max(220, Math.min(Math.round(window.innerWidth / 3), maxW));
+        let defH = Math.max(150, Math.min(Math.round(defW * 1.4) + OVERHEAD_H, maxH));
+
+        const posX = window.innerWidth  - defW - 20;
+        const posY = 60;
+
+        const win = document.createElement('div');
+        win.id = 'pcf-float-win';
+        win.style.cssText =
+            'position:fixed;z-index:10007;top:' + posY + 'px;left:' + posX + 'px;' +
+            'width:' + defW + 'px;height:' + defH + 'px;' +
+            'display:flex;flex-direction:column;' +
+            'border:2px solid #3b82f6;border-radius:6px;' +
+            'background:#1e1e2e;box-shadow:0 8px 32px rgba(0,0,0,.6);' +
+            'overflow:hidden;min-width:200px;min-height:150px;';
+
+        const titleText = fileName + '  (read only)';
+        const titleBar = document.createElement('div');
+        titleBar.style.cssText =
+            'flex-shrink:0;cursor:move;background:#1e293b;color:#e2e8f0;' +
+            'padding:6px 10px;display:flex;align-items:center;gap:8px;' +
+            'font-size:13px;user-select:none;border-bottom:1px solid #334155;';
+        titleBar.innerHTML =
+            '<i class="ri-lock-line" style="color:#94a3b8;flex-shrink:0;font-size:14px;"></i>' +
+            '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + titleText + '">' + titleText + '</span>' +
+            '<span id="pcf-float-pgcount" style="color:#64748b;font-size:11px;flex-shrink:0;margin-right:4px;"></span>' +
+            '<button id="pcf-float-close" style="background:transparent;border:none;color:#94a3b8;' +
+            'cursor:pointer;font-size:20px;line-height:1;padding:0 2px;" title="Close (Esc)">&times;</button>';
+
+        const body = document.createElement('div');
+        body.style.cssText =
+            'flex:1;overflow-y:auto;overflow-x:hidden;background:#0f172a;' +
+            'padding:8px;display:flex;flex-direction:column;gap:6px;align-items:center;';
+
+        const loadingEl = document.createElement('div');
+        loadingEl.style.cssText = 'color:#94a3b8;padding:40px;font-size:13px;';
+        loadingEl.textContent = 'Loading…';
+        body.appendChild(loadingEl);
+
+        win.appendChild(titleBar);
+        win.appendChild(body);
+        document.body.appendChild(win);
+        this._floatWin = win;
+
+        win.querySelector('#pcf-float-close').addEventListener('click', () => this.closeFloat());
+
+        // Drag
+        titleBar.addEventListener('mousedown', (e) => {
+            if (e.target.closest('button')) return;
+            e.preventDefault();
+            const sx = e.clientX, sy = e.clientY;
+            const ox = parseInt(win.style.left) || 0, oy = parseInt(win.style.top) || 0;
+            const onMv = (e2) => {
+                win.style.left = Math.max(0, ox + e2.clientX - sx) + 'px';
+                win.style.top  = Math.max(0, oy + e2.clientY - sy) + 'px';
+            };
+            const onUp = () => { document.removeEventListener('mousemove', onMv); document.removeEventListener('mouseup', onUp); };
+            document.addEventListener('mousemove', onMv);
+            document.addEventListener('mouseup', onUp);
+        });
+
+        // 8-direction resize handles
+        const resizeHandles = [
+            ['n',  'top:0;left:6px;right:6px;height:5px;cursor:n-resize;'],
+            ['s',  'bottom:0;left:6px;right:6px;height:5px;cursor:s-resize;'],
+            ['e',  'right:0;top:6px;bottom:6px;width:5px;cursor:e-resize;'],
+            ['w',  'left:0;top:6px;bottom:6px;width:5px;cursor:w-resize;'],
+            ['ne', 'top:0;right:0;width:10px;height:10px;cursor:ne-resize;'],
+            ['nw', 'top:0;left:0;width:10px;height:10px;cursor:nw-resize;'],
+            ['se', 'bottom:0;right:0;width:10px;height:10px;cursor:se-resize;'],
+            ['sw', 'bottom:0;left:0;width:10px;height:10px;cursor:sw-resize;'],
+        ];
+        for (const [pos, hStyle] of resizeHandles) {
+            const h = document.createElement('div');
+            h.style.cssText = 'position:absolute;z-index:2;' + hStyle;
+            h.addEventListener('mousedown', (e) => {
+                e.preventDefault(); e.stopPropagation();
+                const sx = e.clientX, sy = e.clientY;
+                const r = win.getBoundingClientRect();
+                const ol = r.left, ot = r.top, ow = r.width, oh = r.height;
+                const onMv = (e2) => {
+                    const dx = e2.clientX - sx, dy = e2.clientY - sy;
+                    let nl = ol, nt = ot, nw = ow, nh = oh;
+                    if (pos.includes('e')) nw = Math.max(200, ow + dx);
+                    if (pos.includes('s')) nh = Math.max(150, oh + dy);
+                    if (pos.includes('w')) { nw = Math.max(200, ow - dx); nl = ol + (ow - nw); }
+                    if (pos.includes('n')) { nh = Math.max(150, oh - dy); nt = ot + (oh - nh); }
+                    win.style.left = nl + 'px'; win.style.top  = nt + 'px';
+                    win.style.width = nw + 'px'; win.style.height = nh + 'px';
+                };
+                const onUp = () => { document.removeEventListener('mousemove', onMv); document.removeEventListener('mouseup', onUp); };
+                document.addEventListener('mousemove', onMv);
+                document.addEventListener('mouseup', onUp);
+            });
+            win.appendChild(h);
+        }
+
+        // Load PDF with PDF.js
+        const pdfjsLib = window['pdfjs-dist/build/pdf'];
+        if (!pdfjsLib) { loadingEl.textContent = 'PDF.js not available'; return; }
+
+        try {
+            const pdfDoc = await pdfjsLib.getDocument({ url, withCredentials: true }).promise;
+            // Check window was closed while loading
+            if (this._floatWin !== win) return;
+
+            loadingEl.remove();
+
+            const pgCount = pdfDoc.numPages;
+            const pgCountEl = win.querySelector('#pcf-float-pgcount');
+            if (pgCountEl) pgCountEl.textContent = pgCount + (pgCount === 1 ? ' page' : ' pages');
+
+            // Render pages one by one — fit to body width
+            for (let i = 1; i <= pgCount; i++) {
+                if (this._floatWin !== win) return; // closed mid-render
+                const page = await pdfDoc.getPage(i);
+                const vp0  = page.getViewport({ scale: 1 });
+                const bodyW = win.clientWidth - OVERHEAD_W - 16; // 8px padding each side
+                const scale = Math.max(0.3, bodyW / vp0.width);
+                const vp    = page.getViewport({ scale });
+                const canvas = document.createElement('canvas');
+                canvas.width  = Math.round(vp.width);
+                canvas.height = Math.round(vp.height);
+                canvas.style.cssText = 'max-width:100%;height:auto;display:block;flex-shrink:0;border-radius:2px;';
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+                body.appendChild(canvas);
+            }
+        } catch (e) {
+            loadingEl.textContent = 'Failed to load: ' + e.message;
+            console.error('[pcfViewer] floatFile error:', e);
+        }
+    },
+
     closeFloat() {
         if (this._floatWin) {
             this._floatWin.remove();

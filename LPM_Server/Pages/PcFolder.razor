@@ -2210,6 +2210,8 @@
     PcFolderInfo? _folder;
     int _csSessionId;            // session ID passed from Dashboard (0 = not from CS button)
     string? _csSessionName;      // name of the session being CSed
+    string? _floatAttFile;       // 3rd attachment to open in float window (can't fit in panes)
+    string? _floatAttName;       // display name for the float window title
     bool _csDone;                // true after "Mark CS Done" was executed
     bool _csAlreadyDone;         // true if this session already has a cs_review on load
     bool _csAlreadyDoneBannerDismissed;
@@ -2539,6 +2541,12 @@
                     _panes[i + 1].Section = "WorkSheet";
                 }
             }
+            // 3rd attachment can't fit in any pane — open in float window
+            if (match.Attachments.Count >= 3)
+            {
+                _floatAttFile = match.Attachments[2].RelativePath;
+                _floatAttName = match.Attachments[2].FileName;
+            }
         }
         else if (_folder?.WorkSheets.Count > 0)
         {
@@ -2581,6 +2589,13 @@
                 }
             }
             await Task.WhenAll(paneTasks);
+
+            // If 3rd attachment couldn't fit in a pane, open it in the float window
+            if (!string.IsNullOrEmpty(_floatAttFile))
+            {
+                var floatUrl = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_floatAttFile)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
+                await JS.InvokeVoidAsync("pcfViewer.floatFile", floatUrl, _floatAttName ?? _floatAttFile);
+            }
 
             // (context menu attachment happens for all renders below)
 
