@@ -2217,7 +2217,6 @@
     List<IBrowserFile> _importAttachments = [];
     List<(string Name, byte[] Data)> _importAttachmentBytes = [];
     List<DashboardService.ApprovedPc> _approvedPcs = [];
-    bool   _importBusy;
     bool   _importDuplicate;
     bool   _importFreeSession;
     string _importFileWarning = "";  // duplicate or _att_ warning
@@ -2510,7 +2509,6 @@
         _importAttachmentBytes.Clear();
         _importError = "";
         _importSuccess = "";
-        _importBusy = false;
         _importDuplicate = false;
         _importFreeSession = false;
         _importStep = 1;
@@ -2880,8 +2878,6 @@
 
                 Console.WriteLine($"[MainHeader] Imported session '{capturedFileName}' for PC {capturedPcId} with {capturedAttachments.Count} attachments by '{capturedUsername}'");
 
-                DashSvc.NotifyDataChanged();
-
                 await InvokeAsync(() =>
                 {
                     _bgImportRunning = false;
@@ -2894,6 +2890,10 @@
                 {
                     _bgImportDone = false;
                     StateHasChanged();
+                    // NotifyDataChanged fires right before forceLoad navigate so any
+                    // _onDataChanged handlers on the current page are racing with the
+                    // circuit teardown — the hard reload delivers fresh data anyway.
+                    DashSvc.NotifyDataChanged();
                     NavigationManager.NavigateTo("/Home", forceLoad: true);
                 });
             }

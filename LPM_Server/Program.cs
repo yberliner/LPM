@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.AspNetCore.ResponseCompression;
 using LPM.Data;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -52,6 +53,19 @@ builder.Services.AddServerSideBlazor()
     {
         options.MaximumReceiveMessageSize = 1024 * 1024 * 500; // 500MB
     });
+// 200 MB decrypted-file cache — shared across all users, keyed by absolute disk path
+builder.Services.AddMemoryCache(o => o.SizeLimit = 200L * 1024 * 1024);
+
+// Brotli + Gzip compression for HTML/JS/CSS/JSON (PDFs are already compressed — excluded by default)
+builder.Services.AddResponseCompression(o =>
+{
+    o.EnableForHttps = true;
+    o.Providers.Add<BrotliCompressionProvider>();
+    o.Providers.Add<GzipCompressionProvider>();
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(o => o.Level = System.IO.Compression.CompressionLevel.Fastest);
+builder.Services.Configure<GzipCompressionProviderOptions>(o => o.Level = System.IO.Compression.CompressionLevel.Fastest);
+
 builder.Services.AddSingleton<AppState>();
 builder.Services.AddScoped<StateService>();
 builder.Services.AddScoped<IActionService, ActionService>();
@@ -159,6 +173,10 @@ app.Use(async (ctx, next) =>
     ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
     await next();
 });
+
+// Only compress in Production — Development tools (Browser Link, Hot Reload) can't inject into compressed responses
+if (!app.Environment.IsDevelopment())
+    app.UseResponseCompression();
 
 app.UseSession();
 
@@ -422,7 +440,7 @@ app.MapGet("/api/pc-file", (int pcId, string path, LPM.Services.FolderService sv
     if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
     var bytes = svc.ReadFileBytes(pcId, path, solo);
     if (bytes == null) return Results.NotFound();
-    return Results.File(bytes, "application/pdf");
+    return Results.File(bytes, "application/pdf", enableRangeProcessing: true);
 }).RequireAuthorization();
 
 app.MapGet("/api/program-insert", (string name, LPM.Services.FolderService svc) =>
@@ -450,7 +468,7 @@ app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
     var originalPageCount = pdfSvc.CountPdfPages(originalBytes);
     var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
     var combined = pdfSvc.CombinePdfs(summaryPdf, originalBytes);
-    return Results.File(combined, "application/pdf");
+    return Results.File(combined, "application/pdf", enableRangeProcessing: true);
 }).RequireAuthorization();
 
 app.MapPost("/api/pc-file-save", async (HttpContext ctx, LPM.Services.FolderService svc,

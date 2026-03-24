@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace LPM.Services;
 
@@ -117,8 +118,9 @@ public class FolderService
     private readonly string? _ghostscriptExe;
     private readonly string? _libreOfficePath;
     private readonly byte[]? _encKey;
+    private readonly IMemoryCache _cache;
 
-    public FolderService(IConfiguration config)
+    public FolderService(IConfiguration config, IMemoryCache cache)
     {
         _basePath = Path.Combine(Directory.GetCurrentDirectory(), "PC-Folders");
         var dbPath = config["Database:Path"] ?? "lifepower.db";
@@ -128,7 +130,33 @@ public class FolderService
         var keyStr = config["EncryptionKey"];
         if (!string.IsNullOrEmpty(keyStr))
             _encKey = Convert.FromBase64String(keyStr);
+        _cache = cache;
     }
+
+    // ── Decrypted-file cache helpers ──────────────────────────────────────────
+    // Key: absolute disk path. Value: decrypted bytes.
+    // Size unit = bytes; total cap = 200 MB (set in Program.cs AddMemoryCache).
+    private static readonly MemoryCacheEntryOptions _cacheOpts = new MemoryCacheEntryOptions()
+        .SetSlidingExpiration(TimeSpan.FromMinutes(20));
+
+    private byte[] ReadAndCache(string fullPath)
+    {
+        if (_cache.TryGetValue(fullPath, out byte[]? cached) && cached != null)
+            return cached;
+        var bytes = DecryptBytes(File.ReadAllBytes(fullPath));
+        StoreInCache(fullPath, bytes);
+        return bytes;
+    }
+
+    private void StoreInCache(string fullPath, byte[] plainBytes)
+    {
+        var opts = new MemoryCacheEntryOptions()
+            .SetSlidingExpiration(TimeSpan.FromMinutes(20))
+            .SetSize(plainBytes.Length);
+        _cache.Set(fullPath, plainBytes, opts);
+    }
+
+    private void InvalidateCache(string fullPath) => _cache.Remove(fullPath);
 
     /// <summary>Returns the absolute path to the PC-Folders root directory.</summary>
     public string GetPcFoldersRoot() => _basePath;
@@ -446,7 +474,7 @@ public class FolderService
         var fullPath = SafeResolvePath(folder, relativePath);
         if (fullPath == null || !File.Exists(fullPath)) return null;
 
-        return DecryptBytes(File.ReadAllBytes(fullPath));
+        return ReadAndCache(fullPath);
     }
 
     /// <summary>Save annotated PDF bytes back to disk (encrypted)</summary>
@@ -459,6 +487,7 @@ public class FolderService
         if (fullPath == null) return false;
 
         File.WriteAllBytes(fullPath, EncryptBytes(pdfBytes));
+        StoreInCache(fullPath, pdfBytes); // warm cache with fresh bytes
         Console.WriteLine($"[FolderService] Saved file PC {pcId}: {relativePath}");
         return true;
     }
@@ -1109,6 +1138,7 @@ public class FolderService
         if (_encKey == null || !File.Exists(path)) return;
         var plain = File.ReadAllBytes(path);
         File.WriteAllBytes(path, EncryptBytes(plain));
+        StoreInCache(path, plain); // warm cache while we have the bytes
     }
 
     /// <summary>
@@ -1232,6 +1262,7 @@ public class FolderService
             {
                 "-sDEVICE=pdfwrite",
                 "-dCompatibilityLevel=1.4",
+                "-dFastWebView=true",   // linearize — enables PDF.js range requests to load page 1 first
                 "-dNOPAUSE", "-dQUIET", "-dBATCH",
                 $"-sOutputFile=\"{tempOut}\"",
                 $"\"{tempIn}\""
@@ -1305,6 +1336,7 @@ public class FolderService
             var shrunkPlainBytes = File.ReadAllBytes(tempPlain);
             File.WriteAllBytes(pdfPath, EncryptBytes(shrunkPlainBytes));
             File.Delete(tempPlain);
+            StoreInCache(pdfPath, shrunkPlainBytes); // warm cache with shrunk bytes
 
             var newEncryptedKb = new FileInfo(pdfPath).Length / 1024;
             return (true, originalEncryptedSize / 1024, newEncryptedKb);
@@ -1508,6 +1540,7 @@ public class FolderService
         var destPath = Path.Combine(destDir, fileName);
         if (File.Exists(destPath)) return false; // no silent overwrite
         File.Move(srcPath, destPath);
+        InvalidateCache(srcPath);
         Console.WriteLine($"[FolderService] Moved '{sourceRelativePath}' → '{destFolderRelativePath}/{fileName}' for PC {pcId}");
         return true;
     }
@@ -1526,6 +1559,7 @@ public class FolderService
         var destPath = Path.Combine(dir, sanitized);
         if (File.Exists(destPath)) return false;
         File.Move(fullPath, destPath);
+        InvalidateCache(fullPath);
         Console.WriteLine($"[FolderService] Renamed '{relativePath}' → '{sanitized}' for PC {pcId}");
         return true;
     }
@@ -1554,6 +1588,7 @@ public class FolderService
         if (fullPath == null || !File.Exists(fullPath)) return false;
         BackupFile(pcId, relativePath, solo);
         File.Delete(fullPath);
+        InvalidateCache(fullPath);
         Console.WriteLine($"[FolderService] Deleted (backed up) '{relativePath}' for PC {pcId}");
         return true;
     }
@@ -1634,6 +1669,7 @@ public class FolderService
         var destPath = Path.Combine(dir, newName);
         if (File.Exists(destPath)) return false;
         File.Move(fullPath, destPath);
+        InvalidateCache(fullPath);
         Console.WriteLine($"[FolderService] Renamed attachment '{fileName}' → '{newName}' for PC {pcId}");
         return true;
     }

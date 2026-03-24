@@ -102,6 +102,7 @@ window.pcfViewer = {
         viewer.style.alignItems     = '';
         viewer.style.justifyContent = '';
         viewer.style.flexWrap       = '';
+        viewer.classList.remove('pcf-dual-mode');
 
         const pdfjsLib = window['pdfjs-dist/build/pdf'];
         if (!pdfjsLib) { viewer.innerHTML = '<div style="color:#fff;padding:40px;">PDF.js not loaded</div>'; return; }
@@ -1088,13 +1089,14 @@ window.pcfViewer = {
         const renderedWidth  = pane.pages[0].canvas.width  * zl;
         const renderedHeight = pane.pages[0].canvas.height * zl;
         const scaleByWidth   = (viewer.clientWidth  / 2 - 24) / renderedWidth;
-        const scaleByHeight  = (viewer.clientHeight - 16)     / renderedHeight;
+        const scaleByHeight  = (viewer.clientHeight - 40)     / renderedHeight;  // 40 = 20px top + 20px bottom padding
         pane.dualScale       = Math.min(1, scaleByWidth, scaleByHeight);
 
         viewer.style.flexDirection  = 'row';
-        viewer.style.alignItems     = 'flex-start';
+        viewer.style.alignItems     = 'center';
         viewer.style.justifyContent = 'center';
         viewer.style.flexWrap       = 'nowrap';
+        viewer.classList.add('pcf-dual-mode');
 
         this._applyDualVisibility(paneId);
         return [1, pane.pages.length];
@@ -1113,6 +1115,7 @@ window.pcfViewer = {
             viewer.style.alignItems     = '';
             viewer.style.justifyContent = '';
             viewer.style.flexWrap       = '';
+            viewer.classList.remove('pcf-dual-mode');
         }
 
         const zl = pane.zoomLevel || 1;
