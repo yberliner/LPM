@@ -590,7 +590,16 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
                     var imgBytes = imgMs.ToArray();
                     using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page, PdfSharpCore.Drawing.XGraphicsPdfPageOptions.Append);
                     var xImg = PdfSharpCore.Drawing.XImage.FromStream(() => new MemoryStream(imgBytes));
-                    gfx.DrawImage(xImg, 0, 0, page.Width, page.Height);
+                    // PdfSharpCore's page CTM flips Y using page.Height (= MediaBox.Height),
+                    // not MediaBox.Y2.  For pages normalised with a non-zero MediaBox origin
+                    // (e.g. [0, -21, 595, 821]) page.Height=842 but MediaBox.Y2=821, so the
+                    // default DrawImage(0,0,W,H) lands 21 pt above the visible area.
+                    // Offset by (page.Height - MediaBox.Y2) to align with the actual MediaBox.
+                    var mb    = page.MediaBox;
+                    double drawX = mb.X1;
+                    double drawY = page.Height.Point - mb.Y2;   // 0 for standard pages
+                    Console.WriteLine($"[AnnSave] overlay page {pg.SrcPageIdx}: MB=[{mb.X1:F1},{mb.Y1:F1},{mb.X2:F1},{mb.Y2:F1}] drawY={drawY:F1}");
+                    gfx.DrawImage(xImg, drawX, drawY, page.Width, page.Height);
                 }
                 break;
             }

@@ -1437,8 +1437,8 @@
                         3 => "#f87171",
                         _ => "#334155"
                     };
-                    <div style="display:flex;align-items:center;gap:8px;font-size:.78rem;color:@_sc;">
-                        <span style="width:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+                    <div style="display:flex;align-items:flex-start;gap:8px;font-size:.78rem;color:@_sc;">
+                        <span style="width:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding-top:1px;">
                             @if (_bgStep.Status == 1)
                             {
                                 <span class="spinner-border" style="width:10px;height:10px;border-width:1.5px;color:#60a5fa;flex-shrink:0;"></span>
@@ -1456,7 +1456,13 @@
                                 <span style="width:5px;height:5px;border-radius:50%;background:#1e293b;display:inline-block;"></span>
                             }
                         </span>
-                        <span style="@(_bgStep.Status == 1 ? "font-weight:600;" : "")">@_bgStep.Label</span>
+                        <div>
+                            <div style="@(_bgStep.Status == 1 ? "font-weight:600;" : "")">@_bgStep.Label</div>
+                            @if (!string.IsNullOrEmpty(_bgStep.SubLabel))
+                            {
+                                <div style="font-size:.7rem;color:@(_bgStep.Status == 3 ? "#f87171" : "#64748b");margin-top:1px;font-variant-numeric:tabular-nums;">@_bgStep.SubLabel</div>
+                            }
+                        </div>
                     </div>
                 }
             </div>
@@ -2201,6 +2207,15 @@
     .arf-cell-time {
         color-scheme: dark;
     }
+    /* ── Quill size-picker labels for custom px sizes ── */
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="10px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="10px"]::before  { content: 'Small';  }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="14px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="14px"]::before  { content: 'Normal'; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="18px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="18px"]::before  { content: 'Large';  }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="24px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="24px"]::before  { content: 'Huge';   }
     #step3-top-editor .ql-container.ql-snow {
         height: 48px; overflow-y: auto;
     }
@@ -2389,6 +2404,7 @@
     sealed class BgStep
     {
         public string Label;
+        public string SubLabel = ""; // extra detail shown below label (e.g. countdown)
         public int Status; // 0=pending  1=running  2=done  3=error
         public BgStep(string label) { Label = label; }
     }
@@ -3107,8 +3123,74 @@
                     }),
                     Task.Run(async () =>
                     {
-                        normalizedBytes = FolderSvc.NormalizePdfPageSizes(capturedBytes);
-                        await Advance(sNorm, 2);
+                        // ── Phase 1: fast path (PdfSharpCore, no external tool) ──
+                        var direct = FolderSvc.TryNormalizePdfDirect(capturedBytes);
+                        if (direct != null)
+                        {
+                            normalizedBytes = direct;
+                            await Advance(sNorm, 2);
+                            return;
+                        }
+
+                        // ── Phase 2: parallel repair — GS + LibreOffice, 20s each ──
+                        const int repairSec = 20;
+                        int secsLeft = repairSec;
+                        sNorm.SubLabel = $"Ghostscript + LibreOffice: {secsLeft}s";
+                        await InvokeAsync(StateHasChanged);
+
+                        using var tickerCts = new System.Threading.CancellationTokenSource();
+
+                        // Countdown ticker (fires every second)
+                        _ = Task.Run(async () =>
+                        {
+                            while (!tickerCts.Token.IsCancellationRequested && secsLeft > 0)
+                            {
+                                await Task.Delay(1000);
+                                if (tickerCts.Token.IsCancellationRequested) break;
+                                secsLeft = Math.Max(0, secsLeft - 1);
+                                sNorm.SubLabel = secsLeft > 0
+                                    ? $"Ghostscript + LibreOffice: {secsLeft}s"
+                                    : "Ghostscript + LibreOffice: finishing…";
+                                await InvokeAsync(StateHasChanged);
+                            }
+                        });
+
+                        var gsTask    = Task.Run(() => FolderSvc.RepairAndNormalizeViaGhostscript(capturedBytes, repairSec * 1000));
+                        var libreTask = Task.Run(() => FolderSvc.RepairAndNormalizeViaLibreOffice(capturedBytes, repairSec * 1000));
+
+                        // Take whichever succeeds first
+                        byte[]? result = null;
+                        string  winner = "";
+                        var pending = new List<Task<byte[]?>> { gsTask, libreTask };
+                        while (result == null && pending.Count > 0)
+                        {
+                            var done = await Task.WhenAny(pending);
+                            pending.Remove(done);
+                            var val = done.Result;
+                            if (val != null)
+                            {
+                                result = val;
+                                winner = done == gsTask ? "Ghostscript" : "LibreOffice";
+                            }
+                        }
+                        // Let remaining task finish (cleanup its temp files)
+                        if (pending.Count > 0) _ = Task.WhenAll(pending);
+
+                        tickerCts.Cancel();
+
+                        if (result != null)
+                        {
+                            normalizedBytes = result;
+                            sNorm.SubLabel  = $"via {winner}";
+                            await Advance(sNorm, 2);
+                        }
+                        else
+                        {
+                            // Both failed — use original bytes, mark step as warning (red X)
+                            normalizedBytes = capturedBytes;
+                            sNorm.SubLabel  = "GS and LibreOffice both failed";
+                            await Advance(sNorm, 3);
+                        }
                     }),
                     Task.Run(async () =>
                     {

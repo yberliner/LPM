@@ -1684,57 +1684,63 @@ public class PdfService
                 page.Margin(36);
                 page.DefaultTextStyle(x => x.FontSize(22).FontColor("#1a1a1a"));
 
-                // Signature at bottom via footer (avoids Extend+ScaleToFit conflict)
-                page.Footer().AlignRight()
-                    .Text(auditorName).FontSize(30).Bold().FontColor("#c0392b");
-
-                // ScaleToFit ensures everything always fits exactly 1 page —
-                // if total content is taller than the page it shrinks proportionally.
-                page.Content().ScaleToFit().Column(col =>
+                // A4 content area (margin 36pt each side): 841.89 - 72 = ~770pt.
+                // No page.Footer() — it would reduce the available content height.
+                // Instead the auditor signature lives inside the bottom half.
+                // Two equal Height(385) items → "The Next C/S:" lands at the exact midpoint.
+                page.Content().Column(col =>
                 {
-                    // ── Header ──
-                    col.Item().Column(hdr =>
+                    // ── Top half: header + free text ──
+                    col.Item().Height(385).Column(top =>
                     {
-                        hdr.Item().AlignCenter().PaddingBottom(18)
-                            .Text("Dror Center, Haifa, Israel").FontSize(26).FontColor("#1a1a1a");
-
-                        hdr.Item().PaddingBottom(4).Row(row =>
+                        top.Item().ScaleToFit().Column(inner =>
                         {
-                            row.RelativeItem().Text(t =>
+                            inner.Item().Column(hdr =>
                             {
-                                t.Span("PC's Name: ").FontSize(22).FontColor("#1a1a1a");
-                                t.Span(pcName).FontSize(28).Bold().FontColor("#c0392b");
-                            });
-                            row.AutoItem().Text(t =>
-                            {
-                                t.Span("Date: ").FontSize(22).FontColor("#1a1a1a");
-                                t.Span(date).FontSize(28).Bold().FontColor("#c0392b");
-                            });
-                        });
+                                hdr.Item().AlignCenter().PaddingBottom(18)
+                                    .Text("Dror Center, Haifa, Israel").FontSize(26).FontColor("#1a1a1a");
 
-                        hdr.Item().PaddingBottom(8).Text(t =>
-                        {
-                            t.Span("Auditor: ").FontSize(22).FontColor("#1a1a1a");
-                            t.Span(auditorName).FontSize(28).Bold().FontColor("#c0392b");
+                                hdr.Item().PaddingBottom(4).Row(row =>
+                                {
+                                    row.RelativeItem().Text(t =>
+                                    {
+                                        t.Span("PC's Name: ").FontSize(22).FontColor("#1a1a1a");
+                                        t.Span(pcName).FontSize(28).Bold().FontColor("#c0392b");
+                                    });
+                                    row.AutoItem().Text(t =>
+                                    {
+                                        t.Span("Date: ").FontSize(22).FontColor("#1a1a1a");
+                                        t.Span(date).FontSize(28).Bold().FontColor("#c0392b");
+                                    });
+                                });
+
+                                hdr.Item().PaddingBottom(8).Text(t =>
+                                {
+                                    t.Span("Auditor: ").FontSize(22).FontColor("#1a1a1a");
+                                    t.Span(auditorName).FontSize(28).Bold().FontColor("#c0392b");
+                                });
+                            });
+
+                            if (!string.IsNullOrWhiteSpace(topHtml))
+                                inner.Item().Column(htmlCol => RenderHtmlBlock(htmlCol, topHtml, 3f));
                         });
                     });
 
-                    // ── Top free text — fixed height so "Next C/S" is always at the same Y position.
-                    //    Inner ScaleToFit shrinks the HTML if it is taller than the reserved slot. ──
-                    col.Item().Height(60).ScaleToFit().Column(inner =>
+                    // ── Bottom half: "The Next C/S:" at the exact page midpoint ──
+                    col.Item().Height(385).Column(bot =>
                     {
-                        if (!string.IsNullOrWhiteSpace(topHtml))
-                            RenderHtmlBlock(inner, topHtml, 1.5f);
+                        bot.Item().AlignCenter().PaddingBottom(12)
+                            .Text("The Next C/S:")
+                            .FontSize(22).Bold().Underline().FontColor("#1a1a1a");
+
+                        if (!string.IsNullOrWhiteSpace(bottomHtml))
+                            bot.Item().PaddingTop(8).ScaleToFit()
+                                .Column(inner => RenderHtmlBlock(inner, bottomHtml, 3f));
+
+                        // Auditor signature at the very bottom of the page
+                        bot.Item().Extend().AlignBottom().AlignRight()
+                            .Text(auditorName).FontSize(30).Bold().FontColor("#c0392b");
                     });
-
-                    // ── "The Next C/S:" ──
-                    col.Item().AlignCenter().PaddingBottom(12)
-                        .Text("The Next C/S:")
-                        .FontSize(22).Bold().Underline().FontColor("#1a1a1a");
-
-                    // ── Bottom free text — ScaleToFit shrinks the HTML if it is too long. ──
-                    if (!string.IsNullOrWhiteSpace(bottomHtml))
-                        col.Item().PaddingTop(8).ScaleToFit().Column(inner => RenderHtmlBlock(inner, bottomHtml, 1.5f));
                 });
             });
         }).GeneratePdf();

@@ -1359,34 +1359,50 @@ public class FolderService
 
     // ── PDF Page Normalisation ────────────────────────────────────────────────
 
-    /// returns a new PDF where every page is padded to the largest dimensions (content centred).
-    /// Returns the original bytes unchanged when no normalisation is needed.
+    /// <summary>
+    /// Fast path: open with PdfSharpCore and apply MediaBox/CropBox normalisation.
+    /// Returns the normalised bytes on success, or null if PdfSharpCore cannot open the file.
+    /// </summary>
+    public byte[]? TryNormalizePdfDirect(byte[] pdfBytes) => TryNormalizeWithPdfSharp(pdfBytes);
+
+    /// <summary>
+    /// Repair via Ghostscript (timeoutMs), then normalise. Returns null on failure/timeout.
+    /// </summary>
+    public byte[]? RepairAndNormalizeViaGhostscript(byte[] pdfBytes, int timeoutMs = 20_000)
+    {
+        var repaired = RepairViaGhostscript(pdfBytes, timeoutMs);
+        if (repaired == null) return null;
+        return TryNormalizeWithPdfSharp(repaired) ?? repaired;
+    }
+
+    /// <summary>
+    /// Repair via LibreOffice (timeoutMs), then normalise. Returns null on failure/timeout.
+    /// </summary>
+    public byte[]? RepairAndNormalizeViaLibreOffice(byte[] pdfBytes, int timeoutMs = 20_000)
+    {
+        var repaired = RepairViaLibreOffice(pdfBytes, timeoutMs);
+        if (repaired == null) return null;
+        return TryNormalizeWithPdfSharp(repaired) ?? repaired;
+    }
+
+    /// <summary>
+    /// Legacy single-call entry point (used by non-UI callers).
+    /// Tries PdfSharp directly, then GS, then LibreOffice with default timeouts.
+    /// Returns original bytes on total failure.
     /// </summary>
     public byte[] NormalizePdfPageSizes(byte[] pdfBytes)
     {
-        // Fast path: try PdfSharpCore directly on the original bytes.
-        // Most uploaded PDFs are valid — no Ghostscript needed.
-        var result = TryNormalizeWithPdfSharp(pdfBytes);
-        if (result != null)
-        {
-            Console.WriteLine($"[FolderService] NormalizePdfPageSizes: fast path done ({pdfBytes.Length / 1024}KB)");
-            return result;
-        }
+        var direct = TryNormalizePdfDirect(pdfBytes);
+        if (direct != null) return direct;
 
-        // Slow path: PdfSharpCore couldn't open the file — repair via Ghostscript first,
-        // then retry the MediaBox normalization on the repaired bytes.
-        Console.WriteLine("[FolderService] NormalizePdfPageSizes: PdfSharp failed, falling back to Ghostscript repair");
-        var repairedBytes = RepairPdfViaGhostscript(pdfBytes);
-        var resultAfterRepair = TryNormalizeWithPdfSharp(repairedBytes);
-        if (resultAfterRepair != null)
-        {
-            Console.WriteLine($"[FolderService] NormalizePdfPageSizes: slow path done after GS repair ({pdfBytes.Length / 1024}KB → {resultAfterRepair.Length / 1024}KB)");
-            return resultAfterRepair;
-        }
+        var gs = RepairAndNormalizeViaGhostscript(pdfBytes, 20_000);
+        if (gs != null) return gs;
 
-        // PdfSharpCore still can't open even after Ghostscript — return repaired bytes as-is.
-        Console.WriteLine("[FolderService] NormalizePdfPageSizes: could not open even after GS repair, returning repaired bytes");
-        return repairedBytes;
+        var libre = RepairAndNormalizeViaLibreOffice(pdfBytes, 20_000);
+        if (libre != null) return libre;
+
+        Console.WriteLine("[Norm] All repair paths failed — returning original bytes");
+        return pdfBytes;
     }
 
     /// <summary>
@@ -1395,6 +1411,25 @@ public class FolderService
     /// Returns null if PdfSharpCore cannot open the file (caller should fall back to Ghostscript).
     /// Returns the (possibly modified) bytes on success.
     /// </summary>
+    // Returns the effective display size of a page as PDF viewers see it:
+    // CropBox (if present and valid) takes priority over MediaBox.
+    private static (double w, double h) EffectiveDisplaySize(PdfSharpCore.Pdf.PdfPage pg)
+    {
+        if (pg.Elements.GetObject("/CropBox") is PdfSharpCore.Pdf.PdfArray cb && cb.Elements.Count == 4)
+        {
+            try
+            {
+                double v(int i) => double.Parse(cb.Elements[i].ToString()!,
+                    System.Globalization.CultureInfo.InvariantCulture);
+                double w = Math.Abs(v(2) - v(0));
+                double h = Math.Abs(v(3) - v(1));
+                if (w > 1 && h > 1) return (w, h);
+            }
+            catch { }
+        }
+        return (pg.Width.Point, pg.Height.Point);
+    }
+
     private byte[]? TryNormalizeWithPdfSharp(byte[] pdfBytes)
     {
         PdfSharpCore.Pdf.PdfDocument doc;
@@ -1403,144 +1438,258 @@ public class FolderService
             var ms = new MemoryStream(pdfBytes);
             doc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Modify);
         }
-        catch
+        catch (Exception ex)
         {
+            Console.WriteLine($"[Norm] PdfReader.Open failed: {ex.Message}");
             return null; // signal caller to try Ghostscript repair
         }
 
         using (doc)
         {
+            Console.WriteLine($"[Norm] Opened PDF: {doc.PageCount} pages");
             if (doc.PageCount <= 1)
-                return pdfBytes; // nothing to normalise
-
-            // ── Find maximum page dimensions ──────────────────────────────
-            double maxW = 0, maxH = 0;
-            for (int i = 0; i < doc.PageCount; i++)
             {
-                maxW = Math.Max(maxW, doc.Pages[i].Width.Point);
-                maxH = Math.Max(maxH, doc.Pages[i].Height.Point);
+                Console.WriteLine("[Norm] Single page — skipping");
+                return pdfBytes;
             }
 
-            // ── Check whether any page differs by >5% in either dimension ─
-            bool needsNorm = false;
+            // ── Dump every page's boxes and compute max effective display size ──
+            double maxW = 0, maxH = 0;
+            bool anyCropBox = false;
             for (int i = 0; i < doc.PageCount; i++)
             {
-                double w = doc.Pages[i].Width.Point;
-                double h = doc.Pages[i].Height.Point;
-                if (Math.Abs(w - maxW) / maxW > 0.05 || Math.Abs(h - maxH) / maxH > 0.05)
+                var pg  = doc.Pages[i];
+                var mb  = pg.MediaBox;
+                var (dispW, dispH) = EffectiveDisplaySize(pg);
+                bool hasCrop  = pg.Elements.ContainsKey("/CropBox");
+                bool hasTrim  = pg.Elements.ContainsKey("/TrimBox");
+                bool hasBleed = pg.Elements.ContainsKey("/BleedBox");
+                if (hasCrop) anyCropBox = true;
+                Console.WriteLine($"[Norm] Page {i}: MB=[{mb.X1:F1},{mb.Y1:F1},{mb.X2:F1},{mb.Y2:F1}]" +
+                    $"  MB_size={pg.Width.Point:F1}×{pg.Height.Point:F1}" +
+                    $"  display={dispW:F1}×{dispH:F1}" +
+                    $"  Rot={pg.Rotate}  Crop={hasCrop}  Trim={hasTrim}  Bleed={hasBleed}");
+                maxW = Math.Max(maxW, dispW);
+                maxH = Math.Max(maxH, dispH);
+            }
+            Console.WriteLine($"[Norm] maxDisplayW={maxW:F2} maxDisplayH={maxH:F2}  anyCropBox={anyCropBox}");
+
+            // ── Decide if normalisation is needed ─────────────────────────
+            // needsNorm = any page's effective display size differs from max OR any CropBox present
+            // (CropBoxes are stripped even when all pages are same size, since viewers use them
+            //  as the visible area — removing them makes MediaBox authoritative)
+            bool needsNorm = anyCropBox;
+            if (!needsNorm)
+            {
+                for (int i = 0; i < doc.PageCount; i++)
                 {
-                    needsNorm = true;
-                    break;
+                    var (dw, dh) = EffectiveDisplaySize(doc.Pages[i]);
+                    if (dw != maxW || dh != maxH) { needsNorm = true; break; }
                 }
             }
 
             if (!needsNorm)
             {
-                Console.WriteLine($"[FolderService] NormalizePdfPageSizes: all pages uniform ({maxW:F0}×{maxH:F0}pt), no change needed");
-                return pdfBytes; // return original bytes unchanged — fastest possible result
+                Console.WriteLine($"[Norm] All pages uniform ({maxW:F0}×{maxH:F0}pt), no CropBoxes — no change needed");
+                return pdfBytes;
             }
 
-            Console.WriteLine($"[FolderService] NormalizePdfPageSizes: normalising {doc.PageCount} pages → {maxW:F0}×{maxH:F0}pt");
+            Console.WriteLine($"[Norm] Normalising {doc.PageCount} pages → {maxW:F0}×{maxH:F0}pt");
 
-            // ── Modify MediaBox of each undersized page in-place ──────────
+            // ── Normalise every page ───────────────────────────────────────
             for (int i = 0; i < doc.PageCount; i++)
             {
-                double srcW = doc.Pages[i].Width.Point;
-                double srcH = doc.Pages[i].Height.Point;
-                if (Math.Abs(srcW - maxW) / maxW <= 0.05 && Math.Abs(srcH - maxH) / maxH <= 0.05)
+                var pg = doc.Pages[i];
+                var (dispW, dispH) = EffectiveDisplaySize(pg);
+
+                // Remove all clip/trim boxes — MediaBox becomes the sole authority
+                foreach (var key in new[] { "/CropBox", "/TrimBox", "/BleedBox", "/ArtBox" })
+                    if (pg.Elements.ContainsKey(key))
+                    {
+                        Console.WriteLine($"[Norm] Page {i}: removing {key}");
+                        pg.Elements.Remove(key);
+                    }
+
+                if (dispW == maxW && dispH == maxH)
+                {
+                    // This page's display area already equals the target — but its MediaBox
+                    // may differ (e.g., it had a CropBox that was removed above, or the
+                    // MediaBox happens to be exactly maxW×maxH). In either case, ensure the
+                    // MediaBox is set to exactly maxW×maxH so all pages are byte-consistent.
+                    var mb0 = pg.MediaBox;
+                    double mbW = pg.Width.Point;
+                    double mbH = pg.Height.Point;
+                    if (Math.Abs(mbW - maxW) > 0.5 || Math.Abs(mbH - maxH) > 0.5)
+                    {
+                        // MediaBox doesn't match — expand it to cover maxW×maxH
+                        double ox = (maxW - mbW) / 2.0;
+                        double oy = (maxH - mbH) / 2.0;
+                        var arr = new PdfSharpCore.Pdf.PdfArray();
+                        arr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(mb0.X1 - ox));
+                        arr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(mb0.Y1 - oy));
+                        arr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(mb0.X2 + ox));
+                        arr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(mb0.Y2 + oy));
+                        pg.Elements["/MediaBox"] = arr;
+                        Console.WriteLine($"[Norm] Page {i}: MB adjusted {mbW:F1}×{mbH:F1} → {maxW:F0}×{maxH:F0}pt (was crop-sized)");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[Norm] Page {i}: display={dispW:F1}×{dispH:F1} already matches — boxes cleared");
+                    }
                     continue;
+                }
 
-                double offsetX = (maxW - srcW) / 2.0;
-                double offsetY = (maxH - srcH) / 2.0;
-
-                var mb   = doc.Pages[i].MediaBox;
+                // Expand MediaBox to maxW×maxH, centring the existing content
+                double offsetX = (maxW - dispW) / 2.0;
+                double offsetY = (maxH - dispH) / 2.0;
+                var mb = pg.MediaBox;
+                Console.WriteLine($"[Norm] Page {i}: MB=[{mb.X1:F1},{mb.Y1:F1},{mb.X2:F1},{mb.Y2:F1}]" +
+                    $"  display={dispW:F1}×{dispH:F1}  offset=({offsetX:F1},{offsetY:F1})");
                 var mArr = new PdfSharpCore.Pdf.PdfArray();
                 mArr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(mb.X1 - offsetX));
                 mArr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(mb.Y1 - offsetY));
                 mArr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(mb.X2 + offsetX));
                 mArr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(mb.Y2 + offsetY));
-                doc.Pages[i].Elements["/MediaBox"] = mArr;
-
-                foreach (var key in new[] { "/CropBox", "/TrimBox", "/BleedBox", "/ArtBox" })
-                    if (doc.Pages[i].Elements.ContainsKey(key))
-                        doc.Pages[i].Elements.Remove(key);
-
-                Console.WriteLine($"[FolderService] NormalizePdfPageSizes: page {i} expanded {srcW:F1}×{srcH:F1} → {maxW:F0}×{maxH:F0}pt");
+                pg.Elements["/MediaBox"] = mArr;
+                Console.WriteLine($"[Norm] Page {i}: expanded {dispW:F1}×{dispH:F1} → {maxW:F0}×{maxH:F0}pt");
             }
 
             using var outMs = new MemoryStream();
             doc.Save(outMs);
-            return outMs.ToArray();
+            var result = outMs.ToArray();
+
+            // ── Verify: re-read saved bytes and confirm page sizes ─────────
+            try
+            {
+                using var vms = new MemoryStream(result);
+                using var vdoc = PdfSharpCore.Pdf.IO.PdfReader.Open(vms,
+                    PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
+                Console.WriteLine($"[Norm] Verify after save ({vdoc.PageCount} pages):");
+                for (int i = 0; i < vdoc.PageCount; i++)
+                {
+                    var (vw, vh) = EffectiveDisplaySize(vdoc.Pages[i]);
+                    Console.WriteLine($"[Norm]   page {i}: MB={vdoc.Pages[i].Width.Point:F1}×{vdoc.Pages[i].Height.Point:F1}" +
+                        $"  display={vw:F1}×{vh:F1}" +
+                        $"  CropBox={vdoc.Pages[i].Elements.ContainsKey("/CropBox")}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Norm] Verify re-read failed: {ex.Message}");
+            }
+
+            return result;
         }
     }
 
     /// <summary>
-    /// Passes the PDF through Ghostscript for a clean re-encode, repairing broken XRef tables
-    /// and other structural issues that prevent PdfSharpCore from opening the file.
-    /// Returns the original bytes unchanged if Ghostscript is unavailable or fails.
+    /// <summary>
+    /// Repair via Ghostscript re-encode. Returns repaired bytes, or null on failure/timeout/unavailable.
     /// </summary>
-    private byte[] RepairPdfViaGhostscript(byte[] pdfBytes)
+    private byte[]? RepairViaGhostscript(byte[] pdfBytes, int timeoutMs)
     {
         if (string.IsNullOrEmpty(_ghostscriptExe) || !File.Exists(_ghostscriptExe))
-            return pdfBytes;
+        {
+            Console.WriteLine("[Norm/GS] Ghostscript not configured");
+            return null;
+        }
 
-        var tempIn  = Path.Combine(Path.GetTempPath(), $"lpm_pdf_in_{Guid.NewGuid():N}.pdf");
-        var tempOut = Path.Combine(Path.GetTempPath(), $"lpm_pdf_out_{Guid.NewGuid():N}.pdf");
-
+        var tempIn  = Path.Combine(Path.GetTempPath(), $"lpm_gs_in_{Guid.NewGuid():N}.pdf");
+        var tempOut = Path.Combine(Path.GetTempPath(), $"lpm_gs_out_{Guid.NewGuid():N}.pdf");
         try
         {
             File.WriteAllBytes(tempIn, pdfBytes);
-
             var args = string.Join(' ', new[]
             {
-                "-sDEVICE=pdfwrite",
-                "-dCompatibilityLevel=1.4",
-                "-dFastWebView=true",   // linearize — enables PDF.js range requests to load page 1 first
+                "-sDEVICE=pdfwrite", "-dCompatibilityLevel=1.4",
                 "-dNOPAUSE", "-dQUIET", "-dBATCH",
-                $"-sOutputFile=\"{tempOut}\"",
-                $"\"{tempIn}\""
+                $"-sOutputFile=\"{tempOut}\"", $"\"{tempIn}\""
             });
-
-            using var process = new Process();
-            process.StartInfo = new ProcessStartInfo
+            using var proc = new Process();
+            proc.StartInfo = new ProcessStartInfo
             {
-                FileName               = _ghostscriptExe,
-                Arguments              = args,
-                UseShellExecute        = false,
-                CreateNoWindow         = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError  = true
+                FileName = _ghostscriptExe, Arguments = args,
+                UseShellExecute = false, CreateNoWindow = true,
+                RedirectStandardOutput = true, RedirectStandardError = true
             };
-
-            process.Start();
-            bool exited = process.WaitForExit(30_000);
+            proc.Start();
+            bool exited = proc.WaitForExit(timeoutMs);
             if (!exited)
             {
-                try { process.Kill(entireProcessTree: true); } catch { }
-                process.WaitForExit(3_000);
-                Console.WriteLine("[FolderService] NormalizePdfPageSizes: Ghostscript repair timed out");
-                return pdfBytes;
+                try { proc.Kill(entireProcessTree: true); } catch { }
+                proc.WaitForExit(3_000);
+                Console.WriteLine($"[Norm/GS] Timed out after {timeoutMs / 1000}s");
+                return null;
             }
-
-            if (process.ExitCode == 0 && File.Exists(tempOut) && new FileInfo(tempOut).Length > 0)
+            if (proc.ExitCode == 0 && File.Exists(tempOut) && new FileInfo(tempOut).Length > 0)
             {
-                var repaired = File.ReadAllBytes(tempOut);
-                Console.WriteLine($"[FolderService] NormalizePdfPageSizes: repaired via Ghostscript ({pdfBytes.Length / 1024}KB → {repaired.Length / 1024}KB)");
-                return repaired;
+                var result = File.ReadAllBytes(tempOut);
+                Console.WriteLine($"[Norm/GS] Repaired {pdfBytes.Length / 1024}KB → {result.Length / 1024}KB");
+                return result;
             }
-
-            Console.WriteLine($"[FolderService] NormalizePdfPageSizes: Ghostscript repair exited {process.ExitCode}");
-            return pdfBytes;
+            Console.WriteLine($"[Norm/GS] Exit code {proc.ExitCode}");
+            return null;
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[FolderService] NormalizePdfPageSizes: Ghostscript repair error — {ex.Message}");
-            return pdfBytes;
-        }
+        catch (Exception ex) { Console.WriteLine($"[Norm/GS] Error: {ex.Message}"); return null; }
         finally
         {
             try { if (File.Exists(tempIn))  File.Delete(tempIn);  } catch { }
             try { if (File.Exists(tempOut)) File.Delete(tempOut); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// Repair via LibreOffice pdf→pdf round-trip. Returns repaired bytes, or null on failure/timeout/unavailable.
+    /// </summary>
+    private byte[]? RepairViaLibreOffice(byte[] pdfBytes, int timeoutMs)
+    {
+        if (!CanConvertToPdf)
+        {
+            Console.WriteLine("[Norm/LO] LibreOffice not configured");
+            return null;
+        }
+        var id     = Guid.NewGuid().ToString("N");
+        var inDir  = Path.Combine(Path.GetTempPath(), $"lpm_loin_{id}");
+        var outDir = Path.Combine(Path.GetTempPath(), $"lpm_loout_{id}");
+        Directory.CreateDirectory(inDir);
+        Directory.CreateDirectory(outDir);
+        try
+        {
+            var inPath = Path.Combine(inDir, "src.pdf");
+            File.WriteAllBytes(inPath, pdfBytes);
+            var args = $"--headless --convert-to pdf --outdir \"{outDir}\" \"{inPath}\"";
+            using var proc = new Process();
+            proc.StartInfo = new ProcessStartInfo
+            {
+                FileName = _libreOfficePath!, Arguments = args,
+                UseShellExecute = false, CreateNoWindow = true,
+                RedirectStandardOutput = true, RedirectStandardError = true
+            };
+            proc.Start();
+            bool exited = proc.WaitForExit(timeoutMs);
+            if (!exited)
+            {
+                try { proc.Kill(entireProcessTree: true); } catch { }
+                proc.WaitForExit(3_000);
+                Console.WriteLine($"[Norm/LO] Timed out after {timeoutMs / 1000}s");
+                return null;
+            }
+            var outPath = Path.Combine(outDir, "src.pdf");
+            if (proc.ExitCode == 0 && File.Exists(outPath) && new FileInfo(outPath).Length > 0)
+            {
+                var result = File.ReadAllBytes(outPath);
+                Console.WriteLine($"[Norm/LO] Repaired {pdfBytes.Length / 1024}KB → {result.Length / 1024}KB");
+                return result;
+            }
+            var err = proc.StandardError.ReadToEnd().Trim();
+            Console.WriteLine($"[Norm/LO] Exit {proc.ExitCode}: {err}");
+            return null;
+        }
+        catch (Exception ex) { Console.WriteLine($"[Norm/LO] Error: {ex.Message}"); return null; }
+        finally
+        {
+            try { Directory.Delete(inDir,  recursive: true); } catch { }
+            try { Directory.Delete(outDir, recursive: true); } catch { }
         }
     }
 

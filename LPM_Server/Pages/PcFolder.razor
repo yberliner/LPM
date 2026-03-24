@@ -600,8 +600,13 @@
             <div class="vr mx-0" style="border-color:rgba(255,255,255,.3);flex-shrink:0;"></div>
             @if (!string.IsNullOrEmpty(_csSessionName))
             {
+                var _csFileMissing = _folder != null && !_folder.WorkSheets.Any(ws =>
+                    SessionDisplayName(ws.File.FileName).Equals(_csSessionName, StringComparison.OrdinalIgnoreCase));
                 <div class="flex-grow-1 d-flex justify-content-center align-items-center gap-3">
-                    <span class="pcf-cs-session-label" title="Open this session file in the active pane" @onclick="OpenCsFile" style="cursor:pointer;">
+                    <span class="pcf-cs-session-label @(_csFileMissing ? "pcf-cs-session-label--missing" : "")"
+                          title="@(_csFileMissing ? "File is missing" : "Open this session file in the active pane")"
+                          @onclick="@(async () => { if (!_csFileMissing) await OpenCsFile(); })"
+                          style="@(_csFileMissing ? "" : "cursor:pointer;")">
                         <span style="opacity:.7;font-weight:400;">CSing:</span> @_csSessionName
                     </span>
                     <div class="pcf-timer @(_csReviewMinutes <= 0 ? "pcf-timer-zero" : "")"
@@ -1404,6 +1409,17 @@
         border-radius: 6px; padding: 3px 12px;
         font-size: .8rem; font-weight: 700; color: #fbbf24;
         animation: pcf-glow 2s ease-in-out infinite;
+    }
+    .pcf-cs-session-label--missing {
+        background: rgba(239,68,68,.12) !important;
+        border-color: #ef4444 !important;
+        color: #f87171 !important;
+        animation: pcf-missing-pulse 1.4s ease-in-out infinite !important;
+        cursor: default !important;
+    }
+    @@keyframes pcf-missing-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,.0); border-color: #ef4444; }
+        50%       { box-shadow: 0 0 0 6px rgba(239,68,68,.3); border-color: #fca5a5; }
     }
     .pcf-timer {
         display: flex; align-items: center; gap: 4px;
@@ -2399,6 +2415,8 @@
             match = _folder.WorkSheets
                 .FirstOrDefault(ws => SessionDisplayName(ws.File.FileName)
                     .Equals(_csSessionName, StringComparison.OrdinalIgnoreCase));
+            if (match == null)
+                Console.WriteLine($"ERROR: [PcFolder] CS session file missing — session='{_csSessionName}' (ID={_csSessionId}), PC={PcId}, user='{_userName}'");
         }
 
         if (match != null)
@@ -2609,7 +2627,7 @@
 
     int _selectGeneration; // incremented on each click to detect stale loads
 
-    void SelectFile(string relativePath, string fileName, string section = "", bool fitAfterLoad = false)
+    async Task SelectFile(string relativePath, string fileName, string section = "", bool fitAfterLoad = false)
     {
         Console.WriteLine($"[PcFolder] Selected file '{fileName}' (section: {section}) by '{_userName}' — for PC {PcId}");
         if (_extractMode) _ = CancelExtract();
@@ -2617,8 +2635,8 @@
         var idx = _paneCount == 1 ? 0 : _activeIdx;
         var paneId = PaneIds[idx];
 
-        // Fire-and-forget auto-save
-        _ = JS.InvokeVoidAsync("pcfViewer.savePane", paneId);
+        // Await save before loading new file to prevent race with loadPdf resetting pane state
+        await JS.InvokeVoidAsync("pcfViewer.savePane", paneId);
 
         _panes[idx].File = relativePath;
         _panes[idx].FileName = SessionDisplayName(fileName);
@@ -2704,14 +2722,14 @@
         }
     }
 
-    void OpenCsFile()
+    async Task OpenCsFile()
     {
         if (_folder == null || string.IsNullOrEmpty(_csSessionName)) return;
         var match = _folder.WorkSheets
             .FirstOrDefault(ws => SessionDisplayName(ws.File.FileName)
                 .Equals(_csSessionName, StringComparison.OrdinalIgnoreCase));
         if (match != null)
-            SelectFile(match.File.RelativePath, SessionDisplayName(match.File.FileName), "WorkSheet");
+            await SelectFile(match.File.RelativePath, SessionDisplayName(match.File.FileName), "WorkSheet");
     }
 
     // Voice "Double" command: collapse to single pane, show the right file, enter dual mode.
@@ -3795,7 +3813,7 @@
 
     void CloseWsCtxMenu() { _showWsCtxMenu = false; }
 
-    void WsCtxAddPinkSheet()
+    async Task WsCtxAddPinkSheet()
     {
         Console.WriteLine($"[PcFolder] Adding pink sheet to session '{_wsCtxSessionFileName}' by '{_userName}' — PC {PcId}");
         var sessionFileName = _wsCtxSessionFileName;
@@ -3828,7 +3846,7 @@
             targetIdx = 2; // 3rd pane (index 2)
         }
         _activeIdx = targetIdx;
-        SelectFile(pinkAtt.RelativePath, pinkAtt.FileName, "WorkSheet", fitAfterLoad: true);
+        await SelectFile(pinkAtt.RelativePath, pinkAtt.FileName, "WorkSheet", fitAfterLoad: true);
     }
 
     void WsCtxAddWhiteSheet(string name)
