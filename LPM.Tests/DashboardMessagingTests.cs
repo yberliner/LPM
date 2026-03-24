@@ -153,7 +153,7 @@ public class DashboardMessagingTests : IDisposable
         var admUsr = TestDbHelper.InsertUser(conn, "Adm", "pass");
         TestDbHelper.AssignRole(conn, admUsr, "Admin");
 
-        Assert.False(_svc.CheckOrRequestPermission(auditor, pc));
+        Assert.False(_svc.CheckOrRequestPermission(auditor, pc, $"auditor_{auditor}"));
     }
 
     [Fact]
@@ -167,7 +167,7 @@ public class DashboardMessagingTests : IDisposable
         var pc = TestDbHelper.InsertPerson(conn, "AnyPc", "AP");
         TestDbHelper.InsertPC(conn, pc);
 
-        Assert.True(_svc.CheckOrRequestPermission(auditor, pc));
+        Assert.True(_svc.CheckOrRequestPermission(auditor, pc, $"auditor_{auditor}"));
     }
 
     [Fact]
@@ -181,7 +181,7 @@ public class DashboardMessagingTests : IDisposable
 
         _svc.AddApprovedPermission(auditor, pc);
 
-        Assert.True(_svc.CheckOrRequestPermission(auditor, pc));
+        Assert.True(_svc.CheckOrRequestPermission(auditor, pc, $"auditor_{auditor}"));
     }
 
     // =========================================================================
@@ -206,7 +206,7 @@ public class DashboardMessagingTests : IDisposable
         var admUsr = TestDbHelper.InsertUser(conn, "ReqAdm", "pass");
         TestDbHelper.AssignRole(conn, admUsr, "Admin");
 
-        _svc.CheckOrRequestPermission(auditor, pc);
+        _svc.CheckOrRequestPermission(auditor, pc, $"auditor_{auditor}");
 
         var pending = _svc.GetPendingPermissionRequests();
         Assert.Single(pending);
@@ -227,13 +227,13 @@ public class DashboardMessagingTests : IDisposable
         var admUsr = TestDbHelper.InsertUser(conn, "ApvAdm", "pass");
         TestDbHelper.AssignRole(conn, admUsr, "Admin");
 
-        _svc.CheckOrRequestPermission(auditor, pc);
+        _svc.CheckOrRequestPermission(auditor, pc, $"auditor_{auditor}");
         var pending = _svc.GetPendingPermissionRequests();
 
         _svc.ApprovePermissionRequest(pending[0].Id);
 
         Assert.Empty(_svc.GetPendingPermissionRequests());
-        Assert.True(_svc.CheckOrRequestPermission(auditor, pc));
+        Assert.True(_svc.CheckOrRequestPermission(auditor, pc, $"auditor_{auditor}"));
     }
 
     [Fact]
@@ -248,7 +248,7 @@ public class DashboardMessagingTests : IDisposable
         var admUsr = TestDbHelper.InsertUser(conn, "RejAdm", "pass");
         TestDbHelper.AssignRole(conn, admUsr, "Admin");
 
-        _svc.CheckOrRequestPermission(auditor, pc);
+        _svc.CheckOrRequestPermission(auditor, pc, $"auditor_{auditor}");
         var pending = _svc.GetPendingPermissionRequests();
 
         _svc.RejectPermissionRequest(pending[0].Id);
@@ -268,7 +268,7 @@ public class DashboardMessagingTests : IDisposable
         _svc.AddApprovedPermission(auditor, pc);
         _svc.AddApprovedPermission(auditor, pc); // should not throw
 
-        Assert.True(_svc.CheckOrRequestPermission(auditor, pc));
+        Assert.True(_svc.CheckOrRequestPermission(auditor, pc, $"auditor_{auditor}"));
     }
 
     [Fact]
@@ -292,7 +292,7 @@ public class DashboardMessagingTests : IDisposable
         var admUsr = TestDbHelper.InsertUser(conn, "RmAdm", "pass");
         TestDbHelper.AssignRole(conn, admUsr, "Admin");
 
-        Assert.False(_svc.CheckOrRequestPermission(auditor, pc));
+        Assert.False(_svc.CheckOrRequestPermission(auditor, pc, $"auditor_{auditor}"));
     }
 
     // =========================================================================

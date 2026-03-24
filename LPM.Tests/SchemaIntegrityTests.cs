@@ -399,7 +399,7 @@ public class SchemaIntegrityTests : IDisposable
         {
             _ = new DashboardService(TestConfig.For(_dbPath), new LPM.Services.MessageNotifier());
             _ = new PcService(TestConfig.For(_dbPath));
-            _ = new AuditorService(TestConfig.For(_dbPath));
+            _ = new AuditorService(TestConfig.For(_dbPath), new LPM.Auth.UserDb(TestConfig.For(_dbPath)));
             _ = new AcademyService(TestConfig.For(_dbPath));
             _ = new StatisticsService(TestConfig.For(_dbPath));
             _ = new UserDb(TestConfig.For(_dbPath));

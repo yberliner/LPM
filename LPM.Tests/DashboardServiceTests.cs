@@ -296,9 +296,9 @@ public class DashboardServiceTests : IDisposable
     }
 
     [Fact]
-    public void AddCsReview_DuplicateSessionId_ThrowsException()
+    public void AddCsReview_DuplicateSessionId_ReturnsExistingId()
     {
-        // cs_reviews.SessionId has UNIQUE constraint
+        // AddCsReview is idempotent: duplicate call returns the existing CsReviewId
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "Aud1");
         TestDbHelper.InsertAuditor(conn, audId);
@@ -307,11 +307,11 @@ public class DashboardServiceTests : IDisposable
         var pcId  = TestDbHelper.InsertPerson(conn, "Client1");
         TestDbHelper.InsertPC(conn, pcId);
 
-        var sid = TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-10", 3600);
-        _svc.AddCsReview(csId, sid, 1200, "Draft", null);
+        var sid   = TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-10", 3600);
+        var first = _svc.AddCsReview(csId, sid, 1200, "Draft", null);
+        var second = _svc.AddCsReview(csId, sid, 600, "Approved", null);
 
-        Assert.Throws<Microsoft.Data.Sqlite.SqliteException>(
-            () => _svc.AddCsReview(csId, sid, 600, "Approved", null));
+        Assert.Equal(first, second);
     }
 
     [Fact]

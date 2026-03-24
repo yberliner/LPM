@@ -18,7 +18,7 @@ public class AuditorServiceTests : IDisposable
     public AuditorServiceTests()
     {
         _dbPath = TestDbHelper.CreateTempDb();
-        _svc    = new AuditorService(TestConfig.For(_dbPath));
+        _svc    = new AuditorService(TestConfig.For(_dbPath), new LPM.Auth.UserDb(TestConfig.For(_dbPath)));
     }
 
     public void Dispose() => TestDbHelper.Cleanup(_dbPath);
@@ -76,15 +76,15 @@ public class AuditorServiceTests : IDisposable
     }
 
     [Fact]
-    public void GetAllAuditors_IncludesSoloStaff()
+    public void GetAllAuditors_ExcludesSoloStaff()
     {
+        // GetAllAuditors only returns StaffRole IN ('Auditor','CS') — Solo is excluded
         using var conn = Open();
         var id = TestDbHelper.InsertPerson(conn, "SoloUser", "S");
         TestDbHelper.InsertAuditor(conn, id, staffRole: "Solo", isActive: true);
 
         var list = _svc.GetAllAuditors();
-        Assert.Single(list);
-        Assert.Equal("Solo", list[0].StaffRole);
+        Assert.Empty(list);
     }
 
     // =========================================================================
@@ -136,7 +136,7 @@ public class AuditorServiceTests : IDisposable
         var id = TestDbHelper.InsertPerson(conn, "OldFirst", "OldLast");
         TestDbHelper.InsertAuditor(conn, id, staffRole: "Auditor");
 
-        _svc.UpdateAuditor(id, "NewFirst", "NewLast", gradeId: 3, staffRole: "Auditor", isActive: true);
+        _svc.UpdateAuditor(id, "NewFirst", "NewLast", gradeId: 3, staffRole: "Auditor", isActive: true, isAdmin: false, allowAll: false);
 
         var detail = _svc.GetAuditorDetail(id)!;
         Assert.Equal("NewFirst", detail.FirstName);
@@ -152,7 +152,7 @@ public class AuditorServiceTests : IDisposable
         var id = TestDbHelper.InsertPerson(conn, "Active", "A");
         TestDbHelper.InsertAuditor(conn, id, staffRole: "Auditor", isActive: true);
 
-        _svc.UpdateAuditor(id, "Active", "A", null, staffRole: "Auditor", isActive: false);
+        _svc.UpdateAuditor(id, "Active", "A", null, staffRole: "Auditor", isActive: false, isAdmin: false, allowAll: false);
 
         var detail = _svc.GetAuditorDetail(id)!;
         Assert.False(detail.IsActive);
@@ -165,7 +165,7 @@ public class AuditorServiceTests : IDisposable
         var id = TestDbHelper.InsertPerson(conn, "Staff", "S");
         TestDbHelper.InsertAuditor(conn, id, staffRole: "Auditor");
 
-        _svc.UpdateAuditor(id, "Staff", "S", null, staffRole: "CS", isActive: true);
+        _svc.UpdateAuditor(id, "Staff", "S", null, staffRole: "CS", isActive: true, isAdmin: false, allowAll: false);
 
         var detail = _svc.GetAuditorDetail(id)!;
         Assert.Equal("CS", detail.StaffRole);

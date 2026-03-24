@@ -72,8 +72,7 @@ public static class TestDbHelper
 
         Exec(conn, @"
             CREATE TABLE IF NOT EXISTS core_pcs (
-                PcId        INTEGER NOT NULL PRIMARY KEY,
-                IsAlsoSolo  INTEGER NOT NULL DEFAULT 0
+                PcId        INTEGER NOT NULL PRIMARY KEY
             )");
 
         Exec(conn, @"
