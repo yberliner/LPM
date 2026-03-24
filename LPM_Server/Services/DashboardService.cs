@@ -1651,8 +1651,8 @@ public class DashboardService
 
         var where = new System.Text.StringBuilder(
             includeApproved
-                ? "s.AuditorId IS NOT NULL AND s.VerifiedStatus IN ('Pending','Approved')"
-                : "s.AuditorId IS NOT NULL AND s.VerifiedStatus != 'Approved'");
+                ? "s.AuditorId IS NOT NULL AND s.VerifiedStatus IN ('Pending','Approved') AND COALESCE(s.IsImported,0) = 0"
+                : "s.AuditorId IS NOT NULL AND s.VerifiedStatus != 'Approved' AND COALESCE(s.IsImported,0) = 0");
 
         if (includeApproved && from.HasValue)
         {
@@ -1726,7 +1726,7 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
 
         var where = new System.Text.StringBuilder(
-            includeApproved ? "1=1" : "cr.Status != 'Approved'");
+            includeApproved ? "COALESCE(s.IsImported,0) = 0" : "cr.Status != 'Approved' AND COALESCE(s.IsImported,0) = 0");
 
         if (includeApproved && from.HasValue)
         {
@@ -2353,6 +2353,7 @@ public class DashboardService
             JOIN core_persons pc ON pc.PersonId = s.PcId
             WHERE s.AuditorId IS NOT NULL
               AND s.SessionDate >= @from AND s.SessionDate <= @to
+              AND COALESCE(s.IsImported,0) = 0
             ORDER BY s.AuditorId, s.SessionDate, s.SequenceInDay";
         sessCmd.Parameters.AddWithValue("@from", fromStr);
         sessCmd.Parameters.AddWithValue("@to",   toStr);
@@ -2388,6 +2389,7 @@ public class DashboardService
             JOIN sess_sessions s  ON s.SessionId  = cr.SessionId
             JOIN core_persons  pc ON pc.PersonId  = s.PcId
             WHERE s.SessionDate >= @from AND s.SessionDate <= @to
+              AND COALESCE(s.IsImported,0) = 0
             ORDER BY cr.CsId, s.SessionDate";
         csCmd.Parameters.AddWithValue("@from", fromStr);
         csCmd.Parameters.AddWithValue("@to",   toStr);
