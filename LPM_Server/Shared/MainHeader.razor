@@ -1297,9 +1297,6 @@
 
                             @* Free text — above "The Next C/S:" *@
                             <div class="mt-2">
-                                <div style="font-size:1.25rem; font-weight:700; color:#ef4444; margin-bottom:4px;">
-                                    My expression from the session
-                                </div>
                                 <div id="step3-top-editor"></div>
                             </div>
 
@@ -2204,8 +2201,11 @@
     .arf-cell-time {
         color-scheme: dark;
     }
+    #step3-top-editor .ql-container.ql-snow {
+        height: 48px; overflow-y: auto;
+    }
     #step3-top-editor .ql-editor {
-        min-height: 96px; max-height: 96px; overflow-y: auto;
+        min-height: 0 !important; max-height: none;
     }
     #arf-summary-wrap .ql-editor {
         min-height: 70px; font-size: .82rem;

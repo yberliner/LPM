@@ -3392,7 +3392,7 @@
         {
             var paneId = PaneIds[_activeIdx];
             var dataJson = await JS.InvokeAsync<string>("pcfViewer.getAnnotationData", paneId);
-            await JS.InvokeVoidAsync("pcfSaveAnnotatedPdf", PcId, file, dataJson, Solo);
+            await JS.InvokeVoidAsync("pcfSaveAnnotatedPdf", PcId, file, dataJson, Solo, paneId);
 
             _hasAnnotations = false;
             var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";

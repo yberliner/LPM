@@ -1164,7 +1164,7 @@ window.pcfViewer = {
         if (!pane || pane.readOnly || pane.annotations.length === 0 || !pane.filePath || !this._pcId) return;
 
         const dataJson = this.getAnnotationData(paneId);
-        await window.pcfSaveAnnotatedPdf(this._pcId, pane.filePath, dataJson, pane.solo);
+        await window.pcfSaveAnnotatedPdf(this._pcId, pane.filePath, dataJson, pane.solo, paneId);
         pane.annotations = [];
     },
 

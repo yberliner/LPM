@@ -79,9 +79,9 @@
     <script src="/js/quill-interop.js"></script>
 
     <!-- PC Folder viewer -->
-    <script src="/js/pcf-viewer.js?v=23"></script>
+    <script src="/js/pcf-viewer.js?v=24"></script>
     <script>
-        window.pcfSaveAnnotatedPdf = async function(pcId, filePath, dataJson, solo) {
+        window.pcfSaveAnnotatedPdf = async function(pcId, filePath, dataJson, solo, paneId) {
             const meta = JSON.parse(dataJson);
             const formData = new FormData();
             const metaForSend = { totalPages: meta.totalPages, pages: [] };
@@ -101,20 +101,34 @@
             formData.append('meta', JSON.stringify(metaForSend));
 
             const soloParam = solo ? '&solo=true' : '';
-            const saveResp = await fetch('/api/pc-file-save-annotated?pcId=' + pcId + '&path=' + encodeURIComponent(filePath) + soloParam, {
-                method: 'POST',
-                body: formData
-            });
-            if (saveResp.status === 422) {
-                // Corrupt PDF (invalid XRef) — show warning but don't crash
-                console.warn('[pcfSave] PDF has corrupt XRef table, annotations not saved for:', filePath);
-                const toast = document.createElement('div');
-                toast.className = 'position-fixed bottom-0 end-0 m-3 alert alert-warning shadow';
-                toast.style.zIndex = '9999';
-                toast.textContent = 'PDF זה פגום ולא ניתן לשמור עליו הערות';
-                document.body.appendChild(toast);
-                setTimeout(() => toast.remove(), 5000);
-                return;
+            const saveUrl = '/api/pc-file-save-annotated?pcId=' + pcId + '&path=' + encodeURIComponent(filePath) + soloParam;
+            const saveResp = await fetch(saveUrl, { method: 'POST', body: formData });
+
+            if (saveResp.status === 422 && paneId) {
+                // Corrupt XRef — retry by rasterising ALL pages from the live canvases
+                console.warn('[pcfSave] 422 corrupt XRef, retrying as full raster for pane:', paneId);
+                const pane = window.pcfViewer && window.pcfViewer.panes && window.pcfViewer.panes[paneId];
+                if (pane && pane.pages && pane.pages.length > 0) {
+                    const rfd = new FormData();
+                    const rmeta = { totalPages: pane.pages.length, pages: [] };
+                    let ri = 0;
+                    for (const pg of pane.pages) {
+                        const off = document.createElement('canvas');
+                        off.width  = pg.canvas.width;
+                        off.height = pg.canvas.height;
+                        const ctx = off.getContext('2d');
+                        ctx.drawImage(pg.canvas, 0, 0);
+                        ctx.drawImage(pg.overlay, 0, 0);
+                        const blob = await new Promise(res => off.toBlob(res, 'image/png'));
+                        rfd.append('img_' + ri, blob, 'img_' + ri + '.png');
+                        rmeta.pages.push({ action: 'full_new', srcPageIdx: -1, w: pg.canvas.width, h: pg.canvas.height, imgIdx: ri });
+                        ri++;
+                    }
+                    rfd.append('meta', JSON.stringify(rmeta));
+                    const retryResp = await fetch(saveUrl, { method: 'POST', body: rfd });
+                    if (retryResp.ok) { console.log('[pcfSave] Raster retry succeeded'); return; }
+                }
+                return; // silently swallow — can't save this PDF
             }
             if (!saveResp.ok) throw new Error('Save failed: ' + saveResp.status);
         };

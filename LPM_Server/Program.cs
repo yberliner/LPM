@@ -540,27 +540,29 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
     var meta = System.Text.Json.JsonSerializer.Deserialize<AnnSaveMeta>(metaJson, jOpts);
     if (meta?.Pages == null) return Results.BadRequest("Invalid meta");
 
-    // Load the original PDF so unchanged pages are preserved as vectors
-    var originalBytes = svc.ReadFileBytes(pcId, path, solo);
-    if (originalBytes == null) return Results.NotFound();
-
+    // Only load original PDF if any page needs vector data from it
+    var needsOriginal = meta.Pages.Any(p => p.Action == "original" || p.Action == "overlay");
     PdfSharpCore.Pdf.PdfDocument? originalDoc = null;
-    foreach (var attempt in new[] { originalBytes, (byte[]?)null })
+    if (needsOriginal)
     {
-        var bytesToOpen = attempt ?? svc.RepairPdf(originalBytes);
-        if (bytesToOpen == null) break;
+        var originalBytes = svc.ReadFileBytes(pcId, path, solo);
+        if (originalBytes == null) return Results.NotFound();
         try
         {
-            using var ms0 = new MemoryStream(bytesToOpen);
+            using var ms0 = new MemoryStream(originalBytes);
             originalDoc = PdfReader.Open(ms0, PdfDocumentOpenMode.Import);
-            break;
         }
         catch (PdfSharpCore.Pdf.IO.PdfReaderException ex)
         {
-            Console.WriteLine($"[AnnSave] PDF XRef error (attempt {(attempt == null ? 2 : 1)}) for PC {pcId} path={path}: {ex.Message}");
+            Console.WriteLine($"[AnnSave] PDF XRef error for PC {pcId} path={path}: {ex.Message}");
+            return Results.Json(new { error = "PDF_CORRUPT" }, statusCode: 422);
         }
     }
-    if (originalDoc == null) return Results.Json(new { error = "PDF_CORRUPT" }, statusCode: 422);
+    else
+    {
+        // Raster-only save: verify file exists without opening it
+        if (svc.ReadFileBytes(pcId, path, solo) == null) return Results.NotFound();
+    }
     using var _disposeOriginalDoc = originalDoc;
     using var newDoc = new PdfSharpCore.Pdf.PdfDocument();
     const double pxScale = 1.5;
