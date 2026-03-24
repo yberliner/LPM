@@ -605,12 +605,6 @@
         {
             _userId = flags.UserId;
             _isSolo = flags.StaffRole == "Solo";
-            // If already confirmed, skip straight to Home
-            if (!UserDb.NeedsContactConfirm(_userId))
-            {
-                Nav.NavigateTo("/Home");
-                return;
-            }
         }
 
         // Pre-populate existing contact data if available
@@ -689,6 +683,13 @@
             _error = "An error occurred. Please try again.";
             Console.WriteLine($"[WelcomeContact] Error: {ex.Message}");
         }
+    }
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _userId > 0 && !UserDb.NeedsContactConfirm(_userId))
+            Nav.NavigateTo("/Home");
+        return Task.CompletedTask;
     }
 
     public void Dispose()
