@@ -2078,6 +2078,85 @@
     </div>
 }
 
+@* ── "Already open in pane N" toast ── *@
+@if (_dupeVisible)
+{
+    var _dupeColor  = _dupePaneNum == 1 ? "#3b82f6" : _dupePaneNum == 2 ? "#8b5cf6" : "#f59e0b";
+    var _dupeGlow   = _dupePaneNum == 1 ? "rgba(59,130,246,.35)" : _dupePaneNum == 2 ? "rgba(139,92,246,.35)" : "rgba(245,158,11,.35)";
+    <div class="pcf-dupe-toast" style="--dupe-color:@_dupeColor;--dupe-glow:@_dupeGlow;">
+        <div class="pcf-dupe-icon">
+            <i class="ri-layout-column-line"></i>
+        </div>
+        <div class="pcf-dupe-body">
+            <div class="pcf-dupe-name">@_dupeFileName</div>
+            <div class="pcf-dupe-sub">Already open in <span class="pcf-dupe-badge">Pane @_dupePaneNum</span></div>
+        </div>
+    </div>
+}
+
+<style>
+    .pcf-dupe-toast {
+        position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+        z-index: 99998;
+        display: flex; align-items: center; gap: 14px;
+        background: #0f172a;
+        border: 1.5px solid var(--dupe-color);
+        border-radius: 14px;
+        padding: 14px 22px 14px 18px;
+        min-width: 280px; max-width: 480px;
+        box-shadow: 0 0 0 0 var(--dupe-glow), 0 16px 48px rgba(0,0,0,.55);
+        animation: pcfDupeIn .28s cubic-bezier(.175,.885,.32,1.275) both,
+                   pcfDupePulse 1.1s ease-in-out .3s 3;
+        color: #f1f5f9;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    @@keyframes pcfDupeIn {
+        from { opacity: 0; transform: translateX(-50%) translateY(28px) scale(.88); }
+        to   { opacity: 1; transform: translateX(-50%) translateY(0)     scale(1);  }
+    }
+    @@keyframes pcfDupePulse {
+        0%,100% { box-shadow: 0 0 0 0   var(--dupe-glow), 0 16px 48px rgba(0,0,0,.55); }
+        50%     { box-shadow: 0 0 0 10px var(--dupe-glow), 0 16px 48px rgba(0,0,0,.55); }
+    }
+    .pcf-dupe-icon {
+        width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
+        background: color-mix(in srgb, var(--dupe-color) 18%, transparent);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.35rem; color: var(--dupe-color);
+        animation: pcfDupeIconSpin .5s cubic-bezier(.175,.885,.32,1.275) .05s both;
+    }
+    @@keyframes pcfDupeIconSpin {
+        from { transform: scale(0) rotate(-30deg); opacity: 0; }
+        to   { transform: scale(1) rotate(0deg);   opacity: 1; }
+    }
+    .pcf-dupe-body { min-width: 0; }
+    .pcf-dupe-name {
+        font-size: .85rem; font-weight: 700; color: #e2e8f0;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        max-width: 320px;
+        animation: pcfDupeTextIn .22s ease .1s both;
+    }
+    .pcf-dupe-sub {
+        font-size: .75rem; color: #64748b; margin-top: 3px;
+        animation: pcfDupeTextIn .22s ease .18s both;
+    }
+    @@keyframes pcfDupeTextIn {
+        from { opacity: 0; transform: translateY(6px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    .pcf-dupe-badge {
+        display: inline-block;
+        background: var(--dupe-color); color: #fff;
+        font-size: .7rem; font-weight: 700;
+        border-radius: 5px; padding: 1px 7px;
+        animation: pcfDupeBadgePop .3s cubic-bezier(.175,.885,.32,1.275) .25s both;
+    }
+    @@keyframes pcfDupeBadgePop {
+        from { transform: scale(0); opacity: 0; }
+        to   { transform: scale(1); opacity: 1; }
+    }
+</style>
+
 @code {
     [Parameter] public int PcId { get; set; }
     [Parameter] public int SessionId { get; set; }
@@ -2129,6 +2208,12 @@
     int _paneCount = 1;   // 1, 2, or 3
     int _activeIdx = 0;   // index into _panes / PaneIds
     int? _maximizedPane;  // which pane slot is fullscreen-maximized (null = normal)
+
+    // "Already open" toast
+    string _dupeFileName  = "";
+    int    _dupePaneNum   = 0;   // 1-based pane number (0 = hidden)
+    bool   _dupeVisible   = false;
+    System.Threading.CancellationTokenSource? _dupeCts;
 
     bool _sidebarOpen = true;
     bool _frontExpanded = true;
@@ -2629,10 +2714,20 @@
 
     async Task SelectFile(string relativePath, string fileName, string section = "", bool fitAfterLoad = false)
     {
+        // Block if this file is already open in a DIFFERENT pane
+        var idx = _paneCount == 1 ? 0 : _activeIdx;
+        for (int pi = 0; pi < _paneCount; pi++)
+        {
+            if (pi != idx && _panes[pi].File == relativePath)
+            {
+                await ShowDupeToast(_panes[pi].FileName ?? fileName, pi + 1);
+                return;
+            }
+        }
+
         Console.WriteLine($"[PcFolder] Selected file '{fileName}' (section: {section}) by '{_userName}' — for PC {PcId}");
         if (_extractMode) _ = CancelExtract();
         var gen = ++_selectGeneration;
-        var idx = _paneCount == 1 ? 0 : _activeIdx;
         var paneId = PaneIds[idx];
 
         // Await save before loading new file to prevent race with loadPdf resetting pane state
@@ -2720,6 +2815,20 @@
                 _dualInfo[paneId] = (result[0], result[1]);
             }
         }
+    }
+
+    async Task ShowDupeToast(string fileName, int paneNum)
+    {
+        _dupeCts?.Cancel();
+        _dupeCts = new System.Threading.CancellationTokenSource();
+        _dupeFileName = fileName;
+        _dupePaneNum  = paneNum;
+        _dupeVisible  = true;
+        StateHasChanged();
+        var token = _dupeCts.Token;
+        try { await Task.Delay(3200, token); } catch (TaskCanceledException) { return; }
+        _dupeVisible = false;
+        StateHasChanged();
     }
 
     async Task OpenCsFile()
