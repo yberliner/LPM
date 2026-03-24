@@ -835,14 +835,14 @@
 {
     <div class="modal show d-block" tabindex="-1"
          style="background:rgba(0,0,0,.5); z-index:9999;">
-        <div class="modal-dialog modal-dialog-centered @(_importStep == 2 ? "modal-lg" : "modal-md")"
+        <div class="modal-dialog modal-dialog-centered @(_importStep >= 2 ? "modal-lg" : "modal-md")"
              @onclick:stopPropagation="true">
             <div class="modal-content" style="background:#1e293b; color:#e2e8f0; border:1px solid #334155;">
                 <div class="modal-header py-2" style="background:linear-gradient(135deg,#1565c0,#1e88e5); border-bottom:none;">
                     <h5 class="modal-title fs-15 text-white d-flex align-items-center gap-2">
                         <i class="ri-upload-2-line"></i>Add Session
                         <span style="font-size:.7rem; background:rgba(255,255,255,.2); padding:2px 8px; border-radius:4px; font-weight:400;">
-                            Step @_importStep of 2
+                            Step @_importStep of 3
                         </span>
                     </h5>
                     <button type="button" class="btn-close btn-close-white"
@@ -902,7 +902,7 @@
                         }
                         } @* end else (has approved PCs) *@
                     }
-                    else
+                    else if (_importStep == 2)
                     {
                         @* ── Step 2: File Upload + Auditor Report Form ── *@
 
@@ -1176,6 +1176,59 @@
                             </div>
                         </div>
                     }
+                    else
+                    {
+                        @* ── Step 3: Next C/S Sheet ── *@
+                        <div style="display:flex; flex-direction:column; min-height:480px;">
+                            <div class="arf-subtitle">Dror Center, Haifa, Israel</div>
+
+                            @* extra line *@
+                            <div style="height:.9rem;"></div>
+
+                            @* PC Name + Date row — big, red, ":" labels, Date tight *@
+                            <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px;">
+                                <span style="font-size:1.35rem; font-weight:600; color:#94a3b8;">
+                                    PC's Name:&nbsp;<span style="color:#ef4444;">@(_approvedPcs.FirstOrDefault(p => p.PcId == _importPcId)?.FullName ?? "")</span>
+                                </span>
+                                <span style="font-size:1.35rem; font-weight:600; color:#94a3b8;">
+                                    Date:&nbsp;<span style="color:#ef4444;">@DateTime.Today.ToString("dd/MM/yyyy")</span>
+                                </span>
+                            </div>
+
+                            @* Auditor row — aligned left, same size *@
+                            <div style="font-size:1.35rem; font-weight:600; color:#94a3b8; margin-top:4px;">
+                                Auditor:&nbsp;<span style="color:#ef4444;">@(string.IsNullOrWhiteSpace(_importAuditorFullName) ? _logUsername : _importAuditorFullName)</span>
+                            </div>
+
+                            @* Free text — above "The Next C/S:" *@
+                            <div class="mt-2">
+                                <div id="step3-top-editor"></div>
+                            </div>
+
+                            @* ~20% spacer *@
+                            <div style="min-height:32px;"></div>
+
+                            @* The Next C/S: — centred, bold, underlined *@
+                            <div style="text-align:center; font-size:1.7rem; font-weight:700;
+                                        text-decoration:underline; color:#e2e8f0; padding:8px 0;">
+                                The Next C/S:
+                            </div>
+
+                            @* Free text — below "The Next C/S:" *@
+                            <div class="mt-2">
+                                <div id="step3-bottom-editor"></div>
+                            </div>
+
+                            @* lower spacer *@
+                            <div style="min-height:32px;"></div>
+
+                            @* Auditor signature — bottom right, big, red *@
+                            <div style="text-align:right; color:#ef4444; font-weight:600;
+                                        font-size:1.35rem; margin-top:16px;">
+                                @(string.IsNullOrWhiteSpace(_importAuditorFullName) ? _logUsername : _importAuditorFullName)
+                            </div>
+                        </div>
+                    }
 
                     @if (!string.IsNullOrEmpty(_importError))
                     {
@@ -1203,7 +1256,7 @@
                             </button>
                         }
                     }
-                    else
+                    else if (_importStep == 2)
                     {
                         <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
                                 @onclick="() => _importStep = 1">
@@ -1212,6 +1265,18 @@
                         <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showImportWizard = false">Cancel</button>
                         <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
                                 disabled="@(_importSessionBytes == null || _importDuplicate || ArfHasTimeErrors || !IsValidArfTime(_arfAdminTime) || string.IsNullOrWhiteSpace(_arfAdminTime) || !IsValidArfTime(_arfSessionLength) || ArfHasIncompleteRows)"
+                                @onclick="GoToStep3">
+                            Next <i class="ri-arrow-right-s-line"></i>
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                                @onclick="() => _importStep = 2">
+                            <i class="ri-arrow-left-s-line"></i> Back
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showImportWizard = false">Cancel</button>
+                        <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
                                 @onclick="ExecuteImport">
                             <i class="ri-upload-2-line"></i>
                             Go
@@ -2105,6 +2170,9 @@
     string   _importSessionFileName    = "";            // original filename (display only)
     string   _importNormalizedFileName  = "";           // normalized base name (no extension) — used for saving
     string   _importNormalizedSuffix    = "";           // part after the yymmdd prefix (empty if name is date-only)
+    string   _importAuditorFullName     = "";           // auditor's full name for step 3 signature
+    string   _step3TopHtml             = "";           // free-text above "The Next C/S:"
+    string   _step3BottomHtml          = "";           // free-text below  "The Next C/S:"
     bool     _importDateWasPrepended;                   // true when we auto-added a yymmdd prefix
     DateTime _importNormalizedDate      = DateTime.Today; // date used in the prefix (user-changeable)
     List<IBrowserFile> _importAttachments = [];
@@ -2389,6 +2457,7 @@
     {
         if (!_msgUserId.HasValue) return;
         _approvedPcs = DashSvc.GetSessionablePcsForUser(_msgUserId.Value, _logUsername);
+        _importAuditorFullName = DashSvc.GetPersonName(_msgUserId.Value);
         // Solo user: always their own PC (PersonId == PcId)
         _importPcId = _isSoloUser ? _msgUserId.Value : 0;
         _importSessionFile       = null;
@@ -2407,6 +2476,7 @@
         _importFreeSession = false;
         _importStep = 1;
         _arfDate = ""; _arfGrade = ""; _arfSessionLength = ""; _arfAdminTime = ""; _arfTotalTa = ""; _arfTaRangeFrom = ""; _arfTaRangeTo = ""; _arfExamReport = "F/N"; _arfSummary = "";
+        _step3TopHtml = ""; _step3BottomHtml = "";
         _arfRows = [new ArfRow()];
         _showImportWizard = true;
     }
@@ -2448,6 +2518,55 @@
             ");
             await InvokeAsync(() => RebuildArfSummary(pushToEditor: true));
         });
+    }
+
+    void GoToStep3()
+    {
+        _importStep = 3;
+        // Pre-fill bottom editor with previous session's NextCS
+        var prevNextCs = _importPcId > 0 ? DashSvc.GetLastNextCs(_importPcId) : null;
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(100);
+            await JSRuntime.InvokeVoidAsync("eval", @"
+                ['step3-top-editor','step3-bottom-editor'].forEach(function(id) {
+                    var el = document.getElementById(id);
+                    if (!el) return;
+                    var key = '_quill_' + id;
+                    if (window[key]) {
+                        try { window[key].container.parentElement.removeChild(window[key].container.previousSibling); window[key].container.remove(); } catch(e) {}
+                    }
+                    window[key] = new Quill(el, {
+                        theme: 'snow',
+                        placeholder: 'Type here...',
+                        modules: { toolbar: [
+                            ['bold','italic','underline'],
+                            [{ 'color': [] }],
+                            [{ 'size': ['10px','14px','18px','24px'] }],
+                            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                            ['clean']
+                        ]}
+                    });
+                });
+            ");
+            // Push previous NextCS into the bottom editor
+            if (!string.IsNullOrWhiteSpace(prevNextCs))
+            {
+                await JSRuntime.InvokeVoidAsync("eval",
+                    $"var q=window['_quill_step3-bottom-editor']; if(q) q.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(prevNextCs)};");
+            }
+        });
+    }
+
+    async Task ReadStep3Html()
+    {
+        var top = await JSRuntime.InvokeAsync<string>("eval",
+            "window['_quill_step3-top-editor'] ? window['_quill_step3-top-editor'].root.innerHTML : ''");
+        _step3TopHtml = (top == "<p><br></p>" || string.IsNullOrWhiteSpace(top)) ? "" : top;
+
+        var bot = await JSRuntime.InvokeAsync<string>("eval",
+            "window['_quill_step3-bottom-editor'] ? window['_quill_step3-bottom-editor'].root.innerHTML : ''");
+        _step3BottomHtml = (bot == "<p><br></p>" || string.IsNullOrWhiteSpace(bot)) ? "" : bot;
     }
 
     async Task OnSessionFileSelected(InputFileChangeEventArgs e)
@@ -2604,6 +2723,7 @@
         if (!_msgUserId.HasValue || _importPcId == 0 || _importSessionBytes == null) return;
         // Read final summary from Quill editor before closing modal
         await ReadArfSummaryFromEditor();
+        await ReadStep3Html();
 
         // Capture all needed data now (fields will be reset)
         var capturedPcId        = _importPcId;
@@ -2624,6 +2744,9 @@
         var capturedPcName      = _approvedPcs.FirstOrDefault(p => p.PcId == _importPcId)?.FullName ?? "";
         var capturedUsername    = _logUsername;
         var capturedIsSolo      = _isSoloUser;
+        var capturedStep3Top    = _step3TopHtml;
+        var capturedStep3Bottom = _step3BottomHtml;
+        var capturedAuditorName = string.IsNullOrWhiteSpace(_importAuditorFullName) ? _logUsername : _importAuditorFullName;
 
         // Close modal immediately and reset fields
         _showImportWizard        = false;
@@ -2634,6 +2757,8 @@
         _importNormalizedSuffix  = "";
         _importDateWasPrepended  = false;
         _importNormalizedDate    = DateTime.Today;
+        _step3TopHtml            = "";
+        _step3BottomHtml         = "";
         _importAttachments.Clear();
         _importAttachmentBytes.Clear();
         _importPcId   = 0;
@@ -2696,6 +2821,16 @@
                     capturedGrade, capturedSessLen, capturedAdminTime,
                     capturedTotalTa, taRange, capturedRows, capturedSummary);
                 FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, "arf.pdf", arfPdfBytes, capturedIsSolo);
+
+                // Save Next C/S bottom text to DB
+                if (!string.IsNullOrWhiteSpace(capturedStep3Bottom))
+                    DashSvc.SaveNextCs(sessionId, capturedStep3Bottom);
+
+                // Generate Next C/S PDF and attach
+                var nextCsPdfBytes = PdfSvc.GenerateNextCsPdf(
+                    capturedPcName, DateTime.Today.ToString("dd/MM/yyyy"),
+                    capturedAuditorName, capturedStep3Top, capturedStep3Bottom);
+                FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, "Next CS.pdf", nextCsPdfBytes, capturedIsSolo);
 
                 // Append TAA row
                 var sessionMinutes = sessionLenSec / 60;

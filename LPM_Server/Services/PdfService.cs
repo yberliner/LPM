@@ -1673,6 +1673,80 @@ public class PdfService
         }).GeneratePdf();
     }
 
+    // ── Next C/S Sheet PDF ──
+
+    public byte[] GenerateNextCsPdf(
+        string pcName, string date, string auditorName,
+        string? topHtml, string? bottomHtml)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+
+        return Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(36);
+                page.DefaultTextStyle(x => x.FontSize(22).FontColor("#1a1a1a"));
+
+                // A4 content height ≈ 770pt (842 − 2×36 margin)
+                // Header block = 80pt (~10%)
+                // Top HTML block = 305pt (~40%)  → total 385pt = 50%
+                // "The Next C/S:" lands at exactly the midpoint
+
+                // Signature always at bottom via footer (avoids Extend+ScaleToFit conflict)
+                page.Footer().AlignRight()
+                    .Text(auditorName).FontSize(30).Bold().FontColor("#c0392b");
+
+                page.Content().ScaleToFit().Column(col =>
+                {
+                    // ── Header block ──
+                    col.Item().Height(160).Column(hdr =>
+                    {
+                        hdr.Item().AlignCenter().PaddingBottom(18)
+                            .Text("Dror Center, Haifa, Israel").FontSize(26).FontColor("#1a1a1a");
+
+                        hdr.Item().PaddingBottom(4).Row(row =>
+                        {
+                            row.RelativeItem().Text(t =>
+                            {
+                                t.Span("PC's Name: ").FontSize(22).FontColor("#1a1a1a");
+                                t.Span(pcName).FontSize(28).Bold().FontColor("#c0392b");
+                            });
+                            row.AutoItem().Text(t =>
+                            {
+                                t.Span("Date: ").FontSize(22).FontColor("#1a1a1a");
+                                t.Span(date).FontSize(28).Bold().FontColor("#c0392b");
+                            });
+                        });
+
+                        hdr.Item().Text(t =>
+                        {
+                            t.Span("Auditor: ").FontSize(22).FontColor("#1a1a1a");
+                            t.Span(auditorName).FontSize(28).Bold().FontColor("#c0392b");
+                        });
+                    });
+
+                    // ── Top free text ──
+                    col.Item().Height(170).Column(inner =>
+                    {
+                        if (!string.IsNullOrWhiteSpace(topHtml))
+                            RenderHtmlBlock(inner, topHtml, 3f);
+                    });
+
+                    // ── "The Next C/S:" at ~50% ──
+                    col.Item().AlignCenter().PaddingBottom(12)
+                        .Text("The Next C/S:")
+                        .FontSize(44).Bold().Underline().FontColor("#1a1a1a");
+
+                    // ── Bottom free text ──
+                    if (!string.IsNullOrWhiteSpace(bottomHtml))
+                        col.Item().PaddingTop(8).Column(inner => RenderHtmlBlock(inner, bottomHtml, 3f));
+                });
+            });
+        }).GeneratePdf();
+    }
+
     // ── Session Summaries PDF (prepended to Folder Summary) ──
 
     static string SecsToHMM(int secs) => secs <= 0 ? "" : $"{secs / 3600}:{(secs % 3600) / 60:D2}";
@@ -1931,7 +2005,7 @@ public class PdfService
         return doc.PageCount;
     }
 
-    private static void ExtractInlineStyles(string tag, ref string? color, ref string? bgColor, ref float fontSize)
+    private static void ExtractInlineStyles(string tag, ref string? color, ref string? bgColor, ref float fontSize, float fontSizeMultiplier = 1f)
     {
         var styleMatch = Regex.Match(tag, @"style\s*=\s*""([^""]*)""");
         if (!styleMatch.Success) return;
@@ -1941,12 +2015,25 @@ public class PdfService
         var bgMatch = Regex.Match(style, @"background-color\s*:\s*([^;""]+)");
         if (bgMatch.Success) bgColor = bgMatch.Groups[1].Value.Trim();
         var sizeMatch = Regex.Match(style, @"font-size\s*:\s*(\d+)");
-        if (sizeMatch.Success) fontSize = float.Parse(sizeMatch.Groups[1].Value);
+        if (sizeMatch.Success) fontSize = float.Parse(sizeMatch.Groups[1].Value) * fontSizeMultiplier;
     }
 
-    private static void RenderHtmlBlock(ColumnDescriptor col, string html)
+    private static void RenderHtmlBlock(ColumnDescriptor col, string html, float fontSizeMultiplier = 1f)
     {
         Console.WriteLine($"[RenderHtmlBlock] Input HTML: {html}");
+
+        // Pre-process: inject list markers into <ol> and <ul> items so they survive the tag-strip
+        html = Regex.Replace(html, @"<ol[^>]*>(.*?)</ol>", m =>
+        {
+            int counter = 0;
+            return Regex.Replace(m.Groups[1].Value, @"<li([^>]*)>", _ =>
+                $"<li{_.Groups[1].Value}>{++counter}.\u00a0");
+        }, RegexOptions.Singleline | RegexOptions.IgnoreCase);
+
+        html = Regex.Replace(html, @"<ul[^>]*>(.*?)</ul>", m =>
+            Regex.Replace(m.Groups[1].Value, @"<li([^>]*)>", "<li$1>\u2022\u00a0"),
+            RegexOptions.Singleline | RegexOptions.IgnoreCase);
+
         // Split into paragraphs by <p>, <div>, <br>, <li> boundaries
         // Quill output: <p>text</p>, <p><br></p> for empty lines, <p class="ql-direction-rtl">...</p>
         var blocks = Regex.Split(html, @"(?=<p[\s>])|(?=<li[\s>])|(?=<div[\s>])");
@@ -1976,7 +2063,8 @@ public class PdfService
 
             item.Text(text =>
             {
-                text.DefaultTextStyle(x => x.FontSize(10));
+                float baseFs = 10f * fontSizeMultiplier;
+                text.DefaultTextStyle(x => x.FontSize(baseFs));
 
                 // Parse inline elements: <strong>, <em>, <u>, <s>, <span style="...">, plain text
                 var parts = Regex.Split(innerHtml, @"(<(?:strong|em|u|s|span|br)\b[^>]*>|</(?:strong|em|u|s|span)>)");
@@ -1988,7 +2076,7 @@ public class PdfService
                 bool bold = false, italic = false, underline = false, strike = false;
                 string? color = null;
                 string? bgColor = null;
-                float fontSize = 10f;
+                float fontSize = baseFs;
 
                 foreach (var part in parts)
                 {
@@ -1996,23 +2084,23 @@ public class PdfService
 
                     // Check for opening tags (may have style attributes)
                     if (part.StartsWith("<strong") || part.StartsWith("<b>") || part.StartsWith("<b "))
-                    { bold = true; ExtractInlineStyles(part, ref color, ref bgColor, ref fontSize); continue; }
+                    { bold = true; ExtractInlineStyles(part, ref color, ref bgColor, ref fontSize, fontSizeMultiplier); continue; }
                     if (part == "</strong>" || part == "</b>") { bold = false; continue; }
                     if (part.StartsWith("<em") || part.StartsWith("<i>") || part.StartsWith("<i "))
-                    { italic = true; ExtractInlineStyles(part, ref color, ref bgColor, ref fontSize); continue; }
+                    { italic = true; ExtractInlineStyles(part, ref color, ref bgColor, ref fontSize, fontSizeMultiplier); continue; }
                     if (part == "</em>" || part == "</i>") { italic = false; continue; }
-                    if (part.StartsWith("<u")) { underline = true; ExtractInlineStyles(part, ref color, ref bgColor, ref fontSize); continue; }
+                    if (part.StartsWith("<u")) { underline = true; ExtractInlineStyles(part, ref color, ref bgColor, ref fontSize, fontSizeMultiplier); continue; }
                     if (part == "</u>") { underline = false; continue; }
-                    if (part.StartsWith("<s>") || part.StartsWith("<s ")) { strike = true; ExtractInlineStyles(part, ref color, ref bgColor, ref fontSize); continue; }
+                    if (part.StartsWith("<s>") || part.StartsWith("<s ")) { strike = true; ExtractInlineStyles(part, ref color, ref bgColor, ref fontSize, fontSizeMultiplier); continue; }
                     if (part == "</s>") { strike = false; continue; }
                     if (part.StartsWith("<br")) { text.Span("\n"); continue; }
 
                     if (part.StartsWith("<span"))
                     {
-                        ExtractInlineStyles(part, ref color, ref bgColor, ref fontSize);
+                        ExtractInlineStyles(part, ref color, ref bgColor, ref fontSize, fontSizeMultiplier);
                         continue;
                     }
-                    if (part == "</span>") { color = null; bgColor = null; fontSize = 10f; continue; }
+                    if (part == "</span>") { color = null; bgColor = null; fontSize = baseFs; continue; }
 
                     // Skip other tags
                     if (part.StartsWith("<")) continue;

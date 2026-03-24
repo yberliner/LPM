@@ -1985,6 +1985,38 @@ public class DashboardService
         cmd.ExecuteNonQuery();
     }
 
+    /// Returns the NextCS html from the most recent session of the given PC (excluding the current session being created).
+    public string? GetLastNextCs(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT nc.NextCS
+            FROM sess_next_cs nc
+            JOIN sess_sessions s ON s.SessionId = nc.SessionId
+            WHERE s.PcId = @pcId AND nc.NextCS != ''
+            ORDER BY s.SessionDate DESC, s.SessionId DESC
+            LIMIT 1";
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        var result = cmd.ExecuteScalar();
+        return result is string s ? s : null;
+    }
+
+    public void SaveNextCs(int sessionId, string nextCsHtml)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO sess_next_cs (SessionId, NextCS, UpdatedAt)
+            VALUES (@sid, @html, datetime('now', '+2 hours'))
+            ON CONFLICT(SessionId) DO UPDATE SET NextCS = @html, UpdatedAt = datetime('now', '+2 hours')";
+        cmd.Parameters.AddWithValue("@sid", sessionId);
+        cmd.Parameters.AddWithValue("@html", nextCsHtml);
+        cmd.ExecuteNonQuery();
+    }
+
     public bool SessionBelongsToPc(int sessionId, int pcId)
     {
         using var conn = new SqliteConnection(_connectionString);
