@@ -922,9 +922,9 @@
                                 <div class="pcf-excel-header-info">
                                     <div class="pcf-excel-title">TAA Table</div>
                                     <div class="pcf-excel-meta">
-                                        <span><strong>PC Name:</strong> @_excelData.PcName</span>
+                                        <span><strong>PC Name:</strong> @_excelData?.PcName</span>
                                         <span><strong>Action:</strong>
-                                            <input value="@(_excelActionEdit ?? _excelData.Action)"
+                                            <input value="@(_excelActionEdit ?? _excelData?.Action)"
                                                    @oninput="e => { _excelActionEdit = e.Value?.ToString() ?? string.Empty; _excelDirty = true; }"
                                                    class="pcf-excel-action-input" />
                                         </span>
@@ -937,7 +937,7 @@
                                         <thead>
                                             <tr>
                                                 <th class="pcf-excel-rownum">#</th>
-                                                @foreach (var h in _excelData.ColumnHeaders.Take(6))
+                                                @foreach (var h in (_excelData?.ColumnHeaders ?? []).Take(6))
                                                 {
                                                     <th>@h</th>
                                                 }
@@ -946,7 +946,7 @@
                                         </thead>
                                         <tbody>
                                             @{
-                                                var dataRows = _excelData.Cells
+                                                var dataRows = (_excelData?.Cells ?? [])
                                                     .Where(c => c.Row >= 7 && c.Col <= 6)
                                                     .GroupBy(c => c.Row)
                                                     .OrderBy(g => g.Key)
@@ -1592,6 +1592,8 @@
         padding: 20px; gap: 12px; background: #64748b;
         scrollbar-width: auto; scrollbar-color: #475569 #64748b;
     }
+    .pcf-viewer.pcf-dual-mode { overflow: hidden !important; scrollbar-width: none !important; }
+    .pcf-viewer.pcf-dual-mode::-webkit-scrollbar { display: none !important; }
     .pcf-viewer.pcf-pan-mode { cursor: grab; }
     .pcf-viewer.pcf-pan-mode.pcf-panning { cursor: grabbing; }
     .pcf-viewer.pcf-pan-mode .pcf-annotation-canvas { pointer-events: none; }
@@ -2086,7 +2088,6 @@
     // New menu popover
     string? _newMenuSection;
     string _newMenuParentFolder = "";
-    bool _newMenuUpload;
     double _newMenuX, _newMenuY;
 
     // New folder inline input
@@ -2188,9 +2189,6 @@
     string _drawColor = "#22c55e";
     double _drawWidth = 2.5;
     int _fontSize = 14;
-    bool _showColors;
-    bool _showSizes;
-    bool _showWidths;
     bool _showAnnotSettings;
     bool _showZoomMenu;
     bool _showPaneMenu;
@@ -2398,14 +2396,18 @@
             await JS.InvokeVoidAsync("pcfViewer.setDotNetRef", _dotNetRef);
             await JS.InvokeVoidAsync("pcfViewer.setPcId", PcId);
 
+            // Load all panes in parallel — each loadPdf is independent
+            var paneTasks = new List<Task>();
             for (int i = 0; i < _paneCount; i++)
             {
                 if (!string.IsNullOrEmpty(_panes[i].File))
                 {
                     var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_panes[i].File!)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
-                    await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, PaneIds[i]);
+                    var paneId = PaneIds[i];
+                    paneTasks.Add(JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId).AsTask());
                 }
             }
+            await Task.WhenAll(paneTasks);
 
             // (context menu attachment happens for all renders below)
 
@@ -3281,7 +3283,6 @@
     {
         Console.WriteLine($"[PcFolder] Picked color '{color}' by '{_userName}' — for PC {PcId}");
         _drawColor = color;
-        _showColors = false;
         await JS.InvokeVoidAsync("pcfViewer.setColor", color);
     }
 
@@ -3289,7 +3290,6 @@
     {
         Console.WriteLine($"[PcFolder] Picked font size {size}px by '{_userName}' — for PC {PcId}");
         _fontSize = size;
-        _showSizes = false;
         await JS.InvokeVoidAsync("pcfViewer.setFontSize", size);
         _ = JS.InvokeVoidAsync("eval", $"document.cookie=\"lpmFontSize={size}; path=/; max-age=31536000; SameSite=Strict\";");
     }
@@ -3298,7 +3298,6 @@
     {
         Console.WriteLine($"[PcFolder] Picked stroke width {width} by '{_userName}' — PC {PcId}");
         _drawWidth = width;
-        _showWidths = false;
         await JS.InvokeVoidAsync("pcfViewer.setWidth", width);
         _ = JS.InvokeVoidAsync("eval", $"document.cookie=\"lpmStrokeWidth={width.ToString(System.Globalization.CultureInfo.InvariantCulture)}; path=/; max-age=31536000; SameSite=Strict\";");
     }
@@ -4304,7 +4303,6 @@
     {
         _newMenuSection = _newMenuSection == section ? null : section;
         _newMenuParentFolder = parentFolder;
-        _newMenuUpload = false;
         _newMenuX = e.ClientX;
         _newMenuY = e.ClientY - 100; // position above the click
     }
@@ -4315,7 +4313,7 @@
         await JS.InvokeVoidAsync("eval", "document.getElementById('pcf-upload-input').click()");
     }
 
-    void CloseNewMenu() { _newMenuSection = null; _newMenuUpload = false; }
+    void CloseNewMenu() { _newMenuSection = null; }
 
     void NewMenuFolder()
     {

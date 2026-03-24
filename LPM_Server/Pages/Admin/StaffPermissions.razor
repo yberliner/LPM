@@ -803,7 +803,7 @@
     private bool HasPermission(AuditorPermGroup aud, int pcId)
         => aud.ApprovedPcs.Any(p => p.PcId == pcId);
 
-    private async Task MatrixToggle(AuditorPermGroup aud, int pcId)
+    private void MatrixToggle(AuditorPermGroup aud, int pcId)
     {
 
         var cellKey = (aud.AuditorId, pcId);
