@@ -11,7 +11,22 @@
 
 <PageTitle>Diagnosis — LPM</PageTitle>
 
-<div class="container-fluid py-4" style="max-width:960px;">
+@if (_pageLoading)
+{
+    <div style="position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.55);
+                display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+                backdrop-filter:blur(3px);">
+        <div style="background:#1e293b;border-radius:16px;padding:32px 48px;
+                    box-shadow:0 24px 64px rgba(0,0,0,.5);display:flex;flex-direction:column;
+                    align-items:center;gap:14px;min-width:220px;">
+            <div class="spinner-border" style="width:2.4rem;height:2.4rem;border-width:3px;color:#60a5fa;" role="status"></div>
+            <div style="color:#e2e8f0;font-size:.95rem;font-weight:600;letter-spacing:.01em;">Loading Diagnosis…</div>
+            <div style="color:#475569;font-size:.75rem;">Reading database tables</div>
+        </div>
+    </div>
+}
+
+<div class="container-fluid py-4" style="max-width:960px;@(_pageLoading ? "pointer-events:none;filter:blur(2px);opacity:.4;" : "")">
     <h4 class="fw-bold mb-1">Diagnosis</h4>
     <p class="text-muted mb-4" style="font-size:.85rem;">
         Creates a new copy of the current database with all data tables cleared and a single
@@ -730,6 +745,8 @@
     HashSet<string> _collapsed = [];
     void ToggleSection(string name) { if (!_collapsed.Remove(name)) _collapsed.Add(name); }
 
+    bool   _pageLoading = true;
+
     bool   _busy;
     string _resultPath = "";
     string _cedbError  = "";
@@ -879,12 +896,16 @@
     int                 _recentDays       = 7;
 
     // ── Init ───────────────────────────────────────────────────────────────
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        LoadUserList();
-        LoadPcsRows();
-        LoadRecentFiles();
-        LoadLiveTables();
+        await Task.Run(() =>
+        {
+            LoadUserList();
+            LoadPcsRows();
+            LoadRecentFiles();
+            LoadLiveTables();
+        });
+        _pageLoading = false;
     }
 
     string DbCs()     => $"Data Source={Config["Database:Path"] ?? "lifepower.db"}";
