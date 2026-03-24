@@ -15,7 +15,8 @@
 
 <div @onclick="DismissMenu">
 
-
+@if (_initialized)
+{
     @if (_userId == null)
     {
         <div class="px-3 text-danger">@LS.T("home.userNotFound")</div>
@@ -933,6 +934,7 @@
         }
 
     }
+}
 
 
 </div>
@@ -1402,6 +1404,7 @@
     HashSet<(int, int)>      _pendingCs   = [];
     Dictionary<int, string>  _pcCsNames   = [];
     List<DashboardService.PendingCsSession> _pendingCsSessions = [];
+    bool _initialized = false;
     bool _pendingCsExpanded = true;
     bool _weeklyOverviewExpanded = true;
     int  _csQueueDays = 7;
@@ -1486,6 +1489,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Console.WriteLine("[Home] OnInitializedAsync START");
         var auth     = await AuthStateProvider.GetAuthenticationStateAsync();
         var username = auth.User.Identity?.Name ?? "";
         _username = username;
@@ -1496,8 +1500,13 @@
         var staffRole  = auth.User.FindFirst("StaffRole")?.Value ?? "None";
         _isSolo        = staffRole == "Solo";
         _userId = DashSvc.GetUserIdByUsername(username);
-        if (_userId.HasValue && UserDb.NeedsContactConfirm(_userId.Value))
+        // NeedsContactConfirm operates on core_users.Id, not PersonId — use GetLoginFlags for the correct Id
+        var loginFlags = UserDb.GetLoginFlags(username);
+        var coreUserId = loginFlags?.UserId ?? 0;
+        Console.WriteLine($"[Home] user='{username}' PersonId={_userId} coreUserId={coreUserId} NeedsContactConfirm={coreUserId > 0 && UserDb.NeedsContactConfirm(coreUserId)}");
+        if (coreUserId > 0 && UserDb.NeedsContactConfirm(coreUserId))
         {
+            Console.WriteLine("[Home] Redirecting to /WelcomeContact");
             Nav.NavigateTo("/WelcomeContact");
             return;
         }
@@ -1512,6 +1521,8 @@
         _weekStart = TodayWeekStart;
         _csStatusLabels = DashSvc.GetCsStatusLabels();
         await RefreshAsync();
+        _initialized = true;
+        Console.WriteLine("[Home] OnInitializedAsync DONE — _initialized=true");
 
         // Subscribe to cross-user CS notifications
         if (_userId.HasValue)
@@ -1532,7 +1543,8 @@
 
     private async void _onDataChanged()
     {
-        await InvokeAsync(async () => { await RefreshAsync(); StateHasChanged(); });
+        try { await InvokeAsync(async () => { await RefreshAsync(); StateHasChanged(); }); }
+        catch (Exception ex) { Console.WriteLine($"[Home] _onDataChanged error: {ex.Message}"); }
     }
 
     DotNetObjectReference<Home>? _dotNetRef;

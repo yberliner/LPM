@@ -736,7 +736,8 @@
             if (item == targetObject)
             {
                 if(item.Type == "link" && !innerLevel && inner > 992){
-                    await JSRuntime.InvokeAsync<string>("interop.addAttributeToHtml", "data-toggled", "double-menu-close");                    
+                    try { if (!_disposed) await JSRuntime.InvokeAsync<string>("interop.addAttributeToHtml", "data-toggled", "double-menu-close"); }
+                    catch (Exception ex) when (ex is TaskCanceledException or JSDisconnectedException) { return; }
                 }
                 if( currentState?.NavigationStyles !="horizontal" || inner  < 992) {
                     item.Active = true;
@@ -894,16 +895,19 @@
     // Hover Toggle Start
     private async void HoverToggleInnerMenuFn(bool isMouseOver)
     {
-        var dataToggled = await JSRuntime.InvokeAsync<string>("interop.getAttributeToHtml", "data-toggled");
+        if (_disposed) return;
+        string dataToggled;
+        try { dataToggled = await JSRuntime.InvokeAsync<string>("interop.getAttributeToHtml", "data-toggled"); }
+        catch (Exception ex) when (ex is TaskCanceledException or JSDisconnectedException) { return; }
         if (dataToggled == "icon-overlay-close" || dataToggled == "detached-close") {
-            if (isMouseOver)
+            try
             {
-                await JSRuntime.InvokeAsync<string>("interop.addAttributeToHtml", "data-icon-overlay", "open");
+                if (isMouseOver)
+                    await JSRuntime.InvokeAsync<string>("interop.addAttributeToHtml", "data-icon-overlay", "open");
+                else
+                    await JSRuntime.InvokeAsync<string>("interop.removeAttributeFromHtml", "data-icon-overlay");
             }
-            else
-            {
-                await JSRuntime.InvokeAsync<string>("interop.removeAttributeFromHtml", "data-icon-overlay");
-            }
+            catch (Exception ex) when (ex is TaskCanceledException or JSDisconnectedException) { return; }
         }
     }
     // Hover Toggle End
@@ -932,7 +936,9 @@
     // Responsive Close End
 
     
+    bool _disposed;
     public void Dispose(){
+        _disposed = true;
         LS.OnLanguageChanged -= HandleLanguageChanged;
         JSRuntime.InvokeVoidAsync("resizeFunctions.detachScrollListener");
     }

@@ -1297,6 +1297,9 @@
 
                             @* Free text — above "The Next C/S:" *@
                             <div class="mt-2">
+                                <div style="font-size:1.25rem; font-weight:700; color:#ef4444; margin-bottom:4px;">
+                                    My expression from the session
+                                </div>
                                 <div id="step3-top-editor"></div>
                             </div>
 
@@ -2200,6 +2203,9 @@
     }
     .arf-cell-time {
         color-scheme: dark;
+    }
+    #step3-top-editor .ql-editor {
+        min-height: 96px; max-height: 96px; overflow-y: auto;
     }
     #arf-summary-wrap .ql-editor {
         min-height: 70px; font-size: .82rem;
@@ -3413,51 +3419,84 @@ string _actionPcSearch = "";
     void OpenMessages()
     {
         if (!_msgUserId.HasValue) return;
-        _staffMembers    = DashSvc.GetActiveStaffMembers();
-        _pendingMessages = DashSvc.GetPendingMessages(_msgUserId.Value);
-        _pendingMsgCount = _pendingMessages.Count;
-        _msgStatus       = "";
-        _showMessagesModal = true;
+        try
+        {
+            _staffMembers    = DashSvc.GetActiveStaffMembers();
+            _pendingMessages = DashSvc.GetPendingMessages(_msgUserId.Value);
+            _pendingMsgCount = _pendingMessages.Count;
+            _msgStatus       = "";
+            _showMessagesModal = true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MainHeader] OpenMessages error: {ex.Message}");
+            _msgStatus = $"Error loading messages: {ex.Message}";
+            _msgStatusIsError = true;
+            _showMessagesModal = true;
+        }
     }
 
-    void SendMessage()
+    async Task SendMessage()
     {
         if (!_msgUserId.HasValue || _msgRecipientId == 0 || string.IsNullOrWhiteSpace(_msgText)) return;
-        Console.WriteLine($"[MainHeader] Sent message to recipientId={_msgRecipientId} by '{_logUsername}'");
-        DashSvc.SendMessage(_msgUserId.Value, _msgRecipientId, _msgText.Trim());
-        DashSvc.NotifyDataChanged();
-        _msgText        = "";
-        _msgRecipientId = 0;
-        _msgStatus      = LS.T("msg.sentSuccess");
-        _msgStatusIsError = false;
+        try
+        {
+            Console.WriteLine($"[MainHeader] Sending message to recipientId={_msgRecipientId} by '{_logUsername}'");
+            DashSvc.SendMessage(_msgUserId.Value, _msgRecipientId, _msgText.Trim());
+            _msgText        = "";
+            _msgRecipientId = 0;
+            _msgStatus      = LS.T("msg.sentSuccess");
+            _msgStatusIsError = false;
+            Console.WriteLine($"[MainHeader] Message sent OK");
+            // Fire-and-forget notify — don't let it crash the circuit
+            _ = Task.Run(() => { try { DashSvc.NotifyDataChanged(); } catch { } });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MainHeader] SendMessage error: {ex.Message}");
+            _msgStatus = $"Error: {ex.Message}";
+            _msgStatusIsError = true;
+        }
     }
 
-    void MsgKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    async Task MsgKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
     {
-        if (e.Key == "Enter") SendMessage();
+        if (e.Key == "Enter") await SendMessage();
     }
 
     void AcknowledgeMsg(int messageId)
     {
         if (!_msgUserId.HasValue) return;
-        Console.WriteLine($"[MainHeader] Acknowledged message {messageId} by '{_logUsername}'");
-        DashSvc.AcknowledgeMessage(messageId, _msgUserId.Value);
-        DashSvc.NotifyDataChanged();
-        _pendingMessages = _pendingMessages.Where(m => m.Id != messageId).ToList();
-        _pendingMsgCount = _pendingMessages.Count;
+        try
+        {
+            Console.WriteLine($"[MainHeader] Acknowledged message {messageId} by '{_logUsername}'");
+            DashSvc.AcknowledgeMessage(messageId, _msgUserId.Value);
+            _ = Task.Run(() => { try { DashSvc.NotifyDataChanged(); } catch { } });
+            _pendingMessages = _pendingMessages.Where(m => m.Id != messageId).ToList();
+            _pendingMsgCount = _pendingMessages.Count;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MainHeader] AcknowledgeMsg error: {ex.Message}");
+        }
     }
 
     void AcknowledgeAllMsgs()
     {
         if (!_msgUserId.HasValue) return;
-        foreach (var msg in _pendingMessages)
+        try
         {
-            DashSvc.AcknowledgeMessage(msg.Id, _msgUserId.Value);
+            foreach (var msg in _pendingMessages)
+                DashSvc.AcknowledgeMessage(msg.Id, _msgUserId.Value);
+            _ = Task.Run(() => { try { DashSvc.NotifyDataChanged(); } catch { } });
+            Console.WriteLine($"[MainHeader] Acknowledged all {_pendingMessages.Count} messages by '{_logUsername}'");
+            _pendingMessages.Clear();
+            _pendingMsgCount = 0;
         }
-        DashSvc.NotifyDataChanged();
-        Console.WriteLine($"[MainHeader] Acknowledged all {_pendingMessages.Count} messages by '{_logUsername}'");
-        _pendingMessages.Clear();
-        _pendingMsgCount = 0;
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MainHeader] AcknowledgeAllMsgs error: {ex.Message}");
+        }
     }
 
     static string FormatMsgTime(string isoDate)

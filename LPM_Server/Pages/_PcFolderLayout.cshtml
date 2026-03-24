@@ -79,7 +79,7 @@
     <script src="/js/quill-interop.js"></script>
 
     <!-- PC Folder viewer -->
-    <script src="/js/pcf-viewer.js?v=18"></script>
+    <script src="/js/pcf-viewer.js?v=23"></script>
     <script>
         window.pcfSaveAnnotatedPdf = async function(pcId, filePath, dataJson, solo) {
             const meta = JSON.parse(dataJson);
@@ -105,6 +105,17 @@
                 method: 'POST',
                 body: formData
             });
+            if (saveResp.status === 422) {
+                // Corrupt PDF (invalid XRef) — show warning but don't crash
+                console.warn('[pcfSave] PDF has corrupt XRef table, annotations not saved for:', filePath);
+                const toast = document.createElement('div');
+                toast.className = 'position-fixed bottom-0 end-0 m-3 alert alert-warning shadow';
+                toast.style.zIndex = '9999';
+                toast.textContent = 'PDF זה פגום ולא ניתן לשמור עליו הערות';
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 5000);
+                return;
+            }
             if (!saveResp.ok) throw new Error('Save failed: ' + saveResp.status);
         };
 

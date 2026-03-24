@@ -495,7 +495,7 @@ app.MapGet("/api/pc-session-merged", (int pcId, string session, LPM.Services.Fol
     if (merged == null) return Results.NotFound();
     var pcName = folderSvc.GetPcName(pcId) ?? $"PC {pcId}";
     var sessionNoExt = System.IO.Path.GetFileNameWithoutExtension(session);
-    var downloadName = $"{pcName} - {sessionNoExt}.pdf";
+    var downloadName = $"{sessionNoExt}.pdf";
     return Results.File(merged, "application/pdf", downloadName);
 }).RequireAuthorization();
 
@@ -544,8 +544,24 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
     var originalBytes = svc.ReadFileBytes(pcId, path, solo);
     if (originalBytes == null) return Results.NotFound();
 
-    using var inputMs = new MemoryStream(originalBytes);
-    using var originalDoc = PdfReader.Open(inputMs, PdfDocumentOpenMode.Import);
+    PdfSharpCore.Pdf.PdfDocument? originalDoc = null;
+    foreach (var attempt in new[] { originalBytes, (byte[]?)null })
+    {
+        var bytesToOpen = attempt ?? svc.RepairPdf(originalBytes);
+        if (bytesToOpen == null) break;
+        try
+        {
+            using var ms0 = new MemoryStream(bytesToOpen);
+            originalDoc = PdfReader.Open(ms0, PdfDocumentOpenMode.Import);
+            break;
+        }
+        catch (PdfSharpCore.Pdf.IO.PdfReaderException ex)
+        {
+            Console.WriteLine($"[AnnSave] PDF XRef error (attempt {(attempt == null ? 2 : 1)}) for PC {pcId} path={path}: {ex.Message}");
+        }
+    }
+    if (originalDoc == null) return Results.Json(new { error = "PDF_CORRUPT" }, statusCode: 422);
+    using var _disposeOriginalDoc = originalDoc;
     using var newDoc = new PdfSharpCore.Pdf.PdfDocument();
     const double pxScale = 1.5;
 

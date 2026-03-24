@@ -349,10 +349,14 @@
         <div class="pcf-ctx-menu" style="top:@(_wsCtxY)px;left:@(_wsCtxX)px;">
             @if (!_wsCtxIsAttachment)
             {
-                <button @onclick="WsCtxAddPinkSheet"><i class="ri-file-add-line me-2" style="color:#ec4899 !important;"></i>Add Pink Sheet</button>
-                <button @onclick='() => WsCtxAddWhiteSheet("Instruct")'><i class="ri-file-add-line me-2" style="color:#60a5fa !important;"></i>Add Instruct</button>
-                <button @onclick='() => WsCtxAddWhiteSheet("Cramming")'><i class="ri-file-add-line me-2" style="color:#34d399 !important;"></i>Add Cramming</button>
-                <div class="pcf-ctx-divider"></div>
+                @if (CsMode)
+                {
+                    <button @onclick="WsCtxAddPinkSheet"><i class="ri-file-add-line me-2" style="color:#ec4899 !important;"></i>Add Pink Sheet</button>
+                    <button @onclick='() => WsCtxAddWhiteSheet("Instruct")'><i class="ri-file-add-line me-2" style="color:#60a5fa !important;"></i>Add Instruct</button>
+                    <button @onclick='() => WsCtxAddWhiteSheet("Cramming")'><i class="ri-file-add-line me-2" style="color:#34d399 !important;"></i>Add Cramming</button>
+                    <div class="pcf-ctx-divider"></div>
+                }
+
                 <button @onclick="WsCtxUploadAttachment"><i class="ri-upload-2-line me-2"></i>Upload Attachment</button>
                 <div class="pcf-ctx-divider"></div>
                 <button @onclick="WsCtxDownloadSession"><i class="ri-download-2-line me-2"></i>Download entire session</button>
@@ -1645,6 +1649,23 @@
         transform-origin: 0% 0%;
     }
     .pcf-text-layer ::selection { background: rgba(0, 102, 255, 0.28); color: transparent; }
+
+    /* ── Annotation text select layer (transparent selectable spans over canvas text) ── */
+    .pcf-text-select-layer {
+        position: absolute; top: 0; left: 0;
+        pointer-events: none; user-select: none;
+        z-index: 6; /* above annotation canvas */
+    }
+    .pcf-text-select-span {
+        position: absolute; color: transparent;
+        pointer-events: none; /* enabled via JS in text-select mode */
+        user-select: text; -webkit-user-select: text;
+        cursor: text; white-space: pre-wrap; word-break: break-word;
+        font-family: Arial; line-height: 1.3;
+    }
+    .pcf-text-select-span::selection, .pcf-text-select-span *::selection {
+        background: rgba(0, 102, 255, 0.28); color: transparent;
+    }
 
     .pcf-text-input {
         position: absolute; border: 2px solid #3b82f6;

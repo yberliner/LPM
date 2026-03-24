@@ -257,10 +257,13 @@
 
     @* ── core_pcs Editor ──────────────────────────────────────────────────── *@
     <div class="diag-editor-card mb-4">
-        <div class="diag-editor-header">
+        <div class="diag-editor-header" style="cursor:pointer;user-select:none;" @onclick="() => _pcsExpanded = !_pcsExpanded">
             <i class="ri-computer-line me-2"></i>Edit PCs
             <span class="diag-editor-sub">core_pcs</span>
+            <i class="@(_pcsExpanded ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line") ms-auto"></i>
         </div>
+        @if (_pcsExpanded)
+        {
         <div class="diag-editor-body">
             @if (!string.IsNullOrEmpty(_pcsMsg))
             {
@@ -328,6 +331,7 @@
                 </div>
             </div>
         </div>
+        }
     </div>
 
     @* ── core_* tables ── *@
@@ -877,6 +881,7 @@
     string             _pcsMsg           = "";
     bool               _pcsMsgOk;
     bool               _pcsBusy;
+    bool               _pcsExpanded      = false;
     int                _pendingDeletePcId = 0;
     // pcs edit modal
     bool               _pcsModalVisible  = false;

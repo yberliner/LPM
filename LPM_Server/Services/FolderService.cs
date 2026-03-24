@@ -228,6 +228,59 @@ public class FolderService
         }
     }
 
+    /// <summary>Repair a corrupt PDF (e.g. invalid XRef) by round-tripping through LibreOffice. Returns repaired bytes, or null on failure.</summary>
+    public byte[]? RepairPdf(byte[] pdfBytes)
+    {
+        if (!CanConvertToPdf) return null;
+
+        var id = Guid.NewGuid().ToString("N");
+        var inDir  = Path.Combine(Path.GetTempPath(), $"lpm_repin_{id}");
+        var outDir = Path.Combine(Path.GetTempPath(), $"lpm_repout_{id}");
+        Directory.CreateDirectory(inDir);
+        Directory.CreateDirectory(outDir);
+        try
+        {
+            var inputPath = Path.Combine(inDir, "src.pdf");
+            File.WriteAllBytes(inputPath, pdfBytes);
+
+            var args = $"--headless --convert-to pdf --outdir \"{outDir}\" \"{inputPath}\"";
+            using var process = new Process();
+            process.StartInfo = new ProcessStartInfo
+            {
+                FileName = _libreOfficePath!,
+                Arguments = args,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            process.Start();
+            process.WaitForExit(60_000);
+
+            var outPath = Path.Combine(outDir, "src.pdf");  // LibreOffice outputs stem.pdf in outdir
+            if (process.ExitCode == 0 && File.Exists(outPath))
+            {
+                var repaired = File.ReadAllBytes(outPath);
+                Console.WriteLine($"[PDF Repair] Repaired {pdfBytes.Length / 1024}KB → {repaired.Length / 1024}KB");
+                return repaired;
+            }
+
+            var err = process.StandardError.ReadToEnd();
+            Console.WriteLine($"[PDF Repair] Failed: exit={process.ExitCode} {err.Trim()}");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PDF Repair] Error: {ex.Message}");
+            return null;
+        }
+        finally
+        {
+            try { Directory.Delete(inDir,  recursive: true); } catch { }
+            try { Directory.Delete(outDir, recursive: true); } catch { }
+        }
+    }
+
     public string? GetPcName(int pcId)
     {
         using var conn = new SqliteConnection(_connectionString);

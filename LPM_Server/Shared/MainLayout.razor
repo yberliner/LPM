@@ -44,28 +44,30 @@
     {
         if (firstRender)
         {
-            var savedLang = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", "lpm-lang");
-            if (!string.IsNullOrEmpty(savedLang) && savedLang != LS.CurrentLanguage)
-            {
-                LS.SetLanguage(savedLang);
-            }
-            await JSRuntime.InvokeVoidAsync("interop.addAttributeToHtml", "dir", LS.IsRtl ? "rtl" : "ltr");
-            await stateService.retrieveFromLocalStorage();
-            await JSRuntime.InvokeVoidAsync("interop.updateScrollVisibility", DotNetObjectReference.Create(this));
-
-            // Load Alt+key shortcuts into JS
             try
             {
-                var sc = ShortcutSvc.GetShortcuts();
-                await JSRuntime.InvokeVoidAsync("lpmLoadShortcuts", sc);
-            }
-            catch { /* non-critical */ }
+                var savedLang = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", "lpm-lang");
+                if (!string.IsNullOrEmpty(savedLang) && savedLang != LS.CurrentLanguage)
+                    LS.SetLanguage(savedLang);
 
-            var dataNavLayout = await JSRuntime.InvokeAsync<string>("interop.getAttributeToHtml", "data-nav-layout");
-            var inner = await JSRuntime.InvokeAsync<int>("interop.inner", "innerWidth");
-            if(dataNavLayout == "horizontal" && inner >= 992){
-                navMenuRef?.closeMenuFn();
+                await JSRuntime.InvokeVoidAsync("interop.addAttributeToHtml", "dir", LS.IsRtl ? "rtl" : "ltr");
+                await stateService.retrieveFromLocalStorage();
+                await JSRuntime.InvokeVoidAsync("interop.updateScrollVisibility", DotNetObjectReference.Create(this));
+
+                try
+                {
+                    var sc = ShortcutSvc.GetShortcuts();
+                    await JSRuntime.InvokeVoidAsync("lpmLoadShortcuts", sc);
+                }
+                catch { /* non-critical */ }
+
+                var dataNavLayout = await JSRuntime.InvokeAsync<string>("interop.getAttributeToHtml", "data-nav-layout");
+                var inner = await JSRuntime.InvokeAsync<int>("interop.inner", "innerWidth");
+                if (dataNavLayout == "horizontal" && inner >= 992)
+                    navMenuRef?.closeMenuFn();
             }
+            catch (JSDisconnectedException) { /* circuit closed before JS completed — safe to ignore */ }
+            catch (TaskCanceledException)   { /* circuit shutdown during await — safe to ignore */ }
         }
     }
     [JSInvokable]

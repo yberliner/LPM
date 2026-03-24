@@ -390,6 +390,46 @@ window.pcfViewer = {
         if (pane.currentStroke && pane.currentStroke.pageIdx === pageIdx) {
             this._drawStroke(ctx, pane.currentStroke);
         }
+
+        this._syncTextSelectLayer(pageIdx, paneId);
+    },
+
+    _syncTextSelectLayer(pageIdx, paneId) {
+        const pane = this.panes[paneId];
+        if (!pane) return;
+        const pg = pane.pages[pageIdx];
+        if (!pg) return;
+        const overlay = pg.overlay;
+        const wrapper = overlay.parentElement;
+        if (!wrapper) return;
+
+        let layer = wrapper.querySelector('.pcf-text-select-layer');
+        if (!layer) {
+            layer = document.createElement('div');
+            layer.className = 'pcf-text-select-layer';
+            layer.style.width  = overlay.width  + 'px';
+            layer.style.height = overlay.height + 'px';
+            wrapper.appendChild(layer);
+        }
+
+        // Remove existing spans for this page index
+        layer.querySelectorAll(`[data-pidx="${pageIdx}"]`).forEach(el => el.remove());
+
+        // Rebuild spans for text annotations on this page
+        for (const ann of pane.annotations) {
+            if (ann.type !== 'text' || ann.pageIdx !== pageIdx) continue;
+            const fontSize = ann.fontSize || 14;
+            const span = document.createElement('div');
+            span.className = 'pcf-text-select-span';
+            span.dataset.pidx = pageIdx;
+            span.style.left     = ann.x + 'px';
+            span.style.top      = (ann.y - fontSize) + 'px';
+            span.style.fontSize = fontSize + 'px';
+            if (ann.maxWidth) span.style.maxWidth = ann.maxWidth + 'px';
+            span.style.pointerEvents = this._textSelectMode ? 'auto' : 'none';
+            span.textContent = ann.text;
+            layer.appendChild(span);
+        }
     },
 
     _drawStroke(ctx, stroke) {
@@ -591,6 +631,9 @@ window.pcfViewer = {
             overlays.forEach(ov => {
                 ov.style.pointerEvents = enabled ? 'none' : '';
                 ov.style.cursor = enabled ? 'auto' : '';
+            });
+            viewer.querySelectorAll('.pcf-text-select-span').forEach(span => {
+                span.style.pointerEvents = enabled ? 'auto' : 'none';
             });
             viewer.style.cursor = enabled ? 'text' : '';
         }

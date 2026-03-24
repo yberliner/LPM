@@ -481,3 +481,60 @@ window.scrollToEdge = (elementId, dir) => {
     const left = (dir === "left") ? 0 : el.scrollWidth;
     el.scrollTo({ left, behavior: "smooth" });
 };
+
+// ── Resizable table columns ──────────────────────────────────────────────────
+// Call with the table element's id. Adds drag handles to all <th> elements.
+// Each column is sized independently; the table expands instead of squeezing others.
+window.lpmInitColResize = function (tableId) {
+    const table = document.getElementById(tableId);
+    if (!table) return;
+
+    // Switch to fixed layout so column widths are respected
+    table.style.tableLayout = 'fixed';
+
+    // Snapshot initial pixel widths from rendered layout, then lock them in
+    const ths = Array.from(table.querySelectorAll('thead th'));
+    ths.forEach(th => {
+        th.style.width = th.offsetWidth + 'px';
+        th.style.overflow = 'hidden';
+        th.style.position = 'relative';
+        th.style.boxSizing = 'border-box';
+    });
+
+    // Let the table grow freely (don't constrain to 100%)
+    table.style.width = 'auto';
+    table.style.minWidth = '100%';
+
+    ths.forEach(th => {
+        const handle = document.createElement('span');
+        handle.style.cssText =
+            'position:absolute;right:0;top:0;bottom:0;width:6px;' +
+            'cursor:col-resize;z-index:10;user-select:none;' +
+            'background:transparent;';
+        handle.addEventListener('mouseenter', () => handle.style.background = 'rgba(99,102,241,.35)');
+        handle.addEventListener('mouseleave', () => { if (!handle._dragging) handle.style.background = 'transparent'; });
+
+        handle.addEventListener('mousedown', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            handle._dragging = true;
+            const startX = e.pageX;
+            const startW = th.offsetWidth;
+
+            const onMove = e => {
+                const newW = Math.max(40, startW + (e.pageX - startX));
+                th.style.width = newW + 'px';
+            };
+            const onUp = () => {
+                handle._dragging = false;
+                handle.style.background = 'transparent';
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onUp);
+            };
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+
+        th.appendChild(handle);
+    });
+};

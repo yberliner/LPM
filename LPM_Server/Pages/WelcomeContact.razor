@@ -10,6 +10,8 @@
 
 <PageTitle>Welcome — LPM</PageTitle>
 
+@if (!_initialized) { return; }
+
 <div class="wc-overlay">
     <div class="wc-card @(_submitted ? "wc-thankyou-state" : "")">
 
@@ -496,6 +498,7 @@
         new("🇦🇪", "United Arab Emirates", "971"),
     ];
 
+    private bool _initialized; // stays false until we've confirmed this user needs the form
     private int _userId;
     private int _personId;
     private string _username = "";
@@ -584,10 +587,12 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Console.WriteLine("[WelcomeContact] OnInitializedAsync START");
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
         if (!user.Identity?.IsAuthenticated ?? false)
         {
+            Console.WriteLine("[WelcomeContact] Not authenticated → /login");
             Nav.NavigateTo("/login");
             return;
         }
@@ -607,6 +612,16 @@
             _isSolo = flags.StaffRole == "Solo";
         }
 
+        // If the user doesn't need to confirm contact details, redirect immediately
+        // before the first render so the form is never shown (no flicker).
+        Console.WriteLine($"[WelcomeContact] userId={_userId} NeedsContactConfirm={(_userId > 0 ? UserDb.NeedsContactConfirm(_userId) : false)}");
+        if (_userId > 0 && !UserDb.NeedsContactConfirm(_userId))
+        {
+            Console.WriteLine("[WelcomeContact] Redirecting to /Home");
+            Nav.NavigateTo("/Home");
+            return;
+        }
+
         // Pre-populate existing contact data if available
         if (_personId > 0)
         {
@@ -624,6 +639,10 @@
             }
             _hasExistingData = !string.IsNullOrEmpty(email) || !string.IsNullOrEmpty(phone);
         }
+
+        // Only now allow the form to render
+        _initialized = true;
+        Console.WriteLine("[WelcomeContact] OnInitializedAsync DONE — _initialized=true");
     }
 
     private void OnPhoneInput(ChangeEventArgs e)
@@ -683,13 +702,6 @@
             _error = "An error occurred. Please try again.";
             Console.WriteLine($"[WelcomeContact] Error: {ex.Message}");
         }
-    }
-
-    protected override Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender && _userId > 0 && !UserDb.NeedsContactConfirm(_userId))
-            Nav.NavigateTo("/Home");
-        return Task.CompletedTask;
     }
 
     public void Dispose()

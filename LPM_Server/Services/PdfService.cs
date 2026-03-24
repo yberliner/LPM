@@ -1721,20 +1721,20 @@ public class PdfService
 
                     // ── Top free text — fixed height so "Next C/S" is always at the same Y position.
                     //    Inner ScaleToFit shrinks the HTML if it is taller than the reserved slot. ──
-                    col.Item().Height(120).ScaleToFit().Column(inner =>
+                    col.Item().Height(60).ScaleToFit().Column(inner =>
                     {
                         if (!string.IsNullOrWhiteSpace(topHtml))
-                            RenderHtmlBlock(inner, topHtml, 3f);
+                            RenderHtmlBlock(inner, topHtml, 1.5f);
                     });
 
                     // ── "The Next C/S:" ──
                     col.Item().AlignCenter().PaddingBottom(12)
                         .Text("The Next C/S:")
-                        .FontSize(44).Bold().Underline().FontColor("#1a1a1a");
+                        .FontSize(22).Bold().Underline().FontColor("#1a1a1a");
 
                     // ── Bottom free text — ScaleToFit shrinks the HTML if it is too long. ──
                     if (!string.IsNullOrWhiteSpace(bottomHtml))
-                        col.Item().PaddingTop(8).ScaleToFit().Column(inner => RenderHtmlBlock(inner, bottomHtml, 3f));
+                        col.Item().PaddingTop(8).ScaleToFit().Column(inner => RenderHtmlBlock(inner, bottomHtml, 1.5f));
                 });
             });
         }).GeneratePdf();
