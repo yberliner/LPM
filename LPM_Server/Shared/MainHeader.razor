@@ -960,18 +960,31 @@
                                         <i class="ri-error-warning-fill me-1"></i>@_importFileWarning
                                     </div>
                                 }
-                                @if (!_importDuplicate && !string.IsNullOrEmpty(_importNormalizedFileName)
-                                     && _importNormalizedFileName != Path.GetFileNameWithoutExtension(_importSessionFile.Name))
+                                @if (_importSessionFile != null)
                                 {
-                                    <div style="font-size:.75rem; color:#f59e0b; margin-top:6px;">
-                                        <div style="display:flex; align-items:center; gap:5px;">
-                                            <i class="ri-edit-line"></i>
-                                            <span>Will be saved as:</span>
-                                            <strong>@(_importNormalizedFileName).pdf</strong>
+                                    <div style="font-size:.75rem; margin-top:6px;">
+                                        <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
+                                            <i class="ri-edit-line" style="color:#f59e0b;"></i>
+                                            <span style="color:#f59e0b; white-space:nowrap;">Save as:</span>
+                                            <div style="display:flex; align-items:center; gap:2px; flex:1; min-width:0;">
+                                                <input type="text"
+                                                       value="@_importNormalizedFileName"
+                                                       @oninput="OnNormalizedNameChanged"
+                                                       style="flex:1; min-width:0; background:#0f172a; color:#e2e8f0;
+                                                              border:1px solid @(string.IsNullOrEmpty(_importNameEditError) ? "#475569" : "#ef4444");
+                                                              border-radius:4px; padding:2px 6px; font-size:.75rem;" />
+                                                <span style="color:#94a3b8; white-space:nowrap;">.pdf</span>
+                                            </div>
                                         </div>
+                                        @if (!string.IsNullOrEmpty(_importNameEditError))
+                                        {
+                                            <div style="color:#ef4444; margin-top:3px; padding-left:18px;">
+                                                <i class="ri-error-warning-line me-1"></i>@_importNameEditError
+                                            </div>
+                                        }
                                         @if (_importDateWasPrepended)
                                         {
-                                            <div style="display:flex; align-items:center; gap:5px; margin-top:4px; padding-left:16px;">
+                                            <div style="display:flex; align-items:center; gap:5px; margin-top:4px; padding-left:18px;">
                                                 <i class="ri-calendar-line" style="color:#94a3b8;"></i>
                                                 <span style="color:#94a3b8;">Change date:</span>
                                                 <input type="date"
@@ -1203,7 +1216,7 @@
                     else
                     {
                         @* ── Step 3: Next C/S Sheet ── *@
-                        <div style="display:flex; flex-direction:column; min-height:480px;">
+                        <div class="arf" style="display:flex; flex-direction:column; min-height:480px;">
                             <div class="arf-subtitle">Dror Center, Haifa, Israel</div>
 
                             @* extra line *@
@@ -1211,16 +1224,16 @@
 
                             @* PC Name + Date row — big, red, ":" labels, Date tight *@
                             <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px;">
-                                <span style="font-size:1.35rem; font-weight:600; color:#94a3b8;">
+                                <span style="font-size:1.35rem; font-weight:600; color:#e2e8f0;">
                                     PC's Name:&nbsp;<span style="color:#ef4444;">@(_approvedPcs.FirstOrDefault(p => p.PcId == _importPcId)?.FullName ?? "")</span>
                                 </span>
-                                <span style="font-size:1.35rem; font-weight:600; color:#94a3b8;">
+                                <span style="font-size:1.35rem; font-weight:600; color:#e2e8f0;">
                                     Date:&nbsp;<span style="color:#ef4444;">@DateTime.Today.ToString("dd/MM/yyyy")</span>
                                 </span>
                             </div>
 
                             @* Auditor row — aligned left, same size *@
-                            <div style="font-size:1.35rem; font-weight:600; color:#94a3b8; margin-top:4px;">
+                            <div style="font-size:1.35rem; font-weight:600; color:#e2e8f0; margin-top:4px;">
                                 Auditor:&nbsp;<span style="color:#ef4444;">@(string.IsNullOrWhiteSpace(_importAuditorFullName) ? _logUsername : _importAuditorFullName)</span>
                             </div>
 
@@ -1288,7 +1301,7 @@
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showImportWizard = false">Cancel</button>
                         <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                                disabled="@(_importSessionBytes == null || _importDuplicate || ArfHasTimeErrors || !IsValidArfTime(_arfAdminTime) || string.IsNullOrWhiteSpace(_arfAdminTime) || !IsValidArfTime(_arfSessionLength) || ArfHasIncompleteRows)"
+                                disabled="@(_importSessionBytes == null || _importDuplicate || !string.IsNullOrEmpty(_importNameEditError) || string.IsNullOrEmpty(_importNormalizedFileName) || ArfHasTimeErrors || !IsValidArfTime(_arfAdminTime) || string.IsNullOrWhiteSpace(_arfAdminTime) || !IsValidArfTime(_arfSessionLength) || ArfHasIncompleteRows)"
                                 @onclick="GoToStep3">
                             Next <i class="ri-arrow-right-s-line"></i>
                         </button>
@@ -2220,6 +2233,7 @@
     bool   _importDuplicate;
     bool   _importFreeSession;
     string _importFileWarning = "";  // duplicate or _att_ warning
+    string _importNameEditError = ""; // inline name-edit validation
     string _importError   = "";
     string _importSuccess = "";
 
@@ -2686,6 +2700,42 @@
         _importNormalizedFileName = string.IsNullOrEmpty(_importNormalizedSuffix)
             ? d.ToString("yyMMdd")
             : $"{d:yyMMdd} {_importNormalizedSuffix}";
+        _importNameEditError = "";
+        CheckDuplicateSession();
+    }
+
+    void OnNormalizedNameChanged(ChangeEventArgs e)
+    {
+        var value = (e.Value?.ToString() ?? "").Trim();
+        if (string.IsNullOrEmpty(value))
+        {
+            _importNameEditError = "Name cannot be empty";
+            _importNormalizedFileName = "";
+            return;
+        }
+
+        // Validate yymmdd prefix (6 leading digits)
+        if (!System.Text.RegularExpressions.Regex.IsMatch(value, @"^\d{6}"))
+        {
+            _importNameEditError = "Name must start with a date prefix (yymmdd — 6 digits)";
+            _importNormalizedFileName = value; // still update so the input reflects what user typed
+            return;
+        }
+
+        _importNameEditError = "";
+        _importNormalizedFileName = value;
+
+        // Sync date picker: parse yyMMdd from the first 6 chars
+        if (DateTime.TryParseExact(value[..6], "yyMMdd",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var d))
+            _importNormalizedDate = d;
+
+        // Re-derive suffix (everything after "yymmdd" plus optional single space/separator)
+        var rest = value.Length > 6 ? value[6..].TrimStart(' ', '-', '_') : "";
+        _importNormalizedSuffix  = rest;
+        _importDateWasPrepended  = true; // keep the date picker visible
+
         CheckDuplicateSession();
     }
 
@@ -2700,6 +2750,7 @@
         _importNormalizedDate    = DateTime.Today;
         _importDuplicate         = false;
         _importFileWarning       = "";
+        _importNameEditError     = "";
     }
 
     void OnPcChanged(ChangeEventArgs e)

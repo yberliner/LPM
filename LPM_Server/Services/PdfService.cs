@@ -1657,17 +1657,6 @@ public class PdfService
                         t.Span(taRange).FontSize(12).Bold().FontColor("#000");
                     });
 
-                    // Summary
-                    if (!string.IsNullOrWhiteSpace(summaryHtml))
-                    {
-                        col.Item().PaddingTop(16).PaddingBottom(4)
-                            .Text("Summary").FontSize(12).Bold().FontColor("#1a1a1a");
-                        col.Item().Background("#f8f9fa").Border(0.5f).BorderColor("#ddd")
-                            .Padding(10).Column(sumCol =>
-                        {
-                            RenderHtmlBlock(sumCol, summaryHtml);
-                        });
-                    }
                 });
             });
         }).GeneratePdf();

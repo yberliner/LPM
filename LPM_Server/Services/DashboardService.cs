@@ -2007,14 +2007,19 @@ public class DashboardService
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
+
+        using var del = conn.CreateCommand();
+        del.CommandText = "DELETE FROM sess_next_cs WHERE SessionId = @sid";
+        del.Parameters.AddWithValue("@sid", sessionId);
+        del.ExecuteNonQuery();
+
+        using var ins = conn.CreateCommand();
+        ins.CommandText = @"
             INSERT INTO sess_next_cs (SessionId, NextCS, UpdatedAt)
-            VALUES (@sid, @html, datetime('now', '+2 hours'))
-            ON CONFLICT(SessionId) DO UPDATE SET NextCS = @html, UpdatedAt = datetime('now', '+2 hours')";
-        cmd.Parameters.AddWithValue("@sid", sessionId);
-        cmd.Parameters.AddWithValue("@html", nextCsHtml);
-        cmd.ExecuteNonQuery();
+            VALUES (@sid, @html, datetime('now', '+2 hours'))";
+        ins.Parameters.AddWithValue("@sid", sessionId);
+        ins.Parameters.AddWithValue("@html", nextCsHtml);
+        ins.ExecuteNonQuery();
     }
 
     public bool SessionBelongsToPc(int sessionId, int pcId)

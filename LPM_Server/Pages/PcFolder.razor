@@ -618,6 +618,11 @@
                 </div>
             }
             <div class="pcf-tools-right">
+                <button class="pcf-tool-btn @(_textSelectMode ? "pcf-tool-active" : "")"
+                        title="Select Text — select PDF text with the mouse, then Ctrl+C to copy"
+                        @onclick="ToggleTextSelectMode">
+                    <i class="ri-cursor-line"></i>
+                </button>
                 <button class="pcf-tool-btn @(_toolMode == "draw" ? "pcf-tool-active" : "")"
                         title="Draw — click and drag on the PDF to draw freehand annotations"
                         @onclick='() => SetTool("draw")'>
@@ -1617,6 +1622,27 @@
     .pcf-page-wrapper canvas { display: block; }
     .pcf-annotation-canvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
 
+    /* ── PDF text selection layer ── */
+    .pcf-text-layer {
+        position: absolute; top: 0; left: 0;
+        overflow: hidden; line-height: 1;
+        pointer-events: none; /* enabled via JS when in text-select mode */
+        cursor: text;
+        user-select: text !important;
+        -webkit-user-select: text !important;
+        -webkit-text-size-adjust: none;
+        text-size-adjust: none;
+        forced-color-adjust: none;
+    }
+    .pcf-text-layer span, .pcf-text-layer br {
+        color: transparent;
+        position: absolute;
+        white-space: pre;
+        cursor: text;
+        transform-origin: 0% 0%;
+    }
+    .pcf-text-layer ::selection { background: rgba(0, 102, 255, 0.28); color: transparent; }
+
     .pcf-text-input {
         position: absolute; border: 2px solid #3b82f6;
         background: rgba(255,255,255,.9); color: #1e293b;
@@ -2186,6 +2212,7 @@
     int _wsPage;
     const int WsPageSize = 10;
     string _toolMode = "";
+    bool _textSelectMode;
     string _drawColor = "#22c55e";
     double _drawWidth = 2.5;
     int _fontSize = 14;
@@ -3028,7 +3055,25 @@
             _panMode = false;
             await JS.InvokeVoidAsync("pcfViewer.setPanMode", false);
         }
+        if (_toolMode != "" && _textSelectMode)
+        {
+            _textSelectMode = false;
+            // JS setTool already calls setTextSelectMode(false) on its side
+        }
         await JS.InvokeVoidAsync("pcfViewer.setTool", _toolMode);
+    }
+
+    async Task ToggleTextSelectMode()
+    {
+        _textSelectMode = !_textSelectMode;
+        if (_textSelectMode)
+        {
+            // Exit any active annotation tool
+            _toolMode = "";
+            if (_panMode) { _panMode = false; await JS.InvokeVoidAsync("pcfViewer.setPanMode", false); }
+            await JS.InvokeVoidAsync("pcfViewer.setTool", "");
+        }
+        await JS.InvokeVoidAsync("pcfViewer.setTextSelectMode", _textSelectMode);
     }
 
     async Task Undo()

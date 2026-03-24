@@ -152,6 +152,15 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 var app = builder.Build();
 //Globals.ServiceProvider = app.Services;
 
+// Log the SQLite version bundled at runtime
+{
+    using var _sc = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+    _sc.Open();
+    using var _sv = _sc.CreateCommand();
+    _sv.CommandText = "SELECT sqlite_version()";
+    Console.WriteLine($"[Startup] SQLite bundled version = {_sv.ExecuteScalar()}");
+}
+
 // Configure forwarded headers middleware early in the pipeline
 app.UseForwardedHeaders(new ForwardedHeadersOptions
 {

@@ -12,6 +12,7 @@ window.pcfViewer = {
 
     _zoomLevels: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.5, 3.0],
     _panMode: false,
+    _textSelectMode: false,
 
     _initPane(paneId) {
         if (!this.panes[paneId]) {
@@ -154,12 +155,21 @@ window.pcfViewer = {
             canvas.height = vp.height;
             wrapper.appendChild(canvas);
 
+            const textLayerDiv = document.createElement('div');
+            textLayerDiv.className = 'pcf-text-layer';
+            textLayerDiv.style.width  = vp.width  + 'px';
+            textLayerDiv.style.height = vp.height + 'px';
+            textLayerDiv.style.setProperty('--scale-factor', vp.scale);
+            textLayerDiv.style.pointerEvents = this._textSelectMode ? 'auto' : 'none';
+            wrapper.appendChild(textLayerDiv);
+
             const overlay = document.createElement('canvas');
             overlay.className = 'pcf-annotation-canvas';
             overlay.width = vp.width;
             overlay.height = vp.height;
             overlay.style.width = vp.width + 'px';
             overlay.style.height = vp.height + 'px';
+            overlay.style.pointerEvents = this._textSelectMode ? 'none' : '';
             wrapper.appendChild(overlay);
 
             viewer.appendChild(wrapper);
@@ -167,6 +177,80 @@ window.pcfViewer = {
             const ctx = canvas.getContext('2d');
             await page.render({ canvasContext: ctx, viewport: vp }).promise;
             if (pane.loadGen !== myGen) return; // superseded after render
+
+            // Populate text layer asynchronously — non-blocking, non-critical
+            (async () => {
+                try {
+                    if (pane.loadGen !== myGen) return;
+                    const pdfjsLib2 = window['pdfjs-dist/build/pdf'];
+                    console.log('[pcf-text] page', i, '— getTextContent start, renderTextLayer type:', typeof pdfjsLib2?.renderTextLayer);
+                    const textContent = await page.getTextContent();
+                    if (pane.loadGen !== myGen) return;
+                    console.log('[pcf-text] page', i, '— items:', textContent?.items?.length, 'sample:', textContent?.items?.[0]?.str);
+                    if (!textContent || !textContent.items || !textContent.items.length) {
+                        console.log('[pcf-text] page', i, '— no text items, skipping');
+                        return;
+                    }
+
+                    // Try PDF.js 3.x class-based API (new renderTextLayer)
+                    if (pdfjsLib2 && typeof pdfjsLib2.renderTextLayer === 'function') {
+                        try {
+                            const task = new pdfjsLib2.renderTextLayer({
+                                textContentSource: Promise.resolve(textContent),
+                                container: textLayerDiv,
+                                viewport: vp,
+                            });
+                            if (task.render) await task.render();
+                            else if (task.promise) await task.promise;
+                            console.log('[pcf-text] page', i, '— 3.x API spans:', textLayerDiv.childElementCount);
+                            if (textLayerDiv.childElementCount > 0) return;
+                        } catch(e1) { console.log('[pcf-text] page', i, '— 3.x API error:', e1.message); }
+                        // Try PDF.js 2.x function API
+                        try {
+                            const task = pdfjsLib2.renderTextLayer({
+                                textContent: textContent,
+                                container: textLayerDiv,
+                                viewport: vp,
+                                textDivs: []
+                            });
+                            if (task && task.promise) await task.promise;
+                            console.log('[pcf-text] page', i, '— 2.x API spans:', textLayerDiv.childElementCount);
+                            if (textLayerDiv.childElementCount > 0) return;
+                        } catch(e2) { console.log('[pcf-text] page', i, '— 2.x API error:', e2.message); }
+                    }
+
+                    // Fallback: manually position text spans from getTextContent() items
+                    console.log('[pcf-text] page', i, '— using manual fallback');
+                    const Util = pdfjsLib2 && pdfjsLib2.Util;
+                    for (const item of textContent.items) {
+                        if (!item.str) continue;
+                        const span = document.createElement('span');
+                        span.textContent = item.str;
+                        let tx;
+                        if (Util && Util.transform) {
+                            tx = Util.transform(vp.transform, item.transform);
+                        } else {
+                            const [va,vb,vc,vd,ve,vf] = vp.transform;
+                            const [ia,ib,ic,id,ie,ig] = item.transform;
+                            tx = [va*ia+vc*ib, vb*ia+vd*ib, va*ic+vc*id, vb*ic+vd*id,
+                                  va*ie+vc*ig+ve, vb*ie+vd*ig+vf];
+                        }
+                        const fontH = Math.hypot(tx[2], tx[3]) || 1;
+                        span.style.left = tx[4] + 'px';
+                        span.style.top  = (tx[5] - fontH) + 'px';
+                        span.style.fontSize = fontH + 'px';
+                        span.style.fontFamily = 'sans-serif';
+                        const angle = Math.atan2(tx[1], tx[0]);
+                        const sx = Math.hypot(tx[0], tx[1]) / fontH;
+                        let xf = '';
+                        if (Math.abs(sx - 1) > 0.05) xf += `scaleX(${sx.toFixed(3)}) `;
+                        if (Math.abs(angle) > 0.01) xf += `rotate(${angle.toFixed(4)}rad)`;
+                        if (xf) { span.style.transform = xf.trim(); span.style.transformOrigin = '0% 100%'; }
+                        textLayerDiv.appendChild(span);
+                    }
+                    console.log('[pcf-text] page', i, '— manual spans created:', textLayerDiv.childElementCount);
+                } catch(e) { console.log('[pcf-text] page', i, '— ERROR:', e.message); }
+            })();
 
             pane.pages.push({ canvas, overlay, vp, pageIdx: i, scale, srcDoc: pane.pdfDoc, srcPageNum: i + 1 });
             this._attachEvents(overlay, i, paneId);
@@ -480,12 +564,35 @@ window.pcfViewer = {
 
     setTool(mode) {
         this.toolMode = mode;
+        if (mode) this.setTextSelectMode(false);
         const cursor = mode === 'draw' ? 'crosshair' : mode === 'brush' ? 'crosshair' : mode === 'text' ? 'text' : 'default';
         for (const paneId in this.panes) {
             const pane = this.panes[paneId];
             for (const pg of pane.pages) {
                 pg.overlay.style.cursor = cursor;
             }
+        }
+    },
+
+    setTextSelectMode(enabled) {
+        this._textSelectMode = enabled;
+        console.log('[pcf-text] setTextSelectMode', enabled, 'panes:', Object.keys(this.panes));
+        for (const paneId in this.panes) {
+            const viewer = document.getElementById('pcf-viewer-' + paneId);
+            console.log('[pcf-text] pane', paneId, 'viewer found:', !!viewer);
+            if (!viewer) continue;
+            const layers = viewer.querySelectorAll('.pcf-text-layer');
+            const overlays = viewer.querySelectorAll('.pcf-annotation-canvas');
+            console.log('[pcf-text] text layers:', layers.length, 'overlays:', overlays.length);
+            layers.forEach((tl, i) => {
+                tl.style.pointerEvents = enabled ? 'auto' : 'none';
+                console.log('[pcf-text] layer', i, 'children:', tl.childElementCount, 'pointerEvents->', tl.style.pointerEvents);
+            });
+            overlays.forEach(ov => {
+                ov.style.pointerEvents = enabled ? 'none' : '';
+                ov.style.cursor = enabled ? 'auto' : '';
+            });
+            viewer.style.cursor = enabled ? 'text' : '';
         }
     },
 
