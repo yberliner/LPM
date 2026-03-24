@@ -1681,6 +1681,46 @@ public class PdfService
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
+        try
+        {
+            return BuildNextCsPdf(pcName, date, auditorName, topHtml, bottomHtml);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[GenerateNextCsPdf] Layout error, retrying without ScaleToFit: {ex.Message}");
+            try
+            {
+                // Fallback: render without ScaleToFit — content may overflow but won't crash
+                return BuildNextCsPdf(pcName, date, auditorName, topHtml, bottomHtml, scaleToFit: false);
+            }
+            catch (Exception ex2)
+            {
+                Console.WriteLine($"[GenerateNextCsPdf] Fallback also failed: {ex2.Message}");
+                return Document.Create(c => c.Page(p =>
+                {
+                    p.Size(PageSizes.A4); p.Margin(36);
+                    p.Content().Column(col =>
+                    {
+                        col.Item().Text("Next C/S").FontSize(22).Bold();
+                        col.Item().PaddingTop(8).Text($"PC: {pcName}   Date: {date}").FontSize(14);
+                        col.Item().PaddingTop(4).Text($"Auditor: {auditorName}").FontSize(14);
+                        col.Item().PaddingTop(16).Text("The Next C/S:").FontSize(18).Bold().Underline();
+                        if (!string.IsNullOrWhiteSpace(bottomHtml))
+                        {
+                            var plain = System.Text.RegularExpressions.Regex.Replace(bottomHtml, "<[^>]+>", "");
+                            plain = System.Net.WebUtility.HtmlDecode(plain);
+                            col.Item().PaddingTop(8).Text(plain).FontSize(12);
+                        }
+                    });
+                })).GeneratePdf();
+            }
+        }
+    }
+
+    private byte[] BuildNextCsPdf(
+        string pcName, string date, string auditorName,
+        string? topHtml, string? bottomHtml, bool scaleToFit = true)
+    {
         return Document.Create(container =>
         {
             container.Page(page =>
@@ -1689,19 +1729,17 @@ public class PdfService
                 page.Margin(36);
                 page.DefaultTextStyle(x => x.FontSize(22).FontColor("#1a1a1a"));
 
-                // A4 content height ≈ 770pt (842 − 2×36 margin)
-                // Header block = 80pt (~10%)
-                // Top HTML block = 305pt (~40%)  → total 385pt = 50%
-                // "The Next C/S:" lands at exactly the midpoint
-
-                // Signature always at bottom via footer (avoids Extend+ScaleToFit conflict)
+                // Signature at bottom via footer (avoids Extend+ScaleToFit conflict)
                 page.Footer().AlignRight()
                     .Text(auditorName).FontSize(30).Bold().FontColor("#c0392b");
 
-                page.Content().ScaleToFit().Column(col =>
+                var content = page.Content();
+                var scalable = scaleToFit ? content.ScaleToFit() : content;
+
+                scalable.Column(col =>
                 {
-                    // ── Header block ──
-                    col.Item().Height(160).Column(hdr =>
+                    // ── Header ──
+                    col.Item().Column(hdr =>
                     {
                         hdr.Item().AlignCenter().PaddingBottom(18)
                             .Text("Dror Center, Haifa, Israel").FontSize(26).FontColor("#1a1a1a");
@@ -1720,21 +1758,21 @@ public class PdfService
                             });
                         });
 
-                        hdr.Item().Text(t =>
+                        hdr.Item().PaddingBottom(8).Text(t =>
                         {
                             t.Span("Auditor: ").FontSize(22).FontColor("#1a1a1a");
                             t.Span(auditorName).FontSize(28).Bold().FontColor("#c0392b");
                         });
                     });
 
-                    // ── Top free text ──
-                    col.Item().Height(170).Column(inner =>
+                    // ── Top free text (MinHeight keeps headline position when content is sparse) ──
+                    col.Item().MinHeight(170).Column(inner =>
                     {
                         if (!string.IsNullOrWhiteSpace(topHtml))
                             RenderHtmlBlock(inner, topHtml, 3f);
                     });
 
-                    // ── "The Next C/S:" at ~50% ──
+                    // ── "The Next C/S:" ──
                     col.Item().AlignCenter().PaddingBottom(12)
                         .Text("The Next C/S:")
                         .FontSize(44).Bold().Underline().FontColor("#1a1a1a");

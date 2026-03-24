@@ -841,14 +841,38 @@
                 <div class="modal-header py-2" style="background:linear-gradient(135deg,#1565c0,#1e88e5); border-bottom:none;">
                     <h5 class="modal-title fs-15 text-white d-flex align-items-center gap-2">
                         <i class="ri-upload-2-line"></i>Add Session
-                        <span style="font-size:.7rem; background:rgba(255,255,255,.2); padding:2px 8px; border-radius:4px; font-weight:400;">
-                            Step @_importStep of 3
-                        </span>
                     </h5>
                     <button type="button" class="btn-close btn-close-white"
                             @onclick="() => _showImportWizard = false"></button>
                 </div>
                 <div class="modal-body">
+
+                    @* ── Stepper ── *@
+                    <div class="wiz-stepper mb-3">
+                        @{
+                            var stepLabels = new[] { "Choose PC", "Fill ARF", "Next C/S" };
+                        }
+                        @for (int s = 1; s <= 3; s++)
+                        {
+                            var sn = s;
+                            var lbl = stepLabels[sn - 1];
+                            var isDone   = _importStep > sn;
+                            var isActive = _importStep == sn;
+                            var cls = isActive ? "wiz-active" : isDone ? "wiz-done" : "wiz-future";
+                            <div class="wiz-step @cls">
+                                <div class="wiz-circle">
+                                    @if (isDone) { <i class="ri-check-line"></i> }
+                                    else { @sn }
+                                </div>
+                                <div class="wiz-label">@lbl</div>
+                            </div>
+                            @if (sn < 3)
+                            {
+                                <div class="wiz-conn @(isDone ? "wiz-conn-done" : "")"></div>
+                            }
+                        }
+                    </div>
+
                     @if (_importStep == 1)
                     {
                         @* ── Step 1: Select PC + Files ── *@
@@ -2072,6 +2096,21 @@
 </style>
 
 <style>
+    /* ── Add Session wizard stepper ── */
+    .wiz-stepper { display:flex; align-items:center; justify-content:center; padding:4px 0 2px; }
+    .wiz-step    { display:flex; flex-direction:column; align-items:center; gap:5px; flex-shrink:0; }
+    .wiz-circle  { width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+                   font-size:.85rem; font-weight:700; border:2px solid; transition:all .2s; }
+    .wiz-label   { font-size:.68rem; font-weight:500; white-space:nowrap; transition:color .2s; }
+    .wiz-conn    { flex:1; height:2px; background:#334155; margin:0 8px; margin-bottom:22px; transition:background .2s; }
+    .wiz-conn-done { background:#10b981; }
+    .wiz-active .wiz-circle { background:#1e88e5; border-color:#1e88e5; color:#fff; box-shadow:0 0 0 4px rgba(30,136,229,.25); }
+    .wiz-active .wiz-label  { color:#90caf9; }
+    .wiz-done   .wiz-circle { background:#10b981; border-color:#10b981; color:#fff; }
+    .wiz-done   .wiz-label  { color:#6ee7b7; }
+    .wiz-future .wiz-circle { background:transparent; border-color:#475569; color:#64748b; }
+    .wiz-future .wiz-label  { color:#475569; }
+
     /* ── Assign PC modal ── */
     .apc-modal-header { background: linear-gradient(135deg, #1a237e, #3949ab); border-bottom: none; }
     .apc-modal-dialog { max-width: 620px; }
