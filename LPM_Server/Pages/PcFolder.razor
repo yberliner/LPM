@@ -625,6 +625,13 @@
                         @onclick="ToggleTextSelectMode">
                     <i class="ri-cursor-line"></i>
                 </button>
+                <button class="pcf-tool-btn @(_panMode ? "pcf-tool-active" : "")"
+                        title="@(_panMode ? "Pan mode ON — click again to turn off" : "Pan — drag to scroll when zoomed in")"
+                        style="@(_panMode ? "color:#fb923c;" : "")"
+                        @onclick="TogglePan">
+                    <i class="ri-drag-move-line"></i>
+                </button>
+                <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
                 <button class="pcf-tool-btn @(_toolMode == "draw" ? "pcf-tool-active" : "")"
                         title="Draw — click and drag on the PDF to draw freehand annotations"
                         @onclick='() => SetTool("draw")'>
@@ -746,12 +753,6 @@
                         </div>
                     }
                 </div>
-                <button class="pcf-tool-btn @(_panMode ? "pcf-tool-active" : "")"
-                        title="@(_panMode ? "Pan mode ON — click again to turn off" : "Pan — drag to scroll when zoomed in")"
-                        style="@(_panMode ? "color:#fb923c;" : "")"
-                        @onclick="TogglePan">
-                    <i class="ri-drag-move-line"></i>
-                </button>
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
                 <button class="pcf-save-btn" title="Save — save annotations to the PDF now (also auto-saves when switching files or closing)"
                         @onclick="SaveAnnotations"
@@ -2214,7 +2215,7 @@
     int _wsPage;
     const int WsPageSize = 10;
     string _toolMode = "";
-    bool _textSelectMode;
+    bool _textSelectMode = true;
     string _drawColor = "#22c55e";
     double _drawWidth = 2.5;
     int _fontSize = 14;
@@ -2424,6 +2425,7 @@
             _dotNetRef = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("pcfViewer.setDotNetRef", _dotNetRef);
             await JS.InvokeVoidAsync("pcfViewer.setPcId", PcId);
+            await JS.InvokeVoidAsync("pcfViewer.setTextSelectMode", true);
 
             // Load all panes in parallel — each loadPdf is independent
             var paneTasks = new List<Task>();
@@ -3127,10 +3129,18 @@
     {
         _panMode = !_panMode;
         Console.WriteLine($"[PcFolder] Pan mode {(_panMode ? "ON" : "OFF")} by '{_userName}' — PC {PcId}");
-        if (_panMode && _toolMode != "")
+        if (_panMode)
         {
-            _toolMode = "";
-            await JS.InvokeVoidAsync("pcfViewer.setTool", "");
+            if (_toolMode != "")
+            {
+                _toolMode = "";
+                await JS.InvokeVoidAsync("pcfViewer.setTool", "");
+            }
+            if (_textSelectMode)
+            {
+                _textSelectMode = false;
+                await JS.InvokeVoidAsync("pcfViewer.setTextSelectMode", false);
+            }
         }
         await JS.InvokeVoidAsync("pcfViewer.setPanMode", _panMode);
     }

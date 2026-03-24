@@ -1669,46 +1669,12 @@ public class PdfService
         string? topHtml, string? bottomHtml)
     {
         QuestPDF.Settings.License = LicenseType.Community;
-
-        try
-        {
-            return BuildNextCsPdf(pcName, date, auditorName, topHtml, bottomHtml);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[GenerateNextCsPdf] Layout error, retrying without ScaleToFit: {ex.Message}");
-            try
-            {
-                // Fallback: render without ScaleToFit — content may overflow but won't crash
-                return BuildNextCsPdf(pcName, date, auditorName, topHtml, bottomHtml, scaleToFit: false);
-            }
-            catch (Exception ex2)
-            {
-                Console.WriteLine($"[GenerateNextCsPdf] Fallback also failed: {ex2.Message}");
-                return Document.Create(c => c.Page(p =>
-                {
-                    p.Size(PageSizes.A4); p.Margin(36);
-                    p.Content().Column(col =>
-                    {
-                        col.Item().Text("Next C/S").FontSize(22).Bold();
-                        col.Item().PaddingTop(8).Text($"PC: {pcName}   Date: {date}").FontSize(14);
-                        col.Item().PaddingTop(4).Text($"Auditor: {auditorName}").FontSize(14);
-                        col.Item().PaddingTop(16).Text("The Next C/S:").FontSize(18).Bold().Underline();
-                        if (!string.IsNullOrWhiteSpace(bottomHtml))
-                        {
-                            var plain = System.Text.RegularExpressions.Regex.Replace(bottomHtml, "<[^>]+>", "");
-                            plain = System.Net.WebUtility.HtmlDecode(plain);
-                            col.Item().PaddingTop(8).Text(plain).FontSize(12);
-                        }
-                    });
-                })).GeneratePdf();
-            }
-        }
+        return BuildNextCsPdf(pcName, date, auditorName, topHtml, bottomHtml);
     }
 
     private byte[] BuildNextCsPdf(
         string pcName, string date, string auditorName,
-        string? topHtml, string? bottomHtml, bool scaleToFit = true)
+        string? topHtml, string? bottomHtml)
     {
         return Document.Create(container =>
         {
@@ -1722,10 +1688,9 @@ public class PdfService
                 page.Footer().AlignRight()
                     .Text(auditorName).FontSize(30).Bold().FontColor("#c0392b");
 
-                var content = page.Content();
-                var scalable = scaleToFit ? content.ScaleToFit() : content;
-
-                scalable.Column(col =>
+                // ScaleToFit ensures everything always fits exactly 1 page —
+                // if total content is taller than the page it shrinks proportionally.
+                page.Content().ScaleToFit().Column(col =>
                 {
                     // ── Header ──
                     col.Item().Column(hdr =>
@@ -1754,8 +1719,9 @@ public class PdfService
                         });
                     });
 
-                    // ── Top free text (MinHeight keeps headline position when content is sparse) ──
-                    col.Item().MinHeight(170).Column(inner =>
+                    // ── Top free text — fixed height so "Next C/S" is always at the same Y position.
+                    //    Inner ScaleToFit shrinks the HTML if it is taller than the reserved slot. ──
+                    col.Item().Height(120).ScaleToFit().Column(inner =>
                     {
                         if (!string.IsNullOrWhiteSpace(topHtml))
                             RenderHtmlBlock(inner, topHtml, 3f);
@@ -1766,9 +1732,9 @@ public class PdfService
                         .Text("The Next C/S:")
                         .FontSize(44).Bold().Underline().FontColor("#1a1a1a");
 
-                    // ── Bottom free text ──
+                    // ── Bottom free text — ScaleToFit shrinks the HTML if it is too long. ──
                     if (!string.IsNullOrWhiteSpace(bottomHtml))
-                        col.Item().PaddingTop(8).Column(inner => RenderHtmlBlock(inner, bottomHtml, 3f));
+                        col.Item().PaddingTop(8).ScaleToFit().Column(inner => RenderHtmlBlock(inner, bottomHtml, 3f));
                 });
             });
         }).GeneratePdf();
