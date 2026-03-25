@@ -3656,6 +3656,10 @@
         _dualPanes.Remove(PaneIds[idx]);
         _dualInfo.Remove(PaneIds[idx]);
 
+        // If the closed pane was maximized, clear maximize state
+        if (_maximizedPane == idx)
+            _maximizedPane = null;
+
         // Last pane — just clear it to empty (reopen with no file selected)
         if (_paneCount == 1)
         {
