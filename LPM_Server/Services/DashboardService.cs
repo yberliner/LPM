@@ -1907,7 +1907,7 @@ public class DashboardService
     }
 
     public record SessionSummaryInfo(string Name, string SessionDate, string? SummaryHtml, int LengthSeconds, int AdminSeconds);
-    public record SessionSummaryEditInfo(int SummaryId, int SessionId, string Name, string SessionDate, string? SummaryHtml, int LengthSeconds, int AdminSeconds);
+    public record SessionSummaryEditInfo(int SummaryId, int SessionId, string Name, string SessionDate, string CreatedAt, string? SummaryHtml, int LengthSeconds, int AdminSeconds);
 
     public List<SessionSummaryInfo> GetSessionSummariesForPc(int pcId, bool isSolo = false)
     {
@@ -1956,6 +1956,7 @@ public class DashboardService
             SELECT fs.Id, COALESCE(s.SessionId, 0),
                    COALESCE(s.Name, ''),
                    COALESCE(s.SessionDate, SUBSTR(fs.CreatedAt, 1, 10)),
+                   COALESCE(fs.CreatedAt, ''),
                    fs.SummaryHtml,
                    COALESCE(s.LengthSeconds, 0), COALESCE(s.AdminSeconds, 0)
             FROM sess_folder_summary fs
@@ -1968,8 +1969,8 @@ public class DashboardService
         using var r = cmd.ExecuteReader();
         while (r.Read())
             list.Add(new SessionSummaryEditInfo(
-                r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3),
-                r.IsDBNull(4) ? null : r.GetString(4), r.GetInt32(5), r.GetInt32(6)));
+                r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3), r.GetString(4),
+                r.IsDBNull(5) ? null : r.GetString(5), r.GetInt32(6), r.GetInt32(7)));
         return list;
     }
 

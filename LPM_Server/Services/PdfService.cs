@@ -1834,14 +1834,18 @@ public class PdfService
     private Document BuildFolderSummaryDoc(string pcName,
         List<DashboardService.SessionSummaryInfo> summaries, int totalPages)
     {
-        var pages = PackIntoPages(summaries);
-        // Within each page, reverse left and right independently so oldest prints first (top)
-        pages = pages
-            .Select(p => (
-                p.left.AsEnumerable().Reverse().ToList(),
-                p.right.AsEnumerable().Reverse().ToList()
-            ))
-            .ToList();
+        // Pack oldest-first so complete pages fill from oldest end;
+        // reversing puts the partial page (newest sessions) at display page 1.
+        var pages = PackIntoPages(summaries.AsEnumerable().Reverse().ToList());
+        pages.Reverse();
+
+        // Balance columns: re-split each page ceil/floor so left.Count ≈ right.Count,
+        // eliminating empty cells caused by height-based packing giving uneven counts.
+        pages = pages.Select(p => {
+            var all = p.left.Concat(p.right).ToList(); // already globally old→new
+            int lc = (all.Count + 1) / 2;
+            return (left: all.Take(lc).ToList(), right: all.Skip(lc).ToList());
+        }).ToList();
         int summaryPageCount = pages.Count;
 
         return Document.Create(container =>

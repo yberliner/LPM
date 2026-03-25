@@ -1195,15 +1195,18 @@
                                                        style="accent-color:#3b82f6; cursor:pointer;" />
                                             </td>
                                             <td>
-                                                <input type="text" class="arf-cell-input"
+                                                <input type="text" id="arf-process-@idx"
+                                                       class="arf-cell-input @(_arfRows[idx].Touched && string.IsNullOrWhiteSpace(_arfRows[idx].Process) ? "arf-cell-invalid" : "")"
                                                        value="@_arfRows[idx].Process"
+                                                       @onblur="() => _arfRows[idx].Touched = true"
                                                        @oninput="e => { _arfRows[idx].Process = e.Value?.ToString() ?? string.Empty; var _kw = HasAutoUncheckKeyword(_arfRows[idx].Process); if (!_kw) _arfRows[idx].AutoUnchecked = false; if (_kw && !_arfRows[idx].AutoUnchecked && _arfRows[idx].Checked) { _arfRows[idx].Checked = false; _arfRows[idx].AutoUnchecked = true; } RebuildArfSummary(); }"/>
                                             </td>
                                             <td>
                                                 <input type="text" inputmode="numeric" maxlength="5"
-                                                       class="arf-cell-input arf-cell-center arf-time-input @(!IsValidArfTime(_arfRows[idx].Time) || !IsArfTimeOrdered(idx) ? "arf-cell-invalid" : "")"
+                                                       class="arf-cell-input arf-cell-center arf-time-input @(!IsValidArfTime(_arfRows[idx].Time) || !IsArfTimeOrdered(idx) || (_arfRows[idx].Touched && string.IsNullOrWhiteSpace(_arfRows[idx].Time)) ? "arf-cell-invalid" : "")"
                                                        placeholder="HH:MM"
                                                        value="@_arfRows[idx].Time"
+                                                       @onblur="() => _arfRows[idx].Touched = true"
                                                        @onchange="e => SetArfTimeCell(idx, e)"/>
                                             </td>
                                             <td>
@@ -2438,12 +2441,13 @@
     string _arfTaRangeTo     = "";
     string _arfExamReport    = "F/N";
     string _arfSummary       = "";
-    List<ArfRow> _arfRows    = [new()];
+    List<ArfRow> _arfRows    = [new() { Touched = true }];
 
     class ArfRow
     {
         public bool   Checked       = true;
         public bool   AutoUnchecked = false;
+        public bool   Touched       = false;
         public string Process       = "";
         public string Time          = "";
         public string ToneArm       = "";
@@ -2479,9 +2483,23 @@
         !string.IsNullOrWhiteSpace(r.Process) &&
         IsValidArfTime(r.Time) && !string.IsNullOrWhiteSpace(r.Time));
 
-    void AddArfRow() { if (CanAddArfRow) { _arfRows.Add(new ArfRow()); RebuildArfSummary(); } }
+    void AddArfRow() { if (CanAddArfRow) { _arfRows.Add(new ArfRow { Touched = true }); RebuildArfSummary(); } }
     void RemoveArfRow(int idx) { if (_arfRows.Count > 1) { _arfRows.RemoveAt(idx); RecalcSessionLength(); RebuildArfSummary(); } }
-    void OnArfResultsKeyDown(KeyboardEventArgs e) { if ((e.Key == "Enter" || e.Key == "Tab") && CanAddArfRow) AddArfRow(); }
+    async Task OnArfResultsKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter" && e.Key != "Tab") return;
+        if (CanAddArfRow)
+        {
+            AddArfRow();
+            var newIdx = _arfRows.Count - 1;
+            await JSRuntime.InvokeVoidAsync("eval",
+                $"setTimeout(()=>{{var el=document.getElementById('arf-process-{newIdx}');if(el)el.focus();}},30)");
+        }
+        else
+        {
+            foreach (var r in _arfRows) r.Touched = true;
+        }
+    }
 
     void RebuildArfSummary(bool pushToEditor = true)
     {
@@ -2713,7 +2731,7 @@
         _importStep = 1;
         _arfDate = ""; _arfGrade = ""; _arfSessionLength = ""; _arfAdminTime = ""; _arfTotalTa = ""; _arfTaRangeFrom = ""; _arfTaRangeTo = ""; _arfExamReport = "F/N"; _arfSummary = "";
         _step3TopHtml = ""; _step3BottomHtml = "";
-        _arfRows = [new ArfRow()];
+        _arfRows = [new ArfRow { Touched = true }];
         _showImportWizard = true;
     }
 

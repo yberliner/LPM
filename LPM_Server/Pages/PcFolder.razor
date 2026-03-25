@@ -562,6 +562,11 @@
                             <i class="ri-arrow-right-s-line"></i>
                         </button>
                     </div>
+                    <button class="pcf-fs-nav-btn ms-1" title="@(_fsShowTime ? "Hide time" : "Show time")"
+                            style="@(_fsShowTime ? "border-color:#7dd3fc;color:#7dd3fc;" : "")"
+                            @onclick="() => _fsShowTime = !_fsShowTime">
+                        <i class="ri-time-line" style="font-size:.75rem;"></i>
+                    </button>
                     <button class="pcf-fs-nav-btn ms-1" title="@(_fsModeMaximized ? "Restore" : "Maximize")"
                             @onclick="() => _fsModeMaximized = !_fsModeMaximized">
                         <i class="@(_fsModeMaximized ? "ri-fullscreen-exit-line" : "ri-fullscreen-line")"></i>
@@ -603,8 +608,9 @@
                             {
                                 @* ── Full-width editing row ── *@
                                 <div class="pcf-fs-row pcf-fs-row--editing">
-                                    <div class="pcf-fs-dt-col">
+                                    <div class="pcf-fs-dt-col" title="@FsRowTooltip(editingEntry)">
                                         <div class="pcf-fs-date">@FsFormatDate(editingEntry.SessionDate)</div>
+                                        @if (_fsShowTime) { <div class="pcf-fs-time">@FsFormatTime(editingEntry.CreatedAt)</div> }
                                         @if (editingEntry.LengthSeconds > 0) { <div class="pcf-fs-dur">S: @FsSecsToHMM(editingEntry.LengthSeconds)</div> }
                                         @if (editingEntry.AdminSeconds > 0)  { <div class="pcf-fs-dur">A: @FsSecsToHMM(editingEntry.AdminSeconds)</div> }
                                     </div>
@@ -621,10 +627,11 @@
                             {
                                 @* ── Normal two-column row ── *@
                                 <div class="pcf-fs-row">
-                                    <div class="pcf-fs-dt-col">
+                                    <div class="pcf-fs-dt-col" title="@(leftEntry != null ? FsRowTooltip(leftEntry) : "")">
                                         @if (leftEntry != null)
                                         {
                                             <div class="pcf-fs-date">@FsFormatDate(leftEntry.SessionDate)</div>
+                                            @if (_fsShowTime) { <div class="pcf-fs-time">@FsFormatTime(leftEntry.CreatedAt)</div> }
                                             @if (leftEntry.LengthSeconds > 0) { <div class="pcf-fs-dur">S: @FsSecsToHMM(leftEntry.LengthSeconds)</div> }
                                             @if (leftEntry.AdminSeconds > 0)  { <div class="pcf-fs-dur">A: @FsSecsToHMM(leftEntry.AdminSeconds)</div> }
                                         }
@@ -632,7 +639,7 @@
                                     <div class="pcf-fs-wr-col">
                                         @if (leftEntry != null)
                                         {
-                                            <div style="position:relative;">
+                                            <div style="position:relative;" title="@FsRowTooltip(leftEntry)">
                                                 <div class="pcf-fs-summary-text">
                                                     @if (!string.IsNullOrWhiteSpace(leftEntry.SummaryHtml))
                                                     { @((MarkupString)leftEntry.SummaryHtml) }
@@ -645,10 +652,11 @@
                                         }
                                     </div>
                                     <div class="pcf-fs-divider"></div>
-                                    <div class="pcf-fs-dt-col">
+                                    <div class="pcf-fs-dt-col" title="@(rightEntry != null ? FsRowTooltip(rightEntry) : "")">
                                         @if (rightEntry != null)
                                         {
                                             <div class="pcf-fs-date">@FsFormatDate(rightEntry.SessionDate)</div>
+                                            @if (_fsShowTime) { <div class="pcf-fs-time">@FsFormatTime(rightEntry.CreatedAt)</div> }
                                             @if (rightEntry.LengthSeconds > 0) { <div class="pcf-fs-dur">S: @FsSecsToHMM(rightEntry.LengthSeconds)</div> }
                                             @if (rightEntry.AdminSeconds > 0)  { <div class="pcf-fs-dur">A: @FsSecsToHMM(rightEntry.AdminSeconds)</div> }
                                         }
@@ -656,7 +664,7 @@
                                     <div class="pcf-fs-wr-col">
                                         @if (rightEntry != null)
                                         {
-                                            <div style="position:relative;">
+                                            <div style="position:relative;" title="@FsRowTooltip(rightEntry)">
                                                 <div class="pcf-fs-summary-text">
                                                     @if (!string.IsNullOrWhiteSpace(rightEntry.SummaryHtml))
                                                     { @((MarkupString)rightEntry.SummaryHtml) }
@@ -2141,6 +2149,7 @@
         width: 4px; flex-shrink: 0; background: #334155;
     }
     .pcf-fs-date { font-weight: 700; font-size: .8rem; }
+    .pcf-fs-time { font-size: .7rem; color: #7dd3fc; opacity: .85; }
     .pcf-fs-dur  { font-size: .75rem; color: #94a3b8; }
     .pcf-fs-summary-text {
         color: #cbd5e1; font-size: .82rem; line-height: 1.4;
@@ -2741,6 +2750,7 @@
     // ── Folder Summary modal ──
     bool   _showFsModal;
     bool   _fsModeMaximized;
+    bool   _fsShowTime; // default off
     List<DashboardService.SessionSummaryEditInfo> _fsEntries = new();
     List<(List<DashboardService.SessionSummaryEditInfo> left, List<DashboardService.SessionSummaryEditInfo> right)> _fsPages = new();
     int    _fsPageIdx;
@@ -3434,43 +3444,68 @@
         return h + 12;
     }
 
-    static List<(List<DashboardService.SessionSummaryEditInfo> left, List<DashboardService.SessionSummaryEditInfo> right)>
-        FsPackPages(List<DashboardService.SessionSummaryEditInfo> entries)
+    // Run height packing once on oldest-first list to find how many entries fit on one full page,
+    // then round DOWN to even so every full page has equal left/right counts (no empty cells).
+    static int FsGetEvenPageCapacity(List<DashboardService.SessionSummaryEditInfo> oldestFirst)
     {
         const float pageH = 700f;
-        var pages = new List<(List<DashboardService.SessionSummaryEditInfo>, List<DashboardService.SessionSummaryEditInfo>)>();
-        var curLeft  = new List<DashboardService.SessionSummaryEditInfo>();
-        var curRight = new List<DashboardService.SessionSummaryEditInfo>();
         float leftH = 0, rightH = 0;
         bool fillingLeft = true;
-
-        foreach (var s in entries)
+        int count = 0;
+        foreach (var s in oldestFirst)
         {
             float h = FsEstimateHeight(s);
             if (fillingLeft)
             {
-                if (leftH + h <= pageH) { curLeft.Add(s); leftH += h; }
-                else { fillingLeft = false; curRight.Add(s); rightH = h; }
+                if (leftH + h <= pageH) { leftH += h; count++; }
+                else { fillingLeft = false; rightH = h; count++; } // first right entry
             }
             else
             {
-                if (rightH + h <= pageH) { curRight.Add(s); rightH += h; }
-                else
-                {
-                    pages.Add((curLeft, curRight));
-                    curLeft = [s]; curRight = [];
-                    leftH = h; rightH = 0; fillingLeft = true;
-                }
+                if (rightH + h <= pageH) { rightH += h; count++; }
+                else break; // page full — stop counting
             }
         }
-        if (curLeft.Count > 0 || curRight.Count > 0) pages.Add((curLeft, curRight));
-        if (pages.Count == 0) pages.Add(([], []));
+        return Math.Max(2, count % 2 == 0 ? count : count - 1);
+    }
 
-        // Within each page reverse both columns so oldest prints first (top)
-        return pages.Select(p => (
-            p.Item1.AsEnumerable().Reverse().ToList(),
-            p.Item2.AsEnumerable().Reverse().ToList()
-        )).ToList();
+    static List<(List<DashboardService.SessionSummaryEditInfo> left, List<DashboardService.SessionSummaryEditInfo> right)>
+        FsPackPages(List<DashboardService.SessionSummaryEditInfo> entries)
+    {
+        if (entries.Count == 0) return [([], [])];
+
+        // Work oldest-first throughout
+        var oldestFirst = entries.AsEnumerable().Reverse().ToList();
+        int total = oldestFirst.Count;
+
+        int pageCapacity = FsGetEvenPageCapacity(oldestFirst);
+
+        // If everything fits on one page: all in left column (page 1 rule)
+        if (pageCapacity >= total)
+            return [(oldestFirst, [])];
+
+        int lc           = pageCapacity / 2;          // entries per column on full pages
+        int page1Count   = total % pageCapacity;      // leftover → page 1
+        int fullEntries  = total - page1Count;
+        int fullPageCount = fullEntries / pageCapacity;
+
+        var result = new List<(List<DashboardService.SessionSummaryEditInfo>, List<DashboardService.SessionSummaryEditInfo>)>();
+
+        // Page 1 (newest, partial): all entries go to LEFT column — right stays empty
+        if (page1Count > 0)
+        {
+            var page1 = oldestFirst.Skip(fullEntries).ToList(); // old→new
+            result.Add((page1, []));
+        }
+
+        // Full pages: add newest group first (display page 2) down to oldest (last display page)
+        for (int i = fullPageCount - 1; i >= 0; i--)
+        {
+            var group = oldestFirst.Skip(i * pageCapacity).Take(pageCapacity).ToList(); // old→new
+            result.Add((group.Take(lc).ToList(), group.Skip(lc).ToList()));
+        }
+
+        return result;
     }
 
     void OpenFsModal()
@@ -3582,7 +3617,22 @@
     static string FsFormatDate(string dateStr) =>
         DateTime.TryParse(dateStr, out var dt) ? dt.ToString("dd-MM-yy") : dateStr;
 
+    static string FsFormatTime(string createdAt) =>
+        DateTime.TryParse(createdAt, out var dt) ? dt.ToString("HH:mm") : "";
+
     static string FsSecsToHMM(int secs) => secs <= 0 ? "" : $"{secs / 3600}:{(secs % 3600) / 60:D2}";
+
+    static string FsRowTooltip(DashboardService.SessionSummaryEditInfo e)
+    {
+        var dt = DateTime.TryParse(e.CreatedAt, out var d) ? d.ToString("dd/MM/yyyy HH:mm") : e.SessionDate;
+        var total = e.LengthSeconds + e.AdminSeconds;
+        var totalStr = total > 0 ? $"{total / 3600}:{(total % 3600) / 60:D2}" : "";
+        var parts = new System.Collections.Generic.List<string>();
+        if (!string.IsNullOrWhiteSpace(e.Name)) parts.Add(e.Name);
+        parts.Add(dt);
+        if (!string.IsNullOrEmpty(totalStr)) parts.Add(totalStr);
+        return string.Join("  |  ", parts);
+    }
 
     void SetActiveIdx(int idx)
     {
