@@ -797,7 +797,7 @@ public class FolderService
     public IEnumerable<(string ZipPath, string FullPath)> GetServerBackupExtras()
     {
         var appDir = Directory.GetCurrentDirectory();
-        foreach (var name in new[] { "appsettings.json", "appsettings.Production.json", "appsettings.secret.json" })
+        foreach (var name in new[] { "appsettings.json", "appsettings.Production.json" })
         {
             var path = Path.Combine(appDir, name);
             if (File.Exists(path)) yield return (name, path);

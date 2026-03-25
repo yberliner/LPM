@@ -4,12 +4,13 @@ namespace LPM.Services;
 /// Sends SMS via GlobalSms.co.il (itnewsletter SAPI) using SOAP 1.1 over HttpClient.
 /// Endpoint: https://sapi.itnewsletter.co.il/webservices/wssms.asmx
 /// </summary>
-public class SmsService(IHttpClientFactory httpClientFactory)
+public class SmsService(IHttpClientFactory httpClientFactory, IConfiguration configuration)
 {
-    private const string ApiKey      = "w#3M$Wq5B8@bdR58316@D$s2#4Pj7Tm$";
-    private const string Originator  = "0525567826";
     private const string EndpointUrl = "https://sapi.itnewsletter.co.il/webservices/wssms.asmx";
     private const string SoapAction  = "apiGlobalSms/sendSmsToRecipients";
+
+    private string ApiKey     => configuration["Sms:ApiKey"]     ?? "";
+    private string Originator => configuration["Sms:Originator"] ?? "";
 
     /// <summary>
     /// Sends an SMS. destination should be a local Israeli number (e.g. "0541234567")

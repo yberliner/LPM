@@ -340,12 +340,7 @@
 
         try
         {
-            var escapedPw = _backupPassword.Replace("\\", "\\\\").Replace("'", "\\'");
-            var js = "(async function(){var fd=new FormData();fd.append('password','" + escapedPw
-                + "');var resp=await fetch('/api/backup-auth',{method:'POST',body:fd});"
-                + "var json=await resp.json();if(json.locked)return 'LOCKED';"
-                + "if(!json.ok)return 'FAIL:'+json.remaining;return json.token;})()";
-            var result = await JS.InvokeAsync<string>("eval", js);
+            var result = await JS.InvokeAsync<string>("lpmBackupAuth", _backupPassword);
 
             if (result == "LOCKED")
             {

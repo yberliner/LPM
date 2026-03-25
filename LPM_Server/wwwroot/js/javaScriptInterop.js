@@ -538,3 +538,14 @@ window.lpmInitColResize = function (tableId) {
         th.appendChild(handle);
     });
 };
+
+// Backup authentication — password passed as a typed argument, never concatenated into JS
+window.lpmBackupAuth = async function (password) {
+    var fd = new FormData();
+    fd.append('password', password);
+    var resp = await fetch('/api/backup-auth', { method: 'POST', body: fd });
+    var json = await resp.json();
+    if (json.locked) return 'LOCKED';
+    if (!json.ok) return 'FAIL:' + json.remaining;
+    return json.token;
+};
