@@ -544,22 +544,14 @@
 
                 <div class="pcf-fs-body">
                     <table class="pcf-fs-table">
-                        <colgroup>
-                            <col style="width:100px;" />
-                            <col style="width:@(FsNameColWidth)px;" />
-                            <col style="width:120px;" />
-                            <col style="width:60px;" />
-                            <col />
-                            <col style="width:36px;" />
-                        </colgroup>
                         <thead>
                             <tr>
-                                <th>Date</th>
-                                <th>Session Name</th>
-                                <th>Auditor</th>
-                                <th>Duration</th>
+                                <th style="width:100px;">Date</th>
+                                <th style="width:@(FsNameColWidth)px;">Session Name</th>
+                                <th style="width:120px;">Auditor</th>
+                                <th style="width:60px;">Duration</th>
                                 <th>Summary</th>
-                                <th></th>
+                                <th style="width:36px;"></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -2062,7 +2054,7 @@
         padding: 14px 18px; border-bottom: 1px solid #334155; flex-shrink: 0;
     }
     .pcf-fs-body {
-        overflow-y: auto; flex: 1; padding: 0;
+        overflow: auto; flex: 1; padding: 0;
     }
     .pcf-fs-nav-btn {
         background: none; border: 1px solid #475569; border-radius: 6px;
@@ -2080,9 +2072,15 @@
         position: sticky; top: 0; z-index: 1;
         background: #0f172a; color: #94a3b8; font-weight: 600;
         padding: 8px 12px; text-align: left; border-bottom: 2px solid #334155;
-        white-space: nowrap; overflow: hidden; user-select: none;
+        white-space: nowrap; overflow: visible; user-select: none;
     }
     .pcf-fs-table thead th:hover { background: #1e293b; }
+    .pcf-fs-col-resize {
+        position: absolute; right: 0; top: 0; bottom: 0; width: 5px;
+        cursor: col-resize; z-index: 2;
+        border-right: 2px solid transparent; transition: border-color .15s;
+    }
+    .pcf-fs-col-resize:hover, .pcf-fs-col-resize.dragging { border-right-color: #60a5fa; }
     .pcf-fs-table tbody tr { border-bottom: 1px solid #1e293b; }
     .pcf-fs-table tbody tr:last-child { border-bottom: none; }
     .pcf-fs-table tbody tr:hover { background: rgba(255,255,255,.03); }
@@ -3397,13 +3395,20 @@
                 tbl.querySelectorAll('thead th').forEach(function(th) {
                     th.style.position = 'relative';
                     var handle = document.createElement('div');
-                    handle.style.cssText = 'position:absolute;right:0;top:0;bottom:0;width:6px;cursor:col-resize;z-index:2;';
+                    handle.className = 'pcf-fs-col-resize';
                     th.appendChild(handle);
                     handle.addEventListener('mousedown', function(e) {
                         e.preventDefault(); e.stopPropagation();
+                        handle.classList.add('dragging');
                         var startX = e.pageX, startW = th.offsetWidth;
-                        function onMove(e) { th.style.width = Math.max(36, startW + e.pageX - startX) + 'px'; }
-                        function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
+                        function onMove(e) {
+                            th.style.width = Math.max(36, startW + e.pageX - startX) + 'px';
+                        }
+                        function onUp() {
+                            handle.classList.remove('dragging');
+                            document.removeEventListener('mousemove', onMove);
+                            document.removeEventListener('mouseup', onUp);
+                        }
                         document.addEventListener('mousemove', onMove);
                         document.addEventListener('mouseup', onUp);
                     });
