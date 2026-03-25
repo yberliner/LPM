@@ -811,6 +811,45 @@ public class FolderService
         }
     }
 
+    /// <summary>
+    /// Detect whether a backup relPath refers to a Folder Summary file in Front_Cover,
+    /// and extract pcId + isSolo from the directory name.
+    /// relPath format: "PC-Folders/{pcId}-{name}[optional: ' Solo']/Front_Cover/{filename}.pdf"
+    /// Returns (true, pcId, isSolo) if matched, (false, 0, false) otherwise.
+    /// </summary>
+    public static (bool IsSummary, int PcId, bool IsSolo) ParseFolderSummaryBackupPath(string relPath)
+    {
+        // Must be under Front_Cover
+        var frontCoverSegment = "/Front_Cover/";
+        var fcIdx = relPath.IndexOf(frontCoverSegment, StringComparison.OrdinalIgnoreCase);
+        if (fcIdx < 0) return (false, 0, false);
+
+        // Filename check — strip optional date prefix nn-nn-nn_
+        var fileName = relPath.Substring(fcIdx + frontCoverSegment.Length);
+        var nameNoExt = System.IO.Path.GetFileNameWithoutExtension(fileName);
+        if (nameNoExt.Length >= 9 && nameNoExt[2] == '-' && nameNoExt[5] == '-' && nameNoExt[8] == '_')
+            nameNoExt = nameNoExt.Substring(9);
+        var lower = nameNoExt.ToLowerInvariant().Replace("_", " ").Replace("-", " ").Replace(".", " ");
+        if (!lower.Contains("folder summary") && !lower.Contains("summary"))
+            return (false, 0, false);
+
+        // Extract folder dir name: segment between "PC-Folders/" and the next "/"
+        const string prefix = "PC-Folders/";
+        if (!relPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return (false, 0, false);
+        var afterPrefix = relPath.Substring(prefix.Length);
+        var slashIdx = afterPrefix.IndexOf('/');
+        if (slashIdx < 0) return (false, 0, false);
+        var dirName = afterPrefix.Substring(0, slashIdx); // e.g. "42-John Doe" or "42-John Doe Solo"
+
+        var dashIdx = dirName.IndexOf('-');
+        if (dashIdx < 0) return (false, 0, false);
+        if (!int.TryParse(dirName.Substring(0, dashIdx), out var pcId) || pcId <= 0)
+            return (false, 0, false);
+
+        var isSolo = dirName.EndsWith(" Solo", StringComparison.OrdinalIgnoreCase);
+        return (true, pcId, isSolo);
+    }
+
     /// <summary>Decrypt a raw file from disk (for backup streaming).</summary>
     public byte[] DecryptFileForBackup(string fullPath)
     {

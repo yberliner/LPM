@@ -373,7 +373,7 @@ window.pcfViewer = {
                         const affectedPages = new Set();
                         for (const ann of sidecar.annotations) {
                             if (pane.loadGen !== myGen) break;
-                            const a = { ...ann, _fromSidecar: true };
+                            const a = { ...ann };
                             if (ratio !== 1) {
                                 a.x = Math.round(ann.x * ratio);
                                 a.y = Math.round(ann.y * ratio);
@@ -451,8 +451,6 @@ window.pcfViewer = {
                     const { x: mx, y: my } = canvasXY(me);
                     ann.x = origX + (mx - startX);
                     ann.y = origY + (my - startY);
-                    // Mark as modified so the new position gets burned into the PDF on next save
-                    delete ann._fromSidecar;
                     self._redrawOverlay(pageIdx, paneId);
                     moved = true;
                 };
@@ -836,8 +834,6 @@ window.pcfViewer = {
                         pane.annotations[existingIdx].color = self.drawColor;
                         pane.annotations[existingIdx].fontSize = self.fontSize;
                         pane.annotations[existingIdx].maxWidth = input.offsetWidth;
-                        // Mark as modified so it gets re-burned into the PDF on next save
-                        delete pane.annotations[existingIdx]._fromSidecar;
                     } else {
                         // Empty text = delete annotation
                         pane.annotations.splice(existingIdx, 1);
@@ -1166,13 +1162,13 @@ window.pcfViewer = {
         if (!pane) return JSON.stringify({ totalPages: 0, pages: [] });
 
         // Collect which page indices have each annotation type.
-        // _fromSidecar text annotations are excluded from overlayPages — they are
-        // already burned into the PDF from a previous save; re-burning them would double them.
+        // Text annotations are NEVER burned into the PDF — they live only in the sidecar.
+        // Only 'draw' strokes trigger an overlay page in the PDF.
         const bgChangePages = new Set(
             pane.annotations.filter(a => a.type === 'bg-change').map(a => a.pageIdx)
         );
         const overlayPages = new Set(
-            pane.annotations.filter(a => (a.type === 'draw' || a.type === 'text') && !a._fromSidecar).map(a => a.pageIdx)
+            pane.annotations.filter(a => a.type === 'draw').map(a => a.pageIdx)
         );
 
         const pages = [];
@@ -1190,7 +1186,11 @@ window.pcfViewer = {
                 fc.width = pg.canvas.width; fc.height = pg.canvas.height;
                 const fctx = fc.getContext('2d');
                 fctx.drawImage(pg.canvas, 0, 0);
-                fctx.drawImage(pg.overlay, 0, 0);
+                // Draw only draw strokes — text lives in sidecar and must never be burned into PDF
+                for (const ann of pane.annotations) {
+                    if (ann.pageIdx !== i || ann.type !== 'draw') continue;
+                    this._drawStroke(fctx, ann.stroke);
+                }
                 pages.push({
                     action: isOriginal ? 'full_replace' : 'full_new',
                     srcPageIdx,
@@ -1198,15 +1198,14 @@ window.pcfViewer = {
                     dataUrl: fc.toDataURL('image/png')
                 });
             } else if (hasOverlay) {
-                // Original page with draw/text: send transparent annotation overlay only.
-                // Re-render onto a fresh canvas excluding _fromSidecar text (already in PDF).
+                // Original page with draw strokes: send transparent annotation overlay only.
+                // Text is excluded entirely — it lives in the sidecar and is never burned into the PDF.
                 const oc = document.createElement('canvas');
                 oc.width = pg.overlay.width; oc.height = pg.overlay.height;
                 const octx = oc.getContext('2d');
                 for (const ann of pane.annotations) {
-                    if (ann.pageIdx !== i || ann._fromSidecar) continue;
-                    if (ann.type === 'draw') this._drawStroke(octx, ann.stroke);
-                    if (ann.type === 'text') this._drawText(octx, ann);
+                    if (ann.pageIdx !== i || ann.type !== 'draw') continue;
+                    this._drawStroke(octx, ann.stroke);
                 }
                 pages.push({
                     action: 'overlay',
@@ -1462,9 +1461,8 @@ window.pcfViewer = {
         const textAnns = pane.annotations.filter(a => a.type === 'text');
         const soloParam = pane.solo ? '&solo=true' : '';
         const url = `/api/pc-file-save-annotations?pcId=${this._pcId}&path=${encodeURIComponent(pane.filePath)}${soloParam}`;
-        // Strip internal flags before saving
         const body = textAnns.length > 0
-            ? JSON.stringify({ scale: pane.baseScale, annotations: textAnns.map(({ _fromSidecar, ...rest }) => rest) })
+            ? JSON.stringify({ scale: pane.baseScale, annotations: textAnns })
             : null;
         try {
             await fetch(url, { method: 'POST', credentials: 'include', body, headers: { 'Content-Type': 'application/json' } });
@@ -1479,7 +1477,7 @@ window.pcfViewer = {
         const soloParam = pane.solo ? '&solo=true' : '';
         const url = `/api/pc-file-save-annotations?pcId=${this._pcId}&path=${encodeURIComponent(pane.filePath)}${soloParam}`;
         const body = textAnns.length > 0
-            ? JSON.stringify({ scale: pane.baseScale, annotations: textAnns.map(({ _fromSidecar, ...rest }) => rest) })
+            ? JSON.stringify({ scale: pane.baseScale, annotations: textAnns })
             : null;
         try { navigator.sendBeacon(url, body ? new Blob([body], { type: 'application/json' }) : new Blob()); } catch(e) { /* best-effort */ }
     },

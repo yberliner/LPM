@@ -702,7 +702,8 @@ app.MapGet("/api/backup-integrity", (HttpContext ctx, LPM.Services.FolderService
 });
 
 // ── Backup: User Backup (DB snapshot + auto-backups + decrypted PC files) ──
-app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderService svc, IConfiguration cfg) =>
+app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderService svc, IConfiguration cfg,
+    LPM.Services.DashboardService dashSvc, PdfService pdfSvc) =>
 {
     if (ctx.User?.IsInRole("Admin") != true) return Results.Forbid();
 
@@ -790,8 +791,32 @@ app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderSer
                 {
                     LPM.Services.BackupProgress.CurrentFile = relPath;
                     var decrypted = svc.DecryptFileForBackup(fullPath);
+
+                    // Folder Summary files: prepend session summaries PDF (same as live viewer)
+                    byte[] bytesToZip = decrypted;
+                    var (isSummary, fspcId, isSolo) = LPM.Services.FolderService.ParseFolderSummaryBackupPath(relPath);
+                    if (isSummary)
+                    {
+                        try
+                        {
+                            var summaries = dashSvc.GetSessionSummariesForPc(fspcId, isSolo);
+                            if (summaries.Count > 0)
+                            {
+                                var pcName = dashSvc.GetPersonName(fspcId) ?? $"PC {fspcId}";
+                                var originalPageCount = pdfSvc.CountPdfPages(decrypted);
+                                var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
+                                bytesToZip = pdfSvc.CombinePdfs(summaryPdf, decrypted);
+                                Console.WriteLine($"[Backup] FolderSummary combined for PC {fspcId} ({summaries.Count} sessions)");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[Backup] FolderSummary generation failed for PC {fspcId}: {ex.Message} — using original");
+                        }
+                    }
+
                     var entry = zip.CreateEntry(relPath, System.IO.Compression.CompressionLevel.Fastest);
-                    using var es = entry.Open(); es.Write(decrypted);
+                    using var es = entry.Open(); es.Write(bytesToZip);
                     LPM.Services.BackupProgress.Current = ++processed;
                 }
                 catch { }
