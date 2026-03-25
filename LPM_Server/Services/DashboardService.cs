@@ -73,19 +73,6 @@ public class DashboardService
 
         // Schema managed directly in DB — no CREATE TABLE statements here.
 
-        // Remove duplicate Persons rows (keep lowest PersonId per FirstName, protect those referenced by PCs or users)
-        using var dedupCmd = conn.CreateCommand();
-        dedupCmd.CommandText = @"
-            DELETE FROM core_persons
-            WHERE PersonId NOT IN (
-                SELECT MIN(PersonId) FROM core_persons GROUP BY LOWER(FirstName)
-            )
-            AND PersonId NOT IN (SELECT PersonId FROM core_users)
-            AND PersonId NOT IN (SELECT PcId FROM core_pcs)";
-        var removed = dedupCmd.ExecuteNonQuery();
-        if (removed > 0)
-            Console.WriteLine($"[Startup] Removed {removed} duplicate Persons row(s).");
-
         // Ensure all active staff members exist in PCs table
         using var ensurePcsCmd = conn.CreateCommand();
         ensurePcsCmd.CommandText = @"

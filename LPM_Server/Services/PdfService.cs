@@ -261,23 +261,22 @@ public class PdfService
         {
             var byMonth = new Dictionary<string, (int Don, int Friend, int Social, int Haifa, int Other, int Total)>();
             var monthOrder = new List<string>();
-            foreach (var w in weeklyTotals)
+            // weeklyTotals[0] = weekStart (the most recent week); each subsequent entry is 7 days earlier.
+            // Derive the actual date per entry to get the correct year, including year-boundary crossings.
+            for (int i = 0; i < weeklyTotals.Count; i++)
             {
-                // Parse week label "dd/MM" to get month
-                var parts = w.WeekLabel.Split('/');
-                if (parts.Length == 2)
+                var w = weeklyTotals[i];
+                var actualDate = weekStart.AddDays(-7 * i);
+                var mLabel = $"{actualDate.Month:D2}/{actualDate.Year % 100:D2}"; // MM/YY
+                if (!byMonth.ContainsKey(mLabel))
                 {
-                    var mLabel = $"{parts[1]}/{(DateTime.Now.Year % 100):D2}"; // MM/YY
-                    if (!byMonth.ContainsKey(mLabel))
-                    {
-                        byMonth[mLabel] = (0, 0, 0, 0, 0, 0);
-                        monthOrder.Add(mLabel);
-                    }
-                    var cur = byMonth[mLabel];
-                    byMonth[mLabel] = (cur.Don + w.DonCount, cur.Friend + w.FriendCount,
-                        cur.Social + w.SocialCount, cur.Haifa + w.HaifaCount,
-                        cur.Other + w.OtherCount, cur.Total + w.TotalVisits);
+                    byMonth[mLabel] = (0, 0, 0, 0, 0, 0);
+                    monthOrder.Add(mLabel);
                 }
+                var cur = byMonth[mLabel];
+                byMonth[mLabel] = (cur.Don + w.DonCount, cur.Friend + w.FriendCount,
+                    cur.Social + w.SocialCount, cur.Haifa + w.HaifaCount,
+                    cur.Other + w.OtherCount, cur.Total + w.TotalVisits);
             }
             foreach (var ml in monthOrder)
             {

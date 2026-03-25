@@ -1537,11 +1537,14 @@
             });
         }
 
-        // Refresh on any MainHeader data mutation
-        DashSvc.OnDataChanged += _onDataChanged;
+        // Refresh on any MainHeader data mutation — stored as a field for correct unsubscription.
+        // Action wrapper avoids async void; exceptions are caught inside _onDataChangedAsync.
+        _onDataChangedHandler = () => _ = _onDataChangedAsync();
+        DashSvc.OnDataChanged += _onDataChangedHandler;
     }
 
-    private async void _onDataChanged()
+    private Action? _onDataChangedHandler;
+    private async Task _onDataChangedAsync()
     {
         try { await InvokeAsync(async () => { await RefreshAsync(); StateHasChanged(); }); }
         catch (Exception ex) { Console.WriteLine($"[Home] _onDataChanged error: {ex.Message}"); }
@@ -1584,7 +1587,7 @@
         _dotNetRef?.Dispose();
         if (_csNotifyKey != null)
             CsNotifySvc.Unsubscribe(_csNotifyKey);
-        DashSvc.OnDataChanged -= _onDataChanged;
+        if (_onDataChangedHandler != null) DashSvc.OnDataChanged -= _onDataChangedHandler;
     }
 
     DateOnly AllowedWeekStart => DashboardService.GetWeekStart(MaxAllowedDate());
