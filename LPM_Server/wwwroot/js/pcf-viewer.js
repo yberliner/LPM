@@ -206,6 +206,7 @@ window.pcfViewer = {
             const canvas = document.createElement('canvas');
             canvas.width = vp.width;
             canvas.height = vp.height;
+            canvas.dataset.fsPageIndex = i; // for folder summary cell hit-testing
             wrapper.appendChild(canvas);
 
             const textLayerDiv = document.createElement('div');

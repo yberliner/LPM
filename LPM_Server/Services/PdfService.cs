@@ -1767,85 +1767,67 @@ public class PdfService
     }
 
     // Estimate entry height for page layout
+    // At FontSize 11pt in QuestPDF, each line is ~13pt. Padding is 8pt (4pt top + 4pt bottom).
     private static float EstimateEntryHeight(DashboardService.SessionSummaryInfo s)
     {
-        float h = 18; // date line
-        if (s.LengthSeconds > 0) h += 16;
-        if (s.AdminSeconds > 0) h += 16;
-        if (!string.IsNullOrWhiteSpace(s.Name)) h += 16;
+        const float lineH = 13f;
+        float h = lineH; // date line
+        if (s.LengthSeconds > 0) h += lineH;
+        if (s.AdminSeconds > 0) h += lineH;
+        if (!string.IsNullOrWhiteSpace(s.Name)) h += lineH;
         if (!string.IsNullOrWhiteSpace(s.SummaryHtml))
         {
             var text = Regex.Replace(s.SummaryHtml!, "<[^>]+>", "");
             var lines = Math.Max(1, (int)Math.Ceiling(text.Length / 40.0));
-            h += lines * 15;
+            h += lines * lineH;
         }
-        return h + 12; // padding
+        return h + 8; // padding
     }
 
-    private const float PageUsableHeight = 700f; // A4 minus margins and header
+    private const float PageUsableHeight = 900f; // empirical: EstimateEntryHeight over-estimates by ~25%, so we compensate
 
-    // Pre-compute which entries go on which page and column
+    // Greedy left-first packing: fill left column completely, then right column.
+    // Identical logic to FsPackPages in PcFolder.razor — must stay in sync.
     private static List<(List<DashboardService.SessionSummaryInfo> left, List<DashboardService.SessionSummaryInfo> right)>
-        PackIntoPages(List<DashboardService.SessionSummaryInfo> summaries)
+        PackPagesEven(List<DashboardService.SessionSummaryInfo> summaries)
     {
+        if (summaries.Count == 0) return [([], [])];
+        var oldestFirst = summaries.AsEnumerable().Reverse().ToList();
         var pages = new List<(List<DashboardService.SessionSummaryInfo>, List<DashboardService.SessionSummaryInfo>)>();
-        var curLeft = new List<DashboardService.SessionSummaryInfo>();
-        var curRight = new List<DashboardService.SessionSummaryInfo>();
-        float leftH = 0, rightH = 0;
-        bool fillingLeft = true;
+        int i = 0;
 
-        foreach (var s in summaries)
+        while (i < oldestFirst.Count)
         {
-            float h = EstimateEntryHeight(s);
-            if (fillingLeft)
+            var left  = new List<DashboardService.SessionSummaryInfo>();
+            var right = new List<DashboardService.SessionSummaryInfo>();
+            float leftH = 0, rightH = 0;
+
+            while (i < oldestFirst.Count)
             {
-                if (leftH + h <= PageUsableHeight)
-                {
-                    curLeft.Add(s); leftH += h;
-                }
-                else
-                {
-                    fillingLeft = false;
-                    curRight.Add(s); rightH = h;
-                }
+                float h = EstimateEntryHeight(oldestFirst[i]);
+                if (leftH + h <= PageUsableHeight) { leftH += h; left.Add(oldestFirst[i++]); }
+                else break;
             }
-            else
+            while (i < oldestFirst.Count)
             {
-                if (rightH + h <= PageUsableHeight)
-                {
-                    curRight.Add(s); rightH += h;
-                }
-                else
-                {
-                    pages.Add((curLeft, curRight));
-                    curLeft = new List<DashboardService.SessionSummaryInfo> { s };
-                    curRight = new List<DashboardService.SessionSummaryInfo>();
-                    leftH = h; rightH = 0; fillingLeft = true;
-                }
+                float h = EstimateEntryHeight(oldestFirst[i]);
+                if (rightH + h <= PageUsableHeight) { rightH += h; right.Add(oldestFirst[i++]); }
+                else break;
             }
+
+            pages.Add((left, right));
         }
-        if (curLeft.Count > 0 || curRight.Count > 0)
-            pages.Add((curLeft, curRight));
-        if (pages.Count == 0)
-            pages.Add((new(), new()));
+
+        pages.Reverse(); // result[0] = newest (last/partial) page
         return pages;
     }
 
     private Document BuildFolderSummaryDoc(string pcName,
         List<DashboardService.SessionSummaryInfo> summaries, int totalPages)
     {
-        // Pack oldest-first so complete pages fill from oldest end;
-        // reversing puts the partial page (newest sessions) at display page 1.
-        var pages = PackIntoPages(summaries.AsEnumerable().Reverse().ToList());
-        pages.Reverse();
-
-        // Balance columns: re-split each page ceil/floor so left.Count ≈ right.Count,
-        // eliminating empty cells caused by height-based packing giving uneven counts.
-        pages = pages.Select(p => {
-            var all = p.left.Concat(p.right).ToList(); // already globally old→new
-            int lc = (all.Count + 1) / 2;
-            return (left: all.Take(lc).ToList(), right: all.Skip(lc).ToList());
-        }).ToList();
+        // Same even-capacity packing as the FS modal in PcFolder.razor →
+        // modal pages match PDF pages exactly.
+        var pages = PackPagesEven(summaries);
         int summaryPageCount = pages.Count;
 
         return Document.Create(container =>
@@ -1960,7 +1942,28 @@ public class PdfService
                                 }
                             });
                         }
-                        // Fill remaining page height with vertical lines
+                        // Dynamically add empty rows to fill remaining page space
+                        float pageContentH = 0f;
+                        for (int ri = 0; ri < maxRows; ri++)
+                        {
+                            float lh = ri < left.Count  ? EstimateEntryHeight(left[ri])  : 0f;
+                            float rh = ri < right.Count ? EstimateEntryHeight(right[ri]) : 0f;
+                            pageContentH += Math.Max(Math.Max(lh, rh), 30f);
+                        }
+                        // 680pt ≈ content area height; multiply by 0.75 to correct for over-estimation
+                        int emptyRowCount = Math.Max(0, (int)Math.Floor((680f - pageContentH * 0.75f) / 30f));
+                        for (int r = 0; r < emptyRowCount; r++)
+                        {
+                            tableCol.Item().BorderBottom(1).BorderColor("#000").Height(30).Row(row =>
+                            {
+                                row.ConstantItem(65);
+                                row.RelativeItem(4).BorderLeft(1).BorderColor("#000");
+                                row.ConstantItem(3).Background("#000");
+                                row.ConstantItem(65);
+                                row.RelativeItem(4).BorderLeft(1).BorderColor("#000");
+                            });
+                        }
+                        // Fill any residual fraction with vertical lines only
                         tableCol.Item().Extend().Row(row =>
                         {
                             row.ConstantItem(65);
