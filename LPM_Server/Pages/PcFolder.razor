@@ -1300,14 +1300,14 @@
     }
     /* ── Pane folder-summary FS badge (top-left, next to star) ── */
     .pcf-pane-fs-icon {
-        position: absolute; top: 6px; left: 24px; z-index: 25;
-        font-size: .52rem; font-weight: 900; letter-spacing: .04em;
+        position: absolute; top: 5px; left: 24px; z-index: 25;
+        font-size: .65rem; font-weight: 900; letter-spacing: .06em;
         color: #60a5fa; pointer-events: none; user-select: none;
-        animation: pcf-pane-fs-glow 8s ease-in-out infinite;
+        animation: pcf-pane-fs-glow 3s ease-in-out infinite;
     }
     @@keyframes pcf-pane-fs-glow {
-        0%, 100% { opacity: .4; text-shadow: 0 0 2px rgba(96,165,250,.25); }
-        50%      { opacity: .9; text-shadow: 0 0 6px rgba(96,165,250,.8); }
+        0%, 100% { opacity: .45; transform: scale(.85); text-shadow: 0 0 2px rgba(96,165,250,.2); }
+        50%      { opacity: 1;   transform: scale(1.15); text-shadow: 0 0 8px rgba(96,165,250,.95), 0 0 14px rgba(96,165,250,.5); }
     }
     .pcf-att-toggle {
         font-size: .75rem; color: #64748b; cursor: pointer;
