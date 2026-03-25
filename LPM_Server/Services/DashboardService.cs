@@ -1907,6 +1907,7 @@ public class DashboardService
     }
 
     public record SessionSummaryInfo(string Name, string SessionDate, string? SummaryHtml, int LengthSeconds, int AdminSeconds);
+    public record SessionSummaryEditInfo(int SummaryId, int SessionId, string Name, string SessionDate, string? SummaryHtml, int LengthSeconds, int AdminSeconds);
 
     public List<SessionSummaryInfo> GetSessionSummariesForPc(int pcId, bool isSolo = false)
     {
@@ -1945,8 +1946,39 @@ public class DashboardService
         return null;
     }
 
+    public List<SessionSummaryEditInfo> GetSessionSummariesForPcEdit(int pcId, bool isSolo = false)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        var soloFilter = isSolo ? "AND fs.AuditorId IS NULL" : "AND fs.AuditorId IS NOT NULL";
+        cmd.CommandText = $@"
+            SELECT fs.Id, COALESCE(s.SessionId, 0),
+                   COALESCE(s.Name, ''),
+                   COALESCE(s.SessionDate, SUBSTR(fs.CreatedAt, 1, 10)),
+                   fs.SummaryHtml,
+                   COALESCE(s.LengthSeconds, 0), COALESCE(s.AdminSeconds, 0)
+            FROM sess_folder_summary fs
+            LEFT JOIN sess_sessions s ON s.SessionId = fs.SessionId
+            WHERE fs.PcId = @pcId AND fs.SummaryHtml IS NOT NULL AND fs.SummaryHtml != ''
+            {soloFilter}
+            ORDER BY fs.CreatedAt DESC";
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        var list = new List<SessionSummaryEditInfo>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new SessionSummaryEditInfo(
+                r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3),
+                r.IsDBNull(4) ? null : r.GetString(4), r.GetInt32(5), r.GetInt32(6)));
+        return list;
+    }
+
     public void UpdateFolderSummary(int id, string html)
     {
+        // Normalize: if text content is empty, store a single space so the row remains visible
+        var stripped = System.Text.RegularExpressions.Regex.Replace(html ?? "", "<[^>]+>", "").Trim();
+        if (string.IsNullOrEmpty(stripped)) html = " ";
+
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();

@@ -522,6 +522,162 @@
         </div>
     }
 
+    @* ── Folder Summary Browse/Edit Modal ── *@
+    @if (_showFsModal)
+    {
+        var fsPage     = _fsPageIdx < _fsPages.Count ? _fsPages[_fsPageIdx] : (new(), new());
+        var fsTotal    = _fsPages.Count;
+        var fsLeft     = fsPage.left;
+        var fsRight    = fsPage.right;
+        var fsMaxRows  = Math.Max(fsLeft.Count, fsRight.Count);
+        <div class="pcf-modal-backdrop" @onclick="() => { _showFsModal = false; _fsEditingId = null; }">
+            <div class="pcf-fs-modal @(_fsModeMaximized ? "pcf-fs-modal--max" : "")" @onclick:stopPropagation="true">
+
+                @* ── Header ── *@
+                <div class="pcf-fs-header">
+                    <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+                        <i class="ri-file-list-3-line" style="font-size:1.1rem;color:#60a5fa;flex-shrink:0;"></i>
+                        <span style="font-weight:700;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                            Folder Summary — @_pcName
+                        </span>
+                        @if (_fsEntries.Count == 0)
+                        {
+                            <span style="font-size:.75rem;opacity:.5;">(no entries)</span>
+                        }
+                    </div>
+                    @* Page navigation *@
+                    <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                        <button class="pcf-fs-nav-btn" disabled="@(_fsPageIdx <= 0)"
+                                @onclick="() => { _fsPageIdx--; _fsEditingId = null; }"
+                                title="Previous page">
+                            <i class="ri-arrow-left-s-line"></i>
+                        </button>
+                        <span style="font-size:.8rem;font-weight:600;min-width:70px;text-align:center;">
+                            @if (fsTotal == 0) { <text>—</text> }
+                            else { <text>Page @(_fsPageIdx + 1) / @fsTotal</text> }
+                        </span>
+                        <button class="pcf-fs-nav-btn" disabled="@(_fsPageIdx >= fsTotal - 1)"
+                                @onclick="() => { _fsPageIdx++; _fsEditingId = null; }"
+                                title="Next page">
+                            <i class="ri-arrow-right-s-line"></i>
+                        </button>
+                    </div>
+                    <button class="pcf-fs-nav-btn ms-1" title="@(_fsModeMaximized ? "Restore" : "Maximize")"
+                            @onclick="() => _fsModeMaximized = !_fsModeMaximized">
+                        <i class="@(_fsModeMaximized ? "ri-fullscreen-exit-line" : "ri-fullscreen-line")"></i>
+                    </button>
+                    <button class="btn-close btn-close-white btn-sm ms-2"
+                            @onclick="() => { _showFsModal = false; _fsEditingId = null; }"></button>
+                </div>
+
+                @* ── Table ── *@
+                <div class="pcf-fs-body">
+                    @if (_fsEntries.Count == 0)
+                    {
+                        <div style="display:flex;align-items:center;justify-content:center;height:200px;color:#94a3b8;font-size:.9rem;gap:8px;">
+                            <i class="ri-inbox-line" style="font-size:2rem;opacity:.4;"></i>No session summaries yet.
+                        </div>
+                    }
+                    else
+                    {
+                        @* Column headers *@
+                        <div class="pcf-fs-col-headers">
+                            <div class="pcf-fs-dt-col">Date &amp; Time</div>
+                            <div class="pcf-fs-wr-col">What &amp; Results</div>
+                            <div class="pcf-fs-divider"></div>
+                            <div class="pcf-fs-dt-col">Date &amp; Time</div>
+                            <div class="pcf-fs-wr-col">What &amp; Results</div>
+                        </div>
+
+                        @* Rows *@
+                        @for (int ri = 0; ri < fsMaxRows; ri++)
+                        {
+                            var rowIdx = ri;
+                            var leftEntry  = rowIdx < fsLeft.Count  ? fsLeft[rowIdx]  : null;
+                            var rightEntry = rowIdx < fsRight.Count ? fsRight[rowIdx] : null;
+                            var editingEntry = (leftEntry != null && _fsEditingId == leftEntry.SummaryId) ? leftEntry
+                                            : (rightEntry != null && _fsEditingId == rightEntry.SummaryId) ? rightEntry
+                                            : null;
+
+                            @if (editingEntry != null)
+                            {
+                                @* ── Full-width editing row ── *@
+                                <div class="pcf-fs-row pcf-fs-row--editing">
+                                    <div class="pcf-fs-dt-col">
+                                        <div class="pcf-fs-date">@FsFormatDate(editingEntry.SessionDate)</div>
+                                        @if (editingEntry.LengthSeconds > 0) { <div class="pcf-fs-dur">S: @FsSecsToHMM(editingEntry.LengthSeconds)</div> }
+                                        @if (editingEntry.AdminSeconds > 0)  { <div class="pcf-fs-dur">A: @FsSecsToHMM(editingEntry.AdminSeconds)</div> }
+                                    </div>
+                                    <div class="pcf-fs-wr-col-full">
+                                        <div id="pcf-fs-editor" style="background:#fff;border-radius:4px 4px 0 0;min-height:120px;"></div>
+                                        <div class="pcf-fs-save-row">
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick="FsCancelEdit">Cancel</button>
+                                            <button class="btn btn-sm btn-primary" @onclick="FsSaveEdit"><i class="ri-save-line me-1"></i>Save</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                @* ── Normal two-column row ── *@
+                                <div class="pcf-fs-row">
+                                    <div class="pcf-fs-dt-col">
+                                        @if (leftEntry != null)
+                                        {
+                                            <div class="pcf-fs-date">@FsFormatDate(leftEntry.SessionDate)</div>
+                                            @if (leftEntry.LengthSeconds > 0) { <div class="pcf-fs-dur">S: @FsSecsToHMM(leftEntry.LengthSeconds)</div> }
+                                            @if (leftEntry.AdminSeconds > 0)  { <div class="pcf-fs-dur">A: @FsSecsToHMM(leftEntry.AdminSeconds)</div> }
+                                        }
+                                    </div>
+                                    <div class="pcf-fs-wr-col">
+                                        @if (leftEntry != null)
+                                        {
+                                            <div style="position:relative;">
+                                                <div class="pcf-fs-summary-text">
+                                                    @if (!string.IsNullOrWhiteSpace(leftEntry.SummaryHtml))
+                                                    { @((MarkupString)leftEntry.SummaryHtml) }
+                                                    else { <span style="opacity:.35;font-style:italic;font-size:.8rem;">empty</span> }
+                                                </div>
+                                                <button class="pcf-fs-edit-btn" title="Edit" @onclick="() => FsStartEdit(leftEntry)">
+                                                    <i class="ri-pencil-line"></i>
+                                                </button>
+                                            </div>
+                                        }
+                                    </div>
+                                    <div class="pcf-fs-divider"></div>
+                                    <div class="pcf-fs-dt-col">
+                                        @if (rightEntry != null)
+                                        {
+                                            <div class="pcf-fs-date">@FsFormatDate(rightEntry.SessionDate)</div>
+                                            @if (rightEntry.LengthSeconds > 0) { <div class="pcf-fs-dur">S: @FsSecsToHMM(rightEntry.LengthSeconds)</div> }
+                                            @if (rightEntry.AdminSeconds > 0)  { <div class="pcf-fs-dur">A: @FsSecsToHMM(rightEntry.AdminSeconds)</div> }
+                                        }
+                                    </div>
+                                    <div class="pcf-fs-wr-col">
+                                        @if (rightEntry != null)
+                                        {
+                                            <div style="position:relative;">
+                                                <div class="pcf-fs-summary-text">
+                                                    @if (!string.IsNullOrWhiteSpace(rightEntry.SummaryHtml))
+                                                    { @((MarkupString)rightEntry.SummaryHtml) }
+                                                    else { <span style="opacity:.35;font-style:italic;font-size:.8rem;">empty</span> }
+                                                </div>
+                                                <button class="pcf-fs-edit-btn" title="Edit" @onclick="() => FsStartEdit(rightEntry)">
+                                                    <i class="ri-pencil-line"></i>
+                                                </button>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        }
+                    }
+                </div>
+
+            </div>
+        </div>
+    }
+
     @* ── Move-to modal ── *@
     @if (_showMoveModal && _folder != null)
     {
@@ -783,9 +939,9 @@
                     <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
                     @if (!_csDone)
                     {
-                        <button class="pcf-tool-btn" title="Edit the session summary text"
-                                @onclick="OpenEditSummary">
-                            <i class="ri-edit-2-line me-1"></i><span style="font-size:.72rem;">FS</span>
+                        <button class="pcf-tool-btn" title="Browse &amp; edit folder summary"
+                                @onclick="OpenFsModal">
+                            <i class="ri-file-list-3-line me-1"></i><span style="font-size:.72rem;">FS</span>
                         </button>
                     }
                     @if (CsMode)
@@ -1933,6 +2089,85 @@
     .pcf-modal-summary .ql-toolbar { background: #f1f5f9; border-radius: 4px 4px 0 0; }
     .pcf-modal-summary .ql-container { font-size: 14px; }
     .pcf-modal-summary .ql-editor { color: #1e293b; background: #fff; }
+
+    /* ── Folder Summary browse/edit modal ── */
+    .pcf-fs-modal {
+        background: #1e293b; border: 1px solid #334155; border-radius: 14px;
+        width: min(1000px, 98vw); max-height: 90vh;
+        display: flex; flex-direction: column;
+        color: #e2e8f0; box-shadow: 0 20px 60px rgba(0,0,0,.5);
+        animation: pcf-ctx-pop .2s ease-out;
+        transition: width .15s ease, max-height .15s ease, border-radius .15s ease;
+    }
+    .pcf-fs-modal--max {
+        width: 100vw !important; height: 100vh !important; max-height: 100vh !important;
+        border-radius: 0 !important; border: none !important;
+    }
+    .pcf-fs-header {
+        display: flex; align-items: center; gap: 8px;
+        padding: 14px 18px; border-bottom: 1px solid #334155; flex-shrink: 0;
+    }
+    .pcf-fs-body {
+        overflow-y: auto; flex: 1; padding: 0;
+    }
+    .pcf-fs-nav-btn {
+        background: none; border: 1px solid #475569; border-radius: 6px;
+        color: #e2e8f0; width: 30px; height: 30px;
+        display: inline-flex; align-items: center; justify-content: center;
+        cursor: pointer; transition: background .12s;
+    }
+    .pcf-fs-nav-btn:hover:not(:disabled) { background: rgba(255,255,255,.08); }
+    .pcf-fs-nav-btn:disabled { opacity: .35; cursor: default; }
+    .pcf-fs-col-headers {
+        display: flex; align-items: center;
+        background: #0f172a; border-bottom: 2px solid #334155;
+        font-size: .72rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: .04em; color: #94a3b8;
+    }
+    .pcf-fs-row {
+        display: flex; align-items: stretch;
+        border-bottom: 1px solid #1e3a5f;
+        min-height: 44px;
+    }
+    .pcf-fs-row:last-child { border-bottom: none; }
+    .pcf-fs-dt-col {
+        width: 90px; flex-shrink: 0; padding: 6px 8px;
+        font-size: .8rem; border-right: 1px solid #1e3a5f;
+    }
+    .pcf-fs-wr-col {
+        flex: 4; padding: 6px 8px; font-size: .82rem; min-width: 0;
+    }
+    .pcf-fs-divider {
+        width: 4px; flex-shrink: 0; background: #334155;
+    }
+    .pcf-fs-date { font-weight: 700; font-size: .8rem; }
+    .pcf-fs-dur  { font-size: .75rem; color: #94a3b8; }
+    .pcf-fs-summary-text {
+        color: #cbd5e1; font-size: .82rem; line-height: 1.4;
+        padding-right: 28px; /* space for pencil btn */
+    }
+    .pcf-fs-summary-text p { margin: 0 0 2px; }
+    .pcf-fs-edit-btn {
+        position: absolute; top: 2px; right: 2px;
+        background: rgba(99,102,241,.15); border: 1px solid rgba(99,102,241,.3);
+        border-radius: 5px; color: #818cf8;
+        width: 24px; height: 24px; min-height: 24px;
+        display: inline-flex; align-items: center; justify-content: center;
+        cursor: pointer; font-size: .8rem; transition: background .12s;
+    }
+    .pcf-fs-edit-btn:hover { background: rgba(99,102,241,.3); }
+    .pcf-fs-row--editing { align-items: flex-start; background: #0f1e33; }
+    .pcf-fs-wr-col-full {
+        flex: 1; min-width: 0; padding: 6px 8px; border-left: 1px solid #1e3a5f;
+    }
+    .pcf-fs-save-row {
+        display: flex; gap: 6px; justify-content: flex-end;
+        margin-top: 6px; padding-bottom: 4px;
+    }
+    .pcf-fs-modal .ql-toolbar { background: #f1f5f9; border-radius: 4px 4px 0 0; }
+    .pcf-fs-modal .ql-container { font-size: 13px; }
+    .pcf-fs-modal .ql-editor { color: #1e293b; background: #fff; min-height: 80px; }
+
     .pcf-move-folder {
         display: flex; align-items: center; gap: 6px;
         padding: 7px 10px; border-radius: 6px; cursor: pointer;
@@ -2502,6 +2737,14 @@
     int     _editSummaryId;
     string  _editSummaryHtml    = "";
     string? _editSummaryArfJson = null;
+
+    // ── Folder Summary modal ──
+    bool   _showFsModal;
+    bool   _fsModeMaximized;
+    List<DashboardService.SessionSummaryEditInfo> _fsEntries = new();
+    List<(List<DashboardService.SessionSummaryEditInfo> left, List<DashboardService.SessionSummaryEditInfo> right)> _fsPages = new();
+    int    _fsPageIdx;
+    int?   _fsEditingId; // SummaryId of the entry currently in edit mode
 
     static readonly int[] _fontSizes = [10, 12, 14, 18, 24, 32, 40, 56];
     static readonly string[] _palette = [
@@ -3175,6 +3418,172 @@
         }
     }
 
+    // ── Folder Summary Modal ──────────────────────────────────────────────────
+
+    static float FsEstimateHeight(DashboardService.SessionSummaryEditInfo s)
+    {
+        float h = 18; // date line
+        if (s.LengthSeconds > 0) h += 16;
+        if (s.AdminSeconds > 0) h += 16;
+        if (!string.IsNullOrWhiteSpace(s.Name)) h += 16;
+        if (!string.IsNullOrWhiteSpace(s.SummaryHtml))
+        {
+            var text = System.Text.RegularExpressions.Regex.Replace(s.SummaryHtml!, "<[^>]+>", "");
+            h += Math.Max(1, (int)Math.Ceiling(text.Length / 40.0)) * 15;
+        }
+        return h + 12;
+    }
+
+    static List<(List<DashboardService.SessionSummaryEditInfo> left, List<DashboardService.SessionSummaryEditInfo> right)>
+        FsPackPages(List<DashboardService.SessionSummaryEditInfo> entries)
+    {
+        const float pageH = 700f;
+        var pages = new List<(List<DashboardService.SessionSummaryEditInfo>, List<DashboardService.SessionSummaryEditInfo>)>();
+        var curLeft  = new List<DashboardService.SessionSummaryEditInfo>();
+        var curRight = new List<DashboardService.SessionSummaryEditInfo>();
+        float leftH = 0, rightH = 0;
+        bool fillingLeft = true;
+
+        foreach (var s in entries)
+        {
+            float h = FsEstimateHeight(s);
+            if (fillingLeft)
+            {
+                if (leftH + h <= pageH) { curLeft.Add(s); leftH += h; }
+                else { fillingLeft = false; curRight.Add(s); rightH = h; }
+            }
+            else
+            {
+                if (rightH + h <= pageH) { curRight.Add(s); rightH += h; }
+                else
+                {
+                    pages.Add((curLeft, curRight));
+                    curLeft = [s]; curRight = [];
+                    leftH = h; rightH = 0; fillingLeft = true;
+                }
+            }
+        }
+        if (curLeft.Count > 0 || curRight.Count > 0) pages.Add((curLeft, curRight));
+        if (pages.Count == 0) pages.Add(([], []));
+
+        // Within each page reverse both columns so oldest prints first (top)
+        return pages.Select(p => (
+            p.Item1.AsEnumerable().Reverse().ToList(),
+            p.Item2.AsEnumerable().Reverse().ToList()
+        )).ToList();
+    }
+
+    void OpenFsModal()
+    {
+        _fsEntries  = DashSvc.GetSessionSummariesForPcEdit(PcId, Solo);
+        _fsPages    = FsPackPages(_fsEntries);
+        _fsPageIdx  = 0;
+        _fsEditingId = null;
+        _showFsModal = true;
+    }
+
+    async Task FsStartEdit(DashboardService.SessionSummaryEditInfo entry)
+    {
+        // Destroy any existing Quill BEFORE Blazor re-renders, so its toolbar sibling is removed too
+        await JS.InvokeVoidAsync("eval", @"
+            (function() {
+                if (window._pcfFsQuill) {
+                    try { window._pcfFsQuill.container.previousSibling.remove(); } catch(e) {}
+                    try { window._pcfFsQuill.container.remove(); } catch(e) {}
+                    window._pcfFsQuill = null;
+                }
+            })();
+        ");
+        _fsEditingId = entry.SummaryId;
+        StateHasChanged();
+        await Task.Delay(60);
+        var html = System.Text.Json.JsonSerializer.Serialize(entry.SummaryHtml ?? "");
+        await JS.InvokeVoidAsync("eval", $@"
+            (function() {{
+                var el = document.getElementById('pcf-fs-editor');
+                if (!el) return;
+                window._pcfFsQuill = new Quill(el, {{
+                    theme: 'snow',
+                    placeholder: 'Session summary...',
+                    modules: {{ toolbar: [
+                        [{{ 'size': ['10px', '14px', '18px', '24px'] }}],
+                        ['bold', 'italic', 'underline'],
+                        [{{ 'color': [] }}, {{ 'background': [] }}],
+                        [{{ 'list': 'ordered' }}, {{ 'list': 'bullet' }}],
+                        [{{ 'direction': 'rtl' }}, {{ 'align': [] }}],
+                        ['clean']
+                    ]}}
+                }});
+                var h = {html};
+                if (h && h.trim()) window._pcfFsQuill.root.innerHTML = h;
+                // Scroll save buttons into view after a short delay
+                setTimeout(function() {{
+                    var saveRow = el.parentElement && el.parentElement.querySelector('.pcf-fs-save-row');
+                    if (saveRow) saveRow.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
+                }}, 120);
+            }})();
+        ");
+    }
+
+    async Task FsSaveEdit()
+    {
+        if (_fsEditingId == null) return;
+        var html = await JS.InvokeAsync<string>("eval",
+            "window._pcfFsQuill ? window._pcfFsQuill.root.innerHTML : ''");
+
+        // Destroy Quill before Blazor re-renders
+        await JS.InvokeVoidAsync("eval", @"
+            (function() {
+                if (window._pcfFsQuill) {
+                    try { window._pcfFsQuill.container.previousSibling.remove(); } catch(e) {}
+                    try { window._pcfFsQuill.container.remove(); } catch(e) {}
+                    window._pcfFsQuill = null;
+                }
+            })();
+        ");
+
+        DashSvc.UpdateFolderSummary(_fsEditingId.Value, html ?? "");
+
+        // Update local entry in place
+        var idx = _fsEntries.FindIndex(e => e.SummaryId == _fsEditingId.Value);
+        if (idx >= 0)
+        {
+            var e = _fsEntries[idx];
+            _fsEntries[idx] = e with { SummaryHtml = html };
+        }
+        _fsEditingId = null;
+        _fsPages = FsPackPages(_fsEntries);
+
+        // Reload any open folder summary pane
+        for (int i = 0; i < _paneCount; i++)
+        {
+            var f = _panes[i].File; var fn = _panes[i].FileName;
+            if (f != null && fn != null && IsFolderSummaryFile(fn, f))
+                await JS.InvokeVoidAsync("pcfViewer.loadPdf",
+                    $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(f)}{SoloParam}&_t={DateTime.UtcNow.Ticks}",
+                    PaneIds[i]);
+        }
+    }
+
+    async Task FsCancelEdit()
+    {
+        await JS.InvokeVoidAsync("eval", @"
+            (function() {
+                if (window._pcfFsQuill) {
+                    try { window._pcfFsQuill.container.previousSibling.remove(); } catch(e) {}
+                    try { window._pcfFsQuill.container.remove(); } catch(e) {}
+                    window._pcfFsQuill = null;
+                }
+            })();
+        ");
+        _fsEditingId = null;
+    }
+
+    static string FsFormatDate(string dateStr) =>
+        DateTime.TryParse(dateStr, out var dt) ? dt.ToString("dd-MM-yy") : dateStr;
+
+    static string FsSecsToHMM(int secs) => secs <= 0 ? "" : $"{secs / 3600}:{(secs % 3600) / 60:D2}";
+
     void SetActiveIdx(int idx)
     {
         if (_activeIdx == idx) return;
@@ -3843,7 +4252,7 @@
                 _zoomPercent = await JS.InvokeAsync<int>("pcfViewer.zoomOut", PaneIds[_activeIdx]);
                 break;
             case "summary":
-                await OpenEditSummary();
+                OpenFsModal();
                 break;
             case "undo":
                 await Undo();
