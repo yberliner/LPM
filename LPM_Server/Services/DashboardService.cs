@@ -1907,7 +1907,7 @@ public class DashboardService
     }
 
     public record SessionSummaryInfo(string Name, string SessionDate, string? SummaryHtml, int LengthSeconds, int AdminSeconds);
-    public record SessionSummaryEditInfo(int SummaryId, int SessionId, string Name, string SessionDate, string CreatedAt, string? SummaryHtml, int LengthSeconds, int AdminSeconds);
+    public record SessionSummaryEditInfo(int SummaryId, int SessionId, string Name, string SessionDate, string CreatedAt, string? SummaryHtml, int LengthSeconds, int AdminSeconds, string AuditorName);
 
     public List<SessionSummaryInfo> GetSessionSummariesForPc(int pcId, bool isSolo = false)
     {
@@ -1958,9 +1958,11 @@ public class DashboardService
                    COALESCE(s.SessionDate, SUBSTR(fs.CreatedAt, 1, 10)),
                    COALESCE(fs.CreatedAt, ''),
                    fs.SummaryHtml,
-                   COALESCE(s.LengthSeconds, 0), COALESCE(s.AdminSeconds, 0)
+                   COALESCE(s.LengthSeconds, 0), COALESCE(s.AdminSeconds, 0),
+                   COALESCE(TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')), '')
             FROM sess_folder_summary fs
             LEFT JOIN sess_sessions s ON s.SessionId = fs.SessionId
+            LEFT JOIN core_persons p ON p.PersonId = fs.AuditorId
             WHERE fs.PcId = @pcId AND fs.SummaryHtml IS NOT NULL AND fs.SummaryHtml != ''
             {soloFilter}
             ORDER BY fs.CreatedAt DESC";
@@ -1970,7 +1972,7 @@ public class DashboardService
         while (r.Read())
             list.Add(new SessionSummaryEditInfo(
                 r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3), r.GetString(4),
-                r.IsDBNull(5) ? null : r.GetString(5), r.GetInt32(6), r.GetInt32(7)));
+                r.IsDBNull(5) ? null : r.GetString(5), r.GetInt32(6), r.GetInt32(7), r.GetString(8)));
         return list;
     }
 

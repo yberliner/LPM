@@ -544,11 +544,20 @@
 
                 <div class="pcf-fs-body">
                     <table class="pcf-fs-table">
+                        <colgroup>
+                            <col style="width:100px;" />
+                            <col style="width:@(FsNameColWidth)px;" />
+                            <col style="width:120px;" />
+                            <col style="width:60px;" />
+                            <col />
+                            <col style="width:36px;" />
+                        </colgroup>
                         <thead>
                             <tr>
                                 <th>Date</th>
-                                <th>Time</th>
-                                <th>Name</th>
+                                <th>Session Name</th>
+                                <th>Auditor</th>
+                                <th>Duration</th>
                                 <th>Summary</th>
                                 <th></th>
                             </tr>
@@ -557,9 +566,15 @@
                             @foreach (var e in _fsEntries)
                             {
                                 <tr>
-                                    <td class="pcf-fs-td-date">@FsFormatDate(e.SessionDate)</td>
-                                    <td class="pcf-fs-td-time">@FsFormatTime(e.CreatedAt)</td>
+                                    <td class="pcf-fs-td-date">
+                                        @FsFormatDate(e.SessionDate)
+                                        @{ var _t = FsFormatTime(e.CreatedAt); }
+                                        @if (!string.IsNullOrEmpty(_t))
+                                        { <span class="pcf-fs-td-time">@_t</span> }
+                                    </td>
                                     <td class="pcf-fs-td-name">@e.Name</td>
+                                    <td class="pcf-fs-td-name">@e.AuditorName</td>
+                                    <td class="pcf-fs-td-dur">@FsSecsToHMM(e.LengthSeconds + e.AdminSeconds)</td>
                                     <td class="pcf-fs-td-html">@((MarkupString)(e.SummaryHtml ?? ""))</td>
                                     <td class="pcf-fs-td-btn">
                                         <button class="pcf-fs-edit-btn pcf-fs-edit-btn--inline" title="Edit"
@@ -865,7 +880,7 @@
                     {
                         <button class="pcf-tool-btn" title="Browse &amp; edit folder summary"
                                 @onclick="OpenFsModal">
-                            <i class="ri-file-list-3-line me-1"></i><span style="font-size:.72rem;">FS</span>
+                            <i class="ri-file-list-3-line me-1"></i><span style="font-size:.72rem;">FS</span><i class="ri-pencil-line ms-1" style="font-size:.7rem;opacity:.7;"></i>
                         </button>
                     }
                     @if (CsMode)
@@ -2059,24 +2074,26 @@
     .pcf-fs-nav-btn:disabled { opacity: .35; cursor: default; }
     /* ── FS table ── */
     .pcf-fs-table {
-        width: 100%; border-collapse: collapse; font-size: .82rem;
+        width: 100%; border-collapse: collapse; font-size: .82rem; table-layout: fixed;
     }
     .pcf-fs-table thead th {
         position: sticky; top: 0; z-index: 1;
         background: #0f172a; color: #94a3b8; font-weight: 600;
         padding: 8px 12px; text-align: left; border-bottom: 2px solid #334155;
-        white-space: nowrap;
+        white-space: nowrap; overflow: hidden; user-select: none;
     }
+    .pcf-fs-table thead th:hover { background: #1e293b; }
     .pcf-fs-table tbody tr { border-bottom: 1px solid #1e293b; }
     .pcf-fs-table tbody tr:last-child { border-bottom: none; }
     .pcf-fs-table tbody tr:hover { background: rgba(255,255,255,.03); }
-    .pcf-fs-table td { padding: 7px 12px; vertical-align: top; color: #e2e8f0; }
-    .pcf-fs-td-date { white-space: nowrap; font-weight: 700; width: 72px; }
-    .pcf-fs-td-time { white-space: nowrap; color: #7dd3fc; width: 52px; }
-    .pcf-fs-td-name { white-space: nowrap; color: #7dd3fc; width: 140px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+    .pcf-fs-table td { padding: 7px 12px; vertical-align: top; color: #e2e8f0; overflow: hidden; }
+    .pcf-fs-td-date { font-weight: 700; white-space: nowrap; }
+    .pcf-fs-td-time { font-size: .68rem; color: #7dd3fc; font-weight: 400; margin-left: 4px; }
+    .pcf-fs-td-name { white-space: nowrap; color: #7dd3fc; overflow: hidden; text-overflow: ellipsis; }
+    .pcf-fs-td-dur  { white-space: nowrap; color: #94a3b8; }
     .pcf-fs-td-html { color: #cbd5e1; }
     .pcf-fs-td-html * { color: inherit; }
-    .pcf-fs-td-btn  { width: 36px; text-align: center; }
+    .pcf-fs-td-btn  { text-align: center; }
     .pcf-fs-edit-btn--inline {
         background: rgba(99,102,241,.15); border: 1px solid rgba(99,102,241,.3);
         border-radius: 5px; color: #818cf8;
@@ -2679,6 +2696,10 @@
     bool   _showFsEditModal;
     List<DashboardService.SessionSummaryEditInfo> _fsEntries = new();
     int?   _fsEditingId;
+
+    // Computed initial width for the Session Name column based on longest entry
+    int FsNameColWidth => _fsEntries.Count == 0 ? 120
+        : Math.Clamp(_fsEntries.Max(e => e.Name.Length) * 7, 80, 220);
 
     static readonly int[] _fontSizes = [10, 12, 14, 18, 24, 32, 40, 56];
     static readonly string[] _palette = [
@@ -3361,11 +3382,44 @@
         _fsEditingId = null;
     }
 
-    void OpenFsModal()
+    async Task OpenFsModal()
     {
         _fsEntries = DashSvc.GetSessionSummariesForPcEdit(PcId, Solo);
         _fsEditingId = null;
         _showFsModal = true;
+        StateHasChanged();
+        await Task.Delay(50);
+        await JS.InvokeVoidAsync("eval", @"
+            (function() {
+                var tbl = document.querySelector('.pcf-fs-table');
+                if (!tbl || tbl._resizeInit) return;
+                tbl._resizeInit = true;
+                tbl.querySelectorAll('thead th').forEach(function(th) {
+                    th.style.position = 'relative';
+                    var handle = document.createElement('div');
+                    handle.style.cssText = 'position:absolute;right:0;top:0;bottom:0;width:6px;cursor:col-resize;z-index:2;';
+                    th.appendChild(handle);
+                    handle.addEventListener('mousedown', function(e) {
+                        e.preventDefault(); e.stopPropagation();
+                        var startX = e.pageX, startW = th.offsetWidth;
+                        function onMove(e) { th.style.width = Math.max(36, startW + e.pageX - startX) + 'px'; }
+                        function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
+                        document.addEventListener('mousemove', onMove);
+                        document.addEventListener('mouseup', onUp);
+                    });
+                    th.addEventListener('dblclick', function(e) {
+                        if (e.target === handle) return;
+                        var idx = Array.from(th.parentElement.children).indexOf(th);
+                        var maxW = th.scrollWidth;
+                        tbl.querySelectorAll('tbody tr').forEach(function(row) {
+                            var td = row.cells[idx];
+                            if (td) maxW = Math.max(maxW, td.scrollWidth);
+                        });
+                        th.style.width = Math.min(maxW + 16, 420) + 'px';
+                    });
+                });
+            })();
+        ");
     }
 
     async Task FsStartEdit(int summaryId)
@@ -4132,7 +4186,7 @@
                 _zoomPercent = await JS.InvokeAsync<int>("pcfViewer.zoomOut", PaneIds[_activeIdx]);
                 break;
             case "summary":
-                OpenFsModal();
+                await OpenFsModal();
                 break;
             case "undo":
                 await Undo();
