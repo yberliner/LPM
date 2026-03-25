@@ -1683,63 +1683,51 @@ public class PdfService
                 page.Margin(36);
                 page.DefaultTextStyle(x => x.FontSize(22).FontColor("#1a1a1a"));
 
-                // A4 content area (margin 36pt each side): 841.89 - 72 = ~770pt.
-                // No page.Footer() — it would reduce the available content height.
-                // Instead the auditor signature lives inside the bottom half.
-                // Two equal Height(385) items → "The Next C/S:" lands at the exact midpoint.
-                page.Content().Column(col =>
+                // Wrap everything in ScaleToFit so the PDF is always exactly 1 page.
+                // Content renders at natural size; if it exceeds the page content area
+                // (~595×770pt for A4 with 36pt margins), QuestPDF scales it down uniformly.
+                page.Content().ScaleToFit().Column(col =>
                 {
-                    // ── Top half: header + free text ──
-                    col.Item().Height(385).Column(top =>
+                    // ── Header ──
+                    col.Item().AlignCenter().PaddingBottom(18)
+                        .Text("Dror Center, Haifa, Israel").FontSize(26).FontColor("#1a1a1a");
+
+                    col.Item().PaddingBottom(4).Row(row =>
                     {
-                        top.Item().ScaleToFit().Column(inner =>
+                        row.RelativeItem().Text(t =>
                         {
-                            inner.Item().Column(hdr =>
-                            {
-                                hdr.Item().AlignCenter().PaddingBottom(18)
-                                    .Text("Dror Center, Haifa, Israel").FontSize(26).FontColor("#1a1a1a");
-
-                                hdr.Item().PaddingBottom(4).Row(row =>
-                                {
-                                    row.RelativeItem().Text(t =>
-                                    {
-                                        t.Span("PC's Name: ").FontSize(22).FontColor("#1a1a1a");
-                                        t.Span(pcName).FontSize(28).Bold().FontColor("#c0392b");
-                                    });
-                                    row.AutoItem().Text(t =>
-                                    {
-                                        t.Span("Date: ").FontSize(22).FontColor("#1a1a1a");
-                                        t.Span(date).FontSize(28).Bold().FontColor("#c0392b");
-                                    });
-                                });
-
-                                hdr.Item().PaddingBottom(8).Text(t =>
-                                {
-                                    t.Span("Auditor: ").FontSize(22).FontColor("#1a1a1a");
-                                    t.Span(auditorName).FontSize(28).Bold().FontColor("#c0392b");
-                                });
-                            });
-
-                            if (!string.IsNullOrWhiteSpace(topHtml))
-                                inner.Item().Column(htmlCol => RenderHtmlBlock(htmlCol, topHtml, 3f));
+                            t.Span("PC's Name: ").FontSize(22).FontColor("#1a1a1a");
+                            t.Span(pcName).FontSize(28).Bold().FontColor("#c0392b");
+                        });
+                        row.AutoItem().Text(t =>
+                        {
+                            t.Span("Date: ").FontSize(22).FontColor("#1a1a1a");
+                            t.Span(date).FontSize(28).Bold().FontColor("#c0392b");
                         });
                     });
 
-                    // ── Bottom half: "The Next C/S:" at the exact page midpoint ──
-                    col.Item().Height(385).Column(bot =>
+                    col.Item().PaddingBottom(8).Text(t =>
                     {
-                        bot.Item().AlignCenter().PaddingBottom(12)
-                            .Text("The Next C/S:")
-                            .FontSize(22).Bold().Underline().FontColor("#1a1a1a");
-
-                        if (!string.IsNullOrWhiteSpace(bottomHtml))
-                            bot.Item().PaddingTop(8).ScaleToFit()
-                                .Column(inner => RenderHtmlBlock(inner, bottomHtml, 3f));
-
-                        // Auditor signature at the very bottom of the page
-                        bot.Item().Extend().AlignBottom().AlignRight()
-                            .Text(auditorName).FontSize(30).Bold().FontColor("#c0392b");
+                        t.Span("Auditor: ").FontSize(22).FontColor("#1a1a1a");
+                        t.Span(auditorName).FontSize(28).Bold().FontColor("#c0392b");
                     });
+
+                    // ── Top free text ──
+                    if (!string.IsNullOrWhiteSpace(topHtml))
+                        col.Item().PaddingBottom(8).Column(htmlCol => RenderHtmlBlock(htmlCol, topHtml, 3f));
+
+                    // ── "The Next C/S:" divider ──
+                    col.Item().PaddingVertical(12).AlignCenter()
+                        .Text("The Next C/S:")
+                        .FontSize(22).Bold().Underline().FontColor("#1a1a1a");
+
+                    // ── Bottom free text ──
+                    if (!string.IsNullOrWhiteSpace(bottomHtml))
+                        col.Item().PaddingBottom(8).Column(inner => RenderHtmlBlock(inner, bottomHtml, 3f));
+
+                    // ── Auditor signature ──
+                    col.Item().PaddingTop(16).AlignRight()
+                        .Text(auditorName).FontSize(30).Bold().FontColor("#c0392b");
                 });
             });
         }).GeneratePdf();

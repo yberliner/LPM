@@ -3621,15 +3621,14 @@ string _actionPcSearch = "";
         _actionAllPcs = DashSvc.GetApprovedPcsForUser(_msgUserId.Value, _logUsername);
     }
 
-    async Task OpenActionFolder()
+    void OpenActionFolder()
     {
         if (!_msgUserId.HasValue) return;
         if (_isSoloUser)
         {
             // Solo user: open their own solo folder immediately, no selection needed
-            var url = NavigationManager.ToAbsoluteUri($"/PcFolder/{_msgUserId.Value}?solo=true").ToString();
             Console.WriteLine($"[MainHeader] Open Folder (solo): PC={_msgUserId.Value} user='{_logUsername}'");
-            await JSRuntime.InvokeVoidAsync("open", url, "_blank");
+            NavigationManager.NavigateTo($"/PcFolder/{_msgUserId.Value}?solo=true");
             return;
         }
         LoadAllPcs();
@@ -3638,7 +3637,7 @@ string _actionPcSearch = "";
         _showActionOpenFolder = true;
     }
 
-    async Task OnActionFolderPcSelected(int pcId, bool solo)
+    void OnActionFolderPcSelected(int pcId, bool solo)
     {
         if (!_msgUserId.HasValue) return;
         var hasPermission = DashSvc.CanAccessPcFolder(_msgUserId.Value, pcId, _logUsername);
@@ -3647,9 +3646,8 @@ string _actionPcSearch = "";
         {
             _showActionOpenFolder = false;
             var soloParam = solo ? "?solo=true" : "";
-            var url = NavigationManager.ToAbsoluteUri($"/PcFolder/{pcId}{soloParam}").ToString();
             Console.WriteLine($"[MainHeader] Open Folder: PC='{pcName}' (id={pcId}) solo={solo} user='{_logUsername}'");
-            await JSRuntime.InvokeVoidAsync("open", url, "_blank");
+            NavigationManager.NavigateTo($"/PcFolder/{pcId}{soloParam}");
         }
         else
         {

@@ -552,6 +552,34 @@ public class FolderService
         return ReadAndCache(fullPath);
     }
 
+    // ── Annotation sidecar (.ann.json alongside PDF) ──────────────────────────
+
+    private string? GetAnnotationSidecarPath(int pcId, string relativePath, bool solo)
+    {
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
+        if (folder == null) return null;
+        var fullPath = SafeResolvePath(folder, relativePath);
+        return fullPath == null ? null : fullPath + ".ann.json";
+    }
+
+    public string? ReadAnnotationSidecar(int pcId, string relativePath, bool solo)
+    {
+        var path = GetAnnotationSidecarPath(pcId, relativePath, solo);
+        return (path != null && File.Exists(path)) ? File.ReadAllText(path) : null;
+    }
+
+    public void WriteAnnotationSidecar(int pcId, string relativePath, bool solo, string json)
+    {
+        var path = GetAnnotationSidecarPath(pcId, relativePath, solo);
+        if (path != null) File.WriteAllText(path, json);
+    }
+
+    public void DeleteAnnotationSidecar(int pcId, string relativePath, bool solo)
+    {
+        var path = GetAnnotationSidecarPath(pcId, relativePath, solo);
+        if (path != null && File.Exists(path)) File.Delete(path);
+    }
+
     /// <summary>Save annotated PDF bytes back to disk (encrypted)</summary>
     public bool SaveFile(int pcId, string relativePath, byte[] pdfBytes, bool solo = false)
     {

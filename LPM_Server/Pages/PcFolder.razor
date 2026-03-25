@@ -1048,6 +1048,32 @@
     </div>
 </div>
 
+@* ── CS Close Warning ── *@
+@if (_showCsCloseWarning)
+{
+    <div class="pcf-cswarn-overlay" @onclick="() => _showCsCloseWarning = false">
+        <div class="pcf-cswarn-dialog" @onclick:stopPropagation="true">
+            <div class="pcf-cswarn-icon-wrap">
+                <i class="ri-alert-fill pcf-cswarn-icon"></i>
+            </div>
+            <h3 class="pcf-cswarn-title">Close Without CS Done?</h3>
+            <p class="pcf-cswarn-body">
+                You are about to close CSing<br />
+                <strong>without marking the CS Done.</strong><br />
+                Are you sure you want to close without marking it done?
+            </p>
+            <div class="pcf-cswarn-actions">
+                <button class="pcf-cswarn-btn-stay" @onclick="() => _showCsCloseWarning = false">
+                    <i class="ri-arrow-left-line me-1"></i>Stay &amp; Finish CS
+                </button>
+                <button class="pcf-cswarn-btn-close" @onclick="DoCloseToHome">
+                    <i class="ri-close-circle-line me-1"></i>Close Without Done
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @* ── Saving indicator ── *@
 @if (_saving)
 {
@@ -1707,6 +1733,13 @@
         font-size: 14px; padding: 2px 4px; min-width: 120px;
         outline: none; border-radius: 3px; z-index: 10;
     }
+    .pcf-text-resize-handle {
+        position: absolute; z-index: 11;
+        width: 18px; height: 18px; cursor: se-resize;
+        background: #3b82f6; border-radius: 3px;
+        opacity: .75; transition: opacity .15s;
+    }
+    .pcf-text-resize-handle:hover { opacity: 1; }
 
     /* ── Tablet ── */
     @@media (max-width: 768px) {
@@ -2054,6 +2087,96 @@
     .pcf-toast-sub   { font-size: .72rem; color: #94a3b8; }
     .pcf-toast-close { background: none; border: none; color: #64748b; cursor: pointer; padding: 0 2px; font-size: .9rem; flex-shrink: 0; }
     .pcf-toast-close:hover { color: #e2e8f0; }
+
+    /* ── CS Close Warning ── */
+    .pcf-cswarn-overlay {
+        position: fixed; inset: 0; z-index: 20000;
+        background: rgba(0,0,0,.72);
+        backdrop-filter: blur(5px);
+        display: flex; align-items: center; justify-content: center;
+        animation: pcf-cswarn-overlay-in .2s ease;
+    }
+    @@keyframes pcf-cswarn-overlay-in {
+        from { opacity: 0; } to { opacity: 1; }
+    }
+    .pcf-cswarn-dialog {
+        background: #15172a;
+        border: 2.5px solid #f59e0b;
+        border-radius: 18px;
+        padding: 44px 52px 40px;
+        max-width: 520px; width: 92%;
+        text-align: center;
+        animation: pcf-cswarn-dialog-in .35s cubic-bezier(.34,1.56,.64,1), pcf-cswarn-glow 2.4s ease-in-out infinite;
+    }
+    @@keyframes pcf-cswarn-dialog-in {
+        from { opacity: 0; transform: scale(.82) translateY(18px); }
+        to   { opacity: 1; transform: scale(1)  translateY(0); }
+    }
+    @@keyframes pcf-cswarn-glow {
+        0%,100% { box-shadow: 0 0 36px rgba(245,158,11,.25), 0 24px 60px rgba(0,0,0,.55); }
+        50%     { box-shadow: 0 0 72px rgba(245,158,11,.55), 0 24px 60px rgba(0,0,0,.55); }
+    }
+    .pcf-cswarn-icon-wrap {
+        margin-bottom: 18px;
+    }
+    .pcf-cswarn-icon {
+        font-size: 72px;
+        color: #f59e0b;
+        display: inline-block;
+        animation: pcf-cswarn-shake .65s ease .25s, pcf-cswarn-icon-pulse 2.4s ease-in-out .9s infinite;
+    }
+    @@keyframes pcf-cswarn-shake {
+        0%,100% { transform: rotate(0)      scale(1); }
+        15%     { transform: rotate(-16deg) scale(1.08); }
+        30%     { transform: rotate(13deg)  scale(1.06); }
+        45%     { transform: rotate(-10deg) scale(1.04); }
+        60%     { transform: rotate(8deg)   scale(1.02); }
+        75%     { transform: rotate(-5deg)  scale(1.01); }
+        90%     { transform: rotate(3deg)   scale(1); }
+    }
+    @@keyframes pcf-cswarn-icon-pulse {
+        0%,100% { transform: scale(1);    color: #f59e0b; }
+        50%     { transform: scale(1.12); color: #fb923c; }
+    }
+    .pcf-cswarn-title {
+        color: #fef3c7;
+        font-size: 1.55rem; font-weight: 700;
+        margin-bottom: 14px; letter-spacing: -.01em;
+    }
+    .pcf-cswarn-body {
+        color: #94a3b8;
+        font-size: 1.05rem; line-height: 1.7;
+        margin-bottom: 36px;
+    }
+    .pcf-cswarn-body strong { color: #fbbf24; }
+    .pcf-cswarn-actions {
+        display: flex; gap: 14px; justify-content: center; flex-wrap: wrap;
+    }
+    .pcf-cswarn-btn-stay {
+        background: #16a34a; color: #fff;
+        border: none; border-radius: 10px;
+        padding: 13px 30px; font-size: 1rem; font-weight: 600;
+        cursor: pointer; min-width: 170px; min-height: 44px;
+        transition: background .15s, transform .1s, box-shadow .15s;
+        box-shadow: 0 4px 18px rgba(22,163,74,.35);
+    }
+    .pcf-cswarn-btn-stay:hover { background: #15803d; transform: translateY(-1px) scale(1.02); box-shadow: 0 6px 22px rgba(22,163,74,.45); }
+    .pcf-cswarn-btn-stay:active { transform: scale(.98); }
+    .pcf-cswarn-btn-close {
+        background: transparent; color: #f87171;
+        border: 2px solid rgba(248,113,113,.55); border-radius: 10px;
+        padding: 13px 30px; font-size: 1rem; font-weight: 600;
+        cursor: pointer; min-width: 170px; min-height: 44px;
+        transition: background .15s, border-color .15s, transform .1s;
+    }
+    .pcf-cswarn-btn-close:hover { background: rgba(248,113,113,.12); border-color: #f87171; transform: translateY(-1px); }
+    .pcf-cswarn-btn-close:active { transform: scale(.98); }
+    @@media (max-width: 480px) {
+        .pcf-cswarn-dialog { padding: 32px 20px 28px; }
+        .pcf-cswarn-title  { font-size: 1.25rem; }
+        .pcf-cswarn-icon   { font-size: 56px; }
+        .pcf-cswarn-btn-stay, .pcf-cswarn-btn-close { width: 100%; }
+    }
 </style>
 
 @* ── Conversion toast panel ── *@
@@ -2215,6 +2338,7 @@
     bool _csDone;                // true after "Mark CS Done" was executed
     bool _csAlreadyDone;         // true if this session already has a cs_review on load
     bool _csAlreadyDoneBannerDismissed;
+    bool _showCsCloseWarning;    // true when CS tries to close before marking Done
     string _errorToast = "";
     int _csReviewMinutes;        // editable review time (session + admin) in minutes
     HashSet<int> _csedSessionIds = new();                    // session IDs that have cs_reviews
@@ -3654,6 +3778,18 @@
 
     async Task CloseToHome()
     {
+        // In active CS mode, warn before closing without marking Done
+        if (CsMode && !_csDone && !_csAlreadyDone && !_csLocked)
+        {
+            _showCsCloseWarning = true;
+            return;
+        }
+        await DoCloseToHome();
+    }
+
+    async Task DoCloseToHome()
+    {
+        _showCsCloseWarning = false;
         // Close float window and save all open panes in parallel before navigating away
         await JS.InvokeVoidAsync("pcfViewer.closeFloat");
         await Task.WhenAll(Enumerable.Range(0, _paneCount)

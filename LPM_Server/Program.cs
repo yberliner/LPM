@@ -499,6 +499,32 @@ app.MapGet("/api/pc-session-merged", (int pcId, string session, LPM.Services.Fol
     return Results.File(merged, "application/pdf", downloadName);
 }).RequireAuthorization();
 
+app.MapGet("/api/pc-file-annotations", (int pcId, string path,
+    LPM.Services.FolderService folderSvc, LPM.Services.DashboardService dashSvc,
+    HttpContext ctx, bool solo = false) =>
+{
+    if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
+    var json = folderSvc.ReadAnnotationSidecar(pcId, path, solo);
+    return json != null ? Results.Content(json, "application/json") : Results.NoContent();
+}).RequireAuthorization();
+
+app.MapPost("/api/pc-file-save-annotations", async (HttpContext ctx,
+    LPM.Services.FolderService folderSvc, LPM.Services.DashboardService dashSvc) =>
+{
+    if (!int.TryParse(ctx.Request.Query["pcId"], out var pcId)) return Results.BadRequest();
+    var path = ctx.Request.Query["path"].ToString();
+    if (string.IsNullOrEmpty(path)) return Results.BadRequest();
+    var solo = ctx.Request.Query["solo"].ToString() == "true";
+    if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
+    using var reader = new System.IO.StreamReader(ctx.Request.Body);
+    var json = await reader.ReadToEndAsync();
+    if (string.IsNullOrWhiteSpace(json) || json == "null" || json == "[]")
+        folderSvc.DeleteAnnotationSidecar(pcId, path, solo);
+    else
+        folderSvc.WriteAnnotationSidecar(pcId, path, solo, json);
+    return Results.Ok();
+}).RequireAuthorization();
+
 app.MapPost("/api/pc-file-save", async (HttpContext ctx, LPM.Services.FolderService svc,
     LPM.Services.DashboardService dashSvc) =>
 {

@@ -7,6 +7,8 @@ window.pcfViewer = {
     drawWidth: 2.5,
     fontSize: 14,
     textInputEl: null,
+    _activeTextState: null,          // position/scale info for the active text input
+    _suppressBlurCommitForPane: null, // paneId — suppress blur-commit during reload
     dotNetRef: null,
     _pcId: 0,
 
@@ -62,7 +64,12 @@ window.pcfViewer = {
 
         // Extract filePath and solo flag from the URL for auto-save
         const u = new URL(url, location.origin);
-        pane.filePath = u.searchParams.get('path');
+        const newFilePath = u.searchParams.get('path');
+        const isSameFile = pane.filePath && newFilePath && pane.filePath === newFilePath;
+        const savedAnnotations = isSameFile ? [...pane.annotations] : null;
+        const savedScale = isSameFile ? (pane.baseScale || 1) : null;
+        console.log('[txt-dbg] loadPdf isSameFile=' + isSameFile + ' savedAnnotations=' + (savedAnnotations ? savedAnnotations.length : 'null') + ' oldPath=' + pane.filePath + ' newPath=' + newFilePath);
+        pane.filePath = newFilePath;
         pane.solo = u.searchParams.get('solo') === 'true';
 
         // Folder summary files are served via a distinct endpoint — mark read-only
@@ -91,9 +98,37 @@ window.pcfViewer = {
             viewer._panInited = true;
             this._initPanOnViewer(viewer);
         }
+        // Save active text input so it can be restored after reload (e.g., maximize/restore)
+        let _textRestore = null;
+        console.log('[txt-dbg] loadPdf paneId=' + paneId + ' activeState=' + JSON.stringify(this._activeTextState) + ' textInputEl=' + !!this.textInputEl);
+        if (this._activeTextState?.paneId === paneId && this.textInputEl) {
+            const st = this._activeTextState;
+            _textRestore = {
+                pageIdx:     st.pageIdx,
+                x: st.x,    y: st.y,
+                oldScale:    st.oldScale,
+                text:        this.textInputEl.value,
+                userWidth:   st.userWidth,
+                isEditing:   st.isEditing,
+                existingIdx: st.existingIdx,
+                existingAnn: st.existingAnn ? { ...st.existingAnn } : null
+            };
+            console.log('[txt-dbg] saved _textRestore=' + JSON.stringify(_textRestore));
+            // Suppress the blur that fires when viewer.innerHTML clears the textarea.
+            // Do NOT clear this flag here — commit() will clear it when the blur fires.
+            this._suppressBlurCommitForPane = paneId;
+            this._activeTextState = null;
+        }
+
         viewer.innerHTML = '';
+        // Safety clear in case blur didn't fire (e.g. input was never focused)
+        if (this._suppressBlurCommitForPane === paneId) {
+            console.log('[txt-dbg] blur did NOT fire — clearing suppress flag manually');
+            this._suppressBlurCommitForPane = null;
+        }
         pane.pages = [];
-        pane.annotations = [];
+        pane.annotations = savedAnnotations ? savedAnnotations : [];
+        console.log('[txt-dbg] after clear: pane.annotations.length=' + pane.annotations.length);
         pane.currentStroke = null;
 
         // Reset dual mode state when loading a new file
@@ -139,6 +174,24 @@ window.pcfViewer = {
         const fitScale = Math.min(viewerWidth / maxNaturalWidth, 3); // cap at 3x
         const scale = fitScale; // always fit to pane width — no minimum (narrow panes must be allowed to go below 0.5)
         pane.baseScale = scale;
+
+        // Rescale saved annotations from old canvas-pixel space to new canvas-pixel space.
+        // Annotations store coordinates in canvas pixels (scaled PDF units), so when
+        // baseScale changes (e.g. maximize/restore), all positions must be adjusted.
+        if (savedAnnotations && savedAnnotations.length > 0 && savedScale && Math.abs(scale - savedScale) > 0.001) {
+            const ratio = scale / savedScale;
+            for (const ann of pane.annotations) {
+                if (ann.type === 'text') {
+                    ann.x = Math.round(ann.x * ratio);
+                    ann.y = Math.round(ann.y * ratio);
+                    if (ann.fontSize)   ann.fontSize   = Math.round(ann.fontSize   * ratio);
+                    if (ann.maxWidth)   ann.maxWidth   = Math.round(ann.maxWidth   * ratio);
+                } else if (ann.type === 'draw' && ann.stroke) {
+                    for (const pt of ann.stroke.points) { pt.x *= ratio; pt.y *= ratio; }
+                    if (ann.stroke.width) ann.stroke.width *= ratio;
+                }
+            }
+        }
 
         for (let i = 0; i < allPages.length; i++) {
             if (pane.loadGen !== myGen) return; // superseded mid-render
@@ -255,6 +308,87 @@ window.pcfViewer = {
             pane.pages.push({ canvas, overlay, vp, pageIdx: i, scale, srcDoc: pane.pdfDoc, srcPageNum: i + 1 });
             this._attachEvents(overlay, i, paneId);
         }
+
+        // Redraw annotations that survived same-file reload
+        if (savedAnnotations && savedAnnotations.length > 0 && pane.loadGen === myGen) {
+            console.log('[txt-dbg] redrawing saved annotations for', savedAnnotations.length, 'items');
+            const pageIndices = new Set(savedAnnotations.map(a => a.pageIdx));
+            for (const pi of pageIndices) {
+                console.log('[txt-dbg] redrawing overlay pageIdx=' + pi);
+                this._redrawOverlay(pi, paneId);
+            }
+        }
+
+        // Re-open text input that was active before this reload (e.g., user pressed maximize)
+        if (_textRestore && pane.loadGen === myGen) {
+            const newScale = pane.baseScale;
+            const ratio = (_textRestore.oldScale > 0) ? newScale / _textRestore.oldScale : 1;
+            const newX = Math.round(_textRestore.x * ratio);
+            const newY = Math.round(_textRestore.y * ratio);
+            console.log('[txt-dbg] restoring text input: oldScale=' + _textRestore.oldScale + ' newScale=' + newScale + ' ratio=' + ratio.toFixed(3) + ' newX=' + newX + ' newY=' + newY + ' text="' + _textRestore.text + '"');
+            const wrappers = viewer.querySelectorAll('.pcf-page-wrapper');
+            console.log('[txt-dbg] wrappers.length=' + wrappers.length + ' targeting pageIdx=' + _textRestore.pageIdx);
+            const targetWrapper = wrappers[_textRestore.pageIdx];
+            if (targetWrapper) {
+                // For editing: re-insert the original annotation so commit() can update it
+                let openAnn = null, openIdx = -1;
+                const restoreMaxW = _textRestore.userWidth ||
+                    (_textRestore.existingAnn?.maxWidth) || 0;
+                if (_textRestore.isEditing && _textRestore.existingAnn && _textRestore.existingIdx >= 0) {
+                    pane.annotations.push({ ..._textRestore.existingAnn });
+                    openIdx = pane.annotations.length - 1;
+                    openAnn = pane.annotations[openIdx];
+                } else if (restoreMaxW) {
+                    // New annotation being typed — pass a dummy ann just to seed maxWidth
+                    openAnn = { maxWidth: restoreMaxW };
+                    openIdx = -1; // existingIdx=-1 → commit() will treat as new annotation
+                }
+                this._showTextInput(targetWrapper, _textRestore.pageIdx,
+                    newX, newY, paneId, openAnn, openIdx, newX, newY);
+                // Restore the typed text (overrides any pre-fill from existingAnn)
+                console.log('[txt-dbg] _showTextInput called, textInputEl=' + !!this.textInputEl);
+                if (this.textInputEl) {
+                    this.textInputEl.value = _textRestore.text || '';
+                    this.textInputEl.dispatchEvent(new Event('input')); // trigger autoSize
+                    console.log('[txt-dbg] text restored, value="' + this.textInputEl.value + '"');
+                }
+            }
+        }
+
+        // Load annotation sidecar — restore text annotations from previous sessions.
+        // Skip for same-file reloads (annotations already in pane.annotations) and read-only panes.
+        if (!isSameFile && newFilePath && !pane.readOnly && this._pcId && pane.loadGen === myGen) {
+            try {
+                const soloQ = pane.solo ? '&solo=true' : '';
+                const annResp = await fetch(
+                    `/api/pc-file-annotations?pcId=${this._pcId}&path=${encodeURIComponent(newFilePath)}${soloQ}`,
+                    { credentials: 'include' }
+                );
+                if (annResp.status === 200 && pane.loadGen === myGen) {
+                    const sidecar = await annResp.json();
+                    if (sidecar && sidecar.annotations && sidecar.annotations.length > 0) {
+                        const sidecarScale = sidecar.scale || 1;
+                        const ratio = (Math.abs(pane.baseScale - sidecarScale) > 0.001)
+                            ? pane.baseScale / sidecarScale : 1;
+                        const affectedPages = new Set();
+                        for (const ann of sidecar.annotations) {
+                            if (pane.loadGen !== myGen) break;
+                            const a = { ...ann, _fromSidecar: true };
+                            if (ratio !== 1) {
+                                a.x = Math.round(ann.x * ratio);
+                                a.y = Math.round(ann.y * ratio);
+                                if (ann.fontSize)  a.fontSize  = Math.round(ann.fontSize  * ratio);
+                                if (ann.maxWidth)  a.maxWidth  = Math.round(ann.maxWidth  * ratio);
+                            }
+                            pane.annotations.push(a);
+                            affectedPages.add(a.pageIdx);
+                        }
+                        for (const pi of affectedPages) this._redrawOverlay(pi, paneId);
+                        console.log('[txt-dbg] sidecar loaded:', sidecar.annotations.length, 'annotations restored');
+                    }
+                }
+            } catch(e) { /* best-effort — sidecar load failure is non-fatal */ }
+        }
     },
 
     _attachEvents(overlay, pageIdx, paneId) {
@@ -317,6 +451,8 @@ window.pcfViewer = {
                     const { x: mx, y: my } = canvasXY(me);
                     ann.x = origX + (mx - startX);
                     ann.y = origY + (my - startY);
+                    // Mark as modified so the new position gets burned into the PDF on next save
+                    delete ann._fromSidecar;
                     self._redrawOverlay(pageIdx, paneId);
                     moved = true;
                 };
@@ -342,13 +478,35 @@ window.pcfViewer = {
             }
         });
 
+        // dblclick on overlay (annotation mode — pointer-events active)
         overlay.addEventListener('dblclick', (e) => {
             const pane = self.panes[paneId];
+            console.log('[txt-dbg] dblclick paneId=' + paneId + ' pane=' + !!pane + ' textInputEl=' + !!self.textInputEl + ' annotations=' + (pane ? pane.annotations.length : 'n/a'));
+            if (!pane || self.textInputEl) return;
+            const { x, y } = canvasXY(e);
+            console.log('[txt-dbg] dblclick canvasXY=' + x.toFixed(1) + ',' + y.toFixed(1));
+            const hit = self._hitTestText(pane, pageIdx, x, y);
+            console.log('[txt-dbg] dblclick hit=' + JSON.stringify(hit ? { idx: hit.idx, text: hit.ann.text, ax: hit.ann.x, ay: hit.ann.y, mw: hit.ann.maxWidth } : null));
+            if (hit) {
+                e.preventDefault();
+                const { wx, wy } = canvasToWrapperXY(hit.ann.x, hit.ann.y);
+                self._showTextInput(overlay.parentElement, pageIdx, hit.ann.x, hit.ann.y, paneId, hit.ann, hit.idx, wx, wy);
+            }
+        });
+
+        // dblclick on wrapper (text-select mode — overlay has pointer-events:none, events bubble up)
+        // This allows editing existing text annotations even when text-select mode is active.
+        overlay.parentElement.addEventListener('dblclick', (e) => {
+            if (!self._textSelectMode) return; // handled by overlay in annotation mode
+            const pane = self.panes[paneId];
+            console.log('[txt-dbg] wrapper-dblclick textSelectMode=true paneId=' + paneId + ' annotations=' + (pane ? pane.annotations.length : 'n/a'));
             if (!pane || self.textInputEl) return;
             const { x, y } = canvasXY(e);
             const hit = self._hitTestText(pane, pageIdx, x, y);
+            console.log('[txt-dbg] wrapper-dblclick hit=' + JSON.stringify(hit ? { idx: hit.idx, text: hit.ann.text } : null));
             if (hit) {
                 e.preventDefault();
+                window.getSelection()?.removeAllRanges();
                 const { wx, wy } = canvasToWrapperXY(hit.ann.x, hit.ann.y);
                 self._showTextInput(overlay.parentElement, pageIdx, hit.ann.x, hit.ann.y, paneId, hit.ann, hit.idx, wx, wy);
             }
@@ -509,6 +667,10 @@ window.pcfViewer = {
             this.textInputEl.remove();
             this.textInputEl = null;
         }
+        if (this._textMirror) {
+            this._textMirror.remove();
+            this._textMirror = null;
+        }
 
         const isEditing = existingAnn != null;
         const color = this.drawColor;
@@ -519,13 +681,31 @@ window.pcfViewer = {
         const posX = inputX !== undefined ? inputX : x;
         const posY = inputY !== undefined ? inputY : y;
 
+        // Max width the textarea is allowed to grow to before wrapping
+        const maxAllowedWidth = Math.max(120, wrapper.offsetWidth - posX - 8);
+
+        // Hidden mirror div — same font, no padding/border — used to measure line width
+        const mirror = document.createElement('div');
+        mirror.style.cssText =
+            'position:absolute;visibility:hidden;white-space:pre;pointer-events:none;' +
+            'font-size:' + fontSize + 'px;font-family:Arial;line-height:1.3;' +
+            'padding:0;margin:0;border:0;box-sizing:content-box;left:-9999px;top:0;';
+        wrapper.appendChild(mirror);
+        this._textMirror = mirror;
+
+        // box-sizing:border-box: content = width - paddingH(8) - borderH(4) = width - 12.
+        // Add 4px safety buffer → PADDING_H = 16 so text never overflows and wraps early.
+        const PADDING_H = 16;
+
         const input = document.createElement('textarea');
         input.className = 'pcf-text-input';
         input.rows = 1;
         input.style.left = posX + 'px';
         input.style.top = (posY - fontSize) + 'px';
-        input.style.width = '220px';
-        input.placeholder = 'Type here... (Shift+Enter for new line)';
+        input.style.boxSizing = 'border-box';
+        input.style.width = Math.min(isEditing ? (existingAnn.maxWidth || maxAllowedWidth) : 120, maxAllowedWidth) + 'px';
+        input.style.height = 'auto';
+        input.placeholder = 'Type here\u2026 (Ctrl+Enter to confirm)';
         input.style.color = color;
         input.style.fontSize = fontSize + 'px';
         input.style.lineHeight = '1.3';
@@ -538,53 +718,145 @@ window.pcfViewer = {
 
         wrapper.appendChild(input);
         this.textInputEl = input;
+        // Store enough info to restore this input after a same-pane reload (maximize)
+        this._activeTextState = {
+            paneId, pageIdx, x, y,
+            oldScale: (this.panes[paneId]?.baseScale || 1),
+            isEditing, existingIdx, existingAnn,
+            userWidth: null
+        };
 
-        // Auto-grow textarea
-        const autoGrow = () => {
+        // Auto-size: width grows with widest line (including the word currently being
+        // typed) up to maxAllowedWidth, then wraps; height grows to fit all lines.
+        // We also measure the in-progress word so the box expands horizontally FIRST
+        // instead of wrapping the current word to the next line mid-typing.
+        // When editing, start with the annotation's saved width so dimensions are preserved.
+        let userWidth = (isEditing && existingAnn.maxWidth) ? existingAnn.maxWidth : null;
+        const autoSize = () => {
+            const effectiveMax = userWidth !== null ? userWidth : maxAllowedWidth;
+            const lines = input.value.split('\n');
+            // Find the current line being typed (up to cursor position)
+            const cursorPos = input.selectionStart ?? input.value.length;
+            const textToCursor = input.value.slice(0, cursorPos);
+            const currentLine = textToCursor.split('\n').pop() || '';
+            let maxLineW = 0;
+            for (const line of lines) {
+                mirror.textContent = line || '\u00a0';
+                maxLineW = Math.max(maxLineW, mirror.offsetWidth);
+            }
+            // Also measure the in-progress word so we expand width before wrapping
+            mirror.textContent = currentLine || '\u00a0';
+            maxLineW = Math.max(maxLineW, mirror.offsetWidth);
+            const newW = Math.max(120, Math.min(maxLineW + PADDING_H, effectiveMax));
+            input.style.width = newW + 'px';
             input.style.height = 'auto';
             input.style.height = input.scrollHeight + 'px';
         };
-        input.addEventListener('input', autoGrow);
-        // Trigger auto-grow for pre-filled text
+
+        const autoSizeAndReposition = () => { autoSize(); positionHandle(); };
+        input.addEventListener('input', autoSizeAndReposition);
+        // Size correctly for pre-filled text when editing
         if (isEditing) {
-            requestAnimationFrame(autoGrow);
+            requestAnimationFrame(autoSizeAndReposition);
+        } else {
+            // Start at one-line height
+            requestAnimationFrame(() => {
+                input.style.height = 'auto';
+                input.style.height = input.scrollHeight + 'px';
+                positionHandle();
+            });
         }
 
         input.addEventListener('pointerdown', (e) => e.stopPropagation());
 
+        // ── Resize handle (bottom-right corner) ──
+        const handle = document.createElement('div');
+        handle.className = 'pcf-text-resize-handle';
+        // Position relative to textarea; updated whenever textarea resizes
+        const positionHandle = () => {
+            handle.style.left = (input.offsetLeft + input.offsetWidth - 6) + 'px';
+            handle.style.top  = (input.offsetTop  + input.offsetHeight - 6) + 'px';
+        };
+        wrapper.appendChild(handle);
+        requestAnimationFrame(positionHandle);
+
+        handle.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handle.setPointerCapture(e.pointerId);
+            const startX = e.clientX;
+            const startW = input.offsetWidth;
+            handle.addEventListener('pointermove', onHandleMove);
+            handle.addEventListener('pointerup',   onHandleUp,   { once: true });
+            function onHandleMove(e) {
+                const newW = Math.max(80, startW + (e.clientX - startX));
+                userWidth = Math.min(newW, maxAllowedWidth);
+                if (self._activeTextState) self._activeTextState.userWidth = userWidth;
+                input.style.width  = userWidth + 'px';
+                // Reflow text immediately: reset height then remeasure scrollHeight
+                input.style.height = 'auto';
+                input.style.height = input.scrollHeight + 'px';
+                positionHandle();
+            }
+            function onHandleUp() {
+                handle.removeEventListener('pointermove', onHandleMove);
+            }
+        });
+
         const self = this;
         let committed = false;
+        const cleanup = () => {
+            input.remove();
+            mirror.remove();
+            handle.remove();
+            self.textInputEl = null;
+            self._textMirror = null;
+            self._activeTextState = null;
+        };
         const commit = () => {
             if (committed) return;
+            // Blur fired because loadPdf cleared the DOM (maximize/restore) — text will
+            // be re-opened by loadPdf after reload; skip commit to avoid losing the input.
+            if (self._suppressBlurCommitForPane === paneId) {
+                console.log('[txt-dbg] commit suppressed for paneId=' + paneId + ' text="' + input.value + '"');
+                committed = true;
+                self._suppressBlurCommitForPane = null;
+                cleanup();
+                return;
+            }
+            console.log('[txt-dbg] commit paneId=' + paneId + ' text="' + input.value.trim() + '" isEditing=' + isEditing + ' existingIdx=' + existingIdx);
             committed = true;
             const text = input.value.trim();
             const pane = self.panes[paneId];
             if (pane) {
-                if (isEditing) {
+                if (isEditing && existingIdx >= 0) {
                     if (text) {
                         // Update existing annotation — apply current color/fontSize from toolbar
                         pane.annotations[existingIdx].text = text;
                         pane.annotations[existingIdx].color = self.drawColor;
                         pane.annotations[existingIdx].fontSize = self.fontSize;
                         pane.annotations[existingIdx].maxWidth = input.offsetWidth;
+                        // Mark as modified so it gets re-burned into the PDF on next save
+                        delete pane.annotations[existingIdx]._fromSidecar;
                     } else {
                         // Empty text = delete annotation
                         pane.annotations.splice(existingIdx, 1);
                     }
                 } else if (text) {
-                    // New annotation — store maxWidth so word-wrap matches the textarea
+                    // New annotation (also handles restore-as-new when existingIdx = -1)
                     pane.annotations.push({ pageIdx, type: 'text', text, x, y, color, fontSize, maxWidth: input.offsetWidth });
+                    console.log('[txt-dbg] pushed annotation: pageIdx=' + pageIdx + ' x=' + x.toFixed(1) + ' y=' + y.toFixed(1) + ' maxWidth=' + input.offsetWidth + ' text="' + text + '" total=' + pane.annotations.length);
                 }
                 self._redrawOverlay(pageIdx, paneId);
                 self._notifyChange();
             }
-            input.remove();
-            self.textInputEl = null;
+            cleanup();
         };
 
         input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commit(); }
-            if (e.key === 'Escape') { input.remove(); self.textInputEl = null; }
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); commit(); }
+            if (e.key === 'Escape') { cleanup(); }
+            // Plain Enter: default textarea behaviour (inserts \n), autoSize fires via 'input' event
         });
         input.addEventListener('blur', commit);
 
@@ -893,12 +1165,14 @@ window.pcfViewer = {
         const pane = this.panes[paneId];
         if (!pane) return JSON.stringify({ totalPages: 0, pages: [] });
 
-        // Collect which page indices have each annotation type
+        // Collect which page indices have each annotation type.
+        // _fromSidecar text annotations are excluded from overlayPages — they are
+        // already burned into the PDF from a previous save; re-burning them would double them.
         const bgChangePages = new Set(
             pane.annotations.filter(a => a.type === 'bg-change').map(a => a.pageIdx)
         );
         const overlayPages = new Set(
-            pane.annotations.filter(a => a.type === 'draw' || a.type === 'text').map(a => a.pageIdx)
+            pane.annotations.filter(a => (a.type === 'draw' || a.type === 'text') && !a._fromSidecar).map(a => a.pageIdx)
         );
 
         const pages = [];
@@ -924,12 +1198,21 @@ window.pcfViewer = {
                     dataUrl: fc.toDataURL('image/png')
                 });
             } else if (hasOverlay) {
-                // Original page with draw/text: send transparent annotation overlay only
+                // Original page with draw/text: send transparent annotation overlay only.
+                // Re-render onto a fresh canvas excluding _fromSidecar text (already in PDF).
+                const oc = document.createElement('canvas');
+                oc.width = pg.overlay.width; oc.height = pg.overlay.height;
+                const octx = oc.getContext('2d');
+                for (const ann of pane.annotations) {
+                    if (ann.pageIdx !== i || ann._fromSidecar) continue;
+                    if (ann.type === 'draw') this._drawStroke(octx, ann.stroke);
+                    if (ann.type === 'text') this._drawText(octx, ann);
+                }
                 pages.push({
                     action: 'overlay',
                     srcPageIdx,
-                    w: pg.overlay.width, h: pg.overlay.height,
-                    dataUrl: pg.overlay.toDataURL('image/png')
+                    w: oc.width, h: oc.height,
+                    dataUrl: oc.toDataURL('image/png')
                 });
             } else {
                 // Original page with no changes: server keeps as-is
@@ -1148,6 +1431,9 @@ window.pcfViewer = {
         xhr.open('POST', '/api/pc-file-save-annotated?pcId=' + this._pcId + '&path=' + encodeURIComponent(pane.filePath) + soloParam, false);
         xhr.send(formData);
 
+        // Persist text annotations to sidecar (best-effort via beacon — sync context)
+        this._saveSidecarBeacon(paneId);
+
         pane.annotations = [];
     },
 
@@ -1165,7 +1451,37 @@ window.pcfViewer = {
 
         const dataJson = this.getAnnotationData(paneId);
         await window.pcfSaveAnnotatedPdf(this._pcId, pane.filePath, dataJson, pane.solo, paneId);
+        await this._saveSidecar(paneId);
         pane.annotations = [];
+    },
+
+    // Save text annotation sidecar (async)
+    async _saveSidecar(paneId) {
+        const pane = this.panes[paneId];
+        if (!pane || !pane.filePath || !this._pcId) return;
+        const textAnns = pane.annotations.filter(a => a.type === 'text');
+        const soloParam = pane.solo ? '&solo=true' : '';
+        const url = `/api/pc-file-save-annotations?pcId=${this._pcId}&path=${encodeURIComponent(pane.filePath)}${soloParam}`;
+        // Strip internal flags before saving
+        const body = textAnns.length > 0
+            ? JSON.stringify({ scale: pane.baseScale, annotations: textAnns.map(({ _fromSidecar, ...rest }) => rest) })
+            : null;
+        try {
+            await fetch(url, { method: 'POST', credentials: 'include', body, headers: { 'Content-Type': 'application/json' } });
+        } catch(e) { /* best-effort */ }
+    },
+
+    // Save text annotation sidecar via sendBeacon (sync context / beforeunload)
+    _saveSidecarBeacon(paneId) {
+        const pane = this.panes[paneId];
+        if (!pane || !pane.filePath || !this._pcId) return;
+        const textAnns = pane.annotations.filter(a => a.type === 'text');
+        const soloParam = pane.solo ? '&solo=true' : '';
+        const url = `/api/pc-file-save-annotations?pcId=${this._pcId}&path=${encodeURIComponent(pane.filePath)}${soloParam}`;
+        const body = textAnns.length > 0
+            ? JSON.stringify({ scale: pane.baseScale, annotations: textAnns.map(({ _fromSidecar, ...rest }) => rest) })
+            : null;
+        try { navigator.sendBeacon(url, body ? new Blob([body], { type: 'application/json' }) : new Blob()); } catch(e) { /* best-effort */ }
     },
 
     // ── Page background color ──
@@ -1337,6 +1653,7 @@ window.pcfViewer = {
     _floatWin: null,
     _floatWinMinimized: false,
     _floatWinRestoreState: null,
+    _textMirror: null,
 
     floatPage(paneId, pageIdx) {
         try {
