@@ -1736,11 +1736,12 @@ window.pcfViewer = {
             'flex-shrink:0;cursor:move;background:#1e293b;color:#e2e8f0;' +
             'padding:6px 10px;display:flex;align-items:center;gap:8px;' +
             'font-size:13px;user-select:none;border-bottom:1px solid #334155;';
+        const btnStyle = 'background:transparent;border:none;color:#94a3b8;cursor:pointer;line-height:1;padding:0 4px;flex-shrink:0;';
         titleBar.innerHTML =
             '<i class="ri-lock-line" style="color:#94a3b8;flex-shrink:0;font-size:14px;"></i>' +
             '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + title + '">' + title + '</span>' +
-            '<button id="pcf-float-close" style="background:transparent;border:none;color:#94a3b8;' +
-            'cursor:pointer;font-size:20px;line-height:1;padding:0 2px;" title="Close (Esc)">&times;</button>';
+            '<button id="pcf-float-min"   style="' + btnStyle + 'font-size:18px;" title="Minimize">&#8722;</button>' +
+            '<button id="pcf-float-close" style="' + btnStyle + 'font-size:20px;" title="Close (Esc)">&times;</button>';
 
         // Body: scrollable image
         const body = document.createElement('div');
@@ -1758,9 +1759,11 @@ window.pcfViewer = {
         win.appendChild(body);
         document.body.appendChild(win);
         this._floatWin = win;
+        this._floatWinMinimized = false;
+        this._floatWinRestoreState = null;
 
-        // Close button
         win.querySelector('#pcf-float-close').addEventListener('click', () => this.closeFloat());
+        win.querySelector('#pcf-float-min').addEventListener('click', () => this._toggleFloatMinimize(win, body, resizeHandlesEl));
 
         // Drag via title bar
         titleBar.addEventListener('mousedown', (e) => {
@@ -1778,7 +1781,7 @@ window.pcfViewer = {
         });
 
         // Edge + corner resize handles (8 directions)
-        const resizeHandles = [
+        const resizeHandlesDef = [
             ['n',  'top:0;left:6px;right:6px;height:5px;cursor:n-resize;'],
             ['s',  'bottom:0;left:6px;right:6px;height:5px;cursor:s-resize;'],
             ['e',  'right:0;top:6px;bottom:6px;width:5px;cursor:e-resize;'],
@@ -1788,10 +1791,12 @@ window.pcfViewer = {
             ['se', 'bottom:0;right:0;width:10px;height:10px;cursor:se-resize;'],
             ['sw', 'bottom:0;left:0;width:10px;height:10px;cursor:sw-resize;'],
         ];
-        for (const [pos, hStyle] of resizeHandles) {
+        const resizeHandlesEl = [];
+        for (const [pos, hStyle] of resizeHandlesDef) {
             const h = document.createElement('div');
             h.style.cssText = 'position:absolute;z-index:2;' + hStyle;
             h.addEventListener('mousedown', (e) => {
+                if (this._floatWinMinimized) return;
                 e.preventDefault(); e.stopPropagation();
                 const sx = e.clientX, sy = e.clientY;
                 const r = win.getBoundingClientRect();
@@ -1811,6 +1816,7 @@ window.pcfViewer = {
                 document.addEventListener('mouseup', onUp);
             });
             win.appendChild(h);
+            resizeHandlesEl.push(h);
         }
 
         } catch (e) { console.error('[pcfViewer] floatPage error:', e); }
