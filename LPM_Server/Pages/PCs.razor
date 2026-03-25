@@ -337,8 +337,8 @@
 @if (_showCoursesReportModal)
 {
     <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.55);z-index:1050;">
-        <div class="modal-dialog" style="max-width:95vw;width:95vw;margin:2vh auto;height:94vh;">
-            <div class="modal-content" style="border-radius:14px;background:#fff;color:#212529;border:none;display:flex;flex-direction:column;height:100%;overflow:hidden;border-radius:14px;">
+        <div class="modal-dialog" style="max-width:95vw;width:95vw;margin:2vh auto;">
+            <div class="modal-content" style="border-radius:14px;background:#fff;color:#212529;border:none;max-height:94vh;overflow:hidden;display:flex;flex-direction:column;">
 
                 @* ── Fixed: Title bar ── *@
                 <div style="background:linear-gradient(135deg,#1e3a5f,#3b82f6);border-radius:14px 14px 0 0;padding:12px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;">
@@ -371,6 +371,10 @@
                     <button class="btn btn-primary btn-sm" @onclick="RunCoursesReport">
                         <i class="ri-search-line me-1"></i>Apply
                     </button>
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="GenerateCourseReportTestData"
+                            style="font-size:.7rem;padding:3px 8px;opacity:.6;" title="Fill with random test data">
+                        test
+                    </button>
                     @if (_courseReportGroups != null)
                     {
                         <span style="font-size:.76rem;background:#dbeafe;color:#1e40af;border-radius:6px;padding:4px 12px;font-weight:700;">
@@ -380,7 +384,7 @@
                 </div>
 
                 @* ── Scrollable: Table area ── *@
-                <div style="flex:1;overflow-y:auto;overflow-x:auto;background:#fff;border-radius:0 0 14px 14px;">
+                <div style="flex:1;min-height:0;overflow-y:auto;overflow-x:auto;background:#fff;border-radius:0 0 14px 14px;">
                     @if (_courseReportGroups == null)
                     {
                         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;color:#94a3b8;font-size:.9rem;">
@@ -1018,10 +1022,21 @@
         border-top: 1px solid rgba(0,0,0,.10);
         border-radius: 18px 18px 0 0;
         box-shadow: 0 -4px 24px rgba(0,0,0,.10);
-        transition: height .28s cubic-bezier(.4,0,.2,1);
+        transition: height .28s cubic-bezier(.4,0,.2,1), left .05s ease;
         display: flex; flex-direction: column;
     }
     .pc-drawer-open { height: 46vh; }
+
+    /* Match sidebar width so drawer never hides under the nav */
+    @@media (min-width: 992px) {
+        .pc-drawer { left: 15rem; }
+        [data-vertical-style=closed][data-toggled=close-menu-close] .pc-drawer,
+        [data-nav-layout=horizontal] .pc-drawer { left: 0; }
+        .icon-click .pc-drawer,
+        [data-nav-style=icon-click][data-toggled=icon-click-closed] .pc-drawer,
+        .icon-hover .pc-drawer,
+        [data-nav-style=icon-hover][data-toggled=icon-hover-closed] .pc-drawer { left: 5rem; }
+    }
 
     /* Drag handle bar */
     .pc-drawer-handle-bar {
@@ -2237,6 +2252,38 @@
         _courseReportGroups = null;
         _showCoursesReportModal = true;
         RunCoursesReport();
+    }
+
+    void GenerateCourseReportTestData()
+    {
+        if (_allCourses.Count == 0) return;
+        var rng = Random.Shared;
+        var rangeStart = _courseReportFrom;
+        var rangeEnd   = _courseReportTo;
+        var spanDays   = Math.Max(1, (int)(rangeEnd - rangeStart).TotalDays);
+
+        _courseReportGroups = _allPcsEx
+            .Select(pc =>
+            {
+                int count = rng.Next(0, 5); // 0–4
+                if (count == 0) return null;
+                var courses = Enumerable.Range(0, count)
+                    .Select(_ =>
+                    {
+                        var course     = _allCourses[rng.Next(_allCourses.Count)];
+                        var finishedAt = rangeStart.AddDays(rng.Next(0, spanDays));
+                        var startedAt  = finishedAt.AddDays(-rng.Next(30, 180));
+                        return new CourseReportCourse(
+                            course.Name,
+                            startedAt.ToString("yyyy-MM-dd"),
+                            finishedAt.ToString("yyyy-MM-dd"));
+                    }).ToList();
+                return new CourseReportGroup(pc.FullName, courses);
+            })
+            .Where(g => g != null)
+            .Cast<CourseReportGroup>()
+            .OrderBy(g => g.PcName)
+            .ToList();
     }
 
     void RunCoursesReport()
