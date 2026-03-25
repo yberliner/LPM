@@ -7,6 +7,7 @@
 @inject SessionService _sessionService
 @inject NavigationManager NavigationManager
 @inject LPM.Services.ShortcutService ShortcutSvc
+@inject LPM.Services.UserActivityService ActivitySvc
 @implements IDisposable
 
 <Switcher />
@@ -81,6 +82,8 @@
         await JSRuntime.InvokeVoidAsync("interop.scrollToTop");
     }
 
+    private string _activityUsername = "";
+
     protected override async Task OnInitializedAsync()
     {
         LS.OnLanguageChanged += HandleLanguageChanged;
@@ -90,6 +93,11 @@
         if(!currentState.Equals(newState)){
             @* await stateService.retrieveFromLocalStorage(); *@
         }
+        _activityUsername = HttpContextAccessor.HttpContext?.User?.Identity?.Name ?? "";
+        if (!string.IsNullOrEmpty(_activityUsername))
+            ActivitySvc.RecordActivity(_activityUsername,
+                "Navigated to " + LPM.Services.UserActivityService.FriendlyPageName(NavigationManager.Uri),
+                "navigation");
         StateHasChanged();
         await base.OnInitializedAsync();
     }
@@ -98,6 +106,10 @@
     {
         try
         {
+            if (!string.IsNullOrEmpty(_activityUsername))
+                ActivitySvc.RecordActivity(_activityUsername,
+                    "Navigated to " + LPM.Services.UserActivityService.FriendlyPageName(e.Location),
+                    "navigation");
             var savedLang = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", "lpm-lang");
             if (!string.IsNullOrEmpty(savedLang) && savedLang != LS.CurrentLanguage)
             {

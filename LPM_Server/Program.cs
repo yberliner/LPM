@@ -119,6 +119,9 @@ builder.Services.AddSingleton<LPM.Services.PdfShrinkService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<LPM.Services.PdfShrinkService>());
 builder.Services.AddSingleton<LPM.Services.CsNotificationService>();
 builder.Services.AddSingleton<LPM.Services.ShortcutService>();
+builder.Services.AddSingleton<LPM.Services.UserActivityService>();
+builder.Services.AddScoped<LPM.Services.LpmCircuitHandler>();
+builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler, LPM.Services.LpmCircuitHandler>();
 builder.Services.AddHttpClient("sms");
 builder.Services.AddSingleton<LPM.Services.SmsService>();
 builder.Services.AddSingleton<LPM.Services.ImportJobService>();
@@ -996,6 +999,7 @@ app.MapGet("/api/backup-progress", (HttpContext ctx) =>
 
 // Enable WAL mode for crash-safe writes (runs once; setting persists in the DB file)
 app.Services.GetRequiredService<LPM.Services.FolderService>().InitializeDb();
+app.Services.GetRequiredService<LPM.Services.UserActivityService>().Initialize();
 
 // Clean up any leftover backup zips from previous runs (crash recovery)
 foreach (var stale in Directory.GetFiles(Path.GetTempPath(), "lpm-backup-*.zip"))

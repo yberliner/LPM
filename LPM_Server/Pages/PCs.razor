@@ -11,145 +11,158 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using LPM.Services
 
-<div class="d-flex gap-3 pc-layout">
+<div class="pc-page-container">
 
-    @* ── LEFT PANEL: PC Table ── *@
-    <div class="d-flex flex-column pc-left-panel">
-        <div class="d-flex gap-1 mb-2">
-            <input class="form-control form-control-sm" placeholder="@LS.T("common.search")"
-                   @bind="_search" @bind:event="oninput" />
+    @* ── Toolbar ── *@
+    <div class="d-flex align-items-center gap-2 mb-2 flex-wrap pc-toolbar">
+        <input class="form-control form-control-sm" style="max-width:220px;" placeholder="@LS.T("common.search")"
+               @bind="_search" @bind:event="oninput" />
+        <button class="pc-report-btn" @onclick="OpenCoursesReportModal" title="Course Completions Report">
+            <i class="ri-graduation-cap-line"></i><span class="pc-btn-label">Completions</span>
+        </button>
+        <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="filterHasSessions"
+                   @bind="_filterHasSessions" style="cursor:pointer;" />
+            <label class="form-check-label small fw-semibold" for="filterHasSessions" style="cursor:pointer;color:#6366f1;">
+                <i class="ri-archive-line me-1" style="font-size:.8rem;"></i>Audited Only
+            </label>
         </div>
-        <div class="d-flex align-items-center justify-content-between mb-2">
-            <div class="form-check form-switch mb-0">
-                <input class="form-check-input" type="checkbox" id="filterHasSessions"
-                       @bind="_filterHasSessions" style="cursor:pointer;" />
-                <label class="form-check-label small fw-semibold" for="filterHasSessions" style="cursor:pointer;color:#6366f1;">
-                    <i class="ri-archive-line me-1" style="font-size:.8rem;"></i>Clients with sessions
-                </label>
-            </div>
-            <span class="badge bg-primary-transparent text-primary" style="font-size:.72rem;">
-                @FilteredPcsEx.Count() PCs
-            </span>
-        </div>
-        <div class="overflow-y-auto overflow-x-auto flex-grow-1">
-            @if (!FilteredPcsEx.Any())
-            {
-                <div class="text-muted small text-center mt-4">@LS.T("pcs.noPcsFound")</div>
-            }
-            else
-            {
-            <div class="table-responsive">
-                <table id="pc-list-table" class="table table-sm table-hover mb-0 pc-list-table">
-                    <colgroup>
-                        <col class="pc-col-name" />
-                        <col style="width:62px;" />
-                        <col style="width:62px;" />
-                        <col style="width:50px;" />
-                        <col style="width:50px;" />
-                    </colgroup>
-                    <thead class="table-light" style="position:sticky;top:0;z-index:1;">
-                        <tr>
-                            <th class="small ps-2 pc-th-sort @SortClass("name")" @onclick='() => ToggleSort("name")'>@LS.T("pcs.pcName")</th>
-                            <th class="small text-center pc-th-sort @SortClass("hoursLeft")" @onclick='() => ToggleSort("hoursLeft")'>@LS.T("pcs.hoursLeft")</th>
-                            <th class="small text-center pc-th-sort @SortClass("totalTime")" @onclick='() => ToggleSort("totalTime")'>@LS.T("pcs.totalSessionTime")</th>
-                            <th class="small text-center pc-th-sort @SortClass("visits")" @onclick='() => ToggleSort("visits")'>@LS.T("pcs.totalVisits")</th>
-                            <th class="small text-center pc-th-sort @SortClass("purchased")" @onclick='() => ToggleSort("purchased")'>@LS.T("pcs.hoursPurchased")</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var pc in FilteredPcsEx)
-                        {
-                            <tr class="@(_selPcId == pc.PcId ? "table-primary" : "")"
-                                style="cursor:pointer;"
-                                @onclick="() => SelectPc(pc.PcId)">
-                                <td class="small ps-2 text-truncate" style="@(_soloPcIds.Contains(pc.PcId) ? "color:#ea580c;font-weight:600;" : "")">@pc.FullName@if (_soloPcIds.Contains(pc.PcId)) { <span style="display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:3px;background:#ea580c;color:#fff;font-size:.58rem;font-weight:700;margin-left:3px;vertical-align:middle;">S</span> }@if (!string.IsNullOrEmpty(pc.Nick)) { <span class="text-muted" style="font-size:.7rem;"> (@pc.Nick)</span> }</td>
-                                <td class="small text-center fw-semibold"
-                                    style="color:@(pc.RemainSec >= 0 ? "#4ade80" : "#f87171");">
-                                    @HrsLabel(pc.RemainSec)
-                                </td>
-                                <td class="small text-center text-muted">@HrsLabel(pc.TotalSessionSec)</td>
-                                <td class="small text-center text-muted">@pc.AcademyVisits</td>
-                                <td class="small text-center text-muted">@(pc.HoursPurchased)h</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-            }
+        <span class="badge bg-primary-transparent text-primary" style="font-size:.72rem;">
+            @FilteredPcsEx.Count() PCs
+        </span>
+        <div class="ms-auto d-flex gap-2 align-items-center">
+            <button class="pc-sms-btn @(!_selPcId.HasValue ? "pc-action-disabled" : "")"
+                    @onclick="OpenSmsModal"
+                    disabled="@(!_selPcId.HasValue)"
+                    title="@(_selPcId.HasValue ? "Send SMS to this PC" : "Select a PC first")">
+                <i class="ri-send-plane-fill"></i><span class="pc-btn-label">SMS</span>
+            </button>
+            <button class="pc-purchase-btn @(!_selPcId.HasValue ? "pc-action-disabled" : "")"
+                    @onclick="OpenPurchaseModal"
+                    disabled="@(!_selPcId.HasValue)"
+                    title="@(_selPcId.HasValue ? "" : "Select a PC first")">
+                <i class="ri-shopping-cart-line"></i><span class="pc-btn-label">@LS.T("pcs.newPurchase")</span>
+            </button>
         </div>
     </div>
 
-    @* ── RIGHT PANEL ── *@
-    <div class="flex-grow-1 overflow-y-auto">
-
-        @if (_selPcId.HasValue && _detail != null)
+    @* ── PC Table (full width) ── *@
+    <div class="overflow-x-auto pc-table-wrapper @(_selPcId.HasValue ? "pc-table-drawer-open" : "")">
+        @if (!FilteredPcsEx.Any())
         {
-            @* ── PC DETAIL ── *@
+            <div class="text-muted small text-center mt-4">@LS.T("pcs.noPcsFound")</div>
+        }
+        else
+        {
+        <table id="pc-list-table" class="table table-sm table-hover mb-0 pc-list-table">
+            <colgroup>
+                <col class="pc-col-name" />
+                <col style="width:80px;" />
+                <col style="width:80px;" />
+                <col style="width:70px;" />
+                <col style="width:70px;" />
+            </colgroup>
+            <thead class="table-light" style="position:sticky;top:0;z-index:1;">
+                <tr>
+                    <th class="small ps-2 pc-th-sort @SortClass("name")" @onclick='() => ToggleSort("name")'>@LS.T("pcs.pcName")</th>
+                    <th class="small text-center pc-th-sort @SortClass("hoursLeft")" @onclick='() => ToggleSort("hoursLeft")'>@LS.T("pcs.hoursLeft")</th>
+                    <th class="small text-center pc-th-sort @SortClass("totalTime")" @onclick='() => ToggleSort("totalTime")'>@LS.T("pcs.totalSessionTime")</th>
+                    <th class="small text-center pc-th-sort @SortClass("visits")" @onclick='() => ToggleSort("visits")'>@LS.T("pcs.totalVisits")</th>
+                    <th class="small text-center pc-th-sort @SortClass("purchased")" @onclick='() => ToggleSort("purchased")'>@LS.T("pcs.hoursPurchased")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var pc in FilteredPcsEx)
+                {
+                    <tr class="@(_selPcId == pc.PcId ? "table-primary" : "")"
+                        style="cursor:pointer;"
+                        @onclick="() => SelectPc(pc.PcId)">
+                        <td class="small ps-2 text-truncate" style="@(_soloPcIds.Contains(pc.PcId) ? "color:#ea580c;font-weight:600;" : "")">@pc.FullName@if (_soloPcIds.Contains(pc.PcId)) { <span style="display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:3px;background:#ea580c;color:#fff;font-size:.58rem;font-weight:700;margin-left:3px;vertical-align:middle;">S</span> }@if (!string.IsNullOrEmpty(pc.Nick)) { <span class="text-muted" style="font-size:.7rem;"> (@pc.Nick)</span> }</td>
+                        <td class="small text-center fw-semibold"
+                            style="color:@(pc.RemainSec >= 0 ? "#4ade80" : "#f87171");">
+                            @HrsLabel(pc.RemainSec)
+                        </td>
+                        <td class="small text-center text-muted">@HrsLabel(pc.TotalSessionSec)</td>
+                        <td class="small text-center text-muted">@pc.AcademyVisits</td>
+                        <td class="small text-center text-muted">@(pc.HoursPurchased)h</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        }
+    </div>
 
-            @* Header card *@
-            <div class="pc-header-card mb-3">
-                <div class="pc-header-top">
-                    <div class="pc-header-avatar">
-                        @(_detail.FirstName.Length > 0 ? _detail.FirstName[0].ToString().ToUpper() : "?")
-                    </div>
-                    <div class="pc-header-info">
-                        <div class="pc-header-name-row">
-                            <span class="pc-header-name">@_detail.FullName</span>
-                            <button class="pc-edit-btn" @onclick="OpenEditModal">
-                                <i class="ri-edit-line"></i>@LS.T("common.edit")
-                            </button>
-                            @if (!string.IsNullOrEmpty(_detail.Nick))
-                            {
-                                <span class="pc-header-tag pc-tag-id"><i class="ri-hashtag"></i>@_detail.Nick</span>
-                            }
-                            @if (!string.IsNullOrEmpty(_detail.Org))
-                            {
-                                <span class="pc-header-tag pc-tag-org"><i class="ri-building-line"></i>@_detail.Org</span>
-                            }
-                            <button class="pc-solo-btn @(_isSolo ? "pc-solo-btn-active" : "")"
-                                    @onclick="AskToggleSolo"
-                                    title="@(_isSolo ? "Revoke solo auditor access" : "Grant solo auditor access")">
-                                <i class="ri-user-star-line"></i>Solo Access
-                            </button>
-                        </div>
-                        <div class="pc-header-meta">
-                            @if (!string.IsNullOrEmpty(_detail.Phone))
-                            {
-                                <span><i class="ri-phone-line"></i>@_detail.Phone</span>
-                            }
-                            @if (!string.IsNullOrEmpty(_detail.Email))
-                            {
-                                <span><i class="ri-mail-line"></i>@_detail.Email</span>
-                            }
-                            @if (!string.IsNullOrEmpty(_detail.DateOfBirth))
-                            {
-                                <span><i class="ri-cake-line"></i>@_detail.DateOfBirth</span>
-                            }
-                            @if (!string.IsNullOrEmpty(_detail.Gender))
-                            {
-                                <span>@_detail.Gender</span>
-                            }
-                            @if (!string.IsNullOrEmpty(_detail.Source))
-                            {
-                                <span><i class="ri-user-received-line"></i>@_detail.Source</span>
-                            }
-                        </div>
-                        @if (!string.IsNullOrEmpty(_detail.Notes))
-                        {
-                            <div class="pc-header-notes">@_detail.Notes</div>
-                        }
-                    </div>
-                    <div class="pc-header-actions">
-                        <button class="pc-sms-btn" @onclick="OpenSmsModal"
-                                title="Send SMS to this PC">
-                            <i class="ri-send-plane-fill"></i><span>SMS</span>
-                        </button>
-                        <button class="pc-purchase-btn" @onclick="OpenPurchaseModal">
-                            <i class="ri-shopping-cart-line"></i>@LS.T("pcs.newPurchase")
-                        </button>
-                    </div>
-                </div>
+</div>
+
+@* ── Bottom Drawer ── *@
+<div class="pc-drawer @(_selPcId.HasValue && _detail != null ? "pc-drawer-open" : "")">
+
+    @* Handle bar + close *@
+    <div class="pc-drawer-handle-bar">
+        <div class="pc-drawer-handle"></div>
+        <button class="pc-drawer-close" @onclick="CloseDrawer" title="Close">
+            <i class="ri-close-line"></i>
+        </button>
+    </div>
+
+    @if (_selPcId.HasValue && _detail != null)
+    {
+        @* Compact PC header *@
+        <div class="pc-drawer-header">
+            <div class="pc-header-avatar">
+                @(_detail.FirstName.Length > 0 ? _detail.FirstName[0].ToString().ToUpper() : "?")
             </div>
+            <div class="pc-header-info">
+                <div class="pc-header-name-row">
+                    <span class="pc-header-name">@_detail.FullName</span>
+                    <button class="pc-edit-btn" @onclick="OpenEditModal">
+                        <i class="ri-edit-line"></i>@LS.T("common.edit")
+                    </button>
+                    @if (!string.IsNullOrEmpty(_detail.Nick))
+                    {
+                        <span class="pc-header-tag pc-tag-id"><i class="ri-hashtag"></i>@_detail.Nick</span>
+                    }
+                    @if (!string.IsNullOrEmpty(_detail.Org))
+                    {
+                        <span class="pc-header-tag pc-tag-org"><i class="ri-building-line"></i>@_detail.Org</span>
+                    }
+                    <button class="pc-solo-btn @(_isSolo ? "pc-solo-btn-active" : "")"
+                            @onclick="AskToggleSolo"
+                            title="@(_isSolo ? "Revoke solo auditor access" : "Grant solo auditor access")">
+                        <i class="ri-user-star-line"></i>Solo Access
+                    </button>
+                </div>
+                <div class="pc-header-meta">
+                    @if (!string.IsNullOrEmpty(_detail.Phone))
+                    {
+                        <span><i class="ri-phone-line"></i>@_detail.Phone</span>
+                    }
+                    @if (!string.IsNullOrEmpty(_detail.Email))
+                    {
+                        <span><i class="ri-mail-line"></i>@_detail.Email</span>
+                    }
+                    @if (!string.IsNullOrEmpty(_detail.DateOfBirth))
+                    {
+                        <span><i class="ri-cake-line"></i>@_detail.DateOfBirth</span>
+                    }
+                    @if (!string.IsNullOrEmpty(_detail.Gender))
+                    {
+                        <span>@_detail.Gender</span>
+                    }
+                    @if (!string.IsNullOrEmpty(_detail.Source))
+                    {
+                        <span><i class="ri-user-received-line"></i>@_detail.Source</span>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(_detail.Notes))
+                {
+                    <div class="pc-header-notes">@_detail.Notes</div>
+                }
+            </div>
+        </div>
+
+        @* ── Scrollable content ── *@
+        <div class="pc-drawer-body">
 
             @* ── Courses ── *@
             <div class="card shadow-sm mb-3 pc-card-courses" style="border:none;border-radius:14px;overflow:hidden;">
@@ -316,18 +329,120 @@
                 </div>
             </div>
 
-        }
-        else
-        {
-            <div class="d-flex flex-column align-items-center justify-content-center"
-                 style="height:60vh;color:var(--default-text-color);opacity:.5;">
-                <i class="ri-contacts-book-2-line" style="font-size:3.5rem;opacity:0.2;"></i>
-                <p class="mt-2 small">@LS.T("pcs.selectPrompt")</p>
-            </div>
-        }
-
-    </div>
+        </div>
+    }
 </div>
+
+@* ── Course Completions Report Modal ── *@
+@if (_showCoursesReportModal)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.55);z-index:1050;">
+        <div class="modal-dialog" style="max-width:95vw;width:95vw;margin:2vh auto;height:94vh;">
+            <div class="modal-content" style="border-radius:14px;background:#fff;color:#212529;border:none;display:flex;flex-direction:column;height:100%;overflow:hidden;border-radius:14px;">
+
+                @* ── Fixed: Title bar ── *@
+                <div style="background:linear-gradient(135deg,#1e3a5f,#3b82f6);border-radius:14px 14px 0 0;padding:12px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;">
+                    <div style="width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:1.2rem;color:#fff;flex-shrink:0;">
+                        <i class="ri-bar-chart-grouped-line"></i>
+                    </div>
+                    <div style="flex:1;">
+                        <div style="font-size:1.05rem;font-weight:700;color:#fff;line-height:1.2;">Course Completions Report</div>
+                        <div style="font-size:.73rem;color:rgba(255,255,255,.7);">Courses finished within the selected period, grouped by PC</div>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => _showCoursesReportModal = false" style="opacity:.8;"></button>
+                </div>
+
+                @* ── Fixed: Date filter bar ── *@
+                <div style="padding:10px 18px;background:#f8faff;border-bottom:1px solid #e0e7ff;flex-shrink:0;display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;">
+                    <div>
+                        <div style="font-size:.72rem;font-weight:600;color:#374151;margin-bottom:3px;">From</div>
+                        <input type="date" class="form-control form-control-sm"
+                               style="max-width:155px;color:#212529;background:#fff;border-color:#dee2e6;"
+                               value="@_courseReportFrom.ToString("yyyy-MM-dd")"
+                               @onchange="e => _courseReportFrom = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : _courseReportFrom" />
+                    </div>
+                    <div>
+                        <div style="font-size:.72rem;font-weight:600;color:#374151;margin-bottom:3px;">To</div>
+                        <input type="date" class="form-control form-control-sm"
+                               style="max-width:155px;color:#212529;background:#fff;border-color:#dee2e6;"
+                               value="@_courseReportTo.ToString("yyyy-MM-dd")"
+                               @onchange="e => _courseReportTo = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : _courseReportTo" />
+                    </div>
+                    <button class="btn btn-primary btn-sm" @onclick="RunCoursesReport">
+                        <i class="ri-search-line me-1"></i>Apply
+                    </button>
+                    @if (_courseReportGroups != null)
+                    {
+                        <span style="font-size:.76rem;background:#dbeafe;color:#1e40af;border-radius:6px;padding:4px 12px;font-weight:700;">
+                            @_courseReportGroups.Count PCs · @_courseReportGroups.Sum(g => g.Courses.Count) completions
+                        </span>
+                    }
+                </div>
+
+                @* ── Scrollable: Table area ── *@
+                <div style="flex:1;overflow-y:auto;overflow-x:auto;background:#fff;border-radius:0 0 14px 14px;">
+                    @if (_courseReportGroups == null)
+                    {
+                        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;color:#94a3b8;font-size:.9rem;">
+                            <i class="ri-calendar-search-line" style="font-size:2.5rem;margin-bottom:8px;opacity:.4;"></i>
+                            Select a date range and press Apply.
+                        </div>
+                    }
+                    else if (_courseReportGroups.Count == 0)
+                    {
+                        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;color:#94a3b8;font-size:.9rem;">
+                            <i class="ri-inbox-line" style="font-size:2.5rem;margin-bottom:8px;opacity:.4;"></i>
+                            No course completions found in this period.
+                        </div>
+                    }
+                    else
+                    {
+                        <table style="width:100%;border-collapse:collapse;color:#212529;font-size:.84rem;">
+                            <thead>
+                                <tr style="position:sticky;top:0;z-index:2;">
+                                    <th style="width:240px;padding:8px 14px;background:#f1f5f9;color:#475569;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #e2e8f0;white-space:nowrap;">PC Name</th>
+                                    <th style="padding:8px 14px;background:#f1f5f9;color:#475569;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #e2e8f0;">Course</th>
+                                    <th style="width:120px;padding:8px 14px;background:#f1f5f9;color:#475569;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #e2e8f0;text-align:center;white-space:nowrap;">Started</th>
+                                    <th style="width:120px;padding:8px 14px;background:#f1f5f9;color:#475569;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #e2e8f0;text-align:center;white-space:nowrap;">Completed</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var grp in _courseReportGroups)
+                                {
+                                    @* PC group header row *@
+                                    <tr style="background:#eff6ff;">
+                                        <td colspan="4" style="padding:8px 14px;font-size:.83rem;font-weight:700;color:#1e3a5f;border-top:2px solid #bfdbfe;border-bottom:1px solid #dbeafe;">
+                                            <i class="ri-user-3-line me-1" style="opacity:.7;"></i>@grp.PcName
+                                            <span style="display:inline-block;margin-left:8px;background:#1e3a5f;color:#fff;border-radius:20px;padding:1px 9px;font-size:.67rem;font-weight:700;vertical-align:middle;">
+                                                @grp.Courses.Count
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    @* Course rows *@
+                                    @foreach (var c in grp.Courses)
+                                    {
+                                        <tr style="background:#fff;border-bottom:1px solid #f1f5f9;">
+                                            <td style="padding:6px 14px 6px 30px;color:#94a3b8;font-size:.75rem;">
+                                                <i class="ri-corner-down-right-line"></i>
+                                            </td>
+                                            <td style="padding:6px 14px;font-weight:600;color:#6d28d9;">@c.CourseName</td>
+                                            <td style="padding:6px 14px;text-align:center;color:#64748b;">@FormatDate(c.DateStarted)</td>
+                                            <td style="padding:6px 14px;text-align:center;color:#059669;font-weight:700;">
+                                                <i class="ri-check-line me-1" style="font-size:.8rem;"></i>@FormatDate(c.DateFinished!)
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+
+
+            </div>
+        </div>
+    </div>
+}
 
 @* ── Purchase Modal ── *@
 @if (_showPurchaseModal && _detail != null)
@@ -890,19 +1005,69 @@
 }
 
 <style>
-    /* ── Responsive two-panel layout ── */
-    .pc-layout { height: calc(100vh - 130px); overflow: hidden; }
-    .pc-left-panel { width: 340px; min-width: 340px; }
+    /* ── Page container ── */
+    .pc-page-container { display: flex; flex-direction: column; }
+    .pc-table-wrapper { overflow-y: auto; transition: padding-bottom .28s ease; }
+    .pc-table-drawer-open { padding-bottom: 46vh; }
+
+    /* ── Bottom Drawer ── */
+    .pc-drawer {
+        position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+        height: 0; overflow: hidden;
+        background: var(--custom-white, #fff);
+        border-top: 1px solid rgba(0,0,0,.10);
+        border-radius: 18px 18px 0 0;
+        box-shadow: 0 -4px 24px rgba(0,0,0,.10);
+        transition: height .28s cubic-bezier(.4,0,.2,1);
+        display: flex; flex-direction: column;
+    }
+    .pc-drawer-open { height: 46vh; }
+
+    /* Drag handle bar */
+    .pc-drawer-handle-bar {
+        display: flex; align-items: center; justify-content: center;
+        padding: 8px 14px 4px;
+        flex-shrink: 0; position: relative;
+    }
+    .pc-drawer-handle {
+        width: 40px; height: 4px; border-radius: 2px;
+        background: rgba(0,0,0,.15);
+    }
+    .pc-drawer-close {
+        position: absolute; right: 12px; top: 6px;
+        display: flex; align-items: center; justify-content: center;
+        width: 32px; height: 32px; border-radius: 50%;
+        border: none; background: rgba(0,0,0,.06);
+        color: var(--default-text-color, #374151);
+        font-size: 1.1rem; cursor: pointer;
+        transition: background .15s ease;
+        min-height: 44px; min-width: 44px;
+    }
+    .pc-drawer-close:hover { background: rgba(0,0,0,.12); }
+
+    /* Drawer compact header */
+    .pc-drawer-header {
+        display: flex; align-items: flex-start; gap: 12px;
+        padding: 6px 16px 10px;
+        border-bottom: 1px solid rgba(0,0,0,.07);
+        flex-shrink: 0;
+    }
+
+    /* Scrollable content inside drawer */
+    .pc-drawer-body {
+        overflow-y: auto; flex: 1; padding: 12px 16px 16px;
+    }
+
     @@media (max-width: 768px) {
-        .pc-layout { flex-direction: column; height: auto; overflow: visible; }
-        .pc-left-panel { width: 100% !important; min-width: 0 !important; max-height: 40vh; overflow-y: auto; }
+        .pc-drawer-open { height: 60vh; }
+        .pc-table-drawer-open { padding-bottom: 60vh; }
     }
 
     @@media (max-width: 480px) {
-        .pc-header-top { padding: 10px 12px; gap: 10px; }
         .pc-header-avatar { width: 42px; height: 42px; font-size: 1.1rem; border-radius: 10px; }
         .pc-header-name { font-size: 1rem; }
         .pc-solo-btn { font-size: 0.72rem; padding: 4px 8px; }
+        .pc-btn-label { display: none; }
     }
 
     /* ── Header card ── */
@@ -1075,6 +1240,53 @@
     .pc-card-auditing .table tbody tr:hover { background: #e0efff !important; }
     .pc-card-auditing .table thead.table-light th { background: #dbeafe !important; color: #1e3a5f !important; }
     .pc-card-auditing .table tfoot.table-light td { background: #dbeafe !important; color: #1e3a5f !important; }
+
+    /* ── Disabled state for SMS / Purchase when no PC selected ── */
+    .pc-action-disabled {
+        opacity: 0.38 !important;
+        cursor: not-allowed !important;
+        filter: grayscale(60%);
+        pointer-events: none;
+    }
+
+    /* ── Completions Report modal — force light theme ── */
+    .cr-modal-body { background: #fff !important; color: #212529 !important; }
+    .cr-modal-body .form-label { color: #374151 !important; }
+    .cr-modal-body .form-control { color: #212529 !important; background: #fff !important; border-color: #dee2e6 !important; }
+    .cr-modal-body .text-muted { color: #6c757d !important; }
+    .cr-modal-body .badge { color: inherit; }
+
+    /* ── Completions report button ── */
+    .pc-report-btn {
+        display: inline-flex; align-items: center; gap: 6px;
+        background: linear-gradient(135deg, #6d28d9, #a855f7);
+        color: #fff; border: none; border-radius: 20px;
+        padding: 5px 14px; font-size: 0.76rem; font-weight: 700;
+        cursor: pointer; transition: all .2s ease;
+        min-height: 32px; touch-action: manipulation;
+        box-shadow: 0 2px 8px rgba(109,40,217,.35);
+        letter-spacing: .02em;
+    }
+    .pc-report-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 14px rgba(109,40,217,.5);
+        background: linear-gradient(135deg, #7c3aed, #c026d3);
+    }
+    .pc-report-btn:active { transform: translateY(0); }
+    .pc-report-btn i { font-size: 1rem; }
+
+    /* ── Course Completions Report table ── */
+    .cr-table { border-collapse: separate; border-spacing: 0; }
+    .cr-table, .cr-table td, .cr-table th { color: #212529 !important; }
+    .cr-table thead.table-light th { background: #f8f9fa !important; color: #374151 !important; }
+    .cr-pc-row { background: #eff6ff !important; }
+    .cr-pc-cell {
+        padding: 7px 10px !important;
+        font-size: .82rem; font-weight: 700; color: #1e3a5f !important;
+        border-top: 2px solid #bfdbfe !important;
+    }
+    .cr-course-row td { padding-top: 5px !important; padding-bottom: 5px !important; background: #fff !important; }
+    .cr-course-row:last-child td { border-bottom: 1px solid #e2e8f0; }
 
     /* ── Purchase modal sections ── */
     .purchase-section {
@@ -1337,14 +1549,11 @@
 
     /* ── Tablet / Mobile responsive ── */
     @@media (max-width: 768px) {
-        .pc-header-actions { flex-wrap: wrap; gap: 6px; }
         .pc-sms-btn, .pc-purchase-btn { font-size: .78rem; padding: 6px 12px; }
         .sms-success-card { padding: 32px 24px; min-width: 240px; }
         .sms-success-title { font-size: 1.3rem; }
     }
     @@media (max-width: 480px) {
-        .pc-header-actions { flex-direction: column; align-items: stretch; }
-        .pc-sms-btn, .pc-purchase-btn { width: 100%; justify-content: center; }
         .sms-modal-content { border-radius: 16px; }
         .sms-modal-header { padding: 16px; }
         .sms-recipient-card { padding: 12px; }
@@ -1523,9 +1732,12 @@
 
     void SelectPc(int pcId)
     {
-        _selPcId  = pcId;
+        if (_selPcId == pcId) { _selPcId = null; return; }
+        _selPcId = pcId;
         LoadDetail();
     }
+
+    void CloseDrawer() => _selPcId = null;
 
     void LoadDetail()
     {
@@ -2009,4 +2221,39 @@
     }
 
     void DismissSmsSuccess() => _smsSuccess = false;
+
+    // ── Course Completions Report ──────────────────────────────────────────────
+
+    bool _showCoursesReportModal;
+    DateTime _courseReportFrom = DateTime.Today.AddYears(-1);
+    DateTime _courseReportTo   = DateTime.Today;
+    List<CourseReportGroup>? _courseReportGroups;
+
+    record CourseReportCourse(string CourseName, string DateStarted, string DateFinished);
+    record CourseReportGroup(string PcName, List<CourseReportCourse> Courses);
+
+    void OpenCoursesReportModal()
+    {
+        _courseReportGroups = null;
+        _showCoursesReportModal = true;
+        RunCoursesReport();
+    }
+
+    void RunCoursesReport()
+    {
+        var from = _courseReportFrom.ToString("yyyy-MM-dd");
+        var to   = _courseReportTo.ToString("yyyy-MM-dd");
+
+        var allEnrollments = CourseSvc.GetCourseEnrollmentReport();
+        _courseReportGroups = allEnrollments
+            .Where(e => e.DateFinished != null && string.Compare(e.DateFinished, from) >= 0 && string.Compare(e.DateFinished, to) <= 0)
+            .GroupBy(e => e.PCFullName)
+            .OrderBy(g => g.Key)
+            .Select(g => new CourseReportGroup(
+                g.Key,
+                g.OrderBy(e => e.DateFinished)
+                 .Select(e => new CourseReportCourse(e.CourseName, e.DateStarted, e.DateFinished!))
+                 .ToList()))
+            .ToList();
+    }
 }
