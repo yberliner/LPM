@@ -1683,9 +1683,7 @@ public class PdfService
                 page.Margin(36);
                 page.DefaultTextStyle(x => x.FontSize(22).FontColor("#1a1a1a"));
 
-                // Wrap everything in ScaleToFit so the PDF is always exactly 1 page.
-                // Content renders at natural size; if it exceeds the page content area
-                // (~595×770pt for A4 with 36pt margins), QuestPDF scales it down uniformly.
+                // Content scales to fit so everything stays on one page.
                 page.Content().ScaleToFit().Column(col =>
                 {
                     // ── Header ──
@@ -1724,11 +1722,11 @@ public class PdfService
                     // ── Bottom free text ──
                     if (!string.IsNullOrWhiteSpace(bottomHtml))
                         col.Item().PaddingBottom(8).Column(inner => RenderHtmlBlock(inner, bottomHtml, 3f));
-
-                    // ── Auditor signature ──
-                    col.Item().PaddingTop(16).AlignRight()
-                        .Text(auditorName).FontSize(30).Bold().FontColor("#c0392b");
                 });
+
+                // ── Auditor signature — always pinned to the bottom-right of the page ──
+                page.Footer().AlignRight()
+                    .Text(auditorName).FontSize(30).Bold().FontColor("#c0392b");
             });
         }).GeneratePdf();
     }
