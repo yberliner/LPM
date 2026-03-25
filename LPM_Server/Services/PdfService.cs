@@ -1835,6 +1835,13 @@ public class PdfService
         List<DashboardService.SessionSummaryInfo> summaries, int totalPages)
     {
         var pages = PackIntoPages(summaries);
+        // Within each page, reverse left and right independently so oldest prints first (top)
+        pages = pages
+            .Select(p => (
+                p.left.AsEnumerable().Reverse().ToList(),
+                p.right.AsEnumerable().Reverse().ToList()
+            ))
+            .ToList();
         int summaryPageCount = pages.Count;
 
         return Document.Create(container =>
