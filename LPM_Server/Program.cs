@@ -844,6 +844,7 @@ app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderSer
     {
         LPM.Services.BackupProgress.LastError = ex.Message;
         LPM.Services.BackupProgress.Running = false;
+        LPM.Services.BackupProgress.ActiveUser = "";
         if (File.Exists(tempFile)) File.Delete(tempFile);
         throw;
     }
@@ -972,6 +973,7 @@ app.MapGet("/api/server-backup-download", (HttpContext ctx, LPM.Services.FolderS
     {
         LPM.Services.BackupProgress.LastError = ex.Message;
         LPM.Services.BackupProgress.Running = false;
+        LPM.Services.BackupProgress.ActiveUser = "";
         if (File.Exists(tempFile)) File.Delete(tempFile);
         throw;
     }

@@ -117,6 +117,23 @@
         </div>
     }
 
+    @* ── Blocked by another user banner ── *@
+    @if (!string.IsNullOrEmpty(_blockedByUser) && !_downloading)
+    {
+        <div class="bk-blocked-banner mt-3">
+            <div style="font-size:2.6rem; color:#f59e0b; flex-shrink:0; line-height:1;">
+                <i class="ri-lock-fill"></i>
+            </div>
+            <div style="flex:1;">
+                <div class="bk-blocked-title">BACKUP ALREADY IN PROGRESS</div>
+                <div class="bk-blocked-text">
+                    Started by: <strong style="color:#fde68a;">@_blockedByUser</strong>
+                </div>
+                <div class="bk-blocked-sub">Please wait until the current backup finishes before starting a new one.</div>
+            </div>
+        </div>
+    }
+
     @* ── Disk space warning ── *@
     @if (_notEnoughSpace)
     {
@@ -128,11 +145,11 @@
     }
 
     @* ── Action ── *@
-    <div class="d-flex align-items-center gap-3 mt-3">
+    <div class="d-flex align-items-center gap-3 mt-3 flex-wrap">
         @if (!_downloading)
         {
-            <button class="btn btn-primary btn-lg d-flex align-items-center gap-2"
-                    disabled="@_notEnoughSpace"
+            <button class="btn btn-primary btn-lg d-flex align-items-center gap-2 @(_shakeActive ? "bk-shake" : "")"
+                    disabled="@(_notEnoughSpace || !string.IsNullOrEmpty(_blockedByUser))"
                     @onclick="ShowPasswordPrompt">
                 <i class="ri-download-cloud-2-line" style="font-size:1.3rem;"></i>
                 Start Backup
@@ -149,6 +166,13 @@
                 <i class="ri-close-circle-line"></i>
                 Cancel
             </button>
+        }
+        @if (!string.IsNullOrEmpty(_refusedMessage))
+        {
+            <div class="bk-refused-msg d-flex align-items-center gap-2">
+                <i class="ri-forbid-2-line"></i>
+                @_refusedMessage
+            </div>
         }
     </div>
 
@@ -267,6 +291,49 @@
         0%, 100% { opacity: 1; }
         50% { opacity: .3; }
     }
+
+    .bk-blocked-banner {
+        display: flex; align-items: flex-start; gap: 16px;
+        padding: 20px 24px;
+        background: rgba(245, 158, 11, .13);
+        border: 2px solid #f59e0b;
+        border-radius: 12px;
+        max-width: 700px;
+        animation: bk-blocked-pulse 2s ease-in-out infinite;
+    }
+    .bk-blocked-title {
+        font-size: 1.05rem; font-weight: 800; color: #f59e0b;
+        letter-spacing: .06em; margin-bottom: 4px;
+    }
+    .bk-blocked-text  { font-size: .92rem; color: #fcd34d; margin-bottom: 2px; }
+    .bk-blocked-sub   { font-size: .82rem; color: #94a3b8; margin-top: 4px; }
+
+    @@keyframes bk-blocked-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,.25); }
+        50%       { box-shadow: 0 0 0 8px rgba(245,158,11,0), 0 0 24px rgba(245,158,11,.12); }
+    }
+
+    @@keyframes bk-shake {
+        0%,100% { transform: translateX(0); }
+        15%     { transform: translateX(-9px); }
+        30%     { transform: translateX(9px); }
+        45%     { transform: translateX(-7px); }
+        60%     { transform: translateX(7px); }
+        75%     { transform: translateX(-4px); }
+        90%     { transform: translateX(4px); }
+    }
+    .bk-shake { animation: bk-shake 0.55s ease; }
+
+    .bk-refused-msg {
+        color: #ef4444; font-size: .85rem; font-weight: 600;
+        animation: bk-refused-in .2s ease both;
+    }
+    @@keyframes bk-refused-in { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+
+    @@media (max-width: 480px) {
+        .bk-blocked-banner { padding: 14px 16px; gap: 12px; }
+        .bk-blocked-title  { font-size: .9rem; }
+    }
 </style>
 
 @code {
@@ -286,6 +353,11 @@
 
     string _integrityWarning = "";
 
+    // Concurrency guard
+    string _blockedByUser = "";   // non-empty = another user's backup is running
+    bool   _shakeActive;          // triggers CSS shake on the button
+    string _refusedMessage = "";  // temporary inline refusal message
+
     // Password modal
     bool _showPasswordModal;
     string _backupPassword = "";
@@ -301,6 +373,14 @@
         {
             Navigation.NavigateTo("/Home", forceLoad: false);
             return;
+        }
+
+        // Check if another user's backup is already running
+        if (BackupProgress.Running)
+        {
+            _blockedByUser = string.IsNullOrEmpty(BackupProgress.ActiveUser) ? "another user" : BackupProgress.ActiveUser;
+            // Start polling so the banner clears automatically when the other backup finishes
+            _pollTimer = new System.Threading.Timer(PollProgress, null, 1000, 1500);
         }
 
         var info = FolderSvc.GetBackupSizeInfo();
@@ -320,10 +400,30 @@
 
     void ShowPasswordPrompt()
     {
+        // Race condition: someone else started a backup after this page loaded
+        if (BackupProgress.Running)
+        {
+            _blockedByUser = string.IsNullOrEmpty(BackupProgress.ActiveUser) ? "another user" : BackupProgress.ActiveUser;
+            TriggerBlockedShake();
+            return;
+        }
         _backupPassword = "";
         _passwordError = "";
         _authBusy = false;
         _showPasswordModal = true;
+    }
+
+    async void TriggerBlockedShake()
+    {
+        _refusedMessage = $"Backup already in progress by {_blockedByUser} — cannot start a new one";
+        _shakeActive = true;
+        StateHasChanged();
+        await Task.Delay(600);
+        _shakeActive = false;
+        StateHasChanged();
+        await Task.Delay(3000);
+        _refusedMessage = "";
+        StateHasChanged();
     }
 
     async Task OnPasswordKeyDown(KeyboardEventArgs e)
@@ -391,6 +491,7 @@
         _userCurrent   = 0; _userTotal   = 0; _userFile   = ""; _userActive   = false; _userDone   = false;
         _serverCurrent = 0; _serverTotal = 0; _serverFile = ""; _serverActive = false; _serverDone = false;
         BackupProgress.CurrentTempFile = null;
+        BackupProgress.ActiveUser = _username;
         StateHasChanged();
 
         try
@@ -448,6 +549,8 @@
             _pollTimer?.Dispose();
             _pollTimer = null;
             _downloading = false;
+            BackupProgress.ActiveUser = "";
+            _blockedByUser = "";
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -493,6 +596,15 @@
             _serverTotal   = BackupProgress.TotalFiles;
             _serverFile    = BackupProgress.CurrentFile;
         }
+
+        // Keep blocked-by-user banner in sync for the non-downloading observer
+        if (!_downloading)
+        {
+            _blockedByUser = BackupProgress.Running
+                ? (string.IsNullOrEmpty(BackupProgress.ActiveUser) ? "another user" : BackupProgress.ActiveUser)
+                : "";
+        }
+
         _ = InvokeAsync(StateHasChanged);
     }
 
