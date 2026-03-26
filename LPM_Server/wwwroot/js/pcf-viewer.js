@@ -94,6 +94,13 @@ window.pcfViewer = {
         }
         if (!viewer || pane.loadGen !== myGen || stableWidth < 50) return;
 
+        // Fast path: same file already rendered — instant CSS zoom + background re-render
+        if (isSameFile && pane.pages.length > 0 && pane.pdfPages &&
+            pane.pages.length === pane.pdfPages.length) {
+            await this._rescalePdf(pane, paneId, stableWidth, targetPage, myGen, viewer);
+            return;
+        }
+
         if (!viewer._panInited) {
             viewer._panInited = true;
             this._initPanOnViewer(viewer);
@@ -169,6 +176,10 @@ window.pcfViewer = {
             if (naturalVp.width > maxNaturalWidth) maxNaturalWidth = naturalVp.width;
             allPages.push(page);
         }
+
+        // Store for fast-path rescale on same-file reloads (max/min pane)
+        pane.maxNaturalWidth = maxNaturalWidth;
+        pane.pdfPages = allPages;
 
         // Calculate scale to fit the WIDEST page within viewer width.
         // Use stableWidth captured in the RAF loop — not viewer.clientWidth here,
@@ -400,6 +411,88 @@ window.pcfViewer = {
             if (tw) viewer.scrollTop = tw.offsetTop;
         }
         viewer.style.visibility = '';
+    },
+
+    // Fast rescale: same file already in DOM — instant CSS zoom then re-render per page in background.
+    // Called from loadPdf fast-path when isSameFile and page count unchanged.
+    async _rescalePdf(pane, paneId, stableWidth, targetPage, myGen, viewer) {
+        const newScale = Math.min((stableWidth - 40) / pane.maxNaturalWidth, 3);
+        const oldScale = pane.baseScale;
+        const ratio    = newScale / oldScale;
+
+        // If scale is effectively unchanged, just scroll to target and return
+        if (Math.abs(ratio - 1) < 0.002) {
+            if (targetPage > 0 && pane.pages[targetPage]) {
+                const tw = pane.pages[targetPage].canvas.parentElement;
+                if (tw) viewer.scrollTop = tw.offsetTop;
+            }
+            return;
+        }
+
+        // Reset user zoom (same as full loadPdf does on any file load)
+        pane.zoomLevel = 1.0;
+
+        // Scale annotation coordinates to new pixel space before any redraw
+        if (pane.annotations.length > 0) {
+            for (const ann of pane.annotations) {
+                if (ann.type === 'text') {
+                    ann.x = Math.round(ann.x * ratio);
+                    ann.y = Math.round(ann.y * ratio);
+                    if (ann.fontSize) ann.fontSize = Math.round(ann.fontSize * ratio);
+                    if (ann.maxWidth) ann.maxWidth = Math.round(ann.maxWidth * ratio);
+                } else if (ann.type === 'draw' && ann.stroke) {
+                    for (const pt of ann.stroke.points) { pt.x *= ratio; pt.y *= ratio; }
+                    if (ann.stroke.width) ann.stroke.width *= ratio;
+                }
+            }
+        }
+        pane.baseScale = newScale;
+
+        // INSTANT: apply CSS zoom to all wrappers so the viewer snaps to the new size
+        const wrappers = viewer.querySelectorAll('.pcf-page-wrapper');
+        wrappers.forEach(w => { w.style.zoom = String(ratio); });
+
+        // INSTANT: scroll to target page (works because offsetTop accounts for zoom)
+        if (targetPage > 0 && pane.pages[targetPage]) {
+            const tw = pane.pages[targetPage].canvas.parentElement;
+            if (tw) viewer.scrollTop = tw.offsetTop;
+        }
+
+        // BACKGROUND: re-render each page at new scale, remove zoom wrapper-by-wrapper as each completes
+        for (let i = 0; i < pane.pdfPages.length; i++) {
+            if (pane.loadGen !== myGen) return; // superseded by a new load
+            const page    = pane.pdfPages[i];
+            const vp      = page.getViewport({ scale: newScale });
+            const pg      = pane.pages[i];
+            const wrapper = pg.canvas.parentElement;
+
+            // Resize canvas and overlay to new pixel dimensions
+            pg.canvas.width  = vp.width;
+            pg.canvas.height = vp.height;
+            wrapper.style.width  = vp.width  + 'px';
+            wrapper.style.height = vp.height + 'px';
+
+            pg.overlay.width         = vp.width;
+            pg.overlay.height        = vp.height;
+            pg.overlay.style.width   = vp.width  + 'px';
+            pg.overlay.style.height  = vp.height + 'px';
+
+            const textLayerDiv = wrapper.querySelector('.pcf-text-layer');
+            if (textLayerDiv) {
+                textLayerDiv.style.width  = vp.width  + 'px';
+                textLayerDiv.style.height = vp.height + 'px';
+                textLayerDiv.style.setProperty('--scale-factor', vp.scale);
+            }
+
+            await page.render({ canvasContext: pg.canvas.getContext('2d'), viewport: vp }).promise;
+            if (pane.loadGen !== myGen) return;
+
+            // Page now rendered at native resolution — remove CSS zoom for this wrapper
+            wrapper.style.zoom = '';
+            pg.vp    = vp;
+            pg.scale = newScale;
+            this._redrawOverlay(i, paneId);
+        }
     },
 
     _attachEvents(overlay, pageIdx, paneId) {
