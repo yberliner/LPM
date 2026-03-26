@@ -1158,12 +1158,13 @@
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT Id, Username, StaffRole, UserType FROM core_users ORDER BY Id";
         using var r = cmd.ExecuteReader();
-        _userList = [];
+        var newUserList = new List<UserDropdownItem>();
         while (r.Read())
-            _userList.Add(new(r.GetInt32(0),
+            newUserList.Add(new(r.GetInt32(0),
                 r.IsDBNull(1) ? "" : r.GetString(1),
                 r.IsDBNull(2) ? "" : r.GetString(2),
                 r.IsDBNull(3) ? "" : r.GetString(3)));
+        _userList = newUserList;
     }
 
     void OnUserSelected(ChangeEventArgs e)
