@@ -1782,16 +1782,7 @@
     .pcf-overlay-btn.pcf-overlay-btn-active { color: #fb923c; }
     .pcf-overlay-close:hover:not([disabled]) { background: rgba(248,113,113,.18); color: #f87171; }
     .pcf-dual-counter { display: none; } /* legacy — kept for compat, now in overlay */
-    .pcf-dual-nav {
-        position: absolute; top: 50%; transform: translateY(-50%);
-        background: rgba(0,0,0,.55); border: none; color: #e2e8f0;
-        width: 32px; height: 72px; border-radius: 4px; z-index: 10;
-        cursor: pointer; font-size: 1.3rem;
-        display: flex; align-items: center; justify-content: center;
-        opacity: .55; transition: opacity .15s, background .15s;
-    }
-    .pcf-dual-nav:hover:not([disabled]) { background: rgba(0,0,0,.8); opacity: 1; }
-    .pcf-dual-nav[disabled] { opacity: .18; cursor: default; pointer-events: none; }
+    .pcf-dual-nav  { display: none; }
     .pcf-dual-prev { left: 4px; }
     .pcf-dual-next { right: 4px; }
     .pcf-viewer {

@@ -3124,10 +3124,10 @@
                 var sSave   = _bgSteps[4];
                 var sTaa    = _bgSteps[5];
 
-                // ── Phase 1: run all independent work in parallel ──────────────
-                // Normalization runs on capturedBytes first (repairs XRef before combine).
-                // ARF + session are only combined AFTER both are clean.
-                sCreate.Status = 1; sNorm.Status = 1; sArf.Status = 1; sNextCs.Status = 1;
+                // ── Phase 1: run independent work in parallel ──────────────────
+                // Normalization runs on capturedBytes first (repairs XRef, finds page size).
+                // ARF is generated AFTER normalization so it matches the session page dimensions.
+                sCreate.Status = 1; sNorm.Status = 1; sNextCs.Status = 1;
                 await InvokeAsync(StateHasChanged);
 
                 int    sessionId       = 0;
@@ -3224,14 +3224,6 @@
                     }),
                     Task.Run(async () =>
                     {
-                        arfPdfBytes = PdfSvc.GenerateArfPdf(
-                            capturedPcName, DateTime.Today.ToString("dd/MM/yyyy"),
-                            capturedGrade, capturedSessLen, capturedAdminTime,
-                            capturedTotalTa, taRange, capturedRows, capturedSummary);
-                        await Advance(sArf, 2);
-                    }),
-                    Task.Run(async () =>
-                    {
                         nextCsPdfBytes = PdfSvc.GenerateNextCsPdf(
                             capturedPcName, DateTime.Today.ToString("dd/MM/yyyy"),
                             capturedAuditorName, capturedStep3Top, capturedStep3Bottom);
@@ -3239,11 +3231,19 @@
                     })
                 );
 
-                // ── Phase 1.5: combine ARF as page 1, then re-normalize for uniform page size ──
-                // Session is now clean (XRef repaired). CombinePdfs on clean bytes is safe.
-                // Second pass resizes the ARF page to match the session page dimensions.
-                var combined = PdfSvc.CombinePdfs(arfPdfBytes, normalizedBytes);
-                normalizedBytes = FolderSvc.TryNormalizePdfDirect(combined) ?? combined;
+                // ── Phase 1.5: generate ARF at session page size, then combine ──
+                // Session is now clean and normalized. Read the target page dimensions
+                // so QuestPDF fills the page at the correct size — no pixelization.
+                sArf.Status = 1;
+                await InvokeAsync(StateHasChanged);
+                var (targetW, targetH) = FolderSvc.GetFirstPageSizePt(normalizedBytes);
+                arfPdfBytes = PdfSvc.GenerateArfPdf(
+                    capturedPcName, DateTime.Today.ToString("dd/MM/yyyy"),
+                    capturedGrade, capturedSessLen, capturedAdminTime,
+                    capturedTotalTa, taRange, capturedRows, capturedSummary,
+                    pageWidthPt: targetW, pageHeightPt: targetH);
+                await Advance(sArf, 2);
+                normalizedBytes = PdfSvc.CombinePdfs(arfPdfBytes, normalizedBytes);
 
                 // ── Phase 2: save files + TAA Excel in parallel ───────────────
                 // TAA needs only captured variables — no dependency on saved file names.

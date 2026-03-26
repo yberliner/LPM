@@ -2091,6 +2091,27 @@ public class FolderService
         catch { return (A4W, A4H); }
     }
 
+    /// <summary>
+    /// Returns the first page's dimensions (in points) from raw PDF bytes.
+    /// Falls back to A4 (595.28 × 841.89 pt) if the bytes cannot be read.
+    /// </summary>
+    public (double Width, double Height) GetFirstPageSizePt(byte[] pdfBytes)
+    {
+        const double A4W = 595.28, A4H = 841.89;
+        try
+        {
+            using var ms = new MemoryStream(pdfBytes);
+            using var doc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
+            if (doc.PageCount == 0) return (A4W, A4H);
+            var p = doc.Pages[0];
+            var w = p.Width.Point;
+            var h = p.Height.Point;
+            if (w < 50 || h < 50) return (A4W, A4H);
+            return (w, h);
+        }
+        catch { return (A4W, A4H); }
+    }
+
     public byte[] CreatePinkPdf(double widthPt = 595.28, double heightPt = 841.89)
     {
         using var ms = new MemoryStream();

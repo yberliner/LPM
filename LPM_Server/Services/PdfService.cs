@@ -1562,7 +1562,8 @@ public class PdfService
     public byte[] GenerateArfPdf(
         string pcName, string date, string grade, string sessionLength,
         string adminTime, string totalTa, string taRange,
-        List<ArfRowData> rows, string? summaryHtml)
+        List<ArfRowData> rows, string? summaryHtml,
+        double? pageWidthPt = null, double? pageHeightPt = null)
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
@@ -1570,7 +1571,9 @@ public class PdfService
         {
             container.Page(page =>
             {
-                page.Size(PageSizes.A4);
+                page.Size(pageWidthPt.HasValue && pageHeightPt.HasValue
+                    ? new PageSize((float)pageWidthPt.Value, (float)pageHeightPt.Value, Unit.Point)
+                    : PageSizes.A4);
                 page.Margin(30);
                 page.DefaultTextStyle(x => x.FontSize(10).FontColor("#1a1a1a").FontFamily("Liberation Sans", "Arial", "Helvetica", "DejaVu Sans"));
 

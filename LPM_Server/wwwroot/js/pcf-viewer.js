@@ -1549,13 +1549,17 @@ window.pcfViewer = {
         pane.dualMode = true;
         pane.dualPage = 0;
 
-        // Scale so each page fits half the viewer width AND the viewer height
+        // Remove viewer padding/gap so pages can fill the full area
+        viewer.style.padding = '0';
+        viewer.style.gap     = '0';
+
+        // Scale so each page fits exactly half the viewer width and full height — no cap at 1
         const zl             = pane.zoomLevel || 1;
         const renderedWidth  = pane.pages[0].canvas.width  * zl;
         const renderedHeight = pane.pages[0].canvas.height * zl;
-        const scaleByWidth   = (viewer.clientWidth  / 2 - 24) / renderedWidth;
-        const scaleByHeight  = (viewer.clientHeight - 40)     / renderedHeight;  // 40 = 20px top + 20px bottom padding
-        pane.dualScale       = Math.min(1, scaleByWidth, scaleByHeight);
+        const scaleByWidth   = (viewer.clientWidth  / 2) / renderedWidth;
+        const scaleByHeight  = (viewer.clientHeight)     / renderedHeight;
+        pane.dualScale       = Math.min(scaleByWidth, scaleByHeight);
 
         viewer.style.flexDirection  = 'row';
         viewer.style.alignItems     = 'center';
@@ -1576,6 +1580,8 @@ window.pcfViewer = {
         pane.dualScale = 1;
 
         if (viewer) {
+            viewer.style.padding        = '';
+            viewer.style.gap            = '';
             viewer.style.flexDirection  = '';
             viewer.style.alignItems     = '';
             viewer.style.justifyContent = '';
@@ -1587,8 +1593,10 @@ window.pcfViewer = {
         for (const pg of pane.pages) {
             const wrapper = pg.canvas.parentElement;
             if (!wrapper) continue;
-            wrapper.style.display = '';
-            wrapper.style.zoom    = zl !== 1 ? String(zl) : '';
+            wrapper.style.display     = '';
+            wrapper.style.zoom        = zl !== 1 ? String(zl) : '';
+            wrapper.style.marginLeft  = '';
+            wrapper.style.marginRight = '';
         }
     },
 
@@ -1623,10 +1631,14 @@ window.pcfViewer = {
             const wrapper = pane.pages[i].canvas.parentElement;
             if (!wrapper) continue;
             if (i === p0 || i === p1) {
-                wrapper.style.display = '';
-                wrapper.style.zoom    = String(ds * zl);
+                wrapper.style.display    = '';
+                wrapper.style.zoom       = String(ds * zl);
+                wrapper.style.marginLeft = '0';
+                wrapper.style.marginRight= '0';
             } else {
-                wrapper.style.display = 'none';
+                wrapper.style.display    = 'none';
+                wrapper.style.marginLeft = '';
+                wrapper.style.marginRight= '';
             }
         }
     },
