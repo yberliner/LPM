@@ -1983,9 +1983,19 @@ public class PdfService
         void AddPages(byte[] src)
         {
             using var ms = new System.IO.MemoryStream(src);
-            using var input = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
-            for (int i = 0; i < input.PageCount; i++)
-                output.AddPage(input.Pages[i]);
+            PdfSharpCore.Pdf.PdfDocument input;
+            try
+            {
+                input = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
+            }
+            catch (PdfSharpCore.Pdf.IO.PdfReaderException)
+            {
+                ms.Position = 0;
+                input = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, "", PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import, null, PdfSharpCore.Pdf.IO.PdfReadAccuracy.Lenient);
+            }
+            using (input)
+                for (int i = 0; i < input.PageCount; i++)
+                    output.AddPage(input.Pages[i]);
         }
 
         AddPages(first);
@@ -1999,8 +2009,17 @@ public class PdfService
     public int CountPdfPages(byte[] pdfBytes)
     {
         using var ms = new System.IO.MemoryStream(pdfBytes);
-        using var doc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
-        return doc.PageCount;
+        try
+        {
+            using var doc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
+            return doc.PageCount;
+        }
+        catch (PdfSharpCore.Pdf.IO.PdfReaderException)
+        {
+            ms.Position = 0;
+            using var doc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, "", PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import, null, PdfSharpCore.Pdf.IO.PdfReadAccuracy.Lenient);
+            return doc.PageCount;
+        }
     }
 
     private static void ExtractInlineStyles(string tag, ref string? color, ref string? bgColor, ref float fontSize, float fontSizeMultiplier = 1f)

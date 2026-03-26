@@ -484,10 +484,20 @@ app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
     if (summaries.Count == 0)
         return Results.File(originalBytes, "application/pdf");
 
-    var originalPageCount = pdfSvc.CountPdfPages(originalBytes);
-    var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
-    var combined = pdfSvc.CombinePdfs(summaryPdf, originalBytes);
-    return Results.File(combined, "application/pdf", enableRangeProcessing: true);
+    try
+    {
+        var originalPageCount = pdfSvc.CountPdfPages(originalBytes);
+        var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
+        var combined = pdfSvc.CombinePdfs(summaryPdf, originalBytes);
+        return Results.File(combined, "application/pdf", enableRangeProcessing: true);
+    }
+    catch (Exception ex)
+    {
+        // Lenient retry is already built into CountPdfPages/CombinePdfs — reaching here means the PDF is
+        // truly unreadable by PdfSharpCore. Serve the original so the user can still see the pages.
+        Console.WriteLine($"[FolderSummary] Cannot combine for PC {pcId} path={path}: {ex.Message} — serving original");
+        return Results.File(originalBytes, "application/pdf");
+    }
 }).RequireAuthorization();
 
 app.MapGet("/api/pc-session-merged", (int pcId, string session, LPM.Services.FolderService folderSvc,
