@@ -3231,18 +3231,17 @@
                     })
                 );
 
-                // ── Phase 1.5: generate ARF at A4, scale to session page size, combine ──
-                // ARF is generated at its natural A4 size so QuestPDF layout is correct.
-                // ScalePdfPageToSize applies a PDF transform matrix (vector, no rasterisation)
-                // to uniformly scale the content to the session page dimensions.
+                // ── Phase 1.5: generate ARF sized to session page, then combine ──
+                // Content is locked to A4 proportions inside QuestPDF and scaled via
+                // ScaleToFit — fully vector, no PdfSharpCore post-processing.
                 sArf.Status = 1;
                 await InvokeAsync(StateHasChanged);
+                var (targetW, targetH) = FolderSvc.GetFirstPageSizePt(normalizedBytes);
                 arfPdfBytes = PdfSvc.GenerateArfPdf(
                     capturedPcName, DateTime.Today.ToString("dd/MM/yyyy"),
                     capturedGrade, capturedSessLen, capturedAdminTime,
-                    capturedTotalTa, taRange, capturedRows, capturedSummary);
-                var (targetW, targetH) = FolderSvc.GetFirstPageSizePt(normalizedBytes);
-                arfPdfBytes = PdfSvc.ScalePdfPageToSize(arfPdfBytes, targetW, targetH);
+                    capturedTotalTa, taRange, capturedRows, capturedSummary,
+                    pageWidthPt: targetW, pageHeightPt: targetH);
                 await Advance(sArf, 2);
                 normalizedBytes = PdfSvc.CombinePdfs(arfPdfBytes, normalizedBytes);
 

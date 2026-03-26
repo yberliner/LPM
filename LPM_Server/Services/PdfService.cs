@@ -1565,103 +1565,198 @@ public class PdfService
         List<ArfRowData> rows, string? summaryHtml,
         double? pageWidthPt = null, double? pageHeightPt = null)
     {
-        QuestPDF.Settings.License = LicenseType.Community;
+        // Generated with PdfSharpCore (native PDF text/path operators) — fully vector,
+        // crisp at any zoom. All sizes scale from the A4 baseline (cw=535pt).
+        double pw = pageWidthPt ?? 595.28;
+        double ph = pageHeightPt ?? 841.89;
+        const double margin    = 30.0;
+        const double A4content = 535.0; // 595.28 - 2*30
+        double cw    = pw - 2 * margin;
+        double scale = cw / A4content;
 
-        return Document.Create(container =>
+        // Column widths — fixed cols scale proportionally, flex cols share the rest
+        double timeW  = 65  * scale;
+        double toneW  = 75  * scale;
+        double flexW  = cw - timeW - toneW;
+        double procW  = flexW / 2;
+        double resW   = flexW / 2;
+        double x0 = margin;
+        double x1 = x0 + procW;
+        double x2 = x1 + timeW;
+        double x3 = x2 + toneW;
+        double pad = 6 * scale;
+
+        // ── Font helper (tries multiple families for cross-platform compat) ──
+        PdfSharpCore.Drawing.XFont MakeFont(double pt, bool bold = false)
         {
-            container.Page(page =>
+            var style = bold ? PdfSharpCore.Drawing.XFontStyle.Bold
+                             : PdfSharpCore.Drawing.XFontStyle.Regular;
+            double sz = pt * scale;
+            foreach (var name in new[] { "Arial", "Liberation Sans", "DejaVu Sans", "Helvetica" })
+                try { return new PdfSharpCore.Drawing.XFont(name, sz, style); }
+                catch { }
+            return new PdfSharpCore.Drawing.XFont("Courier New", sz, style);
+        }
+
+        var fTitle = MakeFont(18, bold: true);
+        var fLabel = MakeFont(10);
+        var fValue = MakeFont(12, bold: true);
+        var fHdr   = MakeFont(10, bold: true);
+        var fSmHdr = MakeFont( 9, bold: true);
+        var fCell  = MakeFont(11);
+
+        // ── Brushes / pens ──
+        var bDark    = new PdfSharpCore.Drawing.XSolidBrush(PdfSharpCore.Drawing.XColor.FromArgb(0x1a, 0x1a, 0x1a));
+        var bGray    = new PdfSharpCore.Drawing.XSolidBrush(PdfSharpCore.Drawing.XColor.FromArgb(0x66, 0x66, 0x66));
+        var bDarkBg  = new PdfSharpCore.Drawing.XSolidBrush(PdfSharpCore.Drawing.XColor.FromArgb(0x2c, 0x3e, 0x50));
+        var bAltRow  = new PdfSharpCore.Drawing.XSolidBrush(PdfSharpCore.Drawing.XColor.FromArgb(0xf4, 0xf6, 0xf8));
+        var penBdr   = new PdfSharpCore.Drawing.XPen(PdfSharpCore.Drawing.XColor.FromArgb(0xdd, 0xdd, 0xdd), 0.5);
+
+        // ── String formats ──
+        var fmtCL = new PdfSharpCore.Drawing.XStringFormat {
+            Alignment     = PdfSharpCore.Drawing.XStringAlignment.Near,
+            LineAlignment = PdfSharpCore.Drawing.XLineAlignment.Center };
+        var fmtCC = new PdfSharpCore.Drawing.XStringFormat {
+            Alignment     = PdfSharpCore.Drawing.XStringAlignment.Center,
+            LineAlignment = PdfSharpCore.Drawing.XLineAlignment.Center };
+        var fmtTC = new PdfSharpCore.Drawing.XStringFormat {
+            Alignment     = PdfSharpCore.Drawing.XStringAlignment.Center,
+            LineAlignment = PdfSharpCore.Drawing.XLineAlignment.Near };
+
+        PdfSharpCore.Drawing.XRect R(double x, double y, double w, double h) =>
+            new PdfSharpCore.Drawing.XRect(x, y, w, h);
+
+        // ── Build document ──
+        using var doc = new PdfSharpCore.Pdf.PdfDocument();
+        var pg = doc.AddPage();
+        // Set page size via MediaBox
+        var mb = new PdfSharpCore.Pdf.PdfArray();
+        mb.Elements.Add(new PdfSharpCore.Pdf.PdfReal(0));
+        mb.Elements.Add(new PdfSharpCore.Pdf.PdfReal(0));
+        mb.Elements.Add(new PdfSharpCore.Pdf.PdfReal(pw));
+        mb.Elements.Add(new PdfSharpCore.Pdf.PdfReal(ph));
+        pg.Elements["/MediaBox"] = mb;
+
+        using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(pg);
+        double y = margin;
+
+        // ── Title ──
+        double titleH = 22 * scale;
+        gfx.DrawString("Auditor Report Form", fTitle, bDark, R(x0, y, cw, titleH), fmtTC);
+        y += titleH + 14 * scale;
+
+        // ── Header field pairs ──
+        double fieldH = 18 * scale;
+
+        void FieldPair(string lbl1, string val1, string lbl2, string val2)
+        {
+            double half = cw / 2;
+            double lw1 = gfx.MeasureString(lbl1, fLabel).Width;
+            gfx.DrawString(lbl1, fLabel, bGray, R(x0,          y, lw1,         fieldH), fmtCL);
+            gfx.DrawString(val1, fValue, bDark, R(x0 + lw1,    y, half - lw1,  fieldH), fmtCL);
+            double lw2 = gfx.MeasureString(lbl2, fLabel).Width;
+            gfx.DrawString(lbl2, fLabel, bGray, R(x0 + half,       y, lw2,          fieldH), fmtCL);
+            gfx.DrawString(val2, fValue, bDark, R(x0 + half + lw2, y, half - lw2,   fieldH), fmtCL);
+        }
+
+        FieldPair("PC's Name:  ",  pcName,       "Date:  ",           date);          y += fieldH + 6 * scale;
+        FieldPair("PC's Grade:  ", grade,         "Session Length:  ", sessionLength); y += fieldH + 6 * scale;
+        FieldPair("Admin Time:  ", adminTime,     "Total TA:  ",       totalTa);       y += fieldH + 12 * scale;
+
+        // ── Table header ──
+        double hdrH = 28 * scale;
+        gfx.DrawRectangle(bDarkBg, R(x0, y, cw, hdrH));
+        gfx.DrawString("Process",              fHdr,   PdfSharpCore.Drawing.XBrushes.White, R(x0 + pad, y, procW - 2*pad, hdrH), fmtCL);
+        gfx.DrawString("Time",                 fHdr,   PdfSharpCore.Drawing.XBrushes.White, R(x1,       y, timeW,         hdrH), fmtCC);
+        gfx.DrawString("Tone Arm",             fSmHdr, PdfSharpCore.Drawing.XBrushes.White, R(x2,       y,         toneW, hdrH / 2), fmtCC);
+        gfx.DrawString("Reads",                fSmHdr, PdfSharpCore.Drawing.XBrushes.White, R(x2, y + hdrH/2,     toneW, hdrH / 2), fmtCC);
+        gfx.DrawString("Results and Comments", fHdr,   PdfSharpCore.Drawing.XBrushes.White, R(x3 + pad, y, resW  - 2*pad, hdrH), fmtCL);
+        y += hdrH;
+
+        // ── Table rows ──
+        double rowH = 22 * scale;
+        bool alt = false;
+        foreach (var r in rows)
+        {
+            if (alt) gfx.DrawRectangle(bAltRow, R(x0, y, cw, rowH));
+            gfx.DrawLine(penBdr, x0, y + rowH, x0 + cw, y + rowH);
+            gfx.DrawString(r.Process ?? "", fCell, bDark, R(x0 + pad, y, procW - 2*pad, rowH), fmtCL);
+            gfx.DrawString(r.Time    ?? "", fCell, bDark, R(x1,       y, timeW,         rowH), fmtCC);
+            gfx.DrawString(r.ToneArm ?? "", fCell, bDark, R(x2,       y, toneW,         rowH), fmtCC);
+            gfx.DrawString(r.Results ?? "", fCell, bDark, R(x3 + pad, y, resW - 2*pad,  rowH), fmtCL);
+            y += rowH;
+            alt = !alt;
+        }
+
+        // ── TA Range ──
+        y += 12 * scale;
+        double taLW = gfx.MeasureString("TA Range:  ", fLabel).Width;
+        gfx.DrawString("TA Range:  ", fLabel, bGray, R(x0,        y, taLW,      fieldH), fmtCL);
+        gfx.DrawString(taRange,       fValue, bDark, R(x0 + taLW, y, cw - taLW, fieldH), fmtCL);
+        y += fieldH;
+
+        // ── Summary ──
+        if (!string.IsNullOrWhiteSpace(summaryHtml))
+        {
+            y += 10 * scale;
+            double lineH = 15 * scale;
+            foreach (var (text, color) in ArfSummaryLines(summaryHtml))
             {
-                page.Size(pageWidthPt.HasValue && pageHeightPt.HasValue
-                    ? new PageSize((float)pageWidthPt.Value, (float)pageHeightPt.Value, Unit.Point)
-                    : PageSizes.A4);
-                page.Margin(30);
-                page.DefaultTextStyle(x => x.FontSize(10).FontColor("#1a1a1a").FontFamily("Liberation Sans", "Arial", "Helvetica", "DejaVu Sans"));
+                if (y + lineH > ph - margin) break;
+                var brush = color.HasValue
+                    ? (PdfSharpCore.Drawing.XBrush)new PdfSharpCore.Drawing.XSolidBrush(color.Value)
+                    : bDark;
+                gfx.DrawString(text, fCell, brush, R(x0, y, cw, lineH), fmtCL);
+                y += lineH;
+            }
+        }
 
-                page.Content().ScaleToFit().Column(col =>
-                {
-                    // Title
-                    col.Item().AlignCenter().PaddingBottom(14)
-                        .Text("Auditor Report Form").FontSize(18).Bold().FontColor("#1a1a1a");
+        using var ms = new System.IO.MemoryStream();
+        doc.Save(ms);
+        return ms.ToArray();
+    }
 
-                    // Row 1: PC's Name + Date
-                    col.Item().PaddingBottom(6).Row(row =>
-                    {
-                        row.RelativeItem().Text(t =>
-                        {
-                            t.Span("PC's Name:  ").FontSize(10).FontColor("#666");
-                            t.Span(pcName).FontSize(12).Bold().FontColor("#000");
-                        });
-                        row.ConstantItem(200).Text(t =>
-                        {
-                            t.Span("Date:  ").FontSize(10).FontColor("#666");
-                            t.Span(date).FontSize(12).Bold().FontColor("#000");
-                        });
-                    });
+    private static List<(string Text, PdfSharpCore.Drawing.XColor? Color)> ArfSummaryLines(string html)
+    {
+        var result = new List<(string, PdfSharpCore.Drawing.XColor?)>();
+        foreach (Match p in Regex.Matches(html, @"<p[^>]*>(.*?)</p>",
+            RegexOptions.Singleline | RegexOptions.IgnoreCase))
+        {
+            var inner = p.Groups[1].Value;
+            var span  = Regex.Match(inner,
+                @"<span[^>]+style=""[^""]*color\s*:\s*([^;""]+)[^""]*""[^>]*>(.*?)</span>",
+                RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            string text;
+            PdfSharpCore.Drawing.XColor? color = null;
+            if (span.Success)
+            {
+                text  = System.Net.WebUtility.HtmlDecode(
+                    Regex.Replace(span.Groups[2].Value, "<[^>]+>", "").Trim());
+                color = TryParseArfColor(span.Groups[1].Value.Trim());
+            }
+            else
+            {
+                text = System.Net.WebUtility.HtmlDecode(
+                    Regex.Replace(inner, "<[^>]+>", "").Trim());
+            }
+            if (!string.IsNullOrWhiteSpace(text))
+                result.Add((text, color));
+        }
+        return result;
+    }
 
-                    // Row 2: PC's Grade + Session Length
-                    col.Item().PaddingBottom(6).Row(row =>
-                    {
-                        row.RelativeItem().Text(t =>
-                        {
-                            t.Span("PC's Grade:  ").FontSize(10).FontColor("#666");
-                            t.Span(grade).FontSize(12).Bold().FontColor("#000");
-                        });
-                        row.ConstantItem(200).Text(t =>
-                        {
-                            t.Span("Session Length:  ").FontSize(10).FontColor("#666");
-                            t.Span(sessionLength).FontSize(12).Bold().FontColor("#000");
-                        });
-                    });
-
-                    // Row 3: Admin Time + Total TA
-                    col.Item().PaddingBottom(12).Row(row =>
-                    {
-                        row.RelativeItem().Text(t =>
-                        {
-                            t.Span("Admin Time:  ").FontSize(10).FontColor("#666");
-                            t.Span(adminTime).FontSize(12).Bold().FontColor("#000");
-                        });
-                        row.ConstantItem(200).Text(t =>
-                        {
-                            t.Span("Total TA:  ").FontSize(10).FontColor("#666");
-                            t.Span(totalTa).FontSize(12).Bold().FontColor("#000");
-                        });
-                    });
-
-                    // Table header
-                    col.Item().Background("#2c3e50").Border(0.5f).BorderColor("#2c3e50").Row(row =>
-                    {
-                        row.RelativeItem(4).Padding(6).Text("Process").FontSize(10).Bold().FontColor("#fff");
-                        row.ConstantItem(65).Padding(6).AlignCenter().Text("Time").FontSize(10).Bold().FontColor("#fff");
-                        row.ConstantItem(75).Padding(6).AlignCenter().Text("Tone Arm\nReads").FontSize(9).Bold().FontColor("#fff");
-                        row.RelativeItem(4).Padding(6).Text("Results and Comments").FontSize(10).Bold().FontColor("#fff");
-                    });
-
-                    // Table rows
-                    bool alt = false;
-                    foreach (var r in rows)
-                    {
-                        var rowBg = alt ? "#f4f6f8" : "#ffffff";
-                        alt = !alt;
-                        col.Item().Background(rowBg).BorderBottom(0.5f).BorderColor("#ddd").Row(row =>
-                        {
-                            row.RelativeItem(4).Padding(6).Text(r.Process).FontSize(11).FontColor("#1a1a1a");
-                            row.ConstantItem(65).Padding(6).AlignCenter().Text(r.Time).FontSize(11).FontColor("#1a1a1a");
-                            row.ConstantItem(75).Padding(6).AlignCenter().Text(r.ToneArm).FontSize(11).FontColor("#1a1a1a");
-                            row.RelativeItem(4).Padding(6).Text(r.Results).FontSize(11).FontColor("#1a1a1a");
-                        });
-                    }
-
-                    // TA Range
-                    col.Item().PaddingTop(12).Text(t =>
-                    {
-                        t.Span("TA Range:  ").FontSize(10).FontColor("#666");
-                        t.Span(taRange).FontSize(12).Bold().FontColor("#000");
-                    });
-
-                });
-            });
-        }).GeneratePdf();
+    private static PdfSharpCore.Drawing.XColor? TryParseArfColor(string css)
+    {
+        if (css.Length == 7 && css[0] == '#')
+            try
+            {
+                return PdfSharpCore.Drawing.XColor.FromArgb(
+                    Convert.ToInt32(css.Substring(1, 2), 16),
+                    Convert.ToInt32(css.Substring(3, 2), 16),
+                    Convert.ToInt32(css.Substring(5, 2), 16));
+            }
+            catch { }
+        return null;
     }
 
     // ── Next C/S Sheet PDF ──
