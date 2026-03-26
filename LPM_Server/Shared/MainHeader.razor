@@ -3085,9 +3085,9 @@
         _bgSteps = new List<BgStep>
         {
             new("Creating session"),
-            new("Normalizing pages"),
             new("Generating ARF"),
             new("Generating Next C/S"),
+            new("Normalizing pages"),
             new(saveLabel),
             new("Updating TAA Excel"),
         };
@@ -3118,22 +3118,22 @@
                 var taRange = string.IsNullOrWhiteSpace(capturedTaTo) ? capturedTaFrom : $"{capturedTaFrom}-{capturedTaTo}";
 
                 var sCreate = _bgSteps[0];
-                var sNorm   = _bgSteps[1];
-                var sArf    = _bgSteps[2];
-                var sNextCs = _bgSteps[3];
+                var sArf    = _bgSteps[1];
+                var sNextCs = _bgSteps[2];
+                var sNorm   = _bgSteps[3];
                 var sSave   = _bgSteps[4];
                 var sTaa    = _bgSteps[5];
 
-                // ── Phase 1: run all independent work in parallel ──────────────
-                // Creating session, normalizing pages, and generating both PDFs
-                // are independent — run them simultaneously for maximum speed.
-                sCreate.Status = 1; sNorm.Status = 1; sArf.Status = 1; sNextCs.Status = 1;
+                // ── Phase 1: run independent work in parallel ──────────────────
+                // Session creation and both PDF generations are independent.
+                // Normalization runs after, on the combined (ARF + session) bytes.
+                sCreate.Status = 1; sArf.Status = 1; sNextCs.Status = 1;
                 await InvokeAsync(StateHasChanged);
 
-                int    sessionId       = 0;
+                int    sessionId      = 0;
                 byte[] normalizedBytes = capturedBytes;
-                byte[] arfPdfBytes     = Array.Empty<byte>();
-                byte[] nextCsPdfBytes  = Array.Empty<byte>();
+                byte[] arfPdfBytes    = Array.Empty<byte>();
+                byte[] nextCsPdfBytes = Array.Empty<byte>();
 
                 await Task.WhenAll(
                     Task.Run(async () =>
@@ -3159,77 +3159,6 @@
                     }),
                     Task.Run(async () =>
                     {
-                        // ── Phase 1: fast path (PdfSharpCore, no external tool) ──
-                        var direct = FolderSvc.TryNormalizePdfDirect(capturedBytes);
-                        if (direct != null)
-                        {
-                            normalizedBytes = direct;
-                            await Advance(sNorm, 2);
-                            return;
-                        }
-
-                        // ── Phase 2: parallel repair — GS + LibreOffice, 20s each ──
-                        const int repairSec = 20;
-                        int secsLeft = repairSec;
-                        sNorm.SubLabel = $"Ghostscript + LibreOffice: {secsLeft}s";
-                        await InvokeAsync(StateHasChanged);
-
-                        using var tickerCts = new System.Threading.CancellationTokenSource();
-
-                        // Countdown ticker (fires every second)
-                        _ = Task.Run(async () =>
-                        {
-                            while (!tickerCts.Token.IsCancellationRequested && secsLeft > 0)
-                            {
-                                await Task.Delay(1000);
-                                if (tickerCts.Token.IsCancellationRequested) break;
-                                secsLeft = Math.Max(0, secsLeft - 1);
-                                sNorm.SubLabel = secsLeft > 0
-                                    ? $"Ghostscript + LibreOffice: {secsLeft}s"
-                                    : "Ghostscript + LibreOffice: finishing…";
-                                await InvokeAsync(StateHasChanged);
-                            }
-                        });
-
-                        var gsTask    = Task.Run(() => FolderSvc.RepairAndNormalizeViaGhostscript(capturedBytes, repairSec * 1000));
-                        var libreTask = Task.Run(() => FolderSvc.RepairAndNormalizeViaLibreOffice(capturedBytes, repairSec * 1000));
-
-                        // Take whichever succeeds first
-                        byte[]? result = null;
-                        string  winner = "";
-                        var pending = new List<Task<byte[]?>> { gsTask, libreTask };
-                        while (result == null && pending.Count > 0)
-                        {
-                            var done = await Task.WhenAny(pending);
-                            pending.Remove(done);
-                            var val = done.Result;
-                            if (val != null)
-                            {
-                                result = val;
-                                winner = done == gsTask ? "Ghostscript" : "LibreOffice";
-                            }
-                        }
-                        // Let remaining task finish (cleanup its temp files)
-                        if (pending.Count > 0) _ = Task.WhenAll(pending);
-
-                        tickerCts.Cancel();
-
-                        if (result != null)
-                        {
-                            normalizedBytes = result;
-                            sNorm.SubLabel  = $"via {winner}";
-                            await Advance(sNorm, 2);
-                        }
-                        else
-                        {
-                            // Both failed — use original bytes, mark step as warning (red X)
-                            normalizedBytes = capturedBytes;
-                            sNorm.SubLabel  = "GS and LibreOffice both failed";
-                            await Advance(sNorm, 3);
-                        }
-                    }),
-                    Task.Run(async () =>
-                    {
                         arfPdfBytes = PdfSvc.GenerateArfPdf(
                             capturedPcName, DateTime.Today.ToString("dd/MM/yyyy"),
                             capturedGrade, capturedSessLen, capturedAdminTime,
@@ -3245,10 +3174,78 @@
                     })
                 );
 
+                // ── Phase 1.5: combine ARF as page 1, then normalize all pages ──
+                // Must run after ARF generation so the normalizer sees all pages
+                // together and can scale them to a uniform size.
+                sNorm.Status = 1;
+                await InvokeAsync(StateHasChanged);
+
+                var combined = PdfSvc.CombinePdfs(arfPdfBytes, capturedBytes);
+                var directNorm = FolderSvc.TryNormalizePdfDirect(combined);
+                if (directNorm != null)
+                {
+                    normalizedBytes = directNorm;
+                    await Advance(sNorm, 2);
+                }
+                else
+                {
+                    // parallel repair — GS + LibreOffice, 20s each
+                    const int repairSec = 20;
+                    int secsLeft = repairSec;
+                    sNorm.SubLabel = $"Ghostscript + LibreOffice: {secsLeft}s";
+                    await InvokeAsync(StateHasChanged);
+
+                    using var tickerCts = new System.Threading.CancellationTokenSource();
+                    _ = Task.Run(async () =>
+                    {
+                        while (!tickerCts.Token.IsCancellationRequested && secsLeft > 0)
+                        {
+                            await Task.Delay(1000);
+                            if (tickerCts.Token.IsCancellationRequested) break;
+                            secsLeft = Math.Max(0, secsLeft - 1);
+                            sNorm.SubLabel = secsLeft > 0
+                                ? $"Ghostscript + LibreOffice: {secsLeft}s"
+                                : "Ghostscript + LibreOffice: finishing…";
+                            await InvokeAsync(StateHasChanged);
+                        }
+                    });
+
+                    var gsTask    = Task.Run(() => FolderSvc.RepairAndNormalizeViaGhostscript(combined, repairSec * 1000));
+                    var libreTask = Task.Run(() => FolderSvc.RepairAndNormalizeViaLibreOffice(combined, repairSec * 1000));
+
+                    byte[]? result = null;
+                    string  winner = "";
+                    var pending = new List<Task<byte[]?>> { gsTask, libreTask };
+                    while (result == null && pending.Count > 0)
+                    {
+                        var done = await Task.WhenAny(pending);
+                        pending.Remove(done);
+                        var val = done.Result;
+                        if (val != null)
+                        {
+                            result = val;
+                            winner = done == gsTask ? "Ghostscript" : "LibreOffice";
+                        }
+                    }
+                    if (pending.Count > 0) _ = Task.WhenAll(pending);
+                    tickerCts.Cancel();
+
+                    if (result != null)
+                    {
+                        normalizedBytes = result;
+                        sNorm.SubLabel  = $"via {winner}";
+                        await Advance(sNorm, 2);
+                    }
+                    else
+                    {
+                        normalizedBytes = combined;
+                        sNorm.SubLabel  = "GS and LibreOffice both failed";
+                        await Advance(sNorm, 3);
+                    }
+                }
+
                 // ── Phase 2: save everything to the PC folder ─────────────────
                 await Advance(sSave, 1);
-
-                normalizedBytes = PdfSvc.CombinePdfs(arfPdfBytes, normalizedBytes);
 
                 var savedSessionFileName = capturedIsSolo
                     ? FolderSvc.SaveSoloUploadedFile(capturedPcId, capturedFileName, normalizedBytes)!
