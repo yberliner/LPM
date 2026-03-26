@@ -51,7 +51,7 @@ window.pcfViewer = {
         pane.loadGen = (pane.loadGen || 0) + 1;
     },
 
-    async loadPdf(url, paneId) {
+    async loadPdf(url, paneId, targetPage) {
         paneId = paneId || this.activePane;
         const pane = this._initPane(paneId);
 
@@ -121,6 +121,8 @@ window.pcfViewer = {
         }
 
         viewer.innerHTML = '';
+        // Hide during render to prevent flashing page 1 before scrolling to target page
+        if (targetPage > 0) viewer.style.visibility = 'hidden';
         // Safety clear in case blur didn't fire (e.g. input was never focused)
         if (this._suppressBlurCommitForPane === paneId) {
             console.log('[txt-dbg] blur did NOT fire — clearing suppress flag manually');
@@ -141,7 +143,7 @@ window.pcfViewer = {
         viewer.classList.remove('pcf-dual-mode');
 
         const pdfjsLib = window['pdfjs-dist/build/pdf'];
-        if (!pdfjsLib) { viewer.innerHTML = '<div style="color:#fff;padding:40px;">PDF.js not loaded</div>'; return; }
+        if (!pdfjsLib) { viewer.style.visibility = ''; viewer.innerHTML = '<div style="color:#fff;padding:40px;">PDF.js not loaded</div>'; return; }
 
         let pdfDoc;
         try {
@@ -149,6 +151,7 @@ window.pcfViewer = {
         } catch (e) {
             if (pane.loadGen !== myGen) return;
             const msg = e.status ? `HTTP ${e.status} — ${e.message}` : e.message;
+            viewer.style.visibility = '';
             viewer.innerHTML = '<div style="color:#fff;padding:40px;">Failed to load PDF: ' + msg + '</div>';
             console.error('[pcf-viewer] loadPdf error', url, e);
             return;
@@ -390,6 +393,13 @@ window.pcfViewer = {
                 }
             } catch(e) { /* best-effort — sidecar load failure is non-fatal */ }
         }
+
+        // Scroll to target page BEFORE revealing, so there is no flash of page 1
+        if (targetPage > 0 && pane.pages[targetPage] && pane.loadGen === myGen) {
+            const tw = pane.pages[targetPage].canvas.parentElement;
+            if (tw) viewer.scrollTop = tw.offsetTop;
+        }
+        viewer.style.visibility = '';
     },
 
     _attachEvents(overlay, pageIdx, paneId) {
