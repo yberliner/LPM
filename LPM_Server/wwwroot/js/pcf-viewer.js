@@ -207,6 +207,38 @@ window.pcfViewer = {
             }
         }
 
+        // Fire sidecar fetch in parallel with rendering. When it resolves, immediately
+        // apply annotations to whichever pages are already rendered; remaining pages
+        // will pick them up via the per-page redraw at the bottom of the render loop.
+        let sidecarLoaded = false;
+        if (!isSameFile && newFilePath && !pane.readOnly && this._pcId) {
+            fetch(`/api/pc-file-annotations?pcId=${this._pcId}&path=${encodeURIComponent(newFilePath)}${pane.solo ? '&solo=true' : ''}`,
+                  { credentials: 'include' })
+                .then(r => r && r.status === 200 ? r.json() : null)
+                .then(sidecar => {
+                    if (!sidecar || !sidecar.annotations?.length || pane.loadGen !== myGen) return;
+                    const sidecarScale = sidecar.scale || 1;
+                    const ratio = Math.abs(pane.baseScale - sidecarScale) > 0.001
+                        ? pane.baseScale / sidecarScale : 1;
+                    const affectedPages = new Set();
+                    for (const ann of sidecar.annotations) {
+                        if (pane.loadGen !== myGen) return;
+                        const a = { ...ann };
+                        if (ratio !== 1) {
+                            a.x = Math.round(ann.x * ratio); a.y = Math.round(ann.y * ratio);
+                            if (ann.fontSize) a.fontSize = Math.round(ann.fontSize * ratio);
+                            if (ann.maxWidth) a.maxWidth = Math.round(ann.maxWidth * ratio);
+                        }
+                        pane.annotations.push(a);
+                        if (a.pageIdx < pane.pages.length) affectedPages.add(a.pageIdx);
+                    }
+                    for (const pi of affectedPages) this._redrawOverlay(pi, paneId);
+                    sidecarLoaded = true;
+                    console.log('[txt-dbg] sidecar loaded:', sidecar.annotations.length, 'annotations restored');
+                })
+                .catch(() => {});
+        }
+
         for (let i = 0; i < allPages.length; i++) {
             if (pane.loadGen !== myGen) return; // superseded mid-render
             const page = allPages[i];
@@ -322,6 +354,8 @@ window.pcfViewer = {
 
             pane.pages.push({ canvas, overlay, vp, pageIdx: i, scale, srcDoc: pane.pdfDoc, srcPageNum: i + 1 });
             this._attachEvents(overlay, i, paneId);
+            // If sidecar already resolved while we were rendering, draw its annotations now
+            if (sidecarLoaded) this._redrawOverlay(i, paneId);
         }
 
         // Redraw annotations that survived same-file reload
@@ -368,41 +402,6 @@ window.pcfViewer = {
                     console.log('[txt-dbg] text restored, value="' + this.textInputEl.value + '"');
                 }
             }
-        }
-
-        // Load annotation sidecar — restore text annotations from previous sessions.
-        // Skip for same-file reloads (annotations already in pane.annotations) and read-only panes.
-        if (!isSameFile && newFilePath && !pane.readOnly && this._pcId && pane.loadGen === myGen) {
-            try {
-                const soloQ = pane.solo ? '&solo=true' : '';
-                const annResp = await fetch(
-                    `/api/pc-file-annotations?pcId=${this._pcId}&path=${encodeURIComponent(newFilePath)}${soloQ}`,
-                    { credentials: 'include' }
-                );
-                if (annResp.status === 200 && pane.loadGen === myGen) {
-                    const sidecar = await annResp.json();
-                    if (sidecar && sidecar.annotations && sidecar.annotations.length > 0) {
-                        const sidecarScale = sidecar.scale || 1;
-                        const ratio = (Math.abs(pane.baseScale - sidecarScale) > 0.001)
-                            ? pane.baseScale / sidecarScale : 1;
-                        const affectedPages = new Set();
-                        for (const ann of sidecar.annotations) {
-                            if (pane.loadGen !== myGen) break;
-                            const a = { ...ann };
-                            if (ratio !== 1) {
-                                a.x = Math.round(ann.x * ratio);
-                                a.y = Math.round(ann.y * ratio);
-                                if (ann.fontSize)  a.fontSize  = Math.round(ann.fontSize  * ratio);
-                                if (ann.maxWidth)  a.maxWidth  = Math.round(ann.maxWidth  * ratio);
-                            }
-                            pane.annotations.push(a);
-                            affectedPages.add(a.pageIdx);
-                        }
-                        for (const pi of affectedPages) this._redrawOverlay(pi, paneId);
-                        console.log('[txt-dbg] sidecar loaded:', sidecar.annotations.length, 'annotations restored');
-                    }
-                }
-            } catch(e) { /* best-effort — sidecar load failure is non-fatal */ }
         }
 
         // Scroll to target page BEFORE revealing, so there is no flash of page 1
