@@ -1598,12 +1598,12 @@ public class PdfService
             return new PdfSharpCore.Drawing.XFont("Courier New", sz, style);
         }
 
-        var fTitle = MakeFont(18, bold: true);
-        var fLabel = MakeFont(10);
-        var fValue = MakeFont(12, bold: true);
-        var fHdr   = MakeFont(10, bold: true);
-        var fSmHdr = MakeFont( 9, bold: true);
-        var fCell  = MakeFont(11);
+        var fTitle = MakeFont(24, bold: true);
+        var fLabel = MakeFont(14);
+        var fValue = MakeFont(16, bold: true);
+        var fHdr   = MakeFont(14, bold: true);
+        var fSmHdr = MakeFont(12, bold: true);
+        var fCell  = MakeFont(15);
 
         // ── Brushes / pens ──
         var bDark    = new PdfSharpCore.Drawing.XSolidBrush(PdfSharpCore.Drawing.XColor.FromArgb(0x1a, 0x1a, 0x1a));
@@ -1641,12 +1641,12 @@ public class PdfService
         double y = margin;
 
         // ── Title ──
-        double titleH = 22 * scale;
+        double titleH = 30 * scale;
         gfx.DrawString("Auditor Report Form", fTitle, bDark, R(x0, y, cw, titleH), fmtTC);
         y += titleH + 14 * scale;
 
         // ── Header field pairs ──
-        double fieldH = 18 * scale;
+        double fieldH = 24 * scale;
 
         void FieldPair(string lbl1, string val1, string lbl2, string val2)
         {
@@ -1664,7 +1664,7 @@ public class PdfService
         FieldPair("Admin Time:  ", adminTime,     "Total TA:  ",       totalTa);       y += fieldH + 12 * scale;
 
         // ── Table header ──
-        double hdrH = 28 * scale;
+        double hdrH = 38 * scale;
         gfx.DrawRectangle(bDarkBg, R(x0, y, cw, hdrH));
         gfx.DrawString("Process",              fHdr,   PdfSharpCore.Drawing.XBrushes.White, R(x0 + pad, y, procW - 2*pad, hdrH), fmtCL);
         gfx.DrawString("Time",                 fHdr,   PdfSharpCore.Drawing.XBrushes.White, R(x1,       y, timeW,         hdrH), fmtCC);
@@ -1674,7 +1674,7 @@ public class PdfService
         y += hdrH;
 
         // ── Table rows ──
-        double rowH = 22 * scale;
+        double rowH = 30 * scale;
         bool alt = false;
         foreach (var r in rows)
         {
@@ -1694,22 +1694,6 @@ public class PdfService
         gfx.DrawString("TA Range:  ", fLabel, bGray, R(x0,        y, taLW,      fieldH), fmtCL);
         gfx.DrawString(taRange,       fValue, bDark, R(x0 + taLW, y, cw - taLW, fieldH), fmtCL);
         y += fieldH;
-
-        // ── Summary ──
-        if (!string.IsNullOrWhiteSpace(summaryHtml))
-        {
-            y += 10 * scale;
-            double lineH = 15 * scale;
-            foreach (var (text, color) in ArfSummaryLines(summaryHtml))
-            {
-                if (y + lineH > ph - margin) break;
-                var brush = color.HasValue
-                    ? (PdfSharpCore.Drawing.XBrush)new PdfSharpCore.Drawing.XSolidBrush(color.Value)
-                    : bDark;
-                gfx.DrawString(text, fCell, brush, R(x0, y, cw, lineH), fmtCL);
-                y += lineH;
-            }
-        }
 
         using var ms = new System.IO.MemoryStream();
         doc.Save(ms);
