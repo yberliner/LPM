@@ -914,10 +914,14 @@
     // Icon ClickOpen Start
     private async void icontextOpenFn()
     {
-        var dataToggled = await JSRuntime.InvokeAsync<string>("interop.getAttributeToHtml", "data-toggled");
-        if (dataToggled == "icon-text-close") {
-            await JSRuntime.InvokeAsync<string>("interop.addAttributeToHtml", "data-icon-text", "open");
+        try
+        {
+            var dataToggled = await JSRuntime.InvokeAsync<string>("interop.getAttributeToHtml", "data-toggled");
+            if (dataToggled == "icon-text-close") {
+                await JSRuntime.InvokeAsync<string>("interop.addAttributeToHtml", "data-icon-text", "open");
+            }
         }
+        catch (Exception ex) when (ex is TaskCanceledException or JSDisconnectedException) { }
     }
     // Icon Clickopen End
 
