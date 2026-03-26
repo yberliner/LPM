@@ -1210,10 +1210,11 @@
                                                        @onchange="e => SetArfTimeCell(idx, e)"/>
                                             </td>
                                             <td>
-                                                <input type="number" step="any"
+                                                <input type="text" inputmode="numeric" maxlength="4"
                                                        class="arf-cell-input arf-cell-center"
+                                                       onkeydown="var k=event.key,v=event.target.value;if(['Backspace','Delete','Tab','ArrowLeft','ArrowRight','Home','End'].includes(k))return;if(k==='.'&&!v.includes('.')&&v.length===1)return;if(/[0-9]/.test(k))return;event.preventDefault();"
                                                        value="@_arfRows[idx].ToneArm"
-                                                       @onchange="e => SetArfCell(idx, 2, e)"/>
+                                                       @oninput="e => { _arfRows[idx].ToneArm = FormatToneArm(e.Value?.ToString() ?? string.Empty); RebuildArfSummary(); }"/>
                                             </td>
                                             <td>
                                                 <input type="text" class="arf-cell-input"
@@ -2621,6 +2622,32 @@
 
     bool ArfHasIncompleteRows => _arfRows.Any(r =>
         string.IsNullOrWhiteSpace(r.Process) || string.IsNullOrWhiteSpace(r.Time) || !IsValidArfTime(r.Time));
+
+    // Formats raw input as #.##.
+    // With dot:    "3.42" → "3.42", "3." → "3." (in-progress), "3.4" → "3.4"
+    // Without dot: "342"  → "3.42", "34" → "3.4", "3" → "3"
+    static string FormatToneArm(string raw)
+    {
+        if (raw.Contains('.'))
+        {
+            var parts  = raw.Split('.', 2);
+            var before = new string(parts[0].Where(char.IsDigit).Take(1).ToArray());
+            var after  = new string(parts[1].Where(char.IsDigit).Take(2).ToArray());
+            if (before.Length == 0) return string.Empty;
+            return $"{before}.{after}";   // "3." preserved while user is still typing
+        }
+        var digits = new System.Text.StringBuilder();
+        foreach (var c in raw)
+            if (char.IsDigit(c) && digits.Length < 3)
+                digits.Append(c);
+        return digits.Length switch
+        {
+            0 => "",
+            1 => digits.ToString(),
+            2 => $"{digits[0]}.{digits[1]}",
+            _ => $"{digits[0]}.{digits[1]}{digits[2]}"
+        };
+    }
 
     void SetArfCell(int row, int col, ChangeEventArgs e)
     {
