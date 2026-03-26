@@ -24,7 +24,14 @@
             </button>
         </div>
 
-        @if (_folder != null)
+        @if (_folder == null)
+        {
+            <div class="d-flex justify-content-center align-items-center py-4 text-white-50">
+                <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                <span style="font-size:.85rem;">Loading...</span>
+            </div>
+        }
+        else
         {
             @* ── Front Cover ── *@
             <div class="pcf-section-title pcf-section-front pcf-drop-zone"
@@ -2834,100 +2841,10 @@
             if (cookies.TryGetValue("lpmStrokeWidth", out var wc) && double.TryParse(wc, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var dw) && _strokeWidths.Contains(dw)) _drawWidth = dw;
         }
 
-        _userName = DashSvc.GetPersonName(UserPersonId) ?? $"User {UserPersonId}";
-        RefreshFolder();
-        EnsureFolderSummaryExists();
-        _pcName = FolderSvc.GetPcName(PcId) ?? $"PC {PcId}";
-        _programInsertFiles = FolderSvc.GetProgramInsertFiles();
-        Console.WriteLine($"[PcFolder] Opened PC folder for '{_pcName}' (PC {PcId}) by '{_userName}'{(SessionId > 0 ? $" — CS session {SessionId}" : "")}");
-        _csedSessionIds = DashSvc.GetCsedSessionIdsForPc(PcId, isSolo: Solo);
-        foreach (var pair in DashSvc.GetSessionsForPc(PcId, isSolo: Solo))
-        {
-            if (!string.IsNullOrEmpty(pair.Name))
-            {
-                _nameToSessionId.TryAdd(pair.Name, pair.SessionId);
-                if (DateTime.TryParse(pair.CreatedAt, out var dt))
-                    _nameToCreatedAt.TryAdd(pair.Name, dt);
-            }
-        }
-
-        // Session ID passed from Dashboard "CS The Session" button (via host page parameter)
+        // Session ID passed from Dashboard "CS The Session" button (via host page parameter).
+        // All heavy data loading (DB + disk) is deferred to OnAfterRenderAsync so the
+        // toolbar renders immediately and the sidebar fills in after the first paint.
         _csSessionId = SessionId;
-
-        // Derive session name and review time from DB
-        if (_csSessionId > 0)
-        {
-            _csSessionName = DashSvc.GetSessionName(_csSessionId);
-            _csReviewMinutes = (int)Math.Round(DashSvc.GetSessionTotalSeconds(_csSessionId) / 60.0);
-
-            // Check if another tab is already CSing this session
-            var userName = DashSvc.GetPersonName(UserPersonId) ?? $"User {UserPersonId}";
-            if (_activeCsSessions.TryGetValue(_csSessionId, out var existingUser))
-            {
-                _csLocked = true;
-                _csLockedBy = existingUser;
-                Console.WriteLine($"[PcFolder] CS session {_csSessionId} LOCKED — already being CSed by '{existingUser}', attempted by '{_userName}'");
-            }
-            else
-            {
-                _activeCsSessions[_csSessionId] = userName;
-                Console.WriteLine($"[PcFolder] CS session {_csSessionId} ('{_csSessionName}') started by '{_userName}' for PC {PcId}");
-            }
-            _csAlreadyDone = _csedSessionIds.Contains(_csSessionId);
-            if (_csAlreadyDone)
-                Console.WriteLine($"[PcFolder] CS session {_csSessionId} already reviewed — Done button disabled for '{_userName}'");
-        }
-
-        WorkSheetItem? match = null;
-        if (!string.IsNullOrWhiteSpace(_csSessionName) && _folder != null)
-        {
-            match = _folder.WorkSheets
-                .FirstOrDefault(ws => SessionDisplayName(ws.File.FileName)
-                    .Equals(_csSessionName, StringComparison.OrdinalIgnoreCase));
-            if (match == null)
-                Console.WriteLine($"ERROR: [PcFolder] CS session file missing — session='{_csSessionName}' (ID={_csSessionId}), PC={PcId}, user='{_userName}'");
-        }
-
-        if (match != null)
-        {
-            _panes[0].File = match.File.RelativePath;
-            _panes[0].FileName = SessionDisplayName(match.File.FileName);
-            _panes[0].Section = "WorkSheet";
-            var attCount = Math.Min(match.Attachments.Count, 2);
-            if (attCount > 0)
-            {
-                _paneCount = 1 + attCount;
-                _activeIdx = attCount; // select last pane so session stays in pane 0
-                for (int i = 0; i < attCount; i++)
-                {
-                    _panes[i + 1].File = match.Attachments[i].RelativePath;
-                    _panes[i + 1].FileName = match.Attachments[i].FileName;
-                    _panes[i + 1].Section = "WorkSheet";
-                }
-            }
-            // 3rd attachment can't fit in any pane — open in float window
-            if (match.Attachments.Count >= 3)
-            {
-                _floatAttFile = match.Attachments[2].RelativePath;
-                _floatAttName = match.Attachments[2].FileName;
-            }
-        }
-        else if (_folder?.WorkSheets.Count > 0)
-        {
-            var latest = _folder.WorkSheets[0];
-            _panes[0].File = latest.File.RelativePath;
-            _panes[0].FileName = SessionDisplayName(latest.File.FileName);
-            _panes[0].Section = "WorkSheet";
-            if (latest.Attachments.Count > 0)
-            {
-                _paneCount = 2;
-                _activeIdx = 1; // select last pane so session stays in pane 0
-                var firstAtt = latest.Attachments[0];
-                _panes[1].File = firstAtt.RelativePath;
-                _panes[1].FileName = firstAtt.FileName;
-                _panes[1].Section = "WorkSheet";
-            }
-        }
     }
 
     DotNetObjectReference<PcFolder>? _dotNetRef;
@@ -2936,6 +2853,93 @@
     {
         if (firstRender)
         {
+            // ── Phase 1: load data (deferred from OnInitialized so toolbar paints first) ──
+            _userName = DashSvc.GetPersonName(UserPersonId) ?? $"User {UserPersonId}";
+            await Task.Run(() => { RefreshFolder(); EnsureFolderSummaryExists(); });
+            _pcName = FolderSvc.GetPcName(PcId) ?? $"PC {PcId}";
+            _programInsertFiles = FolderSvc.GetProgramInsertFiles();
+            Console.WriteLine($"[PcFolder] Opened PC folder for '{_pcName}' (PC {PcId}) by '{_userName}'{(_csSessionId > 0 ? $" — CS session {_csSessionId}" : "")}");
+            _csedSessionIds = DashSvc.GetCsedSessionIdsForPc(PcId, isSolo: Solo);
+            foreach (var pair in DashSvc.GetSessionsForPc(PcId, isSolo: Solo))
+            {
+                if (!string.IsNullOrEmpty(pair.Name))
+                {
+                    _nameToSessionId.TryAdd(pair.Name, pair.SessionId);
+                    if (DateTime.TryParse(pair.CreatedAt, out var dt))
+                        _nameToCreatedAt.TryAdd(pair.Name, dt);
+                }
+            }
+            if (_csSessionId > 0)
+            {
+                _csSessionName   = DashSvc.GetSessionName(_csSessionId);
+                _csReviewMinutes = (int)Math.Round(DashSvc.GetSessionTotalSeconds(_csSessionId) / 60.0);
+                var csUserName   = DashSvc.GetPersonName(UserPersonId) ?? $"User {UserPersonId}";
+                if (_activeCsSessions.TryGetValue(_csSessionId, out var existingUser))
+                {
+                    _csLocked   = true;
+                    _csLockedBy = existingUser;
+                    Console.WriteLine($"[PcFolder] CS session {_csSessionId} LOCKED — already being CSed by '{existingUser}', attempted by '{_userName}'");
+                }
+                else
+                {
+                    _activeCsSessions[_csSessionId] = csUserName;
+                    Console.WriteLine($"[PcFolder] CS session {_csSessionId} ('{_csSessionName}') started by '{_userName}' for PC {PcId}");
+                }
+                _csAlreadyDone = _csedSessionIds.Contains(_csSessionId);
+                if (_csAlreadyDone)
+                    Console.WriteLine($"[PcFolder] CS session {_csSessionId} already reviewed — Done button disabled for '{_userName}'");
+            }
+            WorkSheetItem? match = null;
+            if (!string.IsNullOrWhiteSpace(_csSessionName) && _folder != null)
+            {
+                match = _folder.WorkSheets
+                    .FirstOrDefault(ws => SessionDisplayName(ws.File.FileName)
+                        .Equals(_csSessionName, StringComparison.OrdinalIgnoreCase));
+                if (match == null)
+                    Console.WriteLine($"ERROR: [PcFolder] CS session file missing — session='{_csSessionName}' (ID={_csSessionId}), PC={PcId}, user='{_userName}'");
+            }
+            if (match != null)
+            {
+                _panes[0].File = match.File.RelativePath;
+                _panes[0].FileName = SessionDisplayName(match.File.FileName);
+                _panes[0].Section = "WorkSheet";
+                var attCount = Math.Min(match.Attachments.Count, 2);
+                if (attCount > 0)
+                {
+                    _paneCount = 1 + attCount;
+                    _activeIdx = attCount;
+                    for (int i = 0; i < attCount; i++)
+                    {
+                        _panes[i + 1].File     = match.Attachments[i].RelativePath;
+                        _panes[i + 1].FileName = match.Attachments[i].FileName;
+                        _panes[i + 1].Section  = "WorkSheet";
+                    }
+                }
+                if (match.Attachments.Count >= 3)
+                {
+                    _floatAttFile = match.Attachments[2].RelativePath;
+                    _floatAttName = match.Attachments[2].FileName;
+                }
+            }
+            else if (_folder?.WorkSheets.Count > 0)
+            {
+                var latest = _folder.WorkSheets[0];
+                _panes[0].File     = latest.File.RelativePath;
+                _panes[0].FileName = SessionDisplayName(latest.File.FileName);
+                _panes[0].Section  = "WorkSheet";
+                if (latest.Attachments.Count > 0)
+                {
+                    _paneCount = 2;
+                    _activeIdx = 1;
+                    var firstAtt     = latest.Attachments[0];
+                    _panes[1].File     = firstAtt.RelativePath;
+                    _panes[1].FileName = firstAtt.FileName;
+                    _panes[1].Section  = "WorkSheet";
+                }
+            }
+            StateHasChanged(); // sidebar content now visible; JS setup follows
+
+            // ── Phase 2: JS + PDF loading ──
             _dotNetRef = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("pcfViewer.setDotNetRef", _dotNetRef);
             await JS.InvokeVoidAsync("pcfViewer.setPcId", PcId);

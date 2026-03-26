@@ -17,7 +17,14 @@
 
 @if (_initialized)
 {
-    @if (_userId == null)
+    @if (!_dataLoaded)
+    {
+        <div class="d-flex justify-content-center align-items-center py-5 text-muted">
+            <div class="spinner-border me-2" role="status" style="width:1.4rem;height:1.4rem;"></div>
+            <span>Loading...</span>
+        </div>
+    }
+    else if (_userId == null)
     {
         <div class="px-3 text-danger">@LS.T("home.userNotFound")</div>
     }
@@ -1405,6 +1412,7 @@
     Dictionary<int, string>  _pcCsNames   = [];
     List<DashboardService.PendingCsSession> _pendingCsSessions = [];
     bool _initialized = false;
+    bool _dataLoaded  = false;
     bool _pendingCsExpanded = true;
     bool _weeklyOverviewExpanded = true;
     int  _csQueueDays = 7;
@@ -1520,27 +1528,10 @@
         }
         _weekStart = TodayWeekStart;
         _csStatusLabels = DashSvc.GetCsStatusLabels();
-        await RefreshAsync();
         _initialized = true;
+        // Data load + subscriptions moved to OnAfterRenderAsync so the page skeleton
+        // renders immediately and tables fill in after the first paint.
         Console.WriteLine("[Home] OnInitializedAsync DONE — _initialized=true");
-
-        // Subscribe to cross-user CS notifications
-        if (_userId.HasValue)
-        {
-            _csNotifyKey = CsNotifySvc.Subscribe(_userId.Value, async pcId =>
-            {
-                await InvokeAsync(async () =>
-                {
-                    await RefreshAsync();
-                    StateHasChanged();
-                });
-            });
-        }
-
-        // Refresh on any MainHeader data mutation — stored as a field for correct unsubscription.
-        // Action wrapper avoids async void; exceptions are caught inside _onDataChangedAsync.
-        _onDataChangedHandler = () => _ = _onDataChangedAsync();
-        DashSvc.OnDataChanged += _onDataChangedHandler;
     }
 
     private Action? _onDataChangedHandler;
@@ -1558,6 +1549,26 @@
         {
             _dotNetRef = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("lpmInitCsListener", _dotNetRef);
+
+            // Subscribe to events before loading data so no notifications are missed.
+            if (_userId.HasValue)
+            {
+                _csNotifyKey = CsNotifySvc.Subscribe(_userId.Value, async pcId =>
+                {
+                    await InvokeAsync(async () =>
+                    {
+                        await RefreshAsync();
+                        StateHasChanged();
+                    });
+                });
+            }
+            _onDataChangedHandler = () => _ = _onDataChangedAsync();
+            DashSvc.OnDataChanged += _onDataChangedHandler;
+
+            // Load dashboard data — happens after first paint so user sees page immediately.
+            await RefreshAsync();
+            _dataLoaded = true;
+            StateHasChanged();
         }
     }
 
@@ -1595,40 +1606,90 @@
     async Task RefreshAsync()
     {
         if (!_userId.HasValue) return;
+
+        int uid = _userId.Value;
+
         if (_isSolo && _soloSelf != null)
         {
-            _myPcs        = [_soloSelf];
-            _grid         = DashSvc.GetWeekGridSolo(_userId.Value, _weekStart);
-            _weeklyTotals = DashSvc.GetWeeklyTotalsSolo(_userId.Value,
-                                ChartLatestWeekStart(), 20);
-            _detail = null; _selPcId = null; _selDay = null;
-            _pendingCs = []; _pcCsNames = [];
+            // Solo path — all independent calls in parallel
+            var chartStart = ChartLatestWeekStart();
+            var weekKey    = _weekStart.ToString("yyyy-MM-dd");
+
+            List<DashboardService.AuditorSessionStatus>? audStatuses = null;
+
+            await Task.WhenAll(
+                Task.Run(() => { _grid         = DashSvc.GetWeekGridSolo(uid, _weekStart); }),
+                Task.Run(() => { _weeklyTotals = DashSvc.GetWeeklyTotalsSolo(uid, chartStart, 20); }),
+                Task.Run(() => { _weekRemarks  = DashSvc.GetWeeklyRemarks(uid, weekKey) ?? ""; }),
+                Task.Run(() => { audStatuses   = DashSvc.GetAuditorSessionStatuses(uid, _audStatusDays, isSolo: true); })
+            );
+
+            _myPcs           = [_soloSelf];
+            _auditorStatuses = audStatuses ?? [];
+            _pendingCs       = []; _pcCsNames = [];
+
+            // Attachment types per session — parallel
+            var t_attachTasks = _auditorStatuses.Select(s =>
+                Task.Run(() => (s.SessionId, Types: FolderSvc.GetSessionAttachmentTypes(s.PcId, s.SessionName)))
+            ).ToList();
+            if (t_attachTasks.Count > 0) await Task.WhenAll(t_attachTasks);
+            _audAttachTypes = t_attachTasks.ToDictionary(t => t.Result.SessionId, t => t.Result.Types);
         }
         else
         {
-            _myPcs           = DashSvc.GetUserPcs(_userId.Value);
-            _soloPcIds       = DashSvc.GetSoloPcIds();
-            _unapprovedPcIds = DashSvc.GetUnapprovedPcIds(_userId.Value, _username);
-            _grid          = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
-            _weeklyTotals  = DashSvc.GetWeeklyTotals(_userId.Value,
-                                 ChartLatestWeekStart(),
-                                 20, _myPcs);
-            _detail = null; _selPcId = null; _selDay = null;
+            // ── Phase 1: independent calls ───────────────────────────────────
+            var chartStart = ChartLatestWeekStart();
+            var weekKey    = _weekStart.ToString("yyyy-MM-dd");
 
-            RefreshCsMetadata();
+            var t_pcs        = Task.Run(() => DashSvc.GetUserPcs(uid));
+            var t_solo       = Task.Run(() => DashSvc.GetSoloPcIds());
+            var t_unapproved = Task.Run(() => DashSvc.GetUnapprovedPcIds(uid, _username));
+            var t_remarks    = Task.Run(() => DashSvc.GetWeeklyRemarks(uid, weekKey) ?? "");
+            var t_csQueue    = _isCS
+                ? Task.Run(() => (IReadOnlyList<DashboardService.PendingCsSession>)DashSvc.GetPendingCsSessions(uid, _csQueueDays, _showDoneCs))
+                : Task.FromResult<IReadOnlyList<DashboardService.PendingCsSession>>(_pendingCsSessions);
+            var t_audStatus  = (_isAuditor || _isSolo)
+                ? Task.Run(() => (IReadOnlyList<DashboardService.AuditorSessionStatus>)DashSvc.GetAuditorSessionStatuses(uid, _audStatusDays, isSolo: _isSolo))
+                : Task.FromResult<IReadOnlyList<DashboardService.AuditorSessionStatus>>(_auditorStatuses);
+
+            await Task.WhenAll(t_pcs, t_solo, t_unapproved, t_remarks, t_csQueue, t_audStatus);
+
+            _myPcs           = t_pcs.Result;
+            _soloPcIds       = t_solo.Result;
+            _unapprovedPcIds = t_unapproved.Result;
+            _weekRemarks     = t_remarks.Result;
+            if (_isCS)                  _pendingCsSessions = t_csQueue.Result.ToList();
+            if (_isAuditor || _isSolo)  _auditorStatuses   = t_audStatus.Result.ToList();
+
+            // ── Phase 2: calls that depend on _myPcs / _auditorStatuses ──────
+            var auditorPcIds = _myPcs.Where(p => p.WorkCapacity == "Auditor").Select(p => p.PcId).ToList();
+            var weekStart    = _weekStart;
+            var myPcsSnap    = _myPcs;
+
+            var t_grid     = Task.Run(() => DashSvc.GetWeekGrid(uid, weekStart, myPcsSnap));
+            var t_totals   = Task.Run(() => DashSvc.GetWeeklyTotals(uid, chartStart, 20, myPcsSnap));
+            var t_csMarks  = Task.Run(() => DashSvc.GetPendingCsMarkers(uid, weekStart, myPcsSnap));
+            var t_csNames  = Task.Run(() => DashSvc.GetLastCsNamesByPc(auditorPcIds));
+
+            // Attachment types: parallel per session
+            var audStatSnap  = _auditorStatuses;
+            var t_attachTasks = audStatSnap.Select(s =>
+                Task.Run(() => (s.SessionId, Types: FolderSvc.GetSessionAttachmentTypes(s.PcId, s.SessionName)))
+            ).ToList();
+
+            await Task.WhenAll(
+                new Task[] { t_grid, t_totals, t_csMarks, t_csNames }
+                    .Concat(t_attachTasks)
+            );
+
+            _grid         = t_grid.Result;
+            _weeklyTotals = t_totals.Result;
+            _pendingCs    = t_csMarks.Result;
+            _pcCsNames    = t_csNames.Result;
+            _audAttachTypes = t_attachTasks.ToDictionary(t => t.Result.SessionId, t => t.Result.Types);
         }
 
-        if (_isCS)
-            _pendingCsSessions = DashSvc.GetPendingCsSessions(_userId!.Value, _csQueueDays, _showDoneCs);
-
-        if (_isAuditor || _isSolo)
-        {
-            _auditorStatuses = DashSvc.GetAuditorSessionStatuses(_userId.Value, _audStatusDays, isSolo: _isSolo);
-            _audAttachTypes  = _auditorStatuses.ToDictionary(s => s.SessionId,
-                                   s => FolderSvc.GetSessionAttachmentTypes(s.PcId, s.SessionName));
-        }
-
-        _weekRemarks = DashSvc.GetWeeklyRemarks(_userId.Value, _weekStart.ToString("yyyy-MM-dd")) ?? "";
+        _detail = null; _selPcId = null; _selDay = null;
         _remarksSaved = false;
 
         UpdateChartTooltip();
