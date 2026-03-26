@@ -1572,7 +1572,7 @@ public class PdfService
             {
                 page.Size(PageSizes.A4);
                 page.Margin(30);
-                page.DefaultTextStyle(x => x.FontSize(10).FontColor("#1a1a1a"));
+                page.DefaultTextStyle(x => x.FontSize(10).FontColor("#1a1a1a").FontFamily("Liberation Sans", "Arial", "Helvetica", "DejaVu Sans"));
 
                 page.Content().Column(col =>
                 {
