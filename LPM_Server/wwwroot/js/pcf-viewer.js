@@ -884,7 +884,8 @@ window.pcfViewer = {
             input.style.height = input.scrollHeight + 'px';
         };
 
-        const autoSizeAndReposition = () => { autoSize(); positionHandle(); };
+        let positionDragHandle = () => {}; // real impl assigned after drag handle is created
+        const autoSizeAndReposition = () => { autoSize(); positionHandle(); positionDragHandle(); };
         input.addEventListener('input', autoSizeAndReposition);
         // Size correctly for pre-filled text when editing
         if (isEditing) {
@@ -895,10 +896,15 @@ window.pcfViewer = {
                 input.style.height = 'auto';
                 input.style.height = input.scrollHeight + 'px';
                 positionHandle();
+                positionDragHandle();
             });
         }
 
         input.addEventListener('pointerdown', (e) => e.stopPropagation());
+
+        const self = this;
+        let committed = false;
+        let dragHandle = null; // assigned below after drag handle is created
 
         // ── Resize handle (bottom-right corner) ──
         const handle = document.createElement('div');
@@ -928,18 +934,70 @@ window.pcfViewer = {
                 input.style.height = 'auto';
                 input.style.height = input.scrollHeight + 'px';
                 positionHandle();
+                positionDragHandle();
             }
             function onHandleUp() {
                 handle.removeEventListener('pointermove', onHandleMove);
             }
         });
 
-        const self = this;
-        let committed = false;
+        // ── Drag handle (top edge of textarea — move the box while typing) ──
+        dragHandle = document.createElement('div');
+        dragHandle.className = 'pcf-text-drag-handle';
+        dragHandle.innerHTML =
+            '<svg width="24" height="8" viewBox="0 0 24 8" fill="rgba(59,130,246,.7)">' +
+            '<circle cx="4" cy="2.5" r="1.5"/><circle cx="12" cy="2.5" r="1.5"/><circle cx="20" cy="2.5" r="1.5"/>' +
+            '<circle cx="4" cy="6.5" r="1.5"/><circle cx="12" cy="6.5" r="1.5"/><circle cx="20" cy="6.5" r="1.5"/>' +
+            '</svg>';
+        positionDragHandle = () => {
+            const top = parseFloat(input.style.top) || 0;
+            dragHandle.style.left  = input.style.left;
+            dragHandle.style.top   = (top - 15) + 'px';
+            dragHandle.style.width = input.style.width;
+        };
+        wrapper.appendChild(dragHandle);
+        requestAnimationFrame(positionDragHandle);
+
+        dragHandle.addEventListener('pointerdown', (e) => {
+            e.preventDefault(); // keep textarea focused — do NOT blur
+            e.stopPropagation();
+            dragHandle.setPointerCapture(e.pointerId);
+            dragHandle.classList.add('dragging');
+            const startClientX  = e.clientX;
+            const startClientY  = e.clientY;
+            const startLeft     = parseFloat(input.style.left) || 0;
+            const startTop      = parseFloat(input.style.top)  || 0;
+            // Compute effective CSS zoom on the wrapper so client-px delta maps correctly to wrapper-px
+            const wBCR          = wrapper.getBoundingClientRect();
+            const effZoom       = (wrapper.offsetWidth > 0) ? wBCR.width / wrapper.offsetWidth : 1;
+
+            function onDragMove(ev) {
+                const dx = (ev.clientX - startClientX) / effZoom;
+                const dy = (ev.clientY - startClientY) / effZoom;
+                const newLeft = Math.max(0, startLeft + dx);
+                const newTop  = Math.max(0, startTop  + dy);
+                input.style.left = newLeft + 'px';
+                input.style.top  = newTop  + 'px';
+                // Keep canvas coords in sync (same pixel space as wrapper coords pre-zoom)
+                x = Math.round(newLeft);
+                y = Math.round(newTop + fontSize);
+                if (self._activeTextState) { self._activeTextState.x = x; self._activeTextState.y = y; }
+                positionHandle();
+                positionDragHandle();
+            }
+            function onDragUp() {
+                dragHandle.removeEventListener('pointermove', onDragMove);
+                dragHandle.classList.remove('dragging');
+            }
+            dragHandle.addEventListener('pointermove', onDragMove);
+            dragHandle.addEventListener('pointerup', onDragUp, { once: true });
+        });
+
         const cleanup = () => {
             input.remove();
             mirror.remove();
             handle.remove();
+            if (dragHandle) dragHandle.remove();
             self.textInputEl = null;
             self._textMirror = null;
             self._activeTextState = null;

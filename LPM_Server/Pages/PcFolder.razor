@@ -1876,6 +1876,15 @@
         opacity: .75; transition: opacity .15s;
     }
     .pcf-text-resize-handle:hover { opacity: 1; }
+    .pcf-text-drag-handle {
+        position: absolute; z-index: 12; height: 14px;
+        background: rgba(59,130,246,.18); border: 1px solid rgba(59,130,246,.45);
+        border-bottom: none; border-radius: 3px 3px 0 0;
+        cursor: grab; display: flex; align-items: center; justify-content: center;
+        transition: background .12s;
+    }
+    .pcf-text-drag-handle:hover { background: rgba(59,130,246,.35); }
+    .pcf-text-drag-handle.dragging { cursor: grabbing; background: rgba(59,130,246,.45); }
 
     /* ── Tablet ── */
     @@media (max-width: 768px) {
