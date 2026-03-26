@@ -1,5 +1,6 @@
 @page "/Admin/Diagnosis"
 @attribute [Authorize(Roles = "Admin")]
+@implements IDisposable
 @using System.Security.Cryptography
 @using System.Security.Claims
 @using Microsoft.Data.Sqlite
@@ -373,11 +374,18 @@
             <div class="row g-2 mb-3">
                 <div class="col-12 col-sm-7 col-md-5">
                     <label class="diag-lbl">Select user</label>
-                    <select class="form-select form-select-sm" @onchange="OnUserSelected">
-                        <option value="0">— choose user —</option>
-                        @foreach (var u in _userList)
+                    <select class="form-select form-select-sm" @onchange="OnUserSelected" disabled="@_loadingUsers">
+                        @if (_loadingUsers)
                         {
-                            <option value="@u.Id">@u.Id — @u.Username (@u.StaffRole / @u.UserType)</option>
+                            <option>Loading…</option>
+                        }
+                        else
+                        {
+                            <option value="0">— choose user —</option>
+                            @foreach (var u in _userList)
+                            {
+                                <option value="@u.Id">@u.Id — @u.Username (@u.StaffRole / @u.UserType)</option>
+                            }
                         }
                     </select>
                 </div>
@@ -512,73 +520,89 @@
     </div>
 
     @* ── core_* tables ── *@
-    <div class="cedb-group-header mt-4"><i class="ri-user-line me-1"></i>core_* tables</div>
-    @foreach (var t in _coreTables)
+    <div class="cedb-group-header mt-4">
+        <i class="ri-user-line me-1"></i>core_* tables
+        @if (_loadingTables) { <span class="spinner-border spinner-border-sm ms-2" style="color:#60a5fa;width:1rem;height:1rem;"></span> }
+    </div>
+    @if (_loadingTables)
     {
-        @if (t.Name == "core_persons")
+        <div class="cedb-section-loading">
+            <span class="spinner-border spinner-border-sm me-2" style="color:#60a5fa;"></span>Loading tables…
+        </div>
+    }
+    else
+    {
+        @foreach (var t in _coreTables)
         {
-            @EditableSection(new EditInfo(t, "PersonId"))
+            @if (t.Name == "core_persons")
+            {
+                @EditableSection(new EditInfo(t, "PersonId"))
+            }
+            else
+            {
+                @TableSection(t)
+            }
         }
-        else
+
+        @* ── sys_* tables ── *@
+        <div class="cedb-group-header mt-3"><i class="ri-settings-3-line me-1"></i>sys_* tables</div>
+        @foreach (var t in _sysTables) { @TableSection(t) }
+
+        @* ── lkp_* tables ── *@
+        <div class="cedb-group-header mt-3"><i class="ri-price-tag-3-line me-1"></i>lkp_* tables</div>
+        @foreach (var t in _lkpTables) { @TableSection(t) }
+    }
+
+    @* ── sess_* / cs_* / fin_* / acad_* tables ── *@
+    @if (!_loadingTables)
+    {
+        @* ── sess_* tables (editable) ── *@
+        <div class="cedb-group-header mt-3">
+            <i class="ri-calendar-line me-1"></i>sess_* tables
+            <span style="font-weight:400;font-size:.6rem;color:#94a3b8;text-transform:none;letter-spacing:0;">(editable)</span>
+        </div>
+        @foreach (var t in _sessTables)
         {
-            @TableSection(t)
+            var pk = t.Name switch
+            {
+                "sess_sessions"       => "SessionId",
+                "sess_misc_charges"   => "MiscChargeId",
+                "sess_folder_summary" => "Id",
+                "sess_meetings"       => "MeetingId",
+                _                     => "Id"
+            };
+            @EditableSection(new EditInfo(t, pk))
         }
-    }
 
-    @* ── sys_* tables ── *@
-    <div class="cedb-group-header mt-3"><i class="ri-settings-3-line me-1"></i>sys_* tables</div>
-    @foreach (var t in _sysTables) { @TableSection(t) }
-
-    @* ── lkp_* tables ── *@
-    <div class="cedb-group-header mt-3"><i class="ri-price-tag-3-line me-1"></i>lkp_* tables</div>
-    @foreach (var t in _lkpTables) { @TableSection(t) }
-
-    @* ── sess_* tables (editable) ── *@
-    <div class="cedb-group-header mt-3">
-        <i class="ri-calendar-line me-1"></i>sess_* tables
-        <span style="font-weight:400;font-size:.6rem;color:#94a3b8;text-transform:none;letter-spacing:0;">(editable)</span>
-    </div>
-    @foreach (var t in _sessTables)
-    {
-        var pk = t.Name switch
+        @* ── cs_* tables (editable) ── *@
+        <div class="cedb-group-header mt-3">
+            <i class="ri-user-star-line me-1"></i>cs_* tables
+            <span style="font-weight:400;font-size:.6rem;color:#94a3b8;text-transform:none;letter-spacing:0;">(editable)</span>
+        </div>
+        @foreach (var t in _csTables)
         {
-            "sess_sessions"       => "SessionId",
-            "sess_misc_charges"   => "MiscChargeId",
-            "sess_folder_summary" => "Id",
-            "sess_meetings"       => "MeetingId",
-            _                     => "Id"
-        };
-        @EditableSection(new EditInfo(t, pk))
+            var pk = t.Name switch
+            {
+                "cs_reviews"          => "CsReviewId",
+                "cs_work_log"         => "CsWorkLogId",
+                "cs_case_supervisors" => "CsId",
+                _                     => "Id"
+            };
+            @EditableSection(new EditInfo(t, pk))
+        }
+
+        @* ── fin_* tables ── *@
+        <div class="cedb-group-header mt-3">
+            <i class="ri-money-dollar-circle-line me-1"></i>fin_* tables
+        </div>
+        @foreach (var t in _finTables) { @TableSection(t) }
+
+        @* ── acad_* tables ── *@
+        <div class="cedb-group-header mt-3">
+            <i class="ri-graduation-cap-line me-1"></i>acad_* tables
+        </div>
+        @foreach (var t in _acadTables) { @TableSection(t) }
     }
-
-    @* ── cs_* tables (editable) ── *@
-    <div class="cedb-group-header mt-3">
-        <i class="ri-user-star-line me-1"></i>cs_* tables
-        <span style="font-weight:400;font-size:.6rem;color:#94a3b8;text-transform:none;letter-spacing:0;">(editable)</span>
-    </div>
-    @foreach (var t in _csTables)
-    {
-        var pk = t.Name switch
-        {
-            "cs_reviews"          => "CsReviewId",
-            "cs_work_log"         => "CsWorkLogId",
-            "cs_case_supervisors" => "CsId",
-            _                     => "Id"
-        };
-        @EditableSection(new EditInfo(t, pk))
-    }
-
-    @* ── fin_* tables ── *@
-    <div class="cedb-group-header mt-3">
-        <i class="ri-money-dollar-circle-line me-1"></i>fin_* tables
-    </div>
-    @foreach (var t in _finTables) { @TableSection(t) }
-
-    @* ── acad_* tables ── *@
-    <div class="cedb-group-header mt-3">
-        <i class="ri-graduation-cap-line me-1"></i>acad_* tables
-    </div>
-    @foreach (var t in _acadTables) { @TableSection(t) }
 
     @* ── Recent PC-Folder Files (< 7 days) ────────────────────────────────── *@
     <div class="diag-editor-card mb-4 mt-4">
@@ -598,6 +622,14 @@
             </button>
         </div>
         <div class="diag-editor-body">
+            @if (_loadingRecent)
+            {
+                <div class="cedb-section-loading">
+                    <span class="spinner-border spinner-border-sm me-2" style="color:#60a5fa;"></span>Scanning files…
+                </div>
+            }
+            else
+            {
             @if (!string.IsNullOrEmpty(_recentMsg))
             {
                 <div class="alert @(_recentMsgOk ? "alert-success" : "alert-danger") py-1 px-3 mb-3 diag-feedback">@_recentMsg</div>
@@ -654,6 +686,7 @@
                     </div>
                 }
             }
+            } @* end else (_loadingRecent) *@
         </div>
     </div>
 </div>
@@ -926,7 +959,11 @@
     HashSet<string> _collapsed = [];
     void ToggleSection(string name) { if (!_collapsed.Remove(name)) _collapsed.Add(name); }
 
-    bool   _pageLoading = true;
+    bool   _pageLoading   = false;
+    bool   _loadingTables = true;
+    bool   _loadingRecent = true;
+    bool   _loadingUsers  = true;
+    readonly CancellationTokenSource _cts = new();
 
     bool   _busy;
     string _resultPath = "";
@@ -1127,18 +1164,24 @@
     }
 
     // ── Init ───────────────────────────────────────────────────────────────
-    protected override async Task OnInitializedAsync()
+    protected override Task OnInitializedAsync()
     {
         _activityUsers = ActivitySvc.GetSummary();
-        // run independent loaders in parallel — each opens its own SQLite connection
-        await Task.WhenAll(
-            Task.Run(LoadUserList),
-            Task.Run(LoadPcsRows),
-            Task.Run(LoadRecentFiles),
-            Task.Run(LoadLiveTables)
-        );
-        _pageLoading = false;
+        var ct = _cts.Token;
+
+        _ = Task.Run(() => { LoadUserList(); LoadPcsRows(); }, ct)
+                .ContinueWith(_ => { if (!ct.IsCancellationRequested) InvokeAsync(() => { _loadingUsers = false; StateHasChanged(); }); });
+
+        _ = Task.Run(LoadLiveTables, ct)
+                .ContinueWith(_ => { if (!ct.IsCancellationRequested) InvokeAsync(() => { _loadingTables = false; StateHasChanged(); }); });
+
+        _ = Task.Run(LoadRecentFiles, ct)
+                .ContinueWith(_ => { if (!ct.IsCancellationRequested) InvokeAsync(() => { _loadingRecent = false; StateHasChanged(); }); });
+
+        return Task.CompletedTask;
     }
+
+    public void Dispose() => _cts.Cancel();
 
     string DbCs()     => $"Data Source={Config["Database:Path"] ?? "lifepower.db"}";
     string AdminUser()=> HttpCtx.HttpContext?.User?.FindFirst(ClaimTypes.Name)?.Value ?? "admin";
@@ -1788,6 +1831,9 @@
     }
     .diag-modal-body { padding: 18px; overflow-y: auto; flex: 1; }
     .diag-modal-footer { padding: 12px 18px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 8px; }
+
+    /* Section loading placeholder */
+    .cedb-section-loading { padding: 16px 8px; color: #64748b; font-size: .85rem; display: flex; align-items: center; }
 
     /* Table groups */
     .cedb-group-header { font-size: .65rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; color: #475569; padding: 4px 0 2px; border-bottom: 2px solid #e2e8f0; margin-bottom: 2px; }
