@@ -982,6 +982,15 @@ window.pcfViewer = {
                 x = Math.round(newLeft);
                 y = Math.round(newTop + fontSize);
                 if (self._activeTextState) { self._activeTextState.x = x; self._activeTextState.y = y; }
+                // Live-update existing annotation so the overlay ghost moves with the box
+                if (isEditing && existingIdx >= 0) {
+                    const pane = self.panes[paneId];
+                    if (pane && pane.annotations[existingIdx]) {
+                        pane.annotations[existingIdx].x = x;
+                        pane.annotations[existingIdx].y = y;
+                        self._redrawOverlay(pageIdx, paneId);
+                    }
+                }
                 positionHandle();
                 positionDragHandle();
             }
@@ -1020,11 +1029,13 @@ window.pcfViewer = {
             if (pane) {
                 if (isEditing && existingIdx >= 0) {
                     if (text) {
-                        // Update existing annotation — apply current color/fontSize from toolbar
+                        // Update existing annotation — apply current color/fontSize/position from toolbar + drag
                         pane.annotations[existingIdx].text = text;
                         pane.annotations[existingIdx].color = self.drawColor;
                         pane.annotations[existingIdx].fontSize = self.fontSize;
                         pane.annotations[existingIdx].maxWidth = input.offsetWidth;
+                        pane.annotations[existingIdx].x = x;
+                        pane.annotations[existingIdx].y = y;
                     } else {
                         // Empty text = delete annotation
                         pane.annotations.splice(existingIdx, 1);
