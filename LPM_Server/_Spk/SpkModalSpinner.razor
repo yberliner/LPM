@@ -1,5 +1,6 @@
 ﻿@using LPM.Data
 @inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <div class="modal fade" id="ModalSpinner_@IdPrefix"
      tabindex="-1"
@@ -105,4 +106,15 @@
     /*   parameters                                                       */
     /* ------------------------------------------------------------------ */
     [Parameter] public string IdPrefix { get; set; } = Guid.NewGuid().ToString("N");
+
+    public async ValueTask DisposeAsync()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+        if (_bootstrapModal != null)
+        {
+            try { await _bootstrapModal.DisposeAsync(); }
+            catch { }
+        }
+    }
 }

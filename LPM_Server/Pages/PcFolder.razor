@@ -3246,6 +3246,7 @@
     async Task ShowDupeToast(string fileName, int paneNum)
     {
         _dupeCts?.Cancel();
+        _dupeCts?.Dispose();
         _dupeCts = new System.Threading.CancellationTokenSource();
         _dupeFileName = fileName;
         _dupePaneNum  = paneNum;
@@ -4308,6 +4309,7 @@
         if (_csSessionId > 0 && !_csLocked)
             _activeCsSessions.TryRemove(_csSessionId, out _);
         _dotNetRef?.Dispose();
+        _dupeCts?.Dispose();
     }
 
     // ── Cover file type detection for color-coded borders ──

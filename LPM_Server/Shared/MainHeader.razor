@@ -3532,11 +3532,15 @@ string _actionPcSearch = "";
     {
         _isDisposed = true;
         MsgNotifier.OnNewMessage -= OnNewMessageReceived;
+        _headerScrollRef?.Dispose();
     }
+
+    DotNetObjectReference<MainHeader>? _headerScrollRef;
 
     private async Task AttachHeaderScrollListener()
     {
-        await JSRuntime.InvokeVoidAsync("interop.registerheaderScrollListener", DotNetObjectReference.Create(this));
+        _headerScrollRef = DotNetObjectReference.Create(this);
+        await JSRuntime.InvokeVoidAsync("interop.registerheaderScrollListener", _headerScrollRef);
     }
 
     [JSInvokable]

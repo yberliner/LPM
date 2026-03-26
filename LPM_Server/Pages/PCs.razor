@@ -10,6 +10,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using LPM.Services
+@implements IDisposable
 
 <div class="pc-page-container">
 
@@ -2302,5 +2303,10 @@
                  .Select(e => new CourseReportCourse(e.CourseName, e.DateStarted, e.DateFinished!))
                  .ToList()))
             .ToList();
+    }
+
+    public void Dispose()
+    {
+        _sigRef?.Dispose();
     }
 }

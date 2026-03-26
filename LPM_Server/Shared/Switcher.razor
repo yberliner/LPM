@@ -469,6 +469,7 @@
         </div>
 
 
+@implements IDisposable
 @code {
     string[] colors = new string[] { "#FFFFFF", "#000000", "#999999","#845adf" };
     string primarycolor = "84, 109, 254";
@@ -675,5 +676,10 @@
         {
             await JSRuntime.InvokeVoidAsync("window.interop.initializeTooltips");
         }
+    }
+
+    public void Dispose()
+    {
+        stateService.OnStateChanged -= RefreshState;
     }
 }

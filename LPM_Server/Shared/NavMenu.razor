@@ -12,6 +12,7 @@
 @using WMBlazorOverlayScrollbars.WMBOS;
 @inject Microsoft.AspNetCore.Components.NavigationManager NavigationManager // This line is used to generate URLs dynamically //
 @using LPM._Spk
+@implements IDisposable
 
 
 <style>
@@ -359,7 +360,7 @@
 
     protected override void OnInitialized()
     {
-        Navigation.LocationChanged += (sender, args) => HandleLocationChange(sender, args);;
+        Navigation.LocationChanged += HandleLocationChange;
         LS.OnLanguageChanged += HandleLanguageChanged;
     }
 
@@ -399,9 +400,11 @@
     }
 
     //sticky-pin //
+    DotNetObjectReference<NavMenu>? _scrollRef;
     private async Task AttachScrollListener()
     {
-        await JSRuntime.InvokeVoidAsync("interop.registerScrollListener", DotNetObjectReference.Create(this));
+        _scrollRef = DotNetObjectReference.Create(this);
+        await JSRuntime.InvokeVoidAsync("interop.registerScrollListener", _scrollRef);
     }
 
     [JSInvokable]
@@ -944,6 +947,16 @@
     public void Dispose(){
         _disposed = true;
         LS.OnLanguageChanged -= HandleLanguageChanged;
+        Navigation.LocationChanged -= HandleLocationChange;
+        Navigation.LocationChanged -= HandleLocationChanged;
+        ActionService.OnActionTriggered -= HandleActionTriggered;
+        if (scrollService != null)
+        {
+            scrollService.ScrollModeChanged -= HandleScrollModeChanged;
+            scrollService.VerticalModeChanged -= HandleVerticalModeChanged;
+        }
+        dotNetObjectReference?.Dispose();
+        _scrollRef?.Dispose();
         JSRuntime.InvokeVoidAsync("resizeFunctions.detachScrollListener");
     }
 }
