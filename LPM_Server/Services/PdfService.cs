@@ -2009,6 +2009,82 @@ public class PdfService
         return result.ToArray();
     }
 
+    /// <summary>
+    /// Uniformly scales a single-page PDF so its content fills targetW × targetH (PDF points),
+    /// centred. Implemented as a PDF content-stream transform matrix — fully vector, no rasterisation.
+    /// Returns the original bytes unchanged when dimensions already match within 1 pt.
+    /// </summary>
+    public byte[] ScalePdfPageToSize(byte[] singlePagePdf, double targetW, double targetH)
+    {
+        using var ms = new System.IO.MemoryStream(singlePagePdf);
+        PdfSharpCore.Pdf.PdfDocument doc;
+        try
+        {
+            doc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Modify);
+        }
+        catch (PdfSharpCore.Pdf.IO.PdfReaderException)
+        {
+            ms.Position = 0;
+            doc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, "", PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Modify, null);
+        }
+
+        using (doc)
+        {
+            var page  = doc.Pages[0];
+            double origW = page.Width.Point;
+            double origH = page.Height.Point;
+
+            if (Math.Abs(origW - targetW) < 1.0 && Math.Abs(origH - targetH) < 1.0)
+                return singlePagePdf;
+
+            // Uniform scale — fit within target, centred
+            double scale = Math.Min(targetW / origW, targetH / origH);
+            double tx    = (targetW - origW * scale) / 2.0;
+            double ty    = (targetH - origH * scale) / 2.0;
+
+            // q sx 0 0 sy tx ty cm  …existing content…  Q
+            var ic = System.Globalization.CultureInfo.InvariantCulture;
+            var prefixBytes = System.Text.Encoding.Latin1.GetBytes(
+                string.Format(ic, "q {0:F6} 0 0 {1:F6} {2:F4} {3:F4} cm\n", scale, scale, tx, ty));
+            var suffixBytes = System.Text.Encoding.Latin1.GetBytes("\nQ\n");
+
+            // Create two new uncompressed stream objects
+            var prefixStream = new PdfSharpCore.Pdf.PdfDictionary(doc);
+            prefixStream.CreateStream(prefixBytes);
+            doc.Internals.AddObject(prefixStream);
+
+            var suffixStream = new PdfSharpCore.Pdf.PdfDictionary(doc);
+            suffixStream.CreateStream(suffixBytes);
+            doc.Internals.AddObject(suffixStream);
+
+            // Rebuild /Contents as [prefixRef, ...existing..., suffixRef]
+            var newContents = new PdfSharpCore.Pdf.PdfArray(doc);
+            newContents.Elements.Add(prefixStream.Reference);
+
+            var rawContents = page.Elements["/Contents"];
+            if (rawContents is PdfSharpCore.Pdf.PdfArray existingArr)
+                foreach (var item in existingArr.Elements)
+                    newContents.Elements.Add(item);
+            else if (rawContents != null)
+                newContents.Elements.Add(rawContents);
+
+            newContents.Elements.Add(suffixStream.Reference);
+            page.Elements["/Contents"] = newContents;
+
+            // Update MediaBox to target dimensions
+            var mediaBox = new PdfSharpCore.Pdf.PdfArray();
+            mediaBox.Elements.Add(new PdfSharpCore.Pdf.PdfReal(0));
+            mediaBox.Elements.Add(new PdfSharpCore.Pdf.PdfReal(0));
+            mediaBox.Elements.Add(new PdfSharpCore.Pdf.PdfReal(targetW));
+            mediaBox.Elements.Add(new PdfSharpCore.Pdf.PdfReal(targetH));
+            page.Elements["/MediaBox"] = mediaBox;
+
+            using var outMs = new System.IO.MemoryStream();
+            doc.Save(outMs);
+            return outMs.ToArray();
+        }
+    }
+
     public int CountPdfPages(byte[] pdfBytes)
     {
         using var ms = new System.IO.MemoryStream(pdfBytes);

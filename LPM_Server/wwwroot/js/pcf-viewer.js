@@ -1561,10 +1561,9 @@ window.pcfViewer = {
         const scaleByHeight  = (viewer.clientHeight)     / renderedHeight;
         pane.dualScale       = Math.min(scaleByWidth, scaleByHeight);
 
-        viewer.style.flexDirection  = 'row';
-        viewer.style.alignItems     = 'center';
-        viewer.style.justifyContent = 'center';
-        viewer.style.flexWrap       = 'nowrap';
+        viewer.style.display             = 'grid';
+        viewer.style.gridTemplateColumns = '1fr 1fr';
+        viewer.style.alignItems          = 'center';
         viewer.classList.add('pcf-dual-mode');
 
         this._applyDualVisibility(paneId);
@@ -1580,12 +1579,11 @@ window.pcfViewer = {
         pane.dualScale = 1;
 
         if (viewer) {
-            viewer.style.padding        = '';
-            viewer.style.gap            = '';
-            viewer.style.flexDirection  = '';
-            viewer.style.alignItems     = '';
-            viewer.style.justifyContent = '';
-            viewer.style.flexWrap       = '';
+            viewer.style.padding             = '';
+            viewer.style.gap                 = '';
+            viewer.style.display             = '';
+            viewer.style.gridTemplateColumns = '';
+            viewer.style.alignItems          = '';
             viewer.classList.remove('pcf-dual-mode');
         }
 
@@ -1595,6 +1593,7 @@ window.pcfViewer = {
             if (!wrapper) continue;
             wrapper.style.display     = '';
             wrapper.style.zoom        = zl !== 1 ? String(zl) : '';
+            wrapper.style.justifySelf = '';
             wrapper.style.marginLeft  = '';
             wrapper.style.marginRight = '';
         }
@@ -1631,14 +1630,17 @@ window.pcfViewer = {
             const wrapper = pane.pages[i].canvas.parentElement;
             if (!wrapper) continue;
             if (i === p0 || i === p1) {
-                wrapper.style.display    = '';
-                wrapper.style.zoom       = String(ds * zl);
-                wrapper.style.marginLeft = '0';
-                wrapper.style.marginRight= '0';
+                wrapper.style.display      = '';
+                wrapper.style.zoom         = String(ds * zl);
+                wrapper.style.marginLeft   = '0';
+                wrapper.style.marginRight  = '0';
+                // Push pages to inner edges so they touch at the center (book-spread layout)
+                wrapper.style.justifySelf  = (i === p0) ? 'end' : 'start';
             } else {
-                wrapper.style.display    = 'none';
-                wrapper.style.marginLeft = '';
-                wrapper.style.marginRight= '';
+                wrapper.style.display      = 'none';
+                wrapper.style.justifySelf  = '';
+                wrapper.style.marginLeft   = '';
+                wrapper.style.marginRight  = '';
             }
         }
     },
