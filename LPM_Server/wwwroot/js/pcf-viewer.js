@@ -1540,14 +1540,40 @@ window.pcfViewer = {
 
     // ── Dual-page (side-by-side) mode ──
 
-    enterDualMode(paneId) {
+    getCurrentPage(paneId) {
+        const pane = this.panes[paneId];
+        if (!pane || !pane.pages.length) return 0;
+        if (pane.dualMode) return pane.dualPage;
+        const viewer = document.getElementById('pcf-viewer-' + paneId);
+        if (!viewer) return 0;
+        const scrollTop = viewer.scrollTop;
+        for (let i = 0; i < pane.pages.length; i++) {
+            const w = pane.pages[i].canvas.parentElement;
+            if (w && w.offsetTop + w.offsetHeight > scrollTop) return i;
+        }
+        return 0;
+    },
+
+    scrollToPage(paneId, pageIndex) {
+        const pane = this.panes[paneId];
+        if (!pane || pageIndex <= 0 || pageIndex >= pane.pages.length) return;
+        const viewer = document.getElementById('pcf-viewer-' + paneId);
+        if (!viewer) return;
+        const w = pane.pages[pageIndex].canvas.parentElement;
+        if (w) viewer.scrollTop = w.offsetTop;
+    },
+
+    enterDualMode(paneId, startPage) {
         const pane = this.panes[paneId];
         if (!pane || !pane.pages.length) return [0, 0];
         const viewer = document.getElementById('pcf-viewer-' + paneId);
         if (!viewer) return [0, 0];
 
         pane.dualMode = true;
-        pane.dualPage = 0;
+        const total   = pane.pages.length;
+        const maxPage = Math.floor((total - 1) / 2) * 2;
+        const sp      = (startPage > 0) ? startPage : 0;
+        pane.dualPage = Math.min(sp - (sp % 2), maxPage);  // align to even, clamp
 
         // Remove viewer padding/gap so pages can fill the full area
         viewer.style.padding = '0';
