@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+
 namespace LPM.Services;
 
 /// <summary>
@@ -13,6 +16,10 @@ public class DbBackupService(
 {
     private const int MaxBackups    = 42;
     private const int IntervalHours = 4;
+
+    // For CPU % calculation across cycles
+    private static TimeSpan _lastCpuTime  = TimeSpan.Zero;
+    private static DateTime _lastWallTime = DateTime.MinValue;
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
@@ -58,6 +65,7 @@ public class DbBackupService(
 
     private void RunCycle()
     {
+        LogSystemStats();
         var backupFolder = GetBackupFolder();
         var integrity    = folderSvc.CheckIntegrity();
 
@@ -133,4 +141,93 @@ public class DbBackupService(
 
     private string GetBackupFolder() =>
         folderSvc.GetAutoBackupFolder(config["Database:BackupFolder"]);
+
+    // ── System stats logging ─────────────────────────────────────────────────
+
+    private void LogSystemStats()
+    {
+        var ts = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+        try
+        {
+            var (totalMb, usedMb, availMb) = ReadServerMemory();
+            string serverLine = usedMb.HasValue
+                ? $"[DbBackup {ts}] Server RAM : {totalMb:N0} MB total | {usedMb:N0} MB used ({(double)usedMb / totalMb * 100:F1}%) | {availMb:N0} MB available"
+                : $"[DbBackup {ts}] Server RAM : {totalMb:N0} MB total (used/available not available on this OS)";
+            Console.WriteLine(serverLine);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DbBackup {ts}] Server RAM : unavailable ({ex.Message})");
+        }
+
+        try
+        {
+            var proc        = Process.GetCurrentProcess();
+            var wsMb        = proc.WorkingSet64       / 1024 / 1024;
+            var privateMb   = proc.PrivateMemorySize64 / 1024 / 1024;
+            var gcMb        = GC.GetTotalMemory(false) / 1024 / 1024;
+
+            // CPU % = cpu-time delta / (wall-time delta × logical cores)
+            var nowCpu  = proc.TotalProcessorTime;
+            var nowWall = DateTime.UtcNow;
+            string cpuStr;
+            if (_lastWallTime == DateTime.MinValue)
+            {
+                cpuStr = "--% (first run)";
+            }
+            else
+            {
+                var cpuDelta  = (nowCpu  - _lastCpuTime).TotalSeconds;
+                var wallDelta = (nowWall - _lastWallTime).TotalSeconds;
+                var cores     = Environment.ProcessorCount;
+                var pct       = wallDelta > 0 ? cpuDelta / (wallDelta * cores) * 100.0 : 0;
+                cpuStr = $"{pct:F1}%";
+            }
+            _lastCpuTime  = nowCpu;
+            _lastWallTime = nowWall;
+
+            Console.WriteLine($"[DbBackup {ts}] Process    : {wsMb:N0} MB working set | {privateMb:N0} MB private | {gcMb:N0} MB GC heap | CPU (last {IntervalHours}h avg): {cpuStr}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DbBackup {ts}] Process stats: unavailable ({ex.Message})");
+        }
+    }
+
+    /// <summary>
+    /// Returns (totalMb, usedMb?, availMb?) for the whole server.
+    /// On Linux reads /proc/meminfo. On other OSes falls back to GC info (total only).
+    /// </summary>
+    private static (long totalMb, long? usedMb, long? availMb) ReadServerMemory()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            long totalKb = 0, availKb = 0;
+            foreach (var line in File.ReadLines("/proc/meminfo"))
+            {
+                if (line.StartsWith("MemTotal:"))
+                    totalKb = ParseProcMemLine(line);
+                else if (line.StartsWith("MemAvailable:"))
+                    availKb = ParseProcMemLine(line);
+                if (totalKb > 0 && availKb > 0) break;
+            }
+            var totalMb = totalKb / 1024;
+            var availMb = availKb / 1024;
+            return (totalMb, totalMb - availMb, availMb);
+        }
+
+        // Fallback: GC knows total RAM but not used/available breakdown
+        var gcInfo  = GC.GetGCMemoryInfo();
+        var fallbackMb = gcInfo.TotalAvailableMemoryBytes / 1024 / 1024;
+        return (fallbackMb, null, null);
+    }
+
+    private static long ParseProcMemLine(string line)
+    {
+        // Format: "MemTotal:       16384000 kB"
+        var parts = line.Split(':', StringSplitOptions.TrimEntries);
+        if (parts.Length < 2) return 0;
+        var numStr = parts[1].Replace("kB", "", StringComparison.OrdinalIgnoreCase).Trim();
+        return long.TryParse(numStr, out var v) ? v : 0;
+    }
 }
