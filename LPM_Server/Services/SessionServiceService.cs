@@ -18,7 +18,11 @@ public class SessionService
         {
             try
             {
-                return _httpContextAccessor?.HttpContext?.Session;
+                var ctx = _httpContextAccessor?.HttpContext;
+                // After the initial HTTP request, Blazor Server runs over SignalR and
+                // Response.HasStarted is true — session writes are not possible then.
+                if (ctx == null || ctx.Response.HasStarted) return null;
+                return ctx.Session;
             }
             catch (Exception ex)
             {
