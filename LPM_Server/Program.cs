@@ -52,6 +52,10 @@ builder.Services.AddServerSideBlazor()
     .AddHubOptions(options =>
     {
         options.MaximumReceiveMessageSize = 1024 * 1024 * 500; // 500MB
+    })
+    .AddCircuitOptions(options =>
+    {
+        options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromHours(12);
     });
 // 200 MB decrypted-file cache — shared across all users, keyed by absolute disk path
 builder.Services.AddMemoryCache(o => o.SizeLimit = 200L * 1024 * 1024);

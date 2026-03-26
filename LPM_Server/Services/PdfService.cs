@@ -1991,7 +1991,7 @@ public class PdfService
             catch (PdfSharpCore.Pdf.IO.PdfReaderException)
             {
                 ms.Position = 0;
-                input = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, "", PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import, null, PdfSharpCore.Pdf.IO.PdfReadAccuracy.Lenient);
+                input = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, "", PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import, null);
             }
             using (input)
                 for (int i = 0; i < input.PageCount; i++)
@@ -2017,7 +2017,7 @@ public class PdfService
         catch (PdfSharpCore.Pdf.IO.PdfReaderException)
         {
             ms.Position = 0;
-            using var doc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, "", PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import, null, PdfSharpCore.Pdf.IO.PdfReadAccuracy.Lenient);
+            using var doc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, "", PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import, null);
             return doc.PageCount;
         }
     }

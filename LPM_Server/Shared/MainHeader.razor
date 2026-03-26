@@ -3646,7 +3646,7 @@ string _actionPcSearch = "";
         {
             // Solo user: open their own solo folder immediately, no selection needed
             Console.WriteLine($"[MainHeader] Open Folder (solo): PC={_msgUserId.Value} user='{_logUsername}'");
-            NavigationManager.NavigateTo($"/PcFolder/{_msgUserId.Value}?solo=true");
+            NavigationManager.NavigateTo($"/PcFolder/{_msgUserId.Value}?solo=true", forceLoad: true);
             return;
         }
         LoadAllPcs();
@@ -3665,7 +3665,7 @@ string _actionPcSearch = "";
             _showActionOpenFolder = false;
             var soloParam = solo ? "?solo=true" : "";
             Console.WriteLine($"[MainHeader] Open Folder: PC='{pcName}' (id={pcId}) solo={solo} user='{_logUsername}'");
-            NavigationManager.NavigateTo($"/PcFolder/{pcId}{soloParam}");
+            NavigationManager.NavigateTo($"/PcFolder/{pcId}{soloParam}", forceLoad: true);
         }
         else
         {
