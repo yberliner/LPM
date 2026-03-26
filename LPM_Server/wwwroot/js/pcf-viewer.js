@@ -422,7 +422,9 @@ window.pcfViewer = {
 
         // If scale is effectively unchanged, just scroll to target and return
         if (Math.abs(ratio - 1) < 0.002) {
-            if (targetPage > 0 && pane.pages[targetPage]) {
+            if (pane.dualMode) {
+                this.enterDualMode(paneId, targetPage > 0 ? targetPage : pane.dualPage);
+            } else if (targetPage > 0 && pane.pages[targetPage]) {
                 const tw = pane.pages[targetPage].canvas.parentElement;
                 if (tw) viewer.scrollTop = tw.offsetTop;
             }
@@ -448,50 +450,77 @@ window.pcfViewer = {
         }
         pane.baseScale = newScale;
 
-        // INSTANT: apply CSS zoom to all wrappers so the viewer snaps to the new size
-        const wrappers = viewer.querySelectorAll('.pcf-page-wrapper');
-        wrappers.forEach(w => { w.style.zoom = String(ratio); });
-
-        // INSTANT: scroll to target page (works because offsetTop accounts for zoom)
-        if (targetPage > 0 && pane.pages[targetPage]) {
-            const tw = pane.pages[targetPage].canvas.parentElement;
-            if (tw) viewer.scrollTop = tw.offsetTop;
-        }
-
-        // BACKGROUND: re-render each page at new scale, remove zoom wrapper-by-wrapper as each completes
-        for (let i = 0; i < pane.pdfPages.length; i++) {
-            if (pane.loadGen !== myGen) return; // superseded by a new load
+        // Helper: resize and re-render a single page canvas at newScale
+        const renderPage = async (i) => {
             const page    = pane.pdfPages[i];
             const vp      = page.getViewport({ scale: newScale });
             const pg      = pane.pages[i];
             const wrapper = pg.canvas.parentElement;
-
-            // Resize canvas and overlay to new pixel dimensions
             pg.canvas.width  = vp.width;
             pg.canvas.height = vp.height;
             wrapper.style.width  = vp.width  + 'px';
             wrapper.style.height = vp.height + 'px';
-
-            pg.overlay.width         = vp.width;
-            pg.overlay.height        = vp.height;
-            pg.overlay.style.width   = vp.width  + 'px';
-            pg.overlay.style.height  = vp.height + 'px';
-
+            pg.overlay.width        = vp.width;
+            pg.overlay.height       = vp.height;
+            pg.overlay.style.width  = vp.width  + 'px';
+            pg.overlay.style.height = vp.height + 'px';
             const textLayerDiv = wrapper.querySelector('.pcf-text-layer');
             if (textLayerDiv) {
                 textLayerDiv.style.width  = vp.width  + 'px';
                 textLayerDiv.style.height = vp.height + 'px';
                 textLayerDiv.style.setProperty('--scale-factor', vp.scale);
             }
-
             await page.render({ canvasContext: pg.canvas.getContext('2d'), viewport: vp }).promise;
-            if (pane.loadGen !== myGen) return;
-
-            // Page now rendered at native resolution — remove CSS zoom for this wrapper
-            wrapper.style.zoom = '';
             pg.vp    = vp;
             pg.scale = newScale;
             this._redrawOverlay(i, paneId);
+        };
+
+        if (pane.dualMode) {
+            // DUAL MODE: re-render priority pages (page 0 for dualScale calc + visible pages),
+            // call enterDualMode to snap to correct view, then re-render rest in background.
+            const sp  = targetPage > 0 ? targetPage : pane.dualPage;
+            const p0  = sp - (sp % 2);                           // align to even
+            const p1  = p0 + 1;
+            const n   = pane.pdfPages.length;
+            // Build priority order: 0 (for dualScale), p0, p1 — deduplicated, all in bounds
+            const priority = [...new Set([0, p0, p1].filter(i => i < n))];
+            const rest     = [];
+            for (let i = 0; i < n; i++) { if (!priority.includes(i)) rest.push(i); }
+
+            // Render priority pages (≤3 pages, very fast)
+            for (const i of priority) {
+                if (pane.loadGen !== myGen) return;
+                await renderPage(i);
+                if (pane.loadGen !== myGen) return;
+            }
+
+            // Page 0 now at new canvas size → enterDualMode computes correct dualScale instantly
+            this.enterDualMode(paneId, sp);
+
+            // Render remaining pages silently in background (all hidden in dual mode)
+            for (const i of rest) {
+                if (pane.loadGen !== myGen) return;
+                await renderPage(i);
+                if (pane.loadGen !== myGen) return;
+            }
+        } else {
+            // NORMAL MODE: instant CSS zoom on all wrappers → scroll → re-render per page in background
+            const wrappers = viewer.querySelectorAll('.pcf-page-wrapper');
+            wrappers.forEach(w => { w.style.zoom = String(ratio); });
+
+            if (targetPage > 0 && pane.pages[targetPage]) {
+                const tw = pane.pages[targetPage].canvas.parentElement;
+                if (tw) viewer.scrollTop = tw.offsetTop;
+            }
+
+            for (let i = 0; i < pane.pdfPages.length; i++) {
+                if (pane.loadGen !== myGen) return;
+                await renderPage(i);
+                if (pane.loadGen !== myGen) return;
+                // Page rendered at native resolution — remove CSS zoom
+                pane.pages[i].canvas.parentElement.style.zoom = '';
+            }
         }
     },
 
