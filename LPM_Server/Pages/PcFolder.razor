@@ -1298,6 +1298,40 @@
         0%, 100% { opacity: .45; transform: scale(.85); filter: drop-shadow(0 0 1px rgba(251,191,36,.25)); }
         50%      { opacity: .9;  transform: scale(1.05); filter: drop-shadow(0 0 5px rgba(251,191,36,.75)); }
     }
+    /* ── Cinematic Reading animation overlay ── */
+    .pcf-expand-anim-overlay {
+        position: absolute; inset: 0; z-index: 200;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+        background: radial-gradient(ellipse at center, rgba(251,191,36,.07) 0%, rgba(10,14,26,.72) 65%);
+        backdrop-filter: blur(10px) saturate(1.6);
+        color: #f1f5f9; pointer-events: none; border-radius: inherit;
+        animation: pcf-expand-flash 1.1s ease forwards;
+    }
+    .pcf-expand-anim-overlay i {
+        font-size: 3rem; color: #fbbf24;
+        filter: drop-shadow(0 0 18px rgba(251,191,36,.75));
+        animation: pcf-expand-icon .8s cubic-bezier(.34,1.4,.64,1) .05s both;
+    }
+    .pcf-expand-anim-overlay span {
+        font-size: .76rem; font-weight: 700; letter-spacing: .3em; text-transform: uppercase;
+        color: #cbd5e1; text-shadow: 0 1px 10px rgba(241,245,249,.15);
+        animation: pcf-expand-label .75s ease .12s both;
+    }
+    @@keyframes pcf-expand-flash {
+        0%   { opacity: 0; }
+        14%  { opacity: 1; }
+        70%  { opacity: 1; }
+        100% { opacity: 0; }
+    }
+    @@keyframes pcf-expand-icon {
+        0%   { transform: scale(.35); opacity: 0; }
+        62%  { transform: scale(1.2);  opacity: 1; }
+        100% { transform: scale(1);    opacity: 1; }
+    }
+    @@keyframes pcf-expand-label {
+        0%   { opacity: 0; transform: translateY(10px); letter-spacing: .08em; }
+        100% { opacity: 1; transform: translateY(0);    letter-spacing: .3em;  }
+    }
     /* ── Pane folder-summary FS badge (top-left, next to star) ── */
     .pcf-pane-fs-icon {
         position: absolute; top: 5px; left: 24px; z-index: 25;
@@ -2680,6 +2714,7 @@
     bool _fitMode;
     bool _panMode;
     List<(string paneId, string file)>? _pendingReloads;
+    string? _pendingDualPaneId;   // pane that should auto-enter dual mode after its reload completes
     HashSet<string>                     _dualPanes = new();
     bool _voiceOn        = false;
     Dictionary<string, (int page, int total)> _dualInfo = new();
@@ -3043,6 +3078,21 @@
             }
 
             StateHasChanged();
+        }
+
+        // Session pane maximize: no reload was issued — enter dual mode on already-rendered pages
+        if (_pendingDualPaneId != null)
+        {
+            var paneId = _pendingDualPaneId;
+            _pendingDualPaneId = null;
+            var result = await JS.InvokeAsync<int[]>("pcfViewer.enterDualMode", paneId);
+            if (result != null && result.Length == 2 && result[1] > 0)
+            {
+                _dualPanes.Add(paneId);
+                _dualInfo[paneId] = (result[0], result[1]);
+                await JS.InvokeVoidAsync("pcfViewer.showExpandAnimation", paneId);
+                StateHasChanged();
+            }
         }
 
         // Attach right-click handler for any newly-rendered pane viewers.
@@ -3625,9 +3675,20 @@
         Console.WriteLine($"[PcFolder] Maximized pane {idx} ('{_panes[idx].FileName}') by '{_userName}' — PC {PcId}");
         _maximizedPane = idx;
         _activeIdx = idx;
-        // Reload so it re-renders to fit the now-wider viewport
-        if (!string.IsNullOrEmpty(_panes[idx].File) && !_panes[idx].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
-            _pendingReloads = [(PaneIds[idx], _panes[idx].File!)];
+
+        // Session pane going to dual mode: skip the reload entirely.
+        // In split view each pane is ~half-screen wide; in maximized+dual mode each
+        // page is also ~half-screen wide — identical resolution, zoom ≈ 1, no quality
+        // loss. The reload would re-render at full width only to be halved immediately.
+        bool isSessionPane = !string.IsNullOrEmpty(_csSessionName)
+            && !string.IsNullOrEmpty(_panes[idx].File)
+            && SessionDisplayName(Path.GetFileName(_panes[idx].File!))
+                .Equals(_csSessionName, StringComparison.OrdinalIgnoreCase);
+        if (isSessionPane && !_dualPanes.Contains(PaneIds[idx]))
+            _pendingDualPaneId = PaneIds[idx];
+        else if (!string.IsNullOrEmpty(_panes[idx].File) && !_panes[idx].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+            _pendingReloads = [(PaneIds[idx], _panes[idx].File!)];  // normal maximize: reload for full-width sharpness
+
         await JS.InvokeVoidAsync("pcfViewer.setActivePane", PaneIds[idx]);
     }
 

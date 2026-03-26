@@ -1592,6 +1592,16 @@ window.pcfViewer = {
         }
     },
 
+    showExpandAnimation(paneId) {
+        const el = document.querySelector('.pcf-pane-' + paneId);
+        if (!el) return;
+        const ov = document.createElement('div');
+        ov.className = 'pcf-expand-anim-overlay';
+        ov.innerHTML = '<i class="ri-book-open-line"></i><span>Cinematic Reading</span>';
+        el.appendChild(ov);
+        setTimeout(() => ov.remove(), 1150);
+    },
+
     dualPageNav(paneId, delta) {
         const pane = this.panes[paneId];
         if (!pane || !pane.dualMode) return [0, 0];

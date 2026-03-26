@@ -3248,14 +3248,14 @@
                 // ── Phase 2: save everything to the PC folder ─────────────────
                 await Advance(sSave, 1);
 
+                normalizedBytes = PdfSvc.CombinePdfs(arfPdfBytes, normalizedBytes);
+
                 var savedSessionFileName = capturedIsSolo
                     ? FolderSvc.SaveSoloUploadedFile(capturedPcId, capturedFileName, normalizedBytes)!
                     : FolderSvc.SaveUploadedFile(capturedPcId, capturedFileName, normalizedBytes)!;
 
                 foreach (var (name, data) in capturedAttachments)
                     FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, name, data, capturedIsSolo);
-
-                FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, "arf.pdf", arfPdfBytes, capturedIsSolo);
 
                 if (!string.IsNullOrWhiteSpace(capturedStep3Bottom))
                     DashSvc.SaveNextCs(sessionId, capturedStep3Bottom);

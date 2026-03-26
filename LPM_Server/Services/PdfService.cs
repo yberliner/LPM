@@ -1574,7 +1574,7 @@ public class PdfService
                 page.Margin(30);
                 page.DefaultTextStyle(x => x.FontSize(10).FontColor("#1a1a1a").FontFamily("Liberation Sans", "Arial", "Helvetica", "DejaVu Sans"));
 
-                page.Content().Column(col =>
+                page.Content().ScaleToFit().Column(col =>
                 {
                     // Title
                     col.Item().AlignCenter().PaddingBottom(14)
