@@ -1512,6 +1512,8 @@ public class FolderService
             return null; // signal caller to try Ghostscript repair
         }
 
+        try
+        {
         using (doc)
         {
             Console.WriteLine($"[Norm] Opened PDF: {doc.PageCount} pages");
@@ -1647,6 +1649,12 @@ public class FolderService
             }
 
             return result;
+        }
+        } // end using (doc)
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Norm] Normalisation failed: {ex.Message}");
+            return null; // caller falls back to Ghostscript / LibreOffice
         }
     }
 
