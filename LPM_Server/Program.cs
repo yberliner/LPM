@@ -551,6 +551,8 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
     var path = ctx.Request.Query["path"].ToString();
     if (string.IsNullOrEmpty(path)) return Results.BadRequest();
     var solo = ctx.Request.Query["solo"].ToString() == "true";
+    var saveUser2 = ctx.User?.Identity?.Name ?? "unknown";
+    Console.WriteLine($"[AnnSave] pcId={pcId} solo={solo} user='{saveUser2}' path='{path}' pathHex=[{string.Join(" ", System.Text.Encoding.UTF8.GetBytes(path).Select(b => b.ToString("X2")))}]");
     if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
 
     var sizeFeat = ctx.Features.Get<IHttpMaxRequestBodySizeFeature>();
@@ -575,7 +577,7 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
     if (needsOriginal)
     {
         var originalBytes = svc.ReadFileBytes(pcId, path, solo);
-        if (originalBytes == null) return Results.NotFound();
+        if (originalBytes == null) { Console.WriteLine($"[AnnSave] 404 (needsOriginal) pcId={pcId} solo={solo} path='{path}'"); return Results.NotFound(); }
         try
         {
             using var ms0 = new MemoryStream(originalBytes);
@@ -590,7 +592,7 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
     else
     {
         // Raster-only save: verify file exists without opening it
-        if (svc.ReadFileBytes(pcId, path, solo) == null) return Results.NotFound();
+        if (svc.ReadFileBytes(pcId, path, solo) == null) { Console.WriteLine($"[AnnSave] 404 (raster) pcId={pcId} solo={solo} path='{path}'"); return Results.NotFound(); }
     }
     using var _disposeOriginalDoc = originalDoc;
     using var newDoc = new PdfSharpCore.Pdf.PdfDocument();

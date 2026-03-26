@@ -1768,6 +1768,7 @@
         Console.WriteLine($"[Home] CS The Session — sessionId={sessionId}, sessionName={sessionName}, pcId={_selPcId} by '{_username}'");
         if (!_selPcId.HasValue) return;
         var url = $"/PcFolder/{_selPcId.Value}?sessionId={sessionId}&csMode=true";
+        if (_selRole == "CSSolo") url += "&solo=true";
         if (!string.IsNullOrWhiteSpace(sessionName))
             url += $"&file={Uri.EscapeDataString(sessionName)}";
         Nav.NavigateTo(url, forceLoad: true);
