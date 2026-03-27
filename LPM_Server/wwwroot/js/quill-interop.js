@@ -3,6 +3,24 @@ var SizeStyle = Quill.import('attributors/style/size');
 SizeStyle.whitelist = ['10px', '14px', '18px', '24px', '32px'];
 Quill.register(SizeStyle, true);
 
+window.step3Quill = (function () {
+    function attachListeners(dotnetRef) {
+        function checkEmpty() {
+            var top = window['_quill_step3-top-editor'];
+            var bot = window['_quill_step3-bottom-editor'];
+            var topText = top ? top.getText().trim() : '';
+            var botText = bot ? bot.getText().trim() : '';
+            dotnetRef.invokeMethodAsync('UpdateNextCsSkipBadge', topText === '' && botText === '');
+        }
+        var t = window['_quill_step3-top-editor'];
+        var b = window['_quill_step3-bottom-editor'];
+        if (t) t.on('text-change', checkEmpty);
+        if (b) b.on('text-change', checkEmpty);
+    }
+
+    return { attachListeners: attachListeners };
+})();
+
 window.quillInterop = (function () {
     const instances = new Map();
 

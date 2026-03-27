@@ -1073,28 +1073,47 @@
                 <div class="modal-body">
 
                     @* ── Stepper ── *@
-                    <div class="wiz-stepper mb-3">
-                        @{
-                            var stepLabels = new[] { "Choose PC", "Fill ARF", "Next C/S" };
-                        }
-                        @for (int s = 1; s <= 3; s++)
-                        {
-                            var sn = s;
-                            var lbl = stepLabels[sn - 1];
-                            var isDone   = _importStep > sn;
-                            var isActive = _importStep == sn;
-                            var cls = isActive ? "wiz-active" : isDone ? "wiz-done" : "wiz-future";
-                            <div class="wiz-step @cls">
-                                <div class="wiz-circle">
-                                    @if (isDone) { <i class="ri-check-line"></i> }
-                                    else { @sn }
-                                </div>
-                                <div class="wiz-label">@lbl</div>
-                            </div>
-                            @if (sn < 3)
-                            {
-                                <div class="wiz-conn @(isDone ? "wiz-conn-done" : "")"></div>
+                    <div class="d-flex align-items-center gap-3 flex-wrap mb-3">
+                        <div class="wiz-stepper">
+                            @{
+                                var stepLabels = new[] { "Choose PC", "Fill ARF", "Next C/S" };
                             }
+                            @for (int s = 1; s <= 3; s++)
+                            {
+                                var sn = s;
+                                var lbl = stepLabels[sn - 1];
+                                var isDone   = _importStep > sn;
+                                var isActive = _importStep == sn;
+                                var cls = isActive ? "wiz-active" : isDone ? "wiz-done" : "wiz-future";
+                                <div class="wiz-step @cls">
+                                    <div class="wiz-circle">
+                                        @if (isDone) { <i class="ri-check-line"></i> }
+                                        else { @sn }
+                                    </div>
+                                    <div class="wiz-label">@lbl</div>
+                                </div>
+                                @if (sn < 3)
+                                {
+                                    <div class="wiz-conn @(isDone ? "wiz-conn-done" : "")"></div>
+                                }
+                            }
+                        </div>
+                        @if (_importStep == 3 && (_showArfSkipBadge || _showNextCsSkipBadge))
+                        {
+                            <div class="d-flex gap-2 flex-wrap">
+                                @if (_showArfSkipBadge)
+                                {
+                                    <span class="badge bg-secondary" style="font-size:.72rem;">
+                                        <i class="ri-file-forbid-line me-1"></i>ARF not generated
+                                    </span>
+                                }
+                                @if (_showNextCsSkipBadge)
+                                {
+                                    <span class="badge bg-secondary" style="font-size:.72rem;">
+                                        <i class="ri-file-forbid-line me-1"></i>Next CS not generated
+                                    </span>
+                                }
+                            </div>
                         }
                     </div>
 
@@ -1285,9 +1304,16 @@
                                            @bind="_arfGrade" @bind:event="oninput" />
                                 </div>
                                 <div class="arf-field">
-                                    <span class="arf-lbl arf-lbl-right-fixed">Session Length</span>
+                                    <span class="arf-lbl arf-lbl-right-fixed">
+                                        Session Length
+                                        @if (string.IsNullOrWhiteSpace(_arfSessionLength))
+                                        {
+                                            <span style="color:#ef4444;font-weight:700;margin-left:2px;">*</span>
+                                        }
+                                    </span>
                                     <input type="text" inputmode="numeric" maxlength="5"
                                            class="form-control form-control-sm arf-input-xs arf-time-input @(!IsValidArfTime(_arfSessionLength) ? "arf-invalid" : "")"
+                                           style="@(string.IsNullOrWhiteSpace(_arfSessionLength) ? "border:2px solid #ef4444 !important;background:rgba(239,68,68,.08) !important;" : "")"
                                            placeholder="H:MM"
                                            value="@_arfSessionLength"
                                            @oninput="e => _arfSessionLength = e.Value?.ToString() ?? string.Empty"
@@ -1530,7 +1556,7 @@
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showImportWizard = false">Cancel</button>
                         <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                                disabled="@(_importSessionBytes == null || _importDuplicate || !string.IsNullOrEmpty(_importNameEditError) || string.IsNullOrEmpty(_importNormalizedFileName) || ArfHasTimeErrors || !IsValidArfTime(_arfAdminTime) || string.IsNullOrWhiteSpace(_arfAdminTime) || !IsValidArfTime(_arfSessionLength) || ArfHasIncompleteRows)"
+                                disabled="@(_importSessionBytes == null || _importDuplicate || !string.IsNullOrEmpty(_importNameEditError) || string.IsNullOrEmpty(_importNormalizedFileName) || (!IsArfTableEmpty && (ArfHasTimeErrors || ArfHasIncompleteRows)) || !IsValidArfTime(_arfAdminTime) || string.IsNullOrWhiteSpace(_arfAdminTime) || string.IsNullOrWhiteSpace(_arfSessionLength) || !IsValidArfTime(_arfSessionLength))"
                                 @onclick="GoToStep3">
                             Next <i class="ri-arrow-right-s-line"></i>
                         </button>
@@ -2553,6 +2579,9 @@
     // ── Add Session state ──
     bool _showImportWizard;
     int  _importStep = 1;      // 1 = file upload, 2 = examiner worksheet
+    bool _showArfSkipBadge;
+    bool _showNextCsSkipBadge;
+    DotNetObjectReference<MainHeader>? _step3DotNetRef;
     int  _importPcId;
     IBrowserFile? _importSessionFile;
     byte[]? _importSessionBytes;
@@ -2784,6 +2813,12 @@
     bool ArfHasIncompleteRows => _arfRows.Any(r =>
         string.IsNullOrWhiteSpace(r.Process) || string.IsNullOrWhiteSpace(r.Time) || !IsValidArfTime(r.Time));
 
+    bool IsArfTableEmpty => _arfRows.Count == 1
+        && string.IsNullOrWhiteSpace(_arfRows[0].Process)
+        && string.IsNullOrWhiteSpace(_arfRows[0].Time)
+        && string.IsNullOrWhiteSpace(_arfRows[0].ToneArm)
+        && string.IsNullOrWhiteSpace(_arfRows[0].Results);
+
     // Formats raw input as #.##.
     // With dot:    "3.42" → "3.42", "3." → "3." (in-progress), "3.4" → "3.4"
     // Without dot: "342"  → "3.42", "34" → "3.4", "3" → "3"
@@ -2964,9 +2999,17 @@
 
     void GoToStep3()
     {
-        _importStep = 3;
+        _showArfSkipBadge    = IsArfTableEmpty;
         // Pre-fill bottom editor with previous session's NextCS
         var prevNextCs = _importPcId > 0 ? DashSvc.GetLastNextCs(_importPcId) : null;
+        _showNextCsSkipBadge = string.IsNullOrWhiteSpace(prevNextCs);
+
+        _importStep = 3;
+
+        _step3DotNetRef?.Dispose();
+        _step3DotNetRef = DotNetObjectReference.Create(this);
+        var dotNetRef = _step3DotNetRef;
+
         _ = Task.Run(async () =>
         {
             await Task.Delay(100);
@@ -2991,12 +3034,12 @@
                     });
                 });
             ");
-            // Push previous NextCS into the bottom editor
             if (!string.IsNullOrWhiteSpace(prevNextCs))
             {
                 await JSRuntime.InvokeVoidAsync("eval",
                     $"var q=window['_quill_step3-bottom-editor']; if(q) q.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(prevNextCs)};");
             }
+            await JSRuntime.InvokeVoidAsync("step3Quill.attachListeners", dotNetRef);
         });
     }
 
@@ -3242,6 +3285,7 @@
         var capturedStep3Top    = _step3TopHtml;
         var capturedStep3Bottom = _step3BottomHtml;
         var capturedAuditorName = string.IsNullOrWhiteSpace(_importAuditorFullName) ? _logUsername : _importAuditorFullName;
+        var capturedArfEmpty    = IsArfTableEmpty;
 
         // Close reference float if open
         await JSRuntime.InvokeVoidAsync("wizardRef.closeFloat");
@@ -3413,6 +3457,12 @@
                     }),
                     Task.Run(async () =>
                     {
+                        if (string.IsNullOrWhiteSpace(capturedStep3Top) && string.IsNullOrWhiteSpace(capturedStep3Bottom))
+                        {
+                            sNextCs.SubLabel = "skipped";
+                            await Advance(sNextCs, 2);
+                            return;
+                        }
                         nextCsPdfBytes = PdfSvc.GenerateNextCsPdf(
                             capturedPcName, DateTime.Today.ToString("dd/MM/yyyy"),
                             capturedAuditorName, capturedStep3Top, capturedStep3Bottom);
@@ -3421,18 +3471,26 @@
                 );
 
                 // ── Phase 1.5: generate ARF sized to session page, then combine ──
-                // Content is locked to A4 proportions inside QuestPDF and scaled via
-                // ScaleToFit — fully vector, no PdfSharpCore post-processing.
-                sArf.Status = 1;
-                await InvokeAsync(StateHasChanged);
-                var (targetW, targetH) = FolderSvc.GetFirstPageSizePt(normalizedBytes);
-                arfPdfBytes = PdfSvc.GenerateArfPdf(
-                    capturedPcName, DateTime.Today.ToString("dd/MM/yyyy"),
-                    capturedGrade, capturedSessLen, capturedAdminTime,
-                    capturedTotalTa, taRange, capturedRows, capturedSummary,
-                    pageWidthPt: targetW, pageHeightPt: targetH);
-                await Advance(sArf, 2);
-                normalizedBytes = PdfSvc.CombinePdfs(arfPdfBytes, normalizedBytes);
+                if (capturedArfEmpty)
+                {
+                    sArf.SubLabel = "skipped";
+                    await Advance(sArf, 2);
+                }
+                else
+                {
+                    // Content is locked to A4 proportions inside QuestPDF and scaled via
+                    // ScaleToFit — fully vector, no PdfSharpCore post-processing.
+                    sArf.Status = 1;
+                    await InvokeAsync(StateHasChanged);
+                    var (targetW, targetH) = FolderSvc.GetFirstPageSizePt(normalizedBytes);
+                    arfPdfBytes = PdfSvc.GenerateArfPdf(
+                        capturedPcName, DateTime.Today.ToString("dd/MM/yyyy"),
+                        capturedGrade, capturedSessLen, capturedAdminTime,
+                        capturedTotalTa, taRange, capturedRows, capturedSummary,
+                        pageWidthPt: targetW, pageHeightPt: targetH);
+                    await Advance(sArf, 2);
+                    normalizedBytes = PdfSvc.CombinePdfs(arfPdfBytes, normalizedBytes);
+                }
 
                 // ── Phase 2: save files + TAA Excel in parallel ───────────────
                 // TAA needs only captured variables — no dependency on saved file names.
@@ -3452,7 +3510,8 @@
                         if (!string.IsNullOrWhiteSpace(capturedStep3Bottom))
                             DashSvc.SaveNextCs(sessionId, capturedStep3Bottom);
 
-                        FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, "Next CS.pdf", nextCsPdfBytes, capturedIsSolo);
+                        if (nextCsPdfBytes.Length > 0)
+                            FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, "Next CS.pdf", nextCsPdfBytes, capturedIsSolo);
 
                         await Advance(sSave, 2);
                     }),
@@ -3690,11 +3749,19 @@ string _actionPcSearch = "";
         catch { /* swallow — component may be disposed */ }
     }
 
+    [JSInvokable]
+    public async Task UpdateNextCsSkipBadge(bool isEmpty)
+    {
+        _showNextCsSkipBadge = isEmpty;
+        await InvokeAsync(StateHasChanged);
+    }
+
     public void Dispose()
     {
         _isDisposed = true;
         MsgNotifier.OnNewMessage -= OnNewMessageReceived;
         _headerScrollRef?.Dispose();
+        _step3DotNetRef?.Dispose();
     }
 
     DotNetObjectReference<MainHeader>? _headerScrollRef;
