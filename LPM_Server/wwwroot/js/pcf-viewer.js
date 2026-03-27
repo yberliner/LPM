@@ -164,7 +164,7 @@ window.pcfViewer = {
         }
 
         let pdfDoc;
-        const loadingTask = pdfjsLib.getDocument({ url, withCredentials: true });
+        const loadingTask = pdfjsLib.getDocument({ url, withCredentials: true, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/', cMapPacked: true });
         pane._loadingTask = loadingTask;
         try {
             pdfDoc = await loadingTask.promise;
@@ -1297,7 +1297,7 @@ window.pcfViewer = {
 
         let insertDoc;
         try {
-            insertDoc = await pdfjsLib.getDocument(pdfUrl).promise;
+            insertDoc = await pdfjsLib.getDocument({ url: pdfUrl, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/', cMapPacked: true }).promise;
         } catch (e) {
             console.error('Failed to load insert PDF:', e);
             return 0;
@@ -2216,7 +2216,7 @@ window.pcfViewer = {
         if (!pdfjsLib) { loadingEl.textContent = 'PDF.js not available'; return; }
 
         try {
-            const pdfDoc = await pdfjsLib.getDocument({ url, withCredentials: true }).promise;
+            const pdfDoc = await pdfjsLib.getDocument({ url, withCredentials: true, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/', cMapPacked: true }).promise;
             // Check window was closed while loading
             if (this._floatWin !== win) return;
 
