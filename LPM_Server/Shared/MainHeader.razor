@@ -422,6 +422,12 @@
                                             <i class="ri-file-edit-line" style="color:#8b5cf6;"></i>Write to Folder Summary
                                         </a>
                                     </li>
+                                    <li>
+                                        <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
+                                           @onclick="OpenMemoWizard">
+                                            <i class="ri-sticky-note-line" style="color:#ec4899;"></i>Add Memo to Folder
+                                        </a>
+                                    </li>
                                     @if (!_isSoloUser)
                                     {
                                     <li>
@@ -1701,6 +1707,231 @@
     </div>
 }
 
+@* ── Add Memo Wizard ── *@
+@if (_showMemoWizard)
+{
+    <div class="modal show d-block" tabindex="-1"
+         style="background:rgba(0,0,0,.5); z-index:9999;">
+        <div class="modal-dialog modal-dialog-centered @(_memoStep == 2 ? "modal-lg" : "modal-md")"
+             @onclick:stopPropagation="true">
+            <div class="modal-content" style="background:#1e293b; color:#e2e8f0; border:1px solid #334155;">
+                <div class="modal-header py-2" style="background:linear-gradient(135deg,#be185d,#ec4899); border-bottom:none;">
+                    <h5 class="modal-title fs-15 text-white d-flex align-items-center gap-2">
+                        <i class="ri-sticky-note-line"></i>Add Memo to Folder
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white"
+                            @onclick="() => _showMemoWizard = false"></button>
+                </div>
+                <div class="modal-body">
+
+                    @* ── Stepper ── *@
+                    <div class="d-flex align-items-center gap-3 flex-wrap mb-3">
+                        <div class="wiz-stepper">
+                            @{
+                                var memoStepLabels = new[] { "Choose PC", "Write Memo" };
+                            }
+                            @for (int s = 1; s <= 2; s++)
+                            {
+                                var sn  = s;
+                                var lbl = memoStepLabels[sn - 1];
+                                var isDone   = _memoStep > sn;
+                                var isActive = _memoStep == sn;
+                                var cls = isActive ? "wiz-active" : isDone ? "wiz-done" : "wiz-future";
+                                <div class="wiz-step @cls">
+                                    <div class="wiz-circle">
+                                        @if (isDone) { <i class="ri-check-line"></i> }
+                                        else { @sn }
+                                    </div>
+                                    <div class="wiz-label">@lbl</div>
+                                </div>
+                                @if (sn < 2)
+                                {
+                                    <div class="wiz-conn @(isDone ? "wiz-conn-done" : "")"></div>
+                                }
+                            }
+                        </div>
+                    </div>
+
+                    @if (_memoStep == 1)
+                    {
+                        @* ── Step 1: Choose PC ── *@
+                        @if (!_isSoloUser && _memoPcs.Count == 0)
+                        {
+                            <div class="act-noperm-screen" style="padding:28px 16px 20px;">
+                                <div class="act-noperm-icon-wrap">
+                                    <div class="act-noperm-ring" style="border-color:rgba(220,38,38,.25);"></div>
+                                    <i class="ri-lock-line act-noperm-icon"></i>
+                                </div>
+                                <div class="act-noperm-title" style="color:#e2e8f0;">No Folders Assigned</div>
+                                <div class="act-noperm-sub" style="color:#94a3b8;">You haven't been assigned to any PC folders yet.<br>Contact your administrator to request access.</div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="mb-3">
+                                <label class="form-label" style="font-size:.82rem; color:#94a3b8;">PC</label>
+                                @if (_isSoloUser)
+                                {
+                                    <div class="form-control form-control-sm" style="background:#0f172a; color:#e2e8f0; border-color:#475569;">
+                                        @(_memoPcs.FirstOrDefault(p => p.PcId == _memoPcId)?.FullName ?? "Solo")
+                                        <span class="badge bg-primary ms-2" style="font-size:.7rem;">Solo</span>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <select class="form-select form-select-sm" style="background:#0f172a; color:#e2e8f0; border-color:#475569;"
+                                            value="@_memoPcId" @onchange="e => _memoPcId = int.TryParse(e.Value?.ToString(), out var mv) ? mv : 0">
+                                        <option value="0">— Choose a PC —</option>
+                                        @foreach (var pc in _memoPcs)
+                                        {
+                                            <option value="@pc.PcId">@pc.FullName</option>
+                                        }
+                                    </select>
+                                }
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        @* ── Step 2: Write Memo ── *@
+                        <div class="mb-1">
+                            <label class="form-label" style="font-size:.82rem; color:#94a3b8;">Memo Text</label>
+                            <div id="memo-quill-editor"
+                                 style="background:#fff; color:#000; min-height:260px; border-radius:0 0 4px 4px;">
+                            </div>
+                        </div>
+                        <div style="font-size:.72rem; color:#64748b; margin-top:6px;">
+                            <i class="ri-information-line me-1"></i>
+                            The memo will be saved as a single A4 PDF page in the PC's WorkSheets folder.
+                        </div>
+                    }
+
+                </div>
+                <div class="modal-footer" style="background:#0f172a; border-top:1px solid #1e293b;">
+                    @if (_memoStep == 1)
+                    {
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showMemoWizard = false">Cancel</button>
+                        @if (_isSoloUser || _memoPcs.Count > 0)
+                        {
+                            <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
+                                    disabled="@(_memoPcId == 0)"
+                                    @onclick="MemoNext">
+                                Next <i class="ri-arrow-right-s-line"></i>
+                            </button>
+                        }
+                    }
+                    else
+                    {
+                        <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                                @onclick="() => _memoStep = 1">
+                            <i class="ri-arrow-left-s-line"></i> Back
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showMemoWizard = false">Cancel</button>
+                        <button class="btn btn-sm d-flex align-items-center gap-1"
+                                style="background:linear-gradient(135deg,#be185d,#ec4899); color:#fff; border:none;"
+                                @onclick="ExecuteMemo">
+                            <i class="ri-sticky-note-line"></i>Submit
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Memo Toast ── *@
+@if (_memoRunning || _memoDone || !string.IsNullOrEmpty(_memoError))
+{
+    var _memoDoneCount  = _memoSteps.Count(s => s.Status == 2);
+    var _memoTotalCount = _memoSteps.Count;
+    var _memoPct        = _memoTotalCount > 0 ? (int)(_memoDoneCount * 100.0 / _memoTotalCount) : 0;
+
+    <div style="position:fixed;bottom:24px;right:24px;z-index:99999;min-width:310px;max-width:390px;
+                border-radius:14px;box-shadow:0 16px 48px rgba(0,0,0,.45);
+                background:#0f172a;color:#f1f5f9;overflow:hidden;
+                animation:bgImportSlideIn .3s cubic-bezier(.175,.885,.32,1.275) both;">
+
+        @* ── Header ── *@
+        <div style="padding:13px 16px 11px;border-bottom:1px solid #1e293b;display:flex;align-items:center;gap:10px;">
+            @if (_memoRunning)
+            {
+                <span class="spinner-border spinner-border-sm flex-shrink-0" style="color:#ec4899;width:15px;height:15px;border-width:2px;"></span>
+            }
+            else if (_memoDone)
+            {
+                <i class="ri-checkbox-circle-fill flex-shrink-0" style="font-size:1.15rem;color:#22c55e;line-height:1;"></i>
+            }
+            else
+            {
+                <i class="ri-error-warning-fill flex-shrink-0" style="font-size:1.15rem;color:#f87171;line-height:1;"></i>
+            }
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:700;font-size:.875rem;letter-spacing:.01em;line-height:1.3;">
+                    @if (_memoRunning)      { <text>Adding Memo&hellip;</text> }
+                    else if (_memoDone)     { <span style="color:#22c55e;">Memo Added!</span> }
+                    else                    { <span style="color:#f87171;">Memo Failed</span> }
+                </div>
+                <div style="font-size:.71rem;color:#475569;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@_memoLabel">
+                    @_memoLabel
+                </div>
+            </div>
+        </div>
+
+        @* ── Step list ── *@
+        @if (_memoRunning || _memoDone)
+        {
+            <div style="padding:10px 16px 4px;display:flex;flex-direction:column;gap:5px;">
+                @foreach (var _ms in _memoSteps)
+                {
+                    var _msc = _ms.Status switch {
+                        1 => "#e2e8f0",
+                        2 => "#22c55e",
+                        3 => "#f87171",
+                        _ => "#334155"
+                    };
+                    <div style="display:flex;align-items:flex-start;gap:8px;font-size:.78rem;color:@_msc;">
+                        <span style="width:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding-top:1px;">
+                            @if (_ms.Status == 1)
+                            {
+                                <span class="spinner-border" style="width:10px;height:10px;border-width:1.5px;color:#ec4899;flex-shrink:0;"></span>
+                            }
+                            else if (_ms.Status == 2)
+                            {
+                                <i class="ri-check-line" style="color:#22c55e;font-size:.8rem;"></i>
+                            }
+                            else if (_ms.Status == 3)
+                            {
+                                <i class="ri-close-line" style="color:#f87171;font-size:.8rem;"></i>
+                            }
+                            else
+                            {
+                                <span style="width:5px;height:5px;border-radius:50%;background:#1e293b;display:inline-block;"></span>
+                            }
+                        </span>
+                        <div style="@(_ms.Status == 1 ? "font-weight:600;" : "")">@_ms.Label</div>
+                    </div>
+                }
+            </div>
+            @* ── Progress bar ── *@
+            <div style="margin:10px 16px 14px;height:3px;background:#1e293b;border-radius:2px;overflow:hidden;">
+                <div style="height:100%;width:@(_memoPct)%;border-radius:2px;
+                            background:linear-gradient(90deg,#be185d,#ec4899);
+                            transition:width .35s ease;
+                            @(_memoRunning && _memoPct < 100 ? "animation:bgBarPulse 1.8s ease-in-out infinite;" : "")"></div>
+            </div>
+        }
+        else
+        {
+            @* ── Error ── *@
+            <div style="padding:10px 16px 14px;">
+                <div style="font-size:.75rem;color:#94a3b8;word-break:break-all;">@_memoError</div>
+                <button class="btn btn-sm btn-outline-secondary mt-2" style="font-size:.72rem;padding:2px 10px;"
+                        @onclick="() => { _memoError = string.Empty; _memoSteps.Clear(); }">Dismiss</button>
+            </div>
+        }
+    </div>
+}
+
 @* ── Messages Modal ── *@
 @if (_showMessagesModal)
 {
@@ -2621,6 +2852,17 @@
         public BgStep(string label) { Label = label; }
     }
     List<BgStep> _bgSteps = new();
+
+    // ── Add Memo state ──
+    bool   _showMemoWizard;
+    int    _memoStep;
+    int    _memoPcId;
+    List<DashboardService.ApprovedPc> _memoPcs = [];
+    bool   _memoRunning;
+    bool   _memoDone;
+    string _memoError = "";
+    string _memoLabel = "";
+    List<BgStep> _memoSteps = new();
 
     // Auditor Report Form fields (step 2)
     string _arfDate          = "";
@@ -4229,6 +4471,136 @@ string _actionPcSearch = "";
     {
         CompletionSvc.Delete(id);
         _completions = CompletionSvc.GetByPc(_completionPcId);
+    }
+
+    // ── Add Memo ─────────────────────────────────────────────────────────────
+
+    void OpenMemoWizard()
+    {
+        if (!_msgUserId.HasValue) return;
+        _memoPcs        = DashSvc.GetSessionablePcsForUser(_msgUserId.Value, _logUsername);
+        _memoPcId       = _isSoloUser ? _msgUserId.Value : 0;
+        _memoStep       = 1;
+        _memoError      = "";
+        _showMemoWizard = true;
+    }
+
+    void MemoNext()
+    {
+        _memoStep = 2;
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(100);
+            await JSRuntime.InvokeVoidAsync("eval", @"
+                if (window._memoQuill) {
+                    try {
+                        window._memoQuill.container.parentElement.removeChild(window._memoQuill.container.previousSibling);
+                        window._memoQuill.container.remove();
+                    } catch(e) {}
+                }
+                var el = document.getElementById('memo-quill-editor');
+                if (el) {
+                    window._memoQuill = new Quill(el, {
+                        theme: 'snow',
+                        placeholder: 'Type memo text...',
+                        modules: { toolbar: [
+                            ['bold', 'italic', 'underline'],
+                            [{ 'color': [] }],
+                            [{ 'size': ['10px', '14px', '18px', '24px'] }],
+                            [{ 'align': [] }],
+                            [{ 'direction': 'rtl' }],
+                            ['clean']
+                        ]}
+                    });
+                }
+            ");
+        });
+    }
+
+    async Task ExecuteMemo()
+    {
+        // Read HTML while modal is still open and Quill is in DOM
+        var html = await JSRuntime.InvokeAsync<string>("eval",
+            "window._memoQuill ? window._memoQuill.root.innerHTML : ''");
+
+        var capturedPcId     = _memoPcId;
+        var capturedSolo     = _isSoloUser;
+        var capturedAudId    = _msgUserId!.Value;
+        var capturedPcName   = _memoPcs.FirstOrDefault(p => p.PcId == _memoPcId)?.FullName ?? "";
+        var capturedDate     = DateOnly.FromDateTime(DateTime.Today);
+        var capturedMemoName = DateTime.Today.ToString("yyMMdd") + " memo";
+
+        // Close modal immediately, start toast
+        _showMemoWizard = false;
+        _memoRunning    = true;
+        _memoDone       = false;
+        _memoError      = "";
+        _memoLabel      = capturedPcName;
+        _memoSteps = new List<BgStep>
+        {
+            new("Generating memo PDF"),
+            new("Saving to WorkSheets"),
+            new("Adding session entry"),
+        };
+        StateHasChanged();
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var sGen  = _memoSteps[0];
+                var sSave = _memoSteps[1];
+                var sDb   = _memoSteps[2];
+
+                // Step 1: Generate PDF
+                sGen.Status = 1;
+                await InvokeAsync(StateHasChanged);
+                var pdfBytes = PdfSvc.GenerateMemoPdf(html);
+                sGen.Status = 2;
+                await InvokeAsync(StateHasChanged);
+
+                // Step 2: Save to WorkSheets
+                sSave.Status = 1;
+                await InvokeAsync(StateHasChanged);
+                var savedName = await Task.Run(() =>
+                    FolderSvc.SaveMemoFile(capturedPcId, capturedMemoName, pdfBytes, capturedSolo));
+                sSave.Status = 2;
+                await InvokeAsync(StateHasChanged);
+
+                // Step 3: Insert session row
+                sDb.Status = 1;
+                await InvokeAsync(StateHasChanged);
+                DashSvc.AddMemoSession(capturedAudId, capturedPcId, savedName, capturedDate);
+                DashSvc.NotifyDataChanged();
+                sDb.Status = 2;
+                await InvokeAsync(StateHasChanged);
+
+                await InvokeAsync(() =>
+                {
+                    _memoRunning = false;
+                    _memoDone    = true;
+                    StateHasChanged();
+                });
+
+                await Task.Delay(3000);
+                await InvokeAsync(() =>
+                {
+                    _memoDone = false;
+                    StateHasChanged();
+                });
+            }
+            catch (Exception ex)
+            {
+                foreach (var s in _memoSteps.Where(s => s.Status == 1))
+                    s.Status = 3;
+                await InvokeAsync(() =>
+                {
+                    _memoRunning = false;
+                    _memoError   = ex.Message;
+                    StateHasChanged();
+                });
+            }
+        });
     }
 
 }

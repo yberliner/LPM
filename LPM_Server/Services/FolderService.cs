@@ -1436,6 +1436,32 @@ public class FolderService
         return Path.GetFileName(fullPath);
     }
 
+    /// <summary>Save a memo PDF to WorkSheets. Handles name collisions with numeric postfix (2, 3, …). Returns the saved filename without extension.</summary>
+    public string SaveMemoFile(int pcId, string memoName, byte[] pdfBytes, bool solo = false)
+    {
+        var folder = solo ? GetOrCreateSoloPcFolderPath(pcId) : FindPcFolder(pcId);
+        if (folder == null) return memoName;
+
+        var wsPath = Path.Combine(folder, "WorkSheets");
+        Directory.CreateDirectory(wsPath);
+
+        var baseName = memoName;
+        var fileName = baseName + ".pdf";
+        var fullPath = Path.Combine(wsPath, fileName);
+        var counter  = 2;
+        while (File.Exists(fullPath))
+        {
+            fileName = $"{baseName}{counter}.pdf";
+            fullPath  = Path.Combine(wsPath, fileName);
+            counter++;
+        }
+
+        File.WriteAllBytes(fullPath, pdfBytes);
+        EncryptFileInPlace(fullPath);
+        Console.WriteLine($"[FolderService] Saved memo '{fileName}' for PC {pcId} (solo={solo})");
+        return Path.GetFileNameWithoutExtension(fileName);
+    }
+
     /// <summary>Save an attachment file as flat file in WorkSheets: {session}_att_{name}.</summary>
     public void SaveAttachment(int pcId, string sessionFileName, string attFileName, byte[] fileBytes, bool solo = false)
     {

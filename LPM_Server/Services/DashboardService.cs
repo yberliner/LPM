@@ -1067,6 +1067,48 @@ public class DashboardService
         return newSessionId;
     }
 
+    /// <summary>Insert a free-session memo row into sess_sessions. Returns the new SessionId.</summary>
+    public int AddMemoSession(int auditorId, int pcId, string name, DateOnly date)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        var dateStr = date.ToString("yyyy-MM-dd");
+
+        using var seqCmd = conn.CreateCommand();
+        seqCmd.CommandText = @"
+            SELECT COALESCE(MAX(SequenceInDay), 0) + 1
+            FROM sess_sessions
+            WHERE PcId = @pcId AND SessionDate = @date";
+        seqCmd.Parameters.AddWithValue("@pcId", pcId);
+        seqCmd.Parameters.AddWithValue("@date", dateStr);
+        var seq = (long)(seqCmd.ExecuteScalar() ?? 1L);
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO sess_sessions
+              (PcId, AuditorId, SessionDate, SequenceInDay,
+               LengthSeconds, AdminSeconds, IsFreeSession,
+               ChargeSeconds, ChargedRateCentsPerHour,
+               Name, CreatedAt)
+            VALUES
+              (@pcId, @audId, @date, @seq,
+               0, 0, 1,
+               0, 0,
+               @name, datetime('now', '+2 hours'))";
+        cmd.Parameters.AddWithValue("@pcId",  pcId);
+        cmd.Parameters.AddWithValue("@audId", auditorId);
+        cmd.Parameters.AddWithValue("@date",  dateStr);
+        cmd.Parameters.AddWithValue("@seq",   seq);
+        cmd.Parameters.AddWithValue("@name",  name);
+        cmd.ExecuteNonQuery();
+
+        using var rowIdCmd2 = conn.CreateCommand();
+        rowIdCmd2.CommandText = "SELECT last_insert_rowid()";
+        var newId = (int)(long)rowIdCmd2.ExecuteScalar()!;
+        Console.WriteLine($"[DashboardService] Added memo session {newId} for PC {pcId}, auditor {auditorId}, name='{name}'");
+        return newId;
+    }
+
     public int AddMiscCharge(
         int auditorId, int pcId, DateOnly date,
         int lengthSec, int adminSec, bool isFree, string? summary)

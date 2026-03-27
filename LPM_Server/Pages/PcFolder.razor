@@ -703,7 +703,11 @@
                           style="@(_csFileMissing ? "" : "cursor:pointer;")">
                         <span style="opacity:.7;font-weight:400;">CSing:</span> @_csSessionName
                     </span>
-                    <div class="pcf-timer @(_csReviewMinutes <= 0 ? "pcf-timer-zero" : "")"
+                    @if (IsMemoSession())
+                    {
+                        <span class="pcf-memo-badge">memo</span>
+                    }
+                    <div class="pcf-timer @(_csReviewMinutes <= 0 && !IsMemoSession() ? "pcf-timer-zero" : "")"
                          title="CS Review time (session + admin). This value will be saved when you press Mark CS Done. Edit hours and minutes if needed.">
                         <i class="ri-timer-line pcf-timer-icon"></i>
                         <div class="pcf-timer-display">
@@ -715,7 +719,7 @@
                                    value="@(_csReviewMinutes % 60)"
                                    @onchange="e => OnTimerMinsChanged(e)" />
                         </div>
-                        @if (_csReviewMinutes <= 0)
+                        @if (_csReviewMinutes <= 0 && !IsMemoSession())
                         {
                             <i class="ri-error-warning-line pcf-timer-warn" title="Review time is 0 — update before marking done"></i>
                         }
@@ -1645,6 +1649,26 @@
         color: #fca5a5;
     }
     .pcf-timer-zero .pcf-timer-icon { color: #ef4444; }
+    .pcf-memo-badge {
+        font-size: .72rem;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: #a78bfa;
+        animation: pcf-memo-glow 2.8s ease-in-out infinite;
+        pointer-events: none;
+        user-select: none;
+    }
+    @@keyframes pcf-memo-glow {
+        0%, 100% {
+            opacity: .55;
+            text-shadow: 0 0 4px rgba(167,139,250,.3), 0 0 8px rgba(167,139,250,.15);
+        }
+        50% {
+            opacity: 1;
+            text-shadow: 0 0 8px rgba(167,139,250,.9), 0 0 18px rgba(167,139,250,.5), 0 0 30px rgba(167,139,250,.2);
+        }
+    }
     .pcf-timer-warn {
         color: #ef4444; font-size: .7rem;
         animation: pcf-warn-blink 1s ease-in-out infinite;
@@ -4182,13 +4206,20 @@
         Console.WriteLine($"[PcFolder] Timer minutes changed by '{_userName}' — new total: {_csReviewMinutes} min, for PC {PcId}");
     }
 
+    bool IsMemoSession() =>
+        _csSessionName is not null &&
+        System.Text.RegularExpressions.Regex.IsMatch(
+            _csSessionName,
+            @"(?<![a-zA-Z])memo(?![a-zA-Z])",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
     async Task DoneCs()
     {
         if (_csSessionId == 0) return;
         Console.WriteLine($"[PcFolder] Mark CS Done initiated by '{_userName}' — session {_csSessionId} ('{_csSessionName}'), review time: {_csReviewMinutes} min, for PC {PcId}");
 
-        // Validate review time — if 0, warn user and abort
-        if (_csReviewMinutes <= 0)
+        // Validate review time — if 0, warn user and abort (memo sessions are exempt)
+        if (_csReviewMinutes <= 0 && !IsMemoSession())
         {
             await JS.InvokeVoidAsync("alert",
                 "Review time is 0 minutes. Please update the session's admin time before marking CS as done.");

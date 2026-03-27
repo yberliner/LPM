@@ -1743,6 +1743,136 @@ public class PdfService
         return ms.ToArray();
     }
 
+    // ── Memo PDF ──────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Converts Quill HTML to a single A4 PDF page. Auto-sizes the font so the content fits.
+    /// Paragraphs with class "ql-direction-rtl" are right-aligned.
+    /// </summary>
+    public byte[] GenerateMemoPdf(string html)
+    {
+        const double pw = 595.28, ph = 841.89, margin = 30.0;
+        double cw       = pw - 2 * margin;
+        double contentH = ph - 2 * margin;
+        const double lineSpacingFactor = 1.45;
+        const double paraGap           = 10.0;
+
+        // ── Parse paragraphs ──────────────────────────────────────────────────
+        var paragraphs = new List<(string Text, bool Rtl)>();
+        foreach (Match p in Regex.Matches(html, @"<p([^>]*)>(.*?)</p>",
+            RegexOptions.Singleline | RegexOptions.IgnoreCase))
+        {
+            var attrs = p.Groups[1].Value;
+            var inner = p.Groups[2].Value;
+            bool rtl  = attrs.Contains("ql-direction-rtl",  StringComparison.OrdinalIgnoreCase)
+                     || attrs.Contains("dir=\"rtl\"",        StringComparison.OrdinalIgnoreCase)
+                     || attrs.Contains("dir='rtl'",          StringComparison.OrdinalIgnoreCase);
+            // Strip HTML tags, decode HTML entities
+            var text = System.Net.WebUtility.HtmlDecode(
+                Regex.Replace(inner, "<[^>]+>", "").Trim());
+            // Quill emits ​ (zero-width space) for empty paragraphs — treat as blank
+            text = text.Replace("\u200B", "").Trim();
+            paragraphs.Add((text, rtl));
+        }
+        if (paragraphs.Count == 0)
+            paragraphs.Add(("", false));
+
+        // ── Font factory (same fallback chain as ARF) ─────────────────────────
+        PdfSharpCore.Drawing.XFont MakeFont(double pt)
+        {
+            foreach (var fn in new[] { "DejaVu Sans", "Arial", "Liberation Sans", "Helvetica" })
+                try { return new PdfSharpCore.Drawing.XFont(fn, pt, PdfSharpCore.Drawing.XFontStyle.Regular); }
+                catch { }
+            return new PdfSharpCore.Drawing.XFont("Courier New", pt, PdfSharpCore.Drawing.XFontStyle.Regular);
+        }
+
+        // ── Word-wrap helper ──────────────────────────────────────────────────
+        static List<string> Wrap(string text,
+            PdfSharpCore.Drawing.XGraphics g,
+            PdfSharpCore.Drawing.XFont f, double maxW)
+        {
+            var lines = new List<string>();
+            if (string.IsNullOrEmpty(text)) { lines.Add(""); return lines; }
+            var words = text.Split(' ');
+            var cur   = new System.Text.StringBuilder();
+            foreach (var w in words)
+            {
+                var candidate = cur.Length == 0 ? w : cur + " " + w;
+                if (g.MeasureString(candidate, f).Width <= maxW)
+                {
+                    if (cur.Length > 0) cur.Append(' ');
+                    cur.Append(w);
+                }
+                else
+                {
+                    if (cur.Length > 0) lines.Add(cur.ToString());
+                    cur.Clear().Append(w);
+                }
+            }
+            if (cur.Length > 0) lines.Add(cur.ToString());
+            if (lines.Count == 0) lines.Add("");
+            return lines;
+        }
+
+        // ── Build document ────────────────────────────────────────────────────
+        var doc  = new PdfSharpCore.Pdf.PdfDocument();
+        var page = doc.AddPage();
+        page.Width  = PdfSharpCore.Drawing.XUnit.FromPoint(pw);
+        page.Height = PdfSharpCore.Drawing.XUnit.FromPoint(ph);
+
+        using (var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page))
+        {
+            // ── Find the largest font size that fits one page ─────────────────
+            double fs = 40.0;
+            while (fs > 8.0)
+            {
+                var probe     = MakeFont(fs);
+                double probeLh = fs * lineSpacingFactor;
+                double tot    = 0;
+                bool first    = true;
+                foreach (var (text, _) in paragraphs)
+                {
+                    if (!first) tot += paraGap;
+                    first = false;
+                    tot += Wrap(text, gfx, probe, cw).Count * probeLh;
+                }
+                if (tot <= contentH) break;
+                fs -= 1.0;
+            }
+
+            // ── Draw ──────────────────────────────────────────────────────────
+            var font  = MakeFont(fs);
+            double lh = fs * lineSpacingFactor;
+
+            var fmtL = new PdfSharpCore.Drawing.XStringFormat {
+                Alignment     = PdfSharpCore.Drawing.XStringAlignment.Near,
+                LineAlignment = PdfSharpCore.Drawing.XLineAlignment.Near };
+            var fmtR = new PdfSharpCore.Drawing.XStringFormat {
+                Alignment     = PdfSharpCore.Drawing.XStringAlignment.Far,
+                LineAlignment = PdfSharpCore.Drawing.XLineAlignment.Near };
+            var brush = PdfSharpCore.Drawing.XBrushes.Black;
+
+            double y = margin;
+            bool firstPara = true;
+            foreach (var (text, rtl) in paragraphs)
+            {
+                if (!firstPara) y += paraGap;
+                firstPara = false;
+                var fmt   = rtl ? fmtR : fmtL;
+                foreach (var line in Wrap(text, gfx, font, cw))
+                {
+                    gfx.DrawString(line, font, brush,
+                        new PdfSharpCore.Drawing.XRect(margin, y, cw, lh), fmt);
+                    y += lh;
+                }
+            }
+        } // gfx disposed — content stream flushed before Save
+
+        using var ms = new System.IO.MemoryStream();
+        doc.Save(ms);
+        return ms.ToArray();
+    }
+
     private static List<(string Text, PdfSharpCore.Drawing.XColor? Color)> ArfSummaryLines(string html)
     {
         var result = new List<(string, PdfSharpCore.Drawing.XColor?)>();
