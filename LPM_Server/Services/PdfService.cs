@@ -14,7 +14,8 @@ public class PdfService
         Dictionary<(int pcId, int dayIdx), int> grid,
         Dictionary<int, string> pcCsNames,
         string? weeklyRemarks = null,
-        HashSet<int>? soloPcIds = null)
+        HashSet<int>? soloPcIds = null,
+        List<CompletionService.CompletionRow>? completions = null)
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
@@ -124,6 +125,48 @@ public class PdfService
                         col.Item().Text("Weekly Remarks / הערות שבועיות").SemiBold().FontSize(11).FontColor("#1a237e");
                         col.Item().PaddingTop(4);
                         RenderHtmlBlock(col, weeklyRemarks);
+                    }
+
+                    // ══════ COMPLETIONS TABLE ══════
+                    if (completions is { Count: > 0 })
+                    {
+                        col.Item().PaddingTop(14);
+                        col.Item().Text("Completions").SemiBold().FontSize(11).FontColor("#2e7d32");
+                        col.Item().PaddingTop(4);
+                        col.Item().Table(table =>
+                        {
+                            table.ColumnsDefinition(cols =>
+                            {
+                                cols.RelativeColumn(3);   // PC Name
+                                cols.RelativeColumn(2);   // Complete Date
+                                cols.RelativeColumn(2);   // Finished Grade
+                            });
+
+                            // Header
+                            static IContainer CompletionHeaderCell(IContainer c) =>
+                                c.Background("#2e7d32").Padding(4);
+
+                            table.Header(header =>
+                            {
+                                header.Cell().Element(CompletionHeaderCell).Text("PC Name").SemiBold().FontSize(9).FontColor("#ffffff");
+                                header.Cell().Element(CompletionHeaderCell).Text("Complete Date").SemiBold().FontSize(9).FontColor("#ffffff");
+                                header.Cell().Element(CompletionHeaderCell).Text("Finished Grade").SemiBold().FontSize(9).FontColor("#ffffff");
+                            });
+
+                            // Rows
+                            bool alt = false;
+                            foreach (var row in completions)
+                            {
+                                var bg = alt ? "#f1f8e9" : "#ffffff";
+                                alt = !alt;
+                                static IContainer DataCell(IContainer c, string bg) =>
+                                    c.Background(bg).BorderBottom(1).BorderColor("#c8e6c9").Padding(4);
+
+                                table.Cell().Element(c => DataCell(c, bg)).Text(row.PcName).FontSize(9);
+                                table.Cell().Element(c => DataCell(c, bg)).Text(row.CompleteDate ?? "—").FontSize(9);
+                                table.Cell().Element(c => DataCell(c, bg)).Text(row.FinishedGrade ?? "—").FontSize(9);
+                            }
+                        });
                     }
                 });
             });

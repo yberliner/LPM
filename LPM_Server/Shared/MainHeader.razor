@@ -7,6 +7,7 @@
 @inject LPM.Services.PcService PcSvc
 @inject LPM.Services.MessageNotifier MsgNotifier
 @inject LPM.Services.FolderService FolderSvc
+@inject LPM.Services.CompletionService CompletionSvc
 @inject PdfService PdfSvc
 @using LPM._Spk
 @using LPM.Services
@@ -435,6 +436,12 @@
                                             <i class="ri-upload-cloud-2-line" style="color:#10b981;"></i>Upload to Front Cover
                                         </a>
                                     </li>
+                                    <li>
+                                        <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
+                                           @onclick="OpenCompletions">
+                                            <i class="ri-trophy-line" style="color:#a855f7;"></i>PC Completions
+                                        </a>
+                                    </li>
                                     }
                                 </ul>
                             </div>
@@ -843,6 +850,147 @@
                     </button>
                 </div>
                 }
+            </div>
+        </div>
+    </div>
+}
+
+@* ── PC Completions Modal ── *@
+@if (_completionsOpen)
+{
+    <div class="modal show d-block" tabindex="-1" style="background:rgba(0,0,0,.45); z-index:9990;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header py-2" style="background:linear-gradient(135deg,#7c3aed,#a855f7);">
+                    <h6 class="modal-title text-white fw-bold mb-0 d-flex align-items-center gap-2">
+                        <i class="ri-trophy-line"></i>PC Completions
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white btn-sm"
+                            @onclick="CloseCompletions"></button>
+                </div>
+                <div class="modal-body">
+                    @* PC Selector *@
+                    <div class="mb-3 d-flex align-items-center gap-2 flex-wrap">
+                        <label class="fw-semibold text-nowrap mb-0">Select PC:</label>
+                        <select class="form-select form-select-sm" style="max-width:280px;"
+                                value="@_completionPcId"
+                                @onchange="OnCompletionPcChanged">
+                            <option value="0">-- choose a PC --</option>
+                            @foreach (var pc in _completionAllPcs)
+                            {
+                                <option value="@pc.PcId">@pc.FullName</option>
+                            }
+                        </select>
+                        @if (_completionPcId > 0)
+                        {
+                            <button class="btn btn-sm btn-primary ms-auto d-flex align-items-center gap-1"
+                                    @onclick="StartAddCompletion">
+                                <i class="ri-add-line"></i>Add
+                            </button>
+                        }
+                    </div>
+
+                    @* Table *@
+                    @if (_completionPcId > 0)
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="min-width:130px;">Complete Date</th>
+                                        <th style="min-width:130px;">Create Date</th>
+                                        <th style="min-width:160px;">Finished Grade</th>
+                                        <th style="min-width:160px;">Auditor</th>
+                                        <th style="width:80px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @* Add row *@
+                                    @if (_completionAddMode)
+                                    {
+                                        <tr style="background:#f0fdf4;">
+                                            <td><input type="date" class="form-control form-control-sm" value="@_editCompleteDate" @onchange="e => _editCompleteDate = e.Value?.ToString() ?? string.Empty" /></td>
+                                            <td><span class="text-muted small">@DateTime.Today.ToString("yyyy-MM-dd")</span></td>
+                                            <td><input type="text" class="form-control form-control-sm" placeholder="Grade…" @bind="_editFinishedGrade" /></td>
+                                            <td>
+                                                <select class="form-select form-select-sm" @bind="_editAuditorId">
+                                                    <option value="0">-- none --</option>
+                                                    @foreach (var a in _completionAuditors)
+                                                    {
+                                                        <option value="@a.PersonId">@a.FullName</option>
+                                                    }
+                                                </select>
+                                            </td>
+                                            <td class="text-nowrap">
+                                                <button class="btn btn-xs btn-success me-1" title="Save" @onclick="SaveAddCompletion">
+                                                    <i class="ri-check-line"></i>
+                                                </button>
+                                                <button class="btn btn-xs btn-outline-secondary" title="Cancel" @onclick="CancelEditCompletion">
+                                                    <i class="ri-close-line"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                    @* Existing rows *@
+                                    @foreach (var row in _completions)
+                                    {
+                                        @if (_completionEditId == row.Id)
+                                        {
+                                            <tr style="background:#eff6ff;">
+                                                <td><input type="date" class="form-control form-control-sm" value="@_editCompleteDate" @onchange="e => _editCompleteDate = e.Value?.ToString() ?? string.Empty" /></td>
+                                                <td><span class="text-muted small">@row.CreateDate</span></td>
+                                                <td><input type="text" class="form-control form-control-sm" @bind="_editFinishedGrade" /></td>
+                                                <td>
+                                                    <select class="form-select form-select-sm" @bind="_editAuditorId">
+                                                        <option value="0">-- none --</option>
+                                                        @foreach (var a in _completionAuditors)
+                                                        {
+                                                            <option value="@a.PersonId">@a.FullName</option>
+                                                        }
+                                                    </select>
+                                                </td>
+                                                <td class="text-nowrap">
+                                                    <button class="btn btn-xs btn-success me-1" title="Save" @onclick="() => SaveEditCompletion(row.Id)">
+                                                        <i class="ri-check-line"></i>
+                                                    </button>
+                                                    <button class="btn btn-xs btn-outline-secondary" title="Cancel" @onclick="CancelEditCompletion">
+                                                        <i class="ri-close-line"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        }
+                                        else
+                                        {
+                                            <tr>
+                                                <td>@(row.CompleteDate ?? "—")</td>
+                                                <td>@row.CreateDate</td>
+                                                <td>@(row.FinishedGrade ?? "—")</td>
+                                                <td>@(_completionAuditors.FirstOrDefault(a => a.PersonId == row.AuditorId)?.FullName ?? "—")</td>
+                                                <td class="text-nowrap">
+                                                    <button class="btn btn-xs btn-outline-primary me-1" title="Edit"
+                                                            @onclick="() => StartEditCompletion(row)">
+                                                        <i class="ri-edit-line"></i>
+                                                    </button>
+                                                    <button class="btn btn-xs btn-outline-danger" title="Delete"
+                                                            @onclick="() => DeleteCompletion(row.Id)">
+                                                        <i class="ri-delete-bin-line"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    }
+                                    @if (!_completionAddMode && _completions.Count == 0)
+                                    {
+                                        <tr><td colspan="5" class="text-center text-muted py-3">No completions yet.</td></tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer py-2">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="CloseCompletions">Close</button>
+                </div>
             </div>
         </div>
     </div>
@@ -2376,6 +2524,18 @@
     bool            _apcIsCS;
     int             _apcUserId;
     int             _apcNewPcId;
+
+    // ── PC Completions state ──
+    bool                         _completionsOpen;
+    int                          _completionPcId;
+    List<PcCompletion>           _completions        = [];
+    List<AuditorItem>            _completionAuditors = [];
+    List<PcItem>                 _completionAllPcs   = [];
+    bool                         _completionAddMode;
+    int                          _completionEditId;   // 0 = none
+    string                       _editCompleteDate   = "";
+    string                       _editFinishedGrade  = "";
+    int                          _editAuditorId;
 
     // ── Upload Front Cover state ──
     bool             _showUploadFrontCover;
@@ -3918,6 +4078,90 @@ string _actionPcSearch = "";
         ApcRefreshData();
         DashSvc.NotifyDataChanged();
         await InvokeAsync(StateHasChanged);
+    }
+
+    // ── PC Completions methods ────────────────────────────────────
+
+    void OpenCompletions()
+    {
+        _completionAllPcs   = CompletionSvc.GetAllNonSoloPcs();
+        _completionAuditors = CompletionSvc.GetActiveAuditors();
+        _completionPcId     = 0;
+        _completions        = [];
+        _completionAddMode  = false;
+        _completionEditId   = 0;
+        _completionsOpen    = true;
+    }
+
+    void CloseCompletions()
+    {
+        _completionsOpen   = false;
+        _completionAddMode = false;
+        _completionEditId  = 0;
+    }
+
+    void OnCompletionPcChanged(ChangeEventArgs e)
+    {
+        _completionPcId    = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        _completionAddMode = false;
+        _completionEditId  = 0;
+        _completions       = _completionPcId > 0 ? CompletionSvc.GetByPc(_completionPcId) : [];
+    }
+
+    void StartAddCompletion()
+    {
+        _completionEditId  = 0;
+        _completionAddMode = true;
+        _editCompleteDate  = DateTime.Today.ToString("yyyy-MM-dd");
+        _editFinishedGrade = "";
+        // Pre-fill auditor with current user if they are an auditor
+        _editAuditorId = _completionAuditors.Any(a => a.PersonId == _msgUserId)
+            ? (_msgUserId ?? 0)
+            : 0;
+    }
+
+    void StartEditCompletion(PcCompletion row)
+    {
+        _completionAddMode = false;
+        _completionEditId  = row.Id;
+        _editCompleteDate  = row.CompleteDate ?? "";
+        _editFinishedGrade = row.FinishedGrade ?? "";
+        _editAuditorId     = row.AuditorId ?? 0;
+    }
+
+    void CancelEditCompletion()
+    {
+        _completionAddMode = false;
+        _completionEditId  = 0;
+    }
+
+    void SaveAddCompletion()
+    {
+        if (_completionPcId == 0) return;
+        var auditorId = _editAuditorId > 0 ? (int?)_editAuditorId : null;
+        CompletionSvc.Add(_completionPcId,
+            string.IsNullOrWhiteSpace(_editCompleteDate) ? null : _editCompleteDate,
+            string.IsNullOrWhiteSpace(_editFinishedGrade) ? null : _editFinishedGrade,
+            auditorId);
+        _completionAddMode = false;
+        _completions = CompletionSvc.GetByPc(_completionPcId);
+    }
+
+    void SaveEditCompletion(int id)
+    {
+        var auditorId = _editAuditorId > 0 ? (int?)_editAuditorId : null;
+        CompletionSvc.Update(id,
+            string.IsNullOrWhiteSpace(_editCompleteDate) ? null : _editCompleteDate,
+            string.IsNullOrWhiteSpace(_editFinishedGrade) ? null : _editFinishedGrade,
+            auditorId);
+        _completionEditId = 0;
+        _completions = CompletionSvc.GetByPc(_completionPcId);
+    }
+
+    void DeleteCompletion(int id)
+    {
+        CompletionSvc.Delete(id);
+        _completions = CompletionSvc.GetByPc(_completionPcId);
     }
 
 }

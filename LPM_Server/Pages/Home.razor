@@ -11,6 +11,7 @@
 @inject FolderService FolderSvc
 @inject LPM.Auth.UserDb UserDb
 @inject NavigationManager Nav
+@inject CompletionService CompletionSvc
 @implements IDisposable
 
 <div @onclick="DismissMenu">
@@ -2026,7 +2027,10 @@
     async Task PrintTable()
     {
         Console.WriteLine($"[Home] Generated PDF report for week {_weekStart} by '{_username}'");
-        var pdfBytes = PdfService.GenerateWeeklyTablePdf(_displayName, _weekStart, _myPcs, _grid, _pcCsNames, _weekRemarks, _soloPcIds);
+        var completions = _userId.HasValue
+            ? CompletionSvc.GetForWeek(_userId.Value, _weekStart, _weekStart.AddDays(6))
+            : null;
+        var pdfBytes = PdfService.GenerateWeeklyTablePdf(_displayName, _weekStart, _myPcs, _grid, _pcCsNames, _weekRemarks, _soloPcIds, completions);
 
         var fileName = $"Week_{_weekStart:yyyy_MM_dd}.pdf";
         await JS.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(pdfBytes));

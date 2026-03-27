@@ -7,6 +7,7 @@
 @inject LPM.Services.SmsService SmsSvc
 @inject AuthenticationStateProvider AuthState
 @inject IJSRuntime JS
+@inject LPM.Services.CompletionService CompletionSvc
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using LPM.Services
@@ -330,6 +331,43 @@
                 </div>
             </div>
 
+            @* ── PC Completions (sess_completions) ── *@
+            @if (_pcCompletions.Count > 0)
+            {
+            <div class="card shadow-sm mt-3" style="border:none;border-radius:14px;overflow:hidden;">
+                <div class="card-header d-flex align-items-center justify-content-between py-2"
+                     style="background:linear-gradient(135deg,#14532d,#22c55e);border:none;">
+                    <span class="fw-semibold small text-white">
+                        <i class="ri-trophy-line me-1"></i>Completions
+                    </span>
+                    <span class="badge bg-white text-success">@_pcCompletions.Count</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="small ps-3">Complete Date</th>
+                                    <th class="small text-center">Grade</th>
+                                    <th class="small text-center">Auditor</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var c in _pcCompletions)
+                                {
+                                    <tr>
+                                        <td class="small ps-3">@(c.CompleteDate ?? "—")</td>
+                                        <td class="small text-center fw-semibold" style="color:#15803d;">@(c.FinishedGrade ?? "—")</td>
+                                        <td class="small text-center">@(c.AuditorName ?? "—")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            }
+
         </div>
     }
 </div>
@@ -379,7 +417,7 @@
                     @if (_courseReportGroups != null)
                     {
                         <span style="font-size:.76rem;background:#dbeafe;color:#1e40af;border-radius:6px;padding:4px 12px;font-weight:700;">
-                            @_courseReportGroups.Count PCs · @_courseReportGroups.Sum(g => g.Courses.Count) completions
+                            @_courseReportGroups.Count PCs · @_courseReportGroups.Sum(g => g.Courses.Count) courses · @_courseReportGroups.Sum(g => g.Completions.Count) completions
                         </span>
                     }
                 </div>
@@ -406,9 +444,10 @@
                             <thead>
                                 <tr style="position:sticky;top:0;z-index:2;">
                                     <th style="width:240px;padding:8px 14px;background:#f1f5f9;color:#475569;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #e2e8f0;white-space:nowrap;">PC Name</th>
-                                    <th style="padding:8px 14px;background:#f1f5f9;color:#475569;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #e2e8f0;">Course</th>
+                                    <th style="padding:8px 14px;background:#f1f5f9;color:#475569;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #e2e8f0;">Course / Grade</th>
                                     <th style="width:120px;padding:8px 14px;background:#f1f5f9;color:#475569;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #e2e8f0;text-align:center;white-space:nowrap;">Started</th>
-                                    <th style="width:120px;padding:8px 14px;background:#f1f5f9;color:#475569;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #e2e8f0;text-align:center;white-space:nowrap;">Completed</th>
+                                    <th style="width:120px;padding:8px 14px;background:#f1f5f9;color:#475569;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #e2e8f0;text-align:center;white-space:nowrap;">Date</th>
+                                    <th style="width:140px;padding:8px 14px;background:#f1f5f9;color:#475569;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #e2e8f0;white-space:nowrap;">Auditor</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -416,11 +455,20 @@
                                 {
                                     @* PC group header row *@
                                     <tr style="background:#eff6ff;">
-                                        <td colspan="4" style="padding:8px 14px;font-size:.83rem;font-weight:700;color:#1e3a5f;border-top:2px solid #bfdbfe;border-bottom:1px solid #dbeafe;">
+                                        <td colspan="5" style="padding:8px 14px;font-size:.83rem;font-weight:700;color:#1e3a5f;border-top:2px solid #bfdbfe;border-bottom:1px solid #dbeafe;">
                                             <i class="ri-user-3-line me-1" style="opacity:.7;"></i>@grp.PcName
-                                            <span style="display:inline-block;margin-left:8px;background:#1e3a5f;color:#fff;border-radius:20px;padding:1px 9px;font-size:.67rem;font-weight:700;vertical-align:middle;">
-                                                @grp.Courses.Count
-                                            </span>
+                                            @if (grp.Courses.Count > 0)
+                                            {
+                                                <span style="display:inline-block;margin-left:8px;background:#1e3a5f;color:#fff;border-radius:20px;padding:1px 9px;font-size:.67rem;font-weight:700;vertical-align:middle;">
+                                                    @grp.Courses.Count courses
+                                                </span>
+                                            }
+                                            @if (grp.Completions.Count > 0)
+                                            {
+                                                <span style="display:inline-block;margin-left:6px;background:#14532d;color:#fff;border-radius:20px;padding:1px 9px;font-size:.67rem;font-weight:700;vertical-align:middle;">
+                                                    @grp.Completions.Count completions
+                                                </span>
+                                            }
                                         </td>
                                     </tr>
                                     @* Course rows *@
@@ -430,11 +478,31 @@
                                             <td style="padding:6px 14px 6px 30px;color:#94a3b8;font-size:.75rem;">
                                                 <i class="ri-corner-down-right-line"></i>
                                             </td>
-                                            <td style="padding:6px 14px;font-weight:600;color:#6d28d9;">@c.CourseName</td>
+                                            <td style="padding:6px 14px;font-weight:600;color:#6d28d9;">
+                                                <span style="font-size:.68rem;background:#ede9fe;color:#6d28d9;border-radius:4px;padding:1px 6px;margin-right:6px;font-weight:700;">Course</span>@c.CourseName
+                                            </td>
                                             <td style="padding:6px 14px;text-align:center;color:#64748b;">@FormatDate(c.DateStarted)</td>
                                             <td style="padding:6px 14px;text-align:center;color:#059669;font-weight:700;">
                                                 <i class="ri-check-line me-1" style="font-size:.8rem;"></i>@FormatDate(c.DateFinished!)
                                             </td>
+                                            <td style="padding:6px 14px;color:#94a3b8;">—</td>
+                                        </tr>
+                                    }
+                                    @* Completion rows *@
+                                    @foreach (var sc in grp.Completions)
+                                    {
+                                        <tr style="background:#f0fdf4;border-bottom:1px solid #dcfce7;">
+                                            <td style="padding:6px 14px 6px 30px;color:#94a3b8;font-size:.75rem;">
+                                                <i class="ri-corner-down-right-line"></i>
+                                            </td>
+                                            <td style="padding:6px 14px;font-weight:600;color:#15803d;">
+                                                <span style="font-size:.68rem;background:#dcfce7;color:#15803d;border-radius:4px;padding:1px 6px;margin-right:6px;font-weight:700;">Completion</span>@(sc.FinishedGrade ?? "—")
+                                            </td>
+                                            <td style="padding:6px 14px;text-align:center;color:#94a3b8;">—</td>
+                                            <td style="padding:6px 14px;text-align:center;color:#15803d;font-weight:700;">
+                                                <i class="ri-trophy-line me-1" style="font-size:.8rem;"></i>@(sc.CompleteDate ?? "—")
+                                            </td>
+                                            <td style="padding:6px 14px;color:#374151;font-size:.82rem;">@(sc.AuditorName ?? "—")</td>
                                         </tr>
                                     }
                                 }
@@ -1652,6 +1720,7 @@
     // Auditing purchases display
     List<AuditingPurchaseDisplay> _auditingPurchases = new();
     record AuditingPurchaseDisplay(int PurchaseId, string Date, int HoursBought, int Amount, string Status);
+    List<CompletionService.PcCompletionDetail> _pcCompletions = [];
 
     class PurchaseItemModel
     {
@@ -1771,6 +1840,7 @@
         _courseAmountMap.Clear();
         _latestAuditingPurchaseId = null;
         _auditingPurchases.Clear();
+        _pcCompletions = CompletionSvc.GetByPcWithAuditorName(_selPcId.Value);
         if (_pcPurchases != null)
         {
             foreach (var p in _pcPurchases)
@@ -2246,7 +2316,8 @@
     List<CourseReportGroup>? _courseReportGroups;
 
     record CourseReportCourse(string CourseName, string DateStarted, string DateFinished);
-    record CourseReportGroup(string PcName, List<CourseReportCourse> Courses);
+    record SessCompletionItem(string? CompleteDate, string? FinishedGrade, string? AuditorName);
+    record CourseReportGroup(string PcName, List<CourseReportCourse> Courses, List<SessCompletionItem> Completions);
 
     void OpenCoursesReportModal()
     {
@@ -2258,17 +2329,20 @@
     void GenerateCourseReportTestData()
     {
         if (_allCourses.Count == 0) return;
-        var rng = Random.Shared;
+        var rng        = Random.Shared;
         var rangeStart = _courseReportFrom;
         var rangeEnd   = _courseReportTo;
         var spanDays   = Math.Max(1, (int)(rangeEnd - rangeStart).TotalDays);
+        string[] testGrades = ["Grade 0", "Grade 1", "Grade 2", "Grade 3", "Grade 4", "ARC straightwire", "Objectives"];
 
         _courseReportGroups = _allPcsEx
             .Select(pc =>
             {
-                int count = rng.Next(0, 5); // 0–4
-                if (count == 0) return null;
-                var courses = Enumerable.Range(0, count)
+                int courseCount = rng.Next(0, 5); // 0–4
+                int compCount   = rng.Next(0, 4); // 0–3
+                if (courseCount == 0 && compCount == 0) return null;
+
+                var courses = Enumerable.Range(0, courseCount)
                     .Select(_ =>
                     {
                         var course     = _allCourses[rng.Next(_allCourses.Count)];
@@ -2279,7 +2353,15 @@
                             startedAt.ToString("yyyy-MM-dd"),
                             finishedAt.ToString("yyyy-MM-dd"));
                     }).ToList();
-                return new CourseReportGroup(pc.FullName, courses);
+
+                var completions = Enumerable.Range(0, compCount)
+                    .Select(_ => new SessCompletionItem(
+                        rangeStart.AddDays(rng.Next(0, spanDays)).ToString("yyyy-MM-dd"),
+                        testGrades[rng.Next(testGrades.Length)],
+                        null))
+                    .ToList();
+
+                return new CourseReportGroup(pc.FullName, courses, completions);
             })
             .Where(g => g != null)
             .Cast<CourseReportGroup>()
@@ -2289,19 +2371,30 @@
 
     void RunCoursesReport()
     {
-        var from = _courseReportFrom.ToString("yyyy-MM-dd");
-        var to   = _courseReportTo.ToString("yyyy-MM-dd");
+        var from    = _courseReportFrom.ToString("yyyy-MM-dd");
+        var to      = _courseReportTo.ToString("yyyy-MM-dd");
+        var fromDo  = DateOnly.FromDateTime(_courseReportFrom);
+        var toDo    = DateOnly.FromDateTime(_courseReportTo);
 
         var allEnrollments = CourseSvc.GetCourseEnrollmentReport();
-        _courseReportGroups = allEnrollments
+        var courseGroups = allEnrollments
             .Where(e => e.DateFinished != null && string.Compare(e.DateFinished, from) >= 0 && string.Compare(e.DateFinished, to) <= 0)
             .GroupBy(e => e.PCFullName)
-            .OrderBy(g => g.Key)
-            .Select(g => new CourseReportGroup(
-                g.Key,
-                g.OrderBy(e => e.DateFinished)
+            .ToDictionary(g => g.Key, g => g.OrderBy(e => e.DateFinished)
                  .Select(e => new CourseReportCourse(e.CourseName, e.DateStarted, e.DateFinished!))
-                 .ToList()))
+                 .ToList());
+
+        var sessCompletions = CompletionSvc.GetAllForRange(fromDo, toDo);
+        var sessGroups = sessCompletions
+            .GroupBy(c => c.PcName)
+            .ToDictionary(g => g.Key, g => g.Select(c => new SessCompletionItem(c.CompleteDate, c.FinishedGrade, c.AuditorName)).ToList());
+
+        var allPcNames = courseGroups.Keys.Union(sessGroups.Keys).OrderBy(n => n);
+        _courseReportGroups = allPcNames
+            .Select(name => new CourseReportGroup(
+                name,
+                courseGroups.TryGetValue(name, out var courses) ? courses : [],
+                sessGroups.TryGetValue(name, out var comps) ? comps : []))
             .ToList();
     }
 

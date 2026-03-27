@@ -1584,7 +1584,8 @@
             ("sess_misc_charges",   "ri-coins-line",          "ORDER BY MiscChargeId    DESC", null),
             ("sess_folder_summary", "ri-file-text-line",      "ORDER BY Id              DESC", null),
             ("sess_meetings",       "ri-time-line",           "ORDER BY MeetingId       DESC", null),
-            ("sess_next_cs",        "ri-file-edit-line",      "ORDER BY Id              DESC", null)));
+            ("sess_next_cs",        "ri-file-edit-line",      "ORDER BY Id              DESC", null),
+            ("sess_completions",    "ri-trophy-line",         "ORDER BY Id              DESC", null)));
 
         var tCs = Task.Run(() => Group(
             ("cs_reviews",          "ri-shield-star-line", "ORDER BY CsReviewId      DESC", null),
@@ -1724,7 +1725,7 @@
         {
             "fin_payment_methods", "fin_purchase_items", "fin_purchases", "fin_payments",
             "acad_attendance", "acad_student_courses",
-            "sess_folder_summary", "sess_misc_charges", "sess_sessions", "sess_auditors", "sess_meetings",
+            "sess_folder_summary", "sess_misc_charges", "sess_sessions", "sess_auditors", "sess_meetings", "sess_completions",
             "cs_work_log", "cs_reviews", "cs_case_supervisors",
             "sys_weekly_remarks", "sys_auditor_pc_permissions",
             "sys_staff_messages", "sys_staff_pc_list", "sys_trusted_devices",

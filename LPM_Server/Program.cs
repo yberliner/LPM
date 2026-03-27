@@ -129,6 +129,7 @@ builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.Circu
 builder.Services.AddHttpClient("sms");
 builder.Services.AddSingleton<LPM.Services.SmsService>();
 builder.Services.AddSingleton<LPM.Services.ImportJobService>();
+builder.Services.AddSingleton<LPM.Services.CompletionService>();
 
 // Add session services
 builder.Services.AddDistributedMemoryCache();

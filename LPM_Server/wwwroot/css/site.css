@@ -285,3 +285,10 @@ a.fc-daygrid-day-number,
     background: rgba(0, 102, 255, 0.28) !important;
     color: transparent !important;
 }
+
+.btn-xs {
+    padding: 2px 6px;
+    font-size: .75rem;
+    line-height: 1.4;
+    border-radius: 4px;
+}
