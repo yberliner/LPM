@@ -1592,7 +1592,7 @@ public class PdfService
             var style = bold ? PdfSharpCore.Drawing.XFontStyle.Bold
                              : PdfSharpCore.Drawing.XFontStyle.Regular;
             double sz = pt * scale;
-            foreach (var name in new[] { "Arial", "Liberation Sans", "DejaVu Sans", "Helvetica" })
+            foreach (var name in new[] { "DejaVu Sans", "Arial", "Liberation Sans", "Helvetica" })
                 try { return new PdfSharpCore.Drawing.XFont(name, sz, style); }
                 catch { }
             return new PdfSharpCore.Drawing.XFont("Courier New", sz, style);

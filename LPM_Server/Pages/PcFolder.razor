@@ -3140,6 +3140,12 @@
         InvokeAsync(StateHasChanged);
     }
 
+    [JSInvokable]
+    public void OnFolderSummaryFailed()
+    {
+        InvokeAsync(() => ShowErrorToast("Folder Summary generation failed — the PDF could not be combined"));
+    }
+
     int _selectGeneration; // incremented on each click to detect stale loads
 
     async Task SelectFile(string relativePath, string fileName, string section = "", bool fitAfterLoad = false)

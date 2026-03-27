@@ -497,6 +497,7 @@
         try
         {
             await JS.InvokeVoidAsync("eval", "navigator.wakeLock?.request('screen').catch(()=>{})");
+            _pollTimer?.Dispose();
             _pollTimer = new System.Threading.Timer(PollProgress, null, 500, 800);
 
             // Phase 1: User Backup

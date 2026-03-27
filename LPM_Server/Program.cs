@@ -159,6 +159,9 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 var app = builder.Build();
 //Globals.ServiceProvider = app.Services;
 
+// Register embedded font resolver so PdfSharpCore works on Linux without system fonts
+PdfSharpCore.Fonts.GlobalFontSettings.FontResolver = LPM.Services.EmbeddedFontResolver.Instance;
+
 // Log the SQLite version bundled at runtime
 {
     using var _sc = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
@@ -488,20 +491,58 @@ app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
     if (summaries.Count == 0)
         return Results.File(originalBytes, "application/pdf");
 
+    int originalPageCount = 0;
+    int summaryPageCount  = 0;
+    byte[]? combined      = null;
+
+    // ── Step 1: try PdfSharpCore, validate output page count ──────────────
     try
     {
-        var originalPageCount = pdfSvc.CountPdfPages(originalBytes);
-        var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
-        var combined = pdfSvc.CombinePdfs(summaryPdf, originalBytes);
-        return Results.File(combined, "application/pdf", enableRangeProcessing: true);
+        originalPageCount = pdfSvc.CountPdfPages(originalBytes);
+        var summaryPdf    = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
+        summaryPageCount  = pdfSvc.CountPdfPages(summaryPdf);
+        var candidate     = pdfSvc.CombinePdfs(summaryPdf, originalBytes);
+        int combinedCount = pdfSvc.CountPdfPages(candidate);
+        int expectedMin   = summaryPageCount + originalPageCount;
+        if (combinedCount >= expectedMin)
+        {
+            combined = candidate;
+        }
+        else
+        {
+            Console.WriteLine($"[FolderSummary] PdfSharpCore produced corrupt output " +
+                              $"({combinedCount} pages, expected ≥{expectedMin}) for PC {pcId} — trying Ghostscript");
+        }
     }
     catch (Exception ex)
     {
-        // Lenient retry is already built into CountPdfPages/CombinePdfs — reaching here means the PDF is
-        // truly unreadable by PdfSharpCore. Serve the original so the user can still see the pages.
-        Console.WriteLine($"[FolderSummary] Cannot combine for PC {pcId} path={path}: {ex.Message} — serving original");
-        return Results.File(originalBytes, "application/pdf");
+        Console.WriteLine($"[FolderSummary] PdfSharpCore combine failed for PC {pcId}: {ex.Message} — trying Ghostscript");
     }
+
+    // ── Step 2: Ghostscript fallback ───────────────────────────────────────
+    if (combined == null)
+    {
+        try
+        {
+            var summaryPdf2 = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
+            combined = folderSvc.CombinePdfsViaGhostscript(summaryPdf2, originalBytes);
+            if (combined == null)
+                Console.WriteLine($"[FolderSummary] Ghostscript returned null for PC {pcId} path={path}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FolderSummary] Ghostscript combine threw for PC {pcId}: {ex.Message}");
+        }
+    }
+
+    // ── Step 3: all attempts failed ────────────────────────────────────────
+    if (combined == null)
+    {
+        Console.WriteLine($"[FolderSummary] ALL combine attempts failed for PC {pcId} path={path} — returning 500");
+        return Results.Problem("Folder summary generation failed", statusCode: 500);
+    }
+
+    return Results.File(combined, "application/pdf", enableRangeProcessing: true);
 }).RequireAuthorization();
 
 app.MapGet("/api/pc-session-merged", (int pcId, string session, LPM.Services.FolderService folderSvc,

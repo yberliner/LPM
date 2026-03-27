@@ -28,7 +28,8 @@ window.pcfViewer = {
                 zoomLevel: 1.0,
                 dualMode: false,
                 dualPage: 0,
-                dualScale: 1
+                dualScale: 1,
+                _loadingTask: null
             };
         }
         return this.panes[paneId];
@@ -95,8 +96,11 @@ window.pcfViewer = {
         if (!viewer || pane.loadGen !== myGen || stableWidth < 50) return;
 
         // Fast path: same file already rendered — instant CSS zoom + background re-render
+        // Also require viewer has actual DOM children; a superseded load may have cleared innerHTML
+        // while pane.pages still holds detached canvas references (length > 0 but not in DOM).
         if (isSameFile && pane.pages.length > 0 && pane.pdfPages &&
-            pane.pages.length === pane.pdfPages.length) {
+            pane.pages.length === pane.pdfPages.length &&
+            viewer.children.length > 0) {
             await this._rescalePdf(pane, paneId, stableWidth, targetPage, myGen, viewer);
             return;
         }
@@ -152,17 +156,36 @@ window.pcfViewer = {
         const pdfjsLib = window['pdfjs-dist/build/pdf'];
         if (!pdfjsLib) { viewer.style.visibility = ''; viewer.innerHTML = '<div style="color:#fff;padding:40px;">PDF.js not loaded</div>'; return; }
 
+        // Cancel any previous in-flight fetch for this pane so it cannot race with
+        // the new load and leave the pane in a stuck empty state.
+        if (pane._loadingTask) {
+            try { pane._loadingTask.destroy(); } catch (_) {}
+            pane._loadingTask = null;
+        }
+
         let pdfDoc;
+        const loadingTask = pdfjsLib.getDocument({ url, withCredentials: true });
+        pane._loadingTask = loadingTask;
         try {
-            pdfDoc = await pdfjsLib.getDocument({ url, withCredentials: true }).promise;
+            pdfDoc = await loadingTask.promise;
         } catch (e) {
+            pane._loadingTask = null;
             if (pane.loadGen !== myGen) return;
-            const msg = e.status ? `HTTP ${e.status} — ${e.message}` : e.message;
             viewer.style.visibility = '';
-            viewer.innerHTML = '<div style="color:#fff;padding:40px;">Failed to load PDF: ' + msg + '</div>';
+            if (url.includes('pc-file-folder-summary')) {
+                viewer.innerHTML = '<div style="color:#f87171;padding:40px;text-align:center;">' +
+                    '<i class="ri-error-warning-line" style="font-size:2.2rem;display:block;margin-bottom:10px;"></i>' +
+                    '<div style="font-weight:700;font-size:1rem;margin-bottom:4px;">Folder Summary generation failed</div>' +
+                    '<div style="font-size:.8rem;color:#94a3b8;">The PDF could not be combined</div></div>';
+                if (this.dotNetRef) this.dotNetRef.invokeMethodAsync('OnFolderSummaryFailed');
+            } else {
+                const msg = e.status ? `HTTP ${e.status} — ${e.message}` : e.message;
+                viewer.innerHTML = '<div style="color:#fff;padding:40px;">Failed to load PDF: ' + msg + '</div>';
+            }
             console.error('[pcf-viewer] loadPdf error', url, e);
             return;
         }
+        pane._loadingTask = null;
         if (pane.loadGen !== myGen) return; // superseded while fetching
         pane.pdfDoc = pdfDoc;
 

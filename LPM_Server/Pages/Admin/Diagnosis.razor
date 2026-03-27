@@ -456,17 +456,38 @@
             }
             <div class="cedb-table-wrap mb-3">
                 <table class="cedb-table">
-                    <thead><tr><th>PcId</th><th>Name</th><th></th></tr></thead>
+                    <thead><tr><th></th><th>PcId</th><th>Name</th><th></th></tr></thead>
                     <tbody>
                         @if (_pcsRows.Count == 0)
                         {
-                            <tr><td colspan="3" class="cedb-empty text-center py-2">No rows</td></tr>
+                            <tr><td colspan="4" class="cedb-empty text-center py-2">No rows</td></tr>
                         }
                         @foreach (var row in _pcsRows)
                         {
                             var r = row;
                             bool pcsDelPending = _pendingDeletePcId == r.PcId;
                             <tr>
+                                <td style="white-space:nowrap;">
+                                    @if (pcsDelPending)
+                                    {
+                                        <button class="btn btn-danger btn-sm py-0 px-1 me-1" title="Confirm delete"
+                                                disabled="@_pcsBusy" @onclick="() => DeletePcsRow(r.PcId)">
+                                            <i class="ri-check-line"></i>
+                                        </button>
+                                        <button class="btn btn-outline-secondary btn-sm py-0 px-1"
+                                                @onclick="() => _pendingDeletePcId = 0">
+                                            <i class="ri-close-line"></i>
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-outline-danger btn-sm py-0 px-1" title="Delete"
+                                                disabled="@_pcsBusy"
+                                                @onclick="() => { _pendingDeletePcId = r.PcId; _pcsMsg = string.Empty; }">
+                                            <i class="ri-delete-bin-line"></i>
+                                        </button>
+                                    }
+                                </td>
                                 <td><span style="color:#64748b;">@r.PcId</span></td>
                                 <td>@r.PersonName</td>
                                 <td class="text-end" style="white-space:nowrap;">
@@ -648,7 +669,7 @@
                         <div class="cedb-table-wrap">
                             <table class="cedb-table">
                                 <thead>
-                                    <tr><th>File</th><th>Modified</th><th>Size</th><th></th></tr>
+                                    <tr><th></th><th>File</th><th>Modified</th><th>Size</th><th></th></tr>
                                 </thead>
                                 <tbody>
                                     @foreach (var file in grp.Files)
@@ -656,6 +677,24 @@
                                         var f = file;
                                         bool filePending = _pendingDeleteFile == f.FullPath;
                                         <tr class="@(filePending ? "table-danger" : "")">
+                                            <td style="white-space:nowrap;">
+                                                @if (filePending)
+                                                {
+                                                    <button class="btn btn-danger btn-sm py-0 px-1 me-1" @onclick="() => DeleteRecentFile(f.FullPath)">
+                                                        <i class="ri-check-line"></i>
+                                                    </button>
+                                                    <button class="btn btn-outline-secondary btn-sm py-0 px-1" @onclick="() => _pendingDeleteFile = null">
+                                                        <i class="ri-close-line"></i>
+                                                    </button>
+                                                }
+                                                else
+                                                {
+                                                    <button class="btn btn-outline-danger btn-sm py-0 px-2"
+                                                            title="Delete" @onclick="() => _pendingDeleteFile = f.FullPath">
+                                                        <i class="ri-delete-bin-line"></i>
+                                                    </button>
+                                                }
+                                            </td>
                                             <td>@f.RelPath</td>
                                             <td style="white-space:nowrap;">@f.Modified.ToString("yyyy-MM-dd HH:mm")</td>
                                             <td style="white-space:nowrap;">@FormatSize(f.Size)</td>
@@ -892,6 +931,7 @@
                         <table class="cedb-table">
                             <thead>
                                 <tr>
+                                    <th style="width:60px;"></th>
                                     @foreach (var col in args.Table.Columns)
                                     {
                                         var c = col;
@@ -916,6 +956,26 @@
                                     string pkVal = pkIdx >= 0 && pkIdx < row.Count ? row[pkIdx] : "";
                                     bool isPending = _pendingDelete?.Table == args.Table.Name && _pendingDelete?.PkVal == pkVal;
                                     <tr class="@(isPending ? "table-danger" : "")">
+                                        <td style="white-space:nowrap;">
+                                            @if (isPending)
+                                            {
+                                                <button class="btn btn-danger btn-sm py-0 px-1 me-1"
+                                                        @onclick="() => DeleteRow(args.Table.Name, args.PkCol, pkVal)">
+                                                    <i class="ri-check-line"></i>
+                                                </button>
+                                                <button class="btn btn-outline-secondary btn-sm py-0 px-1"
+                                                        @onclick="() => _pendingDelete = null">
+                                                    <i class="ri-close-line"></i>
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <button class="btn btn-outline-danger btn-sm py-0 px-1" title="Delete"
+                                                        @onclick="() => _pendingDelete = (args.Table.Name, pkVal)">
+                                                    <i class="ri-delete-bin-line"></i>
+                                                </button>
+                                            }
+                                        </td>
                                         @for (int i = 0; i < args.Table.Columns.Count; i++)
                                         {
                                             var val = i < row.Count ? row[i] : "";

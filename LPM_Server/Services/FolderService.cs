@@ -1715,6 +1715,66 @@ public class FolderService
     }
 
     /// <summary>
+    /// Combines two PDFs into one using Ghostscript (first pages, then second pages).
+    /// Returns null if Ghostscript is unavailable, times out, or fails.
+    /// </summary>
+    public byte[]? CombinePdfsViaGhostscript(byte[] first, byte[] second, int timeoutMs = 30_000)
+    {
+        if (string.IsNullOrEmpty(_ghostscriptExe) || !File.Exists(_ghostscriptExe))
+        {
+            Console.WriteLine("[FolderSummary/GS] Ghostscript not configured — cannot combine");
+            return null;
+        }
+
+        var tempIn1 = Path.Combine(Path.GetTempPath(), $"lpm_comb_a_{Guid.NewGuid():N}.pdf");
+        var tempIn2 = Path.Combine(Path.GetTempPath(), $"lpm_comb_b_{Guid.NewGuid():N}.pdf");
+        var tempOut = Path.Combine(Path.GetTempPath(), $"lpm_comb_out_{Guid.NewGuid():N}.pdf");
+        try
+        {
+            File.WriteAllBytes(tempIn1, first);
+            File.WriteAllBytes(tempIn2, second);
+            var args = string.Join(' ', new[]
+            {
+                "-sDEVICE=pdfwrite", "-dCompatibilityLevel=1.4",
+                "-dNOPAUSE", "-dQUIET", "-dBATCH",
+                $"-sOutputFile=\"{tempOut}\"",
+                $"\"{tempIn1}\"", $"\"{tempIn2}\""
+            });
+            using var proc = new Process();
+            proc.StartInfo = new ProcessStartInfo
+            {
+                FileName = _ghostscriptExe, Arguments = args,
+                UseShellExecute = false, CreateNoWindow = true,
+                RedirectStandardOutput = true, RedirectStandardError = true
+            };
+            proc.Start();
+            bool exited = proc.WaitForExit(timeoutMs);
+            if (!exited)
+            {
+                try { proc.Kill(entireProcessTree: true); } catch { }
+                proc.WaitForExit(3_000);
+                Console.WriteLine($"[FolderSummary/GS] Timed out after {timeoutMs / 1000}s");
+                return null;
+            }
+            if (proc.ExitCode == 0 && File.Exists(tempOut) && new FileInfo(tempOut).Length > 0)
+            {
+                var result = File.ReadAllBytes(tempOut);
+                Console.WriteLine($"[FolderSummary/GS] Combined {first.Length / 1024}KB + {second.Length / 1024}KB → {result.Length / 1024}KB");
+                return result;
+            }
+            Console.WriteLine($"[FolderSummary/GS] Exit code {proc.ExitCode}");
+            return null;
+        }
+        catch (Exception ex) { Console.WriteLine($"[FolderSummary/GS] Error: {ex.Message}"); return null; }
+        finally
+        {
+            try { if (File.Exists(tempIn1)) File.Delete(tempIn1); } catch { }
+            try { if (File.Exists(tempIn2)) File.Delete(tempIn2); } catch { }
+            try { if (File.Exists(tempOut)) File.Delete(tempOut); } catch { }
+        }
+    }
+
+    /// <summary>
     /// Repair via LibreOffice pdf→pdf round-trip. Returns repaired bytes, or null on failure/timeout/unavailable.
     /// </summary>
     private byte[]? RepairViaLibreOffice(byte[] pdfBytes, int timeoutMs)
@@ -2242,8 +2302,8 @@ public class FolderService
             {
                 var page = doc.AddPage();
                 var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page);
-                var font = new PdfSharpCore.Drawing.XFont("Arial", 24);
-                var smallFont = new PdfSharpCore.Drawing.XFont("Arial", 14);
+                var font = new PdfSharpCore.Drawing.XFont("DejaVu Sans", 24);
+                var smallFont = new PdfSharpCore.Drawing.XFont("DejaVu Sans", 14);
                 gfx.DrawString(name, font, PdfSharpCore.Drawing.XBrushes.DarkBlue,
                     new PdfSharpCore.Drawing.XRect(0, 80, page.Width, 40),
                     PdfSharpCore.Drawing.XStringFormats.Center);
