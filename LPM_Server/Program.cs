@@ -455,16 +455,18 @@ static bool CanAccessPcFile(HttpContext ctx, int pcId, bool solo, LPM.Services.D
 }
 
 app.MapGet("/api/pc-file", (int pcId, string path, LPM.Services.FolderService svc,
-    LPM.Services.DashboardService dashSvc, HttpContext ctx, bool solo = false) =>
+    LPM.Services.DashboardService dashSvc, HttpContext ctx, bool solo = false, bool download = false) =>
 {
     var user = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "(unknown)";
-    Console.WriteLine($"[api/pc-file] user='{user}' pcId={pcId} solo={solo} path='{path}'");
+    Console.WriteLine($"[api/pc-file] user='{user}' pcId={pcId} solo={solo} download={download} path='{path}'");
     if (!CanAccessPcFile(ctx, pcId, solo, dashSvc))
     {
         Console.WriteLine($"[api/pc-file] FORBIDDEN for user='{user}' pcId={pcId}");
         return Results.Forbid();
     }
-    var bytes = svc.ReadFileBytes(pcId, path, solo);
+    var bytes = download
+        ? svc.ReadFileBytesForDownload(pcId, path, solo)
+        : svc.ReadFileBytes(pcId, path, solo);
     Console.WriteLine($"[api/pc-file] bytes={(bytes == null ? "NULL (not found)" : bytes.Length + " bytes")}");
     if (bytes == null) return Results.NotFound();
     return Results.File(bytes, "application/pdf", enableRangeProcessing: true);

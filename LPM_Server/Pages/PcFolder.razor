@@ -4154,9 +4154,12 @@
         var fileName = _panes[_activeIdx].FileName ?? System.IO.Path.GetFileName(file);
         Console.WriteLine($"[PcFolder] Downloaded file '{fileName}' by '{_userName}' — for PC {PcId}");
 
+        // Flush unsaved annotations to disk before downloading
+        await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[_activeIdx]);
+
         var apiEndpoint = IsFolderSummaryFile(fileName, file)
             ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(file)}{SoloParam}&_t={DateTime.UtcNow.Ticks}"
-            : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
+            : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}{SoloParam}&download=true&_t={DateTime.UtcNow.Ticks}";
         var js = "var a=document.createElement('a');a.href='" + apiEndpoint + "';a.download='" + fileName.Replace("'", "\\'") + "';document.body.appendChild(a);a.click();document.body.removeChild(a);";
         await JS.InvokeVoidAsync("eval", js);
     }
@@ -4195,6 +4198,8 @@
         // Auto-save all visible panes in parallel
         await Task.WhenAll(Enumerable.Range(0, _paneCount)
             .Select(i => JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]).AsTask()));
+        // Burn session sidecars into PDFs (fire-and-forget — doesn't block the confirm dialog)
+        _ = FolderSvc.BurnAnnotationSidecarsForSessionAsync(PcId, _csSessionName + ".pdf", Solo);
 
         var confirmed = await JS.InvokeAsync<bool>("confirm",
             $"Mark this session's CS review as done?\nReview time: {_csReviewMinutes} minutes");
@@ -4253,6 +4258,8 @@
         await Task.WhenAll(Enumerable.Range(0, _paneCount)
             .Where(i => !string.IsNullOrEmpty(_panes[i].File))
             .Select(i => JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]).AsTask()));
+        // Burn all sidecar files in the entire PC folder (fire-and-forget — navigate immediately)
+        _ = FolderSvc.BurnAllAnnotationSidecarsAsync(PcId, Solo);
         await JS.InvokeVoidAsync("eval", "window.location.href='/Home'");
     }
 
@@ -4630,6 +4637,12 @@
         var session = _wsCtxSessionFileName;
         Console.WriteLine($"[PcFolder] Download entire session '{session}' by '{_userName}' — PC {PcId}");
         CloseWsCtxMenu();
+
+        // Flush all open panes before downloading so MergeSessionPdfs sees the latest state
+        await Task.WhenAll(Enumerable.Range(0, _paneCount)
+            .Where(i => !string.IsNullOrEmpty(_panes[i].File))
+            .Select(i => JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]).AsTask()));
+
         var sessionNoExt = System.IO.Path.GetFileNameWithoutExtension(session);
         var url = $"/api/pc-session-merged?pcId={PcId}&session={Uri.EscapeDataString(session)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
         var downloadName = $"{sessionNoExt}.pdf";
@@ -5070,9 +5083,16 @@
         var fileName = _ctxNode.Name;
         Console.WriteLine($"[PcFolder] Downloaded (ctx) '{fileName}' by '{_userName}' — PC {PcId}");
         CloseCtxMenu();
+
+        // Flush annotations for any pane that has this file open
+        var saveTasks = Enumerable.Range(0, _paneCount)
+            .Where(i => string.Equals(_panes[i].File, relPath, StringComparison.OrdinalIgnoreCase))
+            .Select(i => JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]).AsTask());
+        await Task.WhenAll(saveTasks);
+
         var apiEndpoint = IsFolderSummaryFile(fileName, relPath)
             ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(relPath)}{SoloParam}&_t={DateTime.UtcNow.Ticks}"
-            : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relPath)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
+            : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relPath)}{SoloParam}&download=true&_t={DateTime.UtcNow.Ticks}";
         var js = $"var a=document.createElement('a');a.href='{apiEndpoint}';a.download='{fileName.Replace("'", "\\'")}';document.body.appendChild(a);a.click();document.body.removeChild(a);";
         await JS.InvokeVoidAsync("eval", js);
     }

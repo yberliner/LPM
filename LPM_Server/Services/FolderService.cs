@@ -597,6 +597,227 @@ public class FolderService
         if (path != null && File.Exists(path)) File.Delete(path);
     }
 
+    // ── Text annotation baking ────────────────────────────────────────────────
+
+    private record AnnSidecar(double Scale, List<AnnSidecarEntry> Annotations);
+    private record AnnSidecarEntry(int PageIdx, string Text, double X, double Y, double? FontSize, string? Color, double? MaxWidth);
+
+    /// <summary>
+    /// Parse an .ann.json sidecar and render its text annotations onto the PDF using PdfSharp.
+    /// Uses Import + new-document approach (same as the save-annotated endpoint) for maximum compatibility.
+    /// Returns the new PDF bytes, or the original bytes if there are no annotations or an error occurs.
+    /// </summary>
+    public byte[] BakeTextAnnotations(byte[] pdfBytes, string annJson)
+    {
+        try
+        {
+            var jOpts = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var sidecar = System.Text.Json.JsonSerializer.Deserialize<AnnSidecar>(annJson, jOpts);
+            if (sidecar == null || sidecar.Annotations.Count == 0) return pdfBytes;
+
+            var scale = sidecar.Scale > 0 ? sidecar.Scale : 1.0;
+
+            // Group annotations by page index for fast lookup
+            var byPage = sidecar.Annotations
+                .Where(a => !string.IsNullOrEmpty(a.Text))
+                .GroupBy(a => a.PageIdx)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            if (byPage.Count == 0) return pdfBytes;
+
+            // Open source with Import mode (robust, proven compatible with all our PDFs)
+            using var ms = new MemoryStream(pdfBytes);
+            using var srcDoc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
+            using var outDoc = new PdfSharpCore.Pdf.PdfDocument();
+
+            for (int i = 0; i < srcDoc.PageCount; i++)
+            {
+                // Copy page from source into new document
+                var page = outDoc.AddPage(srcDoc.Pages[i]);
+
+                if (!byPage.TryGetValue(i, out var anns)) continue;
+
+                // Append text annotations on top of this page
+                using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page, PdfSharpCore.Drawing.XGraphicsPdfPageOptions.Append);
+
+                foreach (var ann in anns)
+                {
+                    // Convert canvas-pixel coords → PDF points.
+                    // Canvas Y: origin top-left, Y increases downward, ann.Y is the text baseline.
+                    // PDF Y:    origin bottom-left, Y increases upward.
+                    double pdfX = ann.X / scale;
+                    double pdfY = page.Height.Point - (ann.Y / scale);
+
+                    double fontSizePx = ann.FontSize ?? 14.0;
+                    double fontSizePt = fontSizePx / scale;
+
+                    // Parse color — default near-black
+                    var color = PdfSharpCore.Drawing.XColor.FromArgb(30, 41, 59); // #1e293b
+                    if (!string.IsNullOrEmpty(ann.Color))
+                    {
+                        try { color = PdfSharpCore.Drawing.XColor.FromArgb(ParseHexColor(ann.Color)); }
+                        catch { /* keep default */ }
+                    }
+
+                    var font = new PdfSharpCore.Drawing.XFont("Arial", fontSizePt, PdfSharpCore.Drawing.XFontStyle.Regular);
+                    double lineHeightPt = fontSizePt * 1.3;
+                    double maxWidthPt = ann.MaxWidth.HasValue && ann.MaxWidth.Value > 0
+                        ? ann.MaxWidth.Value / scale
+                        : 0;
+
+                    var lines = WrapTextForPdf(gfx, font, ann.Text, maxWidthPt);
+                    for (int li = 0; li < lines.Count; li++)
+                    {
+                        // Each line moves downward in PDF space (subtract)
+                        gfx.DrawString(lines[li], font, new PdfSharpCore.Drawing.XSolidBrush(color),
+                            pdfX, pdfY - li * lineHeightPt);
+                    }
+                }
+            }
+
+            using var outMs = new MemoryStream();
+            outDoc.Save(outMs);
+            return outMs.ToArray();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FolderService] BakeTextAnnotations failed: {ex.Message}");
+            return pdfBytes;
+        }
+    }
+
+    private static int ParseHexColor(string hex)
+    {
+        hex = hex.TrimStart('#');
+        if (hex.Length == 6) hex = "FF" + hex;   // add full alpha
+        return (int)Convert.ToUInt32(hex, 16);
+    }
+
+    private static List<string> WrapTextForPdf(PdfSharpCore.Drawing.XGraphics gfx, PdfSharpCore.Drawing.XFont font, string text, double maxWidthPt)
+    {
+        var lines = new List<string>();
+        if (maxWidthPt <= 0)
+        {
+            lines.AddRange(text.Split('\n'));
+            return lines;
+        }
+        foreach (var rawLine in text.Split('\n'))
+        {
+            var words = rawLine.Split(' ');
+            var current = "";
+            foreach (var word in words)
+            {
+                var candidate = current.Length == 0 ? word : current + " " + word;
+                if (gfx.MeasureString(candidate, font).Width > maxWidthPt && current.Length > 0)
+                {
+                    lines.Add(current);
+                    current = word;
+                }
+                else current = candidate;
+            }
+            lines.Add(current);
+        }
+        return lines;
+    }
+
+    /// <summary>
+    /// Read the PDF for a given absolute path and bake its .ann.json sidecar into it.
+    /// Returns baked PDF bytes (plain, decrypted). Returns original bytes if no sidecar.
+    /// </summary>
+    private byte[] ReadAndBake(string fullPdfPath)
+    {
+        var pdfBytes = ReadAndCache(fullPdfPath);
+        var sidecarPath = fullPdfPath + ".ann.json";
+        if (!File.Exists(sidecarPath)) return pdfBytes;
+        var annJson = File.ReadAllText(sidecarPath);
+        return BakeTextAnnotations(pdfBytes, annJson);
+    }
+
+    /// <summary>
+    /// Read a file for download: decrypts it and bakes any .ann.json sidecar into the PDF.
+    /// Returns null if the file doesn't exist.
+    /// </summary>
+    public byte[]? ReadFileBytesForDownload(int pcId, string relativePath, bool solo = false)
+    {
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
+        if (folder == null) return null;
+        var fullPath = SafeResolvePath(folder, relativePath);
+        if (fullPath == null || !File.Exists(fullPath)) return null;
+        return ReadAndBake(fullPath);
+    }
+
+    /// <summary>
+    /// Fire-and-forget: bake all .ann.json sidecars in the entire PC folder tree into their PDFs
+    /// and delete the sidecar files. Skips files that fail to bake (keeps sidecar on error).
+    /// </summary>
+    public async Task BurnAllAnnotationSidecarsAsync(int pcId, bool solo)
+    {
+        await Task.Run(() =>
+        {
+            var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
+            if (folder == null) return;
+            BurnSidecarsInDirectory(folder);
+        });
+    }
+
+    /// <summary>
+    /// Fire-and-forget: bake sidecars for the given session file + all its _att_ attachments.
+    /// </summary>
+    public async Task BurnAnnotationSidecarsForSessionAsync(int pcId, string sessionFileName, bool solo)
+    {
+        await Task.Run(() =>
+        {
+            var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
+            if (folder == null) return;
+            var wsPath = Path.Combine(folder, "WorkSheets");
+            if (!Directory.Exists(wsPath)) return;
+
+            var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
+            var targets = Directory.GetFiles(wsPath, "*.pdf")
+                .Where(p =>
+                {
+                    var name = Path.GetFileName(p);
+                    return string.Equals(name, sessionFileName, StringComparison.OrdinalIgnoreCase)
+                        || name.StartsWith(sessionNoExt + "_att_", StringComparison.OrdinalIgnoreCase);
+                });
+
+            foreach (var pdfPath in targets)
+                BurnSidecarForFile(pdfPath);
+        });
+    }
+
+    private void BurnSidecarsInDirectory(string directory)
+    {
+        foreach (var sidecar in Directory.GetFiles(directory, "*.ann.json", SearchOption.AllDirectories))
+        {
+            var pdfPath = sidecar[..^".ann.json".Length];
+            BurnSidecarForFile(pdfPath, sidecar);
+        }
+    }
+
+    private void BurnSidecarForFile(string pdfPath, string? sidecarPath = null)
+    {
+        sidecarPath ??= pdfPath + ".ann.json";
+        if (!File.Exists(sidecarPath)) return;
+        if (!File.Exists(pdfPath)) { File.Delete(sidecarPath); return; }
+
+        try
+        {
+            var pdfBytes = ReadAndCache(pdfPath);
+            var annJson  = File.ReadAllText(sidecarPath);
+            var baked    = BakeTextAnnotations(pdfBytes, annJson);
+            File.WriteAllBytes(pdfPath, EncryptBytes(baked));
+            StoreInCache(pdfPath, baked);
+            File.Delete(sidecarPath);
+            Console.WriteLine($"[FolderService] Burned annotation sidecar into '{Path.GetFileName(pdfPath)}'");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FolderService] BurnSidecarForFile failed for '{Path.GetFileName(pdfPath)}': {ex.Message}");
+            // Keep sidecar on failure — do not delete
+        }
+    }
+
     /// <summary>Save annotated PDF bytes back to disk (encrypted)</summary>
     public bool SaveFile(int pcId, string relativePath, byte[] pdfBytes, bool solo = false)
     {
@@ -1336,7 +1557,7 @@ public class FolderService
             if (!File.Exists(filePath)) continue;
             try
             {
-                var bytes = ReadAndCache(filePath);
+                var bytes = ReadAndBake(filePath);
                 using var ms = new MemoryStream(bytes);
                 using var doc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
                 for (int i = 0; i < doc.PageCount; i++)
