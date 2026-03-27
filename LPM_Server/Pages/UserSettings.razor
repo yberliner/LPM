@@ -247,12 +247,9 @@
                                     Trusted devices: <strong>@_trustedDeviceCount</strong>
                                 </div>
                             </div>
-                            <div class="ms-auto d-flex gap-2 flex-wrap">
+                            <div class="ms-auto">
                                 <button class="btn btn-sm btn-outline-warning" @onclick="RevokeDevices">
                                     <i class="ri-device-line me-1"></i>Revoke All Trusted Devices
-                                </button>
-                                <button class="btn btn-sm btn-outline-danger" @onclick="Disable2FA">
-                                    <i class="ri-shield-cross-line me-1"></i>Disable 2FA
                                 </button>
                             </div>
                         </div>
@@ -265,7 +262,7 @@
                         <p class="text-muted mb-3" style="font-size:.82rem;">
                             Works with: <strong>Google Authenticator</strong>, <strong>Microsoft Authenticator</strong>, Authy, 1Password, Bitwarden, and any TOTP-compatible app.
                         </p>
-                        <a href="/Setup2FA" class="btn settings-save-btn" style="background:linear-gradient(135deg,#7c3aed,#a855f7);box-shadow:0 3px 14px rgba(168,85,247,.35);">
+                        <a href="/Setup2FA?voluntary=1" class="btn settings-save-btn" style="background:linear-gradient(135deg,#7c3aed,#a855f7);box-shadow:0 3px 14px rgba(168,85,247,.35);">
                             <i class="ri-shield-keyhole-line me-2"></i>Set Up 2FA Now
                         </a>
                     }
@@ -493,6 +490,15 @@
             _trustedDeviceCount = UserDb.GetTrustedDeviceCount(_userId);
         }
 
+        // Show success message when returning from voluntary 2FA setup
+        var uri = new Uri(Nav.Uri);
+        var q = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        if (q["2fa"] == "ok")
+        {
+            _twoFaMsg = "2FA has been enabled on your account.";
+            _twoFaOk = true;
+        }
+
         // Pre-populate contact info
         if (_personId > 0)
         {
@@ -611,14 +617,9 @@
         _twoFaOk = true;
     }
 
-    private void Disable2FA()
+    private void Disable2FA_Removed()
     {
-        UserDb.DisableTotp(_userId);
-        UserDb.RevokeAllTrustedDevices(_userId);
-        _totpEnabled = false;
-        _trustedDeviceCount = 0;
-        _twoFaMsg = "2FA has been disabled on your account.";
-        _twoFaOk = false;
+        // Removed — users cannot disable 2FA once enabled
     }
 
     private void HandleChangePassword()

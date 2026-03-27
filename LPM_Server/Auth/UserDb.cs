@@ -323,7 +323,7 @@ public class UserDb
 
     // ── 2FA / TOTP ──────────────────────────────────────────────────────────
 
-    public record LoginFlags(int UserId, string Username, bool MustChangePassword, bool TotpEnabled, string? EncryptedTotpSecret, List<string> Roles, string StaffRole, int PersonId);
+    public record LoginFlags(int UserId, string Username, bool MustChangePassword, bool TotpEnabled, string? EncryptedTotpSecret, List<string> Roles, string StaffRole, int PersonId, bool Require2FA);
 
     /// <summary>Returns login flags for a user by username. Call only after ValidateUser succeeds.</summary>
     public LoginFlags? GetLoginFlags(string username)
@@ -333,7 +333,7 @@ public class UserDb
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT u.Id, u.Username, u.MustChangePassword, u.TotpEnabled, u.TotpSecret,
-                   u.UserType, u.StaffRole, u.PersonId
+                   u.UserType, u.StaffRole, u.PersonId, u.Require2FA
             FROM core_users u
             WHERE u.Username = @u COLLATE NOCASE AND u.IsActive = 1 LIMIT 1";
         cmd.Parameters.AddWithValue("@u", username);
@@ -354,7 +354,8 @@ public class UserDb
             EncryptedTotpSecret: r.IsDBNull(4) ? null : r.GetString(4),
             Roles: roles,
             StaffRole: staffRole,
-            PersonId: r.GetInt32(7));
+            PersonId: r.GetInt32(7),
+            Require2FA: r.GetInt32(8) == 1);
     }
 
     /// <summary>Same as GetLoginFlags but looks up by UserId (core_users.Id).</summary>
@@ -365,7 +366,7 @@ public class UserDb
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT u.Id, u.Username, u.MustChangePassword, u.TotpEnabled, u.TotpSecret,
-                   u.UserType, u.StaffRole, u.PersonId
+                   u.UserType, u.StaffRole, u.PersonId, u.Require2FA
             FROM core_users u
             WHERE u.Id = @id AND u.IsActive = 1 LIMIT 1";
         cmd.Parameters.AddWithValue("@id", userId);
@@ -385,7 +386,21 @@ public class UserDb
             EncryptedTotpSecret: r.IsDBNull(4) ? null : r.GetString(4),
             Roles: roles,
             StaffRole: staffRoleById,
-            PersonId: r.GetInt32(7));
+            PersonId: r.GetInt32(7),
+            Require2FA: r.GetInt32(8) == 1);
+    }
+
+    /// <summary>Sets or clears the per-user Require2FA flag (admin use).</summary>
+    public void SetRequire2FA(int userId, bool value)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE core_users SET Require2FA=@v WHERE Id=@id";
+        cmd.Parameters.AddWithValue("@v", value ? 1 : 0);
+        cmd.Parameters.AddWithValue("@id", userId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[UserDb] Require2FA={value} for userId={userId}");
     }
 
     /// <summary>Forces a password change (no current password required) and clears MustChangePassword.</summary>

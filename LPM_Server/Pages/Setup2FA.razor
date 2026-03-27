@@ -92,12 +92,14 @@
     string _code = "";
     bool _error, _loading;
     string _rawSecretB64 = "";
+    bool _voluntary;
 
     protected override void OnInitialized()
     {
         var uri = new Uri(Nav.Uri);
         var q = System.Web.HttpUtility.ParseQueryString(uri.Query);
         _error = q["error"] == "1";
+        _voluntary = q["voluntary"] == "1";
 
         // If returning after a failed attempt, restore the same secret
         var rs = q["rs"];
@@ -162,8 +164,9 @@
         await JS.InvokeVoidAsync("lpmPostForm", "/loginpost-setup2fa",
             new Dictionary<string, string>
             {
-                ["code"] = _code,
-                ["rawSecret"] = _rawSecretB64
+                ["code"]      = _code,
+                ["rawSecret"] = _rawSecretB64,
+                ["voluntary"] = _voluntary ? "1" : "0"
             });
     }
 }

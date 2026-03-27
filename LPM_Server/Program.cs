@@ -277,7 +277,7 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db, IConfiguration conf
     LPM.Services.LoginRateLimit.ClearFailures(ip);
     var flags = db.GetLoginFlags(username)!;
 
-    bool require2fa     = config.GetValue<bool>("Security:Require2FA");
+    bool require2fa     = flags.Require2FA || flags.TotpEnabled;
     bool requirePwdChg  = config.GetValue<bool>("Security:RequirePasswordChangeOnFirstLogin");
 
     // Step 1: force password change?
@@ -338,7 +338,7 @@ app.MapPost("/loginpost-changepwd", async (HttpContext ctx, UserDb db, IConfigur
     var flags2 = db.GetLoginFlagsById(userId);
     if (flags2 == null) return Results.Redirect("/login");
 
-    bool require2fa = config.GetValue<bool>("Security:Require2FA");
+    bool require2fa = flags2.Require2FA || flags2.TotpEnabled;
 
     if (require2fa && !flags2.TotpEnabled)
     {
@@ -365,33 +365,53 @@ app.MapPost("/loginpost-changepwd", async (HttpContext ctx, UserDb db, IConfigur
 
 app.MapPost("/loginpost-setup2fa", async (HttpContext ctx, UserDb db, IConfiguration config) =>
 {
-    if (!int.TryParse(ctx.Request.Cookies["lpm_pending"], out var userId))
-        return Results.Redirect("/login");
-
     var form = await ctx.Request.ReadFormAsync();
     var code         = form["code"].ToString();
     var rawSecretB64 = form["rawSecret"].ToString();
+    bool voluntary   = form["voluntary"].ToString() == "1";
+
+    int userId;
+    if (voluntary)
+    {
+        // User is already authenticated — look up userId from username claim
+        var volUsername = ctx.User.Identity?.Name;
+        if (string.IsNullOrEmpty(volUsername))
+            return Results.Redirect("/UserSettings");
+        var volFlags = db.GetLoginFlags(volUsername);
+        if (volFlags == null)
+            return Results.Redirect("/UserSettings");
+        userId = volFlags.UserId;
+    }
+    else
+    {
+        if (!int.TryParse(ctx.Request.Cookies["lpm_pending"], out userId))
+            return Results.Redirect("/login");
+    }
 
     byte[] rawSecret;
     try { rawSecret = Convert.FromBase64String(rawSecretB64); }
-    catch { return Results.Redirect("/Setup2FA?error=1"); }
+    catch { return Results.Redirect($"/Setup2FA?error=1{(voluntary ? "&voluntary=1" : "")}"); }
 
     if (!UserDb.VerifyTotpCodeRaw(rawSecret, code))
     {
         Console.WriteLine($"[2FA] Setup verification failed for userId={userId}");
-        return Results.Redirect($"/Setup2FA?error=1&rs={Uri.EscapeDataString(rawSecretB64)}");
+        return Results.Redirect($"/Setup2FA?error=1&rs={Uri.EscapeDataString(rawSecretB64)}{(voluntary ? "&voluntary=1" : "")}");
     }
 
     var encKey = config["TotpEncryptionKey"] ?? throw new InvalidOperationException("TotpEncryptionKey not configured");
     var encrypted = UserDb.EncryptTotpRaw(rawSecret, encKey);
     db.SaveEncryptedTotpSecret(userId, encrypted);
 
+    Console.WriteLine($"[2FA] Setup complete for userId={userId} (voluntary={voluntary})");
+
+    if (voluntary)
+        return Results.Redirect("/UserSettings?2fa=ok");
+
     var flags = db.GetLoginFlagsById(userId);
     if (flags == null) return Results.Redirect("/login");
 
     SetTrustCookie(ctx, db, userId);
     await SignInUser(ctx, db, flags.Username, flags);
-    Console.WriteLine($"[2FA] Setup complete for userId={userId}");
     return Results.Redirect(HomeOrContact(db, userId));
 }).DisableAntiforgery();
 
