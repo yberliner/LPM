@@ -332,28 +332,29 @@ public class UserDb
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT u.Id, u.MustChangePassword, u.TotpEnabled, u.TotpSecret,
+            SELECT u.Id, u.Username, u.MustChangePassword, u.TotpEnabled, u.TotpSecret,
                    u.UserType, u.StaffRole, u.PersonId
             FROM core_users u
             WHERE u.Username = @u COLLATE NOCASE AND u.IsActive = 1 LIMIT 1";
         cmd.Parameters.AddWithValue("@u", username);
         using var r = cmd.ExecuteReader();
         if (!r.Read()) return null;
-        var userType  = r.GetString(4);
-        var staffRole = r.GetString(5);
+        var dbUsername = r.GetString(1);
+        var userType  = r.GetString(5);
+        var staffRole = r.GetString(6);
         var roles = new List<string>();
         if (userType == "Admin")       roles.Add("Admin");
         else if (staffRole != "Solo")  roles.Add("Customer");
         // Solo → no roles (Dashboard only)
         return new LoginFlags(
             UserId: r.GetInt32(0),
-            Username: username,
-            MustChangePassword: r.GetInt32(1) == 1,
-            TotpEnabled: r.GetInt32(2) == 1,
-            EncryptedTotpSecret: r.IsDBNull(3) ? null : r.GetString(3),
+            Username: dbUsername,
+            MustChangePassword: r.GetInt32(2) == 1,
+            TotpEnabled: r.GetInt32(3) == 1,
+            EncryptedTotpSecret: r.IsDBNull(4) ? null : r.GetString(4),
             Roles: roles,
             StaffRole: staffRole,
-            PersonId: r.GetInt32(6));
+            PersonId: r.GetInt32(7));
     }
 
     /// <summary>Same as GetLoginFlags but looks up by UserId (core_users.Id).</summary>

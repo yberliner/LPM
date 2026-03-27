@@ -81,11 +81,12 @@ public class UserActivityService
             using var conn = new SqliteConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
-            // SQLite returns Action/Kind from the row that has MAX(ActivityAt) within the group
+            // SQLite returns Action/Kind from the row that has MAX(ActivityAt) within the group.
+            // Group by LOWER(Username) so "Aviv" and "aviv" are treated as the same user.
             cmd.CommandText = @"
-                SELECT Username, MAX(ActivityAt) AS LastActivityAt, Action, Kind
+                SELECT LOWER(Username) AS Username, MAX(ActivityAt) AS LastActivityAt, Action, Kind
                 FROM sys_activity_log
-                GROUP BY Username
+                GROUP BY LOWER(Username)
                 ORDER BY MAX(ActivityAt) DESC";
             using var r = cmd.ExecuteReader();
             while (r.Read())
@@ -109,16 +110,16 @@ public class UserActivityService
             using var conn = new SqliteConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
-            cmd.Parameters.AddWithValue("@u", username);
+            cmd.Parameters.AddWithValue("@u", username.ToLowerInvariant());
             if (days > 0)
             {
                 var cutoff = DateTime.UtcNow.AddDays(-days).ToString("yyyy-MM-dd HH:mm:ss");
-                cmd.CommandText = "SELECT Id, ActivityAt, Action, Kind FROM sys_activity_log WHERE Username=@u AND ActivityAt >= @cutoff ORDER BY ActivityAt DESC LIMIT 500";
+                cmd.CommandText = "SELECT Id, ActivityAt, Action, Kind FROM sys_activity_log WHERE LOWER(Username)=@u AND ActivityAt >= @cutoff ORDER BY ActivityAt DESC LIMIT 500";
                 cmd.Parameters.AddWithValue("@cutoff", cutoff);
             }
             else
             {
-                cmd.CommandText = "SELECT Id, ActivityAt, Action, Kind FROM sys_activity_log WHERE Username=@u ORDER BY ActivityAt DESC LIMIT 500";
+                cmd.CommandText = "SELECT Id, ActivityAt, Action, Kind FROM sys_activity_log WHERE LOWER(Username)=@u ORDER BY ActivityAt DESC LIMIT 500";
             }
             using var r = cmd.ExecuteReader();
             while (r.Read())

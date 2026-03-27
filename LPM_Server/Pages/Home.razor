@@ -1343,21 +1343,9 @@
     .home-att-chip-yellow { background: rgba(202,138,4,.2);   color: #ca8a04; }
 
     /* ── Attachment-type badge animations ── */
-    @@keyframes audAttPink {
-        0%,100% { background: rgba(236,72,153,.18); color: #ec4899; box-shadow: none; }
-        50%      { background: rgba(236,72,153,.38); color: #f472b6; box-shadow: 0 0 8px rgba(236,72,153,.55); }
-    }
-    @@keyframes audAttOrange {
-        0%,100% { background: rgba(249,115,22,.18); color: #f97316; box-shadow: none; }
-        50%      { background: rgba(249,115,22,.38); color: #fb923c; box-shadow: 0 0 8px rgba(249,115,22,.55); }
-    }
-    @@keyframes audAttYellow {
-        0%,100% { background: rgba(234,179,8,.18); color: #ca8a04; box-shadow: none; }
-        50%      { background: rgba(234,179,8,.38); color: #eab308; box-shadow: 0 0 8px rgba(234,179,8,.55); }
-    }
-    .home-aud-att-pink   { animation: audAttPink   2.4s ease-in-out infinite; cursor: help; }
-    .home-aud-att-orange { animation: audAttOrange 2.4s ease-in-out infinite; cursor: help; }
-    .home-aud-att-yellow { animation: audAttYellow 2.4s ease-in-out infinite; cursor: help; }
+    .home-aud-att-pink   { background: rgba(236,72,153,.18); color: #ec4899; cursor: help; }
+    .home-aud-att-orange { background: rgba(249,115,22,.18); color: #f97316; cursor: help; }
+    .home-aud-att-yellow { background: rgba(234,179,8,.18);  color: #ca8a04; cursor: help; }
 
     @@media (max-width: 480px) {
         .home-pending-cs-table, .home-aud-status-table { font-size: .72rem; }

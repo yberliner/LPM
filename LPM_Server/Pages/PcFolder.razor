@@ -661,9 +661,10 @@
             <div class="d-flex align-items-center gap-2" style="min-width:0;overflow:hidden;flex-shrink:0;">
                 @if (!_sidebarOpen)
                 {
-                    <button class="pcf-tool-btn" title="Open sidebar — show file list"
+                    <button class="pcf-tool-btn pcf-sidebar-open-btn" aria-label="Open file list"
                             @onclick="() => _sidebarOpen = true">
                         <i class="ri-side-bar-line"></i>
+                        <span class="pcf-sidebar-tooltip">Open file list</span>
                     </button>
                     <div class="vr mx-0" style="border-color:rgba(255,255,255,.3);"></div>
                 }
@@ -1448,6 +1449,32 @@
         height: 30px; box-sizing: border-box;
     }
     .pcf-tool-btn:hover { background: rgba(255,255,255,.3); }
+    .pcf-sidebar-open-btn {
+        position: relative;
+        background: rgba(251,146,60,.25); border-color: rgba(251,146,60,.6); color: #fed7aa;
+        animation: pcf-sidebar-glow 1.8s ease-in-out infinite;
+    }
+    .pcf-sidebar-open-btn:hover { background: rgba(251,146,60,.45) !important; }
+    @@keyframes pcf-sidebar-glow {
+        0%, 100% { box-shadow: 0 0 4px 1px rgba(251,146,60,.4); border-color: rgba(251,146,60,.5); }
+        50%       { box-shadow: 0 0 10px 3px rgba(251,146,60,.85); border-color: rgba(251,146,60,.9); }
+    }
+    .pcf-sidebar-tooltip {
+        display: none; position: absolute; top: calc(100% + 6px); left: 50%;
+        transform: translateX(-50%); background: #1e293b; color: #f1f5f9;
+        font-size: .75rem; white-space: nowrap; padding: 4px 8px;
+        border-radius: 5px; border: 1px solid rgba(255,255,255,.15);
+        pointer-events: none; z-index: 9999;
+    }
+    .pcf-sidebar-tooltip::before {
+        content: ''; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+        border: 5px solid transparent; border-bottom-color: rgba(255,255,255,.15);
+    }
+    .pcf-sidebar-tooltip::after {
+        content: ''; position: absolute; bottom: calc(100% - 1px); left: 50%; transform: translateX(-50%);
+        border: 5px solid transparent; border-bottom-color: #1e293b;
+    }
+    .pcf-sidebar-open-btn:hover .pcf-sidebar-tooltip { display: block; }
     .pcf-close-btn:hover { background: rgba(239,68,68,.55) !important; border-color: rgba(239,68,68,.7) !important; }
     .pcf-zoom-single {
         background: rgba(255,255,255,.1); border: none; color: rgba(255,255,255,.9);
@@ -2618,7 +2645,7 @@
     bool   _dupeVisible   = false;
     System.Threading.CancellationTokenSource? _dupeCts;
 
-    bool _sidebarOpen = true;
+    bool _sidebarOpen = false;
     bool _frontExpanded = true;
     bool _backExpanded = true;
     bool _wsExpanded = true;
