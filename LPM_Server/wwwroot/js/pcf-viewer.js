@@ -177,7 +177,7 @@ window.pcfViewer = {
                     '<i class="ri-error-warning-line" style="font-size:2.2rem;display:block;margin-bottom:10px;"></i>' +
                     '<div style="font-weight:700;font-size:1rem;margin-bottom:4px;">Folder Summary generation failed</div>' +
                     '<div style="font-size:.8rem;color:#94a3b8;">The PDF could not be combined</div></div>';
-                if (this.dotNetRef) this.dotNetRef.invokeMethodAsync('OnFolderSummaryFailed');
+                if (this.dotNetRef) this.dotNetRef.invokeMethodAsync('OnFolderSummaryFailed', paneId);
             } else {
                 const msg = e.status ? `HTTP ${e.status} — ${e.message}` : e.message;
                 viewer.innerHTML = '<div style="color:#fff;padding:40px;">Failed to load PDF: ' + msg + '</div>';

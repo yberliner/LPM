@@ -260,3 +260,28 @@ a.fc-daygrid-day-number,
     background: #e5e7eb;
     margin: 3px 0;
 }
+
+
+/* ── PDF.js text layer — always-loaded so it applies on all pages ── */
+.pcf-text-layer {
+    position: absolute; top: 0; left: 0;
+    overflow: hidden; line-height: 1;
+    pointer-events: none;
+    cursor: text;
+    user-select: text;
+    -webkit-user-select: text;
+}
+.pcf-text-layer * {
+    color: transparent !important;
+    background: transparent !important;
+    border: none !important;
+    outline: none !important;
+    position: absolute;
+    white-space: pre;
+    cursor: text;
+    transform-origin: 0% 0%;
+}
+.pcf-text-layer ::selection {
+    background: rgba(0, 102, 255, 0.28) !important;
+    color: transparent !important;
+}

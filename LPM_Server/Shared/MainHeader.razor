@@ -874,7 +874,7 @@
                                 {
                                     <div style="position:absolute; right:0; top:calc(100% + 6px);
                                                 background:#1e293b; border:1px solid #3b82f6; border-radius:6px;
-                                                min-width:290px; max-height:320px; overflow-y:auto;
+                                                min-width:290px; max-height:420px; overflow-y:auto;
                                                 z-index:10001; box-shadow:0 8px 24px rgba(0,0,0,.6);"
                                          @onclick:stopPropagation="true">
                                         <div style="padding:6px 10px; border-bottom:1px solid #334155;
@@ -908,7 +908,8 @@
                                                             style="color:#e2e8f0; font-size:.8rem; border-radius:0;
                                                                    border:none; background:transparent; border-bottom:1px solid #0f172a;"
                                                             @onclick="async () => await OpenRefFile(rf.RelPath, rf.Name)">
-                                                        <i class="ri-file-pdf-2-line me-2" style="color:#ef5350;"></i>@rf.Name
+                                                        <i class="@(grp.Key == "Recent Worksheets" ? "ri-time-line" : "ri-file-pdf-2-line") me-2"
+                                                           style="color:@(grp.Key == "Recent Worksheets" ? "#60a5fa" : "#ef5350");"></i>@rf.Name
                                                     </button>
                                                 }
                                             }
@@ -3040,6 +3041,7 @@
     {
         if (_importPcId <= 0) return;
         _refFileList = FolderSvc.GetCoverFiles(_importPcId, _isSoloUser);
+        _refFileList.AddRange(FolderSvc.GetRecentWorksheetFiles(_importPcId, _isSoloUser));
         _refBrowserOpen = true;
     }
 

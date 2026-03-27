@@ -445,6 +445,22 @@ public class FolderService
         return result;
     }
 
+    public List<(string Section, string FileName, string RelPath)> GetRecentWorksheetFiles(int pcId, bool solo = false, int count = 5)
+    {
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
+        if (folder == null) return [];
+
+        var wsPath = Path.Combine(folder, "WorkSheets");
+        if (!Directory.Exists(wsPath)) return [];
+
+        return Directory.GetFiles(wsPath, "*.pdf")
+            .Where(f => !Path.GetFileName(f).Contains("_att_", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(f => new FileInfo(f).LastWriteTime)
+            .Take(count)
+            .Select(f => ("Recent Worksheets", Path.GetFileName(f), $"WorkSheets/{Path.GetFileName(f)}"))
+            .ToList<(string, string, string)>();
+    }
+
     private List<WorkSheetItem> GetWorkSheets(string pcFolder)
     {
         var wsPath = Path.Combine(pcFolder, "WorkSheets");

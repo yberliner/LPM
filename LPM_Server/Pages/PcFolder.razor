@@ -1845,13 +1845,13 @@
         forced-color-adjust: none;
     }
     .pcf-text-layer span, .pcf-text-layer br {
-        color: transparent;
+        color: transparent !important;
         position: absolute;
         white-space: pre;
         cursor: text;
         transform-origin: 0% 0%;
     }
-    .pcf-text-layer ::selection { background: rgba(0, 102, 255, 0.28); color: transparent; }
+    .pcf-text-layer ::selection { background: rgba(0, 102, 255, 0.28); color: transparent !important; }
 
     /* ── Annotation text select layer (transparent selectable spans over canvas text) ── */
     .pcf-text-select-layer {
@@ -3141,9 +3141,19 @@
     }
 
     [JSInvokable]
-    public void OnFolderSummaryFailed()
+    public void OnFolderSummaryFailed(string paneId)
     {
-        InvokeAsync(() => ShowErrorToast("Folder Summary generation failed — the PDF could not be combined"));
+        _ = InvokeAsync(() =>
+        {
+            // Reset the pane to empty so the user can click another file immediately
+            var idx = Array.IndexOf(PaneIds, paneId);
+            if (idx >= 0 && idx < _panes.Length)
+            {
+                _panes[idx].File = "";
+                _panes[idx].FileName = null;
+            }
+            ShowErrorToast("Folder Summary generation failed — the PDF could not be combined");
+        });
     }
 
     int _selectGeneration; // incremented on each click to detect stale loads
