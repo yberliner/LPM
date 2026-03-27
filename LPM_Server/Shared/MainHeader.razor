@@ -4508,10 +4508,54 @@ string _actionPcSearch = "";
                             [{ 'color': [] }],
                             [{ 'size': ['10px', '14px', '18px', '24px'] }],
                             [{ 'align': [] }],
-                            [{ 'direction': 'rtl' }],
                             ['clean']
                         ]}
                     });
+
+                    // ── Tooltips on standard buttons ──────────────────────────
+                    var tb = window._memoQuill.container.previousSibling;
+                    if (tb) {
+                        var titles = {
+                            'ql-bold':      'Bold',
+                            'ql-italic':    'Italic',
+                            'ql-underline': 'Underline',
+                            'ql-color':     'Text Color',
+                            'ql-size':      'Font Size',
+                            'ql-align':     'Text Alignment',
+                            'ql-clean':     'Clear Formatting'
+                        };
+                        Object.keys(titles).forEach(function(c) {
+                            tb.querySelectorAll('.' + c).forEach(function(b) { b.title = titles[c]; });
+                        });
+
+                        // ── Explicit LTR / RTL buttons ────────────────────────
+                        var fmts = document.createElement('span');
+                        fmts.className = 'ql-formats';
+
+                        var ltrBtn = document.createElement('button');
+                        ltrBtn.textContent = 'LTR';
+                        ltrBtn.title = 'Set paragraph direction: Left-to-Right';
+                        ltrBtn.style.cssText = 'width:auto;padding:0 6px;font-size:11px;font-weight:700;letter-spacing:.5px;';
+                        ltrBtn.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            window._memoQuill.format('direction', false);
+                            window._memoQuill.format('align', false);
+                        });
+
+                        var rtlBtn = document.createElement('button');
+                        rtlBtn.textContent = 'RTL';
+                        rtlBtn.title = 'Set paragraph direction: Right-to-Left (Hebrew / Arabic)';
+                        rtlBtn.style.cssText = 'width:auto;padding:0 6px;font-size:11px;font-weight:700;letter-spacing:.5px;';
+                        rtlBtn.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            window._memoQuill.format('direction', 'rtl');
+                            window._memoQuill.format('align', 'right');
+                        });
+
+                        fmts.appendChild(ltrBtn);
+                        fmts.appendChild(rtlBtn);
+                        tb.appendChild(fmts);
+                    }
                 }
             ");
         });

@@ -1772,7 +1772,13 @@ public class PdfService
                 Regex.Replace(inner, "<[^>]+>", "").Trim());
             // Quill emits ​ (zero-width space) for empty paragraphs — treat as blank
             text = text.Replace("\u200B", "").Trim();
-            paragraphs.Add((text, rtl));
+            // Also detect RTL from the presence of Hebrew or Arabic characters
+            bool hasRtlChars = text.Any(c =>
+                (c >= '\u0590' && c <= '\u05FF') || // Hebrew block
+                (c >= '\u0600' && c <= '\u06FF') || // Arabic block
+                (c >= '\uFB1D' && c <= '\uFB4F') || // Hebrew presentation forms
+                (c >= '\uFB50' && c <= '\uFDFF'));   // Arabic presentation forms
+            paragraphs.Add((text, rtl || hasRtlChars));
         }
         if (paragraphs.Count == 0)
             paragraphs.Add(("", false));
@@ -1823,7 +1829,7 @@ public class PdfService
         using (var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page))
         {
             // ── Find the largest font size that fits one page ─────────────────
-            double fs = 40.0;
+            double fs = 32.0;
             while (fs > 8.0)
             {
                 var probe     = MakeFont(fs);
@@ -1858,10 +1864,14 @@ public class PdfService
             {
                 if (!firstPara) y += paraGap;
                 firstPara = false;
-                var fmt   = rtl ? fmtR : fmtL;
+                var fmt = rtl ? fmtR : fmtL;
+                // Wrap in logical order, then reverse each line individually for RTL.
+                // This preserves correct word-order across line breaks while giving
+                // PdfSharpCore the visual (reversed) character sequence it needs.
                 foreach (var line in Wrap(text, gfx, font, cw))
                 {
-                    gfx.DrawString(line, font, brush,
+                    var draw = rtl ? new string(line.Reverse().ToArray()) : line;
+                    gfx.DrawString(draw, font, brush,
                         new PdfSharpCore.Drawing.XRect(margin, y, cw, lh), fmt);
                     y += lh;
                 }

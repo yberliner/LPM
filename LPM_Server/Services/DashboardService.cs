@@ -1089,17 +1089,18 @@ public class DashboardService
               (PcId, AuditorId, SessionDate, SequenceInDay,
                LengthSeconds, AdminSeconds, IsFreeSession,
                ChargeSeconds, ChargedRateCentsPerHour,
-               Name, CreatedAt)
+               Name, CreatedByUserId, CreatedAt)
             VALUES
               (@pcId, @audId, @date, @seq,
                0, 0, 1,
                0, 0,
-               @name, datetime('now', '+2 hours'))";
-        cmd.Parameters.AddWithValue("@pcId",  pcId);
-        cmd.Parameters.AddWithValue("@audId", auditorId);
-        cmd.Parameters.AddWithValue("@date",  dateStr);
-        cmd.Parameters.AddWithValue("@seq",   seq);
-        cmd.Parameters.AddWithValue("@name",  name);
+               @name, @creator, datetime('now', '+2 hours'))";
+        cmd.Parameters.AddWithValue("@pcId",    pcId);
+        cmd.Parameters.AddWithValue("@audId",   auditorId);
+        cmd.Parameters.AddWithValue("@date",    dateStr);
+        cmd.Parameters.AddWithValue("@seq",     seq);
+        cmd.Parameters.AddWithValue("@name",    name);
+        cmd.Parameters.AddWithValue("@creator", auditorId);
         cmd.ExecuteNonQuery();
 
         using var rowIdCmd2 = conn.CreateCommand();
