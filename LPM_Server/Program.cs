@@ -44,6 +44,7 @@ builder.WebHost.ConfigureKestrel((context, options) =>
 {
     options.Configure(context.Configuration.GetSection("Kestrel"));
     options.Limits.MaxRequestBodySize = 200 * 1024 * 1024; // 200 MB — supports large annotated PDF saves
+    options.AllowSynchronousIO = true; // required for synchronous ZipArchive streaming to response body
 });
 
 // Add services to the container.
@@ -798,17 +799,6 @@ app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderSer
     }
 
     var tempDir = Path.GetTempPath();
-    var tempRoot = Path.GetPathRoot(Path.GetFullPath(tempDir));
-    if (!string.IsNullOrEmpty(tempRoot))
-    {
-        var drive = new DriveInfo(tempRoot);
-        var (dbSize, pcSize, _) = svc.GetBackupSizeInfo();
-        if (drive.AvailableFreeSpace < dbSize + pcSize)
-            return Results.Problem($"Not enough disk space. Need {(dbSize+pcSize)/(1024*1024)}MB, have {drive.AvailableFreeSpace/(1024*1024)}MB free.");
-    }
-
-    foreach (var stale in Directory.GetFiles(tempDir, "lpm-backup-*.zip"))
-        try { File.Delete(stale); } catch { }
 
     var integrity    = svc.CheckIntegrity();
     var integrityTag = integrity == "ok" ? "OK" : "CORRUPT";
@@ -828,109 +818,107 @@ app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderSer
     LPM.Services.BackupProgress.WasStarted     = true;
     LPM.Services.BackupProgress.Running        = true;
     LPM.Services.BackupProgress.CancelRequested = false;
-    int processed = 0;
+    LPM.Services.BackupProgress.CurrentTempFile = null;
 
-    var tempFile = Path.Combine(tempDir, $"lpm-backup-{Guid.NewGuid():N}.zip");
-    try
+    var user = ctx.User.Identity?.Name ?? "unknown";
+    var dlIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    var fileName = $"LPM-UserBackup-{integrityTag}-{DateTime.Now:yyyy-MM-dd_HHmm}.zip";
+
+    return Results.Stream(responseStream =>
     {
-        using (var zip = System.IO.Compression.ZipFile.Open(tempFile, System.IO.Compression.ZipArchiveMode.Create))
+        int processed = 0;
+        try
         {
-            // 1. Live DB snapshot
-            var dbPath = svc.GetDbFilePath();
-            if (File.Exists(dbPath))
+            using (var zip = new System.IO.Compression.ZipArchive(responseStream, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
             {
-                LPM.Services.BackupProgress.CurrentFile = "db-live/lifepower.db";
-                var tempDbCopy = Path.Combine(tempDir, $"db-snap-{Guid.NewGuid():N}.db");
-                try
+                // 1. Live DB snapshot
+                var dbPath = svc.GetDbFilePath();
+                if (File.Exists(dbPath))
                 {
-                    svc.BackupDbTo(tempDbCopy);
-                    var entry = zip.CreateEntry("db-live/lifepower.db", System.IO.Compression.CompressionLevel.Fastest);
-                    using var es = entry.Open(); using var fs = File.OpenRead(tempDbCopy); fs.CopyTo(es);
-                }
-                finally { try { File.Delete(tempDbCopy); } catch { } }
-                LPM.Services.BackupProgress.Current = ++processed;
-            }
-
-            // 2. Auto-backup files → db-autobackups/
-            foreach (var bf in autoBackupFiles)
-            {
-                if (LPM.Services.BackupProgress.CancelRequested) break;
-                var bfName = Path.GetFileName(bf);
-                LPM.Services.BackupProgress.CurrentFile = $"db-autobackups/{bfName}";
-                try
-                {
-                    var entry = zip.CreateEntry($"db-autobackups/{bfName}", System.IO.Compression.CompressionLevel.Fastest);
-                    using var es = entry.Open(); using var fs = File.OpenRead(bf); fs.CopyTo(es);
+                    LPM.Services.BackupProgress.CurrentFile = "db-live/lifepower.db";
+                    var tempDbCopy = Path.Combine(tempDir, $"db-snap-{Guid.NewGuid():N}.db");
+                    try
+                    {
+                        svc.BackupDbTo(tempDbCopy);
+                        var entry = zip.CreateEntry("db-live/lifepower.db", System.IO.Compression.CompressionLevel.Fastest);
+                        using var es = entry.Open(); using var fs = File.OpenRead(tempDbCopy); fs.CopyTo(es);
+                    }
+                    finally { try { File.Delete(tempDbCopy); } catch { } }
                     LPM.Services.BackupProgress.Current = ++processed;
                 }
-                catch { }
-            }
 
-            // 3. PC files — decrypted for portability
-            foreach (var (relPath, fullPath) in pcFiles)
-            {
-                if (LPM.Services.BackupProgress.CancelRequested) break;
-                try
+                // 2. Auto-backup files → db-autobackups/
+                foreach (var bf in autoBackupFiles)
                 {
-                    LPM.Services.BackupProgress.CurrentFile = relPath;
-                    var decrypted = svc.DecryptFileForBackup(fullPath);
-
-                    // Folder Summary files: prepend session summaries PDF (same as live viewer)
-                    byte[] bytesToZip = decrypted;
-                    var (isSummary, fspcId, isSolo) = LPM.Services.FolderService.ParseFolderSummaryBackupPath(relPath);
-                    if (isSummary)
+                    if (LPM.Services.BackupProgress.CancelRequested) break;
+                    var bfName = Path.GetFileName(bf);
+                    LPM.Services.BackupProgress.CurrentFile = $"db-autobackups/{bfName}";
+                    try
                     {
-                        try
+                        var entry = zip.CreateEntry($"db-autobackups/{bfName}", System.IO.Compression.CompressionLevel.Fastest);
+                        using var es = entry.Open(); using var fs = File.OpenRead(bf); fs.CopyTo(es);
+                        LPM.Services.BackupProgress.Current = ++processed;
+                    }
+                    catch { }
+                }
+
+                // 3. PC files — decrypted for portability
+                foreach (var (relPath, fullPath) in pcFiles)
+                {
+                    if (LPM.Services.BackupProgress.CancelRequested) break;
+                    try
+                    {
+                        LPM.Services.BackupProgress.CurrentFile = relPath;
+                        var decrypted = svc.DecryptFileForBackup(fullPath);
+
+                        // Folder Summary files: prepend session summaries PDF (same as live viewer)
+                        byte[] bytesToZip = decrypted;
+                        var (isSummary, fspcId, isSolo) = LPM.Services.FolderService.ParseFolderSummaryBackupPath(relPath);
+                        if (isSummary)
                         {
-                            var summaries = dashSvc.GetSessionSummariesForPc(fspcId, isSolo);
-                            if (summaries.Count > 0)
+                            try
                             {
-                                var pcName = dashSvc.GetPersonName(fspcId) ?? $"PC {fspcId}";
-                                var originalPageCount = pdfSvc.CountPdfPages(decrypted);
-                                var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
-                                bytesToZip = pdfSvc.CombinePdfs(summaryPdf, decrypted);
-                                Console.WriteLine($"[Backup] FolderSummary combined for PC {fspcId} ({summaries.Count} sessions)");
+                                var summaries = dashSvc.GetSessionSummariesForPc(fspcId, isSolo);
+                                if (summaries.Count > 0)
+                                {
+                                    var pcName = dashSvc.GetPersonName(fspcId) ?? $"PC {fspcId}";
+                                    var originalPageCount = pdfSvc.CountPdfPages(decrypted);
+                                    var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
+                                    bytesToZip = pdfSvc.CombinePdfs(summaryPdf, decrypted);
+                                    Console.WriteLine($"[Backup] FolderSummary combined for PC {fspcId} ({summaries.Count} sessions)");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"[Backup] FolderSummary generation failed for PC {fspcId}: {ex.Message} — using original");
                             }
                         }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"[Backup] FolderSummary generation failed for PC {fspcId}: {ex.Message} — using original");
-                        }
+
+                        var entry = zip.CreateEntry(relPath, System.IO.Compression.CompressionLevel.Fastest);
+                        using var es = entry.Open(); es.Write(bytesToZip);
+                        LPM.Services.BackupProgress.Current = ++processed;
                     }
-
-                    var entry = zip.CreateEntry(relPath, System.IO.Compression.CompressionLevel.Fastest);
-                    using var es = entry.Open(); es.Write(bytesToZip);
-                    LPM.Services.BackupProgress.Current = ++processed;
+                    catch { }
                 }
-                catch { }
             }
+
+            if (LPM.Services.BackupProgress.CancelRequested)
+                Console.WriteLine($"[Backup] User backup CANCELLED by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files");
+            else
+                Console.WriteLine($"[Backup] User backup complete by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files — {integrityTag}");
         }
-
-        LPM.Services.BackupProgress.Running = false;
-        var user = ctx.User.Identity?.Name ?? "unknown";
-        var dlIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-
-        if (LPM.Services.BackupProgress.CancelRequested)
+        catch (Exception ex)
         {
-            Console.WriteLine($"[Backup] User backup CANCELLED by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files");
-            if (File.Exists(tempFile)) File.Delete(tempFile);
-            return Results.StatusCode(499);
+            LPM.Services.BackupProgress.LastError = ex.Message;
+            LPM.Services.BackupProgress.ActiveUser = "";
+            Console.WriteLine($"[Backup] User backup ERROR by '{user}': {ex.Message}");
         }
-
-        Console.WriteLine($"[Backup] User backup complete by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files — {integrityTag}");
-        var fileName = $"LPM-UserBackup-{integrityTag}-{DateTime.Now:yyyy-MM-dd_HHmm}.zip";
-        LPM.Services.BackupProgress.CurrentTempFile = tempFile; // Blazor waits for this to disappear before starting phase 2
-        var stream = new FileStream(tempFile, FileMode.Open, FileAccess.Read, FileShare.None, 4096, FileOptions.DeleteOnClose);
-        return Results.File(stream, "application/zip", fileName);
-    }
-    catch (Exception ex)
-    {
-        LPM.Services.BackupProgress.LastError = ex.Message;
-        LPM.Services.BackupProgress.Running = false;
-        LPM.Services.BackupProgress.ActiveUser = "";
-        if (File.Exists(tempFile)) File.Delete(tempFile);
-        throw;
-    }
+        finally
+        {
+            LPM.Services.BackupProgress.Running = false;
+        }
+        return Task.CompletedTask;
+    }, "application/zip", fileName);
 });
 
 // ── Backup: Server Backup (DB + auto-backups + config + raw PC files + avatars) ──
@@ -946,8 +934,6 @@ app.MapGet("/api/server-backup-download", (HttpContext ctx, LPM.Services.FolderS
     }
 
     var tempDir = Path.GetTempPath();
-    foreach (var stale in Directory.GetFiles(tempDir, "lpm-backup-*.zip"))
-        try { File.Delete(stale); } catch { }
 
     var integrity    = svc.CheckIntegrity();
     var integrityTag = integrity == "ok" ? "OK" : "CORRUPT";
@@ -969,97 +955,96 @@ app.MapGet("/api/server-backup-download", (HttpContext ctx, LPM.Services.FolderS
     LPM.Services.BackupProgress.WasStarted     = true;
     LPM.Services.BackupProgress.Running        = true;
     LPM.Services.BackupProgress.CancelRequested = false;
-    int processed = 0;
+    LPM.Services.BackupProgress.CurrentTempFile = null;
 
-    var tempFile = Path.Combine(tempDir, $"lpm-backup-{Guid.NewGuid():N}.zip");
-    try
+    var user = ctx.User.Identity?.Name ?? "unknown";
+    var dlIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    var fileName = $"LPM-ServerBackup-{integrityTag}-{DateTime.Now:yyyy-MM-dd_HHmm}.zip";
+
+    return Results.Stream(responseStream =>
     {
-        using (var zip = System.IO.Compression.ZipFile.Open(tempFile, System.IO.Compression.ZipArchiveMode.Create))
+        int processed = 0;
+        try
         {
-            // 1. Live DB at root (ready to drop into app folder)
-            var dbPath = svc.GetDbFilePath();
-            if (File.Exists(dbPath))
+            using (var zip = new System.IO.Compression.ZipArchive(responseStream, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
             {
-                LPM.Services.BackupProgress.CurrentFile = "lifepower.db";
-                var tempDbCopy = Path.Combine(tempDir, $"db-snap-{Guid.NewGuid():N}.db");
-                try
+                // 1. Live DB at root (ready to drop into app folder)
+                var dbPath = svc.GetDbFilePath();
+                if (File.Exists(dbPath))
                 {
-                    svc.BackupDbTo(tempDbCopy);
-                    var entry = zip.CreateEntry("lifepower.db", System.IO.Compression.CompressionLevel.Fastest);
-                    using var es = entry.Open(); using var fs = File.OpenRead(tempDbCopy); fs.CopyTo(es);
-                }
-                finally { try { File.Delete(tempDbCopy); } catch { } }
-                LPM.Services.BackupProgress.Current = ++processed;
-            }
-
-            // 2. Auto-backup files (under configured folder name, e.g. db-backups/)
-            foreach (var bf in autoBackupFiles)
-            {
-                if (LPM.Services.BackupProgress.CancelRequested) break;
-                var bfName = Path.GetFileName(bf);
-                LPM.Services.BackupProgress.CurrentFile = $"{backupFolderName}/{bfName}";
-                try
-                {
-                    var entry = zip.CreateEntry($"{backupFolderName}/{bfName}", System.IO.Compression.CompressionLevel.Fastest);
-                    using var es = entry.Open(); using var fs = File.OpenRead(bf); fs.CopyTo(es);
+                    LPM.Services.BackupProgress.CurrentFile = "lifepower.db";
+                    var tempDbCopy = Path.Combine(tempDir, $"db-snap-{Guid.NewGuid():N}.db");
+                    try
+                    {
+                        svc.BackupDbTo(tempDbCopy);
+                        var entry = zip.CreateEntry("lifepower.db", System.IO.Compression.CompressionLevel.Fastest);
+                        using var es = entry.Open(); using var fs = File.OpenRead(tempDbCopy); fs.CopyTo(es);
+                    }
+                    finally { try { File.Delete(tempDbCopy); } catch { } }
                     LPM.Services.BackupProgress.Current = ++processed;
                 }
-                catch { }
+
+                // 2. Auto-backup files (under configured folder name, e.g. db-backups/)
+                foreach (var bf in autoBackupFiles)
+                {
+                    if (LPM.Services.BackupProgress.CancelRequested) break;
+                    var bfName = Path.GetFileName(bf);
+                    LPM.Services.BackupProgress.CurrentFile = $"{backupFolderName}/{bfName}";
+                    try
+                    {
+                        var entry = zip.CreateEntry($"{backupFolderName}/{bfName}", System.IO.Compression.CompressionLevel.Fastest);
+                        using var es = entry.Open(); using var fs = File.OpenRead(bf); fs.CopyTo(es);
+                        LPM.Services.BackupProgress.Current = ++processed;
+                    }
+                    catch { }
+                }
+
+                // 3. Config files + avatars
+                foreach (var (zipPath, fullPath) in extras)
+                {
+                    if (LPM.Services.BackupProgress.CancelRequested) break;
+                    try
+                    {
+                        LPM.Services.BackupProgress.CurrentFile = zipPath;
+                        var entry = zip.CreateEntry(zipPath, System.IO.Compression.CompressionLevel.Fastest);
+                        using var es = entry.Open(); using var fs = File.OpenRead(fullPath); fs.CopyTo(es);
+                        LPM.Services.BackupProgress.Current = ++processed;
+                    }
+                    catch { }
+                }
+
+                // 4. PC files — raw/encrypted, preserving exact server state
+                foreach (var (relPath, fullPath) in rawPcFiles)
+                {
+                    if (LPM.Services.BackupProgress.CancelRequested) break;
+                    try
+                    {
+                        LPM.Services.BackupProgress.CurrentFile = relPath;
+                        var entry = zip.CreateEntry(relPath, System.IO.Compression.CompressionLevel.Fastest);
+                        using var es = entry.Open(); using var fs = File.OpenRead(fullPath); fs.CopyTo(es);
+                        LPM.Services.BackupProgress.Current = ++processed;
+                    }
+                    catch { }
+                }
             }
 
-            // 3. Config files + avatars
-            foreach (var (zipPath, fullPath) in extras)
-            {
-                if (LPM.Services.BackupProgress.CancelRequested) break;
-                try
-                {
-                    LPM.Services.BackupProgress.CurrentFile = zipPath;
-                    var entry = zip.CreateEntry(zipPath, System.IO.Compression.CompressionLevel.Fastest);
-                    using var es = entry.Open(); using var fs = File.OpenRead(fullPath); fs.CopyTo(es);
-                    LPM.Services.BackupProgress.Current = ++processed;
-                }
-                catch { }
-            }
-
-            // 4. PC files — raw/encrypted, preserving exact server state
-            foreach (var (relPath, fullPath) in rawPcFiles)
-            {
-                if (LPM.Services.BackupProgress.CancelRequested) break;
-                try
-                {
-                    LPM.Services.BackupProgress.CurrentFile = relPath;
-                    var entry = zip.CreateEntry(relPath, System.IO.Compression.CompressionLevel.Fastest);
-                    using var es = entry.Open(); using var fs = File.OpenRead(fullPath); fs.CopyTo(es);
-                    LPM.Services.BackupProgress.Current = ++processed;
-                }
-                catch { }
-            }
+            if (LPM.Services.BackupProgress.CancelRequested)
+                Console.WriteLine($"[Backup] Server backup CANCELLED by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files");
+            else
+                Console.WriteLine($"[Backup] Server backup complete by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files — {integrityTag}");
         }
-
-        LPM.Services.BackupProgress.Running = false;
-        var user = ctx.User.Identity?.Name ?? "unknown";
-        var dlIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-
-        if (LPM.Services.BackupProgress.CancelRequested)
+        catch (Exception ex)
         {
-            Console.WriteLine($"[Backup] Server backup CANCELLED by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files");
-            if (File.Exists(tempFile)) File.Delete(tempFile);
-            return Results.StatusCode(499);
+            LPM.Services.BackupProgress.LastError = ex.Message;
+            LPM.Services.BackupProgress.ActiveUser = "";
+            Console.WriteLine($"[Backup] Server backup ERROR by '{user}': {ex.Message}");
         }
-
-        Console.WriteLine($"[Backup] Server backup complete by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files — {integrityTag}");
-        var fileName = $"LPM-ServerBackup-{integrityTag}-{DateTime.Now:yyyy-MM-dd_HHmm}.zip";
-        var stream = new FileStream(tempFile, FileMode.Open, FileAccess.Read, FileShare.None, 4096, FileOptions.DeleteOnClose);
-        return Results.File(stream, "application/zip", fileName);
-    }
-    catch (Exception ex)
-    {
-        LPM.Services.BackupProgress.LastError = ex.Message;
-        LPM.Services.BackupProgress.Running = false;
-        LPM.Services.BackupProgress.ActiveUser = "";
-        if (File.Exists(tempFile)) File.Delete(tempFile);
-        throw;
-    }
+        finally
+        {
+            LPM.Services.BackupProgress.Running = false;
+        }
+        return Task.CompletedTask;
+    }, "application/zip", fileName);
 });
 
 // ── Backup progress polling ──

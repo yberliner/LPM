@@ -33,14 +33,6 @@
                     <div style="font-size:.78rem; color:#94a3b8;">Total Files</div>
                     <div style="font-size:1.1rem; font-weight:600;">@_totalFiles</div>
                 </div>
-                <div style="border-left:2px solid #475569; padding-left:16px;">
-                    <div style="font-size:.78rem; color:#94a3b8;">Required Space</div>
-                    <div style="font-size:1.3rem; font-weight:700; color:#fbbf24;">@FormatSize(_dbSize + _pcSize)</div>
-                </div>
-                <div>
-                    <div style="font-size:.78rem; color:#94a3b8;">Server Free Space</div>
-                    <div style="font-size:1.1rem; font-weight:600; color:@(_notEnoughSpace ? "#ef4444" : "#22c55e");">@FormatSize(_serverFreeSpace)</div>
-                </div>
             </div>
         </div>
     </div>
@@ -134,22 +126,12 @@
         </div>
     }
 
-    @* ── Disk space warning ── *@
-    @if (_notEnoughSpace)
-    {
-        <div class="alert alert-danger d-flex align-items-center gap-2 mt-3" style="max-width:600px;">
-            <i class="ri-error-warning-fill" style="font-size:1.2rem;"></i>
-            Not enough disk space on the server to create the backup.
-            Need <strong>@FormatSize(_dbSize + _pcSize)</strong>, only <strong>@FormatSize(_serverFreeSpace)</strong> available.
-        </div>
-    }
-
     @* ── Action ── *@
     <div class="d-flex align-items-center gap-3 mt-3 flex-wrap">
         @if (!_downloading)
         {
             <button class="btn btn-primary btn-lg d-flex align-items-center gap-2 @(_shakeActive ? "bk-shake" : "")"
-                    disabled="@(_notEnoughSpace || !string.IsNullOrEmpty(_blockedByUser))"
+                    disabled="@(!string.IsNullOrEmpty(_blockedByUser))"
                     @onclick="ShowPasswordPrompt">
                 <i class="ri-download-cloud-2-line" style="font-size:1.3rem;"></i>
                 Start Backup
@@ -340,8 +322,6 @@
     long _dbSize;
     long _pcSize;
     int _totalFiles;
-    long _serverFreeSpace;
-    bool _notEnoughSpace;
     bool _downloading;
     bool _done;
     string _error = "";
@@ -387,15 +367,6 @@
         _dbSize = info.DbSize;
         _pcSize = info.PcFoldersSize;
         _totalFiles = info.TotalFiles;
-
-        // Check free space on server temp drive
-        var tempRoot = Path.GetPathRoot(Path.GetFullPath(Path.GetTempPath()));
-        if (!string.IsNullOrEmpty(tempRoot))
-        {
-            var drive = new DriveInfo(tempRoot);
-            _serverFreeSpace = drive.AvailableFreeSpace;
-            _notEnoughSpace = _serverFreeSpace < (_dbSize + _pcSize);
-        }
     }
 
     void ShowPasswordPrompt()
