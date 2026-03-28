@@ -386,15 +386,14 @@ public class AuditorService(IConfiguration config, UserDb userDb)
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
+        // Use AuditorId if set, otherwise fall back to PcId (e.g. Solo PCs with no assigned auditor)
         cmd.CommandText = @"
             SELECT u.SendSms, COALESCE(p.Phone,''),
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), ''))
             FROM sess_sessions s
-            JOIN core_users u ON u.PersonId = s.AuditorId
-            JOIN core_persons p ON p.PersonId = s.AuditorId
+            JOIN core_users u ON u.PersonId = COALESCE(NULLIF(s.AuditorId, 0), s.PcId)
+            JOIN core_persons p ON p.PersonId = COALESCE(NULLIF(s.AuditorId, 0), s.PcId)
             WHERE s.SessionId = @sid
-              AND s.AuditorId IS NOT NULL
-              AND s.AuditorId > 0
             LIMIT 1";
         cmd.Parameters.AddWithValue("@sid", sessionId);
         using var r = cmd.ExecuteReader();
