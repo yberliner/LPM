@@ -47,8 +47,8 @@
             <div style="flex:1;">
                 <div class="bk-warning-title">BACKUP IN PROGRESS</div>
                 <div class="bk-warning-text">
-                    Do NOT close this tab, navigate away, or let your computer go to sleep.
-                    The backup will fail if the connection is interrupted.
+                    You may switch to other tabs — the download continues in the background.
+                    Do NOT close this tab, navigate away from this page, or let your computer sleep.
                 </div>
                 @* ── User Backup bar ── *@
                 <div class="bk-phase-row mt-3">
@@ -231,6 +231,22 @@
             Both backups complete. Check your browser downloads (2 files: User Backup + Server Backup).
         </div>
     }
+
+    @if (_timedOutFiles.Count > 0)
+    {
+        <div class="alert mt-3" style="max-width:700px; background:rgba(251,191,36,.12); border:2px solid #fbbf24; border-radius:10px; color:#fde68a;">
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <i class="ri-alarm-warning-line" style="font-size:1.2rem; color:#fbbf24;"></i>
+                <strong style="color:#fbbf24;">@_timedOutFiles.Count file(s) skipped — could not be read within 60 seconds</strong>
+            </div>
+            <ul class="mb-0" style="font-size:.78rem; font-family:monospace; color:#94a3b8; padding-left:1.2rem;">
+                @foreach (var f in _timedOutFiles)
+                {
+                    <li>@f</li>
+                }
+            </ul>
+        </div>
+    }
 </div>
 
 <style>
@@ -332,6 +348,7 @@
     int    _serverCurrent; int   _serverTotal; string _serverFile = ""; bool _serverActive; bool _serverDone;
 
     string _integrityWarning = "";
+    List<string> _timedOutFiles = new();
 
     // Concurrency guard
     string _blockedByUser = "";   // non-empty = another user's backup is running
@@ -459,6 +476,7 @@
         _downloading   = true;
         _done          = false;
         _error         = "";
+        _timedOutFiles = new();
         _userCurrent   = 0; _userTotal   = 0; _userFile   = ""; _userActive   = false; _userDone   = false;
         _serverCurrent = 0; _serverTotal = 0; _serverFile = ""; _serverActive = false; _serverDone = false;
         BackupProgress.CurrentTempFile = null;
@@ -566,6 +584,10 @@
             _serverTotal   = BackupProgress.TotalFiles;
             _serverFile    = BackupProgress.CurrentFile;
         }
+
+        // Snapshot timed-out files list
+        lock (BackupProgress.TimedOutFiles)
+            _timedOutFiles = BackupProgress.TimedOutFiles.ToList();
 
         // Keep blocked-by-user banner in sync for the non-downloading observer
         if (!_downloading)

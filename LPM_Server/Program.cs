@@ -819,6 +819,7 @@ app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderSer
     LPM.Services.BackupProgress.Running        = true;
     LPM.Services.BackupProgress.CancelRequested = false;
     LPM.Services.BackupProgress.CurrentTempFile = null;
+    LPM.Services.BackupProgress.TimedOutFiles.Clear();
 
     var user = ctx.User.Identity?.Name ?? "unknown";
     var dlIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -869,34 +870,52 @@ app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderSer
                     try
                     {
                         LPM.Services.BackupProgress.CurrentFile = relPath;
-                        var decrypted = svc.DecryptFileForBackup(fullPath);
 
-                        // Folder Summary files: prepend session summaries PDF (same as live viewer)
-                        byte[] bytesToZip = decrypted;
-                        var (isSummary, fspcId, isSolo) = LPM.Services.FolderService.ParseFolderSummaryBackupPath(relPath);
-                        if (isSummary)
+                        // 60-second timeout per file — a hung file gets skipped, not the whole backup
+                        var fileTask = Task.Run(() =>
                         {
-                            try
+                            var decrypted = svc.DecryptFileForBackup(fullPath);
+
+                            // Folder Summary files: prepend session summaries PDF (same as live viewer)
+                            byte[] bytesToZip = decrypted;
+                            var (isSummary, fspcId, isSolo) = LPM.Services.FolderService.ParseFolderSummaryBackupPath(relPath);
+                            if (isSummary)
                             {
-                                var summaries = dashSvc.GetSessionSummariesForPc(fspcId, isSolo);
-                                if (summaries.Count > 0)
+                                try
                                 {
-                                    var pcName = dashSvc.GetPersonName(fspcId) ?? $"PC {fspcId}";
-                                    var originalPageCount = pdfSvc.CountPdfPages(decrypted);
-                                    var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
-                                    bytesToZip = pdfSvc.CombinePdfs(summaryPdf, decrypted);
-                                    Console.WriteLine($"[Backup] FolderSummary combined for PC {fspcId} ({summaries.Count} sessions)");
+                                    var summaries = dashSvc.GetSessionSummariesForPc(fspcId, isSolo);
+                                    if (summaries.Count > 0)
+                                    {
+                                        var pcName = dashSvc.GetPersonName(fspcId) ?? $"PC {fspcId}";
+                                        var originalPageCount = pdfSvc.CountPdfPages(decrypted);
+                                        var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
+                                        bytesToZip = pdfSvc.CombinePdfs(summaryPdf, decrypted);
+                                        Console.WriteLine($"[Backup] FolderSummary combined for PC {fspcId} ({summaries.Count} sessions)");
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine($"[Backup] FolderSummary generation failed for PC {fspcId}: {ex.Message} — using original");
                                 }
                             }
-                            catch (Exception ex)
-                            {
-                                Console.WriteLine($"[Backup] FolderSummary generation failed for PC {fspcId}: {ex.Message} — using original");
-                            }
+                            return bytesToZip;
+                        });
+
+                        if (!fileTask.Wait(TimeSpan.FromSeconds(60)))
+                        {
+                            Console.WriteLine($"[Backup] TIMEOUT reading '{relPath}' after 60s — skipping");
+                            lock (LPM.Services.BackupProgress.TimedOutFiles) LPM.Services.BackupProgress.TimedOutFiles.Add(relPath);
+                            continue;
                         }
 
+                        var bytes = fileTask.Result;
                         var entry = zip.CreateEntry(relPath, System.IO.Compression.CompressionLevel.Fastest);
-                        using var es = entry.Open(); es.Write(bytesToZip);
+                        using var es = entry.Open(); es.Write(bytes);
                         LPM.Services.BackupProgress.Current = ++processed;
+
+                        // Nudge GC after large files so memory is released promptly on a 2 GB server
+                        if (bytes.Length > 50 * 1024 * 1024)
+                            GC.Collect(0, GCCollectionMode.Optimized);
                     }
                     catch { }
                 }
@@ -956,6 +975,7 @@ app.MapGet("/api/server-backup-download", (HttpContext ctx, LPM.Services.FolderS
     LPM.Services.BackupProgress.Running        = true;
     LPM.Services.BackupProgress.CancelRequested = false;
     LPM.Services.BackupProgress.CurrentTempFile = null;
+    LPM.Services.BackupProgress.TimedOutFiles.Clear();
 
     var user = ctx.User.Identity?.Name ?? "unknown";
     var dlIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -1014,14 +1034,32 @@ app.MapGet("/api/server-backup-download", (HttpContext ctx, LPM.Services.FolderS
                 }
 
                 // 4. PC files — raw/encrypted, preserving exact server state
+                // Stream directly disk→zip with no memory buffer; only the 60s timeout sentinel runs on a Task
                 foreach (var (relPath, fullPath) in rawPcFiles)
                 {
                     if (LPM.Services.BackupProgress.CancelRequested) break;
                     try
                     {
                         LPM.Services.BackupProgress.CurrentFile = relPath;
+
                         var entry = zip.CreateEntry(relPath, System.IO.Compression.CompressionLevel.Fastest);
-                        using var es = entry.Open(); using var fs = File.OpenRead(fullPath); fs.CopyTo(es);
+                        var entryStream = entry.Open();
+
+                        var copyTask = Task.Run(() =>
+                        {
+                            using var fs = File.OpenRead(fullPath);
+                            fs.CopyTo(entryStream);
+                        });
+
+                        if (!copyTask.Wait(TimeSpan.FromSeconds(60)))
+                        {
+                            Console.WriteLine($"[Backup] TIMEOUT reading '{relPath}' after 60s — skipping");
+                            lock (LPM.Services.BackupProgress.TimedOutFiles) LPM.Services.BackupProgress.TimedOutFiles.Add(relPath);
+                            try { entryStream.Dispose(); } catch { }
+                            continue;
+                        }
+
+                        entryStream.Dispose();
                         LPM.Services.BackupProgress.Current = ++processed;
                     }
                     catch { }

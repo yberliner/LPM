@@ -69,6 +69,13 @@ public class PdfShrinkService(
             {
                 if (Interlocked.CompareExchange(ref _running, 1, 0) == 0)
                 {
+                    // Wait for any active backup to finish before hammering disk
+                    while (BackupProgress.Running)
+                    {
+                        Console.WriteLine($"[PdfShrink] {DateTime.Now:yyyy-MM-dd HH:mm:ss} — Backup in progress, delaying shrink cycle…");
+                        await Task.Delay(TimeSpan.FromSeconds(30), ct);
+                    }
+
                     try { await RunCycleAsync(ct); }
                     finally { Interlocked.Exchange(ref _running, 0); }
                 }
@@ -114,6 +121,14 @@ public class PdfShrinkService(
         foreach (var fullPath in candidates)
         {
             if (ct.IsCancellationRequested) break;
+
+            if (BackupProgress.Running)
+            {
+                Console.WriteLine($"[PdfShrink] {DateTime.Now:yyyy-MM-dd HH:mm:ss} — Backup started mid-cycle, pausing…");
+                while (BackupProgress.Running)
+                    await Task.Delay(TimeSpan.FromSeconds(30), ct);
+                Console.WriteLine($"[PdfShrink] {DateTime.Now:yyyy-MM-dd HH:mm:ss} — Backup done, resuming shrink cycle");
+            }
 
             var relativePath = Path.GetRelativePath(pcFoldersRoot, fullPath).Replace('\\', '/');
 
