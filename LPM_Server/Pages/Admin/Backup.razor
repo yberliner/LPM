@@ -597,7 +597,7 @@
                 : "";
         }
 
-        _ = InvokeAsync(StateHasChanged);
+        try { _ = InvokeAsync(StateHasChanged); } catch { /* circuit disposed or SignalR dropped */ }
     }
 
     void CancelBackup()

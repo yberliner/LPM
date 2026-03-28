@@ -25,7 +25,8 @@ public static class BackupProgress
     public static volatile int AuthTokenUsesRemaining; // starts at 2 per auth
     public static string? CurrentTempFile;             // path of the zip being served; null once deleted
     public static string ActiveUser = "";              // display name of whoever started the current backup
-    public static readonly List<string> TimedOutFiles = new(); // files skipped due to 60s read timeout
+    public static readonly List<string> TimedOutFiles = new();           // files skipped this run (shown in UI)
+    public static readonly HashSet<string> PermSkipFiles = new();        // never retried — persists until app restart
 
     public static bool ConsumeToken(string token)
     {
