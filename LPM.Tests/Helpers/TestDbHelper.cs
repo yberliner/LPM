@@ -130,7 +130,8 @@ public static class TestDbHelper
                 TotpEnabled     INTEGER NOT NULL DEFAULT 0,
                 TotpSecret      TEXT,
                 AvatarPath      TEXT,
-                ContactConfirmed INTEGER NOT NULL DEFAULT 1
+                ContactConfirmed INTEGER NOT NULL DEFAULT 1,
+                Require2FA      INTEGER NOT NULL DEFAULT 0
             )");
 
         Exec(conn, @"
@@ -294,6 +295,44 @@ public static class TestDbHelper
                 SummaryHtml TEXT,
                 ArfJson     TEXT,
                 CreatedAt   TEXT NOT NULL DEFAULT (datetime('now'))
+            )");
+
+        Exec(conn, @"
+            CREATE TABLE IF NOT EXISTS sess_completions (
+                Id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                PcId          INTEGER NOT NULL,
+                CompleteDate  TEXT,
+                CreateDate    TEXT    NOT NULL DEFAULT (datetime('now')),
+                FinishedGrade TEXT,
+                AuditorId     INTEGER
+            )");
+
+        Exec(conn, @"
+            CREATE TABLE IF NOT EXISTS sess_meetings (
+                MeetingId     INTEGER PRIMARY KEY AUTOINCREMENT,
+                PcId          INTEGER NOT NULL,
+                AuditorId     INTEGER,
+                MeetingType   TEXT    NOT NULL,
+                StartAt       TEXT    NOT NULL,
+                LengthSeconds INTEGER NOT NULL DEFAULT 0,
+                IsWeekly      INTEGER NOT NULL DEFAULT 0,
+                CreatedAt     TEXT    NOT NULL DEFAULT (datetime('now')),
+                CreatedBy     INTEGER NOT NULL
+            )");
+
+        Exec(conn, @"
+            CREATE TABLE IF NOT EXISTS sys_activity_log (
+                Id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                Username   TEXT    NOT NULL,
+                ActivityAt TEXT    NOT NULL,
+                Action     TEXT    NOT NULL,
+                Kind       TEXT    NOT NULL
+            )");
+
+        Exec(conn, @"
+            CREATE TABLE IF NOT EXISTS lkp_shortcuts (
+                KeyChar TEXT NOT NULL PRIMARY KEY,
+                Text    TEXT
             )");
 
         // Seed standard grades
@@ -609,6 +648,25 @@ public static class TestDbHelper
         cmd.Parameters.AddWithValue("@from", fromId);
         cmd.Parameters.AddWithValue("@to", toId);
         cmd.Parameters.AddWithValue("@msg", text);
+        cmd.ExecuteNonQuery();
+        return (int)Scalar(conn, "SELECT last_insert_rowid()");
+    }
+
+    // -------------------------------------------------------------------------
+    // Activity log helpers
+    // -------------------------------------------------------------------------
+
+    public static int InsertActivityLog(SqliteConnection conn,
+        string username, string activityAt, string action, string kind)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO sys_activity_log (Username, ActivityAt, Action, Kind)
+            VALUES (@u, @at, @a, @k)";
+        cmd.Parameters.AddWithValue("@u",  username);
+        cmd.Parameters.AddWithValue("@at", activityAt);
+        cmd.Parameters.AddWithValue("@a",  action);
+        cmd.Parameters.AddWithValue("@k",  kind);
         cmd.ExecuteNonQuery();
         return (int)Scalar(conn, "SELECT last_insert_rowid()");
     }
