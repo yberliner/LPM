@@ -628,14 +628,14 @@
     @* ── Recent PC-Folder Files (< 7 days) ────────────────────────────────── *@
     <div class="diag-editor-card mb-4 mt-4">
         <div class="diag-editor-header">
-            <i class="ri-file-list-3-line me-2"></i>Recent Files — last @_recentDays day@(_recentDays != 1 ? "s" : "")
+            <i class="ri-file-list-3-line me-2"></i>Recent Files — @(_recentLimit == 0 ? "All" : $"last {_recentLimit}")
             <span class="diag-editor-sub">PC-Folders</span>
             <select class="form-select form-select-sm ms-auto me-2" style="width:auto;font-size:.75rem;"
-                    @bind="_recentDays" @bind:after="LoadRecentFiles">
-                <option value="1">1 day</option>
-                <option value="3">3 days</option>
-                <option value="7">7 days</option>
-                <option value="30">30 days</option>
+                    @bind="_recentLimit" @bind:after="LoadRecentFiles">
+                <option value="200">200</option>
+                <option value="500">500</option>
+                <option value="1000">1000</option>
+                <option value="0">ALL</option>
             </select>
             <button class="btn btn-outline-secondary btn-sm py-0" style="font-size:.72rem;"
                     @onclick="LoadRecentFiles">
@@ -657,7 +657,7 @@
             }
             @if (_recentGroups.Count == 0)
             {
-                <div class="cedb-empty">No files modified in the last @_recentDays day@(_recentDays != 1 ? "s" : "").</div>
+                <div class="cedb-empty">No files found.</div>
             }
             else
             {
@@ -1172,7 +1172,7 @@
     string?             _pendingDeleteFile;
     string              _recentMsg        = "";
     bool                _recentMsgOk;
-    int                 _recentDays       = 7;
+    int                 _recentLimit      = 200; // 0 = ALL
 
     // ── User Activity state ────────────────────────────────────────────────
     List<LPM.Services.UserActivityService.ActivitySummary> _activityUsers = [];
@@ -1490,25 +1490,31 @@
     void LoadRecentFiles()
     {
         var basePath = Path.Combine(Directory.GetCurrentDirectory(), "PC-Folders");
-        var cutoff   = DateTime.Now.AddDays(-_recentDays);
         _recentGroups = [];
         if (!Directory.Exists(basePath)) return;
 
-        var groups = new Dictionary<string, List<RecentFile>>(StringComparer.OrdinalIgnoreCase);
+        var allFiles = new List<(string FullPath, string PcName, string RelPath, DateTime Modified, long Size)>();
         foreach (var file in Directory.EnumerateFiles(basePath, "*", SearchOption.AllDirectories))
         {
             // skip backup/temp dirs
-            var rel = Path.GetRelativePath(basePath, file);
+            var rel   = Path.GetRelativePath(basePath, file);
             var parts = rel.Split(Path.DirectorySeparatorChar);
             if (parts.Any(p => p.StartsWith("_", StringComparison.Ordinal))) continue;
 
             var modified = File.GetLastWriteTime(file);
-            if (modified < cutoff) continue;
+            var pcName   = parts[0];
+            var relPath  = string.Join("/", parts.Skip(1));
+            allFiles.Add((file, pcName, relPath, modified, new FileInfo(file).Length));
+        }
 
-            var pcName  = parts[0];
-            var relPath = string.Join("/", parts.Skip(1));
-            if (!groups.ContainsKey(pcName)) groups[pcName] = [];
-            groups[pcName].Add(new(file, relPath, modified, new FileInfo(file).Length));
+        var sorted = allFiles.OrderByDescending(f => f.Modified);
+        var taken  = _recentLimit > 0 ? sorted.Take(_recentLimit) : sorted;
+
+        var groups = new Dictionary<string, List<RecentFile>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in taken)
+        {
+            if (!groups.ContainsKey(f.PcName)) groups[f.PcName] = [];
+            groups[f.PcName].Add(new(f.FullPath, f.RelPath, f.Modified, f.Size));
         }
 
         _recentGroups = groups
