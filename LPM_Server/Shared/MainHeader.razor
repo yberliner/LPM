@@ -4004,6 +4004,7 @@ string _actionPcSearch = "";
         MsgNotifier.OnNewMessage -= OnNewMessageReceived;
         _headerScrollRef?.Dispose();
         _step3DotNetRef?.Dispose();
+        JSRuntime.InvokeVoidAsync("interop.unregisterheaderScrollListener");
     }
 
     DotNetObjectReference<MainHeader>? _headerScrollRef;

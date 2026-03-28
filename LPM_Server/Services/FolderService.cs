@@ -189,17 +189,21 @@ public class FolderService
             var inputPath = Path.Combine(tempDir, originalFileName);
             File.WriteAllBytes(inputPath, docBytes);
 
-            var args = $"--headless --convert-to pdf --outdir \"{tempDir}\" \"{inputPath}\"";
             using var process = new Process();
             process.StartInfo = new ProcessStartInfo
             {
                 FileName = _libreOfficePath!,
-                Arguments = args,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             };
+            process.StartInfo.ArgumentList.Add("--headless");
+            process.StartInfo.ArgumentList.Add("--convert-to");
+            process.StartInfo.ArgumentList.Add("pdf");
+            process.StartInfo.ArgumentList.Add("--outdir");
+            process.StartInfo.ArgumentList.Add(tempDir);
+            process.StartInfo.ArgumentList.Add(inputPath);
 
             process.Start();
             process.WaitForExit(60_000);
@@ -244,17 +248,21 @@ public class FolderService
             var inputPath = Path.Combine(inDir, "src.pdf");
             File.WriteAllBytes(inputPath, pdfBytes);
 
-            var args = $"--headless --convert-to pdf --outdir \"{outDir}\" \"{inputPath}\"";
             using var process = new Process();
             process.StartInfo = new ProcessStartInfo
             {
                 FileName = _libreOfficePath!,
-                Arguments = args,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             };
+            process.StartInfo.ArgumentList.Add("--headless");
+            process.StartInfo.ArgumentList.Add("--convert-to");
+            process.StartInfo.ArgumentList.Add("pdf");
+            process.StartInfo.ArgumentList.Add("--outdir");
+            process.StartInfo.ArgumentList.Add(outDir);
+            process.StartInfo.ArgumentList.Add(inputPath);
             process.Start();
             process.WaitForExit(60_000);
 
@@ -1938,19 +1946,20 @@ public class FolderService
         try
         {
             File.WriteAllBytes(tempIn, pdfBytes);
-            var args = string.Join(' ', new[]
-            {
-                "-sDEVICE=pdfwrite", "-dCompatibilityLevel=1.4",
-                "-dNOPAUSE", "-dQUIET", "-dBATCH",
-                $"-sOutputFile=\"{tempOut}\"", $"\"{tempIn}\""
-            });
             using var proc = new Process();
             proc.StartInfo = new ProcessStartInfo
             {
-                FileName = _ghostscriptExe, Arguments = args,
+                FileName = _ghostscriptExe,
                 UseShellExecute = false, CreateNoWindow = true,
                 RedirectStandardOutput = true, RedirectStandardError = true
             };
+            proc.StartInfo.ArgumentList.Add("-sDEVICE=pdfwrite");
+            proc.StartInfo.ArgumentList.Add("-dCompatibilityLevel=1.4");
+            proc.StartInfo.ArgumentList.Add("-dNOPAUSE");
+            proc.StartInfo.ArgumentList.Add("-dQUIET");
+            proc.StartInfo.ArgumentList.Add("-dBATCH");
+            proc.StartInfo.ArgumentList.Add($"-sOutputFile={tempOut}");
+            proc.StartInfo.ArgumentList.Add(tempIn);
             proc.Start();
             bool exited = proc.WaitForExit(timeoutMs);
             if (!exited)
@@ -1996,20 +2005,21 @@ public class FolderService
         {
             File.WriteAllBytes(tempIn1, first);
             File.WriteAllBytes(tempIn2, second);
-            var args = string.Join(' ', new[]
-            {
-                "-sDEVICE=pdfwrite", "-dCompatibilityLevel=1.4",
-                "-dNOPAUSE", "-dQUIET", "-dBATCH",
-                $"-sOutputFile=\"{tempOut}\"",
-                $"\"{tempIn1}\"", $"\"{tempIn2}\""
-            });
             using var proc = new Process();
             proc.StartInfo = new ProcessStartInfo
             {
-                FileName = _ghostscriptExe, Arguments = args,
+                FileName = _ghostscriptExe,
                 UseShellExecute = false, CreateNoWindow = true,
                 RedirectStandardOutput = true, RedirectStandardError = true
             };
+            proc.StartInfo.ArgumentList.Add("-sDEVICE=pdfwrite");
+            proc.StartInfo.ArgumentList.Add("-dCompatibilityLevel=1.4");
+            proc.StartInfo.ArgumentList.Add("-dNOPAUSE");
+            proc.StartInfo.ArgumentList.Add("-dQUIET");
+            proc.StartInfo.ArgumentList.Add("-dBATCH");
+            proc.StartInfo.ArgumentList.Add($"-sOutputFile={tempOut}");
+            proc.StartInfo.ArgumentList.Add(tempIn1);
+            proc.StartInfo.ArgumentList.Add(tempIn2);
             proc.Start();
             bool exited = proc.WaitForExit(timeoutMs);
             if (!exited)
@@ -2056,14 +2066,19 @@ public class FolderService
         {
             var inPath = Path.Combine(inDir, "src.pdf");
             File.WriteAllBytes(inPath, pdfBytes);
-            var args = $"--headless --convert-to pdf --outdir \"{outDir}\" \"{inPath}\"";
             using var proc = new Process();
             proc.StartInfo = new ProcessStartInfo
             {
-                FileName = _libreOfficePath!, Arguments = args,
+                FileName = _libreOfficePath!,
                 UseShellExecute = false, CreateNoWindow = true,
                 RedirectStandardOutput = true, RedirectStandardError = true
             };
+            proc.StartInfo.ArgumentList.Add("--headless");
+            proc.StartInfo.ArgumentList.Add("--convert-to");
+            proc.StartInfo.ArgumentList.Add("pdf");
+            proc.StartInfo.ArgumentList.Add("--outdir");
+            proc.StartInfo.ArgumentList.Add(outDir);
+            proc.StartInfo.ArgumentList.Add(inPath);
             proc.Start();
             bool exited = proc.WaitForExit(timeoutMs);
             if (!exited)
@@ -2145,40 +2160,35 @@ public class FolderService
 
         try
         {
-            var args = string.Join(' ', new[]
-            {
-                "-sDEVICE=pdfwrite",
-                "-dCompatibilityLevel=1.4",
-                "-dNOPAUSE",
-                "-dQUIET",
-                "-dBATCH",
-                "-dDetectDuplicateImages=true",
-                "-dCompressFonts=true",
-                "-dDownsampleColorImages=true",
-                "-dDownsampleGrayImages=true",
-                "-dDownsampleMonoImages=true",
-                "-dColorImageResolution=150",
-                "-dGrayImageResolution=150",
-                "-dMonoImageResolution=300",
-                "-dAutoFilterColorImages=false",
-                "-dAutoFilterGrayImages=false",
-                "-dColorImageFilter=/DCTEncode",
-                "-dGrayImageFilter=/DCTEncode",
-                "-dJPEGQ=60",
-                $"-sOutputFile=\"{tempOutput}\"",
-                $"\"{pdfPath}\""
-            });
-
             using var process = new Process();
             process.StartInfo = new ProcessStartInfo
             {
                 FileName = _ghostscriptExe,
-                Arguments = args,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             };
+            process.StartInfo.ArgumentList.Add("-sDEVICE=pdfwrite");
+            process.StartInfo.ArgumentList.Add("-dCompatibilityLevel=1.4");
+            process.StartInfo.ArgumentList.Add("-dNOPAUSE");
+            process.StartInfo.ArgumentList.Add("-dQUIET");
+            process.StartInfo.ArgumentList.Add("-dBATCH");
+            process.StartInfo.ArgumentList.Add("-dDetectDuplicateImages=true");
+            process.StartInfo.ArgumentList.Add("-dCompressFonts=true");
+            process.StartInfo.ArgumentList.Add("-dDownsampleColorImages=true");
+            process.StartInfo.ArgumentList.Add("-dDownsampleGrayImages=true");
+            process.StartInfo.ArgumentList.Add("-dDownsampleMonoImages=true");
+            process.StartInfo.ArgumentList.Add("-dColorImageResolution=150");
+            process.StartInfo.ArgumentList.Add("-dGrayImageResolution=150");
+            process.StartInfo.ArgumentList.Add("-dMonoImageResolution=300");
+            process.StartInfo.ArgumentList.Add("-dAutoFilterColorImages=false");
+            process.StartInfo.ArgumentList.Add("-dAutoFilterGrayImages=false");
+            process.StartInfo.ArgumentList.Add("-dColorImageFilter=/DCTEncode");
+            process.StartInfo.ArgumentList.Add("-dGrayImageFilter=/DCTEncode");
+            process.StartInfo.ArgumentList.Add("-dJPEGQ=60");
+            process.StartInfo.ArgumentList.Add($"-sOutputFile={tempOutput}");
+            process.StartInfo.ArgumentList.Add(pdfPath);
 
             process.Start();
             bool exited = process.WaitForExit(30_000);

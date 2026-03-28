@@ -401,25 +401,41 @@ window.interop = {
         behavior: "smooth"
     });
   },
+  _scrollHandler: null,
+  _headerScrollHandler: null,
   registerScrollListener: function (dotnetHelper) {
-      window.addEventListener('scroll', function () {
+      interop._scrollHandler = function () {
           var scrollY = window.scrollY || window.pageYOffset;
           dotnetHelper.invokeMethodAsync("SetStickyClass", scrollY);
-      });
+      };
+      window.addEventListener('scroll', interop._scrollHandler);
 
     // Trigger initial check
     var scrollY = window.scrollY || window.pageYOffset;
     dotnetHelper.invokeMethodAsync("SetStickyClass", scrollY);
   },
+  unregisterScrollListener: function () {
+      if (interop._scrollHandler) {
+          window.removeEventListener('scroll', interop._scrollHandler);
+          interop._scrollHandler = null;
+      }
+  },
   registerheaderScrollListener: function (dotnetHelper) {
-      window.addEventListener('scroll', function () {
+      interop._headerScrollHandler = function () {
           var scrollY = window.scrollY || window.pageYOffset;
           dotnetHelper.invokeMethodAsync("SetStickyClass1", scrollY);
-      });
+      };
+      window.addEventListener('scroll', interop._headerScrollHandler);
 
     // Trigger initial check
     var scrollY = window.scrollY || window.pageYOffset;
     dotnetHelper.invokeMethodAsync("SetStickyClass1", scrollY);
+  },
+  unregisterheaderScrollListener: function () {
+      if (interop._headerScrollHandler) {
+          window.removeEventListener('scroll', interop._headerScrollHandler);
+          interop._headerScrollHandler = null;
+      }
   },
   initializeTooltips: function() {
     const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
@@ -537,6 +553,22 @@ window.lpmInitColResize = function (tableId) {
 
         th.appendChild(handle);
     });
+};
+
+// Download trigger — url and filename passed as parameters, never concatenated into JS
+window.lpmTriggerDownload = function (url, filename) {
+    var a = document.createElement('a');
+    a.href = url;
+    if (filename) a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+};
+
+// Click a hidden input/button by element ID — id is a C# constant, never user input
+window.lpmClickById = function (id) {
+    var el = document.getElementById(id);
+    if (el) el.click();
 };
 
 // Backup authentication — password passed as a typed argument, never concatenated into JS

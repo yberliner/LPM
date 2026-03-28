@@ -558,9 +558,7 @@
 
     async Task TriggerAndWait(string token, string endpoint, string expectedPhase)
     {
-        var dlJs = "var a=document.createElement('a');a.href='" + endpoint + "?token=" + token
-            + "';a.download='';document.body.appendChild(a);a.click();document.body.removeChild(a);";
-        await JS.InvokeVoidAsync("eval", dlJs);
+        await JS.InvokeVoidAsync("lpmTriggerDownload", endpoint + "?token=" + token, "");
 
         // Wait up to 8 seconds for the server to start this phase
         var startWait = 0;

@@ -267,7 +267,7 @@
                 <InputFile id="pdf-diag-input" OnChange="OnPdfDiagFileSelected" accept=".pdf" style="display:none;" />
                 <button class="btn btn-outline-primary d-flex align-items-center gap-2"
                         disabled="@_pdfDiagBusy"
-                        @onclick='() => JS.InvokeVoidAsync("eval", "document.getElementById(\"pdf-diag-input\").click()")'>
+                        @onclick='() => JS.InvokeVoidAsync("lpmClickById", "pdf-diag-input")'>
                     <i class="ri-upload-cloud-line"></i>Choose PDF…
                 </button>
                 @if (_pdfDiagBusy)

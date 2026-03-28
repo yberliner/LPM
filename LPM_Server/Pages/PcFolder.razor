@@ -7,6 +7,8 @@
 @inject NavigationManager NavManager
 @inject IHttpContextAccessor HttpContextAccessor
 @using LPM.Services
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
 @implements IDisposable
 
 <div class="pcf-container">
@@ -4211,8 +4213,7 @@
         var apiEndpoint = IsFolderSummaryFile(fileName, file)
             ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(file)}{SoloParam}&_t={DateTime.UtcNow.Ticks}"
             : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}{SoloParam}&download=true&_t={DateTime.UtcNow.Ticks}";
-        var js = "var a=document.createElement('a');a.href='" + apiEndpoint + "';a.download='" + fileName.Replace("'", "\\'") + "';document.body.appendChild(a);a.click();document.body.removeChild(a);";
-        await JS.InvokeVoidAsync("eval", js);
+        await JS.InvokeVoidAsync("lpmTriggerDownload", apiEndpoint, fileName);
     }
 
     void OnTimerHoursChanged(ChangeEventArgs e)
@@ -4318,7 +4319,7 @@
             .Select(i => JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]).AsTask()));
         // Burn all sidecar files in the entire PC folder (fire-and-forget — navigate immediately)
         _ = FolderSvc.BurnAllAnnotationSidecarsAsync(PcId, Solo);
-        await JS.InvokeVoidAsync("eval", "window.location.href='/Home'");
+        NavManager.NavigateTo("/Home");
     }
 
     async Task ToggleVoice()
@@ -4519,7 +4520,7 @@
     {
         _showPageCtxMenu = false;
         // _pageBgPaneId and _pageBgPageIdx are already set from OnPageRightClick
-        await JS.InvokeVoidAsync("eval", "document.getElementById('pcf-insert-input').click()");
+        await JS.InvokeVoidAsync("lpmClickById", "pcf-insert-input");
     }
 
     async Task FloatPage()
@@ -4687,7 +4688,7 @@
     {
         _wsAttTargetSession = _wsCtxSessionFileName;
         CloseWsCtxMenu();
-        await JS.InvokeVoidAsync("eval", "document.getElementById('pcf-ws-att-input').click()");
+        await JS.InvokeVoidAsync("lpmClickById", "pcf-ws-att-input");
     }
 
     async Task WsCtxDownloadSession()
@@ -4704,8 +4705,7 @@
         var sessionNoExt = System.IO.Path.GetFileNameWithoutExtension(session);
         var url = $"/api/pc-session-merged?pcId={PcId}&session={Uri.EscapeDataString(session)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
         var downloadName = $"{sessionNoExt}.pdf";
-        var js = $"var a=document.createElement('a');a.href='{url}';a.download='{downloadName.Replace("'", "\\'")}';document.body.appendChild(a);a.click();document.body.removeChild(a);";
-        await JS.InvokeVoidAsync("eval", js);
+        await JS.InvokeVoidAsync("lpmTriggerDownload", url, downloadName);
     }
 
     async Task OnWsAttFileSelected(InputFileChangeEventArgs e)
@@ -5151,8 +5151,7 @@
         var apiEndpoint = IsFolderSummaryFile(fileName, relPath)
             ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(relPath)}{SoloParam}&_t={DateTime.UtcNow.Ticks}"
             : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relPath)}{SoloParam}&download=true&_t={DateTime.UtcNow.Ticks}";
-        var js = $"var a=document.createElement('a');a.href='{apiEndpoint}';a.download='{fileName.Replace("'", "\\'")}';document.body.appendChild(a);a.click();document.body.removeChild(a);";
-        await JS.InvokeVoidAsync("eval", js);
+        await JS.InvokeVoidAsync("lpmTriggerDownload", apiEndpoint, fileName);
     }
 
     async Task CtxUploadFile()
@@ -5161,7 +5160,7 @@
         _newMenuParentFolder = _ctxNode.IsFolder ? _ctxNode.RelativePath : Path.GetDirectoryName(_ctxNode.RelativePath)!.Replace('\\', '/');
         _newMenuSection = _ctxSection;
         CloseCtxMenu();
-        await JS.InvokeVoidAsync("eval", "document.getElementById('pcf-upload-input').click()");
+        await JS.InvokeVoidAsync("lpmClickById", "pcf-upload-input");
     }
 
     void CtxNewEmptyPdf()
@@ -5232,7 +5231,7 @@
     async Task NewMenuUploadClick()
     {
         CloseNewMenu();
-        await JS.InvokeVoidAsync("eval", "document.getElementById('pcf-upload-input').click()");
+        await JS.InvokeVoidAsync("lpmClickById", "pcf-upload-input");
     }
 
     void CloseNewMenu() { _newMenuSection = null; }

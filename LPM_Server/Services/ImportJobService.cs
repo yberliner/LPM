@@ -563,12 +563,14 @@ public class ImportJobService
         var pcNames = new Dictionary<int, string>();
         if (allPcIds.Count > 0)
         {
-            var idList = string.Join(",", allPcIds);
+            var paramNames = allPcIds.Select((_, i) => $"@p{i}").ToList();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT p.PersonId, p.FirstName || ' ' || COALESCE(p.LastName, '')
                 FROM core_persons p
-                WHERE p.PersonId IN ({idList})";
+                WHERE p.PersonId IN ({string.Join(",", paramNames)})";
+            for (int i = 0; i < allPcIds.Count; i++)
+                cmd.Parameters.AddWithValue($"@p{i}", allPcIds[i]);
             using var r = cmd.ExecuteReader();
             while (r.Read()) pcNames[r.GetInt32(0)] = r.GetString(1).Trim();
         }

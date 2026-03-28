@@ -72,7 +72,17 @@ window.SignaturePad = {
         canvas.addEventListener('touchmove', onMove, { passive: false });
         canvas.addEventListener('touchend', onEnd);
 
-        this._pads[canvasId] = { canvas, ctx, state };
+        const listeners = [
+            { type: 'mousedown',  fn: onStart, opts: undefined },
+            { type: 'mousemove',  fn: onMove,  opts: undefined },
+            { type: 'mouseup',    fn: onEnd,   opts: undefined },
+            { type: 'mouseleave', fn: onEnd,   opts: undefined },
+            { type: 'touchstart', fn: onStart, opts: { passive: false } },
+            { type: 'touchmove',  fn: onMove,  opts: { passive: false } },
+            { type: 'touchend',   fn: onEnd,   opts: undefined },
+        ];
+
+        this._pads[canvasId] = { canvas, ctx, state, listeners };
     },
 
     clear: function (canvasId) {
@@ -100,6 +110,12 @@ window.SignaturePad = {
     },
 
     dispose: function (canvasId) {
+        const pad = this._pads[canvasId];
+        if (pad) {
+            pad.listeners.forEach(({ type, fn, opts }) =>
+                pad.canvas.removeEventListener(type, fn, opts)
+            );
+        }
         delete this._pads[canvasId];
     }
 };

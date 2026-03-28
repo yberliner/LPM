@@ -958,5 +958,6 @@
         dotNetObjectReference?.Dispose();
         _scrollRef?.Dispose();
         JSRuntime.InvokeVoidAsync("resizeFunctions.detachScrollListener");
+        JSRuntime.InvokeVoidAsync("interop.unregisterScrollListener");
     }
 }

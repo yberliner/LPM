@@ -134,15 +134,17 @@ public class CourseService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        var inClause = string.Join(",", ids);
+        var paramNames = ids.Select((_, i) => $"@p{i}").ToList();
         cmd.CommandText = $@"
             SELECT sc.PersonId, c.Name,
                    (SELECT COUNT(*) FROM acad_attendance s
                     WHERE s.PersonId = sc.PersonId AND s.VisitDate >= sc.DateStarted) AS VisitCount
             FROM acad_student_courses sc
             JOIN lkp_courses c ON c.CourseId = sc.CourseId
-            WHERE sc.PersonId IN ({inClause}) AND sc.DateFinished IS NULL
+            WHERE sc.PersonId IN ({string.Join(",", paramNames)}) AND sc.DateFinished IS NULL
             ORDER BY sc.PersonId, sc.DateStarted";
+        for (int i = 0; i < ids.Count; i++)
+            cmd.Parameters.AddWithValue($"@p{i}", ids[i]);
         var dict = new Dictionary<int, List<string>>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
