@@ -3699,12 +3699,6 @@
                     }),
                     Task.Run(async () =>
                     {
-                        if (string.IsNullOrWhiteSpace(capturedStep3Top) && string.IsNullOrWhiteSpace(capturedStep3Bottom))
-                        {
-                            sNextCs.SubLabel = "skipped";
-                            await Advance(sNextCs, 2);
-                            return;
-                        }
                         nextCsPdfBytes = PdfSvc.GenerateNextCsPdf(
                             capturedPcName, DateTime.Today.ToString("dd/MM/yyyy"),
                             capturedAuditorName, capturedStep3Top, capturedStep3Bottom);
