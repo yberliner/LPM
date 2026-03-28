@@ -1,5 +1,7 @@
 @inject LPM.Services.FolderService FolderSvc
 @inject LPM.Services.DashboardService DashSvc
+@inject LPM.Services.AuditorService AuditorSvc
+@inject LPM.Services.SmsService SmsSvc
 @inject PdfService PdfSvc
 @inject LPM.Services.CsNotificationService CsNotifySvc
 @inject LPM.Services.ShortcutService ShortcutSvc
@@ -4289,8 +4291,21 @@
             _ = CsNotifySvc.NotifyCsDone(PcId, DashSvc.UserHasApprovedPcOnDashboard);
             DashSvc.NotifyDataChanged();
 
+            // Send SMS to auditor if enabled and phone is a valid Israeli number
+            object? smsInfo = null;
+            var auditorSms = AuditorSvc.GetAuditorSmsInfo(_csSessionId);
+            Console.WriteLine($"[PcFolder] SMS check — auditor='{auditorSms?.AuditorName ?? "none"}' sendSms={auditorSms?.SendSms} phone='{auditorSms?.Phone}' validPhone={AuditorService.IsValidIsraeliPhone(auditorSms?.Phone)}");
+            if (auditorSms != null && auditorSms.SendSms && AuditorService.IsValidIsraeliPhone(auditorSms.Phone))
+            {
+                var smsMsg = $"{_pcName} CSing is done";
+                Console.WriteLine($"[PcFolder] Sending SMS to auditor '{auditorSms.AuditorName}' ({auditorSms.Phone}) — session {_csSessionId}, PC '{_pcName}', message: '{smsMsg}'");
+                var sent = await SmsSvc.SendSmsAsync(auditorSms.Phone, smsMsg);
+                if (sent)
+                    smsInfo = new { phone = auditorSms.Phone, message = smsMsg, auditorName = auditorSms.AuditorName };
+            }
+
             // Show done animation then navigate back to Home
-            await JS.InvokeVoidAsync("showCsDoneAndClose", _pcName, _csSessionName);
+            await JS.InvokeVoidAsync("showCsDoneAndClose", _pcName, _csSessionName, smsInfo);
         }
         catch (Exception ex)
         {
@@ -4313,13 +4328,20 @@
     {
         _showCsCloseWarning = false;
         // Close float window and save all open panes in parallel before navigating away
-        await JS.InvokeVoidAsync("pcfViewer.closeFloat");
-        await Task.WhenAll(Enumerable.Range(0, _paneCount)
-            .Where(i => !string.IsNullOrEmpty(_panes[i].File))
-            .Select(i => JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]).AsTask()));
+        try { await JS.InvokeVoidAsync("pcfViewer.closeFloat"); } catch { }
+        try
+        {
+            await Task.WhenAll(Enumerable.Range(0, _paneCount)
+                .Where(i => !string.IsNullOrEmpty(_panes[i].File))
+                .Select(i => JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]).AsTask()));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PcFolder] Warning: pane save failed on close for PC {PcId}: {ex.Message}");
+        }
         // Burn all sidecar files in the entire PC folder (fire-and-forget — navigate immediately)
         _ = FolderSvc.BurnAllAnnotationSidecarsAsync(PcId, Solo);
-        NavManager.NavigateTo("/Home");
+        await JS.InvokeVoidAsync("lpmNavigateTo", "/Home");
     }
 
     async Task ToggleVoice()

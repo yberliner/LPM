@@ -571,6 +571,11 @@ window.lpmClickById = function (id) {
     if (el) el.click();
 };
 
+// Navigate to a URL — used when NavManager.NavigateTo is unreliable (e.g. PcFolder layout)
+window.lpmNavigateTo = function (url) {
+    window.location.href = url;
+};
+
 // Backup authentication — password passed as a typed argument, never concatenated into JS
 window.lpmBackupAuth = async function (password) {
     var fd = new FormData();

@@ -652,9 +652,10 @@ public class FolderService
                 {
                     // Convert canvas-pixel coords → PDF points.
                     // Canvas Y: origin top-left, Y increases downward, ann.Y is the text baseline.
-                    // PDF Y:    origin bottom-left, Y increases upward.
+                    // PdfSharp XGraphics: same convention — origin top-left, Y increases downward.
+                    // No Y-axis flip needed; just divide by scale to go from canvas px → PDF points.
                     double pdfX = ann.X / scale;
-                    double pdfY = page.Height.Point - (ann.Y / scale);
+                    double pdfY = ann.Y / scale;
 
                     double fontSizePx = ann.FontSize ?? 14.0;
                     double fontSizePt = fontSizePx / scale;
@@ -676,9 +677,9 @@ public class FolderService
                     var lines = WrapTextForPdf(gfx, font, ann.Text, maxWidthPt);
                     for (int li = 0; li < lines.Count; li++)
                     {
-                        // Each line moves downward in PDF space (subtract)
+                        // Each line moves downward in PdfSharp's Y-down space (add)
                         gfx.DrawString(lines[li], font, new PdfSharpCore.Drawing.XSolidBrush(color),
-                            pdfX, pdfY - li * lineHeightPt);
+                            pdfX, pdfY + li * lineHeightPt);
                     }
                 }
             }

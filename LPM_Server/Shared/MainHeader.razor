@@ -1104,21 +1104,12 @@
                                 }
                             }
                         </div>
-                        @if (_importStep == 3 && (_showArfSkipBadge || _showNextCsSkipBadge))
+                        @if (_importStep == 3 && _showArfSkipBadge)
                         {
                             <div class="d-flex gap-2 flex-wrap">
-                                @if (_showArfSkipBadge)
-                                {
-                                    <span class="badge bg-secondary" style="font-size:.72rem;">
-                                        <i class="ri-file-forbid-line me-1"></i>ARF not generated
-                                    </span>
-                                }
-                                @if (_showNextCsSkipBadge)
-                                {
-                                    <span class="badge bg-secondary" style="font-size:.72rem;">
-                                        <i class="ri-file-forbid-line me-1"></i>Next CS not generated
-                                    </span>
-                                }
+                                <span class="badge bg-secondary" style="font-size:.72rem;">
+                                    <i class="ri-file-forbid-line me-1"></i>ARF not generated
+                                </span>
                             </div>
                         }
                     </div>

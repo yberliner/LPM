@@ -106,6 +106,12 @@
                                             <label class="form-check-label small aud-edit-label">Unrestricted folder access</label>
                                         </div>
                                     </div>
+                                    <div class="col-auto d-flex align-items-end pb-1">
+                                        <div class="form-check form-switch mb-0">
+                                            <input class="form-check-input" type="checkbox" @bind="_editSendSms" />
+                                            <label class="form-check-label small aud-edit-label">Send SMS on CS done</label>
+                                        </div>
+                                    </div>
                                 </div>
                                 @if (!string.IsNullOrEmpty(_editError))
                                 {
@@ -771,6 +777,7 @@
     bool   _editIsActive;
     bool   _editIsAdmin;
     bool   _editAllowAll;
+    bool   _editSendSms;
 
     // Delete confirm
     bool _showDeleteConfirm;
@@ -836,6 +843,7 @@
         _editIsActive   = _detail.IsActive;
         _editIsAdmin    = _detail.IsAdmin;
         _editAllowAll   = _detail.AllowAll;
+        _editSendSms    = _detail.SendSms;
     }
 
     void CancelEdit() { _editMode = false; _editError = ""; }
@@ -862,7 +870,7 @@
         int? gradeId = int.TryParse(_editGradeId, out var g) ? g : null;
         Console.WriteLine($"[Auditors] Updated auditor {_selId!.Value} — '{_editFirstName} {_editLastName}' role={_editStaffRole} active={_editIsActive}");
         AuditorSvc.UpdateAuditor(_selId!.Value, _editFirstName, _editLastName,
-            gradeId, _editStaffRole, _editIsActive, _editIsAdmin, _editAllowAll);
+            gradeId, _editStaffRole, _editIsActive, _editIsAdmin, _editAllowAll, _editSendSms);
         _editMode    = false;
         _editError   = "";
         _allAuditors = AuditorSvc.GetAllAuditors();

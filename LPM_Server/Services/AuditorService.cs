@@ -9,7 +9,8 @@ namespace LPM.Services;
 public record AuditorListItem(int AuditorId, string FullName, string StaffRole, bool IsActive, string? GradeCode, string Username = "");
 public record GradeItem(int GradeId, string Code);
 public record AuditorDetail(int AuditorId, string FirstName, string LastName,
-    string StaffRole, bool IsActive, int? CurrentGradeId, string? GradeCode, bool IsAdmin, string Username = "", bool AllowAll = false);
+    string StaffRole, bool IsActive, int? CurrentGradeId, string? GradeCode, bool IsAdmin, string Username = "", bool AllowAll = false, bool SendSms = false);
+public record AuditorSmsInfo(bool SendSms, string Phone, string AuditorName);
 public record AuditorStats(int TotalSessions, int FreeSessions, long TotalSec, string? LastSessionDate);
 public record SoloPermissionViolation(string FullName, string Username, bool BadAllowAll, bool BadUserType);
 public record SecuritySummaryItem(string FullName, string Username, string StaffRole);
@@ -66,7 +67,7 @@ public class AuditorService(IConfiguration config, UserDb userDb)
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT u.PersonId, p.FirstName, COALESCE(p.LastName,''),
-                   u.StaffRole, u.IsActive, u.GradeId, g.Code, u.UserType, u.Username, u.AllowAll
+                   u.StaffRole, u.IsActive, u.GradeId, g.Code, u.UserType, u.Username, u.AllowAll, u.SendSms
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
             LEFT JOIN lkp_grades g ON g.GradeId = u.GradeId
@@ -82,11 +83,12 @@ public class AuditorService(IConfiguration config, UserDb userDb)
             r.IsDBNull(6) ? null : r.GetString(6),
             r.IsDBNull(7) ? false : r.GetString(7) == "Admin",
             r.IsDBNull(8) ? "" : r.GetString(8),
-            r.IsDBNull(9) ? false : r.GetInt32(9) != 0);
+            r.IsDBNull(9) ? false : r.GetInt32(9) != 0,
+            r.IsDBNull(10) ? false : r.GetInt32(10) != 0);
     }
 
     public void UpdateAuditor(int auditorId, string firstName, string lastName,
-        int? gradeId, string staffRole, bool isActive, bool isAdmin, bool allowAll)
+        int? gradeId, string staffRole, bool isActive, bool isAdmin, bool allowAll, bool sendSms = false)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -100,16 +102,17 @@ public class AuditorService(IConfiguration config, UserDb userDb)
 
         using var uCmd = conn.CreateCommand();
         uCmd.CommandText = @"
-            UPDATE core_users SET GradeId=@gid, StaffRole=@role, IsActive=@active, UserType=@ut, AllowAll=@aa
+            UPDATE core_users SET GradeId=@gid, StaffRole=@role, IsActive=@active, UserType=@ut, AllowAll=@aa, SendSms=@sms
             WHERE PersonId=@id AND StaffRole IN ('Auditor','CS')";
         uCmd.Parameters.AddWithValue("@gid",    gradeId.HasValue ? (object)gradeId.Value : DBNull.Value);
         uCmd.Parameters.AddWithValue("@role",   staffRole);
         uCmd.Parameters.AddWithValue("@active", isActive ? 1 : 0);
         uCmd.Parameters.AddWithValue("@ut",     isAdmin ? "Admin" : "Standard");
         uCmd.Parameters.AddWithValue("@aa",     allowAll ? 1 : 0);
+        uCmd.Parameters.AddWithValue("@sms",    sendSms ? 1 : 0);
         uCmd.Parameters.AddWithValue("@id",     auditorId);
         uCmd.ExecuteNonQuery();
-        Console.WriteLine($"[AuditorService] Updated auditor {auditorId} isAdmin={isAdmin} allowAll={allowAll}");
+        Console.WriteLine($"[AuditorService] Updated auditor {auditorId} isAdmin={isAdmin} allowAll={allowAll} sendSms={sendSms}");
     }
 
     public void DeleteAuditor(int auditorId)
@@ -374,5 +377,39 @@ public class AuditorService(IConfiguration config, UserDb userDb)
             if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
                 sb.Append(c);
         return sb.ToString().Normalize(NormalizationForm.FormC);
+    }
+
+    /// Returns SMS settings for the auditor of a given session.
+    /// Returns null if the session has no assigned auditor (NULL or -1).
+    public AuditorSmsInfo? GetAuditorSmsInfo(int sessionId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT u.SendSms, COALESCE(p.Phone,''),
+                   TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), ''))
+            FROM sess_sessions s
+            JOIN core_users u ON u.PersonId = s.AuditorId
+            JOIN core_persons p ON p.PersonId = s.AuditorId
+            WHERE s.SessionId = @sid
+              AND s.AuditorId IS NOT NULL
+              AND s.AuditorId > 0
+            LIMIT 1";
+        cmd.Parameters.AddWithValue("@sid", sessionId);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return null;
+        return new AuditorSmsInfo(r.GetInt32(0) != 0, r.GetString(1), r.GetString(2));
+    }
+
+    /// Returns true if phone is a valid Israeli mobile number:
+    ///   +972XXXXXXXXX (13 chars total) OR 05XXXXXXXX (10 digits).
+    public static bool IsValidIsraeliPhone(string? phone)
+    {
+        if (string.IsNullOrWhiteSpace(phone)) return false;
+        var p = phone.Trim().Replace("-", "").Replace(" ", "");
+        if (p.StartsWith("+972") && p.Length == 13) return true;
+        if (p.StartsWith("05")   && p.Length == 10 && p.All(char.IsDigit)) return true;
+        return false;
     }
 }
