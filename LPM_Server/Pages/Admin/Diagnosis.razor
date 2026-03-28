@@ -39,6 +39,23 @@
 
 <div class="container-fluid py-4" style="max-width:960px;@(_pageLoading ? "pointer-events:none;filter:blur(2px);opacity:.4;" : "")">
 
+    @* ── Tab Navigation ── *@
+    <ul class="nav nav-tabs diag-tabs mb-4">
+        <li class="nav-item">
+            <a class="nav-link @(_diagTab == "db" ? "active" : "")" @onclick='() => _diagTab = "db"' href="javascript:void(0)">
+                <i class="ri-database-2-line me-1"></i>Database
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link @(_diagTab == "integrity" ? "active" : "")" @onclick='() => _diagTab = "integrity"' href="javascript:void(0)">
+                <i class="ri-shield-check-line me-1"></i>DB Check Integrity
+            </a>
+        </li>
+    </ul>
+
+    @if (_diagTab == "db")
+    {
+
     @* ── User Activity Monitor ── *@
     <div class="diag-activity-card mb-4">
         <div class="d-flex align-items-center justify-content-between flex-wrap gap-2"
@@ -122,6 +139,11 @@
                 }
             </div>
         }
+    </div>
+
+    <div class="mb-3 mt-1 d-flex gap-2 flex-wrap">
+        <a href="javascript:void(0)" class="diag-jump-link"
+           @onclick='() => JS.InvokeVoidAsync("eval", "document.getElementById(\"sess_sessions\").scrollIntoView({behavior:\"smooth\"})")'><i class="ri-calendar-event-line me-1"></i>sess_sessions</a>
     </div>
 
     @* ── Audit History Modal ── *@
@@ -592,6 +614,7 @@
                 "sess_meetings"       => "MeetingId",
                 _                     => "Id"
             };
+            @if (t.Name == "sess_sessions") { <div id="sess_sessions"></div> }
             @EditableSection(new EditInfo(t, pk))
         }
 
@@ -728,7 +751,216 @@
             } @* end else (_loadingRecent) *@
         </div>
     </div>
+
+    } @* end _diagTab == "db" *@
+
+    @* ── DB Check Integrity Tab ─────────────────────────────────────────── *@
+    @if (_diagTab == "integrity")
+    {
+        <div class="diag-editor-card mb-4">
+            <div class="diag-editor-header">
+                <i class="ri-shield-check-line me-2"></i>DB Check Integrity
+                <span class="diag-editor-sub">FK orphan detection</span>
+                <button class="btn btn-outline-primary btn-sm ms-auto py-0 diag-action-btn"
+                        disabled="@_integrityChecking" @onclick="RunIntegrityCheck">
+                    @if (_integrityChecking)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    else
+                    {
+                        <i class="ri-scan-line me-1"></i>
+                    }
+                    Check DB
+                </button>
+            </div>
+            <div class="diag-editor-body">
+                @if (_integrityChecking)
+                {
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-1" style="font-size:.72rem;color:#64748b;">
+                            <span>Scanning <code style="font-size:.7rem;">@_integrityProgressTable</code></span>
+                            <span>@_integrityProgressCurrent / @_integrityProgressTotal tables</span>
+                        </div>
+                        <div class="progress" style="height:8px;border-radius:4px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated"
+                                 role="progressbar"
+                                 style="width:@(_integrityProgressTotal > 0 ? $"{100 * _integrityProgressCurrent / _integrityProgressTotal}%" : "0%")">
+                            </div>
+                        </div>
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(_integrityMsg))
+                {
+                    <div class="alert @(_orphans.Count == 0 ? "alert-success" : "alert-warning") py-1 px-3 mb-3 diag-feedback">@_integrityMsg</div>
+                }
+                @if (_orphans.Count > 0)
+                {
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <span style="font-size:.78rem;font-weight:600;color:#b45309;">
+                            @_orphans.Count orphan row@(_orphans.Count != 1 ? "s" : "") found
+                        </span>
+                        <button class="btn btn-danger btn-sm py-0" @onclick="DeleteAllOrphans">
+                            <i class="ri-delete-bin-line me-1"></i>Delete All Orphans
+                        </button>
+                    </div>
+                    <div class="cedb-table-wrap">
+                        <table class="cedb-table">
+                            <thead>
+                                <tr>
+                                    <th>Table</th>
+                                    <th>Row ID</th>
+                                    <th>FK Column</th>
+                                    <th>FK Value</th>
+                                    <th>→ References</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var o in _orphans.ToList())
+                                {
+                                    var orphan = o;
+                                    bool pending = _pendingOrphanDelete.Contains((orphan.Table, orphan.RowId));
+                                    <tr class="@(pending ? "table-danger" : "")">
+                                        <td><code style="font-size:.68rem;">@orphan.Table</code></td>
+                                        <td style="color:#64748b;">@orphan.RowId</td>
+                                        <td style="color:#0369a1;">@orphan.FkCol</td>
+                                        <td style="color:#dc2626;font-weight:600;">@orphan.FkValue</td>
+                                        <td style="color:#64748b;font-size:.68rem;"><code>@orphan.RefTable.@orphan.RefCol</code></td>
+                                        <td class="text-end" style="white-space:nowrap;">
+                                            @if (pending)
+                                            {
+                                                <span class="me-1" style="font-size:.65rem;color:#dc3545;vertical-align:middle;">Sure?</span>
+                                                <button class="btn btn-danger btn-sm py-0 px-1 me-1" @onclick="() => DeleteOrphan(orphan)">
+                                                    <i class="ri-check-line"></i>
+                                                </button>
+                                                <button class="btn btn-outline-secondary btn-sm py-0 px-1" @onclick="() => _pendingOrphanDelete.Remove((orphan.Table, orphan.RowId))">
+                                                    <i class="ri-close-line"></i>
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <button class="btn btn-outline-danger btn-sm py-0 px-1" title="Delete orphan row"
+                                                        @onclick="() => _pendingOrphanDelete.Add((orphan.Table, orphan.RowId))">
+                                                    <i class="ri-delete-bin-line"></i>
+                                                </button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else if (!string.IsNullOrEmpty(_integrityMsg))
+                {
+                    <div class="cedb-empty">No orphan rows found — database FK integrity is clean.</div>
+                }
+                else
+                {
+                    <div class="cedb-empty">Press "Check DB" to scan for orphan rows.</div>
+                }
+            </div>
+        </div>
+    }
+
 </div>
+
+@* ── Delete Session Modal ─────────────────────────────────────────────────── *@
+@if (_delSessModal)
+{
+    <div class="diag-modal-backdrop" @onclick="() => { if (!_delSessBusy) _delSessModal = false; }"></div>
+    <div class="diag-modal" style="width:min(820px,96vw);">
+        <div class="diag-modal-header">
+            <span><i class="ri-delete-bin-2-line me-2" style="color:#ef4444;"></i>Delete Session #@(_delSessInfo?.SessionId)</span>
+            <button class="btn-close btn-close-sm" disabled="@_delSessBusy" @onclick="() => _delSessModal = false"></button>
+        </div>
+        <div class="diag-modal-body">
+            @if (_delSessInfo == null)
+            {
+                <div class="d-flex align-items-center gap-2"><span class="spinner-border spinner-border-sm"></span> Loading…</div>
+            }
+            else
+            {
+                @* FK Tables *@
+                @foreach (var fkTbl in _delSessInfo.FkTables)
+                {
+                    var ft = fkTbl;
+                    <div class="mb-3">
+                        <div class="diag-lbl mb-1">
+                            <i class="ri-table-line me-1"></i>@ft.Table
+                            <span style="font-weight:400;color:#94a3b8;"> — @ft.Rows.Count row@(ft.Rows.Count != 1 ? "s" : "") to delete</span>
+                        </div>
+                        @if (ft.Rows.Count == 0)
+                        {
+                            <div class="cedb-empty">No rows</div>
+                        }
+                        else
+                        {
+                            <div class="cedb-table-wrap">
+                                <table class="cedb-table">
+                                    <thead><tr>@foreach (var c in ft.Cols) { <th>@c</th> }</tr></thead>
+                                    <tbody>
+                                        @foreach (var row in ft.Rows)
+                                        {
+                                            <tr>
+                                                @foreach (var v in row)
+                                                {
+                                                    var display = v.Length > 80 ? v[..80] + "…" : v;
+                                                    <td title="@v" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1e293b;">@display</td>
+                                                }
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @* Files *@
+                <div class="mb-3">
+                    <div class="diag-lbl mb-1">
+                        <i class="ri-file-list-3-line me-1"></i>WorkSheet files to delete
+                        <span style="font-weight:400;color:#94a3b8;"> — @_delSessInfo.Files.Count file@(_delSessInfo.Files.Count != 1 ? "s" : "")</span>
+                    </div>
+                    @if (_delSessInfo.Files.Count == 0)
+                    {
+                        <div class="cedb-empty">No files found for this session</div>
+                    }
+                    else
+                    {
+                        <ul class="diag-delsess-files">
+                            @foreach (var f in _delSessInfo.Files)
+                            {
+                                <li><i class="ri-file-pdf-line me-1" style="color:#ef4444;"></i>@Path.GetFileName(f)</li>
+                            }
+                        </ul>
+                    }
+                </div>
+
+                @* Warning *@
+                <div class="alert alert-danger py-2 px-3 mb-0" style="font-size:.82rem;">
+                    <i class="ri-error-warning-line me-1"></i>
+                    <strong>Irreversible.</strong> All listed rows and files will be permanently deleted. The sess_sessions row is deleted last.
+                </div>
+
+                @if (!string.IsNullOrEmpty(_delSessError))
+                {
+                    <div class="alert alert-danger py-1 px-3 mt-2 mb-0 diag-feedback">@_delSessError</div>
+                }
+            }
+        </div>
+        <div class="diag-modal-footer">
+            <button class="btn btn-secondary btn-sm" disabled="@_delSessBusy" @onclick="() => _delSessModal = false">Cancel</button>
+            <button class="btn btn-danger btn-sm diag-action-btn" disabled="@(_delSessBusy || _delSessInfo == null)"
+                    @onclick="ExecuteDeleteSession">
+                @if (_delSessBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                <i class="ri-delete-bin-2-line me-1"></i>Delete Session
+            </button>
+        </div>
+    </div>
+}
 
 @* ── Edit Row Modal ───────────────────────────────────────────────────────── *@
 @if (_editModalVisible)
@@ -931,7 +1163,7 @@
                         <table class="cedb-table">
                             <thead>
                                 <tr>
-                                    <th style="width:60px;"></th>
+                                    <th style="width:@(args.Table.Name == "sess_sessions" ? "90px" : "60px");"></th>
                                     @foreach (var col in args.Table.Columns)
                                     {
                                         var c = col;
@@ -957,7 +1189,14 @@
                                     bool isPending = _pendingDelete?.Table == args.Table.Name && _pendingDelete?.PkVal == pkVal;
                                     <tr class="@(isPending ? "table-danger" : "")">
                                         <td style="white-space:nowrap;">
-                                            @if (isPending)
+                                            @if (args.Table.Name == "sess_sessions")
+                                            {
+                                                <button class="btn btn-sm py-0 px-1 diag-delsess-btn" title="Delete Session (cascade)"
+                                                        @onclick="() => OpenDeleteSessionModal(pkVal, args.Table, capturedRow)">
+                                                    <i class="ri-delete-bin-2-line"></i>
+                                                </button>
+                                            }
+                                            else if (isPending)
                                             {
                                                 <button class="btn btn-danger btn-sm py-0 px-1 me-1"
                                                         @onclick="() => DeleteRow(args.Table.Name, args.PkCol, pkVal)">
@@ -1045,8 +1284,30 @@
     List<TableData> _finTables  = [];
     List<TableData> _acadTables = [];
 
+    // ── Tab ────────────────────────────────────────────────────────────────
+    string _diagTab = "db";
+
     // ── Inline delete confirmation (sess_* / cs_* rows) ───────────────────
     (string Table, string PkVal)? _pendingDelete;
+
+    // ── Delete Session modal ───────────────────────────────────────────────
+    bool   _delSessModal = false;
+    bool   _delSessBusy  = false;
+    string _delSessError = "";
+    record DelSessFkTable(string Table, List<string> Cols, List<List<string>> Rows);
+    record DelSessInfo(int SessionId, int PcId, string SessionName,
+        List<DelSessFkTable> FkTables, List<string> Files);
+    DelSessInfo? _delSessInfo;
+
+    // ── DB Integrity state ─────────────────────────────────────────────────
+    record OrphanRow(string Table, long RowId, string FkCol, string FkValue, string RefTable, string RefCol);
+    List<OrphanRow>          _orphans                  = [];
+    bool                     _integrityChecking        = false;
+    string                   _integrityMsg             = "";
+    HashSet<(string, long)>  _pendingOrphanDelete      = [];
+    int                      _integrityProgressCurrent = 0;
+    int                      _integrityProgressTotal   = 0;
+    string                   _integrityProgressTable   = "";
 
     // ── Edit modal ────────────────────────────────────────────────────────
     bool                       _editModalVisible;
@@ -1068,6 +1329,9 @@
             _editModalVals[t.Columns[i]] = i < row.Count ? row[i] : "";
         _editModalMsg     = "";
         _editModalVisible = true;
+
+        var rowDesc = string.Join(", ", t.Columns.Zip(row, (c, v) => $"{c}={v}"));
+        Console.WriteLine($"[Diagnosis] Admin '{AdminUser()}' opened edit modal — {t.Name}: {rowDesc}");
     }
 
     void CloseEditModal() { _editModalVisible = false; _editModalMsg = ""; }
@@ -1121,10 +1385,28 @@
                 using var conn = new SqliteConnection(DbCs());
                 conn.Open();
                 using var cmd = conn.CreateCommand();
+                var pk = long.TryParse(pkVal, out var pkLong2) ? (object)pkLong2 : pkVal;
+
+                // Fetch the row before deleting so we can log it fully
+                cmd.CommandText = $"SELECT * FROM {tableName} WHERE {pkCol}=@pk";
+                cmd.Parameters.AddWithValue("@pk", pk);
+                var rowDesc = "";
+                using (var r = cmd.ExecuteReader())
+                {
+                    if (r.Read())
+                    {
+                        var parts = new List<string>();
+                        for (int i = 0; i < r.FieldCount; i++)
+                            parts.Add($"{r.GetName(i)}={( r.IsDBNull(i) ? "NULL" : r.GetValue(i))}");
+                        rowDesc = string.Join(", ", parts);
+                    }
+                }
+
                 cmd.CommandText = $"DELETE FROM {tableName} WHERE {pkCol}=@pk";
-                cmd.Parameters.AddWithValue("@pk", long.TryParse(pkVal, out var pkLong2) ? (object)pkLong2 : pkVal);
+                cmd.Parameters.Clear();
+                cmd.Parameters.AddWithValue("@pk", pk);
                 cmd.ExecuteNonQuery();
-                Console.WriteLine($"[Diagnosis] Admin '{admin}' deleted row from {tableName} where {pkCol}={pkVal}");
+                Console.WriteLine($"[Diagnosis] Admin '{admin}' deleted row from {tableName}: {rowDesc}");
             });
             LoadLiveTables();
         }
@@ -1613,10 +1895,99 @@
         _coreTables  = tCore.Result;
         _sysTables   = tSys.Result;
         _lkpTables   = tLkp.Result;
-        _sessTables  = tSess.Result;
+        // Build PersonId → "FirstName LastName" lookup from core_persons
+        var persons = tCore.Result.FirstOrDefault(t => t.Name == "core_persons");
+        var personNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (persons != null)
+        {
+            int pidIdx  = persons.Columns.IndexOf("PersonId");
+            int fnIdx   = persons.Columns.IndexOf("FirstName");
+            int lnIdx   = persons.Columns.IndexOf("LastName");
+            foreach (var r in persons.Rows)
+            {
+                var pid  = pidIdx >= 0 && pidIdx < r.Count ? r[pidIdx] : "";
+                var fn   = fnIdx  >= 0 && fnIdx  < r.Count ? r[fnIdx]  : "";
+                var ln   = lnIdx  >= 0 && lnIdx  < r.Count ? r[lnIdx]  : "";
+                var name = $"{fn} {ln}".Trim();
+                if (!string.IsNullOrEmpty(pid) && !string.IsNullOrEmpty(name))
+                    personNames[pid] = name;
+            }
+        }
+
+        _sessTables  = tSess.Result.Select(t =>
+        {
+            if (t.Name == "sess_sessions")
+            {
+                t = MoveColumnAfter(t, "Name", "SessionDate");
+                t = AnnotateIdColumn(t, "PcId",      personNames);
+                t = AnnotateIdColumn(t, "AuditorId", personNames);
+                t = AppendTimeToDate(t, "SessionDate", "CreatedAt");
+            }
+            return t;
+        }).ToList();
         _csTables    = tCs.Result;
         _finTables   = tFin.Result;
         _acadTables  = tAcad.Result;
+    }
+
+    // Appends the HH:mm time from a datetime column to a date-only column.
+    static TableData AppendTimeToDate(TableData t, string dateCol, string timeSourceCol)
+    {
+        int dateIdx = t.Columns.IndexOf(dateCol);
+        int timeIdx = t.Columns.IndexOf(timeSourceCol);
+        if (dateIdx < 0 || timeIdx < 0) return t;
+        var rows = t.Rows.Select(row =>
+        {
+            var r       = new List<string>(row);
+            var dateVal = dateIdx < r.Count ? r[dateIdx] : "";
+            var timeVal = timeIdx < r.Count ? r[timeIdx] : "";
+            if (!string.IsNullOrEmpty(dateVal) && !string.IsNullOrEmpty(timeVal)
+                && DateTime.TryParse(timeVal, out var dt))
+            {
+                r[dateIdx] = $"{dateVal} {dt:HH:mm}";
+            }
+            return r;
+        }).ToList();
+        return new TableData(t.Name, t.Icon, t.Columns, rows);
+    }
+
+    // Appends " (Name)" to every non-empty value in the given column using the provided id→name map.
+    static TableData AnnotateIdColumn(TableData t, string col, Dictionary<string, string> names)
+    {
+        int idx = t.Columns.IndexOf(col);
+        if (idx < 0) return t;
+        var rows = t.Rows.Select(row =>
+        {
+            var r   = new List<string>(row);
+            var val = idx < r.Count ? r[idx] : "";
+            if (!string.IsNullOrEmpty(val) && names.TryGetValue(val, out var name))
+                r[idx] = $"{val} ({name})";
+            return r;
+        }).ToList();
+        return new TableData(t.Name, t.Icon, t.Columns, rows);
+    }
+
+    static TableData MoveColumnAfter(TableData t, string colToMove, string afterCol)
+    {
+        int fromIdx = t.Columns.IndexOf(colToMove);
+        int afterIdx = t.Columns.IndexOf(afterCol);
+        if (fromIdx < 0 || afterIdx < 0 || fromIdx == afterIdx + 1) return t;
+
+        var cols = new List<string>(t.Columns);
+        cols.RemoveAt(fromIdx);
+        int insertAt = cols.IndexOf(afterCol) + 1;
+        cols.Insert(insertAt, colToMove);
+
+        var rows = t.Rows.Select(row =>
+        {
+            var r = new List<string>(row);
+            var val = fromIdx < r.Count ? r[fromIdx] : "";
+            r.RemoveAt(fromIdx);
+            r.Insert(Math.Min(insertAt, r.Count), val);
+            return r;
+        }).ToList();
+
+        return new TableData(t.Name, t.Icon, cols, rows);
     }
 
     TableData Load(SqliteConnection conn, string table, string icon,
@@ -1731,7 +2102,7 @@
         {
             "fin_payment_methods", "fin_purchase_items", "fin_purchases", "fin_payments",
             "acad_attendance", "acad_student_courses",
-            "sess_folder_summary", "sess_misc_charges", "sess_sessions", "sess_auditors", "sess_meetings", "sess_completions",
+            "sess_folder_summary", "sess_misc_charges", "sess_sessions", "sess_meetings", "sess_completions",
             "cs_work_log", "cs_reviews", "cs_case_supervisors",
             "sys_weekly_remarks", "sys_auditor_pc_permissions",
             "sys_staff_messages", "sys_staff_pc_list", "sys_trusted_devices",
@@ -1774,6 +2145,399 @@
         cmd.CommandText = "PRAGMA journal_mode=DELETE;"; cmd.ExecuteNonQuery();
         Console.WriteLine($"[Diagnosis] Seeded admin user. Empty DB ready at '{destPath}'");
         _resultPath = destPath;
+    }
+
+    // ── Delete Session ─────────────────────────────────────────────────────
+    void OpenDeleteSessionModal(string pkVal, TableData table, List<string> row)
+    {
+        _delSessInfo  = null;
+        _delSessError = "";
+        _delSessModal = true;
+
+        if (!int.TryParse(pkVal, out var sessionId)) return;
+
+        // Read PcId and Name from the row already loaded in memory
+        int pcIdIdx   = table.Columns.IndexOf("PcId");
+        int nameIdx   = table.Columns.IndexOf("Name");
+        // Strip display annotation e.g. "94 (Yaniv Berliner)" → "94"
+        var pcIdRaw = (row.ElementAtOrDefault(pcIdIdx) ?? "").Split(' ')[0];
+        int pcId    = int.TryParse(pcIdRaw, out var p) ? p : 0;
+        string sessName = nameIdx >= 0 ? (row.ElementAtOrDefault(nameIdx) ?? "") : "";
+
+        Task.Run(() =>
+        {
+            var cs = DbCs();
+            var fkTables = new List<DelSessFkTable>();
+
+            // FK tables that reference sess_sessions.SessionId
+            foreach (var (tbl, idCol) in new[]
+            {
+                ("cs_reviews",          "CsReviewId"),
+                ("sess_folder_summary", "Id"),
+                ("sess_next_cs",        "Id"),
+            })
+            {
+                var cols = new List<string>();
+                var rows = new List<List<string>>();
+                try
+                {
+                    using var conn2 = new SqliteConnection(cs);
+                    conn2.Open();
+                    using var cmd2 = conn2.CreateCommand();
+                    cmd2.CommandText = $"SELECT * FROM {tbl} WHERE SessionId = @sid";
+                    cmd2.Parameters.AddWithValue("@sid", sessionId);
+                    using var r = cmd2.ExecuteReader();
+                    for (int i = 0; i < r.FieldCount; i++) cols.Add(r.GetName(i));
+                    while (r.Read())
+                    {
+                        var rr = new List<string>();
+                        for (int i = 0; i < r.FieldCount; i++)
+                            rr.Add(r.IsDBNull(i) ? "" : r.GetValue(i)?.ToString() ?? "");
+                        rows.Add(rr);
+                    }
+                }
+                catch { }
+                fkTables.Add(new DelSessFkTable(tbl, cols, rows));
+            }
+
+            // Find session files on disk
+            var files = new List<string>();
+            if (!string.IsNullOrWhiteSpace(sessName))
+            {
+                foreach (var finder in new Func<int, string?>[] {
+                    id => FolderSvc.FindPcFolder(id),
+                    id => FolderSvc.FindSoloPcFolder(id) })
+                {
+                    var folder = pcId > 0 ? finder(pcId) : null;
+                    if (folder == null) continue;
+                    var wsPath = Path.Combine(folder, "WorkSheets");
+                    if (!Directory.Exists(wsPath)) continue;
+                    var nameNoExt = Path.GetFileNameWithoutExtension(sessName);
+                    foreach (var f in Directory.GetFiles(wsPath, "*.pdf"))
+                    {
+                        var fn = Path.GetFileNameWithoutExtension(f);
+                        if (string.Equals(fn, nameNoExt, StringComparison.OrdinalIgnoreCase) ||
+                            fn.StartsWith(nameNoExt + "_att_", StringComparison.OrdinalIgnoreCase))
+                        {
+                            files.Add(f);
+                        }
+                    }
+                }
+            }
+
+            _delSessInfo = new DelSessInfo(sessionId, pcId, sessName, fkTables, files);
+            InvokeAsync(StateHasChanged);
+        });
+    }
+
+    async Task ExecuteDeleteSession()
+    {
+        if (_delSessInfo == null) return;
+        _delSessBusy  = true;
+        _delSessError = "";
+        var info  = _delSessInfo;
+        var admin = AdminUser();
+        try
+        {
+            await Task.Run(() =>
+            {
+                Console.WriteLine($"[DeleteSession] ====== START — Admin='{admin}' SessionId={info.SessionId} PcId={info.PcId} Name='{info.SessionName}' ======");
+
+                // ── Backup files to _deleted_sessions before deleting ──────────
+                var pcFoldersRoot  = FolderSvc.GetPcFoldersRoot();
+                var backupRoot     = Path.Combine(pcFoldersRoot, "_deleted_sessions");
+                var backupFolder   = Path.Combine(backupRoot,
+                    $"{info.SessionId}_{DateTime.Now:yyyyMMdd_HHmmss}");
+
+                // Purge backup subfolders older than 10 days
+                if (Directory.Exists(backupRoot))
+                {
+                    foreach (var old in Directory.GetDirectories(backupRoot))
+                    {
+                        try
+                        {
+                            if (Directory.GetCreationTime(old) < DateTime.Now.AddDays(-10))
+                            {
+                                Directory.Delete(old, recursive: true);
+                                Console.WriteLine($"[DeleteSession]   BACKUP PURGED (>10 days): {old}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[DeleteSession]   BACKUP PURGE ERROR: {old} — {ex.Message}");
+                        }
+                    }
+                }
+
+                // Copy files to backup folder
+                Console.WriteLine($"[DeleteSession] Files to backup+delete: {info.Files.Count}");
+                if (info.Files.Count > 0)
+                {
+                    Directory.CreateDirectory(backupFolder);
+                    Console.WriteLine($"[DeleteSession]   Backup folder: {backupFolder}");
+                }
+                foreach (var f in info.Files)
+                {
+                    try
+                    {
+                        var dest = Path.Combine(backupFolder, Path.GetFileName(f));
+                        File.Copy(f, dest, overwrite: true);
+                        Console.WriteLine($"[DeleteSession]   FILE BACKED UP: {f} → {dest}");
+                        File.Delete(f);
+                        Console.WriteLine($"[DeleteSession]   FILE DELETED: {f}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[DeleteSession]   FILE ERROR (skipped): {f} — {ex.Message}");
+                    }
+                }
+
+                using var conn = new SqliteConnection(DbCs());
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+
+                // Delete FK rows — log each row using the data already loaded in the modal
+                foreach (var fkTbl in info.FkTables)
+                {
+                    Console.WriteLine($"[DeleteSession] Table {fkTbl.Table}: {fkTbl.Rows.Count} row(s) to delete");
+                    foreach (var row in fkTbl.Rows)
+                    {
+                        var rowDesc = string.Join(", ", fkTbl.Cols.Zip(row, (c, v) => $"{c}={v}"));
+                        Console.WriteLine($"[DeleteSession]   ROW: {rowDesc}");
+                    }
+                    cmd.CommandText = $"DELETE FROM {fkTbl.Table} WHERE SessionId = @sid";
+                    cmd.Parameters.Clear();
+                    cmd.Parameters.AddWithValue("@sid", info.SessionId);
+                    var n = cmd.ExecuteNonQuery();
+                    Console.WriteLine($"[DeleteSession]   → {n} row(s) deleted from {fkTbl.Table}");
+                }
+
+                // Delete the session itself last
+                cmd.CommandText = "DELETE FROM sess_sessions WHERE SessionId = @sid";
+                cmd.Parameters.Clear();
+                cmd.Parameters.AddWithValue("@sid", info.SessionId);
+                cmd.ExecuteNonQuery();
+                Console.WriteLine($"[DeleteSession]   ROW: SessionId={info.SessionId}, PcId={info.PcId}, Name='{info.SessionName}'");
+                Console.WriteLine($"[DeleteSession]   → 1 row deleted from sess_sessions");
+                Console.WriteLine($"[DeleteSession] ====== END — Admin='{admin}' SessionId={info.SessionId} ======");
+            });
+
+            _delSessModal = false;
+            _delSessInfo  = null;
+            LoadLiveTables();
+        }
+        catch (Exception ex)
+        {
+            _delSessError = $"Error: {ex.Message}";
+            Console.WriteLine($"[Diagnosis] Admin '{admin}' failed deleting session {info.SessionId}: {ex.Message}");
+        }
+        finally { _delSessBusy = false; }
+    }
+
+    // ── DB Integrity Check ─────────────────────────────────────────────────
+    async Task RunIntegrityCheck()
+    {
+        _integrityChecking        = true;
+        _integrityMsg             = "";
+        _orphans                  = [];
+        _pendingOrphanDelete      = [];
+        _integrityProgressCurrent = 0;
+        _integrityProgressTotal   = 0;
+        _integrityProgressTable   = "";
+        try
+        {
+            var cs   = DbCs();
+            var list = new List<OrphanRow>();
+
+            // Step 1: load table list + FK defs (fast, no UI update needed)
+            List<string> tables;
+            var fkMap = new Dictionary<string, List<(string FromCol, string ToTable, string ToCol)>>();
+            await Task.Run(() =>
+            {
+                using var conn = new SqliteConnection(cs);
+                conn.Open();
+                tables = new List<string>();
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name";
+                    using var r = cmd.ExecuteReader();
+                    while (r.Read()) tables.Add(r.GetString(0));
+                }
+                foreach (var tbl in tables)
+                {
+                    var fks = new List<(string, string, string)>();
+                    using var fkCmd = conn.CreateCommand();
+                    fkCmd.CommandText = $"PRAGMA foreign_key_list(\"{tbl}\")";
+                    using var fr = fkCmd.ExecuteReader();
+                    while (fr.Read())
+                    {
+                        var from = fr["from"]?.ToString()  ?? "";
+                        var toT  = fr["table"]?.ToString() ?? "";
+                        var to   = fr["to"]?.ToString()    ?? "";
+                        if (!string.IsNullOrEmpty(from) && !string.IsNullOrEmpty(toT))
+                        {
+                            if (string.IsNullOrEmpty(to)) to = "rowid";
+                            fks.Add((from, toT, to));
+                        }
+                    }
+                    if (fks.Count > 0) fkMap[tbl] = fks;
+                }
+            });
+
+            // tables is assigned inside the lambda; capture it
+            tables = fkMap.Keys
+                .Concat(fkMap.Values.SelectMany(v => v.Select(x => x.ToTable)))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            // Re-fetch full table list for existence checks
+            List<string> allTables = [];
+            await Task.Run(() =>
+            {
+                using var conn = new SqliteConnection(cs);
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'";
+                using var r = cmd.ExecuteReader();
+                while (r.Read()) allTables.Add(r.GetString(0));
+            });
+
+            // Step 2: scan each table with FK defs, updating progress per table
+            var tablesWithFks = fkMap.Keys.ToList();
+            _integrityProgressTotal = tablesWithFks.Count;
+            await InvokeAsync(StateHasChanged);
+
+            foreach (var tbl in tablesWithFks)
+            {
+                _integrityProgressTable   = tbl;
+                await InvokeAsync(StateHasChanged);
+
+                var fks = fkMap[tbl];
+                var tableOrphans = await Task.Run(() =>
+                {
+                    var found = new List<OrphanRow>();
+                    using var conn = new SqliteConnection(cs);
+                    conn.Open();
+                    foreach (var (fromCol, toTable, toCol) in fks)
+                    {
+                        if (!allTables.Contains(toTable, StringComparer.OrdinalIgnoreCase)) continue;
+                        var toColResolved = toCol == "rowid" ? "rowid" : toCol;
+                        try
+                        {
+                            using var cmd = conn.CreateCommand();
+                            cmd.CommandText = $@"
+                                SELECT rowid, ""{fromCol}"" FROM ""{tbl}""
+                                WHERE ""{fromCol}"" IS NOT NULL
+                                  AND CAST(""{fromCol}"" AS TEXT) NOT IN
+                                      (SELECT CAST(""{toColResolved}"" AS TEXT) FROM ""{toTable}"")";
+                            using var or = cmd.ExecuteReader();
+                            while (or.Read())
+                            {
+                                var rowId   = or.IsDBNull(0) ? 0L : or.GetInt64(0);
+                                var fkValue = or.IsDBNull(1) ? "" : or.GetValue(1)?.ToString() ?? "";
+                                found.Add(new OrphanRow(tbl, rowId, fromCol, fkValue, toTable, toColResolved));
+                            }
+                        }
+                        catch { /* skip */ }
+                    }
+                    return found;
+                });
+
+                list.AddRange(tableOrphans);
+                _integrityProgressCurrent++;
+                await InvokeAsync(StateHasChanged);
+            }
+
+            _orphans = list;
+            _integrityMsg = list.Count == 0
+                ? "All FK references are valid — no orphans found."
+                : $"Found {list.Count} orphan row{(list.Count != 1 ? "s" : "")} across {list.Select(o => o.Table).Distinct().Count()} table{(list.Select(o => o.Table).Distinct().Count() != 1 ? "s" : "")}.";
+        }
+        catch (Exception ex)
+        {
+            _integrityMsg = $"Error: {ex.Message}";
+        }
+        finally { _integrityChecking = false; }
+    }
+
+    static string FetchRowDesc(SqliteConnection conn, string table, long rowId)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"SELECT * FROM \"{table}\" WHERE rowid = @rid";
+        cmd.Parameters.AddWithValue("@rid", rowId);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return $"rowid={rowId} (not found)";
+        var parts = new List<string>();
+        for (int i = 0; i < r.FieldCount; i++)
+            parts.Add($"{r.GetName(i)}={( r.IsDBNull(i) ? "NULL" : r.GetValue(i))}");
+        return string.Join(", ", parts);
+    }
+
+    async Task DeleteOrphan(OrphanRow orphan)
+    {
+        _pendingOrphanDelete.Remove((orphan.Table, orphan.RowId));
+        var admin = AdminUser();
+        try
+        {
+            await Task.Run(() =>
+            {
+                using var conn = new SqliteConnection(DbCs());
+                conn.Open();
+                var rowDesc = FetchRowDesc(conn, orphan.Table, orphan.RowId);
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"DELETE FROM \"{orphan.Table}\" WHERE rowid = @rid";
+                cmd.Parameters.AddWithValue("@rid", orphan.RowId);
+                cmd.ExecuteNonQuery();
+                Console.WriteLine($"[Diagnosis] Admin '{admin}' deleted orphan from {orphan.Table}: {rowDesc}");
+            });
+            _orphans.Remove(orphan);
+            _integrityMsg = _orphans.Count == 0
+                ? "All orphans deleted."
+                : $"{_orphans.Count} orphan row{(_orphans.Count != 1 ? "s" : "")} remaining.";
+        }
+        catch (Exception ex)
+        {
+            _integrityMsg = $"Error deleting orphan: {ex.Message}";
+        }
+    }
+
+    async Task DeleteAllOrphans()
+    {
+        var toDelete = _orphans.ToList();
+        var admin    = AdminUser();
+        try
+        {
+            await Task.Run(() =>
+            {
+                using var conn = new SqliteConnection(DbCs());
+                conn.Open();
+                Console.WriteLine($"[Diagnosis] Admin '{admin}' deleting all {toDelete.Count} orphan(s)");
+                using var cmd = conn.CreateCommand();
+                foreach (var o in toDelete)
+                {
+                    var rowDesc = FetchRowDesc(conn, o.Table, o.RowId);
+                    cmd.CommandText = $"DELETE FROM \"{o.Table}\" WHERE rowid = @rid";
+                    cmd.Parameters.Clear();
+                    cmd.Parameters.AddWithValue("@rid", o.RowId);
+                    try
+                    {
+                        cmd.ExecuteNonQuery();
+                        Console.WriteLine($"[Diagnosis] Admin '{admin}' deleted orphan from {o.Table}: {rowDesc}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[Diagnosis] Warning: could not delete orphan from {o.Table} rowid={o.RowId}: {ex.Message}");
+                    }
+                }
+            });
+            _orphans             = [];
+            _pendingOrphanDelete = [];
+            _integrityMsg        = "All orphans deleted.";
+        }
+        catch (Exception ex)
+        {
+            _integrityMsg = $"Error: {ex.Message}";
+        }
     }
 
     static string HashPassword(string password)
@@ -1924,4 +2688,30 @@
     .cedb-table tbody tr:last-child td { border-bottom: none; }
     .cedb-table tbody tr:hover { background: rgba(99,102,241,.04); }
     .cedb-table tbody tr.table-danger { background: rgba(239,68,68,.06) !important; }
+
+    /* ── Jump links ────────────────────────────────────────────────── */
+    .diag-jump-link {
+        display: inline-flex; align-items: center;
+        font-size: .75rem; font-weight: 600; color: #3b82f6;
+        background: rgba(59,130,246,.08); border: 1px solid rgba(59,130,246,.25);
+        border-radius: 6px; padding: 3px 10px; text-decoration: none;
+    }
+    .diag-jump-link:hover { background: rgba(59,130,246,.18); color: #2563eb; }
+
+    /* ── Diagnosis Tabs ────────────────────────────────────────────── */
+    .diag-tabs { border-bottom: 2px solid #e2e8f0; }
+    .diag-tabs .nav-link { color: #64748b; font-size: .82rem; font-weight: 600; padding: 7px 18px; border-radius: 8px 8px 0 0; border: 1px solid transparent; }
+    .diag-tabs .nav-link:hover { color: #3b82f6; background: rgba(59,130,246,.06); }
+    .diag-tabs .nav-link.active { color: #1e293b; background: #fff; border-color: #e2e8f0 #e2e8f0 #fff; }
+
+    /* ── Delete Session button ─────────────────────────────────────── */
+    .diag-delsess-btn {
+        background: rgba(239,68,68,.1); color: #dc2626;
+        border: 1px solid rgba(239,68,68,.3); border-radius: 6px;
+        font-size: .75rem;
+    }
+    .diag-delsess-btn:hover { background: #ef4444; color: #fff; border-color: #ef4444; }
+    .diag-delsess-files { list-style: none; padding: 0; margin: 0; font-size: .78rem; }
+    .diag-delsess-files li { padding: 3px 0; color: #475569; border-bottom: 1px solid #f1f5f9; }
+    .diag-delsess-files li:last-child { border-bottom: none; }
 </style>
