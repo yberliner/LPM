@@ -1716,17 +1716,85 @@ public class PdfService
         gfx.DrawString("Results and Comments", fHdr,   PdfSharpCore.Drawing.XBrushes.White, R(x3 + pad, y, resW  - 2*pad, hdrH), fmtCL);
         y += hdrH;
 
+        // ── Normalize text for PDF: map smart/Unicode chars to ASCII equivalents ──
+        static string NormalizeForPdf(string? text)
+        {
+            if (string.IsNullOrEmpty(text)) return "";
+            var sb = new System.Text.StringBuilder(text.Length);
+            foreach (var c in text)
+            {
+                sb.Append(c switch {
+                    '\u2018' or '\u2019' or '\u201A' or '\u201B' => '\'', // smart single quotes
+                    '\u201C' or '\u201D' or '\u201E' or '\u201F' => '"',  // smart double quotes
+                    '\u2013' => '-',   // en dash
+                    '\u2014' => '-',   // em dash
+                    '\u2015' => '-',   // horizontal bar
+                    '\u00A0' => ' ',   // non-breaking space
+                    '\u00AD' => '-',   // soft hyphen
+                    '\u2026' => "...", // ellipsis
+                    '\t'     => ' ',   // tab
+                    '\r'     => "",    // bare CR
+                    _        => c.ToString()
+                });
+            }
+            return sb.ToString();
+        }
+
+        // ── Word-wrap helper (handles \n as explicit line break) ──
+        List<string> WrapText(string text, double maxW)
+        {
+            var result = new List<string>();
+            // Split on newlines first, then word-wrap each paragraph
+            foreach (var para in text.Split('\n'))
+            {
+                if (string.IsNullOrEmpty(para)) { result.Add(""); continue; }
+                var words = para.Split(' ');
+                var cur = new System.Text.StringBuilder();
+                foreach (var w in words)
+                {
+                    if (string.IsNullOrEmpty(w)) continue;
+                    var candidate = cur.Length == 0 ? w : cur + " " + w;
+                    if (gfx.MeasureString(candidate, fCell).Width <= maxW)
+                    {
+                        if (cur.Length > 0) cur.Append(' ');
+                        cur.Append(w);
+                    }
+                    else
+                    {
+                        if (cur.Length > 0) result.Add(cur.ToString());
+                        cur.Clear();
+                        cur.Append(w);
+                    }
+                }
+                if (cur.Length > 0) result.Add(cur.ToString());
+            }
+            if (result.Count == 0) result.Add("");
+            return result;
+        }
+
         // ── Table rows ──
-        double rowH = 30 * scale;
+        double lineH    = fCell.Size * 1.4;
+        double minRowH  = 30 * scale;
         bool alt = false;
         foreach (var r in rows)
         {
+            var procLines = WrapText(NormalizeForPdf(r.Process), procW - 2 * pad);
+            var resLines  = WrapText(NormalizeForPdf(r.Results),  resW  - 2 * pad);
+            int lineCount = Math.Max(procLines.Count, resLines.Count);
+            double rowH   = Math.Max(minRowH, lineCount * lineH + 2 * pad);
+
             if (alt) gfx.DrawRectangle(bAltRow, R(x0, y, cw, rowH));
             gfx.DrawLine(penBdr, x0, y + rowH, x0 + cw, y + rowH);
-            gfx.DrawString(r.Process ?? "", fCell, bDark, R(x0 + pad, y, procW - 2*pad, rowH), fmtCL);
-            gfx.DrawString(r.Time    ?? "", fCell, bDark, R(x1,       y, timeW,         rowH), fmtCC);
-            gfx.DrawString(r.ToneArm ?? "", fCell, bDark, R(x2,       y, toneW,         rowH), fmtCC);
-            gfx.DrawString(r.Results ?? "", fCell, bDark, R(x3 + pad, y, resW - 2*pad,  rowH), fmtCL);
+
+            for (int li = 0; li < procLines.Count; li++)
+                gfx.DrawString(procLines[li], fCell, bDark,
+                    R(x0 + pad, y + pad + li * lineH, procW - 2 * pad, lineH), fmtCL);
+            gfx.DrawString(r.Time    ?? "", fCell, bDark, R(x1, y, timeW, rowH), fmtCC);
+            gfx.DrawString(r.ToneArm ?? "", fCell, bDark, R(x2, y, toneW, rowH), fmtCC);
+            for (int li = 0; li < resLines.Count; li++)
+                gfx.DrawString(resLines[li], fCell, bDark,
+                    R(x3 + pad, y + pad + li * lineH, resW - 2 * pad, lineH), fmtCL);
+
             y += rowH;
             alt = !alt;
         }

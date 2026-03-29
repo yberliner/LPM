@@ -1366,12 +1366,12 @@
                                                        @onchange="e => { _arfRows[idx].Checked = (bool)(e.Value ?? false); RebuildArfSummary(); }"
                                                        style="accent-color:#3b82f6; cursor:pointer;" />
                                             </td>
-                                            <td>
-                                                <input type="text" id="arf-process-@idx"
-                                                       class="arf-cell-input @(_arfRows[idx].Touched && string.IsNullOrWhiteSpace(_arfRows[idx].Process) ? "arf-cell-invalid" : "")"
-                                                       value="@_arfRows[idx].Process"
+                                            <td style="vertical-align:top;">
+                                                <textarea id="arf-process-@idx"
+                                                       class="arf-cell-input arf-cell-textarea @(_arfRows[idx].Touched && string.IsNullOrWhiteSpace(_arfRows[idx].Process) ? "arf-cell-invalid" : "")"
+                                                       rows="1"
                                                        @onblur="() => _arfRows[idx].Touched = true"
-                                                       @oninput="e => { _arfRows[idx].Process = e.Value?.ToString() ?? string.Empty; var _kw = HasAutoUncheckKeyword(_arfRows[idx].Process); if (!_kw) _arfRows[idx].AutoUnchecked = false; if (_kw && !_arfRows[idx].AutoUnchecked && _arfRows[idx].Checked) { _arfRows[idx].Checked = false; _arfRows[idx].AutoUnchecked = true; } RebuildArfSummary(); }"/>
+                                                       @oninput="e => { _arfRows[idx].Process = e.Value?.ToString() ?? string.Empty; var _kw = HasAutoUncheckKeyword(_arfRows[idx].Process); if (!_kw) _arfRows[idx].AutoUnchecked = false; if (_kw && !_arfRows[idx].AutoUnchecked && _arfRows[idx].Checked) { _arfRows[idx].Checked = false; _arfRows[idx].AutoUnchecked = true; } RebuildArfSummary(); }">@_arfRows[idx].Process</textarea>
                                             </td>
                                             <td>
                                                 <input type="text" inputmode="numeric" maxlength="5"
@@ -1388,11 +1388,11 @@
                                                        value="@_arfRows[idx].ToneArm"
                                                        @oninput="e => { _arfRows[idx].ToneArm = FormatToneArm(e.Value?.ToString() ?? string.Empty); RebuildArfSummary(); }"/>
                                             </td>
-                                            <td>
-                                                <input type="text" class="arf-cell-input"
-                                                       value="@_arfRows[idx].Results"
+                                            <td style="vertical-align:top;">
+                                                <textarea class="arf-cell-input arf-cell-textarea"
+                                                       rows="1"
                                                        @oninput="e => { _arfRows[idx].Results = e.Value?.ToString() ?? string.Empty; RebuildArfSummary(); }"
-                                                       @onkeydown="e => OnArfResultsKeyDown(e)"/>
+                                                       @onkeydown="e => OnArfResultsKeyDown(e)">@_arfRows[idx].Results</textarea>
                                             </td>
                                             <td style="text-align:center; vertical-align:middle;">
                                                 @if (_arfRows.Count > 1)
@@ -2611,6 +2611,11 @@
         width: 100%; border: none; outline: none; padding: 6px 8px;
         font-size: .82rem; color: #e2e8f0; background: transparent;
     }
+    .arf-cell-textarea {
+        resize: none; overflow: hidden; min-height: 34px;
+        field-sizing: content; line-height: 1.45;
+        display: block; font-family: inherit;
+    }
     .arf-cell-input:focus { background: rgba(59,130,246,.08); }
     .arf-cell-input::placeholder { color: #475569; }
     .arf-cell-center { text-align: center; }
@@ -2911,7 +2916,7 @@
     void RemoveArfRow(int idx) { if (_arfRows.Count > 1) { _arfRows.RemoveAt(idx); RecalcSessionLength(); RebuildArfSummary(); } }
     async Task OnArfResultsKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key != "Enter" && e.Key != "Tab") return;
+        if (e.Key != "Tab") return;
         if (CanAddArfRow)
         {
             AddArfRow();

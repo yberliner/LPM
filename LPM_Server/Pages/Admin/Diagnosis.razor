@@ -2865,89 +2865,186 @@
         }
     }
 
+    // ── Generic PC table discovery ─────────────────────────────────────────
+    // Uses SQLite introspection (PRAGMA table_info / foreign_key_list) so any
+    // new table added to the DB with PcId, PersonId, or a FK chain leading to
+    // one of those is automatically included — no code change needed.
+
+    /// <summary>
+    /// BFS through the FK graph to build a WHERE-clause for every table whose
+    /// rows can be filtered down to a single PC.
+    /// Seed: tables with a direct PcId or PersonId column.
+    /// Propagation: T has FK col → ParentTable.parentCol that is already seeded
+    ///   → T filter = "col IN (SELECT parentCol FROM ParentTable WHERE parentFilter)"
+    /// </summary>
+    static Dictionary<string, string> BuildPcFilterMap(
+        List<string> allTables,
+        Dictionary<string, List<string>> tableColumns,
+        Dictionary<string, List<(string FromCol, string ToTable, string ToCol)>> tableFks)
+    {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var tbl in allTables)
+        {
+            if (!tableColumns.TryGetValue(tbl, out var cols)) continue;
+            if (cols.Any(c => c.Equals("PcId", StringComparison.OrdinalIgnoreCase)))
+                map[tbl] = "PcId = @pcid";
+            else if (cols.Any(c => c.Equals("PersonId", StringComparison.OrdinalIgnoreCase)))
+                map[tbl] = "PersonId = @pcid";
+        }
+
+        bool changed = true;
+        while (changed)
+        {
+            changed = false;
+            foreach (var tbl in allTables)
+            {
+                if (map.ContainsKey(tbl)) continue;
+                if (!tableFks.TryGetValue(tbl, out var fks)) continue;
+                foreach (var (fromCol, toTable, toCol) in fks)
+                {
+                    if (map.TryGetValue(toTable, out var parentFilter))
+                    {
+                        map[tbl] = $"{fromCol} IN (SELECT {toCol} FROM \"{toTable}\" WHERE {parentFilter})";
+                        changed = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        return map;
+    }
+
+    /// <summary>
+    /// Topological sort (Kahn's) so child tables come before their parents.
+    /// Required because DELETE subqueries reference parent tables: deleting a
+    /// parent first would make the subquery return nothing for the child.
+    /// Edge A → B = "A has FK to B" = "delete A before B".
+    /// </summary>
+    static List<string> TopoSortForDeletion(
+        List<string> tables,
+        Dictionary<string, List<(string FromCol, string ToTable, string ToCol)>> tableFks)
+    {
+        var tableSet = new HashSet<string>(tables, StringComparer.OrdinalIgnoreCase);
+        var inDegree = tables.ToDictionary(t => t, _ => 0, StringComparer.OrdinalIgnoreCase);
+        var outEdges = tables.ToDictionary(t => t, _ => new List<string>(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var tbl in tables)
+        {
+            if (!tableFks.TryGetValue(tbl, out var fks)) continue;
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (_, toTable, _) in fks)
+            {
+                if (!tableSet.Contains(toTable)) continue;
+                if (string.Equals(tbl, toTable, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!seen.Add(toTable)) continue;   // deduplicate multi-FK to same table
+                outEdges[tbl].Add(toTable);
+                inDegree[toTable]++;
+            }
+        }
+
+        var queue  = new Queue<string>(tables.Where(t => inDegree[t] == 0).OrderBy(t => t));
+        var result = new List<string>();
+        while (queue.Count > 0)
+        {
+            var u = queue.Dequeue();
+            result.Add(u);
+            foreach (var v in outEdges[u].OrderBy(x => x))
+                if (--inDegree[v] == 0) queue.Enqueue(v);
+        }
+        // Append any remaining (would only happen if there are cycles — shouldn't exist)
+        result.AddRange(tables.Where(t => !result.Contains(t, StringComparer.OrdinalIgnoreCase)));
+        return result;
+    }
+
+    static List<string> GetAllUserTables(SqliteConnection conn)
+    {
+        var list = new List<string>();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name";
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) list.Add(r.GetString(0));
+        return list;
+    }
+
+    static List<string> GetTableColumns(SqliteConnection conn, string table)
+    {
+        var cols = new List<string>();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"PRAGMA table_info(\"{table}\")";
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) cols.Add(r["name"].ToString()!);
+        return cols;
+    }
+
+    static List<(string FromCol, string ToTable, string ToCol)> GetTableFks(SqliteConnection conn, string table)
+    {
+        var fks = new List<(string, string, string)>();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"PRAGMA foreign_key_list(\"{table}\")";
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            var from = r["from"].ToString() ?? "";
+            var toT  = r["table"].ToString() ?? "";
+            var to   = r["to"].ToString() ?? "";
+            if (string.IsNullOrEmpty(to)) to = "rowid";
+            if (!string.IsNullOrEmpty(from) && !string.IsNullOrEmpty(toT))
+                fks.Add((from, toT, to));
+        }
+        return fks;
+    }
+
+    static string PcfdTableIcon(string name) => name switch
+    {
+        _ when name.StartsWith("core_", StringComparison.OrdinalIgnoreCase) => "ri-database-line",
+        _ when name.StartsWith("sess_", StringComparison.OrdinalIgnoreCase) => "ri-calendar-event-line",
+        _ when name.StartsWith("cs_",   StringComparison.OrdinalIgnoreCase) => "ri-shield-star-line",
+        _ when name.StartsWith("fin_",  StringComparison.OrdinalIgnoreCase) => "ri-bank-card-line",
+        _ when name.StartsWith("acad_", StringComparison.OrdinalIgnoreCase) => "ri-book-open-line",
+        _ when name.StartsWith("sys_",  StringComparison.OrdinalIgnoreCase) => "ri-settings-3-line",
+        _ => "ri-table-line"
+    };
+
     (List<TableData> Tables, List<PcfdFolder> Folders) LoadPcFullData(int pcId)
     {
-        var cs = DbCs();
-        var tables = new List<TableData>();
+        var skipCols = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PasswordHash", "TotpSecret" };
 
-        using var conn = new SqliteConnection(cs);
+        using var conn = new SqliteConnection(DbCs());
         conn.Open();
-        using var cmd = conn.CreateCommand();
 
-        TableData QueryTable(string name, string icon, string sql, params (string k, object v)[] parms)
+        var allTables    = GetAllUserTables(conn);
+        var tableColumns = allTables.ToDictionary(t => t, t => GetTableColumns(conn, t), StringComparer.OrdinalIgnoreCase);
+        var tableFks     = allTables.ToDictionary(t => t, t => GetTableFks(conn, t),     StringComparer.OrdinalIgnoreCase);
+        var filterMap    = BuildPcFilterMap(allTables, tableColumns, tableFks);
+
+        var tables = new List<TableData>();
+        foreach (var tbl in allTables)
         {
+            if (!filterMap.TryGetValue(tbl, out var filter)) continue;
             var cols = new List<string>();
             var rows = new List<List<string>>();
             try
             {
-                cmd.CommandText = sql;
-                cmd.Parameters.Clear();
-                foreach (var (k, v) in parms) cmd.Parameters.AddWithValue(k, v);
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"SELECT * FROM \"{tbl}\" WHERE {filter}";
+                cmd.Parameters.AddWithValue("@pcid", pcId);
                 using var r = cmd.ExecuteReader();
-                for (int i = 0; i < r.FieldCount; i++) cols.Add(r.GetName(i));
+                for (int i = 0; i < r.FieldCount; i++)
+                    if (!skipCols.Contains(r.GetName(i))) cols.Add(r.GetName(i));
                 while (r.Read())
                 {
                     var row = new List<string>();
                     for (int i = 0; i < r.FieldCount; i++)
-                        row.Add(r.IsDBNull(i) ? "" : r.GetValue(i).ToString() ?? "");
+                        if (!skipCols.Contains(r.GetName(i)))
+                            row.Add(r.IsDBNull(i) ? "" : r.GetValue(i).ToString() ?? "");
                     rows.Add(row);
                 }
             }
             catch (Exception ex) { cols = [$"Error: {ex.Message}"]; }
-            return new TableData(name, icon, cols, rows);
+            tables.Add(new TableData(tbl, PcfdTableIcon(tbl), cols, rows));
         }
-
-        tables.Add(QueryTable("core_persons",       "ri-contacts-line",
-            "SELECT * FROM core_persons WHERE PersonId=@id",
-            ("@id", pcId)));
-        tables.Add(QueryTable("core_pcs",            "ri-computer-line",
-            "SELECT * FROM core_pcs WHERE PcId=@id",
-            ("@id", pcId)));
-        tables.Add(QueryTable("core_users",          "ri-user-settings-line",
-            "SELECT Id,Username,IsActive,CreatedAt,AvatarPath,PersonId,StaffRole,UserType,GradeId,AllowAll,TotpEnabled,MustChangePassword,ContactConfirmed,Require2FA,SendSms FROM core_users WHERE PersonId=@id",
-            ("@id", pcId)));
-        tables.Add(QueryTable("sess_sessions",       "ri-calendar-event-line",
-            "SELECT * FROM sess_sessions WHERE PcId=@id ORDER BY SessionId DESC",
-            ("@id", pcId)));
-        tables.Add(QueryTable("sess_misc_charges",   "ri-coins-line",
-            "SELECT * FROM sess_misc_charges WHERE PcId=@id ORDER BY MiscChargeId DESC",
-            ("@id", pcId)));
-        tables.Add(QueryTable("sess_folder_summary", "ri-file-text-line",
-            "SELECT * FROM sess_folder_summary WHERE PcId=@id ORDER BY Id DESC",
-            ("@id", pcId)));
-        tables.Add(QueryTable("sess_meetings",       "ri-time-line",
-            "SELECT * FROM sess_meetings WHERE PcId=@id ORDER BY MeetingId DESC",
-            ("@id", pcId)));
-        tables.Add(QueryTable("sess_completions",    "ri-trophy-line",
-            "SELECT * FROM sess_completions WHERE PcId=@id ORDER BY Id DESC",
-            ("@id", pcId)));
-        tables.Add(QueryTable("sess_next_cs",        "ri-file-edit-line",
-            "SELECT * FROM sess_next_cs WHERE SessionId IN (SELECT SessionId FROM sess_sessions WHERE PcId=@id) ORDER BY Id DESC",
-            ("@id", pcId)));
-        tables.Add(QueryTable("cs_reviews",          "ri-shield-star-line",
-            "SELECT * FROM cs_reviews WHERE SessionId IN (SELECT SessionId FROM sess_sessions WHERE PcId=@id) ORDER BY CsReviewId DESC",
-            ("@id", pcId)));
-        tables.Add(QueryTable("cs_work_log",         "ri-todo-line",
-            "SELECT * FROM cs_work_log WHERE PcId=@id ORDER BY CsWorkLogId DESC",
-            ("@id", pcId)));
-        tables.Add(QueryTable("fin_purchases",       "ri-shopping-cart-line",
-            "SELECT * FROM fin_purchases WHERE PcId=@id ORDER BY PurchaseId DESC",
-            ("@id", pcId)));
-        tables.Add(QueryTable("fin_purchase_items",  "ri-list-check",
-            "SELECT * FROM fin_purchase_items WHERE PurchaseId IN (SELECT PurchaseId FROM fin_purchases WHERE PcId=@id) ORDER BY PurchaseItemId DESC",
-            ("@id", pcId)));
-        tables.Add(QueryTable("fin_payments",        "ri-bank-card-line",
-            "SELECT * FROM fin_payments WHERE PcId=@id ORDER BY PaymentId DESC",
-            ("@id", pcId)));
-        tables.Add(QueryTable("fin_payment_methods", "ri-secure-payment-line",
-            "SELECT * FROM fin_payment_methods WHERE PurchaseId IN (SELECT PurchaseId FROM fin_purchases WHERE PcId=@id) ORDER BY PaymentMethodId DESC",
-            ("@id", pcId)));
-        tables.Add(QueryTable("acad_attendance",     "ri-check-double-line",
-            "SELECT * FROM acad_attendance WHERE PersonId=@id ORDER BY StudentId DESC",
-            ("@id", pcId)));
-        tables.Add(QueryTable("acad_student_courses","ri-book-open-line",
-            "SELECT * FROM acad_student_courses WHERE PersonId=@id ORDER BY StudentCourseId DESC",
-            ("@id", pcId)));
 
         // Scan PC-Folders for any folder named "{pcId}-*"
         var folders = new List<PcfdFolder>();
@@ -2989,56 +3086,49 @@
 
                 using var conn = new SqliteConnection(DbCs());
                 conn.Open();
+
+                var allTables    = GetAllUserTables(conn);
+                var tableColumns = allTables.ToDictionary(t => t, t => GetTableColumns(conn, t), StringComparer.OrdinalIgnoreCase);
+                var tableFks     = allTables.ToDictionary(t => t, t => GetTableFks(conn, t),     StringComparer.OrdinalIgnoreCase);
+                var filterMap    = BuildPcFilterMap(allTables, tableColumns, tableFks);
+                var deleteOrder  = TopoSortForDeletion(filterMap.Keys.ToList(), tableFks);
+
+                // PRAGMA foreign_keys must be set before the transaction begins.
+                // We disable it to bypass cross-PC FK constraints (e.g. sess_sessions.AuditorId
+                // referencing core_persons for sessions where this PC was the auditor of another PC).
+                using (var p = conn.CreateCommand())
+                { p.CommandText = "PRAGMA foreign_keys = OFF"; p.ExecuteNonQuery(); }
+
                 using var tx  = conn.BeginTransaction();
                 using var cmd = conn.CreateCommand();
                 cmd.Transaction = tx;
 
-                int Exec(string sql, params (string k, object v)[] parms)
+                foreach (var tbl in deleteOrder)
                 {
-                    cmd.CommandText = sql;
-                    cmd.Parameters.Clear();
-                    foreach (var (k, v) in parms) cmd.Parameters.AddWithValue(k, v);
-                    var n = cmd.ExecuteNonQuery();
-                    if (n > 0) Console.WriteLine($"[DeletePC]   {sql.Split('\n')[0].Trim()} → {n} row(s)");
-                    return n;
+                    if (!filterMap.TryGetValue(tbl, out var filter)) continue;
+                    try
+                    {
+                        cmd.CommandText = $"DELETE FROM \"{tbl}\" WHERE {filter}";
+                        cmd.Parameters.Clear();
+                        cmd.Parameters.AddWithValue("@pcid", pcId);
+                        var n = cmd.ExecuteNonQuery();
+                        if (n > 0)
+                        {
+                            totalRows += n;
+                            Console.WriteLine($"[DeletePC]   {tbl}: {n} row(s) deleted");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[DeletePC]   {tbl}: SKIPPED — {ex.Message}");
+                    }
                 }
 
-                // 1. sess_next_cs (FK → sess_sessions)
-                totalRows += Exec("DELETE FROM sess_next_cs WHERE SessionId IN (SELECT SessionId FROM sess_sessions WHERE PcId=@id)", ("@id", pcId));
-                // 2. cs_reviews (FK → sess_sessions)
-                totalRows += Exec("DELETE FROM cs_reviews WHERE SessionId IN (SELECT SessionId FROM sess_sessions WHERE PcId=@id)", ("@id", pcId));
-                // 3. sess_folder_summary (PcId direct)
-                totalRows += Exec("DELETE FROM sess_folder_summary WHERE PcId=@id", ("@id", pcId));
-                // 4. sess_misc_charges
-                totalRows += Exec("DELETE FROM sess_misc_charges WHERE PcId=@id", ("@id", pcId));
-                // 5. sess_meetings
-                totalRows += Exec("DELETE FROM sess_meetings WHERE PcId=@id", ("@id", pcId));
-                // 6. sess_completions
-                totalRows += Exec("DELETE FROM sess_completions WHERE PcId=@id", ("@id", pcId));
-                // 7. sess_sessions
-                totalRows += Exec("DELETE FROM sess_sessions WHERE PcId=@id", ("@id", pcId));
-                // 8. cs_work_log
-                totalRows += Exec("DELETE FROM cs_work_log WHERE PcId=@id", ("@id", pcId));
-                // 9. fin_payment_methods (FK → fin_purchases)
-                totalRows += Exec("DELETE FROM fin_payment_methods WHERE PurchaseId IN (SELECT PurchaseId FROM fin_purchases WHERE PcId=@id)", ("@id", pcId));
-                // 10. fin_purchase_items (FK → fin_purchases)
-                totalRows += Exec("DELETE FROM fin_purchase_items WHERE PurchaseId IN (SELECT PurchaseId FROM fin_purchases WHERE PcId=@id)", ("@id", pcId));
-                // 11. fin_purchases
-                totalRows += Exec("DELETE FROM fin_purchases WHERE PcId=@id", ("@id", pcId));
-                // 12. fin_payments
-                totalRows += Exec("DELETE FROM fin_payments WHERE PcId=@id", ("@id", pcId));
-                // 13. acad_attendance
-                totalRows += Exec("DELETE FROM acad_attendance WHERE PersonId=@id", ("@id", pcId));
-                // 14. acad_student_courses
-                totalRows += Exec("DELETE FROM acad_student_courses WHERE PersonId=@id", ("@id", pcId));
-                // 15. core_pcs
-                totalRows += Exec("DELETE FROM core_pcs WHERE PcId=@id", ("@id", pcId));
-                // 16. core_users
-                totalRows += Exec("DELETE FROM core_users WHERE PersonId=@id", ("@id", pcId));
-                // 17. core_persons
-                totalRows += Exec("DELETE FROM core_persons WHERE PersonId=@id", ("@id", pcId));
-
                 tx.Commit();
+
+                using (var p = conn.CreateCommand())
+                { p.CommandText = "PRAGMA foreign_keys = ON"; p.ExecuteNonQuery(); }
+
                 Console.WriteLine($"[DeletePC] DB done — {totalRows} total rows deleted");
 
                 // Delete PC folder(s) from disk
@@ -3063,7 +3153,6 @@
             _pcfdDeletedRows  = rows;
             _pcfdDeletedFiles = files;
             _pcfdDeleteStep   = 4;
-            // Reset after 3.5 seconds
             _ = Task.Delay(3500).ContinueWith(_ => InvokeAsync(() =>
             {
                 _pcfdDeleteStep = 0;
