@@ -53,6 +53,9 @@ builder.Services.AddServerSideBlazor()
     .AddHubOptions(options =>
     {
         options.MaximumReceiveMessageSize = 1024 * 1024 * 500; // 500MB
+        // Keep client alive through long GC pauses / backup processing stalls
+        options.KeepAliveInterval      = TimeSpan.FromSeconds(15);
+        options.ClientTimeoutInterval  = TimeSpan.FromMinutes(5);
     })
     .AddCircuitOptions(options =>
     {
@@ -831,6 +834,7 @@ app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderSer
     return Results.Stream(responseStream =>
     {
         int processed = 0;
+        var phaseSw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             using (var zip = new System.IO.Compression.ZipArchive(responseStream, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
@@ -841,14 +845,19 @@ app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderSer
                 {
                     LPM.Services.BackupProgress.CurrentFile = "db-live/lifepower.db";
                     var tempDbCopy = Path.Combine(tempDir, $"db-snap-{Guid.NewGuid():N}.db");
+                    var dbSw = System.Diagnostics.Stopwatch.StartNew();
                     try
                     {
                         svc.BackupDbTo(tempDbCopy);
+                        var dbSize = new FileInfo(tempDbCopy).Length;
                         var entry = zip.CreateEntry("db-live/lifepower.db", System.IO.Compression.CompressionLevel.Fastest);
                         using var es = entry.Open(); using var fs = File.OpenRead(tempDbCopy); fs.CopyTo(es);
+                        dbSw.Stop();
+                        Console.WriteLine($"[Backup][user][{processed + 1}/{totalFiles}] db-live/lifepower.db | {dbSize:N0} bytes | {dbSw.ElapsedMilliseconds}ms");
                     }
                     finally { try { File.Delete(tempDbCopy); } catch { } }
                     LPM.Services.BackupProgress.Current = ++processed;
+                    responseStream.Flush();
                 }
 
                 // 2. Auto-backup files → db-autobackups/
@@ -857,13 +866,18 @@ app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderSer
                     if (LPM.Services.BackupProgress.CancelRequested) break;
                     var bfName = Path.GetFileName(bf);
                     LPM.Services.BackupProgress.CurrentFile = $"db-autobackups/{bfName}";
+                    var bfSw = System.Diagnostics.Stopwatch.StartNew();
                     try
                     {
+                        var bfSize = new FileInfo(bf).Length;
                         var entry = zip.CreateEntry($"db-autobackups/{bfName}", System.IO.Compression.CompressionLevel.Fastest);
                         using var es = entry.Open(); using var fs = File.OpenRead(bf); fs.CopyTo(es);
+                        bfSw.Stop();
+                        Console.WriteLine($"[Backup][user][{processed + 1}/{totalFiles}] db-autobackups/{bfName} | {bfSize:N0} bytes | {bfSw.ElapsedMilliseconds}ms");
                         LPM.Services.BackupProgress.Current = ++processed;
+                        responseStream.Flush();
                     }
-                    catch { }
+                    catch (Exception ex) { Console.WriteLine($"[Backup][user] ERROR auto-backup {bfName}: {ex.Message}"); }
                 }
 
                 // 3. PC files — decrypted for portability
@@ -875,7 +889,7 @@ app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderSer
                     lock (LPM.Services.BackupProgress.PermSkipFiles)
                         if (LPM.Services.BackupProgress.PermSkipFiles.Contains(relPath))
                         {
-                            Console.WriteLine($"[Backup] Permanently skipping previously-stuck file: {relPath}");
+                            Console.WriteLine($"[Backup][user][{processed + 1}/{totalFiles}] PERM-SKIP {relPath}");
                             lock (LPM.Services.BackupProgress.TimedOutFiles) LPM.Services.BackupProgress.TimedOutFiles.Add(relPath);
                             continue;
                         }
@@ -883,9 +897,13 @@ app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderSer
                     try
                     {
                         LPM.Services.BackupProgress.CurrentFile = relPath;
+                        Console.WriteLine($"[Backup][user][{processed + 1}/{totalFiles}] reading: {relPath}");
 
                         // Use Thread.Join timeout — more reliable than Task.Wait when OS read() never returns
                         byte[]? bytes = null;
+                        long readBytes = 0;
+                        long readMs = 0;
+                        var readSw = System.Diagnostics.Stopwatch.StartNew();
                         var readThread = new Thread(() =>
                         {
                             try
@@ -906,52 +924,64 @@ app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderSer
                                             var originalPageCount = pdfSvc.CountPdfPages(decrypted);
                                             var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
                                             bytesToZip = pdfSvc.CombinePdfs(summaryPdf, decrypted);
-                                            Console.WriteLine($"[Backup] FolderSummary combined for PC {fspcId} ({summaries.Count} sessions)");
+                                            Console.WriteLine($"[Backup][user] FolderSummary combined for PC {fspcId} ({summaries.Count} sessions)");
                                         }
                                     }
                                     catch (Exception ex)
                                     {
-                                        Console.WriteLine($"[Backup] FolderSummary generation failed for PC {fspcId}: {ex.Message} — using original");
+                                        Console.WriteLine($"[Backup][user] FolderSummary failed for PC {fspcId}: {ex.Message} — using original");
                                     }
                                 }
                                 bytes = bytesToZip;
+                                readBytes = bytesToZip.Length;
                             }
-                            catch { }
+                            catch (Exception ex) { Console.WriteLine($"[Backup][user] read-thread ERROR {relPath}: {ex.Message}"); }
                         }) { IsBackground = true };
                         readThread.Start();
 
-                        if (!readThread.Join(TimeSpan.FromSeconds(60)))
+                        if (!readThread.Join(TimeSpan.FromSeconds(30)))
                         {
-                            Console.WriteLine($"[Backup] TIMEOUT reading '{relPath}' after 60s — skipping permanently this session");
+                            Console.WriteLine($"[Backup][user][{processed + 1}/{totalFiles}] TIMEOUT 30s — skipping permanently: {relPath}");
                             lock (LPM.Services.BackupProgress.PermSkipFiles) LPM.Services.BackupProgress.PermSkipFiles.Add(relPath);
                             lock (LPM.Services.BackupProgress.TimedOutFiles) LPM.Services.BackupProgress.TimedOutFiles.Add(relPath);
                             continue;
                         }
+                        readMs = readSw.ElapsedMilliseconds;
 
-                        if (bytes == null) continue; // read succeeded but threw an exception
+                        if (bytes == null) { Console.WriteLine($"[Backup][user] NULL bytes (read error): {relPath}"); continue; }
 
+                        var writeSw = System.Diagnostics.Stopwatch.StartNew();
                         var entry = zip.CreateEntry(relPath, System.IO.Compression.CompressionLevel.Fastest);
                         using var es = entry.Open(); es.Write(bytes);
+                        writeSw.Stop();
+
+                        Console.WriteLine($"[Backup][user][{processed + 1}/{totalFiles}] OK {relPath} | {readBytes:N0} bytes | read {readMs}ms | write {writeSw.ElapsedMilliseconds}ms | total {readMs + writeSw.ElapsedMilliseconds}ms");
                         LPM.Services.BackupProgress.Current = ++processed;
 
-                        // Nudge GC after large files so memory is released promptly on a 2 GB server
-                        if (bytes.Length > 50 * 1024 * 1024)
+                        // Flush after every file to prevent nginx proxy_read_timeout during slow reads
+                        responseStream.Flush();
+
+                        // Release memory: clear reference immediately, GC every 200 files or for large files
+                        bytes = null;
+                        if (processed % 200 == 0)
+                            GC.Collect(1, GCCollectionMode.Optimized);
+                        else if (readBytes > 50 * 1024 * 1024)
                             GC.Collect(0, GCCollectionMode.Optimized);
                     }
-                    catch { }
+                    catch (Exception ex) { Console.WriteLine($"[Backup][user] OUTER ERROR {relPath}: {ex.Message}"); }
                 }
             }
 
             if (LPM.Services.BackupProgress.CancelRequested)
-                Console.WriteLine($"[Backup] User backup CANCELLED by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files");
+                Console.WriteLine($"[Backup][user] CANCELLED by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed}/{totalFiles} files in {phaseSw.Elapsed.TotalSeconds:F1}s");
             else
-                Console.WriteLine($"[Backup] User backup complete by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files — {integrityTag}");
+                Console.WriteLine($"[Backup][user] COMPLETE by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed}/{totalFiles} files in {phaseSw.Elapsed.TotalSeconds:F1}s — {integrityTag}");
         }
         catch (Exception ex)
         {
             LPM.Services.BackupProgress.LastError = ex.Message;
             LPM.Services.BackupProgress.ActiveUser = "";
-            Console.WriteLine($"[Backup] User backup ERROR by '{user}': {ex.Message}");
+            Console.WriteLine($"[Backup][user] EXCEPTION by '{user}': {ex.Message}\n{ex.StackTrace}");
         }
         finally
         {
@@ -1008,6 +1038,7 @@ app.MapGet("/api/server-backup-download", (HttpContext ctx, LPM.Services.FolderS
     return Results.Stream(responseStream =>
     {
         int processed = 0;
+        var phaseSw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             using (var zip = new System.IO.Compression.ZipArchive(responseStream, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
@@ -1018,14 +1049,19 @@ app.MapGet("/api/server-backup-download", (HttpContext ctx, LPM.Services.FolderS
                 {
                     LPM.Services.BackupProgress.CurrentFile = "lifepower.db";
                     var tempDbCopy = Path.Combine(tempDir, $"db-snap-{Guid.NewGuid():N}.db");
+                    var dbSw = System.Diagnostics.Stopwatch.StartNew();
                     try
                     {
                         svc.BackupDbTo(tempDbCopy);
+                        var dbSize = new FileInfo(tempDbCopy).Length;
                         var entry = zip.CreateEntry("lifepower.db", System.IO.Compression.CompressionLevel.Fastest);
                         using var es = entry.Open(); using var fs = File.OpenRead(tempDbCopy); fs.CopyTo(es);
+                        dbSw.Stop();
+                        Console.WriteLine($"[Backup][server][{processed + 1}/{totalFiles}] lifepower.db | {dbSize:N0} bytes | {dbSw.ElapsedMilliseconds}ms");
                     }
                     finally { try { File.Delete(tempDbCopy); } catch { } }
                     LPM.Services.BackupProgress.Current = ++processed;
+                    responseStream.Flush();
                 }
 
                 // 2. Auto-backup files (under configured folder name, e.g. db-backups/)
@@ -1034,31 +1070,42 @@ app.MapGet("/api/server-backup-download", (HttpContext ctx, LPM.Services.FolderS
                     if (LPM.Services.BackupProgress.CancelRequested) break;
                     var bfName = Path.GetFileName(bf);
                     LPM.Services.BackupProgress.CurrentFile = $"{backupFolderName}/{bfName}";
+                    var bfSw = System.Diagnostics.Stopwatch.StartNew();
                     try
                     {
+                        var bfSize = new FileInfo(bf).Length;
                         var entry = zip.CreateEntry($"{backupFolderName}/{bfName}", System.IO.Compression.CompressionLevel.Fastest);
                         using var es = entry.Open(); using var fs = File.OpenRead(bf); fs.CopyTo(es);
+                        bfSw.Stop();
+                        Console.WriteLine($"[Backup][server][{processed + 1}/{totalFiles}] {backupFolderName}/{bfName} | {bfSize:N0} bytes | {bfSw.ElapsedMilliseconds}ms");
                         LPM.Services.BackupProgress.Current = ++processed;
+                        responseStream.Flush();
                     }
-                    catch { }
+                    catch (Exception ex) { Console.WriteLine($"[Backup][server] ERROR auto-backup {bfName}: {ex.Message}"); }
                 }
 
                 // 3. Config files + avatars
                 foreach (var (zipPath, fullPath) in extras)
                 {
                     if (LPM.Services.BackupProgress.CancelRequested) break;
+                    var extSw = System.Diagnostics.Stopwatch.StartNew();
                     try
                     {
                         LPM.Services.BackupProgress.CurrentFile = zipPath;
+                        var extSize = new FileInfo(fullPath).Length;
                         var entry = zip.CreateEntry(zipPath, System.IO.Compression.CompressionLevel.Fastest);
                         using var es = entry.Open(); using var fs = File.OpenRead(fullPath); fs.CopyTo(es);
+                        extSw.Stop();
+                        Console.WriteLine($"[Backup][server][{processed + 1}/{totalFiles}] {zipPath} | {extSize:N0} bytes | {extSw.ElapsedMilliseconds}ms");
                         LPM.Services.BackupProgress.Current = ++processed;
+                        responseStream.Flush();
                     }
-                    catch { }
+                    catch (Exception ex) { Console.WriteLine($"[Backup][server] ERROR extra {zipPath}: {ex.Message}"); }
                 }
 
                 // 4. PC files — raw/encrypted, preserving exact server state
-                // Stream directly disk→zip with no memory buffer; Thread.Join for reliable OS-level timeout
+                // No File.ReadAllBytes — stream directly disk→zip inside the thread to avoid loading entire file into RAM.
+                // Thread.Join(30s) stays safely under nginx proxy_read_timeout (default 60s).
                 foreach (var (relPath, fullPath) in rawPcFiles)
                 {
                     if (LPM.Services.BackupProgress.CancelRequested) break;
@@ -1067,7 +1114,7 @@ app.MapGet("/api/server-backup-download", (HttpContext ctx, LPM.Services.FolderS
                     lock (LPM.Services.BackupProgress.PermSkipFiles)
                         if (LPM.Services.BackupProgress.PermSkipFiles.Contains(relPath))
                         {
-                            Console.WriteLine($"[Backup] Permanently skipping previously-stuck file: {relPath}");
+                            Console.WriteLine($"[Backup][server][{processed + 1}/{totalFiles}] PERM-SKIP {relPath}");
                             lock (LPM.Services.BackupProgress.TimedOutFiles) LPM.Services.BackupProgress.TimedOutFiles.Add(relPath);
                             continue;
                         }
@@ -1075,43 +1122,69 @@ app.MapGet("/api/server-backup-download", (HttpContext ctx, LPM.Services.FolderS
                     try
                     {
                         LPM.Services.BackupProgress.CurrentFile = relPath;
+                        Console.WriteLine($"[Backup][server][{processed + 1}/{totalFiles}] reading: {relPath}");
 
+                        long fileSize = 0;
+                        Exception? readEx = null;
+                        var readSw = System.Diagnostics.Stopwatch.StartNew();
+
+                        // Read raw bytes in a separate thread for reliable OS-level timeout
                         byte[]? rawBytes = null;
                         var readThread = new Thread(() =>
                         {
-                            try { rawBytes = File.ReadAllBytes(fullPath); }
-                            catch { }
+                            try
+                            {
+                                fileSize = new FileInfo(fullPath).Length;
+                                rawBytes = File.ReadAllBytes(fullPath);
+                            }
+                            catch (Exception ex) { readEx = ex; }
                         }) { IsBackground = true };
                         readThread.Start();
 
-                        if (!readThread.Join(TimeSpan.FromSeconds(60)))
+                        if (!readThread.Join(TimeSpan.FromSeconds(30)))
                         {
-                            Console.WriteLine($"[Backup] TIMEOUT reading '{relPath}' after 60s — skipping permanently this session");
+                            Console.WriteLine($"[Backup][server][{processed + 1}/{totalFiles}] TIMEOUT 30s — skipping permanently: {relPath}");
                             lock (LPM.Services.BackupProgress.PermSkipFiles) LPM.Services.BackupProgress.PermSkipFiles.Add(relPath);
                             lock (LPM.Services.BackupProgress.TimedOutFiles) LPM.Services.BackupProgress.TimedOutFiles.Add(relPath);
                             continue;
                         }
+                        var readMs = readSw.ElapsedMilliseconds;
 
-                        if (rawBytes == null) continue;
+                        if (readEx != null) { Console.WriteLine($"[Backup][server] read-thread ERROR {relPath}: {readEx.Message}"); continue; }
+                        if (rawBytes == null) { Console.WriteLine($"[Backup][server] NULL bytes: {relPath}"); continue; }
 
+                        var writeSw = System.Diagnostics.Stopwatch.StartNew();
                         var entry = zip.CreateEntry(relPath, System.IO.Compression.CompressionLevel.Fastest);
                         using var es = entry.Open(); es.Write(rawBytes);
+                        writeSw.Stop();
+
+                        Console.WriteLine($"[Backup][server][{processed + 1}/{totalFiles}] OK {relPath} | {fileSize:N0} bytes | read {readMs}ms | write {writeSw.ElapsedMilliseconds}ms | total {readMs + writeSw.ElapsedMilliseconds}ms");
                         LPM.Services.BackupProgress.Current = ++processed;
+
+                        // Flush after every file to prevent nginx proxy_read_timeout during slow reads
+                        responseStream.Flush();
+
+                        // Release memory immediately; GC every 200 files or for large files
+                        rawBytes = null;
+                        if (processed % 200 == 0)
+                            GC.Collect(1, GCCollectionMode.Optimized);
+                        else if (fileSize > 50 * 1024 * 1024)
+                            GC.Collect(0, GCCollectionMode.Optimized);
                     }
-                    catch { }
+                    catch (Exception ex) { Console.WriteLine($"[Backup][server] OUTER ERROR {relPath}: {ex.Message}"); }
                 }
             }
 
             if (LPM.Services.BackupProgress.CancelRequested)
-                Console.WriteLine($"[Backup] Server backup CANCELLED by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files");
+                Console.WriteLine($"[Backup][server] CANCELLED by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed}/{totalFiles} files in {phaseSw.Elapsed.TotalSeconds:F1}s");
             else
-                Console.WriteLine($"[Backup] Server backup complete by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed} files — {integrityTag}");
+                Console.WriteLine($"[Backup][server] COMPLETE by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed}/{totalFiles} files in {phaseSw.Elapsed.TotalSeconds:F1}s — {integrityTag}");
         }
         catch (Exception ex)
         {
             LPM.Services.BackupProgress.LastError = ex.Message;
             LPM.Services.BackupProgress.ActiveUser = "";
-            Console.WriteLine($"[Backup] Server backup ERROR by '{user}': {ex.Message}");
+            Console.WriteLine($"[Backup][server] EXCEPTION by '{user}': {ex.Message}\n{ex.StackTrace}");
         }
         finally
         {
