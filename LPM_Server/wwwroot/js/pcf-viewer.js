@@ -2292,6 +2292,12 @@ window.pcfViewer = {
         }
         this._floatWinMinimized = false;
         this._floatWinRestoreState = null;
+    },
+
+    // Click a hidden file input by element id — used from Blazor JS interop
+    clickById: function (id) {
+        var el = document.getElementById(id);
+        if (el) el.click();
     }
 };
 
@@ -2306,3 +2312,11 @@ document.addEventListener('keydown', function (e) {
         window.pcfViewer.closeFloat();
     }
 });
+
+// Trigger a hidden file-input element by ElementReference — bypasses global-function lookup
+window.pcfTriggerInput = function (el) { if (el) el.click(); };
+// Fallback for lpmClickById in case javaScriptInterop.js is stale/cached
+window.lpmClickById = window.lpmClickById || function (id) {
+    var el = document.getElementById(id);
+    if (el) el.click();
+};

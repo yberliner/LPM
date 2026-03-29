@@ -1369,7 +1369,7 @@
                                             <td style="vertical-align:top;">
                                                 <textarea id="arf-process-@idx"
                                                        class="arf-cell-input arf-cell-textarea @(_arfRows[idx].Touched && string.IsNullOrWhiteSpace(_arfRows[idx].Process) ? "arf-cell-invalid" : "")"
-                                                       rows="1"
+                                                       rows="1" dir="auto"
                                                        @onblur="() => _arfRows[idx].Touched = true"
                                                        @oninput="e => { _arfRows[idx].Process = e.Value?.ToString() ?? string.Empty; var _kw = HasAutoUncheckKeyword(_arfRows[idx].Process); if (!_kw) _arfRows[idx].AutoUnchecked = false; if (_kw && !_arfRows[idx].AutoUnchecked && _arfRows[idx].Checked) { _arfRows[idx].Checked = false; _arfRows[idx].AutoUnchecked = true; } RebuildArfSummary(); }">@_arfRows[idx].Process</textarea>
                                             </td>
@@ -1390,7 +1390,7 @@
                                             </td>
                                             <td style="vertical-align:top;">
                                                 <textarea class="arf-cell-input arf-cell-textarea"
-                                                       rows="1"
+                                                       rows="1" dir="auto"
                                                        @oninput="e => { _arfRows[idx].Results = e.Value?.ToString() ?? string.Empty; RebuildArfSummary(); }"
                                                        @onkeydown="e => OnArfResultsKeyDown(e)">@_arfRows[idx].Results</textarea>
                                             </td>

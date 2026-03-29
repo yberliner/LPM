@@ -1665,6 +1665,9 @@ public class PdfService
         var fmtTC = new PdfSharpCore.Drawing.XStringFormat {
             Alignment     = PdfSharpCore.Drawing.XStringAlignment.Center,
             LineAlignment = PdfSharpCore.Drawing.XLineAlignment.Near };
+        var fmtCR = new PdfSharpCore.Drawing.XStringFormat {
+            Alignment     = PdfSharpCore.Drawing.XStringAlignment.Far,
+            LineAlignment = PdfSharpCore.Drawing.XLineAlignment.Center };
 
         PdfSharpCore.Drawing.XRect R(double x, double y, double w, double h) =>
             new PdfSharpCore.Drawing.XRect(x, y, w, h);
@@ -1740,14 +1743,79 @@ public class PdfService
             return sb.ToString();
         }
 
-        // ── Word-wrap helper (handles \n as explicit line break) ──
-        List<string> WrapText(string text, double maxW)
+        // ── BiDi helpers ──
+        static bool IsHebrew(char c) => c >= '\u0590' && c <= '\u05FF';
+        static bool IsRtlChar(char c) =>
+            (c >= '\u0590' && c <= '\u05FF') ||  // Hebrew
+            (c >= '\u0600' && c <= '\u06FF') ||  // Arabic
+            (c >= '\uFB1D' && c <= '\uFB4F') ||  // Hebrew presentation forms
+            (c >= '\uFB50' && c <= '\uFDFF');     // Arabic presentation forms
+        static bool IsLtrChar(char c) =>
+            (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+            (c >= '\u00C0' && c <= '\u024F');     // Latin Extended
+        static bool HasRtl(string s) => s.Any(IsRtlChar);
+
+        // Simplified Unicode BiDi for Hebrew+Latin mixed text.
+        // Returns (visual string, isRtl base direction).
+        static (string Visual, bool IsRtl) VisualReorder(string logical)
         {
-            var result = new List<string>();
-            // Split on newlines first, then word-wrap each paragraph
+            if (string.IsNullOrEmpty(logical)) return ("", false);
+
+            // Determine base direction from first strong character
+            bool rtlBase = false;
+            foreach (var c in logical)
+            {
+                if (IsRtlChar(c)) { rtlBase = true; break; }
+                if (IsLtrChar(c)) { rtlBase = false; break; }
+            }
+            if (!rtlBase) return (logical, false);
+
+            // Split into directional runs: RTL, LTR, Neutral
+            // Run type: 0 = neutral (space/digits/punct), 1 = LTR, 2 = RTL
+            var runs = new List<(int Type, string Text)>();
+            int pos = 0;
+            while (pos < logical.Length)
+            {
+                char c = logical[pos];
+                int type = IsRtlChar(c) ? 2 : IsLtrChar(c) ? 1 : 0;
+                int start = pos++;
+                while (pos < logical.Length)
+                {
+                    char nc = logical[pos];
+                    int nt = IsRtlChar(nc) ? 2 : IsLtrChar(nc) ? 1 : 0;
+                    if (nt != type) break;
+                    pos++;
+                }
+                runs.Add((type, logical[start..pos]));
+            }
+
+            // Reverse the run order for RTL base paragraph
+            runs.Reverse();
+
+            // Within each RTL run, reverse the characters
+            var sb = new System.Text.StringBuilder(logical.Length);
+            foreach (var (type, text) in runs)
+            {
+                if (type == 2)
+                {
+                    for (int i = text.Length - 1; i >= 0; i--)
+                        sb.Append(text[i]);
+                }
+                else
+                {
+                    sb.Append(text);
+                }
+            }
+            return (sb.ToString(), true);
+        }
+
+        // ── Word-wrap helper (handles \n, applies BiDi reordering per line) ──
+        List<(string Visual, bool IsRtl)> WrapText(string text, double maxW)
+        {
+            var result = new List<(string, bool)>();
             foreach (var para in text.Split('\n'))
             {
-                if (string.IsNullOrEmpty(para)) { result.Add(""); continue; }
+                if (string.IsNullOrEmpty(para)) { result.Add(("", false)); continue; }
                 var words = para.Split(' ');
                 var cur = new System.Text.StringBuilder();
                 foreach (var w in words)
@@ -1761,14 +1829,14 @@ public class PdfService
                     }
                     else
                     {
-                        if (cur.Length > 0) result.Add(cur.ToString());
+                        if (cur.Length > 0) result.Add(VisualReorder(cur.ToString()));
                         cur.Clear();
                         cur.Append(w);
                     }
                 }
-                if (cur.Length > 0) result.Add(cur.ToString());
+                if (cur.Length > 0) result.Add(VisualReorder(cur.ToString()));
             }
-            if (result.Count == 0) result.Add("");
+            if (result.Count == 0) result.Add(("", false));
             return result;
         }
 
@@ -1787,13 +1855,23 @@ public class PdfService
             gfx.DrawLine(penBdr, x0, y + rowH, x0 + cw, y + rowH);
 
             for (int li = 0; li < procLines.Count; li++)
-                gfx.DrawString(procLines[li], fCell, bDark,
-                    R(x0 + pad, y + pad + li * lineH, procW - 2 * pad, lineH), fmtCL);
+            {
+                var (vis, rtl) = procLines[li];
+                var fmt = rtl ? fmtCR : fmtCL;
+                var rx  = rtl ? x0          : x0 + pad;
+                var rw  = rtl ? procW - pad  : procW - 2 * pad;
+                gfx.DrawString(vis, fCell, bDark, R(rx, y + pad + li * lineH, rw, lineH), fmt);
+            }
             gfx.DrawString(r.Time    ?? "", fCell, bDark, R(x1, y, timeW, rowH), fmtCC);
             gfx.DrawString(r.ToneArm ?? "", fCell, bDark, R(x2, y, toneW, rowH), fmtCC);
             for (int li = 0; li < resLines.Count; li++)
-                gfx.DrawString(resLines[li], fCell, bDark,
-                    R(x3 + pad, y + pad + li * lineH, resW - 2 * pad, lineH), fmtCL);
+            {
+                var (vis, rtl) = resLines[li];
+                var fmt = rtl ? fmtCR : fmtCL;
+                var rx  = rtl ? x3          : x3 + pad;
+                var rw  = rtl ? resW - pad   : resW - 2 * pad;
+                gfx.DrawString(vis, fCell, bDark, R(rx, y + pad + li * lineH, rw, lineH), fmt);
+            }
 
             y += rowH;
             alt = !alt;

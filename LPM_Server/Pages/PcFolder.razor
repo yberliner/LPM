@@ -4710,7 +4710,7 @@
     {
         _wsAttTargetSession = _wsCtxSessionFileName;
         CloseWsCtxMenu();
-        await JS.InvokeVoidAsync("lpmClickById", "pcf-ws-att-input");
+        await JS.InvokeVoidAsync("pcfViewer.clickById", "pcf-ws-att-input");
     }
 
     async Task WsCtxDownloadSession()
