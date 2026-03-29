@@ -51,6 +51,11 @@
                 <i class="ri-shield-check-line me-1"></i>DB Check Integrity
             </a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link @(_diagTab == "pcfd" ? "active" : "")" @onclick='() => _diagTab = "pcfd"' href="javascript:void(0)">
+                <i class="ri-user-search-line me-1"></i>PC Full Data
+            </a>
+        </li>
     </ul>
 
     @if (_diagTab == "db")
@@ -864,7 +869,270 @@
         </div>
     }
 
+    @* ── PC Full Data Tab ──────────────────────────────────────────────────── *@
+    @if (_diagTab == "pcfd")
+    {
+        <style>
+            @@keyframes pcfd-pulse {
+                0%,100% { transform: scale(1);   opacity: 1; }
+                50%      { transform: scale(1.18); opacity: .8; }
+            }
+            @@keyframes pcfd-done-in {
+                from { opacity: 0; transform: scale(.82); }
+                to   { opacity: 1; transform: scale(1); }
+            }
+            .pcfd-pulse-icon  { animation: pcfd-pulse 1.1s ease-in-out infinite; display:inline-block; }
+            .pcfd-done-card   { animation: pcfd-done-in .55s cubic-bezier(.34,1.56,.64,1) both; }
+            .pcfd-table-scroll{ max-height:280px; overflow-y:auto; }
+            .pcfd-file-scroll { max-height:240px; overflow-y:auto; }
+        </style>
+
+        <div class="diag-editor-card mb-4">
+            <div class="diag-editor-header">
+                <i class="ri-user-search-line me-2"></i>PC Full Data
+                <span class="diag-editor-sub">Select a PC to view all related DB rows and files</span>
+            </div>
+            <div class="diag-editor-body">
+                <div class="row g-2 align-items-center mb-3">
+                    <div class="col-12 col-sm-8 col-md-6">
+                        <select class="form-select form-select-sm"
+                                value="@_pcfdPcId"
+                                @onchange="OnPcfdPcSelected">
+                            <option value="0">— Choose a PC —</option>
+                            @foreach (var pc in _pcsRows)
+                            {
+                                <option value="@pc.PcId">[@pc.PcId] @pc.PersonName</option>
+                            }
+                        </select>
+                    </div>
+                    @if (_pcfdPcId > 0 && !_pcfdLoading)
+                    {
+                        <div class="col-auto">
+                            <button class="btn btn-danger btn-sm diag-action-btn"
+                                    @onclick="StartPcfdDelete">
+                                <i class="ri-delete-bin-2-line me-1"></i>Delete PC
+                            </button>
+                        </div>
+                    }
+                </div>
+
+                @if (_pcfdLoading)
+                {
+                    <div class="d-flex align-items-center gap-2" style="color:#94a3b8;padding:16px 0;">
+                        <span class="spinner-border spinner-border-sm" style="color:#60a5fa;"></span>
+                        <span style="font-size:.85rem;">Loading PC data…</span>
+                    </div>
+                }
+                else if (!string.IsNullOrEmpty(_pcfdError))
+                {
+                    <div class="alert alert-danger py-1 px-3 mb-0 diag-feedback">@_pcfdError</div>
+                }
+                else if (_pcfdPcId > 0)
+                {
+                    @* Summary bar *@
+                    <div class="d-flex gap-3 flex-wrap mb-3" style="font-size:.8rem;color:#94a3b8;">
+                        <span><i class="ri-table-line me-1"></i>@(_pcfdTables.Count(t => t.Rows.Count > 0)) tables with data</span>
+                        <span><i class="ri-file-list-line me-1"></i>@(_pcfdFolders.Sum(f => f.Files.Count)) files in @_pcfdFolders.Count folder(s)</span>
+                    </div>
+
+                    @* DB Tables *@
+                    @foreach (var t in _pcfdTables)
+                    {
+                        var tbl = t;
+                        bool hasColl = _pcfdCollapsed.Contains(tbl.Name);
+                        <div class="cedb-section mt-2">
+                            <div class="cedb-section-title cedb-section-toggle"
+                                 @onclick="() => { if (_pcfdCollapsed.Contains(tbl.Name)) _pcfdCollapsed.Remove(tbl.Name); else _pcfdCollapsed.Add(tbl.Name); }">
+                                <i class="@tbl.Icon me-1"></i>@tbl.Name
+                                <span class="cedb-count">@tbl.Rows.Count row@(tbl.Rows.Count != 1 ? "s" : "")</span>
+                                <i class="ri-arrow-down-s-line cedb-chevron ms-auto @(hasColl ? "cedb-chevron-up" : "")"></i>
+                            </div>
+                            @if (!hasColl)
+                            {
+                                @if (tbl.Rows.Count == 0)
+                                {
+                                    <div class="cedb-empty">No rows</div>
+                                }
+                                else
+                                {
+                                    <div class="cedb-table-wrap pcfd-table-scroll">
+                                        <table class="cedb-table">
+                                            <thead><tr>@foreach (var col in tbl.Columns) { <th>@col</th> }</tr></thead>
+                                            <tbody>
+                                                @foreach (var row in tbl.Rows)
+                                                {
+                                                    <tr>@for (int i = 0; i < tbl.Columns.Count; i++) {
+                                                        var v = i < row.Count ? row[i] : "";
+                                                        <td>@v</td>
+                                                    }</tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    }
+
+                    @* PC Folder files *@
+                    <div class="cedb-section mt-2">
+                        <div class="cedb-section-title cedb-section-toggle"
+                             @onclick='() => { if (_pcfdCollapsed.Contains("__files__")) _pcfdCollapsed.Remove("__files__"); else _pcfdCollapsed.Add("__files__"); }'>
+                            <i class="ri-folder-open-line me-1"></i>PC Folder Files
+                            <span class="cedb-count">@(_pcfdFolders.Sum(f => f.Files.Count)) file(s) in @_pcfdFolders.Count folder(s)</span>
+                            <i class="ri-arrow-down-s-line cedb-chevron ms-auto @(_pcfdCollapsed.Contains("__files__") ? "cedb-chevron-up" : "")"></i>
+                        </div>
+                        @if (!_pcfdCollapsed.Contains("__files__"))
+                        {
+                            @if (!_pcfdFolders.Any())
+                            {
+                                <div class="cedb-empty">No PC folders found on disk</div>
+                            }
+                            else
+                            {
+                                @foreach (var folder in _pcfdFolders)
+                                {
+                                    var fld = folder;
+                                    <div class="mb-2" style="padding:6px 10px;">
+                                        <div style="font-size:.78rem;font-weight:700;color:#60a5fa;margin-bottom:4px;">
+                                            <i class="ri-folder-line me-1"></i>@fld.FolderName
+                                            <span style="font-weight:400;color:#64748b;margin-left:6px;">(@fld.Files.Count files)</span>
+                                        </div>
+                                        @if (fld.Files.Count == 0)
+                                        {
+                                            <div class="cedb-empty">Empty folder</div>
+                                        }
+                                        else
+                                        {
+                                            <div class="pcfd-file-scroll">
+                                                <ul style="margin:0;padding-left:20px;list-style:none;">
+                                                    @foreach (var f in fld.Files)
+                                                    {
+                                                        <li style="font-size:.75rem;color:#94a3b8;padding:1px 0;">
+                                                            <i class="ri-file-line me-1" style="color:#475569;"></i>@f
+                                                        </li>
+                                                    }
+                                                </ul>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            }
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
 </div>
+
+@* ── PC Full Data — Delete Confirmation Modal ─────────────────────────────── *@
+@if (_pcfdDeleteStep > 0)
+{
+    <div style="position:fixed;inset:0;z-index:1060;background:rgba(0,0,0,.80);display:flex;align-items:center;justify-content:center;padding:16px;">
+
+        @* Step 1: Are you sure? *@
+        @if (_pcfdDeleteStep == 1)
+        {
+            <div style="background:#1a0505;border:2px solid #7f1d1d;border-radius:16px;padding:36px 40px;max-width:520px;width:100%;box-shadow:0 30px 80px rgba(0,0,0,.7);text-align:center;">
+                <div class="pcfd-pulse-icon" style="font-size:4rem;color:#ef4444;margin-bottom:16px;">
+                    <i class="ri-error-warning-fill"></i>
+                </div>
+                <div style="font-size:1.35rem;font-weight:800;color:#fca5a5;margin-bottom:10px;">
+                    Delete PC — Are you sure?
+                </div>
+                <div style="font-size:.9rem;color:#fca5a5;margin-bottom:6px;font-weight:600;">
+                    @(_pcsRows.FirstOrDefault(p => p.PcId == _pcfdPcId)?.PersonName ?? $"PC #{_pcfdPcId}")
+                </div>
+                <div style="font-size:.83rem;color:#ef4444;margin-bottom:20px;">
+                    This will permanently and irreversibly delete
+                    <strong>ALL</strong> database rows and <strong>ALL</strong> files
+                    on disk associated with this PC.
+                </div>
+                <div style="font-size:.78rem;color:#b91c1c;background:#2a0a0a;border-radius:8px;padding:10px 14px;margin-bottom:24px;text-align:left;">
+                    <div class="mb-1"><strong style="color:#fca5a5;">DB tables:</strong></div>
+                    @foreach (var t in _pcfdTables.Where(t => t.Rows.Count > 0))
+                    {
+                        <div>· @t.Name — <strong>@t.Rows.Count</strong> row(s)</div>
+                    }
+                    <div class="mt-1"><strong style="color:#fca5a5;">Files:</strong> @(_pcfdFolders.Sum(f => f.Files.Count)) in @_pcfdFolders.Count folder(s)</div>
+                </div>
+                <div class="d-flex gap-2 justify-content-center">
+                    <button class="btn btn-secondary btn-sm px-4" @onclick="() => _pcfdDeleteStep = 0">Cancel</button>
+                    <button class="btn btn-danger btn-sm px-4" @onclick="() => _pcfdDeleteStep = 2">
+                        Yes, delete everything →
+                    </button>
+                </div>
+            </div>
+        }
+
+        @* Step 2: Type "delete" *@
+        @if (_pcfdDeleteStep == 2)
+        {
+            <div style="background:#1a0505;border:2px solid #7f1d1d;border-radius:16px;padding:36px 40px;max-width:460px;width:100%;box-shadow:0 30px 80px rgba(0,0,0,.7);text-align:center;">
+                <div style="font-size:3rem;color:#ef4444;margin-bottom:14px;">
+                    <i class="ri-skull-2-line"></i>
+                </div>
+                <div style="font-size:1.1rem;font-weight:800;color:#fca5a5;margin-bottom:18px;">
+                    Final confirmation required
+                </div>
+                <div style="font-size:.85rem;color:#f87171;margin-bottom:18px;">
+                    Type <code style="background:#2a0a0a;padding:2px 6px;border-radius:4px;color:#fca5a5;font-weight:700;">delete</code> in the box below to confirm permanent deletion.
+                </div>
+                <input type="text"
+                       class="form-control form-control-sm text-center mb-3"
+                       style="background:#2a0a0a;border-color:@(_pcfdDeleteInput.Length > 0 && _pcfdDeleteInput != "delete" ? "#ef4444" : "#7f1d1d");color:#fca5a5;font-size:1rem;font-weight:700;letter-spacing:.08em;"
+                       placeholder="type: delete"
+                       @bind="_pcfdDeleteInput"
+                       @bind:event="oninput" />
+                @if (!string.IsNullOrEmpty(_pcfdDeleteError))
+                {
+                    <div class="alert alert-danger py-1 px-2 mb-2 diag-feedback" style="font-size:.78rem;">@_pcfdDeleteError</div>
+                }
+                <div class="d-flex gap-2 justify-content-center">
+                    <button class="btn btn-secondary btn-sm px-4" @onclick="() => _pcfdDeleteStep = 0">Cancel</button>
+                    <button class="btn btn-danger btn-sm px-4 diag-action-btn"
+                            disabled="@(_pcfdDeleteInput != "delete")"
+                            @onclick="ExecuteDeletePc">
+                        <i class="ri-delete-bin-2-line me-1"></i>Execute Deletion
+                    </button>
+                </div>
+            </div>
+        }
+
+        @* Step 3: Deleting *@
+        @if (_pcfdDeleteStep == 3)
+        {
+            <div style="background:#1a0505;border:2px solid #7f1d1d;border-radius:16px;padding:48px 40px;max-width:400px;width:100%;box-shadow:0 30px 80px rgba(0,0,0,.7);text-align:center;">
+                <div class="spinner-border" style="width:3rem;height:3rem;border-width:4px;color:#ef4444;margin-bottom:20px;" role="status"></div>
+                <div style="font-size:1rem;font-weight:700;color:#fca5a5;">Deleting all PC data…</div>
+                <div style="font-size:.78rem;color:#7f1d1d;margin-top:6px;">Please wait</div>
+            </div>
+        }
+
+        @* Step 4: Done *@
+        @if (_pcfdDeleteStep == 4)
+        {
+            <div class="pcfd-done-card" style="background:#031a0a;border:2px solid #14532d;border-radius:16px;padding:48px 40px;max-width:440px;width:100%;box-shadow:0 30px 80px rgba(0,0,0,.7);text-align:center;">
+                <div style="font-size:4.5rem;color:#22c55e;margin-bottom:16px;">
+                    <i class="ri-checkbox-circle-fill"></i>
+                </div>
+                <div style="font-size:1.2rem;font-weight:800;color:#86efac;margin-bottom:10px;">
+                    PC data permanently deleted
+                </div>
+                <div style="font-size:.85rem;color:#4ade80;margin-bottom:6px;">
+                    @_pcfdDeletedRows row(s) deleted from the database
+                </div>
+                <div style="font-size:.85rem;color:#4ade80;margin-bottom:24px;">
+                    @_pcfdDeletedFiles file(s) deleted from disk
+                </div>
+                <div style="font-size:.72rem;color:#166534;">Closing automatically…</div>
+            </div>
+        }
+
+    </div>
+}
 
 @* ── Delete Session Modal ─────────────────────────────────────────────────── *@
 @if (_delSessModal)
@@ -2547,6 +2815,273 @@
         using var kdf = new Rfc2898DeriveBytes(password, salt, iterations, HashAlgorithmName.SHA256);
         byte[] hash = kdf.GetBytes(32);
         return $"pbkdf2_sha256${iterations}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
+    }
+
+    // ── PC Full Data state ─────────────────────────────────────────────────
+    int     _pcfdPcId        = 0;
+    bool    _pcfdLoading     = false;
+    string  _pcfdError       = "";
+    List<TableData> _pcfdTables  = [];
+    record PcfdFolder(string FolderName, List<string> Files);
+    List<PcfdFolder> _pcfdFolders = [];
+    HashSet<string>  _pcfdCollapsed = [];
+
+    // Delete flow: 0=idle, 1=confirm, 2=type, 3=deleting, 4=done
+    int    _pcfdDeleteStep  = 0;
+    string _pcfdDeleteInput = "";
+    bool   _pcfdDeleteBusy  = false;
+    string _pcfdDeleteError = "";
+    int    _pcfdDeletedRows  = 0;
+    int    _pcfdDeletedFiles = 0;
+
+    void StartPcfdDelete() { _pcfdDeleteStep = 1; _pcfdDeleteInput = ""; _pcfdDeleteError = ""; }
+
+    async Task OnPcfdPcSelected(ChangeEventArgs e)
+    {
+        int.TryParse(e.Value?.ToString(), out var pcId);
+        _pcfdPcId      = pcId;
+        _pcfdTables    = [];
+        _pcfdFolders   = [];
+        _pcfdError     = "";
+        _pcfdCollapsed = [];
+        if (pcId == 0) return;
+
+        _pcfdLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var (tables, folders) = await Task.Run(() => LoadPcFullData(pcId));
+            _pcfdTables  = tables;
+            _pcfdFolders = folders;
+        }
+        catch (Exception ex)
+        {
+            _pcfdError = $"Error loading PC data: {ex.Message}";
+        }
+        finally
+        {
+            _pcfdLoading = false;
+        }
+    }
+
+    (List<TableData> Tables, List<PcfdFolder> Folders) LoadPcFullData(int pcId)
+    {
+        var cs = DbCs();
+        var tables = new List<TableData>();
+
+        using var conn = new SqliteConnection(cs);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+
+        TableData QueryTable(string name, string icon, string sql, params (string k, object v)[] parms)
+        {
+            var cols = new List<string>();
+            var rows = new List<List<string>>();
+            try
+            {
+                cmd.CommandText = sql;
+                cmd.Parameters.Clear();
+                foreach (var (k, v) in parms) cmd.Parameters.AddWithValue(k, v);
+                using var r = cmd.ExecuteReader();
+                for (int i = 0; i < r.FieldCount; i++) cols.Add(r.GetName(i));
+                while (r.Read())
+                {
+                    var row = new List<string>();
+                    for (int i = 0; i < r.FieldCount; i++)
+                        row.Add(r.IsDBNull(i) ? "" : r.GetValue(i).ToString() ?? "");
+                    rows.Add(row);
+                }
+            }
+            catch (Exception ex) { cols = [$"Error: {ex.Message}"]; }
+            return new TableData(name, icon, cols, rows);
+        }
+
+        tables.Add(QueryTable("core_persons",       "ri-contacts-line",
+            "SELECT * FROM core_persons WHERE PersonId=@id",
+            ("@id", pcId)));
+        tables.Add(QueryTable("core_pcs",            "ri-computer-line",
+            "SELECT * FROM core_pcs WHERE PcId=@id",
+            ("@id", pcId)));
+        tables.Add(QueryTable("core_users",          "ri-user-settings-line",
+            "SELECT Id,Username,IsActive,CreatedAt,AvatarPath,PersonId,StaffRole,UserType,GradeId,AllowAll,TotpEnabled,MustChangePassword,ContactConfirmed,Require2FA,SendSms FROM core_users WHERE PersonId=@id",
+            ("@id", pcId)));
+        tables.Add(QueryTable("sess_sessions",       "ri-calendar-event-line",
+            "SELECT * FROM sess_sessions WHERE PcId=@id ORDER BY SessionId DESC",
+            ("@id", pcId)));
+        tables.Add(QueryTable("sess_misc_charges",   "ri-coins-line",
+            "SELECT * FROM sess_misc_charges WHERE PcId=@id ORDER BY MiscChargeId DESC",
+            ("@id", pcId)));
+        tables.Add(QueryTable("sess_folder_summary", "ri-file-text-line",
+            "SELECT * FROM sess_folder_summary WHERE PcId=@id ORDER BY Id DESC",
+            ("@id", pcId)));
+        tables.Add(QueryTable("sess_meetings",       "ri-time-line",
+            "SELECT * FROM sess_meetings WHERE PcId=@id ORDER BY MeetingId DESC",
+            ("@id", pcId)));
+        tables.Add(QueryTable("sess_completions",    "ri-trophy-line",
+            "SELECT * FROM sess_completions WHERE PcId=@id ORDER BY Id DESC",
+            ("@id", pcId)));
+        tables.Add(QueryTable("sess_next_cs",        "ri-file-edit-line",
+            "SELECT * FROM sess_next_cs WHERE SessionId IN (SELECT SessionId FROM sess_sessions WHERE PcId=@id) ORDER BY Id DESC",
+            ("@id", pcId)));
+        tables.Add(QueryTable("cs_reviews",          "ri-shield-star-line",
+            "SELECT * FROM cs_reviews WHERE SessionId IN (SELECT SessionId FROM sess_sessions WHERE PcId=@id) ORDER BY CsReviewId DESC",
+            ("@id", pcId)));
+        tables.Add(QueryTable("cs_work_log",         "ri-todo-line",
+            "SELECT * FROM cs_work_log WHERE PcId=@id ORDER BY CsWorkLogId DESC",
+            ("@id", pcId)));
+        tables.Add(QueryTable("fin_purchases",       "ri-shopping-cart-line",
+            "SELECT * FROM fin_purchases WHERE PcId=@id ORDER BY PurchaseId DESC",
+            ("@id", pcId)));
+        tables.Add(QueryTable("fin_purchase_items",  "ri-list-check",
+            "SELECT * FROM fin_purchase_items WHERE PurchaseId IN (SELECT PurchaseId FROM fin_purchases WHERE PcId=@id) ORDER BY PurchaseItemId DESC",
+            ("@id", pcId)));
+        tables.Add(QueryTable("fin_payments",        "ri-bank-card-line",
+            "SELECT * FROM fin_payments WHERE PcId=@id ORDER BY PaymentId DESC",
+            ("@id", pcId)));
+        tables.Add(QueryTable("fin_payment_methods", "ri-secure-payment-line",
+            "SELECT * FROM fin_payment_methods WHERE PurchaseId IN (SELECT PurchaseId FROM fin_purchases WHERE PcId=@id) ORDER BY PaymentMethodId DESC",
+            ("@id", pcId)));
+        tables.Add(QueryTable("acad_attendance",     "ri-check-double-line",
+            "SELECT * FROM acad_attendance WHERE PersonId=@id ORDER BY StudentId DESC",
+            ("@id", pcId)));
+        tables.Add(QueryTable("acad_student_courses","ri-book-open-line",
+            "SELECT * FROM acad_student_courses WHERE PersonId=@id ORDER BY StudentCourseId DESC",
+            ("@id", pcId)));
+
+        // Scan PC-Folders for any folder named "{pcId}-*"
+        var folders = new List<PcfdFolder>();
+        var basePath = FolderSvc.GetPcFoldersRoot();
+        if (Directory.Exists(basePath))
+        {
+            var prefix = $"{pcId}-";
+            foreach (var dir in Directory.GetDirectories(basePath)
+                         .Where(d => Path.GetFileName(d).StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                         .OrderBy(d => d))
+            {
+                var files = Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories)
+                    .Select(f => Path.GetRelativePath(dir, f).Replace('\\', '/'))
+                    .OrderBy(f => f)
+                    .ToList();
+                folders.Add(new PcfdFolder(Path.GetFileName(dir), files));
+            }
+        }
+
+        return (tables, folders);
+    }
+
+    async Task ExecuteDeletePc()
+    {
+        var pcId  = _pcfdPcId;
+        var admin = AdminUser();
+        _pcfdDeleteStep  = 3;
+        _pcfdDeleteBusy  = true;
+        _pcfdDeleteError = "";
+        StateHasChanged();
+
+        try
+        {
+            var (rows, files) = await Task.Run(() =>
+            {
+                Console.WriteLine($"[DeletePC] ====== START — Admin='{admin}' PcId={pcId} ======");
+                int totalRows  = 0;
+                int totalFiles = 0;
+
+                using var conn = new SqliteConnection(DbCs());
+                conn.Open();
+                using var tx  = conn.BeginTransaction();
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+
+                int Exec(string sql, params (string k, object v)[] parms)
+                {
+                    cmd.CommandText = sql;
+                    cmd.Parameters.Clear();
+                    foreach (var (k, v) in parms) cmd.Parameters.AddWithValue(k, v);
+                    var n = cmd.ExecuteNonQuery();
+                    if (n > 0) Console.WriteLine($"[DeletePC]   {sql.Split('\n')[0].Trim()} → {n} row(s)");
+                    return n;
+                }
+
+                // 1. sess_next_cs (FK → sess_sessions)
+                totalRows += Exec("DELETE FROM sess_next_cs WHERE SessionId IN (SELECT SessionId FROM sess_sessions WHERE PcId=@id)", ("@id", pcId));
+                // 2. cs_reviews (FK → sess_sessions)
+                totalRows += Exec("DELETE FROM cs_reviews WHERE SessionId IN (SELECT SessionId FROM sess_sessions WHERE PcId=@id)", ("@id", pcId));
+                // 3. sess_folder_summary (PcId direct)
+                totalRows += Exec("DELETE FROM sess_folder_summary WHERE PcId=@id", ("@id", pcId));
+                // 4. sess_misc_charges
+                totalRows += Exec("DELETE FROM sess_misc_charges WHERE PcId=@id", ("@id", pcId));
+                // 5. sess_meetings
+                totalRows += Exec("DELETE FROM sess_meetings WHERE PcId=@id", ("@id", pcId));
+                // 6. sess_completions
+                totalRows += Exec("DELETE FROM sess_completions WHERE PcId=@id", ("@id", pcId));
+                // 7. sess_sessions
+                totalRows += Exec("DELETE FROM sess_sessions WHERE PcId=@id", ("@id", pcId));
+                // 8. cs_work_log
+                totalRows += Exec("DELETE FROM cs_work_log WHERE PcId=@id", ("@id", pcId));
+                // 9. fin_payment_methods (FK → fin_purchases)
+                totalRows += Exec("DELETE FROM fin_payment_methods WHERE PurchaseId IN (SELECT PurchaseId FROM fin_purchases WHERE PcId=@id)", ("@id", pcId));
+                // 10. fin_purchase_items (FK → fin_purchases)
+                totalRows += Exec("DELETE FROM fin_purchase_items WHERE PurchaseId IN (SELECT PurchaseId FROM fin_purchases WHERE PcId=@id)", ("@id", pcId));
+                // 11. fin_purchases
+                totalRows += Exec("DELETE FROM fin_purchases WHERE PcId=@id", ("@id", pcId));
+                // 12. fin_payments
+                totalRows += Exec("DELETE FROM fin_payments WHERE PcId=@id", ("@id", pcId));
+                // 13. acad_attendance
+                totalRows += Exec("DELETE FROM acad_attendance WHERE PersonId=@id", ("@id", pcId));
+                // 14. acad_student_courses
+                totalRows += Exec("DELETE FROM acad_student_courses WHERE PersonId=@id", ("@id", pcId));
+                // 15. core_pcs
+                totalRows += Exec("DELETE FROM core_pcs WHERE PcId=@id", ("@id", pcId));
+                // 16. core_users
+                totalRows += Exec("DELETE FROM core_users WHERE PersonId=@id", ("@id", pcId));
+                // 17. core_persons
+                totalRows += Exec("DELETE FROM core_persons WHERE PersonId=@id", ("@id", pcId));
+
+                tx.Commit();
+                Console.WriteLine($"[DeletePC] DB done — {totalRows} total rows deleted");
+
+                // Delete PC folder(s) from disk
+                var basePath = FolderSvc.GetPcFoldersRoot();
+                if (Directory.Exists(basePath))
+                {
+                    var prefix = $"{pcId}-";
+                    foreach (var dir in Directory.GetDirectories(basePath)
+                                 .Where(d => Path.GetFileName(d).StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        var count = Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories).Count();
+                        Directory.Delete(dir, recursive: true);
+                        totalFiles += count;
+                        Console.WriteLine($"[DeletePC]   Deleted folder: {dir} ({count} files)");
+                    }
+                }
+
+                Console.WriteLine($"[DeletePC] ====== END — Admin='{admin}' PcId={pcId} rows={totalRows} files={totalFiles} ======");
+                return (totalRows, totalFiles);
+            });
+
+            _pcfdDeletedRows  = rows;
+            _pcfdDeletedFiles = files;
+            _pcfdDeleteStep   = 4;
+            // Reset after 3.5 seconds
+            _ = Task.Delay(3500).ContinueWith(_ => InvokeAsync(() =>
+            {
+                _pcfdDeleteStep = 0;
+                _pcfdPcId       = 0;
+                _pcfdTables     = [];
+                _pcfdFolders    = [];
+                LoadPcsRows();
+                LoadLiveTables();
+                StateHasChanged();
+            }));
+        }
+        catch (Exception ex)
+        {
+            _pcfdDeleteError = $"Error: {ex.Message}";
+            _pcfdDeleteStep  = 2;
+            Console.WriteLine($"[DeletePC] FAILED — Admin='{admin}' PcId={pcId}: {ex.Message}");
+        }
+        finally { _pcfdDeleteBusy = false; }
     }
 }
 
