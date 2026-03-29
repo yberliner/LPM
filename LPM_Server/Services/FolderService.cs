@@ -464,7 +464,6 @@ public class FolderService
         if (!Directory.Exists(wsPath)) return [];
 
         return Directory.GetFiles(wsPath, "*.pdf")
-            .Where(f => !Path.GetFileName(f).Contains("_att_", StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(f => new FileInfo(f).LastWriteTime)
             .Take(count)
             .Select(f => ("Recent Worksheets", Path.GetFileName(f), $"WorkSheets/{Path.GetFileName(f)}"))
