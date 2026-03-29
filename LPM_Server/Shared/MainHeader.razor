@@ -156,7 +156,7 @@
                             <li><h6 class="dropdown-header">@_displayName</h6></li>
                             <li><a class="dropdown-item" href="/Settings"><i class="ri-settings-3-line me-2"></i>@LS.T("header.settings")</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item text-danger" href="/logout"><i class="ri-logout-box-r-line me-2"></i>@LS.T("header.signout")</a></li>
+                            <li><a class="dropdown-item text-danger" href="/logout" data-force-nav="/logout"><i class="ri-logout-box-r-line me-2"></i>@LS.T("header.signout")</a></li>
                         </ul>
                     </div>
 
@@ -485,7 +485,7 @@
 
                         <!-- Start::header-element logout -->
                         <li class="header-element">
-                            <a href="/logout" class="header-link" title="Sign out">
+                            <a href="/logout" class="header-link" title="Sign out" data-force-nav="/logout">
                                 <i class="ri-logout-box-r-line header-link-icon"></i>
                             </a>
                         </li>

@@ -166,7 +166,19 @@
                                 {
                                     <span class="category-name">@LS.T("menu." + MainMenuItems.MenuTitle)</span>
                                 }
-                                @if (MainMenuItems.Type == "link")
+                                @if (MainMenuItems.Type == "link" && MainMenuItems.Path == "/logout")
+                                {
+                                    <a href="/logout" data-force-nav="/logout" class="side-menu__item">
+                                        @if(!string.IsNullOrEmpty(MainMenuItems.Svg)){
+                                            @((MarkupString)(MainMenuItems.Svg?? string.Empty))
+                                        }
+                                        @if (!string.IsNullOrEmpty(MainMenuItems.Icon)) {
+                                            <i class="@(MainMenuItems.Icon) side-menu__icon"></i>
+                                        }
+                                        <span class="side-menu__label">@LS.T("menu." + MainMenuItems.Title)</span>
+                                    </a>
+                                }
+                                else if (MainMenuItems.Type == "link")
                                 {
                                     <a href="@MainMenuItems.Path" @onclick="async (e) => { await SetSubmenu((MainMenuItems, null)); Navigation.NavigateTo(MainMenuItems.Path); }" class="side-menu__item @(MainMenuItems.Selected ? "active" : "")">
                                         @if(!string.IsNullOrEmpty(MainMenuItems.Svg)){

@@ -217,6 +217,15 @@
             document.body.appendChild(form);
             form.submit();
         };
+        // Force-navigation for logout — capturing listener fires before Blazor can intercept
+        document.addEventListener('click', function(e) {
+            var el = e.target.closest('[data-force-nav]');
+            if (el) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                window.location.href = el.getAttribute('data-force-nav');
+            }
+        }, true);
         window.lpmPostForm = function (action, fields) {
             var form = document.createElement('form');
             form.method = 'POST';

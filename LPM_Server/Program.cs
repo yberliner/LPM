@@ -18,6 +18,7 @@ using System.Text;
 using PdfSharpCore.Pdf.IO;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.DataProtection;
 using LPM.Auth;
 
 // Save the original console output
@@ -164,6 +165,9 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 var app = builder.Build();
 //Globals.ServiceProvider = app.Services;
 
+var autoLoginProtector = app.Services.GetRequiredService<IDataProtectionProvider>()
+    .CreateProtector("lpm-autologin");
+
 // Register embedded font resolver so PdfSharpCore works on Linux without system fonts
 PdfSharpCore.Fonts.GlobalFontSettings.FontResolver = LPM.Services.EmbeddedFontResolver.Instance;
 
@@ -209,6 +213,63 @@ app.UseStaticFiles();
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// ── Auto-login middleware — on / and /index: redirect to dashboard or auto-login ───
+app.Use(async (ctx, next) =>
+{
+    var path = ctx.Request.Path.Value ?? "";
+    if ((path == "/" || path.Equals("/index", StringComparison.OrdinalIgnoreCase))
+        && ctx.Request.Method == "GET")
+    {
+        // Already authenticated → go straight to dashboard
+        if (ctx.User.Identity?.IsAuthenticated == true)
+        {
+            ctx.Response.Redirect("/Home");
+            return;
+        }
+        var token = ctx.Request.Cookies["lpm_autologin"];
+        if (token != null)
+        {
+            try
+            {
+                var payload = autoLoginProtector.Unprotect(token);
+                var parts   = payload.Split('|');
+                if (parts.Length == 3
+                    && int.TryParse(parts[0], out var userId)
+                    && DateTime.TryParse(parts[1], null,
+                        System.Globalization.DateTimeStyles.RoundtripKind, out var issuedAt)
+                    && (DateTime.UtcNow - issuedAt).TotalHours < 72)
+                {
+                    var db   = ctx.RequestServices.GetRequiredService<UserDb>();
+                    var info = db.GetAutoLoginInfo(userId);
+                    if (info is { IsActive: true } && info.Value.PwdHashPrefix == parts[2])
+                    {
+                        var flags = db.GetLoginFlagsById(userId);
+                        if (flags != null)
+                        {
+                            await SignInUser(ctx, db, flags.Username, flags);
+                            SetAutoLoginCookie(ctx, autoLoginProtector, userId, info.Value.PwdHashPrefix);
+                            Console.WriteLine($"[AutoLogin] '{flags.Username}' auto-logged in");
+                            ctx.Response.Redirect(HomeOrContact(db, userId));
+                            return; // short-circuit — don't call next()
+                        }
+                    }
+                }
+            }
+            catch { /* tampered or expired */ }
+
+            // Invalid cookie — delete it
+            ctx.Response.Cookies.Delete("lpm_autologin", new CookieOptions
+            {
+                HttpOnly = true, SameSite = SameSiteMode.Strict,
+                Secure = ctx.Request.IsHttps, Path = "/"
+            });
+        }
+    }
+
+    await next();
+});
+
 app.MapControllers();
 app.MapRazorPages();
 
@@ -226,6 +287,27 @@ static CookieOptions TrustCookieOpts(bool secure) => new()
     Secure = secure,
     Expires = DateTimeOffset.UtcNow.AddYears(100)
 };
+
+static CookieOptions AutoLoginCookieOpts(bool secure) => new()
+{
+    HttpOnly = true, SameSite = SameSiteMode.Strict,
+    Secure = secure,
+    MaxAge = TimeSpan.FromHours(72)
+};
+
+static void SetAutoLoginCookie(HttpContext ctx, IDataProtector dp, int userId, string pwdHashPrefix)
+{
+    var payload = $"{userId}|{DateTime.UtcNow:O}|{pwdHashPrefix}";
+    ctx.Response.Cookies.Append("lpm_autologin", dp.Protect(payload),
+        AutoLoginCookieOpts(ctx.Request.IsHttps));
+}
+
+static void ApplyAutoLogin(HttpContext ctx, UserDb db, IDataProtector dp, int userId)
+{
+    var info = db.GetAutoLoginInfo(userId);
+    if (info != null)
+        SetAutoLoginCookie(ctx, dp, userId, info.Value.PwdHashPrefix);
+}
 
 static string HomeOrContact(UserDb db, int userId)
     => db.NeedsContactConfirm(userId) ? "/WelcomeContact" : "/Home";
@@ -307,6 +389,7 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db, IConfiguration conf
         if (trustedToken != null && db.GetTrustedDeviceUserId(trustedToken) == flags.UserId)
         {
             await SignInUser(ctx, db, username, flags);
+            ApplyAutoLogin(ctx, db, autoLoginProtector, flags.UserId);
             Console.WriteLine($"[Login] '{username}' signed in via trusted device");
             return Results.Redirect(HomeOrContact(db, flags.UserId));
         }
@@ -317,6 +400,7 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db, IConfiguration conf
 
     // No security steps required — sign in directly
     await SignInUser(ctx, db, username, flags);
+    ApplyAutoLogin(ctx, db, autoLoginProtector, flags.UserId);
     Console.WriteLine($"[Login] '{username}' signed in (no 2FA/pwd-chg required)");
     return Results.Redirect(HomeOrContact(db, flags.UserId));
 }).DisableAntiforgery();
@@ -355,6 +439,7 @@ app.MapPost("/loginpost-changepwd", async (HttpContext ctx, UserDb db, IConfigur
         if (trustedToken != null && db.GetTrustedDeviceUserId(trustedToken) == userId)
         {
             await SignInUser(ctx, db, flags2.Username, flags2);
+            ApplyAutoLogin(ctx, db, autoLoginProtector, flags2.UserId);
             return Results.Redirect(HomeOrContact(db, flags2.UserId));
         }
         ctx.Response.Cookies.Append("lpm_pending", userId.ToString(), PendingCookieOpts());
@@ -362,6 +447,7 @@ app.MapPost("/loginpost-changepwd", async (HttpContext ctx, UserDb db, IConfigur
     }
 
     await SignInUser(ctx, db, flags2.Username, flags2);
+    ApplyAutoLogin(ctx, db, autoLoginProtector, flags2.UserId);
     return Results.Redirect(HomeOrContact(db, flags2.UserId));
 }).DisableAntiforgery();
 
@@ -416,6 +502,7 @@ app.MapPost("/loginpost-setup2fa", async (HttpContext ctx, UserDb db, IConfigura
 
     SetTrustCookie(ctx, db, userId);
     await SignInUser(ctx, db, flags.Username, flags);
+    ApplyAutoLogin(ctx, db, autoLoginProtector, userId);
     return Results.Redirect(HomeOrContact(db, userId));
 }).DisableAntiforgery();
 
@@ -443,6 +530,7 @@ app.MapPost("/loginpost-verify2fa", async (HttpContext ctx, UserDb db, IConfigur
 
     SetTrustCookie(ctx, db, userId);
     await SignInUser(ctx, db, flags.Username, flags);
+    ApplyAutoLogin(ctx, db, autoLoginProtector, userId);
     Console.WriteLine($"[2FA] Verify success for userId={userId}");
     return Results.Redirect(HomeOrContact(db, userId));
 }).DisableAntiforgery();
@@ -452,8 +540,30 @@ app.Map("/logout", async (HttpContext ctx) =>
 {
     var logoutUser = ctx.User.Identity?.Name ?? "unknown";
     Console.WriteLine($"[Login] Logout by '{logoutUser}'");
+
+    // Log all cookies present BEFORE deletion
+    Console.WriteLine($"[Logout] Cookies BEFORE: {string.Join(", ", ctx.Request.Cookies.Select(c => c.Key))}");
+
     await ctx.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    ctx.Response.Cookies.Delete("lpm_autologin", new CookieOptions
+    {
+        HttpOnly = true, SameSite = SameSiteMode.Strict,
+        Secure = ctx.Request.IsHttps, Path = "/"
+    });
+
+    // Log Set-Cookie headers being sent
+    Console.WriteLine($"[Logout] Set-Cookie headers: {string.Join(" | ", ctx.Response.Headers.SetCookie.Select(s => s))}");
+
     return Results.Redirect("/login");
+});
+
+// Temporary debug: shows what cookies the browser is sending
+app.MapGet("/debug-cookies", (HttpContext ctx) =>
+{
+    var cookies = ctx.Request.Cookies.Select(c => $"{c.Key}={c.Value[..Math.Min(20, c.Value.Length)]}...");
+    var isAuth = ctx.User.Identity?.IsAuthenticated == true;
+    var user = ctx.User.Identity?.Name ?? "(none)";
+    return Results.Text($"Authenticated: {isAuth}\nUser: {user}\nCookies:\n{string.Join("\n", cookies)}");
 });
 
 app.MapBlazorHub();

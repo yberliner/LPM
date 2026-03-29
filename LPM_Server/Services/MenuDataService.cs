@@ -215,7 +215,7 @@ public class MenuDataService
             dirChange: false
         ),
         new MainMenuItems (
-            path: "/",
+            path: "/logout",
             type: "link",
             title: "Exit",
             icon: "",

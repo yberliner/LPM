@@ -201,6 +201,24 @@ public class UserDb
         return result is long v ? (int)v : null;
     }
 
+    /// <summary>
+    /// Returns IsActive flag and first 12 chars of PasswordHash for auto-login cookie validation.
+    /// If the user is not found, returns null.
+    /// </summary>
+    public (bool IsActive, string PwdHashPrefix)? GetAutoLoginInfo(int userId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT IsActive, PasswordHash FROM core_users WHERE Id=@id LIMIT 1";
+        cmd.Parameters.AddWithValue("@id", userId);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return null;
+        var isActive = r.GetInt32(0) == 1;
+        var pwdHash  = r.GetString(1);
+        return (isActive, pwdHash[..Math.Min(12, pwdHash.Length)]);
+    }
+
     // ── User management (Admin UI) ──────────────────────────────────────────
 
     public List<UserListItem> GetAllUsers()
