@@ -884,7 +884,7 @@ app.MapPost("/api/backup-auth", async (HttpContext ctx, LPM.Auth.UserDb userDb) 
     LPM.Services.BackupProgress.ClearFailures(ip);
     var token = Guid.NewGuid().ToString("N");
     LPM.Services.BackupProgress.AuthToken = token;
-    LPM.Services.BackupProgress.AuthExpiry = DateTime.UtcNow.AddMinutes(10);
+    LPM.Services.BackupProgress.AuthExpiry = DateTime.UtcNow.AddHours(24);
     LPM.Services.BackupProgress.AuthTokenUsesRemaining = 2;
     Console.WriteLine($"[Backup] Auth OK for '{username}' from {ip} at {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
     return Results.Ok(new { ok = true, token });
@@ -945,6 +945,7 @@ app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderSer
     {
         int processed = 0;
         var phaseSw = System.Diagnostics.Stopwatch.StartNew();
+        var errorLog = new List<string>(); // collects per-file errors for summary
         try
         {
             using (var zip = new System.IO.Compression.ZipArchive(responseStream, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
@@ -1000,6 +1001,7 @@ app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderSer
                         if (LPM.Services.BackupProgress.PermSkipFiles.Contains(relPath))
                         {
                             Console.WriteLine($"[Backup][user][{processed + 1}/{totalFiles}] PERM-SKIP {relPath}");
+                            errorLog.Add($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] PERM-SKIP (timed out in earlier phase) — {relPath}");
                             lock (LPM.Services.BackupProgress.TimedOutFiles) LPM.Services.BackupProgress.TimedOutFiles.Add(relPath);
                             continue;
                         }
@@ -1052,13 +1054,14 @@ app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderSer
                         if (!readThread.Join(TimeSpan.FromSeconds(30)))
                         {
                             Console.WriteLine($"[Backup][user][{processed + 1}/{totalFiles}] TIMEOUT 30s — skipping permanently: {relPath}");
+                            errorLog.Add($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] TIMEOUT (30s read timeout) — {relPath}");
                             lock (LPM.Services.BackupProgress.PermSkipFiles) LPM.Services.BackupProgress.PermSkipFiles.Add(relPath);
                             lock (LPM.Services.BackupProgress.TimedOutFiles) LPM.Services.BackupProgress.TimedOutFiles.Add(relPath);
                             continue;
                         }
                         readMs = readSw.ElapsedMilliseconds;
 
-                        if (bytes == null) { Console.WriteLine($"[Backup][user] NULL bytes (read error): {relPath}"); continue; }
+                        if (bytes == null) { Console.WriteLine($"[Backup][user] NULL bytes (read error): {relPath}"); errorLog.Add($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] NULL BYTES (read returned no data) — {relPath}"); continue; }
 
                         var writeSw = System.Diagnostics.Stopwatch.StartNew();
                         var entry = zip.CreateEntry(relPath, System.IO.Compression.CompressionLevel.Fastest);
@@ -1078,7 +1081,29 @@ app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderSer
                         else if (readBytes > 50 * 1024 * 1024)
                             GC.Collect(0, GCCollectionMode.Optimized);
                     }
-                    catch (Exception ex) { Console.WriteLine($"[Backup][user] OUTER ERROR {relPath}: {ex.Message}"); }
+                    catch (Exception ex) { Console.WriteLine($"[Backup][user] OUTER ERROR {relPath}: {ex.Message}"); errorLog.Add($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] ERROR ({ex.Message}) — {relPath}"); }
+                }
+
+                // Write error summary file if there were any problems
+                if (errorLog.Count > 0)
+                {
+                    var summary = new System.Text.StringBuilder();
+                    summary.AppendLine($"LPM User Backup — Error Summary");
+                    summary.AppendLine($"Backup by: {user} from {dlIp}");
+                    summary.AppendLine($"Started:   {DateTime.Now.AddSeconds(-phaseSw.Elapsed.TotalSeconds):yyyy-MM-dd HH:mm:ss}");
+                    summary.AppendLine($"Finished:  {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                    summary.AppendLine($"Duration:  {phaseSw.Elapsed.TotalSeconds:F1}s");
+                    summary.AppendLine($"Result:    {processed}/{totalFiles} files backed up, {errorLog.Count} error(s)");
+                    summary.AppendLine($"Integrity: {integrityTag}");
+                    summary.AppendLine();
+                    summary.AppendLine("─── Errors ───");
+                    foreach (var line in errorLog)
+                        summary.AppendLine(line);
+                    var summaryText = summary.ToString();
+                    Console.Write($"[Backup][user] {summaryText}");
+                    var errEntry = zip.CreateEntry("_backup_errors.txt", System.IO.Compression.CompressionLevel.Fastest);
+                    using var errStream = errEntry.Open();
+                    errStream.Write(System.Text.Encoding.UTF8.GetBytes(summaryText));
                 }
             }
 
@@ -1149,6 +1174,7 @@ app.MapGet("/api/server-backup-download", (HttpContext ctx, LPM.Services.FolderS
     {
         int processed = 0;
         var phaseSw = System.Diagnostics.Stopwatch.StartNew();
+        var errorLog = new List<string>(); // collects per-file errors for summary
         try
         {
             using (var zip = new System.IO.Compression.ZipArchive(responseStream, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
@@ -1225,6 +1251,7 @@ app.MapGet("/api/server-backup-download", (HttpContext ctx, LPM.Services.FolderS
                         if (LPM.Services.BackupProgress.PermSkipFiles.Contains(relPath))
                         {
                             Console.WriteLine($"[Backup][server][{processed + 1}/{totalFiles}] PERM-SKIP {relPath}");
+                            errorLog.Add($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] PERM-SKIP (timed out in earlier phase) — {relPath}");
                             lock (LPM.Services.BackupProgress.TimedOutFiles) LPM.Services.BackupProgress.TimedOutFiles.Add(relPath);
                             continue;
                         }
@@ -1254,14 +1281,15 @@ app.MapGet("/api/server-backup-download", (HttpContext ctx, LPM.Services.FolderS
                         if (!readThread.Join(TimeSpan.FromSeconds(30)))
                         {
                             Console.WriteLine($"[Backup][server][{processed + 1}/{totalFiles}] TIMEOUT 30s — skipping permanently: {relPath}");
+                            errorLog.Add($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] TIMEOUT (30s read timeout) — {relPath}");
                             lock (LPM.Services.BackupProgress.PermSkipFiles) LPM.Services.BackupProgress.PermSkipFiles.Add(relPath);
                             lock (LPM.Services.BackupProgress.TimedOutFiles) LPM.Services.BackupProgress.TimedOutFiles.Add(relPath);
                             continue;
                         }
                         var readMs = readSw.ElapsedMilliseconds;
 
-                        if (readEx != null) { Console.WriteLine($"[Backup][server] read-thread ERROR {relPath}: {readEx.Message}"); continue; }
-                        if (rawBytes == null) { Console.WriteLine($"[Backup][server] NULL bytes: {relPath}"); continue; }
+                        if (readEx != null) { Console.WriteLine($"[Backup][server] read-thread ERROR {relPath}: {readEx.Message}"); errorLog.Add($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] READ ERROR ({readEx.Message}) — {relPath}"); continue; }
+                        if (rawBytes == null) { Console.WriteLine($"[Backup][server] NULL bytes: {relPath}"); errorLog.Add($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] NULL BYTES (read returned no data) — {relPath}"); continue; }
 
                         var writeSw = System.Diagnostics.Stopwatch.StartNew();
                         var entry = zip.CreateEntry(relPath, System.IO.Compression.CompressionLevel.Fastest);
@@ -1281,7 +1309,29 @@ app.MapGet("/api/server-backup-download", (HttpContext ctx, LPM.Services.FolderS
                         else if (fileSize > 50 * 1024 * 1024)
                             GC.Collect(0, GCCollectionMode.Optimized);
                     }
-                    catch (Exception ex) { Console.WriteLine($"[Backup][server] OUTER ERROR {relPath}: {ex.Message}"); }
+                    catch (Exception ex) { Console.WriteLine($"[Backup][server] OUTER ERROR {relPath}: {ex.Message}"); errorLog.Add($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] ERROR ({ex.Message}) — {relPath}"); }
+                }
+
+                // Write error summary file if there were any problems
+                if (errorLog.Count > 0)
+                {
+                    var summary = new System.Text.StringBuilder();
+                    summary.AppendLine($"LPM Server Backup — Error Summary");
+                    summary.AppendLine($"Backup by: {user} from {dlIp}");
+                    summary.AppendLine($"Started:   {DateTime.Now.AddSeconds(-phaseSw.Elapsed.TotalSeconds):yyyy-MM-dd HH:mm:ss}");
+                    summary.AppendLine($"Finished:  {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                    summary.AppendLine($"Duration:  {phaseSw.Elapsed.TotalSeconds:F1}s");
+                    summary.AppendLine($"Result:    {processed}/{totalFiles} files backed up, {errorLog.Count} error(s)");
+                    summary.AppendLine($"Integrity: {integrityTag}");
+                    summary.AppendLine();
+                    summary.AppendLine("─── Errors ───");
+                    foreach (var line in errorLog)
+                        summary.AppendLine(line);
+                    var summaryText = summary.ToString();
+                    Console.Write($"[Backup][server] {summaryText}");
+                    var errEntry = zip.CreateEntry("_backup_errors.txt", System.IO.Compression.CompressionLevel.Fastest);
+                    using var errStream = errEntry.Open();
+                    errStream.Write(System.Text.Encoding.UTF8.GetBytes(summaryText));
                 }
             }
 
