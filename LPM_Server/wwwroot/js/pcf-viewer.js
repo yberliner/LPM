@@ -864,6 +864,7 @@ window.pcfViewer = {
         input.style.lineHeight = '1.3';
         input.style.resize = 'none';
         input.style.overflow = 'hidden';
+        input.setAttribute('spellcheck', 'true');
 
         if (isEditing) {
             input.value = existingAnn.text;
@@ -1905,6 +1906,8 @@ window.pcfViewer = {
         if (!viewer || viewer._ctxMenuAttached) return;
         viewer._ctxMenuAttached = true;
         viewer.addEventListener('contextmenu', (e) => {
+            // Let browser handle right-click inside active text input (spell-check suggestions)
+            if (this.textInputEl && this.textInputEl.contains(e.target)) return;
             // Find which page was right-clicked
             const wrapper = e.target.closest('.pcf-page-wrapper');
             if (!wrapper) return;
