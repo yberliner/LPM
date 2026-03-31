@@ -1417,15 +1417,18 @@
                                 <div class="arf-field">
                                     <span class="arf-lbl">TA Range</span>
                                     <div class="d-flex align-items-center gap-2">
-                                        <input type="text" inputmode="decimal" id="arf-ta-from"
+                                        <input type="text" inputmode="numeric" maxlength="4" id="arf-ta-from"
                                                class="form-control form-control-sm arf-input-short"
                                                placeholder="from"
+                                               onkeydown="var k=event.key,v=event.target.value;if(['Backspace','Delete','Tab','ArrowLeft','ArrowRight','Home','End'].includes(k))return;if(k==='.'&&!v.includes('.')&&v.length===1)return;if(/[0-9]/.test(k))return;event.preventDefault();"
                                                value="@_arfTaRangeFrom"
                                                @oninput="SetTaRangeFrom" />
                                         <span style="font-weight:600;">-</span>
-                                        <input type="text" inputmode="decimal" id="arf-ta-to"
+                                        <input type="text" inputmode="numeric" maxlength="4" id="arf-ta-to"
                                                class="form-control form-control-sm arf-input-short"
                                                placeholder="to"
+                                               style="@(TaRangeInvalid ? "border-color:red;background-color:#fff0f0;" : "")"
+                                               onkeydown="var k=event.key,v=event.target.value;if(['Backspace','Delete','Tab','ArrowLeft','ArrowRight','Home','End'].includes(k))return;if(k==='.'&&!v.includes('.')&&v.length===1)return;if(/[0-9]/.test(k))return;event.preventDefault();"
                                                value="@_arfTaRangeTo"
                                                @oninput="SetTaRangeTo" />
                                     </div>
@@ -2891,10 +2894,14 @@
     static string FilterNumericDot(string? raw) =>
         new string((raw ?? "").Where(c => char.IsDigit(c) || c == '.').ToArray());
 
+    bool TaRangeInvalid =>
+        double.TryParse(_arfTaRangeFrom, out var f) &&
+        double.TryParse(_arfTaRangeTo, out var t) && t <= f;
+
     async Task SetTaRangeFrom(ChangeEventArgs e)
     {
         var raw = e.Value?.ToString() ?? "";
-        _arfTaRangeFrom = FilterNumericDot(raw);
+        _arfTaRangeFrom = FormatToneArm(raw);
         if (_arfTaRangeFrom != raw)
             await JSRuntime.InvokeVoidAsync("eval",
                 $"var el=document.getElementById('arf-ta-from');if(el)el.value={System.Text.Json.JsonSerializer.Serialize(_arfTaRangeFrom)};");
@@ -2902,7 +2909,7 @@
     async Task SetTaRangeTo(ChangeEventArgs e)
     {
         var raw = e.Value?.ToString() ?? "";
-        _arfTaRangeTo = FilterNumericDot(raw);
+        _arfTaRangeTo = FormatToneArm(raw);
         if (_arfTaRangeTo != raw)
             await JSRuntime.InvokeVoidAsync("eval",
                 $"var el=document.getElementById('arf-ta-to');if(el)el.value={System.Text.Json.JsonSerializer.Serialize(_arfTaRangeTo)};");
