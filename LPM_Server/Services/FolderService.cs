@@ -2049,6 +2049,52 @@ public class FolderService
         }
     }
 
+    /// <summary>Count pages in a PDF using Ghostscript (for PDFs that PdfSharpCore can't read).</summary>
+    public int? CountPdfPagesViaGhostscript(byte[] pdfBytes, int timeoutMs = 10_000)
+    {
+        if (string.IsNullOrEmpty(_ghostscriptExe) || !File.Exists(_ghostscriptExe)) return null;
+        var id = Guid.NewGuid().ToString("N");
+        var tempIn  = Path.Combine(Path.GetTempPath(), $"lpm_cnt_{id}.pdf");
+        var tempOut = Path.Combine(Path.GetTempPath(), $"lpm_cnt_{id}_out.pdf");
+        try
+        {
+            File.WriteAllBytes(tempIn, pdfBytes);
+            using var proc = new Process();
+            proc.StartInfo = new ProcessStartInfo
+            {
+                FileName = _ghostscriptExe,
+                UseShellExecute = false, CreateNoWindow = true,
+                RedirectStandardOutput = true, RedirectStandardError = true
+            };
+            proc.StartInfo.ArgumentList.Add("-q");
+            proc.StartInfo.ArgumentList.Add("-dNOPAUSE");
+            proc.StartInfo.ArgumentList.Add("-dBATCH");
+            proc.StartInfo.ArgumentList.Add("-sDEVICE=pdfwrite");
+            proc.StartInfo.ArgumentList.Add($"-sOutputFile={tempOut}");
+            proc.StartInfo.ArgumentList.Add(tempIn);
+            proc.Start();
+            proc.StandardOutput.ReadToEnd();
+            bool exited = proc.WaitForExit(timeoutMs);
+            if (!exited) { try { proc.Kill(entireProcessTree: true); } catch { } return null; }
+            if (proc.ExitCode == 0 && File.Exists(tempOut))
+            {
+                // Count pages in the Ghostscript-rewritten PDF via PdfSharpCore (it's now clean)
+                using var ms = new System.IO.MemoryStream(File.ReadAllBytes(tempOut));
+                using var doc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
+                Console.WriteLine($"[FolderSummary/GS] Page count: {doc.PageCount}");
+                return doc.PageCount;
+            }
+            Console.WriteLine($"[FolderSummary/GS] CountPages failed: exit={proc.ExitCode}");
+            return null;
+        }
+        catch (Exception ex) { Console.WriteLine($"[FolderSummary/GS] CountPages error: {ex.Message}"); return null; }
+        finally
+        {
+            try { if (File.Exists(tempIn)) File.Delete(tempIn); } catch { }
+            try { if (File.Exists(tempOut)) File.Delete(tempOut); } catch { }
+        }
+    }
+
     /// <summary>
     /// Repair via LibreOffice pdf→pdf round-trip. Returns repaired bytes, or null on failure/timeout/unavailable.
     /// </summary>

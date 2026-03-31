@@ -632,10 +632,14 @@ app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
     int summaryPageCount  = 0;
     byte[]? combined      = null;
 
-    // ── Step 1: try PdfSharpCore, validate output page count ──────────────
+    // Count original pages via PdfSharpCore
+    try { originalPageCount = pdfSvc.CountPdfPages(originalBytes); }
+    catch (Exception ex) { Console.WriteLine($"[FolderSummary] PdfSharpCore CountPdfPages threw for PC {pcId}: {ex.Message}"); }
+    Console.WriteLine($"[FolderSummary] originalPageCount for PC {pcId}: {originalPageCount}");
+
+    // ── Step 1: try PdfSharpCore combine ──────────────────────────────────
     try
     {
-        originalPageCount = pdfSvc.CountPdfPages(originalBytes);
         var summaryPdf    = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
         summaryPageCount  = pdfSvc.CountPdfPages(summaryPdf);
         var candidate     = pdfSvc.CombinePdfs(summaryPdf, originalBytes);
@@ -662,7 +666,23 @@ app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
         try
         {
             var summaryPdf2 = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
+            summaryPageCount = pdfSvc.CountPdfPages(summaryPdf2);
             combined = folderSvc.CombinePdfsViaGhostscript(summaryPdf2, originalBytes);
+
+            // If originalPageCount was 0 (PdfSharpCore couldn't read it), recover from the combined output
+            if (combined != null && originalPageCount <= 0)
+            {
+                int combinedPages = pdfSvc.CountPdfPages(combined); // GS output is clean, PdfSharpCore can read it
+                originalPageCount = combinedPages - summaryPageCount;
+                Console.WriteLine($"[FolderSummary] Recovered originalPageCount={originalPageCount} from GS combined ({combinedPages} - {summaryPageCount})");
+                if (originalPageCount > 0)
+                {
+                    // Regenerate summary with correct page numbers and recombine
+                    var summaryPdf3 = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
+                    combined = folderSvc.CombinePdfsViaGhostscript(summaryPdf3, originalBytes);
+                }
+            }
+
             if (combined == null)
                 Console.WriteLine($"[FolderSummary] Ghostscript returned null for PC {pcId} path={path}");
         }
