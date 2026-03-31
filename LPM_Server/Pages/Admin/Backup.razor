@@ -547,7 +547,8 @@
 
     async Task TriggerAndWait(string token, string endpoint, string expectedPhase)
     {
-        await JS.InvokeVoidAsync("lpmTriggerDownload", endpoint + "?token=" + token, "");
+        var dlName = expectedPhase == "user" ? "LPM-UserBackup.zip" : "LPM-ServerBackup.zip";
+        await JS.InvokeVoidAsync("lpmTriggerDownload", endpoint + "?token=" + token, dlName);
 
         // Wait up to 8 seconds for the server to start this phase
         var startWait = 0;
