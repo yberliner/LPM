@@ -3053,16 +3053,17 @@
                 })();
             ");
 
-            // Ctrl+Z → Undo
+            // Ctrl+Z → Undo, Ctrl+S → Save, Ctrl+W → CS Done
             await JS.InvokeVoidAsync("eval", @"
                 document.addEventListener('keydown', function(e) {
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-                        var el = document.activeElement;
-                        if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return;
-                        e.preventDefault();
-                        if (window.pcfViewer && window.pcfViewer.dotNetRef)
-                            window.pcfViewer.dotNetRef.invokeMethodAsync('OnCtrlZ');
-                    }
+                    if (!(e.ctrlKey || e.metaKey)) return;
+                    var el = document.activeElement;
+                    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return;
+                    var ref = window.pcfViewer && window.pcfViewer.dotNetRef;
+                    if (!ref) return;
+                    if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); ref.invokeMethodAsync('OnCtrlZ'); }
+                    else if (e.key === 's') { e.preventDefault(); ref.invokeMethodAsync('OnCtrlS'); }
+                    else if (e.key === 'w') { e.preventDefault(); ref.invokeMethodAsync('OnCtrlW'); }
                 });
             ");
 
@@ -3908,6 +3909,18 @@
     public async Task OnCtrlZ()
     {
         await Undo();
+    }
+
+    [JSInvokable]
+    public async Task OnCtrlS()
+    {
+        await InvokeAsync(async () => { await SaveAnnotations(); StateHasChanged(); });
+    }
+
+    [JSInvokable]
+    public async Task OnCtrlW()
+    {
+        await InvokeAsync(async () => { await DoneCs(); StateHasChanged(); });
     }
 
     async Task ZoomIn()
