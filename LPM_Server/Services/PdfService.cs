@@ -2450,10 +2450,19 @@ public class PdfService
             var indentMatch = Regex.Match(block, @"ql-indent-(\d)", RegexOptions.IgnoreCase);
             int indentLevel = indentMatch.Success ? int.Parse(indentMatch.Groups[1].Value) : 0;
 
+            // Detect Quill alignment classes (ql-align-center, ql-align-right, ql-align-justify)
+            string? qAlign = null;
+            if (block.Contains("ql-align-center", StringComparison.OrdinalIgnoreCase)) qAlign = "center";
+            else if (block.Contains("ql-align-right", StringComparison.OrdinalIgnoreCase)) qAlign = "right";
+            else if (block.Contains("ql-align-justify", StringComparison.OrdinalIgnoreCase)) qAlign = "justify";
+            Console.WriteLine($"  [RenderHtml] block align={qAlign ?? "none"}, rtl={isRtl}, indent={indentLevel}");
+
             var item = col.Item().PaddingHorizontal(4).PaddingVertical(1);
             if (indentLevel > 0)
                 item = item.PaddingLeft(indentLevel * 24);
-            if (isRtl)
+            if (qAlign == "center")
+                item = item.AlignCenter();
+            else if (qAlign == "right" || isRtl)
                 item = item.AlignRight();
 
             item.Text(text =>
