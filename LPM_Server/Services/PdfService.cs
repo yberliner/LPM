@@ -1892,141 +1892,26 @@ public class PdfService
     // ── Memo PDF ──────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Converts Quill HTML to a single A4 PDF page. Auto-sizes the font so the content fits.
-    /// Paragraphs with class "ql-direction-rtl" are right-aligned.
+    /// Converts Quill HTML to a single A4 PDF page using QuestPDF + RenderHtmlBlock
+    /// (same pipeline as Next C/S PDFs). Supports lists, formatting, RTL, etc.
     /// </summary>
     public byte[] GenerateMemoPdf(string html)
     {
-        const double pw = 595.28, ph = 841.89, margin = 30.0;
-        double cw       = pw - 2 * margin;
-        double contentH = ph - 2 * margin;
-        const double lineSpacingFactor = 1.45;
-        const double paraGap           = 10.0;
-
-        // ── Parse paragraphs ──────────────────────────────────────────────────
-        var paragraphs = new List<(string Text, bool Rtl)>();
-        foreach (Match p in Regex.Matches(html, @"<p([^>]*)>(.*?)</p>",
-            RegexOptions.Singleline | RegexOptions.IgnoreCase))
+        QuestPDF.Settings.License = LicenseType.Community;
+        return Document.Create(container =>
         {
-            var attrs = p.Groups[1].Value;
-            var inner = p.Groups[2].Value;
-            bool rtl  = attrs.Contains("ql-direction-rtl",  StringComparison.OrdinalIgnoreCase)
-                     || attrs.Contains("dir=\"rtl\"",        StringComparison.OrdinalIgnoreCase)
-                     || attrs.Contains("dir='rtl'",          StringComparison.OrdinalIgnoreCase);
-            // Strip HTML tags, decode HTML entities
-            var text = System.Net.WebUtility.HtmlDecode(
-                Regex.Replace(inner, "<[^>]+>", "").Trim());
-            // Quill emits ​ (zero-width space) for empty paragraphs — treat as blank
-            text = text.Replace("\u200B", "").Trim();
-            // Also detect RTL from the presence of Hebrew or Arabic characters
-            bool hasRtlChars = text.Any(c =>
-                (c >= '\u0590' && c <= '\u05FF') || // Hebrew block
-                (c >= '\u0600' && c <= '\u06FF') || // Arabic block
-                (c >= '\uFB1D' && c <= '\uFB4F') || // Hebrew presentation forms
-                (c >= '\uFB50' && c <= '\uFDFF'));   // Arabic presentation forms
-            paragraphs.Add((text, rtl || hasRtlChars));
-        }
-        if (paragraphs.Count == 0)
-            paragraphs.Add(("", false));
-
-        // ── Font factory (same fallback chain as ARF) ─────────────────────────
-        PdfSharpCore.Drawing.XFont MakeFont(double pt)
-        {
-            foreach (var fn in new[] { "DejaVu Sans", "Arial", "Liberation Sans", "Helvetica" })
-                try { return new PdfSharpCore.Drawing.XFont(fn, pt, PdfSharpCore.Drawing.XFontStyle.Regular); }
-                catch { }
-            return new PdfSharpCore.Drawing.XFont("Courier New", pt, PdfSharpCore.Drawing.XFontStyle.Regular);
-        }
-
-        // ── Word-wrap helper ──────────────────────────────────────────────────
-        static List<string> Wrap(string text,
-            PdfSharpCore.Drawing.XGraphics g,
-            PdfSharpCore.Drawing.XFont f, double maxW)
-        {
-            var lines = new List<string>();
-            if (string.IsNullOrEmpty(text)) { lines.Add(""); return lines; }
-            var words = text.Split(' ');
-            var cur   = new System.Text.StringBuilder();
-            foreach (var w in words)
+            container.Page(page =>
             {
-                var candidate = cur.Length == 0 ? w : cur + " " + w;
-                if (g.MeasureString(candidate, f).Width <= maxW)
+                page.Size(PageSizes.A4);
+                page.Margin(30);
+                page.DefaultTextStyle(x => x.FontSize(14).FontColor("#1a1a1a"));
+                page.Content().ScaleToFit().Column(col =>
                 {
-                    if (cur.Length > 0) cur.Append(' ');
-                    cur.Append(w);
-                }
-                else
-                {
-                    if (cur.Length > 0) lines.Add(cur.ToString());
-                    cur.Clear().Append(w);
-                }
-            }
-            if (cur.Length > 0) lines.Add(cur.ToString());
-            if (lines.Count == 0) lines.Add("");
-            return lines;
-        }
-
-        // ── Build document ────────────────────────────────────────────────────
-        var doc  = new PdfSharpCore.Pdf.PdfDocument();
-        var page = doc.AddPage();
-        page.Width  = PdfSharpCore.Drawing.XUnit.FromPoint(pw);
-        page.Height = PdfSharpCore.Drawing.XUnit.FromPoint(ph);
-
-        using (var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page))
-        {
-            // ── Find the largest font size that fits one page ─────────────────
-            double fs = 32.0;
-            while (fs > 8.0)
-            {
-                var probe     = MakeFont(fs);
-                double probeLh = fs * lineSpacingFactor;
-                double tot    = 0;
-                bool first    = true;
-                foreach (var (text, _) in paragraphs)
-                {
-                    if (!first) tot += paraGap;
-                    first = false;
-                    tot += Wrap(text, gfx, probe, cw).Count * probeLh;
-                }
-                if (tot <= contentH) break;
-                fs -= 1.0;
-            }
-
-            // ── Draw ──────────────────────────────────────────────────────────
-            var font  = MakeFont(fs);
-            double lh = fs * lineSpacingFactor;
-
-            var fmtL = new PdfSharpCore.Drawing.XStringFormat {
-                Alignment     = PdfSharpCore.Drawing.XStringAlignment.Near,
-                LineAlignment = PdfSharpCore.Drawing.XLineAlignment.Near };
-            var fmtR = new PdfSharpCore.Drawing.XStringFormat {
-                Alignment     = PdfSharpCore.Drawing.XStringAlignment.Far,
-                LineAlignment = PdfSharpCore.Drawing.XLineAlignment.Near };
-            var brush = PdfSharpCore.Drawing.XBrushes.Black;
-
-            double y = margin;
-            bool firstPara = true;
-            foreach (var (text, rtl) in paragraphs)
-            {
-                if (!firstPara) y += paraGap;
-                firstPara = false;
-                var fmt = rtl ? fmtR : fmtL;
-                // Wrap in logical order, then reverse each line individually for RTL.
-                // This preserves correct word-order across line breaks while giving
-                // PdfSharpCore the visual (reversed) character sequence it needs.
-                foreach (var line in Wrap(text, gfx, font, cw))
-                {
-                    var draw = rtl ? new string(line.Reverse().ToArray()) : line;
-                    gfx.DrawString(draw, font, brush,
-                        new PdfSharpCore.Drawing.XRect(margin, y, cw, lh), fmt);
-                    y += lh;
-                }
-            }
-        } // gfx disposed — content stream flushed before Save
-
-        using var ms = new System.IO.MemoryStream();
-        doc.Save(ms);
-        return ms.ToArray();
+                    if (!string.IsNullOrWhiteSpace(html))
+                        RenderHtmlBlock(col, html, 2f);
+                });
+            });
+        }).GeneratePdf();
     }
 
     private static List<(string Text, PdfSharpCore.Drawing.XColor? Color)> ArfSummaryLines(string html)
@@ -2554,14 +2439,20 @@ public class PdfService
                       || Regex.IsMatch(blockText, @"[\u0590-\u05FF\u0600-\u06FF\uFB50-\uFDFF\uFE70-\uFEFF]");
 
             // Check for empty paragraph (<p><br></p>)
-            var innerHtml = Regex.Replace(block, @"^<[^>]+>|</[^>]+>$", "").Trim();
-            if (string.IsNullOrEmpty(innerHtml) || innerHtml == "<br>" || innerHtml == "<br/>")
+            var innerHtml = Regex.Replace(block, @"^<[^>]+>|</[^>]+>$", "");
+            if (string.IsNullOrWhiteSpace(innerHtml) || innerHtml.Trim() == "<br>" || innerHtml.Trim() == "<br/>")
             {
                 col.Item().PaddingTop(4);
                 continue;
             }
 
+            // Detect Quill indent level (ql-indent-1 through ql-indent-8)
+            var indentMatch = Regex.Match(block, @"ql-indent-(\d)", RegexOptions.IgnoreCase);
+            int indentLevel = indentMatch.Success ? int.Parse(indentMatch.Groups[1].Value) : 0;
+
             var item = col.Item().PaddingHorizontal(4).PaddingVertical(1);
+            if (indentLevel > 0)
+                item = item.PaddingLeft(indentLevel * 24);
             if (isRtl)
                 item = item.AlignRight();
 
@@ -2610,7 +2501,11 @@ public class PdfService
                     if (part.StartsWith("<")) continue;
 
                     // Render text span with accumulated styles
-                    var decoded = System.Net.WebUtility.HtmlDecode(part);
+                    // Replace tabs with 4 non-breaking spaces; preserve consecutive spaces
+                    // by converting them to non-breaking spaces (QuestPDF collapses regular spaces)
+                    var decoded = System.Net.WebUtility.HtmlDecode(part)
+                        .Replace("\t", "\u00a0\u00a0\u00a0\u00a0")
+                        .Replace("  ", "\u00a0\u00a0");
                     var span = text.Span(decoded).FontSize(fontSize);
                     if (bold) span = span.SemiBold();
                     if (italic) span = span.Italic();

@@ -4494,13 +4494,22 @@ string _actionPcSearch = "";
                     window._memoQuill = new Quill(el, {
                         theme: 'snow',
                         placeholder: 'Type memo text...',
-                        modules: { toolbar: [
-                            ['bold', 'italic', 'underline'],
-                            [{ 'color': [] }],
-                            [{ 'size': ['10px', '14px', '18px', '24px'] }],
-                            [{ 'align': [] }],
-                            ['clean']
-                        ]}
+                        modules: {
+                            keyboard: { bindings: {
+                                tab: { key: 9, handler: function() {
+                                    var range = this.quill.getSelection();
+                                    if (range) this.quill.insertText(range.index, '\t');
+                                    return false;
+                                }}
+                            }},
+                            toolbar: [
+                                ['bold', 'italic', 'underline'],
+                                [{ 'color': [] }],
+                                [{ 'size': ['10px', '14px', '18px', '24px'] }],
+                                [{ 'align': [] }],
+                                ['clean']
+                            ]
+                        }
                     });
 
                     // ── Tooltips on standard buttons ──────────────────────────
@@ -4564,6 +4573,8 @@ string _actionPcSearch = "";
         var capturedPcName   = _memoPcs.FirstOrDefault(p => p.PcId == _memoPcId)?.FullName ?? "";
         var capturedDate     = DateOnly.FromDateTime(DateTime.Today);
         var capturedMemoName = DateTime.Today.ToString("yyMMdd") + " memo";
+
+        Console.WriteLine($"[Memo] Quill HTML: {html}");
 
         // Close modal immediately, start toast
         _showMemoWizard = false;
