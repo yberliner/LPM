@@ -916,12 +916,20 @@
             </div>
         </div>
 
-        @if (_csLocked)
+        @if (_csLocked && !string.IsNullOrEmpty(_csEvictedBy))
+        {
+            <div class="pcf-lock-banner">
+                <i class="ri-logout-circle-line me-2"></i>
+                <strong>@_csEvictedBy</strong> has taken control of this session. You can view but cannot mark as done.
+            </div>
+        }
+        else if (_csLocked)
         {
             <div class="pcf-lock-banner">
                 <i class="ri-lock-line me-2"></i>
-                This session is already being CSed by <strong>@_csLockedBy</strong> in another tab.
-                You can view the files but cannot mark CS as done.
+                This session is already open by <strong>@_csLockedBy</strong>.
+                You can view the files but cannot mark as done.
+                <button class="btn btn-sm btn-warning ms-2 py-0 px-2" style="font-size:.78rem;font-weight:600;" @onclick="TakeControl">Take Control</button>
             </div>
         }
         @if (_csAlreadyDone && !_csAlreadyDoneBannerDismissed)
@@ -2612,9 +2620,11 @@
     string SoloParam => Solo ? "&solo=true" : "";
 
     // ── Active CS session tracker (shared across all circuits) ──
-    static readonly System.Collections.Concurrent.ConcurrentDictionary<int, string> _activeCsSessions = new();
+    // Value: (UserName, ComponentInstance) — object avoids self-referential type issue in Razor
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<int, (string UserName, object Instance)> _activeCsSessions = new();
     bool _csLocked;        // true if another tab is already CSing this session
     string? _csLockedBy;   // who is CSing it
+    string? _csEvictedBy;  // set when another user takes control
 
     static readonly string[] PaneIds = ["p1", "p2", "p3"];
 
@@ -2929,15 +2939,15 @@
                 _csSessionName   = DashSvc.GetSessionName(_csSessionId);
                 _csReviewMinutes = (int)Math.Round(DashSvc.GetSessionTotalSeconds(_csSessionId) / 60.0);
                 var csUserName   = DashSvc.GetPersonName(UserPersonId) ?? $"User {UserPersonId}";
-                if (_activeCsSessions.TryGetValue(_csSessionId, out var existingUser))
+                if (_activeCsSessions.TryGetValue(_csSessionId, out var existingLock))
                 {
                     _csLocked   = true;
-                    _csLockedBy = existingUser;
-                    Console.WriteLine($"[PcFolder] CS session {_csSessionId} LOCKED — already being CSed by '{existingUser}', attempted by '{_userName}'");
+                    _csLockedBy = existingLock.UserName;
+                    Console.WriteLine($"[PcFolder] CS session {_csSessionId} LOCKED — already open by '{existingLock.UserName}', attempted by '{_userName}'");
                 }
                 else
                 {
-                    _activeCsSessions[_csSessionId] = csUserName;
+                    _activeCsSessions[_csSessionId] = (csUserName, (object)this);
                     Console.WriteLine($"[PcFolder] CS session {_csSessionId} ('{_csSessionName}') started by '{_userName}' for PC {PcId}");
                 }
                 _csAlreadyDone = _csedSessionIds.Contains(_csSessionId);
@@ -4326,6 +4336,58 @@
         }
     }
 
+    // Called by another instance to evict this user from the session lock
+    public async Task EvictFromSession(string byUserName)
+    {
+        Console.WriteLine($"[PcFolder] '{_userName}' evicted from session {_csSessionId} by '{byUserName}' — PC {PcId}");
+        await InvokeAsync(() =>
+        {
+            _csLocked = true;
+            _csLockedBy = byUserName;
+            _csEvictedBy = byUserName;
+            StateHasChanged();
+        });
+    }
+
+    async Task TakeControl()
+    {
+        if (_csSessionId <= 0 || !_csLocked) return;
+        var csUserName = DashSvc.GetPersonName(UserPersonId) ?? $"User {UserPersonId}";
+        Console.WriteLine($"[PcFolder] '{_userName}' attempting to take control of session {_csSessionId} — PC {PcId}");
+
+        // Evict the current lock holder
+        if (_activeCsSessions.TryGetValue(_csSessionId, out var oldLock))
+        {
+            // Overwrite the lock with ourselves
+            _activeCsSessions[_csSessionId] = (csUserName, (object)this);
+            Console.WriteLine($"[PcFolder] '{_userName}' took control of session {_csSessionId} from '{oldLock.UserName}' — PC {PcId}");
+
+            // Notify the evicted user
+            try
+            {
+                if (oldLock.Instance is PcFolder oldComponent)
+                    await oldComponent.EvictFromSession(csUserName);
+                else
+                    Console.WriteLine($"[PcFolder] WARNING: old lock instance is not PcFolder — cannot notify evicted user");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PcFolder] Failed to notify evicted user '{oldLock.UserName}': {ex.Message} (circuit may be dead)");
+            }
+        }
+        else
+        {
+            // Lock entry gone (previous user already closed) — just take it
+            _activeCsSessions[_csSessionId] = (csUserName, (object)this);
+            Console.WriteLine($"[PcFolder] '{_userName}' claimed session {_csSessionId} (no previous lock) — PC {PcId}");
+        }
+
+        _csLocked = false;
+        _csLockedBy = null;
+        _csEvictedBy = null;
+        Console.WriteLine($"[PcFolder] '{_userName}' now has control of session {_csSessionId} — PC {PcId}");
+    }
+
     async Task CloseToHome()
     {
         // In active CS mode, warn before closing without marking Done
@@ -4426,8 +4488,9 @@
     {
         Console.WriteLine($"[PcFolder] Closed PC folder for '{_pcName}' (PC {PcId}) by '{_userName}'{(_csSessionId > 0 ? $" — CS session {_csSessionId} released" : "")}");
         try { JS.InvokeVoidAsync("lpmVoice.stop"); } catch { }
-        // Unregister this session from active CS tracker (only if we own it)
-        if (_csSessionId > 0 && !_csLocked)
+        // Unregister this session from active CS tracker (only if we still own it)
+        if (_csSessionId > 0 && !_csLocked
+            && _activeCsSessions.TryGetValue(_csSessionId, out var lockInfo) && ReferenceEquals(lockInfo.Instance, this))
             _activeCsSessions.TryRemove(_csSessionId, out _);
         _dotNetRef?.Dispose();
         _dupeCts?.Dispose();
