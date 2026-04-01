@@ -1309,12 +1309,11 @@
                                         }
                                     </span>
                                     <input type="text" inputmode="numeric" maxlength="5"
-                                           class="form-control form-control-sm arf-input-xs arf-time-input @(!IsValidArfTime(_arfSessionLength) ? "arf-invalid" : "")"
+                                           class="form-control form-control-sm arf-input-xs arf-time-input"
                                            style="@(string.IsNullOrWhiteSpace(_arfSessionLength) ? "border:2px solid #ef4444 !important;background:rgba(239,68,68,.08) !important;" : "")"
                                            placeholder="H:MM"
                                            value="@_arfSessionLength"
-                                           @oninput="e => _arfSessionLength = e.Value?.ToString() ?? string.Empty"
-                                           @onchange="e => _arfSessionLength = FormatArfTime(e.Value?.ToString()?.Trim() ?? string.Empty)" />
+                                           @oninput="e => _arfSessionLength = e.Value?.ToString() ?? string.Empty" />
                                 </div>
                             </div>
 
@@ -1546,7 +1545,7 @@
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showImportWizard = false">Cancel</button>
                         <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                                disabled="@(_importSessionBytes == null || _importDuplicate || !string.IsNullOrEmpty(_importNameEditError) || string.IsNullOrEmpty(_importNormalizedFileName) || (!IsArfTableEmpty && ArfHasTimeErrors) || string.IsNullOrWhiteSpace(_arfSessionLength) || !IsValidArfTime(_arfSessionLength))"
+                                disabled="@(_importSessionBytes == null || _importDuplicate || !string.IsNullOrEmpty(_importNameEditError) || string.IsNullOrEmpty(_importNormalizedFileName) || (!IsArfTableEmpty && ArfHasTimeErrors) || string.IsNullOrWhiteSpace(_arfSessionLength))"
                                 @onclick="GoToStep3">
                             Next <i class="ri-arrow-right-s-line"></i>
                         </button>
@@ -1569,13 +1568,12 @@
                                 </span>
                                 <input type="text" inputmode="numeric" maxlength="5"
                                        class="form-control form-control-sm arf-time-input"
-                                       style="width:72px; @(string.IsNullOrWhiteSpace(_arfAdminTime) || !IsValidArfTime(_arfAdminTime) ? "border:2px solid #ef4444 !important;background:rgba(239,68,68,.08) !important;" : "")"
+                                       style="width:72px; color:#e2e8f0; background:#1e293b; border-color:#475569; @(string.IsNullOrWhiteSpace(_arfAdminTime) ? "border:2px solid #ef4444 !important;background:rgba(239,68,68,.08) !important;" : "")"
                                        placeholder="H:MM"
                                        value="@_arfAdminTime"
-                                       @oninput="e => _arfAdminTime = e.Value?.ToString() ?? string.Empty"
-                                       @onchange="e => _arfAdminTime = FormatArfTime(e.Value?.ToString()?.Trim() ?? string.Empty)" />
+                                       @oninput="e => _arfAdminTime = e.Value?.ToString() ?? string.Empty" />
                                 <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                                        disabled="@(string.IsNullOrWhiteSpace(_arfAdminTime) || !IsValidArfTime(_arfAdminTime))"
+                                        disabled="@(string.IsNullOrWhiteSpace(_arfAdminTime))"
                                         @onclick="ExecuteImport">
                                     <i class="ri-upload-2-line"></i>
                                     Go
@@ -3251,6 +3249,7 @@
 
     void GoToStep3()
     {
+        _arfSessionLength = FormatArfTime(_arfSessionLength.Trim());
         _showArfSkipBadge    = IsArfTableEmpty;
         // Pre-fill bottom editor with previous session's NextCS
         var prevNextCs = _importPcId > 0 ? DashSvc.GetLastNextCs(_importPcId) : null;
@@ -3528,7 +3527,7 @@
         var capturedFreeSession = _importFreeSession;
         var capturedGrade       = _arfGrade;
         var capturedSessLen     = _arfSessionLength;
-        var capturedAdminTime   = _arfAdminTime;
+        var capturedAdminTime   = FormatArfTime(_arfAdminTime.Trim());
         var capturedTotalTa     = _arfTotalTa;
         var capturedTaFrom      = _arfTaRangeFrom;
         var capturedTaTo        = _arfTaRangeTo;
