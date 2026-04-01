@@ -42,8 +42,8 @@ public record UserSalaryGroup(int PersonId, string FullName, List<SalarySessionR
 public record StaffMessage(int Id, int FromId, string FromName, int ToId, string ToName, string MsgText, string CreatedAt, string? AcknowledgedAt);
 
 public record PermissionRequest(int Id, int UserId, string AuditorName, int PcId, string PcName, string RequestedAt);
-public record ApprovedPcEntry(int Id, int PcId, string PcName, string WorkCapacity = "Auditor");
-public record AuditorPermGroup(int AuditorId, string AuditorName, bool AllowAll, List<ApprovedPcEntry> ApprovedPcs, string StaffRole = "Auditor");
+public record ApprovedPcEntry(int Id, int PcId, string PcName, string WorkCapacity = StaffRoles.Auditor);
+public record AuditorPermGroup(int AuditorId, string AuditorName, bool AllowAll, List<ApprovedPcEntry> ApprovedPcs, string StaffRole = StaffRoles.Auditor);
 
 public class DashboardService
 {
@@ -387,9 +387,9 @@ public class DashboardService
 
         // No existing record — create a pending request
         using var insCmd = conn.CreateCommand();
-        insCmd.CommandText = @"
+        insCmd.CommandText = $@"
             INSERT OR IGNORE INTO sys_staff_pc_list (UserId, PcId, WorkCapacity, IsApproved, RequestedAt)
-            VALUES (@aud, @pc, 'Auditor', 0, datetime('now'))";
+            VALUES (@aud, @pc, '{StaffRoles.Auditor}', 0, datetime('now'))";
         insCmd.Parameters.AddWithValue("@aud", auditorId);
         insCmd.Parameters.AddWithValue("@pc",  pcId);
         var inserted = insCmd.ExecuteNonQuery();
@@ -532,7 +532,7 @@ public class DashboardService
             SELECT u.PersonId,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS Name,
                    COALESCE(u.AllowAll, 0),
-                   COALESCE(u.StaffRole, 'Auditor')
+                   COALESCE(u.StaffRole, '{StaffRoles.Auditor}')
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
             WHERE u.IsActive = 1 AND u.StaffRole IN {StaffRoles.SqlInAuditorCSSolo()}
@@ -580,7 +580,7 @@ public class DashboardService
     }
 
     /// Admin adds a PC permission directly (approved).
-    public void AddApprovedPermission(int auditorId, int pcId, string workCapacity = "Auditor")
+    public void AddApprovedPermission(int auditorId, int pcId, string workCapacity = StaffRoles.Auditor)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -660,6 +660,7 @@ public class DashboardService
         if (ar.Read())
         {
             if (ar.GetString(1) == StaffRoles.Solo) return pcId == personId; // Solo: own PC only (ignore AllowAll)
+            if (ar.GetString(1) == StaffRoles.SeniorCS) return true; // SeniorCS: any PC
             if (ar.GetInt32(0) == 1) return true;                   // AllowAll (non-Solo only)
         }
         ar.Close();
@@ -687,9 +688,39 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = $"SELECT 1 FROM core_users WHERE PersonId = @id AND IsActive = 1 AND StaffRole IN ('CS','SeniorCS') LIMIT 1";
+        cmd.CommandText = $"SELECT 1 FROM core_users WHERE PersonId = @id AND IsActive = 1 AND StaffRole IN {StaffRoles.SqlInCS()} LIMIT 1";
         cmd.Parameters.AddWithValue("@id", userId);
         return cmd.ExecuteScalar() is not null;
+    }
+
+    public bool IsSeniorCS(int userId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"SELECT 1 FROM core_users WHERE PersonId = @id AND IsActive = 1 AND StaffRole = '{StaffRoles.SeniorCS}' LIMIT 1";
+        cmd.Parameters.AddWithValue("@id", userId);
+        return cmd.ExecuteScalar() is not null;
+    }
+
+    /// <summary>Returns all active CS/SeniorCS staff, excluding the given user.</summary>
+    public List<(int PersonId, string FullName)> GetCsStaffList(int excludeUserId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $@"
+            SELECT u.PersonId, TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName
+            FROM core_users u
+            JOIN core_persons p ON p.PersonId = u.PersonId
+            WHERE u.StaffRole IN {StaffRoles.SqlInCS()} AND u.IsActive = 1 AND u.PersonId != @exclude
+            ORDER BY p.FirstName, p.LastName";
+        cmd.Parameters.AddWithValue("@exclude", excludeUserId);
+        var list = new List<(int, string)>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add((r.GetInt32(0), r.GetString(1)));
+        return list;
     }
 
     public List<PcInfo> GetUserPcs(int userId)
@@ -746,12 +777,12 @@ public class DashboardService
         var list = new List<PcInfo>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add(new PcInfo(r.GetInt32(0), r.GetString(1), "Auditor", r.GetString(2), r.GetInt32(3) == 1));
+            list.Add(new PcInfo(r.GetInt32(0), r.GetString(1), StaffRoles.Auditor, r.GetString(2), r.GetInt32(3) == 1));
 
         return list;
     }
 
-    public void AddUserPc(int userId, int pcId, string workCapacity = "Auditor")
+    public void AddUserPc(int userId, int pcId, string workCapacity = StaffRoles.Auditor)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -768,7 +799,7 @@ public class DashboardService
         Console.WriteLine($"[DashboardService] Added PC {pcId} to user {userId} as {workCapacity}");
     }
 
-    public void RemoveUserPc(int userId, int pcId, string workCapacity = "Auditor")
+    public void RemoveUserPc(int userId, int pcId, string workCapacity = StaffRoles.Auditor)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -800,8 +831,8 @@ public class DashboardService
         var dates    = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
         var dateList = string.Join(",", dates.Select(d => $"'{d:yyyy-MM-dd}'"));
 
-        var auditorPcIds = userPcs.Where(p => p.WorkCapacity == "Auditor").Select(p => p.PcId).ToList();
-        var csPcIds      = userPcs.Where(p => p.WorkCapacity == "CS").Select(p => p.PcId).ToList();
+        var auditorPcIds = userPcs.Where(p => p.WorkCapacity == StaffRoles.Auditor).Select(p => p.PcId).ToList();
+        var csPcIds      = userPcs.Where(p => p.WorkCapacity == StaffRoles.CS).Select(p => p.PcId).ToList();
         var soloAuditorIds = csPcIds.Count > 0 ? GetSoloPcIds().Intersect(csPcIds).ToList() : new List<int>();
 
         using var conn = new SqliteConnection(_connectionString);
@@ -917,7 +948,7 @@ public class DashboardService
         conn.Open();
         var dateStr = date.ToString("yyyy-MM-dd");
 
-        if (role == "Auditor")
+        if (role == StaffRoles.Auditor)
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
@@ -1259,7 +1290,7 @@ public class DashboardService
             return weeks.Select(w => new WeekTotal(w, 0)).ToList();
 
         var startStr = weeks[0].ToString("yyyy-MM-dd");
-        var auditorPcIds = userPcs.Where(p => p.WorkCapacity == "Auditor").Select(p => p.PcId).ToList();
+        var auditorPcIds = userPcs.Where(p => p.WorkCapacity == StaffRoles.Auditor).Select(p => p.PcId).ToList();
 
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -1352,7 +1383,7 @@ public class DashboardService
     {
         var result = new HashSet<(int pcId, int dayIndex)>();
 
-        var allCsPcIds   = userPcs.Where(p => p.WorkCapacity == "CS").Select(p => p.PcId).ToList();
+        var allCsPcIds   = userPcs.Where(p => p.WorkCapacity == StaffRoles.CS).Select(p => p.PcId).ToList();
         var soloSet      = allCsPcIds.Count > 0 ? GetSoloPcIds() : new HashSet<int>();
         var soloPcIds    = allCsPcIds.Where(id => soloSet.Contains(id)).ToList();
         var regularPcIds = allCsPcIds.Where(id => !soloSet.Contains(id)).ToList();
@@ -1647,7 +1678,7 @@ public class DashboardService
         }
 
         // Regular mode: auditor sessions only (CS excluded from graph)
-        var auditorPcIds = userPcs.Where(p => p.WorkCapacity == "Auditor").Select(p => p.PcId).ToList();
+        var auditorPcIds = userPcs.Where(p => p.WorkCapacity == StaffRoles.Auditor).Select(p => p.PcId).ToList();
 
         if (auditorPcIds.Count > 0)
         {
@@ -2177,7 +2208,7 @@ public class DashboardService
             JOIN sys_staff_pc_list spl ON spl.PcId = s.PcId
                 AND spl.UserId = @csUserId
                 AND spl.IsApproved IN (0,1)
-                AND spl.WorkCapacity = 'CS'
+                AND spl.WorkCapacity = '{StaffRoles.CS}'
             LEFT JOIN core_persons pa ON pa.PersonId = s.AuditorId
             LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
             WHERE 1=1
@@ -2260,7 +2291,7 @@ public class DashboardService
                 JOIN core_persons p ON p.PersonId = s.PcId
                 JOIN sys_staff_pc_list spl ON spl.PcId = s.PcId
                     AND spl.UserId = @aid
-                    AND spl.WorkCapacity = 'Auditor'
+                    AND spl.WorkCapacity = '{StaffRoles.Auditor}'
                     AND spl.IsApproved IN (0,1)
                 LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
                 LEFT JOIN core_persons pc ON pc.PersonId = cr.CsId

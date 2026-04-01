@@ -153,8 +153,8 @@
                                             title="@aud.AuditorName — @pc.FullName">
                                             @if (hasPerm)
                                             {
-                                                var cap = aud.ApprovedPcs.FirstOrDefault(p => p.PcId == pc.PcId)?.WorkCapacity ?? "Auditor";
-                                                <span class="@(cap == "CS" ? "sp-mx-cs" : "sp-mx-aud")">@(cap == "CS" ? "CS" : "A")</span>
+                                                var cap = aud.ApprovedPcs.FirstOrDefault(p => p.PcId == pc.PcId)?.WorkCapacity ?? StaffRoles.Auditor;
+                                                <span class="@(cap == StaffRoles.CS ? "sp-mx-cs" : "sp-mx-aud")">@(cap == StaffRoles.CS ? "CS" : "A")</span>
                                             }
                                             else
                                             {
@@ -723,7 +723,7 @@
         foreach (var aud in _auditors)
         {
             _addPcSelection.TryAdd(aud.AuditorId, 0);
-            _addPcCapacity.TryAdd(aud.AuditorId, "Auditor");
+            _addPcCapacity.TryAdd(aud.AuditorId, StaffRoles.Auditor);
         }
 
         _loading = false;
@@ -777,7 +777,7 @@
         var pc = _allPcs.FirstOrDefault(p => p.PcId == pcId);
         if (pc is null) return;
 
-        var capacity = _addPcCapacity.GetValueOrDefault(auditorId, "Auditor");
+        var capacity = _addPcCapacity.GetValueOrDefault(auditorId, StaffRoles.Auditor);
         Console.WriteLine($"[StaffPermissions] Added permission for auditor {auditorId} -> PC {pcId} ({pc.FullName}) as {capacity} by '{_username}'");
         _busy = true;
         DashSvc.AddApprovedPermission(auditorId, pcId, capacity);
@@ -817,13 +817,13 @@
         {
             // No perm → grant as Auditor
             Console.WriteLine($"[StaffPermissions] MatrixToggle: granted Auditor — auditor='{aud.AuditorName}' (id={aud.AuditorId}) PC='{pcName}' (id={pcId}) by '{_username}'");
-            DashSvc.AddApprovedPermission(aud.AuditorId, pcId, "Auditor");
+            DashSvc.AddApprovedPermission(aud.AuditorId, pcId, StaffRoles.Auditor);
         }
-        else if (existing.WorkCapacity == "Auditor" && StaffRoles.IsCS(aud.StaffRole))
+        else if (existing.WorkCapacity == StaffRoles.Auditor && StaffRoles.IsCS(aud.StaffRole))
         {
             // Auditor → CS (only for CS staff)
             Console.WriteLine($"[StaffPermissions] MatrixToggle: upgraded Auditor→CS — auditor='{aud.AuditorName}' (id={aud.AuditorId}) PC='{pcName}' (id={pcId}) by '{_username}'");
-            DashSvc.AddApprovedPermission(aud.AuditorId, pcId, "CS");
+            DashSvc.AddApprovedPermission(aud.AuditorId, pcId, StaffRoles.CS);
         }
         else
         {

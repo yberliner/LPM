@@ -1,6 +1,7 @@
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
+using LPM;
 using LPM.Services;   // PcInfo lives here in your project
 using SkiaSharp;
 using System.Text.RegularExpressions;
@@ -22,11 +23,11 @@ public class PdfService
         bool hasData(PcInfo pc) => Enumerable.Range(0, 7).Any(d => grid.GetValueOrDefault((DashboardService.GKey(pc), d)) > 0);
         // Solo CS PCs: CS-assigned PCs that are solo auditors — shown with negative GKey
         var csSoloPcs = pcs
-            .Where(pc => pc.WorkCapacity == "CS" && (soloPcIds?.Contains(pc.PcId) ?? false))
+            .Where(pc => pc.WorkCapacity == StaffRoles.CS && (soloPcIds?.Contains(pc.PcId) ?? false))
             .Select(pc => pc with { WorkCapacity = "CSSolo" })
             .Where(hasData).ToList();
-        var csPcs  = pcs.Where(pc => pc.WorkCapacity == "CS" && hasData(pc)).ToList();
-        var audPcs = pcs.Where(pc => pc.WorkCapacity == "Auditor" && hasData(pc)).ToList();
+        var csPcs  = pcs.Where(pc => pc.WorkCapacity == StaffRoles.CS && hasData(pc)).ToList();
+        var audPcs = pcs.Where(pc => pc.WorkCapacity == StaffRoles.Auditor && hasData(pc)).ToList();
 
         var weekEnd = weekStart.AddDays(6);
 
@@ -62,7 +63,7 @@ public class PdfService
                     {
                         col.Item().PaddingTop(10).Text("Auditor").SemiBold().FontSize(11).FontColor("#1a237e");
                         col.Item().PaddingTop(4);
-                        RenderPdfTable(col, audPcs, grid, pcCsNames, weekStart, tableType: "Auditor");
+                        RenderPdfTable(col, audPcs, grid, pcCsNames, weekStart, tableType: StaffRoles.Auditor);
 
                         col.Item().PaddingTop(6);
                         col.Item().Background("#1a237e").Padding(6).Row(r =>
@@ -106,7 +107,7 @@ public class PdfService
                     {
                         col.Item().PaddingTop(16).Text("CS").SemiBold().FontSize(10).FontColor("#546e7a");
                         col.Item().PaddingTop(4);
-                        RenderPdfTable(col, csPcs, grid, pcCsNames, weekStart, tableType: "CS");
+                        RenderPdfTable(col, csPcs, grid, pcCsNames, weekStart, tableType: StaffRoles.CS);
 
                         col.Item().PaddingTop(6);
                         col.Item().Background("#546e7a").Padding(6).Row(r =>
@@ -181,9 +182,9 @@ public class PdfService
         DateOnly weekStart,
         string tableType)   // "Auditor", "CSSolo", or "CS"
     {
-        bool isCs     = tableType == "CS";
+        bool isCs     = tableType == StaffRoles.CS;
         bool isCSSolo = tableType == "CSSolo";
-        bool isAud    = tableType == "Auditor";
+        bool isAud    = tableType == StaffRoles.Auditor;
 
         col.Item().Table(table =>
         {

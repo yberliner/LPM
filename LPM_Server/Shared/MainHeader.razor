@@ -661,8 +661,8 @@
                                 PcId = g.Key,
                                 FullName = g.First().FullName,
                                 Nick = g.First().Nick,
-                                HasAuditor = g.Any(p => p.WorkCapacity == "Auditor"),
-                                HasCS = g.Any(p => p.WorkCapacity == "CS"),
+                                HasAuditor = g.Any(p => p.WorkCapacity == StaffRoles.Auditor),
+                                HasCS = g.Any(p => p.WorkCapacity == StaffRoles.CS),
                                 IsPending = _apcUnapproved.Contains(g.Key)
                             })
                             .OrderBy(x => x.FullName)
@@ -4343,13 +4343,13 @@ string _actionPcSearch = "";
         var pcName = _apcAllPcs.FirstOrDefault(p => p.PcId == pcId)?.FullName ?? $"PC {pcId}";
         if (_apcIsAuditor)
         {
-            DashSvc.AddUserPc(_apcUserId, pcId, "Auditor");
+            DashSvc.AddUserPc(_apcUserId, pcId, StaffRoles.Auditor);
             DashSvc.CheckOrRequestPermission(_apcUserId, pcId, _logUsername);
             Console.WriteLine($"[MainHeader] Assign PC: added PC='{pcName}' (id={pcId}) as Auditor to userId={_apcUserId} by '{_logUsername}'");
         }
         if (_apcIsCS)
         {
-            DashSvc.AddUserPc(_apcUserId, pcId, "CS");
+            DashSvc.AddUserPc(_apcUserId, pcId, StaffRoles.CS);
             DashSvc.CheckOrRequestPermission(_apcUserId, pcId, _logUsername);
             Console.WriteLine($"[MainHeader] Assign PC: added PC='{pcName}' (id={pcId}) as CS to userId={_apcUserId} by '{_logUsername}'");
         }

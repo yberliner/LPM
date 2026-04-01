@@ -17,6 +17,9 @@ public static class StaffRoles
     /// <summary>True for CS or SeniorCS.</summary>
     public static bool IsCS(string role) => role is CS or SeniorCS;
 
+    /// <summary>SQL fragment for StaffRole IN (CS, SeniorCS).</summary>
+    public static string SqlInCS() => "('CS','SeniorCS')";
+
     /// <summary>SQL fragment for StaffRole IN (Auditor, CS, SeniorCS).</summary>
     public static string SqlInAuditorCS() => "('Auditor','CS','SeniorCS')";
 

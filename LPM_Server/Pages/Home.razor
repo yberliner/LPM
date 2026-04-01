@@ -67,123 +67,8 @@
                     </div>
                     @if (_pendingCsExpanded)
                     {
-                        <div class="card-body p-0 table-responsive">
-                            <table class="table table-sm table-hover mb-0 home-pending-cs-table home-dual-table">
-                                <colgroup>
-                                    <col style="width:18%;" /><col style="width:17%;" /><col style="width:13%;" />
-                                    <col style="width:11%;" /><col style="width:14%;" /><col style="width:13%;" />
-                                    <col style="width:14%;" />
-                                </colgroup>
-                                <thead>
-                                    <tr>
-                                        <th class="home-pcs-sortable"
-                                            @onclick='() => TogglePcsSort("pc")'>
-                                            PC Name
-                                            <i class="@PcsSortIcon("pc")"></i>
-                                        </th>
-                                        <th>Name</th>
-                                        <th class="home-pcs-sortable"
-                                            @onclick='() => TogglePcsSort("date")'>
-                                            Date
-                                            <i class="@PcsSortIcon("date")"></i>
-                                        </th>
-                                        <th class="home-pcs-sortable"
-                                            @onclick='() => TogglePcsSort("dur")'>
-                                            Duration
-                                            <i class="@PcsSortIcon("dur")"></i>
-                                        </th>
-                                        <th>Auditor</th>
-                                        <th>Type</th>
-                                        <th style="text-align:center;">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @{
-                                        string? prevPcName = null;
-                                        int pcGroupIdx = 0;
-                                        var sorted = GetSortedPendingCs();
-                                    }
-                                    @if (sorted.Count == 0)
-                                    {
-                                        <tr><td colspan="7" class="text-center" style="padding:16px;color:#64748b;font-size:.8rem;">
-                                            No sessions pending review for this period
-                                        </td></tr>
-                                    }
-                                    @foreach (var s in sorted)
-                                    {
-                                        var isNewPc = s.PcName != prevPcName;
-                                        if (isNewPc) { pcGroupIdx++; prevPcName = s.PcName; }
-                                        var rowClass = pcGroupIdx % 2 == 0 ? "home-pcs-row-even" : "home-pcs-row-odd";
-                                        var totalMin = s.TotalSeconds / 60;
-                                        var hrs = totalMin / 60;
-                                        var mins = totalMin % 60;
-                                        var durStr = hrs > 0 ? $"{hrs}h {mins:D2}m" : $"{mins}m";
-                                        var dateStr = DateTime.TryParse(s.CreatedAt, out var dt)
-                                            ? dt.ToString("dd/MM/yy HH:mm")
-                                            : (DateOnly.TryParse(s.SessionDate, out var d) ? d.ToString("dd/MM/yy") : s.SessionDate);
-                                        var isDoneCs     = s.CsStatus is "Done" or "Approved";
-                                        var isApprovedCs = s.CsStatus == "Approved";
-                                        var pendingStyle = s.IsPendingApproval ? "opacity:.4; pointer-events:none;" : (isDoneCs ? "opacity:.55;" : "");
-                                        <tr class="@rowClass home-pcs-row @(isDoneCs ? "home-csq-done-row" : "")" style="@pendingStyle"
-                                            @onclick="() => { if (!s.IsPendingApproval) OpenPendingCs(s); }"
-                                            @oncontextmenu="e => ShowCsCtxMenu(e, s)"
-                                            @oncontextmenu:preventDefault="true">
-                                            <td class="home-pcs-pcname">
-                                                @if (isNewPc)
-                                                {
-                                                    @if (s.IsPendingApproval)
-                                                    {
-                                                        <i class="ri-time-line me-1" style="opacity:.5;color:#f59e0b;"></i>
-                                                    }
-                                                    else
-                                                    {
-                                                        <i class="ri-user-line me-1" style="opacity:.5;"></i>
-                                                    }
-                                                    @s.PcName
-                                                }
-                                            </td>
-                                            <td style="font-size:.78rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;">@s.SessionName</td>
-                                            <td class="home-pcs-date">@dateStr</td>
-                                            <td class="home-pcs-dur">
-                                                <i class="ri-time-line me-1" style="opacity:.4;"></i>@durStr
-                                            </td>
-                                            <td style="font-size:.78rem;color:#64748b;">
-                                                @s.AuditorName
-                                            </td>
-                                            <td>
-                                                @if (s.IsSolo)
-                                                {
-                                                    <span class="home-pcs-solo-badge">Solo</span>
-                                                }
-                                                else
-                                                {
-                                                    <span class="home-pcs-regular-badge">Regular</span>
-                                                }
-                                            </td>
-                                            <td style="text-align:center;">
-                                                @if (isApprovedCs)
-                                                {
-                                                    <span class="home-csq-approved-chip">
-                                                        <i class="ri-check-double-line me-1"></i>Approved
-                                                    </span>
-                                                }
-                                                else if (isDoneCs)
-                                                {
-                                                    <span class="home-csq-done-chip">
-                                                        <i class="ri-check-line me-1"></i>Done
-                                                    </span>
-                                                }
-                                                else
-                                                {
-                                                    <button class="home-pcs-cs-btn" title="Open CS for this session">
-                                                        <i class="ri-eye-line me-1"></i>CS
-                                                    </button>
-                                                }
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
+                        <div class="card-body p-0">
+                            @CsQueueTable(_pendingCsSessions, _pcsSortCol, _pcsSortAsc, TogglePcsSort, PcsSortIcon, 0)
                         </div>
                     }
                 </div>
@@ -380,6 +265,66 @@
                                     }
                                 </tbody>
                             </table>
+                        </div>
+                    }
+                </div>
+            }
+
+            @* ══════ TEAM CS REVIEW (SeniorCS only) ══════ *@
+            @if (_isSeniorCS)
+            {
+                var teamTotalPending = _teamCsQueues.Values.Sum(q => q.Count(s => string.IsNullOrEmpty(s.CsStatus)));
+                <div class="card mx-3 mt-3 mb-2 home-pending-cs-card">
+                    <div class="card-header py-2 home-pending-cs-header"
+                         style="cursor:pointer;" @onclick="() => _teamCsExpanded = !_teamCsExpanded">
+                        <i class="@(_teamCsExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"
+                           style="font-size:1rem;"></i>
+                        <i class="ri-team-line me-1"></i>
+                        <strong>Team CS Review</strong>
+                        <span class="home-pending-cs-badge">@teamTotalPending</span>
+                        <button class="home-done-toggle @(_showTeamCsDone ? "home-done-toggle-on" : "")"
+                                @onclick:stopPropagation="true"
+                                @onclick="ToggleTeamCsDone"
+                                title="@(_showTeamCsDone ? "Hide completed CSes" : "Show completed CSes")">
+                            <i class="ri-eye-@(_showTeamCsDone ? "off-" : "")line me-1"></i>Done
+                        </button>
+                        <select class="home-range-select" value="@_teamCsDays"
+                                @onclick:stopPropagation="true"
+                                @onchange="OnTeamCsDaysChanged">
+                            <option value="1">Last 1 day</option>
+                            <option value="3">Last 3 days</option>
+                            <option value="7">Last 7 days</option>
+                            <option value="10">Last 10 days</option>
+                            <option value="0">All</option>
+                        </select>
+                    </div>
+                    @if (_teamCsExpanded)
+                    {
+                        <div class="card-body p-0">
+                            @if (_teamCsStaff.Count == 0)
+                            {
+                                <div class="text-center py-3" style="color:#64748b;font-size:.8rem;">No other CS staff found</div>
+                            }
+                            @foreach (var cs in _teamCsStaff)
+                            {
+                                var csId = cs.PersonId;
+                                var queue = _teamCsQueues.GetValueOrDefault(csId, []);
+                                var expanded = _teamCsUserExpanded.GetValueOrDefault(csId, true);
+                                var pendingCount = queue.Count(s => string.IsNullOrEmpty(s.CsStatus));
+                                <div class="border-bottom">
+                                    <div class="px-3 py-2 d-flex align-items-center gap-2" style="cursor:pointer;background:#f8fafc;"
+                                         @onclick="() => ToggleTeamCsUser(csId)">
+                                        <i class="@(expanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")" style="font-size:.9rem;"></i>
+                                        <i class="ri-user-3-line" style="opacity:.5;"></i>
+                                        <strong style="font-size:.85rem;">@cs.FullName</strong>
+                                        <span class="home-pending-cs-badge" style="font-size:.7rem;">@pendingCount</span>
+                                    </div>
+                                    @if (expanded)
+                                    {
+                                        @CsQueueTable(queue, _teamCsSortCol, _teamCsSortAsc, ToggleTeamCsSort, TeamCsSortIcon, csId)
+                                    }
+                                </div>
+                            }
                         </div>
                     }
                 </div>
@@ -593,7 +538,7 @@
                 </div>
 
                 @if (_selPcId.HasValue && _selDay.HasValue && _detail != null
-                     && _selRole != "CS" && _selRole != "CSSolo")
+                     && _selRole != StaffRoles.CS && _selRole != "CSSolo")
                 {
                     @DetailPanel
                 }
@@ -855,7 +800,7 @@
                 </div>
 
                 @if (_selPcId.HasValue && _selDay.HasValue && _detail != null
-                     && _selRole == "CS")
+                     && _selRole == StaffRoles.CS)
                 {
                     @DetailPanel
                 }
@@ -1381,20 +1326,20 @@
                || _pendingCs.Contains((DashboardService.GKey(pc), d)));
 
     List<PcInfo> AuditorPcs => _myPcs
-        .Where(pc => pc.WorkCapacity == "Auditor")
+        .Where(pc => pc.WorkCapacity == StaffRoles.Auditor)
         .Where(pc => !_hideEmpty || HasWeekData(pc))
         .ToList();
 
     // CS-assigned PCs that are solo auditors — shown in the CS Solo table (negative GKey)
     List<PcInfo> CsSoloPcs => _myPcs
-        .Where(pc => pc.WorkCapacity == "CS" && _soloPcIds.Contains(pc.PcId))
+        .Where(pc => pc.WorkCapacity == StaffRoles.CS && _soloPcIds.Contains(pc.PcId))
         .Select(pc => pc with { WorkCapacity = "CSSolo" })
         .Where(pc => !_hideEmpty || HasWeekData(pc))
         .ToList();
 
     // All CS-assigned PCs — shown in the CS table (positive GKey)
     List<PcInfo> CsPcs => _myPcs
-        .Where(pc => pc.WorkCapacity == "CS")
+        .Where(pc => pc.WorkCapacity == StaffRoles.CS)
         .Where(pc => !_hideEmpty || HasWeekData(pc))
         .ToList();
     HashSet<(int, int)>      _pendingCs   = [];
@@ -1415,9 +1360,21 @@
     string _audSortCol = "pc";   // "pc", "date", "dur"
     bool _audSortAsc = true;
 
+    // ── Team CS Review (SeniorCS only) ──
+    bool _isSeniorCS;
+    bool _teamCsExpanded = true;
+    int  _teamCsDays = 7;
+    bool _showTeamCsDone = false;
+    List<(int PersonId, string FullName)> _teamCsStaff = [];
+    Dictionary<int, List<DashboardService.PendingCsSession>> _teamCsQueues = new();
+    Dictionary<int, bool> _teamCsUserExpanded = new();
+    string _teamCsSortCol = "pc";
+    bool   _teamCsSortAsc = true;
+    int    _csCtxOwnerUserId;  // 0 = own queue, >0 = team CS user's PersonId
+
     int?       _selPcId;
     int?       _selDay;
-    string     _selRole   = "Auditor";
+    string     _selRole   = StaffRoles.Auditor;
     DayDetail? _detail;
 
     // Add Session form
@@ -1452,7 +1409,7 @@
     // Context menu
     bool   _showCtxMenu;
     int    _ctxPcId;
-    string _ctxWorkCapacity = "Auditor";
+    string _ctxWorkCapacity = StaffRoles.Auditor;
     double _ctxX, _ctxY;
 
 
@@ -1511,6 +1468,7 @@
         {
             _isAuditor     = DashSvc.IsAuditor(_userId.Value);
             _isCS          = DashSvc.IsCS(_userId.Value);
+            _isSeniorCS    = staffRole == StaffRoles.SeniorCS;
             _isSoloAuditor = _isSolo;
             if (_isSoloAuditor)
                 _soloSelf = DashSvc.GetSoloAuditorInfo(_userId.Value);
@@ -1641,17 +1599,34 @@
                 ? Task.Run(() => (IReadOnlyList<DashboardService.AuditorSessionStatus>)DashSvc.GetAuditorSessionStatuses(uid, _audStatusDays, isSolo: _isSolo))
                 : Task.FromResult<IReadOnlyList<DashboardService.AuditorSessionStatus>>(_auditorStatuses);
 
-            await Task.WhenAll(t_pcs, t_solo, t_unapproved, t_remarks, t_csQueue, t_audStatus);
+            // Team CS Review: load staff list + all queues in parallel
+            var t_teamStaff = _isSeniorCS
+                ? Task.Run(() => DashSvc.GetCsStaffList(uid))
+                : Task.FromResult(_teamCsStaff);
+
+            await Task.WhenAll(t_pcs, t_solo, t_unapproved, t_remarks, t_csQueue, t_audStatus, t_teamStaff);
 
             _myPcs           = t_pcs.Result;
             _soloPcIds       = t_solo.Result;
             _unapprovedPcIds = t_unapproved.Result;
             _weekRemarks     = t_remarks.Result;
             if (_isCS)                  _pendingCsSessions = t_csQueue.Result.ToList();
+            if (_isSeniorCS)
+            {
+                _teamCsStaff = t_teamStaff.Result;
+                var teamTasks = _teamCsStaff.Select(cs =>
+                    Task.Run(() => (cs.PersonId, Queue: DashSvc.GetPendingCsSessions(cs.PersonId, _teamCsDays, _showTeamCsDone)))
+                ).ToList();
+                if (teamTasks.Count > 0) await Task.WhenAll(teamTasks);
+                _teamCsQueues = teamTasks.ToDictionary(t => t.Result.PersonId, t => t.Result.Queue);
+                // Ensure expand state entries exist for new staff
+                foreach (var cs in _teamCsStaff)
+                    _teamCsUserExpanded.TryAdd(cs.PersonId, true);
+            }
             if (_isAuditor || _isSolo)  _auditorStatuses   = t_audStatus.Result.ToList();
 
             // ── Phase 2: calls that depend on _myPcs / _auditorStatuses ──────
-            var auditorPcIds = _myPcs.Where(p => p.WorkCapacity == "Auditor").Select(p => p.PcId).ToList();
+            var auditorPcIds = _myPcs.Where(p => p.WorkCapacity == StaffRoles.Auditor).Select(p => p.PcId).ToList();
             var weekStart    = _weekStart;
             var myPcsSnap    = _myPcs;
 
@@ -1715,8 +1690,8 @@
     }
 
     // ── Role toggle ──
-    Task SetPcRoleAud(int pcId) => SetPcRole(pcId, "Auditor");
-    Task SetPcRoleCs(int pcId) => SetPcRole(pcId, "CS");
+    Task SetPcRoleAud(int pcId) => SetPcRole(pcId, StaffRoles.Auditor);
+    Task SetPcRoleCs(int pcId) => SetPcRole(pcId, StaffRoles.CS);
 
     async Task SetPcRole(int pcId, string role)
     {
@@ -1740,15 +1715,15 @@
     {
         _pendingCs = DashSvc.GetPendingCsMarkers(_userId!.Value, _weekStart, _myPcs);
         _pcCsNames = DashSvc.GetLastCsNamesByPc(
-            _myPcs.Where(p => p.WorkCapacity == "Auditor").Select(p => p.PcId).ToList());
+            _myPcs.Where(p => p.WorkCapacity == StaffRoles.Auditor).Select(p => p.PcId).ToList());
     }
 
     static DateOnly TodayWeekStart => DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
 
     string AudBtnClass(PcInfo pc) =>
-        pc.WorkCapacity == "Auditor" ? "btn-sm btn-primary" : "btn-sm btn-outline-secondary";
+        pc.WorkCapacity == StaffRoles.Auditor ? "btn-sm btn-primary" : "btn-sm btn-outline-secondary";
     string CsBtnClass(PcInfo pc) =>
-        pc.WorkCapacity == "CS" ? "btn-sm btn-success" : "btn-sm btn-outline-secondary";
+        pc.WorkCapacity == StaffRoles.CS ? "btn-sm btn-success" : "btn-sm btn-outline-secondary";
 
     // ── Context menu ──
     void ShowCtxMenu(MouseEventArgs e, PcInfo pc)
@@ -1833,15 +1808,16 @@
     bool _csCtxBusy;
     string _csCtxError = "";
 
-    void ShowCsCtxMenu(MouseEventArgs e, DashboardService.PendingCsSession s)
+    void ShowCsCtxMenu(MouseEventArgs e, DashboardService.PendingCsSession s, int ownerUserId = 0)
     {
-        _csCtxSession    = s;
-        _csCtxX          = e.ClientX;
-        _csCtxY          = e.ClientY;
-        _csCtxVisible    = true;
-        _csCtxConfirming = false;
-        _csCtxBusy       = false;
-        _csCtxError      = "";
+        _csCtxSession       = s;
+        _csCtxOwnerUserId   = ownerUserId;
+        _csCtxX             = e.ClientX;
+        _csCtxY             = e.ClientY;
+        _csCtxVisible       = true;
+        _csCtxConfirming    = false;
+        _csCtxBusy          = false;
+        _csCtxError         = "";
     }
 
     void CloseCsCtxMenu()
@@ -1868,7 +1844,10 @@
                 return;
             }
             CloseCsCtxMenu();
-            _pendingCsSessions = DashSvc.GetPendingCsSessions(_userId!.Value, _csQueueDays, _showDoneCs);
+            if (_csCtxOwnerUserId > 0 && _teamCsQueues.ContainsKey(_csCtxOwnerUserId))
+                _teamCsQueues[_csCtxOwnerUserId] = DashSvc.GetPendingCsSessions(_csCtxOwnerUserId, _teamCsDays, _showTeamCsDone);
+            else
+                _pendingCsSessions = DashSvc.GetPendingCsSessions(_userId!.Value, _csQueueDays, _showDoneCs);
         }
         catch (Exception ex)
         {
@@ -1931,6 +1910,43 @@
         await InvokeAsync(StateHasChanged);
     }
 
+    // ── Team CS Review handlers (SeniorCS) ──
+    async Task OnTeamCsDaysChanged(ChangeEventArgs e)
+    {
+        _teamCsDays = int.TryParse(e.Value?.ToString(), out var v) ? v : 7;
+        await ReloadTeamCsQueues();
+    }
+
+    async Task ToggleTeamCsDone()
+    {
+        _showTeamCsDone = !_showTeamCsDone;
+        await ReloadTeamCsQueues();
+    }
+
+    async Task ReloadTeamCsQueues()
+    {
+        var tasks = _teamCsStaff.Select(cs =>
+            Task.Run(() => (cs.PersonId, Queue: DashSvc.GetPendingCsSessions(cs.PersonId, _teamCsDays, _showTeamCsDone)))
+        ).ToList();
+        if (tasks.Count > 0) await Task.WhenAll(tasks);
+        _teamCsQueues = tasks.ToDictionary(t => t.Result.PersonId, t => t.Result.Queue);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    void ToggleTeamCsUser(int personId)
+    {
+        _teamCsUserExpanded[personId] = !_teamCsUserExpanded.GetValueOrDefault(personId, true);
+    }
+
+    void ToggleTeamCsSort(string col)
+    {
+        if (_teamCsSortCol == col) _teamCsSortAsc = !_teamCsSortAsc;
+        else { _teamCsSortCol = col; _teamCsSortAsc = true; }
+    }
+
+    string TeamCsSortIcon(string col) =>
+        _teamCsSortCol != col ? "ri-arrow-up-down-line" : (_teamCsSortAsc ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line");
+
     async Task OnAudStatusRangeChanged(ChangeEventArgs e)
     {
         if (!_userId.HasValue) return;
@@ -1954,18 +1970,139 @@
         return _pcsSortAsc ? "ri-arrow-up-s-line home-pcs-sort-active" : "ri-arrow-down-s-line home-pcs-sort-active";
     }
 
-    List<DashboardService.PendingCsSession> GetSortedPendingCs()
+    // ── Shared CS Queue table fragment ──
+    RenderFragment CsQueueTable(List<DashboardService.PendingCsSession> sessions,
+        string sortCol, bool sortAsc, Action<string> toggleSort, Func<string, string> sortIcon,
+        int ctxOwnerId) => __builder =>
     {
-        IEnumerable<DashboardService.PendingCsSession> q = _pendingCsSessions;
-        q = _pcsSortCol switch
+        var sorted = SortCsSessions(sessions, sortCol, sortAsc);
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0 home-pending-cs-table home-dual-table">
+                <colgroup>
+                    <col style="width:18%;" /><col style="width:17%;" /><col style="width:13%;" />
+                    <col style="width:11%;" /><col style="width:14%;" /><col style="width:13%;" />
+                    <col style="width:14%;" />
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th class="home-pcs-sortable" @onclick='() => toggleSort("pc")'>
+                            PC Name <i class="@sortIcon("pc")"></i>
+                        </th>
+                        <th>Name</th>
+                        <th class="home-pcs-sortable" @onclick='() => toggleSort("date")'>
+                            Date <i class="@sortIcon("date")"></i>
+                        </th>
+                        <th class="home-pcs-sortable" @onclick='() => toggleSort("dur")'>
+                            Duration <i class="@sortIcon("dur")"></i>
+                        </th>
+                        <th>Auditor</th>
+                        <th>Type</th>
+                        <th style="text-align:center;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @{
+                        string? prevPc = null;
+                        int grpIdx = 0;
+                    }
+                    @if (sorted.Count == 0)
+                    {
+                        <tr><td colspan="7" class="text-center" style="padding:16px;color:#64748b;font-size:.8rem;">
+                            No sessions pending review for this period
+                        </td></tr>
+                    }
+                    @foreach (var s in sorted)
+                    {
+                        var isNewPc = s.PcName != prevPc;
+                        if (isNewPc) { grpIdx++; prevPc = s.PcName; }
+                        var rowClass = grpIdx % 2 == 0 ? "home-pcs-row-even" : "home-pcs-row-odd";
+                        var totalMin = s.TotalSeconds / 60;
+                        var hrs = totalMin / 60;
+                        var mins = totalMin % 60;
+                        var durStr = hrs > 0 ? $"{hrs}h {mins:D2}m" : $"{mins}m";
+                        var dateStr = DateTime.TryParse(s.CreatedAt, out var dt)
+                            ? dt.ToString("dd/MM/yy HH:mm")
+                            : (DateOnly.TryParse(s.SessionDate, out var d) ? d.ToString("dd/MM/yy") : s.SessionDate);
+                        var isDoneCs     = s.CsStatus is "Done" or "Approved";
+                        var isApprovedCs = s.CsStatus == "Approved";
+                        var pendingStyle = s.IsPendingApproval ? "opacity:.4; pointer-events:none;" : (isDoneCs ? "opacity:.55;" : "");
+                        <tr class="@rowClass home-pcs-row @(isDoneCs ? "home-csq-done-row" : "")" style="@pendingStyle"
+                            @onclick="() => { if (!s.IsPendingApproval) OpenPendingCs(s); }"
+                            @oncontextmenu="e => ShowCsCtxMenu(e, s, ctxOwnerId)"
+                            @oncontextmenu:preventDefault="true">
+                            <td class="home-pcs-pcname">
+                                @if (isNewPc)
+                                {
+                                    @if (s.IsPendingApproval)
+                                    {
+                                        <i class="ri-time-line me-1" style="opacity:.5;color:#f59e0b;"></i>
+                                    }
+                                    else
+                                    {
+                                        <i class="ri-user-line me-1" style="opacity:.5;"></i>
+                                    }
+                                    @s.PcName
+                                }
+                            </td>
+                            <td style="font-size:.78rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;">@s.SessionName</td>
+                            <td class="home-pcs-date">@dateStr</td>
+                            <td class="home-pcs-dur">
+                                <i class="ri-time-line me-1" style="opacity:.4;"></i>@durStr
+                            </td>
+                            <td style="font-size:.78rem;color:#64748b;">@s.AuditorName</td>
+                            <td>
+                                @if (s.IsSolo)
+                                {
+                                    <span class="home-pcs-solo-badge">Solo</span>
+                                }
+                                else
+                                {
+                                    <span class="home-pcs-regular-badge">Regular</span>
+                                }
+                            </td>
+                            <td style="text-align:center;">
+                                @if (isApprovedCs)
+                                {
+                                    <span class="home-csq-approved-chip">
+                                        <i class="ri-check-double-line me-1"></i>Approved
+                                    </span>
+                                }
+                                else if (isDoneCs)
+                                {
+                                    <span class="home-csq-done-chip">
+                                        <i class="ri-check-line me-1"></i>Done
+                                    </span>
+                                }
+                                else
+                                {
+                                    <button class="home-pcs-cs-btn" title="Open CS for this session">
+                                        <i class="ri-eye-line me-1"></i>CS
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    };
+
+    List<DashboardService.PendingCsSession> GetSortedPendingCs()
+        => SortCsSessions(_pendingCsSessions, _pcsSortCol, _pcsSortAsc);
+
+    static List<DashboardService.PendingCsSession> SortCsSessions(
+        List<DashboardService.PendingCsSession> sessions, string sortCol, bool sortAsc)
+    {
+        IEnumerable<DashboardService.PendingCsSession> q = sessions;
+        q = sortCol switch
         {
-            "date" => _pcsSortAsc
+            "date" => sortAsc
                 ? q.OrderBy(s => DateTime.TryParse(s.CreatedAt, out var dt) ? dt : DateTime.MinValue).ThenBy(s => s.PcName)
                 : q.OrderByDescending(s => DateTime.TryParse(s.CreatedAt, out var dt) ? dt : DateTime.MinValue).ThenBy(s => s.PcName),
-            "dur" => _pcsSortAsc
+            "dur" => sortAsc
                 ? q.OrderBy(s => s.TotalSeconds).ThenBy(s => s.PcName)
                 : q.OrderByDescending(s => s.TotalSeconds).ThenBy(s => s.PcName),
-            _ => _pcsSortAsc
+            _ => sortAsc
                 ? q.OrderBy(s => s.PcName).ThenBy(s => s.SessionDate)
                 : q.OrderByDescending(s => s.PcName).ThenBy(s => s.SessionDate),
         };
@@ -2024,7 +2161,7 @@
         await JS.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(pdfBytes));
     }
 
-    async Task AddPc(int pcId, string workCapacity = "Auditor")
+    async Task AddPc(int pcId, string workCapacity = StaffRoles.Auditor)
     {
         Console.WriteLine($"[Home] Added PC {pcId} as {workCapacity} by '{_username}'");
         DashSvc.AddUserPc(_userId!.Value, pcId, workCapacity);
@@ -2053,7 +2190,7 @@
         var selPcName = _myPcs.FirstOrDefault(p => p.PcId == _selPcId!.Value)?.FullName ?? "";
         var selDate   = _weekStart.AddDays(_selDay!.Value);
         var roleLabel = _selRole switch {
-            "CS"           => "CS",
+            StaffRoles.CS  => "CS",
             "CSSolo"       => "CS Solo",
             "Miscellaneous"=> "Other",
             "SoloAuditor"  => "Solo",
@@ -2071,7 +2208,7 @@
             </div>
             <div class="card-body py-2">
 
-                @if (_selRole != "CS" && _selRole != "CSSolo")
+                @if (_selRole != StaffRoles.CS && _selRole != "CSSolo")
                 {
                     @* ── Auditor view: own sessions ── *@
                     @if (_detail!.Sessions.Count == 0)

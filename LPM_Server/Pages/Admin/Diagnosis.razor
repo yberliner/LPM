@@ -2399,11 +2399,11 @@
         try { cmd.ExecuteNonQuery(); } catch { }
 
         var passwordHash = HashPassword("Admin1992");
-        cmd.CommandText = @"
+        cmd.CommandText = $@"
             INSERT INTO core_users
                 (PersonId, Username, PasswordHash, StaffRole, UserType, GradeId, AllowAll,
                  IsActive, MustChangePassword, ContactConfirmed)
-            VALUES (@pid, 'admin', @h, 'Auditor', 'Admin', NULL, 1, 1, 0, 1)";
+            VALUES (@pid, 'admin', @h, '{StaffRoles.Auditor}', 'Admin', NULL, 1, 1, 0, 1)";
         cmd.Parameters.Clear();
         cmd.Parameters.AddWithValue("@pid", personId);
         cmd.Parameters.AddWithValue("@h", passwordHash);
