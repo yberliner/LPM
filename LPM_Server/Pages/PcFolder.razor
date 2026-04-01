@@ -5,6 +5,7 @@
 @inject PdfService PdfSvc
 @inject LPM.Services.CsNotificationService CsNotifySvc
 @inject LPM.Services.ShortcutService ShortcutSvc
+@inject LPM.Services.QuestionService QuestionSvc
 @inject IJSRuntime JS
 @inject NavigationManager NavManager
 @inject IHttpContextAccessor HttpContextAccessor
@@ -883,6 +884,38 @@
                 </button>
                 @if (_csSessionId > 0)
                 {
+                    <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
+                    @if (_questionInfo == null || _questionInfo.Status == "Closed")
+                    {
+                        <button class="pcf-q-btn pcf-q-ask" title="Ask a question about this session"
+                                @onclick="OnPcfQuestionAsk">
+                            <i class="ri-question-line me-1"></i>Ask
+                        </button>
+                    }
+                    else if (_questionInfo.Status == "Pending")
+                    {
+                        <span class="pcf-q-badge pcf-q-pending-badge">
+                            <i class="ri-question-line"></i> @_questionInfo.AskerName
+                        </span>
+                        <button class="pcf-q-btn pcf-q-reply" title="Reply to question"
+                                @onclick="OnPcfQuestionReply">
+                            <i class="ri-reply-line me-1"></i>Reply
+                        </button>
+                        <button class="pcf-q-btn pcf-q-close" title="Close question"
+                                @onclick="OnPcfQuestionClose">
+                            <i class="ri-close-line"></i>
+                        </button>
+                    }
+                    else if (_questionInfo.Status == "Replied")
+                    {
+                        <span class="pcf-q-badge pcf-q-replied-badge">
+                            <i class="ri-chat-check-line"></i> @_questionInfo.ReplierName
+                        </span>
+                        <button class="pcf-q-btn pcf-q-close" title="Close question"
+                                @onclick="OnPcfQuestionClose">
+                            <i class="ri-close-line me-1"></i>Close
+                        </button>
+                    }
                     <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
                     @if (!_csDone)
                     {
@@ -2480,6 +2513,25 @@
         .pcf-cswarn-icon   { font-size: 56px; }
         .pcf-cswarn-btn-stay, .pcf-cswarn-btn-close { width: 100%; }
     }
+
+    /* ── Question buttons in toolbar ── */
+    .pcf-q-btn {
+        display: inline-flex; align-items: center;
+        border: none; border-radius: 4px; cursor: pointer;
+        padding: 3px 8px; font-size: .75rem; font-weight: 500;
+        min-height: 28px; transition: opacity .15s;
+    }
+    .pcf-q-btn:hover { opacity: .8; }
+    .pcf-q-ask   { background: #e0e7ff; color: #3730a3; }
+    .pcf-q-reply { background: #dbeafe; color: #1e40af; }
+    .pcf-q-close { background: #fee2e2; color: #991b1b; }
+    .pcf-q-badge {
+        display: inline-flex; align-items: center; gap: 3px;
+        font-size: .72rem; padding: 2px 6px; border-radius: 4px;
+        white-space: nowrap;
+    }
+    .pcf-q-pending-badge { background: #fef3c7; color: #92400e; }
+    .pcf-q-replied-badge { background: #d1fae5; color: #065f46; }
 </style>
 
 @* ── Conversion toast panel ── *@
@@ -2648,6 +2700,7 @@
     string _userName = "";
     PcFolderInfo? _folder;
     int _csSessionId;            // session ID passed from Dashboard (0 = not from CS button)
+    QuestionInfo? _questionInfo;  // current session's question status
     string? _csSessionName;      // name of the session being CSed
     string? _floatAttFile;       // 3rd attachment to open in float window (can't fit in panes)
     string? _floatAttName;       // display name for the float window title
@@ -2971,6 +3024,8 @@
                 if (_csAlreadyDone)
                     Console.WriteLine($"[PcFolder] CS session {_csSessionId} already reviewed — Done button disabled for '{_userName}'");
             }
+            if (_csSessionId > 0)
+                _questionInfo = QuestionSvc.GetQuestionForSession(_csSessionId);
             WorkSheetItem? match = null;
             if (!string.IsNullOrWhiteSpace(_csSessionName) && _folder != null)
             {
@@ -4421,6 +4476,31 @@
         _csLockedBy = null;
         _csEvictedBy = null;
         Console.WriteLine($"[PcFolder] '{_userName}' now has control of session {_csSessionId} — PC {PcId}");
+    }
+
+    // ── Question actions ──
+    void OnPcfQuestionAsk()
+    {
+        if (_csSessionId <= 0) return;
+        QuestionSvc.AskQuestion(_csSessionId, UserPersonId);
+        _questionInfo = QuestionSvc.GetQuestionForSession(_csSessionId);
+        StateHasChanged();
+    }
+
+    void OnPcfQuestionReply()
+    {
+        if (_csSessionId <= 0) return;
+        QuestionSvc.ReplyToQuestion(_csSessionId, UserPersonId);
+        _questionInfo = QuestionSvc.GetQuestionForSession(_csSessionId);
+        StateHasChanged();
+    }
+
+    void OnPcfQuestionClose()
+    {
+        if (_csSessionId <= 0) return;
+        QuestionSvc.CloseQuestion(_csSessionId, UserPersonId);
+        _questionInfo = QuestionSvc.GetQuestionForSession(_csSessionId);
+        StateHasChanged();
     }
 
     async Task CloseToHome()

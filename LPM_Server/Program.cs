@@ -135,6 +135,7 @@ builder.Services.AddHttpClient("sms");
 builder.Services.AddSingleton<LPM.Services.SmsService>();
 builder.Services.AddSingleton<LPM.Services.ImportJobService>();
 builder.Services.AddSingleton<LPM.Services.CompletionService>();
+builder.Services.AddSingleton<LPM.Services.QuestionService>();
 
 // Add session services
 builder.Services.AddDistributedMemoryCache();

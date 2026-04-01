@@ -2191,7 +2191,7 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
         var dateFilter  = lookbackDays > 0 ? "AND s.SessionDate >= @cutoff" : "";
-        var doneFilter  = includeDone ? "" : "AND cr.CsReviewId IS NULL";
+        var doneFilter  = includeDone ? "" : "AND (cr.CsReviewId IS NULL OR EXISTS (SELECT 1 FROM sess_questions sq WHERE sq.SessionId = s.SessionId AND sq.Status IN ('Pending','Replied')))";
         cmd.CommandText = $@"
             SELECT s.SessionId, s.PcId,
                    {FullNameExpr} AS PcName,

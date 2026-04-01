@@ -12,6 +12,7 @@
 @inject LPM.Auth.UserDb UserDb
 @inject NavigationManager Nav
 @inject CompletionService CompletionSvc
+@inject QuestionService QuestionSvc
 @implements IDisposable
 
 <div @onclick="DismissMenu">
@@ -139,9 +140,9 @@
                         <div class="card-body p-0 table-responsive">
                             <table class="table table-sm table-hover mb-0 home-aud-status-table home-dual-table">
                                 <colgroup>
-                                    <col style="width:18%;" /><col style="width:17%;" /><col style="width:13%;" />
-                                    <col style="width:11%;" /><col style="width:14%;" /><col style="width:13%;" />
-                                    <col style="width:14%;" />
+                                    <col style="width:16%;" /><col style="width:14%;" /><col style="width:12%;" />
+                                    <col style="width:10%;" /><col style="width:12%;" /><col style="width:10%;" />
+                                    <col style="width:14%;" /><col style="width:12%;" />
                                 </colgroup>
                                 <thead>
                                     <tr>
@@ -163,6 +164,7 @@
                                         </th>
                                         <th>CS Status</th>
                                         <th>CS By</th>
+                                        <th style="text-align:center;">Questions</th>
                                         <th style="text-align:center;">Action</th>
                                     </tr>
                                 </thead>
@@ -173,7 +175,7 @@
                                     }
                                     @if (_auditorStatuses.Count == 0)
                                     {
-                                        <tr><td colspan="7" class="text-center" style="padding:16px;color:#64748b;font-size:.8rem;">
+                                        <tr><td colspan="8" class="text-center" style="padding:16px;color:#64748b;font-size:.8rem;">
                                             No sessions found for this period
                                         </td></tr>
                                     }
@@ -253,6 +255,21 @@
                                             </td>
                                             <td style="font-size:.78rem;color:#64748b;">
                                                 @(s.CsName ?? "—")
+                                            </td>
+                                            @{ var audHasQ = _sessionQuestions.TryGetValue(s.SessionId, out var audQInfo); }
+                                            <td style="text-align:center;">
+                                                @if (audHasQ && audQInfo!.Status == "Pending")
+                                                {
+                                                    <span class="home-q-badge home-q-pending" title="Question by @audQInfo.AskerName">
+                                                        <i class="ri-question-line"></i> @audQInfo.AskerName
+                                                    </span>
+                                                }
+                                                else if (audHasQ && audQInfo!.Status == "Replied")
+                                                {
+                                                    <span class="home-q-badge home-q-replied" title="Replied by @audQInfo.ReplierName">
+                                                        <i class="ri-chat-check-line"></i> @audQInfo.ReplierName
+                                                    </span>
+                                                }
                                             </td>
                                             <td style="text-align:center;">
                                                 <button class="home-pcs-cs-btn" style="background:#5c6bc0;"
@@ -1346,6 +1363,20 @@
         .home-pcs-row td, .home-aud-status-table td { padding: 5px 8px; }
         .home-pcs-cs-btn { padding: 4px 10px; min-height: 32px; touch-action: manipulation; }
         .home-range-select { font-size: .65rem; }
+        .home-q-badge { font-size: .65rem; }
+    }
+
+    /* ── Question column ── */
+    .home-q-badge {
+        display: inline-flex; align-items: center; gap: 3px;
+        font-size: .72rem; padding: 2px 6px; border-radius: 4px;
+        white-space: nowrap;
+    }
+    .home-q-pending {
+        background: #fef3c7; color: #92400e;
+    }
+    .home-q-replied {
+        background: #d1fae5; color: #065f46;
     }
 </style>
 
@@ -1401,6 +1432,7 @@
     bool _showDoneCs  = false;
     List<DashboardService.AuditorSessionStatus> _auditorStatuses = [];
     Dictionary<int, HashSet<string>> _audAttachTypes = new();
+    Dictionary<int, QuestionInfo> _sessionQuestions = new();
     bool _audStatusExpanded = true;
     int _audStatusDays = 7;
     string _pcsSortCol = "pc";   // "pc", "date", "dur"
@@ -1701,12 +1733,27 @@
             _audAttachTypes = t_attachTasks.ToDictionary(t => t.Result.SessionId, t => t.Result.Types);
         }
 
+        // Fetch question status for all visible sessions
+        RefreshQuestions();
+
         _detail = null; _selPcId = null; _selDay = null;
         _remarksSaved = false;
 
         UpdateChartTooltip();
         _chartKey++;
         await InvokeAsync(StateHasChanged);
+    }
+
+    void RefreshQuestions()
+    {
+        var ids = new HashSet<int>();
+        foreach (var s in _pendingCsSessions) ids.Add(s.SessionId);
+        foreach (var s in _auditorStatuses)   ids.Add(s.SessionId);
+        foreach (var q in _teamCsQueues.Values)
+            foreach (var s in q) ids.Add(s.SessionId);
+        _sessionQuestions = ids.Count > 0
+            ? QuestionSvc.GetQuestionsForSessions(ids.ToList())
+            : new();
     }
 
     async Task PrevWeek() { _weekStart = _weekStart.AddDays(-7); Console.WriteLine($"[Home] Navigated to week {_weekStart} by '{_username}'"); await RefreshAsync(); }
@@ -1948,6 +1995,7 @@
         _csQueueDays = int.TryParse(e.Value?.ToString(), out var v) ? v : 7;
         Console.WriteLine($"[Home] Changed CS queue range to {_csQueueDays} days by '{_username}'");
         _pendingCsSessions = DashSvc.GetPendingCsSessions(_userId!.Value, _csQueueDays, _showDoneCs);
+        RefreshQuestions();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -1955,6 +2003,7 @@
     {
         _showDoneCs = !_showDoneCs;
         _pendingCsSessions = DashSvc.GetPendingCsSessions(_userId!.Value, _csQueueDays, _showDoneCs);
+        RefreshQuestions();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -1978,6 +2027,7 @@
         ).ToList();
         if (tasks.Count > 0) await Task.WhenAll(tasks);
         _teamCsQueues = tasks.ToDictionary(t => t.Result.PersonId, t => t.Result.Queue);
+        RefreshQuestions();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -2003,6 +2053,7 @@
         _auditorStatuses = DashSvc.GetAuditorSessionStatuses(_userId.Value, _audStatusDays, isSolo: _isSolo);
         _audAttachTypes  = _auditorStatuses.ToDictionary(s => s.SessionId,
                                s => FolderSvc.GetSessionAttachmentTypes(s.PcId, s.SessionName));
+        RefreshQuestions();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -2027,9 +2078,9 @@
         <div class="table-responsive">
             <table class="table table-sm table-hover mb-0 home-pending-cs-table home-dual-table">
                 <colgroup>
-                    <col style="width:18%;" /><col style="width:17%;" /><col style="width:13%;" />
-                    <col style="width:11%;" /><col style="width:14%;" /><col style="width:13%;" />
-                    <col style="width:14%;" />
+                    <col style="width:16%;" /><col style="width:14%;" /><col style="width:12%;" />
+                    <col style="width:10%;" /><col style="width:12%;" /><col style="width:10%;" />
+                    <col style="width:14%;" /><col style="width:12%;" />
                 </colgroup>
                 <thead>
                     <tr>
@@ -2045,6 +2096,7 @@
                         </th>
                         <th>Auditor</th>
                         <th>Type</th>
+                        <th style="text-align:center;">Questions</th>
                         <th style="text-align:center;">Action</th>
                     </tr>
                 </thead>
@@ -2055,7 +2107,7 @@
                     }
                     @if (sorted.Count == 0)
                     {
-                        <tr><td colspan="7" class="text-center" style="padding:16px;color:#64748b;font-size:.8rem;">
+                        <tr><td colspan="8" class="text-center" style="padding:16px;color:#64748b;font-size:.8rem;">
                             No sessions pending review for this period
                         </td></tr>
                     }
@@ -2073,7 +2125,8 @@
                             : (DateOnly.TryParse(s.SessionDate, out var d) ? d.ToString("dd/MM/yy") : s.SessionDate);
                         var isDoneCs     = s.CsStatus is "Done" or "Approved";
                         var isApprovedCs = s.CsStatus == "Approved";
-                        var pendingStyle = s.IsPendingApproval ? "opacity:.4; pointer-events:none;" : (isDoneCs ? "opacity:.55;" : "");
+                        var hasActiveQ   = _sessionQuestions.TryGetValue(s.SessionId, out var qInfo);
+                        var pendingStyle = s.IsPendingApproval ? "opacity:.4; pointer-events:none;" : (isDoneCs && !hasActiveQ ? "opacity:.55;" : "");
                         <tr class="@rowClass home-pcs-row @(isDoneCs ? "home-csq-done-row" : "")" style="@pendingStyle"
                             @onclick="() => { if (!s.IsPendingApproval) OpenPendingCs(s); }"
                             @oncontextmenu="e => ShowCsCtxMenu(e, s, ctxOwnerId)"
@@ -2106,6 +2159,20 @@
                                 else
                                 {
                                     <span class="home-pcs-regular-badge">Regular</span>
+                                }
+                            </td>
+                            <td style="text-align:center;">
+                                @if (hasActiveQ && qInfo!.Status == "Pending")
+                                {
+                                    <span class="home-q-badge home-q-pending" title="Question by @qInfo.AskerName">
+                                        <i class="ri-question-line"></i> @qInfo.AskerName
+                                    </span>
+                                }
+                                else if (hasActiveQ && qInfo!.Status == "Replied")
+                                {
+                                    <span class="home-q-badge home-q-replied" title="Replied by @qInfo.ReplierName">
+                                        <i class="ri-chat-check-line"></i> @qInfo.ReplierName
+                                    </span>
                                 }
                             </td>
                             <td style="text-align:center;">
