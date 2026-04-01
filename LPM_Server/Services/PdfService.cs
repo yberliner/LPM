@@ -2008,7 +2008,7 @@ public class PdfService
 
                     // ── Top free text ──
                     if (!string.IsNullOrWhiteSpace(topHtml))
-                        col.Item().PaddingBottom(8).Column(htmlCol => RenderHtmlBlock(htmlCol, topHtml, 3f));
+                        col.Item().PaddingBottom(8).Column(htmlCol => RenderHtmlBlock(htmlCol, topHtml, 2.5f));
 
                     // ── "The Next C/S:" divider ──
                     col.Item().PaddingVertical(12).AlignCenter()
@@ -2017,7 +2017,7 @@ public class PdfService
 
                     // ── Bottom free text ──
                     if (!string.IsNullOrWhiteSpace(bottomHtml))
-                        col.Item().PaddingBottom(8).Column(inner => RenderHtmlBlock(inner, bottomHtml, 3f));
+                        col.Item().PaddingBottom(8).Column(inner => RenderHtmlBlock(inner, bottomHtml, 2.5f));
                 });
 
                 // ── Auditor signature — always pinned to the bottom-right of the page ──

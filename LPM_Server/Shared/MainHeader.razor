@@ -1318,26 +1318,10 @@
                                 </div>
                             </div>
 
-                            @* Row 3: Admin Time + Total TA *@
+                            @* Row 3: Total TA (Admin Time moved to Step 3) *@
                             <div class="arf-row">
                                 <div class="arf-field arf-left-col">
-                                    <span class="arf-lbl arf-lbl-fixed">
-                                        Admin Time
-                                        @if (string.IsNullOrWhiteSpace(_arfAdminTime))
-                                        {
-                                            <span style="color:#ef4444;font-weight:700;margin-left:2px;">*</span>
-                                        }
-                                    </span>
-                                    <input type="text" inputmode="numeric" maxlength="5"
-                                           class="form-control form-control-sm arf-input-short arf-time-input @(!IsValidArfTime(_arfAdminTime) ? "arf-invalid" : "")"
-                                           style="@(string.IsNullOrWhiteSpace(_arfAdminTime) ? "border:2px solid #ef4444 !important;background:rgba(239,68,68,.08) !important;" : "")"
-                                           placeholder="H:MM"
-                                           value="@_arfAdminTime"
-                                           @oninput="e => _arfAdminTime = e.Value?.ToString() ?? string.Empty"
-                                           @onchange="e => _arfAdminTime = FormatArfTime(e.Value?.ToString()?.Trim() ?? string.Empty)" />
-                                </div>
-                                <div class="arf-field">
-                                    <span class="arf-lbl arf-lbl-right-fixed">Total TA</span>
+                                    <span class="arf-lbl arf-lbl-fixed">Total TA</span>
                                     <input type="number" step="any"
                                            class="form-control form-control-sm arf-input-xs"
                                            @bind="_arfTotalTa" @bind:event="oninput" />
@@ -1349,11 +1333,11 @@
                                 <thead>
                                     <tr>
                                         <th style="width:3%;"></th>
-                                        <th style="width:37%;">Process</th>
+                                        <th style="width:35%;">Process</th>
                                         <th style="width:10%;">Time</th>
                                         <th style="width:10%;">Tone Arm<br/>Reads</th>
-                                        <th style="width:37%;">Results and Comments</th>
-                                        <th style="width:3%;"></th>
+                                        <th style="width:35%;">Results and Comments</th>
+                                        <th style="width:7%;"></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1368,14 +1352,14 @@
                                             </td>
                                             <td style="vertical-align:top;">
                                                 <textarea id="arf-process-@idx"
-                                                       class="arf-cell-input arf-cell-textarea @(_arfRows[idx].Touched && string.IsNullOrWhiteSpace(_arfRows[idx].Process) ? "arf-cell-invalid" : "")"
+                                                       class="arf-cell-input arf-cell-textarea"
                                                        rows="1" dir="auto"
                                                        @onblur="() => _arfRows[idx].Touched = true"
                                                        @oninput="e => { _arfRows[idx].Process = e.Value?.ToString() ?? string.Empty; var _kw = HasAutoUncheckKeyword(_arfRows[idx].Process); if (!_kw) _arfRows[idx].AutoUnchecked = false; if (_kw && !_arfRows[idx].AutoUnchecked && _arfRows[idx].Checked) { _arfRows[idx].Checked = false; _arfRows[idx].AutoUnchecked = true; } RebuildArfSummary(); }">@_arfRows[idx].Process</textarea>
                                             </td>
                                             <td>
                                                 <input type="text" inputmode="numeric" maxlength="5"
-                                                       class="arf-cell-input arf-cell-center arf-time-input @(!IsValidArfTime(_arfRows[idx].Time) || !IsArfTimeOrdered(idx) || (_arfRows[idx].Touched && string.IsNullOrWhiteSpace(_arfRows[idx].Time)) ? "arf-cell-invalid" : "")"
+                                                       class="arf-cell-input arf-cell-center arf-time-input @(!IsValidArfTime(_arfRows[idx].Time) || (!string.IsNullOrWhiteSpace(_arfRows[idx].Time) && !IsArfTimeOrdered(idx)) ? "arf-cell-invalid" : "")"
                                                        placeholder="HH:MM"
                                                        value="@_arfRows[idx].Time"
                                                        @onblur="() => _arfRows[idx].Touched = true"
@@ -1392,25 +1376,31 @@
                                                 <textarea class="arf-cell-input arf-cell-textarea"
                                                        rows="1" dir="auto"
                                                        @oninput="e => { _arfRows[idx].Results = e.Value?.ToString() ?? string.Empty; RebuildArfSummary(); }"
-                                                       @onkeydown="e => OnArfResultsKeyDown(e)">@_arfRows[idx].Results</textarea>
+                                                       @onkeydown="e => OnArfResultsKeyDown(e, idx)">@_arfRows[idx].Results</textarea>
                                             </td>
                                             <td style="text-align:center; vertical-align:middle;">
-                                                @if (_arfRows.Count > 1)
-                                                {
-                                                    <button class="btn btn-sm p-0 arf-del-row-btn" title="Delete row"
-                                                            @onclick="() => RemoveArfRow(idx)">
-                                                        <i class="ri-close-line"></i>
+                                                <div class="d-flex align-items-center justify-content-center gap-0">
+                                                    <button class="btn btn-sm p-0 arf-row-action-btn" title="Insert row above"
+                                                            @onclick="() => InsertArfRow(idx, false)">
+                                                        <i class="ri-arrow-up-s-line"></i>
                                                     </button>
-                                                }
+                                                    <button class="btn btn-sm p-0 arf-row-action-btn" title="Insert row below"
+                                                            @onclick="() => InsertArfRow(idx, true)">
+                                                        <i class="ri-arrow-down-s-line"></i>
+                                                    </button>
+                                                    @if (_arfRows.Count > 1)
+                                                    {
+                                                        <button class="btn btn-sm p-0 arf-del-row-btn" title="Delete row"
+                                                                @onclick="() => RemoveArfRow(idx)">
+                                                            <i class="ri-close-line"></i>
+                                                        </button>
+                                                    }
+                                                </div>
                                             </td>
                                         </tr>
                                     }
                                 </tbody>
                             </table>
-                            <button class="btn btn-sm arf-add-row-btn" @onclick="AddArfRow"
-                                    disabled="@(!CanAddArfRow)">
-                                <i class="ri-add-line me-1"></i>Add Row
-                            </button>
 
                             @* ── TA Range at bottom *@
                             <div class="arf-row mt-3">
@@ -1556,23 +1546,42 @@
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showImportWizard = false">Cancel</button>
                         <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                                disabled="@(_importSessionBytes == null || _importDuplicate || !string.IsNullOrEmpty(_importNameEditError) || string.IsNullOrEmpty(_importNormalizedFileName) || (!IsArfTableEmpty && (ArfHasTimeErrors || ArfHasIncompleteRows)) || !IsValidArfTime(_arfAdminTime) || string.IsNullOrWhiteSpace(_arfAdminTime) || string.IsNullOrWhiteSpace(_arfSessionLength) || !IsValidArfTime(_arfSessionLength))"
+                                disabled="@(_importSessionBytes == null || _importDuplicate || !string.IsNullOrEmpty(_importNameEditError) || string.IsNullOrEmpty(_importNormalizedFileName) || (!IsArfTableEmpty && ArfHasTimeErrors) || string.IsNullOrWhiteSpace(_arfSessionLength) || !IsValidArfTime(_arfSessionLength))"
                                 @onclick="GoToStep3">
                             Next <i class="ri-arrow-right-s-line"></i>
                         </button>
                     }
                     else
                     {
-                        <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
-                                @onclick="() => _importStep = 2">
-                            <i class="ri-arrow-left-s-line"></i> Back
-                        </button>
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showImportWizard = false">Cancel</button>
-                        <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                                @onclick="ExecuteImport">
-                            <i class="ri-upload-2-line"></i>
-                            Go
-                        </button>
+                        <div class="d-flex align-items-center w-100 gap-2">
+                            <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                                    @onclick="() => _importStep = 2">
+                                <i class="ri-arrow-left-s-line"></i> Back
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showImportWizard = false">Cancel</button>
+                            <div class="d-flex align-items-center gap-2 ms-auto">
+                                <span style="font-weight:600; color:#cbd5e1; font-size:.85rem; white-space:nowrap;">
+                                    Admin Time
+                                    @if (string.IsNullOrWhiteSpace(_arfAdminTime))
+                                    {
+                                        <span style="color:#ef4444;font-weight:700;margin-left:2px;">*</span>
+                                    }
+                                </span>
+                                <input type="text" inputmode="numeric" maxlength="5"
+                                       class="form-control form-control-sm arf-time-input"
+                                       style="width:72px; @(string.IsNullOrWhiteSpace(_arfAdminTime) || !IsValidArfTime(_arfAdminTime) ? "border:2px solid #ef4444 !important;background:rgba(239,68,68,.08) !important;" : "")"
+                                       placeholder="H:MM"
+                                       value="@_arfAdminTime"
+                                       @oninput="e => _arfAdminTime = e.Value?.ToString() ?? string.Empty"
+                                       @onchange="e => _arfAdminTime = FormatArfTime(e.Value?.ToString()?.Trim() ?? string.Empty)" />
+                                <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
+                                        disabled="@(string.IsNullOrWhiteSpace(_arfAdminTime) || !IsValidArfTime(_arfAdminTime))"
+                                        @onclick="ExecuteImport">
+                                    <i class="ri-upload-2-line"></i>
+                                    Go
+                                </button>
+                            </div>
+                        </div>
                     }
                 </div>
             </div>
@@ -2677,16 +2686,16 @@
     #arf-summary-wrap .ql-snow .ql-picker.ql-size .ql-picker-item[data-value='18px']::before { content: 'Medium' !important; }
     #arf-summary-wrap .ql-snow .ql-picker.ql-size .ql-picker-label[data-value='24px']::before,
     #arf-summary-wrap .ql-snow .ql-picker.ql-size .ql-picker-item[data-value='24px']::before { content: 'Large' !important; }
+    .arf-row-action-btn {
+        color: #64748b; font-size: .8rem; line-height: 1; transition: color .15s;
+        min-width: 20px; min-height: 20px;
+    }
+    .arf-row-action-btn:hover { color: #60a5fa; }
     .arf-del-row-btn {
-        color: #64748b; font-size: .85rem; line-height: 1; transition: color .15s;
+        color: #64748b; font-size: .8rem; line-height: 1; transition: color .15s;
+        min-width: 20px; min-height: 20px;
     }
     .arf-del-row-btn:hover { color: #ef4444; }
-    .arf-add-row-btn {
-        color: #60a5fa; font-size: .78rem; padding: 2px 10px;
-        border: 1px dashed #475569; border-radius: 4px; background: transparent;
-        transition: all .15s;
-    }
-    .arf-add-row-btn:hover { background: rgba(96,165,250,.1); border-color: #60a5fa; color: #93c5fd; }
 </style>
 
 <style>
@@ -2915,26 +2924,23 @@
                 $"var el=document.getElementById('arf-ta-to');if(el)el.value={System.Text.Json.JsonSerializer.Serialize(_arfTaRangeTo)};");
     }
 
-    bool CanAddArfRow => _arfRows.Count == 0 || _arfRows.All(r =>
-        !string.IsNullOrWhiteSpace(r.Process) &&
-        IsValidArfTime(r.Time) && !string.IsNullOrWhiteSpace(r.Time));
+    bool CanAddArfRow => true;
 
-    void AddArfRow() { if (CanAddArfRow) { _arfRows.Add(new ArfRow { Touched = true }); RebuildArfSummary(); } }
-    void RemoveArfRow(int idx) { if (_arfRows.Count > 1) { _arfRows.RemoveAt(idx); RecalcSessionLength(); RebuildArfSummary(); } }
-    async Task OnArfResultsKeyDown(KeyboardEventArgs e)
+    void AddArfRow() { _arfRows.Add(new ArfRow { Touched = true }); RebuildArfSummary(); }
+    void InsertArfRow(int idx, bool below)
     {
-        if (e.Key != "Tab") return;
-        if (CanAddArfRow)
-        {
-            AddArfRow();
-            var newIdx = _arfRows.Count - 1;
-            await JSRuntime.InvokeVoidAsync("eval",
-                $"setTimeout(()=>{{var el=document.getElementById('arf-process-{newIdx}');if(el)el.focus();}},30)");
-        }
-        else
-        {
-            foreach (var r in _arfRows) r.Touched = true;
-        }
+        var insertAt = below ? idx + 1 : idx;
+        _arfRows.Insert(insertAt, new ArfRow { Touched = true });
+        RebuildArfSummary();
+    }
+    void RemoveArfRow(int idx) { if (_arfRows.Count > 1) { _arfRows.RemoveAt(idx); RecalcSessionLength(); RebuildArfSummary(); } }
+    async Task OnArfResultsKeyDown(KeyboardEventArgs e, int idx)
+    {
+        if (e.Key != "Tab" && e.Key != "Enter") return;
+        InsertArfRow(idx, true);
+        var newIdx = idx + 1;
+        await JSRuntime.InvokeVoidAsync("eval",
+            $"setTimeout(()=>{{var el=document.getElementById('arf-process-{newIdx}');if(el)el.focus();}},30)");
     }
 
     void RebuildArfSummary(bool pushToEditor = true)
@@ -3056,13 +3062,11 @@
         || !IsArfTimeOrdered(i));
 
     bool ArfHasIncompleteRows => _arfRows.Any(r =>
-        string.IsNullOrWhiteSpace(r.Process) || string.IsNullOrWhiteSpace(r.Time) || !IsValidArfTime(r.Time));
+        !string.IsNullOrWhiteSpace(r.Time) && !IsValidArfTime(r.Time));
 
-    bool IsArfTableEmpty => _arfRows.Count == 1
-        && string.IsNullOrWhiteSpace(_arfRows[0].Process)
-        && string.IsNullOrWhiteSpace(_arfRows[0].Time)
-        && string.IsNullOrWhiteSpace(_arfRows[0].ToneArm)
-        && string.IsNullOrWhiteSpace(_arfRows[0].Results);
+    bool IsArfTableEmpty => _arfRows.All(r =>
+        string.IsNullOrWhiteSpace(r.Time)
+        && string.IsNullOrWhiteSpace(r.ToneArm));
 
     // Formats raw input as #.##.
     // With dot:    "3.42" → "3.42", "3." → "3." (in-progress), "3.4" → "3.4"
@@ -3199,7 +3203,10 @@
         _importStep = 1;
         _arfDate = ""; _arfGrade = ""; _arfSessionLength = ""; _arfAdminTime = ""; _arfTotalTa = ""; _arfTaRangeFrom = ""; _arfTaRangeTo = ""; _arfExamReport = "F/N"; _arfSummary = "";
         _step3TopHtml = ""; _step3BottomHtml = "";
-        _arfRows = [new ArfRow { Touched = true }];
+        _arfRows = [
+            new ArfRow { Process = "TITS", Results = "FN", Touched = true, Checked = false, AutoUnchecked = true },
+            new ArfRow { Process = "EOS",  Results = "FN", Touched = true, Checked = false, AutoUnchecked = true }
+        ];
         _showImportWizard = true;
     }
 
@@ -3259,6 +3266,7 @@
         {
             await Task.Delay(100);
             await JSRuntime.InvokeVoidAsync("eval", @"
+                var _defaultColors = { 'step3-top-editor': '#dc2626', 'step3-bottom-editor': '#2563eb' };
                 ['step3-top-editor','step3-bottom-editor'].forEach(function(id) {
                     var el = document.getElementById(id);
                     if (!el) return;
@@ -3266,7 +3274,7 @@
                     if (window[key]) {
                         try { window[key].container.parentElement.removeChild(window[key].container.previousSibling); window[key].container.remove(); } catch(e) {}
                     }
-                    window[key] = new Quill(el, {
+                    var q = new Quill(el, {
                         theme: 'snow',
                         placeholder: 'Type here...',
                         modules: { toolbar: [
@@ -3277,12 +3285,15 @@
                             ['clean']
                         ]}
                     });
+                    window[key] = q;
+                    var defColor = _defaultColors[id];
+                    if (defColor) { q.format('color', defColor); }
                 });
             ");
             if (!string.IsNullOrWhiteSpace(prevNextCs))
             {
                 await JSRuntime.InvokeVoidAsync("eval",
-                    $"var q=window['_quill_step3-bottom-editor']; if(q) q.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(prevNextCs)};");
+                    $"var q=window['_quill_step3-bottom-editor']; if(q){{ q.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(prevNextCs)}; q.setSelection(q.getLength(),0); q.format('color','#2563eb'); }}");
             }
             await JSRuntime.InvokeVoidAsync("step3Quill.attachListeners", dotNetRef);
         });
