@@ -1802,6 +1802,11 @@
         position: relative;
     }
     .pcf-pane-active { border-color: #3b82f6; }
+    .pcf-pane-flash { animation: pcfPaneFlash .6s ease-in-out 2; }
+    @@keyframes pcfPaneFlash {
+        0%, 100% { box-shadow: inset 0 0 0 0 transparent; }
+        50% { box-shadow: inset 0 0 30px 4px rgba(59,130,246,.35); }
+    }
     /* Thin top-border color to distinguish panes in multi-pane mode */
     .pcf-split .pcf-pane-p1 { border-top-color: #3b82f6; }
     .pcf-split .pcf-pane-p2 { border-top-color: #8b5cf6; }
@@ -2530,6 +2535,7 @@
             <div class="pcf-dupe-name">@_dupeFileName</div>
             <div class="pcf-dupe-sub">Already open in <span class="pcf-dupe-badge">Pane @_dupePaneNum</span></div>
         </div>
+        <button class="btn btn-sm pcf-dupe-goto" @onclick="GoToDupePane">Go to Pane</button>
     </div>
 }
 
@@ -2594,6 +2600,16 @@
         from { transform: scale(0); opacity: 0; }
         to   { transform: scale(1); opacity: 1; }
     }
+    .pcf-dupe-goto {
+        flex-shrink: 0; margin-left: 4px;
+        background: var(--dupe-color); color: #fff;
+        font-size: .72rem; font-weight: 700;
+        border: none; border-radius: 7px;
+        padding: 5px 12px;
+        cursor: pointer; transition: filter .15s;
+        animation: pcfDupeBadgePop .3s cubic-bezier(.175,.885,.32,1.275) .3s both;
+    }
+    .pcf-dupe-goto:hover { filter: brightness(1.2); color: #fff; }
 </style>
 
 @code {
@@ -2656,6 +2672,7 @@
     // "Already open" toast
     string _dupeFileName  = "";
     int    _dupePaneNum   = 0;   // 1-based pane number (0 = hidden)
+    int    _dupePaneIdx   = -1;  // 0-based index for navigation
     bool   _dupeVisible   = false;
     System.Threading.CancellationTokenSource? _dupeCts;
 
@@ -3336,12 +3353,30 @@
         _dupeCts = new System.Threading.CancellationTokenSource();
         _dupeFileName = fileName;
         _dupePaneNum  = paneNum;
+        _dupePaneIdx  = paneNum - 1;
         _dupeVisible  = true;
         StateHasChanged();
         var token = _dupeCts.Token;
-        try { await Task.Delay(3200, token); } catch (TaskCanceledException) { return; }
+        try { await Task.Delay(5000, token); } catch (TaskCanceledException) { return; }
         _dupeVisible = false;
         StateHasChanged();
+    }
+
+    async Task GoToDupePane()
+    {
+        if (_dupePaneIdx < 0 || _dupePaneIdx >= _paneCount) return;
+        _dupeCts?.Cancel();
+        _dupeVisible = false;
+        // If a pane is maximized and it's not the target, restore first
+        if (_maximizedPane.HasValue && _maximizedPane.Value != _dupePaneIdx)
+            await RestorePane();
+        _activeIdx = _dupePaneIdx;
+        await JS.InvokeVoidAsync("pcfViewer.setActivePane", PaneIds[_activeIdx]);
+        // Flash highlight on the target pane
+        await JS.InvokeVoidAsync("eval", $@"
+            var pane = document.querySelector('.pcf-pane-{PaneIds[_dupePaneIdx]}');
+            if (pane) {{ pane.classList.add('pcf-pane-flash'); setTimeout(()=>pane.classList.remove('pcf-pane-flash'), 1200); }}
+        ");
     }
 
     async Task OpenCsFile()
