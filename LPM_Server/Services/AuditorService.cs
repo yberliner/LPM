@@ -28,14 +28,14 @@ public class AuditorService(IConfiguration config, UserDb userDb)
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
+        cmd.CommandText = $@"
             SELECT u.PersonId,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
                    u.StaffRole, u.IsActive, g.Code, u.Username
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
             LEFT JOIN lkp_grades g ON g.GradeId = u.GradeId
-            WHERE u.StaffRole IN ('Auditor','CS')
+            WHERE u.StaffRole IN {StaffRoles.SqlInAuditorCS()}
             ORDER BY p.FirstName";
         var list = new List<AuditorListItem>();
         using var r = cmd.ExecuteReader();
@@ -65,13 +65,13 @@ public class AuditorService(IConfiguration config, UserDb userDb)
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
+        cmd.CommandText = $@"
             SELECT u.PersonId, p.FirstName, COALESCE(p.LastName,''),
                    u.StaffRole, u.IsActive, u.GradeId, g.Code, u.UserType, u.Username, u.AllowAll, u.SendSms
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
             LEFT JOIN lkp_grades g ON g.GradeId = u.GradeId
-            WHERE u.PersonId = @id AND u.StaffRole IN ('Auditor','CS')
+            WHERE u.PersonId = @id AND u.StaffRole IN {StaffRoles.SqlInAuditorCS()}
             LIMIT 1";
         cmd.Parameters.AddWithValue("@id", auditorId);
         using var r = cmd.ExecuteReader();
@@ -101,9 +101,9 @@ public class AuditorService(IConfiguration config, UserDb userDb)
         pCmd.ExecuteNonQuery();
 
         using var uCmd = conn.CreateCommand();
-        uCmd.CommandText = @"
+        uCmd.CommandText = $@"
             UPDATE core_users SET GradeId=@gid, StaffRole=@role, IsActive=@active, UserType=@ut, AllowAll=@aa, SendSms=@sms
-            WHERE PersonId=@id AND StaffRole IN ('Auditor','CS')";
+            WHERE PersonId=@id AND StaffRole IN {StaffRoles.SqlInAuditorCS()}";
         uCmd.Parameters.AddWithValue("@gid",    gradeId.HasValue ? (object)gradeId.Value : DBNull.Value);
         uCmd.Parameters.AddWithValue("@role",   staffRole);
         uCmd.Parameters.AddWithValue("@active", isActive ? 1 : 0);
@@ -120,7 +120,7 @@ public class AuditorService(IConfiguration config, UserDb userDb)
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM core_users WHERE PersonId=@id AND StaffRole IN ('Auditor','CS')";
+        cmd.CommandText = $"DELETE FROM core_users WHERE PersonId=@id AND StaffRole IN {StaffRoles.SqlInAuditorCS()}";
         cmd.Parameters.AddWithValue("@id", auditorId);
         cmd.ExecuteNonQuery();
         Console.WriteLine($"[AuditorService] Deleted auditor {auditorId}");
@@ -176,12 +176,12 @@ public class AuditorService(IConfiguration config, UserDb userDb)
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
+        cmd.CommandText = $@"
             SELECT TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
                    GROUP_CONCAT(u.Username || ' (' || u.StaffRole || ')', ', ') AS Roles
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
-            WHERE u.StaffRole IN ('Auditor','CS')
+            WHERE u.StaffRole IN {StaffRoles.SqlInAuditorCS()}
             GROUP BY u.PersonId
             HAVING COUNT(*) > 1
             ORDER BY p.FirstName";
@@ -258,7 +258,7 @@ public class AuditorService(IConfiguration config, UserDb userDb)
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
+        cmd.CommandText = $@"
             SELECT cp.PersonId,
                    TRIM(cp.FirstName || ' ' || COALESCE(NULLIF(cp.LastName,''), '')) AS FullName
             FROM core_persons cp
@@ -266,7 +266,7 @@ public class AuditorService(IConfiguration config, UserDb userDb)
             WHERE NOT EXISTS (
                 SELECT 1 FROM core_users cu
                 WHERE cu.PersonId = cp.PersonId
-                  AND cu.StaffRole IN ('Auditor','CS')
+                  AND cu.StaffRole IN {StaffRoles.SqlInAuditorCS()}
                   AND cu.IsActive = 1
             )
             ORDER BY cp.FirstName";

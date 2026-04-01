@@ -267,7 +267,7 @@ public class ImportJobService
                     var password = fn.Length > 0 ? char.ToUpper(fn[0]) + fn[1..] + "1992" : "User1992";
                     if (!_userDb.UsernameExists(username))
                     {
-                        var newUserId = _userDb.CreateUser(pcId, username, password, "Solo", "Standard", null, false);
+                        var newUserId = _userDb.CreateUser(pcId, username, password, StaffRoles.Solo, "Standard", null, false);
                         _userDb.SetContactConfirmNeeded(newUserId);
                         Console.WriteLine($"[ImportJobService] Created Solo user '{username}' for PC {pcId}");
 

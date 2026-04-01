@@ -1494,8 +1494,8 @@
             ? char.ToUpper(username[0]) + username[1..]
             : "LP Management";
 
-        var staffRole  = auth.User.FindFirst("StaffRole")?.Value ?? "None";
-        _isSolo        = staffRole == "Solo";
+        var staffRole  = auth.User.FindFirst("StaffRole")?.Value ?? StaffRoles.None;
+        _isSolo        = staffRole == StaffRoles.Solo;
         _userId = DashSvc.GetUserIdByUsername(username);
         // NeedsContactConfirm operates on core_users.Id, not PersonId — use GetLoginFlags for the correct Id
         var loginFlags = UserDb.GetLoginFlags(username);

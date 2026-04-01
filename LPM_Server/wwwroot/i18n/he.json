@@ -58,7 +58,7 @@
   "common.to": "עד",
   "common.noData": "אין נתונים להצגה",
   "home.userNotFound": "רשומת משתמש לא נמצאה במסד הנתונים.",
-  "home.noRole": "לא נמצא תפקיד מבקר או CS לחשבון זה.",
+  "home.noRole": "לא נמצא תפקיד מבקר, CS או Senior CS לחשבון זה.",
   "home.day": "יום",
   "home.role": "תפקיד",
   "home.csHeader": "CS:",

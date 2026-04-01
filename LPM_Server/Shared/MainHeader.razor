@@ -3856,9 +3856,9 @@ string _actionPcSearch = "";
             : "LP Management";
         _avatarUrl = UserDb.GetAvatarPath(name.ToLower());
         var apcStaffRole = auth.User.FindFirst("StaffRole")?.Value ?? "";
-        _isSoloUser   = apcStaffRole == "Solo";
-        _apcIsAuditor = apcStaffRole is "Auditor" or "CS" || auth.User.IsInRole("Admin");
-        _apcIsCS      = apcStaffRole is "CS"              || auth.User.IsInRole("Admin");
+        _isSoloUser   = apcStaffRole == StaffRoles.Solo;
+        _apcIsAuditor = StaffRoles.IsAuditorOrCS(apcStaffRole) || auth.User.IsInRole("Admin");
+        _apcIsCS      = StaffRoles.IsCS(apcStaffRole)          || auth.User.IsInRole("Admin");
 
         // Load existing PC names for duplicate detection
         _existingPcNames = new HashSet<string>(

@@ -609,7 +609,7 @@
         if (flags is not null)
         {
             _userId = flags.UserId;
-            _isSolo = flags.StaffRole == "Solo";
+            _isSolo = flags.StaffRole == StaffRoles.Solo;
         }
 
         // If the user doesn't need to confirm contact details, redirect immediately

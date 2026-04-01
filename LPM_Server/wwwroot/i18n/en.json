@@ -58,7 +58,7 @@
   "common.to": "To",
   "common.noData": "No data to show",
   "home.userNotFound": "User record not found in database.",
-  "home.noRole": "No Auditor or CS role found for this account.",
+  "home.noRole": "No Auditor, CS, or Senior CS role found for this account.",
   "home.day": "Day",
   "home.role": "Role",
   "home.csHeader": "CS:",

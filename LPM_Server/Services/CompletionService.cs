@@ -48,11 +48,11 @@ public class CompletionService
         using var conn = new SqliteConnection(_connStr);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
+        cmd.CommandText = $"""
             SELECT u.PersonId, p.FirstName || ' ' || p.LastName
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
-            WHERE u.StaffRole IN ('Auditor', 'CS') AND u.IsActive = 1
+            WHERE u.StaffRole IN {StaffRoles.SqlInAuditorCS()} AND u.IsActive = 1
             ORDER BY p.FirstName
             """;
         var list = new List<AuditorItem>();

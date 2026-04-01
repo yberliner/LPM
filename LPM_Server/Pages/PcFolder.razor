@@ -2896,7 +2896,7 @@
         // NOT IsSoloAuditor(PersonId) which returns true for dual-role users (Auditor + Solo)
         var _pcfStaffRole = HttpContextAccessor.HttpContext?.User.FindFirst("StaffRole")?.Value ?? "";
         var _pcfUsername  = HttpContextAccessor.HttpContext?.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
-        if (_pcfStaffRole == "Solo")
+        if (_pcfStaffRole == StaffRoles.Solo)
         {
             // Solo user: can only open their own PC's solo folder
             if (PcId != UserPersonId || !Solo)

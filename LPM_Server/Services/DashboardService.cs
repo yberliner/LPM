@@ -116,7 +116,7 @@ public class DashboardService
         using var aaR = aaCmd.ExecuteReader();
         bool allowAll = false;
         bool isSolo = false;
-        if (aaR.Read()) { allowAll = aaR.GetInt32(0) == 1; isSolo = aaR.GetString(1) == "Solo"; }
+        if (aaR.Read()) { allowAll = aaR.GetInt32(0) == 1; isSolo = aaR.GetString(1) == StaffRoles.Solo; }
         aaR.Close();
 
         using var cmd = conn.CreateCommand();
@@ -173,7 +173,7 @@ public class DashboardService
         var staffRole = roleCmd.ExecuteScalar() as string ?? "";
 
         using var cmd = conn.CreateCommand();
-        if (staffRole == "Solo")
+        if (staffRole == StaffRoles.Solo)
         {
             cmd.CommandText = $@"
                 SELECT pc.PcId, {FullNameExpr} AS FullName, CASE WHEN EXISTS (SELECT 1 FROM core_users cu WHERE cu.PersonId = pc.PcId AND cu.StaffRole = 'Solo' AND cu.IsActive = 1) THEN 1 ELSE 0 END
@@ -528,14 +528,14 @@ public class DashboardService
 
         // Get all active auditors/CS/solo with AllowAll
         using var audCmd = conn.CreateCommand();
-        audCmd.CommandText = @"
+        audCmd.CommandText = $@"
             SELECT u.PersonId,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS Name,
                    COALESCE(u.AllowAll, 0),
                    COALESCE(u.StaffRole, 'Auditor')
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
-            WHERE u.IsActive = 1 AND u.StaffRole IN ('Auditor','CS','Solo')
+            WHERE u.IsActive = 1 AND u.StaffRole IN {StaffRoles.SqlInAuditorCSSolo()}
             ORDER BY p.FirstName, p.LastName";
         var auditors = new List<(int Id, string Name, bool AllowAll, string StaffRole)>();
         using var ar = audCmd.ExecuteReader();
@@ -572,7 +572,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE core_users SET AllowAll = @v WHERE PersonId = @id AND StaffRole IN ('Auditor','CS')";
+        cmd.CommandText = $"UPDATE core_users SET AllowAll = @v WHERE PersonId = @id AND StaffRole IN {StaffRoles.SqlInAuditorCS()}";
         cmd.Parameters.AddWithValue("@v",  allow ? 1 : 0);
         cmd.Parameters.AddWithValue("@id", auditorId);
         cmd.ExecuteNonQuery();
@@ -635,7 +635,7 @@ public class DashboardService
 
         // Check AllowAll flag
         using var aaCmd = conn.CreateCommand();
-        aaCmd.CommandText = "SELECT COALESCE(AllowAll,0) FROM core_users WHERE PersonId = @uid AND IsActive = 1 AND StaffRole IN ('Auditor','CS') LIMIT 1";
+        aaCmd.CommandText = $"SELECT COALESCE(AllowAll,0) FROM core_users WHERE PersonId = @uid AND IsActive = 1 AND StaffRole IN {StaffRoles.SqlInAuditorCS()} LIMIT 1";
         aaCmd.Parameters.AddWithValue("@uid", userId);
         if (aaCmd.ExecuteScalar() is long a && a == 1) return true;
 
@@ -659,7 +659,7 @@ public class DashboardService
         using var ar = cmdAllow.ExecuteReader();
         if (ar.Read())
         {
-            if (ar.GetString(1) == "Solo") return pcId == personId; // Solo: own PC only (ignore AllowAll)
+            if (ar.GetString(1) == StaffRoles.Solo) return pcId == personId; // Solo: own PC only (ignore AllowAll)
             if (ar.GetInt32(0) == 1) return true;                   // AllowAll (non-Solo only)
         }
         ar.Close();
@@ -677,7 +677,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT 1 FROM core_users WHERE PersonId = @id AND IsActive = 1 AND StaffRole IN ('Auditor','CS') LIMIT 1";
+        cmd.CommandText = $"SELECT 1 FROM core_users WHERE PersonId = @id AND IsActive = 1 AND StaffRole IN {StaffRoles.SqlInAuditorCS()} LIMIT 1";
         cmd.Parameters.AddWithValue("@id", userId);
         return cmd.ExecuteScalar() is not null;
     }
@@ -687,7 +687,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT 1 FROM core_users WHERE PersonId = @id AND IsActive = 1 AND StaffRole = 'CS' LIMIT 1";
+        cmd.CommandText = $"SELECT 1 FROM core_users WHERE PersonId = @id AND IsActive = 1 AND StaffRole IN ('CS','SeniorCS') LIMIT 1";
         cmd.Parameters.AddWithValue("@id", userId);
         return cmd.ExecuteScalar() is not null;
     }

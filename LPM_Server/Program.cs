@@ -582,7 +582,7 @@ static bool CanAccessPcFile(HttpContext ctx, int pcId, bool solo, LPM.Services.D
         if (userId == 0) return false;
     }
     var staffRole = ctx.User.FindFirst("StaffRole")?.Value ?? "";
-    if (staffRole == "Solo")
+    if (staffRole == LPM.StaffRoles.Solo)
         return pcId == userId && solo;   // solo user: own PC, solo folder only
     var uname = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
     return dashSvc.CanAccessPcFolder(userId, pcId, uname);  // non-solo: must have permission

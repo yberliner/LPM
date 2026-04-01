@@ -145,7 +145,7 @@ public class UserDb
     public bool ValidateUser(string username, string password, out List<string> roles, out string staffRole)
     {
         roles = new List<string>();
-        staffRole = "None";
+        staffRole = StaffRoles.None;
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
             return false;
 
@@ -362,7 +362,7 @@ public class UserDb
         var staffRole = r.GetString(6);
         var roles = new List<string>();
         if (userType == "Admin")       roles.Add("Admin");
-        else if (staffRole != "Solo")  roles.Add("Customer");
+        else if (staffRole != StaffRoles.Solo)  roles.Add("Customer");
         // Solo → no roles (Dashboard only)
         return new LoginFlags(
             UserId: r.GetInt32(0),
@@ -394,7 +394,7 @@ public class UserDb
         var staffRoleById = r.GetString(6);
         var roles = new List<string>();
         if (userTypeById == "Admin")        roles.Add("Admin");
-        else if (staffRoleById != "Solo")   roles.Add("Customer");
+        else if (staffRoleById != StaffRoles.Solo)   roles.Add("Customer");
         // Solo → no roles (Dashboard only)
         return new LoginFlags(
             UserId: r.GetInt32(0),

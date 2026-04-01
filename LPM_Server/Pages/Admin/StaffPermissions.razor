@@ -286,7 +286,7 @@
                             <select class="form-select form-select-sm sp-cap-select"
                                     @bind="_addPcCapacity[aud.AuditorId]">
                                 <option value="Auditor">Auditor</option>
-                                @if (aud.StaffRole == "CS")
+                                @if (StaffRoles.IsCS(aud.StaffRole))
                                 {
                                     <option value="CS">CS</option>
                                 }
@@ -717,8 +717,8 @@
         _pending  = DashSvc.GetPendingPermissionRequests();
         _auditors = DashSvc.GetAuditorPermGroups();
         _allPcs   = DashSvc.GetAllPcs().ToList();
-        _matrixAuditors = _auditors.Where(a => a.StaffRole != "Solo").ToList();
-        _soloPcIds = _auditors.Where(a => a.StaffRole == "Solo").Select(a => a.AuditorId).ToHashSet();
+        _matrixAuditors = _auditors.Where(a => a.StaffRole != StaffRoles.Solo).ToList();
+        _soloPcIds = _auditors.Where(a => a.StaffRole == StaffRoles.Solo).Select(a => a.AuditorId).ToHashSet();
 
         foreach (var aud in _auditors)
         {
@@ -738,7 +738,7 @@
         _busy = false;
         _pending.RemoveAll(r => r.Id == id);
         _auditors = DashSvc.GetAuditorPermGroups();
-        _matrixAuditors = _auditors.Where(a => a.StaffRole != "Solo").ToList();
+        _matrixAuditors = _auditors.Where(a => a.StaffRole != StaffRoles.Solo).ToList();
         ShowMsg("Permission approved.", false);
     }
 
@@ -768,7 +768,7 @@
         var idx = _auditors.FindIndex(a => a.AuditorId == auditorId);
         if (idx >= 0)
             _auditors[idx] = _auditors[idx] with { AllowAll = allow };
-        _matrixAuditors = _auditors.Where(a => a.StaffRole != "Solo").ToList();
+        _matrixAuditors = _auditors.Where(a => a.StaffRole != StaffRoles.Solo).ToList();
     }
 
     private void AddPermission(int auditorId)
@@ -783,7 +783,7 @@
         DashSvc.AddApprovedPermission(auditorId, pcId, capacity);
         _busy = false;
         _auditors = DashSvc.GetAuditorPermGroups();
-        _matrixAuditors = _auditors.Where(a => a.StaffRole != "Solo").ToList();
+        _matrixAuditors = _auditors.Where(a => a.StaffRole != StaffRoles.Solo).ToList();
         _addPcSelection[auditorId] = 0;
         ShowMsg($"{pc.FullName} added as {capacity}.", false);
     }
@@ -796,7 +796,7 @@
         _busy = false;
         foreach (var aud in _auditors)
             aud.ApprovedPcs.RemoveAll(p => p.Id == id);
-        _matrixAuditors = _auditors.Where(a => a.StaffRole != "Solo").ToList();
+        _matrixAuditors = _auditors.Where(a => a.StaffRole != StaffRoles.Solo).ToList();
         ShowMsg("Permission removed.", false);
     }
 
@@ -819,7 +819,7 @@
             Console.WriteLine($"[StaffPermissions] MatrixToggle: granted Auditor — auditor='{aud.AuditorName}' (id={aud.AuditorId}) PC='{pcName}' (id={pcId}) by '{_username}'");
             DashSvc.AddApprovedPermission(aud.AuditorId, pcId, "Auditor");
         }
-        else if (existing.WorkCapacity == "Auditor" && aud.StaffRole == "CS")
+        else if (existing.WorkCapacity == "Auditor" && StaffRoles.IsCS(aud.StaffRole))
         {
             // Auditor → CS (only for CS staff)
             Console.WriteLine($"[StaffPermissions] MatrixToggle: upgraded Auditor→CS — auditor='{aud.AuditorName}' (id={aud.AuditorId}) PC='{pcName}' (id={pcId}) by '{_username}'");
@@ -832,7 +832,7 @@
             DashSvc.RemovePermission(existing.Id);
         }
         _auditors = DashSvc.GetAuditorPermGroups();
-        _matrixAuditors = _auditors.Where(a => a.StaffRole != "Solo").ToList();
+        _matrixAuditors = _auditors.Where(a => a.StaffRole != StaffRoles.Solo).ToList();
     }
 
     private void ShowMsg(string msg, bool isError) { _msg = msg; _msgIsError = isError; }
