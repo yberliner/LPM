@@ -1,3 +1,7 @@
+// HiDPI boost: render PDF canvases at higher resolution for crisp display.
+// Capped at 2 to limit memory usage. Only affects PDF render canvas, not overlays.
+function _pdfDpr() { return Math.min(window.devicePixelRatio || 1, 2); }
+
 // PC Folder PDF viewer with annotation support — multi-pane
 window.pcfViewer = {
     panes: {},       // keyed by paneId ('left', 'right')
@@ -272,9 +276,12 @@ window.pcfViewer = {
             wrapper.style.width = vp.width + 'px';
             wrapper.style.height = vp.height + 'px';
 
+            const dpr = _pdfDpr();
             const canvas = document.createElement('canvas');
-            canvas.width = vp.width;
-            canvas.height = vp.height;
+            canvas.width = Math.round(vp.width * dpr);
+            canvas.height = Math.round(vp.height * dpr);
+            canvas.style.width = vp.width + 'px';
+            canvas.style.height = vp.height + 'px';
             canvas.dataset.fsPageIndex = i; // for folder summary cell hit-testing
             wrapper.appendChild(canvas);
 
@@ -297,8 +304,9 @@ window.pcfViewer = {
 
             viewer.appendChild(wrapper);
 
+            const hiResVp = page.getViewport({ scale: scale * dpr });
             const ctx = canvas.getContext('2d');
-            await page.render({ canvasContext: ctx, viewport: vp }).promise;
+            await page.render({ canvasContext: ctx, viewport: hiResVp }).promise;
             if (pane.loadGen !== myGen) return; // superseded after render
 
             // Populate text layer asynchronously — non-blocking, non-critical
@@ -474,12 +482,15 @@ window.pcfViewer = {
 
         // Helper: resize and re-render a single page canvas at newScale
         const renderPage = async (i) => {
+            const dpr     = _pdfDpr();
             const page    = pane.pdfPages[i];
             const vp      = page.getViewport({ scale: newScale });
             const pg      = pane.pages[i];
             const wrapper = pg.canvas.parentElement;
-            pg.canvas.width  = vp.width;
-            pg.canvas.height = vp.height;
+            pg.canvas.width  = Math.round(vp.width * dpr);
+            pg.canvas.height = Math.round(vp.height * dpr);
+            pg.canvas.style.width  = vp.width  + 'px';
+            pg.canvas.style.height = vp.height + 'px';
             wrapper.style.width  = vp.width  + 'px';
             wrapper.style.height = vp.height + 'px';
             pg.overlay.width        = vp.width;
@@ -492,7 +503,8 @@ window.pcfViewer = {
                 textLayerDiv.style.height = vp.height + 'px';
                 textLayerDiv.style.setProperty('--scale-factor', vp.scale);
             }
-            await page.render({ canvasContext: pg.canvas.getContext('2d'), viewport: vp }).promise;
+            const hiResVp = page.getViewport({ scale: newScale * dpr });
+            await page.render({ canvasContext: pg.canvas.getContext('2d'), viewport: hiResVp }).promise;
             pg.vp    = vp;
             pg.scale = newScale;
             this._redrawOverlay(i, paneId);
@@ -1220,35 +1232,38 @@ window.pcfViewer = {
         // insertIdx = the index the new page will occupy
         const insertIdx = position === 'above' ? visibleIdx : visibleIdx + 1;
 
-        // Use same dimensions as the visible page
+        // Use same CSS dimensions as the visible page
         const refPg = pane.pages[visibleIdx];
-        const w = refPg.canvas.width;
-        const h = refPg.canvas.height;
+        const cssW = parseFloat(refPg.canvas.style.width) || (refPg.canvas.width / _pdfDpr());
+        const cssH = parseFloat(refPg.canvas.style.height) || (refPg.canvas.height / _pdfDpr());
+        const dpr = _pdfDpr();
 
         const viewer = document.getElementById('pcf-viewer-' + paneId);
         if (!viewer) return;
 
         const wrapper = document.createElement('div');
         wrapper.className = 'pcf-page-wrapper';
-        wrapper.style.width = w + 'px';
-        wrapper.style.height = h + 'px';
+        wrapper.style.width = cssW + 'px';
+        wrapper.style.height = cssH + 'px';
 
-        // White canvas (blank page)
+        // White canvas (blank page) — rendered at HiDPI resolution
         const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
+        canvas.width = Math.round(cssW * dpr);
+        canvas.height = Math.round(cssH * dpr);
+        canvas.style.width = cssW + 'px';
+        canvas.style.height = cssH + 'px';
         const ctx = canvas.getContext('2d');
         ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, w, h);
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         wrapper.appendChild(canvas);
 
-        // Annotation overlay
+        // Annotation overlay — stays at CSS resolution
         const overlay = document.createElement('canvas');
         overlay.className = 'pcf-annotation-canvas';
-        overlay.width = w;
-        overlay.height = h;
-        overlay.style.width = w + 'px';
-        overlay.style.height = h + 'px';
+        overlay.width = cssW;
+        overlay.height = cssH;
+        overlay.style.width = cssW + 'px';
+        overlay.style.height = cssH + 'px';
         wrapper.appendChild(overlay);
 
         // Apply current zoom level
@@ -1304,16 +1319,17 @@ window.pcfViewer = {
             return 0;
         }
 
+        const dpr = _pdfDpr();
         const numPages = insertDoc.numPages;
         const refPg = pane.pages[0]; // use first page for reference dimensions
-        // Target canvas width = same as the first original page so zoom works uniformly
-        const refCanvasWidth = refPg ? refPg.canvas.width : null;
+        // Target CSS width = same as the first original page so zoom works uniformly
+        const refCssWidth = refPg ? parseFloat(refPg.canvas.style.width) : null;
 
         for (let i = 1; i <= numPages; i++) {
             const page = await insertDoc.getPage(i);
             const naturalVp = page.getViewport({ scale: 1 });
-            const insertScale = refCanvasWidth
-                ? (refCanvasWidth / naturalVp.width)
+            const insertScale = refCssWidth
+                ? (refCssWidth / naturalVp.width)
                 : (pane.baseScale || 1);
             const vp = page.getViewport({ scale: insertScale });
 
@@ -1323,10 +1339,13 @@ window.pcfViewer = {
             wrapper.style.height = vp.height + 'px';
 
             const canvas = document.createElement('canvas');
-            canvas.width = vp.width;
-            canvas.height = vp.height;
+            canvas.width = Math.round(vp.width * dpr);
+            canvas.height = Math.round(vp.height * dpr);
+            canvas.style.width = vp.width + 'px';
+            canvas.style.height = vp.height + 'px';
+            const hiResVp = page.getViewport({ scale: insertScale * dpr });
             const ctx = canvas.getContext('2d');
-            await page.render({ canvasContext: ctx, viewport: vp }).promise;
+            await page.render({ canvasContext: ctx, viewport: hiResVp }).promise;
             wrapper.appendChild(canvas);
 
             const overlay = document.createElement('canvas');
@@ -1411,11 +1430,14 @@ window.pcfViewer = {
                 fc.width = pg.canvas.width; fc.height = pg.canvas.height;
                 const fctx = fc.getContext('2d');
                 fctx.drawImage(pg.canvas, 0, 0);
-                // Draw only draw strokes — text lives in sidecar and must never be burned into PDF
+                // Draw only draw strokes — scale from overlay (CSS) coords to canvas (HiDPI) coords
+                const strokeDpr = pg.canvas.width / pg.overlay.width;
+                if (Math.abs(strokeDpr - 1) > 0.01) fctx.setTransform(strokeDpr, 0, 0, strokeDpr, 0, 0);
                 for (const ann of pane.annotations) {
                     if (ann.pageIdx !== i || ann.type !== 'draw') continue;
                     this._drawStroke(fctx, ann.stroke);
                 }
+                if (Math.abs(strokeDpr - 1) > 0.01) fctx.setTransform(1, 0, 0, 1, 0, 0);
                 pages.push({
                     action: isOriginal ? 'full_replace' : 'full_new',
                     srcPageIdx,
@@ -1490,10 +1512,11 @@ window.pcfViewer = {
         const viewer = document.getElementById('pcf-viewer-' + paneId);
         if (!viewer) return 100;
 
-        // Find the tallest rendered page
+        // Find the tallest rendered page (use CSS height, not HiDPI buffer)
         let maxPageH = 0;
         for (const pg of pane.pages) {
-            if (pg.canvas.height > maxPageH) maxPageH = pg.canvas.height;
+            const cssH = parseFloat(pg.canvas.style.height) || (pg.canvas.height / _pdfDpr());
+            if (cssH > maxPageH) maxPageH = cssH;
         }
         if (maxPageH === 0) return 100;
 
@@ -1732,12 +1755,14 @@ window.pcfViewer = {
 
         if (hasSrc) {
             // Render from the exact source doc/page (correct even after insertions)
+            const dpr = _pdfDpr();
             const tmpCanvas = document.createElement('canvas');
             tmpCanvas.width = w;
             tmpCanvas.height = h;
             const tmpCtx = tmpCanvas.getContext('2d');
             const page = await pg.srcDoc.getPage(pg.srcPageNum);
-            await page.render({ canvasContext: tmpCtx, viewport: pg.vp }).promise;
+            const hiResVp = page.getViewport({ scale: (pg.scale || pane.baseScale) * dpr });
+            await page.render({ canvasContext: tmpCtx, viewport: hiResVp }).promise;
 
             ctx.clearRect(0, 0, w, h);
 
@@ -1804,9 +1829,10 @@ window.pcfViewer = {
         viewer.style.gap     = '0';
 
         // Scale so each page fits exactly half the viewer width and full height — no cap at 1
+        // Use CSS dimensions (not canvas buffer which may be HiDPI-scaled)
         const zl             = pane.zoomLevel || 1;
-        const renderedWidth  = pane.pages[0].canvas.width  * zl;
-        const renderedHeight = pane.pages[0].canvas.height * zl;
+        const renderedWidth  = (parseFloat(pane.pages[0].canvas.style.width)  || (pane.pages[0].canvas.width / _pdfDpr())) * zl;
+        const renderedHeight = (parseFloat(pane.pages[0].canvas.style.height) || (pane.pages[0].canvas.height / _pdfDpr())) * zl;
         const scaleByWidth   = (viewer.clientWidth  / 2) / renderedWidth;
         const scaleByHeight  = (viewer.clientHeight)     / renderedHeight;
         pane.dualScale       = Math.min(scaleByWidth, scaleByHeight);
@@ -1941,12 +1967,14 @@ window.pcfViewer = {
         this.closeFloat();
 
         // Composite: page canvas + annotation overlay → single snapshot
+        // PDF canvas may be HiDPI-scaled; overlay is at CSS size — scale overlay to match
         const offscreen = document.createElement('canvas');
         offscreen.width  = pg.canvas.width;
         offscreen.height = pg.canvas.height;
         const ctx = offscreen.getContext('2d');
-        ctx.drawImage(pg.canvas,  0, 0);
-        ctx.drawImage(pg.overlay, 0, 0);
+        ctx.drawImage(pg.canvas, 0, 0);
+        ctx.drawImage(pg.overlay, 0, 0, pg.overlay.width, pg.overlay.height,
+                                  0, 0, pg.canvas.width, pg.canvas.height);
         const dataUrl = offscreen.toDataURL('image/png');
 
         // Title: filename + page number
@@ -1960,7 +1988,9 @@ window.pcfViewer = {
         //   outer border: 2px × 2 = 4px each axis
         const OVERHEAD_H = 53; // titleBar(33) + bodyPad_V(16) + border_V(4)
         const OVERHEAD_W = 20; // bodyPad_H(16) + border_H(4)
-        const pageAspect = pg.canvas.height / pg.canvas.width; // H/W ratio
+        const cssPageW = parseFloat(pg.canvas.style.width) || (pg.canvas.width / _pdfDpr());
+        const cssPageH = parseFloat(pg.canvas.style.height) || (pg.canvas.height / _pdfDpr());
+        const pageAspect = cssPageH / cssPageW; // H/W ratio
 
         const maxW = window.innerWidth  - 40;
         const maxH = window.innerHeight - 80;
@@ -2229,7 +2259,8 @@ window.pcfViewer = {
             const pgCountEl = win.querySelector('#pcf-float-pgcount');
             if (pgCountEl) pgCountEl.textContent = pgCount + (pgCount === 1 ? ' page' : ' pages');
 
-            // Render pages one by one — fit to body width
+            // Render pages one by one — fit to body width (HiDPI boosted)
+            const dpr = _pdfDpr();
             for (let i = 1; i <= pgCount; i++) {
                 if (this._floatWin !== win) return; // closed mid-render
                 const page = await pdfDoc.getPage(i);
@@ -2238,10 +2269,11 @@ window.pcfViewer = {
                 const scale = Math.max(0.3, bodyW / vp0.width);
                 const vp    = page.getViewport({ scale });
                 const canvas = document.createElement('canvas');
-                canvas.width  = Math.round(vp.width);
-                canvas.height = Math.round(vp.height);
-                canvas.style.cssText = 'max-width:100%;height:auto;display:block;flex-shrink:0;border-radius:2px;';
-                await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+                canvas.width  = Math.round(vp.width * dpr);
+                canvas.height = Math.round(vp.height * dpr);
+                canvas.style.cssText = `width:${Math.round(vp.width)}px;height:${Math.round(vp.height)}px;max-width:100%;display:block;flex-shrink:0;border-radius:2px;`;
+                const hiResVp = page.getViewport({ scale: scale * dpr });
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport: hiResVp }).promise;
                 body.appendChild(canvas);
             }
         } catch (e) {
