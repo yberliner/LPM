@@ -4683,6 +4683,17 @@
             targetIdx = 2; // 3rd pane (index 2)
         }
         _activeIdx = targetIdx;
+        // Queue reload of existing panes so they resize to the new narrower width
+        _pendingReloads ??= new();
+        for (int i = 0; i < _paneCount; i++)
+        {
+            if (i == targetIdx) continue; // new pane will be loaded by SelectFile
+            if (!string.IsNullOrEmpty(_panes[i].File))
+                _pendingReloads.Add((PaneIds[i], _panes[i].File!));
+        }
+        // Render the new pane DOM first so loadPdf measures the correct width
+        StateHasChanged();
+        await Task.Delay(50);
         await SelectFile(pinkAtt.RelativePath, pinkAtt.FileName, "WorkSheet", fitAfterLoad: true);
     }
 
@@ -4716,6 +4727,17 @@
             targetIdx = 2;
         }
         _activeIdx = targetIdx;
+        // Queue reload of existing panes so they resize to the new narrower width
+        _pendingReloads ??= new();
+        for (int i = 0; i < _paneCount; i++)
+        {
+            if (i == targetIdx) continue;
+            if (!string.IsNullOrEmpty(_panes[i].File))
+                _pendingReloads.Add((PaneIds[i], _panes[i].File!));
+        }
+        // Render the new pane DOM first so loadPdf measures the correct width
+        StateHasChanged();
+        await Task.Delay(50);
         await SelectFile(att.RelativePath, att.FileName, "WorkSheet", fitAfterLoad: true);
     }
 
