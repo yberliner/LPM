@@ -96,6 +96,7 @@ public class SessionService
                 session.SetString("InitalAppState", jsonState);
             }
         }
+        catch (ObjectDisposedException) { /* circuit shut down — safe to ignore */ }
         catch (Exception ex)
         {
             Console.WriteLine($"[SetInitalAppStateToSession] Exception: {ex.Message}");
