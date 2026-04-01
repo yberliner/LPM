@@ -274,14 +274,14 @@
             @if (_isSeniorCS)
             {
                 var teamTotalPending = _teamCsQueues.Values.Sum(q => q.Count(s => string.IsNullOrEmpty(s.CsStatus)));
-                <div class="card mx-3 mt-3 mb-2 home-pending-cs-card">
-                    <div class="card-header py-2 home-pending-cs-header"
+                <div class="card mx-3 mt-3 mb-2 home-team-cs-card">
+                    <div class="card-header py-2 home-team-cs-header"
                          style="cursor:pointer;" @onclick="() => _teamCsExpanded = !_teamCsExpanded">
                         <i class="@(_teamCsExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"
                            style="font-size:1rem;"></i>
-                        <i class="ri-team-line me-1"></i>
-                        <strong>Team CS Review</strong>
-                        <span class="home-pending-cs-badge">@teamTotalPending</span>
+                        <i class="ri-team-line me-1 home-team-cs-icon"></i>
+                        <strong class="home-team-cs-title">Team CS Review</strong>
+                        <span class="home-team-cs-badge">@teamTotalPending</span>
                         <button class="home-done-toggle @(_showTeamCsDone ? "home-done-toggle-on" : "")"
                                 @onclick:stopPropagation="true"
                                 @onclick="ToggleTeamCsDone"
@@ -1127,6 +1127,54 @@
         0%, 100% { box-shadow: 0 0 4px rgba(236,72,153,.3); }
         50%      { box-shadow: 0 0 12px rgba(236,72,153,.6); }
     }
+    /* ── Team CS Review card (SeniorCS) ── */
+    .home-team-cs-card {
+        border: 1px solid rgba(124,58,237,.3);
+        overflow: hidden;
+        animation: teamCsFadeIn .4s ease-out;
+    }
+    @@keyframes teamCsFadeIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    .home-team-cs-header {
+        background: linear-gradient(135deg, rgba(124,58,237,.15), rgba(91,33,182,.12));
+        color: #a78bfa; font-size: .85rem;
+        border-color: rgba(124,58,237,.25);
+        display: flex; align-items: center; gap: 4px;
+    }
+    .home-team-cs-title {
+        background: linear-gradient(90deg,
+            #a78bfa 0%, #a78bfa 35%, #e9d5ff 50%, #a78bfa 65%, #a78bfa 100%);
+        background-size: 300% 100%;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        animation: teamCsTitleShimmer 5s ease-in-out infinite;
+    }
+    @@keyframes teamCsTitleShimmer {
+        0%, 100% { background-position: 100% 0; }
+        50%      { background-position: 0% 0; }
+    }
+    .home-team-cs-icon {
+        animation: teamCsIconPulse 3s ease-in-out infinite;
+    }
+    @@keyframes teamCsIconPulse {
+        0%,100% { opacity: 0.7; transform: scale(1); }
+        50%     { opacity: 1; transform: scale(1.15); filter: drop-shadow(0 0 4px rgba(167,139,250,0.6)); }
+    }
+    .home-team-cs-badge {
+        background: #7c3aed; color: #fff;
+        border-radius: 10px; padding: 0 8px;
+        font-size: .7rem; font-weight: 700;
+        min-width: 22px; text-align: center;
+        animation: teamCsBadgePulse 2.5s ease-in-out infinite;
+    }
+    @@keyframes teamCsBadgePulse {
+        0%, 100% { box-shadow: 0 0 4px rgba(124,58,237,.3); }
+        50%      { box-shadow: 0 0 14px rgba(124,58,237,.7); }
+    }
+
     .home-dual-table { table-layout: fixed; width: 100%; }
     .home-pending-cs-table {
         font-size: .78rem; color: #e2e8f0;

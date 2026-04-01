@@ -148,9 +148,13 @@
                         {
                             <span class="solo-badge-inline">Solo</span>
                         }
+                        @if (_isSeniorCS)
+                        {
+                            <span class="seniorcs-badge-inline">Senior CS</span>
+                        }
                         @if (_isAllowAll)
                         {
-                            <span class="allowall-badge-inline">⚡ Full Access</span>
+                            <span class="allowall-badge-inline" title="Full Access"><i class="ri-shield-star-line allowall-icon"></i>Full Access</span>
                         }
                         <ul class="dropdown-menu dropdown-menu-end shadow-sm">
                             <li><h6 class="dropdown-header">@_displayName</h6></li>
@@ -161,8 +165,13 @@
                     </div>
 
                     <style>
+                        /* ── Compact header ── */
+                        .app-header { height: 3rem !important; }
+                        .app-header .main-header-container { height: 3rem !important; }
+                        .app-content { margin-block-start: 3rem !important; }
+
                         .lpm-username-shimmer {
-                            font-size: 2.3rem; font-weight: 000; letter-spacing: 0.03em;
+                            font-size: 1.4rem; font-weight: 000; letter-spacing: 0.03em;
                             background: linear-gradient(90deg,
                                 var(--default-text-color) 0%,
                                 var(--default-text-color) 35%,
@@ -237,8 +246,8 @@
                         .ahp-status { font-size: 0.72rem; color: #16a34a; margin-top: 5px; display: flex; align-items: center; justify-content: center; gap: 3px; }
                         .avatar-circle {
                             position: relative;
-                            width: 44px;
-                            height: 44px;
+                            width: 32px;
+                            height: 32px;
                             border-radius: 50%;
                             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                             border: 2px solid rgba(255,255,255,0.5);
@@ -274,7 +283,7 @@
                             opacity: 1;
                         }
                         .avatar-caret {
-                            font-size: 14px;
+                            font-size: 11px;
                             color: var(--default-text-color);
                             opacity: 0.75;
                             line-height: 1;
@@ -338,23 +347,66 @@
                         .allowall-badge-inline {
                             display: inline-flex;
                             align-items: center;
-                            font-size: 0.7rem;
+                            gap: 3px;
+                            font-size: 0.55rem;
                             font-weight: 700;
-                            letter-spacing: 0.1em;
+                            letter-spacing: 0.08em;
                             text-transform: uppercase;
-                            color: #1a1a00;
-                            background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
+                            color: #fbbf24;
+                            background: rgba(251,191,36,0.1);
+                            border: 1px solid rgba(251,191,36,0.35);
+                            backdrop-filter: blur(6px);
                             border-radius: 999px;
-                            padding: 3px 11px;
-                            box-shadow: 0 0 12px rgba(251,191,36,0.65), 0 2px 6px rgba(0,0,0,0.2);
+                            padding: 2px 9px 2px 6px;
                             margin-left: 4px;
                             vertical-align: middle;
                             align-self: center;
-                            animation: allowAllPulse 3s ease-in-out infinite;
+                            cursor: default;
+                            position: relative;
+                            overflow: hidden;
+                            animation: allowAllGlow 5s ease-in-out infinite;
                         }
-                        @@keyframes allowAllPulse {
-                            0%,100% { box-shadow: 0 0 12px rgba(251,191,36,0.65), 0 2px 6px rgba(0,0,0,0.2); }
-                            50%     { box-shadow: 0 0 22px rgba(251,191,36,1.0),  0 2px 6px rgba(0,0,0,0.2); }
+                        .allowall-badge-inline::after {
+                            content: '';
+                            position: absolute;
+                            top: 0; left: -100%; width: 60%; height: 100%;
+                            background: linear-gradient(90deg, transparent, rgba(251,191,36,0.25), transparent);
+                            animation: allowAllSweep 5s ease-in-out infinite;
+                        }
+                        .allowall-icon {
+                            font-size: .65rem;
+                            filter: drop-shadow(0 0 3px rgba(251,191,36,0.6));
+                        }
+                        @@keyframes allowAllGlow {
+                            0%,100% { box-shadow: 0 0 4px rgba(251,191,36,0.2); border-color: rgba(251,191,36,0.25); }
+                            50%     { box-shadow: 0 0 10px rgba(251,191,36,0.5); border-color: rgba(251,191,36,0.5); }
+                        }
+                        @@keyframes allowAllSweep {
+                            0%,70%  { left: -100%; }
+                            100%    { left: 200%; }
+                        }
+                        /* ── Senior CS badge ── */
+                        .seniorcs-badge-inline {
+                            display: inline-flex;
+                            align-items: center;
+                            font-size: 0.58rem;
+                            font-weight: 700;
+                            letter-spacing: 0.06em;
+                            text-transform: uppercase;
+                            color: #fff;
+                            background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 50%, #5b21b6 100%);
+                            border-radius: 999px;
+                            padding: 2px 8px;
+                            margin-left: 4px;
+                            vertical-align: middle;
+                            align-self: center;
+                            background-size: 200% 200%;
+                            animation: seniorCsShimmer 3s ease-in-out infinite;
+                        }
+                        @@keyframes seniorCsShimmer {
+                            0%   { background-position: 0% 50%;   box-shadow: 0 0 6px rgba(124,58,237,0.4); }
+                            50%  { background-position: 100% 50%; box-shadow: 0 0 14px rgba(124,58,237,0.8); }
+                            100% { background-position: 0% 50%;   box-shadow: 0 0 6px rgba(124,58,237,0.4); }
                         }
                     </style>
 
@@ -2772,6 +2824,7 @@
     private string? _avatarUrl;
     private bool _isSoloUser;   // true when logged-in user has StaffRole = "Solo"
     private bool _isAllowAll;   // true when logged-in user has AllowAll = 1 in core_users
+    private bool _isSeniorCS;  // true when logged-in user has StaffRole = 'SeniorCS'
 
     // ── Add PC state ──
     SpkNewPersonModal _addPcModal = default!;
@@ -3857,6 +3910,7 @@ string _actionPcSearch = "";
         _avatarUrl = UserDb.GetAvatarPath(name.ToLower());
         var apcStaffRole = auth.User.FindFirst("StaffRole")?.Value ?? "";
         _isSoloUser   = apcStaffRole == StaffRoles.Solo;
+        _isSeniorCS   = apcStaffRole == StaffRoles.SeniorCS;
         _apcIsAuditor = StaffRoles.IsAuditorOrCS(apcStaffRole) || auth.User.IsInRole("Admin");
         _apcIsCS      = StaffRoles.IsCS(apcStaffRole)          || auth.User.IsInRole("Admin");
 
