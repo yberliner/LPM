@@ -3648,6 +3648,17 @@
                     }),
                     Task.Run(async () =>
                     {
+                        // TAA Excel — no dependencies on other phases, start immediately
+                        sTaa.Status = 1;
+                        var sessionMinutes = sessionLenSec / 60;
+                        var taaDate = !string.IsNullOrEmpty(capturedDate) ? capturedDate : DateTime.Today.ToString("d.M.yy");
+                        if (DateTime.TryParseExact(taaDate, "dd/MM/yyyy", null, System.Globalization.DateTimeStyles.None, out var parsedDate))
+                            taaDate = parsedDate.ToString("d.M.yy");
+                        FolderSvc.AppendTaaRow(capturedPcId, taaDate, sessionMinutes, capturedTotalTa);
+                        await Advance(sTaa, 2);
+                    }),
+                    Task.Run(async () =>
+                    {
                         // ── fast path (PdfSharpCore, no external tool) ──
                         var direct = FolderSvc.TryNormalizePdfDirect(capturedBytes);
                         if (direct != null)
@@ -3742,39 +3753,27 @@
                     normalizedBytes = PdfSvc.CombinePdfs(arfPdfBytes, normalizedBytes);
                 }
 
-                // ── Phase 2: save files + TAA Excel in parallel ───────────────
-                // TAA needs only captured variables — no dependency on saved file names.
-                sSave.Status = 1; sTaa.Status = 1;
+                // ── Phase 2: save files to folder ───────────────
+                sSave.Status = 1;
                 await InvokeAsync(StateHasChanged);
 
-                await Task.WhenAll(
-                    Task.Run(async () =>
-                    {
-                        var savedSessionFileName = capturedIsSolo
-                            ? FolderSvc.SaveSoloUploadedFile(capturedPcId, capturedFileName, normalizedBytes)!
-                            : FolderSvc.SaveUploadedFile(capturedPcId, capturedFileName, normalizedBytes)!;
+                await Task.Run(async () =>
+                {
+                    var savedSessionFileName = capturedIsSolo
+                        ? FolderSvc.SaveSoloUploadedFile(capturedPcId, capturedFileName, normalizedBytes)!
+                        : FolderSvc.SaveUploadedFile(capturedPcId, capturedFileName, normalizedBytes)!;
 
-                        foreach (var (name, data) in capturedAttachments)
-                            FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, name, data, capturedIsSolo);
+                    foreach (var (name, data) in capturedAttachments)
+                        FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, name, data, capturedIsSolo);
 
-                        if (!string.IsNullOrWhiteSpace(capturedStep3Bottom))
-                            DashSvc.SaveNextCs(sessionId, capturedStep3Bottom);
+                    if (!string.IsNullOrWhiteSpace(capturedStep3Bottom))
+                        DashSvc.SaveNextCs(sessionId, capturedStep3Bottom);
 
-                        if (nextCsPdfBytes.Length > 0)
-                            FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, "Next CS.pdf", nextCsPdfBytes, capturedIsSolo);
+                    if (nextCsPdfBytes.Length > 0)
+                        FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, "Next CS.pdf", nextCsPdfBytes, capturedIsSolo);
 
-                        await Advance(sSave, 2);
-                    }),
-                    Task.Run(async () =>
-                    {
-                        var sessionMinutes = sessionLenSec / 60;
-                        var taaDate = !string.IsNullOrEmpty(capturedDate) ? capturedDate : DateTime.Today.ToString("d.M.yy");
-                        if (DateTime.TryParseExact(taaDate, "dd/MM/yyyy", null, System.Globalization.DateTimeStyles.None, out var parsedDate))
-                            taaDate = parsedDate.ToString("d.M.yy");
-                        FolderSvc.AppendTaaRow(capturedPcId, taaDate, sessionMinutes, capturedTotalTa);
-                        await Advance(sTaa, 2);
-                    })
-                );
+                    await Advance(sSave, 2);
+                });
 
                 Console.WriteLine($"[MainHeader] Imported session '{capturedFileName}' for PC {capturedPcId} with {capturedAttachments.Count} attachments by '{capturedUsername}'");
 
