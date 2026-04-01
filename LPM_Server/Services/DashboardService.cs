@@ -2108,6 +2108,23 @@ public class DashboardService
         return cmd.ExecuteScalar() as string;
     }
 
+    public string? GetSessionAuditorName(int pcId, string sessionFileName)
+    {
+        var name = Path.GetFileNameWithoutExtension(sessionFileName);
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), ''))
+            FROM sess_sessions s
+            JOIN core_persons p ON p.PersonId = COALESCE(NULLIF(s.AuditorId, 0), s.PcId)
+            WHERE s.PcId = @pcId AND s.Name = @name
+            LIMIT 1";
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        cmd.Parameters.AddWithValue("@name", name);
+        return cmd.ExecuteScalar() as string;
+    }
+
     public int GetSessionTotalSeconds(int sessionId)
     {
         using var conn = new SqliteConnection(_connectionString);

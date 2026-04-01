@@ -4702,7 +4702,17 @@
         Console.WriteLine($"[PcFolder] Adding {name} sheet to session '{_wsCtxSessionFileName}' by '{_userName}' — PC {PcId}");
         var sessionFileName = _wsCtxSessionFileName;
         var (w, h) = FolderSvc.GetSessionPageSizePt(PcId, sessionFileName, Solo);
-        var pdfBytes = FolderSvc.CreateEmptyPdf(w, h);
+        byte[] pdfBytes;
+        if (name.Equals("Instruct", StringComparison.OrdinalIgnoreCase))
+        {
+            var auditorName = DashSvc.GetSessionAuditorName(PcId, sessionFileName) ?? "Auditor";
+            var date = DateTime.Today.ToString("dd/MM/yyyy");
+            pdfBytes = PdfSvc.GenerateInstructPdf(_pcName, date, auditorName, _userName, w, h);
+        }
+        else
+        {
+            pdfBytes = FolderSvc.CreateEmptyPdf(w, h);
+        }
         FolderSvc.SaveAttachment(PcId, sessionFileName, $"{name}.pdf", pdfBytes, Solo);
         RefreshFolder();
         CloseWsCtxMenu();

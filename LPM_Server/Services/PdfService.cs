@@ -2027,6 +2027,53 @@ public class PdfService
         }).GeneratePdf();
     }
 
+    // ── Instruct PDF ──
+
+    public byte[] GenerateInstructPdf(
+        string pcName, string date, string auditorName, string csName,
+        double widthPt = 595.28, double heightPt = 841.89)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+        return Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(new PageSize((float)widthPt, (float)heightPt));
+                page.Margin(36);
+                page.DefaultTextStyle(x => x.FontSize(11).FontColor("#1a1a1a"));
+
+                page.Content().ScaleToFit().Column(col =>
+                {
+                    // Date — top right, NOT underlined
+                    col.Item().AlignRight().PaddingBottom(10)
+                        .Text(date).FontSize(11).FontColor("#1a1a1a");
+
+                    // Instruction: {Auditor Name} — underlined
+                    col.Item().PaddingBottom(8).Text(t =>
+                    {
+                        t.Span("Instruction: ").FontSize(11).Underline().FontColor("#1a1a1a");
+                        t.Span(auditorName).FontSize(14).Bold().Underline().FontColor("#1a1a1a");
+                    });
+
+                    // PC: {PC Name} — underlined
+                    col.Item().PaddingBottom(8).Text(t =>
+                    {
+                        t.Span("PC: ").FontSize(11).Underline().FontColor("#1a1a1a");
+                        t.Span(pcName).FontSize(14).Bold().Underline().FontColor("#1a1a1a");
+                    });
+
+                    // Observations: — underlined
+                    col.Item().PaddingBottom(8)
+                        .Text("Observations:").FontSize(11).Underline().FontColor("#1a1a1a");
+                });
+
+                // CS Name — bottom right, underlined
+                page.Footer().AlignRight()
+                    .Text(csName).FontSize(15).Bold().Underline().FontColor("#1a1a1a");
+            });
+        }).GeneratePdf();
+    }
+
     // ── Session Summaries PDF (prepended to Folder Summary) ──
 
     static string SecsToHMM(int secs) => secs <= 0 ? "" : $"{secs / 3600}:{(secs % 3600) / 60:D2}";
