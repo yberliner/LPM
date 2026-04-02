@@ -974,6 +974,30 @@
             </div>
         }
 
+        @* ── Preset strip ── *@
+        @if (_folder != null)
+        {
+            <div class="pcf-preset-strip">
+                @{ var presets = new[] {
+                    (1, "Program", "ri-file-text-line"),
+                    (2, "PT", "ri-folder-line"),
+                    (3, "Next CS", "ri-file-edit-line"),
+                    (4, "\u2014", "ri-more-line")
+                }; }
+                @foreach (var (num, label, icon) in presets)
+                {
+                    var n = num;
+                    var needsSession = n >= 2 && n <= 3;
+                    <button class="pcf-preset-chip @(_activePreset == n ? "pcf-preset-chip-active" : "")"
+                            disabled="@(_presetLoading || n == 4 || (needsSession && _csSessionId == 0))"
+                            @onclick="async () => await ApplyPresetAsync(n)">
+                        <i class="@icon"></i>
+                        <span>@label</span>
+                    </button>
+                }
+            </div>
+        }
+
         @* ── PDF viewer area ── *@
         <div class="pcf-viewer-area @(_paneCount > 1 ? "pcf-split" : "")">
             @for (int pi = 0; pi < _paneCount; pi++)
@@ -1823,6 +1847,30 @@
     .pcf-banner-dismiss:hover { opacity: 1; }
     .pcf-done-already { opacity: .5; cursor: default; }
 
+    /* ── Preset strip ── */
+    .pcf-preset-strip {
+        display: flex; align-items: center; justify-content: center;
+        gap: 6px; padding: 4px 16px;
+        background: linear-gradient(135deg, #1e3a5f, #1e40af);
+        flex-shrink: 0;
+    }
+    .pcf-preset-chip {
+        background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2);
+        color: #94a3b8; border-radius: 16px; padding: 4px 14px;
+        font-size: .78rem; font-weight: 600; cursor: pointer;
+        transition: background .15s, color .15s, border-color .15s;
+        display: inline-flex; align-items: center; gap: 5px;
+        white-space: nowrap; height: 30px;
+    }
+    .pcf-preset-chip:hover:not(:disabled) {
+        background: rgba(59,130,246,.3); border-color: #3b82f6; color: #fff;
+    }
+    .pcf-preset-chip-active {
+        background: #3b82f6 !important; border-color: #3b82f6 !important; color: #fff !important;
+    }
+    .pcf-preset-chip:disabled { opacity: .35; cursor: default; }
+    .pcf-preset-chip i { font-size: .9rem; }
+
     /* ── Viewer area ── */
     .pcf-viewer-area {
         flex-grow: 1; display: flex; overflow: hidden; min-height: 0;
@@ -2023,6 +2071,8 @@
         .pcf-size-popup { right: 0; left: auto; max-width: calc(100vw - 10px); }
         .pcf-annot-popup { right: 0; left: auto; max-width: calc(100vw - 10px); }
         .pcf-zoom-menu { right: 0; left: auto; max-width: calc(100vw - 10px); }
+        .pcf-preset-strip { padding: 4px 10px; gap: 4px; }
+        .pcf-preset-chip { padding: 4px 10px; font-size: .72rem; min-height: 44px; border-radius: 12px; }
         .pcf-viewer-area.pcf-split { flex-direction: column; }
         .pcf-toast-success { padding: 10px 16px; font-size: .82rem; max-width: 90vw; }
         .pcf-lock-banner { flex-wrap: wrap; font-size: .78rem; }
@@ -2037,6 +2087,8 @@
         .pcf-sidebar-header { padding: 10px; font-size: .88rem; }
         .pcf-section-title { padding: 10px 10px; font-size: .82rem; min-height: 44px; }
         .pcf-file-item { padding: 10px 10px 10px 20px; font-size: .75rem; min-height: 44px; }
+        .pcf-preset-strip { padding: 3px 8px; gap: 3px; flex-wrap: wrap; }
+        .pcf-preset-chip { padding: 3px 8px; font-size: .68rem; min-height: 44px; flex: 1; justify-content: center; }
         .pcf-toolbar { padding: 5px 8px; gap: 3px 6px; }
         .pcf-toolbar-file { font-size: .72rem; max-width: 100px; }
         .pcf-toolbar-section { font-size: .65rem; padding: 1px 5px; }
@@ -2698,6 +2750,7 @@
 
     string _pcName = "";
     string _userName = "";
+    string _loginUsername = "";    // login username from auth claims — for "aviv" default preset check
     PcFolderInfo? _folder;
     int _csSessionId;            // session ID passed from Dashboard (0 = not from CS button)
     QuestionInfo? _questionInfo;  // current session's question status
@@ -2721,6 +2774,8 @@
     int _paneCount = 1;   // 1, 2, or 3
     int _activeIdx = 0;   // index into _panes / PaneIds
     int? _maximizedPane;  // which pane slot is fullscreen-maximized (null = normal)
+    int _activePreset = 0;        // 0=none, 1-4=active preset
+    bool _presetLoading = false;  // prevents double-click during preset switch
 
     // "Already open" toast
     string _dupeFileName  = "";
@@ -2949,6 +3004,7 @@
         // NOT IsSoloAuditor(PersonId) which returns true for dual-role users (Auditor + Solo)
         var _pcfStaffRole = HttpContextAccessor.HttpContext?.User.FindFirst("StaffRole")?.Value ?? "";
         var _pcfUsername  = HttpContextAccessor.HttpContext?.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
+        _loginUsername = _pcfUsername;
         if (_pcfStaffRole == StaffRoles.Solo)
         {
             // Solo user: can only open their own PC's solo folder
@@ -3026,40 +3082,26 @@
             }
             if (_csSessionId > 0)
                 _questionInfo = QuestionSvc.GetQuestionForSession(_csSessionId);
-            WorkSheetItem? match = null;
-            if (!string.IsNullOrWhiteSpace(_csSessionName) && _folder != null)
+            // ── Preset auto-load ──
+            var defaultPreset = (_csSessionId > 0
+                && _loginUsername.Equals("aviv", StringComparison.OrdinalIgnoreCase)) ? 3 : 1;
+            var presetFiles = ResolvePresetFiles(defaultPreset);
+            if (presetFiles.Count > 0)
             {
-                match = _folder.WorkSheets
-                    .FirstOrDefault(ws => SessionDisplayName(ws.File.FileName)
-                        .Equals(_csSessionName, StringComparison.OrdinalIgnoreCase));
-                if (match == null)
-                    Console.WriteLine($"ERROR: [PcFolder] CS session file missing — session='{_csSessionName}' (ID={_csSessionId}), PC={PcId}, user='{_userName}'");
-            }
-            if (match != null)
-            {
-                _panes[0].File = match.File.RelativePath;
-                _panes[0].FileName = SessionDisplayName(match.File.FileName);
-                _panes[0].Section = "WorkSheet";
-                var attCount = Math.Min(match.Attachments.Count, 2);
-                if (attCount > 0)
+                _paneCount = presetFiles.Count;
+                _activeIdx = 0;
+                for (int i = 0; i < presetFiles.Count; i++)
                 {
-                    _paneCount = 1 + attCount;
-                    _activeIdx = attCount;
-                    for (int i = 0; i < attCount; i++)
-                    {
-                        _panes[i + 1].File     = match.Attachments[i].RelativePath;
-                        _panes[i + 1].FileName = match.Attachments[i].FileName;
-                        _panes[i + 1].Section  = "WorkSheet";
-                    }
+                    _panes[i].File     = presetFiles[i].RelativePath;
+                    _panes[i].FileName = SessionDisplayName(presetFiles[i].FileName);
+                    _panes[i].Section  = presetFiles[i].Section;
                 }
-                if (match.Attachments.Count >= 3)
-                {
-                    _floatAttFile = match.Attachments[2].RelativePath;
-                    _floatAttName = match.Attachments[2].FileName;
-                }
+                _activePreset = defaultPreset;
+                Console.WriteLine($"[PcFolder] Auto-loaded preset {defaultPreset} ({presetFiles.Count} panes) for '{_userName}' — PC {PcId}");
             }
             else if (_folder?.WorkSheets.Count > 0)
             {
+                // Fallback: load latest worksheet + first attachment
                 var latest = _folder.WorkSheets[0];
                 _panes[0].File     = latest.File.RelativePath;
                 _panes[0].FileName = SessionDisplayName(latest.File.FileName);
@@ -3088,7 +3130,9 @@
             {
                 if (!string.IsNullOrEmpty(_panes[i].File))
                 {
-                    var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_panes[i].File!)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
+                    var fn = Path.GetFileName(_panes[i].File!);
+                    var endpoint = IsFolderSummaryFile(fn, _panes[i].File!) ? "/api/pc-file-folder-summary" : "/api/pc-file";
+                    var url = $"{endpoint}?pcId={PcId}&path={Uri.EscapeDataString(_panes[i].File!)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
                     var paneId = PaneIds[i];
                     paneTasks.Add(JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId).AsTask());
                 }
@@ -3298,6 +3342,7 @@
 
     async Task SelectFile(string relativePath, string fileName, string section = "", bool fitAfterLoad = false)
     {
+        _activePreset = 0; // manual selection breaks preset state
         // Block if this file is already open in a DIFFERENT pane
         var idx = _paneCount == 1 ? 0 : _activeIdx;
         for (int pi = 0; pi < _paneCount; pi++)
@@ -3800,8 +3845,73 @@
     async Task CyclePanes() =>
         await SetPaneCount(_paneCount >= 3 ? 1 : _paneCount + 1);
 
+    async Task ApplyPresetAsync(int presetNum)
+    {
+        if (presetNum == _activePreset || _presetLoading || _folder == null) return;
+
+        // Resolve files FIRST — bail before touching any state
+        var files = ResolvePresetFiles(presetNum);
+        if (files.Count == 0) return;
+        var count = files.Count;
+
+        _presetLoading = true;
+        ++_selectGeneration;
+
+        // Cancel extract mode
+        if (_extractMode) _ = CancelExtract();
+
+        // Save open panes (preserve annotations)
+        for (int i = 0; i < _paneCount; i++)
+            if (!string.IsNullOrEmpty(_panes[i].File))
+                await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]);
+
+        // Cancel in-flight loads
+        for (int i = 0; i < _paneCount; i++)
+            if (!string.IsNullOrEmpty(_panes[i].File)
+                && !_panes[i].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                await JS.InvokeVoidAsync("pcfViewer.cancelLoad", PaneIds[i]);
+
+        // Clear stale state
+        _dualPanes.Clear(); _dualInfo.Clear();
+        _maximizedPane = null;
+        _excelData = null; _excelRelPath = "";
+        _hasAnnotations = false; _toolMode = "";
+        _zoomPercent = 100; _fitMode = false;
+        await JS.InvokeVoidAsync("pcfViewer.setTool", "");
+
+        // Set pane state
+        for (int i = 0; i < count; i++)
+        {
+            _panes[i].File     = files[i].RelativePath;
+            _panes[i].FileName = SessionDisplayName(files[i].FileName);
+            _panes[i].Section  = files[i].Section;
+        }
+        for (int i = count; i < 3; i++)
+        {
+            _panes[i].File = null; _panes[i].FileName = null; _panes[i].Section = "";
+        }
+        _paneCount = count;
+        _activeIdx = 0;
+        _activePreset = presetNum;
+
+        Console.WriteLine($"[PcFolder] Applied preset {presetNum} ({count} panes) by '{_userName}' — PC {PcId}");
+
+        // Schedule PDF loads via _pendingReloads (DOM panes may not exist yet if _paneCount increased)
+        var reloads = new List<(string, string)>();
+        for (int i = 0; i < count; i++)
+            if (!string.IsNullOrEmpty(_panes[i].File)
+                && !_panes[i].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                reloads.Add((PaneIds[i], _panes[i].File!));
+        if (reloads.Count > 0)
+            _pendingReloads = reloads;
+
+        await JS.InvokeVoidAsync("pcfViewer.setActivePane", PaneIds[_activeIdx]);
+        _presetLoading = false;
+    }
+
     async Task SetPaneCount(int newCount)
     {
+        _activePreset = 0;
         _maximizedPane = null; // always exit maximize mode when changing pane layout
         if (newCount == _paneCount) return;
         newCount = Math.Clamp(newCount, 1, 3);
@@ -3910,6 +4020,7 @@
 
     async Task ClosePane(int idx)
     {
+        _activePreset = 0;
         Console.WriteLine($"[PcFolder] Closed pane {idx} ('{_panes[idx].FileName}') by '{_userName}' — PC {PcId}");
         // Auto-save the pane being closed
         if (!string.IsNullOrEmpty(_panes[idx].File))
@@ -4671,6 +4782,98 @@
     }
 
     static string SessionDisplayName(string fileName) => Path.GetFileNameWithoutExtension(fileName);
+
+    // ── Preset file resolution ──────────────────────────
+
+    List<(string RelativePath, string FileName, string Section)> ResolvePresetFiles(int presetNum)
+    {
+        var files = new List<(string RelativePath, string FileName, string Section)>();
+        if (_folder == null) return files;
+
+        switch (presetNum)
+        {
+            case 1:
+            {
+                var rootFiles = _folder.FrontCoverTree.Children.Where(c => !c.IsFolder);
+
+                // 1. Program file
+                var prog = rootFiles.FirstOrDefault(f =>
+                {
+                    var l = Path.GetFileNameWithoutExtension(f.Name).ToLowerInvariant();
+                    return l.Contains("program") || l.Contains("prog");
+                });
+                if (prog != null) files.Add((prog.RelativePath, prog.Name, "Front Cover"));
+
+                // 2. Folder Summary (skip if same file as program — e.g. "Program Summary.pdf")
+                var summary = rootFiles.FirstOrDefault(f => IsFolderSummaryFile(f.Name, f.RelativePath));
+                if (summary != null && summary.RelativePath != prog?.RelativePath)
+                    files.Add((summary.RelativePath, summary.Name, "Front Cover"));
+
+                // 3. Previous session's Next CS (only if in CS mode)
+                if (_csSessionId > 0)
+                {
+                    var prev = DashSvc.GetPreviousSession(PcId, _csSessionId, Solo);
+                    if (prev != null)
+                    {
+                        var prevWs = _folder.WorkSheets.FirstOrDefault(ws =>
+                            SessionDisplayName(ws.File.FileName).Equals(prev.Value.Name, StringComparison.OrdinalIgnoreCase));
+                        if (prevWs != null)
+                        {
+                            var nextCsAtt = prevWs.Attachments.FirstOrDefault(a =>
+                                a.FileName.Contains("_att_Next CS", StringComparison.OrdinalIgnoreCase));
+                            if (nextCsAtt != null)
+                                files.Add((nextCsAtt.RelativePath, nextCsAtt.FileName, "WorkSheet"));
+                        }
+                    }
+                }
+                break;
+            }
+            case 2:
+            {
+                // 1. Current session worksheet
+                if (!string.IsNullOrEmpty(_csSessionName))
+                {
+                    var match = _folder.WorkSheets.FirstOrDefault(ws =>
+                        SessionDisplayName(ws.File.FileName).Equals(_csSessionName, StringComparison.OrdinalIgnoreCase));
+                    if (match != null)
+                        files.Add((match.File.RelativePath, match.File.FileName, "WorkSheet"));
+                }
+
+                // 2-3. PT subfolder files (up to 2)
+                var ptFolder = _folder.FrontCoverTree.Children
+                    .FirstOrDefault(c => c.IsFolder && c.Name.Equals("PT", StringComparison.OrdinalIgnoreCase));
+                if (ptFolder != null)
+                {
+                    foreach (var f in ptFolder.Children.Where(c => !c.IsFolder).Take(2))
+                        files.Add((f.RelativePath, f.Name, "Front Cover"));
+                }
+                break;
+            }
+            case 3:
+            {
+                // 1. Current session worksheet
+                if (!string.IsNullOrEmpty(_csSessionName))
+                {
+                    var match = _folder.WorkSheets.FirstOrDefault(ws =>
+                        SessionDisplayName(ws.File.FileName).Equals(_csSessionName, StringComparison.OrdinalIgnoreCase));
+                    if (match != null)
+                    {
+                        files.Add((match.File.RelativePath, match.File.FileName, "WorkSheet"));
+
+                        // 2. Current session's Next CS attachment
+                        var nextCsAtt = match.Attachments.FirstOrDefault(a =>
+                            a.FileName.Contains("_att_Next CS", StringComparison.OrdinalIgnoreCase));
+                        if (nextCsAtt != null)
+                            files.Add((nextCsAtt.RelativePath, nextCsAtt.FileName, "WorkSheet"));
+                    }
+                }
+                break;
+            }
+            // case 4: reserved — return empty
+        }
+
+        return files;
+    }
 
     // ── Tree file manager methods ──────────────────────────
 

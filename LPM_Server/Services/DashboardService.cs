@@ -2129,6 +2129,25 @@ public class DashboardService
         return cmd.ExecuteScalar() is not null;
     }
 
+    public (int SessionId, string Name)? GetPreviousSession(int pcId, int currentSessionId, bool isSolo = false)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        var soloFilter = isSolo ? "AND AuditorId IS NULL" : "AND AuditorId IS NOT NULL";
+        cmd.CommandText = $@"
+            SELECT SessionId, COALESCE(Name,'')
+            FROM sess_sessions
+            WHERE PcId = @pcId AND SessionId < @sid {soloFilter}
+            ORDER BY SessionDate DESC, SessionId DESC
+            LIMIT 1";
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        cmd.Parameters.AddWithValue("@sid", currentSessionId);
+        using var r = cmd.ExecuteReader();
+        if (r.Read()) return (r.GetInt32(0), r.GetString(1));
+        return null;
+    }
+
     public string? GetSessionName(int sessionId)
     {
         using var conn = new SqliteConnection(_connectionString);
