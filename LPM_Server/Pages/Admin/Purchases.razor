@@ -243,7 +243,7 @@
                                             else if (item.ItemType == "Book") { <span style="color:#d97706;">Book</span> }
                                             else { @($"{item.HoursBought}h") }
                                         </td>
-                                        <td class="small text-end" style="color:#212529;">@(item.AmountPaid > 0 ? $"\u20AA{item.AmountPaid}" : "\u2014")</td>
+                                        <td class="small text-end" style="color:#212529;">@(item.AmountPaid > 0 ? $"{CurrSym(_viewDetail.Currency)}{item.AmountPaid}" : "\u2014")</td>
                                     </tr>
                                 }
                             </tbody>
@@ -256,7 +256,7 @@
                                     </td>
                                     <td class="small text-end fw-semibold" style="color:#212529;">
                                         @{ var totalAmt = _viewDetail.Items.Sum(i => i.AmountPaid); }
-                                        @(totalAmt > 0 ? $"\u20AA{totalAmt}" : "\u2014")
+                                        @(totalAmt > 0 ? $"{CurrSym(_viewDetail.Currency)}{totalAmt}" : "\u2014")
                                     </td>
                                 </tr>
                             </tfoot>
@@ -303,17 +303,25 @@
                                                         "CreditCard" => ("ri-bank-card-line", LS.T("purchases.creditCard")),
                                                         "Check" => ("ri-file-text-line", LS.T("purchases.check")),
                                                         "BankTransfer" => ("ri-exchange-line", LS.T("purchases.bankTransfer")),
+                                                        "ToBePaid" => ("ri-time-line", "To Be Paid"),
                                                         _ => ("ri-money-dollar-circle-line", LS.T("purchases.cash"))
                                                     };
                                                 }
                                                 <i class="@dpmIcon me-1" style="color:#212529;"></i>@dpmLabel
                                             </td>
-                                            <td class="small text-end fw-semibold" style="color:#212529;">@(pm.Amount > 0 ? $"\u20AA{pm.Amount}" : "\u2014")</td>
+                                            <td class="small text-end fw-semibold" style="color:#212529;">@(pm.Amount > 0 ? $"{CurrSym(_viewDetail.Currency)}{pm.Amount}" : "\u2014")</td>
                                             <td class="small" style="color:#212529;">@(pm.PaymentDate != null ? FormatDate(pm.PaymentDate) : "\u2014")</td>
                                             <td class="text-center">
-                                                <input type="checkbox" class="form-check-input"
-                                                       checked="@pm.IsMoneyInBank"
-                                                       @onchange="() => ToggleMoneyInBank(pm.PaymentMethodId, !pm.IsMoneyInBank)" />
+                                                @if (pm.MethodType == "ToBePaid")
+                                                {
+                                                    <span class="badge" style="background:#fef3c7;color:#92400e;font-size:.65rem;">N/A</span>
+                                                }
+                                                else
+                                                {
+                                                    <input type="checkbox" class="form-check-input"
+                                                           checked="@pm.IsMoneyInBank"
+                                                           @onchange="() => ToggleMoneyInBank(pm.PaymentMethodId, !pm.IsMoneyInBank)" />
+                                                }
                                             </td>
                                             <td class="small" style="color:#6b7280;">@(pm.MoneyInBankDate != null ? FormatDate(pm.MoneyInBankDate) : "\u2014")</td>
                                         </tr>
@@ -483,6 +491,8 @@
     private bool _auditingCollapsed = false;
     private bool _courseCollapsed   = false;
     private bool _bookCollapsed    = false;
+
+    static string CurrSym(string code) => code switch { "USD" => "$", "EUR" => "€", _ => "₪" };
     private int? _currentPersonId;
     private string _username = "";
     private string _sortCol = "date";
@@ -615,7 +625,8 @@
 
     private string GetBankStatus(int purchaseId)
     {
-        var pms = _paymentMethodsCache.GetValueOrDefault(purchaseId);
+        var pms = _paymentMethodsCache.GetValueOrDefault(purchaseId)?
+            .Where(m => m.MethodType != "ToBePaid").ToList();
         if (pms == null || pms.Count == 0) return "none";
         if (pms.All(m => m.IsMoneyInBank)) return "all";
         if (pms.Any(m => m.IsMoneyInBank)) return "partial";
@@ -744,7 +755,7 @@
                             </span>
                         </td>
                         <td class="text-end py-2 small fw-semibold">@(p.TotalHours > 0 ? $"{p.TotalHours}h" : "\u2014")</td>
-                        <td class="text-end py-2 small fw-semibold">@(p.TotalAmount > 0 ? $"\u20AA{p.TotalAmount}" : "\u2014")</td>
+                        <td class="text-end py-2 small fw-semibold">@(p.TotalAmount > 0 ? $"{CurrSym(p.Currency)}{p.TotalAmount}" : "\u2014")</td>
                         <td class="py-2 small" style="color:#6b7280;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@p.Notes">@(p.Notes ?? "\u2014")</td>
                         <td class="py-2 small" style="color:#6b7280;">@p.CreatedByName</td>
                         <td class="text-center py-2">

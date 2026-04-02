@@ -18,15 +18,15 @@ public record PcListItemEx(int PcId, string FullName, string Nick, long RemainSe
     long TotalSessionSec, int TotalSessions, int AcademyVisits, int HoursPurchased);
 public record PurchaseListItem(int PurchaseId, int PcId, string PcName, string PurchaseDate,
     string? Notes, string ApprovedStatus, string? ApprovedByName, string? ApprovedAt,
-    string? CreatedByName, string CreatedAt, int TotalAmount, int TotalHours, bool IsDeleted = false);
+    string? CreatedByName, string CreatedAt, int TotalAmount, int TotalHours, bool IsDeleted = false, string Currency = "ILS");
 public record PurchaseItemInfo(int PurchaseItemId, string ItemType, int? CourseId,
     string? CourseName, int? BookId, string? BookName, int HoursBought, int AmountPaid);
 public record PurchaseDetail(int PurchaseId, int PcId, string PcName, string PurchaseDate,
     string? Notes, string? SignatureData, string ApprovedStatus, string? ApprovedByName,
     string? CreatedByName, List<PurchaseItemInfo> Items, List<PurchasePaymentMethodInfo> PaymentMethods,
-    int? RegistrarId = null, string? RegistrarName = null, int? ReferralId = null, string? ReferralName = null);
+    int? RegistrarId = null, string? RegistrarName = null, int? ReferralId = null, string? ReferralName = null, string Currency = "ILS");
 public record PurchasePaymentMethodInfo(int PaymentMethodId, string MethodType,
-    int Amount, string? PaymentDate, bool IsMoneyInBank, string? MoneyInBankDate);
+    int Amount, string? PaymentDate, bool IsMoneyInBank, string? MoneyInBankDate, int Installments = 1);
 
 public class PcService
 {
@@ -507,8 +507,8 @@ public List<PcListItem> GetAllPcs()
     public int CreatePurchase(int pcId, string date, string? notes, string? signatureData,
         int? createdByPersonId,
         List<(string itemType, int? courseId, int? bookId, int hoursBought, int amountPaid)> items,
-        List<(string methodType, int amount, string? paymentDate)>? paymentMethods = null,
-        int? registrarId = null, int? referralId = null)
+        List<(string methodType, int amount, string? paymentDate, int installments)>? paymentMethods = null,
+        int? registrarId = null, int? referralId = null, string currency = "ILS")
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -517,8 +517,8 @@ public List<PcListItem> GetAllPcs()
         using var cmd = conn.CreateCommand();
         cmd.Transaction = tx;
         cmd.CommandText = @"
-            INSERT INTO fin_purchases (PcId, PurchaseDate, Notes, SignatureData, CreatedByPersonId, RegistrarId, ReferralId)
-            VALUES (@pcId, @date, @notes, @sig, @createdBy, @regId, @refId)";
+            INSERT INTO fin_purchases (PcId, PurchaseDate, Notes, SignatureData, CreatedByPersonId, RegistrarId, ReferralId, Currency)
+            VALUES (@pcId, @date, @notes, @sig, @createdBy, @regId, @refId, @currency)";
         cmd.Parameters.AddWithValue("@pcId", pcId);
         cmd.Parameters.AddWithValue("@date", date);
         cmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
@@ -526,6 +526,7 @@ public List<PcListItem> GetAllPcs()
         cmd.Parameters.AddWithValue("@createdBy", createdByPersonId.HasValue ? (object)createdByPersonId.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@regId", registrarId.HasValue ? (object)registrarId.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@refId", referralId.HasValue ? (object)referralId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@currency", currency);
         cmd.ExecuteNonQuery();
 
         using var idCmd = conn.CreateCommand();
@@ -572,16 +573,44 @@ public List<PcListItem> GetAllPcs()
         {
             foreach (var pm in paymentMethods)
             {
-                using var pmCmd = conn.CreateCommand();
-                pmCmd.Transaction = tx;
-                pmCmd.CommandText = @"
-                    INSERT INTO fin_payment_methods (PurchaseId, MethodType, Amount, PaymentDate)
-                    VALUES (@pid, @type, @amt, @date)";
-                pmCmd.Parameters.AddWithValue("@pid", purchaseId);
-                pmCmd.Parameters.AddWithValue("@type", pm.methodType);
-                pmCmd.Parameters.AddWithValue("@amt", pm.amount);
-                pmCmd.Parameters.AddWithValue("@date", (object?)pm.paymentDate ?? DBNull.Value);
-                pmCmd.ExecuteNonQuery();
+                var inst = Math.Max(1, pm.installments);
+                if (pm.methodType == "CreditCard" && inst > 1 && pm.paymentDate != null)
+                {
+                    // Split into N rows with monthly dates
+                    var perPayment = pm.amount / inst;
+                    var remainder = pm.amount - perPayment * inst;
+                    var startDate = DateOnly.Parse(pm.paymentDate);
+                    for (int k = 0; k < inst; k++)
+                    {
+                        var pmDate = startDate.AddMonths(k).ToString("yyyy-MM-dd");
+                        var amt = perPayment + (k == inst - 1 ? remainder : 0);
+                        using var pmCmd = conn.CreateCommand();
+                        pmCmd.Transaction = tx;
+                        pmCmd.CommandText = @"
+                            INSERT INTO fin_payment_methods (PurchaseId, MethodType, Amount, PaymentDate, Installments)
+                            VALUES (@pid, @type, @amt, @date, @inst)";
+                        pmCmd.Parameters.AddWithValue("@pid", purchaseId);
+                        pmCmd.Parameters.AddWithValue("@type", pm.methodType);
+                        pmCmd.Parameters.AddWithValue("@amt", amt);
+                        pmCmd.Parameters.AddWithValue("@date", pmDate);
+                        pmCmd.Parameters.AddWithValue("@inst", inst);
+                        pmCmd.ExecuteNonQuery();
+                    }
+                }
+                else
+                {
+                    using var pmCmd = conn.CreateCommand();
+                    pmCmd.Transaction = tx;
+                    pmCmd.CommandText = @"
+                        INSERT INTO fin_payment_methods (PurchaseId, MethodType, Amount, PaymentDate, Installments)
+                        VALUES (@pid, @type, @amt, @date, @inst)";
+                    pmCmd.Parameters.AddWithValue("@pid", purchaseId);
+                    pmCmd.Parameters.AddWithValue("@type", pm.methodType);
+                    pmCmd.Parameters.AddWithValue("@amt", pm.amount);
+                    pmCmd.Parameters.AddWithValue("@date", (object?)pm.paymentDate ?? DBNull.Value);
+                    pmCmd.Parameters.AddWithValue("@inst", 1);
+                    pmCmd.ExecuteNonQuery();
+                }
             }
         }
 
@@ -622,7 +651,8 @@ public List<PcListItem> GetAllPcs()
                    p.CreatedAt,
                    COALESCE(items.TotalAmount, 0),
                    COALESCE(items.TotalHours, 0),
-                   COALESCE(p.IsDeleted, 0)
+                   COALESCE(p.IsDeleted, 0),
+                   COALESCE(p.Currency,'ILS')
             FROM fin_purchases p
             JOIN core_persons per ON per.PersonId = p.PcId
             LEFT JOIN core_persons ap ON ap.PersonId = p.ApprovedByPersonId
@@ -646,7 +676,7 @@ public List<PcListItem> GetAllPcs()
                 r.IsDBNull(8) ? null : r.GetString(8).Trim(),
                 r.GetString(9),
                 r.GetInt32(10), r.GetInt32(11),
-                r.GetInt32(12) == 1));
+                r.GetInt32(12) == 1, r.GetString(13)));
         return list;
     }
 
@@ -665,7 +695,8 @@ public List<PcListItem> GetAllPcs()
                    p.RegistrarId,
                    TRIM(COALESCE(reg.FirstName,'') || ' ' || COALESCE(NULLIF(reg.LastName,''),'')) AS RegistrarName,
                    p.ReferralId,
-                   TRIM(COALESCE(rf.FirstName,'') || ' ' || COALESCE(NULLIF(rf.LastName,''),'')) AS ReferralName
+                   TRIM(COALESCE(rf.FirstName,'') || ' ' || COALESCE(NULLIF(rf.LastName,''),'')) AS ReferralName,
+                   COALESCE(p.Currency,'ILS') AS Currency
             FROM fin_purchases p
             JOIN core_persons per ON per.PersonId = p.PcId
             LEFT JOIN core_persons ap ON ap.PersonId = p.ApprovedByPersonId
@@ -691,7 +722,8 @@ public List<PcListItem> GetAllPcs()
             r.IsDBNull(9) ? null : r.GetInt32(9),
             r.IsDBNull(10) ? null : r.GetString(10).Trim(),
             r.IsDBNull(11) ? null : r.GetInt32(11),
-            r.IsDBNull(12) ? null : r.GetString(12).Trim());
+            r.IsDBNull(12) ? null : r.GetString(12).Trim(),
+            Currency: r.GetString(13));
         r.Close();
 
         using var iCmd = conn.CreateCommand();
@@ -719,7 +751,7 @@ public List<PcListItem> GetAllPcs()
         // Load payment methods
         using var pmCmd = conn.CreateCommand();
         pmCmd.CommandText = @"
-            SELECT PaymentMethodId, MethodType, Amount, PaymentDate, IsMoneyInBank, MoneyInBankDate
+            SELECT PaymentMethodId, MethodType, Amount, PaymentDate, IsMoneyInBank, MoneyInBankDate, COALESCE(Installments,1)
             FROM fin_payment_methods WHERE PurchaseId = @id ORDER BY PaymentMethodId";
         pmCmd.Parameters.AddWithValue("@id", purchaseId);
         using var pmr = pmCmd.ExecuteReader();
@@ -728,7 +760,8 @@ public List<PcListItem> GetAllPcs()
                 pmr.GetInt32(0), pmr.GetString(1), pmr.GetInt32(2),
                 pmr.IsDBNull(3) ? null : pmr.GetString(3),
                 pmr.GetInt32(4) == 1,
-                pmr.IsDBNull(5) ? null : pmr.GetString(5)));
+                pmr.IsDBNull(5) ? null : pmr.GetString(5),
+                pmr.GetInt32(6)));
 
         return detail;
     }
@@ -746,7 +779,8 @@ public List<PcListItem> GetAllPcs()
                    TRIM(COALESCE(cr.FirstName,'') || ' ' || COALESCE(NULLIF(cr.LastName,''),'')) AS CreatedByName,
                    p.CreatedAt,
                    COALESCE(items.TotalAmount, 0),
-                   COALESCE(items.TotalHours, 0)
+                   COALESCE(items.TotalHours, 0),
+                   COALESCE(p.Currency,'ILS')
             FROM fin_purchases p
             JOIN core_persons per ON per.PersonId = p.PcId
             LEFT JOIN core_persons cr ON cr.PersonId = p.CreatedByPersonId
@@ -768,7 +802,8 @@ public List<PcListItem> GetAllPcs()
                 r.IsDBNull(7) ? null : r.GetString(7),
                 r.IsDBNull(8) ? null : r.GetString(8).Trim(),
                 r.GetString(9),
-                r.GetInt32(10), r.GetInt32(11)));
+                r.GetInt32(10), r.GetInt32(11),
+                Currency: r.GetString(12)));
         return list;
     }
 
@@ -786,7 +821,8 @@ public List<PcListItem> GetAllPcs()
                    TRIM(COALESCE(cr.FirstName,'') || ' ' || COALESCE(NULLIF(cr.LastName,''),'')) AS CreatedByName,
                    p.CreatedAt,
                    COALESCE(items.TotalAmount, 0),
-                   COALESCE(items.TotalHours, 0)
+                   COALESCE(items.TotalHours, 0),
+                   COALESCE(p.Currency,'ILS')
             FROM fin_purchases p
             JOIN core_persons per ON per.PersonId = p.PcId
             LEFT JOIN core_persons ap ON ap.PersonId = p.ApprovedByPersonId
@@ -809,14 +845,15 @@ public List<PcListItem> GetAllPcs()
                 r.IsDBNull(7) ? null : r.GetString(7),
                 r.IsDBNull(8) ? null : r.GetString(8).Trim(),
                 r.GetString(9),
-                r.GetInt32(10), r.GetInt32(11)));
+                r.GetInt32(10), r.GetInt32(11),
+                Currency: r.GetString(12)));
         return list;
     }
 
     public void UpdatePurchase(int purchaseId, string date, string? notes,
         List<(string itemType, int? courseId, int? bookId, int hoursBought, int amountPaid)> items,
-        List<(string methodType, int amount, string? paymentDate)> paymentMethods,
-        int? registrarId = null, int? referralId = null)
+        List<(string methodType, int amount, string? paymentDate, int installments)> paymentMethods,
+        int? registrarId = null, int? referralId = null, string currency = "ILS")
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -838,7 +875,7 @@ public List<PcListItem> GetAllPcs()
             cmd.Transaction = tx;
             cmd.CommandText = @"
                 UPDATE fin_purchases SET PurchaseDate = @date, Notes = @notes,
-                    RegistrarId = @regId, ReferralId = @refId,
+                    RegistrarId = @regId, ReferralId = @refId, Currency = @currency,
                     ApprovedStatus = 'Pending', ApprovedByPersonId = NULL, ApprovedAt = NULL
                 WHERE PurchaseId = @id";
             cmd.Parameters.AddWithValue("@id", purchaseId);
@@ -846,6 +883,7 @@ public List<PcListItem> GetAllPcs()
             cmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@regId", registrarId.HasValue ? (object)registrarId.Value : DBNull.Value);
             cmd.Parameters.AddWithValue("@refId", referralId.HasValue ? (object)referralId.Value : DBNull.Value);
+            cmd.Parameters.AddWithValue("@currency", currency);
             cmd.ExecuteNonQuery();
         }
 
@@ -914,16 +952,43 @@ public List<PcListItem> GetAllPcs()
 
         foreach (var pm in paymentMethods)
         {
-            using var pmCmd = conn.CreateCommand();
-            pmCmd.Transaction = tx;
-            pmCmd.CommandText = @"
-                INSERT INTO fin_payment_methods (PurchaseId, MethodType, Amount, PaymentDate)
-                VALUES (@pid, @type, @amt, @date)";
-            pmCmd.Parameters.AddWithValue("@pid", purchaseId);
-            pmCmd.Parameters.AddWithValue("@type", pm.methodType);
-            pmCmd.Parameters.AddWithValue("@amt", pm.amount);
-            pmCmd.Parameters.AddWithValue("@date", (object?)pm.paymentDate ?? DBNull.Value);
-            pmCmd.ExecuteNonQuery();
+            var inst = Math.Max(1, pm.installments);
+            if (pm.methodType == "CreditCard" && inst > 1 && pm.paymentDate != null)
+            {
+                var perPayment = pm.amount / inst;
+                var remainder = pm.amount - perPayment * inst;
+                var startDate = DateOnly.Parse(pm.paymentDate);
+                for (int k = 0; k < inst; k++)
+                {
+                    var pmDate = startDate.AddMonths(k).ToString("yyyy-MM-dd");
+                    var amt = perPayment + (k == inst - 1 ? remainder : 0);
+                    using var pmCmd = conn.CreateCommand();
+                    pmCmd.Transaction = tx;
+                    pmCmd.CommandText = @"
+                        INSERT INTO fin_payment_methods (PurchaseId, MethodType, Amount, PaymentDate, Installments)
+                        VALUES (@pid, @type, @amt, @date, @inst)";
+                    pmCmd.Parameters.AddWithValue("@pid", purchaseId);
+                    pmCmd.Parameters.AddWithValue("@type", pm.methodType);
+                    pmCmd.Parameters.AddWithValue("@amt", amt);
+                    pmCmd.Parameters.AddWithValue("@date", pmDate);
+                    pmCmd.Parameters.AddWithValue("@inst", inst);
+                    pmCmd.ExecuteNonQuery();
+                }
+            }
+            else
+            {
+                using var pmCmd = conn.CreateCommand();
+                pmCmd.Transaction = tx;
+                pmCmd.CommandText = @"
+                    INSERT INTO fin_payment_methods (PurchaseId, MethodType, Amount, PaymentDate, Installments)
+                    VALUES (@pid, @type, @amt, @date, @inst)";
+                pmCmd.Parameters.AddWithValue("@pid", purchaseId);
+                pmCmd.Parameters.AddWithValue("@type", pm.methodType);
+                pmCmd.Parameters.AddWithValue("@amt", pm.amount);
+                pmCmd.Parameters.AddWithValue("@date", (object?)pm.paymentDate ?? DBNull.Value);
+                pmCmd.Parameters.AddWithValue("@inst", 1);
+                pmCmd.ExecuteNonQuery();
+            }
         }
 
         tx.Commit();

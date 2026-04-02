@@ -93,17 +93,24 @@
                                     @{
                                         var (ico, lbl) = up.MethodType switch
                                         {
-                                            "CreditCard" => ("ri-bank-card-line", LS.T("purchases.creditCard")),
+                                            "CreditCard" => ("ri-bank-card-line", LS.T("purchases.creditCard") + (up.Installments > 1 ? $" ({up.Installments})" : "")),
                                             "Check" => ("ri-file-text-line", LS.T("purchases.check")),
                                             "BankTransfer" => ("ri-exchange-line", LS.T("purchases.bankTransfer")),
+                                            "ToBePaid" => ("ri-time-line", "To Be Paid"),
                                             _ => ("ri-money-dollar-circle-line", LS.T("purchases.cash"))
                                         };
                                     }
                                     <i class="@ico me-1"></i>@lbl
                                 </td>
-                                <td class="py-2 small text-end fw-semibold">@(up.Amount > 0 ? $"\u20AA{up.Amount}" : "\u2014")</td>
+                                <td class="py-2 small text-end fw-semibold">@(up.Amount > 0 ? $"{CurrSym(up.Currency)}{up.Amount}" : "\u2014")</td>
                                 <td class="text-center py-2">
-                                    @if (up.IsMoneyInBank)
+                                    @if (up.MethodType == "ToBePaid")
+                                    {
+                                        <span class="badge rounded-pill" style="background:#fef3c7;color:#92400e;font-size:.68rem;">
+                                            <i class="ri-error-warning-line me-1"></i>To Be Paid
+                                        </span>
+                                    }
+                                    else if (up.IsMoneyInBank)
                                     {
                                         <span class="py-badge-deposited">
                                             <i class="ri-checkbox-circle-fill me-1"></i>@LS.T("payments.deposited")
@@ -117,7 +124,11 @@
                                     }
                                 </td>
                                 <td class="text-center py-2">
-                                    @if (up.IsMoneyInBank)
+                                    @if (up.MethodType == "ToBePaid")
+                                    {
+                                        <span style="color:#d97706;font-size:.75rem;" title="Payment pending resolution"><i class="ri-alert-line"></i></span>
+                                    }
+                                    else if (up.IsMoneyInBank)
                                     {
                                         <span class="py-action-done" title="@LS.T("payments.alreadyDeposited")">
                                             <i class="ri-check-double-line"></i>
@@ -205,7 +216,7 @@
                                             else if (item.ItemType == "Book") { <span style="color:#d97706;">Book</span> }
                                             else { @($"{item.HoursBought}h") }
                                         </td>
-                                        <td class="small text-end" style="color:#212529;">@(item.AmountPaid > 0 ? $"\u20AA{item.AmountPaid}" : "\u2014")</td>
+                                        <td class="small text-end" style="color:#212529;">@(item.AmountPaid > 0 ? $"{CurrSym(_viewDetail.Currency)}{item.AmountPaid}" : "\u2014")</td>
                                     </tr>
                                 }
                             </tbody>
@@ -218,7 +229,7 @@
                                     </td>
                                     <td class="small text-end fw-semibold" style="color:#212529;">
                                         @{ var totalAmt = _viewDetail.Items.Sum(i => i.AmountPaid); }
-                                        @(totalAmt > 0 ? $"\u20AA{totalAmt}" : "\u2014")
+                                        @(totalAmt > 0 ? $"{CurrSym(_viewDetail.Currency)}{totalAmt}" : "\u2014")
                                     </td>
                                 </tr>
                             </tfoot>
@@ -252,15 +263,20 @@
                                                         "CreditCard" => ("ri-bank-card-line", LS.T("purchases.creditCard")),
                                                         "Check" => ("ri-file-text-line", LS.T("purchases.check")),
                                                         "BankTransfer" => ("ri-exchange-line", LS.T("purchases.bankTransfer")),
+                                                        "ToBePaid" => ("ri-time-line", "To Be Paid"),
                                                         _ => ("ri-money-dollar-circle-line", LS.T("purchases.cash"))
                                                     };
                                                 }
                                                 <i class="@dico me-1" style="color:#212529;"></i>@dlbl
                                             </td>
-                                            <td class="small text-end fw-semibold" style="color:#212529;">@(pm.Amount > 0 ? $"\u20AA{pm.Amount}" : "\u2014")</td>
+                                            <td class="small text-end fw-semibold" style="color:#212529;">@(pm.Amount > 0 ? $"{CurrSym(_viewDetail.Currency)}{pm.Amount}" : "\u2014")</td>
                                             <td class="small" style="color:#212529;">@(pm.PaymentDate != null ? Fmt(pm.PaymentDate) : "\u2014")</td>
                                             <td class="text-center">
-                                                @if (pm.IsMoneyInBank)
+                                                @if (pm.MethodType == "ToBePaid")
+                                                {
+                                                    <span class="badge" style="background:#fef3c7;color:#92400e;font-size:.65rem;">N/A</span>
+                                                }
+                                                else if (pm.IsMoneyInBank)
                                                 {
                                                     <span class="py-chip-undo" role="button"
                                                           @onclick="() => ToggleDetailBank(pm.PaymentMethodId, false)"
@@ -421,7 +437,11 @@
         public string? PaymentDate { get; set; }
         public DateOnly? PaymentDateParsed { get; set; }
         public bool IsMoneyInBank { get; set; }
+        public string Currency { get; set; } = "ILS";
+        public int Installments { get; set; } = 1;
     }
+
+    static string CurrSym(string code) => code switch { "USD" => "$", "EUR" => "€", _ => "₪" };
 
     IEnumerable<PayRow> Sorted
     {
@@ -482,7 +502,9 @@
                     Amount = pm.Amount,
                     PaymentDate = pm.PaymentDate,
                     PaymentDateParsed = parsed,
-                    IsMoneyInBank = pm.IsMoneyInBank
+                    IsMoneyInBank = pm.IsMoneyInBank,
+                    Currency = p.Currency,
+                    Installments = pm.Installments
                 });
             }
         }
@@ -509,7 +531,7 @@
     async Task ToggleBank(int paymentMethodId, bool newValue)
     {
         var row = _rows.FirstOrDefault(r => r.PaymentMethodId == paymentMethodId);
-        Console.WriteLine($"[Payments] Money-in-bank {(newValue ? "CONFIRMED" : "UNDONE")}: paymentId={paymentMethodId} PC='{row?.PcName}' method={row?.MethodType} amount=₪{row?.Amount} paymentDate={row?.PaymentDate} by '{_username}'");
+        Console.WriteLine($"[Payments] Money-in-bank {(newValue ? "CONFIRMED" : "UNDONE")}: paymentId={paymentMethodId} PC='{row?.PcName}' method={row?.MethodType} amount={CurrSym(row?.Currency ?? "ILS")}{row?.Amount} paymentDate={row?.PaymentDate} by '{_username}'");
         PcSvc.SetMoneyInBank(paymentMethodId, newValue);
 
         // Play exit animation before updating state (row slides out)
@@ -528,7 +550,7 @@
     {
         var pm  = _viewDetail?.PaymentMethods.FirstOrDefault(p => p.PaymentMethodId == paymentMethodId);
         var row = _rows.FirstOrDefault(r => r.PaymentMethodId == paymentMethodId);
-        Console.WriteLine($"[Payments] Money-in-bank {(newValue ? "CONFIRMED" : "UNDONE")} (detail): paymentId={paymentMethodId} PC='{row?.PcName ?? _viewDetail?.PcName}' method={pm?.MethodType ?? row?.MethodType} amount=₪{pm?.Amount ?? row?.Amount} paymentDate={pm?.PaymentDate ?? row?.PaymentDate} by '{_username}'");
+        Console.WriteLine($"[Payments] Money-in-bank {(newValue ? "CONFIRMED" : "UNDONE")} (detail): paymentId={paymentMethodId} PC='{row?.PcName ?? _viewDetail?.PcName}' method={pm?.MethodType ?? row?.MethodType} amount={CurrSym(row?.Currency ?? _viewDetail?.Currency ?? "ILS")}{pm?.Amount ?? row?.Amount} paymentDate={pm?.PaymentDate ?? row?.PaymentDate} by '{_username}'");
         PcSvc.SetMoneyInBank(paymentMethodId, newValue);
 
         if (newValue && !_showBankCol)

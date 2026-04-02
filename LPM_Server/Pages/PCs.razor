@@ -187,7 +187,7 @@
                                     <th class="small ps-3 align-middle" style="white-space:nowrap;">@LS.T("pcs.course")</th>
                                     <th class="small text-center align-middle" style="white-space:nowrap;">@LS.T("pcs.dateStarted")</th>
                                     <th class="small text-center align-middle" style="white-space:nowrap;">@LS.T("pcs.dateFinished")</th>
-                                    <th class="small text-center align-middle" style="white-space:nowrap;">@LS.T("pcs.amountIls")</th>
+                                    <th class="small text-center align-middle" style="white-space:nowrap;">Amount</th>
                                     <th class="small text-center align-middle" style="white-space:nowrap;">@LS.T("common.status")</th>
                                     <th class="small text-center align-middle" style="white-space:nowrap;">@LS.T("pcs.action")</th>
                                     <th class="small text-center align-middle" style="white-space:nowrap;">@LS.T("pcs.editPurchase")</th>
@@ -202,7 +202,7 @@
                                         <td class="small ps-3 fw-semibold align-middle" style="color:@(isActive ? "#6d28d9" : "#6b7280");">@sc.CourseName</td>
                                         <td class="small text-center align-middle">@sc.DateStarted</td>
                                         <td class="small text-center align-middle">@(sc.DateFinished ?? "\u2014")</td>
-                                        <td class="small text-center align-middle">@(_courseAmountMap.TryGetValue(sc.CourseId, out var cAmt) && cAmt > 0 ? $"\u20AA{cAmt}" : "\u2014")</td>
+                                        <td class="small text-center align-middle">@(_courseAmountMap.TryGetValue(sc.CourseId, out var cAmt) && cAmt > 0 ? $"{CurrSym(_courseCurrencyMap.GetValueOrDefault(sc.CourseId, "ILS"))}{cAmt}" : "\u2014")</td>
                                         <td class="small text-center align-middle">
                                             @if (_coursePurchaseStatusMap.TryGetValue(sc.CourseId, out var cStatus))
                                             {
@@ -277,7 +277,7 @@
                                 <tr>
                                     <th class="small ps-3">@LS.T("pcs.date")</th>
                                     <th class="small text-center">@LS.T("pcs.hoursBought")</th>
-                                    <th class="small text-center">@LS.T("pcs.amountIls")</th>
+                                    <th class="small text-center">Amount</th>
                                     <th class="small text-center">@LS.T("common.status")</th>
                                     <th class="small text-center" style="white-space:nowrap;">@LS.T("pcs.editPurchase")</th>
                                 </tr>
@@ -288,7 +288,7 @@
                                     <tr>
                                         <td class="small ps-3">@ap.Date</td>
                                         <td class="small text-center fw-semibold">@(ap.HoursBought)h</td>
-                                        <td class="small text-center">@(ap.Amount > 0 ? $"\u20AA{ap.Amount}" : "\u2014")</td>
+                                        <td class="small text-center">@(ap.Amount > 0 ? $"{CurrSym(ap.Currency)}{ap.Amount}" : "\u2014")</td>
                                         <td class="small text-center">
                                             @{
                                                 var (apCls, apLbl) = ap.Status switch {
@@ -315,7 +315,7 @@
                                     <td class="small text-center fw-semibold">@(_auditingPurchases.Sum(a => a.HoursBought))h</td>
                                     <td class="small text-center fw-semibold">
                                         @{ var auditTotal = _auditingPurchases.Sum(a => a.Amount); }
-                                        @(auditTotal > 0 ? $"\u20AA{auditTotal}" : "\u2014")
+                                        @(auditTotal > 0 ? $"₪{auditTotal}" : "\u2014")
                                     </td>
                                     <td colspan="2"></td>
                                 </tr>
@@ -638,7 +638,7 @@
                                                 </div>
                                             }
                                             <div class="col-auto">
-                                                <label class="form-label small mb-0">@LS.T("pcs.amountIls")</label>
+                                                <label class="form-label small mb-0">Amount (@CurrSym(_purchaseCurrency))</label>
                                                 <input type="number" class="form-control form-control-sm"
                                                        value="@item.AmountPaid" min="0" style="max-width:105px;" placeholder="0"
                                                        @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) item.AmountPaid = v; }" />
@@ -667,7 +667,7 @@
                                     {
                                         <span><i class="ri-book-open-line"></i> @bookCount Books</span>
                                     }
-                                    <span class="ms-auto fw-semibold">@LS.T("pcs.total"): &#8362;@totalItemAmount</span>
+                                    <span class="ms-auto fw-semibold">@LS.T("pcs.total"): @CurrSym(_purchaseCurrency)@totalItemAmount</span>
                                 </div>
                             }
                         </div>
@@ -692,26 +692,39 @@
                                         <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("purchases.methodType")</label>
                                         <select class="form-select form-select-sm" style="max-width:140px;font-size:.8rem;"
                                                 value="@pm.MethodType"
-                                                @onchange='e => pm.MethodType = e.Value?.ToString() ?? "Cash"'>
+                                                @onchange='e => { pm.MethodType = e.Value?.ToString() ?? "Cash"; if (pm.MethodType != "CreditCard") pm.Installments = 1; if (pm.MethodType == "ToBePaid") pm.PaymentDate = null; }'>
                                             <option value="Cash">@LS.T("purchases.cash")</option>
                                             <option value="CreditCard">@LS.T("purchases.creditCard")</option>
                                             <option value="Check">@LS.T("purchases.check")</option>
                                             <option value="BankTransfer">@LS.T("purchases.bankTransfer")</option>
+                                            <option value="ToBePaid">To Be Paid</option>
                                         </select>
                                     </div>
                                     <div>
-                                        <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("pcs.amount")</label>
+                                        <label class="form-label small mb-0" style="font-size:.72rem;">Amount (@CurrSym(_purchaseCurrency))</label>
                                         <input type="number" class="form-control form-control-sm @(pm.Amount <= 0 ? "field-invalid" : "field-valid")"
                                                style="max-width:100px;font-size:.8rem;"
                                                value="@pm.Amount" min="0" placeholder="0"
                                                @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) pm.Amount = v; }" />
                                     </div>
-                                    <div>
-                                        <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("purchases.paymentDate")</label>
-                                        <input type="date" class="form-control form-control-sm" style="max-width:140px;font-size:.8rem;"
-                                               value="@(pm.PaymentDate?.ToString("yyyy-MM-dd"))"
-                                               @onchange="e => pm.PaymentDate = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : null" />
-                                    </div>
+                                    @if (pm.MethodType != "ToBePaid")
+                                    {
+                                        <div>
+                                            <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("purchases.paymentDate")</label>
+                                            <input type="date" class="form-control form-control-sm" style="max-width:140px;font-size:.8rem;"
+                                                   value="@(pm.PaymentDate?.ToString("yyyy-MM-dd"))"
+                                                   @onchange="e => pm.PaymentDate = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : null" />
+                                        </div>
+                                    }
+                                    @if (pm.MethodType == "CreditCard")
+                                    {
+                                        <div>
+                                            <label class="form-label small mb-0" style="font-size:.72rem;">Payments</label>
+                                            <input type="number" class="form-control form-control-sm" style="max-width:70px;font-size:.8rem;"
+                                                   min="1" max="24" value="@pm.Installments"
+                                                   @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v) && v >= 1 && v <= 24) pm.Installments = v; }" />
+                                        </div>
+                                    }
                                     @if (_purchasePaymentMethods.Count > 1)
                                     {
                                         <button class="btn btn-sm btn-outline-danger py-0 px-1" @onclick="() => _purchasePaymentMethods.RemoveAt(pi2)">
@@ -728,12 +741,12 @@
                             @if (pmTotal > 0 || itemsTotal > 0)
                             {
                                 <div class="payment-summary mt-2">
-                                    <span>@LS.T("purchases.paid"): &#8362;@pmTotal / &#8362;@itemsTotal</span>
+                                    <span>@LS.T("purchases.paid"): @CurrSym(_purchaseCurrency)@pmTotal / @CurrSym(_purchaseCurrency)@itemsTotal</span>
                                     @if (pmBalance != 0)
                                     {
                                         <span class="@(pmBalance > 0 ? "text-danger" : "text-warning") fw-semibold">
                                             <i class="ri-error-warning-line"></i>
-                                            @(pmBalance > 0 ? LS.T("purchases.underpaid") : LS.T("purchases.overpaid")): &#8362;@Math.Abs(pmBalance)
+                                            @(pmBalance > 0 ? LS.T("purchases.underpaid") : LS.T("purchases.overpaid")): @CurrSym(_purchaseCurrency)@Math.Abs(pmBalance)
                                         </span>
                                     }
                                     else
@@ -757,6 +770,18 @@
                                 <div>
                                     <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("pcs.date")</label>
                                     <input type="date" class="form-control form-control-sm" @bind="_purchaseDate" style="max-width:150px;" />
+                                </div>
+                                <div>
+                                    <label class="form-label small mb-0" style="font-size:.72rem;">Currency</label>
+                                    <div class="d-flex gap-1">
+                                        @foreach (var cur in new[] { "ILS", "USD", "EUR" })
+                                        {
+                                            var c = cur;
+                                            <button class="btn btn-sm @(_purchaseCurrency == c ? "btn-primary" : "btn-outline-secondary")"
+                                                    style="font-size:.72rem;padding:2px 8px;"
+                                                    @onclick="() => _purchaseCurrency = c">@c</button>
+                                        }
+                                    </div>
                                 </div>
                                 <div>
                                     <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("courses.registrar")</label>
@@ -850,6 +875,16 @@
     </div>
 }
 
+@* ── Purchase Success Toast ── *@
+@if (_showPurchaseSuccess)
+{
+    <div class="pcs-success-overlay">
+        <div class="pcs-success-card">
+            <i class="ri-checkbox-circle-fill pcs-success-icon"></i>
+            @((MarkupString)_purchaseSuccessHtml)
+        </div>
+    </div>
+}
 
 @* ── Delete Purchase Confirmation ── *@
 @if (_confirmDeletePurchaseId.HasValue)
@@ -1404,6 +1439,32 @@
 
     /* ── Item card validation states ── */
     .purchase-item-card { border-radius: 10px; transition: all 0.25s ease; }
+
+    /* ── Purchase success toast ── */
+    .pcs-success-overlay {
+        position: fixed; inset: 0; z-index: 1060;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(0,0,0,.35); backdrop-filter: blur(3px);
+        animation: pcsSuccessFadeIn .3s ease, pcsSuccessFadeOut .8s ease 2.7s forwards;
+    }
+    .pcs-success-card {
+        background: #fff; border-radius: 18px; padding: 28px 36px;
+        box-shadow: 0 12px 48px rgba(0,0,0,.2);
+        text-align: center; min-width: 260px; max-width: 400px;
+        animation: pcsSuccessScale .4s cubic-bezier(.34,1.56,.64,1);
+    }
+    .pcs-success-icon { font-size: 2.8rem; color: #22c55e; display: block; margin-bottom: 10px; }
+    .pcs-success-name { font-size: 1.2rem; font-weight: 800; color: #1e293b; margin-bottom: 8px; }
+    .pcs-success-item { font-size: .82rem; color: #475569; padding: 2px 0; }
+    .pcs-success-total { font-size: 1rem; font-weight: 700; color: #1e40af; margin-top: 10px; }
+    .pcs-success-badge {
+        display: inline-block; margin-top: 10px;
+        background: #dcfce7; color: #166534; font-size: .72rem; font-weight: 600;
+        padding: 3px 12px; border-radius: 12px;
+    }
+    @@keyframes pcsSuccessFadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @@keyframes pcsSuccessFadeOut { from { opacity: 1; } to { opacity: 0; } }
+    @@keyframes pcsSuccessScale { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     .purchase-item-valid { border: 1px solid #d1d5db; }
     .purchase-item-invalid { border: 1.5px solid #f87171 !important; background: #fef2f2; }
 
@@ -1706,6 +1767,8 @@
 
     // Purchase modal
     bool     _showPurchaseModal;
+    bool     _showPurchaseSuccess;
+    string   _purchaseSuccessHtml = "";
     DateTime _purchaseDate = DateTime.Today;
     string   _purchaseNotes = "";
     string   _purchaseError = "";
@@ -1730,11 +1793,12 @@
     Dictionary<int, int> _coursePurchaseMap = new(); // CourseId → PurchaseId
     Dictionary<int, string> _coursePurchaseStatusMap = new(); // CourseId → ApprovedStatus
     Dictionary<int, int> _courseAmountMap = new(); // CourseId → AmountPaid
+    Dictionary<int, string> _courseCurrencyMap = new(); // CourseId → Currency
     int? _latestAuditingPurchaseId;
 
     // Auditing purchases display
     List<AuditingPurchaseDisplay> _auditingPurchases = new();
-    record AuditingPurchaseDisplay(int PurchaseId, string Date, int HoursBought, int Amount, string Status);
+    record AuditingPurchaseDisplay(int PurchaseId, string Date, int HoursBought, int Amount, string Status, string Currency = "ILS");
     List<CompletionService.PcCompletionDetail> _pcCompletions = [];
 
     class PurchaseItemModel
@@ -1755,7 +1819,11 @@
         public string MethodType { get; set; } = "Cash";
         public int Amount { get; set; }
         public DateTime? PaymentDate { get; set; } = DateTime.Today;
+        public int Installments { get; set; } = 1;
     }
+
+    string _purchaseCurrency = "ILS";
+    static string CurrSym(string code) => code switch { "USD" => "$", "EUR" => "€", _ => "₪" };
 
     IEnumerable<PcListItemEx> FilteredPcsEx
     {
@@ -1856,6 +1924,7 @@
         _coursePurchaseMap.Clear();
         _coursePurchaseStatusMap.Clear();
         _courseAmountMap.Clear();
+        _courseCurrencyMap.Clear();
         _latestAuditingPurchaseId = null;
         _auditingPurchases.Clear();
         _pcCompletions = CompletionSvc.GetByPcWithAuditorName(_selPcId.Value);
@@ -1872,13 +1941,14 @@
                         _coursePurchaseMap[item.CourseId.Value] = p.PurchaseId;
                         _coursePurchaseStatusMap[item.CourseId.Value] = p.ApprovedStatus;
                         _courseAmountMap[item.CourseId.Value] = item.AmountPaid;
+                        _courseCurrencyMap[item.CourseId.Value] = p.Currency;
                     }
                     if (item.ItemType == "Auditing")
                     {
                         if (!_latestAuditingPurchaseId.HasValue)
                             _latestAuditingPurchaseId = p.PurchaseId;
                         _auditingPurchases.Add(new AuditingPurchaseDisplay(
-                            p.PurchaseId, p.PurchaseDate, item.HoursBought, item.AmountPaid, p.ApprovedStatus));
+                            p.PurchaseId, p.PurchaseDate, item.HoursBought, item.AmountPaid, p.ApprovedStatus, p.Currency));
                     }
                 }
             }
@@ -1931,8 +2001,8 @@
     string GetPurchaseSnapshot()
     {
         var items = string.Join("|", _purchaseItems.Select(i => $"{i.ItemType},{i.CourseId},{i.BookId},{i.HoursBought},{i.AmountPaid}"));
-        var pms = string.Join("|", _purchasePaymentMethods.Select(m => $"{m.MethodType},{m.Amount},{m.PaymentDate?.ToString("yyyy-MM-dd")}"));
-        return $"{_purchaseDate:yyyy-MM-dd}~{_purchaseNotes}~{_purchaseRegistrarId}~{_purchaseReferralId}~{items}~{pms}";
+        var pms = string.Join("|", _purchasePaymentMethods.Select(m => $"{m.MethodType},{m.Amount},{m.PaymentDate?.ToString("yyyy-MM-dd")},{m.Installments}"));
+        return $"{_purchaseDate:yyyy-MM-dd}~{_purchaseCurrency}~{_purchaseNotes}~{_purchaseRegistrarId}~{_purchaseReferralId}~{items}~{pms}";
     }
 
     async Task OpenPurchaseModal()
@@ -1944,6 +2014,7 @@
         _purchaseError     = "";
         _skipSignature     = false;
         _hasSigned         = false;
+        _purchaseCurrency  = "ILS";
         _allCourses        = CourseSvc.GetAllCourses();
         _allBooks          = CourseSvc.GetAllBooks();
         _purchaseRegistrarId = _currentPersonId ?? 0;
@@ -1977,6 +2048,7 @@
 
         _purchaseDate = DateTime.TryParse(detail.PurchaseDate, out var dt) ? dt : DateTime.Today;
         _purchaseNotes = detail.Notes ?? "";
+        _purchaseCurrency = detail.Currency;
 
         _purchaseRegistrarId = detail.RegistrarId ?? 0;
         _purchaseReferralId  = detail.ReferralId ?? 0;
@@ -1991,12 +2063,46 @@
         if (_purchaseItems.Count == 0)
             _purchaseItems.Add(new PurchaseItemModel());
 
-        _purchasePaymentMethods = detail.PaymentMethods.Select(pm => new PaymentMethodModel
+        // Merge installment rows back: group CreditCard rows with Installments > 1 by contiguous monthly dates
+        var rawPms = detail.PaymentMethods.ToList();
+        var mergedPms = new List<PaymentMethodModel>();
+        var used = new HashSet<int>();
+        for (int pi = 0; pi < rawPms.Count; pi++)
         {
-            MethodType  = pm.MethodType,
-            Amount      = pm.Amount,
-            PaymentDate = DateTime.TryParse(pm.PaymentDate, out var pdt) ? pdt : null
-        }).ToList();
+            if (used.Contains(pi)) continue;
+            var pm = rawPms[pi];
+            if (pm.MethodType == "CreditCard" && pm.Installments > 1)
+            {
+                // Find all consecutive CC rows with same Installments value
+                var group = new List<PurchasePaymentMethodInfo> { pm };
+                used.Add(pi);
+                for (int pj = pi + 1; pj < rawPms.Count; pj++)
+                {
+                    if (used.Contains(pj)) continue;
+                    var next = rawPms[pj];
+                    if (next.MethodType == "CreditCard" && next.Installments == pm.Installments)
+                    { group.Add(next); used.Add(pj); }
+                    else break;
+                }
+                var totalAmt = group.Sum(g => g.Amount);
+                var earliest = group.Min(g => g.PaymentDate);
+                mergedPms.Add(new PaymentMethodModel
+                {
+                    MethodType = "CreditCard", Amount = totalAmt, Installments = pm.Installments,
+                    PaymentDate = DateTime.TryParse(earliest, out var epdt) ? epdt : null
+                });
+            }
+            else
+            {
+                used.Add(pi);
+                mergedPms.Add(new PaymentMethodModel
+                {
+                    MethodType = pm.MethodType, Amount = pm.Amount, Installments = pm.Installments,
+                    PaymentDate = DateTime.TryParse(pm.PaymentDate, out var pdt) ? pdt : null
+                });
+            }
+        }
+        _purchasePaymentMethods = mergedPms;
         if (_purchasePaymentMethods.Count == 0)
             _purchasePaymentMethods.Add(new PaymentMethodModel());
 
@@ -2100,6 +2206,12 @@
             if (item.ItemType == "Book" && item.BookId <= 0)
             { _purchaseError = "Please select a book"; return; }
         }
+        // Validate credit card installments have a date
+        foreach (var pm in _purchasePaymentMethods)
+        {
+            if (pm.MethodType == "CreditCard" && pm.Installments > 1 && pm.PaymentDate == null)
+            { _purchaseError = "Credit card installments require a start date"; return; }
+        }
 
         // Get signature — required unless skipped
         string? sigData = _skipSignature ? null
@@ -2120,7 +2232,7 @@
 
         var pmList = _purchasePaymentMethods
             .Where(m => m.Amount > 0)
-            .Select(m => (m.MethodType, m.Amount, paymentDate: m.PaymentDate?.ToString("yyyy-MM-dd")))
+            .Select(m => (m.MethodType, m.Amount, paymentDate: m.PaymentDate?.ToString("yyyy-MM-dd"), m.Installments))
             .ToList();
 
         if (_editingPurchaseId.HasValue)
@@ -2131,18 +2243,18 @@
                 _purchaseError = LS.T("purchases.nothingChanged");
                 return;
             }
-            var itemsLog = string.Join("; ", items.Select(x => x.itemType == "Course" ? $"Course(id={x.courseId}) ₪{x.amountPaid}" : x.itemType == "Book" ? $"Book(id={x.bookId}) ₪{x.amountPaid}" : $"Auditing {x.hoursBought}h ₪{x.amountPaid}"));
-            var pmLog    = string.Join("; ", pmList.Select(m => $"{m.MethodType} ₪{m.Amount} on {m.paymentDate}"));
+            var itemsLog = string.Join("; ", items.Select(x => x.itemType == "Course" ? $"Course(id={x.courseId}) {CurrSym(_purchaseCurrency)}{x.amountPaid}" : x.itemType == "Book" ? $"Book(id={x.bookId}) {CurrSym(_purchaseCurrency)}{x.amountPaid}" : $"Auditing {x.hoursBought}h {CurrSym(_purchaseCurrency)}{x.amountPaid}"));
+            var pmLog    = string.Join("; ", pmList.Select(m => $"{m.MethodType} {CurrSym(_purchaseCurrency)}{m.Amount} on {m.paymentDate}"));
             Console.WriteLine($"[PCs] Updated purchase {_editingPurchaseId.Value} for PC {_selPcId} date={_purchaseDate:yyyy-MM-dd} items=[{itemsLog}] payments=[{pmLog}] reg={regId} ref={refId} notes='{_purchaseNotes}' by '{_username}'");
             PcSvc.UpdatePurchase(_editingPurchaseId.Value,
                 _purchaseDate.ToString("yyyy-MM-dd"),
                 string.IsNullOrWhiteSpace(_purchaseNotes) ? null : _purchaseNotes,
-                items, pmList, regId, refId);
+                items, pmList, regId, refId, _purchaseCurrency);
         }
         else
         {
-            var itemsLog = string.Join("; ", items.Select(x => x.itemType == "Course" ? $"Course(id={x.courseId}) ₪{x.amountPaid}" : x.itemType == "Book" ? $"Book(id={x.bookId}) ₪{x.amountPaid}" : $"Auditing {x.hoursBought}h ₪{x.amountPaid}"));
-            var pmLog    = string.Join("; ", pmList.Select(m => $"{m.MethodType} ₪{m.Amount} on {m.paymentDate}"));
+            var itemsLog = string.Join("; ", items.Select(x => x.itemType == "Course" ? $"Course(id={x.courseId}) {CurrSym(_purchaseCurrency)}{x.amountPaid}" : x.itemType == "Book" ? $"Book(id={x.bookId}) {CurrSym(_purchaseCurrency)}{x.amountPaid}" : $"Auditing {x.hoursBought}h {CurrSym(_purchaseCurrency)}{x.amountPaid}"));
+            var pmLog    = string.Join("; ", pmList.Select(m => $"{m.MethodType} {CurrSym(_purchaseCurrency)}{m.Amount} on {m.paymentDate}"));
             Console.WriteLine($"[PCs] Created purchase for PC {_selPcId!.Value} date={_purchaseDate:yyyy-MM-dd} items=[{itemsLog}] payments=[{pmLog}] reg={regId} ref={refId} notes='{_purchaseNotes}' by '{_username}'");
             PcSvc.CreatePurchase(
                 _selPcId!.Value,
@@ -2150,7 +2262,7 @@
                 string.IsNullOrWhiteSpace(_purchaseNotes) ? null : _purchaseNotes,
                 sigData,
                 _currentPersonId,
-                items, pmList, regId, refId);
+                items, pmList, regId, refId, _purchaseCurrency);
 
             // Send automatic message to admins about the purchase
             if (_currentPersonId.HasValue && _detail != null)
@@ -2159,12 +2271,36 @@
                 var totalHrs = items.Where(i => i.itemType == "Auditing").Sum(i => i.hoursBought);
                 var msg = $"Automatic msg: New purchase for {_detail.FullName}";
                 if (totalHrs > 0) msg += $" — {totalHrs}h";
-                if (totalAmt > 0) msg += $" — \u20AA{totalAmt}";
+                if (totalAmt > 0) msg += $" — {CurrSym(_purchaseCurrency)}{totalAmt}";
                 DashSvc.SendAutoMessageToAdmins(_currentPersonId.Value, msg);
             }
         }
 
+        // Build success summary before closing
+        var successPcName = _detail?.FullName ?? "";
+        var successItems = new List<string>();
+        foreach (var pi in _purchaseItems)
+        {
+            if (pi.ItemType == "Auditing" && pi.HoursBought > 0)
+                successItems.Add($"{pi.HoursBought}h Auditing — {CurrSym(_purchaseCurrency)}{pi.AmountPaid}");
+            else if (pi.ItemType == "Course" && pi.CourseId > 0)
+                successItems.Add($"Course — {CurrSym(_purchaseCurrency)}{pi.AmountPaid}");
+            else if (pi.ItemType == "Book" && pi.BookId > 0)
+                successItems.Add($"Book — {CurrSym(_purchaseCurrency)}{pi.AmountPaid}");
+        }
+        var successTotal = _purchaseItems.Sum(x => x.AmountPaid);
+        var isEdit = _editingPurchaseId.HasValue;
+        _purchaseSuccessHtml = $"<div class='pcs-success-name'>{successPcName}</div>"
+            + string.Join("", successItems.Select(s => $"<div class='pcs-success-item'>{s}</div>"))
+            + $"<div class='pcs-success-total'>Total: {CurrSym(_purchaseCurrency)}{successTotal}</div>"
+            + $"<div class='pcs-success-badge'>{(isEdit ? "Updated" : "Created")}</div>";
+
         await ClosePurchaseModal();
+        _showPurchaseSuccess = true;
+        StateHasChanged();
+        await Task.Delay(3500);
+        _showPurchaseSuccess = false;
+
         _allPcsEx = PcSvc.GetAllPcsExtended();
         LoadDetail();
     }
