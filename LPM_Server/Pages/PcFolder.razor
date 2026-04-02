@@ -974,32 +974,29 @@
             </div>
         }
 
-        @* ── Preset strip ── *@
-        @if (_folder != null)
-        {
-            <div class="pcf-preset-strip">
-                @{ var presets = new[] {
-                    (1, "Program", "ri-file-text-line"),
-                    (2, "PT", "ri-folder-line"),
-                    (3, "Next CS", "ri-file-edit-line"),
-                    (4, "\u2014", "ri-more-line")
-                }; }
-                @foreach (var (num, label, icon) in presets)
-                {
-                    var n = num;
-                    var needsSession = n >= 2 && n <= 3;
-                    <button class="pcf-preset-chip @(_activePreset == n ? "pcf-preset-chip-active" : "")"
-                            disabled="@(_presetLoading || n == 4 || (needsSession && _csSessionId == 0))"
-                            @onclick="async () => await ApplyPresetAsync(n)">
-                        <i class="@icon"></i>
-                        <span>@label</span>
-                    </button>
-                }
-            </div>
-        }
-
         @* ── PDF viewer area ── *@
         <div class="pcf-viewer-area @(_paneCount > 1 ? "pcf-split" : "")">
+            @if (_folder != null)
+            {
+                <div class="pcf-preset-float" id="pcf-preset-float">
+                    <span class="pcf-preset-grip" title="Drag to move"><i class="ri-draggable"></i></span>
+                    @for (int pn = 1; pn <= 4; pn++)
+                    {
+                        var n = pn;
+                        var needsSession = n >= 2 && n <= 3;
+                        var tip = n switch {
+                            1 => "Program + Folder Summary + previous session's Next CS",
+                            2 => "Session + attachments (not Next CS/Pink/Instruct/Cramming) + PT files",
+                            3 => "Session + this session's Next CS",
+                            _ => "Reserved"
+                        };
+                        <button class="pcf-preset-num @(_activePreset == n ? "pcf-preset-num-active" : "")"
+                                title="@tip"
+                                disabled="@(_presetLoading || n == 4 || (needsSession && _csSessionId == 0))"
+                                @onclick="async () => await ApplyPresetAsync(n)">@n</button>
+                    }
+                </div>
+            }
             @for (int pi = 0; pi < _paneCount; pi++)
             {
                 var idx = pi;
@@ -1847,29 +1844,31 @@
     .pcf-banner-dismiss:hover { opacity: 1; }
     .pcf-done-already { opacity: .5; cursor: default; }
 
-    /* ── Preset strip ── */
-    .pcf-preset-strip {
+    /* ── Preset float ── */
+    .pcf-preset-float {
+        position: fixed; z-index: 9999; display: flex; gap: 3px; align-items: center;
+        background: rgba(15,23,42,.78); backdrop-filter: blur(6px);
+        border: 1px solid rgba(255,255,255,.15); border-radius: 8px;
+        padding: 3px; user-select: none;
+        /* initial top/left set by JS based on viewer-area position */
+    }
+    .pcf-preset-num {
+        width: 26px; height: 26px; border-radius: 5px;
+        border: 1px solid transparent; background: transparent;
+        color: #94a3b8; font-size: .75rem; font-weight: 700;
+        cursor: pointer; transition: all .15s;
         display: flex; align-items: center; justify-content: center;
-        gap: 6px; padding: 4px 16px;
-        background: linear-gradient(135deg, #1e3a5f, #1e40af);
-        flex-shrink: 0;
     }
-    .pcf-preset-chip {
-        background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2);
-        color: #94a3b8; border-radius: 16px; padding: 4px 14px;
-        font-size: .78rem; font-weight: 600; cursor: pointer;
-        transition: background .15s, color .15s, border-color .15s;
-        display: inline-flex; align-items: center; gap: 5px;
-        white-space: nowrap; height: 30px;
+    .pcf-preset-num:hover:not(:disabled) { background: rgba(59,130,246,.3); color: #fff; border-color: #3b82f6; }
+    .pcf-preset-num-active { background: #3b82f6 !important; color: #fff !important; border-color: #3b82f6 !important; }
+    .pcf-preset-num:disabled { opacity: .25; cursor: default; }
+    .pcf-preset-grip {
+        display: flex; align-items: center; justify-content: center;
+        width: 16px; color: rgba(255,255,255,.35); cursor: grab;
+        font-size: .8rem; flex-shrink: 0;
     }
-    .pcf-preset-chip:hover:not(:disabled) {
-        background: rgba(59,130,246,.3); border-color: #3b82f6; color: #fff;
-    }
-    .pcf-preset-chip-active {
-        background: #3b82f6 !important; border-color: #3b82f6 !important; color: #fff !important;
-    }
-    .pcf-preset-chip:disabled { opacity: .35; cursor: default; }
-    .pcf-preset-chip i { font-size: .9rem; }
+    .pcf-preset-grip:active { cursor: grabbing; }
+    .pcf-preset-float.pcf-dragging { opacity: .85; cursor: grabbing; }
 
     /* ── Viewer area ── */
     .pcf-viewer-area {
@@ -2071,8 +2070,7 @@
         .pcf-size-popup { right: 0; left: auto; max-width: calc(100vw - 10px); }
         .pcf-annot-popup { right: 0; left: auto; max-width: calc(100vw - 10px); }
         .pcf-zoom-menu { right: 0; left: auto; max-width: calc(100vw - 10px); }
-        .pcf-preset-strip { padding: 4px 10px; gap: 4px; }
-        .pcf-preset-chip { padding: 4px 10px; font-size: .72rem; min-height: 44px; border-radius: 12px; }
+        .pcf-preset-num { width: 36px; height: 36px; font-size: .85rem; }
         .pcf-viewer-area.pcf-split { flex-direction: column; }
         .pcf-toast-success { padding: 10px 16px; font-size: .82rem; max-width: 90vw; }
         .pcf-lock-banner { flex-wrap: wrap; font-size: .78rem; }
@@ -2087,8 +2085,8 @@
         .pcf-sidebar-header { padding: 10px; font-size: .88rem; }
         .pcf-section-title { padding: 10px 10px; font-size: .82rem; min-height: 44px; }
         .pcf-file-item { padding: 10px 10px 10px 20px; font-size: .75rem; min-height: 44px; }
-        .pcf-preset-strip { padding: 3px 8px; gap: 3px; flex-wrap: wrap; }
-        .pcf-preset-chip { padding: 3px 8px; font-size: .68rem; min-height: 44px; flex: 1; justify-content: center; }
+        .pcf-preset-num { width: 44px; height: 44px; font-size: .9rem; border-radius: 8px; }
+        .pcf-preset-float { gap: 2px; padding: 2px; }
         .pcf-toolbar { padding: 5px 8px; gap: 3px 6px; }
         .pcf-toolbar-file { font-size: .72rem; max-width: 100px; }
         .pcf-toolbar-section { font-size: .65rem; padding: 1px 5px; }
@@ -3176,6 +3174,56 @@
                             el.classList.remove('pcf-drop-target');
                         });
                     });
+                })();
+            ");
+
+            // Preset float drag (position: fixed — can float over toolbar)
+            await JS.InvokeVoidAsync("eval", @"
+                (function() {
+                    var el = document.getElementById('pcf-preset-float');
+                    if (!el || el._dragInit) return;
+                    el._dragInit = true;
+                    // Restore saved position from cookies, or default to centered above viewer
+                    var ck = document.cookie.split('; ').reduce(function(o,c){ var p=c.split('='); o[p[0]]=p[1]; return o; }, {});
+                    var savedX = parseFloat(ck.lpmPresetX), savedY = parseFloat(ck.lpmPresetY);
+                    if (savedX >= 0 && savedY >= 0 && savedX < window.innerWidth && savedY < window.innerHeight) {
+                        el.style.left = savedX + 'px'; el.style.top = savedY + 'px';
+                    } else {
+                        var va = document.querySelector('.pcf-viewer-area');
+                        if (va) {
+                            var vr = va.getBoundingClientRect();
+                            el.style.top  = (vr.top + 8) + 'px';
+                            el.style.left = (vr.left + vr.width / 2 - el.offsetWidth / 2) + 'px';
+                        }
+                    }
+                    var grip = el.querySelector('.pcf-preset-grip');
+                    if (!grip) return;
+                    var ox, oy, sx, sy;
+                    grip.addEventListener('pointerdown', function(e) {
+                        e.preventDefault();
+                        grip.setPointerCapture(e.pointerId);
+                        ox = e.clientX; oy = e.clientY;
+                        sx = parseFloat(el.style.left) || 0;
+                        sy = parseFloat(el.style.top)  || 0;
+                        el.classList.add('pcf-dragging');
+                    });
+                    grip.addEventListener('pointermove', function(e) {
+                        if (!el.classList.contains('pcf-dragging')) return;
+                        var nx = sx + e.clientX - ox;
+                        var ny = sy + e.clientY - oy;
+                        nx = Math.max(0, Math.min(nx, window.innerWidth  - el.offsetWidth));
+                        ny = Math.max(0, Math.min(ny, window.innerHeight - el.offsetHeight));
+                        el.style.left = nx + 'px'; el.style.top = ny + 'px';
+                    });
+                    function endDrag() {
+                        el.classList.remove('pcf-dragging');
+                        var x = Math.round(parseFloat(el.style.left) || 0);
+                        var y = Math.round(parseFloat(el.style.top)  || 0);
+                        document.cookie = 'lpmPresetX=' + x + '; path=/; max-age=3153600000; SameSite=Strict';
+                        document.cookie = 'lpmPresetY=' + y + '; path=/; max-age=3153600000; SameSite=Strict';
+                    }
+                    grip.addEventListener('pointerup', endDrag);
+                    grip.addEventListener('pointercancel', endDrag);
                 })();
             ");
 
@@ -4831,21 +4879,40 @@
             case 2:
             {
                 // 1. Current session worksheet
+                WorkSheetItem? ws2 = null;
                 if (!string.IsNullOrEmpty(_csSessionName))
                 {
-                    var match = _folder.WorkSheets.FirstOrDefault(ws =>
+                    ws2 = _folder.WorkSheets.FirstOrDefault(ws =>
                         SessionDisplayName(ws.File.FileName).Equals(_csSessionName, StringComparison.OrdinalIgnoreCase));
-                    if (match != null)
-                        files.Add((match.File.RelativePath, match.File.FileName, "WorkSheet"));
+                    if (ws2 != null)
+                        files.Add((ws2.File.RelativePath, ws2.File.FileName, "WorkSheet"));
                 }
 
-                // 2-3. PT subfolder files (up to 2)
+                // 2. Regular attachments (exclude Next CS, PinkSheet, Instruct, Cramming)
+                if (ws2 != null)
+                {
+                    foreach (var att in ws2.Attachments)
+                    {
+                        if (files.Count >= 3) break;
+                        var fn = att.FileName;
+                        if (fn.Contains("Next CS", StringComparison.OrdinalIgnoreCase)) continue;
+                        if (fn.Contains("PinkSheet", StringComparison.OrdinalIgnoreCase)) continue;
+                        if (fn.Contains("Instruct", StringComparison.OrdinalIgnoreCase)) continue;
+                        if (fn.Contains("Cramming", StringComparison.OrdinalIgnoreCase)) continue;
+                        files.Add((att.RelativePath, att.FileName, "WorkSheet"));
+                    }
+                }
+
+                // 3. PT subfolder files (fill remaining slots up to 3)
                 var ptFolder = _folder.FrontCoverTree.Children
                     .FirstOrDefault(c => c.IsFolder && c.Name.Equals("PT", StringComparison.OrdinalIgnoreCase));
                 if (ptFolder != null)
                 {
-                    foreach (var f in ptFolder.Children.Where(c => !c.IsFolder).Take(2))
+                    foreach (var f in ptFolder.Children.Where(c => !c.IsFolder))
+                    {
+                        if (files.Count >= 3) break;
                         files.Add((f.RelativePath, f.Name, "Front Cover"));
+                    }
                 }
                 break;
             }
