@@ -1062,9 +1062,11 @@ public class FolderService
     {
         if (!Directory.Exists(_basePath)) yield break;
         var backupsDir = Path.Combine(_basePath, "_backups");
+        var importTempDir = Path.Combine(_basePath, "_import_temp");
         foreach (var f in Directory.GetFiles(_basePath, "*", SearchOption.AllDirectories))
         {
             if (f.StartsWith(backupsDir, StringComparison.OrdinalIgnoreCase)) continue;
+            if (f.StartsWith(importTempDir, StringComparison.OrdinalIgnoreCase)) continue;
             var rel = Path.GetRelativePath(_basePath, f).Replace('\\', '/');
             yield return ($"PC-Folders/{rel}", f);
         }
