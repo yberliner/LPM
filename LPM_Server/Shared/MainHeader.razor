@@ -3345,7 +3345,7 @@
             if (!string.IsNullOrWhiteSpace(prevNextCs))
             {
                 await JSRuntime.InvokeVoidAsync("eval",
-                    $"var q=window['_quill_step3-bottom-editor']; if(q){{ q.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(prevNextCs)}; q.setSelection(q.getLength(),0); q.format('color','#2563eb'); }}");
+                    $"var q=window['_quill_step3-bottom-editor']; if(q){{ q.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(prevNextCs)}; setTimeout(function(){{ q.formatText(0, q.getLength(), 'color', '#2563eb'); q.setSelection(q.getLength(),0); }}, 50); }}");
             }
             await JSRuntime.InvokeVoidAsync("step3Quill.attachListeners", dotNetRef);
         });
