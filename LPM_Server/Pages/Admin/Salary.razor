@@ -18,16 +18,22 @@
             </div>
         </div>
         <div class="sal-controls">
+            <button class="sal-nav-btn" @onclick="PrevPeriod" title="Previous period">
+                <i class="ri-arrow-left-s-line"></i>
+            </button>
             <div class="sal-control-group">
                 <label class="sal-label">From</label>
-                <input type="text" class="sal-date-input" placeholder="dd/mm/yyyy"
+                <input type="text" class="sal-date-input" placeholder="dd/mm/yy"
                        @bind="_fromStr" @bind:event="oninput" />
             </div>
             <div class="sal-control-group">
                 <label class="sal-label">To</label>
-                <input type="text" class="sal-date-input" placeholder="dd/mm/yyyy"
+                <input type="text" class="sal-date-input" placeholder="dd/mm/yy"
                        @bind="_toStr" @bind:event="oninput" />
             </div>
+            <button class="sal-nav-btn" @onclick="NextPeriod" disabled="@IsCurrentPeriod" title="Next period">
+                <i class="ri-arrow-right-s-line"></i>
+            </button>
             <button class="sal-calc-btn" @onclick="Calculate" disabled="@_loading">
                 @if (_loading)
                 {
@@ -74,8 +80,9 @@
                 var hasCsRows   = group.CsReviews.Count > 0;
 
                 <div class="sal-user-card">
-                    @* Card header *@
-                    <div class="sal-user-header">
+                    @* Card header (clickable to collapse) *@
+                    <div class="sal-user-header" style="cursor:pointer;" @onclick="() => ToggleCollapse(group.FullName)">
+                        <i class="ri-arrow-down-s-line sal-chevron @(_collapsed.Contains(group.FullName) ? "sal-chevron-collapsed" : "")"></i>
                         <div class="sal-user-avatar">@(group.FullName.Length > 0 ? char.ToUpper(group.FullName[0]) : '?')</div>
                         <div class="sal-user-info">
                             <div class="sal-user-name">@group.FullName</div>
@@ -85,8 +92,11 @@
                                 @if (hasCsRows)   { <span>@group.CsReviews.Count CS review@(group.CsReviews.Count != 1 ? "s" : "")</span> }
                             </div>
                         </div>
+                        <span class="sal-header-total">₪ @FormatShekel(group.TotalCents)</span>
                     </div>
 
+                    @if (!_collapsed.Contains(group.FullName))
+                    {
                     @* Sessions table *@
                     @if (hasSessions)
                     {
@@ -181,6 +191,7 @@
                             </tbody>
                         </table>
                     </div>
+                    } @* end collapse *@
                 </div>
             }
         }
@@ -190,12 +201,15 @@
 </div>
 
 @code {
-    string  _fromStr = DateOnly.FromDateTime(new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1)).ToString("dd/MM/yyyy");
-    string  _toStr   = DateOnly.FromDateTime(DateTime.Today).ToString("dd/MM/yyyy");
+    string  _fromStr = "";
+    string  _toStr   = "";
     bool    _loading;
     bool    _recalculating;
     string? _error;
     List<UserSalaryGroup>? _groups;
+    int _periodYear;
+    int _periodMonth;
+    HashSet<string> _collapsed = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -205,16 +219,101 @@
             Navigation.NavigateTo("/Home");
             return;
         }
+        InitPeriod();
         await Calculate();
+    }
+
+    (DateOnly From, DateOnly To) ComputePeriod(int year, int month)
+    {
+        var first = new DateOnly(year, month, 1);
+        var daysToThu = ((int)DayOfWeek.Thursday - (int)first.DayOfWeek + 7) % 7;
+        var from = first.AddDays(daysToThu);
+
+        var lastDay = new DateOnly(year, month, DateTime.DaysInMonth(year, month));
+        DateOnly to;
+        if (lastDay.DayOfWeek == DayOfWeek.Wednesday)
+            to = lastDay;
+        else
+        {
+            var nextMonth = lastDay.AddDays(1);
+            var daysToWed = ((int)DayOfWeek.Wednesday - (int)nextMonth.DayOfWeek + 7) % 7;
+            to = nextMonth.AddDays(daysToWed);
+        }
+
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        if (to > today) to = today;
+
+        return (from, to);
+    }
+
+    void InitPeriod()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var year = today.Year;
+        var month = today.Month;
+
+        var first = new DateOnly(year, month, 1);
+        var daysToThu = ((int)DayOfWeek.Thursday - (int)first.DayOfWeek + 7) % 7;
+        if (today < first.AddDays(daysToThu))
+        {
+            month--;
+            if (month < 1) { month = 12; year--; }
+        }
+        _periodYear = year;
+        _periodMonth = month;
+        ApplyPeriod();
+    }
+
+    void ApplyPeriod()
+    {
+        var (from, to) = ComputePeriod(_periodYear, _periodMonth);
+        _fromStr = from.ToString("dd/MM/yy");
+        _toStr = to.ToString("dd/MM/yy");
+    }
+
+    async Task PrevPeriod()
+    {
+        _periodMonth--;
+        if (_periodMonth < 1) { _periodMonth = 12; _periodYear--; }
+        ApplyPeriod();
+        await Calculate();
+    }
+
+    async Task NextPeriod()
+    {
+        if (IsCurrentPeriod) return;
+        _periodMonth++;
+        if (_periodMonth > 12) { _periodMonth = 1; _periodYear++; }
+        ApplyPeriod();
+        await Calculate();
+    }
+
+    bool IsCurrentPeriod
+    {
+        get
+        {
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            var first = new DateOnly(today.Year, today.Month, 1);
+            var daysToThu = ((int)DayOfWeek.Thursday - (int)first.DayOfWeek + 7) % 7;
+            int curMonth = today.Month, curYear = today.Year;
+            if (today < first.AddDays(daysToThu))
+            { curMonth--; if (curMonth < 1) { curMonth = 12; curYear--; } }
+            return _periodYear == curYear && _periodMonth == curMonth;
+        }
+    }
+
+    void ToggleCollapse(string name)
+    {
+        if (!_collapsed.Remove(name)) _collapsed.Add(name);
     }
 
     async Task Calculate()
     {
         _error = null;
-        if (!DateOnly.TryParseExact(_fromStr, "dd/MM/yyyy", null, System.Globalization.DateTimeStyles.None, out var from))
-            { _error = "Invalid From date — use dd/mm/yyyy."; return; }
-        if (!DateOnly.TryParseExact(_toStr, "dd/MM/yyyy", null, System.Globalization.DateTimeStyles.None, out var to))
-            { _error = "Invalid To date — use dd/mm/yyyy."; return; }
+        if (!DateOnly.TryParseExact(_fromStr, new[] { "dd/MM/yy", "dd/MM/yyyy" }, null, System.Globalization.DateTimeStyles.None, out var from))
+            { _error = "Invalid From date — use dd/mm/yy."; return; }
+        if (!DateOnly.TryParseExact(_toStr, new[] { "dd/MM/yy", "dd/MM/yyyy" }, null, System.Globalization.DateTimeStyles.None, out var to))
+            { _error = "Invalid To date — use dd/mm/yy."; return; }
         if (from > to) { _error = "From date must be on or before To date."; return; }
 
         _loading       = true;
@@ -280,6 +379,21 @@
         background: var(--custom-white); outline: none; min-height: 44px; width: 100%;
     }
     .sal-date-input:focus { border-color: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,.12); }
+    .sal-nav-btn {
+        background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.25);
+        color: #fff; border-radius: 8px; width: 34px; height: 34px;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer; font-size: 1.1rem; transition: background .15s;
+        flex-shrink: 0;
+    }
+    .sal-nav-btn:hover:not(:disabled) { background: rgba(255,255,255,.3); }
+    .sal-nav-btn:disabled { opacity: .3; cursor: default; }
+    .sal-chevron { transition: transform .2s; font-size: 1.1rem; margin-right: 4px; flex-shrink: 0; }
+    .sal-chevron-collapsed { transform: rotate(-90deg); }
+    .sal-header-total {
+        margin-left: auto; font-size: .85rem; font-weight: 700;
+        color: #10b981; white-space: nowrap;
+    }
     .sal-calc-btn {
         display: flex; align-items: center; gap: 6px;
         padding: 8px 20px; border: none; border-radius: 9px; min-height: 44px;
