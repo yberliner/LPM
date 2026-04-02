@@ -71,6 +71,7 @@
                     <th class="small text-center pc-th-sort @SortClass("totalTime")" @onclick='() => ToggleSort("totalTime")'>@LS.T("pcs.totalSessionTime")</th>
                     <th class="small text-center pc-th-sort @SortClass("visits")" @onclick='() => ToggleSort("visits")'>@LS.T("pcs.totalVisits")</th>
                     <th class="small text-center pc-th-sort @SortClass("purchased")" @onclick='() => ToggleSort("purchased")'>@LS.T("pcs.hoursPurchased")</th>
+                    <th class="small pc-th-sort @SortClass("auditor")" @onclick='() => ToggleSort("auditor")'>Auditor</th>
                 </tr>
             </thead>
             <tbody>
@@ -87,6 +88,7 @@
                         <td class="small text-center text-muted">@HrsLabel(pc.TotalSessionSec)</td>
                         <td class="small text-center text-muted">@pc.AcademyVisits</td>
                         <td class="small text-center text-muted">@(pc.HoursPurchased)h</td>
+                        <td class="small text-muted text-truncate" style="max-width:120px;">@(string.IsNullOrEmpty(pc.Auditor) ? "\u2014" : pc.Auditor)</td>
                     </tr>
                 }
             </tbody>
@@ -1850,6 +1852,8 @@
                 ("visits", false)    => list.OrderByDescending(p => p.AcademyVisits),
                 ("purchased", true)  => list.OrderBy(p => p.HoursPurchased),
                 ("purchased", false) => list.OrderByDescending(p => p.HoursPurchased),
+                ("auditor", true)    => list.OrderBy(p => p.Auditor),
+                ("auditor", false)   => list.OrderByDescending(p => p.Auditor),
                 _ => list.OrderBy(p => p.RemainSec)
             };
 

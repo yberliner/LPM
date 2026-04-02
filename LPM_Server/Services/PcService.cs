@@ -15,7 +15,7 @@ public record PcSessionInfo(int SessionId, string Date, string AuditorName,
 public record PcStats(int TotalSessions, int FreeSessions, long UsedSec,
     int TotalHoursPurchased, int TotalAmountPaid, string? LastSessionDate);
 public record PcListItemEx(int PcId, string FullName, string Nick, long RemainSec,
-    long TotalSessionSec, int TotalSessions, int AcademyVisits, int HoursPurchased);
+    long TotalSessionSec, int TotalSessions, int AcademyVisits, int HoursPurchased, string Auditor = "");
 public record PurchaseListItem(int PurchaseId, int PcId, string PcName, string PurchaseDate,
     string? Notes, string ApprovedStatus, string? ApprovedByName, string? ApprovedAt,
     string? CreatedByName, string CreatedAt, int TotalAmount, int TotalHours, bool IsDeleted = false, string Currency = "ILS");
@@ -473,7 +473,8 @@ public List<PcListItem> GetAllPcs()
                    COALESCE(sess.UsedSec, 0) AS TotalSessionSec,
                    COALESCE(sess.SessionCount, 0) AS TotalSessions,
                    COALESCE(acad.VisitCount, 0) AS AcademyVisits,
-                   COALESCE(pay.TotalHours, 0) AS HoursPurchased
+                   COALESCE(pay.TotalHours, 0) AS HoursPurchased,
+                   COALESCE(TRIM(audp.FirstName || ' ' || COALESCE(NULLIF(audp.LastName,''), '')), '') AS Auditor
             FROM core_pcs pc
             JOIN core_persons p ON p.PersonId = pc.PcId
             LEFT JOIN (
@@ -491,6 +492,13 @@ public List<PcListItem> GetAllPcs()
                 SELECT PersonId, COUNT(*) AS VisitCount
                 FROM acad_attendance GROUP BY PersonId
             ) acad ON acad.PersonId = pc.PcId
+            LEFT JOIN (
+                SELECT lm.PcId, lm.AuditorId
+                FROM sess_sessions lm
+                WHERE lm.AuditorId IS NOT NULL
+                  AND lm.SessionId IN (SELECT MAX(s2.SessionId) FROM sess_sessions s2 WHERE s2.AuditorId IS NOT NULL GROUP BY s2.PcId)
+            ) aud ON aud.PcId = pc.PcId
+            LEFT JOIN core_persons audp ON audp.PersonId = aud.AuditorId
             WHERE COALESCE(p.IsActive, 1) = 1
             ORDER BY RemainSec ASC, p.FirstName, p.LastName";
         var list = new List<PcListItemEx>();
@@ -498,7 +506,7 @@ public List<PcListItem> GetAllPcs()
         while (r.Read())
             list.Add(new PcListItemEx(
                 r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetInt64(3),
-                r.GetInt64(4), r.GetInt32(5), r.GetInt32(6), r.GetInt32(7)));
+                r.GetInt64(4), r.GetInt32(5), r.GetInt32(6), r.GetInt32(7), r.GetString(8)));
         return list;
     }
 
