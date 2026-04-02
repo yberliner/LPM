@@ -229,9 +229,9 @@
                 }
 
                 @* ── Pagination ── *@
-                @if (WsTotalPages > 1)
-                {
-                    <div class="pcf-ws-pager">
+                <div class="pcf-ws-pager">
+                    @if (WsTotalPages > 1)
+                    {
                         <button disabled="@(_wsPage == 0)" @onclick="() => _wsPage--">
                             <i class="ri-arrow-left-s-line"></i>
                         </button>
@@ -240,12 +240,14 @@
                             <i class="ri-arrow-right-s-line"></i>
                         </button>
                         <span class="pcf-ws-pager-total">(@WsFilteredCount)</span>
-                    </div>
-                }
-                else if (WsFilteredCount == 0 && !string.IsNullOrWhiteSpace(_wsFilter))
-                {
-                    <div style="padding:8px 28px;font-size:.76rem;color:#94a3b8;">No matches</div>
-                }
+                    }
+                    else if (WsFilteredCount == 0 && !string.IsNullOrWhiteSpace(_wsFilter))
+                    {
+                        <span style="font-size:.76rem;color:#94a3b8;">No matches</span>
+                    }
+                    <span class="pcf-ws-nav-btn" title="Browse all sessions"
+                          @onclick="OpenWsNav">☰</span>
+                </div>
             }
         }
     </div>
@@ -350,6 +352,67 @@
                         No template files found in ProgramInserts folder.
                     </div>
                 }
+            </div>
+        </div>
+    }
+
+    @* ── Session quick-nav popup ── *@
+    @if (_wsNavOpen)
+    {
+        <div class="pcf-ws-nav-overlay" @onclick="() => _wsNavOpen = false">
+            <div class="pcf-ws-nav-popup" @onclick:stopPropagation="true">
+                <div class="pcf-ws-nav-header">
+                    <span class="fw-semibold" style="font-size:.85rem;">Sessions (@_wsNavList.Count)</span>
+                    <button type="button" class="btn-close btn-close-white" style="font-size:.6rem;" @onclick="() => _wsNavOpen = false"></button>
+                </div>
+                <div class="pcf-ws-nav-search">
+                    <i class="ri-search-line"></i>
+                    <input type="text" placeholder="Search..." value="@_wsNavFilter"
+                           @oninput="e => _wsNavFilter = e.Value?.ToString() ?? string.Empty" />
+                </div>
+                <div class="pcf-ws-nav-list">
+                    @{ var navFiltered = string.IsNullOrWhiteSpace(_wsNavFilter)
+                        ? _wsNavList
+                        : _wsNavList.Where(ws => SessionDisplayName(ws.File.FileName)
+                            .Contains(_wsNavFilter, StringComparison.OrdinalIgnoreCase)).ToList(); }
+                    @foreach (var ws in navFiltered)
+                    {
+                        var name = SessionDisplayName(ws.File.FileName);
+                        var csed = _nameToSessionId.TryGetValue(name, out var sid) && _csedSessionIds.Contains(sid);
+                        var isCsTarget = !string.IsNullOrEmpty(_csSessionName)
+                            && name.Equals(_csSessionName, StringComparison.OrdinalIgnoreCase);
+                        var isActive = IsFileActive(ws.File.RelativePath);
+                        var navWs = ws;
+                        <div class="pcf-ws-nav-row @(isActive != "" ? "pcf-ws-nav-row--active" : "")"
+                             @onclick="() => WsNavSelect(navWs)">
+                            @if (isCsTarget)
+                            {
+                                <i class="ri-star-fill" style="color:#f59e0b;font-size:.7rem;flex-shrink:0;"></i>
+                            }
+                            else
+                            {
+                                <i class="ri-file-pdf-2-line @(csed ? "text-success" : "")" style="font-size:.75rem;flex-shrink:0;opacity:.6;"></i>
+                            }
+                            <span class="pcf-ws-nav-name @(csed ? "pcf-file-csed" : "")">@name</span>
+                            @if (csed)
+                            {
+                                <i class="ri-check-line" style="color:#22c55e;font-size:.65rem;flex-shrink:0;"></i>
+                            }
+                            @if (ws.Attachments.Count > 0)
+                            {
+                                <span class="pcf-ws-nav-att">@ws.Attachments.Count</span>
+                            }
+                            @if (_nameToCreatedAt.TryGetValue(name, out var dt))
+                            {
+                                <span class="pcf-ws-nav-date">@dt.ToString("dd/MM/yy")</span>
+                            }
+                        </div>
+                    }
+                    @if (navFiltered.Count == 0)
+                    {
+                        <div style="padding:12px;text-align:center;color:#9ca3af;font-size:.8rem;">No sessions found</div>
+                    }
+                </div>
             </div>
         </div>
     }
@@ -1337,6 +1400,53 @@
         background: #475569; color: #e2e8f0;
         border-radius: 10px; padding: 1px 7px; min-width: 20px; text-align: center;
     }
+    .pcf-ws-nav-btn {
+        background: none; border: none; padding: 1px 5px; margin-left: auto;
+        font-size: .8rem; cursor: pointer; line-height: 1;
+        color: #94a3b8; transition: color .15s;
+        display: inline-flex; align-items: center;
+    }
+    .pcf-ws-nav-btn:hover { color: #e2e8f0; }
+    .pcf-ws-nav-overlay {
+        position: fixed; inset: 0; z-index: 9999;
+        background: rgba(0,0,0,.5); display: flex;
+        align-items: center; justify-content: center;
+    }
+    .pcf-ws-nav-popup {
+        background: #1e293b; border-radius: 10px; width: 380px;
+        max-width: 92vw; max-height: 80vh; display: flex; flex-direction: column;
+        box-shadow: 0 8px 32px rgba(0,0,0,.4); overflow: hidden;
+    }
+    .pcf-ws-nav-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 14px; background: linear-gradient(135deg,#1a237e,#3949ab);
+        color: #fff;
+    }
+    .pcf-ws-nav-search {
+        display: flex; align-items: center; gap: 6px;
+        padding: 8px 12px; border-bottom: 1px solid #334155;
+        color: #94a3b8;
+    }
+    .pcf-ws-nav-search input {
+        flex: 1; background: transparent; border: none; outline: none;
+        color: #e2e8f0; font-size: .8rem;
+    }
+    .pcf-ws-nav-list {
+        overflow-y: auto; flex: 1; padding: 4px 0;
+    }
+    .pcf-ws-nav-row {
+        display: flex; align-items: center; gap: 6px;
+        padding: 6px 14px; cursor: pointer; font-size: .8rem;
+        color: #cbd5e1; transition: background .1s;
+    }
+    .pcf-ws-nav-row:hover { background: #334155; }
+    .pcf-ws-nav-row--active { background: rgba(99,102,241,.15); }
+    .pcf-ws-nav-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pcf-ws-nav-att {
+        font-size: .6rem; background: #475569; color: #e2e8f0;
+        border-radius: 8px; padding: 0 5px; min-width: 16px; text-align: center;
+    }
+    .pcf-ws-nav-date { font-size: .7rem; color: #64748b; flex-shrink: 0; }
     .pcf-file-item {
         display: flex; align-items: center; gap: 4px;
         padding: 7px 14px 7px 28px; font-size: .8rem;
@@ -2787,6 +2897,11 @@
     string _wsFilter = "";
     HashSet<string> _collapsedAttachments = [];
 
+    // Session quick-nav popup
+    bool _wsNavOpen;
+    string _wsNavFilter = "";
+    List<WorkSheetItem> _wsNavList = new();
+
     // ── Tree file manager state ──
     HashSet<string> _expandedTreeFolders = new(StringComparer.OrdinalIgnoreCase);
 
@@ -2971,6 +3086,26 @@
     int WsFilteredCount => _folder == null ? 0 : _folder.WorkSheets.Count(ws =>
         string.IsNullOrWhiteSpace(_wsFilter) ||
         SessionDisplayName(ws.File.FileName).Contains(_wsFilter, StringComparison.OrdinalIgnoreCase));
+
+    void OpenWsNav()
+    {
+        if (_folder == null) return;
+        _wsNavFilter = "";
+        _wsNavList = _folder.WorkSheets
+            .OrderByDescending(ws =>
+            {
+                var name = SessionDisplayName(ws.File.FileName);
+                return _nameToCreatedAt.TryGetValue(name, out var dt) ? dt : DateTime.MinValue;
+            })
+            .ToList();
+        _wsNavOpen = true;
+    }
+
+    async Task WsNavSelect(WorkSheetItem ws)
+    {
+        _wsNavOpen = false;
+        await SelectFile(ws.File.RelativePath, ws.File.FileName, "WorkSheet");
+    }
 
     void OnWsFilterChanged(ChangeEventArgs e)
     {
