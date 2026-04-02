@@ -128,13 +128,35 @@
 
     @* ── Action ── *@
     <div class="d-flex align-items-center gap-3 mt-3 flex-wrap">
-        @if (!_downloading)
+        @if (!_downloading && !_fbfDownloading)
         {
             <button class="btn btn-primary btn-lg d-flex align-items-center gap-2 @(_shakeActive ? "bk-shake" : "")"
+                    disabled="@(!string.IsNullOrEmpty(_blockedByUser) || !_fbfSupported)"
+                    @onclick="StartFolderBackup">
+                <i class="ri-folder-download-line" style="font-size:1.3rem;"></i>
+                Download to Folder
+            </button>
+            <button class="btn btn-outline-secondary btn-lg d-flex align-items-center gap-2 @(_shakeActive ? "bk-shake" : "")"
                     disabled="@(!string.IsNullOrEmpty(_blockedByUser))"
                     @onclick="ShowPasswordPrompt">
-                <i class="ri-download-cloud-2-line" style="font-size:1.3rem;"></i>
-                Start Backup
+                <i class="ri-file-zip-line" style="font-size:1.3rem;"></i>
+                Download as ZIP
+            </button>
+            @if (!_fbfSupported)
+            {
+                <span style="font-size:.75rem;color:#94a3b8;">Folder download requires Chrome or Edge</span>
+            }
+        }
+        else if (_fbfDownloading)
+        {
+            <button class="btn btn-secondary btn-lg" disabled>
+                <span class="spinner-border spinner-border-sm me-2"></span>
+                Downloading files…
+            </button>
+            <button class="btn btn-outline-danger btn-lg d-flex align-items-center gap-2"
+                    @onclick="CancelFolderBackup">
+                <i class="ri-close-circle-line"></i>
+                Cancel
             </button>
         }
         else
@@ -157,6 +179,44 @@
             </div>
         }
     </div>
+
+    @* ── File-by-file progress ── *@
+    @if (_fbfDownloading)
+    {
+        <div class="bk-warning-banner mt-3">
+            <div class="bk-warning-icon">
+                <i class="ri-folder-download-line"></i>
+            </div>
+            <div style="flex:1;">
+                <div class="bk-warning-title">DOWNLOADING FILES TO FOLDER</div>
+                <div class="bk-warning-text">
+                    Files are being saved directly to your chosen folder. You can leave this page open.
+                </div>
+                <div class="bk-phase-row mt-3">
+                    <div class="d-flex align-items-center gap-2 mb-1">
+                        <span style="font-size:.8rem;font-weight:600;color:#fbbf24;">
+                            Phase: @(_fbfPhase == "user" ? "User Backup" : "Server Backup")
+                        </span>
+                        <span class="ms-auto" style="font-size:.75rem;color:#94a3b8;">
+                            @_fbfCurrent / @_fbfTotal
+                            @if (_fbfSkipped > 0) { <text> (@_fbfSkipped skipped)</text> }
+                            @if (_fbfErrors > 0) { <text> | <span style="color:#f87171;">@_fbfErrors errors</span></text> }
+                        </span>
+                    </div>
+                    <div class="progress" style="height:7px;background:#0f172a;border-radius:4px;">
+                        <div class="progress-bar" style="width:@(_fbfTotal > 0 ? (_fbfCurrent * 100 / _fbfTotal) : 0)%;
+                             background:#3b82f6;transition:width .3s ease;"></div>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_fbfCurrentFile))
+                    {
+                        <div style="font-size:.7rem;color:#64748b;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                            @_fbfCurrentFile
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
 
     @* ── Integrity warning ── *@
     @if (!string.IsNullOrEmpty(_integrityWarning))
@@ -228,7 +288,11 @@
     {
         <div class="alert alert-success mt-3 d-flex align-items-center gap-2" style="max-width:600px;">
             <i class="ri-check-double-line" style="font-size:1.2rem;"></i>
-            Both backups complete. Check your browser downloads (2 files: User Backup + Server Backup).
+            Both backups complete.
+            @if (_fbfSkipped > 0 || _fbfErrors > 0)
+            {
+                <span>(@_fbfSkipped skipped, @_fbfErrors errors)</span>
+            }
         </div>
     }
 
@@ -355,6 +419,13 @@
     bool   _shakeActive;          // triggers CSS shake on the button
     string _refusedMessage = "";  // temporary inline refusal message
 
+    // File-by-file backup
+    bool _fbfSupported;
+    bool _fbfDownloading;
+    string _fbfPhase = "";
+    int _fbfCurrent, _fbfTotal, _fbfSkipped, _fbfErrors;
+    string _fbfCurrentFile = "";
+
     // Password modal
     bool _showPasswordModal;
     string _backupPassword = "";
@@ -384,6 +455,22 @@
         _dbSize = info.DbSize;
         _pcSize = info.PcFoldersSize;
         _totalFiles = info.TotalFiles;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _fbfSupported = await JS.InvokeAsync<bool>("lpmFileBackup.isSupported");
+            // Check if a file-by-file download is already running (circuit reconnect)
+            if (_fbfSupported && await JS.InvokeAsync<bool>("lpmFileBackup.isRunning"))
+            {
+                _fbfDownloading = true;
+                var dotNetRef = DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("lpmFileBackup.reconnectDotNetRef", dotNetRef);
+            }
+            StateHasChanged();
+        }
     }
 
     void ShowPasswordPrompt()
@@ -461,7 +548,15 @@
                 _integrityWarning = integrityResult;
             StateHasChanged();
 
-            await StartBackup(token);
+            if (_fbfPendingStart)
+            {
+                _fbfPendingStart = false;
+                await StartFolderBackupWithToken(token);
+            }
+            else
+            {
+                await StartBackup(token);
+            }
         }
         catch
         {
@@ -605,6 +700,108 @@
     {
         Console.WriteLine($"[Backup] Backup cancel requested by '{_username}'");
         BackupProgress.CancelRequested = true;
+    }
+
+    // ── File-by-file backup ──
+
+    async Task StartFolderBackup()
+    {
+        if (BackupProgress.Running)
+        {
+            _blockedByUser = string.IsNullOrEmpty(BackupProgress.ActiveUser) ? "another user" : BackupProgress.ActiveUser;
+            TriggerBlockedShake();
+            return;
+        }
+
+        // Step 1: Pick directory FIRST (requires user gesture)
+        try
+        {
+            var picked = await JS.InvokeAsync<bool>("lpmFileBackup.pickDirectory");
+            if (!picked) return;
+        }
+        catch { return; } // user cancelled picker
+
+        // Step 2: Show password modal — auth happens on confirm
+        _backupPassword = "";
+        _passwordError = "";
+        _authBusy = false;
+        _showPasswordModal = true;
+        _fbfPendingStart = true;
+        StateHasChanged();
+    }
+
+    bool _fbfPendingStart; // true = after auth, start folder backup instead of ZIP
+
+    async Task StartFolderBackupWithToken(string token)
+    {
+        _fbfDownloading = true;
+        _fbfPhase = "";
+        _fbfCurrent = 0; _fbfTotal = 0; _fbfSkipped = 0; _fbfErrors = 0;
+        _fbfCurrentFile = "";
+        _done = false;
+        _error = "";
+        StateHasChanged();
+
+        Console.WriteLine($"[Backup] File-by-file backup started by '{_username}'");
+
+        try
+        {
+            await JS.InvokeVoidAsync("eval", "navigator.wakeLock?.request('screen').catch(()=>{})");
+            var dotNetRef = DotNetObjectReference.Create(this);
+            // Fire-and-forget: JS calls OnBackupComplete when done (InvokeAsync would timeout on long backups)
+            await JS.InvokeVoidAsync("lpmFileBackup.start", token, dotNetRef);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Backup failed to start: {ex.Message}";
+            _fbfDownloading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    [JSInvokable]
+    public void OnBackupComplete(bool ok, string? error, int userTotal, int userSkipped, int userErrors, int serverTotal, int serverSkipped, int serverErrors)
+    {
+        _fbfDownloading = false;
+        if (ok)
+        {
+            _done = true;
+            Console.WriteLine($"[Backup] File-by-file COMPLETE by '{_username}' — User: {userTotal} files ({userSkipped} skipped, {userErrors} errors), Server: {serverTotal} files ({serverSkipped} skipped, {serverErrors} errors)");
+        }
+        else
+        {
+            _error = error ?? "Backup failed";
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    void CancelFolderBackup()
+    {
+        Console.WriteLine($"[Backup] File-by-file cancel requested by '{_username}'");
+        JS.InvokeVoidAsync("lpmFileBackup.cancel");
+    }
+
+    [JSInvokable]
+    public void OnFileProgress(int current, int total, string path, int skipped, int errors, bool wasSkipped)
+    {
+        _fbfCurrent = current;
+        _fbfTotal = total;
+        _fbfCurrentFile = path;
+        _fbfSkipped = skipped;
+        _fbfErrors = errors;
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnPhaseChanged(string phase)
+    {
+        _fbfPhase = phase;
+        _fbfCurrent = 0;
+        _fbfTotal = 0;
+        _fbfSkipped = 0;
+        _fbfErrors = 0;
+        _fbfCurrentFile = "";
+        InvokeAsync(StateHasChanged);
     }
 
     public void Dispose()

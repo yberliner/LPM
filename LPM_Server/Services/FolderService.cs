@@ -40,6 +40,17 @@ public static class BackupProgress
         }
     }
 
+    /// <summary>Checks token validity without consuming a use. For file-by-file backup endpoints.</summary>
+    public static bool ValidateToken(string token)
+    {
+        lock (_lockObj)
+        {
+            return !string.IsNullOrEmpty(token)
+                && token == AuthToken
+                && DateTime.UtcNow <= AuthExpiry;
+        }
+    }
+
     // Brute-force protection: IP → (failCount, lockedUntil)
     static readonly Dictionary<string, (int Fails, DateTime LockedUntil)> _ipLocks = new();
     static readonly object _lockObj = new();

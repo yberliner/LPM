@@ -1016,6 +1016,11 @@ app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderSer
                 foreach (var (relPath, fullPath) in pcFiles)
                 {
                     if (LPM.Services.BackupProgress.CancelRequested) break;
+                    if (ctx.RequestAborted.IsCancellationRequested)
+                    {
+                        Console.WriteLine($"[Backup][user] CLIENT DISCONNECTED at file {processed}/{totalFiles} — stopping");
+                        break;
+                    }
 
                     // Skip files that hung in a previous backup this session (EBS bad-block protection)
                     lock (LPM.Services.BackupProgress.PermSkipFiles)
@@ -1266,6 +1271,11 @@ app.MapGet("/api/server-backup-download", (HttpContext ctx, LPM.Services.FolderS
                 foreach (var (relPath, fullPath) in rawPcFiles)
                 {
                     if (LPM.Services.BackupProgress.CancelRequested) break;
+                    if (ctx.RequestAborted.IsCancellationRequested)
+                    {
+                        Console.WriteLine($"[Backup][server] CLIENT DISCONNECTED at file {processed}/{totalFiles} — stopping");
+                        break;
+                    }
 
                     // Skip files that hung in a previous backup this session (EBS bad-block protection)
                     lock (LPM.Services.BackupProgress.PermSkipFiles)
@@ -1388,6 +1398,151 @@ app.MapGet("/api/backup-progress", (HttpContext ctx) =>
         phase      = LPM.Services.BackupProgress.Phase,
         totalFiles = LPM.Services.BackupProgress.TotalFiles
     });
+});
+
+// ── File-by-file backup: file list ──
+app.MapGet("/api/backup-file-list", (HttpContext ctx, LPM.Services.FolderService svc, IConfiguration cfg) =>
+{
+    if (ctx.User?.IsInRole("Admin") != true) return Results.Forbid();
+    var token = ctx.Request.Query["token"].ToString();
+    if (!LPM.Services.BackupProgress.ValidateToken(token)) return Results.Unauthorized();
+
+    var phase = ctx.Request.Query["phase"].ToString();
+    if (phase is not "user" and not "server") return Results.BadRequest("phase must be 'user' or 'server'");
+
+    var backupFolder = svc.GetAutoBackupFolder(cfg["Database:BackupFolder"]);
+    var autoBackupFiles = Directory.Exists(backupFolder)
+        ? Directory.GetFiles(backupFolder, "lifepower_*.db").OrderByDescending(f => f).ToArray()
+        : Array.Empty<string>();
+
+    var files = new List<object>();
+
+    // DB snapshot
+    var dbPath = svc.GetDbFilePath();
+    if (File.Exists(dbPath))
+    {
+        var dbTarget = phase == "user" ? "db-live/lifepower.db" : "lifepower.db";
+        files.Add(new { path = dbTarget, modified = File.GetLastWriteTimeUtc(dbPath).ToString("o"), alwaysDownload = true });
+    }
+
+    // Auto-backup DBs
+    var backupFolderName = phase == "server" ? Path.GetFileName(backupFolder.TrimEnd('/', '\\')) : "db-autobackups";
+    foreach (var bf in autoBackupFiles)
+    {
+        var bfName = Path.GetFileName(bf);
+        files.Add(new { path = $"{backupFolderName}/{bfName}", modified = File.GetLastWriteTimeUtc(bf).ToString("o"), alwaysDownload = true });
+    }
+
+    // Server extras (config + avatars)
+    if (phase == "server")
+    {
+        foreach (var (zipPath, fullPath) in svc.GetServerBackupExtras())
+            files.Add(new { path = zipPath, modified = File.GetLastWriteTimeUtc(fullPath).ToString("o"), alwaysDownload = false });
+    }
+
+    // PC files
+    foreach (var (relPath, fullPath) in svc.EnumerateBackupFiles())
+    {
+        var isFolderSummary = LPM.Services.FolderService.ParseFolderSummaryBackupPath(relPath).IsSummary;
+        files.Add(new { path = relPath, modified = File.GetLastWriteTimeUtc(fullPath).ToString("o"), alwaysDownload = isFolderSummary });
+    }
+
+    Console.WriteLine($"[BackupFileList] {phase} phase: {files.Count} files listed for '{ctx.User.Identity?.Name}'");
+    return Results.Ok(files);
+});
+
+// ── File-by-file backup: single file download ──
+app.MapGet("/api/backup-file", (HttpContext ctx, LPM.Services.FolderService svc, IConfiguration cfg,
+    LPM.Services.DashboardService dashSvc, PdfService pdfSvc) =>
+{
+    if (ctx.User?.IsInRole("Admin") != true) return Results.Forbid();
+    var token = ctx.Request.Query["token"].ToString();
+    if (!LPM.Services.BackupProgress.ValidateToken(token)) return Results.Unauthorized();
+
+    var phase = ctx.Request.Query["phase"].ToString();
+    var reqPath = ctx.Request.Query["path"].ToString();
+    if (string.IsNullOrEmpty(reqPath) || phase is not "user" and not "server")
+        return Results.BadRequest("phase and path required");
+
+    // Path traversal protection
+    if (reqPath.Contains("..") || reqPath.Contains('\0'))
+        return Results.BadRequest("invalid path");
+
+    byte[]? bytes = null;
+
+    // Route to correct file source
+    if (reqPath.StartsWith("db-live/") || reqPath == "lifepower.db")
+    {
+        // Live DB snapshot
+        var tempCopy = Path.Combine(Path.GetTempPath(), $"db-snap-{Guid.NewGuid():N}.db");
+        try
+        {
+            svc.BackupDbTo(tempCopy);
+            bytes = File.ReadAllBytes(tempCopy);
+        }
+        finally { try { File.Delete(tempCopy); } catch { } }
+    }
+    else if (reqPath.StartsWith("db-autobackups/") || reqPath.StartsWith(Path.GetFileName(svc.GetAutoBackupFolder(cfg["Database:BackupFolder"]).TrimEnd('/', '\\')) + "/"))
+    {
+        // Auto-backup DB file
+        var backupFolder = svc.GetAutoBackupFolder(cfg["Database:BackupFolder"]);
+        var fileName = Path.GetFileName(reqPath);
+        if (fileName.Contains("..") || fileName.Contains('/') || fileName.Contains('\\'))
+            return Results.BadRequest("invalid path");
+        var fullPath = Path.Combine(backupFolder, fileName);
+        if (!File.Exists(fullPath)) return Results.NotFound();
+        bytes = File.ReadAllBytes(fullPath);
+    }
+    else if (reqPath.StartsWith("PC-Folders/"))
+    {
+        // PC file — find full path via EnumerateBackupFiles match
+        var match = svc.EnumerateBackupFiles().FirstOrDefault(f => f.RelativePath == reqPath);
+        if (match.FullPath == null) return Results.NotFound();
+
+        if (phase == "user")
+        {
+            // Decrypt for user backup
+            var decrypted = svc.DecryptFileForBackup(match.FullPath);
+
+            // Folder Summary: prepend session summaries
+            var (isSummary, fspcId, isSolo) = LPM.Services.FolderService.ParseFolderSummaryBackupPath(reqPath);
+            if (isSummary)
+            {
+                try
+                {
+                    var summaries = dashSvc.GetSessionSummariesForPc(fspcId, isSolo);
+                    if (summaries.Count > 0)
+                    {
+                        var pcName = dashSvc.GetPersonName(fspcId) ?? $"PC {fspcId}";
+                        var originalPageCount = pdfSvc.CountPdfPages(decrypted);
+                        var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
+                        decrypted = pdfSvc.CombinePdfs(summaryPdf, decrypted);
+                    }
+                }
+                catch (Exception ex) { Console.WriteLine($"[BackupFile] FolderSummary combine failed for PC {fspcId}: {ex.Message}"); }
+            }
+            bytes = decrypted;
+        }
+        else
+        {
+            // Raw for server backup
+            bytes = File.ReadAllBytes(match.FullPath);
+        }
+    }
+    else if (phase == "server")
+    {
+        // Server extras (config, avatars)
+        var match = svc.GetServerBackupExtras().FirstOrDefault(f => f.ZipPath == reqPath);
+        if (match.FullPath == null) return Results.NotFound();
+        bytes = File.ReadAllBytes(match.FullPath);
+    }
+    else
+    {
+        return Results.NotFound();
+    }
+
+    if (bytes == null) return Results.NotFound();
+    return Results.File(bytes, "application/octet-stream");
 });
 
 // Enable WAL mode for crash-safe writes (runs once; setting persists in the DB file)
