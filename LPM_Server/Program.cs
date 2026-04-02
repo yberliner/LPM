@@ -1501,8 +1501,14 @@ app.MapGet("/api/backup-file", (HttpContext ctx, LPM.Services.FolderService svc,
 
         if (phase == "user")
         {
-            // Decrypt for user backup
-            var decrypted = svc.DecryptFileForBackup(match.FullPath);
+            // Decrypt for user backup — fall back to raw bytes if decryption fails (unencrypted legacy file)
+            byte[] decrypted;
+            try { decrypted = svc.DecryptFileForBackup(match.FullPath); }
+            catch (System.Security.Cryptography.CryptographicException)
+            {
+                Console.WriteLine($"[BackupFile] Decrypt failed (serving raw): {reqPath}");
+                decrypted = File.ReadAllBytes(match.FullPath);
+            }
 
             // Folder Summary: prepend session summaries
             var (isSummary, fspcId, isSolo) = LPM.Services.FolderService.ParseFolderSummaryBackupPath(reqPath);
