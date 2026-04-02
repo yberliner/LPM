@@ -1745,7 +1745,6 @@ public class PdfService
         }
 
         // ── BiDi helpers ──
-        static bool IsHebrew(char c) => c >= '\u0590' && c <= '\u05FF';
         static bool IsRtlChar(char c) =>
             (c >= '\u0590' && c <= '\u05FF') ||  // Hebrew
             (c >= '\u0600' && c <= '\u06FF') ||  // Arabic
@@ -1754,7 +1753,6 @@ public class PdfService
         static bool IsLtrChar(char c) =>
             (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
             (c >= '\u00C0' && c <= '\u024F');     // Latin Extended
-        static bool HasRtl(string s) => s.Any(IsRtlChar);
 
         // Simplified Unicode BiDi for Hebrew+Latin mixed text.
         // Returns (visual string, isRtl base direction).

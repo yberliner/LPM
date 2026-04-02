@@ -2837,7 +2837,6 @@
     // Delete flow: 0=idle, 1=confirm, 2=type, 3=deleting, 4=done
     int    _pcfdDeleteStep  = 0;
     string _pcfdDeleteInput = "";
-    bool   _pcfdDeleteBusy  = false;
     string _pcfdDeleteError = "";
     int    _pcfdDeletedRows  = 0;
     int    _pcfdDeletedFiles = 0;
@@ -3080,7 +3079,6 @@
         var pcId  = _pcfdPcId;
         var admin = AdminUser();
         _pcfdDeleteStep  = 3;
-        _pcfdDeleteBusy  = true;
         _pcfdDeleteError = "";
         StateHasChanged();
 
@@ -3178,7 +3176,6 @@
             _pcfdDeleteStep  = 2;
             Console.WriteLine($"[DeletePC] FAILED — Admin='{admin}' PcId={pcId}: {ex.Message}");
         }
-        finally { _pcfdDeleteBusy = false; }
     }
 }
 

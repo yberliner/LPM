@@ -2753,8 +2753,6 @@
     int _csSessionId;            // session ID passed from Dashboard (0 = not from CS button)
     QuestionInfo? _questionInfo;  // current session's question status
     string? _csSessionName;      // name of the session being CSed
-    string? _floatAttFile;       // 3rd attachment to open in float window (can't fit in panes)
-    string? _floatAttName;       // display name for the float window title
     bool _csDone;                // true after "Mark CS Done" was executed
     bool _csAlreadyDone;         // true if this session already has a cs_review on load
     bool _csAlreadyDoneBannerDismissed;
@@ -3134,12 +3132,6 @@
                     var paneId = PaneIds[i];
                     paneTasks.Add(JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId).AsTask());
                 }
-            }
-            // If 3rd attachment couldn't fit in a pane, open it in the float window — in parallel with pane loads
-            if (!string.IsNullOrEmpty(_floatAttFile))
-            {
-                var floatUrl = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_floatAttFile)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
-                paneTasks.Add(JS.InvokeVoidAsync("pcfViewer.floatFile", floatUrl, _floatAttName ?? _floatAttFile).AsTask());
             }
             await Task.WhenAll(paneTasks);
 
