@@ -24,7 +24,7 @@
             {
                 <span class="pcf-solo-badge"><i class="ri-user-star-line"></i>Solo</span>
             }
-            <button class="pcf-sidebar-toggle" title="Collapse sidebar" @onclick="() => _sidebarOpen = false">
+            <button class="pcf-sidebar-toggle" title="Collapse sidebar" @onclick="() => ToggleSidebar(false)">
                 <i class="ri-arrow-left-double-line"></i>
             </button>
         </div>
@@ -253,7 +253,7 @@
     @* ── Sidebar backdrop for mobile ── *@
     @if (_sidebarOpen)
     {
-        <div class="pcf-sidebar-backdrop" @onclick="() => _sidebarOpen = false"></div>
+        <div class="pcf-sidebar-backdrop" @onclick="() => ToggleSidebar(false)"></div>
     }
 
     @* ── Annotation settings / zoom menu / add-page menu backdrops ── *@
@@ -667,7 +667,7 @@
                 @if (!_sidebarOpen)
                 {
                     <button class="pcf-tool-btn pcf-sidebar-open-btn" aria-label="Open file list"
-                            @onclick="() => _sidebarOpen = true">
+                            @onclick="() => ToggleSidebar(true)">
                         <i class="ri-side-bar-line"></i>
                         <span class="pcf-sidebar-tooltip">Open file list</span>
                     </button>
@@ -3866,6 +3866,20 @@
         DateTime.TryParse(dateStr, out var dt) && dt.TimeOfDay > TimeSpan.Zero ? dt.ToString("HH:mm") : "";
 
     static string FsSecsToHMM(int secs) => secs <= 0 ? "" : $"{secs / 3600}:{(secs % 3600) / 60:D2}";
+
+    void ToggleSidebar(bool open)
+    {
+        if (_sidebarOpen == open) return;
+        _sidebarOpen = open;
+        // Schedule PDF reloads so panes re-render at the new width
+        var reloads = new List<(string, string)>();
+        for (int i = 0; i < _paneCount; i++)
+            if (!string.IsNullOrEmpty(_panes[i].File)
+                && !_panes[i].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                reloads.Add((PaneIds[i], _panes[i].File!));
+        if (reloads.Count > 0)
+            _pendingReloads = reloads;
+    }
 
     void SetActiveIdx(int idx)
     {
