@@ -539,7 +539,7 @@ public class StateService
         await menuPositionFn(xintramenuposition);
         string xintraheaderposition = _currentState.HeaderPosition;
         await headerPositionFn(xintraheaderposition);
-        string xintracolortheme = _currentState.ColorTheme;
+        string xintracolortheme = await _jsRuntime.InvokeAsync<string>("interop.getLocalStorageItem", "xintracolortheme") ?? _currentState.ColorTheme;
         await colorthemeFn(xintracolortheme, false);
         string xintrabgimg = _currentState.BackgroundImage;
         if (!string.IsNullOrEmpty(xintrabgimg))
