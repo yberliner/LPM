@@ -140,7 +140,29 @@
             </div>
         }
 
-        @if (_auditingPurchases.Count == 0 && _coursePurchases.Count == 0)
+        @* ── Book Purchases Table ── *@
+        @if (_bookPurchases.Count > 0)
+        {
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header border-0 py-2 px-4 d-flex align-items-center"
+                     style="background:linear-gradient(135deg,#92400e,#d97706);border:none;cursor:pointer;"
+                     @onclick="() => _bookCollapsed = !_bookCollapsed">
+                    <i class="ri-arrow-down-s-line text-white pu-chevron @(_bookCollapsed ? "pu-chevron-collapsed" : "") me-1"></i>
+                    <span class="fw-semibold small text-white">
+                        <i class="ri-book-open-line me-1"></i>Book Purchases
+                    </span>
+                    <span class="badge bg-white ms-2" style="color:#92400e;">@_bookPurchases.Count</span>
+                </div>
+                @if (!_bookCollapsed)
+                {
+                    <div class="table-responsive">
+                        @PurchaseTableBody(_bookPurchases)
+                    </div>
+                }
+            </div>
+        }
+
+        @if (_auditingPurchases.Count == 0 && _coursePurchases.Count == 0 && _bookPurchases.Count == 0)
         {
             <div class="pu-empty-block mb-4">
                 <i class="ri-check-double-line" style="font-size:1.8rem;color:#16a34a;"></i>
@@ -203,6 +225,12 @@
                                                     <i class="ri-book-2-line me-1"></i>@(item.CourseName ?? "Course")
                                                 </span>
                                             }
+                                            else if (item.ItemType == "Book")
+                                            {
+                                                <span class="badge rounded-pill" style="background:#fef3c7;color:#92400e;font-size:.72rem;">
+                                                    <i class="ri-book-open-line me-1"></i>@(item.BookName ?? "Book")
+                                                </span>
+                                            }
                                             else
                                             {
                                                 <span class="badge rounded-pill" style="background:#f0fdf4;color:#15803d;font-size:.72rem;">
@@ -212,6 +240,7 @@
                                         </td>
                                         <td class="small text-center fw-semibold" style="color:#212529;">
                                             @if (item.ItemType == "Course") { <span style="color:#34d399;">Course</span> }
+                                            else if (item.ItemType == "Book") { <span style="color:#d97706;">Book</span> }
                                             else { @($"{item.HoursBought}h") }
                                         </td>
                                         <td class="small text-end" style="color:#212529;">@(item.AmountPaid > 0 ? $"\u20AA{item.AmountPaid}" : "\u2014")</td>
@@ -439,6 +468,7 @@
     private List<PurchaseListItem> _purchases = new();
     private List<PurchaseListItem> _auditingPurchases = new();
     private List<PurchaseListItem> _coursePurchases = new();
+    private List<PurchaseListItem> _bookPurchases = new();
 
     private Dictionary<int, int>   _itemCounts = new();
     private Dictionary<int, string?> _signatures = new();
@@ -452,6 +482,7 @@
     private bool _msgIsError;
     private bool _auditingCollapsed = false;
     private bool _courseCollapsed   = false;
+    private bool _bookCollapsed    = false;
     private int? _currentPersonId;
     private string _username = "";
     private string _sortCol = "date";
@@ -533,6 +564,8 @@
             _itemsCache.GetValueOrDefault(p.PurchaseId)?.Any(i => i.ItemType == "Auditing") == true).ToList();
         _coursePurchases = _purchases.Where(p =>
             _itemsCache.GetValueOrDefault(p.PurchaseId)?.Any(i => i.ItemType == "Course") == true).ToList();
+        _bookPurchases = _purchases.Where(p =>
+            _itemsCache.GetValueOrDefault(p.PurchaseId)?.Any(i => i.ItemType == "Book") == true).ToList();
     }
 
     private async Task ToggleDeleted()

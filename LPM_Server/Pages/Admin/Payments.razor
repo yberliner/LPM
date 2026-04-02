@@ -187,6 +187,12 @@
                                                     <i class="ri-book-2-line me-1"></i>@(item.CourseName ?? "Course")
                                                 </span>
                                             }
+                                            else if (item.ItemType == "Book")
+                                            {
+                                                <span class="badge rounded-pill" style="background:#fef3c7;color:#92400e;font-size:.72rem;">
+                                                    <i class="ri-book-open-line me-1"></i>@(item.BookName ?? "Book")
+                                                </span>
+                                            }
                                             else
                                             {
                                                 <span class="badge rounded-pill" style="background:#f0fdf4;color:#15803d;font-size:.72rem;">
@@ -196,6 +202,7 @@
                                         </td>
                                         <td class="small text-center fw-semibold" style="color:#212529;">
                                             @if (item.ItemType == "Course") { <span style="color:#34d399;">Course</span> }
+                                            else if (item.ItemType == "Book") { <span style="color:#d97706;">Book</span> }
                                             else { @($"{item.HoursBought}h") }
                                         </td>
                                         <td class="small text-end" style="color:#212529;">@(item.AmountPaid > 0 ? $"\u20AA{item.AmountPaid}" : "\u2014")</td>

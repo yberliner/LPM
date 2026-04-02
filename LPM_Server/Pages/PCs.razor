@@ -576,13 +576,17 @@
                                                         @onclick='() => SetItemType(capturedIdx, "Course")'>
                                                     <i class="ri-book-2-line me-1"></i>@LS.T("pcs.course")
                                                 </button>
+                                                <button class="btn btn-sm @(item.ItemType == "Book" ? "btn-success" : "btn-outline-secondary")"
+                                                        @onclick='() => SetItemType(capturedIdx, "Book")'>
+                                                    <i class="ri-book-open-line me-1"></i>Book
+                                                </button>
                                             </div>
                                             <div class="d-flex align-items-center gap-2">
                                                 @if (!valid)
                                                 {
                                                     <span class="item-incomplete-hint">
                                                         <i class="ri-error-warning-line"></i>
-                                                        @(item.ItemType == "Auditing" ? LS.T("pcs.enterHours") : LS.T("pcs.pickCourse"))
+                                                        @(item.ItemType == "Auditing" ? LS.T("pcs.enterHours") : item.ItemType == "Course" ? LS.T("pcs.pickCourse") : "Pick a book")
                                                     </span>
                                                 }
                                                 @if (_purchaseItems.Count > 1)
@@ -603,7 +607,7 @@
                                                            @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) item.HoursBought = v; }" />
                                                 </div>
                                             }
-                                            else
+                                            else if (item.ItemType == "Course")
                                             {
                                                 <div class="col-auto">
                                                     <label class="form-label small mb-0">@LS.T("pcs.course")</label>
@@ -614,6 +618,21 @@
                                                         @foreach (var c in _allCourses)
                                                         {
                                                             <option value="@c.CourseId">@c.Name</option>
+                                                        }
+                                                    </select>
+                                                </div>
+                                            }
+                                            else if (item.ItemType == "Book")
+                                            {
+                                                <div class="col-auto">
+                                                    <label class="form-label small mb-0">Book</label>
+                                                    <select class="form-select form-select-sm @(item.BookId <= 0 ? "field-invalid" : "field-valid")" style="max-width:200px;"
+                                                            value="@item.BookId"
+                                                            @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) { item.BookId = v; AutoFillBookPrice(item); } }">
+                                                        <option value="0">— select book —</option>
+                                                        @foreach (var b in _allBooks)
+                                                        {
+                                                            <option value="@b.BookId">@b.Name</option>
                                                         }
                                                     </select>
                                                 </div>
@@ -634,6 +653,7 @@
                                 var totalItemAmount = _purchaseItems.Sum(x => x.AmountPaid);
                                 var totalHours = _purchaseItems.Where(x => x.ItemType == "Auditing").Sum(x => x.HoursBought);
                                 var courseCount = _purchaseItems.Count(x => x.ItemType == "Course" && x.CourseId > 0);
+                                var bookCount = _purchaseItems.Count(x => x.ItemType == "Book" && x.BookId > 0);
                                 <div class="items-summary">
                                     @if (totalHours > 0)
                                     {
@@ -642,6 +662,10 @@
                                     @if (courseCount > 0)
                                     {
                                         <span><i class="ri-book-2-line"></i> @courseCount @LS.T("pcs.courses")</span>
+                                    }
+                                    @if (bookCount > 0)
+                                    {
+                                        <span><i class="ri-book-open-line"></i> @bookCount Books</span>
                                     }
                                     <span class="ms-auto fw-semibold">@LS.T("pcs.total"): &#8362;@totalItemAmount</span>
                                 </div>
@@ -1695,6 +1719,7 @@
     DotNetObjectReference<PCs>? _sigRef;
 
     List<CourseItem>             _allCourses  = [];
+    List<BookItem>               _allBooks    = [];
     List<(int PersonId, string FullName)> _staff      = [];
     List<(int PersonId, string FullName)> _allPersons = [];
     int? _currentPersonId;
@@ -1716,6 +1741,7 @@
     {
         public string ItemType { get; set; } = "Auditing";
         public int CourseId { get; set; }
+        public int BookId { get; set; }
         public int HoursBought { get; set; }
         public int AmountPaid { get; set; }
     }
@@ -1796,6 +1822,7 @@
         _allPcsEx   = PcSvc.GetAllPcsExtended();
         _soloPcIds  = DashSvc.GetSoloPcIds();
         _allCourses = CourseSvc.GetAllCourses();
+        _allBooks   = CourseSvc.GetAllBooks();
         _staff      = PcSvc.GetStaff();
         _allPersons = PcSvc.GetAllPersons();
 
@@ -1903,7 +1930,7 @@
 
     string GetPurchaseSnapshot()
     {
-        var items = string.Join("|", _purchaseItems.Select(i => $"{i.ItemType},{i.CourseId},{i.HoursBought},{i.AmountPaid}"));
+        var items = string.Join("|", _purchaseItems.Select(i => $"{i.ItemType},{i.CourseId},{i.BookId},{i.HoursBought},{i.AmountPaid}"));
         var pms = string.Join("|", _purchasePaymentMethods.Select(m => $"{m.MethodType},{m.Amount},{m.PaymentDate?.ToString("yyyy-MM-dd")}"));
         return $"{_purchaseDate:yyyy-MM-dd}~{_purchaseNotes}~{_purchaseRegistrarId}~{_purchaseReferralId}~{items}~{pms}";
     }
@@ -1918,6 +1945,7 @@
         _skipSignature     = false;
         _hasSigned         = false;
         _allCourses        = CourseSvc.GetAllCourses();
+        _allBooks          = CourseSvc.GetAllBooks();
         _purchaseRegistrarId = _currentPersonId ?? 0;
         _purchaseReferralId  = 0;
         _purchaseItems     = new List<PurchaseItemModel>
@@ -1945,6 +1973,7 @@
         _skipSignature     = string.IsNullOrEmpty(detail.SignatureData);
         _hasSigned         = !string.IsNullOrEmpty(detail.SignatureData);
         _allCourses        = CourseSvc.GetAllCourses();
+        _allBooks          = CourseSvc.GetAllBooks();
 
         _purchaseDate = DateTime.TryParse(detail.PurchaseDate, out var dt) ? dt : DateTime.Today;
         _purchaseNotes = detail.Notes ?? "";
@@ -1955,6 +1984,7 @@
         {
             ItemType    = it.ItemType,
             CourseId    = it.CourseId ?? 0,
+            BookId      = it.BookId ?? 0,
             HoursBought = it.HoursBought,
             AmountPaid  = it.AmountPaid
         }).ToList();
@@ -2010,20 +2040,31 @@
     void SetItemType(int idx, string type)
     {
         _purchaseItems[idx].ItemType = type;
-        if (type == "Course") _purchaseItems[idx].HoursBought = 0;
+        if (type != "Course") _purchaseItems[idx].CourseId = 0;
+        if (type != "Book") _purchaseItems[idx].BookId = 0;
+        if (type != "Auditing") _purchaseItems[idx].HoursBought = 0;
+    }
+
+    void AutoFillBookPrice(PurchaseItemModel item)
+    {
+        if (item.AmountPaid != 0) return;
+        var book = _allBooks.FirstOrDefault(b => b.BookId == item.BookId);
+        if (book != null) item.AmountPaid = book.Price;
     }
 
     bool HasValidPurchaseItems()
     {
         return _purchaseItems.Any(item =>
             (item.ItemType == "Auditing" && item.HoursBought > 0) ||
-            (item.ItemType == "Course" && item.CourseId > 0));
+            (item.ItemType == "Course" && item.CourseId > 0) ||
+            (item.ItemType == "Book" && item.BookId > 0));
     }
 
     bool IsItemValid(PurchaseItemModel item)
     {
         return (item.ItemType == "Auditing" && item.HoursBought > 0) ||
-               (item.ItemType == "Course" && item.CourseId > 0);
+               (item.ItemType == "Course" && item.CourseId > 0) ||
+               (item.ItemType == "Book" && item.BookId > 0);
     }
 
     bool CanAddMoreItems()
@@ -2056,6 +2097,8 @@
             { _purchaseError = LS.T("pcs.errorSelectCourse"); return; }
             if (item.ItemType == "Auditing" && item.HoursBought <= 0)
             { _purchaseError = LS.T("pcs.errorEnterHoursOrAmount"); return; }
+            if (item.ItemType == "Book" && item.BookId <= 0)
+            { _purchaseError = "Please select a book"; return; }
         }
 
         // Get signature — required unless skipped
@@ -2067,6 +2110,7 @@
         var items = _purchaseItems.Select(pi => (
             itemType:    pi.ItemType,
             courseId:    pi.ItemType == "Course" ? (int?)pi.CourseId : null,
+            bookId:     pi.ItemType == "Book" ? (int?)pi.BookId : null,
             hoursBought: pi.ItemType == "Auditing" ? pi.HoursBought : 0,
             amountPaid:  pi.AmountPaid
         )).ToList();
@@ -2087,7 +2131,7 @@
                 _purchaseError = LS.T("purchases.nothingChanged");
                 return;
             }
-            var itemsLog = string.Join("; ", items.Select(x => x.itemType == "Course" ? $"Course(id={x.courseId}) ₪{x.amountPaid}" : $"Auditing {x.hoursBought}h ₪{x.amountPaid}"));
+            var itemsLog = string.Join("; ", items.Select(x => x.itemType == "Course" ? $"Course(id={x.courseId}) ₪{x.amountPaid}" : x.itemType == "Book" ? $"Book(id={x.bookId}) ₪{x.amountPaid}" : $"Auditing {x.hoursBought}h ₪{x.amountPaid}"));
             var pmLog    = string.Join("; ", pmList.Select(m => $"{m.MethodType} ₪{m.Amount} on {m.paymentDate}"));
             Console.WriteLine($"[PCs] Updated purchase {_editingPurchaseId.Value} for PC {_selPcId} date={_purchaseDate:yyyy-MM-dd} items=[{itemsLog}] payments=[{pmLog}] reg={regId} ref={refId} notes='{_purchaseNotes}' by '{_username}'");
             PcSvc.UpdatePurchase(_editingPurchaseId.Value,
@@ -2097,7 +2141,7 @@
         }
         else
         {
-            var itemsLog = string.Join("; ", items.Select(x => x.itemType == "Course" ? $"Course(id={x.courseId}) ₪{x.amountPaid}" : $"Auditing {x.hoursBought}h ₪{x.amountPaid}"));
+            var itemsLog = string.Join("; ", items.Select(x => x.itemType == "Course" ? $"Course(id={x.courseId}) ₪{x.amountPaid}" : x.itemType == "Book" ? $"Book(id={x.bookId}) ₪{x.amountPaid}" : $"Auditing {x.hoursBought}h ₪{x.amountPaid}"));
             var pmLog    = string.Join("; ", pmList.Select(m => $"{m.MethodType} ₪{m.Amount} on {m.paymentDate}"));
             Console.WriteLine($"[PCs] Created purchase for PC {_selPcId!.Value} date={_purchaseDate:yyyy-MM-dd} items=[{itemsLog}] payments=[{pmLog}] reg={regId} ref={refId} notes='{_purchaseNotes}' by '{_username}'");
             PcSvc.CreatePurchase(

@@ -2133,7 +2133,8 @@
             ("lkp_folder_items",     "ri-folder-line",    "ORDER BY Section, ItemId",  null),
             ("lkp_organizations",    "ri-building-line",  "ORDER BY OrgId",            null),
             ("lkp_referral_sources", "ri-link-m",         "ORDER BY ReferralId",       null),
-            ("lkp_shortcuts",        "ri-keyboard-line",  "ORDER BY Id",               null)));
+            ("lkp_shortcuts",        "ri-keyboard-line",  "ORDER BY Id",               null),
+            ("lkp_books",            "ri-book-open-line", "ORDER BY BookId",           null)));
 
         var tSess = Task.Run(() => Group(
             ("sess_sessions",       "ri-calendar-event-line", "ORDER BY SessionId       DESC", null),

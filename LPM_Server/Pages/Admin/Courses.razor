@@ -32,6 +32,8 @@
                 <thead class="table-light">
                     <tr>
                         <th class="ps-3 small">@LS.T("courses.courseName")</th>
+                        <th class="small">Book</th>
+                        <th class="small text-end">Book Price</th>
                         <th style="width:130px;"></th>
                     </tr>
                 </thead>
@@ -42,13 +44,37 @@
                             <td class="ps-3 align-middle">
                                 @if (_editId == c.CourseId)
                                 {
-                                    <input class="form-control form-control-sm" style="max-width:320px;"
+                                    <input class="form-control form-control-sm" style="max-width:220px;"
                                            @bind="_editName" @bind:event="oninput"
                                            @onkeydown="OnEditKeyDown" />
                                 }
                                 else
                                 {
                                     <span class="fw-medium">@c.Name</span>
+                                }
+                            </td>
+                            <td class="align-middle">
+                                @if (_editId == c.CourseId)
+                                {
+                                    <input class="form-control form-control-sm" style="max-width:180px;"
+                                           @bind="_editBook" @bind:event="oninput"
+                                           @onkeydown="OnEditKeyDown" />
+                                }
+                                else
+                                {
+                                    <span class="text-muted">@(string.IsNullOrEmpty(c.Book) ? "—" : c.Book)</span>
+                                }
+                            </td>
+                            <td class="align-middle text-end">
+                                @if (_editId == c.CourseId)
+                                {
+                                    <input type="number" class="form-control form-control-sm" style="max-width:100px;margin-left:auto;"
+                                           @bind="_editBookPrice" @bind:event="oninput"
+                                           @onkeydown="OnEditKeyDown" />
+                                }
+                                else
+                                {
+                                    <span class="text-muted">@(c.BookPrice > 0 ? $"₪{c.BookPrice}" : "—")</span>
                                 }
                             </td>
                             <td class="text-end pe-3 align-middle">
@@ -78,7 +104,7 @@
                 <tfoot>
                     <tr style="background:#f8faff;color:#212529;">
                         <td class="ps-3 py-2">
-                            <input class="form-control form-control-sm" style="max-width:320px;"
+                            <input class="form-control form-control-sm" style="max-width:220px;"
                                    placeholder="@LS.T("courses.newCoursePlaceholder")"
                                    @bind="_newName" @bind:event="oninput"
                                    @onkeydown="OnAddKeyDown" />
@@ -87,9 +113,125 @@
                                 <div class="text-danger small mt-1">@_addError</div>
                             }
                         </td>
+                        <td class="py-2">
+                            <input class="form-control form-control-sm" style="max-width:180px;"
+                                   placeholder="Book name"
+                                   @bind="_newBook" @bind:event="oninput"
+                                   @onkeydown="OnAddKeyDown" />
+                        </td>
+                        <td class="py-2 text-end">
+                            <input type="number" class="form-control form-control-sm" style="max-width:100px;margin-left:auto;"
+                                   placeholder="Price"
+                                   @bind="_newBookPrice" @bind:event="oninput"
+                                   @onkeydown="OnAddKeyDown" />
+                        </td>
                         <td class="text-end pe-3 py-2 align-middle">
                             <button class="btn btn-sm btn-primary" @onclick="AddCourse"
                                     disabled="@string.IsNullOrWhiteSpace(_newName)">
+                                <i class="ri-add-line me-1"></i>@LS.T("common.add")
+                            </button>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+          </div>
+        </div>
+    </div>
+
+    @* ── Books ── *@
+    <div class="card shadow-sm mb-4" style="border-radius:12px;border:none;">
+        <div class="card-header py-2 px-3 d-flex align-items-center justify-content-between"
+             style="background:#e8f5e9;color:#212529;border-radius:12px 12px 0 0;border-bottom:1px solid #c8e6c9;">
+            <span class="fw-semibold small" style="color:#2e7d32;">
+                <i class="ri-book-open-line me-1"></i>Books
+            </span>
+            <span class="badge rounded-pill" style="background:#c8e6c9;color:#2e7d32;font-size:.75rem;">
+                @_books.Count
+            </span>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3 small">Book Name</th>
+                        <th class="small text-end">Price</th>
+                        <th style="width:130px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var b in _books)
+                    {
+                        <tr>
+                            <td class="ps-3 align-middle">
+                                @if (_editBkId == b.BookId)
+                                {
+                                    <input class="form-control form-control-sm" style="max-width:280px;"
+                                           @bind="_editBkName" @bind:event="oninput"
+                                           @onkeydown="OnEditBkKeyDown" />
+                                }
+                                else
+                                {
+                                    <span class="fw-medium">@b.Name</span>
+                                }
+                            </td>
+                            <td class="align-middle text-end">
+                                @if (_editBkId == b.BookId)
+                                {
+                                    <input type="number" class="form-control form-control-sm" style="max-width:100px;margin-left:auto;"
+                                           @bind="_editBkPrice" @bind:event="oninput"
+                                           @onkeydown="OnEditBkKeyDown" />
+                                }
+                                else
+                                {
+                                    <span class="text-muted">@(b.Price > 0 ? $"₪{b.Price}" : "—")</span>
+                                }
+                            </td>
+                            <td class="text-end pe-3 align-middle">
+                                @if (_editBkId == b.BookId)
+                                {
+                                    <button class="btn btn-sm btn-success py-0 px-2 me-1" @onclick="SaveEditBook">
+                                        <i class="ri-save-line"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-link text-muted py-0 px-1"
+                                            @onclick="() => _editBkId = null">@LS.T("common.cancel")</button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-link text-primary py-0 px-1"
+                                            title="Edit" @onclick="() => StartEditBook(b)">
+                                        <i class="ri-edit-line"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-link text-danger py-0 px-1"
+                                            title="Delete" @onclick="() => DeleteBook(b.BookId)">
+                                        <i class="ri-delete-bin-line"></i>
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr style="background:#f1f8f2;color:#212529;">
+                        <td class="ps-3 py-2">
+                            <input class="form-control form-control-sm" style="max-width:280px;"
+                                   placeholder="New book name"
+                                   @bind="_newBkName" @bind:event="oninput"
+                                   @onkeydown="OnAddBkKeyDown" />
+                            @if (!string.IsNullOrEmpty(_addBkError))
+                            {
+                                <div class="text-danger small mt-1">@_addBkError</div>
+                            }
+                        </td>
+                        <td class="py-2 text-end">
+                            <input type="number" class="form-control form-control-sm" style="max-width:100px;margin-left:auto;"
+                                   placeholder="Price"
+                                   @bind="_newBkPrice" @bind:event="oninput"
+                                   @onkeydown="OnAddBkKeyDown" />
+                        </td>
+                        <td class="text-end pe-3 py-2 align-middle">
+                            <button class="btn btn-sm btn-success" @onclick="AddBook"
+                                    disabled="@string.IsNullOrWhiteSpace(_newBkName)">
                                 <i class="ri-add-line me-1"></i>@LS.T("common.add")
                             </button>
                         </td>
@@ -176,12 +318,26 @@
 </style>
 
 @code {
+    // ── Courses state ──
     List<CourseItem>           _courses     = [];
     List<CourseEnrollmentItem> _enrollments = [];
-    string _newName  = "";
-    string _addError = "";
+    string _newName      = "";
+    string _newBook      = "";
+    int    _newBookPrice = 0;
+    string _addError     = "";
     int?   _editId;
-    string _editName = "";
+    string _editName      = "";
+    string _editBook      = "";
+    int    _editBookPrice = 0;
+
+    // ── Books state ──
+    List<BookItem> _books      = [];
+    string _newBkName  = "";
+    int    _newBkPrice = 0;
+    string _addBkError = "";
+    int?   _editBkId;
+    string _editBkName  = "";
+    int    _editBkPrice = 0;
 
     protected override void OnInitialized() => Reload();
 
@@ -189,28 +345,35 @@
     {
         _courses     = CourseSvc.GetAllCourses();
         _enrollments = CourseSvc.GetCourseEnrollmentReport();
+        _books       = CourseSvc.GetAllBooks();
     }
+
+    // ── Courses CRUD ──
 
     void AddCourse()
     {
         if (string.IsNullOrWhiteSpace(_newName)) { _addError = LS.T("courses.nameRequired"); return; }
         _addError = "";
         Console.WriteLine($"[Courses] Added course '{_newName.Trim()}' by 'admin'");
-        CourseSvc.AddCourse(_newName.Trim());
-        _newName = "";
+        CourseSvc.AddCourse(_newName.Trim(), _newBook.Trim(), _newBookPrice);
+        _newName = ""; _newBook = ""; _newBookPrice = 0;
         Reload();
     }
 
     void OnAddKeyDown(KeyboardEventArgs e) { if (e.Key == "Enter") AddCourse(); }
 
-    void StartEdit(CourseItem c) { _editId = c.CourseId; _editName = c.Name; }
+    void StartEdit(CourseItem c)
+    {
+        _editId = c.CourseId; _editName = c.Name;
+        _editBook = c.Book; _editBookPrice = c.BookPrice;
+    }
 
     void SaveEdit()
     {
         if (_editId.HasValue && !string.IsNullOrWhiteSpace(_editName))
         {
             Console.WriteLine($"[Courses] Updated course {_editId.Value} to '{_editName.Trim()}' by 'admin'");
-            CourseSvc.UpdateCourse(_editId.Value, _editName.Trim());
+            CourseSvc.UpdateCourse(_editId.Value, _editName.Trim(), _editBook.Trim(), _editBookPrice);
         }
         _editId = null;
         Reload();
@@ -222,6 +385,45 @@
     {
         Console.WriteLine($"[Courses] Deleted course {id} by 'admin'");
         CourseSvc.DeleteCourse(id);
+        Reload();
+    }
+
+    // ── Books CRUD ──
+
+    void AddBook()
+    {
+        if (string.IsNullOrWhiteSpace(_newBkName)) { _addBkError = "Book name is required"; return; }
+        _addBkError = "";
+        Console.WriteLine($"[Courses] Added book '{_newBkName.Trim()}' price={_newBkPrice} by 'admin'");
+        CourseSvc.AddBook(_newBkName.Trim(), _newBkPrice);
+        _newBkName = ""; _newBkPrice = 0;
+        Reload();
+    }
+
+    void OnAddBkKeyDown(KeyboardEventArgs e) { if (e.Key == "Enter") AddBook(); }
+
+    void StartEditBook(BookItem b)
+    {
+        _editBkId = b.BookId; _editBkName = b.Name; _editBkPrice = b.Price;
+    }
+
+    void SaveEditBook()
+    {
+        if (_editBkId.HasValue && !string.IsNullOrWhiteSpace(_editBkName))
+        {
+            Console.WriteLine($"[Courses] Updated book {_editBkId.Value} to '{_editBkName.Trim()}' price={_editBkPrice} by 'admin'");
+            CourseSvc.UpdateBook(_editBkId.Value, _editBkName.Trim(), _editBkPrice);
+        }
+        _editBkId = null;
+        Reload();
+    }
+
+    void OnEditBkKeyDown(KeyboardEventArgs e) { if (e.Key == "Enter") SaveEditBook(); }
+
+    void DeleteBook(int id)
+    {
+        Console.WriteLine($"[Courses] Deleted book {id} by 'admin'");
+        CourseSvc.DeleteBook(id);
         Reload();
     }
 }

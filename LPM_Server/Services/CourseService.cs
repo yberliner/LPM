@@ -3,7 +3,8 @@ using Microsoft.Extensions.Configuration;
 
 namespace LPM.Services;
 
-public record CourseItem(int CourseId, string Name);
+public record CourseItem(int CourseId, string Name, string Book, int BookPrice);
+public record BookItem(int BookId, string Name, int Price);
 public record CourseEnrollmentItem(
     int StudentCourseId, int PersonId, string PCFullName,
     int CourseId, string CourseName, string DateStarted, string? DateFinished,
@@ -56,21 +57,23 @@ public class CourseService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT CourseId, Name FROM lkp_courses ORDER BY Name";
+        cmd.CommandText = "SELECT CourseId, Name, COALESCE(Book,'') AS Book, COALESCE(BookPrice,0) AS BookPrice FROM lkp_courses ORDER BY Name";
         var list = new List<CourseItem>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add(new CourseItem(r.GetInt32(0), r.GetString(1)));
+            list.Add(new CourseItem(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetInt32(3)));
         return list;
     }
 
-    public int AddCourse(string name)
+    public int AddCourse(string name, string book = "", int bookPrice = 0)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT INTO lkp_courses (Name) VALUES (@name)";
+        cmd.CommandText = "INSERT INTO lkp_courses (Name, Book, BookPrice) VALUES (@name, @book, @bookPrice)";
         cmd.Parameters.AddWithValue("@name", name.Trim());
+        cmd.Parameters.AddWithValue("@book", book.Trim());
+        cmd.Parameters.AddWithValue("@bookPrice", bookPrice);
         cmd.ExecuteNonQuery();
         using var idCmd = conn.CreateCommand();
         idCmd.CommandText = "SELECT last_insert_rowid()";
@@ -79,13 +82,15 @@ public class CourseService
         return courseId;
     }
 
-    public void UpdateCourse(int courseId, string name)
+    public void UpdateCourse(int courseId, string name, string book = "", int bookPrice = 0)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE lkp_courses SET Name=@name WHERE CourseId=@id";
+        cmd.CommandText = "UPDATE lkp_courses SET Name=@name, Book=@book, BookPrice=@bookPrice WHERE CourseId=@id";
         cmd.Parameters.AddWithValue("@name", name.Trim());
+        cmd.Parameters.AddWithValue("@book", book.Trim());
+        cmd.Parameters.AddWithValue("@bookPrice", bookPrice);
         cmd.Parameters.AddWithValue("@id", courseId);
         cmd.ExecuteNonQuery();
         Console.WriteLine($"[CourseService] Updated course {courseId}: '{name.Trim()}'");
@@ -100,6 +105,57 @@ public class CourseService
         cmd.Parameters.AddWithValue("@id", courseId);
         cmd.ExecuteNonQuery();
         Console.WriteLine($"[CourseService] Deleted course {courseId}");
+    }
+
+    // ── Books CRUD ───────────────────────────────────────────────────────────
+
+    public List<BookItem> GetAllBooks()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT BookId, Name, COALESCE(Price,0) FROM lkp_books ORDER BY Name";
+        var list = new List<BookItem>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new BookItem(r.GetInt32(0), r.GetString(1), r.GetInt32(2)));
+        return list;
+    }
+
+    public void AddBook(string name, int price)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "INSERT INTO lkp_books (Name, Price) VALUES (@name, @price)";
+        cmd.Parameters.AddWithValue("@name", name.Trim());
+        cmd.Parameters.AddWithValue("@price", price);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[CourseService] Added book: '{name.Trim()}' price={price}");
+    }
+
+    public void UpdateBook(int bookId, string name, int price)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE lkp_books SET Name=@name, Price=@price WHERE BookId=@id";
+        cmd.Parameters.AddWithValue("@name", name.Trim());
+        cmd.Parameters.AddWithValue("@price", price);
+        cmd.Parameters.AddWithValue("@id", bookId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[CourseService] Updated book {bookId}: '{name.Trim()}' price={price}");
+    }
+
+    public void DeleteBook(int bookId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM lkp_books WHERE BookId=@id";
+        cmd.Parameters.AddWithValue("@id", bookId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[CourseService] Deleted book {bookId}");
     }
 
     // ── Student Courses ───────────────────────────────────────────────────────

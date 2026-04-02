@@ -20,7 +20,7 @@ public record PurchaseListItem(int PurchaseId, int PcId, string PcName, string P
     string? Notes, string ApprovedStatus, string? ApprovedByName, string? ApprovedAt,
     string? CreatedByName, string CreatedAt, int TotalAmount, int TotalHours, bool IsDeleted = false);
 public record PurchaseItemInfo(int PurchaseItemId, string ItemType, int? CourseId,
-    string? CourseName, int HoursBought, int AmountPaid);
+    string? CourseName, int? BookId, string? BookName, int HoursBought, int AmountPaid);
 public record PurchaseDetail(int PurchaseId, int PcId, string PcName, string PurchaseDate,
     string? Notes, string? SignatureData, string ApprovedStatus, string? ApprovedByName,
     string? CreatedByName, List<PurchaseItemInfo> Items, List<PurchasePaymentMethodInfo> PaymentMethods,
@@ -506,7 +506,7 @@ public List<PcListItem> GetAllPcs()
 
     public int CreatePurchase(int pcId, string date, string? notes, string? signatureData,
         int? createdByPersonId,
-        List<(string itemType, int? courseId, int hoursBought, int amountPaid)> items,
+        List<(string itemType, int? courseId, int? bookId, int hoursBought, int amountPaid)> items,
         List<(string methodType, int amount, string? paymentDate)>? paymentMethods = null,
         int? registrarId = null, int? referralId = null)
     {
@@ -538,11 +538,12 @@ public List<PcListItem> GetAllPcs()
             using var iCmd = conn.CreateCommand();
             iCmd.Transaction = tx;
             iCmd.CommandText = @"
-                INSERT INTO fin_purchase_items (PurchaseId, ItemType, CourseId, HoursBought, AmountPaid)
-                VALUES (@pid, @type, @cid, @hrs, @amt)";
+                INSERT INTO fin_purchase_items (PurchaseId, ItemType, CourseId, BookId, HoursBought, AmountPaid)
+                VALUES (@pid, @type, @cid, @bid, @hrs, @amt)";
             iCmd.Parameters.AddWithValue("@pid", purchaseId);
             iCmd.Parameters.AddWithValue("@type", item.itemType);
             iCmd.Parameters.AddWithValue("@cid", item.courseId.HasValue ? (object)item.courseId.Value : DBNull.Value);
+            iCmd.Parameters.AddWithValue("@bid", item.bookId.HasValue ? (object)item.bookId.Value : DBNull.Value);
             iCmd.Parameters.AddWithValue("@hrs", item.hoursBought);
             iCmd.Parameters.AddWithValue("@amt", item.amountPaid);
             iCmd.ExecuteNonQuery();
@@ -696,9 +697,11 @@ public List<PcListItem> GetAllPcs()
         using var iCmd = conn.CreateCommand();
         iCmd.CommandText = @"
             SELECT pi.PurchaseItemId, pi.ItemType, pi.CourseId, c.Name,
+                   pi.BookId, b.Name,
                    pi.HoursBought, pi.AmountPaid
             FROM fin_purchase_items pi
             LEFT JOIN lkp_courses c ON c.CourseId = pi.CourseId
+            LEFT JOIN lkp_books b ON b.BookId = pi.BookId
             WHERE pi.PurchaseId = @id
             ORDER BY pi.PurchaseItemId";
         iCmd.Parameters.AddWithValue("@id", purchaseId);
@@ -708,7 +711,9 @@ public List<PcListItem> GetAllPcs()
                 ir.GetInt32(0), ir.GetString(1),
                 ir.IsDBNull(2) ? null : ir.GetInt32(2),
                 ir.IsDBNull(3) ? null : ir.GetString(3),
-                ir.GetInt32(4), ir.GetInt32(5)));
+                ir.IsDBNull(4) ? null : ir.GetInt32(4),
+                ir.IsDBNull(5) ? null : ir.GetString(5),
+                ir.GetInt32(6), ir.GetInt32(7)));
         ir.Close();
 
         // Load payment methods
@@ -809,7 +814,7 @@ public List<PcListItem> GetAllPcs()
     }
 
     public void UpdatePurchase(int purchaseId, string date, string? notes,
-        List<(string itemType, int? courseId, int hoursBought, int amountPaid)> items,
+        List<(string itemType, int? courseId, int? bookId, int hoursBought, int amountPaid)> items,
         List<(string methodType, int amount, string? paymentDate)> paymentMethods,
         int? registrarId = null, int? referralId = null)
     {
@@ -864,11 +869,12 @@ public List<PcListItem> GetAllPcs()
             using var iCmd = conn.CreateCommand();
             iCmd.Transaction = tx;
             iCmd.CommandText = @"
-                INSERT INTO fin_purchase_items (PurchaseId, ItemType, CourseId, HoursBought, AmountPaid)
-                VALUES (@pid, @type, @cid, @hrs, @amt)";
+                INSERT INTO fin_purchase_items (PurchaseId, ItemType, CourseId, BookId, HoursBought, AmountPaid)
+                VALUES (@pid, @type, @cid, @bid, @hrs, @amt)";
             iCmd.Parameters.AddWithValue("@pid", purchaseId);
             iCmd.Parameters.AddWithValue("@type", item.itemType);
             iCmd.Parameters.AddWithValue("@cid", item.courseId.HasValue ? (object)item.courseId.Value : DBNull.Value);
+            iCmd.Parameters.AddWithValue("@bid", item.bookId.HasValue ? (object)item.bookId.Value : DBNull.Value);
             iCmd.Parameters.AddWithValue("@hrs", item.hoursBought);
             iCmd.Parameters.AddWithValue("@amt", item.amountPaid);
             iCmd.ExecuteNonQuery();
