@@ -164,7 +164,7 @@
                                 <div class="input-group input-group-sm sa-rate-input" style="width:125px;">
                                     <span class="input-group-text">₪ Rate</span>
                                     <input type="number" class="form-control" placeholder="0" min="0" step="1"
-                                           value="@pcDef.ChargeRate"
+                                           value="@pcDef.ChargeRate" onfocus="this.select()"
                                            @onchange="e => PropagateRate(group.AuditorId, pcGroup.PcId,
                                                int.TryParse(e.Value?.ToString(), out var rv) ? rv : pcDef.ChargeRate,
                                                pcDef.Salary)" />
@@ -172,7 +172,7 @@
                                 <div class="input-group input-group-sm sa-rate-input" style="width:135px;">
                                     <span class="input-group-text">₪ Sal.</span>
                                     <input type="number" class="form-control" placeholder="0" min="0" step="1"
-                                           value="@pcDef.Salary"
+                                           value="@pcDef.Salary" onfocus="this.select()"
                                            @onchange="e => PropagateRate(group.AuditorId, pcGroup.PcId,
                                                pcDef.ChargeRate,
                                                int.TryParse(e.Value?.ToString(), out var sv) ? sv : pcDef.Salary)" />
@@ -222,8 +222,8 @@
                                         </td>
                                         <td class="text-center py-2" style="font-size:0.83rem;color:#6b7280;">@DashboardService.Fmt(s.AdminSec)</td>
                                         <td class="text-center py-2">@if (s.IsFree) { <span class="badge sa-badge-free">FREE</span> }</td>
-                                        <td class="py-1"><input type="number" class="form-control form-control-sm sa-row-input" @bind="edit.ChargeRate" min="0" step="1" /></td>
-                                        <td class="py-1"><input type="number" class="form-control form-control-sm sa-row-input" @bind="edit.Salary" min="0" step="1" /></td>
+                                        <td class="py-1"><input type="number" class="form-control form-control-sm sa-row-input" @bind="edit.ChargeRate" min="0" step="1" onfocus="this.select()" /></td>
+                                        <td class="py-1"><input type="number" class="form-control form-control-sm sa-row-input" @bind="edit.Salary" min="0" step="1" onfocus="this.select()" /></td>
                                         <td class="py-2">
                                             @if (isApproved) { <span class="badge sa-badge-status-approved"><i class="ri-check-line me-1"></i>@LS.T("sessions.approvedStatus")</span> }
                                             else             { <span class="badge sa-badge-status-draft">@LS.T("sessions.pendingStatus")</span> }
@@ -313,7 +313,7 @@
                             <div class="input-group input-group-sm sa-rate-input" style="width:140px;">
                                 <span class="input-group-text">CS Sal.</span>
                                 <input type="number" class="form-control" placeholder="0" min="0" step="1"
-                                       value="@csPcDef"
+                                       value="@csPcDef" onfocus="this.select()"
                                        @onchange="e => PropagateCSRate(csGroup.CsId, pcGroup.PcId,
                                            int.TryParse(e.Value?.ToString(), out var csv) ? csv : csPcDef)" />
                             </div>
@@ -348,7 +348,7 @@
                                         </td>
                                         <td class="py-1">
                                             <input type="number" class="form-control form-control-sm sa-row-input"
-                                                   value="@csSalary" min="0" step="1"
+                                                   value="@csSalary" min="0" step="1" onfocus="this.select()"
                                                    @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) _csRowEdits[rev.CsReviewId] = v; }" />
                                         </td>
                                         <td class="py-2">
