@@ -94,10 +94,8 @@
         }
     </div>
 
-</div>
-
-@* ── Bottom Drawer ── *@
-<div class="pc-drawer @(_selPcId.HasValue && _detail != null ? "pc-drawer-open" : "")">
+    @* ── Detail panel (replaces table when a PC is selected) ── *@
+    <div class="pc-drawer @(_selPcId.HasValue && _detail != null ? "pc-drawer-open" : "")">
 
     @* Handle bar + close *@
     <div class="pc-drawer-handle-bar">
@@ -135,6 +133,7 @@
                     </button>
                 </div>
                 <div class="pc-header-meta">
+                    <span class="pc-auditor-label"><i class="ri-shield-user-line"></i>Auditor: <strong>@_pcAuditorLabel</strong></span>
                     @if (!string.IsNullOrEmpty(_detail.Phone))
                     {
                         <span><i class="ri-phone-line"></i>@_detail.Phone</span>
@@ -370,6 +369,8 @@
 
         </div>
     }
+    </div>
+
 </div>
 
 @* ── Course Completions Report Modal ── *@
@@ -1079,33 +1080,23 @@
 
 <style>
     /* ── Page container ── */
-    .pc-page-container { display: flex; flex-direction: column; }
-    .pc-table-wrapper { overflow-y: auto; transition: padding-bottom .28s ease; }
-    .pc-table-drawer-open { padding-bottom: 46vh; }
+    .pc-page-container { display: flex; flex-direction: column; height: calc(100vh - 60px); min-height: 0; }
+    .pc-table-wrapper { overflow-y: auto; flex: 1; min-height: 0; }
+    .pc-table-drawer-open { display: none; }
 
     /* ── Bottom Drawer ── */
     .pc-drawer {
-        position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
-        height: 0; overflow: hidden;
+        display: none; flex-direction: column;
         background: var(--custom-white, #fff);
-        border-top: 1px solid rgba(0,0,0,.10);
-        border-radius: 18px 18px 0 0;
-        box-shadow: 0 -4px 24px rgba(0,0,0,.10);
-        transition: height .28s cubic-bezier(.4,0,.2,1), left .05s ease;
-        display: flex; flex-direction: column;
+        border-radius: 12px;
+        box-shadow: 0 1px 6px rgba(0,0,0,.08);
+        border: 1px solid rgba(0,0,0,.06);
+        overflow: hidden; flex: 1; min-height: 0;
     }
-    .pc-drawer-open { height: 46vh; }
+    .pc-drawer-open { display: flex; }
+    .pc-drawer-open + .pc-nothing { display: none; } /* placeholder */
+    .pc-table-drawer-open { display: none; }
 
-    /* Match sidebar width so drawer never hides under the nav */
-    @@media (min-width: 992px) {
-        .pc-drawer { left: 15rem; }
-        [data-vertical-style=closed][data-toggled=close-menu-close] .pc-drawer,
-        [data-nav-layout=horizontal] .pc-drawer { left: 0; }
-        .icon-click .pc-drawer,
-        [data-nav-style=icon-click][data-toggled=icon-click-closed] .pc-drawer,
-        .icon-hover .pc-drawer,
-        [data-nav-style=icon-hover][data-toggled=icon-hover-closed] .pc-drawer { left: 5rem; }
-    }
 
     /* Drag handle bar */
     .pc-drawer-handle-bar {
@@ -1143,8 +1134,6 @@
     }
 
     @@media (max-width: 768px) {
-        .pc-drawer-open { height: 60vh; }
-        .pc-table-drawer-open { padding-bottom: 60vh; }
     }
 
     @@media (max-width: 480px) {
@@ -1676,6 +1665,7 @@
     bool   _sortAsc  = true;
 
     PcDetailInfo?       _detail;
+    string              _pcAuditorLabel = "";
 
     // Courses
     List<StudentCourseItem>? _activeCourses;
@@ -1829,6 +1819,7 @@
         if (!_selPcId.HasValue) return;
         _detail            = PcSvc.GetPcDetail(_selPcId.Value);
         _isSolo            = _soloPcIds.Contains(_selPcId.Value);
+        _pcAuditorLabel    = DashSvc.GetLastAuditorLabel(_selPcId.Value);
         _pcPurchases       = PcSvc.GetAllPurchasesForPc(_selPcId.Value);
         var allCourses     = CourseSvc.GetStudentCourses(_selPcId.Value);
         _activeCourses     = allCourses.Where(c => c.DateFinished == null).ToList();

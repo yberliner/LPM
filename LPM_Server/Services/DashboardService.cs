@@ -2148,6 +2148,28 @@ public class DashboardService
         return null;
     }
 
+    public string GetLastAuditorLabel(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $@"
+            SELECT {FullNameExpr}
+            FROM sess_sessions s
+            JOIN core_persons p ON p.PersonId = s.AuditorId
+            WHERE s.PcId = @pcId AND s.AuditorId IS NOT NULL
+            ORDER BY s.SessionDate DESC, s.SessionId DESC
+            LIMIT 1";
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        var name = cmd.ExecuteScalar() as string;
+        if (name != null) return name;
+        // Check if any sessions exist at all
+        using var cmd2 = conn.CreateCommand();
+        cmd2.CommandText = "SELECT 1 FROM sess_sessions WHERE PcId = @pcId LIMIT 1";
+        cmd2.Parameters.AddWithValue("@pcId", pcId);
+        return cmd2.ExecuteScalar() != null ? "Unassigned" : "No sessions yet";
+    }
+
     public string? GetSessionName(int sessionId)
     {
         using var conn = new SqliteConnection(_connectionString);
