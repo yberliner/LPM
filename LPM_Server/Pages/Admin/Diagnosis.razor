@@ -2141,7 +2141,8 @@
             ("sess_folder_summary", "ri-file-text-line",      "ORDER BY Id              DESC", null),
             ("sess_meetings",       "ri-time-line",           "ORDER BY MeetingId       DESC", null),
             ("sess_next_cs",        "ri-file-edit-line",      "ORDER BY Id              DESC", null),
-            ("sess_completions",    "ri-trophy-line",         "ORDER BY Id              DESC", null)));
+            ("sess_completions",    "ri-trophy-line",         "ORDER BY Id              DESC", null),
+            ("sess_questions",      "ri-question-line",       "ORDER BY SessionId       DESC", null)));
 
         var tCs = Task.Run(() => Group(
             ("cs_reviews",          "ri-shield-star-line", "ORDER BY CsReviewId      DESC", null),
@@ -2190,6 +2191,12 @@
                 t = AnnotateIdColumn(t, "PcId",      personNames);
                 t = AnnotateIdColumn(t, "AuditorId", personNames);
                 t = AppendTimeToDate(t, "SessionDate", "CreatedAt");
+            }
+            else if (t.Name == "sess_questions")
+            {
+                t = AnnotateIdColumn(t, "AskerId",    personNames);
+                t = AnnotateIdColumn(t, "ReplierId",  personNames);
+                t = AnnotateIdColumn(t, "ClosedById", personNames);
             }
             return t;
         }).ToList();
@@ -2443,6 +2450,7 @@
                 ("cs_reviews",          "CsReviewId"),
                 ("sess_folder_summary", "Id"),
                 ("sess_next_cs",        "Id"),
+                ("sess_questions",      "SessionId"),
             })
             {
                 var cols = new List<string>();
