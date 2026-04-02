@@ -59,7 +59,7 @@
                         </div>
                         <div class="col-6">
                             <label class="form-label small mb-1">
-                                @LS.T("pcs.email") <span class="text-danger">*</span>
+                                @LS.T("pcs.email")
                             </label>
                             <input class="form-control form-control-sm"
                                    @bind="_email" placeholder="@LS.T("pcs.email")" />
@@ -235,8 +235,6 @@
             { _error = "Last name is required."; return; }
         if (string.IsNullOrWhiteSpace(_phone))
             { _error = "Phone is required."; return; }
-        if (string.IsNullOrWhiteSpace(_email))
-            { _error = "Email is required."; return; }
         if (RequireAllFields)
         {
             if (string.IsNullOrWhiteSpace(_sex))
