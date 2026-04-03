@@ -2577,7 +2577,7 @@ public class FolderService
         Console.WriteLine($"[ScanInbox] SaveToScanInbox: user='{username}' file='{fileName}' size={bytes.Length} dir='{dir}'");
         Directory.CreateDirectory(dir);
 
-        var rawName = Path.GetFileNameWithoutExtension(fileName);
+        var rawName = Path.GetFileNameWithoutExtension(fileName).Trim();
         bool isAttachment = rawName.StartsWith("att", StringComparison.OrdinalIgnoreCase);
         var safeName = SanitizeName(rawName);
         if (string.IsNullOrWhiteSpace(safeName)) safeName = "session";
