@@ -998,8 +998,8 @@
                         else
                         {
                             <button class="pcf-done-btn @(_csAlreadyDone ? "pcf-done-already" : "")"
-                                    title="@(_csAlreadyDone ? "CS was already done" : _csLocked ? "Another tab is already CSing this session" : "Done — saves all annotations, records the CS review with the displayed time, and returns to Home")"
-                                    @onclick="DoneCs" disabled="@(_csLocked || _csAlreadyDone)">
+                                    title="@(_csAlreadyDone ? "Update review time or return to Home" : _csLocked ? "Another tab is already CSing this session" : "Done — saves all annotations, records the CS review with the displayed time, and returns to Home")"
+                                    @onclick="DoneCs" disabled="@_csLocked">
                                 <i class="@(_csAlreadyDone ? "ri-check-double-line me-1" : "ri-check-double-line me-1")"></i>Done
                             </button>
                         }
@@ -1032,7 +1032,7 @@
         {
             <div class="pcf-already-done-banner">
                 <i class="ri-checkbox-circle-line me-2" style="font-size:1.1rem;flex-shrink:0;"></i>
-                This session was already CS reviewed. The <strong style="margin:0 3px;">Done</strong> button is disabled.
+                This session was already CS reviewed. You can update the review time and press <strong style="margin:0 3px;">Done</strong>.
                 <button class="pcf-banner-dismiss" @onclick="@(() => _csAlreadyDoneBannerDismissed = true)" title="Dismiss">&times;</button>
             </div>
         }
@@ -2869,6 +2869,8 @@
     bool _csDone;                // true after "Mark CS Done" was executed
     bool _csAlreadyDone;         // true if this session already has a cs_review on load
     bool _csAlreadyDoneBannerDismissed;
+    int _existingCsReviewId;     // CsReviewId when _csAlreadyDone
+    int _existingReviewMin;      // original review time in minutes (for comparison)
     bool _showCsCloseWarning;    // true when CS tries to close before marking Done
     string _errorToast = "";
     int _csReviewMinutes;        // editable review time (session + admin) in minutes
@@ -3214,7 +3216,16 @@
                 }
                 _csAlreadyDone = _csedSessionIds.Contains(_csSessionId);
                 if (_csAlreadyDone)
-                    Console.WriteLine($"[PcFolder] CS session {_csSessionId} already reviewed — Done button disabled for '{_userName}'");
+                {
+                    Console.WriteLine($"[PcFolder] CS session {_csSessionId} already reviewed for '{_userName}'");
+                    var info = DashSvc.GetCsReviewInfo(_csSessionId);
+                    if (info.HasValue)
+                    {
+                        _existingCsReviewId = info.Value.CsReviewId;
+                        _existingReviewMin = (int)Math.Round(info.Value.ReviewSec / 60.0);
+                        _csReviewMinutes = _existingReviewMin;
+                    }
+                }
             }
             if (_csSessionId > 0 && CsMode)
                 _questionInfo = QuestionSvc.GetQuestionForSession(_csSessionId);
@@ -4704,6 +4715,35 @@
     {
         if (_csSessionId == 0) return;
         Console.WriteLine($"[PcFolder] Mark CS Done initiated by '{_userName}' — session {_csSessionId} ('{_csSessionName}'), review time: {_csReviewMinutes} min, for PC {PcId}");
+
+        // Already-reviewed session: update time if changed, or just go Home
+        if (_csAlreadyDone && _existingCsReviewId > 0)
+        {
+            if (_csReviewMinutes <= 0 && !IsMemoSession())
+            {
+                await JS.InvokeVoidAsync("alert",
+                    "Review time is 0 minutes. Please update the time before saving.");
+                return;
+            }
+
+            await Task.WhenAll(Enumerable.Range(0, _paneCount)
+                .Select(i => JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]).AsTask()));
+            _ = FolderSvc.BurnAnnotationSidecarsForSessionAsync(PcId, _csSessionName + ".pdf", Solo);
+
+            var newMin = _csReviewMinutes;
+            if (newMin != _existingReviewMin)
+            {
+                Console.WriteLine($"[PcFolder] Updating review time from {_existingReviewMin} min to {newMin} min — CsReviewId={_existingCsReviewId}");
+                DashSvc.UpdateCsReviewTime(_existingCsReviewId, newMin * 60);
+                DashSvc.NotifyDataChanged();
+                await JS.InvokeVoidAsync("showCsTimeUpdated", _pcName, _csSessionName, _existingReviewMin, newMin);
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("lpmNavigateTo", "/Home");
+            }
+            return;
+        }
 
         // Validate review time — if 0, warn user and abort (memo sessions are exempt)
         if (_csReviewMinutes <= 0 && !IsMemoSession())

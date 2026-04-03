@@ -2218,6 +2218,29 @@ public class DashboardService
         return (long)cmd.ExecuteScalar()! > 0;
     }
 
+    public (int CsReviewId, int ReviewSec)? GetCsReviewInfo(int sessionId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT CsReviewId, ReviewLengthSeconds FROM cs_reviews WHERE SessionId = @sid LIMIT 1";
+        cmd.Parameters.AddWithValue("@sid", sessionId);
+        using var r = cmd.ExecuteReader();
+        return r.Read() ? (r.GetInt32(0), r.GetInt32(1)) : null;
+    }
+
+    public void UpdateCsReviewTime(int csReviewId, int reviewSec)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE cs_reviews SET ReviewLengthSeconds = @rev WHERE CsReviewId = @id";
+        cmd.Parameters.AddWithValue("@rev", reviewSec);
+        cmd.Parameters.AddWithValue("@id", csReviewId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] Updated review time for CsReviewId={csReviewId} to {reviewSec}s");
+    }
+
     public record PendingCsSession(
         int SessionId, int PcId, string PcName, string SessionName,
         string SessionDate, int TotalSeconds, bool IsSolo, string AuditorName, string CreatedAt,
