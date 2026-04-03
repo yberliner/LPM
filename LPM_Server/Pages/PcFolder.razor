@@ -3370,7 +3370,7 @@
                 })();
             ");
 
-            // Ctrl+Z → Undo, Ctrl+S → Save, Ctrl+W → CS Done
+            // Ctrl+Z → Undo, Ctrl+S → Save, Ctrl+W → Save & Close / CS Done
             await JS.InvokeVoidAsync("eval", @"
                 document.addEventListener('keydown', function(e) {
                     if (!(e.ctrlKey || e.metaKey)) return;
@@ -3378,9 +3378,10 @@
                     if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return;
                     var ref = window.pcfViewer && window.pcfViewer.dotNetRef;
                     if (!ref) return;
-                    if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); ref.invokeMethodAsync('OnCtrlZ'); }
-                    else if (e.key === 's') { e.preventDefault(); ref.invokeMethodAsync('OnCtrlS'); }
-                    else if (e.key === 'w') { e.preventDefault(); ref.invokeMethodAsync('OnCtrlW'); }
+                    var code = e.code;
+                    if (code === 'KeyZ' && !e.shiftKey) { e.preventDefault(); ref.invokeMethodAsync('OnCtrlZ'); }
+                    else if (code === 'KeyS') { e.preventDefault(); ref.invokeMethodAsync('OnCtrlS'); }
+                    else if (code === 'KeyW') { ref.invokeMethodAsync('OnCtrlW'); }
                 });
             ");
 
@@ -4336,14 +4337,17 @@
     [JSInvokable]
     public async Task OnCtrlW()
     {
-        await InvokeAsync(async () =>
+        Console.WriteLine($"[PcFolder] Ctrl+D pressed by '{_userName}' — CsMode={CsMode}, sessionId={_csSessionId}, PC {PcId}");
+        if (CsMode && _csSessionId > 0)
         {
-            if (CsMode && _csSessionId > 0)
-                await DoneCs();
-            else
-                await DoCloseToHome();
-            StateHasChanged();
-        });
+            Console.WriteLine($"[PcFolder] Ctrl+D → DoneCs path for '{_userName}'");
+            await InvokeAsync(async () => { await DoneCs(); StateHasChanged(); });
+        }
+        else
+        {
+            Console.WriteLine($"[PcFolder] Ctrl+D → DoCloseToHome path for '{_userName}'");
+            await InvokeAsync(async () => { await DoCloseToHome(); StateHasChanged(); });
+        }
     }
 
     async Task ZoomIn()

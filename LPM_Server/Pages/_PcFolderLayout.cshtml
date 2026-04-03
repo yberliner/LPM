@@ -22,6 +22,15 @@
         .ql-snow .ql-picker.ql-size .ql-picker-label[data-value=""]::before,
         .ql-snow .ql-picker.ql-size .ql-picker-item[data-value=""]::before { content: 'Normal' !important; }
     </style>
+    <script>
+        // Block Ctrl+W in PWA window — must be in <head>, capture phase
+        document.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.code === 'KeyW') {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+            }
+        }, true);
+    </script>
 </head>
 <body>
     @RenderBody()
@@ -52,6 +61,7 @@
         document.addEventListener('keydown', function(e) {
             if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
             var key = e.key.toLowerCase();
+            // Ctrl+D is handled in PcFolder.razor component handler
             if (window._lpmReservedKeys.indexOf(key) >= 0) return;
             var text = window._lpmShortcuts[key];
             if (!text) return;
