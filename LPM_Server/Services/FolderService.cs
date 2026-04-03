@@ -620,7 +620,7 @@ public class FolderService
     // ── Text annotation baking ────────────────────────────────────────────────
 
     private record AnnSidecar(double Scale, List<AnnSidecarEntry> Annotations);
-    private record AnnSidecarEntry(int PageIdx, string Text, double X, double Y, double? FontSize, string? Color, double? MaxWidth);
+    private record AnnSidecarEntry(int PageIdx, string Text, double X, double Y, double? FontSize, string? Color, double? MaxWidth, bool? Rtl);
 
     /// <summary>
     /// Parse an .ann.json sidecar and render its text annotations onto the PDF using PdfSharp.
@@ -687,11 +687,18 @@ public class FolderService
                         : 0;
 
                     var lines = WrapTextForPdf(gfx, font, ann.Text, maxWidthPt);
-                    for (int li = 0; li < lines.Count; li++)
+                    if (ann.Rtl == true && maxWidthPt > 0)
                     {
-                        // Each line moves downward in PdfSharp's Y-down space (add)
-                        gfx.DrawString(lines[li], font, new PdfSharpCore.Drawing.XSolidBrush(color),
-                            pdfX, pdfY + li * lineHeightPt);
+                        var rtlFmt = new PdfSharpCore.Drawing.XStringFormat { Alignment = PdfSharpCore.Drawing.XStringAlignment.Far };
+                        for (int li = 0; li < lines.Count; li++)
+                            gfx.DrawString(lines[li], font, new PdfSharpCore.Drawing.XSolidBrush(color),
+                                pdfX + maxWidthPt, pdfY + li * lineHeightPt, rtlFmt);
+                    }
+                    else
+                    {
+                        for (int li = 0; li < lines.Count; li++)
+                            gfx.DrawString(lines[li], font, new PdfSharpCore.Drawing.XSolidBrush(color),
+                                pdfX, pdfY + li * lineHeightPt);
                     }
                 }
             }
@@ -2554,6 +2561,38 @@ public class FolderService
         var page = doc.AddPage();
         page.Width  = PdfSharpCore.Drawing.XUnit.FromPoint(widthPt);
         page.Height = PdfSharpCore.Drawing.XUnit.FromPoint(heightPt);
+        doc.Save(ms);
+        return ms.ToArray();
+    }
+
+    public byte[] CreatePdfFromImages(List<byte[]> jpegImages)
+    {
+        if (jpegImages == null || jpegImages.Count == 0)
+            throw new ArgumentException("No images provided");
+
+        using var ms = new MemoryStream();
+        var doc = new PdfSharpCore.Pdf.PdfDocument();
+
+        foreach (var imgBytes in jpegImages)
+        {
+            try
+            {
+                using var img = PdfSharpCore.Drawing.XImage.FromStream(() => new MemoryStream(imgBytes));
+                var page = doc.AddPage();
+                page.Width  = PdfSharpCore.Drawing.XUnit.FromPoint(img.PixelWidth);
+                page.Height = PdfSharpCore.Drawing.XUnit.FromPoint(img.PixelHeight);
+                using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page);
+                gfx.DrawImage(img, 0, 0, page.Width, page.Height);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[CreatePdfFromImages] Skipping corrupted image: {ex.Message}");
+            }
+        }
+
+        if (doc.PageCount == 0)
+            throw new InvalidOperationException("No valid images could be processed");
+
         doc.Save(ms);
         return ms.ToArray();
     }

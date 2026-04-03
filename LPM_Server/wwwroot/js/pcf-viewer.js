@@ -749,6 +749,7 @@ window.pcfViewer = {
             span.style.top      = (ann.y - fontSize) + 'px';
             span.style.fontSize = fontSize + 'px';
             if (ann.maxWidth) span.style.maxWidth = ann.maxWidth + 'px';
+            if (ann.rtl) span.dir = 'rtl';
             span.style.pointerEvents = this._textSelectMode ? 'auto' : 'none';
             span.textContent = ann.text;
             layer.appendChild(span);
@@ -777,6 +778,12 @@ window.pcfViewer = {
         ctx.globalCompositeOperation = prevComposite;
     },
 
+    // Detect RTL by first strong directional character (Hebrew/Arabic ranges)
+    _isRtl(text) {
+        const m = text.match(/[A-Za-z\u00C0-\u024F\u0590-\u05FF\u0600-\u06FF\uFB1D-\uFDFF\uFE70-\uFEFF]/);
+        return m ? /[\u0590-\u05FF\u0600-\u06FF\uFB1D-\uFDFF\uFE70-\uFEFF]/.test(m[0]) : false;
+    },
+
     // Word-wrap text respecting explicit \n and maxWidth
     _wrapText(ctx, text, maxWidth) {
         const raw = (text || '').split('\n');
@@ -800,8 +807,19 @@ window.pcfViewer = {
         ctx.fillStyle = ann.color || '#1e293b';
         const lineHeight = (ann.fontSize || 14) * 1.3;
         const lines = this._wrapText(ctx, ann.text, ann.maxWidth || 0);
-        for (let i = 0; i < lines.length; i++) {
-            ctx.fillText(lines[i], ann.x, ann.y + i * lineHeight);
+        if (ann.rtl && ann.maxWidth) {
+            ctx.direction = 'rtl';
+            ctx.textAlign = 'right';
+            const rightX = ann.x + ann.maxWidth;
+            for (let i = 0; i < lines.length; i++) {
+                ctx.fillText(lines[i], rightX, ann.y + i * lineHeight);
+            }
+            ctx.direction = 'ltr';
+            ctx.textAlign = 'start';
+        } else {
+            for (let i = 0; i < lines.length; i++) {
+                ctx.fillText(lines[i], ann.x, ann.y + i * lineHeight);
+            }
         }
     },
 
@@ -878,8 +896,16 @@ window.pcfViewer = {
         input.style.overflow = 'hidden';
         input.setAttribute('spellcheck', 'true');
 
+        // Auto-detect RTL when first strong character is Hebrew/Arabic
+        const updateDir = () => {
+            input.dir = self._isRtl(input.value) ? 'rtl' : 'ltr';
+            mirror.dir = input.dir;
+        };
+        input.addEventListener('input', updateDir);
+
         if (isEditing) {
             input.value = existingAnn.text;
+            if (existingAnn.rtl) input.dir = mirror.dir = 'rtl';
         }
 
         wrapper.appendChild(input);
@@ -1062,6 +1088,7 @@ window.pcfViewer = {
             const text = input.value.trim();
             const pane = self.panes[paneId];
             if (pane) {
+                const rtl = self._isRtl(text);
                 if (isEditing && existingIdx >= 0) {
                     if (text) {
                         // Update existing annotation — apply current color/fontSize/position from toolbar + drag
@@ -1071,13 +1098,14 @@ window.pcfViewer = {
                         pane.annotations[existingIdx].maxWidth = input.offsetWidth;
                         pane.annotations[existingIdx].x = x;
                         pane.annotations[existingIdx].y = y;
+                        pane.annotations[existingIdx].rtl = rtl;
                     } else {
                         // Empty text = delete annotation
                         pane.annotations.splice(existingIdx, 1);
                     }
                 } else if (text) {
                     // New annotation (also handles restore-as-new when existingIdx = -1)
-                    pane.annotations.push({ pageIdx, type: 'text', text, x, y, color, fontSize, maxWidth: input.offsetWidth });
+                    pane.annotations.push({ pageIdx, type: 'text', text, x, y, color, fontSize, maxWidth: input.offsetWidth, rtl });
                     console.log('[txt-dbg] pushed annotation: pageIdx=' + pageIdx + ' x=' + x.toFixed(1) + ' y=' + y.toFixed(1) + ' maxWidth=' + input.offsetWidth + ' text="' + text + '" total=' + pane.annotations.length);
                 }
                 self._redrawOverlay(pageIdx, paneId);
