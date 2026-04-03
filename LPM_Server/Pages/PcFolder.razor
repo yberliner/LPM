@@ -2883,6 +2883,7 @@
     int _paneCount = 1;   // 1, 2, or 3
     int _activeIdx = 0;   // index into _panes / PaneIds
     int? _maximizedPane;  // which pane slot is fullscreen-maximized (null = normal)
+    int _savedDualSessionZoom;    // persisted zoom % for maximize+dual session mode
     int _activePreset = 0;        // 0=none, 1-4=active preset
     bool _presetLoading = false;  // prevents double-click during preset switch
 
@@ -3164,6 +3165,7 @@
             if (cookies.TryGetValue("lpmVoiceOn", out var vc) && vc == "true") _voiceOn = true;
             if (cookies.TryGetValue("lpmFontSize", out var fc) && int.TryParse(fc, out var fs) && _fontSizes.Contains(fs)) _fontSize = fs;
             if (cookies.TryGetValue("lpmStrokeWidth", out var wc) && double.TryParse(wc, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var dw) && _strokeWidths.Contains(dw)) _drawWidth = dw;
+            if (cookies.TryGetValue("lpmDualSessionZoom", out var dzc) && int.TryParse(dzc, out var dz) && dz > 0) _savedDualSessionZoom = dz;
         }
 
         // Session ID passed from Dashboard "CS The Session" button (via host page parameter).
@@ -3197,7 +3199,7 @@
             if (_csSessionId > 0 && CsMode)
             {
                 _csSessionName   = DashSvc.GetSessionName(_csSessionId);
-                _csReviewMinutes = (int)Math.Round(DashSvc.GetSessionTotalSeconds(_csSessionId) / 60.0);
+                _csReviewMinutes = Solo ? 0 : (int)Math.Round(DashSvc.GetSessionTotalSeconds(_csSessionId) / 60.0);
                 var csUserName   = DashSvc.GetPersonName(UserPersonId) ?? $"User {UserPersonId}";
                 if (_activeCsSessions.TryGetValue(_csSessionId, out var existingLock))
                 {
@@ -3492,6 +3494,9 @@
             {
                 _dualPanes.Add(paneId);
                 _dualInfo[paneId] = (result[0], result[1]);
+                // Restore saved zoom for maximize+dual session mode
+                if (_savedDualSessionZoom > 0 && _savedDualSessionZoom != 100)
+                    _zoomPercent = await JS.InvokeAsync<int>("pcfViewer._setZoom", paneId, _savedDualSessionZoom / 100.0);
                 await JS.InvokeVoidAsync("pcfViewer.showExpandAnimation", paneId);
                 StateHasChanged();
             }
@@ -4354,18 +4359,21 @@
     {
         _fitMode = false;
         _zoomPercent = await JS.InvokeAsync<int>("pcfViewer.zoomIn", PaneIds[_activeIdx]);
+        PersistDualSessionZoom();
     }
 
     async Task ZoomOut()
     {
         _fitMode = false;
         _zoomPercent = await JS.InvokeAsync<int>("pcfViewer.zoomOut", PaneIds[_activeIdx]);
+        PersistDualSessionZoom();
     }
 
     async Task ResetZoom()
     {
         _fitMode = false;
         _zoomPercent = await JS.InvokeAsync<int>("pcfViewer._setZoom", PaneIds[_activeIdx], 1.0);
+        PersistDualSessionZoom();
     }
 
     async Task SetZoom(int pct)
@@ -4373,6 +4381,7 @@
         _fitMode = false;
         _zoomPercent = await JS.InvokeAsync<int>("pcfViewer._setZoom", PaneIds[_activeIdx], pct / 100.0);
         _showZoomMenu = false;
+        PersistDualSessionZoom();
     }
 
     async Task FitToPage()
@@ -4380,6 +4389,14 @@
         _fitMode = true;
         _zoomPercent = await JS.InvokeAsync<int>("pcfViewer.fitPage", PaneIds[_activeIdx]);
         _showZoomMenu = false;
+        PersistDualSessionZoom();
+    }
+
+    void PersistDualSessionZoom()
+    {
+        if (_maximizedPane.HasValue && _dualPanes.Contains(PaneIds[_maximizedPane.Value]))
+            _ = JS.InvokeVoidAsync("eval",
+                $"document.cookie='lpmDualSessionZoom={_zoomPercent}; path=/; max-age=3153600000; SameSite=Strict';");
     }
 
     async Task TogglePan()
@@ -4605,7 +4622,7 @@
         Console.WriteLine($"[PcFolder] Picked font size {size}px by '{_userName}' — for PC {PcId}");
         _fontSize = size;
         await JS.InvokeVoidAsync("pcfViewer.setFontSize", size);
-        _ = JS.InvokeVoidAsync("eval", $"document.cookie=\"lpmFontSize={size}; path=/; max-age=31536000; SameSite=Strict\";");
+        _ = JS.InvokeVoidAsync("eval", $"document.cookie=\"lpmFontSize={size}; path=/; max-age=3153600000; SameSite=Strict\";");
     }
 
     async Task PickWidth(double width)
@@ -4613,7 +4630,7 @@
         Console.WriteLine($"[PcFolder] Picked stroke width {width} by '{_userName}' — PC {PcId}");
         _drawWidth = width;
         await JS.InvokeVoidAsync("pcfViewer.setWidth", width);
-        _ = JS.InvokeVoidAsync("eval", $"document.cookie=\"lpmStrokeWidth={width.ToString(System.Globalization.CultureInfo.InvariantCulture)}; path=/; max-age=31536000; SameSite=Strict\";");
+        _ = JS.InvokeVoidAsync("eval", $"document.cookie=\"lpmStrokeWidth={width.ToString(System.Globalization.CultureInfo.InvariantCulture)}; path=/; max-age=3153600000; SameSite=Strict\";");
     }
 
     async Task SaveAnnotations()
@@ -4865,7 +4882,7 @@
     {
         _voiceOn = !_voiceOn;
         Console.WriteLine($"[PcFolder] Voice {(_voiceOn ? "ON" : "OFF")} by '{_userName}' — PC {PcId}");
-        _ = JS.InvokeVoidAsync("eval", $"document.cookie=\"lpmVoiceOn={(_voiceOn ? "true" : "false")}; path=/; max-age=31536000; SameSite=Strict\";");
+        _ = JS.InvokeVoidAsync("eval", $"document.cookie=\"lpmVoiceOn={(_voiceOn ? "true" : "false")}; path=/; max-age=3153600000; SameSite=Strict\";");
         try
         {
             if (_voiceOn) await JS.InvokeVoidAsync("lpmVoice.start");
