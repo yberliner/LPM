@@ -2082,6 +2082,29 @@ public class DashboardService
     }
 
     /// Returns the NextCS html from the most recent session of the given PC (excluding the current session being created).
+    public string? GetLastArfGrade(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT fs.ArfJson
+            FROM sess_folder_summary fs
+            JOIN sess_sessions s ON s.SessionId = fs.SessionId
+            WHERE s.PcId = @pcId AND fs.ArfJson IS NOT NULL AND fs.ArfJson != ''
+            ORDER BY s.SessionDate DESC, s.SessionId DESC
+            LIMIT 1";
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        var json = cmd.ExecuteScalar() as string;
+        if (string.IsNullOrEmpty(json)) return null;
+        try
+        {
+            var arf = System.Text.Json.JsonSerializer.Deserialize<PdfService.ArfData>(json);
+            return string.IsNullOrWhiteSpace(arf?.Grade) ? null : arf.Grade;
+        }
+        catch { return null; }
+    }
+
     public string? GetLastNextCs(int pcId)
     {
         using var conn = new SqliteConnection(_connectionString);

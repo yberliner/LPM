@@ -3612,6 +3612,13 @@
             var dd = _importNormalizedFileName[4..6];
             _arfDate = $"{dd}/{mm}/20{yy}";
         }
+        // Pre-fill grade from previous session
+        if (string.IsNullOrWhiteSpace(_arfGrade))
+        {
+            var lastGrade = DashSvc.GetLastArfGrade(_importPcId);
+            if (!string.IsNullOrEmpty(lastGrade))
+                _arfGrade = lastGrade;
+        }
         _importStep = 2;
         // Initialize Quill on summary editor after render
         _ = Task.Run(async () =>
