@@ -2043,32 +2043,32 @@ public class PdfService
 
                 page.Content().ScaleToFit().Column(col =>
                 {
-                    // Date — top right, NOT underlined
-                    col.Item().AlignRight().PaddingBottom(10)
-                        .Text(date).FontSize(11).FontColor("#1a1a1a");
+                    // Date — top right
+                    col.Item().AlignRight().PaddingBottom(12)
+                        .Text(date).FontSize(14).FontColor("#1a1a1a");
 
-                    // Instruction: {Auditor Name} — underlined
-                    col.Item().PaddingBottom(8).Text(t =>
+                    // Instruct On: {Auditor Name} — center aligned
+                    col.Item().AlignCenter().PaddingBottom(10).Text(t =>
                     {
-                        t.Span("Instruction: ").FontSize(11).Underline().FontColor("#1a1a1a");
-                        t.Span(auditorName).FontSize(14).Bold().Underline().FontColor("#1a1a1a");
+                        t.Span("Instruct On: ").FontSize(14).Underline().FontColor("#1a1a1a");
+                        t.Span(auditorName).FontSize(18).Bold().Underline().FontColor("#1a1a1a");
                     });
 
-                    // PC: {PC Name} — underlined
-                    col.Item().PaddingBottom(8).Text(t =>
+                    // PC: {PC Name} — center aligned
+                    col.Item().AlignCenter().PaddingBottom(10).Text(t =>
                     {
-                        t.Span("PC: ").FontSize(11).Underline().FontColor("#1a1a1a");
-                        t.Span(pcName).FontSize(14).Bold().Underline().FontColor("#1a1a1a");
+                        t.Span("PC: ").FontSize(14).Underline().FontColor("#1a1a1a");
+                        t.Span(pcName).FontSize(18).Bold().Underline().FontColor("#1a1a1a");
                     });
 
                     // Observations: — underlined
-                    col.Item().PaddingBottom(8)
-                        .Text("Observations:").FontSize(11).Underline().FontColor("#1a1a1a");
+                    col.Item().PaddingBottom(10)
+                        .Text("Observations:").FontSize(14).Underline().FontColor("#1a1a1a");
                 });
 
                 // CS Name — bottom right, underlined
                 page.Footer().AlignRight()
-                    .Text(csName).FontSize(15).Bold().Underline().FontColor("#1a1a1a");
+                    .Text(csName).FontSize(18).Bold().Underline().FontColor("#1a1a1a");
             });
         }).GeneratePdf();
     }
