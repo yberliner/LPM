@@ -3191,7 +3191,7 @@
                         _nameToCreatedAt.TryAdd(pair.Name, dt);
                 }
             }
-            if (_csSessionId > 0)
+            if (_csSessionId > 0 && CsMode)
             {
                 _csSessionName   = DashSvc.GetSessionName(_csSessionId);
                 _csReviewMinutes = (int)Math.Round(DashSvc.GetSessionTotalSeconds(_csSessionId) / 60.0);
@@ -3211,7 +3211,7 @@
                 if (_csAlreadyDone)
                     Console.WriteLine($"[PcFolder] CS session {_csSessionId} already reviewed — Done button disabled for '{_userName}'");
             }
-            if (_csSessionId > 0)
+            if (_csSessionId > 0 && CsMode)
                 _questionInfo = QuestionSvc.GetQuestionForSession(_csSessionId);
             // ── Preset auto-load ──
             var defaultPreset = (_csSessionId > 0
@@ -4320,7 +4320,14 @@
     [JSInvokable]
     public async Task OnCtrlW()
     {
-        await InvokeAsync(async () => { await DoneCs(); StateHasChanged(); });
+        await InvokeAsync(async () =>
+        {
+            if (CsMode && _csSessionId > 0)
+                await DoneCs();
+            else
+                await DoCloseToHome();
+            StateHasChanged();
+        });
     }
 
     async Task ZoomIn()
