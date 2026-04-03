@@ -2937,7 +2937,10 @@ public class FolderService
     private static string? SafeResolvePath(string baseFolder, string relativePath)
     {
         var normalized = relativePath.Replace('\\', '/');
-        if (normalized.Contains("..") || Path.IsPathRooted(normalized)) return null;
+        if (Path.IsPathRooted(normalized)) return null;
+        // Reject ".." only when it is a path segment (traversal), not inside a filename
+        var segments = normalized.Split('/');
+        if (segments.Any(s => s == "..")) return null;
         var fullPath = Path.GetFullPath(Path.Combine(baseFolder, normalized));
         var baseFull = Path.GetFullPath(baseFolder);
         if (!fullPath.StartsWith(baseFull, StringComparison.OrdinalIgnoreCase)) return null;
