@@ -23,9 +23,12 @@ window.lpmScanner = (function () {
     var _cvReady = false;
     var _cvLoadPromise = null;
     var _processing = false;
+    var _edgeTimer = null;       // edge preview interval
+    var _lastQuad = null;        // last detected quad (for overlay)
 
-    var MAX_DIM   = 2400;        // downscale target (longer edge)
-    var JPG_QUAL  = 0.93;        // JPEG export quality
+    var MAX_DIM   = 0;            // 0 = no downscale, use full camera resolution
+    var PREVIEW_W = 400;         // downscale width for live edge detection (speed)
+    var JPG_QUAL  = 0.95;        // JPEG export quality (max useful for documents)
 
     // ── Helpers: safe Mat cleanup ────────────────────────────────
     function deleteMats(arr) {
@@ -339,10 +342,223 @@ window.lpmScanner = (function () {
     }
 
     // ════════════════════════════════════════════════════════════
-    //  STEP 5 — CLAHE colour enhancement (LAB, L-channel only)
+    //  LIVE EDGE PREVIEW — lightweight detection on video frames
+    // ════════════════════════════════════════════════════════════
+
+    function startEdgePreview() {
+        stopEdgePreview();
+        _lastQuad = null;
+        // Run at ~5 fps (every 200ms)
+        _edgeTimer = setInterval(function () {
+            if (!_cvReady || _processing) return;
+            try { detectEdgeFrame(); } catch (e) {
+                console.warn('[scanner] Edge preview error:', e.message);
+            }
+        }, 200);
+    }
+
+    function stopEdgePreview() {
+        if (_edgeTimer) { clearInterval(_edgeTimer); _edgeTimer = null; }
+        _lastQuad = null;
+        // Clear overlay
+        var overlay = document.getElementById('scan-edge-overlay');
+        if (overlay) {
+            var octx = overlay.getContext('2d');
+            octx.clearRect(0, 0, overlay.width, overlay.height);
+        }
+    }
+
+    function detectEdgeFrame() {
+        var video = document.getElementById('scan-video');
+        var overlay = document.getElementById('scan-edge-overlay');
+        if (!video || !overlay || video.videoWidth === 0) return;
+
+        // Match overlay size to video display size
+        var rect = video.getBoundingClientRect();
+        overlay.width = rect.width;
+        overlay.height = rect.height;
+        var octx = overlay.getContext('2d');
+        octx.clearRect(0, 0, overlay.width, overlay.height);
+
+        // Downscale video frame for fast detection
+        var vw = video.videoWidth, vh = video.videoHeight;
+        var scale = PREVIEW_W / Math.max(vw, vh);
+        var sw = Math.round(vw * scale), sh = Math.round(vh * scale);
+
+        var tmpCanvas = document.createElement('canvas');
+        tmpCanvas.width = sw; tmpCanvas.height = sh;
+        tmpCanvas.getContext('2d').drawImage(video, 0, 0, sw, sh);
+
+        var mats = [], vectors = [];
+        try {
+            var imgData = tmpCanvas.getContext('2d').getImageData(0, 0, sw, sh);
+            var src = cv.matFromImageData(imgData); mats.push(src);
+            var gray = new cv.Mat(); mats.push(gray);
+            cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+            var imgArea = sw * sh;
+            var minArea = imgArea * 0.10;
+
+            // Fast single-pass Canny detection
+            var quad = tryCannyStrategy(gray, 40, 120, minArea, mats, vectors);
+
+            if (quad) {
+                _lastQuad = quad;
+                // Scale quad points from preview → overlay coordinates
+                var scaleX = overlay.width / vw;
+                var scaleY = overlay.height / vh;
+                var upscale = 1.0 / scale; // preview → video coords
+
+                var pts = quad.map(function (p) {
+                    return {
+                        x: p.x * upscale * scaleX,
+                        y: p.y * upscale * scaleY
+                    };
+                });
+
+                // Draw filled quad with semi-transparent overlay
+                octx.beginPath();
+                octx.moveTo(pts[0].x, pts[0].y);
+                octx.lineTo(pts[1].x, pts[1].y);
+                octx.lineTo(pts[2].x, pts[2].y);
+                octx.lineTo(pts[3].x, pts[3].y);
+                octx.closePath();
+                octx.fillStyle = 'rgba(20, 184, 166, 0.12)';
+                octx.fill();
+                octx.strokeStyle = '#14b8a6';
+                octx.lineWidth = 2.5;
+                octx.stroke();
+
+                // Draw corner dots
+                octx.fillStyle = '#14b8a6';
+                for (var ci = 0; ci < 4; ci++) {
+                    octx.beginPath();
+                    octx.arc(pts[ci].x, pts[ci].y, 6, 0, Math.PI * 2);
+                    octx.fill();
+                }
+            } else {
+                _lastQuad = null;
+            }
+        } finally {
+            deleteMats(mats);
+            for (var v = 0; v < vectors.length; v++) {
+                try { vectors[v].delete(); } catch (_) {}
+            }
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  STEP 5 — Shadow removal via background division + auto-levels
+    //
+    //  Heavy-blur to estimate background illumination, divide original
+    //  by background, then stretch histogram to full 0-255 range.
+    // ════════════════════════════════════════════════════════════
+    function removeShadows(rgbMat) {
+        var mats = [], vectors = [];
+        try {
+            // Large kernel (~1/4 of shorter dim) so text never leaks into background
+            var kSize = Math.max(101, Math.round(Math.min(rgbMat.cols, rgbMat.rows) / 4));
+            if (kSize % 2 === 0) kSize++;
+            console.log('[scanner] Shadow removal kernel: ' + kSize + 'x' + kSize);
+
+            var channels = new cv.MatVector(); vectors.push(channels);
+            cv.split(rgbMat, channels);
+
+            var resultChannels = new cv.MatVector(); vectors.push(resultChannels);
+
+            for (var c = 0; c < 3; c++) {
+                var ch = channels.get(c);
+
+                // Estimate background illumination
+                var bg = new cv.Mat(); mats.push(bg);
+                cv.GaussianBlur(ch, bg, new cv.Size(kSize, kSize), 0);
+
+                // Divide: result = src * 220 / bg  (220 keeps paper bright white)
+                var divided = new cv.Mat(); mats.push(divided);
+                cv.divide(ch, bg, divided, 220);
+
+                resultChannels.push_back(divided);
+            }
+
+            var merged = new cv.Mat(); mats.push(merged);
+            cv.merge(resultChannels, merged);
+
+            // Auto-levels: stretch 1st-99th percentile to 0-255
+            var result = autoLevels(merged);
+            if (!result) result = merged.clone();
+
+            return result; // caller must delete
+        } catch (ex) {
+            console.warn('[scanner] Shadow removal failed:', ex.message);
+            return null;
+        } finally {
+            deleteMats(mats);
+            for (var v = 0; v < vectors.length; v++) {
+                try { vectors[v].delete(); } catch (_) {}
+            }
+        }
+    }
+
+    // ── Auto-levels: stretch 1st-99th percentile per channel ────
+    function autoLevels(rgbMat) {
+        var mats = [], vectors = [];
+        try {
+            var channels = new cv.MatVector(); vectors.push(channels);
+            cv.split(rgbMat, channels);
+
+            var resultChannels = new cv.MatVector(); vectors.push(resultChannels);
+
+            for (var c = 0; c < 3; c++) {
+                var ch = channels.get(c);
+
+                // Compute histogram to find 1st and 99th percentile
+                var hist = new cv.Mat(); mats.push(hist);
+                var mask = new cv.Mat(); mats.push(mask);
+                var chVec = new cv.MatVector(); vectors.push(chVec);
+                chVec.push_back(ch);
+                cv.calcHist(chVec, [0], mask, hist, [256], [0, 256]);
+
+                var total = ch.rows * ch.cols;
+                var lo = 0, hi = 255;
+                var cumSum = 0;
+                for (var i = 0; i < 256; i++) {
+                    cumSum += hist.floatAt(i, 0);
+                    if (cumSum >= total * 0.01) { lo = i; break; }
+                }
+                cumSum = 0;
+                for (var j = 255; j >= 0; j--) {
+                    cumSum += hist.floatAt(j, 0);
+                    if (cumSum >= total * 0.01) { hi = j; break; }
+                }
+
+                if (hi <= lo) hi = lo + 1;
+                var scale = 255.0 / (hi - lo);
+                var offset = -lo * scale;
+
+                var stretched = new cv.Mat(); mats.push(stretched);
+                ch.convertTo(stretched, -1, scale, offset);
+                resultChannels.push_back(stretched);
+            }
+
+            var result = new cv.Mat();
+            cv.merge(resultChannels, result);
+            console.log('[scanner] Auto-levels applied');
+            return result;
+        } catch (ex) {
+            console.warn('[scanner] Auto-levels failed:', ex.message);
+            return null;
+        } finally {
+            deleteMats(mats);
+            for (var v = 0; v < vectors.length; v++) {
+                try { vectors[v].delete(); } catch (_) {}
+            }
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════
+    //  STEP 6 — Light CLAHE for local contrast (optional boost)
     // ════════════════════════════════════════════════════════════
     function applyClahe(rgbMat) {
-        // rgbMat is CV_8UC3 (RGB).  Modifies in-place via returned Mat.
         var mats = [], vectors = [];
         var clahe = null;
         try {
@@ -352,19 +568,16 @@ window.lpmScanner = (function () {
             var channels = new cv.MatVector(); vectors.push(channels);
             cv.split(lab, channels);
 
-            var L = channels.get(0);
-
-            // CLAHE — try both constructor forms
             try {
-                clahe = new cv.CLAHE(3.0, new cv.Size(8, 8));
+                clahe = new cv.CLAHE(1.5, new cv.Size(8, 8));
             } catch (_) {
-                try { clahe = cv.createCLAHE(3.0, new cv.Size(8, 8)); } catch (__) {
-                    return rgbMat; // CLAHE unavailable, return as-is
+                try { clahe = cv.createCLAHE(1.5, new cv.Size(8, 8)); } catch (__) {
+                    return null;
                 }
             }
 
             var enhancedL = new cv.Mat(); mats.push(enhancedL);
-            clahe.apply(L, enhancedL);
+            clahe.apply(channels.get(0), enhancedL);
 
             var mergeVec = new cv.MatVector(); vectors.push(mergeVec);
             mergeVec.push_back(enhancedL);
@@ -376,7 +589,7 @@ window.lpmScanner = (function () {
 
             var result = new cv.Mat();
             cv.cvtColor(merged, result, cv.COLOR_Lab2RGB);
-            return result; // caller must delete
+            return result;
         } catch (ex) {
             console.warn('[scanner] CLAHE failed:', ex.message);
             return null;
@@ -390,81 +603,27 @@ window.lpmScanner = (function () {
     }
 
     // ════════════════════════════════════════════════════════════
-    //  STEP 6 — White-balance normalisation
-    // ════════════════════════════════════════════════════════════
-    function whiteBalance(rgbMat) {
-        // Simple grey-world white balance: scale each channel so its mean = 128
-        var mats = [], vectors = [];
-        try {
-            var channels = new cv.MatVector(); vectors.push(channels);
-            cv.split(rgbMat, channels);
-
-            var result = new cv.Mat();
-            for (var c = 0; c < 3; c++) {
-                var ch = channels.get(c);
-                var mean = cv.mean(ch);
-                var avg = mean[0];
-                if (avg < 1) avg = 1;
-                var scale = 128.0 / avg;
-                // Clamp scale so we don't blow out already-bright images
-                if (scale > 1.6) scale = 1.6;
-                if (scale < 0.7) scale = 0.7;
-                var scaled = new cv.Mat(); mats.push(scaled);
-                ch.convertTo(scaled, -1, scale, 0);
-                // Replace channel in-place via put back
-                var tmp = new cv.MatVector(); vectors.push(tmp);
-                // Rebuild channels — push the scaled one and keep others
-            }
-
-            // Rebuild cleanly
-            var r = channels.get(0), g = channels.get(1), b = channels.get(2);
-            var meanR = cv.mean(r)[0] || 1;
-            var meanG = cv.mean(g)[0] || 1;
-            var meanB = cv.mean(b)[0] || 1;
-            var grayAvg = (meanR + meanG + meanB) / 3.0;
-            var scaleR = Math.min(1.5, Math.max(0.7, grayAvg / meanR));
-            var scaleG = Math.min(1.5, Math.max(0.7, grayAvg / meanG));
-            var scaleB = Math.min(1.5, Math.max(0.7, grayAvg / meanB));
-
-            var adjR = new cv.Mat(); mats.push(adjR);
-            var adjG = new cv.Mat(); mats.push(adjG);
-            var adjB = new cv.Mat(); mats.push(adjB);
-            r.convertTo(adjR, -1, scaleR, 0);
-            g.convertTo(adjG, -1, scaleG, 0);
-            b.convertTo(adjB, -1, scaleB, 0);
-
-            var mergeVec = new cv.MatVector(); vectors.push(mergeVec);
-            mergeVec.push_back(adjR);
-            mergeVec.push_back(adjG);
-            mergeVec.push_back(adjB);
-            cv.merge(mergeVec, result);
-            return result; // caller must delete
-        } catch (ex) {
-            console.warn('[scanner] White balance failed:', ex.message);
-            return null;
-        } finally {
-            deleteMats(mats);
-            for (var v = 0; v < vectors.length; v++) {
-                try { vectors[v].delete(); } catch (_) {}
-            }
-        }
-    }
-
-    // ════════════════════════════════════════════════════════════
-    //  STEP 7 — Unsharp mask (sharpening)
+    //  STEP 7 — Dual-pass unsharp mask (text sharpening)
+    //
+    //  Pass 1: σ=0.5 — fine detail (individual letter strokes)
+    //  Pass 2: σ=1.5 — medium edges (letter outlines, lines)
     // ════════════════════════════════════════════════════════════
     function sharpen(rgbMat) {
-        // Unsharp mask: result = src + amount * (src - blur)
         var mats = [];
         try {
-            var blurred = new cv.Mat(); mats.push(blurred);
-            cv.GaussianBlur(rgbMat, blurred, new cv.Size(0, 0), 2.0);
+            // Pass 1: fine detail sharpening
+            var blur1 = new cv.Mat(); mats.push(blur1);
+            cv.GaussianBlur(rgbMat, blur1, new cv.Size(0, 0), 0.5);
+            var pass1 = new cv.Mat(); mats.push(pass1);
+            cv.addWeighted(rgbMat, 1.8, blur1, -0.8, 0, pass1);
 
+            // Pass 2: medium edge sharpening
+            var blur2 = new cv.Mat(); mats.push(blur2);
+            cv.GaussianBlur(pass1, blur2, new cv.Size(0, 0), 1.5);
             var result = new cv.Mat();
-            // addWeighted: dst = src1*alpha + src2*beta + gamma
-            // Sharpened = 1.5*original - 0.5*blurred
-            cv.addWeighted(rgbMat, 1.5, blurred, -0.5, 0, result);
-            return result; // caller must delete
+            cv.addWeighted(pass1, 1.5, blur2, -0.5, 0, result);
+
+            return result;
         } catch (ex) {
             console.warn('[scanner] Sharpen failed:', ex.message);
             return null;
@@ -500,25 +659,25 @@ window.lpmScanner = (function () {
             var rgb = new cv.Mat(); toDelete.push(rgb);
             cv.cvtColor(working, rgb, cv.COLOR_RGBA2RGB);
 
-            // Step 5: CLAHE
+            // Step 5: Shadow removal (background division)
             var t1 = performance.now();
-            var enhanced = applyClahe(rgb);
-            var afterClahe = enhanced || rgb;
-            if (enhanced && enhanced !== rgb) toDelete.push(enhanced);
-            console.log('[scanner] CLAHE: ' + (performance.now() - t1).toFixed(0) + ' ms');
+            var shadowFree = removeShadows(rgb);
+            var afterShadow = shadowFree || rgb;
+            if (shadowFree && shadowFree !== rgb) toDelete.push(shadowFree);
+            console.log('[scanner] Shadow removal: ' + (performance.now() - t1).toFixed(0) + ' ms');
 
-            // Step 6: white balance
+            // Step 6: CLAHE (local contrast boost)
             var t2 = performance.now();
-            var balanced = whiteBalance(afterClahe);
-            var afterWb = balanced || afterClahe;
-            if (balanced && balanced !== afterClahe) toDelete.push(balanced);
-            console.log('[scanner] White balance: ' + (performance.now() - t2).toFixed(0) + ' ms');
+            var enhanced = applyClahe(afterShadow);
+            var afterClahe = enhanced || afterShadow;
+            if (enhanced && enhanced !== afterShadow) toDelete.push(enhanced);
+            console.log('[scanner] CLAHE: ' + (performance.now() - t2).toFixed(0) + ' ms');
 
-            // Step 7: sharpen
+            // Step 7: Strong sharpen (text focus)
             var t3 = performance.now();
-            var sharpened = sharpen(afterWb);
-            var final_ = sharpened || afterWb;
-            if (sharpened && sharpened !== afterWb) toDelete.push(sharpened);
+            var sharpened = sharpen(afterClahe);
+            var final_ = sharpened || afterClahe;
+            if (sharpened && sharpened !== afterClahe) toDelete.push(sharpened);
             console.log('[scanner] Sharpen: ' + (performance.now() - t3).toFixed(0) + ' ms');
 
             var outCanvas = getOutputCanvas();
@@ -554,15 +713,21 @@ window.lpmScanner = (function () {
         var w = sourceCanvas.width, h = sourceCanvas.height;
         if (w <= 0 || h <= 0) return sourceCanvas;
 
+        // Downscale only if MAX_DIM > 0
         var longer = Math.max(w, h);
-        var scale = longer > MAX_DIM ? MAX_DIM / longer : 1;
+        var scale = (MAX_DIM > 0 && longer > MAX_DIM) ? MAX_DIM / longer : 1;
         var nw = Math.round(w * scale);
         var nh = Math.round(h * scale);
 
-        var prep = document.createElement('canvas');
-        prep.width = nw;
-        prep.height = nh;
-        prep.getContext('2d').drawImage(sourceCanvas, 0, 0, nw, nh);
+        var prep;
+        if (scale < 1) {
+            prep = document.createElement('canvas');
+            prep.width = nw;
+            prep.height = nh;
+            prep.getContext('2d').drawImage(sourceCanvas, 0, 0, nw, nh);
+        } else {
+            prep = sourceCanvas; // full resolution
+        }
 
         // Force portrait
         if (prep.width > prep.height) {
@@ -656,6 +821,8 @@ window.lpmScanner = (function () {
             }
         } finally {
             _processing = false;
+            // Restart edge preview after capture
+            if (_stream && _cvReady) startEdgePreview();
         }
     }
 
@@ -677,11 +844,18 @@ window.lpmScanner = (function () {
 
             try {
                 _stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment' }, audio: false
+                    video: {
+                        facingMode: 'environment',
+                        width: { ideal: 4096 },
+                        height: { ideal: 4096 }
+                    }, audio: false
                 });
             } catch (_) {
                 try {
-                    _stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                    _stream = await navigator.mediaDevices.getUserMedia({
+                        video: { width: { ideal: 4096 }, height: { ideal: 4096 } },
+                        audio: false
+                    });
                 } catch (e2) {
                     console.warn('[scanner] Camera unavailable:', e2);
                     return false;
@@ -695,6 +869,8 @@ window.lpmScanner = (function () {
 
             ensureOpenCv().then(function () {
                 if (_dotNetRef) try { _dotNetRef.invokeMethodAsync('OnOpenCvReady'); } catch (_) {}
+                // Start live edge preview once OpenCV is ready
+                startEdgePreview();
             }).catch(function () {
                 if (_dotNetRef) try { _dotNetRef.invokeMethodAsync('OnOpenCvFailed'); } catch (_) {}
             });
@@ -704,6 +880,7 @@ window.lpmScanner = (function () {
 
         capture: async function () {
             if (_processing) return;
+            stopEdgePreview(); // pause during capture
             var video = document.getElementById('scan-video');
             var canvas = document.getElementById('scan-canvas');
             if (!video || !canvas || video.videoWidth === 0) return;
@@ -747,6 +924,7 @@ window.lpmScanner = (function () {
         isProcessing: function () { return _processing; },
 
         close: function () {
+            stopEdgePreview();
             if (_stream) {
                 _stream.getTracks().forEach(function (t) { t.stop(); });
                 _stream = null;

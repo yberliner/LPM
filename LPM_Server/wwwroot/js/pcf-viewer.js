@@ -865,7 +865,13 @@ window.pcfViewer = {
         const posY = inputY !== undefined ? inputY : y;
 
         // Max width the textarea is allowed to grow to before wrapping
-        const maxAllowedWidth = Math.max(120, wrapper.offsetWidth - posX - 8);
+        // (recalculated when direction changes — RTL grows left, LTR grows right)
+        let maxAllowedWidth = Math.max(120, wrapper.offsetWidth - posX - 8);
+        const recalcMaxWidth = () => {
+            maxAllowedWidth = input.dir === 'rtl'
+                ? Math.max(120, posX + 120)    // can grow leftward up to left edge (posX is distance from left)
+                : Math.max(120, wrapper.offsetWidth - posX - 8);
+        };
 
         // Hidden mirror div — same font, no padding/border — used to measure line width
         const mirror = document.createElement('div');
@@ -898,14 +904,21 @@ window.pcfViewer = {
 
         // Auto-detect RTL when first strong character is Hebrew/Arabic
         const updateDir = () => {
-            input.dir = self._isRtl(input.value) ? 'rtl' : 'ltr';
-            mirror.dir = input.dir;
+            const newDir = self._isRtl(input.value) ? 'rtl' : 'ltr';
+            if (input.dir !== newDir) {
+                input.dir = newDir;
+                mirror.dir = newDir;
+                recalcMaxWidth();
+            }
         };
         input.addEventListener('input', updateDir);
 
         if (isEditing) {
             input.value = existingAnn.text;
-            if (existingAnn.rtl) input.dir = mirror.dir = 'rtl';
+            if (existingAnn.rtl) {
+                input.dir = mirror.dir = 'rtl';
+                recalcMaxWidth();
+            }
         }
 
         wrapper.appendChild(input);
@@ -940,6 +953,15 @@ window.pcfViewer = {
             mirror.textContent = currentLine || '\u00a0';
             maxLineW = Math.max(maxLineW, mirror.offsetWidth);
             const newW = Math.max(120, Math.min(maxLineW + PADDING_H, effectiveMax));
+            // RTL: grow leftward — shift left edge so right edge stays anchored
+            if (input.dir === 'rtl') {
+                const oldW = parseFloat(input.style.width) || 120;
+                const oldLeft = parseFloat(input.style.left) || 0;
+                const newLeft = oldLeft - (newW - oldW);
+                input.style.left = newLeft + 'px';
+                // Keep canvas x in sync so commit stores the correct position
+                x = Math.round(Math.max(0, newLeft));
+            }
             input.style.width = newW + 'px';
             input.style.height = 'auto';
             input.style.height = input.scrollHeight + 'px';
