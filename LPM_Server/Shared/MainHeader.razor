@@ -4619,6 +4619,13 @@ string _actionPcSearch = "";
         var pcName = _apcAllPcs.FirstOrDefault(p => p.PcId == pcId)?.FullName ?? $"PC {pcId}";
         if (currentlyActive)
         {
+            // Don't allow removing the last role — use the delete button for that
+            var rolesForPc = _apcMyPcs.Count(p => p.PcId == pcId);
+            if (rolesForPc <= 1)
+            {
+                Console.WriteLine($"[MainHeader] Assign PC: blocked removing last role '{workCapacity}' from PC='{pcName}' (use delete button instead)");
+                return;
+            }
             DashSvc.RemoveUserPc(_apcUserId, pcId, workCapacity);
             Console.WriteLine($"[MainHeader] Assign PC: removed role '{workCapacity}' from PC='{pcName}' (id={pcId}) userId={_apcUserId} by '{_logUsername}'");
         }
