@@ -1059,7 +1059,7 @@
 {
     <div class="modal show d-block" tabindex="-1"
          style="background:rgba(0,0,0,.5); z-index:9999;">
-        <div class="modal-dialog modal-dialog-centered @(_importStep >= 2 ? "modal-lg" : "modal-md")"
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wiz-modal-dialog @(_importStep >= 2 ? "modal-lg" : "modal-md")"
              @onclick:stopPropagation="true">
             <div class="modal-content" style="background:#1e293b; color:#e2e8f0; border:1px solid #334155;">
                 <div class="modal-header py-2" style="background:linear-gradient(135deg,#1565c0,#1e88e5); border-bottom:none;">
@@ -1512,7 +1512,7 @@
                     else
                     {
                         @* ── Step 3: Next C/S Sheet ── *@
-                        <div class="arf" style="display:flex; flex-direction:column; min-height:480px;">
+                        <div class="arf wiz-step3-content" style="display:flex; flex-direction:column; min-height:480px;">
                             <div class="arf-subtitle">Dror Center, Haifa, Israel</div>
 
                             @* extra line *@
@@ -1604,13 +1604,13 @@
                     }
                     else
                     {
-                        <div class="d-flex align-items-center w-100 gap-2">
+                        <div class="d-flex align-items-center w-100 gap-2 wiz-step3-footer">
                             <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
                                     @onclick="() => _importStep = 2">
                                 <i class="ri-arrow-left-s-line"></i> Back
                             </button>
                             <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showImportWizard = false">Cancel</button>
-                            <div class="d-flex align-items-center gap-2 ms-auto">
+                            <div class="d-flex align-items-center gap-2 ms-auto wiz-admin-time-group">
                                 <span style="font-weight:600; color:#cbd5e1; font-size:.85rem; white-space:nowrap;">
                                     Admin Time
                                     @if (string.IsNullOrWhiteSpace(_arfAdminTime))
@@ -2746,6 +2746,42 @@
         min-width: 20px; min-height: 20px;
     }
     .arf-del-row-btn:hover { color: #ef4444; }
+
+    /* ── ARF responsive: tablet ── */
+    @@media (max-width: 768px) {
+        .arf-left-col { flex: 0 0 220px; }
+        .arf-lbl-right-fixed { width: 90px; }
+        .arf-table th { font-size: .65rem; padding: 4px 4px; }
+        .arf-cell-input { padding: 5px 4px; font-size: .78rem; }
+    }
+
+    /* ── ARF responsive: mobile ── */
+    @@media (max-width: 480px) {
+        .arf-row { flex-wrap: wrap; gap: 8px; }
+        .arf-left-col { flex: 1 1 100%; }
+        .arf-field { flex: 1 1 100%; }
+        .arf-lbl-fixed { width: 80px; }
+        .arf-lbl-right-fixed { width: auto; margin-right: 4px; }
+        .arf-input-short { width: 80px; }
+        .arf-input-xs { width: 70px; }
+        .arf-title { font-size: 1rem; }
+        .arf-subtitle { font-size: .76rem; }
+
+        /* Prevent iOS auto-zoom on input focus */
+        .arf-input, .arf-input-short, .arf-input-xs,
+        .arf-cell-input, .arf-time-input,
+        .arf select, .arf input, .arf textarea {
+            font-size: 16px !important;
+        }
+
+        /* Table: horizontal scroll wrapper + tighter cells */
+        .arf-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .arf-table thead, .arf-table tbody, .arf-table tr { display: table; width: 100%; table-layout: fixed; }
+        .arf-table th { font-size: .6rem; padding: 4px 2px; letter-spacing: 0; }
+        .arf-cell-input { padding: 5px 3px; }
+        .arf-cell-textarea { min-height: 30px; }
+        .arf-row-action-btn, .arf-del-row-btn { min-width: 28px; min-height: 28px; }
+    }
 </style>
 
 <style>
@@ -2763,6 +2799,33 @@
     .wiz-done   .wiz-label  { color:#6ee7b7; }
     .wiz-future .wiz-circle { background:transparent; border-color:#475569; color:#64748b; }
     .wiz-future .wiz-label  { color:#475569; }
+
+    /* ── Wizard responsive: mobile ── */
+    @@media (max-width: 480px) {
+        .wiz-circle { width: 28px; height: 28px; font-size: .75rem; }
+        .wiz-label  { font-size: .6rem; }
+        .wiz-conn   { margin: 0 4px; margin-bottom: 18px; }
+
+        /* Step 3 footer: stack buttons + admin time */
+        .wiz-step3-footer { flex-wrap: wrap; }
+        .wiz-admin-time-group { flex: 1 1 100%; justify-content: flex-end; }
+
+        /* Step 3 content: smaller fonts */
+        .wiz-step3-content { min-height: 320px !important; }
+        .wiz-step3-content span[style*="font-size:1.35rem"] { font-size: 1rem !important; }
+        .wiz-step3-content div[style*="font-size:1.7rem"] { font-size: 1.3rem !important; }
+        .wiz-step3-content div[style*="font-size:1.35rem"] { font-size: 1rem !important; }
+
+        /* Modal header Reference button */
+        .modal-header .btn[title="Open a reference file from this PC's folder"] { font-size: .65rem; padding: 2px 6px; }
+    }
+
+    @@media (max-width: 768px) {
+        .wiz-step3-footer { flex-wrap: wrap; }
+        .wiz-admin-time-group { flex: 1 1 100%; justify-content: flex-end; }
+        .wiz-modal-dialog { margin: 8px; }
+        .wiz-modal-dialog .modal-body { max-height: 70vh; overflow-y: auto; }
+    }
 
     /* ── Assign PC modal ── */
     .apc-modal-header { background: linear-gradient(135deg, #1a237e, #3949ab); border-bottom: none; }
