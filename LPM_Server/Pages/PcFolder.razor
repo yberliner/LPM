@@ -1041,24 +1041,27 @@
         <div class="pcf-viewer-area @(_paneCount > 1 ? "pcf-split" : "")">
             @if (_folder != null)
             {
-                <div class="pcf-preset-float" id="pcf-preset-float">
-                    <span class="pcf-preset-grip" title="Drag to move"><i class="ri-draggable"></i></span>
-                    @for (int pn = 1; pn <= 4; pn++)
-                    {
-                        var n = pn;
-                        var needsSession = n >= 2 && n <= 3;
-                        var tip = n switch {
-                            1 => "Program + Folder Summary + previous session's Next CS",
-                            2 => "Session + attachments (not Next CS/Pink/Instruct/Cramming) + PT files",
-                            3 => "Session + this session's Next CS",
-                            _ => "Reserved"
-                        };
-                        <button class="pcf-preset-num @(_activePreset == n ? "pcf-preset-num-active" : "")"
-                                title="@tip"
-                                disabled="@(_presetLoading || n == 4 || (needsSession && _csSessionId == 0))"
-                                @onclick="async () => await ApplyPresetAsync(n)">@n</button>
-                    }
-                </div>
+                @if (_csSessionId > 0)
+                {
+                    <div class="pcf-preset-float" id="pcf-preset-float">
+                        <span class="pcf-preset-grip" title="Drag to move"><i class="ri-draggable"></i></span>
+                        @for (int pn = 1; pn <= 4; pn++)
+                        {
+                            var n = pn;
+                            var needsSession = n >= 2 && n <= 3;
+                            var tip = n switch {
+                                1 => "Program + Folder Summary + previous session's Next CS",
+                                2 => "Session + attachments (not Next CS/Pink/Instruct/Cramming) + PT files",
+                                3 => "Session + this session's Next CS",
+                                _ => "Reserved"
+                            };
+                            <button class="pcf-preset-num @(_activePreset == n ? "pcf-preset-num-active" : "")"
+                                    title="@tip"
+                                    disabled="@(_presetLoading || n == 4 || (needsSession && _csSessionId == 0))"
+                                    @onclick="async () => await ApplyPresetAsync(n)">@n</button>
+                        }
+                    </div>
+                }
             }
             @for (int pi = 0; pi < _paneCount; pi++)
             {
@@ -3213,9 +3216,19 @@
             }
             if (_csSessionId > 0 && CsMode)
                 _questionInfo = QuestionSvc.GetQuestionForSession(_csSessionId);
+            // Auditor/browse with session: still need session name for presets (no locking/review)
+            if (_csSessionId > 0 && !CsMode && _csSessionName == null)
+                _csSessionName = DashSvc.GetSessionName(_csSessionId);
             // ── Preset auto-load ──
-            var defaultPreset = (_csSessionId > 0
-                && _loginUsername.Equals("aviv", StringComparison.OrdinalIgnoreCase)) ? 3 : 1;
+            int defaultPreset;
+            if (_csSessionId == 0)
+                defaultPreset = 0;  // no session — skip presets, fallback loads latest worksheet
+            else if (!CsMode)
+                defaultPreset = 3;  // auditor / solo-auditor always opens #3
+            else if (_loginUsername.Equals("aviv", StringComparison.OrdinalIgnoreCase))
+                defaultPreset = 3;  // CS user "aviv" gets #3
+            else
+                defaultPreset = 1;  // CS user gets #1
             var presetFiles = ResolvePresetFiles(defaultPreset);
             if (presetFiles.Count > 0)
             {
@@ -3247,6 +3260,9 @@
                     _panes[1].Section  = "WorkSheet";
                 }
             }
+            // No session: auto-open sidebar so user sees the folder tree
+            if (_csSessionId == 0)
+                _sidebarOpen = true;
             StateHasChanged(); // sidebar content now visible; JS setup follows
 
             // ── Phase 2: JS + PDF loading ──

@@ -2565,36 +2565,109 @@ public class FolderService
         return ms.ToArray();
     }
 
-    public byte[] CreatePdfFromImages(List<byte[]> jpegImages)
+    // ── Scan Inbox (PWA share target) ──────────────────────────────────────
+
+    private string GetScanInboxPath(string username)
+        => Path.Combine(Directory.GetCurrentDirectory(), "ScanInbox", username.ToLowerInvariant());
+
+    public void SaveToScanInbox(string username, string fileName, byte[] bytes)
     {
-        if (jpegImages == null || jpegImages.Count == 0)
-            throw new ArgumentException("No images provided");
+        CleanupScanInbox(username);
+        var dir = GetScanInboxPath(username);
+        Console.WriteLine($"[ScanInbox] SaveToScanInbox: user='{username}' file='{fileName}' size={bytes.Length} dir='{dir}'");
+        Directory.CreateDirectory(dir);
 
-        using var ms = new MemoryStream();
-        var doc = new PdfSharpCore.Pdf.PdfDocument();
+        var rawName = Path.GetFileNameWithoutExtension(fileName);
+        bool isAttachment = rawName.StartsWith("att", StringComparison.OrdinalIgnoreCase);
+        var safeName = SanitizeName(rawName);
+        if (string.IsNullOrWhiteSpace(safeName)) safeName = "session";
 
-        foreach (var imgBytes in jpegImages)
+        // Prepend yymmdd date if name doesn't already start with 6 digits
+        var datePrefix = DateTime.Now.ToString("yyMMdd");
+        bool alreadyHasDate = safeName.Length >= 6
+            && int.TryParse(safeName[..6], out _);
+        var namedWithDate = alreadyHasDate ? safeName : $"{datePrefix} {safeName}";
+
+        if (isAttachment)
         {
+            // Attachments: keep att_ prefix, accumulate
+            var finalName = $"att_{namedWithDate}.pdf";
+            File.WriteAllBytes(Path.Combine(dir, finalName), bytes);
+        }
+        else
+        {
+            // Session file: overwrite any existing non-att file (only one allowed)
+            foreach (var f in Directory.GetFiles(dir, "*.pdf"))
+            {
+                var fn = Path.GetFileName(f);
+                if (!fn.StartsWith("att_", StringComparison.OrdinalIgnoreCase))
+                {
+                    try { File.Delete(f); } catch { }
+                }
+            }
+            var finalName = $"ses_{namedWithDate}.pdf";
+            File.WriteAllBytes(Path.Combine(dir, finalName), bytes);
+        }
+
+        Console.WriteLine($"[ScanInbox] Saved as '{(isAttachment ? "att_" : "ses_")}{namedWithDate}.pdf' for user '{username}'");
+    }
+
+    public List<(string FileName, byte[] Data, bool IsAttachment)> GetScanInboxFiles(string username)
+    {
+        CleanupScanInbox(username);
+        var dir = GetScanInboxPath(username);
+        Console.WriteLine($"[ScanInbox] GetScanInboxFiles: dir='{dir}' exists={Directory.Exists(dir)}");
+        if (!Directory.Exists(dir)) return [];
+
+        var result = new List<(string, byte[], bool)>();
+        foreach (var f in Directory.GetFiles(dir, "*.pdf").OrderBy(f => f))
+        {
+            var name = Path.GetFileName(f);
+            var isAtt = name.StartsWith("att_", StringComparison.OrdinalIgnoreCase);
             try
             {
-                using var img = PdfSharpCore.Drawing.XImage.FromStream(() => new MemoryStream(imgBytes));
-                var page = doc.AddPage();
-                page.Width  = PdfSharpCore.Drawing.XUnit.FromPoint(img.PixelWidth);
-                page.Height = PdfSharpCore.Drawing.XUnit.FromPoint(img.PixelHeight);
-                using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page);
-                gfx.DrawImage(img, 0, 0, page.Width, page.Height);
+                result.Add((name, File.ReadAllBytes(f), isAtt));
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[CreatePdfFromImages] Skipping corrupted image: {ex.Message}");
+                Console.WriteLine($"[ScanInbox] Failed to read '{name}': {ex.Message}");
             }
         }
+        return result;
+    }
 
-        if (doc.PageCount == 0)
-            throw new InvalidOperationException("No valid images could be processed");
+    public void ClearScanInbox(string username)
+    {
+        var dir = GetScanInboxPath(username);
+        Console.WriteLine($"[ScanInbox] ClearInbox: user='{username}' dir='{dir}' exists={Directory.Exists(dir)}");
+        if (Directory.Exists(dir))
+        {
+            try
+            {
+                Directory.Delete(dir, recursive: true);
+                Console.WriteLine($"[ScanInbox] ClearInbox: deleted successfully");
+            }
+            catch (Exception ex) { Console.WriteLine($"[ScanInbox] ClearInbox FAILED: {ex.Message}"); }
+        }
+    }
 
-        doc.Save(ms);
-        return ms.ToArray();
+    public void CleanupScanInbox(string username)
+    {
+        var dir = GetScanInboxPath(username);
+        if (!Directory.Exists(dir)) return;
+        var cutoff = DateTime.Now.AddHours(-3);
+        foreach (var f in Directory.GetFiles(dir))
+        {
+            try
+            {
+                if (File.GetCreationTime(f) < cutoff)
+                    File.Delete(f);
+            }
+            catch { }
+        }
+        // Remove dir if empty
+        try { if (Directory.Exists(dir) && !Directory.EnumerateFileSystemEntries(dir).Any()) Directory.Delete(dir); }
+        catch { }
     }
 
     public bool SectionFileExistsAtPath(int pcId, string relativeFolder, string fileName, bool solo = false)

@@ -1229,17 +1229,9 @@
                                 <label class="form-label" style="font-size:.82rem; color:#94a3b8;">
                                     Session File <span class="text-danger">*</span> <span class="text-muted">(PDF, single file)</span>
                                 </label>
-                                <div class="d-flex align-items-center gap-2">
-                                    <InputFile accept=".pdf" OnChange="OnSessionFileSelected"
-                                               class="form-control form-control-sm"
-                                               style="background:#0f172a; color:#e2e8f0; border-color:#475569; flex:1;" />
-                                    <button class="btn btn-sm btn-outline-info scan-trigger-btn"
-                                            type="button"
-                                            @onclick='() => OpenScanner("session")'
-                                            title="Scan document with camera">
-                                        <i class="ri-camera-line"></i>
-                                    </button>
-                                </div>
+                                <InputFile accept=".pdf" OnChange="OnSessionFileSelected"
+                                           class="form-control form-control-sm"
+                                           style="background:#0f172a; color:#e2e8f0; border-color:#475569;" />
                             </div>
 
                             @if (_importSessionBytes != null)
@@ -1303,17 +1295,9 @@
                                 <label class="form-label" style="font-size:.82rem; color:#94a3b8;">
                                     Attachments <span class="text-muted">(optional, multiple PDFs)</span>
                                 </label>
-                                <div class="d-flex align-items-center gap-2">
-                                    <InputFile multiple accept=".pdf" OnChange="OnAttachmentFilesSelected"
-                                               class="form-control form-control-sm"
-                                               style="background:#0f172a; color:#e2e8f0; border-color:#475569; flex:1;" />
-                                    <button class="btn btn-sm btn-outline-info scan-trigger-btn"
-                                            type="button"
-                                            @onclick='() => OpenScanner("attachment")'
-                                            title="Scan attachment with camera">
-                                        <i class="ri-camera-line"></i>
-                                    </button>
-                                </div>
+                                <InputFile multiple accept=".pdf" OnChange="OnAttachmentFilesSelected"
+                                           class="form-control form-control-sm"
+                                           style="background:#0f172a; color:#e2e8f0; border-color:#475569;" />
                             </div>
 
                             @if (_importAttachmentBytes.Count > 0)
@@ -1345,6 +1329,21 @@
                                 </div>
                             }
                         </div>
+
+                        <div class="mb-2 d-flex align-items-center gap-2 flex-wrap">
+                            <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                                    style="font-size:.78rem;"
+                                    @onclick="PickFromInbox">
+                                <i class="ri-inbox-line"></i> Pick from Inbox
+                            </button>
+                            @if (!string.IsNullOrEmpty(_inboxMessage))
+                            {
+                                <span style="font-size:.75rem; color:@(_inboxMessage.StartsWith("Error") || _inboxMessage == "Inbox is empty" ? "#f59e0b" : "#10b981");">
+                                    <i class="@(_inboxMessage.StartsWith("Error") || _inboxMessage == "Inbox is empty" ? "ri-information-line" : "ri-check-line") me-1"></i>@_inboxMessage
+                                </span>
+                            }
+                        </div>
+
                         <hr style="border-color:#334155; margin:4px 0 12px;" />
 
                         <div class="arf">
@@ -1652,118 +1651,6 @@
                         </div>
                     }
                 </div>
-            </div>
-        </div>
-    </div>
-}
-
-@* ── Document Scanner Modal ── *@
-@if (_showScanner)
-{
-    <div class="scanner-overlay" @onclick="CloseScannerConfirm" @onclick:stopPropagation="true">
-        <div class="scanner-modal" @onclick:stopPropagation="true">
-            <div class="scanner-header">
-                <span class="d-flex align-items-center gap-2">
-                    <i class="ri-camera-line"></i>
-                    Scan @(_scanMode == "session" ? "Session" : "Attachment")
-                    @if (_scanPageCount > 0)
-                    {
-                        <span class="badge bg-primary" style="font-size:.7rem;">@_scanPageCount page@(_scanPageCount != 1 ? "s" : "")</span>
-                    }
-                </span>
-                <button class="btn btn-sm btn-close btn-close-white" @onclick="CloseScannerConfirm"></button>
-            </div>
-
-            <div class="scanner-body">
-                @* Camera preview *@
-                <div class="scanner-preview-wrap">
-                    <video id="scan-video" autoplay playsinline muted></video>
-                    <canvas id="scan-edge-overlay"></canvas>
-                    <canvas id="scan-canvas" style="display:none;"></canvas>
-                </div>
-
-                @* Status messages *@
-                @if (!_scanCameraReady)
-                {
-                    <div class="text-center py-2" style="color:#94a3b8; font-size:.82rem;">
-                        <i class="ri-loader-4-line ri-spin me-1"></i>Starting camera...
-                    </div>
-                }
-                @if (!_scanOpenCvReady && _scanCameraReady)
-                {
-                    <div class="text-center py-1" style="color:#f59e0b; font-size:.75rem;">
-                        <i class="ri-loader-4-line ri-spin me-1"></i>Loading scanner engine...
-                    </div>
-                }
-                @if (_scanOpenCvFailed)
-                {
-                    <div class="text-center py-1" style="color:#f59e0b; font-size:.72rem;">
-                        <i class="ri-alert-line me-1"></i>Enhanced filter unavailable — basic filter active
-                    </div>
-                }
-
-                @* Capture + gallery buttons *@
-                <div class="d-flex align-items-center justify-content-center gap-3 py-2">
-                    <button class="btn scan-capture-btn"
-                            disabled="@(!_scanCameraReady)"
-                            @onclick="ScanCapture"
-                            title="Capture page">
-                        <i class="ri-camera-line" style="font-size:1.5rem;"></i>
-                    </button>
-                    <label class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1 mb-0"
-                           style="cursor:pointer; font-size:.78rem;">
-                        <i class="ri-gallery-line"></i> Gallery
-                        <input type="file" accept="image/jpeg,image/png,image/webp"
-                               style="display:none;"
-                               onchange="lpmScanner.onGalleryFile(this)" />
-                    </label>
-                </div>
-
-                @* Boundary detection warning *@
-                @if (_scanPageCount > 0 && !_scanLastBoundaryFound)
-                {
-                    <div class="d-flex align-items-center gap-2 px-2 py-1 mb-1"
-                         style="background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.3);
-                                border-radius:6px; font-size:.78rem; color:#f59e0b;">
-                        <i class="ri-error-warning-line"></i>
-                        <span>Page boundary not detected on last capture — make sure the page edges are visible against the background. You can remove and retake.</span>
-                    </div>
-                }
-
-                @* Page thumbnails strip *@
-                @if (_scanPageCount > 0)
-                {
-                    <div class="scan-pages-strip">
-                        @for (int i = 0; i < _scanThumbnails.Count; i++)
-                        {
-                            var idx = i;
-                            <div class="scan-page-thumb">
-                                <img src="@_scanThumbnails[idx]" alt="Page @(idx + 1)" />
-                                <span class="scan-page-num">@(idx + 1)</span>
-                                <button class="btn btn-sm scan-page-remove" @onclick="() => RemoveScanPage(idx)">
-                                    <i class="ri-close-circle-fill"></i>
-                                </button>
-                            </div>
-                        }
-                    </div>
-                }
-            </div>
-
-            <div class="scanner-footer">
-                <button class="btn btn-sm btn-outline-secondary" @onclick="CloseScannerConfirm">Cancel</button>
-                <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                        disabled="@(_scanPageCount == 0 || _scanProcessing)"
-                        @onclick="ScanDone">
-                    @if (_scanProcessing)
-                    {
-                        <span class="spinner-border spinner-border-sm"></span>
-                    }
-                    else
-                    {
-                        <i class="ri-check-line"></i>
-                    }
-                    Done (@_scanPageCount)
-                </button>
             </div>
         </div>
     </div>
@@ -2877,74 +2764,6 @@
     }
     .arf-del-row-btn:hover { color: #ef4444; }
 
-    /* ── Document Scanner ── */
-    .scan-trigger-btn {
-        min-width: 38px; min-height: 38px; padding: 0; display: flex;
-        align-items: center; justify-content: center; font-size: 1.1rem;
-        border-radius: 6px; flex-shrink: 0;
-    }
-    .scanner-overlay {
-        position: fixed; inset: 0; background: rgba(0,0,0,.85);
-        z-index: 10010; display: flex; align-items: center; justify-content: center;
-        padding: 8px;
-    }
-    .scanner-modal {
-        background: #1e293b; border-radius: 12px; width: 95vw; max-width: 520px;
-        max-height: 92vh; display: flex; flex-direction: column;
-        border: 1px solid #334155; box-shadow: 0 12px 40px rgba(0,0,0,.6);
-    }
-    .scanner-header {
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 10px 16px; font-weight: 600; color: #e2e8f0; font-size: .92rem;
-        background: linear-gradient(135deg, #0f766e, #14b8a6); border-radius: 12px 12px 0 0;
-    }
-    .scanner-body {
-        flex: 1; overflow-y: auto; padding: 12px;
-    }
-    .scanner-preview-wrap {
-        position: relative; border-radius: 8px; overflow: hidden;
-        background: #000; margin-bottom: 8px;
-    }
-    .scanner-preview-wrap video {
-        width: 100%; max-height: 50vh; display: block; border-radius: 6px;
-    }
-    #scan-edge-overlay {
-        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-        pointer-events: none; border-radius: 6px;
-    }
-    .scanner-footer {
-        display: flex; align-items: center; justify-content: flex-end; gap: 8px;
-        padding: 10px 16px; border-top: 1px solid #334155;
-    }
-    .scan-capture-btn {
-        width: 60px; height: 60px; border-radius: 50%;
-        border: 3px solid #14b8a6; background: rgba(20,184,166,.15);
-        color: #14b8a6; display: flex; align-items: center; justify-content: center;
-        transition: all .15s;
-    }
-    .scan-capture-btn:hover:not(:disabled) { background: rgba(20,184,166,.3); transform: scale(1.05); }
-    .scan-capture-btn:disabled { opacity: .4; cursor: not-allowed; }
-    .scan-pages-strip {
-        display: flex; gap: 10px; overflow-x: auto; padding: 8px 4px;
-        -webkit-overflow-scrolling: touch;
-    }
-    .scan-page-thumb {
-        flex: 0 0 auto; position: relative; text-align: center;
-    }
-    .scan-page-thumb img {
-        width: 64px; object-fit: cover; border-radius: 4px;
-        border: 2px solid #475569; display: block;
-    }
-    .scan-page-num {
-        display: block; font-size: .65rem; color: #94a3b8; margin-top: 2px;
-    }
-    .scan-page-remove {
-        position: absolute; top: -6px; right: -6px; padding: 0; line-height: 1;
-        color: #ef4444; font-size: .9rem; background: #1e293b; border-radius: 50%;
-        min-width: 20px; min-height: 20px;
-    }
-    .scan-page-remove:hover { color: #f87171; }
-
     /* ── ARF responsive: tablet ── */
     @@media (max-width: 768px) {
         .arf-left-col { flex: 0 0 220px; }
@@ -3036,7 +2855,7 @@
     .apc-search-input:focus { box-shadow: none !important; border-color: #cbd5e1 !important; background: #fff !important; }
     .apc-clear-btn { border-color: #e2e8f0; color: #64748b; background: #f8fafc; }
     .apc-filter-hint { font-size: .75rem; color: #64748b; margin-top: 5px; padding-left: 2px; }
-    .apc-search-results { background: #fff; border-bottom: 2px solid #e2e8f0; max-height: 200px; overflow-y: auto; }
+    .apc-search-results { background: #fff; border-bottom: 2px solid #e2e8f0; min-height: 140px; max-height: 280px; overflow-y: auto; flex-shrink: 0; }
     .apc-search-item { display: flex; align-items: center; padding: 9px 16px; cursor: pointer; font-size: .88rem; transition: background .12s; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
     .apc-search-item:last-child { border-bottom: none; }
     .apc-search-item:hover { background: #eef2ff; color: #1e40af; }
@@ -3158,17 +2977,6 @@
     bool _refBrowserOpen;
     List<(string Section, string Name, string RelPath)> _refFileList = [];
 
-    // ── Scanner state ──
-    bool   _showScanner;
-    string _scanMode      = "session";
-    int    _scanPageCount;
-    bool   _scanCameraReady;
-    bool   _scanOpenCvReady;
-    bool   _scanOpenCvFailed;
-    bool   _scanProcessing;
-    bool   _scanLastBoundaryFound = true;
-    List<string> _scanThumbnails = [];
-    DotNetObjectReference<MainHeader>? _scanDotNetRef;
 
     // Background import toast state
     bool   _bgImportRunning;
@@ -3527,16 +3335,12 @@
         _importStep = 1;
         _arfDate = ""; _arfGrade = ""; _arfSessionLength = ""; _arfAdminTime = ""; _arfTotalTa = ""; _arfTaRangeFrom = ""; _arfTaRangeTo = ""; _arfExamReport = "F/N"; _arfSummary = "";
         _step3TopHtml = ""; _step3BottomHtml = "";
-        // Reset scanner state
-        _showScanner = false;
-        _scanPageCount = 0;
-        _scanThumbnails.Clear();
-        _scanDotNetRef?.Dispose();
-        _scanDotNetRef = null;
         _arfRows = [
             new ArfRow { Process = "TITS", Results = "FN", Touched = true, Checked = false, AutoUnchecked = true },
             new ArfRow { Process = "EOS",  Results = "FN", Touched = true, Checked = false, AutoUnchecked = true }
         ];
+        // Auto-load files from scan inbox (PWA share target)
+        LoadInboxFiles();
         _showImportWizard = true;
     }
 
@@ -3828,161 +3632,111 @@
         _importError = "";
     }
 
-    // ── Scanner methods ──────────────────────────────────────────
-    async Task OpenScanner(string mode)
+    // ── Scan Inbox (PWA share target) ──
+    string _inboxMessage = "";
+
+    // Strip the ses_/att_ prefix from inbox filenames to get the clean name
+    static string StripInboxPrefix(string fileName)
     {
-        _scanMode = mode;
-        _showScanner = true;
-        _scanPageCount = 0;
-        _scanCameraReady = false;
-        _scanOpenCvReady = false;
-        _scanOpenCvFailed = false;
-        _scanProcessing = false;
-        _scanLastBoundaryFound = true;
-        _scanThumbnails.Clear();
-        StateHasChanged();
-
-        // Wait for DOM to render the video element
-        await Task.Delay(100);
-
-        _scanDotNetRef?.Dispose();
-        _scanDotNetRef = DotNetObjectReference.Create(this);
-        var ok = await JSRuntime.InvokeAsync<bool>("lpmScanner.open", _scanDotNetRef, mode);
-        _scanCameraReady = ok;
-        if (!ok)
-            _scanOpenCvFailed = true; // camera failed — show message
-        StateHasChanged();
+        var name = Path.GetFileNameWithoutExtension(fileName);
+        if (name.StartsWith("ses_", StringComparison.OrdinalIgnoreCase))
+            name = name[4..];
+        else if (name.StartsWith("att_", StringComparison.OrdinalIgnoreCase))
+            name = name[4..];
+        return name;
     }
 
-    async Task ScanCapture()
+    void LoadInboxFiles()
     {
-        await JSRuntime.InvokeVoidAsync("lpmScanner.capture");
-    }
-
-    async Task RemoveScanPage(int index)
-    {
-        await JSRuntime.InvokeVoidAsync("lpmScanner.removePage", index);
-    }
-
-    [JSInvokable]
-    public void OnScanPageAdded(string thumbnailDataUrl, int pageCount, bool boundaryFound)
-    {
-        _scanThumbnails.Add(thumbnailDataUrl);
-        _scanPageCount = pageCount;
-        _scanLastBoundaryFound = boundaryFound;
-        InvokeAsync(StateHasChanged);
-    }
-
-    [JSInvokable]
-    public void OnScanPageRemoved(int removedIndex, int pageCount)
-    {
-        if (removedIndex >= 0 && removedIndex < _scanThumbnails.Count)
-            _scanThumbnails.RemoveAt(removedIndex);
-        _scanPageCount = pageCount;
-        InvokeAsync(StateHasChanged);
-    }
-
-    [JSInvokable]
-    public void OnOpenCvReady()
-    {
-        _scanOpenCvReady = true;
-        InvokeAsync(StateHasChanged);
-    }
-
-    [JSInvokable]
-    public void OnOpenCvFailed()
-    {
-        _scanOpenCvFailed = true;
-        InvokeAsync(StateHasChanged);
-    }
-
-    async Task ScanDone()
-    {
-        if (_scanPageCount == 0 || _scanProcessing) return;
-        _scanProcessing = true;
-        StateHasChanged();
-
+        _inboxMessage = "";
         try
         {
-            var pages = await JSRuntime.InvokeAsync<string[]>("lpmScanner.getPages");
-            await JSRuntime.InvokeVoidAsync("lpmScanner.close");
+            Console.WriteLine($"[ScanInbox] LoadInboxFiles for user='{_logUsername}'");
+            var inboxFiles = FolderSvc.GetScanInboxFiles(_logUsername);
+            Console.WriteLine($"[ScanInbox] Found {inboxFiles.Count} file(s)");
 
-            if (pages == null || pages.Length == 0) return;
+            if (inboxFiles.Count == 0) return;
 
-            // Convert base64 data URLs to byte arrays
-            var imageBytes = new List<byte[]>();
-            foreach (var p in pages)
+            int sesCount = 0, attCount = 0;
+            foreach (var (name, data, isAtt) in inboxFiles)
             {
-                var base64 = p;
-                var commaIdx = base64.IndexOf(',');
-                if (commaIdx >= 0) base64 = base64[(commaIdx + 1)..];
-                imageBytes.Add(Convert.FromBase64String(base64));
+                Console.WriteLine($"[ScanInbox]   '{name}' ({data.Length} bytes, att={isAtt})");
+                if (isAtt)
+                {
+                    var cleanAttName = StripInboxPrefix(name) + ".pdf";
+                    _importAttachmentBytes.Add((cleanAttName, data, false));
+                    attCount++;
+                }
+                else if (_importSessionBytes == null)
+                {
+                    var cleanName = StripInboxPrefix(name);
+                    _importSessionBytes = data;
+                    _importSessionFile = null;
+                    _importSessionFileName = cleanName + ".pdf";
+                    ComputeNormalizedFileName(cleanName);
+                    sesCount++;
+                }
             }
-
-            // Create PDF from images (server-side)
-            var pdfBytes = FolderSvc.CreatePdfFromImages(imageBytes);
-
-            // Normalize page sizes using existing pipeline
-            var normalized = FolderSvc.TryNormalizePdfDirect(pdfBytes);
-            if (normalized != null) pdfBytes = normalized;
-
-            var stamp = DateTime.Now.ToString("yyMMdd_HHmmss");
-
-            if (_scanMode == "session")
-            {
-                _importSessionBytes = pdfBytes;
-                _importSessionFile = null;
-                _importSessionFileName = $"{stamp}.pdf";
-                ComputeNormalizedFileName(stamp);
-                CheckDuplicateSession();
-            }
-            else
-            {
-                var fileName = $"Attachment_{stamp}.pdf";
-                _importAttachmentBytes.Add((fileName, pdfBytes, true));
-            }
+            Console.WriteLine($"[ScanInbox] Loaded: {sesCount} session, {attCount} attachment(s)");
         }
         catch (Exception ex)
         {
-            _importError = $"Scan failed: {ex.Message}";
-            Console.WriteLine($"[Scanner] ScanDone failed: {ex}");
+            Console.WriteLine($"[ScanInbox] LoadInboxFiles FAILED: {ex}");
         }
-        finally
+    }
+
+    void PickFromInbox()
+    {
+        _inboxMessage = "";
+        try
         {
-            _showScanner = false;
-            _scanProcessing = false;
-            _scanDotNetRef?.Dispose();
-            _scanDotNetRef = null;
-            StateHasChanged();
-        }
-    }
+            var inboxFiles = FolderSvc.GetScanInboxFiles(_logUsername);
+            Console.WriteLine($"[ScanInbox] PickFromInbox: user='{_logUsername}', found={inboxFiles.Count}");
 
-    async Task CloseScannerConfirm()
-    {
-        if (_scanPageCount > 0)
+            if (inboxFiles.Count == 0)
+            {
+                _inboxMessage = "Inbox is empty";
+                return;
+            }
+
+            int sesCount = 0, attCount = 0;
+            foreach (var (name, data, isAtt) in inboxFiles)
+            {
+                if (isAtt)
+                {
+                    var cleanAttName = StripInboxPrefix(name) + ".pdf";
+                    if (!_importAttachmentBytes.Any(a => a.Name == cleanAttName))
+                    {
+                        _importAttachmentBytes.Add((cleanAttName, data, false));
+                        attCount++;
+                    }
+                }
+                else
+                {
+                    var cleanName = StripInboxPrefix(name);
+                    _importSessionBytes = data;
+                    _importSessionFile = null;
+                    _importSessionFileName = cleanName + ".pdf";
+                    ComputeNormalizedFileName(cleanName);
+                    CheckDuplicateSession();
+                    sesCount++;
+                }
+            }
+
+            var parts = new List<string>();
+            if (sesCount > 0) parts.Add($"{sesCount} session file");
+            if (attCount > 0) parts.Add($"{attCount} attachment{(attCount > 1 ? "s" : "")}");
+            _inboxMessage = parts.Count > 0 ? $"Loaded {string.Join(" + ", parts)} from inbox" : "No new files in inbox";
+        }
+        catch (Exception ex)
         {
-            var discard = await JSRuntime.InvokeAsync<bool>("confirm",
-                $"Discard {_scanPageCount} scanned page{(_scanPageCount != 1 ? "s" : "")}?");
-            if (!discard) return;
+            _inboxMessage = $"Error: {ex.Message}";
+            Console.WriteLine($"[ScanInbox] PickFromInbox FAILED: {ex}");
         }
-        await CloseScanner();
     }
 
-    async Task CloseScanner()
+    void CloseWizard()
     {
-        try { await JSRuntime.InvokeVoidAsync("lpmScanner.close"); } catch { }
-        _showScanner = false;
-        _scanPageCount = 0;
-        _scanThumbnails.Clear();
-        _scanDotNetRef?.Dispose();
-        _scanDotNetRef = null;
-        StateHasChanged();
-    }
-
-    async Task CloseWizard()
-    {
-        if (_showScanner)
-            await CloseScanner();
         _showImportWizard = false;
     }
 
@@ -4037,6 +3791,9 @@
         await JSRuntime.InvokeVoidAsync("wizardRef.closeFloat");
         _refBrowserOpen = false;
 
+        // Clear entire scan inbox
+        FolderSvc.ClearScanInbox(_logUsername);
+
         // Close modal immediately and reset fields
         _showImportWizard        = false;
         _importSessionFile       = null;
@@ -4050,11 +3807,6 @@
         _step3BottomHtml         = "";
         _importAttachments.Clear();
         _importAttachmentBytes.Clear();
-        _showScanner = false;
-        _scanDotNetRef?.Dispose();
-        _scanDotNetRef = null;
-        _scanPageCount = 0;
-        _scanThumbnails.Clear();
         _importPcId      = 0;
         _importStep      = 1;
         _importError     = "";
@@ -4507,9 +4259,7 @@ string _actionPcSearch = "";
         MsgNotifier.OnNewMessage -= OnNewMessageReceived;
         _headerScrollRef?.Dispose();
         _step3DotNetRef?.Dispose();
-        _scanDotNetRef?.Dispose();
         JSRuntime.InvokeVoidAsync("interop.unregisterheaderScrollListener");
-        JSRuntime.InvokeVoidAsync("lpmScanner.close");
     }
 
     DotNetObjectReference<MainHeader>? _headerScrollRef;

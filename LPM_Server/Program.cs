@@ -159,7 +159,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
             ? CookieSecurePolicy.SameAsRequest
             : CookieSecurePolicy.Always;
-        options.ExpireTimeSpan = TimeSpan.FromHours(12);
+        options.ExpireTimeSpan = TimeSpan.FromDays(21);
         options.SlidingExpiration = true;
     });
 
@@ -588,6 +588,27 @@ static bool CanAccessPcFile(HttpContext ctx, int pcId, bool solo, LPM.Services.D
     var uname = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
     return dashSvc.CanAccessPcFolder(userId, pcId, uname);  // non-solo: must have permission
 }
+
+// ── PWA Share Target: receive scanned PDF ──
+app.MapPost("/share-receive", async (HttpContext ctx, LPM.Services.FolderService svc) =>
+{
+    var username = ctx.User.Identity?.Name;
+    if (string.IsNullOrEmpty(username))
+        return Results.Redirect("/login");
+
+    var form = await ctx.Request.ReadFormAsync();
+    // Try "files" (manifest field name), then any file
+    var file = form.Files.GetFile("files") ?? form.Files.FirstOrDefault();
+    if (file == null || file.Length == 0)
+        return Results.Redirect("/scan-received?status=nofile");
+
+    using var ms = new MemoryStream();
+    await file.CopyToAsync(ms);
+    svc.SaveToScanInbox(username, file.FileName ?? "scan.pdf", ms.ToArray());
+
+    Console.WriteLine($"[ShareTarget] Received '{file.FileName}' ({file.Length} bytes) from '{username}'");
+    return Results.Redirect($"/scan-received?status=ok&name={Uri.EscapeDataString(file.FileName ?? "scan.pdf")}");
+});
 
 app.MapGet("/api/pc-file", (int pcId, string path, LPM.Services.FolderService svc,
     LPM.Services.DashboardService dashSvc, HttpContext ctx, bool solo = false, bool download = false) =>

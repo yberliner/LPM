@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "LifePower",
   "short_name": "LP",
   "start_url": "/",
@@ -17,5 +17,26 @@
       "sizes": "512x512",
       "type": "image/png"
     }
-  ]
+  ],
+  "share_target": {
+    "action": "/share-receive",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "files": [
+        {
+          "name": "files",
+          "accept": [
+            "application/pdf",
+            ".pdf",
+            "image/jpeg",
+            ".jpg",
+            ".jpeg",
+            "image/png",
+            ".png"
+          ]
+        }
+      ]
+    }
+  }
 }

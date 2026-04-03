@@ -1,0 +1,86 @@
+@page "/scan-received"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthStateProvider
+
+<div style="min-height:100vh; display:flex; align-items:center; justify-content:center;
+            background:linear-gradient(135deg,#0f172a,#1e293b); padding:20px;">
+    <div style="background:#1e293b; border:1px solid #334155; border-radius:16px;
+                padding:32px 28px; max-width:420px; width:100%; text-align:center;
+                box-shadow:0 8px 32px rgba(0,0,0,.4);">
+
+        @if (_status == "ok")
+        {
+            <div style="width:64px;height:64px;border-radius:50%;background:rgba(16,185,129,.15);
+                        display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+                <i class="ri-check-line" style="font-size:2rem;color:#10b981;"></i>
+            </div>
+            <h4 style="color:#e2e8f0; margin-bottom:8px;">File Received</h4>
+            @if (!string.IsNullOrEmpty(_fileName))
+            {
+                <div style="color:#94a3b8; font-size:.85rem; margin-bottom:12px;
+                            overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    <i class="ri-file-pdf-2-line me-1" style="color:#ef5350;"></i>@_fileName
+                </div>
+            }
+            <div style="color:#64748b; font-size:.78rem; margin-bottom:16px;">
+                <i class="ri-user-line me-1"></i>User: <strong style="color:#94a3b8;">@_username</strong>
+            </div>
+            <div style="background:rgba(59,130,246,.08); border:1px solid rgba(59,130,246,.2);
+                        border-radius:8px; padding:10px 14px; margin-bottom:16px;">
+                <div style="color:#60a5fa; font-size:.82rem;">
+                    <i class="ri-time-line me-1"></i>Available for <strong>3 hours</strong>
+                </div>
+                <div style="color:#64748b; font-size:.72rem; margin-top:4px;">
+                    Expires at @DateTime.Now.AddHours(3).ToString("HH:mm")
+                </div>
+            </div>
+            <p style="color:#94a3b8; font-size:.88rem; line-height:1.5; margin-bottom:0;">
+                Open <strong style="color:#e2e8f0;">Add Session</strong> to use it — the file will be attached automatically.
+            </p>
+        }
+        else if (_status == "nofile")
+        {
+            <div style="width:64px;height:64px;border-radius:50%;background:rgba(239,68,68,.15);
+                        display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+                <i class="ri-error-warning-line" style="font-size:2rem;color:#ef4444;"></i>
+            </div>
+            <h4 style="color:#e2e8f0; margin-bottom:8px;">No File Received</h4>
+            <p style="color:#94a3b8; font-size:.88rem;">
+                No PDF file was included. Please try sharing again.
+            </p>
+        }
+        else
+        {
+            <div style="width:64px;height:64px;border-radius:50%;background:rgba(148,163,184,.15);
+                        display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+                <i class="ri-inbox-line" style="font-size:2rem;color:#94a3b8;"></i>
+            </div>
+            <h4 style="color:#e2e8f0; margin-bottom:8px;">Scan Inbox</h4>
+            <p style="color:#94a3b8; font-size:.88rem;">
+                Share a PDF from your scanner app to upload it here.
+            </p>
+        }
+
+        <button class="btn btn-primary mt-3" @onclick='() => Nav.NavigateTo("/Home")'>
+            <i class="ri-home-line me-1"></i>Go to Home
+        </button>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery] public string? status { get; set; }
+    [SupplyParameterFromQuery] public string? name { get; set; }
+
+    string _status = "";
+    string _fileName = "";
+    string _username = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _status = status ?? "";
+        _fileName = name ?? "";
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        _username = auth.User.Identity?.Name ?? "";
+    }
+}
