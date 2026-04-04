@@ -131,9 +131,41 @@
                                     }
                                 </td>
                                 <td class="text-center py-2">
-                                    @if (up.MethodType == "ToBePaid" || up.MethodType == "Credit")
+                                    @if (up.MethodType == "ToBePaid")
                                     {
-                                        <span style="color:@(up.MethodType == "Credit" ? "#16a34a" : "#d97706");font-size:.75rem;" title="@(up.MethodType == "Credit" ? LS.T("purchases.credit") : "Payment pending resolution")"><i class="@(up.MethodType == "Credit" ? "ri-wallet-3-line" : "ri-alert-line")"></i></span>
+                                        @if (_confirmToBePaidId == up.PaymentMethodId)
+                                        {
+                                            <div class="d-flex align-items-center gap-1">
+                                                <select class="form-select form-select-sm" style="font-size:.7rem; width:auto; padding:2px 24px 2px 6px;"
+                                                        @bind="_confirmToBePaidMethod">
+                                                    <option value="Cash">@LS.T("purchases.cash")</option>
+                                                    <option value="CreditCard">@LS.T("purchases.creditCard")</option>
+                                                    <option value="Check">@LS.T("purchases.check")</option>
+                                                    <option value="BankTransfer">@LS.T("purchases.bankTransfer")</option>
+                                                    <option value="Credit">@LS.T("purchases.credit")</option>
+                                                </select>
+                                                <button class="btn btn-sm p-0" style="color:#16a34a;font-size:.85rem;"
+                                                        @onclick="() => DoConfirmToBePaid(up.PaymentMethodId)">
+                                                    <i class="ri-check-line"></i>
+                                                </button>
+                                                <button class="btn btn-sm p-0" style="color:#94a3b8;font-size:.85rem;"
+                                                        @onclick="() => _confirmToBePaidId = 0">
+                                                    <i class="ri-close-line"></i>
+                                                </button>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <span class="py-chip-confirm" role="button" style="background:#fef3c7;color:#92400e;border-color:#fcd34d;"
+                                                  @onclick="() => StartConfirmToBePaid(up.PaymentMethodId)"
+                                                  title="Confirm payment received">
+                                                <i class="ri-check-line"></i> @LS.T("payments.confirm")
+                                            </span>
+                                        }
+                                    }
+                                    else if (up.MethodType == "Credit")
+                                    {
+                                        <span style="color:#16a34a;font-size:.75rem;" title="@LS.T("purchases.credit")"><i class="ri-wallet-3-line"></i></span>
                                     }
                                     else if (up.IsMoneyInBank)
                                     {
@@ -535,6 +567,25 @@
             }
         </th>
     };
+
+    // ── ToBePaid confirm ──
+    int _confirmToBePaidId;
+    string _confirmToBePaidMethod = "Cash";
+
+    void StartConfirmToBePaid(int paymentMethodId)
+    {
+        _confirmToBePaidId = paymentMethodId;
+        _confirmToBePaidMethod = "Cash";
+    }
+
+    async Task DoConfirmToBePaid(int paymentMethodId)
+    {
+        var row = _rows.FirstOrDefault(r => r.PaymentMethodId == paymentMethodId);
+        Console.WriteLine($"[Payments] ToBePaid confirmed → {_confirmToBePaidMethod}: paymentId={paymentMethodId} PC='{row?.PcName}' amount={CurrSym(row?.Currency ?? "ILS")}{row?.Amount} by '{_username}'");
+        PcSvc.ConfirmToBePaid(paymentMethodId, _confirmToBePaidMethod);
+        _confirmToBePaidId = 0;
+        await LoadData();
+    }
 
     async Task ToggleBank(int paymentMethodId, bool newValue)
     {
