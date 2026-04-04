@@ -1023,18 +1023,10 @@ public List<PcListItem> GetAllPcs()
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        // BankTransfer/CreditCard: money is already in the bank
-        // Cash/Check: money received but not yet deposited — admin confirms bank later
-        // Credit: no actual money flow — mark as in bank (N/A)
-        bool autoBank = newMethodType is "BankTransfer" or "CreditCard" or "Credit";
         cmd.CommandText = @"
             UPDATE fin_payment_methods
-            SET MethodType = @type,
-                PaymentDate = date('now', '+2 hours'),
-                IsMoneyInBank = @bank,
-                MoneyInBankDate = CASE WHEN @bank = 1 THEN datetime('now', '+2 hours') ELSE NULL END
+            SET MethodType = @type, PaymentDate = date('now', '+2 hours'), IsMoneyInBank = 0, MoneyInBankDate = NULL
             WHERE PaymentMethodId = @id AND MethodType = 'ToBePaid'";
-        cmd.Parameters.AddWithValue("@bank", autoBank ? 1 : 0);
         cmd.Parameters.AddWithValue("@id", paymentMethodId);
         cmd.Parameters.AddWithValue("@type", newMethodType);
         cmd.ExecuteNonQuery();
