@@ -446,6 +446,10 @@
                         @if (_userBusy) { <span class="spinner-border spinner-border-sm me-1"></span> } else { <i class="ri-shield-keyhole-line me-1"></i> }
                         Re-verify User
                     </button>
+                    <button class="btn btn-outline-warning btn-sm diag-action-btn" disabled="@_userBusy" @onclick="ResetTotpSecret">
+                        @if (_userBusy) { <span class="spinner-border spinner-border-sm me-1"></span> } else { <i class="ri-key-line me-1"></i> }
+                        Reset TOTP Secret
+                    </button>
                 </div>
                 <div class="border-top pt-3">
                     <div class="row g-2 align-items-end">
@@ -1952,7 +1956,38 @@
         finally { _userBusy = false; }
     }
 
-    // ── core_pcs editor methods ────────────────────────────────────────────
+    async Task ResetTotpSecret()
+    {
+        if (_selectedUserId == 0) return;
+        _userBusy = true; _userMsg = "";
+        var targetUser = _userList.FirstOrDefault(u => u.Id == _selectedUserId)?.Username ?? _selectedUserId.ToString();
+        var admin = AdminUser();
+        try
+        {
+            await Task.Run(() =>
+            {
+                using var conn = new SqliteConnection(DbCs());
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "UPDATE core_users SET TotpSecret=NULL, TotpEnabled=0 WHERE Id=@id";
+                cmd.Parameters.AddWithValue("@id", _selectedUserId);
+                cmd.ExecuteNonQuery();
+                Console.WriteLine($"[Diagnosis] Admin '{admin}' reset TOTP secret for user '{targetUser}' (Id={_selectedUserId})");
+            });
+            _userMsg = $"TOTP secret cleared for {targetUser}. User will need to set up 2FA again on next login.";
+            _userMsgOk = true;
+            OnUserSelected(new ChangeEventArgs { Value = _selectedUserId.ToString() });
+            LoadLiveTables();
+        }
+        catch (Exception ex)
+        {
+            _userMsg = $"Error: {ex.Message}"; _userMsgOk = false;
+            Console.WriteLine($"[Diagnosis] Admin '{admin}' failed TOTP reset for user '{targetUser}': {ex.Message}");
+        }
+        finally { _userBusy = false; }
+    }
+
+    // ── core_pcs editor methods ────────��───────────────────────────────────
     void LoadPcsRows()
     {
         using var conn = new SqliteConnection(DbCs());
