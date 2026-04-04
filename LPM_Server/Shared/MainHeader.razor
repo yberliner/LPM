@@ -3263,10 +3263,10 @@
     string _xferError = "";
     string _xferSuccess = "";
     bool _xferBusy;
-    int _xferFromRemainHrs;
+    double _xferFromRemainHrs;
     int _xferFromRemainNis;
     int _xferFromRate;
-    List<(int PcId, string Name, int RemainHrs, int RemainNis, int Rate)> _xferPcList = [];
+    List<(int PcId, string Name, double RemainHrs, int RemainNis, int Rate)> _xferPcList = [];
     string CurrSymbol => "₪";
 
     // ── Assign PC modal state ──

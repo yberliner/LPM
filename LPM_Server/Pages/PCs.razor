@@ -1801,7 +1801,7 @@
 
     // Auditing purchases display
     List<AuditingPurchaseDisplay> _auditingPurchases = new();
-    record AuditingPurchaseDisplay(int PurchaseId, string Date, int HoursBought, int Amount, string Status, string Currency = "ILS");
+    record AuditingPurchaseDisplay(int PurchaseId, string Date, double HoursBought, int Amount, string Status, string Currency = "ILS");
     List<CompletionService.PcCompletionDetail> _pcCompletions = [];
 
     class PurchaseItemModel
@@ -1809,7 +1809,7 @@
         public string ItemType { get; set; } = "Auditing";
         public int CourseId { get; set; }
         public int BookId { get; set; }
-        public int HoursBought { get; set; }
+        public double HoursBought { get; set; }
         public int AmountPaid { get; set; }
     }
 
@@ -2228,7 +2228,7 @@
             itemType:    pi.ItemType,
             courseId:    pi.ItemType == "Course" ? (int?)pi.CourseId : null,
             bookId:     pi.ItemType == "Book" ? (int?)pi.BookId : null,
-            hoursBought: pi.ItemType == "Auditing" ? pi.HoursBought : 0,
+            hoursBought: pi.ItemType == "Auditing" ? (int)pi.HoursBought : 0,
             amountPaid:  pi.AmountPaid
         )).ToList();
 
