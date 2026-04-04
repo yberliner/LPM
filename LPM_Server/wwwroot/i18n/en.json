@@ -753,6 +753,8 @@
   "purchases.cash": "Cash",
   "purchases.check": "Check",
   "purchases.bankTransfer": "Bank Transfer",
+  "purchases.toBePaid": "To Be Paid",
+  "purchases.credit": "Credit",
   "purchases.paymentDate": "Payment Date",
   "purchases.moneyInBank": "Money In Bank",
   "purchases.moneyInBankDate": "Bank Date",

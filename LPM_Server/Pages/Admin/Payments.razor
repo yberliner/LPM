@@ -96,7 +96,8 @@
                                             "CreditCard" => ("ri-bank-card-line", LS.T("purchases.creditCard") + (up.Installments > 1 ? $" ({up.Installments})" : "")),
                                             "Check" => ("ri-file-text-line", LS.T("purchases.check")),
                                             "BankTransfer" => ("ri-exchange-line", LS.T("purchases.bankTransfer")),
-                                            "ToBePaid" => ("ri-time-line", "To Be Paid"),
+                                            "Credit" => ("ri-wallet-3-line", LS.T("purchases.credit")),
+                                            "ToBePaid" => ("ri-time-line", LS.T("purchases.toBePaid")),
                                             _ => ("ri-money-dollar-circle-line", LS.T("purchases.cash"))
                                         };
                                     }
@@ -107,7 +108,13 @@
                                     @if (up.MethodType == "ToBePaid")
                                     {
                                         <span class="badge rounded-pill" style="background:#fef3c7;color:#92400e;font-size:.68rem;">
-                                            <i class="ri-error-warning-line me-1"></i>To Be Paid
+                                            <i class="ri-error-warning-line me-1"></i>@LS.T("purchases.toBePaid")
+                                        </span>
+                                    }
+                                    else if (up.MethodType == "Credit")
+                                    {
+                                        <span class="badge rounded-pill" style="background:#dcfce7;color:#166534;font-size:.68rem;">
+                                            <i class="ri-wallet-3-line me-1"></i>@LS.T("purchases.credit")
                                         </span>
                                     }
                                     else if (up.IsMoneyInBank)
@@ -124,9 +131,9 @@
                                     }
                                 </td>
                                 <td class="text-center py-2">
-                                    @if (up.MethodType == "ToBePaid")
+                                    @if (up.MethodType == "ToBePaid" || up.MethodType == "Credit")
                                     {
-                                        <span style="color:#d97706;font-size:.75rem;" title="Payment pending resolution"><i class="ri-alert-line"></i></span>
+                                        <span style="color:@(up.MethodType == "Credit" ? "#16a34a" : "#d97706");font-size:.75rem;" title="@(up.MethodType == "Credit" ? LS.T("purchases.credit") : "Payment pending resolution")"><i class="@(up.MethodType == "Credit" ? "ri-wallet-3-line" : "ri-alert-line")"></i></span>
                                     }
                                     else if (up.IsMoneyInBank)
                                     {
@@ -263,7 +270,8 @@
                                                         "CreditCard" => ("ri-bank-card-line", LS.T("purchases.creditCard")),
                                                         "Check" => ("ri-file-text-line", LS.T("purchases.check")),
                                                         "BankTransfer" => ("ri-exchange-line", LS.T("purchases.bankTransfer")),
-                                                        "ToBePaid" => ("ri-time-line", "To Be Paid"),
+                                                        "Credit" => ("ri-wallet-3-line", LS.T("purchases.credit")),
+                                                        "ToBePaid" => ("ri-time-line", LS.T("purchases.toBePaid")),
                                                         _ => ("ri-money-dollar-circle-line", LS.T("purchases.cash"))
                                                     };
                                                 }
@@ -272,9 +280,9 @@
                                             <td class="small text-end fw-semibold" style="color:#212529;">@(pm.Amount > 0 ? $"{CurrSym(_viewDetail.Currency)}{pm.Amount}" : "\u2014")</td>
                                             <td class="small" style="color:#212529;">@(pm.PaymentDate != null ? Fmt(pm.PaymentDate) : "\u2014")</td>
                                             <td class="text-center">
-                                                @if (pm.MethodType == "ToBePaid")
+                                                @if (pm.MethodType == "ToBePaid" || pm.MethodType == "Credit")
                                                 {
-                                                    <span class="badge" style="background:#fef3c7;color:#92400e;font-size:.65rem;">N/A</span>
+                                                    <span class="badge" style="background:@(pm.MethodType == "Credit" ? "#dcfce7" : "#fef3c7");color:@(pm.MethodType == "Credit" ? "#166534" : "#92400e");font-size:.65rem;">N/A</span>
                                                 }
                                                 else if (pm.IsMoneyInBank)
                                                 {

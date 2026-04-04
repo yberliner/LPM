@@ -732,6 +732,8 @@
   "purchases.cash": "מזומן",
   "purchases.check": "צ'ק",
   "purchases.bankTransfer": "העברה בנקאית",
+  "purchases.toBePaid": "תשלום עתידי",
+  "purchases.credit": "זיכוי",
   "purchases.paymentDate": "תאריך תשלום",
   "purchases.moneyInBank": "כסף בבנק",
   "purchases.moneyInBankDate": "תאריך בנק",
