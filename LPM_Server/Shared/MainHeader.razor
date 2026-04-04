@@ -1229,9 +1229,17 @@
                                 <label class="form-label" style="font-size:.82rem; color:#94a3b8;">
                                     Session File <span class="text-danger">*</span> <span class="text-muted">(PDF, single file)</span>
                                 </label>
-                                <InputFile accept=".pdf" OnChange="OnSessionFileSelected"
-                                           class="form-control form-control-sm"
-                                           style="background:#0f172a; color:#e2e8f0; border-color:#475569;" />
+                                <div class="drop-zone" id="dz-session"
+                                     ondragover="event.preventDefault();this.classList.add('drop-zone-active');"
+                                     ondragleave="this.classList.remove('drop-zone-active');"
+                                     ondrop="event.preventDefault();this.classList.remove('drop-zone-active');window._lpmDrop(event,'session');">
+                                    <InputFile accept=".pdf" OnChange="OnSessionFileSelected"
+                                               class="form-control form-control-sm"
+                                               style="background:#0f172a; color:#e2e8f0; border-color:#475569;" />
+                                    <div class="drop-zone-hint">
+                                        <i class="ri-drag-drop-line"></i> Drop PDF here
+                                    </div>
+                                </div>
                             </div>
 
                             @if (_importSessionBytes != null)
@@ -1295,9 +1303,17 @@
                                 <label class="form-label" style="font-size:.82rem; color:#94a3b8;">
                                     Attachments <span class="text-muted">(optional, multiple PDFs)</span>
                                 </label>
-                                <InputFile multiple accept=".pdf" OnChange="OnAttachmentFilesSelected"
-                                           class="form-control form-control-sm"
-                                           style="background:#0f172a; color:#e2e8f0; border-color:#475569;" />
+                                <div class="drop-zone" id="dz-attachments"
+                                     ondragover="event.preventDefault();this.classList.add('drop-zone-active');"
+                                     ondragleave="this.classList.remove('drop-zone-active');"
+                                     ondrop="event.preventDefault();this.classList.remove('drop-zone-active');window._lpmDrop(event,'attachment');">
+                                    <InputFile multiple accept=".pdf" OnChange="OnAttachmentFilesSelected"
+                                               class="form-control form-control-sm"
+                                               style="background:#0f172a; color:#e2e8f0; border-color:#475569;" />
+                                    <div class="drop-zone-hint">
+                                        <i class="ri-drag-drop-line"></i> Drop PDFs here
+                                    </div>
+                                </div>
                             </div>
 
                             @if (_importAttachmentBytes.Count > 0)
@@ -2822,6 +2838,24 @@
         50% { transform: scale(1.15); }
     }
 
+    /* ── Drop zone ── */
+    .drop-zone {
+        position: relative; border: 2px dashed transparent; border-radius: 8px;
+        padding: 4px; transition: all .2s;
+    }
+    .drop-zone-active {
+        border-color: #3b82f6 !important;
+        background: rgba(59,130,246,.06) !important;
+    }
+    .drop-zone-hint {
+        display: none; position: absolute; inset: 0; border-radius: 8px;
+        background: rgba(59,130,246,.1); color: #60a5fa;
+        font-size: .82rem; font-weight: 500;
+        align-items: center; justify-content: center; gap: 6px;
+        pointer-events: none;
+    }
+    .drop-zone-active .drop-zone-hint { display: flex; }
+
     /* ── ARF responsive: tablet ── */
     @@media (max-width: 768px) {
         .arf-left-col { flex: 0 0 220px; }
@@ -3010,6 +3044,7 @@
     bool _showArfSkipBadge;
     bool _showNextCsSkipBadge;
     DotNetObjectReference<MainHeader>? _step3DotNetRef;
+    DotNetObjectReference<MainHeader>? _dropRef;
     int  _importPcId;
     IBrowserFile? _importSessionFile;
     byte[]? _importSessionBytes;
@@ -3620,6 +3655,14 @@
                 _arfGrade = lastGrade;
         }
         _importStep = 2;
+        // Setup drag-and-drop handler for file drop zones
+        _dropRef?.Dispose();
+        _dropRef = DotNetObjectReference.Create(this);
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(100);
+            await JSRuntime.InvokeVoidAsync("interop.setupFileDrop", _dropRef);
+        });
         // Initialize Quill on summary editor after render
         _ = Task.Run(async () =>
         {
@@ -3684,7 +3727,16 @@
                     });
                     window[key] = q;
                     var defColor = _defaultColors[id];
-                    if (defColor) { q.format('color', defColor); }
+                    if (defColor) {
+                        q.format('color', defColor);
+                        // Keep default color when user types — re-apply on selection change
+                        q.on('selection-change', function(range) {
+                            if (range && range.length === 0) {
+                                var fmt = q.getFormat(range.index);
+                                if (!fmt.color) q.format('color', defColor, 'silent');
+                            }
+                        });
+                    }
                 });
             ");
             if (!string.IsNullOrWhiteSpace(prevNextCs))
@@ -3707,17 +3759,29 @@
         _step3BottomHtml = (bot == "<p><br></p>" || string.IsNullOrWhiteSpace(bot)) ? "" : bot;
     }
 
+    void SetSessionFile(string fileName, byte[] bytes, IBrowserFile? browserFile = null)
+    {
+        Console.WriteLine($"[SetSessionFile] '{fileName}' ({bytes.Length} bytes) browserFile={browserFile != null}");
+        _importSessionFile = browserFile;
+        _importSessionBytes = bytes;
+        _importSessionFileName = fileName;
+        _importError = "";
+        ComputeNormalizedFileName(Path.GetFileNameWithoutExtension(fileName));
+        CheckDuplicateSession();
+    }
+
+    void AddAttachmentFile(string fileName, byte[] bytes)
+    {
+        Console.WriteLine($"[AddAttachmentFile] '{fileName}' ({bytes.Length} bytes)");
+        _importAttachmentBytes.Add((fileName, bytes, false));
+        _importError = "";
+    }
+
     async Task OnSessionFileSelected(InputFileChangeEventArgs e)
     {
-        _importSessionFile = e.File;
-        _importError = "";
-        // Read bytes now so we don't need the IBrowserFile reference later
         using var ms = new MemoryStream();
         await e.File.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024).CopyToAsync(ms);
-        _importSessionBytes = ms.ToArray();
-        _importSessionFileName = e.File.Name;
-        ComputeNormalizedFileName(Path.GetFileNameWithoutExtension(e.File.Name));
-        CheckDuplicateSession();
+        SetSessionFile(e.File.Name, ms.ToArray(), e.File);
     }
 
     // Scanner app name strings to strip from uploaded filenames
@@ -3883,15 +3947,14 @@
     async Task OnAttachmentFilesSelected(InputFileChangeEventArgs e)
     {
         _importAttachments = e.GetMultipleFiles(20).ToList();
-        // Preserve scanned attachments, replace uploaded ones
+        // Preserve inbox-sourced attachments, replace uploaded ones
         _importAttachmentBytes.RemoveAll(x => !x.IsScanned);
         foreach (var f in _importAttachments)
         {
             using var ms = new MemoryStream();
             await f.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024).CopyToAsync(ms);
-            _importAttachmentBytes.Add((f.Name, ms.ToArray(), false));
+            AddAttachmentFile(f.Name, ms.ToArray());
         }
-        _importError = "";
     }
 
     // ── Scan Inbox (PWA share target) ──
@@ -3926,16 +3989,13 @@
                 if (isAtt)
                 {
                     var cleanAttName = StripInboxPrefix(name) + ".pdf";
-                    _importAttachmentBytes.Add((cleanAttName, data, false));
+                    AddAttachmentFile(cleanAttName, data);
                     attCount++;
                 }
                 else if (_importSessionBytes == null)
                 {
                     var cleanName = StripInboxPrefix(name);
-                    _importSessionBytes = data;
-                    _importSessionFile = null;
-                    _importSessionFileName = cleanName + ".pdf";
-                    ComputeNormalizedFileName(cleanName);
+                    SetSessionFile(cleanName + ".pdf", data);
                     sesCount++;
                 }
             }
@@ -3969,18 +4029,14 @@
                     var cleanAttName = StripInboxPrefix(name) + ".pdf";
                     if (!_importAttachmentBytes.Any(a => a.Name == cleanAttName))
                     {
-                        _importAttachmentBytes.Add((cleanAttName, data, false));
+                        AddAttachmentFile(cleanAttName, data);
                         attCount++;
                     }
                 }
                 else
                 {
                     var cleanName = StripInboxPrefix(name);
-                    _importSessionBytes = data;
-                    _importSessionFile = null;
-                    _importSessionFileName = cleanName + ".pdf";
-                    ComputeNormalizedFileName(cleanName);
-                    CheckDuplicateSession();
+                    SetSessionFile(cleanName + ".pdf", data);
                     sesCount++;
                 }
             }
@@ -3995,6 +4051,30 @@
             _inboxMessage = $"Error: {ex.Message}";
             Console.WriteLine($"[ScanInbox] PickFromInbox FAILED: {ex}");
         }
+    }
+
+    [JSInvokable]
+    public async Task OnFileDrop(string mode, string fileName, string base64Data)
+    {
+        await InvokeAsync(() =>
+        {
+            try
+            {
+                var bytes = Convert.FromBase64String(base64Data);
+                if (mode == "session")
+                    SetSessionFile(fileName, bytes);
+                else
+                    AddAttachmentFile(fileName, bytes);
+                Console.WriteLine($"[Drop] Received '{fileName}' ({bytes.Length} bytes) as {mode}");
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                _importError = $"Drop failed: {ex.Message}";
+                Console.WriteLine($"[Drop] Failed: {ex.Message}");
+                StateHasChanged();
+            }
+        });
     }
 
     void CloseWizard()
@@ -4522,6 +4602,7 @@ string _actionPcSearch = "";
         MsgNotifier.OnNewMessage -= OnNewMessageReceived;
         _headerScrollRef?.Dispose();
         _step3DotNetRef?.Dispose();
+        _dropRef?.Dispose();
         JSRuntime.InvokeVoidAsync("interop.unregisterheaderScrollListener");
     }
 

@@ -1,3 +1,7 @@
+// Pre-define drop handler so ondrop attributes don't error before setup
+window._lpmDrop = function() { console.log('[Drop] _lpmDrop called before setup — ignored'); };
+window._lpmDropRef = null;
+
 window.interop = {
   getElement: function (elementRef) {
     // Function to get the CSS selector for the given element reference
@@ -481,6 +485,39 @@ window.interop = {
         touch: false
       });
     });
+  },
+
+  // ── Drag-and-drop file handler for Add Session wizard ──
+  setupFileDrop: function (dotNetRef) {
+      console.log('[Drop] setupFileDrop called, dotNetRef=' + (dotNetRef ? 'OK' : 'NULL'));
+      window._lpmDropRef = dotNetRef;
+      window._lpmDrop = async function (e, mode) {
+          console.log('[Drop] _lpmDrop fired, mode=' + mode + ', files=' + (e.dataTransfer.files ? e.dataTransfer.files.length : 0) + ', ref=' + (window._lpmDropRef ? 'OK' : 'NULL'));
+          var files = e.dataTransfer.files;
+          if (!files || files.length === 0) { console.warn('[Drop] No files in drop event'); return; }
+          if (!window._lpmDropRef) { console.warn('[Drop] No dotNetRef'); return; }
+          for (var i = 0; i < files.length; i++) {
+              var f = files[i];
+              console.log('[Drop] Processing file: ' + f.name + ' (' + f.size + ' bytes, type=' + f.type + ')');
+              try {
+                  var buf = await f.arrayBuffer();
+                  console.log('[Drop] ArrayBuffer read: ' + buf.byteLength + ' bytes');
+                  // Convert to base64 in chunks to avoid call stack overflow
+                  var bytes = new Uint8Array(buf);
+                  var binary = '';
+                  var chunkSize = 8192;
+                  for (var j = 0; j < bytes.length; j += chunkSize) {
+                      binary += String.fromCharCode.apply(null, bytes.subarray(j, j + chunkSize));
+                  }
+                  var base64 = btoa(binary);
+                  console.log('[Drop] Base64 length: ' + base64.length + ', calling Blazor...');
+                  await window._lpmDropRef.invokeMethodAsync('OnFileDrop', mode, f.name, base64);
+                  console.log('[Drop] Blazor call completed for: ' + f.name);
+              } catch (err) {
+                  console.error('[Drop] Failed to process file:', f.name, err);
+              }
+          }
+      };
   },
 
 };
