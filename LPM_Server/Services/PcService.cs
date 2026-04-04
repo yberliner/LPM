@@ -18,7 +18,7 @@ public record PcListItemEx(int PcId, string FullName, string Nick, long RemainSe
     long TotalSessionSec, int TotalSessions, int AcademyVisits, int HoursPurchased, string Auditor = "");
 public record PurchaseListItem(int PurchaseId, int PcId, string PcName, string PurchaseDate,
     string? Notes, string ApprovedStatus, string? ApprovedByName, string? ApprovedAt,
-    string? CreatedByName, string CreatedAt, int TotalAmount, int TotalHours, bool IsDeleted = false, string Currency = "ILS");
+    string? CreatedByName, string CreatedAt, int TotalAmount, int TotalHours, bool IsDeleted = false, string Currency = "ILS", int? TransferPurchaseId = null);
 public record PurchaseItemInfo(int PurchaseItemId, string ItemType, int? CourseId,
     string? CourseName, int? BookId, string? BookName, int HoursBought, int AmountPaid);
 public record PurchaseDetail(int PurchaseId, int PcId, string PcName, string PurchaseDate,
@@ -660,7 +660,8 @@ public List<PcListItem> GetAllPcs()
                    COALESCE(items.TotalAmount, 0),
                    COALESCE(items.TotalHours, 0),
                    COALESCE(p.IsDeleted, 0),
-                   COALESCE(p.Currency,'ILS')
+                   COALESCE(p.Currency,'ILS'),
+                   p.TransferPurchaseId
             FROM fin_purchases p
             JOIN core_persons per ON per.PersonId = p.PcId
             LEFT JOIN core_persons ap ON ap.PersonId = p.ApprovedByPersonId
@@ -684,7 +685,8 @@ public List<PcListItem> GetAllPcs()
                 r.IsDBNull(8) ? null : r.GetString(8).Trim(),
                 r.GetString(9),
                 r.GetInt32(10), r.GetInt32(11),
-                r.GetInt32(12) == 1, r.GetString(13)));
+                r.GetInt32(12) == 1, r.GetString(13),
+                r.IsDBNull(14) ? null : (int?)r.GetInt32(14)));
         return list;
     }
 
@@ -1060,6 +1062,15 @@ public List<PcListItem> GetAllPcs()
             cmd.ExecuteNonQuery();
         }
 
+        // Cascade: if this is a transfer, delete the paired purchase too
+        using (var cmd2 = conn.CreateCommand())
+        {
+            cmd2.Transaction = tx;
+            cmd2.CommandText = "UPDATE fin_purchases SET IsDeleted = 1 WHERE PurchaseId = (SELECT TransferPurchaseId FROM fin_purchases WHERE PurchaseId = @id) AND COALESCE(IsDeleted,0) = 0";
+            cmd2.Parameters.AddWithValue("@id", purchaseId);
+            cmd2.ExecuteNonQuery();
+        }
+
         tx.Commit();
         Console.WriteLine($"[PcService] Deleted purchase {purchaseId}");
     }
@@ -1076,6 +1087,15 @@ public List<PcListItem> GetAllPcs()
             cmd.CommandText = "UPDATE fin_purchases SET IsDeleted = 0 WHERE PurchaseId = @id";
             cmd.Parameters.AddWithValue("@id", purchaseId);
             cmd.ExecuteNonQuery();
+        }
+
+        // Cascade: if this is a transfer, restore the paired purchase too
+        using (var cmd2 = conn.CreateCommand())
+        {
+            cmd2.Transaction = tx;
+            cmd2.CommandText = "UPDATE fin_purchases SET IsDeleted = 0 WHERE PurchaseId = (SELECT TransferPurchaseId FROM fin_purchases WHERE PurchaseId = @id) AND COALESCE(IsDeleted,0) = 1";
+            cmd2.Parameters.AddWithValue("@id", purchaseId);
+            cmd2.ExecuteNonQuery();
         }
 
         // Re-enroll courses from this purchase
@@ -1098,6 +1118,179 @@ public List<PcListItem> GetAllPcs()
 
         tx.Commit();
         Console.WriteLine($"[PcService] Restored purchase {purchaseId}");
+    }
+
+    // ── Transfer Balance ──────────────────────────────────────────
+
+    public record PcAuditingBalance(int HoursPurchased, int AuditingAmountPaid, long UsedSec, int RemainingHours, int RemainingNis, int RatePerHour);
+
+    public PcAuditingBalance GetPcAuditingBalance(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Auditing-only approved purchases
+        using var pCmd = conn.CreateCommand();
+        pCmd.CommandText = @"
+            SELECT COALESCE(SUM(pi.HoursBought), 0), COALESCE(SUM(pi.AmountPaid), 0)
+            FROM fin_purchase_items pi
+            JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+            WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+              AND pu.ApprovedStatus = 'Approved'";
+        pCmd.Parameters.AddWithValue("@id", pcId);
+        using var pr = pCmd.ExecuteReader();
+        pr.Read();
+        int hours = pr.GetInt32(0);
+        int amount = pr.GetInt32(1);
+        pr.Close();
+
+        // Used seconds (paid sessions only)
+        using var sCmd = conn.CreateCommand();
+        sCmd.CommandText = "SELECT COALESCE(SUM(LengthSeconds), 0) FROM sess_sessions WHERE PcId = @id AND IsFreeSession = 0";
+        sCmd.Parameters.AddWithValue("@id", pcId);
+        long usedSec = (long)sCmd.ExecuteScalar()!;
+
+        int remainHrs = hours - (int)(usedSec / 3600);
+        int rate = hours > 0 ? amount / hours : 0;
+        int remainNis = remainHrs * rate;
+
+        return new PcAuditingBalance(hours, amount, usedSec, remainHrs, remainNis, rate);
+    }
+
+    public (int fromPurchaseId, int toPurchaseId) CreateTransfer(
+        int fromPcId, int toPcId, double deductHours, double addHours,
+        int createdByPersonId, string currency = "ILS")
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var tx = conn.BeginTransaction();
+
+        try
+        {
+            // Re-check remaining balance inside transaction
+            using (var chk = conn.CreateCommand())
+            {
+                chk.Transaction = tx;
+                chk.CommandText = @"
+                    SELECT (COALESCE(SUM(pi.HoursBought), 0) * 3600 - COALESCE(
+                        (SELECT SUM(LengthSeconds) FROM sess_sessions WHERE PcId = @id AND IsFreeSession = 0), 0))
+                    FROM fin_purchase_items pi
+                    JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+                    WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing' AND pu.ApprovedStatus = 'Approved'";
+                chk.Parameters.AddWithValue("@id", fromPcId);
+                var remainSec = Convert.ToDouble(chk.ExecuteScalar()!);
+                if (remainSec / 3600.0 < deductHours)
+                    throw new InvalidOperationException($"Insufficient balance: {remainSec / 3600} hours remaining, {deductHours} requested");
+            }
+
+            var date = DateTime.Now.ToString("yyyy-MM-dd");
+            var now = $"datetime('now', '+2 hours')";
+
+            // Get names for notes
+            string GetName(int pcId)
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = "SELECT TRIM(FirstName || ' ' || COALESCE(NULLIF(LastName,''), '')) FROM core_persons WHERE PersonId = @id";
+                cmd.Parameters.AddWithValue("@id", pcId);
+                return cmd.ExecuteScalar()?.ToString() ?? $"PC {pcId}";
+            }
+            var fromName = GetName(fromPcId);
+            var toName = GetName(toPcId);
+
+            // 1. Create FROM purchase (negative hours)
+            int fromPurchaseId;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = $@"
+                    INSERT INTO fin_purchases (PcId, PurchaseDate, Notes, ApprovedStatus, ApprovedByPersonId, ApprovedAt, CreatedByPersonId, CreatedAt, Currency)
+                    VALUES (@pcId, @date, @notes, 'Approved', @by, {now}, @by, {now}, @cur);
+                    SELECT last_insert_rowid();";
+                cmd.Parameters.AddWithValue("@pcId", fromPcId);
+                cmd.Parameters.AddWithValue("@date", date);
+                cmd.Parameters.AddWithValue("@notes", $"Transfer to {toName}");
+                cmd.Parameters.AddWithValue("@by", createdByPersonId);
+                cmd.Parameters.AddWithValue("@cur", currency);
+                fromPurchaseId = Convert.ToInt32(cmd.ExecuteScalar()!);
+            }
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "INSERT INTO fin_purchase_items (PurchaseId, ItemType, HoursBought, AmountPaid) VALUES (@pid, 'Auditing', @hrs, 0)";
+                cmd.Parameters.AddWithValue("@pid", fromPurchaseId);
+                cmd.Parameters.AddWithValue("@hrs", -deductHours);
+                cmd.ExecuteNonQuery();
+            }
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "INSERT INTO fin_payment_methods (PurchaseId, MethodType, Amount, PaymentDate, IsMoneyInBank) VALUES (@pid, 'Transfer', 0, @date, 0)";
+                cmd.Parameters.AddWithValue("@pid", fromPurchaseId);
+                cmd.Parameters.AddWithValue("@date", date);
+                cmd.ExecuteNonQuery();
+            }
+
+            // 2. Create TO purchase (positive hours)
+            int toPurchaseId;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = $@"
+                    INSERT INTO fin_purchases (PcId, PurchaseDate, Notes, ApprovedStatus, ApprovedByPersonId, ApprovedAt, CreatedByPersonId, CreatedAt, Currency)
+                    VALUES (@pcId, @date, @notes, 'Approved', @by, {now}, @by, {now}, @cur);
+                    SELECT last_insert_rowid();";
+                cmd.Parameters.AddWithValue("@pcId", toPcId);
+                cmd.Parameters.AddWithValue("@date", date);
+                cmd.Parameters.AddWithValue("@notes", $"Transfer from {fromName}");
+                cmd.Parameters.AddWithValue("@by", createdByPersonId);
+                cmd.Parameters.AddWithValue("@cur", currency);
+                toPurchaseId = Convert.ToInt32(cmd.ExecuteScalar()!);
+            }
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "INSERT INTO fin_purchase_items (PurchaseId, ItemType, HoursBought, AmountPaid) VALUES (@pid, 'Auditing', @hrs, 0)";
+                cmd.Parameters.AddWithValue("@pid", toPurchaseId);
+                cmd.Parameters.AddWithValue("@hrs", addHours);
+                cmd.ExecuteNonQuery();
+            }
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "INSERT INTO fin_payment_methods (PurchaseId, MethodType, Amount, PaymentDate, IsMoneyInBank) VALUES (@pid, 'Transfer', 0, @date, 0)";
+                cmd.Parameters.AddWithValue("@pid", toPurchaseId);
+                cmd.Parameters.AddWithValue("@date", date);
+                cmd.ExecuteNonQuery();
+            }
+
+            // 3. Link them together
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "UPDATE fin_purchases SET TransferPurchaseId = @pair WHERE PurchaseId = @id";
+                cmd.Parameters.AddWithValue("@id", fromPurchaseId);
+                cmd.Parameters.AddWithValue("@pair", toPurchaseId);
+                cmd.ExecuteNonQuery();
+            }
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "UPDATE fin_purchases SET TransferPurchaseId = @pair WHERE PurchaseId = @id";
+                cmd.Parameters.AddWithValue("@id", toPurchaseId);
+                cmd.Parameters.AddWithValue("@pair", fromPurchaseId);
+                cmd.ExecuteNonQuery();
+            }
+
+            tx.Commit();
+            Console.WriteLine($"[PcService] Transfer: {fromName} (PC {fromPcId}) -{deductHours:0.##}hrs → {toName} (PC {toPcId}) +{addHours:0.##}hrs | purchases {fromPurchaseId}↔{toPurchaseId}");
+            return (fromPurchaseId, toPurchaseId);
+        }
+        catch
+        {
+            tx.Rollback();
+            throw;
+        }
     }
 
     public void ApprovePurchase(int purchaseId, int approvedByPersonId)

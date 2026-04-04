@@ -97,6 +97,7 @@
                                             "Check" => ("ri-file-text-line", LS.T("purchases.check")),
                                             "BankTransfer" => ("ri-exchange-line", LS.T("purchases.bankTransfer")),
                                             "Credit" => ("ri-wallet-3-line", LS.T("purchases.credit")),
+                                            "Transfer" => ("ri-exchange-funds-line", LS.T("purchases.transfer")),
                                             "ToBePaid" => ("ri-time-line", LS.T("purchases.toBePaid")),
                                             _ => ("ri-money-dollar-circle-line", LS.T("purchases.cash"))
                                         };
@@ -131,7 +132,11 @@
                                     }
                                 </td>
                                 <td class="text-center py-2">
-                                    @if (up.MethodType == "ToBePaid")
+                                    @if (up.MethodType == "Transfer")
+                                    {
+                                        <span style="color:#0ea5e9;font-size:.75rem;" title="@LS.T("purchases.transfer")"><i class="ri-exchange-funds-line"></i></span>
+                                    }
+                                    else if (up.MethodType == "ToBePaid")
                                     {
                                         @if (_confirmToBePaidId == up.PaymentMethodId)
                                         {
@@ -303,6 +308,7 @@
                                                         "Check" => ("ri-file-text-line", LS.T("purchases.check")),
                                                         "BankTransfer" => ("ri-exchange-line", LS.T("purchases.bankTransfer")),
                                                         "Credit" => ("ri-wallet-3-line", LS.T("purchases.credit")),
+                                            "Transfer" => ("ri-exchange-funds-line", LS.T("purchases.transfer")),
                                                         "ToBePaid" => ("ri-time-line", LS.T("purchases.toBePaid")),
                                                         _ => ("ri-money-dollar-circle-line", LS.T("purchases.cash"))
                                                     };
@@ -312,7 +318,7 @@
                                             <td class="small text-end fw-semibold" style="color:#212529;">@(pm.Amount > 0 ? $"{CurrSym(_viewDetail.Currency)}{pm.Amount}" : "\u2014")</td>
                                             <td class="small" style="color:#212529;">@(pm.PaymentDate != null ? Fmt(pm.PaymentDate) : "\u2014")</td>
                                             <td class="text-center">
-                                                @if (pm.MethodType == "ToBePaid" || pm.MethodType == "Credit")
+                                                @if (pm.MethodType == "ToBePaid" || pm.MethodType == "Credit" || pm.MethodType == "Transfer")
                                                 {
                                                     <span class="badge" style="background:@(pm.MethodType == "Credit" ? "#dcfce7" : "#fef3c7");color:@(pm.MethodType == "Credit" ? "#166534" : "#92400e");font-size:.65rem;">N/A</span>
                                                 }

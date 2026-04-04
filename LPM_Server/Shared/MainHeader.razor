@@ -500,6 +500,12 @@
                                             <i class="ri-trophy-line" style="color:#a855f7;"></i>PC Completions
                                         </a>
                                     </li>
+                                    <li>
+                                        <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
+                                           @onclick="OpenTransferModal">
+                                            <i class="ri-exchange-funds-line" style="color:#0ea5e9;"></i>Transfer Balance
+                                        </a>
+                                    </li>
                                     }
                                 </ul>
                             </div>
@@ -1703,6 +1709,161 @@
     </div>
 }
 
+@* ── Transfer Balance Modal ── *@
+@if (_showTransfer)
+{
+    <div class="modal show d-block" tabindex="-1" style="background:rgba(0,0,0,.55); z-index:9999;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" @onclick:stopPropagation="true">
+            <div class="modal-content" style="background:#0f172a; color:#e2e8f0; border:1px solid #1e293b; border-radius:16px; overflow:hidden;">
+                <div class="modal-header py-3 px-4" style="background:linear-gradient(135deg,#0c4a6e,#0ea5e9); border-bottom:none;">
+                    <h5 class="modal-title text-white d-flex align-items-center gap-2" style="font-size:1.05rem; font-weight:700;">
+                        <i class="ri-exchange-funds-line"></i>@LS.T("transfer.title")
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => _showTransfer = false"></button>
+                </div>
+                <div class="modal-body px-4 py-3">
+
+                    @* ── Split layout: FROM | ARROW | TO ── *@
+                    <div class="xfer-split">
+                        @* ── LEFT: FROM PC ── *@
+                        <div class="xfer-card xfer-from">
+                            <div class="xfer-card-label"><i class="ri-logout-box-r-line me-1"></i>@LS.T("transfer.fromPc")</div>
+                            <select class="form-select form-select-sm xfer-select"
+                                    value="@_xferFromPcId" @onchange="OnXferFromChanged">
+                                <option value="0">— Select PC —</option>
+                                @foreach (var pc in _xferPcList.Where(p => p.RemainHrs > 0))
+                                {
+                                    <option value="@pc.PcId">@pc.Name</option>
+                                }
+                            </select>
+
+                            @if (_xferFromPcId > 0)
+                            {
+                                <div class="xfer-balance">
+                                    <div class="xfer-balance-row">
+                                        <span class="xfer-balance-label">Balance</span>
+                                        <span class="xfer-balance-val" style="color:#38bdf8;">@_xferFromRemainHrs hrs</span>
+                                    </div>
+                                    <div class="xfer-balance-row">
+                                        <span class="xfer-balance-label">Value</span>
+                                        <span class="xfer-balance-val">@CurrSymbol@_xferFromRemainNis</span>
+                                    </div>
+                                    <div class="xfer-balance-row">
+                                        <span class="xfer-balance-label">Rate</span>
+                                        <span class="xfer-balance-val" style="color:#94a3b8;">@CurrSymbol@_xferFromRate/hr</span>
+                                    </div>
+                                </div>
+
+                                <div class="xfer-input-group">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div style="flex:1;">
+                                            <label class="xfer-input-label">@LS.T("transfer.amount") (@CurrSymbol)</label>
+                                            <input type="number" min="1" max="@_xferFromRemainNis"
+                                                   class="form-control form-control-sm xfer-input"
+                                                   value="@_xferAmount" @oninput="OnXferAmountChanged"
+                                                   disabled="@_xferFullAmount"
+                                                   style="@(_xferAmount > _xferFromRemainNis ? "border-color:#ef4444 !important;" : "")" />
+                                        </div>
+                                        <div style="padding-top:18px;">
+                                            <label class="d-flex align-items-center gap-1" style="font-size:.72rem; color:#94a3b8; cursor:pointer; white-space:nowrap;">
+                                                <input type="checkbox" class="form-check-input" style="margin-top:0;"
+                                                       checked="@_xferFullAmount" @onchange="OnXferFullAmountChanged" />
+                                                All
+                                            </label>
+                                        </div>
+                                    </div>
+                                    @if (_xferAmount > _xferFromRemainNis)
+                                    {
+                                        <div style="color:#ef4444; font-size:.7rem; margin-top:2px;">Max: @CurrSymbol@_xferFromRemainNis</div>
+                                    }
+                                </div>
+
+                                @if (_xferAmount > 0 && _xferFromRate > 0)
+                                {
+                                    <div class="xfer-deduct-badge">
+                                        <i class="ri-arrow-up-line me-1"></i>@LS.T("transfer.deductHours"):
+                                        <strong>@_xferDeductHours.ToString("0.##") hrs</strong>
+                                    </div>
+                                }
+                            }
+                        </div>
+
+                        @* ── CENTER: ARROW ── *@
+                        <div class="xfer-arrow-wrap">
+                            <div class="xfer-arrow @(_xferFromPcId > 0 && _xferToPcId > 0 && _xferAmount > 0 ? "xfer-arrow-active" : "")">
+                                <i class="ri-arrow-right-line"></i>
+                            </div>
+                            @if (_xferAmount > 0)
+                            {
+                                <div class="xfer-arrow-amount">@CurrSymbol@_xferAmount</div>
+                            }
+                        </div>
+
+                        @* ── RIGHT: TO PC ── *@
+                        <div class="xfer-card xfer-to">
+                            <div class="xfer-card-label"><i class="ri-login-box-line me-1"></i>@LS.T("transfer.toPc")</div>
+                            <select class="form-select form-select-sm xfer-select"
+                                    value="@_xferToPcId" @onchange="OnXferToChanged">
+                                <option value="0">— Select PC —</option>
+                                @foreach (var pc in _xferPcList.Where(p => p.PcId != _xferFromPcId))
+                                {
+                                    <option value="@pc.PcId">@pc.Name</option>
+                                }
+                            </select>
+
+                            @if (_xferToPcId > 0 && _xferAmount > 0)
+                            {
+                                <div class="xfer-input-group" style="margin-top:16px;">
+                                    <label class="xfer-input-label">@LS.T("transfer.addHours")</label>
+                                    <input type="number" min="0.01" step="0.01"
+                                           class="form-control form-control-sm xfer-input xfer-input-green"
+                                           value="@_xferAddHours.ToString("0.##")" @oninput="OnXferAddHoursChanged" />
+                                </div>
+
+                                @if (_xferAddHours > 0)
+                                {
+                                    <div class="xfer-add-badge">
+                                        <i class="ri-arrow-down-line me-1"></i>Receives
+                                        <strong>@_xferAddHours.ToString("0.##") hrs</strong>
+                                        <span style="color:#64748b; font-size:.7rem; margin-left:4px;">
+                                            (@CurrSymbol@(_xferAddHours > 0 ? ((double)_xferAmount / _xferAddHours).ToString("0.##") : "0")/hr)
+                                        </span>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+
+                    @* ── Messages ── *@
+                    @if (!string.IsNullOrEmpty(_xferError))
+                    {
+                        <div class="alert alert-danger py-1 mt-3 mb-0" style="font-size:.8rem; border-radius:8px;">
+                            <i class="ri-error-warning-line me-1"></i>@_xferError
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(_xferSuccess))
+                    {
+                        <div class="xfer-success-banner mt-3 mb-0">
+                            <i class="ri-check-double-line me-1"></i>@_xferSuccess
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer py-2 px-4" style="border-color:#1e293b;">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showTransfer = false">Cancel</button>
+                    <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
+                            style="min-width:120px; justify-content:center;"
+                            disabled="@(_xferBusy || _xferFromPcId == 0 || _xferToPcId == 0 || _xferDeductHours <= 0 || _xferAddHours <= 0 || _xferAmount <= 0 || _xferAmount > _xferFromRemainNis || !string.IsNullOrEmpty(_xferSuccess))"
+                            @onclick="ExecuteTransfer">
+                        @if (_xferBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                        else { <i class="ri-exchange-funds-line me-1"></i> }
+                        @LS.T("transfer.confirm")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @* ── Background Import Toast ── *@
 @if (_bgImportRunning || _bgImportDone || !string.IsNullOrEmpty(_bgImportError))
 {
@@ -2856,6 +3017,95 @@
     }
     .drop-zone-active .drop-zone-hint { display: flex; }
 
+    /* ── Transfer Balance modal ── */
+    .xfer-split {
+        display: flex; gap: 0; align-items: stretch; min-height: 220px;
+    }
+    .xfer-card {
+        flex: 1; padding: 16px; border-radius: 12px; background: #1e293b;
+        border: 1px solid #334155; display: flex; flex-direction: column;
+        animation: xfer-card-in .4s ease-out both;
+    }
+    .xfer-from { animation-delay: .05s; }
+    .xfer-to   { animation-delay: .15s; }
+    .xfer-card-label {
+        font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+        color: #64748b; margin-bottom: 10px;
+    }
+    .xfer-select {
+        background: #0f172a !important; color: #e2e8f0 !important; border-color: #475569 !important;
+        font-size: .82rem !important;
+    }
+    .xfer-balance {
+        margin-top: 14px; padding: 10px 12px; border-radius: 8px;
+        background: rgba(14,165,233,.06); border: 1px solid rgba(14,165,233,.15);
+    }
+    .xfer-balance-row {
+        display: flex; justify-content: space-between; align-items: center;
+        font-size: .78rem; padding: 2px 0;
+    }
+    .xfer-balance-label { color: #64748b; }
+    .xfer-balance-val { font-weight: 600; color: #e2e8f0; }
+    .xfer-input-group { margin-top: 12px; }
+    .xfer-input-label {
+        display: block; font-size: .75rem; color: #94a3b8; margin-bottom: 4px; font-weight: 500;
+    }
+    .xfer-input {
+        background: #0f172a !important; color: #e2e8f0 !important; border-color: #475569 !important;
+        font-size: .85rem !important; max-width: 140px;
+    }
+    .xfer-input-green { border-color: #10b981 !important; }
+    .xfer-input-green:focus { box-shadow: 0 0 0 2px rgba(16,185,129,.25) !important; }
+    .xfer-deduct-badge {
+        margin-top: 10px; padding: 6px 10px; border-radius: 6px;
+        background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.2);
+        font-size: .78rem; color: #fca5a5;
+    }
+    .xfer-add-badge {
+        margin-top: 10px; padding: 6px 10px; border-radius: 6px;
+        background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.2);
+        font-size: .78rem; color: #6ee7b7;
+    }
+    .xfer-arrow-wrap {
+        display: flex; flex-direction: column; align-items: center;
+        justify-content: center; padding: 0 12px; flex-shrink: 0;
+    }
+    .xfer-arrow {
+        width: 44px; height: 44px; border-radius: 50%;
+        background: #1e293b; border: 2px solid #334155;
+        display: flex; align-items: center; justify-content: center;
+        color: #475569; font-size: 1.3rem; transition: all .3s;
+    }
+    .xfer-arrow-active {
+        background: linear-gradient(135deg, #0ea5e9, #10b981);
+        border-color: transparent; color: #fff;
+        animation: xfer-pulse 1.5s ease-in-out infinite;
+    }
+    .xfer-arrow-amount {
+        font-size: .72rem; font-weight: 700; color: #38bdf8;
+        margin-top: 6px; white-space: nowrap;
+    }
+    .xfer-success-banner {
+        padding: 10px 14px; border-radius: 8px;
+        background: rgba(16,185,129,.1); border: 1px solid rgba(16,185,129,.3);
+        color: #6ee7b7; font-size: .85rem; font-weight: 500;
+        animation: xfer-card-in .3s ease-out;
+    }
+    @@keyframes xfer-card-in {
+        from { opacity: 0; transform: translateY(10px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    @@keyframes xfer-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(14,165,233,.3); }
+        50%      { box-shadow: 0 0 0 10px rgba(14,165,233,0); }
+    }
+    @@media (max-width: 600px) {
+        .xfer-split { flex-direction: column; gap: 8px; }
+        .xfer-arrow-wrap { flex-direction: row; padding: 8px 0; }
+        .xfer-arrow { transform: rotate(90deg); }
+        .xfer-arrow-amount { margin-top: 0; margin-left: 8px; }
+    }
+
     /* ── ARF responsive: tablet ── */
     @@media (max-width: 768px) {
         .arf-left-col { flex: 0 0 220px; }
@@ -3001,6 +3251,23 @@
     // ── Add PC state ──
     SpkNewPersonModal _addPcModal = default!;
     HashSet<string>? _existingPcNames;
+
+    // ── Transfer Balance state ──
+    bool _showTransfer;
+    int _xferFromPcId;
+    int _xferToPcId;
+    int _xferAmount;
+    double _xferDeductHours;
+    double _xferAddHours;
+    bool _xferFullAmount;
+    string _xferError = "";
+    string _xferSuccess = "";
+    bool _xferBusy;
+    int _xferFromRemainHrs;
+    int _xferFromRemainNis;
+    int _xferFromRate;
+    List<(int PcId, string Name, int RemainHrs, int RemainNis, int Rate)> _xferPcList = [];
+    string CurrSymbol => "₪";
 
     // ── Assign PC modal state ──
     bool            _showAssignPcModal;
@@ -4927,6 +5194,139 @@ string _actionPcSearch = "";
     }
 
     // ── Assign PC modal ──
+    // ── Transfer Balance methods ──
+    void OpenTransferModal()
+    {
+        _showTransfer = true;
+        _xferFromPcId = 0;
+        _xferToPcId = 0;
+        _xferAmount = 0;
+        _xferDeductHours = 0;
+        _xferAddHours = 0;
+        _xferError = "";
+        _xferSuccess = "";
+        _xferBusy = false;
+        _xferFromRemainHrs = 0;
+        _xferFromRemainNis = 0;
+        _xferFromRate = 0;
+
+        // Load all PCs with auditing balance
+        var allPcs = PcSvc.GetAllPcs();
+        _xferPcList = allPcs.Select(pc =>
+        {
+            var bal = PcSvc.GetPcAuditingBalance(pc.PcId);
+            return (pc.PcId, pc.FullName, bal.RemainingHours, bal.RemainingNis, bal.RatePerHour);
+        }).OrderBy(x => x.FullName).ToList();
+    }
+
+    void OnXferFromChanged(ChangeEventArgs e)
+    {
+        _xferFromPcId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        _xferError = "";
+        _xferSuccess = "";
+        if (_xferFromPcId > 0)
+        {
+            var pc = _xferPcList.FirstOrDefault(p => p.PcId == _xferFromPcId);
+            _xferFromRemainHrs = pc.RemainHrs;
+            _xferFromRemainNis = pc.RemainNis;
+            _xferFromRate = pc.Rate;
+        }
+        else
+        {
+            _xferFromRemainHrs = 0;
+            _xferFromRemainNis = 0;
+            _xferFromRate = 0;
+        }
+        _xferAmount = 0;
+        _xferDeductHours = 0;
+        _xferAddHours = 0;
+        _xferFullAmount = false;
+    }
+
+    void OnXferToChanged(ChangeEventArgs e)
+    {
+        _xferToPcId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        _xferError = "";
+        RecalcXferHours();
+    }
+
+    void OnXferAmountChanged(ChangeEventArgs e)
+    {
+        _xferAmount = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        _xferFullAmount = (_xferAmount == _xferFromRemainNis);
+        _xferError = "";
+        RecalcXferHours();
+    }
+
+    void OnXferFullAmountChanged(ChangeEventArgs e)
+    {
+        _xferFullAmount = (bool)(e.Value ?? false);
+        if (_xferFullAmount)
+            _xferAmount = _xferFromRemainNis;
+        else
+            _xferAmount = 0;
+        _xferError = "";
+        RecalcXferHours();
+    }
+
+    void OnXferAddHoursChanged(ChangeEventArgs e)
+    {
+        _xferAddHours = double.TryParse(e.Value?.ToString(), out var v) ? Math.Round(v, 2) : 0;
+        _xferError = "";
+    }
+
+    void RecalcXferHours()
+    {
+        _xferDeductHours = _xferFromRate > 0 ? Math.Round((double)_xferAmount / _xferFromRate, 2) : 0;
+        // Cap at remaining
+        if (_xferDeductHours > _xferFromRemainHrs)
+            _xferDeductHours = _xferFromRemainHrs;
+        // Default addHours to same as deductHours, admin can override
+        _xferAddHours = _xferDeductHours;
+    }
+
+    async Task ExecuteTransfer()
+    {
+        _xferError = "";
+        _xferSuccess = "";
+
+        if (_xferFromPcId == 0 || _xferToPcId == 0 || _xferFromPcId == _xferToPcId)
+        { _xferError = "Select different From and To PCs"; return; }
+        if (_xferAmount <= 0)
+        { _xferError = "Amount must be greater than 0"; return; }
+        if (_xferAmount > _xferFromRemainNis)
+        { _xferError = LS.T("transfer.exceedsBalance"); return; }
+        if (_xferDeductHours <= 0)
+        { _xferError = "Hours to deduct must be greater than 0"; return; }
+        if (_xferDeductHours > _xferFromRemainHrs)
+        { _xferError = "Cannot deduct more hours than remaining"; return; }
+        if (_xferAddHours <= 0)
+        { _xferError = "Hours to add must be greater than 0"; return; }
+
+        _xferBusy = true;
+        StateHasChanged();
+
+        try
+        {
+            if (!_msgUserId.HasValue) return;
+            PcSvc.CreateTransfer(_xferFromPcId, _xferToPcId, _xferDeductHours, _xferAddHours, _msgUserId.Value);
+            var fromName = _xferPcList.FirstOrDefault(p => p.PcId == _xferFromPcId).Name;
+            var toName = _xferPcList.FirstOrDefault(p => p.PcId == _xferToPcId).Name;
+            _xferSuccess = $"{LS.T("transfer.success")}: {_xferDeductHours:0.##} hrs from {fromName} → {_xferAddHours:0.##} hrs to {toName}";
+            DashSvc.NotifyDataChanged();
+        }
+        catch (Exception ex)
+        {
+            _xferError = ex.Message;
+            Console.WriteLine($"[Transfer] Failed: {ex}");
+        }
+        finally
+        {
+            _xferBusy = false;
+            StateHasChanged();
+        }
+    }
+
     void ShowAssignPcModal()
     {
         if (_msgUserId == null) return;
