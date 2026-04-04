@@ -1628,7 +1628,7 @@ public class FolderService
         if (output.PageCount == 0) return null;
         using var result = new MemoryStream();
         output.Save(result);
-        return result.ToArray();
+        return NormalizePdfPageSizes(result.ToArray());
     }
 
     /// <summary>Read a file from disk, encrypt its contents, and write back.</summary>
