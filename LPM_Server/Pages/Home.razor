@@ -1538,11 +1538,28 @@
         var loginFlags = UserDb.GetLoginFlags(username);
         var coreUserId = loginFlags?.UserId ?? 0;
         Console.WriteLine($"[Home] user='{username}' PersonId={_userId} coreUserId={coreUserId} NeedsContactConfirm={coreUserId > 0 && UserDb.NeedsContactConfirm(coreUserId)}");
-        if (coreUserId > 0 && UserDb.NeedsContactConfirm(coreUserId))
+        if (coreUserId > 0 && loginFlags != null)
         {
-            Console.WriteLine("[Home] Redirecting to /WelcomeContact");
-            Nav.NavigateTo("/WelcomeContact");
-            return;
+            // Force password change if flagged
+            if (loginFlags.MustChangePassword)
+            {
+                Console.WriteLine("[Home] Redirecting to /ChangePassword — password change required");
+                Nav.NavigateTo("/ChangePassword");
+                return;
+            }
+            // Force 2FA setup if required but not yet enabled
+            if ((loginFlags.Require2FA || loginFlags.TotpEnabled) && !loginFlags.TotpEnabled)
+            {
+                Console.WriteLine("[Home] Redirecting to /Setup2FA — 2FA required but not set up");
+                Nav.NavigateTo("/Setup2FA?voluntary=1");
+                return;
+            }
+            if (UserDb.NeedsContactConfirm(coreUserId))
+            {
+                Console.WriteLine("[Home] Redirecting to /WelcomeContact");
+                Nav.NavigateTo("/WelcomeContact");
+                return;
+            }
         }
         if (_userId.HasValue)
         {

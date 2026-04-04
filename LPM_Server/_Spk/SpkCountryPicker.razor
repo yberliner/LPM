@@ -1,0 +1,258 @@
+@* Searchable country picker with flags. Usage: <SpkCountryPicker @bind-SelectedIndex="_countryIdx" /> *@
+
+<div class="spk-cpick">
+    <button type="button" class="spk-cpick-btn" @onclick="Toggle" @onclick:stopPropagation="true">
+        <span class="spk-cpick-flag">@Countries[SelectedIndex].Flag</span>
+        <span class="spk-cpick-code">+@Countries[SelectedIndex].DialCode</span>
+        <i class="ri-arrow-down-s-line spk-cpick-arrow @(_open ? "spk-cpick-arrow-up" : "")"></i>
+    </button>
+    @if (_open)
+    {
+        <div class="spk-cpick-backdrop" @onclick="Close"></div>
+        <div class="spk-cpick-drop">
+            <div class="spk-cpick-search-wrap">
+                <i class="ri-search-line spk-cpick-search-icon"></i>
+                <input class="spk-cpick-search" type="text" placeholder="Search country or code..."
+                       @bind="_search" @bind:event="oninput" @ref="_searchRef" @onkeydown="OnKey" />
+            </div>
+            <div class="spk-cpick-list">
+                @{ var items = Filtered(); }
+                @if (items.Count == 0)
+                {
+                    <div class="spk-cpick-empty">No results</div>
+                }
+                @foreach (var (c, idx) in items)
+                {
+                    var i = idx;
+                    <button type="button" class="spk-cpick-item @(i == SelectedIndex ? "spk-cpick-item-active" : "")"
+                            @onmousedown="() => Select(i)" @onmousedown:preventDefault @onmousedown:stopPropagation>
+                        <span class="spk-cpick-item-flag">@c.Flag</span>
+                        <span class="spk-cpick-item-name">@c.Name</span>
+                        <span class="spk-cpick-item-dial">+@c.DialCode</span>
+                    </button>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int SelectedIndex { get; set; }
+    [Parameter] public EventCallback<int> SelectedIndexChanged { get; set; }
+
+    bool _open;
+    string _search = "";
+    ElementReference _searchRef;
+
+    public record CountryInfo(string Flag, string Name, string DialCode, string Iso);
+
+    public static readonly CountryInfo[] Countries =
+    [
+        new("\U0001F1EE\U0001F1F1","Israel","972","IL"), new("\U0001F1FA\U0001F1F8","United States","1","US"), new("\U0001F1EC\U0001F1E7","United Kingdom","44","GB"),
+        new("\U0001F1E6\U0001F1EB","Afghanistan","93","AF"), new("\U0001F1E6\U0001F1F1","Albania","355","AL"), new("\U0001F1E9\U0001F1FF","Algeria","213","DZ"),
+        new("\U0001F1E6\U0001F1E9","Andorra","376","AD"), new("\U0001F1E6\U0001F1F4","Angola","244","AO"), new("\U0001F1E6\U0001F1EC","Antigua and Barbuda","1268","AG"),
+        new("\U0001F1E6\U0001F1F7","Argentina","54","AR"), new("\U0001F1E6\U0001F1F2","Armenia","374","AM"), new("\U0001F1E6\U0001F1FA","Australia","61","AU"),
+        new("\U0001F1E6\U0001F1F9","Austria","43","AT"), new("\U0001F1E6\U0001F1FF","Azerbaijan","994","AZ"), new("\U0001F1E7\U0001F1F8","Bahamas","1242","BS"),
+        new("\U0001F1E7\U0001F1ED","Bahrain","973","BH"), new("\U0001F1E7\U0001F1E9","Bangladesh","880","BD"), new("\U0001F1E7\U0001F1E7","Barbados","1246","BB"),
+        new("\U0001F1E7\U0001F1FE","Belarus","375","BY"), new("\U0001F1E7\U0001F1EA","Belgium","32","BE"), new("\U0001F1E7\U0001F1FF","Belize","501","BZ"),
+        new("\U0001F1E7\U0001F1EF","Benin","229","BJ"), new("\U0001F1E7\U0001F1F9","Bhutan","975","BT"), new("\U0001F1E7\U0001F1F4","Bolivia","591","BO"),
+        new("\U0001F1E7\U0001F1E6","Bosnia and Herzegovina","387","BA"), new("\U0001F1E7\U0001F1FC","Botswana","267","BW"), new("\U0001F1E7\U0001F1F7","Brazil","55","BR"),
+        new("\U0001F1E7\U0001F1F3","Brunei","673","BN"), new("\U0001F1E7\U0001F1EC","Bulgaria","359","BG"), new("\U0001F1E7\U0001F1EB","Burkina Faso","226","BF"),
+        new("\U0001F1E7\U0001F1EE","Burundi","257","BI"), new("\U0001F1F0\U0001F1ED","Cambodia","855","KH"), new("\U0001F1E8\U0001F1F2","Cameroon","237","CM"),
+        new("\U0001F1E8\U0001F1E6","Canada","1","CA"), new("\U0001F1E8\U0001F1EB","Central African Republic","236","CF"), new("\U0001F1F9\U0001F1E9","Chad","235","TD"),
+        new("\U0001F1E8\U0001F1F1","Chile","56","CL"), new("\U0001F1E8\U0001F1F3","China","86","CN"), new("\U0001F1E8\U0001F1F4","Colombia","57","CO"),
+        new("\U0001F1E8\U0001F1EC","Congo","242","CG"), new("\U0001F1E8\U0001F1F7","Costa Rica","506","CR"), new("\U0001F1ED\U0001F1F7","Croatia","385","HR"),
+        new("\U0001F1E8\U0001F1FA","Cuba","53","CU"), new("\U0001F1E8\U0001F1FE","Cyprus","357","CY"), new("\U0001F1E8\U0001F1FF","Czech Republic","420","CZ"),
+        new("\U0001F1E9\U0001F1F0","Denmark","45","DK"), new("\U0001F1E9\U0001F1F2","Dominica","1767","DM"), new("\U0001F1E9\U0001F1F4","Dominican Republic","1809","DO"),
+        new("\U0001F1EA\U0001F1E8","Ecuador","593","EC"), new("\U0001F1EA\U0001F1EC","Egypt","20","EG"), new("\U0001F1F8\U0001F1FB","El Salvador","503","SV"),
+        new("\U0001F1EA\U0001F1EA","Estonia","372","EE"), new("\U0001F1EA\U0001F1F9","Ethiopia","251","ET"), new("\U0001F1EB\U0001F1EE","Finland","358","FI"),
+        new("\U0001F1EB\U0001F1F7","France","33","FR"), new("\U0001F1EC\U0001F1E6","Gabon","241","GA"), new("\U0001F1EC\U0001F1EA","Georgia","995","GE"),
+        new("\U0001F1E9\U0001F1EA","Germany","49","DE"), new("\U0001F1EC\U0001F1ED","Ghana","233","GH"), new("\U0001F1EC\U0001F1F7","Greece","30","GR"),
+        new("\U0001F1EC\U0001F1F9","Guatemala","502","GT"), new("\U0001F1ED\U0001F1F9","Haiti","509","HT"), new("\U0001F1ED\U0001F1F3","Honduras","504","HN"),
+        new("\U0001F1ED\U0001F1F0","Hong Kong","852","HK"), new("\U0001F1ED\U0001F1FA","Hungary","36","HU"), new("\U0001F1EE\U0001F1F8","Iceland","354","IS"),
+        new("\U0001F1EE\U0001F1F3","India","91","IN"), new("\U0001F1EE\U0001F1E9","Indonesia","62","ID"), new("\U0001F1EE\U0001F1F7","Iran","98","IR"),
+        new("\U0001F1EE\U0001F1F6","Iraq","964","IQ"), new("\U0001F1EE\U0001F1EA","Ireland","353","IE"), new("\U0001F1EE\U0001F1F9","Italy","39","IT"),
+        new("\U0001F1EF\U0001F1F2","Jamaica","1876","JM"), new("\U0001F1EF\U0001F1F5","Japan","81","JP"), new("\U0001F1EF\U0001F1F4","Jordan","962","JO"),
+        new("\U0001F1F0\U0001F1FF","Kazakhstan","7","KZ"), new("\U0001F1F0\U0001F1EA","Kenya","254","KE"), new("\U0001F1F0\U0001F1FC","Kuwait","965","KW"),
+        new("\U0001F1F1\U0001F1E6","Laos","856","LA"), new("\U0001F1F1\U0001F1FB","Latvia","371","LV"), new("\U0001F1F1\U0001F1E7","Lebanon","961","LB"),
+        new("\U0001F1F1\U0001F1FE","Libya","218","LY"), new("\U0001F1F1\U0001F1EE","Liechtenstein","423","LI"), new("\U0001F1F1\U0001F1F9","Lithuania","370","LT"),
+        new("\U0001F1F1\U0001F1FA","Luxembourg","352","LU"), new("\U0001F1F2\U0001F1EC","Madagascar","261","MG"), new("\U0001F1F2\U0001F1FE","Malaysia","60","MY"),
+        new("\U0001F1F2\U0001F1FB","Maldives","960","MV"), new("\U0001F1F2\U0001F1F1","Mali","223","ML"), new("\U0001F1F2\U0001F1F9","Malta","356","MT"),
+        new("\U0001F1F2\U0001F1FD","Mexico","52","MX"), new("\U0001F1F2\U0001F1E9","Moldova","373","MD"), new("\U0001F1F2\U0001F1E8","Monaco","377","MC"),
+        new("\U0001F1F2\U0001F1F3","Mongolia","976","MN"), new("\U0001F1F2\U0001F1EA","Montenegro","382","ME"), new("\U0001F1F2\U0001F1E6","Morocco","212","MA"),
+        new("\U0001F1F2\U0001F1FF","Mozambique","258","MZ"), new("\U0001F1F2\U0001F1F2","Myanmar","95","MM"), new("\U0001F1F3\U0001F1E6","Namibia","264","NA"),
+        new("\U0001F1F3\U0001F1F5","Nepal","977","NP"), new("\U0001F1F3\U0001F1F1","Netherlands","31","NL"), new("\U0001F1F3\U0001F1FF","New Zealand","64","NZ"),
+        new("\U0001F1F3\U0001F1EE","Nicaragua","505","NI"), new("\U0001F1F3\U0001F1EC","Nigeria","234","NG"), new("\U0001F1F0\U0001F1F5","North Korea","850","KP"),
+        new("\U0001F1F2\U0001F1F0","North Macedonia","389","MK"), new("\U0001F1F3\U0001F1F4","Norway","47","NO"), new("\U0001F1F4\U0001F1F2","Oman","968","OM"),
+        new("\U0001F1F5\U0001F1F0","Pakistan","92","PK"), new("\U0001F1F5\U0001F1E6","Panama","507","PA"), new("\U0001F1F5\U0001F1EC","Papua New Guinea","675","PG"),
+        new("\U0001F1F5\U0001F1FE","Paraguay","595","PY"), new("\U0001F1F5\U0001F1EA","Peru","51","PE"), new("\U0001F1F5\U0001F1ED","Philippines","63","PH"),
+        new("\U0001F1F5\U0001F1F1","Poland","48","PL"), new("\U0001F1F5\U0001F1F9","Portugal","351","PT"), new("\U0001F1F6\U0001F1E6","Qatar","974","QA"),
+        new("\U0001F1F7\U0001F1F4","Romania","40","RO"), new("\U0001F1F7\U0001F1FA","Russia","7","RU"), new("\U0001F1F7\U0001F1FC","Rwanda","250","RW"),
+        new("\U0001F1F8\U0001F1E6","Saudi Arabia","966","SA"), new("\U0001F1F8\U0001F1F3","Senegal","221","SN"), new("\U0001F1F7\U0001F1F8","Serbia","381","RS"),
+        new("\U0001F1F8\U0001F1EC","Singapore","65","SG"), new("\U0001F1F8\U0001F1F0","Slovakia","421","SK"), new("\U0001F1F8\U0001F1EE","Slovenia","386","SI"),
+        new("\U0001F1F8\U0001F1F4","Somalia","252","SO"), new("\U0001F1FF\U0001F1E6","South Africa","27","ZA"), new("\U0001F1F0\U0001F1F7","South Korea","82","KR"),
+        new("\U0001F1EA\U0001F1F8","Spain","34","ES"), new("\U0001F1F1\U0001F1F0","Sri Lanka","94","LK"), new("\U0001F1F8\U0001F1E9","Sudan","249","SD"),
+        new("\U0001F1F8\U0001F1EA","Sweden","46","SE"), new("\U0001F1E8\U0001F1ED","Switzerland","41","CH"), new("\U0001F1F8\U0001F1FE","Syria","963","SY"),
+        new("\U0001F1F9\U0001F1FC","Taiwan","886","TW"), new("\U0001F1F9\U0001F1FF","Tanzania","255","TZ"), new("\U0001F1F9\U0001F1ED","Thailand","66","TH"),
+        new("\U0001F1F9\U0001F1F3","Tunisia","216","TN"), new("\U0001F1F9\U0001F1F7","Turkey","90","TR"), new("\U0001F1FA\U0001F1EC","Uganda","256","UG"),
+        new("\U0001F1FA\U0001F1E6","Ukraine","380","UA"), new("\U0001F1E6\U0001F1EA","United Arab Emirates","971","AE"), new("\U0001F1FA\U0001F1FE","Uruguay","598","UY"),
+        new("\U0001F1FA\U0001F1FF","Uzbekistan","998","UZ"), new("\U0001F1FB\U0001F1EA","Venezuela","58","VE"), new("\U0001F1FB\U0001F1F3","Vietnam","84","VN"),
+        new("\U0001F1FE\U0001F1EA","Yemen","967","YE"), new("\U0001F1FF\U0001F1F2","Zambia","260","ZM"), new("\U0001F1FF\U0001F1FC","Zimbabwe","263","ZW"),
+    ];
+
+    List<(CountryInfo c, int idx)> Filtered()
+    {
+        var q = _search.Trim();
+        var list = Countries.Select((c, i) => (c, i)).ToList();
+        if (string.IsNullOrEmpty(q)) return list;
+        return list.Where(x =>
+            x.c.Name.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+            x.c.DialCode.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+            ($"+{x.c.DialCode}").Contains(q, StringComparison.OrdinalIgnoreCase) ||
+            x.c.Iso.Equals(q, StringComparison.OrdinalIgnoreCase)
+        ).ToList();
+    }
+
+    bool _needsFocus;
+
+    void Toggle()
+    {
+        _open = !_open;
+        _search = "";
+        if (_open) _needsFocus = true;
+    }
+
+    void Close() { _open = false; _search = ""; }
+
+    async Task Select(int idx)
+    {
+        _open = false; _search = "";
+        SelectedIndex = idx;
+        await SelectedIndexChanged.InvokeAsync(idx);
+    }
+
+    void OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") Close();
+        else if (e.Key == "Enter")
+        {
+            var f = Filtered();
+            if (f.Count > 0) _ = Select(f[0].idx);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_needsFocus && _open)
+        {
+            _needsFocus = false;
+            try { await _searchRef.FocusAsync(); } catch { }
+        }
+    }
+
+    /// <summary>Parse a stored phone like "+972544994470" into (countryIndex, localDigits).</summary>
+    public static (int CountryIndex, string LocalPhone) ParsePhone(string stored)
+    {
+        if (string.IsNullOrEmpty(stored)) return (0, "");
+        if (!stored.StartsWith("+")) return (0, stored);
+        var digits = stored[1..];
+        var sorted = Countries.Select((c, i) => (c, i)).OrderByDescending(x => x.c.DialCode.Length);
+        foreach (var (c, i) in sorted)
+            if (digits.StartsWith(c.DialCode))
+                return (i, digits[c.DialCode.Length..]);
+        return (0, stored);
+    }
+
+    /// <summary>Normalize local phone to international format.</summary>
+    public static string Normalize(int countryIndex, string localPhone)
+    {
+        var local = localPhone.Trim();
+        if (string.IsNullOrEmpty(local)) return "";
+        if (local.StartsWith("0")) local = local[1..];
+        local = System.Text.RegularExpressions.Regex.Replace(local, @"[\s\-\(\)]", "");
+        if (string.IsNullOrEmpty(local)) return "";
+        return $"+{Countries[countryIndex].DialCode}{local}";
+    }
+
+    /// <summary>Validate local phone number.</summary>
+    public static bool IsValid(int countryIndex, string localPhone)
+    {
+        var local = localPhone.Trim();
+        if (string.IsNullOrEmpty(local)) return false;
+        if (local.StartsWith("0")) local = local[1..];
+        local = System.Text.RegularExpressions.Regex.Replace(local, @"[\s\-\(\)]", "");
+        if (!local.All(char.IsDigit)) return false;
+        bool isIsrael = Countries[countryIndex].DialCode == "972";
+        return isIsrael ? local.Length == 9 : local.Length >= 7;
+    }
+
+    /// <summary>Error message for invalid phone.</summary>
+    public static string ErrorMessage(int countryIndex, string localPhone)
+    {
+        var local = localPhone.Trim();
+        if (string.IsNullOrEmpty(local)) return "";
+        if (local.StartsWith("0")) local = local[1..];
+        local = System.Text.RegularExpressions.Regex.Replace(local, @"[\s\-\(\)]", "");
+        if (!local.All(char.IsDigit)) return "Digits only \u2014 no letters or special characters.";
+        bool isIsrael = Countries[countryIndex].DialCode == "972";
+        if (isIsrael && local.Length != 9) return $"Israeli number must be exactly 9 digits (entered: {local.Length}).";
+        if (!isIsrael && local.Length < 7) return "At least 7 digits required.";
+        return "";
+    }
+}
+
+<style>
+    .spk-cpick { position: relative; flex: 0 0 auto; }
+    .spk-cpick-backdrop { position: fixed; inset: 0; z-index: 99; background: transparent; }
+    .spk-cpick-btn {
+        display: flex; align-items: center; gap: 6px;
+        background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 10px; padding: 13px 12px; color: #f1f5f9; font-size: 1rem;
+        cursor: pointer; min-height: 46px; transition: border-color 0.2s, background 0.2s;
+        box-sizing: border-box;
+    }
+    .spk-cpick-btn:hover { background: rgba(255,255,255,0.1); border-color: rgba(99,102,241,0.4); }
+    .spk-cpick-flag { font-size: 1.3rem; line-height: 1; }
+    .spk-cpick-code { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .spk-cpick-arrow { font-size: 1rem; color: #64748b; transition: transform 0.2s; }
+    .spk-cpick-arrow-up { transform: rotate(180deg); }
+    .spk-cpick-drop {
+        position: absolute; top: calc(100% + 6px); left: 0; z-index: 100;
+        width: 320px; max-height: 360px; display: flex; flex-direction: column;
+        background: #1e293b; border: 1px solid rgba(99,102,241,0.25);
+        border-radius: 14px; box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+        animation: spkCpickIn 0.15s ease-out; overflow: hidden;
+    }
+    @@keyframes spkCpickIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+    .spk-cpick-search-wrap { position: relative; padding: 10px 10px 6px; flex-shrink: 0; }
+    .spk-cpick-search-icon {
+        position: absolute; left: 20px; top: 50%; transform: translateY(-50%);
+        color: #475569; font-size: .95rem; pointer-events: none;
+    }
+    .spk-cpick-search {
+        width: 100%; padding: 9px 12px 9px 34px;
+        background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 8px; color: #f1f5f9; font-size: .95rem; outline: none;
+    }
+    .spk-cpick-search:focus { border-color: rgba(99,102,241,0.5); }
+    .spk-cpick-search::placeholder { color: #475569; }
+    .spk-cpick-list {
+        overflow-y: auto; flex: 1; padding: 4px 6px 8px;
+        scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent;
+    }
+    .spk-cpick-item {
+        display: flex; align-items: center; gap: 10px; width: 100%;
+        padding: 8px 10px; border: none; background: none; color: #e2e8f0;
+        font-size: .9rem; border-radius: 8px; cursor: pointer; text-align: left;
+        transition: background 0.12s;
+    }
+    .spk-cpick-item:hover { background: rgba(99,102,241,0.15); }
+    .spk-cpick-item-active { background: rgba(99,102,241,0.2); }
+    .spk-cpick-item-flag { font-size: 1.2rem; flex-shrink: 0; }
+    .spk-cpick-item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .spk-cpick-item-dial { color: #64748b; font-size: .82rem; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+    .spk-cpick-empty { padding: 16px; text-align: center; color: #475569; font-size: .85rem; }
+
+    @@media (max-width: 768px) { .spk-cpick-drop { width: 280px; } }
+    @@media (max-width: 480px) { .spk-cpick-drop { width: 100%; left: 0; right: 0; } }
+</style>

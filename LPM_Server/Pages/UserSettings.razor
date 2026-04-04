@@ -169,14 +169,7 @@
                         <div class="col-md-6">
                             <label class="form-label settings-label">Phone number</label>
                             <div class="d-flex gap-2">
-                                <select class="form-select" style="flex:0 0 auto;max-width:190px;font-size:1rem;"
-                                        @bind="_contactCountryIdx">
-                                    @for (int i = 0; i < _contactCountries.Length; i++)
-                                    {
-                                        var idx = i;
-                                        <option value="@idx">@_contactCountries[idx].Flag @_contactCountries[idx].Name (+@_contactCountries[idx].DialCode)</option>
-                                    }
-                                </select>
+                                <SpkCountryPicker @bind-SelectedIndex="_contactCountryIdx" />
                                 <input class="form-control @(_contactPhoneTouched ? (IsContactPhoneValid() ? "is-valid" : "is-invalid") : "")"
                                        type="tel" placeholder="054 499 4470"
                                        value="@_contactLocalPhone"
@@ -426,22 +419,8 @@
 </style>
 
 @code {
-    private record ContactCountry(string Flag, string Name, string DialCode);
-    private static readonly ContactCountry[] _contactCountries =
-    [
-        new("🇮🇱","Israel","972"), new("🇺🇸","United States","1"), new("🇬🇧","United Kingdom","44"),
-        new("🇦🇺","Australia","61"), new("🇦🇹","Austria","43"), new("🇧🇪","Belgium","32"),
-        new("🇧🇷","Brazil","55"), new("🇨🇦","Canada","1"), new("🇨🇳","China","86"),
-        new("🇩🇰","Denmark","45"), new("🇪🇬","Egypt","20"), new("🇫🇷","France","33"),
-        new("🇩🇪","Germany","49"), new("🇬🇷","Greece","30"), new("🇭🇺","Hungary","36"),
-        new("🇮🇳","India","91"), new("🇮🇪","Ireland","353"), new("🇮🇹","Italy","39"),
-        new("🇯🇵","Japan","81"), new("🇯🇴","Jordan","962"), new("🇱🇧","Lebanon","961"),
-        new("🇲🇽","Mexico","52"), new("🇳🇱","Netherlands","31"), new("🇳🇿","New Zealand","64"),
-        new("🇳🇴","Norway","47"), new("🇵🇱","Poland","48"), new("🇵🇹","Portugal","351"),
-        new("🇷🇺","Russia","7"), new("🇸🇦","Saudi Arabia","966"), new("🇿🇦","South Africa","27"),
-        new("🇪🇸","Spain","34"), new("🇸🇪","Sweden","46"), new("🇨🇭","Switzerland","41"),
-        new("🇹🇷","Turkey","90"), new("🇺🇦","Ukraine","380"), new("🇦🇪","United Arab Emirates","971"),
-    ];
+    // Country list and phone helpers from shared component
+    private static SpkCountryPicker.CountryInfo[] _contactCountries => SpkCountryPicker.Countries;
 
     private string _username = "";
     private string? _avatarUrl;
@@ -522,60 +501,15 @@
         !string.IsNullOrWhiteSpace(email) &&
         Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$");
 
-    private bool IsContactPhoneValid()
-    {
-        var local = _contactLocalPhone.Trim();
-        if (string.IsNullOrEmpty(local)) return false;
-        if (local.StartsWith("0")) local = local[1..];
-        local = Regex.Replace(local, @"[\s\-\(\)]", "");
-        if (!local.All(char.IsDigit)) return false;
-        bool isIsrael = _contactCountries[_contactCountryIdx].DialCode == "972";
-        return isIsrael ? local.Length == 9 : local.Length >= 7;
-    }
-
-    private string ContactPhoneErrorMessage()
-    {
-        var local = _contactLocalPhone.Trim();
-        if (string.IsNullOrEmpty(local)) return "";
-        if (local.StartsWith("0")) local = local[1..];
-        local = Regex.Replace(local, @"[\s\-\(\)]", "");
-        if (!local.All(char.IsDigit)) return "Digits only — no letters or special characters.";
-        bool isIsrael = _contactCountries[_contactCountryIdx].DialCode == "972";
-        if (isIsrael && local.Length != 9) return $"Israeli number must be exactly 9 digits (entered: {local.Length}).";
-        if (!isIsrael && local.Length < 7) return "At least 7 digits required.";
-        return "";
-    }
-
-    private string ContactPhoneNormalized
-    {
-        get
-        {
-            var local = _contactLocalPhone.Trim();
-            if (string.IsNullOrEmpty(local)) return "";
-            if (local.StartsWith("0")) local = local[1..];
-            local = Regex.Replace(local, @"[\s\-\(\)]", "");
-            if (string.IsNullOrEmpty(local)) return "";
-            return $"+{_contactCountries[_contactCountryIdx].DialCode}{local}";
-        }
-    }
+    private bool IsContactPhoneValid() => SpkCountryPicker.IsValid(_contactCountryIdx, _contactLocalPhone);
+    private string ContactPhoneErrorMessage() => SpkCountryPicker.ErrorMessage(_contactCountryIdx, _contactLocalPhone);
+    private string ContactPhoneNormalized => SpkCountryPicker.Normalize(_contactCountryIdx, _contactLocalPhone);
 
     private void ParseContactPhone(string stored)
     {
-        if (string.IsNullOrEmpty(stored)) return;
-        if (!stored.StartsWith("+")) { _contactLocalPhone = stored; return; }
-        var digits = stored[1..];
-        var sorted = _contactCountries.Select((c, i) => (c, i))
-                                      .OrderByDescending(x => x.c.DialCode.Length);
-        foreach (var (c, i) in sorted)
-        {
-            if (digits.StartsWith(c.DialCode))
-            {
-                _contactCountryIdx  = i;
-                _contactLocalPhone  = digits[c.DialCode.Length..];
-                return;
-            }
-        }
-        _contactLocalPhone = stored;
+        var (idx, local) = SpkCountryPicker.ParsePhone(stored);
+        _contactCountryIdx = idx;
+        _contactLocalPhone = local;
     }
 
     private void OnContactEmailInput(ChangeEventArgs e)

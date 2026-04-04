@@ -222,9 +222,21 @@ app.Use(async (ctx, next) =>
     if ((path == "/" || path.Equals("/index", StringComparison.OrdinalIgnoreCase))
         && ctx.Request.Method == "GET")
     {
-        // Already authenticated → go straight to dashboard
+        // Already authenticated → check security flags before going to dashboard
         if (ctx.User.Identity?.IsAuthenticated == true)
         {
+            var gateDb = ctx.RequestServices.GetRequiredService<UserDb>();
+            var gateUsername = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
+            var gateFlags = gateDb.GetLoginFlags(gateUsername);
+            if (gateFlags != null)
+            {
+                if (gateFlags.MustChangePassword)
+                { ctx.Response.Redirect("/ChangePassword"); return; }
+                if ((gateFlags.Require2FA || gateFlags.TotpEnabled) && !gateFlags.TotpEnabled)
+                { ctx.Response.Redirect("/Setup2FA?voluntary=1"); return; }
+                if (gateDb.NeedsContactConfirm(gateFlags.UserId))
+                { ctx.Response.Redirect("/WelcomeContact"); return; }
+            }
             ctx.Response.Redirect("/Home");
             return;
         }
@@ -248,11 +260,21 @@ app.Use(async (ctx, next) =>
                         var flags = db.GetLoginFlagsById(userId);
                         if (flags != null)
                         {
-                            await SignInUser(ctx, db, flags.Username, flags);
-                            SetAutoLoginCookie(ctx, autoLoginProtector, userId, info.Value.PwdHashPrefix);
-                            Console.WriteLine($"[AutoLogin] '{flags.Username}' auto-logged in");
-                            ctx.Response.Redirect(HomeOrContact(db, userId));
-                            return; // short-circuit — don't call next()
+                            // Block auto-login if user must change password, set up 2FA, or confirm contact info
+                            if (flags.MustChangePassword
+                                || ((flags.Require2FA || flags.TotpEnabled) && !flags.TotpEnabled)
+                                || db.NeedsContactConfirm(userId))
+                            {
+                                Console.WriteLine($"[AutoLogin] '{flags.Username}' blocked — needs password change, 2FA setup, or contact confirmation");
+                            }
+                            else
+                            {
+                                await SignInUser(ctx, db, flags.Username, flags);
+                                SetAutoLoginCookie(ctx, autoLoginProtector, userId, info.Value.PwdHashPrefix);
+                                Console.WriteLine($"[AutoLogin] '{flags.Username}' auto-logged in");
+                                ctx.Response.Redirect(HomeOrContact(db, userId));
+                                return; // short-circuit — don't call next()
+                            }
                         }
                     }
                 }
@@ -365,10 +387,9 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db, IConfiguration conf
     var flags = db.GetLoginFlags(username)!;
 
     bool require2fa     = flags.Require2FA || flags.TotpEnabled;
-    bool requirePwdChg  = config.GetValue<bool>("Security:RequirePasswordChangeOnFirstLogin");
 
     // Step 1: force password change?
-    if (requirePwdChg && flags.MustChangePassword)
+    if (flags.MustChangePassword)
     {
         ctx.Response.Cookies.Append("lpm_pending", flags.UserId.ToString(), PendingCookieOpts());
         Console.WriteLine($"[Login] '{username}' must change password");
@@ -410,8 +431,23 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db, IConfiguration conf
 
 app.MapPost("/loginpost-changepwd", async (HttpContext ctx, UserDb db, IConfiguration config) =>
 {
-    if (!int.TryParse(ctx.Request.Cookies["lpm_pending"], out var userId))
+    int userId;
+    if (int.TryParse(ctx.Request.Cookies["lpm_pending"], out var pendingId))
+    {
+        userId = pendingId;
+    }
+    else if (ctx.User.Identity?.IsAuthenticated == true)
+    {
+        // Already signed in (redirected from Home guard) — resolve userId from auth cookie
+        var authUsername = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
+        var authFlags = db.GetLoginFlags(authUsername);
+        if (authFlags == null) return Results.Redirect("/login");
+        userId = authFlags.UserId;
+    }
+    else
+    {
         return Results.Redirect("/login");
+    }
 
     var form = await ctx.Request.ReadFormAsync();
     var newPwd = form["newPassword"].ToString();
@@ -475,7 +511,14 @@ app.MapPost("/loginpost-setup2fa", async (HttpContext ctx, UserDb db, IConfigura
     }
     else
     {
-        if (!int.TryParse(ctx.Request.Cookies["lpm_pending"], out userId))
+        if (!int.TryParse(ctx.Request.Cookies["lpm_pending"], out userId) && ctx.User.Identity?.IsAuthenticated == true)
+        {
+            // lpm_pending expired but user is authenticated — fall back to auth claims
+            var authUser = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
+            var authFlags = db.GetLoginFlags(authUser);
+            if (authFlags != null) userId = authFlags.UserId;
+        }
+        if (userId == 0)
             return Results.Redirect("/login");
     }
 
@@ -496,7 +539,13 @@ app.MapPost("/loginpost-setup2fa", async (HttpContext ctx, UserDb db, IConfigura
     Console.WriteLine($"[2FA] Setup complete for userId={userId} (voluntary={voluntary})");
 
     if (voluntary)
+    {
+        // If Require2FA was set (forced setup from Home/WelcomeContact), go to Home
+        var volFlags = db.GetLoginFlagsById(userId);
+        if (volFlags?.Require2FA == true)
+            return Results.Redirect(HomeOrContact(db, userId));
         return Results.Redirect("/UserSettings?2fa=ok");
+    }
 
     var flags = db.GetLoginFlagsById(userId);
     if (flags == null) return Results.Redirect("/login");

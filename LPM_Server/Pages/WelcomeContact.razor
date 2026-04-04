@@ -31,6 +31,10 @@
             <div class="wc-header">
                 <div class="wc-logo-ring"><i class="ri-shield-check-line"></i></div>
                 <h1 class="wc-title">Welcome to LPM</h1>
+                @if (!string.IsNullOrEmpty(_username))
+                {
+                    <p class="wc-username"><i class="ri-user-line"></i> @_username</p>
+                }
                 <p class="wc-subtitle">@(_hasExistingData ? "Please review your contact details — update if needed, then press Go." : "Before you continue, please provide your contact details.")</p>
             </div>
 
@@ -71,13 +75,7 @@
                 <div class="wc-field">
                     <label class="wc-label">Phone number</label>
                     <div class="wc-phone-row">
-                        <select class="wc-country-select" @bind="_selectedCountryIndex">
-                            @for (int i = 0; i < _countries.Length; i++)
-                            {
-                                var idx = i;
-                                <option value="@idx">@_countries[idx].Flag @_countries[idx].Name (+@_countries[idx].DialCode)</option>
-                            }
-                        </select>
+                        <SpkCountryPicker @bind-SelectedIndex="_selectedCountryIndex" />
                         <input class="wc-input wc-phone-input @(_phoneTouched && !IsPhoneValid() ? "wc-input-invalid" : (_phoneTouched && IsPhoneValid() ? "wc-input-valid" : ""))"
                                type="tel"
                                placeholder="054 499 4470"
@@ -165,6 +163,10 @@
         background-clip: text;
     }
 
+    .wc-username {
+        color: #818cf8; font-size: 1rem; font-weight: 600; margin: 4px 0 2px;
+        display: flex; align-items: center; justify-content: center; gap: 6px;
+    }
     .wc-subtitle {
         font-size: 0.95rem;
         color: #94a3b8;
@@ -280,29 +282,7 @@
         gap: 10px;
     }
 
-    .wc-country-select {
-        flex: 0 0 auto;
-        max-width: 220px;
-        background: rgba(255,255,255,0.07);
-        border: 1px solid rgba(255,255,255,0.18);
-        border-radius: 10px;
-        padding: 13px 10px;          /* match input height */
-        color: #f1f5f9;
-        font-size: 1rem;             /* 16px prevents iOS zoom */
-        outline: none;
-        cursor: pointer;
-        transition: border-color 0.2s;
-        -webkit-tap-highlight-color: transparent;
-        min-height: 46px;
-        box-sizing: border-box;
-    }
-
-    .wc-country-select:focus { border-color: rgba(99,102,241,0.6); }
-
-    .wc-country-select option {
-        background: #1e293b;
-        color: #f1f5f9;
-    }
+    /* Country picker styles are in SpkCountryPicker.razor */
 
     .wc-phone-input { flex: 1; }
 
@@ -325,9 +305,6 @@
         .wc-card {
             padding: 40px 32px;
         }
-        .wc-country-select {
-            max-width: 200px;
-        }
     }
 
     /* ── Mobile (480px and below) ── */
@@ -348,7 +325,6 @@
         .wc-subtitle { font-size: 0.88rem; }
         .wc-callout { padding: 13px 14px; font-size: 0.85rem; gap: 10px; }
         .wc-phone-row { flex-direction: column; gap: 8px; }
-        .wc-country-select { max-width: 100%; width: 100%; }
         .wc-header { margin-bottom: 20px; }
         .wc-form { gap: 16px; }
     }
@@ -456,47 +432,8 @@
 </style>
 
 @code {
-    private record Country(string Flag, string Name, string DialCode);
-
-    private static readonly Country[] _countries =
-    [
-        new("🇮🇱", "Israel",               "972"),
-        new("🇺🇸", "United States",        "1"),
-        new("🇬🇧", "United Kingdom",       "44"),
-        new("🇦🇺", "Australia",            "61"),
-        new("🇦🇹", "Austria",              "43"),
-        new("🇧🇪", "Belgium",              "32"),
-        new("🇧🇷", "Brazil",               "55"),
-        new("🇨🇦", "Canada",               "1"),
-        new("🇨🇳", "China",                "86"),
-        new("🇩🇰", "Denmark",              "45"),
-        new("🇪🇬", "Egypt",                "20"),
-        new("🇫🇷", "France",               "33"),
-        new("🇩🇪", "Germany",              "49"),
-        new("🇬🇷", "Greece",               "30"),
-        new("🇭🇺", "Hungary",              "36"),
-        new("🇮🇳", "India",                "91"),
-        new("🇮🇪", "Ireland",              "353"),
-        new("🇮🇹", "Italy",                "39"),
-        new("🇯🇵", "Japan",                "81"),
-        new("🇯🇴", "Jordan",               "962"),
-        new("🇱🇧", "Lebanon",              "961"),
-        new("🇲🇽", "Mexico",               "52"),
-        new("🇳🇱", "Netherlands",          "31"),
-        new("🇳🇿", "New Zealand",          "64"),
-        new("🇳🇴", "Norway",               "47"),
-        new("🇵🇱", "Poland",               "48"),
-        new("🇵🇹", "Portugal",             "351"),
-        new("🇷🇺", "Russia",               "7"),
-        new("🇸🇦", "Saudi Arabia",         "966"),
-        new("🇿🇦", "South Africa",         "27"),
-        new("🇪🇸", "Spain",                "34"),
-        new("🇸🇪", "Sweden",               "46"),
-        new("🇨🇭", "Switzerland",          "41"),
-        new("🇹🇷", "Turkey",               "90"),
-        new("🇺🇦", "Ukraine",              "380"),
-        new("🇦🇪", "United Arab Emirates", "971"),
-    ];
+    // Country list from shared component
+    private static SpkCountryPicker.CountryInfo[] _countries => SpkCountryPicker.Countries;
 
     private bool _initialized; // stays false until we've confirmed this user needs the form
     private int _userId;
@@ -526,61 +463,15 @@
         }
     }
 
-    private string _normalizedPhone
-    {
-        get
-        {
-            var local = _localPhone.Trim();
-            if (string.IsNullOrEmpty(local)) return "";
-            if (local.StartsWith("0")) local = local[1..];
-            local = Regex.Replace(local, @"[\s\-\(\)]", "");
-            if (string.IsNullOrEmpty(local)) return "";
-            return $"+{_countries[_selectedCountryIndex].DialCode}{local}";
-        }
-    }
-
-    private bool IsPhoneValid()
-    {
-        var local = _localPhone.Trim();
-        if (string.IsNullOrEmpty(local)) return false;
-        if (local.StartsWith("0")) local = local[1..];
-        local = Regex.Replace(local, @"[\s\-\(\)]", "");
-        if (!local.All(char.IsDigit)) return false;
-        bool isIsrael = _countries[_selectedCountryIndex].DialCode == "972";
-        return isIsrael ? local.Length == 9 : local.Length >= 7;
-    }
-
-    private string PhoneErrorMessage()
-    {
-        var local = _localPhone.Trim();
-        if (string.IsNullOrEmpty(local)) return "";
-        if (local.StartsWith("0")) local = local[1..];
-        local = Regex.Replace(local, @"[\s\-\(\)]", "");
-        if (!local.All(char.IsDigit)) return "Digits only — no letters or special characters.";
-        bool isIsrael = _countries[_selectedCountryIndex].DialCode == "972";
-        if (isIsrael && local.Length != 9) return $"Israeli number must be exactly 9 digits (entered: {local.Length}).";
-        if (!isIsrael && local.Length < 7) return "At least 7 digits required.";
-        return "";
-    }
+    private string _normalizedPhone => SpkCountryPicker.Normalize(_selectedCountryIndex, _localPhone);
+    private bool IsPhoneValid() => SpkCountryPicker.IsValid(_selectedCountryIndex, _localPhone);
+    private string PhoneErrorMessage() => SpkCountryPicker.ErrorMessage(_selectedCountryIndex, _localPhone);
 
     private void ParseStoredPhone(string stored)
     {
-        if (string.IsNullOrEmpty(stored)) return;
-        if (!stored.StartsWith("+")) { _localPhone = stored; return; }
-        var digits = stored[1..];
-        // Try longest dial code first to avoid ambiguity
-        var sorted = _countries.Select((c, i) => (c, i))
-                               .OrderByDescending(x => x.c.DialCode.Length);
-        foreach (var (c, i) in sorted)
-        {
-            if (digits.StartsWith(c.DialCode))
-            {
-                _selectedCountryIndex = i;
-                _localPhone = digits[c.DialCode.Length..];
-                return;
-            }
-        }
-        _localPhone = stored;
+        var (idx, local) = SpkCountryPicker.ParsePhone(stored);
+        _selectedCountryIndex = idx;
+        _localPhone = local;
     }
 
     private bool CanSubmit => _emailValid && IsPhoneValid();
@@ -695,6 +586,16 @@
             _submitted = true;
             StateHasChanged();
             await Task.Delay(2500);
+            // Check if 2FA setup is still needed before going Home
+            if (_userId > 0)
+            {
+                var flags = UserDb.GetLoginFlagsById(_userId);
+                if (flags != null && (flags.Require2FA || flags.TotpEnabled) && !flags.TotpEnabled)
+                {
+                    Nav.NavigateTo("/Setup2FA?voluntary=1");
+                    return;
+                }
+            }
             Nav.NavigateTo("/Home");
         }
         catch (Exception ex)

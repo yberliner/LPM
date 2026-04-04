@@ -423,7 +423,7 @@
                     @foreach (var col in _userEditCols)
                     {
                         var cc = col;
-                        bool ro = cc == "Id";
+                        bool ro = cc == "Id" || _maskCols.Contains(cc);
                         <div class="col-6 col-sm-4 col-md-3">
                             <label class="diag-lbl">@cc</label>
                             @if (ro)
@@ -441,6 +441,10 @@
                     <button class="btn btn-primary btn-sm diag-action-btn" disabled="@_userBusy" @onclick="SaveUserFields">
                         @if (_userBusy) { <span class="spinner-border spinner-border-sm me-1"></span> } else { <i class="ri-save-line me-1"></i> }
                         Save Fields
+                    </button>
+                    <button class="btn btn-outline-danger btn-sm diag-action-btn" disabled="@_userBusy" @onclick="ResetSecurityFlags">
+                        @if (_userBusy) { <span class="spinner-border spinner-border-sm me-1"></span> } else { <i class="ri-shield-keyhole-line me-1"></i> }
+                        Re-verify User
                     </button>
                 </div>
                 <div class="border-top pt-3">
@@ -1687,7 +1691,7 @@
     // ── User editor state ──────────────────────────────────────────────────
     record UserDropdownItem(int Id, string Username, string StaffRole, string UserType);
     static readonly HashSet<string> _hiddenCols =
-        new(StringComparer.OrdinalIgnoreCase) { "PasswordHash", "TotpSecret" };
+        new(StringComparer.OrdinalIgnoreCase) { "PasswordHash" };
 
     List<UserDropdownItem>     _userList     = [];
     int                        _selectedUserId;
@@ -1843,7 +1847,8 @@
             var col = r.GetName(i);
             if (_hiddenCols.Contains(col)) continue;
             _userEditCols.Add(col);
-            _userEditVals[col] = r.IsDBNull(i) ? "" : r.GetValue(i).ToString() ?? "";
+            var val = r.IsDBNull(i) ? "" : r.GetValue(i).ToString() ?? "";
+            _userEditVals[col] = MaskValue(col, val);
         }
     }
 
@@ -1851,7 +1856,7 @@
     {
         if (_selectedUserId == 0) return;
         _userBusy = true; _userMsg = "";
-        var editableCols = _userEditCols.Where(c => c != "Id").ToList();
+        var editableCols = _userEditCols.Where(c => c != "Id" && !_maskCols.Contains(c)).ToList();
         var editableVals = editableCols.Select(c => _userEditVals[c]).ToList();
         var targetUser   = _userList.FirstOrDefault(u => u.Id == _selectedUserId)?.Username ?? _selectedUserId.ToString();
         var admin        = AdminUser();
@@ -1912,6 +1917,37 @@
         {
             _userMsg = $"Error: {ex.Message}"; _userMsgOk = false;
             Console.WriteLine($"[Diagnosis] Admin '{admin}' failed password change for user '{targetUser}': {ex.Message}");
+        }
+        finally { _userBusy = false; }
+    }
+
+    async Task ResetSecurityFlags()
+    {
+        if (_selectedUserId == 0) return;
+        _userBusy = true; _userMsg = "";
+        var targetUser = _userList.FirstOrDefault(u => u.Id == _selectedUserId)?.Username ?? _selectedUserId.ToString();
+        var admin = AdminUser();
+        try
+        {
+            await Task.Run(() =>
+            {
+                using var conn = new SqliteConnection(DbCs());
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "UPDATE core_users SET MustChangePassword=1, Require2FA=1, ContactConfirmed=0, TotpEnabled=0 WHERE Id=@id";
+                cmd.Parameters.AddWithValue("@id", _selectedUserId);
+                cmd.ExecuteNonQuery();
+                Console.WriteLine($"[Diagnosis] Admin '{admin}' reset security flags for user '{targetUser}' (Id={_selectedUserId})");
+            });
+            _userMsg = $"Security reset for {targetUser} — will be forced to change password, set up 2FA, and confirm contact info on next login.";
+            _userMsgOk = true;
+            OnUserSelected(new ChangeEventArgs { Value = _selectedUserId.ToString() });
+            LoadLiveTables();
+        }
+        catch (Exception ex)
+        {
+            _userMsg = $"Error: {ex.Message}"; _userMsgOk = false;
+            Console.WriteLine($"[Diagnosis] Admin '{admin}' failed security reset for user '{targetUser}': {ex.Message}");
         }
         finally { _userBusy = false; }
     }
@@ -2114,7 +2150,7 @@
         }
 
         var tCore = Task.Run(() => Group(
-            ("core_users",   "ri-user-settings-line",  "ORDER BY Id",       new[]{"PasswordHash","TotpSecret"}),
+            ("core_users",   "ri-user-settings-line",  "ORDER BY Id",       new[]{"PasswordHash"}),
             ("core_persons", "ri-contacts-line",        "ORDER BY PersonId", null),
             ("core_pcs",     "ri-computer-line",        "ORDER BY PcId",     null)));
 
@@ -2266,6 +2302,12 @@
         return new TableData(t.Name, t.Icon, cols, rows);
     }
 
+    static readonly HashSet<string> _maskCols =
+        new(StringComparer.OrdinalIgnoreCase) { "TotpSecret" };
+
+    static string MaskValue(string colName, string val) =>
+        _maskCols.Contains(colName) && val.Length > 8 ? val[..8] + "...." : val;
+
     TableData Load(SqliteConnection conn, string table, string icon,
                    string orderBy = "", string[]? skipCols = null)
     {
@@ -2284,7 +2326,10 @@
                 var row = new List<string>();
                 for (int i = 0; i < r.FieldCount; i++)
                     if (!skip.Contains(r.GetName(i)))
-                        row.Add(r.IsDBNull(i) ? "" : r.GetValue(i).ToString() ?? "");
+                    {
+                        var val = r.IsDBNull(i) ? "" : r.GetValue(i).ToString() ?? "";
+                        row.Add(MaskValue(r.GetName(i), val));
+                    }
                 rows.Add(row);
             }
         }
@@ -3017,7 +3062,7 @@
 
     (List<TableData> Tables, List<PcfdFolder> Folders) LoadPcFullData(int pcId)
     {
-        var skipCols = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PasswordHash", "TotpSecret" };
+        var skipCols = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PasswordHash" };
 
         using var conn = new SqliteConnection(DbCs());
         conn.Open();
@@ -3046,7 +3091,10 @@
                     var row = new List<string>();
                     for (int i = 0; i < r.FieldCount; i++)
                         if (!skipCols.Contains(r.GetName(i)))
-                            row.Add(r.IsDBNull(i) ? "" : r.GetValue(i).ToString() ?? "");
+                        {
+                            var val = r.IsDBNull(i) ? "" : r.GetValue(i).ToString() ?? "";
+                            row.Add(MaskValue(r.GetName(i), val));
+                        }
                     rows.Add(row);
                 }
             }

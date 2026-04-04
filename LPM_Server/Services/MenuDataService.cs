@@ -201,13 +201,13 @@ public class MenuDataService
         ),
         new MainMenuItems(
             menuTitle: "User Guide",
-            requiredRole: "Admin,Customer"
+            requiredRole: null
         ),
         new MainMenuItems(
             path: "/Guide",
             type: "link",
             title: "User Guide",
-            requiredRole: "Admin,Customer",
+            requiredRole: null,
             icon: "",
             svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><rect x='12' y='6' width='40' height='52' rx='4' fill='#78909c'/><rect x='12' y='6' width='20' height='52' fill='#90a4ae'/><rect x='18' y='14' width='28' height='4' rx='1' fill='#eceff1'/><rect x='18' y='22' width='20' height='2' rx='1' fill='#b0bec5'/><rect x='18' y='28' width='24' height='2' rx='1' fill='#b0bec5'/><rect x='18' y='34' width='16' height='2' rx='1' fill='#b0bec5'/><circle cx='44' cy='46' r='10' fill='#ffb74d'/><text x='44' y='51' text-anchor='middle' font-size='14' font-weight='bold' fill='#fff'>?</text></svg>",
             selected: false,

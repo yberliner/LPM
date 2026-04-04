@@ -2,6 +2,8 @@
 @layout CustomLayout
 @inject IJSRuntime JS
 @inject NavigationManager Nav
+@inject IHttpContextAccessor HttpCtx
+@inject LPM.Auth.UserDb UserDb
 
 <div class="auth-bg">
     <div class="container">
@@ -14,6 +16,10 @@
                     </div>
 
                     <h4 class="auth-card-title">Two-Factor Authentication</h4>
+                    @if (!string.IsNullOrEmpty(_displayName))
+                    {
+                        <p class="auth-card-user"><i class="ri-user-line"></i> @_displayName</p>
+                    }
                     <p class="auth-card-sub">
                         Open your authenticator app and enter the 6-digit code.
                     </p>
@@ -66,9 +72,15 @@
 @code {
     string _code = "";
     bool _error, _loading, _shake;
+    string _displayName = "";
 
     protected override async Task OnInitializedAsync()
     {
+        if (int.TryParse(HttpCtx.HttpContext?.Request.Cookies["lpm_pending"], out var uid))
+        {
+            var flags = UserDb.GetLoginFlagsById(uid);
+            if (flags != null) _displayName = flags.Username;
+        }
         var uri = new Uri(Nav.Uri);
         var q = System.Web.HttpUtility.ParseQueryString(uri.Query);
         _error = q["error"] == "1";
@@ -126,6 +138,8 @@
         box-shadow: 0 8px 24px rgba(168,85,247,0.4);
     }
     .auth-card-title { color: #f1f5f9; font-size: 1.4rem; font-weight: 700; margin-bottom: 6px; }
+    .auth-card-user { color: #818cf8; font-size: 1rem; font-weight: 600; margin-bottom: 4px;
+        display: flex; align-items: center; justify-content: center; gap: 6px; }
     .auth-card-sub { color: #94a3b8; font-size: .9rem; margin-bottom: 28px; line-height: 1.5; }
     .auth-alert { border-radius: 10px; padding: 10px 14px; font-size: .85rem;
                   display: flex; align-items: center; gap: 8px; margin-bottom: 18px; text-align: left; }
