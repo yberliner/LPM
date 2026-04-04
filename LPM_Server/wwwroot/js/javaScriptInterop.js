@@ -487,6 +487,73 @@ window.interop = {
     });
   },
 
+  // ── ARF table arrow key navigation ──
+  setupArfNavigation: function () {
+      if (document._arfNavSetup) return;
+      document._arfNavSetup = true;
+
+      function focusCell(id, cursorAtEnd) {
+          var el = document.getElementById(id);
+          if (!el) return;
+          el.focus();
+          setTimeout(function () {
+              var pos = cursorAtEnd ? el.value.length : 0;
+              try { el.setSelectionRange(pos, pos); } catch (_) {}
+          }, 0);
+      }
+
+      function atEnd(el) {
+          return el.selectionStart === el.value.length && el.selectionEnd === el.value.length;
+      }
+      function atStart(el) {
+          return el.selectionStart === 0 && el.selectionEnd === 0;
+      }
+      function hasNewlines(el) {
+          return (el.value || '').indexOf('\n') >= 0;
+      }
+
+      document.addEventListener('keydown', function (e) {
+          var el = e.target;
+          if (!el || !el.id) return;
+          var m = el.id.match(/^arf-c-(\d+)-(\d+)$/);
+          if (!m) return;
+
+          var row = parseInt(m[1]), col = parseInt(m[2]);
+          var maxCol = 3;
+          var key = e.key;
+
+          if (key === 'ArrowUp') {
+              if (hasNewlines(el)) return; // let browser handle multi-line
+              if (row > 0) { e.preventDefault(); focusCell('arf-c-' + (row - 1) + '-' + col, true); }
+          }
+          else if (key === 'ArrowDown') {
+              if (hasNewlines(el)) return;
+              e.preventDefault();
+              focusCell('arf-c-' + (row + 1) + '-' + col, true);
+          }
+          else if (key === 'ArrowRight' && atEnd(el)) {
+              if (col < maxCol) {
+                  e.preventDefault();
+                  focusCell('arf-c-' + row + '-' + (col + 1), false);
+              } else {
+                  // Wrap to next row, col 0
+                  e.preventDefault();
+                  focusCell('arf-c-' + (row + 1) + '-0', false);
+              }
+          }
+          else if (key === 'ArrowLeft' && atStart(el)) {
+              if (col > 0) {
+                  e.preventDefault();
+                  focusCell('arf-c-' + row + '-' + (col - 1), true);
+              } else if (row > 0) {
+                  // Wrap to prev row, last col
+                  e.preventDefault();
+                  focusCell('arf-c-' + (row - 1) + '-' + maxCol, true);
+              }
+          }
+      });
+  },
+
   // ── Drag-and-drop file handler for Add Session wizard ──
   setupFileDrop: function (dotNetRef) {
       console.log('[Drop] setupFileDrop called, dotNetRef=' + (dotNetRef ? 'OK' : 'NULL'));

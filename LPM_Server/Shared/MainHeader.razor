@@ -1444,14 +1444,14 @@
                                                        style="accent-color:#3b82f6; cursor:pointer;" />
                                             </td>
                                             <td style="vertical-align:top;">
-                                                <textarea id="arf-process-@idx"
+                                                <textarea id="arf-c-@idx-0"
                                                        class="arf-cell-input arf-cell-textarea"
                                                        rows="1" dir="auto"
                                                        @onblur="() => _arfRows[idx].Touched = true"
                                                        @oninput="e => { _arfRows[idx].Process = e.Value?.ToString() ?? string.Empty; var _kw = HasAutoUncheckKeyword(_arfRows[idx].Process); if (!_kw) _arfRows[idx].AutoUnchecked = false; if (_kw && !_arfRows[idx].AutoUnchecked && _arfRows[idx].Checked) { _arfRows[idx].Checked = false; _arfRows[idx].AutoUnchecked = true; } RebuildArfSummary(); }">@_arfRows[idx].Process</textarea>
                                             </td>
                                             <td>
-                                                <input type="text" inputmode="numeric" maxlength="5"
+                                                <input id="arf-c-@idx-1" type="text" inputmode="numeric" maxlength="5"
                                                        class="arf-cell-input arf-cell-center arf-time-input @(!IsValidArfTime(_arfRows[idx].Time) || (!string.IsNullOrWhiteSpace(_arfRows[idx].Time) && !IsArfTimeOrdered(idx)) ? "arf-cell-invalid" : "")"
                                                        placeholder="HH:MM"
                                                        value="@_arfRows[idx].Time"
@@ -1459,14 +1459,14 @@
                                                        @onchange="e => SetArfTimeCell(idx, e)"/>
                                             </td>
                                             <td>
-                                                <input type="text" inputmode="numeric" maxlength="4"
+                                                <input id="arf-c-@idx-2" type="text" inputmode="numeric" maxlength="4"
                                                        class="arf-cell-input arf-cell-center"
-                                                       onkeydown="var k=event.key,v=event.target.value;if(['Backspace','Delete','Tab','ArrowLeft','ArrowRight','Home','End'].includes(k))return;if(k==='.'&&!v.includes('.')&&v.length===1)return;if(/[0-9]/.test(k))return;event.preventDefault();"
+                                                       onkeydown="var k=event.key,v=event.target.value;if(['Backspace','Delete','Tab','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(k))return;if(k==='.'&&!v.includes('.')&&v.length===1)return;if(/[0-9]/.test(k))return;event.preventDefault();"
                                                        value="@_arfRows[idx].ToneArm"
                                                        @oninput="e => { _arfRows[idx].ToneArm = FormatToneArm(e.Value?.ToString() ?? string.Empty); RebuildArfSummary(); }"/>
                                             </td>
                                             <td style="vertical-align:top;">
-                                                <textarea class="arf-cell-input arf-cell-textarea"
+                                                <textarea id="arf-c-@idx-3" class="arf-cell-input arf-cell-textarea"
                                                        rows="1" dir="auto"
                                                        @oninput="e => { _arfRows[idx].Results = e.Value?.ToString() ?? string.Empty; RebuildArfSummary(); }"
                                                        @onkeydown="e => OnArfResultsKeyDown(e, idx)">@_arfRows[idx].Results</textarea>
@@ -3174,16 +3174,20 @@
         if (blocks.Count == 0) return rows;
 
         var result = new List<ArfRow>();
+        var templateNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "Beginning of Handling", "TITS", "EOS", "End of Handling" };
+
         foreach (var block in blocks)
         {
-            // An empty block has exactly 4 rows: BOH, TITS, EOS, EOH
-            // with no user content in any of them (no extra time/tonearm/results beyond defaults)
-            bool isEmpty = block.Count == 4
-                && (block[0].Process?.Trim() ?? "").Equals("Beginning of Handling", StringComparison.OrdinalIgnoreCase)
-                && (block[1].Process?.Trim() ?? "").Equals("TITS", StringComparison.OrdinalIgnoreCase)
-                && (block[2].Process?.Trim() ?? "").Equals("EOS", StringComparison.OrdinalIgnoreCase)
-                && (block[3].Process?.Trim() ?? "").Equals("End of Handling", StringComparison.OrdinalIgnoreCase)
-                && block.All(r => string.IsNullOrWhiteSpace(r.Time) && string.IsNullOrWhiteSpace(r.ToneArm));
+            // A block is empty if every row is either a template row or a blank row,
+            // and no row has any time or tone arm entered
+            bool isEmpty = block.All(r =>
+                string.IsNullOrWhiteSpace(r.Time) && string.IsNullOrWhiteSpace(r.ToneArm))
+                && block.All(r =>
+                {
+                    var p = r.Process?.Trim() ?? "";
+                    return templateNames.Contains(p) || string.IsNullOrWhiteSpace(p);
+                });
 
             if (!isEmpty)
                 result.AddRange(block);
@@ -3196,6 +3200,7 @@
     {
         _arfRows.Add(new ArfRow { Process = "Beginning of Handling", Results = "", Touched = true, Checked = false, AutoUnchecked = true });
         _arfRows.Add(new ArfRow { Process = "TITS", Results = "FN VGIS", Touched = true, Checked = false, AutoUnchecked = true });
+        _arfRows.Add(new ArfRow { Touched = true });
         _arfRows.Add(new ArfRow { Process = "EOS",  Results = "FN VGIS", Touched = true, Checked = false, AutoUnchecked = true });
         _arfRows.Add(new ArfRow { Process = "End of Handling", Results = "", Touched = true, Checked = false, AutoUnchecked = true });
         RebuildArfSummary();
@@ -3291,7 +3296,7 @@
         InsertArfRow(idx, true);
         var newIdx = idx + 1;
         await JSRuntime.InvokeVoidAsync("eval",
-            $"setTimeout(()=>{{var el=document.getElementById('arf-process-{newIdx}');if(el)el.focus();}},30)");
+            $"setTimeout(()=>{{var el=document.getElementById('arf-c-{newIdx}-0');if(el)el.focus();}},30)");
     }
 
     void RebuildArfSummary(bool pushToEditor = true)
@@ -3626,6 +3631,7 @@
         _arfRows = [
             new ArfRow { Process = "Beginning of Handling", Results = "", Touched = true, Checked = false, AutoUnchecked = true },
             new ArfRow { Process = "TITS", Results = "FN VGIS", Touched = true, Checked = false, AutoUnchecked = true },
+            new ArfRow { Touched = true },
             new ArfRow { Process = "EOS",  Results = "FN VGIS", Touched = true, Checked = false, AutoUnchecked = true },
             new ArfRow { Process = "End of Handling", Results = "", Touched = true, Checked = false, AutoUnchecked = true }
         ];
@@ -3655,13 +3661,14 @@
                 _arfGrade = lastGrade;
         }
         _importStep = 2;
-        // Setup drag-and-drop handler for file drop zones
+        // Setup drag-and-drop + arrow navigation for ARF table
         _dropRef?.Dispose();
         _dropRef = DotNetObjectReference.Create(this);
         _ = Task.Run(async () =>
         {
             await Task.Delay(100);
             await JSRuntime.InvokeVoidAsync("interop.setupFileDrop", _dropRef);
+            await JSRuntime.InvokeVoidAsync("interop.setupArfNavigation");
         });
         // Initialize Quill on summary editor after render
         _ = Task.Run(async () =>
@@ -3729,10 +3736,17 @@
                     var defColor = _defaultColors[id];
                     if (defColor) {
                         q.format('color', defColor);
-                        // Keep default color when user types — re-apply on selection change
+                        // Keep default color — re-apply when format is lost
                         q.on('selection-change', function(range) {
                             if (range && range.length === 0) {
                                 var fmt = q.getFormat(range.index);
+                                if (!fmt.color) q.format('color', defColor, 'silent');
+                            }
+                        });
+                        q.on('text-change', function() {
+                            var sel = q.getSelection();
+                            if (sel) {
+                                var fmt = q.getFormat(sel.index);
                                 if (!fmt.color) q.format('color', defColor, 'silent');
                             }
                         });

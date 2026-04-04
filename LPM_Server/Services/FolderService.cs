@@ -691,7 +691,7 @@ public class FolderService
                     {
                         var rtlFmt = new PdfSharpCore.Drawing.XStringFormat { Alignment = PdfSharpCore.Drawing.XStringAlignment.Far };
                         for (int li = 0; li < lines.Count; li++)
-                            gfx.DrawString(lines[li], font, new PdfSharpCore.Drawing.XSolidBrush(color),
+                            gfx.DrawString(ReorderRtlForPdf(lines[li]), font, new PdfSharpCore.Drawing.XSolidBrush(color),
                                 pdfX + maxWidthPt, pdfY + li * lineHeightPt, rtlFmt);
                     }
                     else
@@ -747,6 +747,32 @@ public class FolderService
         }
         return lines;
     }
+
+    /// <summary>
+    /// Reorder a line of RTL text to visual order for PdfSharp (which renders LTR only).
+    /// Reverses word order (RTL paragraph), then reverses chars within Hebrew/Arabic words.
+    /// Numbers and Latin words keep their original char order.
+    /// </summary>
+    private static string ReorderRtlForPdf(string line)
+    {
+        if (string.IsNullOrEmpty(line)) return line;
+        var words = line.Split(' ');
+        Array.Reverse(words);
+        for (int i = 0; i < words.Length; i++)
+        {
+            if (words[i].Length > 0 && IsHebrewOrArabicChar(words[i][0]))
+            {
+                var chars = words[i].ToCharArray();
+                Array.Reverse(chars);
+                words[i] = new string(chars);
+            }
+        }
+        return string.Join(" ", words);
+    }
+
+    private static bool IsHebrewOrArabicChar(char c) =>
+        (c >= '\u0590' && c <= '\u05FF') || (c >= '\u0600' && c <= '\u06FF') ||
+        (c >= '\uFB1D' && c <= '\uFDFF') || (c >= '\uFE70' && c <= '\uFEFF');
 
     /// <summary>
     /// Read the PDF for a given absolute path and bake its .ann.json sidecar into it.
