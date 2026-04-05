@@ -85,7 +85,7 @@
         <meta name="Author" content="Yaniv Berliner Ltd">
         <meta name="keywords" content="LifePower,online,hprofile">
 
-        <link rel="manifest" href="/manifest.webmanifest">
+        <link rel="manifest" href="/manifest.webmanifest?v=2">
         <meta name="theme-color" content="#ffffff">
 
         <!-- iOS home screen support -->
@@ -270,7 +270,14 @@
 
 
         <script src="/js/pwa-install.js"></script>
-        <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>
+        <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js?v=2').then(function(reg) {
+                // Check for SW updates every 5 minutes (catches stale phones)
+                setInterval(function() { reg.update(); }, 5 * 60 * 1000);
+            });
+        }
+        </script>
 
         <script>
           // Inline so it survives Blazor circuit reconnects (never stale via external file cache)

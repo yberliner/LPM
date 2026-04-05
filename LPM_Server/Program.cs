@@ -209,6 +209,18 @@ if (!app.Environment.IsDevelopment())
 
 app.UseSession();
 
+// Force browsers to revalidate sw.js and manifest on every load (prevents stale PWA)
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value;
+    if (path != null && (path.EndsWith("/sw.js") || path.EndsWith("/manifest.webmanifest")))
+    {
+        context.Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+        context.Response.Headers["Pragma"] = "no-cache";
+        context.Response.Headers["Expires"] = "0";
+    }
+    await next();
+});
 app.UseStaticFiles();
 
 app.UseRouting();
