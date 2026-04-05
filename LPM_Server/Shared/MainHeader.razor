@@ -1380,7 +1380,10 @@
                                 </div>
                                 <div class="arf-field">
                                     <span class="arf-lbl arf-lbl-right-fixed">Date</span>
-                                    <span class="arf-val">@DateTime.Today.ToString("dd/MM/yyyy")</span>
+                                    <input type="text" class="form-control form-control-sm arf-input-short"
+                                           @bind="_arfDate" @bind:event="oninput"
+                                           placeholder="dd/mm/yy" maxlength="8"
+                                           style="width:5.5rem; text-align:center;" />
                                 </div>
                             </div>
 
@@ -1594,7 +1597,7 @@
                                     PC's Name:&nbsp;<span style="color:#ef4444;">@(_approvedPcs.FirstOrDefault(p => p.PcId == _importPcId)?.FullName ?? "")</span>
                                 </span>
                                 <span style="font-size:1.35rem; font-weight:600; color:#e2e8f0;">
-                                    Date:&nbsp;<span style="color:#ef4444;">@DateTime.Today.ToString("dd/MM/yyyy")</span>
+                                    Date:&nbsp;<span style="color:#ef4444;">@_arfDate</span>
                                 </span>
                             </div>
 
@@ -3893,7 +3896,7 @@
         _importDuplicate = false;
         _importFreeSession = false;
         _importStep = 1;
-        _arfDate = ""; _arfGrade = ""; _arfSessionLength = ""; _arfAdminTime = ""; _arfTotalTa = ""; _arfTaRangeFrom = ""; _arfTaRangeTo = ""; _arfExamReport = "F/N"; _arfSummary = "";
+        _arfDate = DateTime.Today.ToString("dd/MM/yy"); _arfGrade = ""; _arfSessionLength = ""; _arfAdminTime = ""; _arfTotalTa = ""; _arfTaRangeFrom = ""; _arfTaRangeTo = ""; _arfExamReport = "F/N"; _arfSummary = "";
         _step3TopHtml = ""; _step3BottomHtml = "";
         _arfRows = [
             new ArfRow { Process = "Beginning of Handling", Results = "", Touched = true, Checked = false, AutoUnchecked = true },
@@ -3910,15 +3913,15 @@
     void GoToExamStep()
     {
         if (_importPcId == 0) return;
-        // Try to parse date from normalized file name (always starts with yymmdd if valid)
-        _arfDate = "";
+        // Default date from Step 1 (synced from filename date picker); override from filename prefix if present
+        _arfDate = _importNormalizedDate.ToString("dd/MM/yy");
         if (!string.IsNullOrEmpty(_importNormalizedFileName) && _importNormalizedFileName.Length >= 6
             && int.TryParse(_importNormalizedFileName[..6], out _))
         {
             var yy = _importNormalizedFileName[..2];
             var mm = _importNormalizedFileName[2..4];
             var dd = _importNormalizedFileName[4..6];
-            _arfDate = $"{dd}/{mm}/20{yy}";
+            _arfDate = $"{dd}/{mm}/{yy}";
         }
         // Pre-fill grade from previous session
         if (string.IsNullOrWhiteSpace(_arfGrade))
@@ -4498,12 +4501,18 @@
                 await Task.WhenAll(
                     Task.Run(async () =>
                     {
+                        // Parse user date dd/MM/yy → yyyy-MM-dd for DB; fall back to today
+                        var dbDate = DateTime.TryParseExact(capturedDate, "d/M/yy",
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            System.Globalization.DateTimeStyles.None, out var _pd)
+                            ? DateOnly.FromDateTime(_pd).ToString("yyyy-MM-dd")
+                            : null;
                         sessionId = DashSvc.CreateImportedSession(capturedPcId, capturedUserId, sessionName,
-                            sessionLenSec, adminSec, capturedFreeSession, isSolo: capturedIsSolo);
+                            sessionLenSec, adminSec, capturedFreeSession, isSolo: capturedIsSolo, sessionDate: dbDate);
                         var arfData = new PdfService.ArfData
                         {
                             PcName        = capturedPcName,
-                            Date          = DateTime.Today.ToString("dd/MM/yyyy"),
+                            Date          = capturedDate,
                             Grade         = capturedGrade,
                             SessionLength = capturedSessLen,
                             AdminTime     = capturedAdminTime,
@@ -4523,7 +4532,7 @@
                         sTaa.Status = 1;
                         var sessionMinutes = sessionLenSec / 60;
                         var taaDate = !string.IsNullOrEmpty(capturedDate) ? capturedDate : DateTime.Today.ToString("d.M.yy");
-                        if (DateTime.TryParseExact(taaDate, "dd/MM/yyyy", null, System.Globalization.DateTimeStyles.None, out var parsedDate))
+                        if (DateTime.TryParseExact(taaDate, "d/M/yy", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var parsedDate))
                             taaDate = parsedDate.ToString("d.M.yy");
                         FolderSvc.AppendTaaRow(capturedPcId, taaDate, sessionMinutes, capturedTotalTa);
                         await Advance(sTaa, 2);
@@ -4596,7 +4605,7 @@
                     Task.Run(async () =>
                     {
                         nextCsPdfBytes = PdfSvc.GenerateNextCsPdf(
-                            capturedPcName, DateTime.Today.ToString("dd/MM/yyyy"),
+                            capturedPcName, capturedDate,
                             capturedAuditorName, capturedStep3Top, capturedStep3Bottom);
                         await Advance(sNextCs, 2);
                     })
@@ -4616,7 +4625,7 @@
                     await InvokeAsync(StateHasChanged);
                     var (targetW, targetH) = FolderSvc.GetFirstPageSizePt(normalizedBytes);
                     arfPdfBytes = PdfSvc.GenerateArfPdf(
-                        capturedPcName, DateTime.Today.ToString("dd/MM/yyyy"),
+                        capturedPcName, capturedDate,
                         capturedGrade, capturedSessLen, capturedAdminTime,
                         capturedTotalTa, taRange, capturedRows, capturedSummary,
                         pageWidthPt: targetW, pageHeightPt: targetH);

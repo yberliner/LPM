@@ -220,12 +220,13 @@ public class DashboardService
     }
 
     public int CreateImportedSession(int pcId, int auditorId, string sessionName,
-        int lengthSeconds = 0, int adminSeconds = 0, bool isFreeSession = false, bool isSolo = false)
+        int lengthSeconds = 0, int adminSeconds = 0, bool isFreeSession = false, bool isSolo = false,
+        string? sessionDate = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        var today = DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd");
+        var today = sessionDate ?? DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd");
         object audParam = isSolo ? DBNull.Value : (object)auditorId;
 
         // Guard: return existing session if same (PcId, AuditorId, Name) already exists
