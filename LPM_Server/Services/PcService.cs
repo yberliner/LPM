@@ -705,7 +705,9 @@ public List<PcListItem> GetAllPcs()
                    p.RegistrarId,
                    TRIM(COALESCE(reg.FirstName,'') || ' ' || COALESCE(NULLIF(reg.LastName,''),'')) AS RegistrarName,
                    p.ReferralId,
-                   TRIM(COALESCE(rf.FirstName,'') || ' ' || COALESCE(NULLIF(rf.LastName,''),'')) AS ReferralName,
+                   CASE WHEN p.ReferralId = -1 THEN 'Other'
+                        ELSE TRIM(COALESCE(rf.FirstName,'') || ' ' || COALESCE(NULLIF(rf.LastName,''),''))
+                   END AS ReferralName,
                    COALESCE(p.Currency,'ILS') AS Currency
             FROM fin_purchases p
             JOIN core_persons per ON per.PersonId = p.PcId

@@ -804,6 +804,7 @@
                                             value="@_purchaseReferralId"
                                             @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) _purchaseReferralId = v; }">
                                         <option value="0">— @LS.T("common.none") —</option>
+                                        <option value="-1">— @LS.T("common.other") —</option>
                                         @foreach (var p in _allPersons)
                                         {
                                             <option value="@p.PersonId">@p.FullName</option>
@@ -2233,7 +2234,7 @@
         )).ToList();
 
         int? regId = _purchaseRegistrarId > 0 ? _purchaseRegistrarId : null;
-        int? refId = _purchaseReferralId > 0 ? _purchaseReferralId : null;
+        int? refId = _purchaseReferralId != 0 ? _purchaseReferralId : null;
 
         var pmList = _purchasePaymentMethods
             .Where(m => m.Amount > 0)
@@ -2357,9 +2358,11 @@
             registrarName = _purchaseRegistrarId > 0
                 ? _staff.FirstOrDefault(s => s.PersonId == _purchaseRegistrarId).FullName ?? ""
                 : "",
-            referralName = _purchaseReferralId > 0
-                ? _allPersons.FirstOrDefault(p => p.PersonId == _purchaseReferralId).FullName ?? ""
-                : ""
+            referralName = _purchaseReferralId == -1
+                ? LS.T("common.other")
+                : _purchaseReferralId > 0
+                    ? _allPersons.FirstOrDefault(p => p.PersonId == _purchaseReferralId).FullName ?? ""
+                    : ""
         }).ToArray();
 
         await JS.InvokeVoidAsync("PrintPurchase.printReceipt",

@@ -272,7 +272,9 @@ public class CourseService
                    pu.RegistrarId,
                    TRIM(COALESCE(reg.FirstName,'') || ' ' || COALESCE(NULLIF(reg.LastName,''),'')) AS RegistrarName,
                    pu.ReferralId,
-                   TRIM(COALESCE(rf.FirstName,'') || ' ' || COALESCE(NULLIF(rf.LastName,''),'')) AS ReferralName,
+                   CASE WHEN pu.ReferralId = -1 THEN 'Other'
+                        ELSE TRIM(COALESCE(rf.FirstName,'') || ' ' || COALESCE(NULLIF(rf.LastName,''),''))
+                   END AS ReferralName,
                    (SELECT COUNT(*) FROM acad_attendance s
                     WHERE s.PersonId = sc.PersonId AND s.VisitDate >= sc.DateStarted) AS VisitCount
             FROM acad_student_courses sc
