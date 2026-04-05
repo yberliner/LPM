@@ -13,6 +13,12 @@ public record CourseEnrollmentItem(
 public record StudentCourseItem(int StudentCourseId, int PersonId, int CourseId, string CourseName,
     string DateStarted, string? DateFinished);
 
+public record FinancialConfig(
+    double VatPct, double CcCommissionPct,
+    double AuditRegistrarPct, double CourseRegistrarPct,
+    double AuditReferralPct, double CourseReferralPct,
+    double ReserveDeductPct, string AcademyInstructorIds);
+
 public class CourseService
 {
     private readonly string _connectionString;
@@ -318,5 +324,90 @@ public class CourseService
         cmd.Parameters.AddWithValue("@pid", personId);
         cmd.Parameters.AddWithValue("@since", sinceDate);
         return (int)(long)cmd.ExecuteScalar()!;
+    }
+
+    // ── Financial Config ─────────────────────────────────────────────────────
+
+    public FinancialConfig GetFinancialConfig()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT VatPct, CcCommissionPct, AuditRegistrarPct, CourseRegistrarPct,
+                   AuditReferralPct, CourseReferralPct, ReserveDeductPct,
+                   COALESCE(AcademyInstructorIds,'')
+            FROM sys_financial_config WHERE Id = 1";
+        using var r = cmd.ExecuteReader();
+        if (!r.Read())
+            return new FinancialConfig(17, 2.5, 10, 10, 5, 5, 0.1, "");
+        return new FinancialConfig(
+            r.GetDouble(0), r.GetDouble(1), r.GetDouble(2), r.GetDouble(3),
+            r.GetDouble(4), r.GetDouble(5), r.GetDouble(6), r.GetString(7));
+    }
+
+    public void UpdateFinancialConfig(double vatPct, double ccCommissionPct,
+        double auditRegistrarPct, double courseRegistrarPct,
+        double auditReferralPct, double courseReferralPct,
+        double reserveDeductPct, string academyInstructorIds)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE sys_financial_config SET
+                VatPct = @vat, CcCommissionPct = @cc,
+                AuditRegistrarPct = @auditReg, CourseRegistrarPct = @courseReg,
+                AuditReferralPct = @auditRef, CourseReferralPct = @courseRef,
+                ReserveDeductPct = @reserve, AcademyInstructorIds = @instructors
+            WHERE Id = 1";
+        cmd.Parameters.AddWithValue("@vat", vatPct);
+        cmd.Parameters.AddWithValue("@cc", ccCommissionPct);
+        cmd.Parameters.AddWithValue("@auditReg", auditRegistrarPct);
+        cmd.Parameters.AddWithValue("@courseReg", courseRegistrarPct);
+        cmd.Parameters.AddWithValue("@auditRef", auditReferralPct);
+        cmd.Parameters.AddWithValue("@courseRef", courseReferralPct);
+        cmd.Parameters.AddWithValue("@reserve", reserveDeductPct);
+        cmd.Parameters.AddWithValue("@instructors", academyInstructorIds.Trim());
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[CourseService] Updated financial config: VAT={vatPct} CC={ccCommissionPct} AuditReg={auditRegistrarPct} CourseReg={courseRegistrarPct} AuditRef={auditReferralPct} CourseRef={courseReferralPct} Reserve={reserveDeductPct} Instructors={academyInstructorIds}");
+    }
+
+    public List<(int Id, string FullName)> GetCoreUsers()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT u.PersonId, TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),''))
+            FROM core_users u
+            JOIN core_persons p ON p.PersonId = u.PersonId
+            WHERE u.IsActive = 1 AND u.StaffRole != 'Solo'
+            ORDER BY p.FirstName, p.LastName";
+        var list = new List<(int, string)>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add((r.GetInt32(0), r.GetString(1).Trim()));
+        return list;
+    }
+
+    public Dictionary<int, string> GetPersonNamesByIds(IEnumerable<int> ids)
+    {
+        var idList = ids.Distinct().ToList();
+        if (idList.Count == 0) return new();
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        var paramNames = idList.Select((_, i) => $"@p{i}").ToList();
+        cmd.CommandText = $@"
+            SELECT PersonId, TRIM(FirstName || ' ' || COALESCE(NULLIF(LastName,''),''))
+            FROM core_persons WHERE PersonId IN ({string.Join(",", paramNames)})";
+        for (int i = 0; i < idList.Count; i++)
+            cmd.Parameters.AddWithValue($"@p{i}", idList[i]);
+        var dict = new Dictionary<int, string>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            dict[r.GetInt32(0)] = r.GetString(1).Trim();
+        return dict;
     }
 }
