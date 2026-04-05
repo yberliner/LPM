@@ -1264,13 +1264,6 @@
         _clickedPersonId = p.PersonId;
         StateHasChanged();
 
-        var hasCourse = !string.IsNullOrEmpty(_personOpenCourses.GetValueOrDefault(p.PersonId, ""));
-        if (!hasCourse)
-        {
-            _pendingVisitPerson = p;
-            _showNoCourseWarning = true;
-            return;
-        }
         AddVisit(p);
 
         // Clear animation states after animations complete
