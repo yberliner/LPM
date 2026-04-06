@@ -315,9 +315,10 @@
                             <i class="ri-percent-line me-1"></i>Commission Earnings
                         </div>
                         <div class="table-responsive">
-                            <table class="table table-sm mb-0 sal-table sal-comm-table">
+                            <table class="table table-sm mb-0 sal-table sal-table-fixed">
                                 <colgroup>
-                                    <col style="width:28px;" /><col /><col style="width:22%;" /><col style="width:20%;" /><col style="width:16%;" />
+                                    <col style="width:10%;" /><col /><col style="width:11%;" />
+                                    <col style="width:12%;" /><col style="width:14%;" /><col style="width:11%;" />
                                 </colgroup>
                                 <thead>
                                     <tr class="sal-thead">
@@ -325,7 +326,8 @@
                                         <th>PC</th>
                                         <th>Role</th>
                                         <th>Category</th>
-                                        <th class="text-end">Amount ₪</th>
+                                        <th class="text-end">Payment ₪</th>
+                                        <th></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -341,6 +343,7 @@
                                             <td><span class="sal-role-badge sal-role-@cm.Role.Replace(" ", "").Replace(".", "").ToLower()">@cm.Role</span></td>
                                             <td class="small text-muted">@cm.Category</td>
                                             <td class="text-end sal-payment">₪ @FormatShekel(cm.AmountCents)</td>
+                                            <td></td>
                                         </tr>
                                     }
                                 </tbody>
@@ -356,7 +359,9 @@
                                 <col style="width:12%;" /><col style="width:14%;" /><col style="width:11%;" />
                             </colgroup>
                             <tbody>
-                                <tr class="sal-total-row">
+                                <tr class="sal-total-row" style="cursor:default;"
+                                    @onmouseenter="() => _hoverGroup = group"
+                                    @onmouseleave="() => { if (_hoverGroup == group) _hoverGroup = null; }">
                                     <td colspan="4" class="text-end sal-total-label">
                                         <i class="ri-money-dollar-circle-line me-1"></i>Total Salary
                                     </td>
@@ -543,6 +548,102 @@
         </div>
     }
 
+    @* ── Floating Total Breakdown Card ── *@
+    @if (_hoverGroup != null)
+    {
+        var g = _hoverGroup;
+        var sessTotal = g.Sessions.Where(s => s.IsApproved).Sum(s => s.PaymentCents);
+        var csTotal   = g.CsReviews.Where(c => c.IsApproved).Sum(c => c.PaymentCents);
+        var commTotal = g.Commissions.Sum(c => c.AmountCents);
+        <div class="sal-hover-card">
+            <div class="sal-hc-header">
+                <span style="font-weight:700;color:#fff;font-size:.9rem;">@g.FullName — Total Breakdown</span>
+            </div>
+
+            @if (g.Sessions.Count > 0)
+            {
+                <div class="sal-hc-section" style="margin-top:8px;">
+                    <div class="sal-hc-row" style="margin-bottom:4px;">
+                        <span class="sal-hc-lbl" style="font-weight:700;color:#94a3b8;">Sessions</span>
+                        <span></span>
+                    </div>
+                    @foreach (var s in g.Sessions.Where(s => s.IsApproved))
+                    {
+                        <div class="sal-hc-row">
+                            <span>@s.PcName · @FmtDur(s.DurationSec)</span>
+                            <span>₪@FormatShekel(s.PaymentCents)</span>
+                        </div>
+                    }
+                    @{ var pendingSess = g.Sessions.Count(s => !s.IsApproved); }
+                    @if (pendingSess > 0)
+                    {
+                        <div class="sal-hc-row"><span style="color:#64748b;">+@pendingSess pending</span><span style="color:#64748b;">—</span></div>
+                    }
+                    <div class="sal-hc-row" style="border-top:1px solid rgba(255,255,255,.1);padding-top:4px;margin-top:4px;">
+                        <span style="font-weight:600;">Sessions subtotal</span>
+                        <span style="font-weight:700;color:#4ade80;">₪@FormatShekel(sessTotal)</span>
+                    </div>
+                </div>
+            }
+
+            @if (g.CsReviews.Count > 0)
+            {
+                <div class="sal-hc-section" style="margin-top:8px;">
+                    <div class="sal-hc-row" style="margin-bottom:4px;">
+                        <span class="sal-hc-lbl" style="font-weight:700;color:#94a3b8;">CS Reviews</span>
+                        <span></span>
+                    </div>
+                    @foreach (var c in g.CsReviews.Where(c => c.IsApproved))
+                    {
+                        <div class="sal-hc-row">
+                            <span>@c.PcName · @FmtDur(c.DurationSec)</span>
+                            <span>₪@FormatShekel(c.PaymentCents)</span>
+                        </div>
+                    }
+                    @{ var pendingCs = g.CsReviews.Count(c => !c.IsApproved); }
+                    @if (pendingCs > 0)
+                    {
+                        <div class="sal-hc-row"><span style="color:#64748b;">+@pendingCs pending</span><span style="color:#64748b;">—</span></div>
+                    }
+                    <div class="sal-hc-row" style="border-top:1px solid rgba(255,255,255,.1);padding-top:4px;margin-top:4px;">
+                        <span style="font-weight:600;">CS subtotal</span>
+                        <span style="font-weight:700;color:#4ade80;">₪@FormatShekel(csTotal)</span>
+                    </div>
+                </div>
+            }
+
+            @if (g.Commissions.Count > 0)
+            {
+                <div class="sal-hc-section" style="margin-top:8px;">
+                    <div class="sal-hc-row" style="margin-bottom:4px;">
+                        <span class="sal-hc-lbl" style="font-weight:700;color:#94a3b8;">Commissions</span>
+                        <span></span>
+                    </div>
+                    @foreach (var cm in g.Commissions)
+                    {
+                        <div class="sal-hc-row">
+                            <span>@cm.PcName · @cm.Role</span>
+                            <span>₪@FormatShekel(cm.AmountCents)</span>
+                        </div>
+                    }
+                    <div class="sal-hc-row" style="border-top:1px solid rgba(255,255,255,.1);padding-top:4px;margin-top:4px;">
+                        <span style="font-weight:600;">Commissions subtotal</span>
+                        <span style="font-weight:700;color:#4ade80;">₪@FormatShekel(commTotal)</span>
+                    </div>
+                </div>
+            }
+
+            <div class="sal-hc-result" style="margin-top:10px;padding-top:10px;border-top:2px solid rgba(74,222,128,.3);font-size:.95rem;">
+                @if (sessTotal > 0) { <span>₪@FormatShekel(sessTotal)</span> }
+                @if (sessTotal > 0 && (csTotal > 0 || commTotal > 0)) { <span> + </span> }
+                @if (csTotal > 0) { <span>₪@FormatShekel(csTotal)</span> }
+                @if (csTotal > 0 && commTotal > 0) { <span> + </span> }
+                @if (commTotal > 0) { <span>₪@FormatShekel(commTotal)</span> }
+                <span> = </span><strong>₪@FormatShekel(g.TotalCents)</strong>
+            </div>
+        </div>
+    }
+
 </div>
 
 @code {
@@ -560,6 +661,7 @@
     // ── Commission Detail modal + hover ──
     CommissionRow? _detailRow;
     CommissionRow? _hoverComm;
+    UserSalaryGroup? _hoverGroup;
     void ShowDetail(CommissionRow row) => _detailRow = row;
     void CloseDetail() => _detailRow = null;
 
@@ -989,7 +1091,8 @@
         position: fixed; z-index: 900;
         bottom: 24px; right: 24px;
         width: 380px; padding: 16px 18px;
-        background: #1e293b; color: #e2e8f0; border-radius: 14px;
+        background: rgba(30, 41, 59, 0.3); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+        color: #e2e8f0; border-radius: 14px;
         box-shadow: 0 16px 48px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.06);
         font-size: .82rem; line-height: 1.55;
         animation: sal-hc-in .15s ease;
