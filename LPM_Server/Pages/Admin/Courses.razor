@@ -256,100 +256,6 @@
         }
     </div>
 
-    @* ── Financial Config ── *@
-    <div class="card shadow-sm mb-4" style="border-radius:12px;border:none;">
-        <div class="card-header py-2 px-3 d-flex align-items-center justify-content-between"
-             style="background:#fff8e1;color:#212529;border-radius:12px 12px 0 0;border-bottom:1px solid #ffe082;cursor:pointer;"
-             @onclick="() => _showFinConfig = !_showFinConfig">
-            <span class="fw-semibold small" style="color:#f57f17;">
-                <i class="ri-settings-3-line me-1"></i>@LS.T("courses.financialConfig")
-            </span>
-            <span class="d-flex align-items-center gap-2">
-                <i class="ri-arrow-down-s-line" style="transition:transform .2s;@(_showFinConfig ? "" : "transform:rotate(-90deg);")"></i>
-            </span>
-        </div>
-        @if (_showFinConfig)
-        {
-        <div class="card-body p-0">
-          <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th class="ps-3 small" style="width:50%;">Setting</th>
-                        <th class="small">Value</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td class="ps-3 align-middle">@LS.T("courses.vatPct")</td>
-                        <td><input type="number" step="0.1" class="form-control form-control-sm" style="max-width:120px;" @bind="_cfgVatPct" /></td>
-                    </tr>
-                    <tr>
-                        <td class="ps-3 align-middle">@LS.T("courses.ccCommissionPct")</td>
-                        <td><input type="number" step="0.1" class="form-control form-control-sm" style="max-width:120px;" @bind="_cfgCcCommissionPct" /></td>
-                    </tr>
-                    <tr>
-                        <td class="ps-3 align-middle">@LS.T("courses.auditRegistrarPct")</td>
-                        <td><input type="number" step="0.1" class="form-control form-control-sm" style="max-width:120px;" @bind="_cfgAuditRegistrarPct" /></td>
-                    </tr>
-                    <tr>
-                        <td class="ps-3 align-middle">@LS.T("courses.courseRegistrarPct")</td>
-                        <td><input type="number" step="0.1" class="form-control form-control-sm" style="max-width:120px;" @bind="_cfgCourseRegistrarPct" /></td>
-                    </tr>
-                    <tr>
-                        <td class="ps-3 align-middle">@LS.T("courses.auditReferralPct")</td>
-                        <td><input type="number" step="0.1" class="form-control form-control-sm" style="max-width:120px;" @bind="_cfgAuditReferralPct" /></td>
-                    </tr>
-                    <tr>
-                        <td class="ps-3 align-middle">@LS.T("courses.courseReferralPct")</td>
-                        <td><input type="number" step="0.1" class="form-control form-control-sm" style="max-width:120px;" @bind="_cfgCourseReferralPct" /></td>
-                    </tr>
-                    <tr>
-                        <td class="ps-3 align-middle">@LS.T("courses.reserveDeductPct")</td>
-                        <td><input type="number" step="0.01" class="form-control form-control-sm" style="max-width:120px;" @bind="_cfgReserveDeductPct" /></td>
-                    </tr>
-                    <tr>
-                        <td class="ps-3 align-middle" colspan="2">
-                            <div class="fw-medium mb-1">@LS.T("courses.academyInstructors")</div>
-                            <div class="d-flex gap-2 flex-wrap">
-                                @for (int idx = 0; idx < 4; idx++)
-                                {
-                                    var i = idx;
-                                    <select class="form-select form-select-sm" style="max-width:160px;"
-                                            value="@_cfgInstructors[i]"
-                                            @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) _cfgInstructors[i] = v; }">
-                                        <option value="0">— @LS.T("common.none") —</option>
-                                        @foreach (var u in _coreUsers)
-                                        {
-                                            <option value="@u.Id">@u.FullName</option>
-                                        }
-                                    </select>
-                                }
-                            </div>
-                        </td>
-                    </tr>
-                </tbody>
-                <tfoot>
-                    <tr style="background:#fffde7;">
-                        <td class="ps-3 py-2">
-                            @if (!string.IsNullOrEmpty(_cfgMsg))
-                            {
-                                <span class="small @(_cfgIsError ? "text-danger" : "text-success")">@_cfgMsg</span>
-                            }
-                        </td>
-                        <td class="py-2">
-                            <button class="btn btn-sm btn-warning" @onclick="SaveFinancialConfig">
-                                <i class="ri-save-line me-1"></i>@LS.T("common.save")
-                            </button>
-                        </td>
-                    </tr>
-                </tfoot>
-            </table>
-          </div>
-        </div>
-        }
-    </div>
-
     @* ── Enrollment report ── *@
     <div class="card shadow-sm mb-4" style="border-radius:12px;border:none;">
         <div class="card-header py-2 px-3 d-flex align-items-center justify-content-between"
@@ -436,7 +342,7 @@
     // ── Collapse state ──
     bool _showCourses     = true;
     bool _showBooks        = true;
-    bool _showFinConfig    = true;
+
     bool _showEnrollments  = true;
 
     // ── Courses state ──
@@ -460,19 +366,6 @@
     string _editBkName  = "";
     int    _editBkPrice = 0;
 
-    // ── Financial Config state ──
-    double _cfgVatPct;
-    double _cfgCcCommissionPct;
-    double _cfgAuditRegistrarPct;
-    double _cfgCourseRegistrarPct;
-    double _cfgAuditReferralPct;
-    double _cfgCourseReferralPct;
-    double _cfgReserveDeductPct;
-    int[] _cfgInstructors = new int[4];
-    List<(int Id, string FullName)> _coreUsers = [];
-    string _cfgMsg = "";
-    bool   _cfgIsError;
-
     protected override void OnInitialized() => Reload();
 
     void Reload()
@@ -480,43 +373,6 @@
         _courses     = CourseSvc.GetAllCourses();
         _enrollments = CourseSvc.GetCourseEnrollmentReport();
         _books       = CourseSvc.GetAllBooks();
-        LoadFinancialConfig();
-    }
-
-    void LoadFinancialConfig()
-    {
-        _coreUsers = CourseSvc.GetCoreUsers();
-        var cfg = CourseSvc.GetFinancialConfig();
-        _cfgVatPct             = cfg.VatPct;
-        _cfgCcCommissionPct    = cfg.CcCommissionPct;
-        _cfgAuditRegistrarPct  = cfg.AuditRegistrarPct;
-        _cfgCourseRegistrarPct = cfg.CourseRegistrarPct;
-        _cfgAuditReferralPct   = cfg.AuditReferralPct;
-        _cfgCourseReferralPct  = cfg.CourseReferralPct;
-        _cfgReserveDeductPct   = cfg.ReserveDeductPct;
-        _cfgMsg = "";
-
-        // Parse stored IDs into the 4 dropdown slots
-        _cfgInstructors = new int[4];
-        var ids = cfg.AcademyInstructorIds
-            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .Where(s => int.TryParse(s, out _))
-            .Select(int.Parse)
-            .ToArray();
-        for (int i = 0; i < Math.Min(ids.Length, 4); i++)
-            _cfgInstructors[i] = ids[i];
-    }
-
-    void SaveFinancialConfig()
-    {
-        var cleanIds = string.Join(",", _cfgInstructors.Where(id => id > 0));
-        CourseSvc.UpdateFinancialConfig(
-            _cfgVatPct, _cfgCcCommissionPct,
-            _cfgAuditRegistrarPct, _cfgCourseRegistrarPct,
-            _cfgAuditReferralPct, _cfgCourseReferralPct,
-            _cfgReserveDeductPct, cleanIds);
-        _cfgMsg = LS.T("courses.configSaved");
-        _cfgIsError = false;
     }
 
     // ── Courses CRUD ──

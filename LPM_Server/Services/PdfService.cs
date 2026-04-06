@@ -2009,8 +2009,8 @@ public class PdfService
                     if (!string.IsNullOrWhiteSpace(topHtml))
                         col.Item().PaddingBottom(8).Column(htmlCol => RenderHtmlBlock(htmlCol, topHtml, 2.5f));
 
-                    // ── "The Next C/S:" divider ──
-                    col.Item().PaddingVertical(12).AlignCenter()
+                    // ── "The Next C/S:" divider (168pt top = ~20% A4 for CS handwriting) ──
+                    col.Item().PaddingTop(168).PaddingBottom(12).AlignCenter()
                         .Text("The Next C/S:")
                         .FontSize(22).Bold().Underline().FontColor("#1a1a1a");
 
