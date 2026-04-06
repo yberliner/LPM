@@ -2494,12 +2494,13 @@
             ("core_pcs",     "ri-computer-line",        "ORDER BY PcId",     null)));
 
         var tSys = Task.Run(() => Group(
-            ("sys_staff_pc_list",   "ri-shield-check-line",   "ORDER BY Id",        null),
-            ("sys_staff_messages",  "ri-message-2-line",      "ORDER BY Id",        null),
-            ("sys_weekly_remarks",  "ri-calendar-check-line", "ORDER BY Id",        null),
-            ("sys_trusted_devices", "ri-device-line",         "ORDER BY CreatedAt", null),
-            ("sys_shrunk_files",    "ri-file-reduce-line",    "ORDER BY Id DESC",   null),
-            ("sys_activity_log",    "ri-history-line",        "ORDER BY Id DESC",   null)));
+            ("sys_staff_pc_list",    "ri-shield-check-line",   "ORDER BY Id",        null),
+            ("sys_staff_messages",   "ri-message-2-line",      "ORDER BY Id",        null),
+            ("sys_weekly_remarks",   "ri-calendar-check-line", "ORDER BY Id",        null),
+            ("sys_trusted_devices",  "ri-device-line",         "ORDER BY CreatedAt", null),
+            ("sys_shrunk_files",     "ri-file-reduce-line",    "ORDER BY Id DESC",   null),
+            ("sys_activity_log",     "ri-history-line",        "ORDER BY Id DESC",   null),
+            ("sys_financial_config", "ri-money-dollar-circle-line", "ORDER BY Id",   null)));
 
         var tLkp = Task.Run(() => Group(
             ("lkp_grades",           "ri-medal-line",     "ORDER BY SortOrder",       null),
