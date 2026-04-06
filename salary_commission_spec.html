@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>LPM Salary Commission Calculation Specification</title>
+<style>
+  @page { margin: 20mm 15mm; size: A4; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #1e293b;
+    line-height: 1.6;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px 30px;
+    background: #fff;
+  }
+  h1 {
+    text-align: center;
+    color: #1e40af;
+    font-size: 28px;
+    border-bottom: 3px solid #3b82f6;
+    padding-bottom: 12px;
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    text-align: center;
+    color: #64748b;
+    font-size: 14px;
+    margin-bottom: 30px;
+  }
+  h2 {
+    color: #1e40af;
+    font-size: 20px;
+    margin-top: 32px;
+    margin-bottom: 12px;
+    border-left: 4px solid #3b82f6;
+    padding-left: 12px;
+  }
+  h3 {
+    color: #0f766e;
+    font-size: 16px;
+    margin-top: 20px;
+    margin-bottom: 8px;
+  }
+  .highlight-box {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 16px 0;
+  }
+  .highlight-box.green {
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+  }
+  .highlight-box.amber {
+    background: #fffbeb;
+    border-color: #fde68a;
+  }
+  .highlight-box.red {
+    background: #fef2f2;
+    border-color: #fecaca;
+  }
+  .formula {
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 12px 16px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 13px;
+    margin: 10px 0;
+    color: #334155;
+  }
+  .formula b { color: #1e40af; }
+  .formula .op { color: #dc2626; font-weight: bold; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 13px;
+  }
+  th {
+    background: #1e40af;
+    color: #fff;
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 12px;
+  }
+  td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #e2e8f0;
+    vertical-align: top;
+  }
+  tr:nth-child(even) { background: #f8fafc; }
+  .role-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .role-registrar { background: #dbeafe; color: #1e40af; }
+  .role-referral { background: #fce7f3; color: #be185d; }
+  .role-instructor { background: #d1fae5; color: #065f46; }
+  .role-cs { background: #fef3c7; color: #92400e; }
+  .role-academy { background: #e0e7ff; color: #3730a3; }
+  .check { color: #16a34a; font-weight: bold; }
+  .cross { color: #dc2626; font-weight: bold; }
+  .bold { font-weight: 700; }
+  .blue { color: #1e40af; }
+  .green { color: #16a34a; }
+  .red { color: #dc2626; }
+  .amber { color: #d97706; }
+  .step-num {
+    display: inline-block;
+    width: 28px;
+    height: 28px;
+    line-height: 28px;
+    text-align: center;
+    background: #3b82f6;
+    color: #fff;
+    border-radius: 50%;
+    font-weight: 700;
+    font-size: 14px;
+    margin-right: 8px;
+  }
+  .step { margin: 12px 0; }
+  ul { margin: 6px 0 6px 20px; }
+  li { margin: 4px 0; }
+  .note {
+    font-size: 12px;
+    color: #64748b;
+    font-style: italic;
+    margin-top: 4px;
+  }
+  .page-break { page-break-before: always; }
+  .section-divider {
+    border: none;
+    border-top: 2px dashed #cbd5e1;
+    margin: 30px 0;
+  }
+  .summary-matrix th { font-size: 11px; padding: 8px 6px; }
+  .summary-matrix td { font-size: 11px; padding: 6px; text-align: center; }
+  .summary-matrix td:first-child { text-align: left; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>Salary Commission Calculation</h1>
+<div class="subtitle">LPM System &mdash; Financial Specification Document &mdash; April 2026</div>
+
+<!-- ================================================================ -->
+<h2>1. Overview</h2>
+
+<p>The salary report calculates <b class="blue">staff earnings</b> for a selected date range. It has <b>three components</b>:</p>
+
+<div class="highlight-box">
+  <b class="blue">A.</b> <b>Session Salary</b> &mdash; Auditor pay for auditing sessions (existing)<br>
+  <b class="blue">B.</b> <b>CS Review Salary</b> &mdash; Case Supervisor pay for reviews (existing)<br>
+  <b class="blue">C.</b> <b>Commission Earnings</b> &mdash; Staff commissions from purchase payments <b class="green">(NEW)</b>
+</div>
+
+<p>This document details <b>component C</b> &mdash; how commission earnings are calculated from payments that have been confirmed as <b class="green">"Money in the Bank"</b>.</p>
+
+<!-- ================================================================ -->
+<h2>2. Data Source: Which Payments Count?</h2>
+
+<div class="highlight-box green">
+  <b>Only payments where:</b>
+  <ul>
+    <li><b class="green">IsMoneyInBank = 1</b> (admin has confirmed the money arrived)</li>
+    <li><b class="green">MoneyInBankDate</b> falls within the salary report's <b>From</b> &ndash; <b>To</b> date range</li>
+  </ul>
+  <p class="note">Source table: <code>fin_payment_methods</code>, linked to <code>fin_purchases</code> &rarr; <code>fin_purchase_items</code></p>
+</div>
+
+<!-- ================================================================ -->
+<h2>3. The Deduction Chain</h2>
+
+<p>Every qualifying payment goes through a <b class="red">deduction chain</b> before commissions are calculated:</p>
+
+<div class="step">
+  <span class="step-num">1</span>
+  <b>Start with Gross Amount</b> &mdash; <code>fin_payment_methods.Amount</code> (VAT-inclusive)
+</div>
+
+<div class="step">
+  <span class="step-num">2</span>
+  <b class="red">Subtract VAT</b> &mdash; Price includes VAT, so we extract it:
+</div>
+<div class="formula">
+  <b>vatAmount</b> = Gross <span class="op">&minus;</span> (Gross <span class="op">/</span> (1 + <b>VatPct</b>/100))
+</div>
+
+<div class="step">
+  <span class="step-num">3</span>
+  <b class="red">Subtract CC Commission</b> &mdash; <b class="amber">Only for CreditCard payments</b>:
+</div>
+<div class="formula">
+  <b>ccAmount</b> = Gross <span class="op">&times;</span> (<b>CcCommissionPct</b>/100) &nbsp;&nbsp;&nbsp; <i style="color:#94a3b8;">(0 if Cash/Check/etc.)</i>
+</div>
+
+<div class="step">
+  <span class="step-num">4</span>
+  <b>Net After Deductions</b>:
+</div>
+<div class="formula">
+  <b>netAfterDeductions</b> = Gross <span class="op">&minus;</span> vatAmount <span class="op">&minus;</span> ccAmount
+</div>
+
+<div class="step">
+  <span class="step-num">5</span>
+  <b class="red">Subtract Reserve Deduction</b> &mdash; Applied on the net after ALL deductions:
+</div>
+<div class="formula">
+  <b>reserveAmount</b> = netAfterDeductions <span class="op">&times;</span> (<b>ReserveDeductPct</b>/100)
+</div>
+
+<div class="step">
+  <span class="step-num">6</span>
+  <b class="green">Final Net Base</b> &mdash; This is the amount commissions are calculated on:
+</div>
+<div class="formula" style="background:#f0fdf4; border-color:#bbf7d0;">
+  <b style="color:#16a34a;">NET BASE</b> = netAfterDeductions <span class="op">&minus;</span> reserveAmount
+</div>
+
+<div class="highlight-box amber">
+  <b class="amber">Example:</b> Payment of <b>&#8362;1,180</b> via CreditCard, VAT=18%, CC=2.5%, Reserve=10%<br><br>
+  VAT = 1180 &minus; (1180 / 1.18) = 1180 &minus; 1000 = <b class="red">&#8362;180</b><br>
+  CC  = 1180 &times; 2.5% = <b class="red">&#8362;29.50</b><br>
+  Net after deductions = 1180 &minus; 180 &minus; 29.50 = <b>&#8362;970.50</b><br>
+  Reserve = 970.50 &times; 10% = <b class="red">&#8362;97.05</b><br>
+  <b class="green">Net Base = &#8362;873.45</b>
+</div>
+
+<!-- ================================================================ -->
+<hr class="section-divider">
+<h2>4. Commission Categories</h2>
+
+<p>Purchase items are classified into <b>three categories</b>, each with different commission rules:</p>
+
+<!-- ── Category 1 ── -->
+<h3 style="color:#1e40af;">Category 1: Auditing &amp; Books</h3>
+<p><code>fin_purchase_items.ItemType</code> = <b>'Auditing'</b> or <b>'Book'</b></p>
+
+<div class="highlight-box">
+  For each "in the bank" payment <b>within the date range</b>, calculate net base, then:
+  <table>
+    <tr>
+      <th style="width:30%;">Role</th>
+      <th style="width:30%;">Source</th>
+      <th>Commission</th>
+    </tr>
+    <tr>
+      <td><span class="role-tag role-registrar">REGISTRAR</span></td>
+      <td><code>fin_purchases.RegistrarId</code></td>
+      <td><b class="blue">AuditRegistrarPct</b> % of Net Base</td>
+    </tr>
+    <tr>
+      <td><span class="role-tag role-referral">REFERRAL</span></td>
+      <td><code>fin_purchases.ReferralId</code></td>
+      <td><b class="blue">AuditReferralPct</b> % of Net Base</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ── Category 2 ── -->
+<h3 style="color:#0f766e;">Category 2: PC Courses</h3>
+<p><code>ItemType = 'Course'</code> where <code>lkp_courses.CourseType = 'PC'</code></p>
+
+<div class="highlight-box green">
+  <b>Registrar &amp; Referral</b> &mdash; same as above but with course percentages:
+  <table>
+    <tr>
+      <th style="width:30%;">Role</th>
+      <th style="width:30%;">Source</th>
+      <th>Commission</th>
+    </tr>
+    <tr>
+      <td><span class="role-tag role-registrar">REGISTRAR</span></td>
+      <td><code>fin_purchases.RegistrarId</code></td>
+      <td><b class="blue">CourseRegistrarPct</b> % of Net Base</td>
+    </tr>
+    <tr>
+      <td><span class="role-tag role-referral">REFERRAL</span></td>
+      <td><code>fin_purchases.ReferralId</code></td>
+      <td><b class="blue">CourseReferralPct</b> % of Net Base</td>
+    </tr>
+  </table>
+
+  <br>
+  <b class="green">Academy Instructor Commissions (from config &mdash; up to 4 instructors):</b>
+  <table>
+    <tr>
+      <th>Type</th>
+      <th>When</th>
+      <th>Payments Counted</th>
+      <th>Commission</th>
+    </tr>
+    <tr>
+      <td><b>Start Commission</b></td>
+      <td>On every "in the bank" payment <b>within the date range</b></td>
+      <td>Only payments with MoneyInBankDate in range</td>
+      <td>Per-instructor <b class="blue">StartPct</b> % of Net Base</td>
+    </tr>
+    <tr>
+      <td><b>Finish Commission</b></td>
+      <td><b class="red">Only if</b> <code>acad_student_courses.DateFinished</code> is within the date range</td>
+      <td><b class="amber">ALL past "in the bank" payments</b> for this purchase (regardless of date)</td>
+      <td>Per-instructor <b class="blue">FinishPct</b> % of Net Base</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ── Category 3 ── -->
+<h3 style="color:#dc2626;">Category 3: OT Courses (One-on-One Training)</h3>
+<p><code>ItemType = 'Course'</code> where <code>lkp_courses.CourseType = 'OT'</code></p>
+
+<div class="highlight-box red">
+  <b>Registrar &amp; Referral</b> &mdash; same as PC courses:
+  <table>
+    <tr>
+      <th style="width:30%;">Role</th>
+      <th style="width:30%;">Source</th>
+      <th>Commission</th>
+    </tr>
+    <tr>
+      <td><span class="role-tag role-registrar">REGISTRAR</span></td>
+      <td><code>fin_purchases.RegistrarId</code></td>
+      <td><b class="blue">CourseRegistrarPct</b> % of Net Base</td>
+    </tr>
+    <tr>
+      <td><span class="role-tag role-referral">REFERRAL</span></td>
+      <td><code>fin_purchases.ReferralId</code></td>
+      <td><b class="blue">CourseReferralPct</b> % of Net Base</td>
+    </tr>
+  </table>
+
+  <br>
+  <b class="red">OT-specific commissions &mdash; ONLY when course is finished within date range:</b>
+  <table>
+    <tr>
+      <th style="width:30%;">Role</th>
+      <th style="width:30%;">Source</th>
+      <th>Commission</th>
+    </tr>
+    <tr>
+      <td><span class="role-tag role-instructor">INSTRUCTOR</span></td>
+      <td><code>acad_student_courses.InstructorId</code></td>
+      <td><b class="blue">InstructorOtPct</b> % of Net Base on <b class="amber">ALL past payments</b></td>
+    </tr>
+    <tr>
+      <td><span class="role-tag role-cs">CS</span></td>
+      <td><code>acad_student_courses.CsId</code></td>
+      <td><b class="blue">CsOtPct</b> % of Net Base on <b class="amber">ALL past payments</b></td>
+    </tr>
+  </table>
+
+  <br>
+  <div style="background:#fecaca; padding:8px 12px; border-radius:6px;">
+    <b class="red">Academy Instructors (the 4 config slots) receive NO commission on OT courses.</b>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<div class="page-break"></div>
+<h2>5. Complete Summary Matrix</h2>
+
+<table class="summary-matrix">
+  <tr>
+    <th style="text-align:left;">Role</th>
+    <th>Auditing &amp; Books</th>
+    <th>PC Course<br>(ongoing)</th>
+    <th>PC Course<br>(finished in range)</th>
+    <th>OT Course<br>(ongoing)</th>
+    <th>OT Course<br>(finished in range)</th>
+  </tr>
+  <tr>
+    <td><span class="role-tag role-registrar">REGISTRAR</span></td>
+    <td><span class="check">&#10004;</span><br><small>AuditRegistrarPct<br>on in-range payments</small></td>
+    <td><span class="check">&#10004;</span><br><small>CourseRegistrarPct<br>on in-range payments</small></td>
+    <td><span class="check">&#10004;</span><br><small>CourseRegistrarPct<br>on in-range payments</small></td>
+    <td><span class="check">&#10004;</span><br><small>CourseRegistrarPct<br>on in-range payments</small></td>
+    <td><span class="check">&#10004;</span><br><small>CourseRegistrarPct<br>on in-range payments</small></td>
+  </tr>
+  <tr>
+    <td><span class="role-tag role-referral">REFERRAL</span></td>
+    <td><span class="check">&#10004;</span><br><small>AuditReferralPct<br>on in-range payments</small></td>
+    <td><span class="check">&#10004;</span><br><small>CourseReferralPct<br>on in-range payments</small></td>
+    <td><span class="check">&#10004;</span><br><small>CourseReferralPct<br>on in-range payments</small></td>
+    <td><span class="check">&#10004;</span><br><small>CourseReferralPct<br>on in-range payments</small></td>
+    <td><span class="check">&#10004;</span><br><small>CourseReferralPct<br>on in-range payments</small></td>
+  </tr>
+  <tr>
+    <td><span class="role-tag role-academy">ACADEMY INSTR.<br>Start</span></td>
+    <td><span class="cross">&#10008;</span></td>
+    <td><span class="check">&#10004;</span><br><small>StartPct<br>on in-range payments</small></td>
+    <td><span class="check">&#10004;</span><br><small>StartPct<br>on in-range payments</small></td>
+    <td><span class="cross">&#10008;</span></td>
+    <td><span class="cross">&#10008;</span></td>
+  </tr>
+  <tr>
+    <td><span class="role-tag role-academy">ACADEMY INSTR.<br>Finish</span></td>
+    <td><span class="cross">&#10008;</span></td>
+    <td><span class="cross">&#10008;</span></td>
+    <td><span class="check">&#10004;</span><br><small>FinishPct<br>on <b>ALL</b> past payments</small></td>
+    <td><span class="cross">&#10008;</span></td>
+    <td><span class="cross">&#10008;</span></td>
+  </tr>
+  <tr>
+    <td><span class="role-tag role-instructor">OT INSTRUCTOR</span></td>
+    <td><span class="cross">&#10008;</span></td>
+    <td><span class="cross">&#10008;</span></td>
+    <td><span class="cross">&#10008;</span></td>
+    <td><span class="cross">&#10008;</span></td>
+    <td><span class="check">&#10004;</span><br><small>InstructorOtPct<br>on <b>ALL</b> past payments</small></td>
+  </tr>
+  <tr>
+    <td><span class="role-tag role-cs">OT CS</span></td>
+    <td><span class="cross">&#10008;</span></td>
+    <td><span class="cross">&#10008;</span></td>
+    <td><span class="cross">&#10008;</span></td>
+    <td><span class="cross">&#10008;</span></td>
+    <td><span class="check">&#10004;</span><br><small>CsOtPct<br>on <b>ALL</b> past payments</small></td>
+  </tr>
+</table>
+
+<!-- ================================================================ -->
+<h2>6. Special Cases</h2>
+
+<div class="highlight-box amber">
+  <h3 style="margin-top:0;">Referral = "Other" (ReferralId = -1)</h3>
+  <p>When a purchase has <b>ReferralId = -1</b>, the referral commission is <b>calculated but not assigned</b> to any staff member. Instead, it is displayed at the <b>bottom of the salary report</b> as an <b class="amber">unassigned referral amount</b>, together with the <code>fin_purchases.Notes</code> field, so the admin knows who to pay manually.</p>
+</div>
+
+<div class="highlight-box">
+  <h3 style="margin-top:0;">Payment Allocation Across Items</h3>
+  <p>A single payment method amount covers the <b>entire purchase</b>, which may contain multiple items (e.g., Auditing hours + a Course + a Book). The payment amount is <b>distributed proportionally</b> across items based on their <code>AmountPaid</code> relative to the purchase total:</p>
+  <div class="formula">
+    <b>itemShare</b> = paymentAmount <span class="op">&times;</span> (item.AmountPaid <span class="op">/</span> totalPurchaseAmount)
+  </div>
+  <p>Each item's share then goes through the deduction chain independently, and the appropriate commission percentages are applied based on the item's category.</p>
+</div>
+
+<!-- ================================================================ -->
+<h2>7. Configuration Parameters</h2>
+
+<p>All percentages are stored in <code>sys_financial_config</code> (single row):</p>
+
+<table>
+  <tr>
+    <th>Parameter</th>
+    <th>Description</th>
+    <th>Used In</th>
+  </tr>
+  <tr>
+    <td><b>VatPct</b></td>
+    <td>VAT percentage (e.g., 18%)</td>
+    <td>All categories &mdash; deduction chain step 2</td>
+  </tr>
+  <tr>
+    <td><b>CcCommissionPct</b></td>
+    <td>Credit card processing fee %</td>
+    <td>All categories &mdash; deduction chain step 3 (CreditCard only)</td>
+  </tr>
+  <tr>
+    <td><b>ReserveDeductPct</b></td>
+    <td>Reserve deduction %</td>
+    <td>All categories &mdash; deduction chain step 5</td>
+  </tr>
+  <tr><td colspan="3" style="background:#e0e7ff;"><b class="blue">Registrar &amp; Referral</b></td></tr>
+  <tr>
+    <td><b>AuditRegistrarPct</b></td>
+    <td>Registrar commission for Auditing &amp; Books</td>
+    <td>Category 1</td>
+  </tr>
+  <tr>
+    <td><b>CourseRegistrarPct</b></td>
+    <td>Registrar commission for Courses (PC &amp; OT)</td>
+    <td>Categories 2 &amp; 3</td>
+  </tr>
+  <tr>
+    <td><b>AuditReferralPct</b></td>
+    <td>Referral commission for Auditing &amp; Books</td>
+    <td>Category 1</td>
+  </tr>
+  <tr>
+    <td><b>CourseReferralPct</b></td>
+    <td>Referral commission for Courses (PC &amp; OT)</td>
+    <td>Categories 2 &amp; 3</td>
+  </tr>
+  <tr><td colspan="3" style="background:#d1fae5;"><b style="color:#065f46;">Academy Instructors (PC Courses only)</b></td></tr>
+  <tr>
+    <td><b>Per-Instructor StartPct</b></td>
+    <td>Commission on each payment received (up to 4 instructors)</td>
+    <td>Category 2 &mdash; ongoing &amp; finished</td>
+  </tr>
+  <tr>
+    <td><b>Per-Instructor FinishPct</b></td>
+    <td>Bonus commission when course finishes (on ALL past payments)</td>
+    <td>Category 2 &mdash; finished only</td>
+  </tr>
+  <tr><td colspan="3" style="background:#fef3c7;"><b class="amber">OT Course Commissions</b></td></tr>
+  <tr>
+    <td><b>InstructorOtPct</b></td>
+    <td>OT instructor commission when course finishes</td>
+    <td>Category 3 &mdash; finished only</td>
+  </tr>
+  <tr>
+    <td><b>CsOtPct</b></td>
+    <td>CS commission on OT course when course finishes</td>
+    <td>Category 3 &mdash; finished only</td>
+  </tr>
+</table>
+
+<!-- ================================================================ -->
+<div style="margin-top: 40px; padding-top: 16px; border-top: 2px solid #e2e8f0; text-align: center; color: #94a3b8; font-size: 12px;">
+  LPM System &mdash; Salary Commission Specification &mdash; Generated April 2026
+</div>
+
+</body>
+</html>

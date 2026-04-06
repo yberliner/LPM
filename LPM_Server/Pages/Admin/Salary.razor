@@ -210,6 +210,7 @@
             {
                 var hasSessions = group.Sessions.Count > 0;
                 var hasCsRows   = group.CsReviews.Count > 0;
+                var hasComm     = group.Commissions.Count > 0;
 
                 <div class="sal-user-card">
                     @* Card header (clickable to collapse) *@
@@ -220,8 +221,10 @@
                             <div class="sal-user-name">@group.FullName</div>
                             <div class="sal-user-sub">
                                 @if (hasSessions) { <span>@group.Sessions.Count session@(group.Sessions.Count != 1 ? "s" : "")</span> }
-                                @if (hasSessions && hasCsRows) { <span class="sal-dot">·</span> }
+                                @if (hasSessions && (hasCsRows || hasComm)) { <span class="sal-dot">·</span> }
                                 @if (hasCsRows)   { <span>@group.CsReviews.Count CS review@(group.CsReviews.Count != 1 ? "s" : "")</span> }
+                                @if (hasCsRows && hasComm) { <span class="sal-dot">·</span> }
+                                @if (hasComm)     { <span>@group.Commissions.Count commission@(group.Commissions.Count != 1 ? "s" : "")</span> }
                             </div>
                         </div>
                         <span class="sal-header-total">₪ @FormatShekel(group.TotalCents)</span>
@@ -305,6 +308,46 @@
                         </div>
                     }
 
+                    @* Commission Earnings table *@
+                    @if (hasComm)
+                    {
+                        <div class="sal-section-label @((hasSessions || hasCsRows) ? "sal-section-label-mt" : "")">
+                            <i class="ri-percent-line me-1"></i>Commission Earnings
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-sm mb-0 sal-table sal-comm-table">
+                                <colgroup>
+                                    <col style="width:28px;" /><col /><col style="width:22%;" /><col style="width:20%;" /><col style="width:16%;" />
+                                </colgroup>
+                                <thead>
+                                    <tr class="sal-thead">
+                                        <th></th>
+                                        <th>PC</th>
+                                        <th>Role</th>
+                                        <th>Category</th>
+                                        <th class="text-end">Amount ₪</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var cm in group.Commissions)
+                                    {
+                                        <tr @onmouseenter="() => _hoverComm = cm" @onmouseleave="() => { if (_hoverComm == cm) _hoverComm = null; }">
+                                            <td class="text-center" style="padding:4px 2px;">
+                                                <button class="sal-detail-btn" @onclick="() => ShowDetail(cm)" title="View calculation">
+                                                    <i class="ri-information-line"></i>
+                                                </button>
+                                            </td>
+                                            <td class="sal-pc">@cm.PcName</td>
+                                            <td><span class="sal-role-badge sal-role-@cm.Role.Replace(" ", "").Replace(".", "").ToLower()">@cm.Role</span></td>
+                                            <td class="small text-muted">@cm.Category</td>
+                                            <td class="text-end sal-payment">₪ @FormatShekel(cm.AmountCents)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+
                     @* Total row — aligned under Payment column via same colgroup *@
                     <div class="table-responsive">
                         <table class="sal-table sal-table-fixed sal-total-table">
@@ -330,6 +373,129 @@
         </div>
     }
 
+    @* ── Unassigned Referrals ── *@
+    @if (_unassigned.Count > 0)
+    {
+        <div class="sal-unassigned-card">
+            <div class="sal-unassigned-header">
+                <i class="ri-error-warning-line me-2"></i>Unassigned Referral Commissions
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 sal-table">
+                    <thead>
+                        <tr class="sal-thead">
+                            <th>PC</th>
+                            <th>Category</th>
+                            <th class="text-end">Amount ₪</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var u in _unassigned)
+                        {
+                            <tr>
+                                <td class="sal-pc">@u.PcName</td>
+                                <td class="small text-muted">@u.Category</td>
+                                <td class="text-end sal-payment">₪ @FormatShekel(u.AmountCents)</td>
+                                <td class="small">@u.Notes</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr style="background:#fff3e0;">
+                            <td colspan="2" class="text-end fw-semibold small">Total Unassigned</td>
+                            <td class="text-end fw-bold sal-payment">₪ @FormatShekel(_unassigned.Sum(u => u.AmountCents))</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    }
+
+    @* ── Commission Detail Modal ── *@
+    @if (_detailRow != null)
+    {
+        var d = _detailRow.Detail;
+        <div class="sal-modal-overlay" @onclick="CloseDetail">
+            <div class="sal-modal-box" @onclick:stopPropagation="true">
+                <div class="sal-modal-header">
+                    <span><i class="ri-file-list-3-line me-2"></i>Commission Calculation Detail</span>
+                    <button class="sal-modal-close" @onclick="CloseDetail"><i class="ri-close-line"></i></button>
+                </div>
+                <div class="sal-modal-body">
+                    <div class="sal-detail-section sal-detail-purchase">
+                        <div class="sal-detail-title"><i class="ri-shopping-bag-line me-1"></i>Purchase</div>
+                        <div class="sal-detail-grid">
+                            <span class="sal-detail-label">Purchase #</span><span>@d.PurchaseId</span>
+                            <span class="sal-detail-label">Date</span><span>@FormatDate(d.PurchaseDate)</span>
+                            <span class="sal-detail-label">PC</span><span>@_detailRow.PcName</span>
+                            <span class="sal-detail-label">Completion</span>
+                            @if (d.ItemType != "Course")
+                            {
+                                <span style="color:#94a3b8;">—</span>
+                            }
+                            else if (d.CourseFinishDate != null)
+                            {
+                                <span><span class="sal-badge-approved">Completed</span> @FormatDate(d.CourseFinishDate)</span>
+                            }
+                            else
+                            {
+                                <span><span class="sal-badge-pending">In Progress</span></span>
+                            }
+                        </div>
+                    </div>
+                    <div class="sal-detail-section sal-detail-payment">
+                        <div class="sal-detail-title"><i class="ri-bank-card-line me-1"></i>Payment</div>
+                        <div class="sal-detail-grid">
+                            <span class="sal-detail-label">Method</span><span>@d.PaymentMethod</span>
+                            <span class="sal-detail-label">Amount</span><span class="fw-semibold">₪ @d.PaymentGross.ToString("N0")</span>
+                            <span class="sal-detail-label">Payment Date</span><span>@FormatDate(d.PaymentDate)</span>
+                        </div>
+                    </div>
+                    <div class="sal-detail-section sal-detail-split">
+                        <div class="sal-detail-title"><i class="ri-pie-chart-line me-1"></i>Purchased Item</div>
+                        <div class="sal-detail-grid">
+                            <span class="sal-detail-label">Item</span><span>@d.ItemName (@d.ItemType)</span>
+                            <span class="sal-detail-label">Item Price</span><span>₪ @d.ItemPrice.ToString("N0")</span>
+                            <span class="sal-detail-label">Purchase Total</span><span>₪ @d.TotalPurchasePrice.ToString("N0")</span>
+                            <span class="sal-detail-label">This Item's Share</span><span class="fw-semibold">₪ @d.ItemShare.ToString("N2")</span>
+                        </div>
+                    </div>
+                    <div class="sal-detail-section sal-detail-deduction">
+                        <div class="sal-detail-title"><i class="ri-calculator-line me-1"></i>Deduction Chain</div>
+                        <table class="table table-sm mb-0 sal-deduction-table">
+                            <tr><td>Gross (allocated share)</td><td class="text-end fw-semibold">₪ @d.ItemShare.ToString("N2")</td></tr>
+                            <tr><td>&minus; VAT (@((decimal)_cfgVatPct)%)</td><td class="text-end" style="color:#dc2626 !important;">&minus;₪ @d.VatAmount.ToString("N2")</td></tr>
+                            <tr><td>&minus; CC Commission @(d.PaymentMethod == "CreditCard" ? $"({(decimal)_cfgCcCommissionPct}%)" : "(n/a)")</td><td class="text-end" style="color:#dc2626 !important;">&minus;₪ @d.CcAmount.ToString("N2")</td></tr>
+                            <tr style="border-top:2px solid #cbd5e1;"><td>Net After Deductions</td><td class="text-end fw-semibold">₪ @d.NetAfterDeductions.ToString("N2")</td></tr>
+                            <tr><td>&minus; Reserve (@((decimal)_cfgReserveDeductPct)%)</td><td class="text-end" style="color:#dc2626 !important;">&minus;₪ @d.ReserveAmount.ToString("N2")</td></tr>
+                            <tr style="background:#d1fae5 !important;border-top:2px solid #059669;">
+                                <td class="fw-bold" style="color:#059669 !important;">Net Base</td>
+                                <td class="text-end fw-bold" style="color:#059669 !important;">₪ @d.NetBase.ToString("N2")</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="sal-detail-section sal-detail-result">
+                        <div class="sal-detail-title"><i class="ri-money-dollar-circle-line me-1"></i>Commission</div>
+                        <div class="sal-detail-grid">
+                            <span class="sal-detail-label">Role</span>
+                            <span><span class="sal-role-badge sal-role-@_detailRow.Role.Replace(" ", "").Replace(".", "").ToLower()">@_detailRow.Role</span></span>
+                            <span class="sal-detail-label">Why</span>
+                            <span>@GetRoleExplanation(_detailRow.Role, _detailRow.PcName)</span>
+                            <span class="sal-detail-label">Category</span>
+                            <span>@_detailRow.Category</span>
+                            <span class="sal-detail-label">Commission %</span><span class="fw-semibold">@d.CommissionPct%</span>
+                            <span class="sal-detail-label">Net Base</span><span>₪ @d.NetBase.ToString("N2")</span>
+                            <span class="sal-detail-label">Amount</span>
+                            <span class="fw-bold" style="color:#059669 !important;font-size:1.1rem;">₪ @FormatShekel(_detailRow.AmountCents)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
 </div>
 
 @code {
@@ -339,9 +505,26 @@
     bool    _recalculating;
     string? _error;
     List<UserSalaryGroup>? _groups;
+    List<UnassignedReferralRow> _unassigned = new();
     int _periodYear;
     int _periodMonth;
     HashSet<string> _collapsed = new();
+
+    // ── Commission Detail modal ──
+    CommissionRow? _detailRow;
+    void ShowDetail(CommissionRow row) => _detailRow = row;
+    void CloseDetail() => _detailRow = null;
+
+    static string GetRoleExplanation(string role, string pcName) => role switch
+    {
+        "Registrar"      => $"Registered the purchase for {pcName}",
+        "Referral"       => $"Referred {pcName} to the center",
+        "Acad. Start"    => $"Academy instructor — start commission on {pcName}'s course",
+        "Acad. Finish"   => $"Academy instructor — completion commission on {pcName}'s course",
+        "OT Instructor"  => $"One-on-one instructor for {pcName}'s course",
+        "OT CS"          => $"Case supervisor for {pcName}'s course",
+        _                => role
+    };
 
     // ── Financial Config state ──
     bool _showFinConfig = false;
@@ -479,7 +662,9 @@
 
         try
         {
-            _groups = DashSvc.GetSalaryReport(from, to);
+            var report = DashSvc.GetSalaryReport(from, to);
+            _groups = report.Groups;
+            _unassigned = report.UnassignedReferrals;
         }
         catch (Exception ex)
         {
@@ -723,6 +908,130 @@
     .sal-empty {
         text-align: center; padding: 60px 20px;
     }
+
+    /* ── Commission table ── */
+    .sal-comm-table { table-layout: fixed; width: 100%; min-width: 400px; }
+    .sal-role-badge {
+        display: inline-block; padding: 2px 8px; border-radius: 6px;
+        font-size: .68rem; font-weight: 700; white-space: nowrap;
+    }
+    .sal-role-registrar   { background: rgba(59,130,246,.12); color: #2563eb; }
+    .sal-role-referral    { background: rgba(168,85,247,.12); color: #7c3aed; }
+    .sal-role-acadstart   { background: rgba(16,185,129,.12); color: #059669; }
+    .sal-role-acadfinish  { background: rgba(245,158,11,.12); color: #b45309; }
+    .sal-role-otinstructor{ background: rgba(239,68,68,.12);  color: #dc2626; }
+    .sal-role-otcs        { background: rgba(236,72,153,.12); color: #be185d; }
+
+    /* ── Unassigned referrals ── */
+    .sal-unassigned-card {
+        margin: 24px 28px 0;
+        border-radius: 14px; overflow: hidden;
+        box-shadow: 0 2px 12px rgba(0,0,0,.07);
+        border: 1px solid rgba(245,158,11,.3);
+        animation: sal-fade-in .35s ease;
+    }
+    .sal-unassigned-header {
+        padding: 12px 20px;
+        background: linear-gradient(135deg,#f59e0b,#d97706);
+        color: #fff; font-weight: 700; font-size: .9rem;
+    }
+
+    /* ── Hover tooltip card ── */
+    .sal-tip-card {
+        display: none; position: absolute; z-index: 1000;
+        right: 0; top: 100%; margin-top: 4px;
+        width: 340px; padding: 14px 16px;
+        background: #1e293b; color: #e2e8f0; border-radius: 12px;
+        box-shadow: 0 12px 40px rgba(0,0,0,.35);
+        font-size: .8rem; line-height: 1.5;
+        pointer-events: none;
+    }
+    .sal-tip-card::before {
+        content: ''; position: absolute; top: -6px; right: 24px;
+        border-left: 7px solid transparent; border-right: 7px solid transparent;
+        border-bottom: 7px solid #1e293b;
+    }
+    .sal-tip-row:hover .sal-tip-card { display: block; }
+    .sal-tip-header { font-weight: 700; font-size: .85rem; color: #fff; margin-bottom: 4px; }
+    .sal-tip-why { color: #94a3b8; font-size: .75rem; margin-bottom: 8px; font-style: italic; }
+    .sal-tip-grid { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; }
+    .sal-tip-grid span { color: #cbd5e1; }
+    .sal-tip-divider { height: 1px; background: rgba(255,255,255,.1); margin: 8px 0; }
+    .sal-tip-chain { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+    .sal-tip-chain span { color: #cbd5e1; }
+    .sal-tip-minus { color: #fca5a5 !important; }
+    .sal-tip-net { color: #4ade80 !important; font-weight: 700; }
+    .sal-tip-result { color: #fff; font-size: .85rem; margin-top: 2px; }
+    .sal-tip-result strong { color: #4ade80; font-size: .95rem; }
+    .sal-tip-status { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,.1); color: #94a3b8; font-size: .75rem; }
+
+    /* ── Detail button ── */
+    .sal-detail-btn {
+        background: none; border: 1px solid rgba(100,116,139,.2); border-radius: 6px;
+        color: #64748b; cursor: pointer; width: 24px; height: 24px;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: .85rem; padding: 0; transition: all .15s;
+    }
+    .sal-detail-btn:hover { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+
+    /* ── Commission detail modal ── */
+    .sal-modal-overlay {
+        position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9999;
+        display: flex; align-items: center; justify-content: center;
+        animation: sal-fade-in .2s ease;
+    }
+    .sal-modal-box {
+        background: var(--custom-white); border-radius: 16px; width: 520px; max-width: 94vw;
+        max-height: 90vh; overflow-y: auto;
+        box-shadow: 0 20px 60px rgba(0,0,0,.25);
+        animation: sal-fade-in .25s ease;
+    }
+    .sal-modal-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 16px 20px; background: linear-gradient(135deg,#1e40af,#3b82f6);
+        color: #fff; font-weight: 700; font-size: .95rem;
+        border-radius: 16px 16px 0 0;
+    }
+    .sal-modal-close {
+        background: rgba(255,255,255,.2); border: none; color: #fff; border-radius: 8px;
+        width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+        cursor: pointer; font-size: 1.1rem;
+    }
+    .sal-modal-close:hover { background: rgba(255,255,255,.35); }
+    .sal-modal-body { padding: 20px; color: #1e293b !important; }
+    .sal-modal-body * { color: inherit; }
+    .sal-modal-body .sal-detail-label { color: #475569 !important; }
+    .sal-modal-body .sal-detail-title { color: #64748b !important; }
+    .sal-modal-body td { color: #1e293b !important; }
+    .sal-modal-body .text-danger { color: #dc2626 !important; }
+    .sal-modal-body .text-end.fw-bold[style*="059669"] { color: #059669 !important; }
+    .sal-detail-section { margin-bottom: 16px; }
+    .sal-detail-title {
+        font-size: .72rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: .5px; color: #64748b; margin-bottom: 8px;
+        padding-bottom: 4px; border-bottom: 1px solid rgba(100,116,139,.12);
+    }
+    .sal-detail-grid {
+        display: grid; grid-template-columns: 130px 1fr; gap: 6px 12px;
+        font-size: .88rem;
+    }
+    .sal-detail-label { color: #64748b; font-size: .82rem; }
+    .sal-detail-purchase { background: #dbeafe !important; border-radius: 8px; padding: 12px 14px; border-left: 4px solid #3b82f6; color: #1e293b !important; }
+    .sal-detail-purchase .sal-detail-title { color: #1e40af !important; border-color: rgba(30,64,175,.15); }
+    .sal-detail-purchase .sal-detail-label { color: #475569 !important; }
+    .sal-detail-payment { background: #fef3c7 !important; border-radius: 8px; padding: 12px 14px; border-left: 4px solid #f59e0b; color: #1e293b !important; }
+    .sal-detail-payment .sal-detail-title { color: #92400e !important; border-color: rgba(146,64,14,.15); }
+    .sal-detail-payment .sal-detail-label { color: #475569 !important; }
+    .sal-detail-split { background: #d1fae5 !important; border-radius: 8px; padding: 12px 14px; border-left: 4px solid #10b981; color: #1e293b !important; }
+    .sal-detail-split .sal-detail-title { color: #166534 !important; border-color: rgba(22,101,52,.15); }
+    .sal-detail-split .sal-detail-label { color: #475569 !important; }
+    .sal-detail-deduction { background: #fff !important; border-radius: 8px; padding: 12px 14px; border: 1px solid #e2e8f0; }
+    .sal-detail-deduction .sal-detail-title { color: #334155 !important; border-color: rgba(51,65,85,.15); }
+    .sal-deduction-table { background: #fff !important; font-size: .85rem; }
+    .sal-deduction-table td { color: #1e293b !important; background: #fff !important; border-bottom: 1px solid #f1f5f9; padding: 8px 12px; }
+    .sal-detail-result { background: #eff6ff !important; border-radius: 8px; padding: 12px 14px; border-left: 4px solid #6366f1; color: #1e293b !important; }
+    .sal-detail-result .sal-detail-title { color: #4338ca !important; border-color: rgba(67,56,202,.15); }
+    .sal-detail-result .sal-detail-label { color: #475569 !important; }
 
     /* ── Instructor config header ── */
     .sal-instr-header {

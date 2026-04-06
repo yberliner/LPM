@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LPM Salary Commission — Test Plan</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #1e293b; background: #f8fafc; padding: 40px; line-height: 1.6; }
+  h1 { text-align: center; font-size: 2rem; margin-bottom: 8px; }
+  .subtitle { text-align: center; color: #64748b; font-size: .95rem; margin-bottom: 40px; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; }
+  h2 { font-size: 1.4rem; margin: 36px 0 16px; padding-left: 12px; border-left: 4px solid #3b82f6; }
+  h3 { font-size: 1.1rem; margin: 24px 0 12px; color: #1e40af; }
+  h4 { font-size: .95rem; margin: 16px 0 8px; color: #059669; }
+  p, li { font-size: .92rem; }
+  ul, ol { margin-left: 24px; margin-bottom: 12px; }
+  li { margin-bottom: 4px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0 20px; font-size: .85rem; }
+  th, td { border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; }
+  th { background: #f1f5f9; font-weight: 700; color: #334155; }
+  tr:nth-child(even) { background: #f8fafc; }
+  .config-box { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 16px 20px; margin: 16px 0; }
+  .config-box h4 { margin-top: 0; color: #92400e; }
+  .test-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 16px 20px; margin: 16px 0; }
+  .test-box h4 { margin-top: 0; color: #166534; }
+  .warn-box { background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; padding: 16px 20px; margin: 16px 0; }
+  .warn-box h4 { margin-top: 0; color: #991b1b; }
+  .sql-box { background: #1e293b; color: #e2e8f0; border-radius: 10px; padding: 16px 20px; margin: 12px 0; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: .82rem; white-space: pre-wrap; overflow-x: auto; }
+  .calc { font-family: 'Cascadia Code', monospace; font-size: .82rem; background: #f1f5f9; border-radius: 6px; padding: 12px 16px; margin: 8px 0 16px; border-left: 3px solid #3b82f6; }
+  .amount { font-weight: 700; color: #059669; }
+  .label { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: .75rem; font-weight: 700; }
+  .label-reg { background: rgba(59,130,246,.12); color: #2563eb; }
+  .label-ref { background: rgba(168,85,247,.12); color: #7c3aed; }
+  .label-start { background: rgba(16,185,129,.12); color: #059669; }
+  .label-finish { background: rgba(245,158,11,.12); color: #b45309; }
+  .label-ot-instr { background: rgba(239,68,68,.12); color: #dc2626; }
+  .label-ot-cs { background: rgba(236,72,153,.12); color: #be185d; }
+  .label-unassigned { background: rgba(245,158,11,.2); color: #92400e; }
+  .check { color: #059669; font-weight: 700; }
+  .page-break { page-break-before: always; }
+  @media print { body { padding: 20px; } .sql-box { background: #f1f5f9; color: #1e293b; border: 1px solid #cbd5e1; } }
+</style>
+</head>
+<body>
+
+<h1>Salary Commission Test Plan</h1>
+<p class="subtitle">LPM System &mdash; Test Data &amp; Expected Results &mdash; April 2026</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2>1. Active Financial Configuration</h2>
+
+<div class="config-box">
+<h4>sys_financial_config (already in DB)</h4>
+<table>
+  <tr><th>Parameter</th><th>Value</th><th>Used In</th></tr>
+  <tr><td>VatPct</td><td>18%</td><td>All &mdash; deduction step 2</td></tr>
+  <tr><td>CcCommissionPct</td><td>2.5%</td><td>CreditCard only &mdash; step 3</td></tr>
+  <tr><td>ReserveDeductPct</td><td>10%</td><td>All &mdash; step 5</td></tr>
+  <tr><td>AuditRegistrarPct</td><td>5%</td><td>Category 1 (Auditing &amp; Books)</td></tr>
+  <tr><td>AuditReferralPct</td><td>5%</td><td>Category 1</td></tr>
+  <tr><td>CourseRegistrarPct</td><td>5%</td><td>Categories 2 &amp; 3</td></tr>
+  <tr><td>CourseReferralPct</td><td>5%</td><td>Categories 2 &amp; 3</td></tr>
+  <tr><td>InstructorOtPct</td><td>20%</td><td>Category 3 (OT) &mdash; finished only</td></tr>
+  <tr><td>CsOtPct</td><td>10%</td><td>Category 3 (OT) &mdash; finished only</td></tr>
+</table>
+<table>
+  <tr><th>Academy Instructor</th><th>PersonId</th><th>StartPct</th><th>FinishPct</th></tr>
+  <tr><td>Eitan Beitner</td><td>22</td><td>5%</td><td>10%</td></tr>
+  <tr><td>Galit Latinsky</td><td>34</td><td>10%</td><td>10%</td></tr>
+</table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2>2. Deduction Chain Formula</h2>
+
+<div class="calc">
+1. VAT = Gross &minus; (Gross / 1.18)
+2. CC  = Gross &times; 2.5%  <em>(CreditCard only, else 0)</em>
+3. Net After Deductions = Gross &minus; VAT &minus; CC
+4. Reserve = Net After Deductions &times; 10%
+5. <strong>NET BASE = Net After Deductions &minus; Reserve</strong>
+</div>
+
+<p><strong>Quick reference</strong> for common amounts:</p>
+<table>
+  <tr><th>Gross (₪)</th><th>Method</th><th>VAT</th><th>CC</th><th>Net After</th><th>Reserve</th><th>Net Base</th></tr>
+  <tr><td>1,000</td><td>Cash</td><td>152.54</td><td>0</td><td>847.46</td><td>84.75</td><td class="amount">762.71</td></tr>
+  <tr><td>1,500</td><td>Cash</td><td>228.81</td><td>0</td><td>1,271.19</td><td>127.12</td><td class="amount">1,144.07</td></tr>
+  <tr><td>2,000</td><td>CreditCard</td><td>305.08</td><td>50.00</td><td>1,644.92</td><td>164.49</td><td class="amount">1,480.43</td></tr>
+  <tr><td>2,500</td><td>CreditCard</td><td>381.36</td><td>62.50</td><td>2,056.14</td><td>205.61</td><td class="amount">1,850.53</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2>3. Test Purchases to Insert</h2>
+
+<p>The salary period for April 2026 runs <strong>Thursday 2026-04-02</strong> to <strong>Wednesday 2026-04-29</strong> (or today if earlier). All <code>MoneyInBankDate</code> values marked "in range" fall within this window.</p>
+
+<!-- ── P1 ── -->
+<h3>P1 &mdash; Auditing (Category 1) &mdash; Cash</h3>
+<table>
+  <tr><th>Field</th><th>Value</th></tr>
+  <tr><td>PC</td><td>Alon Shur (PcId=6)</td></tr>
+  <tr><td>Items</td><td>Auditing: 10hrs, ₪3,000</td></tr>
+  <tr><td>Registrar</td><td>Aviv Bershadsky (102)</td></tr>
+  <tr><td>Referral</td><td>Carmela Weizman (14)</td></tr>
+  <tr><td>Payment</td><td>Cash ₪1,500 on 2026-03-28</td></tr>
+  <tr><td>IsMoneyInBank</td><td>1 &mdash; MoneyInBankDate = <strong>2026-04-03</strong> (in range)</td></tr>
+</table>
+<p><strong>Scenario:</strong> Basic Category 1 (Auditing). Registrar + Referral only. No academy instructors.</p>
+
+<!-- ── P2 ── -->
+<h3>P2 &mdash; PC Course + Book (Category 2 + 1) &mdash; CreditCard, Unassigned Referral</h3>
+<table>
+  <tr><th>Field</th><th>Value</th></tr>
+  <tr><td>PC</td><td>Boris Frumkin (PcId=13)</td></tr>
+  <tr><td>Items</td><td>Course "Communication" (CourseId=1, PC): ₪2,000<br>Book: ₪500 (BookId=1)</td></tr>
+  <tr><td>Registrar</td><td>Yaniv Berliner (94)</td></tr>
+  <tr><td>Referral</td><td><strong>Other (-1)</strong></td></tr>
+  <tr><td>Payment</td><td>CreditCard ₪2,500 on 2026-03-25</td></tr>
+  <tr><td>IsMoneyInBank</td><td>1 &mdash; MoneyInBankDate = <strong>2026-04-05</strong> (in range)</td></tr>
+  <tr><td>Notes</td><td>"Pay referral to David Cohen"</td></tr>
+</table>
+<p><strong>Scenario:</strong> Multi-item purchase (Course + Book). Payment allocated proportionally. Course is <strong>NOT finished</strong> &mdash; academy instructors get Start only. Referral is "Other" &rarr; unassigned section.</p>
+
+<!-- ── P3 ── -->
+<h3>P3 &mdash; PC Course Finished BEFORE Period (Category 2)</h3>
+<table>
+  <tr><th>Field</th><th>Value</th></tr>
+  <tr><td>PC</td><td>Almog Maman (PcId=5)</td></tr>
+  <tr><td>Items</td><td>Course "Objective Auditor" (CourseId=2, PC): ₪4,000</td></tr>
+  <tr><td>Registrar</td><td>Eyal Soref (32)</td></tr>
+  <tr><td>Referral</td><td>Aviv Bershadsky (102)</td></tr>
+  <tr><td>Payment 1</td><td>Cash ₪2,000 on 2026-03-20 &mdash; IsMoneyInBank=1, date=2026-03-22 (OUT of range)</td></tr>
+  <tr><td>Payment 2</td><td>CreditCard ₪2,000 on 2026-04-01 &mdash; IsMoneyInBank=1, date=<strong>2026-04-05</strong> (in range)</td></tr>
+  <tr><td>Course finish</td><td><strong>DateFinished = 2026-03-15</strong> (before period)</td></tr>
+</table>
+<p><strong>Scenario:</strong> Course finished before this period. The in-range payment (P2, ₪2,000 CC) gets <strong>Start + Finish</strong> for academy instructors. The March payment is out of range &mdash; no commission in this report.</p>
+
+<!-- ── P4 ── -->
+<h3>P4 &mdash; PC Course Finished IN Period (Category 2, Catch-up)</h3>
+<table>
+  <tr><th>Field</th><th>Value</th></tr>
+  <tr><td>PC</td><td>Andrey Nikulin (PcId=8)</td></tr>
+  <tr><td>Items</td><td>Course "Communication" (CourseId=1, PC): ₪3,000</td></tr>
+  <tr><td>Registrar</td><td>Moti Weizman (64)</td></tr>
+  <tr><td>Referral</td><td>Eyal Soref (32)</td></tr>
+  <tr><td>Payment 1</td><td>Cash ₪1,500 on 2026-03-28 &mdash; IsMoneyInBank=1, date=<strong>2026-03-30</strong> (OUT of range)</td></tr>
+  <tr><td>Payment 2</td><td>Cash ₪1,500 on 2026-04-05 &mdash; IsMoneyInBank=1, date=<strong>2026-04-06</strong> (in range)</td></tr>
+  <tr><td>Course finish</td><td><strong>DateFinished = 2026-04-04</strong> (IN period)</td></tr>
+</table>
+<p><strong>Scenario:</strong> Course finishes during this salary period. The in-range payment gets <strong>Start only</strong> (from normal flow). The catch-up phase emits <strong>Finish on BOTH payments</strong> (past + in-range). Tests the catch-up logic.</p>
+
+<!-- ── P5 ── -->
+<h3>P5 &mdash; OT Course Finished IN Period (Category 3, Catch-up)</h3>
+<table>
+  <tr><th>Field</th><th>Value</th></tr>
+  <tr><td>PC</td><td>Anna Jelinkova (PcId=9)</td></tr>
+  <tr><td>Items</td><td>Course "Upper Indoc TRs" (CourseId=12, OT): ₪2,000</td></tr>
+  <tr><td>Registrar</td><td>Aviv Bershadsky (102)</td></tr>
+  <tr><td>Referral</td><td>Carmela Weizman (14)</td></tr>
+  <tr><td>Payment 1</td><td>Cash ₪1,000 on 2026-03-15 &mdash; IsMoneyInBank=1, date=<strong>2026-03-18</strong> (OUT of range)</td></tr>
+  <tr><td>Payment 2</td><td>Cash ₪1,000 on 2026-04-03 &mdash; IsMoneyInBank=1, date=<strong>2026-04-05</strong> (in range)</td></tr>
+  <tr><td>Course finish</td><td><strong>DateFinished = 2026-04-02</strong> (IN period)</td></tr>
+  <tr><td>Instructor</td><td>Aviv Bershadsky (102)</td></tr>
+  <tr><td>CS</td><td>Tami Lemberger (104)</td></tr>
+</table>
+<p><strong>Scenario:</strong> OT course finishes during this salary period. In-range payment gets <strong>Registrar + Referral only</strong> (no OT instructor/CS from normal flow). Catch-up emits <strong>OT Instructor + OT CS on BOTH payments</strong>. No academy instructor commissions for OT.</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="page-break"></div>
+<h2>4. Expected Commission Results</h2>
+
+<p>Salary period: <strong>2026-04-02 to 2026-04-07</strong> (today). All amounts rounded to agorot.</p>
+
+<!-- ── P1 results ── -->
+<h3>P1: Alon Shur &mdash; Auditing ₪1,500 Cash</h3>
+<div class="calc">
+Gross = ₪1,500 (Cash, single Auditing item &mdash; 100% allocation)
+VAT = 1500 &minus; (1500 / 1.18) = 1500 &minus; 1271.19 = <strong>228.81</strong>
+CC = 0 (Cash)
+Net After = 1500 &minus; 228.81 = <strong>1,271.19</strong>
+Reserve = 1271.19 &times; 10% = <strong>127.12</strong>
+Net Base = 1271.19 &minus; 127.12 = <strong>₪1,144.07</strong>
+</div>
+<table>
+  <tr><th>Staff</th><th>Role</th><th>Category</th><th>Calculation</th><th>Amount</th></tr>
+  <tr><td>Aviv Bershadsky</td><td><span class="label label-reg">Registrar</span></td><td>Auditing</td><td>1144.07 &times; 5%</td><td class="amount">₪57.20</td></tr>
+  <tr><td>Carmela Weizman</td><td><span class="label label-ref">Referral</span></td><td>Auditing</td><td>1144.07 &times; 5%</td><td class="amount">₪57.20</td></tr>
+</table>
+
+<!-- ── P2 results ── -->
+<h3>P2: Boris Frumkin &mdash; CC ₪2,500 (Course ₪2,000 + Book ₪500)</h3>
+<div class="calc">
+<strong>Course share</strong> = 2500 &times; (2000 / 2500) = ₪2,000
+  VAT = 2000 &minus; (2000 / 1.18) = 2000 &minus; 1694.92 = 305.08
+  CC = 2000 &times; 2.5% = 50.00
+  Net After = 2000 &minus; 305.08 &minus; 50.00 = 1,644.92
+  Reserve = 1644.92 &times; 10% = 164.49
+  <strong>Course Net Base = ₪1,480.43</strong>
+
+<strong>Book share</strong> = 2500 &times; (500 / 2500) = ₪500
+  VAT = 500 &minus; (500 / 1.18) = 500 &minus; 423.73 = 76.27
+  CC = 500 &times; 2.5% = 12.50
+  Net After = 500 &minus; 76.27 &minus; 12.50 = 411.23
+  Reserve = 411.23 &times; 10% = 41.12
+  <strong>Book Net Base = ₪370.11</strong>
+</div>
+<table>
+  <tr><th>Staff</th><th>Role</th><th>Category</th><th>Calculation</th><th>Amount</th></tr>
+  <tr><td>Yaniv Berliner</td><td><span class="label label-reg">Registrar</span></td><td>PC Course</td><td>1480.43 &times; 5%</td><td class="amount">₪74.02</td></tr>
+  <tr><td>Yaniv Berliner</td><td><span class="label label-reg">Registrar</span></td><td>Auditing</td><td>370.11 &times; 5%</td><td class="amount">₪18.51</td></tr>
+  <tr><td>Eitan Beitner</td><td><span class="label label-start">Acad. Start</span></td><td>PC Course</td><td>1480.43 &times; 5%</td><td class="amount">₪74.02</td></tr>
+  <tr><td>Galit Latinsky</td><td><span class="label label-start">Acad. Start</span></td><td>PC Course</td><td>1480.43 &times; 10%</td><td class="amount">₪148.04</td></tr>
+</table>
+
+<div class="warn-box">
+<h4>Unassigned Referral (ReferralId = -1)</h4>
+<table>
+  <tr><th>PC</th><th>Category</th><th>Amount</th><th>Notes</th></tr>
+  <tr><td>Boris Frumkin</td><td>PC Course</td><td class="amount">₪74.02</td><td>"Pay referral to David Cohen"</td></tr>
+  <tr><td>Boris Frumkin</td><td>Auditing</td><td class="amount">₪18.51</td><td>"Pay referral to David Cohen"</td></tr>
+</table>
+</div>
+
+<!-- ── P3 results ── -->
+<h3>P3: Almog Maman &mdash; CC ₪2,000 in-range (course finished BEFORE period)</h3>
+<div class="calc">
+Gross = ₪2,000 (CreditCard, single Course item &mdash; 100%)
+Net Base = <strong>₪1,480.43</strong> (same as P2 course calc above)
+
+Course finished 2026-03-15 (before period) &rarr; in-range payment gets Start + Finish
+</div>
+<table>
+  <tr><th>Staff</th><th>Role</th><th>Category</th><th>Calculation</th><th>Amount</th></tr>
+  <tr><td>Eyal Soref</td><td><span class="label label-reg">Registrar</span></td><td>PC Course</td><td>1480.43 &times; 5%</td><td class="amount">₪74.02</td></tr>
+  <tr><td>Aviv Bershadsky</td><td><span class="label label-ref">Referral</span></td><td>PC Course</td><td>1480.43 &times; 5%</td><td class="amount">₪74.02</td></tr>
+  <tr><td>Eitan Beitner</td><td><span class="label label-start">Acad. Start</span></td><td>PC Course</td><td>1480.43 &times; 5%</td><td class="amount">₪74.02</td></tr>
+  <tr><td>Eitan Beitner</td><td><span class="label label-finish">Acad. Finish</span></td><td>PC Course</td><td>1480.43 &times; 10%</td><td class="amount">₪148.04</td></tr>
+  <tr><td>Galit Latinsky</td><td><span class="label label-start">Acad. Start</span></td><td>PC Course</td><td>1480.43 &times; 10%</td><td class="amount">₪148.04</td></tr>
+  <tr><td>Galit Latinsky</td><td><span class="label label-finish">Acad. Finish</span></td><td>PC Course</td><td>1480.43 &times; 10%</td><td class="amount">₪148.04</td></tr>
+</table>
+<p><em>Note: The March Cash ₪2,000 payment (MoneyInBankDate=2026-03-22) is OUT of range &mdash; produces no commissions in this report.</em></p>
+
+<!-- ── P4 results ── -->
+<h3>P4: Andrey Nikulin &mdash; Course finished IN period (catch-up)</h3>
+<div class="calc">
+<strong>Payment 1</strong> (Cash ₪1,500, MoneyInBankDate=2026-03-30 &mdash; OUT of range):
+  Net Base = <strong>₪1,144.07</strong>
+  &rarr; Not in range, so NO normal-flow commissions.
+  &rarr; BUT included in catch-up (Finish only).
+
+<strong>Payment 2</strong> (Cash ₪1,500, MoneyInBankDate=2026-04-06 &mdash; IN range):
+  Net Base = <strong>₪1,144.07</strong>
+  &rarr; Normal flow: Registrar, Referral, Start (NO Finish &mdash; finished in this period, not before)
+  &rarr; Catch-up: Finish
+
+Course finished 2026-04-04 (IN period) &rarr; catch-up on ALL "in the bank" payments
+</div>
+
+<h4>Normal Flow (in-range payment only: ₪1,500 Cash, Net Base ₪1,144.07)</h4>
+<table>
+  <tr><th>Staff</th><th>Role</th><th>Category</th><th>Calculation</th><th>Amount</th></tr>
+  <tr><td>Moti Weizman</td><td><span class="label label-reg">Registrar</span></td><td>PC Course</td><td>1144.07 &times; 5%</td><td class="amount">₪57.20</td></tr>
+  <tr><td>Eyal Soref</td><td><span class="label label-ref">Referral</span></td><td>PC Course</td><td>1144.07 &times; 5%</td><td class="amount">₪57.20</td></tr>
+  <tr><td>Eitan Beitner</td><td><span class="label label-start">Acad. Start</span></td><td>PC Course</td><td>1144.07 &times; 5%</td><td class="amount">₪57.20</td></tr>
+  <tr><td>Galit Latinsky</td><td><span class="label label-start">Acad. Start</span></td><td>PC Course</td><td>1144.07 &times; 10%</td><td class="amount">₪114.41</td></tr>
+</table>
+
+<h4>Catch-up (BOTH payments &times; Finish only)</h4>
+<table>
+  <tr><th>Staff</th><th>Role</th><th>From Payment</th><th>Calculation</th><th>Amount</th></tr>
+  <tr><td>Eitan Beitner</td><td><span class="label label-finish">Acad. Finish</span></td><td>Pmt 1 (₪1,500)</td><td>1144.07 &times; 10%</td><td class="amount">₪114.41</td></tr>
+  <tr><td>Eitan Beitner</td><td><span class="label label-finish">Acad. Finish</span></td><td>Pmt 2 (₪1,500)</td><td>1144.07 &times; 10%</td><td class="amount">₪114.41</td></tr>
+  <tr><td>Galit Latinsky</td><td><span class="label label-finish">Acad. Finish</span></td><td>Pmt 1 (₪1,500)</td><td>1144.07 &times; 10%</td><td class="amount">₪114.41</td></tr>
+  <tr><td>Galit Latinsky</td><td><span class="label label-finish">Acad. Finish</span></td><td>Pmt 2 (₪1,500)</td><td>1144.07 &times; 10%</td><td class="amount">₪114.41</td></tr>
+</table>
+
+<!-- ── P5 results ── -->
+<h3>P5: Anna Jelinkova &mdash; OT Course finished IN period (catch-up)</h3>
+<div class="calc">
+<strong>Payment 1</strong> (Cash ₪1,000, MoneyInBankDate=2026-03-18 &mdash; OUT of range):
+  Net Base = <strong>₪762.71</strong>
+  &rarr; Not in range &mdash; no normal-flow commissions.
+  &rarr; Included in catch-up.
+
+<strong>Payment 2</strong> (Cash ₪1,000, MoneyInBankDate=2026-04-05 &mdash; IN range):
+  Net Base = <strong>₪762.71</strong>
+  &rarr; Normal flow: Registrar + Referral only (OT not finished before period)
+  &rarr; Catch-up: OT Instructor + OT CS
+
+Course finished 2026-04-02 (IN period) &rarr; catch-up on ALL payments
+Instructor = Aviv (102), CS = Tami (104)
+</div>
+
+<h4>Normal Flow (in-range payment: ₪1,000 Cash, Net Base ₪762.71)</h4>
+<table>
+  <tr><th>Staff</th><th>Role</th><th>Category</th><th>Calculation</th><th>Amount</th></tr>
+  <tr><td>Aviv Bershadsky</td><td><span class="label label-reg">Registrar</span></td><td>OT Course</td><td>762.71 &times; 5%</td><td class="amount">₪38.14</td></tr>
+  <tr><td>Carmela Weizman</td><td><span class="label label-ref">Referral</span></td><td>OT Course</td><td>762.71 &times; 5%</td><td class="amount">₪38.14</td></tr>
+</table>
+
+<h4>Catch-up (BOTH payments &times; OT Instructor + CS)</h4>
+<table>
+  <tr><th>Staff</th><th>Role</th><th>From Payment</th><th>Calculation</th><th>Amount</th></tr>
+  <tr><td>Aviv Bershadsky</td><td><span class="label label-ot-instr">OT Instructor</span></td><td>Pmt 1 (₪1,000)</td><td>762.71 &times; 20%</td><td class="amount">₪152.54</td></tr>
+  <tr><td>Aviv Bershadsky</td><td><span class="label label-ot-instr">OT Instructor</span></td><td>Pmt 2 (₪1,000)</td><td>762.71 &times; 20%</td><td class="amount">₪152.54</td></tr>
+  <tr><td>Tami Lemberger</td><td><span class="label label-ot-cs">OT CS</span></td><td>Pmt 1 (₪1,000)</td><td>762.71 &times; 10%</td><td class="amount">₪76.27</td></tr>
+  <tr><td>Tami Lemberger</td><td><span class="label label-ot-cs">OT CS</span></td><td>Pmt 2 (₪1,000)</td><td>762.71 &times; 10%</td><td class="amount">₪76.27</td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<div class="page-break"></div>
+<h2>5. Expected Staff Cards (Summary)</h2>
+
+<p>Each staff card should show the total from commissions (plus any sessions/CS reviews they already have).</p>
+
+<table>
+  <tr><th>Staff</th><th>Commission Lines</th><th>Total Commission ₪</th></tr>
+  <tr><td><strong>Aviv Bershadsky</strong></td>
+      <td>Registrar/Auditing (P1) ₪57.20<br>Referral/PC Course (P3) ₪74.02<br>Registrar/OT Course (P5) ₪38.14<br>OT Instructor (P5 catch-up) ₪152.54 &times; 2</td>
+      <td class="amount">₪474.44</td></tr>
+  <tr><td><strong>Carmela Weizman</strong></td>
+      <td>Referral/Auditing (P1) ₪57.20<br>Referral/OT Course (P5) ₪38.14</td>
+      <td class="amount">₪95.34</td></tr>
+  <tr><td><strong>Yaniv Berliner</strong></td>
+      <td>Registrar/PC Course (P2) ₪74.02<br>Registrar/Auditing (P2) ₪18.51</td>
+      <td class="amount">₪92.53</td></tr>
+  <tr><td><strong>Eitan Beitner</strong></td>
+      <td>Acad. Start/PC (P2) ₪74.02<br>Acad. Start/PC (P3) ₪74.02<br>Acad. Finish/PC (P3) ₪148.04<br>Acad. Start/PC (P4) ₪57.20<br>Acad. Finish/PC (P4 catch-up) ₪114.41 &times; 2</td>
+      <td class="amount">₪582.10</td></tr>
+  <tr><td><strong>Galit Latinsky</strong></td>
+      <td>Acad. Start/PC (P2) ₪148.04<br>Acad. Start/PC (P3) ₪148.04<br>Acad. Finish/PC (P3) ₪148.04<br>Acad. Start/PC (P4) ₪114.41<br>Acad. Finish/PC (P4 catch-up) ₪114.41 &times; 2</td>
+      <td class="amount">₪787.35</td></tr>
+  <tr><td><strong>Eyal Soref</strong></td>
+      <td>Registrar/PC Course (P3) ₪74.02<br>Referral/PC Course (P4) ₪57.20</td>
+      <td class="amount">₪131.22</td></tr>
+  <tr><td><strong>Moti Weizman</strong></td>
+      <td>Registrar/PC Course (P4) ₪57.20</td>
+      <td class="amount">₪57.20</td></tr>
+  <tr><td><strong>Tami Lemberger</strong></td>
+      <td>OT CS (P5 catch-up) ₪76.27 &times; 2</td>
+      <td class="amount">₪152.54</td></tr>
+</table>
+
+<div class="warn-box">
+<h4>Unassigned Referrals Section (bottom of page)</h4>
+<table>
+  <tr><th>PC</th><th>Category</th><th>Amount</th><th>Notes</th></tr>
+  <tr><td>Boris Frumkin</td><td>PC Course</td><td class="amount">₪74.02</td><td>Pay referral to David Cohen</td></tr>
+  <tr><td>Boris Frumkin</td><td>Auditing</td><td class="amount">₪18.51</td><td>Pay referral to David Cohen</td></tr>
+  <tr><td colspan="2" style="text-align:right;font-weight:700;">Total Unassigned</td><td class="amount">₪92.53</td><td></td></tr>
+</table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2>6. SQL Insert Script</h2>
+
+<p>Run this in the SQLite DB (<code>lifepower.db</code>) to insert all test data:</p>
+
+<div class="sql-box">-- ══════════════════════════════════════════════════════════════
+-- P1: Alon Shur (6) — Auditing, Cash, Registrar=Aviv, Referral=Carmela
+-- ══════════════════════════════════════════════════════════════
+INSERT INTO fin_purchases (PcId, PurchaseDate, Notes, ApprovedStatus, ApprovedByPersonId, ApprovedAt, CreatedByPersonId, RegistrarId, ReferralId)
+VALUES (6, '2026-03-28', NULL, 'Approved', 94, '2026-03-28 10:00:00', 94, 102, 14);
+
+INSERT INTO fin_purchase_items (PurchaseId, ItemType, HoursBought, AmountPaid)
+VALUES (last_insert_rowid(), 'Auditing', 10, 3000);
+
+INSERT INTO fin_payment_methods (PurchaseId, MethodType, Amount, PaymentDate, IsMoneyInBank, MoneyInBankDate)
+VALUES ((SELECT MAX(PurchaseId) FROM fin_purchases), 'Cash', 1500, '2026-03-28', 1, '2026-04-03');
+
+-- ══════════════════════════════════════════════════════════════
+-- P2: Boris Frumkin (13) — PC Course + Book, CC, Registrar=Yaniv, Referral=Other
+-- ══════════════════════════════════════════════════════════════
+INSERT INTO fin_purchases (PcId, PurchaseDate, Notes, ApprovedStatus, ApprovedByPersonId, ApprovedAt, CreatedByPersonId, RegistrarId, ReferralId)
+VALUES (13, '2026-03-25', 'Pay referral to David Cohen', 'Approved', 94, '2026-03-25 10:00:00', 94, 94, -1);
+
+INSERT INTO fin_purchase_items (PurchaseId, ItemType, CourseId, AmountPaid)
+VALUES ((SELECT MAX(PurchaseId) FROM fin_purchases), 'Course', 1, 2000);
+
+INSERT INTO fin_purchase_items (PurchaseId, ItemType, BookId, AmountPaid)
+VALUES ((SELECT MAX(PurchaseId) FROM fin_purchases), 'Book', 1, 500);
+
+INSERT INTO fin_payment_methods (PurchaseId, MethodType, Amount, PaymentDate, IsMoneyInBank, MoneyInBankDate)
+VALUES ((SELECT MAX(PurchaseId) FROM fin_purchases), 'CreditCard', 2500, '2026-03-25', 1, '2026-04-05');
+
+-- Enroll Boris in Communication (not finished)
+INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted, DateFinished)
+VALUES (13, 1, '2026-03-25', NULL);
+
+-- ══════════════════════════════════════════════════════════════
+-- P3: Almog Maman (5) — PC Course, finished BEFORE period
+-- ══════════════════════════════════════════════════════════════
+INSERT INTO fin_purchases (PcId, PurchaseDate, Notes, ApprovedStatus, ApprovedByPersonId, ApprovedAt, CreatedByPersonId, RegistrarId, ReferralId)
+VALUES (5, '2026-03-10', NULL, 'Approved', 94, '2026-03-10 10:00:00', 94, 32, 102);
+
+INSERT INTO fin_purchase_items (PurchaseId, ItemType, CourseId, AmountPaid)
+VALUES ((SELECT MAX(PurchaseId) FROM fin_purchases), 'Course', 2, 4000);
+
+-- Payment 1: Cash, out of range
+INSERT INTO fin_payment_methods (PurchaseId, MethodType, Amount, PaymentDate, IsMoneyInBank, MoneyInBankDate)
+VALUES ((SELECT MAX(PurchaseId) FROM fin_purchases), 'Cash', 2000, '2026-03-20', 1, '2026-03-22');
+
+-- Payment 2: CreditCard, in range
+INSERT INTO fin_payment_methods (PurchaseId, MethodType, Amount, PaymentDate, IsMoneyInBank, MoneyInBankDate)
+VALUES ((SELECT MAX(PurchaseId) FROM fin_purchases), 'CreditCard', 2000, '2026-04-01', 1, '2026-04-05');
+
+-- Enroll Almog in Objective Auditor — finished BEFORE period
+INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted, DateFinished)
+VALUES (5, 2, '2026-03-10', '2026-03-15');
+
+-- ══════════════════════════════════════════════════════════════
+-- P4: Andrey Nikulin (8) — PC Course, finished IN period (catch-up)
+-- ══════════════════════════════════════════════════════════════
+INSERT INTO fin_purchases (PcId, PurchaseDate, Notes, ApprovedStatus, ApprovedByPersonId, ApprovedAt, CreatedByPersonId, RegistrarId, ReferralId)
+VALUES (8, '2026-03-25', NULL, 'Approved', 94, '2026-03-25 10:00:00', 94, 64, 32);
+
+INSERT INTO fin_purchase_items (PurchaseId, ItemType, CourseId, AmountPaid)
+VALUES ((SELECT MAX(PurchaseId) FROM fin_purchases), 'Course', 1, 3000);
+
+-- Payment 1: Cash, out of range
+INSERT INTO fin_payment_methods (PurchaseId, MethodType, Amount, PaymentDate, IsMoneyInBank, MoneyInBankDate)
+VALUES ((SELECT MAX(PurchaseId) FROM fin_purchases), 'Cash', 1500, '2026-03-28', 1, '2026-03-30');
+
+-- Payment 2: Cash, in range
+INSERT INTO fin_payment_methods (PurchaseId, MethodType, Amount, PaymentDate, IsMoneyInBank, MoneyInBankDate)
+VALUES ((SELECT MAX(PurchaseId) FROM fin_purchases), 'Cash', 1500, '2026-04-05', 1, '2026-04-06');
+
+-- Enroll Andrey in Communication — finished IN period
+INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted, DateFinished)
+VALUES (8, 1, '2026-03-25', '2026-04-04');
+
+-- ══════════════════════════════════════════════════════════════
+-- P5: Anna Jelinkova (9) — OT Course, finished IN period (catch-up)
+-- ══════════════════════════════════════════════════════════════
+INSERT INTO fin_purchases (PcId, PurchaseDate, Notes, ApprovedStatus, ApprovedByPersonId, ApprovedAt, CreatedByPersonId, RegistrarId, ReferralId)
+VALUES (9, '2026-03-10', NULL, 'Approved', 94, '2026-03-10 10:00:00', 94, 102, 14);
+
+INSERT INTO fin_purchase_items (PurchaseId, ItemType, CourseId, AmountPaid)
+VALUES ((SELECT MAX(PurchaseId) FROM fin_purchases), 'Course', 12, 2000);
+
+-- Payment 1: Cash, out of range
+INSERT INTO fin_payment_methods (PurchaseId, MethodType, Amount, PaymentDate, IsMoneyInBank, MoneyInBankDate)
+VALUES ((SELECT MAX(PurchaseId) FROM fin_purchases), 'Cash', 1000, '2026-03-15', 1, '2026-03-18');
+
+-- Payment 2: Cash, in range
+INSERT INTO fin_payment_methods (PurchaseId, MethodType, Amount, PaymentDate, IsMoneyInBank, MoneyInBankDate)
+VALUES ((SELECT MAX(PurchaseId) FROM fin_purchases), 'Cash', 1000, '2026-04-03', 1, '2026-04-05');
+
+-- Enroll Anna in Upper Indoc TRs (OT) — finished IN period, Instructor=Aviv, CS=Tami
+INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted, DateFinished, InstructorId, CsId)
+VALUES (9, 12, '2026-03-10', '2026-04-02', 102, 104);</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<h2>7. How to Test in the GUI</h2>
+
+<div class="test-box">
+<h4>Step-by-step</h4>
+<ol>
+  <li>Run the SQL insert script above against <code>LPM_Server/lifepower.db</code></li>
+  <li>Start the app (<code>dotnet run</code> or VS2022 F5)</li>
+  <li>Log in as admin (<code>edri</code> / <code>ederi111!!!</code>)</li>
+  <li>Navigate to <strong>/Admin/Salary</strong></li>
+  <li>The period should auto-select to April 2026. If not, set <strong>From</strong> = <code>02/04/26</code> and <strong>To</strong> = <code>07/04/26</code> (today)</li>
+  <li>Click <strong>Calculate</strong></li>
+</ol>
+</div>
+
+<div class="test-box">
+<h4>What to verify</h4>
+<ol>
+  <li><strong>Staff cards exist</strong> for: Aviv, Carmela, Yaniv, Eitan, Galit, Eyal, Moti, Tami</li>
+  <li>Each card has a <strong>"Commission Earnings"</strong> section with role badges</li>
+  <li>Check amounts against the tables in Section 4 above</li>
+  <li><strong>Unassigned Referrals</strong> section appears at the bottom with Boris Frumkin's two lines and "Pay referral to David Cohen"</li>
+  <li>The <strong>Grand Total</strong> banner includes commission amounts in each staff member's total</li>
+  <li>Staff who only have commissions (no sessions/CS reviews) still appear correctly</li>
+  <li>Cards are collapsible and subtitle shows commission count (e.g., "3 commissions")</li>
+</ol>
+</div>
+
+<p class="subtitle" style="margin-top:40px;">LPM System &mdash; Commission Test Plan &mdash; Generated April 2026</p>
+
+</body>
+</html>

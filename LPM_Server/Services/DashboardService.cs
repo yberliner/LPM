@@ -34,10 +34,21 @@ public record StaffMember(int PersonId, string FullName);
 
 public record SalarySessionRow(string Date, string PcName, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved);
 public record SalaryCsRow(string Date, string PcName, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved);
-public record UserSalaryGroup(int PersonId, string FullName, List<SalarySessionRow> Sessions, List<SalaryCsRow> CsReviews)
+public record CommissionDetail(
+    int PurchaseId, string PurchaseDate,
+    string PaymentMethod, int PaymentGross, string PaymentDate,
+    string ItemType, string ItemName, int ItemPrice, int TotalPurchasePrice,
+    decimal ItemShare, decimal VatAmount, decimal CcAmount, decimal NetAfterDeductions,
+    decimal ReserveAmount, decimal NetBase, double CommissionPct,
+    string? CourseFinishDate = null);
+public record CommissionRow(string PcName, string Role, string Category, long AmountCents, CommissionDetail Detail);
+public record UnassignedReferralRow(string PcName, string Category, long AmountCents, string Notes, CommissionDetail Detail);
+public record SalaryReport(List<UserSalaryGroup> Groups, List<UnassignedReferralRow> UnassignedReferrals);
+public record UserSalaryGroup(int PersonId, string FullName, List<SalarySessionRow> Sessions, List<SalaryCsRow> CsReviews, List<CommissionRow> Commissions)
 {
     public long TotalCents => Sessions.Where(s => s.IsApproved).Sum(s => s.PaymentCents)
-                            + CsReviews.Where(c => c.IsApproved).Sum(c => c.PaymentCents);
+                            + CsReviews.Where(c => c.IsApproved).Sum(c => c.PaymentCents)
+                            + Commissions.Sum(c => c.AmountCents);
 }
 public record StaffMessage(int Id, int FromId, string FromName, int ToId, string ToName, string MsgText, string CreatedAt, string? AcknowledgedAt);
 
@@ -2532,8 +2543,412 @@ public class DashboardService
         Console.WriteLine($"[DashboardService] Saved weekly remarks for auditor {auditorId}, week {weekDate}");
     }
 
+    // ── Commission Calculation ────────────────────────────────────────────────
+
+    private static (decimal NetBase, decimal Vat, decimal Cc, decimal NetAfter, decimal Reserve)
+        CalcNetBase(decimal gross, string methodType, FinancialConfig cfg)
+    {
+        var vat = gross - (gross / (1m + (decimal)cfg.VatPct / 100m));
+        var cc = methodType == "CreditCard"
+            ? gross * ((decimal)cfg.CcCommissionPct / 100m) : 0m;
+        var netAfter = gross - vat - cc;
+        var reserve = netAfter * ((decimal)cfg.ReserveDeductPct / 100m);
+        return (netAfter - reserve, vat, cc, netAfter, reserve);
+    }
+
+    private static long ToCents(decimal shekels) => (long)Math.Round(shekels * 100m);
+
+    private (Dictionary<int, List<CommissionRow>>, List<UnassignedReferralRow>)
+        GetCommissionData(SqliteConnection conn, string fromStr, string toStr)
+    {
+        var commByUser = new Dictionary<int, List<CommissionRow>>();
+        var unassigned = new List<UnassignedReferralRow>();
+
+        // ── Load financial config ──
+        FinancialConfig cfg;
+        using (var cfgCmd = conn.CreateCommand())
+        {
+            cfgCmd.CommandText = @"
+                SELECT VatPct, CcCommissionPct, AuditRegistrarPct, CourseRegistrarPct,
+                       AuditReferralPct, CourseReferralPct, ReserveDeductPct,
+                       COALESCE(AcademyInstructorIds,''), InstructorOtPct, CsOtPct
+                FROM sys_financial_config WHERE Id = 1";
+            using var r = cfgCmd.ExecuteReader();
+            cfg = r.Read()
+                ? new FinancialConfig(r.GetDouble(0), r.GetDouble(1), r.GetDouble(2), r.GetDouble(3),
+                    r.GetDouble(4), r.GetDouble(5), r.GetDouble(6), r.GetString(7),
+                    r.GetDouble(8), r.GetDouble(9))
+                : new FinancialConfig(17, 2.5, 10, 10, 5, 5, 0.1, "", 0, 0);
+        }
+        var academyInstructors = InstructorConfig.ParseList(cfg.AcademyInstructorIds);
+
+        // ── Step A: Qualifying in-range payments ──
+        var payments = new List<(int PaymentMethodId, int PurchaseId, int Amount, string MethodType,
+            int PcId, int? RegistrarId, int? ReferralId, string? Notes, string PcName,
+            string PurchaseDate, string PaymentDate)>();
+        var purchaseIds = new HashSet<int>();
+
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT pm.PaymentMethodId, pm.PurchaseId, pm.Amount, pm.MethodType,
+                       p.PcId, p.RegistrarId, p.ReferralId, p.Notes,
+                       TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS PcName,
+                       p.PurchaseDate, COALESCE(pm.PaymentDate,'')
+                FROM fin_payment_methods pm
+                JOIN fin_purchases p ON pm.PurchaseId = p.PurchaseId
+                JOIN core_persons pc ON pc.PersonId = p.PcId
+                WHERE pm.IsMoneyInBank = 1
+                  AND pm.MoneyInBankDate >= @from AND pm.MoneyInBankDate <= @to
+                  AND pm.MethodType NOT IN ('Credit', 'ToBePaid')
+                  AND p.IsDeleted = 0
+                  AND p.TransferPurchaseId IS NULL
+                  AND p.ApprovedStatus = 'Approved'";
+            cmd.Parameters.AddWithValue("@from", fromStr);
+            cmd.Parameters.AddWithValue("@to", toStr);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var pid = r.GetInt32(1);
+                payments.Add((r.GetInt32(0), pid, r.GetInt32(2), r.GetString(3),
+                    r.GetInt32(4),
+                    r.IsDBNull(5) ? null : r.GetInt32(5),
+                    r.IsDBNull(6) ? null : r.GetInt32(6),
+                    r.IsDBNull(7) ? null : r.GetString(7),
+                    r.GetString(8), r.GetString(9), r.GetString(10)));
+                purchaseIds.Add(pid);
+            }
+        }
+        if (payments.Count == 0 && academyInstructors.Count == 0)
+            return (commByUser, unassigned);
+
+        // ── Step B: Batch-load items for those purchases ──
+        var itemsByPurchase = new Dictionary<int, List<(int PurchaseItemId, string ItemType, int? CourseId, int AmountPaid, string CourseType, string ItemName)>>();
+        if (purchaseIds.Count > 0)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                SELECT pi.PurchaseId, pi.PurchaseItemId, pi.ItemType, pi.CourseId, pi.AmountPaid,
+                       COALESCE(lc.CourseType, 'PC') AS CourseType,
+                       CASE pi.ItemType
+                         WHEN 'Course' THEN COALESCE(lc.Name, 'Course')
+                         WHEN 'Book' THEN COALESCE(lb.Name, 'Book')
+                         ELSE 'Auditing'
+                       END AS ItemName
+                FROM fin_purchase_items pi
+                LEFT JOIN lkp_courses lc ON pi.CourseId = lc.CourseId
+                LEFT JOIN lkp_books lb ON pi.BookId = lb.BookId
+                WHERE pi.PurchaseId IN ({string.Join(",", purchaseIds)})";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var pid = r.GetInt32(0);
+                if (!itemsByPurchase.ContainsKey(pid)) itemsByPurchase[pid] = new();
+                itemsByPurchase[pid].Add((r.GetInt32(1), r.GetString(2),
+                    r.IsDBNull(3) ? null : r.GetInt32(3), r.GetInt32(4), r.GetString(5), r.GetString(6)));
+            }
+        }
+
+        // ── Step C: Batch-load enrollment finish status ──
+        // Collect all (PcId, CourseId) pairs from course items
+        var courseKeys = new HashSet<(int PcId, int CourseId)>();
+        foreach (var pmt in payments)
+        {
+            if (!itemsByPurchase.TryGetValue(pmt.PurchaseId, out var items)) continue;
+            foreach (var item in items)
+                if (item.ItemType == "Course" && item.CourseId.HasValue)
+                    courseKeys.Add((pmt.PcId, item.CourseId.Value));
+        }
+
+        var enrollments = new Dictionary<(int PcId, int CourseId), (string DateFinished, int? InstructorId, int? CsId)>();
+        if (courseKeys.Count > 0)
+        {
+            // Build OR clauses for each (PersonId, CourseId) pair
+            var orClausesOuter = string.Join(" OR ", courseKeys.Select(k => $"(sc.PersonId = {k.PcId} AND sc.CourseId = {k.CourseId})"));
+            var orClausesInner = string.Join(" OR ", courseKeys.Select(k => $"(PersonId = {k.PcId} AND CourseId = {k.CourseId})"));
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                SELECT sc.PersonId, sc.CourseId, sc.DateFinished, sc.InstructorId, sc.CsId
+                FROM acad_student_courses sc
+                INNER JOIN (
+                    SELECT PersonId, CourseId, MAX(DateFinished) AS MDF
+                    FROM acad_student_courses
+                    WHERE DateFinished IS NOT NULL AND ({orClausesInner})
+                    GROUP BY PersonId, CourseId
+                ) latest ON sc.PersonId = latest.PersonId
+                         AND sc.CourseId = latest.CourseId
+                         AND sc.DateFinished = latest.MDF
+                WHERE {orClausesOuter}";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var key = (r.GetInt32(0), r.GetInt32(1));
+                if (!enrollments.ContainsKey(key))
+                    enrollments[key] = (r.GetString(2),
+                        r.IsDBNull(3) ? null : r.GetInt32(3),
+                        r.IsDBNull(4) ? null : r.GetInt32(4));
+            }
+        }
+
+        // ── Helper to emit a commission ──
+        void Emit(int personId, string pcName, string role, string category, decimal netBase, double pct, CommissionDetail detail)
+        {
+            var cents = ToCents(netBase * (decimal)pct / 100m);
+            if (cents == 0) return;
+            if (!commByUser.ContainsKey(personId)) commByUser[personId] = new();
+            commByUser[personId].Add(new CommissionRow(pcName, role, category, cents, detail with { CommissionPct = pct }));
+        }
+
+        void EmitUnassigned(string pcName, string category, decimal netBase, double pct, string? notes, CommissionDetail detail)
+        {
+            var cents = ToCents(netBase * (decimal)pct / 100m);
+            if (cents == 0) return;
+            unassigned.Add(new UnassignedReferralRow(pcName, category, cents, notes ?? "", detail with { CommissionPct = pct }));
+        }
+
+        // ── Step E: Process in-range payments (normal flow) ──
+        foreach (var pmt in payments)
+        {
+            if (!itemsByPurchase.TryGetValue(pmt.PurchaseId, out var items)) continue;
+            var totalAmount = items.Sum(i => (long)i.AmountPaid);
+            if (totalAmount == 0) continue;
+
+            foreach (var item in items)
+            {
+                var itemShare = (decimal)pmt.Amount * ((decimal)item.AmountPaid / (decimal)totalAmount);
+                var calc = CalcNetBase(itemShare, pmt.MethodType, cfg);
+                if (calc.NetBase <= 0) continue;
+
+                // Lookup course finish date if applicable
+                string? finishDate = null;
+                if (item.ItemType == "Course" && item.CourseId.HasValue
+                    && enrollments.TryGetValue((pmt.PcId, item.CourseId.Value), out var enrLookup))
+                    finishDate = enrLookup.DateFinished;
+
+                var detail = new CommissionDetail(
+                    pmt.PurchaseId, pmt.PurchaseDate,
+                    pmt.MethodType, pmt.Amount, pmt.PaymentDate,
+                    item.ItemType, item.ItemName, item.AmountPaid, (int)totalAmount,
+                    itemShare, calc.Vat, calc.Cc, calc.NetAfter, calc.Reserve, calc.NetBase, 0, finishDate);
+
+                double regPct, refPct;
+                string category;
+
+                if (item.ItemType == "Auditing" || item.ItemType == "Book")
+                {
+                    // ── Category 1: Auditing & Books ──
+                    regPct = cfg.AuditRegistrarPct;
+                    refPct = cfg.AuditReferralPct;
+                    category = "Auditing";
+                }
+                else if (item.ItemType == "Course" && item.CourseType == "PC")
+                {
+                    // ── Category 2: PC Courses ──
+                    regPct = cfg.CourseRegistrarPct;
+                    refPct = cfg.CourseReferralPct;
+                    category = "PC Course";
+
+                    var key = (pmt.PcId, item.CourseId!.Value);
+                    var finishedBefore = enrollments.TryGetValue(key, out var enr)
+                        && string.Compare(enr.DateFinished, fromStr, StringComparison.Ordinal) < 0;
+
+                    // Academy Instructor Start — always on in-range payments
+                    foreach (var instr in academyInstructors)
+                        if (instr.PersonId > 0)
+                            Emit(instr.PersonId, pmt.PcName, "Acad. Start", category, calc.NetBase, instr.StartCommPct, detail);
+
+                    // Academy Instructor Finish — only if finished BEFORE this period
+                    if (finishedBefore)
+                        foreach (var instr in academyInstructors)
+                            if (instr.PersonId > 0)
+                                Emit(instr.PersonId, pmt.PcName, "Acad. Finish", category, calc.NetBase, instr.FinishCommPct, detail);
+                }
+                else if (item.ItemType == "Course" && item.CourseType == "OT")
+                {
+                    // ── Category 3: OT Courses ──
+                    regPct = cfg.CourseRegistrarPct;
+                    refPct = cfg.CourseReferralPct;
+                    category = "OT Course";
+
+                    var key = (pmt.PcId, item.CourseId!.Value);
+                    var finishedBefore = enrollments.TryGetValue(key, out var enr)
+                        && string.Compare(enr.DateFinished, fromStr, StringComparison.Ordinal) < 0;
+
+                    // OT Instructor + CS — only if finished BEFORE this period
+                    if (finishedBefore)
+                    {
+                        if (enr.InstructorId is > 0)
+                            Emit(enr.InstructorId.Value, pmt.PcName, "OT Instructor", category, calc.NetBase, cfg.InstructorOtPct, detail);
+                        if (enr.CsId is > 0)
+                            Emit(enr.CsId.Value, pmt.PcName, "OT CS", category, calc.NetBase, cfg.CsOtPct, detail);
+                    }
+                }
+                else continue; // unknown type
+
+                // Registrar (all categories)
+                if (pmt.RegistrarId is > 0)
+                    Emit(pmt.RegistrarId.Value, pmt.PcName, "Registrar", category, calc.NetBase, regPct, detail);
+
+                // Referral (all categories)
+                if (pmt.ReferralId is > 0)
+                    Emit(pmt.ReferralId.Value, pmt.PcName, "Referral", category, calc.NetBase, refPct, detail);
+                else if (pmt.ReferralId == -1)
+                    EmitUnassigned(pmt.PcName, category, calc.NetBase, refPct, pmt.Notes, detail);
+            }
+        }
+
+        // ── Step F: Catch-up for courses finishing in this period ──
+        // Find ALL courses with DateFinished in [from, to]
+        var finishingCourses = new List<(int PcId, int CourseId, int? InstructorId, int? CsId, string CourseType, string DateFinished)>();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT sc.PersonId, sc.CourseId, sc.InstructorId, sc.CsId,
+                       COALESCE(lc.CourseType, 'PC') AS CourseType, sc.DateFinished
+                FROM acad_student_courses sc
+                INNER JOIN (
+                    SELECT PersonId, CourseId, MAX(DateFinished) AS MDF
+                    FROM acad_student_courses
+                    WHERE DateFinished IS NOT NULL
+                    GROUP BY PersonId, CourseId
+                ) latest ON sc.PersonId = latest.PersonId
+                         AND sc.CourseId = latest.CourseId
+                         AND sc.DateFinished = latest.MDF
+                JOIN lkp_courses lc ON lc.CourseId = sc.CourseId
+                WHERE sc.DateFinished >= @from AND sc.DateFinished <= @to";
+            cmd.Parameters.AddWithValue("@from", fromStr);
+            cmd.Parameters.AddWithValue("@to", toStr);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                finishingCourses.Add((r.GetInt32(0), r.GetInt32(1),
+                    r.IsDBNull(2) ? null : r.GetInt32(2),
+                    r.IsDBNull(3) ? null : r.GetInt32(3),
+                    r.GetString(4), r.GetString(5)));
+        }
+
+        if (finishingCourses.Count > 0)
+        {
+            // Collect in-range PaymentMethodIds to exclude from catch-up (already handled in Step E)
+            var inRangeIds = new HashSet<int>(payments.Select(p => p.PaymentMethodId));
+
+            // For each finishing course, find all relevant purchases
+            foreach (var fc in finishingCourses)
+            {
+                // Find all purchases for this PcId + CourseId
+                var catchupPurchaseIds = new List<int>();
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = @"
+                        SELECT DISTINCT p.PurchaseId
+                        FROM fin_purchases p
+                        JOIN fin_purchase_items pi ON p.PurchaseId = pi.PurchaseId
+                        WHERE p.PcId = @pcId AND pi.CourseId = @courseId AND pi.ItemType = 'Course'
+                          AND p.IsDeleted = 0 AND p.TransferPurchaseId IS NULL
+                          AND p.ApprovedStatus = 'Approved'";
+                    cmd.Parameters.AddWithValue("@pcId", fc.PcId);
+                    cmd.Parameters.AddWithValue("@courseId", fc.CourseId);
+                    using var r = cmd.ExecuteReader();
+                    while (r.Read()) catchupPurchaseIds.Add(r.GetInt32(0));
+                }
+
+                foreach (var cpid in catchupPurchaseIds)
+                {
+                    // Load items if not already loaded
+                    if (!itemsByPurchase.TryGetValue(cpid, out var citems))
+                    {
+                        citems = new();
+                        using var cmd = conn.CreateCommand();
+                        cmd.CommandText = $@"
+                            SELECT pi.PurchaseId, pi.PurchaseItemId, pi.ItemType, pi.CourseId, pi.AmountPaid,
+                                   COALESCE(lc.CourseType, 'PC') AS CourseType,
+                                   CASE pi.ItemType
+                                     WHEN 'Course' THEN COALESCE(lc.Name, 'Course')
+                                     WHEN 'Book' THEN COALESCE(lb.Name, 'Book')
+                                     ELSE 'Auditing'
+                                   END AS ItemName
+                            FROM fin_purchase_items pi
+                            LEFT JOIN lkp_courses lc ON pi.CourseId = lc.CourseId
+                            LEFT JOIN lkp_books lb ON pi.BookId = lb.BookId
+                            WHERE pi.PurchaseId = @pid";
+                        cmd.Parameters.AddWithValue("@pid", cpid);
+                        using var r = cmd.ExecuteReader();
+                        while (r.Read())
+                            citems.Add((r.GetInt32(1), r.GetString(2),
+                                r.IsDBNull(3) ? null : r.GetInt32(3), r.GetInt32(4), r.GetString(5), r.GetString(6)));
+                        itemsByPurchase[cpid] = citems;
+                    }
+
+                    var totalAmount = citems.Sum(i => (long)i.AmountPaid);
+                    if (totalAmount == 0) continue;
+
+                    var courseItem = citems.FirstOrDefault(i => i.ItemType == "Course" && i.CourseId == fc.CourseId);
+                    if (courseItem.AmountPaid == 0) continue;
+
+                    // Load PC name + purchase date for this purchase
+                    string pcName = "", purchaseDate = "";
+                    using (var cmd = conn.CreateCommand())
+                    {
+                        cmd.CommandText = @"
+                            SELECT TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')), p.PurchaseDate
+                            FROM fin_purchases p
+                            JOIN core_persons pc ON pc.PersonId = p.PcId
+                            WHERE p.PurchaseId = @pid";
+                        cmd.Parameters.AddWithValue("@pid", cpid);
+                        using var r = cmd.ExecuteReader();
+                        if (r.Read()) { pcName = r.GetString(0); purchaseDate = r.GetString(1); }
+                    }
+
+                    // Get ALL "in the bank" payments for this purchase (no date filter)
+                    var pastPayments = new List<(int PaymentMethodId, int Amount, string MethodType, string PaymentDate)>();
+                    using (var cmd = conn.CreateCommand())
+                    {
+                        cmd.CommandText = @"
+                            SELECT pm.PaymentMethodId, pm.Amount, pm.MethodType, COALESCE(pm.PaymentDate,'')
+                            FROM fin_payment_methods pm
+                            WHERE pm.PurchaseId = @pid
+                              AND pm.IsMoneyInBank = 1
+                              AND pm.MethodType NOT IN ('Credit', 'ToBePaid')";
+                        cmd.Parameters.AddWithValue("@pid", cpid);
+                        using var r = cmd.ExecuteReader();
+                        while (r.Read())
+                            pastPayments.Add((r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3)));
+                    }
+
+                    foreach (var pp in pastPayments)
+                    {
+                        var itemShare = (decimal)pp.Amount * ((decimal)courseItem.AmountPaid / (decimal)totalAmount);
+                        var calc = CalcNetBase(itemShare, pp.MethodType, cfg);
+                        if (calc.NetBase <= 0) continue;
+
+                        var detail = new CommissionDetail(
+                            cpid, purchaseDate,
+                            pp.MethodType, pp.Amount, pp.PaymentDate,
+                            courseItem.ItemType, courseItem.ItemName, courseItem.AmountPaid, (int)totalAmount,
+                            itemShare, calc.Vat, calc.Cc, calc.NetAfter, calc.Reserve, calc.NetBase, 0, fc.DateFinished);
+
+                        if (fc.CourseType == "PC")
+                        {
+                            foreach (var instr in academyInstructors)
+                                if (instr.PersonId > 0)
+                                    Emit(instr.PersonId, pcName, "Acad. Finish", "PC Course", calc.NetBase, instr.FinishCommPct, detail);
+                        }
+                        else if (fc.CourseType == "OT")
+                        {
+                            if (fc.InstructorId is > 0)
+                                Emit(fc.InstructorId.Value, pcName, "OT Instructor", "OT Course", calc.NetBase, cfg.InstructorOtPct, detail);
+                            if (fc.CsId is > 0)
+                                Emit(fc.CsId.Value, pcName, "OT CS", "OT Course", calc.NetBase, cfg.CsOtPct, detail);
+                        }
+                    }
+                }
+            }
+        }
+
+        return (commByUser, unassigned);
+    }
+
     // ── Salary Report ──────────────────────────────────────────────────────────
-    public List<UserSalaryGroup> GetSalaryReport(DateOnly from, DateOnly to)
+    public SalaryReport GetSalaryReport(DateOnly from, DateOnly to)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -2613,9 +3028,12 @@ public class DashboardService
             }
         }
 
-        // Load non-solo staff users who appear in either set
-        var allPersonIds = sessionsByUser.Keys.Union(csByUser.Keys).ToHashSet();
-        if (allPersonIds.Count == 0) return new();
+        // Commission calculation
+        var (commByUser, unassignedReferrals) = GetCommissionData(conn, fromStr, toStr);
+
+        // Load non-solo staff users who appear in sessions, CS reviews, OR commissions
+        var allPersonIds = sessionsByUser.Keys.Union(csByUser.Keys).Union(commByUser.Keys).ToHashSet();
+        if (allPersonIds.Count == 0) return new SalaryReport(new(), unassignedReferrals);
 
         var inClause = string.Join(",", allPersonIds);
         var userCmd  = conn.CreateCommand();
@@ -2629,18 +3047,36 @@ public class DashboardService
             ORDER BY cp.FirstName, cp.LastName";
 
         var result = new List<UserSalaryGroup>();
+        // Track which PersonIds we've seen from core_users
+        var seenPersonIds = new HashSet<int>();
         using (var r = userCmd.ExecuteReader())
         {
             while (r.Read())
             {
                 var personId = r.GetInt32(0);
                 var fullName = r.GetString(1);
+                seenPersonIds.Add(personId);
                 result.Add(new UserSalaryGroup(
                     personId, fullName,
                     sessionsByUser.GetValueOrDefault(personId) ?? new(),
-                    csByUser.GetValueOrDefault(personId) ?? new()));
+                    csByUser.GetValueOrDefault(personId) ?? new(),
+                    commByUser.GetValueOrDefault(personId) ?? new()));
             }
         }
-        return result;
+
+        // Add commission-only earners who might not be in core_users (e.g., external referrals)
+        foreach (var pid in commByUser.Keys.Where(id => !seenPersonIds.Contains(id)))
+        {
+            using var nameCmd = conn.CreateCommand();
+            nameCmd.CommandText = @"
+                SELECT TRIM(FirstName || ' ' || COALESCE(NULLIF(LastName,''), ''))
+                FROM core_persons WHERE PersonId = @pid";
+            nameCmd.Parameters.AddWithValue("@pid", pid);
+            var name = nameCmd.ExecuteScalar()?.ToString() ?? $"Person #{pid}";
+            result.Add(new UserSalaryGroup(pid, name, new(), new(),
+                commByUser.GetValueOrDefault(pid) ?? new()));
+        }
+
+        return new SalaryReport(result, unassignedReferrals);
     }
 }
