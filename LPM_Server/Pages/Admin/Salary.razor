@@ -496,6 +496,53 @@
         </div>
     }
 
+    @* ── Floating Hover Card ── *@
+    @if (_hoverComm != null)
+    {
+        var hd = _hoverComm.Detail;
+        <div class="sal-hover-card">
+            <div class="sal-hc-header">
+                <span class="sal-role-badge sal-role-@_hoverComm.Role.Replace(" ", "").Replace(".", "").ToLower()">@_hoverComm.Role</span>
+                <span class="sal-hc-cat">@_hoverComm.Category</span>
+            </div>
+            <div class="sal-hc-why">@GetRoleExplanation(_hoverComm.Role, _hoverComm.PcName)</div>
+
+            <div class="sal-hc-section">
+                <div class="sal-hc-row"><span class="sal-hc-lbl">Purchase</span><span>#@hd.PurchaseId · @FormatDate(hd.PurchaseDate)</span></div>
+                <div class="sal-hc-row"><span class="sal-hc-lbl">Payment</span><span>@hd.PaymentMethod ₪@hd.PaymentGross.ToString("N0") · @FormatDate(hd.PaymentDate)</span></div>
+                <div class="sal-hc-row"><span class="sal-hc-lbl">Item</span><span>@hd.ItemName (@hd.ItemType)</span></div>
+                @if (hd.TotalPurchasePrice != hd.ItemPrice)
+                {
+                    <div class="sal-hc-row"><span class="sal-hc-lbl">Item Share</span><span>₪@hd.ItemPrice.ToString("N0") / ₪@hd.TotalPurchasePrice.ToString("N0") → <strong>₪@hd.ItemShare.ToString("N2")</strong></span></div>
+                }
+            </div>
+
+            <div class="sal-hc-chain">
+                <span>₪@hd.ItemShare.ToString("N2")</span>
+                <span class="sal-hc-arr">→</span>
+                <span class="sal-hc-ded">−VAT ₪@hd.VatAmount.ToString("N2")</span>
+                @if (hd.CcAmount > 0) { <span class="sal-hc-ded">−CC ₪@hd.CcAmount.ToString("N2")</span> }
+                <span class="sal-hc-ded">−Res ₪@hd.ReserveAmount.ToString("N2")</span>
+                <span class="sal-hc-arr">→</span>
+                <span class="sal-hc-net">₪@hd.NetBase.ToString("N2")</span>
+            </div>
+
+            <div class="sal-hc-result">
+                ₪@hd.NetBase.ToString("N2") × @hd.CommissionPct% = <strong>₪@FormatShekel(_hoverComm.AmountCents)</strong>
+            </div>
+
+            @if (hd.ItemType == "Course")
+            {
+                <div class="sal-hc-status">
+                    @if (hd.CourseFinishDate != null)
+                    { <span class="sal-badge-approved" style="font-size:.65rem;">Completed @FormatDate(hd.CourseFinishDate)</span> }
+                    else
+                    { <span class="sal-badge-pending" style="font-size:.65rem;">In Progress</span> }
+                </div>
+            }
+        </div>
+    }
+
 </div>
 
 @code {
@@ -510,8 +557,9 @@
     int _periodMonth;
     HashSet<string> _collapsed = new();
 
-    // ── Commission Detail modal ──
+    // ── Commission Detail modal + hover ──
     CommissionRow? _detailRow;
+    CommissionRow? _hoverComm;
     void ShowDetail(CommissionRow row) => _detailRow = row;
     void CloseDetail() => _detailRow = null;
 
@@ -936,34 +984,38 @@
         color: #fff; font-weight: 700; font-size: .9rem;
     }
 
-    /* ── Hover tooltip card ── */
-    .sal-tip-card {
-        display: none; position: absolute; z-index: 1000;
-        right: 0; top: 100%; margin-top: 4px;
-        width: 340px; padding: 14px 16px;
-        background: #1e293b; color: #e2e8f0; border-radius: 12px;
-        box-shadow: 0 12px 40px rgba(0,0,0,.35);
-        font-size: .8rem; line-height: 1.5;
+    /* ── Floating hover card ── */
+    .sal-hover-card {
+        position: fixed; z-index: 900;
+        bottom: 24px; right: 24px;
+        width: 380px; padding: 16px 18px;
+        background: #1e293b; color: #e2e8f0; border-radius: 14px;
+        box-shadow: 0 16px 48px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.06);
+        font-size: .82rem; line-height: 1.55;
+        animation: sal-hc-in .15s ease;
         pointer-events: none;
     }
-    .sal-tip-card::before {
-        content: ''; position: absolute; top: -6px; right: 24px;
-        border-left: 7px solid transparent; border-right: 7px solid transparent;
-        border-bottom: 7px solid #1e293b;
+    @@keyframes sal-hc-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    .sal-hc-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .sal-hc-cat { color: #94a3b8; font-size: .75rem; }
+    .sal-hc-why { color: #94a3b8; font-size: .75rem; font-style: italic; margin-bottom: 10px; }
+    .sal-hc-section { margin-bottom: 10px; }
+    .sal-hc-row { display: flex; gap: 8px; margin-bottom: 2px; }
+    .sal-hc-row span { color: #cbd5e1; }
+    .sal-hc-row strong { color: #fff; }
+    .sal-hc-lbl { color: #64748b !important; font-size: .75rem; min-width: 72px; flex-shrink: 0; }
+    .sal-hc-chain {
+        display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center;
+        background: rgba(255,255,255,.05); border-radius: 8px; padding: 8px 10px;
+        margin-bottom: 10px;
     }
-    .sal-tip-row:hover .sal-tip-card { display: block; }
-    .sal-tip-header { font-weight: 700; font-size: .85rem; color: #fff; margin-bottom: 4px; }
-    .sal-tip-why { color: #94a3b8; font-size: .75rem; margin-bottom: 8px; font-style: italic; }
-    .sal-tip-grid { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; }
-    .sal-tip-grid span { color: #cbd5e1; }
-    .sal-tip-divider { height: 1px; background: rgba(255,255,255,.1); margin: 8px 0; }
-    .sal-tip-chain { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
-    .sal-tip-chain span { color: #cbd5e1; }
-    .sal-tip-minus { color: #fca5a5 !important; }
-    .sal-tip-net { color: #4ade80 !important; font-weight: 700; }
-    .sal-tip-result { color: #fff; font-size: .85rem; margin-top: 2px; }
-    .sal-tip-result strong { color: #4ade80; font-size: .95rem; }
-    .sal-tip-status { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,.1); color: #94a3b8; font-size: .75rem; }
+    .sal-hc-chain span { color: #cbd5e1; font-size: .78rem; }
+    .sal-hc-arr { color: #475569 !important; font-size: .7rem; }
+    .sal-hc-ded { color: #fca5a5 !important; }
+    .sal-hc-net { color: #4ade80 !important; font-weight: 700; }
+    .sal-hc-result { font-size: .88rem; color: #fff; }
+    .sal-hc-result strong { color: #4ade80; font-size: 1rem; }
+    .sal-hc-status { margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,.08); }
 
     /* ── Detail button ── */
     .sal-detail-btn {
