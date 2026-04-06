@@ -149,6 +149,8 @@
     <div class="mb-3 mt-1 d-flex gap-2 flex-wrap">
         <a href="javascript:void(0)" class="diag-jump-link"
            @onclick='() => JS.InvokeVoidAsync("eval", "document.getElementById(\"sess_sessions\").scrollIntoView({behavior:\"smooth\"})")'><i class="ri-calendar-event-line me-1"></i>sess_sessions</a>
+        <a href="javascript:void(0)" class="diag-jump-link"
+           @onclick='() => JS.InvokeVoidAsync("eval", "document.getElementById(\"fin_purchases\").scrollIntoView({behavior:\"smooth\"})")'><i class="ri-shopping-cart-line me-1"></i>fin_purchases</a>
     </div>
 
     @* ── Audit History Modal ── *@
@@ -450,6 +452,14 @@
                         @if (_userBusy) { <span class="spinner-border spinner-border-sm me-1"></span> } else { <i class="ri-key-line me-1"></i> }
                         Reset TOTP Secret
                     </button>
+                    <button class="btn btn-outline-danger btn-sm diag-action-btn" disabled="@_userBusy" @onclick="ClearUserPassword">
+                        @if (_userBusy) { <span class="spinner-border spinner-border-sm me-1"></span> } else { <i class="ri-lock-unlock-line me-1"></i> }
+                        Clear Password
+                    </button>
+                    <button class="btn btn-success btn-sm diag-action-btn" disabled="@_userBusy" @onclick="SetFirstPassword">
+                        @if (_userBusy) { <span class="spinner-border spinner-border-sm me-1"></span> } else { <i class="ri-key-2-line me-1"></i> }
+                        Set First Password
+                    </button>
                 </div>
                 <div class="border-top pt-3">
                     <div class="row g-2 align-items-end">
@@ -462,14 +472,20 @@
                             <button class="btn btn-warning btn-sm diag-action-btn"
                                     disabled="@(_userBusy || string.IsNullOrWhiteSpace(_newPassword))" @onclick="SaveUserPassword">
                                 @if (_userBusy) { <span class="spinner-border spinner-border-sm me-1"></span> } else { <i class="ri-key-2-line me-1"></i> }
-                                Set Password
+                                Set Custom Password
                             </button>
                         </div>
                     </div>
                 </div>
                 @if (!string.IsNullOrEmpty(_userMsg))
                 {
-                    <div class="alert @(_userMsgOk ? "alert-success" : "alert-danger") py-1 px-3 mt-3 mb-0 diag-feedback">@_userMsg</div>
+                    <div class="alert @(_userMsgOk ? "alert-success" : "alert-danger") py-1 px-3 mt-3 mb-0 diag-feedback">
+                        @_userMsg
+                        @if (!string.IsNullOrEmpty(_firstPwd))
+                        {
+                            <code style="font-size:1.3rem;font-weight:700;letter-spacing:1px;user-select:all;background:#fff;padding:2px 10px;border-radius:4px;margin-left:6px;">@_firstPwd</code>
+                        }
+                    </div>
                 }
             }
         </div>
@@ -652,6 +668,7 @@
         <div class="cedb-group-header mt-3">
             <i class="ri-money-dollar-circle-line me-1"></i>fin_* tables
         </div>
+        <div id="fin_purchases"></div>
         @foreach (var t in _finTables) { @TableSection(t) }
 
         @* ── acad_* tables ── *@
@@ -1238,6 +1255,78 @@
     </div>
 }
 
+@* ── Delete Purchase Modal ────────────────────────────────────────────────── *@
+@if (_delPurchModal)
+{
+    <div class="diag-modal-backdrop" @onclick="() => { if (!_delPurchBusy) _delPurchModal = false; }"></div>
+    <div class="diag-modal" style="max-width:700px;">
+        <div class="diag-modal-header">
+            <span><i class="ri-delete-bin-2-line me-2" style="color:#ef4444;"></i>Delete Purchase #@(_delPurchInfo?.PurchaseId)</span>
+            <button class="btn-close btn-close-sm" disabled="@_delPurchBusy" @onclick="() => _delPurchModal = false"></button>
+        </div>
+        <div class="diag-modal-body">
+            @if (_delPurchInfo == null)
+            {
+                <div class="text-center py-4"><span class="spinner-border spinner-border-sm"></span> Loading related rows…</div>
+            }
+            else
+            {
+                @foreach (var fkTbl in _delPurchInfo.FkTables)
+                {
+                    <div class="mb-3">
+                        <div class="diag-lbl mb-1">
+                            <i class="ri-table-line me-1"></i>@fkTbl.Table
+                            <span style="font-weight:400;color:#94a3b8;"> — @fkTbl.Rows.Count row@(fkTbl.Rows.Count != 1 ? "s" : "")</span>
+                        </div>
+                        @if (fkTbl.Rows.Count == 0)
+                        {
+                            <div class="cedb-empty">No rows</div>
+                        }
+                        else
+                        {
+                            <div class="cedb-table-wrap">
+                                <table class="cedb-table">
+                                    <thead><tr>@foreach (var c in fkTbl.Cols) { <th>@c</th> }</tr></thead>
+                                    <tbody>
+                                        @foreach (var row in fkTbl.Rows)
+                                        {
+                                            <tr>
+                                                @foreach (var v in row)
+                                                {
+                                                    var display = v.Length > 80 ? v[..80] + "…" : v;
+                                                    <td title="@v" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1e293b;">@display</td>
+                                                }
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <div class="alert alert-danger py-2 px-3 mb-0" style="font-size:.82rem;">
+                    <i class="ri-error-warning-line me-1"></i>
+                    <strong>Irreversible.</strong> All listed rows will be permanently deleted. The fin_purchases row is deleted last.
+                </div>
+
+                @if (!string.IsNullOrEmpty(_delPurchError))
+                {
+                    <div class="alert alert-danger py-1 px-3 mt-2 mb-0 diag-feedback">@_delPurchError</div>
+                }
+            }
+        </div>
+        <div class="diag-modal-footer">
+            <button class="btn btn-secondary btn-sm" disabled="@_delPurchBusy" @onclick="() => _delPurchModal = false">Cancel</button>
+            <button class="btn btn-danger btn-sm diag-action-btn" disabled="@(_delPurchBusy || _delPurchInfo == null)"
+                    @onclick="ExecuteDeletePurchase">
+                @if (_delPurchBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                <i class="ri-delete-bin-2-line me-1"></i>Delete Purchase
+            </button>
+        </div>
+    </div>
+}
+
 @* ── Edit Row Modal ───────────────────────────────────────────────────────── *@
 @if (_editModalVisible)
 {
@@ -1349,7 +1438,10 @@
                     <div class="cedb-table-wrap">
                         <table class="cedb-table">
                             <thead>
-                                <tr>@foreach (var col in t.Columns) { <th>@col</th> }</tr>
+                                <tr>
+                                    @if (t.Name == "fin_purchases") { <th style="width:40px;"></th> }
+                                    @foreach (var col in t.Columns) { <th>@col</th> }
+                                </tr>
                             </thead>
                             <tbody>
                                 @{ int tsLimit = _tableLimit.TryGetValue(t.Name, out var tsl) ? tsl : 200;
@@ -1357,6 +1449,18 @@
                                 @foreach (var row in tsRows)
                                 {
                                     <tr>
+                                        @if (t.Name == "fin_purchases")
+                                        {
+                                            var capturedRow = row;
+                                            int purchPkIdx = t.Columns.IndexOf("PurchaseId");
+                                            string purchPkVal = purchPkIdx >= 0 && purchPkIdx < row.Count ? row[purchPkIdx] : "";
+                                            <td style="white-space:nowrap;">
+                                                <button class="btn btn-sm py-0 px-1 diag-delsess-btn" title="Delete Purchase (cascade)"
+                                                        @onclick="() => OpenDeletePurchaseModal(purchPkVal, t, capturedRow)">
+                                                    <i class="ri-delete-bin-2-line"></i>
+                                                </button>
+                                            </td>
+                                        }
                                         @for (int i = 0; i < t.Columns.Count; i++)
                                         {
                                             var val = i < row.Count ? row[i] : "";
@@ -1575,6 +1679,14 @@
         List<DelSessFkTable> FkTables, List<string> Files);
     DelSessInfo? _delSessInfo;
 
+    // ── Delete Purchase state ──
+    bool   _delPurchModal = false;
+    bool   _delPurchBusy  = false;
+    string _delPurchError = "";
+    record DelPurchFkTable(string Table, List<string> Cols, List<List<string>> Rows);
+    record DelPurchInfo(int PurchaseId, int PcId, List<DelPurchFkTable> FkTables);
+    DelPurchInfo? _delPurchInfo;
+
     // ── DB Integrity state ─────────────────────────────────────────────────
     record OrphanRow(string Table, long RowId, string FkCol, string FkValue, string RefTable, string RefCol);
     List<OrphanRow>          _orphans                  = [];
@@ -1703,6 +1815,7 @@
     Dictionary<string, string> _userEditVals = new();
     string _newPassword = "";
     string _userMsg     = "";
+    string _firstPwd    = "";
     bool   _userMsgOk;
     bool   _userBusy;
 
@@ -1835,7 +1948,7 @@
     void OnUserSelected(ChangeEventArgs e)
     {
         int.TryParse(e.Value?.ToString(), out var uid);
-        _selectedUserId = uid; _userMsg = ""; _newPassword = "";
+        _selectedUserId = uid; _userMsg = ""; _newPassword = ""; _firstPwd = "";
         _userEditCols = []; _userEditVals = new();
         if (uid == 0) return;
 
@@ -1859,7 +1972,7 @@
     async Task SaveUserFields()
     {
         if (_selectedUserId == 0) return;
-        _userBusy = true; _userMsg = "";
+        _userBusy = true; _userMsg = ""; _firstPwd = "";
         var editableCols = _userEditCols.Where(c => c != "Id" && !_maskCols.Contains(c)).ToList();
         var editableVals = editableCols.Select(c => _userEditVals[c]).ToList();
         var targetUser   = _userList.FirstOrDefault(u => u.Id == _selectedUserId)?.Username ?? _selectedUserId.ToString();
@@ -1895,7 +2008,7 @@
     async Task SaveUserPassword()
     {
         if (_selectedUserId == 0 || string.IsNullOrWhiteSpace(_newPassword)) return;
-        _userBusy = true; _userMsg = "";
+        _userBusy = true; _userMsg = ""; _firstPwd = ""; _firstPwd = "";
         var pwd        = _newPassword;
         var targetUser = _userList.FirstOrDefault(u => u.Id == _selectedUserId)?.Username ?? _selectedUserId.ToString();
         var admin      = AdminUser();
@@ -1907,7 +2020,7 @@
                 using var conn = new SqliteConnection(DbCs());
                 conn.Open();
                 using var cmd = conn.CreateCommand();
-                cmd.CommandText = "UPDATE core_users SET PasswordHash=@h, MustChangePassword=0 WHERE Id=@id";
+                cmd.CommandText = "UPDATE core_users SET PasswordHash=@h, IsActive=1, MustChangePassword=0 WHERE Id=@id";
                 cmd.Parameters.AddWithValue("@h", hash);
                 cmd.Parameters.AddWithValue("@id", _selectedUserId);
                 cmd.ExecuteNonQuery();
@@ -1928,7 +2041,7 @@
     async Task ResetSecurityFlags()
     {
         if (_selectedUserId == 0) return;
-        _userBusy = true; _userMsg = "";
+        _userBusy = true; _userMsg = ""; _firstPwd = "";
         var targetUser = _userList.FirstOrDefault(u => u.Id == _selectedUserId)?.Username ?? _selectedUserId.ToString();
         var admin = AdminUser();
         try
@@ -1959,7 +2072,7 @@
     async Task ResetTotpSecret()
     {
         if (_selectedUserId == 0) return;
-        _userBusy = true; _userMsg = "";
+        _userBusy = true; _userMsg = ""; _firstPwd = "";
         var targetUser = _userList.FirstOrDefault(u => u.Id == _selectedUserId)?.Username ?? _selectedUserId.ToString();
         var admin = AdminUser();
         try
@@ -1987,7 +2100,183 @@
         finally { _userBusy = false; }
     }
 
-    // ── core_pcs editor methods ────────��───────────────────────────────────
+    async Task ClearUserPassword()
+    {
+        if (_selectedUserId == 0) return;
+        _userBusy = true; _userMsg = ""; _firstPwd = "";
+        var targetUser = _userList.FirstOrDefault(u => u.Id == _selectedUserId)?.Username ?? _selectedUserId.ToString();
+        var admin = AdminUser();
+        try
+        {
+            await Task.Run(() =>
+            {
+                using var conn = new SqliteConnection(DbCs());
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "UPDATE core_users SET PasswordHash='', IsActive=0 WHERE Id=@id";
+                cmd.Parameters.AddWithValue("@id", _selectedUserId);
+                cmd.ExecuteNonQuery();
+                Console.WriteLine($"[Diagnosis] Admin '{admin}' cleared password and deactivated user '{targetUser}' (Id={_selectedUserId})");
+            });
+            _userMsg = $"Password cleared and account deactivated for {targetUser}.";
+            _userMsgOk = true;
+            OnUserSelected(new ChangeEventArgs { Value = _selectedUserId.ToString() });
+            LoadLiveTables();
+        }
+        catch (Exception ex)
+        {
+            _userMsg = $"Error: {ex.Message}"; _userMsgOk = false;
+            Console.WriteLine($"[Diagnosis] Admin '{admin}' failed clear password for user '{targetUser}': {ex.Message}");
+        }
+        finally { _userBusy = false; }
+    }
+
+    async Task SetFirstPassword()
+    {
+        if (_selectedUserId == 0) return;
+        _userBusy = true; _userMsg = ""; _firstPwd = "";
+        var targetUser = _userList.FirstOrDefault(u => u.Id == _selectedUserId)?.Username ?? _selectedUserId.ToString();
+        var admin = AdminUser();
+        try
+        {
+            var plainPwd = new string(Enumerable.Range(0, 8).Select(_ => (char)('a' + Random.Shared.Next(26))).ToArray());
+            await Task.Run(() =>
+            {
+                var hash = HashPassword(plainPwd);
+                using var conn = new SqliteConnection(DbCs());
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "UPDATE core_users SET PasswordHash=@h, IsActive=1, MustChangePassword=1 WHERE Id=@id";
+                cmd.Parameters.AddWithValue("@h", hash);
+                cmd.Parameters.AddWithValue("@id", _selectedUserId);
+                cmd.ExecuteNonQuery();
+                Console.WriteLine($"[Diagnosis] Admin '{admin}' set first password for user '{targetUser}' (Id={_selectedUserId})");
+            });
+            _userMsg = $"Account activated for {targetUser}. First password: ";
+            _userMsgOk = true;
+            _firstPwd = plainPwd;
+            OnUserSelected(new ChangeEventArgs { Value = _selectedUserId.ToString() });
+            LoadLiveTables();
+        }
+        catch (Exception ex)
+        {
+            _userMsg = $"Error: {ex.Message}"; _userMsgOk = false;
+            _firstPwd = "";
+            Console.WriteLine($"[Diagnosis] Admin '{admin}' failed set first password for user '{targetUser}': {ex.Message}");
+        }
+        finally { _userBusy = false; }
+    }
+
+    // ── Delete Purchase (cascade) ───────────────────────────────────────────
+    void OpenDeletePurchaseModal(string pkVal, TableData table, List<string> row)
+    {
+        _delPurchInfo  = null;
+        _delPurchError = "";
+        _delPurchModal = true;
+
+        if (!int.TryParse(pkVal, out var purchaseId)) return;
+
+        int pcIdIdx = table.Columns.IndexOf("PcId");
+        var pcIdRaw = (row.ElementAtOrDefault(pcIdIdx) ?? "").Split(' ')[0];
+        int pcId = int.TryParse(pcIdRaw, out var p) ? p : 0;
+
+        Task.Run(() =>
+        {
+            var cs = DbCs();
+            var fkTables = new List<DelPurchFkTable>();
+
+            foreach (var tbl in new[] { "fin_purchase_items", "fin_payment_methods", "fin_payments" })
+            {
+                var cols = new List<string>();
+                var rows = new List<List<string>>();
+                try
+                {
+                    using var conn2 = new SqliteConnection(cs);
+                    conn2.Open();
+                    using var cmd2 = conn2.CreateCommand();
+                    cmd2.CommandText = $"SELECT * FROM {tbl} WHERE PurchaseId = @pid";
+                    cmd2.Parameters.AddWithValue("@pid", purchaseId);
+                    using var r = cmd2.ExecuteReader();
+                    for (int i = 0; i < r.FieldCount; i++) cols.Add(r.GetName(i));
+                    while (r.Read())
+                    {
+                        var rr = new List<string>();
+                        for (int i = 0; i < r.FieldCount; i++)
+                            rr.Add(r.IsDBNull(i) ? "" : r.GetValue(i)?.ToString() ?? "");
+                        rows.Add(rr);
+                    }
+                }
+                catch { /* table may not exist or lack PurchaseId column */ }
+                fkTables.Add(new DelPurchFkTable(tbl, cols, rows));
+            }
+
+            _delPurchInfo = new DelPurchInfo(purchaseId, pcId, fkTables);
+            InvokeAsync(StateHasChanged);
+        });
+    }
+
+    async Task ExecuteDeletePurchase()
+    {
+        if (_delPurchInfo == null) return;
+        _delPurchBusy  = true;
+        _delPurchError = "";
+        var info  = _delPurchInfo;
+        var admin = AdminUser();
+        try
+        {
+            await Task.Run(() =>
+            {
+                Console.WriteLine($"[DeletePurchase] ====== START — Admin='{admin}' PurchaseId={info.PurchaseId} PcId={info.PcId} ======");
+
+                using var conn = new SqliteConnection(DbCs());
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+
+                // Delete FK rows — children first
+                foreach (var fkTbl in info.FkTables)
+                {
+                    Console.WriteLine($"[DeletePurchase] Table {fkTbl.Table}: {fkTbl.Rows.Count} row(s) to delete");
+                    foreach (var row in fkTbl.Rows)
+                    {
+                        var rowDesc = string.Join(", ", fkTbl.Cols.Zip(row, (c, v) => $"{c}={v}"));
+                        Console.WriteLine($"[DeletePurchase]   ROW: {rowDesc}");
+                    }
+                    try
+                    {
+                        cmd.CommandText = $"DELETE FROM {fkTbl.Table} WHERE PurchaseId = @pid";
+                        cmd.Parameters.Clear();
+                        cmd.Parameters.AddWithValue("@pid", info.PurchaseId);
+                        var n = cmd.ExecuteNonQuery();
+                        Console.WriteLine($"[DeletePurchase]   → {n} row(s) deleted from {fkTbl.Table}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[DeletePurchase]   → SKIP {fkTbl.Table}: {ex.Message}");
+                    }
+                }
+
+                // Delete the purchase itself last
+                cmd.CommandText = "DELETE FROM fin_purchases WHERE PurchaseId = @pid";
+                cmd.Parameters.Clear();
+                cmd.Parameters.AddWithValue("@pid", info.PurchaseId);
+                cmd.ExecuteNonQuery();
+                Console.WriteLine($"[DeletePurchase]   → 1 row deleted from fin_purchases");
+                Console.WriteLine($"[DeletePurchase] ====== END — Admin='{admin}' PurchaseId={info.PurchaseId} ======");
+            });
+
+            _delPurchModal = false;
+            _delPurchInfo  = null;
+            LoadLiveTables();
+        }
+        catch (Exception ex)
+        {
+            _delPurchError = $"Error: {ex.Message}";
+            Console.WriteLine($"[DeletePurchase] ERROR: {ex.Message}");
+        }
+        finally { _delPurchBusy = false; }
+    }
+
+    // ── core_pcs editor methods ────────────────────────────────────────────
     void LoadPcsRows()
     {
         using var conn = new SqliteConnection(DbCs());
