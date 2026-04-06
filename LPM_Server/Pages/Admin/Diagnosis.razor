@@ -1199,8 +1199,15 @@
                                             <tr>
                                                 @foreach (var v in row)
                                                 {
-                                                    var display = v.Length > 80 ? v[..80] + "…" : v;
-                                                    <td title="@v" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1e293b;">@display</td>
+                                                    @if (v.StartsWith("data:image"))
+                                                    {
+                                                        <td style="color:#1e293b;"><img src="@v" style="max-height:32px;max-width:120px;border-radius:4px;vertical-align:middle;" /> <span style="color:#059669;font-size:.75rem;">Signature</span></td>
+                                                    }
+                                                    else
+                                                    {
+                                                        var display = v.Length > 80 ? v[..80] + "…" : v;
+                                                        <td title="@v" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1e293b;">@display</td>
+                                                    }
                                                 }
                                             </tr>
                                         }
@@ -1293,8 +1300,15 @@
                                             <tr>
                                                 @foreach (var v in row)
                                                 {
-                                                    var display = v.Length > 80 ? v[..80] + "…" : v;
-                                                    <td title="@v" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1e293b;">@display</td>
+                                                    @if (v.StartsWith("data:image"))
+                                                    {
+                                                        <td style="color:#1e293b;"><img src="@v" style="max-height:32px;max-width:120px;border-radius:4px;vertical-align:middle;" /> <span style="color:#059669;font-size:.75rem;">Signature</span></td>
+                                                    }
+                                                    else
+                                                    {
+                                                        var display = v.Length > 80 ? v[..80] + "…" : v;
+                                                        <td title="@v" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#1e293b;">@display</td>
+                                                    }
                                                 }
                                             </tr>
                                         }
