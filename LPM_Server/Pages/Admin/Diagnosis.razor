@@ -1807,7 +1807,7 @@
     // ── User editor state ──────────────────────────────────────────────────
     record UserDropdownItem(int Id, string Username, string StaffRole, string UserType);
     static readonly HashSet<string> _hiddenCols =
-        new(StringComparer.OrdinalIgnoreCase) { "PasswordHash" };
+        new(StringComparer.OrdinalIgnoreCase);
 
     List<UserDropdownItem>     _userList     = [];
     int                        _selectedUserId;
@@ -2027,8 +2027,9 @@
                 Console.WriteLine($"[Diagnosis] Admin '{admin}' changed password for user '{targetUser}' (Id={_selectedUserId})");
             });
             _newPassword = "";
-            _userMsg = "Password changed."; _userMsgOk = true;
+            OnUserSelected(new ChangeEventArgs { Value = _selectedUserId.ToString() });
             LoadLiveTables();
+            _userMsg = "Password changed."; _userMsgOk = true;
         }
         catch (Exception ex)
         {
@@ -2056,9 +2057,9 @@
                 cmd.ExecuteNonQuery();
                 Console.WriteLine($"[Diagnosis] Admin '{admin}' reset security flags for user '{targetUser}' (Id={_selectedUserId})");
             });
+            OnUserSelected(new ChangeEventArgs { Value = _selectedUserId.ToString() });
             _userMsg = $"Security reset for {targetUser} — will be forced to change password, set up 2FA, and confirm contact info on next login.";
             _userMsgOk = true;
-            OnUserSelected(new ChangeEventArgs { Value = _selectedUserId.ToString() });
             LoadLiveTables();
         }
         catch (Exception ex)
@@ -2087,9 +2088,9 @@
                 cmd.ExecuteNonQuery();
                 Console.WriteLine($"[Diagnosis] Admin '{admin}' reset TOTP secret for user '{targetUser}' (Id={_selectedUserId})");
             });
+            OnUserSelected(new ChangeEventArgs { Value = _selectedUserId.ToString() });
             _userMsg = $"TOTP secret cleared for {targetUser}. User will need to set up 2FA again on next login.";
             _userMsgOk = true;
-            OnUserSelected(new ChangeEventArgs { Value = _selectedUserId.ToString() });
             LoadLiveTables();
         }
         catch (Exception ex)
@@ -2118,10 +2119,10 @@
                 cmd.ExecuteNonQuery();
                 Console.WriteLine($"[Diagnosis] Admin '{admin}' cleared password and deactivated user '{targetUser}' (Id={_selectedUserId})");
             });
-            _userMsg = $"Password cleared and account deactivated for {targetUser}.";
-            _userMsgOk = true;
             OnUserSelected(new ChangeEventArgs { Value = _selectedUserId.ToString() });
             LoadLiveTables();
+            _userMsg = $"Password cleared and account deactivated for {targetUser}.";
+            _userMsgOk = true;
         }
         catch (Exception ex)
         {
@@ -2152,11 +2153,11 @@
                 cmd.ExecuteNonQuery();
                 Console.WriteLine($"[Diagnosis] Admin '{admin}' set first password for user '{targetUser}' (Id={_selectedUserId})");
             });
+            OnUserSelected(new ChangeEventArgs { Value = _selectedUserId.ToString() });
+            LoadLiveTables();
             _userMsg = $"Account activated for {targetUser}. First password: ";
             _userMsgOk = true;
             _firstPwd = plainPwd;
-            OnUserSelected(new ChangeEventArgs { Value = _selectedUserId.ToString() });
-            LoadLiveTables();
         }
         catch (Exception ex)
         {
@@ -2474,7 +2475,7 @@
         }
 
         var tCore = Task.Run(() => Group(
-            ("core_users",   "ri-user-settings-line",  "ORDER BY Id",       new[]{"PasswordHash"}),
+            ("core_users",   "ri-user-settings-line",  "ORDER BY Id",       null),
             ("core_persons", "ri-contacts-line",        "ORDER BY PersonId", null),
             ("core_pcs",     "ri-computer-line",        "ORDER BY PcId",     null)));
 
@@ -2627,10 +2628,12 @@
     }
 
     static readonly HashSet<string> _maskCols =
-        new(StringComparer.OrdinalIgnoreCase) { "TotpSecret" };
+        new(StringComparer.OrdinalIgnoreCase) { "TotpSecret", "PasswordHash" };
 
     static string MaskValue(string colName, string val) =>
-        _maskCols.Contains(colName) && val.Length > 8 ? val[..8] + "...." : val;
+        !_maskCols.Contains(colName) || val.Length <= 8 ? val
+        : colName.Equals("PasswordHash", StringComparison.OrdinalIgnoreCase) ? "..." + val[^8..]
+        : val[..8] + "....";
 
     TableData Load(SqliteConnection conn, string table, string icon,
                    string orderBy = "", string[]? skipCols = null)
