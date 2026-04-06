@@ -252,6 +252,17 @@ public class CourseService
         Console.WriteLine($"[CourseService] Finished enrollment {studentCourseId}");
     }
 
+    public void ReopenStudentCourse(int studentCourseId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE acad_student_courses SET DateFinished = NULL WHERE StudentCourseId = @id";
+        cmd.Parameters.AddWithValue("@id", studentCourseId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[CourseService] Reopened enrollment {studentCourseId}");
+    }
+
     public void DeleteStudentCourse(int studentCourseId)
     {
         using var conn = new SqliteConnection(_connectionString);
