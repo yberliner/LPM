@@ -166,6 +166,8 @@
   "courses.auditReferralPct": "אחוז הפניה ביקורת %",
   "courses.courseReferralPct": "אחוז הפניה קורסים %",
   "courses.reserveDeductPct": "ניכוי עתודה %",
+  "courses.instructorOtPct": "עמלת מדריך OT %",
+  "courses.csOtPct": "עמלת CS OT %",
   "courses.academyInstructors": "מדריכי אקדמיה",
   "courses.configSaved": "ההגדרות נשמרו בהצלחה",
   "stats.week": "שבוע:",

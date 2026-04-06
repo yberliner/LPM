@@ -166,6 +166,8 @@
   "courses.auditReferralPct": "Audit Referral %",
   "courses.courseReferralPct": "Course Referral %",
   "courses.reserveDeductPct": "Reserve Deduction %",
+  "courses.instructorOtPct": "Instructor OT Commission %",
+  "courses.csOtPct": "CS OT Commission %",
   "courses.academyInstructors": "Academy Instructors",
   "courses.configSaved": "Settings saved successfully",
   "stats.week": "Week:",

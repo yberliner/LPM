@@ -102,23 +102,60 @@
                         <td><input type="number" step="0.01" class="form-control form-control-sm" style="max-width:120px;" @bind="_cfgReserveDeductPct" /></td>
                     </tr>
                     <tr>
+                        <td class="ps-3 align-middle">@LS.T("courses.instructorOtPct")</td>
+                        <td><input type="number" step="0.1" class="form-control form-control-sm" style="max-width:120px;" @bind="_cfgInstructorOtPct" /></td>
+                    </tr>
+                    <tr>
+                        <td class="ps-3 align-middle">@LS.T("courses.csOtPct")</td>
+                        <td><input type="number" step="0.1" class="form-control form-control-sm" style="max-width:120px;" @bind="_cfgCsOtPct" /></td>
+                    </tr>
+                    <tr>
                         <td class="ps-3 align-middle" colspan="2">
-                            <div class="fw-medium mb-1">@LS.T("courses.academyInstructors")</div>
-                            <div class="d-flex gap-2 flex-wrap">
-                                @for (int idx = 0; idx < 4; idx++)
-                                {
-                                    var i = idx;
-                                    <select class="form-select form-select-sm" style="max-width:160px;"
-                                            value="@_cfgInstructors[i]"
-                                            @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) _cfgInstructors[i] = v; }">
+                            <div class="fw-medium mb-2">@LS.T("courses.academyInstructors")</div>
+                            @if (_cfgInstructors.Count > 0)
+                            {
+                                <div class="d-none d-sm-flex gap-2 mb-1 sal-instr-header">
+                                    <div style="flex:1;min-width:140px;">Instructor</div>
+                                    <div style="width:80px;">% Start</div>
+                                    <div style="width:80px;">% Finish</div>
+                                    <div style="width:36px;"></div>
+                                </div>
+                            }
+                            @for (int idx = 0; idx < _cfgInstructors.Count; idx++)
+                            {
+                                var i = idx;
+                                var entry = _cfgInstructors[i];
+                                <div class="d-flex gap-2 align-items-center flex-wrap mb-2">
+                                    <select class="form-select form-select-sm" style="flex:1;min-width:140px;"
+                                            value="@entry.PersonId"
+                                            @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) _cfgInstructors[i].PersonId = v; }">
                                         <option value="0">— @LS.T("common.none") —</option>
                                         @foreach (var u in _coreUsers)
                                         {
                                             <option value="@u.Id">@u.FullName</option>
                                         }
                                     </select>
-                                }
-                            </div>
+                                    <input type="number" step="0.1" min="0" max="100"
+                                           class="form-control form-control-sm" style="width:80px;"
+                                           placeholder="Start"
+                                           @bind="entry.StartPct" />
+                                    <input type="number" step="0.1" min="0" max="100"
+                                           class="form-control form-control-sm" style="width:80px;"
+                                           placeholder="Finish"
+                                           @bind="entry.FinishPct" />
+                                    <button class="btn btn-sm btn-outline-danger d-flex align-items-center justify-content-center"
+                                            style="width:36px;height:36px;padding:0;"
+                                            @onclick="() => RemoveInstructor(i)" title="Remove">
+                                        <i class="ri-close-line"></i>
+                                    </button>
+                                </div>
+                            }
+                            @if (_cfgInstructors.Count < 4)
+                            {
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="AddInstructor">
+                                    <i class="ri-add-line me-1"></i>Add Instructor
+                                </button>
+                            }
                         </td>
                     </tr>
                 </tbody>
@@ -315,10 +352,19 @@
     double _cfgAuditReferralPct;
     double _cfgCourseReferralPct;
     double _cfgReserveDeductPct;
-    int[] _cfgInstructors = new int[4];
+    double _cfgInstructorOtPct;
+    double _cfgCsOtPct;
+    List<InstructorEntry> _cfgInstructors = new();
     List<(int Id, string FullName)> _coreUsers = [];
     string _cfgMsg = "";
     bool   _cfgIsError;
+
+    class InstructorEntry
+    {
+        public int PersonId { get; set; }
+        public double StartPct { get; set; }
+        public double FinishPct { get; set; }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -458,28 +504,42 @@
         _cfgAuditReferralPct   = cfg.AuditReferralPct;
         _cfgCourseReferralPct  = cfg.CourseReferralPct;
         _cfgReserveDeductPct   = cfg.ReserveDeductPct;
+        _cfgInstructorOtPct    = cfg.InstructorOtPct;
+        _cfgCsOtPct            = cfg.CsOtPct;
         _cfgMsg = "";
 
-        _cfgInstructors = new int[4];
-        var ids = cfg.AcademyInstructorIds
-            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .Where(s => int.TryParse(s, out _))
-            .Select(int.Parse)
-            .ToArray();
-        for (int i = 0; i < Math.Min(ids.Length, 4); i++)
-            _cfgInstructors[i] = ids[i];
+        _cfgInstructors = InstructorConfig.ParseList(cfg.AcademyInstructorIds)
+            .Take(4)
+            .Select(ic => new InstructorEntry { PersonId = ic.PersonId, StartPct = ic.StartCommPct, FinishPct = ic.FinishCommPct })
+            .ToList();
     }
 
     void SaveFinancialConfig()
     {
-        var cleanIds = string.Join(",", _cfgInstructors.Where(id => id > 0));
+        var configs = _cfgInstructors
+            .Where(e => e.PersonId > 0)
+            .Select(e => new InstructorConfig(e.PersonId, e.StartPct, e.FinishPct));
+        var serialized = InstructorConfig.SerializeList(configs);
         CourseSvc.UpdateFinancialConfig(
             _cfgVatPct, _cfgCcCommissionPct,
             _cfgAuditRegistrarPct, _cfgCourseRegistrarPct,
             _cfgAuditReferralPct, _cfgCourseReferralPct,
-            _cfgReserveDeductPct, cleanIds);
+            _cfgReserveDeductPct, serialized,
+            _cfgInstructorOtPct, _cfgCsOtPct);
         _cfgMsg = LS.T("courses.configSaved");
         _cfgIsError = false;
+    }
+
+    void AddInstructor()
+    {
+        if (_cfgInstructors.Count < 4)
+            _cfgInstructors.Add(new InstructorEntry());
+    }
+
+    void RemoveInstructor(int idx)
+    {
+        if (idx >= 0 && idx < _cfgInstructors.Count)
+            _cfgInstructors.RemoveAt(idx);
     }
 
     static string FormatDate(string d) =>
@@ -662,6 +722,12 @@
     /* ── Empty state ── */
     .sal-empty {
         text-align: center; padding: 60px 20px;
+    }
+
+    /* ── Instructor config header ── */
+    .sal-instr-header {
+        font-size: .7rem; color: #94a3b8; font-weight: 600;
+        text-transform: uppercase; letter-spacing: .3px;
     }
 
     /* ── Responsive ── */

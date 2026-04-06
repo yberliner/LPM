@@ -20,7 +20,40 @@ public record FinancialConfig(
     double VatPct, double CcCommissionPct,
     double AuditRegistrarPct, double CourseRegistrarPct,
     double AuditReferralPct, double CourseReferralPct,
-    double ReserveDeductPct, string AcademyInstructorIds);
+    double ReserveDeductPct, string AcademyInstructorIds,
+    double InstructorOtPct, double CsOtPct);
+
+public record InstructorConfig(int PersonId, double StartCommPct, double FinishCommPct)
+{
+    /// Parses "22:10.0:5.0,34:8.0:3.0" (also handles legacy "22,34" → commissions default to 0).
+    public static List<InstructorConfig> ParseList(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return new();
+        var result = new List<InstructorConfig>();
+        foreach (var entry in raw.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = entry.Split(':');
+            if (!int.TryParse(parts[0].Trim(), out var id) || id <= 0) continue;
+            double startPct = 0, finishPct = 0;
+            if (parts.Length >= 3)
+            {
+                double.TryParse(parts[1].Trim(), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out startPct);
+                double.TryParse(parts[2].Trim(), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out finishPct);
+            }
+            result.Add(new InstructorConfig(id, startPct, finishPct));
+        }
+        return result;
+    }
+
+    public static string SerializeList(IEnumerable<InstructorConfig> items)
+    {
+        return string.Join(",", items
+            .Where(i => i.PersonId > 0)
+            .Select(i => $"{i.PersonId}:{i.StartCommPct.ToString(System.Globalization.CultureInfo.InvariantCulture)}:{i.FinishCommPct.ToString(System.Globalization.CultureInfo.InvariantCulture)}"));
+    }
+}
 
 public class CourseService
 {
@@ -409,20 +442,23 @@ public class CourseService
         cmd.CommandText = @"
             SELECT VatPct, CcCommissionPct, AuditRegistrarPct, CourseRegistrarPct,
                    AuditReferralPct, CourseReferralPct, ReserveDeductPct,
-                   COALESCE(AcademyInstructorIds,'')
+                   COALESCE(AcademyInstructorIds,''),
+                   InstructorOtPct, CsOtPct
             FROM sys_financial_config WHERE Id = 1";
         using var r = cmd.ExecuteReader();
         if (!r.Read())
-            return new FinancialConfig(17, 2.5, 10, 10, 5, 5, 0.1, "");
+            return new FinancialConfig(17, 2.5, 10, 10, 5, 5, 0.1, "", 0, 0);
         return new FinancialConfig(
             r.GetDouble(0), r.GetDouble(1), r.GetDouble(2), r.GetDouble(3),
-            r.GetDouble(4), r.GetDouble(5), r.GetDouble(6), r.GetString(7));
+            r.GetDouble(4), r.GetDouble(5), r.GetDouble(6), r.GetString(7),
+            r.GetDouble(8), r.GetDouble(9));
     }
 
     public void UpdateFinancialConfig(double vatPct, double ccCommissionPct,
         double auditRegistrarPct, double courseRegistrarPct,
         double auditReferralPct, double courseReferralPct,
-        double reserveDeductPct, string academyInstructorIds)
+        double reserveDeductPct, string academyInstructorIds,
+        double instructorOtPct, double csOtPct)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -432,7 +468,8 @@ public class CourseService
                 VatPct = @vat, CcCommissionPct = @cc,
                 AuditRegistrarPct = @auditReg, CourseRegistrarPct = @courseReg,
                 AuditReferralPct = @auditRef, CourseReferralPct = @courseRef,
-                ReserveDeductPct = @reserve, AcademyInstructorIds = @instructors
+                ReserveDeductPct = @reserve, AcademyInstructorIds = @instructors,
+                InstructorOtPct = @instrOt, CsOtPct = @csOt
             WHERE Id = 1";
         cmd.Parameters.AddWithValue("@vat", vatPct);
         cmd.Parameters.AddWithValue("@cc", ccCommissionPct);
@@ -442,8 +479,9 @@ public class CourseService
         cmd.Parameters.AddWithValue("@courseRef", courseReferralPct);
         cmd.Parameters.AddWithValue("@reserve", reserveDeductPct);
         cmd.Parameters.AddWithValue("@instructors", academyInstructorIds.Trim());
+        cmd.Parameters.AddWithValue("@instrOt", instructorOtPct);
+        cmd.Parameters.AddWithValue("@csOt", csOtPct);
         cmd.ExecuteNonQuery();
-        Console.WriteLine($"[CourseService] Updated financial config: VAT={vatPct} CC={ccCommissionPct} AuditReg={auditRegistrarPct} CourseReg={courseRegistrarPct} AuditRef={auditReferralPct} CourseRef={courseReferralPct} Reserve={reserveDeductPct} Instructors={academyInstructorIds}");
     }
 
     public List<(int Id, string FullName)> GetCoreUsers()
