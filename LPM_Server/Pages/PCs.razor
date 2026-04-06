@@ -192,6 +192,8 @@
                                     <th class="small ps-3 align-middle" style="white-space:nowrap;">@LS.T("pcs.course")</th>
                                     <th class="small text-center align-middle" style="white-space:nowrap;">@LS.T("pcs.dateStarted")</th>
                                     <th class="small text-center align-middle" style="white-space:nowrap;">@LS.T("pcs.dateFinished")</th>
+                                    <th class="small text-center align-middle d-none d-md-table-cell" style="white-space:nowrap;">Instructor</th>
+                                    <th class="small text-center align-middle d-none d-md-table-cell" style="white-space:nowrap;">CS</th>
                                     <th class="small text-center align-middle" style="white-space:nowrap;">Amount</th>
                                     <th class="small text-center align-middle" style="white-space:nowrap;">@LS.T("common.status")</th>
                                     <th class="small text-center align-middle" style="white-space:nowrap;">@LS.T("pcs.action")</th>
@@ -202,11 +204,58 @@
                                 @foreach (var sc in AllCoursesSorted)
                                 {
                                     bool isActive = sc.DateFinished == null;
+                                    bool isOT = sc.CourseType == "OT";
                                     var hasPurchase = _coursePurchaseMap.TryGetValue(sc.CourseId, out var coursePurchaseId);
-                                    <tr style="@(!isActive ? "opacity:.65;" : "")">
-                                        <td class="small ps-3 fw-semibold align-middle" style="color:@(isActive ? "#6d28d9" : "#6b7280");">@sc.CourseName</td>
+                                    var activeColor = isOT ? "#0d9488" : "#6d28d9";
+                                    <tr style="@(!isActive ? "opacity:.65;" : "")"
+                                        title="@(isOT && isActive ? $"Instructor: {sc.InstructorName ?? "None"} | CS: {sc.CsName ?? "None"}" : "")">
+                                        <td class="small ps-3 fw-semibold align-middle" style="color:@(isActive ? activeColor : "#6b7280");">
+                                            <span class="badge rounded-pill me-1" style="@(isOT ? "background:#ccfbf1;color:#0d9488;" : "background:#ede9fe;color:#7c3aed;")font-size:.6rem;vertical-align:middle;">@sc.CourseType</span>@sc.CourseName
+                                            @if (isOT && isActive)
+                                            {
+                                                <div class="d-md-none" style="font-size:.7rem;color:#6b7280;margin-top:2px;">
+                                                    <i class="ri-user-line"></i> @(sc.InstructorName ?? "None") · <i class="ri-shield-user-line"></i> @(sc.CsName ?? "None")
+                                                </div>
+                                            }
+                                        </td>
                                         <td class="small text-center align-middle">@sc.DateStarted</td>
                                         <td class="small text-center align-middle">@(sc.DateFinished ?? "\u2014")</td>
+                                        <td class="small text-center align-middle d-none d-md-table-cell">
+                                            @if (isOT && isActive)
+                                            {
+                                                <select class="form-select form-select-sm py-0" style="font-size:.75rem;min-width:100px;"
+                                                        value="@(sc.InstructorId?.ToString() ?? "0")"
+                                                        @onchange="(e) => OnInstructorChanged(sc, e)">
+                                                    <option value="0">None</option>
+                                                    @foreach (var u in _instructorList)
+                                                    {
+                                                        <option value="@u.Id">@u.FullName</option>
+                                                    }
+                                                </select>
+                                            }
+                                            else if (isOT)
+                                            {
+                                                <span class="text-muted" style="font-size:.75rem;">@(sc.InstructorName ?? "—")</span>
+                                            }
+                                        </td>
+                                        <td class="small text-center align-middle d-none d-md-table-cell">
+                                            @if (isOT && isActive)
+                                            {
+                                                <select class="form-select form-select-sm py-0" style="font-size:.75rem;min-width:100px;"
+                                                        value="@(sc.CsId?.ToString() ?? "0")"
+                                                        @onchange="(e) => OnCsChanged(sc, e)">
+                                                    <option value="0">None</option>
+                                                    @foreach (var u in _csList)
+                                                    {
+                                                        <option value="@u.Id">@u.FullName</option>
+                                                    }
+                                                </select>
+                                            }
+                                            else if (isOT)
+                                            {
+                                                <span class="text-muted" style="font-size:.75rem;">@(sc.CsName ?? "—")</span>
+                                            }
+                                        </td>
                                         <td class="small text-center align-middle">@(_courseAmountMap.TryGetValue(sc.CourseId, out var cAmt) && cAmt > 0 ? $"{CurrSym(_courseCurrencyMap.GetValueOrDefault(sc.CourseId, "ILS"))}{cAmt}" : "\u2014")</td>
                                         <td class="small text-center align-middle">
                                             @if (_coursePurchaseStatusMap.TryGetValue(sc.CourseId, out var cStatus))
@@ -1125,8 +1174,10 @@
 @* ── Pending Courses Modal ── *@
 @if (_pendingCoursesModal)
 {
+    var otCourses = _pendingCourses.Where(e => e.CourseType == "OT").OrderBy(x => x.DateFinished != null).ThenByDescending(x => x.DateStarted).ToList();
+    var pcCourses = _pendingCourses.Where(e => e.CourseType != "OT").OrderBy(x => x.DateFinished != null).ThenByDescending(x => x.DateStarted).ToList();
     <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.45);z-index:1050;">
-        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content" style="border-radius:12px;background:#fff;color:#212529;">
                 <div class="modal-header py-2 px-3" style="background:#f0f4ff;border-radius:12px 12px 0 0;">
                     <span class="fw-semibold small" style="color:#3949ab;">
@@ -1135,55 +1186,166 @@
                     </span>
                     <button class="btn-close btn-close-sm" @onclick="() => _pendingCoursesModal = false"></button>
                 </div>
-                <div class="modal-body p-0">
+                <div class="modal-body p-2">
                     @if (_pendingCourses.Count == 0)
                     {
                         <div class="small text-center py-4" style="color:#6b7280;">No courses.</div>
                     }
                     else
                     {
-                        <div class="table-responsive">
-                            <table class="table table-sm table-hover mb-0" style="font-size:.82rem;">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th class="ps-3">PC</th>
-                                        <th>Course</th>
-                                        <th class="text-center">Date Started</th>
-                                        <th class="text-center">Visits</th>
-                                        <th class="text-center">@LS.T("pcs.action")</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var e in _pendingCourses.OrderBy(x => x.DateFinished != null).ThenByDescending(x => x.DateStarted))
-                                    {
-                                        bool isActive = e.DateFinished == null;
-                                        <tr style="@(!isActive ? "opacity:.65;" : "")">
-                                            <td class="ps-3 fw-medium">@e.PCFullName</td>
-                                            <td style="color:@(isActive ? "#6d28d9" : "#6b7280");font-weight:600;">@e.CourseName</td>
-                                            <td class="text-center">@e.DateStarted</td>
-                                            <td class="text-center fw-semibold" style="color:#34d399;">@e.VisitCount</td>
-                                            <td class="text-center">
-                                                @if (isActive)
-                                                {
-                                                    <button class="btn btn-sm btn-outline-success py-0 px-2"
-                                                            @onclick="() => AskFinishCourse(e.StudentCourseId, e.CourseName)">
-                                                        <i class="ri-check-line me-1"></i>@LS.T("pcs.markDone")
-                                                    </button>
-                                                }
-                                                else
-                                                {
-                                                    <button class="btn btn-sm border-0 py-0 px-2"
-                                                            style="background:#d1fae5;color:#065f46;font-size:.7rem;"
-                                                            @onclick="() => AskReopenCourse(e.StudentCourseId, e.CourseName)">
-                                                        <i class="ri-check-double-line me-1"></i>@LS.T("pcs.done")
-                                                    </button>
-                                                }
-                                            </td>
+                        @* ── OT Courses Section ── *@
+                        <details open class="mb-3">
+                            <summary class="d-flex align-items-center gap-2 px-3 py-2 rounded-top fw-semibold small"
+                                     style="background:linear-gradient(135deg,#0d9488,#2dd4bf);color:#fff;cursor:pointer;list-style:none;border-radius:8px 8px 0 0;">
+                                <i class="ri-flask-line me-1"></i>Pre-OT Courses
+                                <span class="badge rounded-pill ms-auto" style="background:rgba(255,255,255,.25);font-size:.72rem;">@otCourses.Count(e => e.DateFinished == null) active</span>
+                            </summary>
+                            @if (otCourses.Count == 0)
+                            {
+                                <div class="small text-center py-3" style="color:#6b7280;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">No OT courses.</div>
+                            }
+                            else
+                            {
+                            <div class="table-responsive" style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">
+                                <table class="table table-sm table-hover mb-0" style="font-size:.82rem;">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="ps-3">PC</th>
+                                            <th>Course</th>
+                                            <th class="text-center">Date Started</th>
+                                            <th class="text-center">Visits</th>
+                                            <th>Instructor</th>
+                                            <th>CS</th>
+                                            <th class="text-center">@LS.T("pcs.action")</th>
                                         </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var e in otCourses)
+                                        {
+                                            bool isActive = e.DateFinished == null;
+                                            <tr style="@(!isActive ? "opacity:.65;" : "")">
+                                                <td class="ps-3 fw-medium">@e.PCFullName</td>
+                                                <td style="color:@(isActive ? "#0d9488" : "#6b7280");font-weight:600;">@e.CourseName</td>
+                                                <td class="text-center">@e.DateStarted</td>
+                                                <td class="text-center fw-semibold" style="color:#34d399;">@e.VisitCount</td>
+                                                <td>
+                                                    @if (isActive)
+                                                    {
+                                                        <select class="form-select form-select-sm py-0" style="font-size:.75rem;min-width:100px;"
+                                                                value="@(e.InstructorId?.ToString() ?? "0")"
+                                                                @onchange="(ev) => OnPendingInstructorChanged(e.StudentCourseId, ev)">
+                                                            <option value="0">None</option>
+                                                            @foreach (var u in _instructorList)
+                                                            {
+                                                                <option value="@u.Id">@u.FullName</option>
+                                                            }
+                                                        </select>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-muted" style="font-size:.75rem;">@(e.InstructorName ?? "—")</span>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    @if (isActive)
+                                                    {
+                                                        <select class="form-select form-select-sm py-0" style="font-size:.75rem;min-width:100px;"
+                                                                value="@(e.CsId?.ToString() ?? "0")"
+                                                                @onchange="(ev) => OnPendingCsChanged(e.StudentCourseId, ev)">
+                                                            <option value="0">None</option>
+                                                            @foreach (var u in _csList)
+                                                            {
+                                                                <option value="@u.Id">@u.FullName</option>
+                                                            }
+                                                        </select>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-muted" style="font-size:.75rem;">@(e.CsName ?? "—")</span>
+                                                    }
+                                                </td>
+                                                <td class="text-center">
+                                                    @if (isActive)
+                                                    {
+                                                        <button class="btn btn-sm btn-outline-success py-0 px-2"
+                                                                @onclick="() => AskFinishCourse(e.StudentCourseId, e.CourseName)">
+                                                            <i class="ri-check-line me-1"></i>@LS.T("pcs.markDone")
+                                                        </button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <button class="btn btn-sm border-0 py-0 px-2"
+                                                                style="background:#d1fae5;color:#065f46;font-size:.7rem;"
+                                                                @onclick="() => AskReopenCourse(e.StudentCourseId, e.CourseName)">
+                                                            <i class="ri-check-double-line me-1"></i>@LS.T("pcs.done")
+                                                        </button>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            }
+                        </details>
+
+                        @* ── PC Courses Section ── *@
+                        <details open>
+                            <summary class="d-flex align-items-center gap-2 px-3 py-2 rounded-top fw-semibold small"
+                                     style="background:linear-gradient(135deg,#6d28d9,#a855f7);color:#fff;cursor:pointer;list-style:none;border-radius:8px 8px 0 0;">
+                                <i class="ri-book-2-line me-1"></i>Pre-Clear Courses
+                                <span class="badge rounded-pill ms-auto" style="background:rgba(255,255,255,.25);font-size:.72rem;">@pcCourses.Count(e => e.DateFinished == null) active</span>
+                            </summary>
+                            @if (pcCourses.Count == 0)
+                            {
+                                <div class="small text-center py-3" style="color:#6b7280;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">No PC courses.</div>
+                            }
+                            else
+                            {
+                            <div class="table-responsive" style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">
+                                <table class="table table-sm table-hover mb-0" style="font-size:.82rem;">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="ps-3">PC</th>
+                                            <th>Course</th>
+                                            <th class="text-center">Date Started</th>
+                                            <th class="text-center">Visits</th>
+                                            <th class="text-center">@LS.T("pcs.action")</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var e in pcCourses)
+                                        {
+                                            bool isActive = e.DateFinished == null;
+                                            <tr style="@(!isActive ? "opacity:.65;" : "")">
+                                                <td class="ps-3 fw-medium">@e.PCFullName</td>
+                                                <td style="color:@(isActive ? "#6d28d9" : "#6b7280");font-weight:600;">@e.CourseName</td>
+                                                <td class="text-center">@e.DateStarted</td>
+                                                <td class="text-center fw-semibold" style="color:#34d399;">@e.VisitCount</td>
+                                                <td class="text-center">
+                                                    @if (isActive)
+                                                    {
+                                                        <button class="btn btn-sm btn-outline-success py-0 px-2"
+                                                                @onclick="() => AskFinishCourse(e.StudentCourseId, e.CourseName)">
+                                                            <i class="ri-check-line me-1"></i>@LS.T("pcs.markDone")
+                                                        </button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <button class="btn btn-sm border-0 py-0 px-2"
+                                                                style="background:#d1fae5;color:#065f46;font-size:.7rem;"
+                                                                @onclick="() => AskReopenCourse(e.StudentCourseId, e.CourseName)">
+                                                            <i class="ri-check-double-line me-1"></i>@LS.T("pcs.done")
+                                                        </button>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            }
+                        </details>
                     }
                 </div>
             </div>
@@ -1856,6 +2018,10 @@
     // Courses
     List<StudentCourseItem>? _activeCourses;
     List<StudentCourseItem>? _finishedCourses;
+    List<(int Id, string FullName)> _instructorList = [];
+    List<(int Id, string FullName)> _csList = [];
+    int? _defaultInstructorId;
+    int? _defaultCsId;
     List<StudentCourseItem> AllCoursesSorted =>
         (_activeCourses ?? new()).Concat(_finishedCourses ?? new())
         .OrderByDescending(c => c.DateStarted).ToList();
@@ -2000,6 +2166,10 @@
         _soloPcIds  = DashSvc.GetSoloPcIds();
         _allCourses = CourseSvc.GetAllCourses();
         _allBooks   = CourseSvc.GetAllBooks();
+        _instructorList = CourseSvc.GetCoreUsers();
+        _csList         = CourseSvc.GetCsUsers();
+        _defaultInstructorId = CourseSvc.ResolveDefaultInstructorId();
+        _defaultCsId         = CourseSvc.ResolveDefaultCsId();
         _staff      = PcSvc.GetStaff();
         _allPersons = PcSvc.GetAllPersons();
 
@@ -2098,6 +2268,37 @@
 
     void RefreshPendingCourses() =>
         _pendingCourses = CourseSvc.GetCourseEnrollmentReport();
+
+    // ── Instructor/CS change ──
+    void OnInstructorChanged(StudentCourseItem sc, ChangeEventArgs e)
+    {
+        var newId = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? (int?)v : null;
+        CourseSvc.UpdateStudentCourseStaff(sc.StudentCourseId, newId, sc.CsId);
+        LoadDetail();
+    }
+
+    void OnCsChanged(StudentCourseItem sc, ChangeEventArgs e)
+    {
+        var newId = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? (int?)v : null;
+        CourseSvc.UpdateStudentCourseStaff(sc.StudentCourseId, sc.InstructorId, newId);
+        LoadDetail();
+    }
+
+    void OnPendingInstructorChanged(int studentCourseId, ChangeEventArgs e)
+    {
+        var newId = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? (int?)v : null;
+        var existing = _pendingCourses.FirstOrDefault(c => c.StudentCourseId == studentCourseId);
+        CourseSvc.UpdateStudentCourseStaff(studentCourseId, newId, existing?.CsId);
+        RefreshPendingCourses();
+    }
+
+    void OnPendingCsChanged(int studentCourseId, ChangeEventArgs e)
+    {
+        var newId = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? (int?)v : null;
+        var existing = _pendingCourses.FirstOrDefault(c => c.StudentCourseId == studentCourseId);
+        CourseSvc.UpdateStudentCourseStaff(studentCourseId, existing?.InstructorId, newId);
+        RefreshPendingCourses();
+    }
 
     // ── Course finish ──
     void AskFinishCourse(int studentCourseId, string courseName)

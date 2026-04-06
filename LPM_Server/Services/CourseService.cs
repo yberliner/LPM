@@ -3,15 +3,18 @@ using Microsoft.Extensions.Configuration;
 
 namespace LPM.Services;
 
-public record CourseItem(int CourseId, string Name, string Book, int BookPrice);
+public record CourseItem(int CourseId, string Name, string Book, int BookPrice, string CourseType);
 public record BookItem(int BookId, string Name, int Price);
 public record CourseEnrollmentItem(
     int StudentCourseId, int PersonId, string PCFullName,
     int CourseId, string CourseName, string DateStarted, string? DateFinished,
     int PaidAmount, int? RegistrarId, string? RegistrarName,
-    int? ReferralId, string? ReferralName, int VisitCount);
+    int? ReferralId, string? ReferralName, int VisitCount,
+    string CourseType, int? InstructorId, string? InstructorName, int? CsId, string? CsName);
 public record StudentCourseItem(int StudentCourseId, int PersonId, int CourseId, string CourseName,
-    string DateStarted, string? DateFinished);
+    string DateStarted, string? DateFinished,
+    string CourseType, int? InstructorId, string? InstructorName, int? CsId, string? CsName);
+public record OpenCourseEntry(string Name, int VisitCount, string CourseType);
 
 public record FinancialConfig(
     double VatPct, double CcCommissionPct,
@@ -40,10 +43,15 @@ public class CourseService
         conn.Open();
         using var bf = conn.CreateCommand();
         bf.CommandText = @"
-            INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted)
-            SELECT pu.PcId, pi.CourseId, pu.PurchaseDate
+            INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted, InstructorId, CsId)
+            SELECT pu.PcId, pi.CourseId, pu.PurchaseDate,
+              CASE WHEN c.CourseType='OT'
+                   THEN (SELECT PersonId FROM core_users WHERE Username='aviv' AND IsActive=1 LIMIT 1) END,
+              CASE WHEN c.CourseType='OT'
+                   THEN (SELECT PersonId FROM core_users WHERE Username='tami' AND IsActive=1 LIMIT 1) END
             FROM fin_purchase_items pi
             JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+            JOIN lkp_courses c ON c.CourseId = pi.CourseId
             WHERE pi.ItemType = 'Course'
               AND pi.CourseId IS NOT NULL
               AND pu.IsDeleted = 0
@@ -63,23 +71,24 @@ public class CourseService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT CourseId, Name, COALESCE(Book,'') AS Book, COALESCE(BookPrice,0) AS BookPrice FROM lkp_courses ORDER BY Name";
+        cmd.CommandText = "SELECT CourseId, Name, COALESCE(Book,'') AS Book, COALESCE(BookPrice,0) AS BookPrice, COALESCE(CourseType,'PC') FROM lkp_courses ORDER BY Name";
         var list = new List<CourseItem>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add(new CourseItem(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetInt32(3)));
+            list.Add(new CourseItem(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetInt32(3), r.GetString(4)));
         return list;
     }
 
-    public int AddCourse(string name, string book = "", int bookPrice = 0)
+    public int AddCourse(string name, string book = "", int bookPrice = 0, string courseType = "PC")
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT INTO lkp_courses (Name, Book, BookPrice) VALUES (@name, @book, @bookPrice)";
+        cmd.CommandText = "INSERT INTO lkp_courses (Name, Book, BookPrice, CourseType) VALUES (@name, @book, @bookPrice, @ct)";
         cmd.Parameters.AddWithValue("@name", name.Trim());
         cmd.Parameters.AddWithValue("@book", book.Trim());
         cmd.Parameters.AddWithValue("@bookPrice", bookPrice);
+        cmd.Parameters.AddWithValue("@ct", courseType);
         cmd.ExecuteNonQuery();
         using var idCmd = conn.CreateCommand();
         idCmd.CommandText = "SELECT last_insert_rowid()";
@@ -88,15 +97,16 @@ public class CourseService
         return courseId;
     }
 
-    public void UpdateCourse(int courseId, string name, string book = "", int bookPrice = 0)
+    public void UpdateCourse(int courseId, string name, string book = "", int bookPrice = 0, string courseType = "PC")
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE lkp_courses SET Name=@name, Book=@book, BookPrice=@bookPrice WHERE CourseId=@id";
+        cmd.CommandText = "UPDATE lkp_courses SET Name=@name, Book=@book, BookPrice=@bookPrice, CourseType=@ct WHERE CourseId=@id";
         cmd.Parameters.AddWithValue("@name", name.Trim());
         cmd.Parameters.AddWithValue("@book", book.Trim());
         cmd.Parameters.AddWithValue("@bookPrice", bookPrice);
+        cmd.Parameters.AddWithValue("@ct", courseType);
         cmd.Parameters.AddWithValue("@id", courseId);
         cmd.ExecuteNonQuery();
         Console.WriteLine($"[CourseService] Updated course {courseId}: '{name.Trim()}'");
@@ -172,9 +182,16 @@ public class CourseService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT sc.StudentCourseId, sc.PersonId, sc.CourseId, c.Name, sc.DateStarted, sc.DateFinished
+            SELECT sc.StudentCourseId, sc.PersonId, sc.CourseId, c.Name, sc.DateStarted, sc.DateFinished,
+                   COALESCE(c.CourseType,'PC'),
+                   sc.InstructorId,
+                   TRIM(ip.FirstName || ' ' || COALESCE(NULLIF(ip.LastName,''),'')),
+                   sc.CsId,
+                   TRIM(cp.FirstName || ' ' || COALESCE(NULLIF(cp.LastName,''),''))
             FROM acad_student_courses sc
             JOIN lkp_courses c ON c.CourseId = sc.CourseId
+            LEFT JOIN core_persons ip ON ip.PersonId = sc.InstructorId
+            LEFT JOIN core_persons cp ON cp.PersonId = sc.CsId
             WHERE sc.PersonId = @pid
             ORDER BY sc.DateStarted DESC";
         cmd.Parameters.AddWithValue("@pid", personId);
@@ -182,14 +199,19 @@ public class CourseService
         using var r = cmd.ExecuteReader();
         while (r.Read())
             list.Add(new StudentCourseItem(r.GetInt32(0), r.GetInt32(1), r.GetInt32(2), r.GetString(3),
-                r.GetString(4), r.IsDBNull(5) ? null : r.GetString(5)));
+                r.GetString(4), r.IsDBNull(5) ? null : r.GetString(5),
+                r.GetString(6),
+                r.IsDBNull(7) ? null : r.GetInt32(7),
+                r.IsDBNull(8) ? null : r.GetString(8).Trim(),
+                r.IsDBNull(9) ? null : r.GetInt32(9),
+                r.IsDBNull(10) ? null : r.GetString(10).Trim()));
         return list;
     }
 
     /// <summary>Batch-load open courses for all given person IDs.
     /// Includes both explicit StudentCourses enrollments AND course purchases in Payments.
     /// Returns dict: PersonId → comma-joined course names.</summary>
-    public Dictionary<int, string> GetOpenCoursesForPersons(IEnumerable<int> personIds)
+    public Dictionary<int, List<OpenCourseEntry>> GetOpenCoursesForPersons(IEnumerable<int> personIds)
     {
         var ids = personIds.Distinct().ToList();
         if (ids.Count == 0) return [];
@@ -200,38 +222,66 @@ public class CourseService
         cmd.CommandText = $@"
             SELECT sc.PersonId, c.Name,
                    (SELECT COUNT(*) FROM acad_attendance s
-                    WHERE s.PersonId = sc.PersonId AND s.VisitDate >= sc.DateStarted) AS VisitCount
+                    WHERE s.PersonId = sc.PersonId AND s.VisitDate >= sc.DateStarted) AS VisitCount,
+                   COALESCE(c.CourseType,'PC')
             FROM acad_student_courses sc
             JOIN lkp_courses c ON c.CourseId = sc.CourseId
             WHERE sc.PersonId IN ({string.Join(",", paramNames)}) AND sc.DateFinished IS NULL
             ORDER BY sc.PersonId, sc.DateStarted";
         for (int i = 0; i < ids.Count; i++)
             cmd.Parameters.AddWithValue($"@p{i}", ids[i]);
-        var dict = new Dictionary<int, List<string>>();
+        var dict = new Dictionary<int, List<OpenCourseEntry>>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
         {
             var pid = r.GetInt32(0);
             if (!dict.TryGetValue(pid, out var lst)) dict[pid] = lst = [];
-            var name = r.GetString(1);
-            var visits = r.GetInt32(2);
-            var entry = $"{name} ({visits})";
-            if (!lst.Contains(entry)) lst.Add(entry);
+            var entry = new OpenCourseEntry(r.GetString(1), r.GetInt32(2), r.GetString(3));
+            if (!lst.Any(e => e.Name == entry.Name)) lst.Add(entry);
         }
-        return dict.ToDictionary(kv => kv.Key, kv => string.Join(", ", kv.Value));
+        return dict;
     }
 
-    public int AddStudentCourse(int personId, int courseId, string dateStarted)
+    public int AddStudentCourse(int personId, int courseId, string dateStarted,
+        int? instructorId = null, int? csId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
+
+        // For OT courses, auto-fill defaults if not provided
+        using (var chk = conn.CreateCommand())
+        {
+            chk.CommandText = "SELECT COALESCE(CourseType,'PC') FROM lkp_courses WHERE CourseId=@cid";
+            chk.Parameters.AddWithValue("@cid", courseId);
+            var ct = chk.ExecuteScalar() as string ?? "PC";
+            if (ct == "OT")
+            {
+                if (!instructorId.HasValue)
+                {
+                    using var q = conn.CreateCommand();
+                    q.CommandText = "SELECT PersonId FROM core_users WHERE Username='aviv' AND IsActive=1 LIMIT 1";
+                    var val = q.ExecuteScalar();
+                    if (val != null) instructorId = (int)(long)val;
+                }
+                if (!csId.HasValue)
+                {
+                    using var q = conn.CreateCommand();
+                    q.CommandText = "SELECT PersonId FROM core_users WHERE Username='tami' AND IsActive=1 LIMIT 1";
+                    var val = q.ExecuteScalar();
+                    if (val != null) csId = (int)(long)val;
+                }
+            }
+        }
+
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted)
-            VALUES (@pid, @cid, @ds)";
+            INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted, InstructorId, CsId)
+            VALUES (@pid, @cid, @ds, @iid, @csid)";
         cmd.Parameters.AddWithValue("@pid", personId);
         cmd.Parameters.AddWithValue("@cid", courseId);
         cmd.Parameters.AddWithValue("@ds", dateStarted);
+        cmd.Parameters.AddWithValue("@iid", instructorId.HasValue ? (object)instructorId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@csid", csId.HasValue ? (object)csId.Value : DBNull.Value);
         cmd.ExecuteNonQuery();
         using var idCmd = conn.CreateCommand();
         idCmd.CommandText = "SELECT last_insert_rowid()";
@@ -293,7 +343,12 @@ public class CourseService
                         ELSE TRIM(COALESCE(rf.FirstName,'') || ' ' || COALESCE(NULLIF(rf.LastName,''),''))
                    END AS ReferralName,
                    (SELECT COUNT(*) FROM acad_attendance s
-                    WHERE s.PersonId = sc.PersonId AND s.VisitDate >= sc.DateStarted) AS VisitCount
+                    WHERE s.PersonId = sc.PersonId AND s.VisitDate >= sc.DateStarted) AS VisitCount,
+                   COALESCE(c.CourseType,'PC'),
+                   sc.InstructorId,
+                   TRIM(COALESCE(insp.FirstName,'') || ' ' || COALESCE(NULLIF(insp.LastName,''),'')),
+                   sc.CsId,
+                   TRIM(COALESCE(csp.FirstName,'') || ' ' || COALESCE(NULLIF(csp.LastName,''),''))
             FROM acad_student_courses sc
             JOIN core_persons p ON p.PersonId = sc.PersonId
             JOIN lkp_courses c ON c.CourseId = sc.CourseId
@@ -306,8 +361,10 @@ public class CourseService
             ) latest ON latest.PcId = sc.PersonId AND latest.CourseId = sc.CourseId
             LEFT JOIN fin_purchase_items pi ON pi.PurchaseItemId = latest.MaxItemId
             LEFT JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
-            LEFT JOIN core_persons reg ON reg.PersonId = pu.RegistrarId
-            LEFT JOIN core_persons rf  ON rf.PersonId  = pu.ReferralId
+            LEFT JOIN core_persons reg  ON reg.PersonId  = pu.RegistrarId
+            LEFT JOIN core_persons rf   ON rf.PersonId   = pu.ReferralId
+            LEFT JOIN core_persons insp ON insp.PersonId = sc.InstructorId
+            LEFT JOIN core_persons csp  ON csp.PersonId  = sc.CsId
             ORDER BY c.Name, p.FirstName, p.LastName";
         var list = new List<CourseEnrollmentItem>();
         using var r = cmd.ExecuteReader();
@@ -321,7 +378,12 @@ public class CourseService
                 r.IsDBNull(9)  ? null : r.GetString(9).Trim(),
                 r.IsDBNull(10) ? null : r.GetInt32(10),
                 r.IsDBNull(11) ? null : r.GetString(11).Trim(),
-                r.GetInt32(12)));
+                r.GetInt32(12),
+                r.GetString(13),
+                r.IsDBNull(14) ? null : r.GetInt32(14),
+                r.IsDBNull(15) ? null : r.GetString(15).Trim(),
+                r.IsDBNull(16) ? null : r.GetInt32(16),
+                r.IsDBNull(17) ? null : r.GetString(17).Trim()));
         return list;
     }
 
@@ -400,6 +462,56 @@ public class CourseService
         while (r.Read())
             list.Add((r.GetInt32(0), r.GetString(1).Trim()));
         return list;
+    }
+
+    public List<(int Id, string FullName)> GetCsUsers()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT u.PersonId, TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),''))
+            FROM core_users u
+            JOIN core_persons p ON p.PersonId = u.PersonId
+            WHERE u.IsActive = 1 AND u.StaffRole IN ('CS','SeniorCS')
+            ORDER BY p.FirstName, p.LastName";
+        var list = new List<(int, string)>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add((r.GetInt32(0), r.GetString(1).Trim()));
+        return list;
+    }
+
+    public void UpdateStudentCourseStaff(int studentCourseId, int? instructorId, int? csId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE acad_student_courses SET InstructorId=@iid, CsId=@cid WHERE StudentCourseId=@id";
+        cmd.Parameters.AddWithValue("@iid", instructorId.HasValue ? (object)instructorId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@cid", csId.HasValue ? (object)csId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@id", studentCourseId);
+        cmd.ExecuteNonQuery();
+    }
+
+    public int? ResolveDefaultInstructorId()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT PersonId FROM core_users WHERE Username='aviv' AND IsActive=1 LIMIT 1";
+        var val = cmd.ExecuteScalar();
+        return val != null ? (int)(long)val : null;
+    }
+
+    public int? ResolveDefaultCsId()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT PersonId FROM core_users WHERE Username='tami' AND IsActive=1 LIMIT 1";
+        var val = cmd.ExecuteScalar();
+        return val != null ? (int)(long)val : null;
     }
 
     public Dictionary<int, string> GetPersonNamesByIds(IEnumerable<int> ids)

@@ -563,8 +563,12 @@ public List<PcListItem> GetAllPcs()
                 using var scCmd = conn.CreateCommand();
                 scCmd.Transaction = tx;
                 scCmd.CommandText = @"
-                    INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted)
-                    SELECT @personId, @courseId, @date
+                    INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted, InstructorId, CsId)
+                    SELECT @personId, @courseId, @date,
+                      CASE WHEN (SELECT CourseType FROM lkp_courses WHERE CourseId=@courseId)='OT'
+                           THEN (SELECT PersonId FROM core_users WHERE Username='aviv' AND IsActive=1 LIMIT 1) END,
+                      CASE WHEN (SELECT CourseType FROM lkp_courses WHERE CourseId=@courseId)='OT'
+                           THEN (SELECT PersonId FROM core_users WHERE Username='tami' AND IsActive=1 LIMIT 1) END
                     WHERE NOT EXISTS (
                         SELECT 1 FROM acad_student_courses
                         WHERE PersonId=@personId AND CourseId=@courseId AND DateFinished IS NULL
@@ -948,8 +952,12 @@ public List<PcListItem> GetAllPcs()
             using var addSc = conn.CreateCommand();
             addSc.Transaction = tx;
             addSc.CommandText = @"
-                INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted)
-                SELECT @pid, @cid, @date
+                INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted, InstructorId, CsId)
+                SELECT @pid, @cid, @date,
+                  CASE WHEN (SELECT CourseType FROM lkp_courses WHERE CourseId=@cid)='OT'
+                       THEN (SELECT PersonId FROM core_users WHERE Username='aviv' AND IsActive=1 LIMIT 1) END,
+                  CASE WHEN (SELECT CourseType FROM lkp_courses WHERE CourseId=@cid)='OT'
+                       THEN (SELECT PersonId FROM core_users WHERE Username='tami' AND IsActive=1 LIMIT 1) END
                 WHERE NOT EXISTS (
                     SELECT 1 FROM acad_student_courses WHERE PersonId=@pid AND CourseId=@cid AND DateFinished IS NULL
                 )";
@@ -1105,10 +1113,15 @@ public List<PcListItem> GetAllPcs()
         {
             q.Transaction = tx;
             q.CommandText = @"
-                INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted)
-                SELECT p.PcId, pi.CourseId, p.PurchaseDate
+                INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted, InstructorId, CsId)
+                SELECT p.PcId, pi.CourseId, p.PurchaseDate,
+                  CASE WHEN c.CourseType='OT'
+                       THEN (SELECT PersonId FROM core_users WHERE Username='aviv' AND IsActive=1 LIMIT 1) END,
+                  CASE WHEN c.CourseType='OT'
+                       THEN (SELECT PersonId FROM core_users WHERE Username='tami' AND IsActive=1 LIMIT 1) END
                 FROM fin_purchase_items pi
                 JOIN fin_purchases p ON p.PurchaseId = pi.PurchaseId
+                JOIN lkp_courses c ON c.CourseId = pi.CourseId
                 WHERE pi.PurchaseId = @id AND pi.ItemType = 'Course' AND pi.CourseId IS NOT NULL
                   AND NOT EXISTS (
                     SELECT 1 FROM acad_student_courses sc

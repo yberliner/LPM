@@ -38,6 +38,7 @@
                 <thead class="table-light">
                     <tr>
                         <th class="ps-3 small">@LS.T("courses.courseName")</th>
+                        <th class="small text-center" style="width:70px;">Type</th>
                         <th class="small">Book</th>
                         <th class="small text-end">Book Price</th>
                         <th style="width:130px;"></th>
@@ -58,6 +59,17 @@
                                 {
                                     <span class="fw-medium">@c.Name</span>
                                 }
+                            </td>
+                            <td class="align-middle text-center">
+                                <select class="form-select form-select-sm py-0" style="width:72px;font-size:.78rem;
+                                        background:@(c.CourseType == "OT" ? "#f0fdfa" : "#f5f3ff");
+                                        color:@(c.CourseType == "OT" ? "#0d9488" : "#7c3aed");
+                                        border-color:@(c.CourseType == "OT" ? "#99f6e4" : "#ddd6fe");font-weight:600;"
+                                        value="@c.CourseType"
+                                        @onchange="(e) => QuickSetCourseType(c.CourseId, e)">
+                                    <option value="PC">PC</option>
+                                    <option value="OT">OT</option>
+                                </select>
                             </td>
                             <td class="align-middle">
                                 @if (_editId == c.CourseId)
@@ -118,6 +130,12 @@
                             {
                                 <div class="text-danger small mt-1">@_addError</div>
                             }
+                        </td>
+                        <td class="py-2 text-center">
+                            <select class="form-select form-select-sm" style="width:70px;" @bind="_newCourseType">
+                                <option value="PC">PC</option>
+                                <option value="OT">OT</option>
+                            </select>
                         </td>
                         <td class="py-2">
                             <input class="form-control form-control-sm" style="max-width:180px;"
@@ -286,6 +304,9 @@
                         <tr>
                             <th class="ps-3">@LS.T("courses.pc")</th>
                             <th>@LS.T("courses.course")</th>
+                            <th class="text-center">Type</th>
+                            <th>Instructor</th>
+                            <th>CS</th>
                             <th class="text-end">@LS.T("courses.paid")</th>
                             <th>@LS.T("courses.registrar")</th>
                             <th>@LS.T("courses.referral")</th>
@@ -299,6 +320,11 @@
                             <tr>
                                 <td class="ps-3 fw-medium">@e.PCFullName</td>
                                 <td>@e.CourseName</td>
+                                <td class="text-center">
+                                    <span class="badge rounded-pill" style="@(e.CourseType == "OT" ? "background:#ccfbf1;color:#0d9488;" : "background:#ede9fe;color:#7c3aed;")font-size:.7rem;">@e.CourseType</span>
+                                </td>
+                                <td class="text-muted">@(e.CourseType == "OT" ? (e.InstructorName ?? "—") : "—")</td>
+                                <td class="text-muted">@(e.CourseType == "OT" ? (e.CsName ?? "—") : "—")</td>
                                 <td class="text-end">@(e.PaidAmount > 0 ? $"₪{e.PaidAmount}" : "—")</td>
                                 <td class="text-muted">@(e.RegistrarName ?? "—")</td>
                                 <td class="text-muted">@(e.ReferralName ?? "—")</td>
@@ -352,10 +378,12 @@
     string _newBook      = "";
     int    _newBookPrice = 0;
     string _addError     = "";
+    string _newCourseType = "PC";
     int?   _editId;
     string _editName      = "";
     string _editBook      = "";
     int    _editBookPrice = 0;
+    string _editCourseType = "PC";
 
     // ── Books state ──
     List<BookItem> _books      = [];
@@ -382,8 +410,8 @@
         if (string.IsNullOrWhiteSpace(_newName)) { _addError = LS.T("courses.nameRequired"); return; }
         _addError = "";
         Console.WriteLine($"[Courses] Added course '{_newName.Trim()}' by 'admin'");
-        CourseSvc.AddCourse(_newName.Trim(), _newBook.Trim(), _newBookPrice);
-        _newName = ""; _newBook = ""; _newBookPrice = 0;
+        CourseSvc.AddCourse(_newName.Trim(), _newBook.Trim(), _newBookPrice, _newCourseType);
+        _newName = ""; _newBook = ""; _newBookPrice = 0; _newCourseType = "PC";
         Reload();
     }
 
@@ -393,6 +421,7 @@
     {
         _editId = c.CourseId; _editName = c.Name;
         _editBook = c.Book; _editBookPrice = c.BookPrice;
+        _editCourseType = c.CourseType;
     }
 
     void SaveEdit()
@@ -400,13 +429,24 @@
         if (_editId.HasValue && !string.IsNullOrWhiteSpace(_editName))
         {
             Console.WriteLine($"[Courses] Updated course {_editId.Value} to '{_editName.Trim()}' by 'admin'");
-            CourseSvc.UpdateCourse(_editId.Value, _editName.Trim(), _editBook.Trim(), _editBookPrice);
+            CourseSvc.UpdateCourse(_editId.Value, _editName.Trim(), _editBook.Trim(), _editBookPrice, _editCourseType);
         }
         _editId = null;
         Reload();
     }
 
     void OnEditKeyDown(KeyboardEventArgs e) { if (e.Key == "Enter") SaveEdit(); }
+
+    void QuickSetCourseType(int courseId, ChangeEventArgs e)
+    {
+        var newType = e.Value?.ToString() ?? "PC";
+        var c = _courses.FirstOrDefault(x => x.CourseId == courseId);
+        if (c != null)
+        {
+            CourseSvc.UpdateCourse(courseId, c.Name, c.Book, c.BookPrice, newType);
+            Reload();
+        }
+    }
 
     void DeleteCourse(int id)
     {
