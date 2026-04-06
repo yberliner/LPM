@@ -159,7 +159,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
             ? CookieSecurePolicy.SameAsRequest
             : CookieSecurePolicy.Always;
-        options.ExpireTimeSpan = TimeSpan.FromDays(21);
+        options.ExpireTimeSpan = TimeSpan.FromDays(36500);
         options.SlidingExpiration = true;
     });
 
@@ -263,7 +263,7 @@ app.Use(async (ctx, next) =>
                     && int.TryParse(parts[0], out var userId)
                     && DateTime.TryParse(parts[1], null,
                         System.Globalization.DateTimeStyles.RoundtripKind, out var issuedAt)
-                    && (DateTime.UtcNow - issuedAt).TotalHours < 72)
+                    )
                 {
                     var db   = ctx.RequestServices.GetRequiredService<UserDb>();
                     var info = db.GetAutoLoginInfo(userId);
@@ -313,7 +313,7 @@ app.MapRazorPages();
 static CookieOptions PendingCookieOpts() => new()
 {
     HttpOnly = true, SameSite = SameSiteMode.Strict,
-    MaxAge = TimeSpan.FromMinutes(10)
+    MaxAge = TimeSpan.FromHours(1)
 };
 
 static CookieOptions TrustCookieOpts(bool secure) => new()
@@ -327,7 +327,7 @@ static CookieOptions AutoLoginCookieOpts(bool secure) => new()
 {
     HttpOnly = true, SameSite = SameSiteMode.Strict,
     Secure = secure,
-    MaxAge = TimeSpan.FromHours(72)
+    Expires = DateTimeOffset.UtcNow.AddYears(100)
 };
 
 static void SetAutoLoginCookie(HttpContext ctx, IDataProtector dp, int userId, string pwdHashPrefix)
