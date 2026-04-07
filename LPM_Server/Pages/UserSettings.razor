@@ -157,45 +157,23 @@
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label settings-label">Email address</label>
-                            <input class="form-control @(_contactEmailTouched ? (_contactEmailValid ? "is-valid" : "is-invalid") : "")"
-                                   type="email" placeholder="your@email.com"
-                                   value="@_contactEmail"
-                                   @oninput="OnContactEmailInput" />
-                            @if (_contactEmailTouched && !_contactEmailValid && !string.IsNullOrEmpty(_contactEmail))
-                            {
-                                <div class="invalid-feedback">Please enter a valid email address.</div>
-                            }
+                            <input class="form-control" type="email" value="@_contactEmail" disabled
+                                   style="opacity:.7;cursor:not-allowed;" />
                         </div>
                         <div class="col-md-6">
                             <label class="form-label settings-label">Phone number</label>
-                            <div class="d-flex gap-2">
-                                <SpkCountryPicker @bind-SelectedIndex="_contactCountryIdx" />
-                                <input class="form-control @(_contactPhoneTouched ? (IsContactPhoneValid() ? "is-valid" : "is-invalid") : "")"
-                                       type="tel" placeholder="054 499 4470"
-                                       value="@_contactLocalPhone"
-                                       @oninput="OnContactPhoneInput" />
-                            </div>
-                            @if (_contactPhoneTouched && !IsContactPhoneValid() && !string.IsNullOrWhiteSpace(_contactLocalPhone))
-                            {
-                                <div class="text-danger mt-1" style="font-size:.82rem;">@ContactPhoneErrorMessage()</div>
-                            }
-                            else if (!string.IsNullOrWhiteSpace(ContactPhoneNormalized) && IsContactPhoneValid())
-                            {
-                                <div class="text-muted mt-1" style="font-size:.82rem;">Will be saved as: <strong>@ContactPhoneNormalized</strong></div>
-                            }
+                            <input class="form-control" type="tel" value="@_contactLocalPhone" disabled
+                                   style="opacity:.7;cursor:not-allowed;" />
                         </div>
                     </div>
-                    <button class="btn settings-save-btn mt-3"
-                            style="background:linear-gradient(135deg,#ea580c,#f59e0b);box-shadow:0 3px 14px rgba(234,88,12,.3);"
-                            @onclick="HandleSaveContact"
-                            disabled="@(!_contactEmailValid || !IsContactPhoneValid())">
-                        <i class="ri-save-line me-2"></i>Save Contact Info
-                    </button>
+                    <div class="text-muted mt-2" style="font-size:.82rem;">
+                        <i class="ri-information-line me-1"></i>Contact your administrator to update email or phone number
+                    </div>
                 </div>
             </div>
         </div>
 
-        @* ── 2FA Card ── *@
+        @* ── Device Security Card ── *@
         <div class="col-12">
             <div class="card custom-card shadow-sm" style="border-radius:16px;border:none;">
                 <div class="card-header settings-card-header" style="background:linear-gradient(135deg,#7c3aed,#a855f7);">
@@ -203,62 +181,29 @@
                         <i class="ri-shield-keyhole-fill"></i>
                     </div>
                     <div>
-                        <div class="settings-card-header-title">Two-Factor Authentication (2FA)</div>
-                        <div class="settings-card-header-sub">Protect your account with an authenticator app</div>
+                        <div class="settings-card-header-title">Device Security</div>
+                        <div class="settings-card-header-sub">Manage trusted devices for your account</div>
                     </div>
                     <div class="ms-auto d-flex align-items-center gap-2">
-                        @if (_totpEnabled)
-                        {
-                            <span class="badge" style="background:rgba(34,197,94,.2);color:#4ade80;border:1px solid rgba(34,197,94,.3);border-radius:999px;padding:4px 12px;font-size:.75rem;">
-                                <i class="ri-shield-check-line me-1"></i>Active
-                            </span>
-                        }
-                        else
-                        {
-                            <span class="badge" style="background:rgba(239,68,68,.2);color:#f87171;border:1px solid rgba(239,68,68,.3);border-radius:999px;padding:4px 12px;font-size:.75rem;">
-                                <i class="ri-shield-cross-line me-1"></i>Not set up
-                            </span>
-                        }
+                        <span class="badge" style="background:rgba(34,197,94,.2);color:#4ade80;border:1px solid rgba(34,197,94,.3);border-radius:999px;padding:4px 12px;font-size:.75rem;">
+                            <i class="ri-shield-check-line me-1"></i>Email Verified
+                        </span>
                     </div>
                 </div>
                 <div class="card-body p-4">
-                    @if (_twoFaMsg is not null)
-                    {
-                        <div class="alert @(_twoFaOk ? "alert-success" : "alert-danger") d-flex align-items-center gap-2 mb-3"
-                             style="border-radius:10px;border:none;font-size:.88rem;">
-                            <i class="@(_twoFaOk ? "ri-checkbox-circle-fill" : "ri-error-warning-fill")"></i>
-                            <span>@_twoFaMsg</span>
-                        </div>
-                    }
-
-                    @if (_totpEnabled)
-                    {
-                        <div class="d-flex flex-wrap gap-3 align-items-center">
-                            <div>
-                                <div class="fw-semibold" style="font-size:.9rem;">2FA is active on your account.</div>
-                                <div class="text-muted" style="font-size:.82rem;">
-                                    Trusted devices: <strong>@_trustedDeviceCount</strong>
-                                </div>
-                            </div>
-                            <div class="ms-auto">
-                                <button class="btn btn-sm btn-outline-warning" @onclick="RevokeDevices">
-                                    <i class="ri-device-line me-1"></i>Revoke All Trusted Devices
-                                </button>
+                    <div class="d-flex flex-wrap gap-3 align-items-center">
+                        <div>
+                            <div class="fw-semibold" style="font-size:.9rem;">New devices are verified via email link.</div>
+                            <div class="text-muted" style="font-size:.82rem;">
+                                Trusted devices: <strong>@_trustedDeviceCount</strong>
                             </div>
                         </div>
-                    }
-                    else
-                    {
-                        <p class="text-muted mb-3" style="font-size:.88rem;">
-                            2FA adds an extra layer of security. After setup, you'll need your authenticator app code each time you log in from a new device.
-                        </p>
-                        <p class="text-muted mb-3" style="font-size:.82rem;">
-                            Works with: <strong>Google Authenticator</strong>, <strong>Microsoft Authenticator</strong>, Authy, 1Password, Bitwarden, and any TOTP-compatible app.
-                        </p>
-                        <a href="/Setup2FA?voluntary=1" class="btn settings-save-btn" style="background:linear-gradient(135deg,#7c3aed,#a855f7);box-shadow:0 3px 14px rgba(168,85,247,.35);">
-                            <i class="ri-shield-keyhole-line me-2"></i>Set Up 2FA Now
-                        </a>
-                    }
+                        <div class="ms-auto">
+                            <button class="btn btn-sm btn-outline-warning" @onclick="RevokeDevices">
+                                <i class="ri-device-line me-1"></i>Revoke All Trusted Devices
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -448,10 +393,8 @@
     private bool    _contactOk;
 
     // 2FA fields
-    private bool _totpEnabled;
+
     private int _trustedDeviceCount;
-    private string? _twoFaMsg;
-    private bool _twoFaOk;
     private int _userId;
 
     protected override async Task OnInitializedAsync()
@@ -465,7 +408,6 @@
         {
             _userId   = flags.UserId;
             _personId = flags.PersonId;
-            _totpEnabled = flags.TotpEnabled;
             _trustedDeviceCount = UserDb.GetTrustedDeviceCount(_userId);
         }
 
@@ -474,8 +416,7 @@
         var q = System.Web.HttpUtility.ParseQueryString(uri.Query);
         if (q["2fa"] == "ok")
         {
-            _twoFaMsg = "2FA has been enabled on your account.";
-            _twoFaOk = true;
+            // 2FA setup message (legacy — no longer used)
         }
 
         // Pre-populate contact info
@@ -547,8 +488,7 @@
     {
         UserDb.RevokeAllTrustedDevices(_userId);
         _trustedDeviceCount = 0;
-        _twoFaMsg = "All trusted devices have been revoked. You will need to verify with 2FA on next login.";
-        _twoFaOk = true;
+        // Devices revoked — user will need to verify via email on next login from any device
     }
 
     private void Disable2FA_Removed()

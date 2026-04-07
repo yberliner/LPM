@@ -43,6 +43,10 @@ public class UserDb
             cmd.ExecuteNonQuery();
         }
 
+        // Migration: disable TOTP 2FA, set ContactConfirmed for all users (passkey migration)
+        cmd.CommandText = "UPDATE core_users SET TotpEnabled = 0, TotpSecret = NULL, Require2FA = 0, ContactConfirmed = 1 WHERE TotpEnabled = 1 OR Require2FA = 1 OR ContactConfirmed = 0";
+        cmd.ExecuteNonQuery();
+
         // One-time fix: rename "camela" → "carmela" with corrected password
         cmd.CommandText = "SELECT COUNT(*) FROM core_users WHERE LOWER(Username)='camela'";
         if ((long)cmd.ExecuteScalar()! > 0)
@@ -339,9 +343,9 @@ public class UserDb
         return (long)cmd.ExecuteScalar()! > 0;
     }
 
-    // ── 2FA / TOTP ──────────────────────────────────────────────────────────
+    // ── Login Flags ─────────────────────────────────────────────────────────
 
-    public record LoginFlags(int UserId, string Username, bool MustChangePassword, bool TotpEnabled, string? EncryptedTotpSecret, List<string> Roles, string StaffRole, int PersonId, bool Require2FA);
+    public record LoginFlags(int UserId, string Username, bool MustChangePassword, List<string> Roles, string StaffRole, int PersonId);
 
     /// <summary>Returns login flags for a user by username. Call only after ValidateUser succeeds.</summary>
     public LoginFlags? GetLoginFlags(string username)
@@ -350,30 +354,18 @@ public class UserDb
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT u.Id, u.Username, u.MustChangePassword, u.TotpEnabled, u.TotpSecret,
-                   u.UserType, u.StaffRole, u.PersonId, u.Require2FA
+            SELECT u.Id, u.Username, u.MustChangePassword, u.UserType, u.StaffRole, u.PersonId
             FROM core_users u
             WHERE u.Username = @u COLLATE NOCASE AND u.IsActive = 1 LIMIT 1";
         cmd.Parameters.AddWithValue("@u", username);
         using var r = cmd.ExecuteReader();
         if (!r.Read()) return null;
-        var dbUsername = r.GetString(1);
-        var userType  = r.GetString(5);
-        var staffRole = r.GetString(6);
+        var userType  = r.GetString(3);
+        var staffRole = r.GetString(4);
         var roles = new List<string>();
         if (userType == "Admin")       roles.Add("Admin");
         else if (staffRole != StaffRoles.Solo)  roles.Add("Customer");
-        // Solo → no roles (Dashboard only)
-        return new LoginFlags(
-            UserId: r.GetInt32(0),
-            Username: dbUsername,
-            MustChangePassword: r.GetInt32(2) == 1,
-            TotpEnabled: r.GetInt32(3) == 1,
-            EncryptedTotpSecret: r.IsDBNull(4) ? null : r.GetString(4),
-            Roles: roles,
-            StaffRole: staffRole,
-            PersonId: r.GetInt32(7),
-            Require2FA: r.GetInt32(8) == 1);
+        return new LoginFlags(r.GetInt32(0), r.GetString(1), r.GetInt32(2) == 1, roles, staffRole, r.GetInt32(5));
     }
 
     /// <summary>Same as GetLoginFlags but looks up by UserId (core_users.Id).</summary>
@@ -383,29 +375,18 @@ public class UserDb
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT u.Id, u.Username, u.MustChangePassword, u.TotpEnabled, u.TotpSecret,
-                   u.UserType, u.StaffRole, u.PersonId, u.Require2FA
+            SELECT u.Id, u.Username, u.MustChangePassword, u.UserType, u.StaffRole, u.PersonId
             FROM core_users u
             WHERE u.Id = @id AND u.IsActive = 1 LIMIT 1";
         cmd.Parameters.AddWithValue("@id", userId);
         using var r = cmd.ExecuteReader();
         if (!r.Read()) return null;
-        var userTypeById  = r.GetString(5);
-        var staffRoleById = r.GetString(6);
+        var userType  = r.GetString(3);
+        var staffRole = r.GetString(4);
         var roles = new List<string>();
-        if (userTypeById == "Admin")        roles.Add("Admin");
-        else if (staffRoleById != StaffRoles.Solo)   roles.Add("Customer");
-        // Solo → no roles (Dashboard only)
-        return new LoginFlags(
-            UserId: r.GetInt32(0),
-            Username: r.GetString(1),
-            MustChangePassword: r.GetInt32(2) == 1,
-            TotpEnabled: r.GetInt32(3) == 1,
-            EncryptedTotpSecret: r.IsDBNull(4) ? null : r.GetString(4),
-            Roles: roles,
-            StaffRole: staffRoleById,
-            PersonId: r.GetInt32(7),
-            Require2FA: r.GetInt32(8) == 1);
+        if (userType == "Admin") roles.Add("Admin");
+        else if (staffRole != StaffRoles.Solo) roles.Add("Customer");
+        return new LoginFlags(r.GetInt32(0), r.GetString(1), r.GetInt32(2) == 1, roles, staffRole, r.GetInt32(5));
     }
 
     /// <summary>Sets or clears the per-user Require2FA flag (admin use).</summary>
@@ -736,5 +717,196 @@ public class UserDb
         byte[] actual = kdf.GetBytes(expected.Length);
 
         return CryptographicOperations.FixedTimeEquals(actual, expected);
+    }
+
+    // ── Magic Links ──────────────────────────────────────────────────────────
+
+    public string CreateMagicLink(int personId)
+    {
+        var token = Random.Shared.Next(100000, 999999).ToString(); // 6-digit code
+        var expiresAt = DateTime.UtcNow.AddMinutes(10).ToString("O");
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Invalidate all previous unused tokens for this person
+        using var inv = conn.CreateCommand();
+        inv.CommandText = "UPDATE sys_magic_links SET UsedAt = datetime('now') WHERE PersonId = @pid AND UsedAt IS NULL";
+        inv.Parameters.AddWithValue("@pid", personId);
+        inv.ExecuteNonQuery();
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "INSERT INTO sys_magic_links (PersonId, Token, ExpiresAt) VALUES (@pid, @tok, @exp)";
+        cmd.Parameters.AddWithValue("@pid", personId);
+        cmd.Parameters.AddWithValue("@tok", token);
+        cmd.Parameters.AddWithValue("@exp", expiresAt);
+        cmd.ExecuteNonQuery();
+
+        Console.WriteLine($"[Auth] Magic link created for PersonId={personId}, expires={expiresAt}");
+        return token;
+    }
+
+    /// <summary>Validates and consumes a magic link token. Returns PersonId or null.</summary>
+    public int? ValidateMagicLink(string token)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Id, PersonId, ExpiresAt, UsedAt FROM sys_magic_links WHERE Token = @tok";
+        cmd.Parameters.AddWithValue("@tok", token);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return null;
+
+        var id = r.GetInt32(0);
+        var personId = r.GetInt32(1);
+        var expiresAt = DateTime.Parse(r.GetString(2), null, System.Globalization.DateTimeStyles.RoundtripKind);
+        var usedAt = r.IsDBNull(3) ? (string?)null : r.GetString(3);
+
+        if (usedAt != null) { Console.WriteLine($"[Auth] Magic link already used (id={id})"); return null; }
+        if (DateTime.UtcNow > expiresAt) { Console.WriteLine($"[Auth] Magic link expired (id={id})"); return null; }
+
+        // Mark as used
+        using var upd = conn.CreateCommand();
+        upd.CommandText = "UPDATE sys_magic_links SET UsedAt = datetime('now') WHERE Id = @id";
+        upd.Parameters.AddWithValue("@id", id);
+        upd.ExecuteNonQuery();
+
+        Console.WriteLine($"[Auth] Magic link validated for PersonId={personId}");
+        return personId;
+    }
+
+    /// <summary>Gets the email for a person from core_persons.</summary>
+    public string? GetPersonEmail(int personId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Email FROM core_persons WHERE PersonId = @pid";
+        cmd.Parameters.AddWithValue("@pid", personId);
+        return cmd.ExecuteScalar() as string;
+    }
+
+    /// <summary>Gets the phone for a person from core_persons.</summary>
+    public string? GetPersonPhone(int personId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Phone FROM core_persons WHERE PersonId = @pid";
+        cmd.Parameters.AddWithValue("@pid", personId);
+        return cmd.ExecuteScalar() as string;
+    }
+
+    /// <summary>Gets the display name for a person.</summary>
+    public string? GetPersonDisplayName(int personId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT TRIM(FirstName || ' ' || COALESCE(NULLIF(LastName,''), '')) FROM core_persons WHERE PersonId = @pid";
+        cmd.Parameters.AddWithValue("@pid", personId);
+        return cmd.ExecuteScalar() as string;
+    }
+
+    /// <summary>Finds the UserId (core_users.Id) for a PersonId, preferring non-Solo active rows.</summary>
+    public LoginFlags? GetLoginFlagsByPersonId(int personId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT u.Id, u.Username, u.MustChangePassword, u.UserType, u.StaffRole, u.PersonId
+            FROM core_users u
+            WHERE u.PersonId = @pid AND u.IsActive = 1
+            ORDER BY CASE WHEN u.StaffRole = 'Solo' THEN 1 ELSE 0 END
+            LIMIT 1";
+        cmd.Parameters.AddWithValue("@pid", personId);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return null;
+        var userType = r.GetString(3);
+        var staffRole = r.GetString(4);
+        var roles = new List<string>();
+        if (userType == "Admin") roles.Add("Admin");
+        else if (staffRole != StaffRoles.Solo) roles.Add("Customer");
+        return new LoginFlags(r.GetInt32(0), r.GetString(1), r.GetInt32(2) == 1, roles, staffRole, r.GetInt32(5));
+    }
+
+    // ── Passkeys ─────────────────────────────────────────────────────────────
+
+    public record PasskeyInfo(int Id, int PersonId, byte[] CredentialId, byte[] PublicKey, int SignCount, string DeviceName, string CreatedAt);
+
+    public void AddPasskey(int personId, byte[] credentialId, byte[] publicKey, int signCount, string deviceName)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"INSERT INTO sys_passkeys (PersonId, CredentialId, PublicKey, SignCount, DeviceName)
+                            VALUES (@pid, @cid, @pk, @sc, @dn)";
+        cmd.Parameters.AddWithValue("@pid", personId);
+        cmd.Parameters.AddWithValue("@cid", credentialId);
+        cmd.Parameters.AddWithValue("@pk", publicKey);
+        cmd.Parameters.AddWithValue("@sc", signCount);
+        cmd.Parameters.AddWithValue("@dn", deviceName);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[Auth] Passkey registered for PersonId={personId}, device='{deviceName}'");
+    }
+
+    public List<PasskeyInfo> GetPasskeysByPerson(int personId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Id, PersonId, CredentialId, PublicKey, SignCount, DeviceName, CreatedAt FROM sys_passkeys WHERE PersonId = @pid ORDER BY CreatedAt DESC";
+        cmd.Parameters.AddWithValue("@pid", personId);
+        var list = new List<PasskeyInfo>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            var cid = new byte[r.GetBytes(2, 0, null, 0, 0)];
+            r.GetBytes(2, 0, cid, 0, cid.Length);
+            var pk = new byte[r.GetBytes(3, 0, null, 0, 0)];
+            r.GetBytes(3, 0, pk, 0, pk.Length);
+            list.Add(new PasskeyInfo(r.GetInt32(0), r.GetInt32(1), cid, pk, r.GetInt32(4), r.GetString(5), r.GetString(6)));
+        }
+        return list;
+    }
+
+    public PasskeyInfo? GetPasskeyByCredentialId(byte[] credentialId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Id, PersonId, CredentialId, PublicKey, SignCount, DeviceName, CreatedAt FROM sys_passkeys WHERE CredentialId = @cid";
+        cmd.Parameters.AddWithValue("@cid", credentialId);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return null;
+        var cid = new byte[r.GetBytes(2, 0, null, 0, 0)];
+        r.GetBytes(2, 0, cid, 0, cid.Length);
+        var pk = new byte[r.GetBytes(3, 0, null, 0, 0)];
+        r.GetBytes(3, 0, pk, 0, pk.Length);
+        return new PasskeyInfo(r.GetInt32(0), r.GetInt32(1), cid, pk, r.GetInt32(4), r.GetString(5), r.GetString(6));
+    }
+
+    public void UpdatePasskeySignCount(int id, int signCount)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE sys_passkeys SET SignCount = @sc WHERE Id = @id";
+        cmd.Parameters.AddWithValue("@sc", signCount);
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.ExecuteNonQuery();
+    }
+
+    public bool RemovePasskey(int id, int personId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM sys_passkeys WHERE Id = @id AND PersonId = @pid";
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.Parameters.AddWithValue("@pid", personId);
+        return cmd.ExecuteNonQuery() > 0;
     }
 }

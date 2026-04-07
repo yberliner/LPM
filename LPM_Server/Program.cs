@@ -20,6 +20,8 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.DataProtection;
 using LPM.Auth;
+// using Fido2NetLib;        // TODO: enable when passkey endpoints are wired up
+// using Fido2NetLib.Objects;
 
 // Save the original console output
 var originalConsoleOut = Console.Out;
@@ -133,6 +135,10 @@ builder.Services.AddScoped<LPM.Services.LpmCircuitHandler>();
 builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler, LPM.Services.LpmCircuitHandler>();
 builder.Services.AddHttpClient("sms");
 builder.Services.AddSingleton<LPM.Services.SmsService>();
+builder.Services.AddSingleton<LPM.Services.EmailService>();
+
+// TODO: Fido2 (WebAuthn / Passkeys) — enable when passkey endpoints are wired up
+// builder.Services.AddFido2(options => { ... });
 builder.Services.AddSingleton<LPM.Services.ImportJobService>();
 builder.Services.AddSingleton<LPM.Services.CompletionService>();
 builder.Services.AddSingleton<LPM.Services.QuestionService>();
@@ -161,6 +167,35 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
             : CookieSecurePolicy.Always;
         options.ExpireTimeSpan = TimeSpan.FromDays(36500);
         options.SlidingExpiration = true;
+        options.Events = new CookieAuthenticationEvents
+        {
+            OnValidatePrincipal = async context =>
+            {
+                var username = context.Principal?.FindFirst(ClaimTypes.Name)?.Value;
+                if (string.IsNullOrEmpty(username))
+                {
+                    context.RejectPrincipal();
+                    await context.HttpContext.SignOutAsync();
+                    return;
+                }
+                // Throttle: only check DB every 60 seconds (avoid per-request overhead on SignalR)
+                var lastCheck = context.Properties.GetString("LastActiveCheck");
+                if (lastCheck != null && DateTime.TryParse(lastCheck, null,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var lc) && (DateTime.UtcNow - lc).TotalSeconds < 60)
+                    return;
+                var db = context.HttpContext.RequestServices.GetRequiredService<UserDb>();
+                var flags = db.GetLoginFlags(username);
+                if (flags == null)
+                {
+                    context.RejectPrincipal();
+                    await context.HttpContext.SignOutAsync();
+                    Console.WriteLine($"[Auth] Rejected cookie for '{username}' — user inactive or not found");
+                    return;
+                }
+                context.Properties.SetString("LastActiveCheck", DateTime.UtcNow.ToString("O"));
+                context.ShouldRenew = true;
+            }
+        };
     });
 
 var app = builder.Build();
@@ -244,10 +279,6 @@ app.Use(async (ctx, next) =>
             {
                 if (gateFlags.MustChangePassword)
                 { ctx.Response.Redirect("/ChangePassword"); return; }
-                if ((gateFlags.Require2FA || gateFlags.TotpEnabled) && !gateFlags.TotpEnabled)
-                { ctx.Response.Redirect("/Setup2FA?voluntary=1"); return; }
-                if (gateDb.NeedsContactConfirm(gateFlags.UserId))
-                { ctx.Response.Redirect("/WelcomeContact"); return; }
             }
             ctx.Response.Redirect("/Home");
             return;
@@ -272,12 +303,10 @@ app.Use(async (ctx, next) =>
                         var flags = db.GetLoginFlagsById(userId);
                         if (flags != null)
                         {
-                            // Block auto-login if user must change password, set up 2FA, or confirm contact info
-                            if (flags.MustChangePassword
-                                || ((flags.Require2FA || flags.TotpEnabled) && !flags.TotpEnabled)
-                                || db.NeedsContactConfirm(userId))
+                            // Block auto-login if user must change password
+                            if (flags.MustChangePassword)
                             {
-                                Console.WriteLine($"[AutoLogin] '{flags.Username}' blocked — needs password change, 2FA setup, or contact confirmation");
+                                Console.WriteLine($"[AutoLogin] '{flags.Username}' blocked — needs password change");
                             }
                             else
                             {
@@ -344,8 +373,7 @@ static void ApplyAutoLogin(HttpContext ctx, UserDb db, IDataProtector dp, int us
         SetAutoLoginCookie(ctx, dp, userId, info.Value.PwdHashPrefix);
 }
 
-static string HomeOrContact(UserDb db, int userId)
-    => db.NeedsContactConfirm(userId) ? "/WelcomeContact" : "/Home";
+static string HomeOrContact(UserDb db, int userId) => "/Home";
 
 static async Task SignInUser(HttpContext ctx, UserDb db, string username,
     LPM.Auth.UserDb.LoginFlags flags)
@@ -398,8 +426,6 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db, IConfiguration conf
     LPM.Services.LoginRateLimit.ClearFailures(ip);
     var flags = db.GetLoginFlags(username)!;
 
-    bool require2fa     = flags.Require2FA || flags.TotpEnabled;
-
     // Step 1: force password change?
     if (flags.MustChangePassword)
     {
@@ -408,35 +434,44 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db, IConfiguration conf
         return Results.Redirect("/ChangePassword");
     }
 
-    // Step 2: 2FA not yet set up?
-    if (require2fa && !flags.TotpEnabled)
+    // Step 2: check trusted device
+    var trustedToken = ctx.Request.Cookies["lpm_trusted"];
+    if (trustedToken != null && db.GetTrustedDeviceUserId(trustedToken) == flags.UserId)
     {
-        ctx.Response.Cookies.Append("lpm_pending", flags.UserId.ToString(), PendingCookieOpts());
-        Console.WriteLine($"[Login] '{username}' must set up 2FA");
-        return Results.Redirect("/Setup2FA");
+        await SignInUser(ctx, db, username, flags);
+        ApplyAutoLogin(ctx, db, autoLoginProtector, flags.UserId);
+        Console.WriteLine($"[Login] '{username}' signed in via trusted device");
+        return Results.Redirect("/Home");
     }
 
-    // Step 3: 2FA enabled — check trusted device
-    if (require2fa && flags.TotpEnabled)
+    // Step 3: new/untrusted device — send magic link email
+    var email = db.GetPersonEmail(flags.PersonId);
+    if (string.IsNullOrWhiteSpace(email))
     {
-        var trustedToken = ctx.Request.Cookies["lpm_trusted"];
-        if (trustedToken != null && db.GetTrustedDeviceUserId(trustedToken) == flags.UserId)
-        {
-            await SignInUser(ctx, db, username, flags);
-            ApplyAutoLogin(ctx, db, autoLoginProtector, flags.UserId);
-            Console.WriteLine($"[Login] '{username}' signed in via trusted device");
-            return Results.Redirect(HomeOrContact(db, flags.UserId));
-        }
-        ctx.Response.Cookies.Append("lpm_pending", flags.UserId.ToString(), PendingCookieOpts());
-        Console.WriteLine($"[Login] '{username}' needs 2FA verification");
-        return Results.Redirect("/Login2FA");
+        Console.WriteLine($"[Login] '{username}' has no email — cannot verify device");
+        return Results.Redirect("/login?error=noemail");
     }
 
-    // No security steps required — sign in directly
-    await SignInUser(ctx, db, username, flags);
-    ApplyAutoLogin(ctx, db, autoLoginProtector, flags.UserId);
-    Console.WriteLine($"[Login] '{username}' signed in (no 2FA/pwd-chg required)");
-    return Results.Redirect(HomeOrContact(db, flags.UserId));
+    var emailSvc = ctx.RequestServices.GetRequiredService<LPM.Services.EmailService>();
+    var smsSvc = ctx.RequestServices.GetRequiredService<LPM.Services.SmsService>();
+    var code = db.CreateMagicLink(flags.PersonId);
+    var displayName = db.GetPersonDisplayName(flags.PersonId) ?? username;
+    var emailSent = await emailSvc.SendVerificationCodeAsync(email, code, displayName);
+    if (!emailSent)
+    {
+        Console.WriteLine($"[Login] FAILED to send verification email to '{email}' for '{username}'");
+        return Results.Redirect("/login?error=emailfail");
+    }
+    // Also send SMS if phone is available
+    var phone = db.GetPersonPhone(flags.PersonId);
+    if (!string.IsNullOrWhiteSpace(phone))
+    {
+        await smsSvc.SendSmsAsync(phone, $"LPM verification code: {code}");
+        Console.WriteLine($"[Login] SMS sent to '{phone}' for '{username}'");
+    }
+    ctx.Response.Cookies.Append("lpm_pending", flags.UserId.ToString(), PendingCookieOpts());
+    Console.WriteLine($"[Login] Verification code sent to '{email}' for '{username}'");
+    return Results.Redirect($"/VerifyDevice?email={Uri.EscapeDataString(email)}");
 }).DisableAntiforgery();
 
 // ── /loginpost-changepwd ──────────────────────────────────────────────────
@@ -470,131 +505,126 @@ app.MapPost("/loginpost-changepwd", async (HttpContext ctx, UserDb db, IConfigur
     Console.WriteLine($"[Login] userId={userId} changed password");
 
     // Re-fetch flags (MustChangePassword now 0)
-    var username = ctx.User.Identity?.Name ?? "";
-    // Need to find username by userId
     var flags2 = db.GetLoginFlagsById(userId);
     if (flags2 == null) return Results.Redirect("/login");
 
-    bool require2fa = flags2.Require2FA || flags2.TotpEnabled;
-
-    if (require2fa && !flags2.TotpEnabled)
+    // Check trusted device — if trusted, sign in directly
+    var trustedToken = ctx.Request.Cookies["lpm_trusted"];
+    if (trustedToken != null && db.GetTrustedDeviceUserId(trustedToken) == userId)
     {
-        ctx.Response.Cookies.Append("lpm_pending", userId.ToString(), PendingCookieOpts());
-        return Results.Redirect("/Setup2FA");
-    }
-    if (require2fa && flags2.TotpEnabled)
-    {
-        var trustedToken = ctx.Request.Cookies["lpm_trusted"];
-        if (trustedToken != null && db.GetTrustedDeviceUserId(trustedToken) == userId)
-        {
-            await SignInUser(ctx, db, flags2.Username, flags2);
-            ApplyAutoLogin(ctx, db, autoLoginProtector, flags2.UserId);
-            return Results.Redirect(HomeOrContact(db, flags2.UserId));
-        }
-        ctx.Response.Cookies.Append("lpm_pending", userId.ToString(), PendingCookieOpts());
-        return Results.Redirect("/Login2FA");
+        await SignInUser(ctx, db, flags2.Username, flags2);
+        ApplyAutoLogin(ctx, db, autoLoginProtector, flags2.UserId);
+        return Results.Redirect("/Home");
     }
 
-    await SignInUser(ctx, db, flags2.Username, flags2);
-    ApplyAutoLogin(ctx, db, autoLoginProtector, flags2.UserId);
-    return Results.Redirect(HomeOrContact(db, flags2.UserId));
+    // Not trusted — send magic link
+    var email = db.GetPersonEmail(flags2.PersonId);
+    if (string.IsNullOrWhiteSpace(email))
+    {
+        // No email — sign in directly (password change was the security step)
+        await SignInUser(ctx, db, flags2.Username, flags2);
+        ApplyAutoLogin(ctx, db, autoLoginProtector, flags2.UserId);
+        return Results.Redirect("/Home");
+    }
+
+    var emailSvc = ctx.RequestServices.GetRequiredService<LPM.Services.EmailService>();
+    var smsSvc = ctx.RequestServices.GetRequiredService<LPM.Services.SmsService>();
+    var mlCode = db.CreateMagicLink(flags2.PersonId);
+    var dispName = db.GetPersonDisplayName(flags2.PersonId) ?? flags2.Username;
+    var mlSent = await emailSvc.SendVerificationCodeAsync(email, mlCode, dispName);
+    if (!mlSent)
+        return Results.Redirect("/login?error=emailfail");
+    var mlPhone = db.GetPersonPhone(flags2.PersonId);
+    if (!string.IsNullOrWhiteSpace(mlPhone))
+        await smsSvc.SendSmsAsync(mlPhone, $"LPM verification code: {mlCode}");
+    ctx.Response.Cookies.Append("lpm_pending", userId.ToString(), PendingCookieOpts());
+    return Results.Redirect($"/VerifyDevice?email={Uri.EscapeDataString(email)}");
 }).DisableAntiforgery();
 
-// ── /loginpost-setup2fa ───────────────────────────────────────────────────
+// ── /verify-code ─────────────────────────────────────────────────────────
 
-app.MapPost("/loginpost-setup2fa", async (HttpContext ctx, UserDb db, IConfiguration config) =>
+app.MapPost("/verify-code", async (HttpContext ctx, UserDb db) =>
 {
     var form = await ctx.Request.ReadFormAsync();
-    var code         = form["code"].ToString();
-    var rawSecretB64 = form["rawSecret"].ToString();
-    bool voluntary   = form["voluntary"].ToString() == "1";
-
-    int userId;
-    if (voluntary)
+    var code = form["code"].ToString().Trim();
+    // Recover email for error redirects
+    var pendingEmail = "";
+    if (int.TryParse(ctx.Request.Cookies["lpm_pending"], out var pendingUid))
     {
-        // User is already authenticated — look up userId from username claim
-        var volUsername = ctx.User.Identity?.Name;
-        if (string.IsNullOrEmpty(volUsername))
-            return Results.Redirect("/UserSettings");
-        var volFlags = db.GetLoginFlags(volUsername);
-        if (volFlags == null)
-            return Results.Redirect("/UserSettings");
-        userId = volFlags.UserId;
+        var pendingFlags = db.GetLoginFlagsById(pendingUid);
+        if (pendingFlags != null)
+            pendingEmail = db.GetPersonEmail(pendingFlags.PersonId) ?? "";
     }
-    else
+    var emailParam = string.IsNullOrEmpty(pendingEmail) ? "" : $"&email={Uri.EscapeDataString(pendingEmail)}";
+
+    if (string.IsNullOrEmpty(code))
+        return Results.Redirect($"/VerifyDevice?error=empty{emailParam}");
+
+    var personId = db.ValidateMagicLink(code);
+    if (personId == null)
     {
-        if (!int.TryParse(ctx.Request.Cookies["lpm_pending"], out userId) && ctx.User.Identity?.IsAuthenticated == true)
-        {
-            // lpm_pending expired but user is authenticated — fall back to auth claims
-            var authUser = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
-            var authFlags = db.GetLoginFlags(authUser);
-            if (authFlags != null) userId = authFlags.UserId;
-        }
-        if (userId == 0)
-            return Results.Redirect("/login");
+        Console.WriteLine($"[Auth] Invalid or expired code: '{code}'");
+        return Results.Redirect($"/VerifyDevice?error=invalid{emailParam}");
     }
 
-    byte[] rawSecret;
-    try { rawSecret = Convert.FromBase64String(rawSecretB64); }
-    catch { return Results.Redirect($"/Setup2FA?error=1{(voluntary ? "&voluntary=1" : "")}"); }
+    var flags = db.GetLoginFlagsByPersonId(personId.Value);
+    if (flags == null)
+        return Results.Redirect("/login");
 
-    if (!UserDb.VerifyTotpCodeRaw(rawSecret, code))
-    {
-        Console.WriteLine($"[2FA] Setup verification failed for userId={userId}");
-        return Results.Redirect($"/Setup2FA?error=1&rs={Uri.EscapeDataString(rawSecretB64)}{(voluntary ? "&voluntary=1" : "")}");
-    }
-
-    var encKey = config["TotpEncryptionKey"] ?? throw new InvalidOperationException("TotpEncryptionKey not configured");
-    var encrypted = UserDb.EncryptTotpRaw(rawSecret, encKey);
-    db.SaveEncryptedTotpSecret(userId, encrypted);
-
-    Console.WriteLine($"[2FA] Setup complete for userId={userId} (voluntary={voluntary})");
-
-    if (voluntary)
-    {
-        // If Require2FA was set (forced setup from Home/WelcomeContact), go to Home
-        var volFlags = db.GetLoginFlagsById(userId);
-        if (volFlags?.Require2FA == true)
-            return Results.Redirect(HomeOrContact(db, userId));
-        return Results.Redirect("/UserSettings?2fa=ok");
-    }
-
-    var flags = db.GetLoginFlagsById(userId);
-    if (flags == null) return Results.Redirect("/login");
-
-    SetTrustCookie(ctx, db, userId);
+    SetTrustCookie(ctx, db, flags.UserId);
     await SignInUser(ctx, db, flags.Username, flags);
-    ApplyAutoLogin(ctx, db, autoLoginProtector, userId);
-    return Results.Redirect(HomeOrContact(db, userId));
+    ApplyAutoLogin(ctx, db, autoLoginProtector, flags.UserId);
+    Console.WriteLine($"[Auth] Code verified — '{flags.Username}' signed in, device trusted");
+    return Results.Redirect("/Home");
 }).DisableAntiforgery();
 
-// ── /loginpost-verify2fa ──────────────────────────────────────────────────
+// ── Passkey endpoints (TODO: wire up Fido2 v4 API in next session) ──────
 
-app.MapPost("/loginpost-verify2fa", async (HttpContext ctx, UserDb db, IConfiguration config) =>
+app.MapPost("/api/passkey/login-options", async (HttpContext ctx, UserDb db) =>
 {
-    if (!int.TryParse(ctx.Request.Cookies["lpm_pending"], out var userId))
-        return Results.Redirect("/login");
-
     var form = await ctx.Request.ReadFormAsync();
-    var code = form["code"].ToString();
+    var username = form["username"].ToString();
+    if (string.IsNullOrEmpty(username)) return Results.BadRequest("Username required");
 
-    var flags = db.GetLoginFlagsById(userId);
-    if (flags == null || flags.EncryptedTotpSecret == null)
-        return Results.Redirect("/login");
+    var loginFlags = db.GetLoginFlags(username);
+    if (loginFlags == null) return Results.BadRequest("User not found");
 
-    var encKey = config["TotpEncryptionKey"] ?? throw new InvalidOperationException("TotpEncryptionKey not configured");
+    var passkeys = db.GetPasskeysByPerson(loginFlags.PersonId);
+    return Results.Json(new { hasPasskeys = passkeys.Count > 0 });
+}).DisableAntiforgery();
 
-    if (!db.VerifyTotpCode(flags.EncryptedTotpSecret, code, encKey))
-    {
-        Console.WriteLine($"[2FA] Verify failed for userId={userId}");
-        return Results.Redirect("/Login2FA?error=1");
-    }
+app.MapPost("/api/passkey/login", (HttpContext ctx) =>
+{
+    // TODO: Implement Fido2 v4 assertion verification
+    return Results.BadRequest("Passkey login not yet implemented — use password + email verification");
+}).DisableAntiforgery();
 
-    SetTrustCookie(ctx, db, userId);
-    await SignInUser(ctx, db, flags.Username, flags);
-    ApplyAutoLogin(ctx, db, autoLoginProtector, userId);
-    Console.WriteLine($"[2FA] Verify success for userId={userId}");
-    return Results.Redirect(HomeOrContact(db, userId));
+app.MapPost("/api/passkey/register-options", (HttpContext ctx) =>
+{
+    if (ctx.User.Identity?.IsAuthenticated != true) return Results.Unauthorized();
+    // TODO: Implement Fido2 v4 credential creation options
+    return Results.BadRequest("Passkey registration not yet implemented");
+}).DisableAntiforgery();
+
+app.MapPost("/api/passkey/register", (HttpContext ctx) =>
+{
+    if (ctx.User.Identity?.IsAuthenticated != true) return Results.Unauthorized();
+    // TODO: Implement Fido2 v4 credential registration
+    return Results.BadRequest("Passkey registration not yet implemented");
+}).DisableAntiforgery();
+
+app.MapPost("/api/passkey/remove", (HttpContext ctx, UserDb db) =>
+{
+    if (ctx.User.Identity?.IsAuthenticated != true) return Results.Unauthorized();
+    var personIdStr = ctx.User.FindFirst("PersonId")?.Value;
+    if (!int.TryParse(personIdStr, out var personId)) return Results.Unauthorized();
+
+    var form = ctx.Request.ReadFormAsync().GetAwaiter().GetResult();
+    if (!int.TryParse(form["id"].ToString(), out var passkeyId)) return Results.BadRequest("Invalid id");
+
+    var removed = db.RemovePasskey(passkeyId, personId);
+    Console.WriteLine($"[Auth] Passkey {passkeyId} removed for PersonId={personId}: {removed}");
+    return Results.Json(new { success = removed });
 }).DisableAntiforgery();
 
 // Logout endpoint — clears auth cookie and redirects to login

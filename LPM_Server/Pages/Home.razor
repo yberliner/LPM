@@ -1547,13 +1547,6 @@
                 Nav.NavigateTo("/ChangePassword");
                 return;
             }
-            // Force 2FA setup if required but not yet enabled
-            if ((loginFlags.Require2FA || loginFlags.TotpEnabled) && !loginFlags.TotpEnabled)
-            {
-                Console.WriteLine("[Home] Redirecting to /Setup2FA — 2FA required but not set up");
-                Nav.NavigateTo("/Setup2FA?voluntary=1");
-                return;
-            }
             if (UserDb.NeedsContactConfirm(coreUserId))
             {
                 Console.WriteLine("[Home] Redirecting to /WelcomeContact");

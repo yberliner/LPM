@@ -1453,7 +1453,7 @@
                         <table class="cedb-table">
                             <thead>
                                 <tr>
-                                    @if (t.Name == "fin_purchases") { <th style="width:40px;"></th> }
+                                    @if (t.Name is "fin_purchases" or "sys_passkeys" or "sys_magic_links") { <th style="width:40px;"></th> }
                                     @foreach (var col in t.Columns) { <th>@col</th> }
                                 </tr>
                             </thead>
@@ -1471,6 +1471,19 @@
                                             <td style="white-space:nowrap;">
                                                 <button class="btn btn-sm py-0 px-1 diag-delsess-btn" title="Delete Purchase (cascade)"
                                                         @onclick="() => OpenDeletePurchaseModal(purchPkVal, t, capturedRow)">
+                                                    <i class="ri-delete-bin-2-line"></i>
+                                                </button>
+                                            </td>
+                                        }
+                                        else if (t.Name is "sys_passkeys" or "sys_magic_links")
+                                        {
+                                            int pkIdx = t.Columns.IndexOf("Id");
+                                            string pkVal = pkIdx >= 0 && pkIdx < row.Count ? row[pkIdx] : "";
+                                            var captTblName = t.Name;
+                                            var captPkCol = "Id";
+                                            <td style="white-space:nowrap;">
+                                                <button class="btn btn-sm py-0 px-1 diag-delsess-btn" title="Delete row"
+                                                        @onclick="() => DeleteRow(captTblName, captPkCol, pkVal)">
                                                     <i class="ri-delete-bin-2-line"></i>
                                                 </button>
                                             </td>
@@ -2500,7 +2513,9 @@
             ("sys_trusted_devices",  "ri-device-line",         "ORDER BY CreatedAt", null),
             ("sys_shrunk_files",     "ri-file-reduce-line",    "ORDER BY Id DESC",   null),
             ("sys_activity_log",     "ri-history-line",        "ORDER BY Id DESC",   null),
-            ("sys_financial_config", "ri-money-dollar-circle-line", "ORDER BY Id",   null)));
+            ("sys_financial_config", "ri-money-dollar-circle-line", "ORDER BY Id",   null),
+            ("sys_passkeys",         "ri-fingerprint-line",    "ORDER BY Id DESC",   null),
+            ("sys_magic_links",      "ri-mail-send-line",      "ORDER BY Id DESC",   null)));
 
         var tLkp = Task.Run(() => Group(
             ("lkp_grades",           "ri-medal-line",     "ORDER BY SortOrder",       null),
@@ -2769,6 +2784,7 @@
             "cs_work_log", "cs_reviews", "cs_case_supervisors",
             "sys_weekly_remarks", "sys_auditor_pc_permissions",
             "sys_staff_messages", "sys_staff_pc_list", "sys_trusted_devices",
+            "sys_passkeys", "sys_magic_links",
             "core_user_roles", "core_users", "core_pcs", "core_persons",
         })
         {

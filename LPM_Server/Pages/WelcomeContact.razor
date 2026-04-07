@@ -51,50 +51,31 @@
             </div>
 
             <div class="wc-form">
-                <!-- Email -->
+                <!-- Email (read-only) -->
                 <div class="wc-field">
                     <label class="wc-label">Email address</label>
                     <div class="wc-input-wrap">
-                        <input class="@EmailInputClass"
-                               type="email"
-                               placeholder="your@email.com"
-                               value="@_email"
-                               @oninput="OnEmailInput" />
-                        @if (_emailTouched && _emailValid)
-                        {
-                            <span class="wc-valid-icon"><i class="ri-check-line"></i></span>
-                        }
-                        @if (_emailTouched && !_emailValid && !string.IsNullOrEmpty(_email))
-                        {
-                            <span class="wc-invalid-icon"><i class="ri-close-line"></i></span>
-                        }
+                        <input class="wc-input" type="email" value="@_email" disabled
+                               style="opacity:.7;cursor:not-allowed;" />
                     </div>
                 </div>
 
-                <!-- Phone -->
+                <!-- Phone (read-only) -->
                 <div class="wc-field">
                     <label class="wc-label">Phone number</label>
-                    <div class="wc-phone-row">
-                        <SpkCountryPicker @bind-SelectedIndex="_selectedCountryIndex" />
-                        <input class="wc-input wc-phone-input @(_phoneTouched && !IsPhoneValid() ? "wc-input-invalid" : (_phoneTouched && IsPhoneValid() ? "wc-input-valid" : ""))"
-                               type="tel"
-                               placeholder="054 499 4470"
-                               value="@_localPhone"
-                               @oninput="OnPhoneInput" />
+                    <div class="wc-input-wrap">
+                        <input class="wc-input" type="tel" value="@_normalizedPhone" disabled
+                               style="opacity:.7;cursor:not-allowed;" />
                     </div>
-                    @if (_phoneTouched && !IsPhoneValid() && !string.IsNullOrWhiteSpace(_localPhone))
-                    {
-                        <div class="wc-phone-error">@PhoneErrorMessage()</div>
-                    }
-                    else if (!string.IsNullOrWhiteSpace(_normalizedPhone) && IsPhoneValid())
-                    {
-                        <div class="wc-phone-preview">Will be saved as: <strong>@_normalizedPhone</strong></div>
-                    }
                 </div>
 
-                <button class="wc-submit-btn" @onclick="Submit" disabled="@(!CanSubmit)">
-                    <i class="@(_hasExistingData ? "ri-arrow-right-circle-line" : "ri-send-plane-line")"></i>
-                    @(_hasExistingData ? "Go" : "Save & Continue")
+                <div class="wc-phone-preview" style="text-align:center;margin-bottom:12px;">
+                    <i class="ri-information-line me-1"></i>Contact your administrator to update email or phone
+                </div>
+
+                <button class="wc-submit-btn" @onclick="Submit">
+                    <i class="ri-arrow-right-circle-line"></i>
+                    Continue
                 </button>
 
                 @if (!string.IsNullOrEmpty(_error))
@@ -575,27 +556,15 @@
 
     private async Task Submit()
     {
-        if (!CanSubmit) return;
         _error = "";
         try
         {
-            PcSvc.SaveContactInfo(_personId, _email, _normalizedPhone);
             if (_userId > 0)
                 UserDb.SetContactConfirmed(_userId);
-            Console.WriteLine($"[WelcomeContact] Contact confirmed: user='{_username}' email='{_email}' phone='{_normalizedPhone}' solo={_isSolo} firstTime={!_hasExistingData}");
+            Console.WriteLine($"[WelcomeContact] Contact confirmed (read-only): user='{_username}'");
             _submitted = true;
             StateHasChanged();
-            await Task.Delay(2500);
-            // Check if 2FA setup is still needed before going Home
-            if (_userId > 0)
-            {
-                var flags = UserDb.GetLoginFlagsById(_userId);
-                if (flags != null && (flags.Require2FA || flags.TotpEnabled) && !flags.TotpEnabled)
-                {
-                    Nav.NavigateTo("/Setup2FA?voluntary=1");
-                    return;
-                }
-            }
+            await Task.Delay(1500);
             Nav.NavigateTo("/Home");
         }
         catch (Exception ex)
