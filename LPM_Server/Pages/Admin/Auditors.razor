@@ -1,6 +1,8 @@
 @page "/Admin/Auditors"
 @attribute [Authorize(Roles = "Admin")]
 @inject LPM.Services.AuditorService AuditorSvc
+@inject LPM.Auth.UserDb UserDb
+@inject LPM.Services.PcService PcSvc
 @using Microsoft.AspNetCore.Authorization
 @using LPM.Services
 
@@ -432,12 +434,19 @@
                 <div class="aud-wizard-list">
                     @foreach (var pc in WizardFilteredPcs)
                     {
-                        <div class="aud-wizard-pc-row @(_wizSelectedPcId == pc.PcId ? "aud-wizard-pc-selected" : "")"
+                        var hasContact = _pcContactStatus.TryGetValue(pc.PcId, out var cs) && cs;
+                        <div class="aud-wizard-pc-row @(_wizSelectedPcId == pc.PcId ? "aud-wizard-pc-selected" : "") @(_wizWarnPcId == pc.PcId ? "aud-wizard-pc-warn" : "")"
                              @onclick="() => WizSelectPc(pc)">
                             <div class="aud-wizard-pc-avatar">
                                 @(pc.FullName.Length > 0 ? pc.FullName[0].ToString().ToUpper() : "?")
                             </div>
-                            <span>@pc.FullName</span>
+                            <div class="d-flex flex-column flex-grow-1 overflow-hidden">
+                                <span>@pc.FullName</span>
+                                @if (!hasContact)
+                                {
+                                    <span class="aud-wizard-no-contact"><i class="ri-error-warning-line me-1"></i>No email/phone</span>
+                                }
+                            </div>
                             @if (_wizSelectedPcId == pc.PcId)
                             {
                                 <i class="ri-check-line ms-auto text-primary"></i>
@@ -449,6 +458,17 @@
                         <div class="text-muted small text-center py-3">No PCs available</div>
                     }
                 </div>
+                @if (_wizWarnPcId.HasValue)
+                {
+                    <div class="aud-wizard-warn-toast">
+                        <i class="ri-shield-cross-line"></i>
+                        <div>
+                            <strong>@_contactWarningName</strong> doesn't have a valid email and phone number.
+                            Without these, they won't be able to log in. Please update their contact info in the
+                            <strong>PCs</strong> screen first.
+                        </div>
+                    </div>
+                }
             </div>
             <div class="aud-wizard-footer">
                 <button class="btn btn-link text-muted btn-sm" @onclick="CloseWizard">Cancel</button>
@@ -642,6 +662,17 @@
     .aud-wizard-pc-row:last-child { border-bottom: none; }
     .aud-wizard-pc-row:hover { background: #f8fafc; }
     .aud-wizard-pc-selected { background: #eff6ff !important; color: #1e40af !important; }
+    .aud-wizard-pc-warn { animation: audWarn .4s ease; }
+    @@keyframes audWarn { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-5px)} 50%{transform:translateX(5px)} 75%{transform:translateX(-5px)} }
+    .aud-wizard-no-contact { font-size:.7rem;color:#f97316;font-weight:600;margin-top:1px; }
+    .aud-wizard-warn-toast {
+        display:flex;align-items:flex-start;gap:10px;margin-top:12px;padding:12px 14px;
+        background:linear-gradient(135deg,#fef2f2,#fff7ed);border:1.5px solid #fecaca;
+        border-radius:12px;font-size:.82rem;color:#991b1b;line-height:1.5;
+        animation:audToastIn .3s ease;
+    }
+    .aud-wizard-warn-toast i { font-size:1.2rem;color:#ef4444;flex-shrink:0;margin-top:2px; }
+    @@keyframes audToastIn { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:none} }
     .aud-wizard-pc-avatar {
         width: 30px; height: 30px; border-radius: 50%;
         background: #6366f1; color: #fff !important;
@@ -899,6 +930,15 @@
         _wizUsername      = "";
         _wizPassword      = "";
         _wizError         = "";
+        _wizWarnPcId      = null;
+        _pcContactStatus.Clear();
+        // Pre-load contact status for all available PCs
+        foreach (var pc in _availPcs)
+        {
+            var email = UserDb.GetPersonEmail(pc.PcId) ?? "";
+            var phone = UserDb.GetPersonPhone(pc.PcId) ?? "";
+            _pcContactStatus[pc.PcId] = !string.IsNullOrWhiteSpace(email) && email.Contains('@') && phone.Length >= 5;
+        }
         _showWizard       = true;
     }
 
@@ -906,6 +946,25 @@
 
     void WizSelectPc(AvailablePcItem pc)
     {
+        _wizWarnPcId = null;
+
+        // Check contact validity
+        if (!_pcContactStatus.ContainsKey(pc.PcId))
+        {
+            var email = UserDb.GetPersonEmail(pc.PcId) ?? "";
+            var phone = UserDb.GetPersonPhone(pc.PcId) ?? "";
+            _pcContactStatus[pc.PcId] = !string.IsNullOrWhiteSpace(email) && email.Contains('@') && phone.Length >= 5;
+        }
+
+        if (!_pcContactStatus[pc.PcId])
+        {
+            _wizWarnPcId = pc.PcId;
+            _contactWarningName = pc.FullName;
+            _wizSelectedPcId = null;
+            _wizSelectedPcName = "";
+            return;
+        }
+
         _wizSelectedPcId   = pc.PcId;
         _wizSelectedPcName = pc.FullName;
     }
@@ -923,6 +982,10 @@
     void WizBack() { _wizStep = 1; _wizError = ""; }
 
     void WizSetRole(string role) { _wizRole = role; }
+
+    string _contactWarningName = "";
+    int? _wizWarnPcId;
+    Dictionary<int, bool> _pcContactStatus = new();
 
     void WizCreate()
     {

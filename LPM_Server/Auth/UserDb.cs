@@ -273,8 +273,8 @@ public class UserDb
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO core_users (PersonId, Username, PasswordHash, StaffRole, UserType, GradeId, AllowAll, IsActive)
-            VALUES (@pid, @u, @h, @sr, @ut, @gid, @aa, 1)";
+            INSERT INTO core_users (PersonId, Username, PasswordHash, StaffRole, UserType, GradeId, AllowAll, IsActive, MustChangePassword, ContactConfirmed, TotpEnabled, TotpSecret, Require2FA)
+            VALUES (@pid, @u, @h, @sr, @ut, @gid, @aa, 1, 1, 0, -999, 'DEPRECATED', -999)";
         cmd.Parameters.AddWithValue("@pid", personId);
         cmd.Parameters.AddWithValue("@u", username.Trim());
         cmd.Parameters.AddWithValue("@h", HashPassword(password));
@@ -598,8 +598,8 @@ public class UserDb
 
         using var insertCmd = conn.CreateCommand();
         insertCmd.CommandText = @"
-            INSERT INTO core_users (PersonId, Username, PasswordHash, StaffRole, UserType, IsActive, MustChangePassword, ContactConfirmed, AllowAll, SendSms)
-            VALUES (@pid, @u, @h, 'Solo', 'Standard', 1, 1, 0, 0, 1)";
+            INSERT INTO core_users (PersonId, Username, PasswordHash, StaffRole, UserType, IsActive, MustChangePassword, ContactConfirmed, AllowAll, SendSms, TotpEnabled, TotpSecret, Require2FA)
+            VALUES (@pid, @u, @h, 'Solo', 'Standard', 1, 1, 0, 0, 1, -999, 'DEPRECATED', -999)";
         insertCmd.Parameters.AddWithValue("@pid", pcId);
         insertCmd.Parameters.AddWithValue("@u", finalUsername);
         insertCmd.Parameters.AddWithValue("@h", HashPassword(password));
