@@ -208,6 +208,67 @@
             </div>
         </div>
 
+        @* ── Passkeys Card ── *@
+        <div class="col-12">
+            <div class="card custom-card shadow-sm" style="border-radius:16px;border:none;">
+                <div class="card-header settings-card-header" style="background:linear-gradient(135deg,#4f46e5,#6366f1);">
+                    <div class="settings-card-header-icon">
+                        <i class="ri-fingerprint-fill"></i>
+                    </div>
+                    <div>
+                        <div class="settings-card-header-title">Passkeys</div>
+                        <div class="settings-card-header-sub">Sign in with fingerprint, Face ID, or PIN</div>
+                    </div>
+                </div>
+                <div class="card-body p-4">
+                    @if (_passkeys.Count > 0)
+                    {
+                        <div class="mb-3">
+                            @foreach (var pk in _passkeys)
+                            {
+                                <div class="d-flex align-items-center gap-3 py-2 px-3 mb-2" style="background:#f8fafc;border-radius:10px;">
+                                    <i class="ri-fingerprint-line" style="font-size:1.3rem;color:#6366f1;"></i>
+                                    <div class="flex-grow-1">
+                                        <div class="fw-semibold" style="font-size:.88rem;">@pk.DeviceName</div>
+                                        <div class="text-muted" style="font-size:.75rem;">Registered @pk.CreatedAt</div>
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => RemovePasskey(pk.Id)">
+                                        <i class="ri-delete-bin-line"></i>
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-3" style="font-size:.88rem;">
+                            No passkeys registered on this device. Register one to sign in with fingerprint or PIN.
+                        </p>
+                    }
+                    <button class="btn btn-sm"
+                            style="background:linear-gradient(135deg,#4f46e5,#6366f1);color:#fff;font-weight:600;border-radius:8px;padding:8px 20px;"
+                            @onclick="RegisterPasskey"
+                            disabled="@_registeringPasskey">
+                        @if (_registeringPasskey)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        else
+                        {
+                            <i class="ri-add-line me-1"></i>
+                        }
+                        Register Passkey on This Device
+                    </button>
+                    @if (_passkeyMsg != null)
+                    {
+                        <div class="alert @(_passkeyOk ? "alert-success" : "alert-danger") mt-2 mb-0 py-2" style="font-size:.85rem;border-radius:8px;">
+                            @_passkeyMsg
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 
@@ -392,10 +453,15 @@
     private string? _contactMsg;
     private bool    _contactOk;
 
-    // 2FA fields
-
+    // Device security fields
     private int _trustedDeviceCount;
     private int _userId;
+
+    // Passkey fields
+    private List<LPM.Auth.UserDb.PasskeyInfo> _passkeys = new();
+    private bool _registeringPasskey;
+    private string? _passkeyMsg;
+    private bool _passkeyOk;
 
     protected override async Task OnInitializedAsync()
     {
@@ -409,6 +475,7 @@
             _userId   = flags.UserId;
             _personId = flags.PersonId;
             _trustedDeviceCount = UserDb.GetTrustedDeviceCount(_userId);
+            _passkeys = UserDb.GetPasskeysByPerson(_personId);
         }
 
         // Show success message when returning from voluntary 2FA setup
@@ -491,9 +558,57 @@
         // Devices revoked — user will need to verify via email on next login from any device
     }
 
-    private void Disable2FA_Removed()
+    private async Task RegisterPasskey()
     {
-        // Removed — users cannot disable 2FA once enabled
+        _passkeyMsg = null;
+        _registeringPasskey = true;
+        StateHasChanged();
+
+        try
+        {
+            var supported = await JS.InvokeAsync<bool>("lpmPasskey.isSupported");
+            if (!supported)
+            {
+                _passkeyMsg = "Passkeys are not supported on this browser.";
+                _passkeyOk = false;
+                return;
+            }
+
+            var result = await JS.InvokeAsync<string>("lpmPasskeyFlow.register");
+            if (result == "success")
+            {
+                _passkeyMsg = "Passkey registered successfully!";
+                _passkeyOk = true;
+                _passkeys = UserDb.GetPasskeysByPerson(_personId);
+            }
+            else if (result == "cancelled")
+            {
+                _passkeyMsg = null; // user cancelled — no message
+            }
+            else
+            {
+                _passkeyMsg = "Failed to register passkey. Please try again.";
+                _passkeyOk = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _passkeyMsg = $"Error: {ex.Message}";
+            _passkeyOk = false;
+        }
+        finally
+        {
+            _registeringPasskey = false;
+            StateHasChanged();
+        }
+    }
+
+    private void RemovePasskey(int passkeyId)
+    {
+        UserDb.RemovePasskey(passkeyId, _personId);
+        _passkeys = UserDb.GetPasskeysByPerson(_personId);
+        _passkeyMsg = "Passkey removed.";
+        _passkeyOk = true;
     }
 
     private void HandleChangePassword()

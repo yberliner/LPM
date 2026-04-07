@@ -95,6 +95,42 @@
                             </button>
                         </div>
 
+                        @if (_passkeyNoUser)
+                        {
+                            <div class="alert alert-warning text-center mt-2" style="font-size:.85rem;" role="alert">
+                                <i class="ri-user-line me-1"></i> Enter your username first.
+                            </div>
+                        }
+                        else if (_passkeyError)
+                        {
+                            <div class="alert alert-danger text-center mt-2" style="font-size:.85rem;" role="alert">
+                                <i class="ri-fingerprint-line me-1"></i> Passkey login failed. Use password instead.
+                            </div>
+                        }
+
+                        <div class="d-flex align-items-center gap-3 mt-3">
+                            <hr class="flex-grow-1" style="border-color:#e2e8f0;" />
+                            <span style="color:#94a3b8;font-size:.78rem;white-space:nowrap;">or</span>
+                            <hr class="flex-grow-1" style="border-color:#e2e8f0;" />
+                        </div>
+
+                        <div class="d-grid mt-3">
+                            <button class="btn btn-outline-secondary d-flex align-items-center justify-content-center gap-2"
+                                    style="border-radius:10px;padding:10px;font-weight:600;"
+                                    @onclick="HandlePasskeyLogin"
+                                    disabled="@_passkeyLoading">
+                                @if (_passkeyLoading)
+                                {
+                                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                                }
+                                else
+                                {
+                                    <i class="ri-fingerprint-line" style="font-size:1.2rem;"></i>
+                                }
+                                Sign in with Passkey
+                            </button>
+                        </div>
+
                     </div>
                 </div>
             </div>
@@ -125,6 +161,9 @@
     private bool _emailFail;
     private bool _shake;
     private bool _loading;
+    private bool _passkeyLoading;
+    private bool _passkeyError;
+    private bool _passkeyNoUser;
 
     protected override void OnInitialized()
     {
@@ -158,6 +197,44 @@
         Console.WriteLine($"[Login] Login attempt for '{_username}'");
         await InvokeAsync(StateHasChanged);
         await JS.InvokeVoidAsync("submitLoginForm", _username, _password);
+    }
+
+    private async Task HandlePasskeyLogin()
+    {
+        _passkeyError = false;
+        _passkeyNoUser = false;
+        if (string.IsNullOrWhiteSpace(_username))
+        {
+            _passkeyNoUser = true;
+            StateHasChanged();
+            return;
+        }
+
+        _passkeyLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var supported = await JS.InvokeAsync<bool>("lpmPasskey.isSupported");
+            if (!supported) { _passkeyError = true; return; }
+
+            var result = await JS.InvokeAsync<string>("lpmPasskeyFlow.login", _username);
+            if (result == "success")
+                Nav.NavigateTo("/Home", forceLoad: true);
+            else if (result == "no_passkeys")
+                _passkeyError = true; // no passkeys registered — use password
+            else if (result != "cancelled")
+                _passkeyError = true;
+        }
+        catch
+        {
+            _passkeyError = true;
+        }
+        finally
+        {
+            _passkeyLoading = false;
+            StateHasChanged();
+        }
     }
 
     private async Task ShowErrorAsync()
