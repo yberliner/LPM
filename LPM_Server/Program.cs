@@ -20,8 +20,8 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.DataProtection;
 using LPM.Auth;
-// using Fido2NetLib;        // TODO: enable when passkey endpoints are wired up
-// using Fido2NetLib.Objects;
+using Fido2NetLib;
+using Fido2NetLib.Objects;
 
 // Save the original console output
 var originalConsoleOut = Console.Out;
@@ -137,8 +137,14 @@ builder.Services.AddHttpClient("sms");
 builder.Services.AddSingleton<LPM.Services.SmsService>();
 builder.Services.AddSingleton<LPM.Services.EmailService>();
 
-// TODO: Fido2 (WebAuthn / Passkeys) — enable when passkey endpoints are wired up
-// builder.Services.AddFido2(options => { ... });
+// Fido2 (WebAuthn / Passkeys)
+builder.Services.AddFido2(options =>
+{
+    options.ServerDomain = builder.Configuration["Fido2:ServerDomain"] ?? "localhost";
+    options.ServerName = builder.Configuration["Fido2:ServerName"] ?? "LPM System";
+    options.Origins = builder.Configuration.GetSection("Fido2:Origins").Get<HashSet<string>>()
+        ?? new HashSet<string> { "http://localhost:5000" };
+});
 builder.Services.AddSingleton<LPM.Services.ImportJobService>();
 builder.Services.AddSingleton<LPM.Services.CompletionService>();
 builder.Services.AddSingleton<LPM.Services.QuestionService>();
@@ -200,6 +206,9 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 
 var app = builder.Build();
 //Globals.ServiceProvider = app.Services;
+
+// In-memory store for Fido2 challenges (avoids cookie size limits)
+var fido2Store = new System.Collections.Concurrent.ConcurrentDictionary<string, string>();
 
 var autoLoginProtector = app.Services.GetRequiredService<IDataProtectionProvider>()
     .CreateProtector("lpm-autologin");
@@ -578,39 +587,159 @@ app.MapPost("/verify-code", async (HttpContext ctx, UserDb db) =>
     return Results.Redirect("/Home");
 }).DisableAntiforgery();
 
-// ── Passkey endpoints (TODO: wire up Fido2 v4 API in next session) ──────
+// ── Passkey endpoints ────────────────────────────────────────────────────
 
-app.MapPost("/api/passkey/login-options", async (HttpContext ctx, UserDb db) =>
+app.MapPost("/api/passkey/register-options", async (HttpContext ctx, UserDb db, IFido2 fido2) =>
 {
-    var form = await ctx.Request.ReadFormAsync();
-    var username = form["username"].ToString();
+    if (ctx.User.Identity?.IsAuthenticated != true) return Results.Unauthorized();
+    var personIdStr = ctx.User.FindFirst("PersonId")?.Value;
+    if (!int.TryParse(personIdStr, out var personId)) return Results.Unauthorized();
+
+    var displayName = db.GetPersonDisplayName(personId) ?? "User";
+    var username = ctx.User.Identity.Name ?? "";
+
+    var existingKeys = db.GetPasskeysByPerson(personId)
+        .Select(p => new PublicKeyCredentialDescriptor(PublicKeyCredentialType.PublicKey, p.CredentialId, null))
+        .ToList();
+
+    var fidoUser = new Fido2User
+    {
+        Id = Encoding.UTF8.GetBytes(personId.ToString()),
+        Name = username,
+        DisplayName = displayName
+    };
+
+    var authSelection = new AuthenticatorSelection
+    {
+        UserVerification = UserVerificationRequirement.Preferred,
+        ResidentKey = ResidentKeyRequirement.Preferred
+    };
+
+    var options = fido2.RequestNewCredential(new RequestNewCredentialParams
+    {
+        User = fidoUser,
+        ExcludeCredentials = existingKeys,
+        AuthenticatorSelection = authSelection,
+        AttestationPreference = AttestationConveyancePreference.None
+    });
+
+    fido2Store[$"reg_{personId}"] = options.ToJson();
+
+    return Results.Text(options.ToJson(), "application/json");
+}).DisableAntiforgery();
+
+app.MapPost("/api/passkey/register", async (HttpContext ctx, UserDb db, IFido2 fido2) =>
+{
+    if (ctx.User.Identity?.IsAuthenticated != true) return Results.Unauthorized();
+    var personIdStr = ctx.User.FindFirst("PersonId")?.Value;
+    if (!int.TryParse(personIdStr, out var personId)) return Results.Unauthorized();
+
+    if (!fido2Store.TryRemove($"reg_{personId}", out var optionsJson))
+        return Results.BadRequest("No pending registration");
+
+    var options = CredentialCreateOptions.FromJson(optionsJson);
+    var body = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
+    var response = System.Text.Json.JsonSerializer.Deserialize<AuthenticatorAttestationRawResponse>(body);
+    if (response == null) return Results.BadRequest("Invalid response");
+
+    try
+    {
+        var credential = await fido2.MakeNewCredentialAsync(new MakeNewCredentialParams
+        {
+            AttestationResponse = response,
+            OriginalOptions = options,
+            IsCredentialIdUniqueToUserCallback = async (args, ct) => db.GetPasskeyByCredentialId(args.CredentialId) == null
+        });
+
+        db.AddPasskey(personId, credential.Id, credential.PublicKey,
+            (int)credential.SignCount, "Passkey");
+
+        // challenge already removed from store via TryRemove above
+        Console.WriteLine($"[Auth] Passkey registered for PersonId={personId}");
+        return Results.Json(new { success = true });
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Auth] Passkey registration failed: {ex.Message}");
+        return Results.BadRequest(ex.Message);
+    }
+}).DisableAntiforgery();
+
+app.MapPost("/api/passkey/login-options", async (HttpContext ctx, UserDb db, IFido2 fido2) =>
+{
+    var body = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
+    var req = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(body);
+    var username = req.TryGetProperty("username", out var u) ? u.GetString() ?? "" : "";
     if (string.IsNullOrEmpty(username)) return Results.BadRequest("Username required");
 
     var loginFlags = db.GetLoginFlags(username);
-    if (loginFlags == null) return Results.BadRequest("User not found");
+    if (loginFlags == null) return Results.Json(new { hasPasskeys = false });
 
     var passkeys = db.GetPasskeysByPerson(loginFlags.PersonId);
-    return Results.Json(new { hasPasskeys = passkeys.Count > 0 });
+    if (passkeys.Count == 0) return Results.Json(new { hasPasskeys = false });
+
+    var allowedCredentials = passkeys
+        .Select(p => new PublicKeyCredentialDescriptor(PublicKeyCredentialType.PublicKey, p.CredentialId, null))
+        .ToList();
+
+    var options = fido2.GetAssertionOptions(new GetAssertionOptionsParams
+    {
+        AllowedCredentials = allowedCredentials,
+        UserVerification = UserVerificationRequirement.Preferred
+    });
+
+    var loginKey = $"login_{loginFlags.PersonId}";
+    fido2Store[loginKey] = options.ToJson();
+
+    return Results.Text(options.ToJson(), "application/json");
 }).DisableAntiforgery();
 
-app.MapPost("/api/passkey/login", (HttpContext ctx) =>
+app.MapPost("/api/passkey/login", async (HttpContext ctx, UserDb db, IFido2 fido2) =>
 {
-    // TODO: Implement Fido2 v4 assertion verification
-    return Results.BadRequest("Passkey login not yet implemented — use password + email verification");
-}).DisableAntiforgery();
+    // We need to find which user this assertion belongs to from the credential
+    var body = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
+    var response = System.Text.Json.JsonSerializer.Deserialize<AuthenticatorAssertionRawResponse>(body);
+    if (response == null) return Results.BadRequest("Invalid response");
 
-app.MapPost("/api/passkey/register-options", (HttpContext ctx) =>
-{
-    if (ctx.User.Identity?.IsAuthenticated != true) return Results.Unauthorized();
-    // TODO: Implement Fido2 v4 credential creation options
-    return Results.BadRequest("Passkey registration not yet implemented");
-}).DisableAntiforgery();
+    var passkey = db.GetPasskeyByCredentialId(response.RawId);
+    if (passkey == null) return Results.BadRequest("Unknown credential");
 
-app.MapPost("/api/passkey/register", (HttpContext ctx) =>
-{
-    if (ctx.User.Identity?.IsAuthenticated != true) return Results.Unauthorized();
-    // TODO: Implement Fido2 v4 credential registration
-    return Results.BadRequest("Passkey registration not yet implemented");
+    var loginKey = $"login_{passkey.PersonId}";
+    if (!fido2Store.TryRemove(loginKey, out var optionsJson))
+        return Results.BadRequest("No pending challenge");
+
+    var options = AssertionOptions.FromJson(optionsJson);
+
+    try
+    {
+        var result = await fido2.MakeAssertionAsync(new MakeAssertionParams
+        {
+            AssertionResponse = response,
+            OriginalOptions = options,
+            StoredPublicKey = passkey.PublicKey,
+            StoredSignatureCounter = (uint)passkey.SignCount,
+            IsUserHandleOwnerOfCredentialIdCallback = async (args, ct) => db.GetPasskeyByCredentialId(args.CredentialId) != null
+        });
+
+        db.UpdatePasskeySignCount(passkey.Id, (int)result.SignCount);
+
+        var flags = db.GetLoginFlagsByPersonId(passkey.PersonId);
+        if (flags == null) return Results.BadRequest("User not found");
+
+        SetTrustCookie(ctx, db, flags.UserId);
+        await SignInUser(ctx, db, flags.Username, flags);
+        ApplyAutoLogin(ctx, db, autoLoginProtector, flags.UserId);
+
+        // challenge already removed from store via TryRemove above
+
+        Console.WriteLine($"[Auth] Passkey login for '{flags.Username}'");
+        return Results.Json(new { success = true, redirect = "/Home" });
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Auth] Passkey login failed: {ex.Message}");
+        return Results.BadRequest("Verification failed");
+    }
 }).DisableAntiforgery();
 
 app.MapPost("/api/passkey/remove", (HttpContext ctx, UserDb db) =>
