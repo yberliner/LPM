@@ -506,6 +506,13 @@
                                             <i class="ri-exchange-funds-line" style="color:#0ea5e9;"></i>Transfer Balance
                                         </a>
                                     </li>
+                                    <li><hr class="dropdown-divider" /></li>
+                                    <li>
+                                        <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
+                                           @onclick="OpenPrintAllStaff">
+                                            <i class="ri-team-line" style="color:#6366f1;"></i>Print Staff Reports
+                                        </a>
+                                    </li>
                                     }
                                 </ul>
                             </div>
@@ -3242,6 +3249,310 @@
 
 <SpkScheduleMeetingModal @ref="_meetingModal" OnSaved="StateHasChanged" />
 
+@* ── Print All Staff Modal ── *@
+@if (_showPrintAllStaff)
+{
+<div class="psa-overlay" @onclick="() => { if (!_psaBusy) _showPrintAllStaff = false; }">
+    <div class="psa-modal" @onclick:stopPropagation="true">
+        @* Header *@
+        <div class="psa-header">
+            <div class="psa-header-glow"></div>
+            <div class="d-flex align-items-center gap-3" style="position:relative;z-index:1;">
+                <div class="psa-header-icon">
+                    <i class="ri-team-line"></i>
+                </div>
+                <div>
+                    <div class="psa-header-title">Print Staff Reports</div>
+                    <div class="psa-header-sub">Weekly overview for selected staff members</div>
+                </div>
+            </div>
+            @if (!_psaBusy)
+            {
+                <button class="psa-close" @onclick="() => _showPrintAllStaff = false"><i class="ri-close-line"></i></button>
+            }
+        </div>
+
+        @* Period selector *@
+        <div class="psa-period">
+            <button class="psa-period-btn" @onclick="PsaPrevWeek" disabled="@_psaBusy">
+                <i class="ri-arrow-left-s-line"></i>
+            </button>
+            <div class="psa-period-label">
+                <i class="ri-calendar-2-line me-1"></i>
+                @PsaDayLabel(_psaWeekStart) – @PsaDayLabel(_psaWeekStart.AddDays(6))
+            </div>
+            <button class="psa-period-btn" @onclick="PsaNextWeek"
+                    disabled="@(_psaBusy || _psaWeekStart >= DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today)))">
+                <i class="ri-arrow-right-s-line"></i>
+            </button>
+        </div>
+
+        @* Body *@
+        <div class="psa-body">
+            @if (!_psaBusy && !_psaDone)
+            {
+                @* Select all / deselect all *@
+                <div class="psa-toolbar">
+                    <button class="psa-select-btn" @onclick="PsaToggleAll">
+                        <i class="@(_psaList.All(s => s.Selected) ? "ri-checkbox-circle-fill" : "ri-checkbox-circle-line") me-1"></i>
+                        @(_psaList.All(s => s.Selected) ? "Deselect All" : "Select All")
+                    </button>
+                    <span class="psa-count">@_psaList.Count(s => s.Selected) of @_psaList.Count selected</span>
+                </div>
+
+                @* Staff list *@
+                <div class="psa-list">
+                    @for (int idx = 0; idx < _psaList.Count; idx++)
+                    {
+                        var i = idx;
+                        var item = _psaList[i];
+                        <label class="psa-item @(item.Selected ? "psa-item-selected" : "")" style="animation-delay: @(i * 30)ms;">
+                            <input type="checkbox" checked="@item.Selected"
+                                   @onchange="() => _psaList[i] = item with { Selected = !item.Selected }" />
+                            <div class="psa-avatar" style="background:@AvatarColor(item.Staff.PersonId);">
+                                @(item.Staff.FullName.Length > 0 ? char.ToUpper(item.Staff.FullName[0]) : '?')
+                            </div>
+                            <span class="psa-name">@item.Staff.FullName</span>
+                            <i class="ri-check-line psa-check"></i>
+                        </label>
+                    }
+                </div>
+            }
+            else if (_psaBusy)
+            {
+                @* Progress *@
+                <div class="psa-progress-zone">
+                    <div class="psa-progress-icon">
+                        <div class="psa-spin-ring"></div>
+                        <i class="ri-file-pdf-2-line psa-spin-icon"></i>
+                    </div>
+                    <div class="psa-progress-title">Generating Reports</div>
+                    <div class="psa-progress-sub">@_psaCurrentName</div>
+                    <div class="psa-bar-track">
+                        <div class="psa-bar-fill" style="width:@(_psaTotal > 0 ? (int)(100.0 * _psaProgress / _psaTotal) : 0)%;"></div>
+                    </div>
+                    <div class="psa-progress-count">@_psaProgress / @_psaTotal</div>
+                </div>
+            }
+            else if (_psaDone)
+            {
+                @* Done *@
+                <div class="psa-done-zone">
+                    <div class="psa-done-icon">
+                        <i class="ri-check-double-line"></i>
+                    </div>
+                    <div class="psa-done-title">PDF Ready!</div>
+                    <div class="psa-done-sub">@_psaTotal staff reports generated and downloaded</div>
+                </div>
+            }
+        </div>
+
+        @* Footer *@
+        <div class="psa-footer">
+            @if (!_psaBusy && !_psaDone)
+            {
+                <button class="psa-cancel-btn" @onclick="() => _showPrintAllStaff = false">Cancel</button>
+                <button class="psa-generate-btn" disabled="@(_psaList.Count(s => s.Selected) == 0)" @onclick="GenerateAllStaffPdf">
+                    <i class="ri-file-pdf-2-line me-2"></i>Generate PDF
+                </button>
+            }
+            else if (_psaDone)
+            {
+                <button class="psa-generate-btn" @onclick="() => { _showPrintAllStaff = false; _psaDone = false; }">
+                    <i class="ri-check-line me-1"></i>Done
+                </button>
+            }
+        </div>
+    </div>
+</div>
+}
+
+<style>
+    /* ── Print All Staff Modal ── */
+    .psa-overlay {
+        position: fixed; inset: 0; z-index: 10000;
+        background: rgba(0,0,0,.5); backdrop-filter: blur(4px);
+        display: flex; align-items: center; justify-content: center;
+        animation: psaFadeIn .25s ease;
+    }
+    @@keyframes psaFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    .psa-modal {
+        width: 480px; max-width: 95vw; max-height: 90vh;
+        border-radius: 20px; overflow: hidden;
+        background: #fff;
+        box-shadow: 0 25px 80px rgba(0,0,0,.3), 0 0 0 1px rgba(255,255,255,.1);
+        animation: psaSlideUp .35s cubic-bezier(.16,1,.3,1);
+        display: flex; flex-direction: column;
+    }
+    @@keyframes psaSlideUp { from { opacity: 0; transform: translateY(40px) scale(.96); } to { opacity: 1; transform: none; } }
+
+    /* Header */
+    .psa-header {
+        position: relative; padding: 24px 24px 20px;
+        background: linear-gradient(135deg, #4f46e5, #7c3aed, #a855f7);
+        display: flex; align-items: center; justify-content: space-between;
+        overflow: hidden;
+    }
+    .psa-header-glow {
+        position: absolute; top: -40px; right: -40px;
+        width: 160px; height: 160px; border-radius: 50%;
+        background: rgba(255,255,255,.12);
+        animation: psaPulseGlow 3s ease-in-out infinite;
+    }
+    @@keyframes psaPulseGlow { 0%,100% { transform: scale(1); opacity: .12; } 50% { transform: scale(1.2); opacity: .2; } }
+    .psa-header-icon {
+        width: 48px; height: 48px; border-radius: 14px;
+        background: rgba(255,255,255,.2); backdrop-filter: blur(8px);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.4rem; color: #fff;
+    }
+    .psa-header-title { font-size: 1.15rem; font-weight: 800; color: #fff; letter-spacing: -.01em; }
+    .psa-header-sub { font-size: .78rem; color: rgba(255,255,255,.7); margin-top: 2px; }
+    .psa-close {
+        position: relative; z-index: 1;
+        background: rgba(255,255,255,.15); border: none; color: #fff;
+        border-radius: 10px; width: 36px; height: 36px;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer; font-size: 1.1rem; transition: background .15s;
+    }
+    .psa-close:hover { background: rgba(255,255,255,.3); }
+
+    /* Period selector */
+    .psa-period {
+        display: flex; align-items: center; justify-content: center; gap: 12px;
+        padding: 12px 24px; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+    }
+    .psa-period-btn {
+        width: 32px; height: 32px; border-radius: 8px; border: 1.5px solid #e2e8f0;
+        background: #fff; color: #6366f1; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.1rem; transition: all .15s;
+    }
+    .psa-period-btn:hover:not(:disabled) { background: #eef2ff; border-color: #c7d2fe; }
+    .psa-period-btn:disabled { opacity: .3; cursor: default; }
+    .psa-period-label {
+        font-size: .88rem; font-weight: 700; color: #1e293b;
+        display: flex; align-items: center; min-width: 200px; justify-content: center;
+    }
+
+    /* Body */
+    .psa-body { padding: 12px 24px; overflow-y: auto; flex: 1; max-height: 50vh; }
+
+    /* Toolbar */
+    .psa-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .psa-select-btn {
+        background: none; border: 1px solid #e2e8f0; border-radius: 8px;
+        padding: 6px 14px; font-size: .82rem; font-weight: 600; color: #6366f1;
+        cursor: pointer; transition: all .15s;
+    }
+    .psa-select-btn:hover { background: #f0f0ff; border-color: #c7d2fe; }
+    .psa-count { font-size: .78rem; color: #94a3b8; font-weight: 500; }
+
+    /* Staff list */
+    .psa-list { display: flex; flex-direction: column; gap: 2px; }
+    .psa-item {
+        display: flex; align-items: center; gap: 8px;
+        padding: 6px 10px; border-radius: 8px;
+        cursor: pointer; transition: all .2s; border: 1.5px solid transparent;
+        animation: psaItemIn .3s ease backwards;
+    }
+    @@keyframes psaItemIn { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
+    .psa-item:hover { background: #f8fafc; }
+    .psa-item-selected { background: #f0f0ff; border-color: #c7d2fe; }
+    .psa-item input[type="checkbox"] { display: none; }
+    .psa-avatar {
+        width: 28px; height: 28px; border-radius: 7px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: .75rem; font-weight: 700; color: #fff; flex-shrink: 0;
+    }
+    .psa-name { flex: 1; font-size: .84rem; font-weight: 600; color: #1e293b; }
+    .psa-check {
+        font-size: .95rem; color: #6366f1;
+        opacity: 0; transform: scale(0);
+        transition: all .2s cubic-bezier(.34,1.56,.64,1);
+    }
+    .psa-item-selected .psa-check { opacity: 1; transform: scale(1); }
+
+    /* Progress */
+    .psa-progress-zone {
+        display: flex; flex-direction: column; align-items: center;
+        padding: 32px 16px; text-align: center;
+    }
+    .psa-progress-icon {
+        position: relative; width: 72px; height: 72px;
+        display: flex; align-items: center; justify-content: center; margin-bottom: 20px;
+    }
+    .psa-spin-ring {
+        position: absolute; inset: 0; border-radius: 50%;
+        border: 3px solid #e2e8f0; border-top-color: #6366f1;
+        animation: psaSpin 1s linear infinite;
+    }
+    @@keyframes psaSpin { to { transform: rotate(360deg); } }
+    .psa-spin-icon { font-size: 1.8rem; color: #6366f1; }
+    .psa-progress-title { font-size: 1.05rem; font-weight: 700; color: #1e293b; margin-bottom: 4px; }
+    .psa-progress-sub { font-size: .85rem; color: #64748b; margin-bottom: 20px; min-height: 1.3em; }
+    .psa-bar-track {
+        width: 100%; height: 8px; border-radius: 8px;
+        background: #e2e8f0; overflow: hidden;
+    }
+    .psa-bar-fill {
+        height: 100%; border-radius: 8px;
+        background: linear-gradient(90deg, #6366f1, #a855f7, #ec4899);
+        background-size: 200% 100%;
+        animation: psaBarShimmer 1.5s ease infinite;
+        transition: width .4s ease;
+    }
+    @@keyframes psaBarShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .psa-progress-count { font-size: .78rem; color: #94a3b8; margin-top: 8px; font-weight: 600; }
+
+    /* Done */
+    .psa-done-zone {
+        display: flex; flex-direction: column; align-items: center;
+        padding: 40px 16px; text-align: center;
+        animation: psaDonePop .5s cubic-bezier(.34,1.56,.64,1);
+    }
+    @@keyframes psaDonePop { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: scale(1); } }
+    .psa-done-icon {
+        width: 72px; height: 72px; border-radius: 50%;
+        background: linear-gradient(135deg, #10b981, #34d399);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 2rem; color: #fff; margin-bottom: 16px;
+        box-shadow: 0 8px 32px rgba(16,185,129,.35);
+    }
+    .psa-done-title { font-size: 1.15rem; font-weight: 800; color: #059669; }
+    .psa-done-sub { font-size: .85rem; color: #64748b; margin-top: 4px; }
+
+    /* Footer */
+    .psa-footer {
+        padding: 16px 24px; border-top: 1px solid #f1f5f9;
+        display: flex; justify-content: flex-end; gap: 10px;
+        background: #fafbfc;
+    }
+    .psa-cancel-btn {
+        padding: 10px 20px; border-radius: 10px; font-weight: 600; font-size: .88rem;
+        background: #fff; border: 1.5px solid #e2e8f0; color: #64748b;
+        cursor: pointer; transition: all .15s;
+    }
+    .psa-cancel-btn:hover { background: #f8fafc; border-color: #cbd5e1; }
+    .psa-generate-btn {
+        padding: 10px 24px; border-radius: 10px; font-weight: 700; font-size: .88rem;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; color: #fff;
+        cursor: pointer; display: flex; align-items: center;
+        box-shadow: 0 4px 16px rgba(99,102,241,.35);
+        transition: all .2s;
+    }
+    .psa-generate-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(99,102,241,.45); }
+    .psa-generate-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    @@media (max-width: 480px) {
+        .psa-modal { border-radius: 16px 16px 0 0; max-height: 95vh; }
+        .psa-header { padding: 20px 16px 16px; }
+        .psa-body { padding: 12px 16px; }
+        .psa-footer { padding: 12px 16px; }
+    }
+</style>
+
 @code {
     private bool _isDisposed = false;
     private string _displayName = "";
@@ -3271,6 +3582,17 @@
     int _xferFromRate;
     List<(int PcId, string Name, double RemainHrs, int RemainNis, int Rate)> _xferPcList = [];
     string CurrSymbol => "₪";
+
+    // ── Print All Staff state ──
+    bool _showPrintAllStaff;
+    bool _psaBusy;
+    bool _psaDone;
+    int _psaProgress;
+    int _psaTotal;
+    string _psaCurrentName = "";
+    DateOnly _psaWeekStart;
+    record PsaEntry(StaffMember Staff, bool Selected);
+    List<PsaEntry> _psaList = [];
 
     // ── Assign PC modal state ──
     bool            _showAssignPcModal;
@@ -5686,6 +6008,92 @@ string _actionPcSearch = "";
                 });
             }
         });
+    }
+
+    // ── Print All Staff ──────────────────────────────────────────────────────
+
+    void OpenPrintAllStaff()
+    {
+        var allStaff = DashSvc.GetNonSoloStaffMembers();
+        _psaList = allStaff.Select(s => new PsaEntry(s, true)).ToList();
+        _psaBusy = false;
+        _psaDone = false;
+        _psaProgress = 0;
+        _psaTotal = 0;
+        _psaCurrentName = "";
+        _psaWeekStart = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
+        _showPrintAllStaff = true;
+    }
+
+    void PsaPrevWeek() => _psaWeekStart = _psaWeekStart.AddDays(-7);
+    void PsaNextWeek()
+    {
+        var max = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
+        if (_psaWeekStart < max) _psaWeekStart = _psaWeekStart.AddDays(7);
+    }
+
+    static string PsaDayLabel(DateOnly d) =>
+        d.ToString("ddd dd/MM", System.Globalization.CultureInfo.InvariantCulture);
+
+    void PsaToggleAll()
+    {
+        bool allSelected = _psaList.All(s => s.Selected);
+        _psaList = _psaList.Select(s => s with { Selected = !allSelected }).ToList();
+    }
+
+    static string AvatarColor(int id)
+    {
+        var colors = new[] { "#6366f1", "#ec4899", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ef4444", "#14b8a6", "#f97316", "#06b6d4" };
+        return colors[Math.Abs(id) % colors.Length];
+    }
+
+    async Task GenerateAllStaffPdf()
+    {
+        var selected = _psaList.Where(s => s.Selected).Select(s => s.Staff).ToList();
+        if (selected.Count == 0) return;
+
+        _psaBusy = true;
+        _psaProgress = 0;
+        _psaTotal = selected.Count;
+        _psaCurrentName = "";
+        StateHasChanged();
+        await Task.Yield();
+
+        var weekStart = _psaWeekStart;
+        var weekKey = weekStart.ToString("yyyy-MM-dd");
+        var soloPcIds = DashSvc.GetSoloPcIds();
+
+        byte[]? merged = null;
+
+        foreach (var staff in selected)
+        {
+            _psaCurrentName = staff.FullName;
+            _psaProgress++;
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(50); // let UI paint
+
+            var pcs = DashSvc.GetUserPcs(staff.PersonId);
+            var grid = DashSvc.GetWeekGrid(staff.PersonId, weekStart, pcs);
+            var pcIds = pcs.Select(p => p.PcId).ToList();
+            var csNames = DashSvc.GetLastCsNamesByPc(pcIds);
+            var remarks = DashSvc.GetWeeklyRemarks(staff.PersonId, weekKey);
+            var completions = CompletionSvc.GetForWeek(staff.PersonId, weekStart, weekStart.AddDays(6));
+
+            var pdfBytes = PdfSvc.GenerateWeeklyTablePdf(
+                staff.FullName, weekStart, pcs, grid, csNames, remarks, soloPcIds, completions);
+
+            merged = merged == null ? pdfBytes : PdfSvc.CombinePdfs(merged, pdfBytes);
+        }
+
+        if (merged != null)
+        {
+            var fileName = $"Staff_Reports_{weekStart:yyyy_MM_dd}.pdf";
+            await JSRuntime.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(merged));
+        }
+
+        _psaBusy = false;
+        _psaDone = true;
+        await InvokeAsync(StateHasChanged);
     }
 
 }

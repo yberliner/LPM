@@ -2448,6 +2448,24 @@ public class DashboardService
         return list;
     }
 
+    public List<StaffMember> GetNonSoloStaffMembers()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $@"
+            SELECT DISTINCT p.PersonId, {FullNameExpr} AS FullName
+            FROM core_persons p
+            JOIN core_users u ON u.PersonId = p.PersonId
+            WHERE u.IsActive = 1 AND u.StaffRole NOT IN ('Solo', 'None')
+            ORDER BY p.FirstName, p.LastName";
+        var list = new List<StaffMember>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new StaffMember(r.GetInt32(0), r.GetString(1)));
+        return list;
+    }
+
     public void SendMessage(int fromStaffId, int toStaffId, string msgText)
     {
         using var conn = new SqliteConnection(_connectionString);
