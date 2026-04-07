@@ -43,8 +43,8 @@ public class UserDb
             cmd.ExecuteNonQuery();
         }
 
-        // Migration: disable TOTP 2FA, set ContactConfirmed for all users (passkey migration)
-        cmd.CommandText = "UPDATE core_users SET TotpEnabled = 0, TotpSecret = NULL, Require2FA = 0, ContactConfirmed = 1 WHERE TotpEnabled = 1 OR Require2FA = 1 OR ContactConfirmed = 0";
+        // Mark TOTP columns as deprecated (replaced by passkeys + email verification)
+        cmd.CommandText = "UPDATE core_users SET TotpEnabled = -999, TotpSecret = 'DEPRECATED', Require2FA = -999, ContactConfirmed = 1 WHERE TotpEnabled != -999";
         cmd.ExecuteNonQuery();
 
         // One-time fix: rename "camela" → "carmela" with corrected password
