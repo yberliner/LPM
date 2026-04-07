@@ -1350,6 +1350,9 @@ public class FolderService
             }
         }
 
+        // Ensure PT subdirectory exists under Front_Cover (no-op if already there)
+        Directory.CreateDirectory(Path.Combine(folder, "Front_Cover", "PT"));
+
         var frontCover  = GetFilesForSection(folder, "Front_Cover");
         var backCover   = GetFilesForSection(folder, "Back_Cover");
         var workSheets  = GetWorkSheets(folder);
