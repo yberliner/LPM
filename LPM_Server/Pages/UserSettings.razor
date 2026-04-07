@@ -443,15 +443,17 @@
     private string? _picMsg;
     private bool _picOk;
 
-    // Contact fields
+    // Contact fields (read-only display)
     private string  _contactEmail      = "";
+    private string  _contactLocalPhone = "";
+    #pragma warning disable CS0414
     private bool    _contactEmailTouched;
     private bool    _contactEmailValid;
-    private string  _contactLocalPhone = "";
     private bool    _contactPhoneTouched;
     private int     _contactCountryIdx = 0;
     private string? _contactMsg;
     private bool    _contactOk;
+    #pragma warning restore CS0414
 
     // Device security fields
     private int _trustedDeviceCount;

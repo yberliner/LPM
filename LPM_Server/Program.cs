@@ -589,7 +589,7 @@ app.MapPost("/verify-code", async (HttpContext ctx, UserDb db) =>
 
 // ── Passkey endpoints ────────────────────────────────────────────────────
 
-app.MapPost("/api/passkey/register-options", async (HttpContext ctx, UserDb db, IFido2 fido2) =>
+app.MapPost("/api/passkey/register-options", (HttpContext ctx, UserDb db, IFido2 fido2) =>
 {
     if (ctx.User.Identity?.IsAuthenticated != true) return Results.Unauthorized();
     var personIdStr = ctx.User.FindFirst("PersonId")?.Value;
@@ -648,7 +648,7 @@ app.MapPost("/api/passkey/register", async (HttpContext ctx, UserDb db, IFido2 f
         {
             AttestationResponse = response,
             OriginalOptions = options,
-            IsCredentialIdUniqueToUserCallback = async (args, ct) => db.GetPasskeyByCredentialId(args.CredentialId) == null
+            IsCredentialIdUniqueToUserCallback = (args, ct) => Task.FromResult(db.GetPasskeyByCredentialId(args.CredentialId) == null)
         });
 
         db.AddPasskey(personId, credential.Id, credential.PublicKey,
@@ -718,7 +718,7 @@ app.MapPost("/api/passkey/login", async (HttpContext ctx, UserDb db, IFido2 fido
             OriginalOptions = options,
             StoredPublicKey = passkey.PublicKey,
             StoredSignatureCounter = (uint)passkey.SignCount,
-            IsUserHandleOwnerOfCredentialIdCallback = async (args, ct) => db.GetPasskeyByCredentialId(args.CredentialId) != null
+            IsUserHandleOwnerOfCredentialIdCallback = (args, ct) => Task.FromResult(db.GetPasskeyByCredentialId(args.CredentialId) != null)
         });
 
         db.UpdatePasskeySignCount(passkey.Id, (int)result.SignCount);

@@ -429,7 +429,9 @@
     private System.Threading.Timer? _emailTimer;
     private int _selectedCountryIndex = 0; // Israel default
     private string _localPhone = "";
+    #pragma warning disable CS0414
     private bool _phoneTouched;
+    #pragma warning restore CS0414
     private bool _submitted;
     private string _error = "";
 
