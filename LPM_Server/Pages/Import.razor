@@ -1447,6 +1447,37 @@
             pcGroups[pcFolder].Add((e, section, fileName, parentSession, subPath));
         }
 
+        // ── Second pass: detect root-level PT folders → map to Front_Cover/PT ──
+        var knownPcFolders = pcGroups.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var pcsWithFrontPT = pcGroups
+            .Where(g => g.Value.Any(f => f.Section == "Front_Cover" &&
+                (f.SubPath.Equals("PT", StringComparison.OrdinalIgnoreCase) ||
+                 f.SubPath.StartsWith("PT/", StringComparison.OrdinalIgnoreCase))))
+            .Select(g => g.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var e in entries)
+        {
+            var parts = e.relativePath.Split('/');
+            if (parts.Length < 3) continue;
+            if (parts.Any(p => p.Contains("archive", StringComparison.OrdinalIgnoreCase))) continue;
+
+            for (int i = 0; i < parts.Length - 2; i++)
+            {
+                if (knownPcFolders.Contains(parts[i]) &&
+                    parts[i + 1].Equals("PT", StringComparison.OrdinalIgnoreCase))
+                {
+                    var pcFolder = parts[i];
+                    if (pcsWithFrontPT.Contains(pcFolder)) break;
+
+                    var fileName = parts[^1];
+                    var subPath = string.Join("/", parts[(i + 1)..^1]);
+                    pcGroups[pcFolder].Add((e, "Front_Cover", fileName, (string?)null, subPath));
+                    break;
+                }
+            }
+        }
+
         foreach (var (folder, files) in pcGroups)
         {
             var isSolo = System.Text.RegularExpressions.Regex.IsMatch(
