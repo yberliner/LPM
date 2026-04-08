@@ -1380,12 +1380,20 @@ public class DashboardService
         return d.AddDays(-offset);
     }
 
-    public static string Fmt(int s) =>
-        s == 0 ? "-" : $"{s / 3600}:{(s % 3600) / 60:D2}";
+    public static string Fmt(int s)
+    {
+        if (s == 0) return "-";
+        int totalMin = (int)Math.Round(s / 60.0); // standard rounding (>=30s rounds up)
+        return $"{totalMin / 60}:{totalMin % 60:D2}";
+    }
 
     /// Returns a formatted H:MM string, or "" for zero/negative values (suitable for input pre-fill).
-    public static string FmtOrBlank(int s) =>
-        s <= 0 ? "" : $"{s / 3600}:{(s % 3600) / 60:D2}";
+    public static string FmtOrBlank(int s)
+    {
+        if (s <= 0) return "";
+        int totalMin = (int)Math.Round(s / 60.0);
+        return $"{totalMin / 60}:{totalMin % 60:D2}";
+    }
 
     /// Grid-key convention: CSSolo columns use -PcId so same person can appear in both columns.
     /// Before calling GKey, CSAndCSSolo entries must be normalized to CS or CSSolo.
