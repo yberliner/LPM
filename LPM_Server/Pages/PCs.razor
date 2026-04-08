@@ -690,11 +690,44 @@
                                         <div class="row g-2 align-items-end">
                                             @if (item.ItemType == "Auditing")
                                             {
+                                                var curItem = item;
+                                                var hValid = int.TryParse(item.HoursH, out var _hv) && _hv > 0 || (int.TryParse(item.HoursM, out var _mv2) && _mv2 > 0);
                                                 <div class="col-auto">
                                                     <label class="form-label small mb-0">@LS.T("pcs.hoursBought")</label>
-                                                    <input type="number" class="form-control form-control-sm @(item.HoursBought <= 0 ? "field-invalid" : "field-valid")"
-                                                           value="@item.HoursBought" min="0" style="max-width:95px;" placeholder="0"
-                                                           @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) item.HoursBought = v; }" />
+                                                    <div class="d-flex align-items-center gap-1">
+                                                        <input type="number" class="form-control form-control-sm aud-hm-input @(hValid ? "field-valid" : "field-invalid")"
+                                                               value="@item.HoursH" min="0" style="width:70px;font-size:16px;" placeholder="H"
+                                                               onfocus="this.select()"
+                                                               @oninput="@(e => { curItem.HoursH = e.Value?.ToString() ?? ""; RecalcAuditing(curItem); })" />
+                                                        <span class="fw-bold" style="font-size:1.1rem;color:#64748b;">:</span>
+                                                        <input type="number" class="form-control form-control-sm aud-hm-input @(hValid ? "field-valid" : "field-invalid")"
+                                                               value="@item.HoursM" min="0" max="59" style="width:60px;font-size:16px;" placeholder="M"
+                                                               onfocus="this.select()"
+                                                               @oninput="@(e => { var s = e.Value?.ToString() ?? ""; if (int.TryParse(s, out var mv) && mv > 59) s = "59"; curItem.HoursM = s; RecalcAuditing(curItem); })" />
+                                                    </div>
+                                                </div>
+                                                <div class="col-auto">
+                                                    <label class="form-label small mb-0">@LS.T("pcs.ratePerHour")</label>
+                                                    <input type="number" class="form-control form-control-sm @(item.RatePerHour <= 0 ? "field-invalid" : "field-valid")"
+                                                           value="@item.RatePerHour" min="0" style="max-width:90px;font-size:16px;" placeholder="0"
+                                                           onfocus="this.select()"
+                                                           @oninput="@(e => { curItem.RatePerHour = int.TryParse(e.Value?.ToString(), out var v) ? v : 0; RecalcAuditing(curItem); })" />
+                                                </div>
+                                                <div class="col-auto d-flex align-items-end" style="min-height:38px;">
+                                                    @{
+                                                        var totalPay = item.AmountPaid;
+                                                        var totalColor = totalPay >= 0 ? "#16a34a" : "#dc2626";
+                                                    }
+                                                    <span class="fw-bold" style="font-size:.9rem;color:@totalColor;">
+                                                        = @(totalPay < 0 ? "-" : "")@CurrSym(_purchaseCurrency)@(Math.Abs(totalPay).ToString("N0"))
+                                                    </span>
+                                                </div>
+                                                <div class="col-12 mt-1">
+                                                    <label class="form-check form-check-inline aud-neg-check @(item.IsNegativeHours ? "aud-neg-active" : "")" style="cursor:pointer;">
+                                                        <input class="form-check-input" type="checkbox" checked="@item.IsNegativeHours"
+                                                               @onchange="@(e => { curItem.IsNegativeHours = (bool)(e.Value ?? false); RecalcAuditing(curItem); })" />
+                                                        <span class="form-check-label small">@LS.T("pcs.negativeAdjust")</span>
+                                                    </label>
                                                 </div>
                                             }
                                             else if (item.ItemType == "Course")
@@ -727,12 +760,15 @@
                                                     </select>
                                                 </div>
                                             }
-                                            <div class="col-auto">
-                                                <label class="form-label small mb-0">Amount (@CurrSym(_purchaseCurrency))</label>
-                                                <input type="number" class="form-control form-control-sm"
-                                                       value="@item.AmountPaid" min="0" style="max-width:105px;" placeholder="0"
-                                                       @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) item.AmountPaid = v; }" />
-                                            </div>
+                                            @if (item.ItemType != "Auditing")
+                                            {
+                                                <div class="col-auto">
+                                                    <label class="form-label small mb-0">Amount (@CurrSym(_purchaseCurrency))</label>
+                                                    <input type="number" class="form-control form-control-sm"
+                                                           value="@item.AmountPaid" min="0" style="max-width:105px;" placeholder="0"
+                                                           @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) item.AmountPaid = v; }" />
+                                                </div>
+                                            }
                                         </div>
                                     </div>
                                 </div>
@@ -745,9 +781,9 @@
                                 var courseCount = _purchaseItems.Count(x => x.ItemType == "Course" && x.CourseId > 0);
                                 var bookCount = _purchaseItems.Count(x => x.ItemType == "Book" && x.BookId > 0);
                                 <div class="items-summary">
-                                    @if (totalHours > 0)
+                                    @if (totalHours != 0)
                                     {
-                                        <span><i class="ri-timer-flash-line"></i> @totalHours @LS.T("pcs.hours")</span>
+                                        <span><i class="ri-timer-flash-line"></i> @(totalHours < 0 ? "-" : "")@FormatHoursMinutes(totalHours) @LS.T("pcs.hours")</span>
                                     }
                                     @if (courseCount > 0)
                                     {
@@ -796,6 +832,7 @@
                                         <input type="number" class="form-control form-control-sm @(pm.Amount <= 0 ? "field-invalid" : "field-valid")"
                                                style="max-width:100px;font-size:.8rem;"
                                                value="@pm.Amount" min="0" placeholder="0"
+                                               onfocus="this.select()"
                                                @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) pm.Amount = v; }" />
                                     </div>
                                     @if (pm.MethodType != "ToBePaid")
@@ -2161,6 +2198,16 @@
         .sms-success-title { font-size: 1.2rem; }
     }
 
+    /* ── Auditing H:M inputs — hide spin arrows ── */
+    .aud-hm-input::-webkit-inner-spin-button,
+    .aud-hm-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    .aud-hm-input { -moz-appearance: textfield; }
+
+    /* ── Auditing negative adjustment checkbox ── */
+    .aud-neg-check { font-size: .78rem; color: #6b7280; transition: all .15s ease; }
+    .aud-neg-active { color: #dc2626; font-weight: 600; }
+    .aud-neg-active .form-check-input { background-color: #dc2626; border-color: #dc2626; }
+
     /* ── Balance columns ── */
     .bal-rate-mismatch {
         position: relative;
@@ -2411,6 +2458,11 @@
         public int BookId { get; set; }
         public double HoursBought { get; set; }
         public int AmountPaid { get; set; }
+        // Auditing-specific UI fields
+        public string HoursH { get; set; } = "";
+        public string HoursM { get; set; } = "";
+        public bool IsNegativeHours { get; set; }
+        public int RatePerHour { get; set; }
     }
 
     // Purchase-level registrar/referral
@@ -2690,9 +2742,10 @@
         _allBooks          = CourseSvc.GetAllBooks();
         _purchaseRegistrarId = _currentPersonId ?? 0;
         _purchaseReferralId  = 0;
+        int _defAudRate = _selPcId.HasValue && _balances.TryGetValue(_selPcId.Value, out var _bal) ? _bal.PurchaseRateCents / 100 : 0;
         _purchaseItems     = new List<PurchaseItemModel>
         {
-            new PurchaseItemModel()
+            new PurchaseItemModel { RatePerHour = _defAudRate }
         };
         _purchasePaymentMethods = new List<PaymentMethodModel>
         {
@@ -2723,13 +2776,28 @@
 
         _purchaseRegistrarId = detail.RegistrarId ?? 0;
         _purchaseReferralId  = detail.ReferralId ?? 0;
-        _purchaseItems = detail.Items.Select(it => new PurchaseItemModel
+        _purchaseItems = detail.Items.Select(it =>
         {
-            ItemType    = it.ItemType,
-            CourseId    = it.CourseId ?? 0,
-            BookId      = it.BookId ?? 0,
-            HoursBought = it.HoursBought,
-            AmountPaid  = it.AmountPaid
+            var m = new PurchaseItemModel
+            {
+                ItemType    = it.ItemType,
+                CourseId    = it.CourseId ?? 0,
+                BookId      = it.BookId ?? 0,
+                HoursBought = it.HoursBought,
+                AmountPaid  = it.AmountPaid
+            };
+            if (it.ItemType == "Auditing")
+            {
+                double absHrs = Math.Abs(it.HoursBought);
+                int wh = (int)absHrs;
+                int wm = (int)Math.Round((absHrs - wh) * 60);
+                if (wm >= 60) { wh++; wm = 0; }
+                m.HoursH = wh.ToString();
+                m.HoursM = wm.ToString("D2");
+                m.IsNegativeHours = it.HoursBought < 0;
+                m.RatePerHour = it.HoursBought != 0 ? (int)Math.Abs(it.AmountPaid / it.HoursBought) : 0;
+            }
+            return m;
         }).ToList();
         if (_purchaseItems.Count == 0)
             _purchaseItems.Add(new PurchaseItemModel());
@@ -2800,7 +2868,8 @@
 
     void AddPurchaseItem()
     {
-        _purchaseItems.Add(new PurchaseItemModel());
+        int defRate = _selPcId.HasValue && _balances.TryGetValue(_selPcId.Value, out var b) ? b.PurchaseRateCents / 100 : 0;
+        _purchaseItems.Add(new PurchaseItemModel { RatePerHour = defRate });
     }
 
     void AddPaymentMethod()
@@ -2816,10 +2885,18 @@
 
     void SetItemType(int idx, string type)
     {
-        _purchaseItems[idx].ItemType = type;
-        if (type != "Course") _purchaseItems[idx].CourseId = 0;
-        if (type != "Book") _purchaseItems[idx].BookId = 0;
-        if (type != "Auditing") _purchaseItems[idx].HoursBought = 0;
+        var item = _purchaseItems[idx];
+        var prev = item.ItemType;
+        item.ItemType = type;
+        if (type != "Course") item.CourseId = 0;
+        if (type != "Book") item.BookId = 0;
+        if (type == "Auditing" && item.RatePerHour == 0)
+        {
+            int defRate = _selPcId.HasValue && _balances.TryGetValue(_selPcId.Value, out var b) ? b.PurchaseRateCents / 100 : 0;
+            item.RatePerHour = defRate;
+        }
+        if (prev == "Auditing" && type != "Auditing") item.AmountPaid = 0;
+        if (type == "Auditing" && prev != "Auditing") RecalcAuditing(item);
     }
 
     void AutoFillBookPrice(PurchaseItemModel item)
@@ -2831,15 +2908,12 @@
 
     bool HasValidPurchaseItems()
     {
-        return _purchaseItems.Any(item =>
-            (item.ItemType == "Auditing" && item.HoursBought > 0) ||
-            (item.ItemType == "Course" && item.CourseId > 0) ||
-            (item.ItemType == "Book" && item.BookId > 0));
+        return _purchaseItems.Any(IsItemValid);
     }
 
     bool IsItemValid(PurchaseItemModel item)
     {
-        return (item.ItemType == "Auditing" && item.HoursBought > 0) ||
+        return (item.ItemType == "Auditing" && (int.TryParse(item.HoursH, out var _h) && _h > 0 || int.TryParse(item.HoursM, out var _m) && _m > 0) && item.RatePerHour > 0) ||
                (item.ItemType == "Course" && item.CourseId > 0) ||
                (item.ItemType == "Book" && item.BookId > 0);
     }
@@ -2872,7 +2946,7 @@
         {
             if (item.ItemType == "Course" && item.CourseId <= 0)
             { _purchaseError = LS.T("pcs.errorSelectCourse"); return; }
-            if (item.ItemType == "Auditing" && item.HoursBought <= 0)
+            if (item.ItemType == "Auditing" && (!(int.TryParse(item.HoursH, out var _sh) && _sh > 0 || int.TryParse(item.HoursM, out var _sm) && _sm > 0) || item.RatePerHour <= 0))
             { _purchaseError = LS.T("pcs.errorEnterHoursOrAmount"); return; }
             if (item.ItemType == "Book" && item.BookId <= 0)
             { _purchaseError = "Please select a book"; return; }
@@ -2894,7 +2968,7 @@
             itemType:    pi.ItemType,
             courseId:    pi.ItemType == "Course" ? (int?)pi.CourseId : null,
             bookId:     pi.ItemType == "Book" ? (int?)pi.BookId : null,
-            hoursBought: pi.ItemType == "Auditing" ? (int)pi.HoursBought : 0,
+            hoursBought: pi.ItemType == "Auditing" ? pi.HoursBought : 0.0,
             amountPaid:  pi.AmountPaid
         )).ToList();
 
@@ -2941,7 +3015,7 @@
                 var totalAmt = items.Sum(i => i.amountPaid);
                 var totalHrs = items.Where(i => i.itemType == "Auditing").Sum(i => i.hoursBought);
                 var msg = $"Automatic msg: New purchase for {_detail.FullName}";
-                if (totalHrs > 0) msg += $" — {totalHrs}h";
+                if (totalHrs != 0) msg += $" — {FormatHoursMinutes(totalHrs)}h";
                 if (totalAmt > 0) msg += $" — {CurrSym(_purchaseCurrency)}{totalAmt}";
                 DashSvc.SendAutoMessageToAdmins(_currentPersonId.Value, msg);
             }
@@ -2952,8 +3026,8 @@
         var successItems = new List<string>();
         foreach (var pi in _purchaseItems)
         {
-            if (pi.ItemType == "Auditing" && pi.HoursBought > 0)
-                successItems.Add($"{pi.HoursBought}h Auditing — {CurrSym(_purchaseCurrency)}{pi.AmountPaid}");
+            if (pi.ItemType == "Auditing" && pi.HoursBought != 0)
+                successItems.Add($"{(pi.IsNegativeHours ? "-" : "")}{FormatHoursMinutes(pi.HoursBought)} Auditing — {(pi.AmountPaid < 0 ? "-" : "")}{CurrSym(_purchaseCurrency)}{Math.Abs(pi.AmountPaid)}");
             else if (pi.ItemType == "Course" && pi.CourseId > 0)
                 successItems.Add($"Course — {CurrSym(_purchaseCurrency)}{pi.AmountPaid}");
             else if (pi.ItemType == "Book" && pi.BookId > 0)
@@ -3273,6 +3347,26 @@
 
     static string FormatNis(decimal amount) => $"₪{amount:N0}";
     static string FormatNis2(decimal amount) => $"₪{amount:N2}";
+
+    // 10.5 → "10:30", 2.75 → "2:45" (always positive, sign handled separately)
+    static string FormatHoursMinutes(double hours)
+    {
+        hours = Math.Abs(hours);
+        int h = (int)hours;
+        int m = (int)Math.Round((hours - h) * 60);
+        if (m >= 60) { h++; m = 0; }
+        return $"{h}:{m:D2}";
+    }
+
+    void RecalcAuditing(PurchaseItemModel item)
+    {
+        int.TryParse(item.HoursH, out var h);
+        int.TryParse(item.HoursM, out var m);
+        m = Math.Clamp(m, 0, 59);
+        double hrs = Math.Abs(h) + m / 60.0;
+        item.HoursBought = item.IsNegativeHours ? -hrs : hrs;
+        item.AmountPaid = (int)(item.HoursBought * item.RatePerHour);
+    }
     static string RateBadgeClass(string source) => source switch
     {
         "Own" => "bal-badge-own",

@@ -473,6 +473,10 @@
                             <tr><td>Gross (allocated share)</td><td class="text-end fw-semibold">₪ @d.ItemShare.ToString("N2")</td></tr>
                             <tr><td>&minus; VAT (@((decimal)_cfgVatPct)%)</td><td class="text-end" style="color:#dc2626 !important;">&minus;₪ @d.VatAmount.ToString("N2")</td></tr>
                             <tr><td>&minus; CC Commission @(d.PaymentMethod == "CreditCard" ? $"({(decimal)_cfgCcCommissionPct}%)" : "(n/a)")</td><td class="text-end" style="color:#dc2626 !important;">&minus;₪ @d.CcAmount.ToString("N2")</td></tr>
+                            @if (d.BookPrice > 0)
+                            {
+                                <tr><td>&minus; Book Price</td><td class="text-end" style="color:#dc2626 !important;">&minus;₪ @d.BookPrice.ToString("N2")</td></tr>
+                            }
                             <tr style="border-top:2px solid #cbd5e1;"><td>Net After Deductions</td><td class="text-end fw-semibold">₪ @d.NetAfterDeductions.ToString("N2")</td></tr>
                             <tr><td>&minus; Reserve (@((decimal)_cfgReserveDeductPct)%)</td><td class="text-end" style="color:#dc2626 !important;">&minus;₪ @d.ReserveAmount.ToString("N2")</td></tr>
                             <tr style="background:#d1fae5 !important;border-top:2px solid #059669;">
@@ -527,6 +531,7 @@
                 <span class="sal-hc-arr">→</span>
                 <span class="sal-hc-ded">−VAT ₪@hd.VatAmount.ToString("N2")</span>
                 @if (hd.CcAmount > 0) { <span class="sal-hc-ded">−CC ₪@hd.CcAmount.ToString("N2")</span> }
+                @if (hd.BookPrice > 0) { <span class="sal-hc-ded">−Book ₪@hd.BookPrice.ToString("N2")</span> }
                 <span class="sal-hc-ded">−Res ₪@hd.ReserveAmount.ToString("N2")</span>
                 <span class="sal-hc-arr">→</span>
                 <span class="sal-hc-net">₪@hd.NetBase.ToString("N2")</span>

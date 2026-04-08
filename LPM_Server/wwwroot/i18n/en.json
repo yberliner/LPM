@@ -715,6 +715,8 @@
   "pcs.courses": "Courses",
   "pcs.hours": "hrs",
   "pcs.enterHours": "Enter hours",
+  "pcs.ratePerHour": "Rate/hr (₪)",
+  "pcs.negativeAdjust": "Negative adjustment",
   "pcs.pickCourse": "Pick a course",
   "pcs.done": "Done",
   "pcs.action": "Action",

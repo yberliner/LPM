@@ -38,7 +38,8 @@ public record CommissionDetail(
     int PurchaseId, string PurchaseDate,
     string PaymentMethod, int PaymentGross, string PaymentDate,
     string ItemType, string ItemName, int ItemPrice, int TotalPurchasePrice,
-    decimal ItemShare, decimal VatAmount, decimal CcAmount, decimal NetAfterDeductions,
+    decimal ItemShare, decimal VatAmount, decimal CcAmount, decimal BookPrice,
+    decimal NetAfterDeductions,
     decimal ReserveAmount, decimal NetBase, double CommissionPct,
     string? CourseFinishDate = null);
 public record CommissionRow(string PcName, string Role, string Category, long AmountCents, CommissionDetail Detail);
@@ -2626,12 +2627,12 @@ public class DashboardService
     // ── Commission Calculation ────────────────────────────────────────────────
 
     private static (decimal NetBase, decimal Vat, decimal Cc, decimal NetAfter, decimal Reserve)
-        CalcNetBase(decimal gross, string methodType, FinancialConfig cfg)
+        CalcNetBase(decimal gross, string methodType, FinancialConfig cfg, decimal bookPrice = 0m)
     {
         var vat = gross - (gross / (1m + (decimal)cfg.VatPct / 100m));
         var cc = methodType == "CreditCard"
             ? gross * ((decimal)cfg.CcCommissionPct / 100m) : 0m;
-        var netAfter = gross - vat - cc;
+        var netAfter = gross - vat - cc - bookPrice;
         var reserve = netAfter * ((decimal)cfg.ReserveDeductPct / 100m);
         return (netAfter - reserve, vat, cc, netAfter, reserve);
     }
@@ -2703,7 +2704,7 @@ public class DashboardService
             return (commByUser, unassigned);
 
         // ── Step B: Batch-load items for those purchases ──
-        var itemsByPurchase = new Dictionary<int, List<(int PurchaseItemId, string ItemType, int? CourseId, int AmountPaid, string CourseType, string ItemName)>>();
+        var itemsByPurchase = new Dictionary<int, List<(int PurchaseItemId, string ItemType, int? CourseId, int AmountPaid, string CourseType, string ItemName, decimal BookPrice)>>();
         if (purchaseIds.Count > 0)
         {
             using var cmd = conn.CreateCommand();
@@ -2714,7 +2715,8 @@ public class DashboardService
                          WHEN 'Course' THEN COALESCE(lc.Name, 'Course')
                          WHEN 'Book' THEN COALESCE(lb.Name, 'Book')
                          ELSE 'Auditing'
-                       END AS ItemName
+                       END AS ItemName,
+                       COALESCE(lc.BookPrice, 0) AS BookPrice
                 FROM fin_purchase_items pi
                 LEFT JOIN lkp_courses lc ON pi.CourseId = lc.CourseId
                 LEFT JOIN lkp_books lb ON pi.BookId = lb.BookId
@@ -2725,7 +2727,8 @@ public class DashboardService
                 var pid = r.GetInt32(0);
                 if (!itemsByPurchase.ContainsKey(pid)) itemsByPurchase[pid] = new();
                 itemsByPurchase[pid].Add((r.GetInt32(1), r.GetString(2),
-                    r.IsDBNull(3) ? null : r.GetInt32(3), r.GetInt32(4), r.GetString(5), r.GetString(6)));
+                    r.IsDBNull(3) ? null : r.GetInt32(3), r.GetInt32(4), r.GetString(5), r.GetString(6),
+                    r.GetDecimal(7)));
             }
         }
 
@@ -2795,8 +2798,12 @@ public class DashboardService
 
             foreach (var item in items)
             {
+                if (item.AmountPaid <= 0) continue; // negative/zero amounts → no commission
                 var itemShare = (decimal)pmt.Amount * ((decimal)item.AmountPaid / (decimal)totalAmount);
-                var calc = CalcNetBase(itemShare, pmt.MethodType, cfg);
+                if (itemShare <= 0) continue;
+                var bookPriceShare = item.ItemType == "Course" && item.AmountPaid > 0
+                    ? item.BookPrice * (itemShare / (decimal)item.AmountPaid) : 0m;
+                var calc = CalcNetBase(itemShare, pmt.MethodType, cfg, bookPriceShare);
                 if (calc.NetBase <= 0) continue;
 
                 // Lookup course finish date if applicable
@@ -2809,7 +2816,7 @@ public class DashboardService
                     pmt.PurchaseId, pmt.PurchaseDate,
                     pmt.MethodType, pmt.Amount, pmt.PaymentDate,
                     item.ItemType, item.ItemName, item.AmountPaid, (int)totalAmount,
-                    itemShare, calc.Vat, calc.Cc, calc.NetAfter, calc.Reserve, calc.NetBase, 0, finishDate);
+                    itemShare, calc.Vat, calc.Cc, bookPriceShare, calc.NetAfter, calc.Reserve, calc.NetBase, 0, finishDate);
 
                 double regPct, refPct;
                 string category;
@@ -2945,7 +2952,8 @@ public class DashboardService
                                      WHEN 'Course' THEN COALESCE(lc.Name, 'Course')
                                      WHEN 'Book' THEN COALESCE(lb.Name, 'Book')
                                      ELSE 'Auditing'
-                                   END AS ItemName
+                                   END AS ItemName,
+                                   COALESCE(lc.BookPrice, 0) AS BookPrice
                             FROM fin_purchase_items pi
                             LEFT JOIN lkp_courses lc ON pi.CourseId = lc.CourseId
                             LEFT JOIN lkp_books lb ON pi.BookId = lb.BookId
@@ -2954,7 +2962,8 @@ public class DashboardService
                         using var r = cmd.ExecuteReader();
                         while (r.Read())
                             citems.Add((r.GetInt32(1), r.GetString(2),
-                                r.IsDBNull(3) ? null : r.GetInt32(3), r.GetInt32(4), r.GetString(5), r.GetString(6)));
+                                r.IsDBNull(3) ? null : r.GetInt32(3), r.GetInt32(4), r.GetString(5), r.GetString(6),
+                                r.GetDecimal(7)));
                         itemsByPurchase[cpid] = citems;
                     }
 
@@ -2962,7 +2971,7 @@ public class DashboardService
                     if (totalAmount == 0) continue;
 
                     var courseItem = citems.FirstOrDefault(i => i.ItemType == "Course" && i.CourseId == fc.CourseId);
-                    if (courseItem.AmountPaid == 0) continue;
+                    if (courseItem.AmountPaid <= 0) continue; // negative/zero amounts → no commission
 
                     // Load PC name + purchase date for this purchase
                     string pcName = "", purchaseDate = "";
@@ -2997,14 +3006,16 @@ public class DashboardService
                     foreach (var pp in pastPayments)
                     {
                         var itemShare = (decimal)pp.Amount * ((decimal)courseItem.AmountPaid / (decimal)totalAmount);
-                        var calc = CalcNetBase(itemShare, pp.MethodType, cfg);
+                        if (itemShare <= 0) continue; // negative/zero → no commission
+                        var bookPriceShare = courseItem.BookPrice * (itemShare / (decimal)courseItem.AmountPaid);
+                        var calc = CalcNetBase(itemShare, pp.MethodType, cfg, bookPriceShare);
                         if (calc.NetBase <= 0) continue;
 
                         var detail = new CommissionDetail(
                             cpid, purchaseDate,
                             pp.MethodType, pp.Amount, pp.PaymentDate,
                             courseItem.ItemType, courseItem.ItemName, courseItem.AmountPaid, (int)totalAmount,
-                            itemShare, calc.Vat, calc.Cc, calc.NetAfter, calc.Reserve, calc.NetBase, 0, fc.DateFinished);
+                            itemShare, calc.Vat, calc.Cc, bookPriceShare, calc.NetAfter, calc.Reserve, calc.NetBase, 0, fc.DateFinished);
 
                         if (fc.CourseType == "PC")
                         {

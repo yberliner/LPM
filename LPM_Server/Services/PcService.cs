@@ -632,7 +632,7 @@ public List<PcListItem> GetAllPcs()
 
     public int CreatePurchase(int pcId, string date, string? notes, string? signatureData,
         int? createdByPersonId,
-        List<(string itemType, int? courseId, int? bookId, int hoursBought, int amountPaid)> items,
+        List<(string itemType, int? courseId, int? bookId, double hoursBought, int amountPaid)> items,
         List<(string methodType, int amount, string? paymentDate, int installments)>? paymentMethods = null,
         int? registrarId = null, int? referralId = null, string currency = "ILS")
     {
@@ -985,7 +985,7 @@ public List<PcListItem> GetAllPcs()
     }
 
     public void UpdatePurchase(int purchaseId, string date, string? notes,
-        List<(string itemType, int? courseId, int? bookId, int hoursBought, int amountPaid)> items,
+        List<(string itemType, int? courseId, int? bookId, double hoursBought, int amountPaid)> items,
         List<(string methodType, int amount, string? paymentDate, int installments)> paymentMethods,
         int? registrarId = null, int? referralId = null, string currency = "ILS")
     {
