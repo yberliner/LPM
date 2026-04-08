@@ -62,36 +62,70 @@
         <table id="pc-list-table" class="table table-sm table-hover mb-0 pc-list-table">
             <colgroup>
                 <col class="pc-col-name" />
+                <col style="width:85px;" />
                 <col style="width:80px;" />
                 <col style="width:80px;" />
                 <col style="width:70px;" />
                 <col style="width:70px;" />
+                <col />
+                <col style="width:36px;" />
             </colgroup>
             <thead class="table-light" style="position:sticky;top:0;z-index:1;">
                 <tr>
                     <th class="small ps-2 pc-th-sort @SortClass("name")" @onclick='() => ToggleSort("name")'>@LS.T("pcs.pcName")</th>
+                    <th class="small text-center pc-th-sort @SortClass("balance")" @onclick='() => ToggleSort("balance")'>@LS.T("pcs.balance")</th>
                     <th class="small text-center pc-th-sort @SortClass("hoursLeft")" @onclick='() => ToggleSort("hoursLeft")'>@LS.T("pcs.hoursLeft")</th>
                     <th class="small text-center pc-th-sort @SortClass("totalTime")" @onclick='() => ToggleSort("totalTime")'>@LS.T("pcs.totalSessionTime")</th>
                     <th class="small text-center pc-th-sort @SortClass("visits")" @onclick='() => ToggleSort("visits")'>@LS.T("pcs.totalVisits")</th>
                     <th class="small text-center pc-th-sort @SortClass("purchased")" @onclick='() => ToggleSort("purchased")'>@LS.T("pcs.hoursPurchased")</th>
                     <th class="small pc-th-sort @SortClass("auditor")" @onclick='() => ToggleSort("auditor")'>Auditor</th>
+                    <th class="small text-center" style="width:36px;"></th>
                 </tr>
             </thead>
             <tbody>
                 @foreach (var pc in FilteredPcsEx)
                 {
+                    var bal = _balances.GetValueOrDefault(pc.PcId);
                     <tr class="@(_selPcId == pc.PcId ? "table-primary" : "")"
                         style="cursor:pointer;"
                         @onclick="() => SelectPc(pc.PcId)">
                         <td class="small ps-2 text-truncate" style="@(_soloPcIds.Contains(pc.PcId) ? "color:#ea580c;font-weight:600;" : "")">@pc.FullName@if (_soloPcIds.Contains(pc.PcId)) { <span style="display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:3px;background:#ea580c;color:#fff;font-size:.58rem;font-weight:700;margin-left:3px;vertical-align:middle;">S</span> }@if (!string.IsNullOrEmpty(pc.Nick)) { <span class="text-muted" style="font-size:.7rem;"> (@pc.Nick)</span> }</td>
                         <td class="small text-center fw-semibold"
-                            style="color:@(pc.RemainSec >= 0 ? "#4ade80" : "#f87171");">
-                            @HrsLabel(pc.RemainSec)
+                            style="color:@(bal == null ? "#9ca3af" : bal.BalanceNis >= 0 ? "#22c55e" : "#ef4444");">
+                            @(bal != null ? $"₪{bal.BalanceNis:N0}" : "\u2014")
+                        </td>
+                        @{ var hlClass = bal?.RateMismatch == true ? "bal-rate-mismatch" : ""; }
+                        <td class="small text-center fw-semibold @hlClass"
+                            tabindex="@(bal?.RateMismatch == true ? "0" : null)"
+                            style="color:@(bal == null ? "#9ca3af" : bal.HoursLeft >= 0 ? "#4ade80" : "#f87171");">
+                            @if (bal != null && bal.EffectiveRateCents > 0)
+                            {
+                                @HrsLabel((long)(bal.HoursLeft * 3600))
+                                @if (bal.RateMismatch)
+                                {
+                                    <span class="bal-rate-tip">
+                                        @LS.T("pcs.sessionRate"): ₪@(bal.EffectiveRateCents / 100)/hr<br />
+                                        @LS.T("pcs.purchaseRate"): ₪@(bal.PurchaseRateCents / 100)/hr
+                                    </span>
+                                }
+                            }
+                            else
+                            {
+                                <text>—</text>
+                            }
                         </td>
                         <td class="small text-center text-muted">@HrsLabel(pc.TotalSessionSec)</td>
                         <td class="small text-center text-muted">@pc.AcademyVisits</td>
                         <td class="small text-center text-muted">@(pc.HoursPurchased)h</td>
                         <td class="small text-muted text-truncate" style="max-width:120px;">@(string.IsNullOrEmpty(pc.Auditor) ? "\u2014" : pc.Auditor)</td>
+                        <td class="small text-center" style="padding:0;">
+                            <button class="btn btn-link btn-sm p-0 bal-detail-btn"
+                                    title="@LS.T("pcs.balanceDetails")"
+                                    @onclick="() => OpenBalanceModal(pc.PcId, pc.FullName)"
+                                    @onclick:stopPropagation="true">
+                                <i class="ri-file-list-3-line" style="font-size:1rem;color:#6366f1;"></i>
+                            </button>
+                        </td>
                     </tr>
                 }
             </tbody>
@@ -1400,6 +1434,151 @@
     </div>
 }
 
+@* ── Balance Explanation Modal ── *@
+@if (_showBalanceModal && _balanceExplanation != null)
+{
+    var ex = _balanceExplanation;
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5);z-index:1060;" @onclick="CloseBalanceModal">
+        <div class="modal-dialog modal-lg modal-dialog-centered" @onclick:stopPropagation="true">
+            <div class="modal-content bal-modal">
+                @* Header *@
+                <div class="bal-modal-header">
+                    <div class="bal-modal-icon"><i class="ri-calculator-line"></i></div>
+                    <div style="flex:1;min-width:0;">
+                        <div class="bal-modal-title">@LS.T("pcs.balanceBreakdown")</div>
+                        <div class="bal-modal-subtitle">@_balancePcName</div>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CloseBalanceModal"></button>
+                </div>
+
+                <div class="modal-body p-0" style="max-height:70vh;overflow-y:auto;">
+                    @* ── Purchases ── *@
+                    <div class="bal-section bal-sec-purchased">
+                        <div class="bal-sec-title"><i class="ri-shopping-cart-2-line"></i> @LS.T("pcs.auditingPurchases")</div>
+                        @if (ex.Purchases.Any())
+                        {
+                            <table class="table table-sm mb-0">
+                                <thead><tr>
+                                    <th class="small" style="color:#166534;">@LS.T("pcs.date")</th>
+                                    <th class="small text-center" style="color:#166534;">@LS.T("pcs.hours")</th>
+                                    <th class="small text-end" style="color:#166534;">@LS.T("pcs.amount")</th>
+                                </tr></thead>
+                                <tbody>
+                                    @foreach (var p in ex.Purchases)
+                                    {
+                                        <tr>
+                                            <td class="small">@FormatDate(p.Date)</td>
+                                            <td class="small text-center">@(p.Hours)h</td>
+                                            <td class="small text-end fw-semibold" style="color:#16a34a;">₪@(p.AmountNis.ToString("N0"))</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot>
+                                    <tr style="background:#dcfce7;">
+                                        <td class="small fw-bold" style="color:#166534;" colspan="2">@LS.T("pcs.total")</td>
+                                        <td class="small fw-bold text-end" style="color:#166534;">₪@(ex.TotalPurchasedNis.ToString("N0"))</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        }
+                        else
+                        {
+                            <div class="small text-muted px-3 py-2">@LS.T("pcs.noAuditingPurchases")</div>
+                        }
+                    </div>
+
+                    @* ── Used Money ── *@
+                    <div class="bal-section bal-sec-used">
+                        <div class="bal-sec-title"><i class="ri-time-line"></i> @LS.T("pcs.usedMoney") <span class="badge bg-secondary ms-1">@ex.BillableSessionCount @LS.T("pcs.sessions")</span></div>
+                        <div class="d-flex justify-content-between align-items-center px-3 py-2">
+                            <span class="small" style="color:#991b1b;">@LS.T("pcs.totalSessionCost")</span>
+                            <span class="fw-bold" style="color:#dc2626;">-@FormatNis2(ex.TotalUsedNis)</span>
+                        </div>
+                    </div>
+
+                    @* ── Balance Result ── *@
+                    <div class="bal-result-card">
+                        <div class="bal-result-label">@LS.T("pcs.balance")</div>
+                        <div class="bal-result-value" style="color:@(ex.BalanceNis >= 0 ? "#16a34a" : "#dc2626");">
+                            @FormatNis2(ex.BalanceNis)
+                        </div>
+                    </div>
+
+                    @* ── Hours Calculation ── *@
+                    <div class="bal-section bal-sec-hours">
+                        <div class="bal-sec-title"><i class="ri-hourglass-line"></i> @LS.T("pcs.hoursRemaining")</div>
+                        <div class="bal-formula px-3 py-2">
+                            <span class="bal-formula-item">@FormatNis2(ex.BalanceNis)</span>
+                            <span class="bal-formula-op">&divide;</span>
+                            <span class="bal-formula-item">₪@(ex.EffectiveRateCents / 100)/hr</span>
+                            <span class="bal-formula-op">=</span>
+                            <span class="bal-formula-result">@(ex.EffectiveRateCents > 0 ? $"{ex.HoursLeft:N1}h" : "\u2014")</span>
+                        </div>
+                        <div class="px-3 pb-2 small">
+                            <span style="color:#475569;">@LS.T("pcs.rateUsed"): <strong>₪@(ex.EffectiveRateCents / 100)/hr</strong></span>
+                            <span class="text-muted ms-1">(@ex.RateSource)</span>
+                            @if (ex.PurchaseRateCents > 0 && ex.EffectiveRateCents != ex.PurchaseRateCents)
+                            {
+                                <div class="mt-1">
+                                    <span class="badge bal-badge-warn">
+                                        <i class="ri-alert-line"></i>
+                                        @LS.T("pcs.purchaseRate"): ₪@(ex.PurchaseRateCents / 100)/hr
+                                    </span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    @* ── Session Details Toggle ── *@
+                    <div class="text-center py-3">
+                        <button class="btn bal-sessions-btn" @onclick="ToggleSessionDetails">
+                            <i class="@(_balShowSessions ? "ri-arrow-up-s-line" : "ri-list-check")"></i>
+                            @(_balShowSessions ? LS.T("pcs.hideSessions") : LS.T("pcs.showAllSessions"))
+                        </button>
+                    </div>
+
+                    @* ── Session Detail Table ── *@
+                    @if (_balShowSessions && _balSessionDetails != null)
+                    {
+                        <div class="bal-sessions-detail" style="animation:balSlideIn .3s ease;">
+                            <table class="table table-sm mb-0">
+                                <thead class="table-light" style="position:sticky;top:0;">
+                                    <tr>
+                                        <th class="small text-center">#</th>
+                                        <th class="small">@LS.T("pcs.date")</th>
+                                        <th class="small">@LS.T("pcs.auditor")</th>
+                                        <th class="small text-center">@LS.T("pcs.duration")</th>
+                                        <th class="small text-center">@LS.T("pcs.admin")</th>
+                                        <th class="small text-center">@LS.T("pcs.rateLabel")</th>
+                                        <th class="small text-center">@LS.T("pcs.source")</th>
+                                        <th class="small text-end">@LS.T("pcs.cost")</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @{ int rowIdx = 0; }
+                                    @foreach (var s in _balSessionDetails)
+                                    {
+                                        <tr style="background:@(rowIdx++ % 2 == 0 ? "#fafafa" : "#fff");">
+                                            <td class="small text-center text-muted">@s.SessionId</td>
+                                            <td class="small">@FormatDate(s.Date)</td>
+                                            <td class="small">@s.AuditorName</td>
+                                            <td class="small text-center">@Hmm(s.LengthSec)</td>
+                                            <td class="small text-center">@Hmm(s.AdminSec)</td>
+                                            <td class="small text-center">₪@(s.RateCentsUsed / 100)</td>
+                                            <td class="small text-center"><span class="badge @RateBadgeClass(s.RateSource)">@s.RateSource</span></td>
+                                            <td class="small text-end fw-semibold" style="color:#dc2626;">@FormatNis2(s.CostNis)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 <style>
     /* ── Page container ── */
     .pc-page-container { display: flex; flex-direction: column; height: calc(100vh - 60px); min-height: 0; }
@@ -1981,15 +2160,166 @@
         .sms-checkmark { width: 60px; height: 60px; }
         .sms-success-title { font-size: 1.2rem; }
     }
+
+    /* ── Balance columns ── */
+    .bal-rate-mismatch {
+        position: relative;
+        cursor: help;
+        background: #fef3c7 !important;
+    }
+    .bal-rate-tip {
+        display: none;
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #1e293b;
+        color: #fff;
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: .72rem;
+        white-space: nowrap;
+        z-index: 10;
+        pointer-events: none;
+        box-shadow: 0 4px 12px rgba(0,0,0,.2);
+    }
+    .bal-rate-tip::after {
+        content: '';
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        border: 5px solid transparent;
+        border-top-color: #1e293b;
+    }
+    .bal-rate-mismatch:hover .bal-rate-tip,
+    .bal-rate-mismatch:focus .bal-rate-tip {
+        display: block;
+        animation: balTipIn .2s ease;
+    }
+    @@keyframes balTipIn {
+        from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+        to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+    .bal-detail-btn { line-height: 1; min-height: 32px; min-width: 32px; }
+    .bal-detail-btn:hover i { color: #4f46e5 !important; transform: scale(1.15); transition: all .15s ease; }
+
+    /* ── Balance Explanation Modal ── */
+    .bal-modal { border: none; border-radius: 20px; overflow: hidden; background: #fff; color: #212529; }
+    .bal-modal-header {
+        display: flex; align-items: center; gap: 14px;
+        padding: 20px 24px 16px;
+        background: linear-gradient(135deg, #1e40af, #6366f1);
+    }
+    .bal-modal-icon {
+        width: 48px; height: 48px; border-radius: 14px; flex-shrink: 0;
+        background: rgba(255,255,255,.18); backdrop-filter: blur(4px);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.5rem; color: #fff;
+    }
+    .bal-modal-title { font-size: 1.1rem; font-weight: 700; color: #fff; }
+    .bal-modal-subtitle { font-size: .82rem; color: rgba(255,255,255,.7); }
+
+    .bal-section { margin: 0; border-bottom: 1px solid #f1f5f9; }
+    .bal-sec-title {
+        display: flex; align-items: center; gap: 8px;
+        font-size: .82rem; font-weight: 700;
+        padding: 12px 16px 8px;
+    }
+    .bal-sec-title i { font-size: 1.1rem; }
+    .bal-sec-purchased { background: #f0fdf4; }
+    .bal-sec-purchased .bal-sec-title { color: #166534; }
+    .bal-sec-purchased .table { --bs-table-bg: transparent; }
+    .bal-sec-purchased .table td, .bal-sec-purchased .table th { background: transparent !important; color: #212529 !important; border-color: #bbf7d0; }
+
+    .bal-sec-used { background: #fef2f2; }
+    .bal-sec-used .bal-sec-title { color: #991b1b; }
+
+    .bal-sec-hours { background: #eff6ff; }
+    .bal-sec-hours .bal-sec-title { color: #1e40af; }
+
+    .bal-result-card {
+        text-align: center; padding: 20px 16px;
+        background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .bal-result-label { font-size: .82rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+    .bal-result-value { font-size: 2rem; font-weight: 800; }
+
+    .bal-formula {
+        display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        font-size: .9rem;
+    }
+    .bal-formula-item {
+        background: #fff; border: 1px solid #bfdbfe; border-radius: 8px;
+        padding: 4px 10px; font-weight: 600; color: #1e40af;
+    }
+    .bal-formula-op { font-size: 1.1rem; font-weight: 700; color: #94a3b8; }
+    .bal-formula-result {
+        background: #dbeafe; border-radius: 8px;
+        padding: 4px 12px; font-weight: 800; color: #1e3a8a; font-size: 1rem;
+    }
+
+    .bal-badge-warn {
+        background: #fef3c7; color: #92400e; font-size: .72rem;
+        display: inline-flex; align-items: center; gap: 4px;
+    }
+    .bal-badge-own { background: #dcfce7; color: #166534; }
+    .bal-badge-fallback { background: #dbeafe; color: #1e40af; }
+    .bal-badge-purchase { background: #fef3c7; color: #92400e; }
+
+    .bal-sessions-btn {
+        background: linear-gradient(135deg, #6366f1, #818cf8);
+        color: #fff; border: none; border-radius: 10px;
+        padding: 8px 20px; font-size: .82rem; font-weight: 600;
+        display: inline-flex; align-items: center; gap: 6px;
+        transition: all .2s ease; min-height: 44px;
+    }
+    .bal-sessions-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(99,102,241,.4); color: #fff; }
+    .bal-sessions-btn:active { transform: translateY(0); }
+
+    .bal-sessions-detail {
+        max-height: 400px; overflow-y: auto;
+        border-top: 2px solid #e2e8f0;
+    }
+    .bal-sessions-detail .table { --bs-table-bg: transparent; }
+    .bal-sessions-detail .table td, .bal-sessions-detail .table th { color: #212529 !important; background: transparent !important; }
+    .bal-sessions-detail .table thead.table-light th { background: #f1f5f9 !important; color: #374151 !important; }
+
+    @@keyframes balSlideIn {
+        from { opacity: 0; max-height: 0; }
+        to   { opacity: 1; max-height: 400px; }
+    }
+
+    /* ── Balance modal responsive ── */
+    @@media (max-width: 768px) {
+        .bal-modal-header { padding: 16px; }
+        .bal-result-value { font-size: 1.6rem; }
+        .bal-formula { font-size: .8rem; }
+    }
+    @@media (max-width: 480px) {
+        .bal-modal { border-radius: 16px; }
+        .bal-modal-icon { width: 40px; height: 40px; font-size: 1.2rem; }
+        .bal-sessions-detail { max-height: 300px; }
+    }
 </style>
 
 @code {
     List<PcListItemEx> _allPcsEx    = [];
     HashSet<int>       _soloPcIds   = new();
+    Dictionary<int, PcBalanceData> _balances = new();
     int?               _selPcId;
     bool               _isSolo;
     string             _search      = "";
     bool               _filterHasSessions = false;
+
+    // Balance explanation modal
+    bool _showBalanceModal;
+    int _balancePcId;
+    string _balancePcName = "";
+    PcBalanceExplanation? _balanceExplanation;
+    List<PcSessionCostRow>? _balSessionDetails;
+    bool _balShowSessions;
 
     // SMS state
     bool   _showSmsModal      = false;
@@ -2115,8 +2445,10 @@
             {
                 ("name", true)       => list.OrderBy(p => p.FullName),
                 ("name", false)      => list.OrderByDescending(p => p.FullName),
-                ("hoursLeft", true)  => list.OrderBy(p => p.RemainSec),
-                ("hoursLeft", false) => list.OrderByDescending(p => p.RemainSec),
+                ("balance", true)    => list.OrderBy(p => _balances.TryGetValue(p.PcId, out var b) ? b.BalanceNis : 0m),
+                ("balance", false)   => list.OrderByDescending(p => _balances.TryGetValue(p.PcId, out var b) ? b.BalanceNis : 0m),
+                ("hoursLeft", true)  => list.OrderBy(p => _balances.TryGetValue(p.PcId, out var b) ? b.HoursLeft : 0),
+                ("hoursLeft", false) => list.OrderByDescending(p => _balances.TryGetValue(p.PcId, out var b) ? b.HoursLeft : 0),
                 ("totalTime", true)  => list.OrderBy(p => p.TotalSessionSec),
                 ("totalTime", false) => list.OrderByDescending(p => p.TotalSessionSec),
                 ("visits", true)     => list.OrderBy(p => p.AcademyVisits),
@@ -2125,7 +2457,7 @@
                 ("purchased", false) => list.OrderByDescending(p => p.HoursPurchased),
                 ("auditor", true)    => list.OrderBy(p => p.Auditor),
                 ("auditor", false)   => list.OrderByDescending(p => p.Auditor),
-                _ => list.OrderBy(p => p.RemainSec)
+                _ => list.OrderBy(p => _balances.TryGetValue(p.PcId, out var b) ? b.HoursLeft : 0)
             };
 
             return list;
@@ -2163,6 +2495,7 @@
     protected override async Task OnInitializedAsync()
     {
         _allPcsEx   = PcSvc.GetAllPcsExtended();
+        _balances   = PcSvc.GetAllPcBalances();
         _soloPcIds  = DashSvc.GetSoloPcIds();
         _allCourses = CourseSvc.GetAllCourses();
         _allBooks   = CourseSvc.GetAllBooks();
@@ -2256,6 +2589,7 @@
             d.Phone, d.Email, d.Notes,
             d.DateOfBirth, d.Gender, orgId: d.OrgId > 0 ? d.OrgId : null);
         _allPcsEx = PcSvc.GetAllPcsExtended();
+        _balances = PcSvc.GetAllPcBalances();
         LoadDetail();
     }
 
@@ -2639,6 +2973,7 @@
         _showPurchaseSuccess = false;
 
         _allPcsEx = PcSvc.GetAllPcsExtended();
+        _balances = PcSvc.GetAllPcBalances();
         LoadDetail();
     }
 
@@ -2711,6 +3046,7 @@
         PcSvc.DeletePurchase(_confirmDeletePurchaseId.Value);
         _confirmDeletePurchaseId = null;
         _allPcsEx = PcSvc.GetAllPcsExtended();
+        _balances = PcSvc.GetAllPcBalances();
         LoadDetail();
     }
 
@@ -2907,6 +3243,42 @@
                 sessGroups.TryGetValue(name, out var comps) ? comps : []))
             .ToList();
     }
+
+    // ── Balance explanation modal ──
+
+    void OpenBalanceModal(int pcId, string pcName)
+    {
+        _balancePcId = pcId;
+        _balancePcName = pcName;
+        _balSessionDetails = null;
+        _balShowSessions = false;
+        _balanceExplanation = PcSvc.GetPcBalanceExplanation(pcId);
+        _showBalanceModal = true;
+    }
+
+    void CloseBalanceModal()
+    {
+        _showBalanceModal = false;
+        _balanceExplanation = null;
+        _balSessionDetails = null;
+        _balShowSessions = false;
+    }
+
+    void ToggleSessionDetails()
+    {
+        if (_balShowSessions) { _balShowSessions = false; return; }
+        _balSessionDetails ??= PcSvc.GetPcSessionCostDetails(_balancePcId);
+        _balShowSessions = true;
+    }
+
+    static string FormatNis(decimal amount) => $"₪{amount:N0}";
+    static string FormatNis2(decimal amount) => $"₪{amount:N2}";
+    static string RateBadgeClass(string source) => source switch
+    {
+        "Own" => "bal-badge-own",
+        "Purchase" => "bal-badge-purchase",
+        _ => "bal-badge-fallback"
+    };
 
     public void Dispose()
     {

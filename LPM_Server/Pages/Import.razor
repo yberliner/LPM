@@ -1578,8 +1578,8 @@
                 }
                 else if (file.Section == "WorkSheets")
                 {
-                    // Base-name only across entire section tree (flat vs subdir doesn't matter)
-                    exists = FolderSvc.SectionFileExistsByFolderPath(serverFolder, file.Section, file.FileName);
+                    // Substring match: strip trailing " V", strip spaces, check if any server file contains the key
+                    exists = FolderSvc.WorkSheetFileExistsBySubstring(serverFolder, file.FileName);
                 }
                 else
                 {

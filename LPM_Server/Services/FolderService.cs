@@ -364,6 +364,26 @@ public class FolderService
         return FileExistsByBaseName(sectionPath, fileName);
     }
 
+    /// <summary>WorkSheets existence check: strip trailing " V" and all spaces from import file name,
+    /// then check if any server WorkSheets file's base name (also space-stripped) contains that key.</summary>
+    public bool WorkSheetFileExistsBySubstring(string folderPath, string importFileName)
+    {
+        var sectionPath = Directory.GetDirectories(folderPath)
+            .FirstOrDefault(d => Path.GetFileName(d).Equals("WorkSheets", StringComparison.OrdinalIgnoreCase));
+        if (sectionPath == null) return false;
+
+        var baseName = Path.GetFileNameWithoutExtension(importFileName);
+        if (baseName.EndsWith(" V", StringComparison.OrdinalIgnoreCase))
+            baseName = baseName[..^2];
+        var searchKey = baseName.Replace(" ", "");
+
+        if (string.IsNullOrEmpty(searchKey)) return false;
+
+        return Directory.GetFiles(sectionPath, "*", SearchOption.AllDirectories)
+            .Any(f => Path.GetFileNameWithoutExtension(f).Replace(" ", "")
+                .Contains(searchKey, StringComparison.OrdinalIgnoreCase));
+    }
+
     /// <summary>Check if a file exists at a specific subpath within a section (path-exact, extension-agnostic).
     /// For Front_Cover / Back_Cover where two files can share the same name in different subdirs.</summary>
     public bool SectionFileExistsByFolderPathAndSubPath(string folderPath, string section, string subPath, string fileName)

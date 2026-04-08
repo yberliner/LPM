@@ -28,6 +28,22 @@ public record PurchaseDetail(int PurchaseId, int PcId, string PcName, string Pur
 public record PurchasePaymentMethodInfo(int PaymentMethodId, string MethodType,
     int Amount, string? PaymentDate, bool IsMoneyInBank, string? MoneyInBankDate, int Installments = 1);
 
+// ── Balance calculation records ──
+public record PcBalanceData(
+    int PurchasedNis, decimal UsedNis, decimal BalanceNis,
+    double HoursLeft, int EffectiveRateCents, int PurchaseRateCents, bool RateMismatch);
+
+public record PcPurchaseRow(int PurchaseId, string Date, double Hours, int AmountNis);
+
+public record PcSessionCostRow(
+    int SessionId, string Date, string AuditorName,
+    int LengthSec, int AdminSec, int RateCentsUsed, string RateSource, decimal CostNis);
+
+public record PcBalanceExplanation(
+    List<PcPurchaseRow> Purchases, int TotalPurchasedNis,
+    decimal TotalUsedNis, decimal BalanceNis, int BillableSessionCount,
+    int EffectiveRateCents, int PurchaseRateCents, double HoursLeft, string RateSource);
+
 public class PcService
 {
     private readonly string _connectionString;
@@ -508,6 +524,108 @@ public List<PcListItem> GetAllPcs()
                 r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetInt64(3),
                 r.GetInt64(4), r.GetInt32(5), r.GetInt32(6), r.GetDouble(7), r.GetString(8)));
         return list;
+    }
+
+    // ── Balance calculation (bulk for PC list) ──────────────────────
+
+    public Dictionary<int, PcBalanceData> GetAllPcBalances()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // A: Total purchased ₪ per PC (auditing items, non-deleted purchases)
+        var purchased = new Dictionary<int, int>();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT pu.PcId, COALESCE(SUM(pi.AmountPaid), 0)
+                FROM fin_purchase_items pi
+                JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+                WHERE pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+                GROUP BY pu.PcId";
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) purchased[r.GetInt32(0)] = r.GetInt32(1);
+        }
+
+        // B: Last purchase rate per PC (highest PurchaseId with total AmountPaid > 0)
+        var lastPurchaseRate = new Dictionary<int, int>();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT pu.PcId, pu.PurchaseId, SUM(pi.AmountPaid), SUM(pi.HoursBought)
+                FROM fin_purchase_items pi
+                JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+                WHERE pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+                GROUP BY pu.PcId, pu.PurchaseId
+                HAVING SUM(pi.AmountPaid) > 0
+                ORDER BY pu.PcId, pu.PurchaseId";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                int pcId = r.GetInt32(0);
+                int amt = r.GetInt32(2);
+                double hrs = r.GetDouble(3);
+                if (hrs > 0)
+                    lastPurchaseRate[pcId] = (int)((double)amt / hrs * 100);
+            }
+        }
+
+        // C: All billable sessions (non-solo, non-free)
+        var sessions = new Dictionary<int, List<(int sid, int rate, int admin, int length)>>();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT PcId, SessionId, ChargedRateCentsPerHour, AdminSeconds, LengthSeconds
+                FROM sess_sessions
+                WHERE AuditorId IS NOT NULL AND IsFreeSession = 0
+                ORDER BY PcId, SessionId";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                int pcId = r.GetInt32(0);
+                if (!sessions.ContainsKey(pcId)) sessions[pcId] = new();
+                sessions[pcId].Add((r.GetInt32(1), r.GetInt32(2), r.GetInt32(3), r.GetInt32(4)));
+            }
+        }
+
+        // Calculate per PC
+        var result = new Dictionary<int, PcBalanceData>();
+        foreach (int pcId in purchased.Keys.Union(sessions.Keys))
+        {
+            int purchasedNis = purchased.GetValueOrDefault(pcId, 0);
+            int purchaseRate = lastPurchaseRate.GetValueOrDefault(pcId, 0);
+
+            if (!sessions.TryGetValue(pcId, out var list) || list.Count == 0)
+            {
+                double hrs = purchaseRate > 0 ? purchasedNis / (purchaseRate / 100.0) : 0;
+                result[pcId] = new(purchasedNis, 0m, purchasedNis, hrs, purchaseRate, purchaseRate, false);
+                continue;
+            }
+
+            // Global last session rate (for hours-left divisor)
+            int lastSessRate = 0;
+            for (int i = list.Count - 1; i >= 0; i--)
+                if (list[i].rate > 0) { lastSessRate = list[i].rate; break; }
+
+            // Per-session cost: backward-looking fallback rate
+            int lastSeenRate = 0;
+            decimal usedNis = 0m;
+            foreach (var s in list)
+            {
+                int rate;
+                if (s.rate > 0) { rate = s.rate; lastSeenRate = s.rate; }
+                else { rate = lastSeenRate > 0 ? lastSeenRate : purchaseRate; }
+                usedNis += (decimal)rate * (s.admin + s.length) / 3600m / 100m;
+            }
+
+            decimal balance = purchasedNis - usedNis;
+            int effective = lastSessRate > 0 ? lastSessRate : purchaseRate;
+            double hoursLeft = effective > 0 ? (double)(balance / ((decimal)effective / 100m)) : 0;
+            bool mismatch = effective > 0 && purchaseRate > 0 && effective != purchaseRate;
+
+            result[pcId] = new(purchasedNis, usedNis, balance, hoursLeft, effective, purchaseRate, mismatch);
+        }
+        return result;
     }
 
     // ── Purchase methods ────────────────────────────────────────────
@@ -1133,6 +1251,145 @@ public List<PcListItem> GetAllPcs()
 
         tx.Commit();
         Console.WriteLine($"[PcService] Restored purchase {purchaseId}");
+    }
+
+    // ── Balance explanation (per PC, for popup) ─────────────────────
+
+    public PcBalanceExplanation GetPcBalanceExplanation(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Purchases
+        var purchases = new List<PcPurchaseRow>();
+        int totalPurchased = 0;
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT pu.PurchaseId, pu.PurchaseDate,
+                       COALESCE(SUM(pi.HoursBought), 0), COALESCE(SUM(pi.AmountPaid), 0)
+                FROM fin_purchase_items pi
+                JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+                WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+                GROUP BY pu.PurchaseId, pu.PurchaseDate
+                ORDER BY pu.PurchaseId";
+            cmd.Parameters.AddWithValue("@id", pcId);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                int amt = r.GetInt32(3);
+                purchases.Add(new(r.GetInt32(0), r.GetString(1), r.GetDouble(2), amt));
+                totalPurchased += amt;
+            }
+        }
+
+        // Last purchase rate
+        int purchaseRate = 0;
+        for (int i = purchases.Count - 1; i >= 0; i--)
+            if (purchases[i].AmountNis > 0 && purchases[i].Hours > 0)
+            { purchaseRate = (int)((double)purchases[i].AmountNis / purchases[i].Hours * 100); break; }
+
+        // Billable sessions
+        var sess = new List<(int sid, int rate, int admin, int length)>();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT SessionId, ChargedRateCentsPerHour, AdminSeconds, LengthSeconds
+                FROM sess_sessions
+                WHERE PcId = @id AND AuditorId IS NOT NULL AND IsFreeSession = 0
+                ORDER BY SessionId";
+            cmd.Parameters.AddWithValue("@id", pcId);
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) sess.Add((r.GetInt32(0), r.GetInt32(1), r.GetInt32(2), r.GetInt32(3)));
+        }
+
+        // Global last session rate (for hours-left divisor)
+        int lastSessRate = 0, lastSessId = 0;
+        for (int i = sess.Count - 1; i >= 0; i--)
+            if (sess[i].rate > 0) { lastSessRate = sess[i].rate; lastSessId = sess[i].sid; break; }
+
+        // Per-session cost: backward-looking fallback rate
+        int lastSeenRate = 0;
+        decimal usedNis = 0m;
+        foreach (var s in sess)
+        {
+            int rate;
+            if (s.rate > 0) { rate = s.rate; lastSeenRate = s.rate; }
+            else { rate = lastSeenRate > 0 ? lastSeenRate : purchaseRate; }
+            usedNis += (decimal)rate * (s.admin + s.length) / 3600m / 100m;
+        }
+
+        decimal balance = totalPurchased - usedNis;
+        int effective = lastSessRate > 0 ? lastSessRate : purchaseRate;
+        double hoursLeft = effective > 0 ? (double)(balance / ((decimal)effective / 100m)) : 0;
+        string source = lastSessRate > 0 ? $"Session #{lastSessId}" : "Purchase";
+
+        return new(purchases, totalPurchased, usedNis, balance, sess.Count,
+            effective, purchaseRate, hoursLeft, source);
+    }
+
+    public List<PcSessionCostRow> GetPcSessionCostDetails(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Purchase rate fallback (for sessions with no prior rated session)
+        int purchaseRate = 0;
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT SUM(pi.AmountPaid), SUM(pi.HoursBought)
+                FROM fin_purchase_items pi
+                JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+                WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+                  AND pu.PurchaseId = (
+                      SELECT pu2.PurchaseId FROM fin_purchases pu2
+                      JOIN fin_purchase_items pi2 ON pi2.PurchaseId = pu2.PurchaseId
+                      WHERE pu2.PcId = @id AND pu2.IsDeleted = 0
+                        AND pi2.ItemType = 'Auditing'
+                      GROUP BY pu2.PurchaseId
+                      HAVING SUM(pi2.AmountPaid) > 0
+                      ORDER BY pu2.PurchaseId DESC LIMIT 1
+                  )";
+            cmd.Parameters.AddWithValue("@id", pcId);
+            using var r = cmd.ExecuteReader();
+            if (r.Read() && !r.IsDBNull(0) && !r.IsDBNull(1))
+            {
+                double hrs = r.GetDouble(1);
+                if (hrs > 0) purchaseRate = (int)(r.GetInt32(0) / hrs * 100);
+            }
+        }
+
+        // All billable sessions with auditor names — backward-looking fallback
+        int prevRate = 0, prevRateId = 0;
+        var result = new List<PcSessionCostRow>();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT s.SessionId, s.SessionDate,
+                       COALESCE(TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')), '?'),
+                       s.LengthSeconds, s.AdminSeconds, s.ChargedRateCentsPerHour
+                FROM sess_sessions s
+                LEFT JOIN core_persons p ON p.PersonId = s.AuditorId
+                WHERE s.PcId = @id AND s.AuditorId IS NOT NULL AND s.IsFreeSession = 0
+                ORDER BY s.SessionId";
+            cmd.Parameters.AddWithValue("@id", pcId);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                int sessionId = r.GetInt32(0);
+                int rateCents = r.GetInt32(5);
+                int rateUsed; string src;
+                if (rateCents > 0) { rateUsed = rateCents; src = "Own"; prevRate = rateCents; prevRateId = sessionId; }
+                else if (prevRate > 0) { rateUsed = prevRate; src = $"Session #{prevRateId}"; }
+                else { rateUsed = purchaseRate; src = "Purchase"; }
+
+                decimal cost = (decimal)rateUsed * (r.GetInt32(4) + r.GetInt32(3)) / 3600m / 100m;
+                result.Add(new(sessionId, r.GetString(1), r.GetString(2),
+                    r.GetInt32(3), r.GetInt32(4), rateUsed, src, cost));
+            }
+        }
+        return result;
     }
 
     // ── Transfer Balance ──────────────────────────────────────────
