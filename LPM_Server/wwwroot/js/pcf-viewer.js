@@ -54,6 +54,14 @@ window.pcfViewer = {
     cancelLoad(paneId) {
         const pane = this._initPane(paneId);
         pane.loadGen = (pane.loadGen || 0) + 1;
+        // Cancel any in-flight pdf.js page render tasks to avoid
+        // "Cannot use the same canvas during multiple render()" errors
+        if (pane.pages) {
+            for (const pg of pane.pages) {
+                if (pg._renderTask) { try { pg._renderTask.cancel(); } catch(_){} pg._renderTask = null; }
+            }
+        }
+        if (pane._currentRenderTask) { try { pane._currentRenderTask.cancel(); } catch(_){} pane._currentRenderTask = null; }
     },
 
     async loadPdf(url, paneId, targetPage) {
@@ -64,6 +72,15 @@ window.pcfViewer = {
         // the stale call detects the mismatch and exits without touching the DOM.
         pane.loadGen = (pane.loadGen || 0) + 1;
         const myGen = pane.loadGen;
+
+        // Cancel any in-flight pdf.js page renders so they release the canvas immediately
+        // (prevents "Cannot use the same canvas during multiple render()" errors)
+        if (pane.pages) {
+            for (const pg of pane.pages) {
+                if (pg._renderTask) { try { pg._renderTask.cancel(); } catch(_){} pg._renderTask = null; }
+            }
+        }
+        if (pane._currentRenderTask) { try { pane._currentRenderTask.cancel(); } catch(_){} pane._currentRenderTask = null; }
 
         pane.zoomLevel = 1.0; // reset zoom on new PDF
 
@@ -306,7 +323,16 @@ window.pcfViewer = {
 
             const hiResVp = page.getViewport({ scale: scale * dpr });
             const ctx = canvas.getContext('2d');
-            await page.render({ canvasContext: ctx, viewport: hiResVp }).promise;
+            const renderTask = page.render({ canvasContext: ctx, viewport: hiResVp });
+            // Store on a temporary object so _rescalePdf / cancelLoad can cancel it later.
+            // The real pg object is pushed to pane.pages after render completes,
+            // so also store on pane as a transient reference.
+            pane._currentRenderTask = renderTask;
+            try { await renderTask.promise; } catch(e) {
+                if (e?.name === 'RenderingCancelledException') return;
+                throw e;
+            }
+            pane._currentRenderTask = null;
             if (pane.loadGen !== myGen) return; // superseded after render
 
             // Populate text layer asynchronously — non-blocking, non-critical
@@ -504,7 +530,15 @@ window.pcfViewer = {
                 textLayerDiv.style.setProperty('--scale-factor', vp.scale);
             }
             const hiResVp = page.getViewport({ scale: newScale * dpr });
-            await page.render({ canvasContext: pg.canvas.getContext('2d'), viewport: hiResVp }).promise;
+            // Cancel any in-flight render on this canvas to avoid pdf.js concurrent render error
+            if (pg._renderTask) { try { pg._renderTask.cancel(); } catch(_){} pg._renderTask = null; }
+            const rt = page.render({ canvasContext: pg.canvas.getContext('2d'), viewport: hiResVp });
+            pg._renderTask = rt;
+            try { await rt.promise; } catch(e) {
+                if (e?.name === 'RenderingCancelledException') return;
+                throw e;
+            }
+            pg._renderTask = null;
             pg.vp    = vp;
             pg.scale = newScale;
             this._redrawOverlay(i, paneId);
