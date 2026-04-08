@@ -4812,7 +4812,7 @@
                 // ── Phase 1: run independent work in parallel ──────────────────
                 // Normalization runs on capturedBytes first (repairs XRef, finds page size).
                 // ARF is generated AFTER normalization so it matches the session page dimensions.
-                sCreate.Status = 1; sNorm.Status = 1; sNextCs.Status = 1;
+                sCreate.Status = 1; sNorm.Status = 1;
                 await InvokeAsync(StateHasChanged);
 
                 int    sessionId       = 0;
@@ -4923,17 +4923,11 @@
                             sNorm.SubLabel  = "GS and LibreOffice both failed";
                             await Advance(sNorm, 3);
                         }
-                    }),
-                    Task.Run(async () =>
-                    {
-                        nextCsPdfBytes = PdfSvc.GenerateNextCsPdf(
-                            capturedPcName, capturedDate,
-                            capturedAuditorName, capturedStep3Top, capturedStep3Bottom);
-                        await Advance(sNextCs, 2);
                     })
                 );
 
-                // ── Phase 1.5: generate ARF sized to session page, then combine ──
+                // ── Phase 1.5: generate ARF + Next CS sized to session page ──
+                var (targetW, targetH) = FolderSvc.GetFirstPageSizePt(normalizedBytes);
                 if (capturedArfEmpty)
                 {
                     sArf.SubLabel = "skipped";
@@ -4945,7 +4939,6 @@
                     // ScaleToFit — fully vector, no PdfSharpCore post-processing.
                     sArf.Status = 1;
                     await InvokeAsync(StateHasChanged);
-                    var (targetW, targetH) = FolderSvc.GetFirstPageSizePt(normalizedBytes);
                     arfPdfBytes = PdfSvc.GenerateArfPdf(
                         capturedPcName, capturedDate,
                         capturedGrade, capturedSessLen, capturedAdminTime,
@@ -4954,6 +4947,15 @@
                     await Advance(sArf, 2);
                     normalizedBytes = PdfSvc.CombinePdfs(arfPdfBytes, normalizedBytes);
                 }
+
+                // Generate Next C/S sized to session page (same as ARF)
+                sNextCs.Status = 1;
+                await InvokeAsync(StateHasChanged);
+                nextCsPdfBytes = PdfSvc.GenerateNextCsPdf(
+                    capturedPcName, capturedDate,
+                    capturedAuditorName, capturedStep3Top, capturedStep3Bottom,
+                    pageWidthPt: targetW, pageHeightPt: targetH);
+                await Advance(sNextCs, 2);
 
                 // ── Phase 2: save files to folder ───────────────
                 sSave.Status = 1;

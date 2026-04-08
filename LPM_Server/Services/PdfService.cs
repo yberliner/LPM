@@ -1960,21 +1960,23 @@ public class PdfService
 
     public byte[] GenerateNextCsPdf(
         string pcName, string date, string auditorName,
-        string? topHtml, string? bottomHtml)
+        string? topHtml, string? bottomHtml,
+        double pageWidthPt = 595.28, double pageHeightPt = 841.89)
     {
         QuestPDF.Settings.License = LicenseType.Community;
-        return BuildNextCsPdf(pcName, date, auditorName, topHtml, bottomHtml);
+        return BuildNextCsPdf(pcName, date, auditorName, topHtml, bottomHtml, pageWidthPt, pageHeightPt);
     }
 
     private byte[] BuildNextCsPdf(
         string pcName, string date, string auditorName,
-        string? topHtml, string? bottomHtml)
+        string? topHtml, string? bottomHtml,
+        double pageWidthPt = 595.28, double pageHeightPt = 841.89)
     {
         return Document.Create(container =>
         {
             container.Page(page =>
             {
-                page.Size(PageSizes.A4);
+                page.Size(new PageSize((float)pageWidthPt, (float)pageHeightPt));
                 page.Margin(36);
                 page.DefaultTextStyle(x => x.FontSize(22).FontColor("#1a1a1a"));
 
