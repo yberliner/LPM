@@ -721,7 +721,7 @@ public class UserDb
 
     // ── Magic Links ──────────────────────────────────────────────────────────
 
-    public string CreateMagicLink(int personId)
+    public string CreateMagicLink(int personId, int userId)
     {
         var token = Random.Shared.Next(100000, 999999).ToString(); // 6-digit code
         var expiresAt = DateTime.UtcNow.AddMinutes(10).ToString("O");
@@ -729,31 +729,32 @@ public class UserDb
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        // Invalidate all previous unused tokens for this person
+        // Invalidate all previous unused tokens for this user
         using var inv = conn.CreateCommand();
-        inv.CommandText = "UPDATE sys_magic_links SET UsedAt = datetime('now') WHERE PersonId = @pid AND UsedAt IS NULL";
-        inv.Parameters.AddWithValue("@pid", personId);
+        inv.CommandText = "UPDATE sys_magic_links SET UsedAt = datetime('now') WHERE UserId = @uid AND UsedAt IS NULL";
+        inv.Parameters.AddWithValue("@uid", userId);
         inv.ExecuteNonQuery();
 
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT INTO sys_magic_links (PersonId, Token, ExpiresAt) VALUES (@pid, @tok, @exp)";
+        cmd.CommandText = "INSERT INTO sys_magic_links (PersonId, UserId, Token, ExpiresAt) VALUES (@pid, @uid, @tok, @exp)";
         cmd.Parameters.AddWithValue("@pid", personId);
+        cmd.Parameters.AddWithValue("@uid", userId);
         cmd.Parameters.AddWithValue("@tok", token);
         cmd.Parameters.AddWithValue("@exp", expiresAt);
         cmd.ExecuteNonQuery();
 
-        Console.WriteLine($"[Auth] Magic link created for PersonId={personId}, expires={expiresAt}");
+        Console.WriteLine($"[Auth] Magic link created for PersonId={personId}, UserId={userId}, expires={expiresAt}");
         return token;
     }
 
-    /// <summary>Validates and consumes a magic link token. Returns PersonId or null.</summary>
+    /// <summary>Validates and consumes a magic link token. Returns UserId or null.</summary>
     public int? ValidateMagicLink(string token)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Id, PersonId, ExpiresAt, UsedAt FROM sys_magic_links WHERE Token = @tok";
+        cmd.CommandText = "SELECT Id, PersonId, ExpiresAt, UsedAt, UserId FROM sys_magic_links WHERE Token = @tok";
         cmd.Parameters.AddWithValue("@tok", token);
         using var r = cmd.ExecuteReader();
         if (!r.Read()) return null;
@@ -762,9 +763,11 @@ public class UserDb
         var personId = r.GetInt32(1);
         var expiresAt = DateTime.Parse(r.GetString(2), null, System.Globalization.DateTimeStyles.RoundtripKind);
         var usedAt = r.IsDBNull(3) ? (string?)null : r.GetString(3);
+        var userId = r.IsDBNull(4) ? (int?)null : r.GetInt32(4);
 
         if (usedAt != null) { Console.WriteLine($"[Auth] Magic link already used (id={id})"); return null; }
         if (DateTime.UtcNow > expiresAt) { Console.WriteLine($"[Auth] Magic link expired (id={id})"); return null; }
+        if (userId == null) { Console.WriteLine($"[Auth] Magic link has no UserId (id={id})"); return null; }
 
         // Mark as used
         using var upd = conn.CreateCommand();
@@ -772,8 +775,8 @@ public class UserDb
         upd.Parameters.AddWithValue("@id", id);
         upd.ExecuteNonQuery();
 
-        Console.WriteLine($"[Auth] Magic link validated for PersonId={personId}");
-        return personId;
+        Console.WriteLine($"[Auth] Magic link validated for UserId={userId}, PersonId={personId}");
+        return userId;
     }
 
     /// <summary>Gets the email for a person from core_persons.</summary>
@@ -834,40 +837,41 @@ public class UserDb
 
     // ── Passkeys ─────────────────────────────────────────────────────────────
 
-    public record PasskeyInfo(int Id, int PersonId, byte[] CredentialId, byte[] PublicKey, int SignCount, string DeviceName, string CreatedAt);
+    public record PasskeyInfo(int Id, int PersonId, int UserId, byte[] CredentialId, byte[] PublicKey, int SignCount, string DeviceName, string CreatedAt);
 
-    public void AddPasskey(int personId, byte[] credentialId, byte[] publicKey, int signCount, string deviceName)
+    public void AddPasskey(int personId, int userId, byte[] credentialId, byte[] publicKey, int signCount, string deviceName)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"INSERT INTO sys_passkeys (PersonId, CredentialId, PublicKey, SignCount, DeviceName)
-                            VALUES (@pid, @cid, @pk, @sc, @dn)";
+        cmd.CommandText = @"INSERT INTO sys_passkeys (PersonId, UserId, CredentialId, PublicKey, SignCount, DeviceName)
+                            VALUES (@pid, @uid, @cid, @pk, @sc, @dn)";
         cmd.Parameters.AddWithValue("@pid", personId);
+        cmd.Parameters.AddWithValue("@uid", userId);
         cmd.Parameters.AddWithValue("@cid", credentialId);
         cmd.Parameters.AddWithValue("@pk", publicKey);
         cmd.Parameters.AddWithValue("@sc", signCount);
         cmd.Parameters.AddWithValue("@dn", deviceName);
         cmd.ExecuteNonQuery();
-        Console.WriteLine($"[Auth] Passkey registered for PersonId={personId}, device='{deviceName}'");
+        Console.WriteLine($"[Auth] Passkey registered for UserId={userId}, PersonId={personId}, device='{deviceName}'");
     }
 
-    public List<PasskeyInfo> GetPasskeysByPerson(int personId)
+    public List<PasskeyInfo> GetPasskeysByUser(int userId)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Id, PersonId, CredentialId, PublicKey, SignCount, DeviceName, CreatedAt FROM sys_passkeys WHERE PersonId = @pid ORDER BY CreatedAt DESC";
-        cmd.Parameters.AddWithValue("@pid", personId);
+        cmd.CommandText = "SELECT Id, PersonId, COALESCE(UserId,0), CredentialId, PublicKey, SignCount, DeviceName, CreatedAt FROM sys_passkeys WHERE UserId = @uid ORDER BY CreatedAt DESC";
+        cmd.Parameters.AddWithValue("@uid", userId);
         var list = new List<PasskeyInfo>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
         {
-            var cid = new byte[r.GetBytes(2, 0, null, 0, 0)];
-            r.GetBytes(2, 0, cid, 0, cid.Length);
-            var pk = new byte[r.GetBytes(3, 0, null, 0, 0)];
-            r.GetBytes(3, 0, pk, 0, pk.Length);
-            list.Add(new PasskeyInfo(r.GetInt32(0), r.GetInt32(1), cid, pk, r.GetInt32(4), r.GetString(5), r.GetString(6)));
+            var cid = new byte[r.GetBytes(3, 0, null, 0, 0)];
+            r.GetBytes(3, 0, cid, 0, cid.Length);
+            var pk = new byte[r.GetBytes(4, 0, null, 0, 0)];
+            r.GetBytes(4, 0, pk, 0, pk.Length);
+            list.Add(new PasskeyInfo(r.GetInt32(0), r.GetInt32(1), r.GetInt32(2), cid, pk, r.GetInt32(5), r.GetString(6), r.GetString(7)));
         }
         return list;
     }
@@ -877,15 +881,15 @@ public class UserDb
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Id, PersonId, CredentialId, PublicKey, SignCount, DeviceName, CreatedAt FROM sys_passkeys WHERE CredentialId = @cid";
+        cmd.CommandText = "SELECT Id, PersonId, COALESCE(UserId,0), CredentialId, PublicKey, SignCount, DeviceName, CreatedAt FROM sys_passkeys WHERE CredentialId = @cid";
         cmd.Parameters.AddWithValue("@cid", credentialId);
         using var r = cmd.ExecuteReader();
         if (!r.Read()) return null;
-        var cid = new byte[r.GetBytes(2, 0, null, 0, 0)];
-        r.GetBytes(2, 0, cid, 0, cid.Length);
-        var pk = new byte[r.GetBytes(3, 0, null, 0, 0)];
-        r.GetBytes(3, 0, pk, 0, pk.Length);
-        return new PasskeyInfo(r.GetInt32(0), r.GetInt32(1), cid, pk, r.GetInt32(4), r.GetString(5), r.GetString(6));
+        var cid = new byte[r.GetBytes(3, 0, null, 0, 0)];
+        r.GetBytes(3, 0, cid, 0, cid.Length);
+        var pk = new byte[r.GetBytes(4, 0, null, 0, 0)];
+        r.GetBytes(4, 0, pk, 0, pk.Length);
+        return new PasskeyInfo(r.GetInt32(0), r.GetInt32(1), r.GetInt32(2), cid, pk, r.GetInt32(5), r.GetString(6), r.GetString(7));
     }
 
     public void UpdatePasskeySignCount(int id, int signCount)
@@ -899,14 +903,14 @@ public class UserDb
         cmd.ExecuteNonQuery();
     }
 
-    public bool RemovePasskey(int id, int personId)
+    public bool RemovePasskey(int id, int userId)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM sys_passkeys WHERE Id = @id AND PersonId = @pid";
+        cmd.CommandText = "DELETE FROM sys_passkeys WHERE Id = @id AND UserId = @uid";
         cmd.Parameters.AddWithValue("@id", id);
-        cmd.Parameters.AddWithValue("@pid", personId);
+        cmd.Parameters.AddWithValue("@uid", userId);
         return cmd.ExecuteNonQuery() > 0;
     }
 }

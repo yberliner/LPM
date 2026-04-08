@@ -477,7 +477,7 @@
             _userId   = flags.UserId;
             _personId = flags.PersonId;
             _trustedDeviceCount = UserDb.GetTrustedDeviceCount(_userId);
-            _passkeys = UserDb.GetPasskeysByPerson(_personId);
+            _passkeys = UserDb.GetPasskeysByUser(_userId);
         }
 
         // Show success message when returning from voluntary 2FA setup
@@ -581,7 +581,7 @@
             {
                 _passkeyMsg = "Passkey registered successfully!";
                 _passkeyOk = true;
-                _passkeys = UserDb.GetPasskeysByPerson(_personId);
+                _passkeys = UserDb.GetPasskeysByUser(_userId);
             }
             else if (result == "cancelled")
             {
@@ -607,8 +607,8 @@
 
     private void RemovePasskey(int passkeyId)
     {
-        UserDb.RemovePasskey(passkeyId, _personId);
-        _passkeys = UserDb.GetPasskeysByPerson(_personId);
+        UserDb.RemovePasskey(passkeyId, _userId);
+        _passkeys = UserDb.GetPasskeysByUser(_userId);
         _passkeyMsg = "Passkey removed.";
         _passkeyOk = true;
     }

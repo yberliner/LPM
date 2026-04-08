@@ -776,19 +776,36 @@
                     {
                         <span class="pcf-memo-badge">memo</span>
                     }
-                    <div class="pcf-timer @(_csReviewMinutes <= 0 && !IsMemoSession() ? "pcf-timer-zero" : "")"
-                         title="CS Review time (session + admin). This value will be saved when you press Mark CS Done. Edit hours and minutes if needed.">
-                        <i class="ri-timer-line pcf-timer-icon"></i>
+                    <div class="pcf-timer @(_csReviewSeconds <= 0 && !IsMemoSession() && !_isAutoStopwatchSession ? "pcf-timer-zero" : "")"
+                         title="CS Review time. This value will be saved when you press Mark CS Done.">
+                        @if (_isAutoStopwatchSession)
+                        {
+                            <i class="@(_stopwatchRunning ? "ri-pause-line" : "ri-play-line") pcf-timer-icon pcf-timer-icon-click"
+                               title="@(_stopwatchRunning ? "Pause timer" : "Resume timer")"
+                               @onclick="ToggleStopwatch"></i>
+                        }
+                        else
+                        {
+                            <i class="ri-timer-line pcf-timer-icon"></i>
+                        }
+                        @{ var _timerReadOnly = _isAutoStopwatchSession && _stopwatchRunning; }
                         <div class="pcf-timer-display">
                             <input type="number" min="0" class="pcf-timer-num"
-                                   value="@(_csReviewMinutes / 60)"
-                                   @onchange="e => OnTimerHoursChanged(e)" />
+                                   value="@(_csReviewSeconds / 3600)"
+                                   @onchange="e => OnTimerHoursChanged(e)"
+                                   @attributes="@(_timerReadOnly ? new Dictionary<string,object>{["readonly"]="readonly"} : null)" />
                             <span class="pcf-timer-colon">:</span>
                             <input type="number" min="0" max="59" class="pcf-timer-num"
-                                   value="@(_csReviewMinutes % 60)"
-                                   @onchange="e => OnTimerMinsChanged(e)" />
+                                   value="@((_csReviewSeconds % 3600) / 60)"
+                                   @onchange="e => OnTimerMinsChanged(e)"
+                                   @attributes="@(_timerReadOnly ? new Dictionary<string,object>{["readonly"]="readonly"} : null)" />
+                            <span class="pcf-timer-colon">:</span>
+                            <input type="number" min="0" max="59" class="pcf-timer-num"
+                                   value="@(_csReviewSeconds % 60)"
+                                   @onchange="e => OnTimerSecsChanged(e)"
+                                   @attributes="@(_timerReadOnly ? new Dictionary<string,object>{["readonly"]="readonly"} : null)" />
                         </div>
-                        @if (_csReviewMinutes <= 0 && !IsMemoSession())
+                        @if (_csReviewSeconds <= 0 && !IsMemoSession() && !_isAutoStopwatchSession)
                         {
                             <i class="ri-error-warning-line pcf-timer-warn" title="Review time is 0 — update before marking done"></i>
                         }
@@ -1825,6 +1842,8 @@
         backdrop-filter: blur(4px);
     }
     .pcf-timer-icon { font-size: .7rem; color: #94a3b8; }
+    .pcf-timer-icon-click { cursor: pointer; transition: color .15s; }
+    .pcf-timer-icon-click:hover { color: #60a5fa; }
     .pcf-timer-display {
         display: flex; align-items: center; gap: 0;
     }
@@ -2870,10 +2889,16 @@
     bool _csAlreadyDone;         // true if this session already has a cs_review on load
     bool _csAlreadyDoneBannerDismissed;
     int _existingCsReviewId;     // CsReviewId when _csAlreadyDone
-    int _existingReviewMin;      // original review time in minutes (for comparison)
+    int _existingReviewSec;      // original review time in seconds (for comparison)
     bool _showCsCloseWarning;    // true when CS tries to close before marking Done
     string _errorToast = "";
-    int _csReviewMinutes;        // editable review time (session + admin) in minutes
+    int _csReviewSeconds;        // editable review time (session + admin) in seconds
+
+    // Auto-stopwatch for solo CS (not already done)
+    bool _isAutoStopwatchSession;   // Solo && CsMode && !_csAlreadyDone
+    bool _stopwatchRunning;
+    PeriodicTimer? _stopwatch;
+    System.Threading.CancellationTokenSource? _stopwatchCts;
     HashSet<int> _csedSessionIds = new();                    // session IDs that have cs_reviews
     Dictionary<string, int> _nameToSessionId = new(StringComparer.OrdinalIgnoreCase);  // session name → ID
     Dictionary<string, DateTime> _nameToCreatedAt = new(StringComparer.OrdinalIgnoreCase); // session name → CreatedAt
@@ -3201,15 +3226,25 @@
             if (_csSessionId > 0 && CsMode)
             {
                 _csSessionName   = DashSvc.GetSessionName(_csSessionId);
-                _csReviewMinutes = Solo ? 0 : (int)Math.Round(DashSvc.GetSessionTotalSeconds(_csSessionId) / 60.0);
+                _csReviewSeconds = Solo ? 0 : DashSvc.GetSessionTotalSeconds(_csSessionId);
                 var csUserName   = DashSvc.GetPersonName(UserPersonId) ?? $"User {UserPersonId}";
-                if (_activeCsSessions.TryGetValue(_csSessionId, out var existingLock))
+                if (_activeCsSessions.TryGetValue(_csSessionId, out var existingLock)
+                    && !ReferenceEquals(existingLock.Instance, this))
                 {
-                    _csLocked   = true;
-                    _csLockedBy = existingLock.UserName;
-                    Console.WriteLine($"[PcFolder] CS session {_csSessionId} LOCKED — already open by '{existingLock.UserName}', attempted by '{_userName}'");
+                    if (existingLock.UserName == csUserName)
+                    {
+                        // Same user reopened the session (stale circuit) — take over the lock
+                        _activeCsSessions[_csSessionId] = (csUserName, (object)this);
+                        Console.WriteLine($"[PcFolder] CS session {_csSessionId} ('{_csSessionName}') reclaimed by '{_userName}' (stale circuit replaced) for PC {PcId}");
+                    }
+                    else
+                    {
+                        _csLocked   = true;
+                        _csLockedBy = existingLock.UserName;
+                        Console.WriteLine($"[PcFolder] CS session {_csSessionId} LOCKED — already open by '{existingLock.UserName}', attempted by '{_userName}'");
+                    }
                 }
-                else
+                else if (!_activeCsSessions.ContainsKey(_csSessionId))
                 {
                     _activeCsSessions[_csSessionId] = (csUserName, (object)this);
                     Console.WriteLine($"[PcFolder] CS session {_csSessionId} ('{_csSessionName}') started by '{_userName}' for PC {PcId}");
@@ -3222,9 +3257,15 @@
                     if (info.HasValue)
                     {
                         _existingCsReviewId = info.Value.CsReviewId;
-                        _existingReviewMin = (int)Math.Round(info.Value.ReviewSec / 60.0);
-                        _csReviewMinutes = _existingReviewMin;
+                        _existingReviewSec = info.Value.ReviewSec;
+                        _csReviewSeconds = _existingReviewSec;
                     }
+                }
+                _isAutoStopwatchSession = Solo && CsMode && !_csAlreadyDone && !_csLocked;
+                if (_isAutoStopwatchSession)
+                {
+                    _csReviewSeconds = 0;
+                    _ = RunStopwatchAsync();
                 }
             }
             if (_csSessionId > 0 && CsMode)
@@ -4688,20 +4729,73 @@
 
     void OnTimerHoursChanged(ChangeEventArgs e)
     {
+        int curM = (_csReviewSeconds % 3600) / 60;
+        int curS = _csReviewSeconds % 60;
         if (int.TryParse(e.Value?.ToString(), out var h) && h >= 0)
-            _csReviewMinutes = h * 60 + (_csReviewMinutes % 60);
+            _csReviewSeconds = h * 3600 + curM * 60 + curS;
         else
-            _csReviewMinutes = _csReviewMinutes % 60;
-        Console.WriteLine($"[PcFolder] Timer hours changed by '{_userName}' — new total: {_csReviewMinutes} min, for PC {PcId}");
+            _csReviewSeconds = curM * 60 + curS;
+        Console.WriteLine($"[PcFolder] Timer hours changed by '{_userName}' — new total: {FormatReviewTime(_csReviewSeconds)}, for PC {PcId}");
     }
 
     void OnTimerMinsChanged(ChangeEventArgs e)
     {
+        int curH = _csReviewSeconds / 3600;
+        int curS = _csReviewSeconds % 60;
         if (int.TryParse(e.Value?.ToString(), out var m) && m >= 0)
-            _csReviewMinutes = (_csReviewMinutes / 60) * 60 + Math.Min(m, 59);
+            _csReviewSeconds = curH * 3600 + Math.Min(m, 59) * 60 + curS;
         else
-            _csReviewMinutes = (_csReviewMinutes / 60) * 60;
-        Console.WriteLine($"[PcFolder] Timer minutes changed by '{_userName}' — new total: {_csReviewMinutes} min, for PC {PcId}");
+            _csReviewSeconds = curH * 3600 + curS;
+        Console.WriteLine($"[PcFolder] Timer minutes changed by '{_userName}' — new total: {FormatReviewTime(_csReviewSeconds)}, for PC {PcId}");
+    }
+
+    void OnTimerSecsChanged(ChangeEventArgs e)
+    {
+        int curH = _csReviewSeconds / 3600;
+        int curM = (_csReviewSeconds % 3600) / 60;
+        if (int.TryParse(e.Value?.ToString(), out var s) && s >= 0)
+            _csReviewSeconds = curH * 3600 + curM * 60 + Math.Min(s, 59);
+        else
+            _csReviewSeconds = curH * 3600 + curM * 60;
+        Console.WriteLine($"[PcFolder] Timer seconds changed by '{_userName}' — new total: {FormatReviewTime(_csReviewSeconds)}, for PC {PcId}");
+    }
+
+    string FormatReviewTime(int totalSec)
+    {
+        int h = totalSec / 3600, m = (totalSec % 3600) / 60, s = totalSec % 60;
+        return $"{h}:{m:D2}:{s:D2}";
+    }
+
+    async Task RunStopwatchAsync()
+    {
+        _stopwatchCts?.Cancel();
+        _stopwatchCts?.Dispose();
+        _stopwatch?.Dispose();
+        _stopwatchCts = new System.Threading.CancellationTokenSource();
+        _stopwatch = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        _stopwatchRunning = true;
+        try
+        {
+            while (await _stopwatch.WaitForNextTickAsync(_stopwatchCts.Token))
+            {
+                _csReviewSeconds++;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    void ToggleStopwatch()
+    {
+        if (_stopwatchRunning)
+        {
+            _stopwatchCts?.Cancel();
+            _stopwatchRunning = false;
+        }
+        else
+        {
+            _ = RunStopwatchAsync();
+        }
     }
 
     bool IsMemoSession() =>
@@ -4714,15 +4808,25 @@
     async Task DoneCs()
     {
         if (_csSessionId == 0) return;
-        Console.WriteLine($"[PcFolder] Mark CS Done initiated by '{_userName}' — session {_csSessionId} ('{_csSessionName}'), review time: {_csReviewMinutes} min, for PC {PcId}");
+
+        // Pause auto-stopwatch while processing (snapshot the current value)
+        bool wasStopwatchRunning = _stopwatchRunning;
+        if (wasStopwatchRunning)
+        {
+            _stopwatchCts?.Cancel();
+            _stopwatchRunning = false;
+        }
+
+        Console.WriteLine($"[PcFolder] Mark CS Done initiated by '{_userName}' — session {_csSessionId} ('{_csSessionName}'), review time: {FormatReviewTime(_csReviewSeconds)}, for PC {PcId}");
 
         // Already-reviewed session: update time if changed, or just go Home
         if (_csAlreadyDone && _existingCsReviewId > 0)
         {
-            if (_csReviewMinutes <= 0 && !IsMemoSession())
+            if (_csReviewSeconds <= 0 && !IsMemoSession())
             {
                 await JS.InvokeVoidAsync("alert",
-                    "Review time is 0 minutes. Please update the time before saving.");
+                    "Review time is 0:00:00. Please update the time before saving.");
+                if (wasStopwatchRunning) _ = RunStopwatchAsync();
                 return;
             }
 
@@ -4730,13 +4834,13 @@
                 .Select(i => JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]).AsTask()));
             _ = FolderSvc.BurnAnnotationSidecarsForSessionAsync(PcId, _csSessionName + ".pdf", Solo);
 
-            var newMin = _csReviewMinutes;
-            if (newMin != _existingReviewMin)
+            var newSec = _csReviewSeconds;
+            if (newSec != _existingReviewSec)
             {
-                Console.WriteLine($"[PcFolder] Updating review time from {_existingReviewMin} min to {newMin} min — CsReviewId={_existingCsReviewId}");
-                DashSvc.UpdateCsReviewTime(_existingCsReviewId, newMin * 60);
+                Console.WriteLine($"[PcFolder] Updating review time from {FormatReviewTime(_existingReviewSec)} to {FormatReviewTime(newSec)} — CsReviewId={_existingCsReviewId}");
+                DashSvc.UpdateCsReviewTime(_existingCsReviewId, newSec);
                 DashSvc.NotifyDataChanged();
-                await JS.InvokeVoidAsync("showCsTimeUpdated", _pcName, _csSessionName, _existingReviewMin, newMin);
+                await JS.InvokeVoidAsync("showCsTimeUpdated", _pcName, _csSessionName, _existingReviewSec, newSec);
             }
             else
             {
@@ -4746,10 +4850,11 @@
         }
 
         // Validate review time — if 0, warn user and abort (memo sessions are exempt)
-        if (_csReviewMinutes <= 0 && !IsMemoSession())
+        if (_csReviewSeconds <= 0 && !IsMemoSession())
         {
             await JS.InvokeVoidAsync("alert",
-                "Review time is 0 minutes. Please update the session's admin time before marking CS as done.");
+                "Review time is 0:00:00. Please update the session's admin time before marking CS as done.");
+            if (wasStopwatchRunning) _ = RunStopwatchAsync();
             return;
         }
 
@@ -4760,20 +4865,23 @@
         _ = FolderSvc.BurnAnnotationSidecarsForSessionAsync(PcId, _csSessionName + ".pdf", Solo);
 
         var confirmed = await JS.InvokeAsync<bool>("confirm",
-            $"Mark this session's CS review as done?\nReview time: {_csReviewMinutes} minutes");
-        if (!confirmed) return;
+            $"Mark this session's CS review as done?\nReview time: {FormatReviewTime(_csReviewSeconds)}");
+        if (!confirmed)
+        {
+            if (wasStopwatchRunning) _ = RunStopwatchAsync();
+            return;
+        }
 
         try
         {
             // Create cs_review if one doesn't already exist — use the GUI value
             if (!DashSvc.HasCsReview(_csSessionId))
             {
-                var reviewSec = _csReviewMinutes * 60;
                 DashSvc.AddCsReview(csId: UserPersonId, sessionId: _csSessionId,
-                    reviewSec: reviewSec, status: "Done", notes: null);
+                    reviewSec: _csReviewSeconds, status: "Done", notes: null);
             }
 
-            Console.WriteLine($"[PcFolder] CS review created by '{_userName}' — session {_csSessionId} ('{_csSessionName}'), review time: {_csReviewMinutes} min, for PC {PcId}");
+            Console.WriteLine($"[PcFolder] CS review created by '{_userName}' — session {_csSessionId} ('{_csSessionName}'), review time: {FormatReviewTime(_csReviewSeconds)}, for PC {PcId}");
 
             // Refresh the CSed session IDs so sidebar turns green
             _csedSessionIds = DashSvc.GetCsedSessionIdsForPc(PcId, isSolo: Solo);
@@ -4993,6 +5101,9 @@
             _activeCsSessions.TryRemove(_csSessionId, out _);
         _dotNetRef?.Dispose();
         _dupeCts?.Dispose();
+        _stopwatchCts?.Cancel();
+        _stopwatchCts?.Dispose();
+        _stopwatch?.Dispose();
     }
 
     // ── Cover file type detection for color-coded borders ──

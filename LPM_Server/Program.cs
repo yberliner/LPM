@@ -384,6 +384,15 @@ static void ApplyAutoLogin(HttpContext ctx, UserDb db, IDataProtector dp, int us
 
 static string HomeOrContact(UserDb db, int userId) => "/Home";
 
+/// <summary>Resolve UserId from claim (new cookies) or fall back to username lookup (old cookies).</summary>
+static int ResolveUserId(HttpContext ctx, UserDb db)
+{
+    if (int.TryParse(ctx.User.FindFirst("UserId")?.Value, out var uid) && uid > 0)
+        return uid;
+    var username = ctx.User.Identity?.Name ?? "";
+    return db.GetLoginFlags(username)?.UserId ?? 0;
+}
+
 static async Task SignInUser(HttpContext ctx, UserDb db, string username,
     LPM.Auth.UserDb.LoginFlags flags)
 {
@@ -392,6 +401,7 @@ static async Task SignInUser(HttpContext ctx, UserDb db, string username,
         new(ClaimTypes.Name, username),
         new("StaffRole", flags.StaffRole),
         new("PersonId", flags.PersonId.ToString()),
+        new("UserId", flags.UserId.ToString()),
     };
     foreach (var r in flags.Roles)
         claims.Add(new Claim(ClaimTypes.Role, r));
@@ -463,7 +473,7 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db, IConfiguration conf
 
     var emailSvc = ctx.RequestServices.GetRequiredService<LPM.Services.EmailService>();
     var smsSvc = ctx.RequestServices.GetRequiredService<LPM.Services.SmsService>();
-    var code = db.CreateMagicLink(flags.PersonId);
+    var code = db.CreateMagicLink(flags.PersonId, flags.UserId);
     var displayName = db.GetPersonDisplayName(flags.PersonId) ?? username;
     var emailSent = await emailSvc.SendVerificationCodeAsync(email, code, displayName);
     if (!emailSent)
@@ -538,7 +548,7 @@ app.MapPost("/loginpost-changepwd", async (HttpContext ctx, UserDb db, IConfigur
 
     var emailSvc = ctx.RequestServices.GetRequiredService<LPM.Services.EmailService>();
     var smsSvc = ctx.RequestServices.GetRequiredService<LPM.Services.SmsService>();
-    var mlCode = db.CreateMagicLink(flags2.PersonId);
+    var mlCode = db.CreateMagicLink(flags2.PersonId, flags2.UserId);
     var dispName = db.GetPersonDisplayName(flags2.PersonId) ?? flags2.Username;
     var mlSent = await emailSvc.SendVerificationCodeAsync(email, mlCode, dispName);
     if (!mlSent)
@@ -569,14 +579,14 @@ app.MapPost("/verify-code", async (HttpContext ctx, UserDb db) =>
     if (string.IsNullOrEmpty(code))
         return Results.Redirect($"/VerifyDevice?error=empty{emailParam}");
 
-    var personId = db.ValidateMagicLink(code);
-    if (personId == null)
+    var userId = db.ValidateMagicLink(code);
+    if (userId == null)
     {
         Console.WriteLine($"[Auth] Invalid or expired code: '{code}'");
         return Results.Redirect($"/VerifyDevice?error=invalid{emailParam}");
     }
 
-    var flags = db.GetLoginFlagsByPersonId(personId.Value);
+    var flags = db.GetLoginFlagsById(userId.Value);
     if (flags == null)
         return Results.Redirect("/login");
 
@@ -592,19 +602,20 @@ app.MapPost("/verify-code", async (HttpContext ctx, UserDb db) =>
 app.MapPost("/api/passkey/register-options", (HttpContext ctx, UserDb db, IFido2 fido2) =>
 {
     if (ctx.User.Identity?.IsAuthenticated != true) return Results.Unauthorized();
-    var personIdStr = ctx.User.FindFirst("PersonId")?.Value;
-    if (!int.TryParse(personIdStr, out var personId)) return Results.Unauthorized();
+    var userId = ResolveUserId(ctx, db);
+    if (userId == 0) return Results.Unauthorized();
+    if (!int.TryParse(ctx.User.FindFirst("PersonId")?.Value, out var personId)) return Results.Unauthorized();
 
     var displayName = db.GetPersonDisplayName(personId) ?? "User";
     var username = ctx.User.Identity.Name ?? "";
 
-    var existingKeys = db.GetPasskeysByPerson(personId)
+    var existingKeys = db.GetPasskeysByUser(userId)
         .Select(p => new PublicKeyCredentialDescriptor(PublicKeyCredentialType.PublicKey, p.CredentialId, null))
         .ToList();
 
     var fidoUser = new Fido2User
     {
-        Id = Encoding.UTF8.GetBytes(personId.ToString()),
+        Id = Encoding.UTF8.GetBytes(userId.ToString()),
         Name = username,
         DisplayName = displayName
     };
@@ -623,7 +634,7 @@ app.MapPost("/api/passkey/register-options", (HttpContext ctx, UserDb db, IFido2
         AttestationPreference = AttestationConveyancePreference.None
     });
 
-    fido2Store[$"reg_{personId}"] = options.ToJson();
+    fido2Store[$"reg_{userId}"] = options.ToJson();
 
     return Results.Text(options.ToJson(), "application/json");
 }).DisableAntiforgery();
@@ -631,10 +642,11 @@ app.MapPost("/api/passkey/register-options", (HttpContext ctx, UserDb db, IFido2
 app.MapPost("/api/passkey/register", async (HttpContext ctx, UserDb db, IFido2 fido2) =>
 {
     if (ctx.User.Identity?.IsAuthenticated != true) return Results.Unauthorized();
-    var personIdStr = ctx.User.FindFirst("PersonId")?.Value;
-    if (!int.TryParse(personIdStr, out var personId)) return Results.Unauthorized();
+    var userId = ResolveUserId(ctx, db);
+    if (userId == 0) return Results.Unauthorized();
+    if (!int.TryParse(ctx.User.FindFirst("PersonId")?.Value, out var personId)) return Results.Unauthorized();
 
-    if (!fido2Store.TryRemove($"reg_{personId}", out var optionsJson))
+    if (!fido2Store.TryRemove($"reg_{userId}", out var optionsJson))
         return Results.BadRequest("No pending registration");
 
     var options = CredentialCreateOptions.FromJson(optionsJson);
@@ -651,11 +663,10 @@ app.MapPost("/api/passkey/register", async (HttpContext ctx, UserDb db, IFido2 f
             IsCredentialIdUniqueToUserCallback = (args, ct) => Task.FromResult(db.GetPasskeyByCredentialId(args.CredentialId) == null)
         });
 
-        db.AddPasskey(personId, credential.Id, credential.PublicKey,
+        db.AddPasskey(personId, userId, credential.Id, credential.PublicKey,
             (int)credential.SignCount, "Passkey");
 
-        // challenge already removed from store via TryRemove above
-        Console.WriteLine($"[Auth] Passkey registered for PersonId={personId}");
+        Console.WriteLine($"[Auth] Passkey registered for UserId={userId}");
         return Results.Json(new { success = true });
     }
     catch (Exception ex)
@@ -675,7 +686,7 @@ app.MapPost("/api/passkey/login-options", async (HttpContext ctx, UserDb db, IFi
     var loginFlags = db.GetLoginFlags(username);
     if (loginFlags == null) return Results.Json(new { hasPasskeys = false });
 
-    var passkeys = db.GetPasskeysByPerson(loginFlags.PersonId);
+    var passkeys = db.GetPasskeysByUser(loginFlags.UserId);
     if (passkeys.Count == 0) return Results.Json(new { hasPasskeys = false });
 
     var allowedCredentials = passkeys
@@ -688,7 +699,7 @@ app.MapPost("/api/passkey/login-options", async (HttpContext ctx, UserDb db, IFi
         UserVerification = UserVerificationRequirement.Preferred
     });
 
-    var loginKey = $"login_{loginFlags.PersonId}";
+    var loginKey = $"login_{loginFlags.UserId}";
     fido2Store[loginKey] = options.ToJson();
 
     return Results.Text(options.ToJson(), "application/json");
@@ -704,7 +715,7 @@ app.MapPost("/api/passkey/login", async (HttpContext ctx, UserDb db, IFido2 fido
     var passkey = db.GetPasskeyByCredentialId(response.RawId);
     if (passkey == null) return Results.BadRequest("Unknown credential");
 
-    var loginKey = $"login_{passkey.PersonId}";
+    var loginKey = $"login_{passkey.UserId}";
     if (!fido2Store.TryRemove(loginKey, out var optionsJson))
         return Results.BadRequest("No pending challenge");
 
@@ -723,14 +734,12 @@ app.MapPost("/api/passkey/login", async (HttpContext ctx, UserDb db, IFido2 fido
 
         db.UpdatePasskeySignCount(passkey.Id, (int)result.SignCount);
 
-        var flags = db.GetLoginFlagsByPersonId(passkey.PersonId);
+        var flags = db.GetLoginFlagsById(passkey.UserId);
         if (flags == null) return Results.BadRequest("User not found");
 
         SetTrustCookie(ctx, db, flags.UserId);
         await SignInUser(ctx, db, flags.Username, flags);
         ApplyAutoLogin(ctx, db, autoLoginProtector, flags.UserId);
-
-        // challenge already removed from store via TryRemove above
 
         Console.WriteLine($"[Auth] Passkey login for '{flags.Username}'");
         return Results.Json(new { success = true, redirect = "/Home" });
@@ -745,14 +754,14 @@ app.MapPost("/api/passkey/login", async (HttpContext ctx, UserDb db, IFido2 fido
 app.MapPost("/api/passkey/remove", (HttpContext ctx, UserDb db) =>
 {
     if (ctx.User.Identity?.IsAuthenticated != true) return Results.Unauthorized();
-    var personIdStr = ctx.User.FindFirst("PersonId")?.Value;
-    if (!int.TryParse(personIdStr, out var personId)) return Results.Unauthorized();
+    var userId = ResolveUserId(ctx, db);
+    if (userId == 0) return Results.Unauthorized();
 
     var form = ctx.Request.ReadFormAsync().GetAwaiter().GetResult();
     if (!int.TryParse(form["id"].ToString(), out var passkeyId)) return Results.BadRequest("Invalid id");
 
-    var removed = db.RemovePasskey(passkeyId, personId);
-    Console.WriteLine($"[Auth] Passkey {passkeyId} removed for PersonId={personId}: {removed}");
+    var removed = db.RemovePasskey(passkeyId, userId);
+    Console.WriteLine($"[Auth] Passkey {passkeyId} removed for UserId={userId}: {removed}");
     return Results.Json(new { success = removed });
 }).DisableAntiforgery();
 
