@@ -3899,7 +3899,7 @@
             {
                 var proc = System.Net.WebUtility.HtmlEncode(r.Process.Trim());
                 var res  = System.Net.WebUtility.HtmlEncode(r.Results.Trim());
-                return string.IsNullOrWhiteSpace(res) ? proc : $"{proc} TO {res}";
+                return string.IsNullOrWhiteSpace(res) ? proc : $"{proc} to {res}";
             })
             .ToList();
 
