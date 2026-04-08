@@ -1961,16 +1961,18 @@ public class PdfService
     public byte[] GenerateNextCsPdf(
         string pcName, string date, string auditorName,
         string? topHtml, string? bottomHtml,
-        double pageWidthPt = 595.28, double pageHeightPt = 841.89)
+        double pageWidthPt = 595.28, double pageHeightPt = 841.89,
+        string? footerName = null)
     {
         QuestPDF.Settings.License = LicenseType.Community;
-        return BuildNextCsPdf(pcName, date, auditorName, topHtml, bottomHtml, pageWidthPt, pageHeightPt);
+        return BuildNextCsPdf(pcName, date, auditorName, topHtml, bottomHtml, pageWidthPt, pageHeightPt, footerName);
     }
 
     private byte[] BuildNextCsPdf(
         string pcName, string date, string auditorName,
         string? topHtml, string? bottomHtml,
-        double pageWidthPt = 595.28, double pageHeightPt = 841.89)
+        double pageWidthPt = 595.28, double pageHeightPt = 841.89,
+        string? footerName = null)
     {
         return Document.Create(container =>
         {
@@ -2021,9 +2023,10 @@ public class PdfService
                         col.Item().PaddingBottom(8).Column(inner => RenderHtmlBlock(inner, bottomHtml, 2.5f));
                 });
 
-                // ── Auditor signature — always pinned to the bottom-right of the page ──
+                // ── Signature — pinned to the bottom-right of the page ──
+                // For solo PCs the footer shows the CS name instead of the auditor.
                 page.Footer().AlignRight()
-                    .Text(auditorName).FontSize(30).Bold().FontColor("#c0392b");
+                    .Text(footerName ?? auditorName).FontSize(30).Bold().FontColor("#c0392b");
             });
         }).GeneratePdf();
     }

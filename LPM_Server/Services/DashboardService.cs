@@ -2117,6 +2117,26 @@ public class DashboardService
         catch { return null; }
     }
 
+    /// <summary>
+    /// Returns the full name of the CS assigned to the given PC (last entry in sys_staff_pc_list).
+    /// </summary>
+    public string? GetCsNameForPc(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $@"
+            SELECT {FullNameExpr} AS FullName
+            FROM sys_staff_pc_list spl
+            JOIN core_persons p ON p.PersonId = spl.UserId
+            WHERE spl.PcId = @pcId AND spl.WorkCapacity IN ('{StaffRoles.CS}','{StaffRoles.SeniorCS}')
+            ORDER BY spl.Id DESC
+            LIMIT 1";
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        var result = cmd.ExecuteScalar();
+        return result is string s && !string.IsNullOrWhiteSpace(s) ? s : null;
+    }
+
     public string? GetLastNextCs(int pcId)
     {
         using var conn = new SqliteConnection(_connectionString);

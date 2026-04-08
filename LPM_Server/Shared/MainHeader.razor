@@ -4949,12 +4949,15 @@
                 }
 
                 // Generate Next C/S sized to session page (same as ARF)
+                // For solo PCs the footer shows the CS name instead of the auditor.
                 sNextCs.Status = 1;
                 await InvokeAsync(StateHasChanged);
+                string? nextCsFooter = capturedIsSolo ? DashSvc.GetCsNameForPc(capturedPcId) : null;
                 nextCsPdfBytes = PdfSvc.GenerateNextCsPdf(
                     capturedPcName, capturedDate,
                     capturedAuditorName, capturedStep3Top, capturedStep3Bottom,
-                    pageWidthPt: targetW, pageHeightPt: targetH);
+                    pageWidthPt: targetW, pageHeightPt: targetH,
+                    footerName: nextCsFooter);
                 await Advance(sNextCs, 2);
 
                 // ── Phase 2: save files to folder ───────────────
