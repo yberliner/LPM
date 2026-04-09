@@ -367,7 +367,7 @@
         @if (_manifest.Count > 0 && !_uploading && !_namesOnly)
         {
             @* Flashing amber alert for solos with no matching regular PC — empty PC will be auto-created *@
-            var willCreateEmpty = _manifest.Where(p => p.IsSolo && p.SoloWillCreateEmpty).ToList();
+            var willCreateEmpty = _manifest.Where(p => p.IsSolo && p.SoloWillCreateEmpty && !p.IsExcluded).ToList();
             @if (willCreateEmpty.Count > 0)
             {
                 <div class="mt-3 p-3 rounded-3 border"
@@ -393,7 +393,19 @@
 
             <div class="card mt-3" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
                 <div class="card-header py-2 d-flex align-items-center gap-3" style="background:rgba(34,197,94,.12); color:#22c55e; font-size:.85rem; border-color:rgba(34,197,94,.2);">
-                    <span><i class="ri-user-search-line me-1"></i><strong>@_manifest.Count(p => !p.IsSolo) regular + @_manifest.Count(p => p.IsSolo && !p.SoloUnmatched) solo PC(s) — verify before import</strong></span>
+                    <span><i class="ri-user-search-line me-1"></i><strong>@_manifest.Count(p => !p.IsSolo && !p.IsExcluded) regular + @_manifest.Count(p => p.IsSolo && !p.SoloUnmatched && !p.IsExcluded) solo PC(s) — verify before import</strong></span>
+                    @if (_bulkMode)
+                    {
+                        var exclCount = _manifest.Count(p => p.IsExcluded);
+                        <button class="btn btn-sm btn-outline-warning ms-auto d-flex align-items-center gap-1 py-0"
+                                style="font-size:.75rem;" @onclick="OpenExcludeModal">
+                            <i class="ri-filter-off-line"></i>Exclude PCs
+                            @if (exclCount > 0)
+                            {
+                                <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem;">@exclCount</span>
+                            }
+                        </button>
+                    }
                 </div>
                 <div class="card-body p-0" style="overflow-x:auto;">
                     <table class="table table-sm mb-0" style="font-size:.8rem; color:#e2e8f0; min-width:820px;">
@@ -416,7 +428,19 @@
                             {
                                 var inclFiles = pc.Files.Where(f => f.Include).ToList();
 
-                                @if (pc.IsSolo && pc.SoloWillCreateEmpty)
+                                @if (pc.IsExcluded)
+                                {
+                                    <tr style="border-bottom:1px solid rgba(255,255,255,.04); opacity:0.35;">
+                                        <td style="padding:6px 12px; color:#64748b; font-size:.74rem; text-decoration:line-through;"><i class="ri-folder-line me-1"></i>@pc.FolderName</td>
+                                        <td style="padding:6px 12px;"><span style="font-size:.72rem; color:#64748b;">@(pc.IsSolo ? "Solo" : "Regular")</span></td>
+                                        <td style="padding:6px 12px; color:#64748b; text-decoration:line-through;">@pc.PcName</td>
+                                        <td colspan="6" style="padding:6px 12px; text-align:center;">
+                                            <span class="badge" style="background:rgba(245,158,11,.25); color:#fbbf24; font-size:.68rem;">Excluded</span>
+                                        </td>
+                                        <td style="padding:6px 12px;"><span style="color:#64748b; font-size:.72rem;">Excluded</span></td>
+                                    </tr>
+                                }
+                                else if (pc.IsSolo && pc.SoloWillCreateEmpty)
                                 {
                                     <tr style="border-bottom:1px solid rgba(255,255,255,.04); animation:pulse-row-amber 1.2s ease-in-out infinite;">
                                         <td style="padding:6px 12px; color:#94a3b8; font-size:.74rem;"><i class="ri-folder-line me-1"></i>@pc.FolderName</td>
@@ -486,7 +510,7 @@
             <div class="card mt-3" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
                 <div class="card-header py-2" style="background:rgba(99,102,241,.12); color:#a5b4fc; font-size:.85rem; border-color:rgba(99,102,241,.2);">
                     <i class="ri-file-list-3-line me-1"></i>
-                    <strong>Files to import — @totalIncluded file(s) across @_manifest.Count PC(s)</strong>
+                    <strong>Files to import — @totalIncluded file(s) across @_manifest.Count(p => !p.IsExcluded) PC(s)</strong>
                     <span class="ms-3 d-inline-flex gap-3" style="font-size:.78rem; font-weight:400;">
                         <span style="color:#60a5fa;"><i class="ri-file-2-line me-1"></i>Front Cover: <strong>@totalFront</strong></span>
                         <span style="color:#60a5fa;"><i class="ri-file-2-line me-1"></i>Back Cover: <strong>@totalBack</strong></span>
@@ -730,7 +754,7 @@
                         <i class="ri-upload-2-line"></i>Start Import
                     </button>
                     <span style="font-size:.72rem; color:#64748b;">
-                        @_manifest.Sum(m => m.Files.Count(f => f.Include)) files to import across @_manifest.Count PC(s)
+                        @_manifest.Sum(m => m.Files.Count(f => f.Include)) files to import across @_manifest.Count(m => !m.IsExcluded) PC(s)
                         @{ var skippedCount = _manifest.Sum(m => m.Files.Count(f => !f.Include && f.AlreadyExists)); }
                         @{ var overrideCount = _manifest.Sum(m => m.Files.Count(f => f.OverrideExisting)); }
                         @if (skippedCount > 0)
@@ -942,6 +966,91 @@
     }
 </div>
 
+@* ════════════════════════════════════════════════════════════
+   EXCLUDE PCs MODAL
+   ════════════════════════════════════════════════════════════ *@
+@if (_showExcludeModal)
+{
+    <div class="modal-backdrop fade show" style="z-index:1040;"></div>
+    <div class="modal d-block fade show" tabindex="-1" style="z-index:1050;" @onclick="() => _showExcludeModal = false">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" style="max-width:520px;" @onclick:stopPropagation="true">
+            <div class="modal-content" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
+                <div class="modal-header py-2" style="border-color:#334155;">
+                    <h6 class="modal-title mb-0" style="font-size:.92rem;">
+                        <i class="ri-filter-off-line me-2" style="color:#f59e0b;"></i>Exclude PCs from Import
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => _showExcludeModal = false"></button>
+                </div>
+                <div class="px-3 pt-3 pb-2">
+                    <input type="text" class="form-control form-control-sm mb-2"
+                           placeholder="Search PCs..."
+                           style="background:#0f172a; color:#e2e8f0; border-color:#475569; font-size:.82rem;"
+                           @bind="_excludeSearch" @bind:event="oninput" />
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <button class="btn btn-sm btn-outline-warning py-0" style="font-size:.72rem;"
+                                @onclick="() => { foreach (var e in FilteredExcludeList) e.Excluded = true; }">
+                            Select All Visible
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary py-0" style="font-size:.72rem;"
+                                @onclick="() => { foreach (var e in FilteredExcludeList) e.Excluded = false; }">
+                            Deselect All Visible
+                        </button>
+                        <span class="ms-auto" style="font-size:.72rem; color:#64748b;">
+                            @_excludeList.Count(e => e.Excluded) selected
+                        </span>
+                    </div>
+                </div>
+                <div class="modal-body py-0 px-0" style="max-height:400px; overflow-y:auto;">
+                    <table class="table table-sm mb-0" style="font-size:.8rem; color:#e2e8f0;">
+                        <tbody>
+                            @{ var filtered = FilteredExcludeList; }
+                            @if (filtered.Count == 0)
+                            {
+                                <tr><td class="text-center py-3" style="color:#64748b;">No PCs match your search.</td></tr>
+                            }
+                            @foreach (var item in filtered)
+                            {
+                                var e = item;
+                                <tr style="border-color:#1e293b; cursor:pointer; @(e.Excluded ? "background:rgba(245,158,11,.1);" : "")"
+                                    @onclick="() => e.Excluded = !e.Excluded">
+                                    <td style="padding:6px 12px; width:36px; text-align:center;">
+                                        <input type="checkbox" @bind="e.Excluded"
+                                               @onclick:stopPropagation="true" />
+                                    </td>
+                                    <td style="padding:6px 12px;">
+                                        @e.FullName
+                                        @if (e.InManifest)
+                                        {
+                                            <span class="badge ms-2" style="background:rgba(34,197,94,.2); color:#34d399; font-size:.62rem;">in import</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="modal-footer py-2 d-flex align-items-center" style="border-color:#334155;">
+                    <span style="font-size:.75rem; color:#94a3b8;">
+                        @filtered.Count of @_excludeList.Count PCs shown
+                    </span>
+                    <div class="ms-auto d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showExcludeModal = false">Cancel</button>
+                        <button class="btn btn-sm btn-warning d-flex align-items-center gap-1" @onclick="ApplyExclusions">
+                            <i class="ri-check-line"></i>
+                            Apply
+                            @{var selCount = _excludeList.Count(x => x.Excluded);}
+                            @if (selCount > 0)
+                            {
+                                <span>(@selCount excluded)</span>
+                            }
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     bool _bulkMode;
     bool _namesOnly;
@@ -965,6 +1074,12 @@
     List<DashboardService.FolderItem> _folderItems = [];
     List<LocalPcManifest> _manifest = [];
     List<CoverMappingLocal> _coverMappings = [];
+
+    // Exclude PCs modal
+    bool _showExcludeModal;
+    string _excludeSearch = "";
+    List<ExcludeItem> _excludeList = [];
+    HashSet<int> _excludedPcIds = new();
 
     class NamesOnlyRow
     {
@@ -1017,6 +1132,7 @@
         public bool SoloUnmatched { get; set; }         // no match found — empty PC will be created
         public bool SoloMatchedViaBatch { get; set; }   // matched via non-solo in same import batch
         public bool SoloWillCreateEmpty { get; set; }   // alias for clarity in UI
+        public bool IsExcluded { get; set; }
         public List<LocalFileEntry> Files { get; set; } = [];
     }
     class CoverMappingLocal
@@ -1027,6 +1143,14 @@
         public string PcFolderName { get; set; } = "";
         public int AssignedItemId { get; set; }
     }
+    class ExcludeItem
+    {
+        public int PcId { get; set; }
+        public string FullName { get; set; } = "";
+        public bool Excluded { get; set; }
+        public bool InManifest { get; set; }
+    }
+
     record ManifestEntry(int index, string relativePath, long size, string lastModified);
 
     protected override async Task OnInitializedAsync()
@@ -1051,7 +1175,7 @@
         await InvokeAsync(StateHasChanged);
         await Task.Run(() => FolderSvc.DeleteAllCoverDirectories());
         // Mark all cover files in manifest as new — counts and file list update immediately
-        foreach (var pc in _manifest)
+        foreach (var pc in _manifest.Where(p => !p.IsExcluded))
             foreach (var f in pc.Files.Where(f => f.Section is "Front_Cover" or "Back_Cover"))
             {
                 f.AlreadyExists = false;
@@ -1067,7 +1191,7 @@
     void OnOverrideCoverChanged(bool value)
     {
         _overrideCoverFolders = value;
-        foreach (var pc in _manifest)
+        foreach (var pc in _manifest.Where(p => !p.IsExcluded))
             foreach (var f in pc.Files.Where(f => f.Section is "Front_Cover" or "Back_Cover"))
             {
                 f.Include = value || !f.AlreadyExists;
@@ -1088,6 +1212,74 @@
         _errorMessage = "";
         _uploadedCount = _totalFileCount = 0;
         _totalSizeBytes = _freeSpaceBytes = 0;
+        _excludedPcIds.Clear();
+        _excludeList.Clear();
+        _showExcludeModal = false;
+    }
+
+    // ── Exclude PCs ──
+
+    List<ExcludeItem> FilteredExcludeList =>
+        string.IsNullOrWhiteSpace(_excludeSearch)
+            ? _excludeList
+            : _excludeList.Where(e =>
+                e.FullName.Contains(_excludeSearch, StringComparison.OrdinalIgnoreCase))
+              .ToList();
+
+    void OpenExcludeModal()
+    {
+        var allPcs = PcSvc.GetAllPcs();
+        var manifestPcIds = _manifest
+            .Select(p => p.IsSolo ? p.MatchedPcId : p.ExistingPcId)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .ToHashSet();
+
+        _excludeList = allPcs.Select(pc => new ExcludeItem
+        {
+            PcId = pc.PcId,
+            FullName = pc.FullName,
+            Excluded = _excludedPcIds.Contains(pc.PcId),
+            InManifest = manifestPcIds.Contains(pc.PcId)
+        })
+        .OrderByDescending(e => e.InManifest)
+        .ThenBy(e => e.FullName)
+        .ToList();
+
+        _excludeSearch = "";
+        _showExcludeModal = true;
+    }
+
+    void ApplyExclusions()
+    {
+        _excludedPcIds = _excludeList.Where(e => e.Excluded).Select(e => e.PcId).ToHashSet();
+        _showExcludeModal = false;
+
+        foreach (var pc in _manifest)
+        {
+            var pcId = pc.IsSolo ? pc.MatchedPcId : pc.ExistingPcId;
+            var wasExcluded = pc.IsExcluded;
+            pc.IsExcluded = pcId.HasValue && _excludedPcIds.Contains(pcId.Value);
+
+            if (pc.IsExcluded)
+            {
+                foreach (var f in pc.Files) f.Include = false;
+            }
+            else if (wasExcluded)
+            {
+                // Restore Include state for un-excluded PCs
+                foreach (var f in pc.Files)
+                {
+                    if (f.Section is "Front_Cover" or "Back_Cover")
+                        f.Include = _overrideCoverFolders || !f.AlreadyExists;
+                    else
+                        f.Include = !f.AlreadyExists;
+                }
+            }
+        }
+
+        // Recalculate disk space
+        _totalSizeBytes = _manifest.SelectMany(pc => pc.Files).Where(f => f.Include).Sum(f => f.Size);
     }
 
     async Task OpenFolderPicker()
@@ -1683,7 +1875,7 @@
         // Override flag: force-include all front/back cover files regardless of AlreadyExists
         if (_overrideCoverFolders)
         {
-            foreach (var pc in _manifest)
+            foreach (var pc in _manifest.Where(p => !p.IsExcluded))
                 foreach (var f in pc.Files.Where(f => f.Section is "Front_Cover" or "Back_Cover"))
                 {
                     f.Include = true;

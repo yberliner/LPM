@@ -241,7 +241,7 @@
                                                     @s.PcName
                                                 }
                                             </td>
-                                            <td style="font-size:.78rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;">@s.SessionName</td>
+                                            <td class="home-pcs-session">@s.SessionName</td>
                                             <td class="home-pcs-date">@dateStr</td>
                                             <td class="home-pcs-dur">
                                                 <i class="ri-time-line me-1" style="opacity:.4;"></i>@durStr
@@ -253,7 +253,7 @@
                                                 @if (hasCram)    { <span class="home-att-chip home-att-chip-orange home-aud-att-orange">📙 Cram</span> }
                                                 @if (hasInstruct){ <span class="home-att-chip home-att-chip-yellow home-aud-att-yellow">📋 Instr</span> }
                                             </td>
-                                            <td style="font-size:.78rem;color:#64748b;">
+                                            <td class="home-pcs-staff">
                                                 @(s.CsName ?? "—")
                                             </td>
                                             @{ var audHasQ = _sessionQuestions.TryGetValue(s.SessionId, out var audQInfo); }
@@ -1225,7 +1225,11 @@
         font-weight: 700; color: #f8fafc;
     }
     .home-pcs-session {
-        color: #cbd5e1;
+        font-size: .78rem; color: #94a3b8;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px;
+    }
+    .home-pcs-staff {
+        font-size: .78rem; color: #64748b;
     }
     .home-pcs-date {
         color: #94a3b8; font-variant-numeric: tabular-nums;
@@ -1377,6 +1381,70 @@
     }
     .home-q-replied {
         background: #d1fae5; color: #065f46;
+    }
+
+    /* ── Light theme overrides ── */
+    :root[data-theme-mode="light"] .home-pending-cs-table,
+    :root[data-theme-mode="light"] .home-aud-status-table {
+        color: #334155;
+    }
+    :root[data-theme-mode="light"] .home-pending-cs-table thead th,
+    :root[data-theme-mode="light"] .home-aud-status-table thead th {
+        background: rgba(0,0,0,.05); color: #64748b;
+        border-bottom-color: rgba(0,0,0,.1);
+    }
+    :root[data-theme-mode="light"] .home-pcs-pcname {
+        color: #1e293b;
+    }
+    :root[data-theme-mode="light"] .home-pcs-session {
+        color: #475569;
+    }
+    :root[data-theme-mode="light"] .home-pcs-staff {
+        color: #475569;
+    }
+    :root[data-theme-mode="light"] .home-pcs-date {
+        color: #475569;
+    }
+    :root[data-theme-mode="light"] .home-pcs-dur {
+        color: #334155;
+    }
+    :root[data-theme-mode="light"] .home-pcs-row td,
+    :root[data-theme-mode="light"] .home-aud-status-table td {
+        border-bottom-color: rgba(0,0,0,.06);
+    }
+    :root[data-theme-mode="light"] .home-pcs-row-odd td {
+        background: rgba(0,0,0,.02);
+    }
+    :root[data-theme-mode="light"] .home-pcs-row-even td {
+        background: rgba(0,0,0,.04);
+    }
+    :root[data-theme-mode="light"] .home-pcs-sortable:hover {
+        color: #1e293b;
+    }
+    :root[data-theme-mode="light"] .home-range-select {
+        background: rgba(0,0,0,.05); border-color: rgba(0,0,0,.15);
+    }
+    :root[data-theme-mode="light"] .home-range-select option {
+        background: #fff; color: #334155;
+    }
+    :root[data-theme-mode="light"] .home-done-toggle {
+        border-color: rgba(0,0,0,.15); background: rgba(0,0,0,.05); color: #64748b;
+    }
+    :root[data-theme-mode="light"] .home-done-toggle:hover {
+        background: rgba(0,0,0,.1); color: #334155;
+    }
+    :root[data-theme-mode="light"] .home-cs-ctx-menu {
+        background: #fff; border-color: #e2e8f0;
+        box-shadow: 0 8px 24px rgba(0,0,0,.15);
+    }
+    :root[data-theme-mode="light"] .home-cs-ctx-item {
+        color: #334155;
+    }
+    :root[data-theme-mode="light"] .home-cs-ctx-item:hover {
+        background: rgba(239,68,68,.08); color: #dc2626;
+    }
+    :root[data-theme-mode="light"] .home-cs-ctx-confirm-text {
+        color: #334155;
     }
 </style>
 
@@ -2155,12 +2223,12 @@
                                     @s.PcName
                                 }
                             </td>
-                            <td style="font-size:.78rem;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;">@s.SessionName</td>
+                            <td class="home-pcs-session">@s.SessionName</td>
                             <td class="home-pcs-date">@dateStr</td>
                             <td class="home-pcs-dur">
                                 <i class="ri-time-line me-1" style="opacity:.4;"></i>@durStr
                             </td>
-                            <td style="font-size:.78rem;color:#64748b;">@s.AuditorName</td>
+                            <td class="home-pcs-staff">@s.AuditorName</td>
                             <td>
                                 @if (s.IsSolo)
                                 {
