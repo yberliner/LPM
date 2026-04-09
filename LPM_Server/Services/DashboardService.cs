@@ -26,7 +26,7 @@ public record AuditorSessionGroup(int AuditorId, string AuditorName, List<PcSess
 public record AdminCsRow(
     int CsReviewId, int SessionId, int PcId, string PcName, int CsId, string CsName,
     string SessionDate, int ReviewLengthSeconds, int CsSalaryCentsPerHour, string CsStatus,
-    bool IsSolo = false);
+    bool IsSolo = false, int ChargedCentsRatePerHour = 0);
 public record PcCsGroup(int PcId, string PcName, List<AdminCsRow> Reviews);
 public record CsReviewerGroup(int CsId, string CsName, List<PcCsGroup> PcGroups);
 
@@ -1827,7 +1827,8 @@ public class DashboardService
                    cr.CsId,
                    TRIM(pcs.FirstName || ' ' || COALESCE(NULLIF(pcs.LastName,''), '')) AS CsName,
                    s.SessionDate, cr.ReviewLengthSeconds, cr.CsSalaryCentsPerHour, cr.Status,
-                   CASE WHEN s.AuditorId IS NULL THEN 1 ELSE 0 END AS IsSolo
+                   CASE WHEN s.AuditorId IS NULL THEN 1 ELSE 0 END AS IsSolo,
+                   COALESCE(cr.ChargedCentsRatePerHour, 0) AS ChargedCentsRatePerHour
             FROM cs_reviews cr
             JOIN sess_sessions  s   ON s.SessionId   = cr.SessionId
             JOIN core_persons   pc  ON pc.PersonId   = s.PcId
@@ -1852,7 +1853,8 @@ public class DashboardService
                 r.GetInt32(0), r.GetInt32(1), pcId, pcName, csId, csName,
                 r.GetString(6), r.IsDBNull(7) ? 0 : r.GetInt32(7), r.IsDBNull(8) ? 0 : r.GetInt32(8),
                 r.IsDBNull(9) ? "Done" : r.GetString(9),
-                !r.IsDBNull(10) && r.GetInt32(10) == 1);
+                !r.IsDBNull(10) && r.GetInt32(10) == 1,
+                r.IsDBNull(11) ? 0 : r.GetInt32(11));
 
             csNames.TryAdd(csId, csName);
             pcNames.TryAdd(key, pcName);
@@ -1968,6 +1970,24 @@ public class DashboardService
         return result is long l ? (int)l : 0;
     }
 
+    /// Returns the last ChargedCentsRatePerHour from a solo CS review for a given PC.
+    public int GetLastSoloCsRateForPc(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT cr.ChargedCentsRatePerHour
+            FROM cs_reviews cr
+            JOIN sess_sessions s ON s.SessionId = cr.SessionId
+            WHERE s.PcId = @pc AND s.AuditorId IS NULL AND cr.ChargedCentsRatePerHour > 0
+            ORDER BY s.SessionDate DESC, s.SequenceInDay DESC
+            LIMIT 1";
+        cmd.Parameters.AddWithValue("@pc", pcId);
+        var result = cmd.ExecuteScalar();
+        return result is long l ? (int)l : 0;
+    }
+
     public void ApproveSession(int sessionId, int chargedRateCents, int auditorSalaryCents, int verifiedByUserId = 0)
     {
         using var conn = new SqliteConnection(_connectionString);
@@ -1991,19 +2011,20 @@ public class DashboardService
         Console.WriteLine($"[DashboardService] Approved session {sessionId} by userId={verifiedByUserId}");
     }
 
-    public void ApproveCsReview(int csReviewId, int csSalaryCents)
+    public void ApproveCsReview(int csReviewId, int csSalaryCents, int chargedRateCents = 0)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             UPDATE cs_reviews
-            SET Status = 'Approved', CsSalaryCentsPerHour = @salary
+            SET Status = 'Approved', CsSalaryCentsPerHour = @salary, ChargedCentsRatePerHour = @rate
             WHERE CsReviewId = @id";
         cmd.Parameters.AddWithValue("@salary", csSalaryCents);
+        cmd.Parameters.AddWithValue("@rate",   chargedRateCents);
         cmd.Parameters.AddWithValue("@id",     csReviewId);
         cmd.ExecuteNonQuery();
-        Console.WriteLine($"[DashboardService] Approved CS review {csReviewId}");
+        Console.WriteLine($"[DashboardService] Approved CS review {csReviewId}, chargedRate={chargedRateCents}");
     }
 
     /// Returns session IDs that have a cs_review for a given PC (filtered to solo or non-solo).

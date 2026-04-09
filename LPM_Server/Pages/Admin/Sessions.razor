@@ -330,12 +330,17 @@
                                 <tr class="sa-cs-thead">
                                     <th class="ps-4">Session Date</th>
                                     <th class="text-center">Review Duration</th>
+                                    @if (pcGroup.Reviews.Any(r => r.IsSolo))
+                                    {
+                                        <th style="width:115px;">Rate ₪/hr</th>
+                                    }
                                     <th style="width:115px;">CS Salary ₪/hr</th>
                                     <th style="width:105px;">Status</th>
                                     <th class="pe-4" style="width:90px;"></th>
                                 </tr>
                             </thead>
                             <tbody>
+                                @{ bool _hasSoloInGroup = pcGroup.Reviews.Any(r => r.IsSolo); }
                                 @foreach (var rev in pcGroup.Reviews)
                                 {
                                     bool csApproved = rev.CsStatus == "Approved";
@@ -346,6 +351,17 @@
                                             <span class="badge rounded-pill bg-light border text-dark px-2" style="font-size:0.78rem;">@DashboardService.Fmt(rev.ReviewLengthSeconds)</span>
                                             @if (rev.IsSolo) { <span class="ms-1" style="background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;font-size:.65rem;font-weight:700;padding:2px 8px;border-radius:10px;letter-spacing:.3px;">Solo</span> }
                                         </td>
+                                        @if (_hasSoloInGroup)
+                                        {
+                                            <td class="py-1">
+                                                @if (rev.IsSolo)
+                                                {
+                                                    <input type="number" class="form-control form-control-sm sa-row-input"
+                                                           value="@_csRateEdits.GetValueOrDefault(rev.CsReviewId)" min="0" step="1" onfocus="this.select()"
+                                                           @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) _csRateEdits[rev.CsReviewId] = v; }" />
+                                                }
+                                            </td>
+                                        }
                                         <td class="py-1">
                                             <input type="number" class="form-control form-control-sm sa-row-input"
                                                    value="@csSalary" min="0" step="1" onfocus="this.select()"
@@ -525,6 +541,7 @@
     private List<CsReviewerGroup>                  _csGroups    = new();
     private Dictionary<(int cs, int pc), int>      _csPcDefaults = new();   // default CS salary per CS+PC
     private Dictionary<int, int>                   _csRowEdits  = new();    // CsReviewId → salary
+    private Dictionary<int, int>                   _csRateEdits = new();    // CsReviewId → charged rate (₪/hr, solo only)
     private Dictionary<int, string?>               _csAvatars   = new();
 
     // ── UI state ──────────────────────────────────────────────────
@@ -626,6 +643,7 @@
         _csGroups = DashSvc.GetCsReviewsGroupedByCsAndPc(_includeApproved, from, to);
         _csPcDefaults.Clear();
         _csRowEdits.Clear();
+        _csRateEdits.Clear();
         _csAvatars.Clear();
 
         foreach (var csGroup in _csGroups)
@@ -638,10 +656,17 @@
                 var key = (csGroup.CsId, pcGroup.PcId);
                 var defCsSalary = DashSvc.GetLastApprovedCsSalaryForPc(pcGroup.PcId);
                 _csPcDefaults[key] = defCsSalary / 100;
+                var defSoloRate = DashSvc.GetLastSoloCsRateForPc(pcGroup.PcId);
                 foreach (var rev in pcGroup.Reviews)
+                {
                     _csRowEdits[rev.CsReviewId] = rev.CsSalaryCentsPerHour > 0
                         ? rev.CsSalaryCentsPerHour / 100
                         : defCsSalary / 100;
+                    if (rev.IsSolo)
+                        _csRateEdits[rev.CsReviewId] = rev.ChargedCentsRatePerHour > 0
+                            ? rev.ChargedCentsRatePerHour / 100
+                            : defSoloRate / 100;
+                }
             }
         }
 
@@ -715,9 +740,10 @@
         if (!_csRowEdits.TryGetValue(csReviewId, out var salary)) return;
         var rev = _csGroups.SelectMany(g => g.PcGroups).SelectMany(p => p.Reviews)
                            .FirstOrDefault(r => r.CsReviewId == csReviewId);
-        Console.WriteLine($"[Sessions] Approved CS review {csReviewId} — PC='{rev?.PcName}' CS='{rev?.CsName}' sessionDate={rev?.SessionDate} csSalary=₪{salary}/hr by '{_username}'");
+        int chargedRate = _csRateEdits.GetValueOrDefault(csReviewId) * 100;
+        Console.WriteLine($"[Sessions] Approved CS review {csReviewId} — PC='{rev?.PcName}' CS='{rev?.CsName}' sessionDate={rev?.SessionDate} csSalary=₪{salary}/hr chargedRate={chargedRate} by '{_username}'");
         _busy = true;
-        DashSvc.ApproveCsReview(csReviewId, salary * 100);
+        DashSvc.ApproveCsReview(csReviewId, salary * 100, chargedRate);
         _busy = false;
         ApplyCsApprovalInMemory(csReviewId, salary * 100);
         ShowMsg("CS review saved.", false);
@@ -735,8 +761,9 @@
         foreach (var rev in pcGroup.Reviews.ToList())
         {
             if (!_csRowEdits.TryGetValue(rev.CsReviewId, out var salary)) continue;
-            Console.WriteLine($"[Sessions]   → CS review {rev.CsReviewId} sessionId={rev.SessionId} date={rev.SessionDate} csSalary=₪{salary}/hr");
-            DashSvc.ApproveCsReview(rev.CsReviewId, salary * 100);
+            int chargedRate = _csRateEdits.GetValueOrDefault(rev.CsReviewId) * 100;
+            Console.WriteLine($"[Sessions]   → CS review {rev.CsReviewId} sessionId={rev.SessionId} date={rev.SessionDate} csSalary=₪{salary}/hr chargedRate={chargedRate}");
+            DashSvc.ApproveCsReview(rev.CsReviewId, salary * 100, chargedRate);
             ApplyCsApprovalInMemory(rev.CsReviewId, salary * 100);
             count++;
         }

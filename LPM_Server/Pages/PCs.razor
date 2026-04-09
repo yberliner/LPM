@@ -65,8 +65,9 @@
                 <col style="width:85px;" />
                 <col style="width:80px;" />
                 <col style="width:80px;" />
-                <col style="width:70px;" />
-                <col style="width:70px;" />
+                <col style="width:65px;" />
+                <col style="width:65px;" />
+                <col style="width:65px;" />
                 <col />
                 <col style="width:36px;" />
             </colgroup>
@@ -76,6 +77,7 @@
                     <th class="small text-center pc-th-sort @SortClass("balance")" @onclick='() => ToggleSort("balance")'>@LS.T("pcs.balance")</th>
                     <th class="small text-center pc-th-sort @SortClass("hoursLeft")" @onclick='() => ToggleSort("hoursLeft")'>@LS.T("pcs.hoursLeft")</th>
                     <th class="small text-center pc-th-sort @SortClass("totalTime")" @onclick='() => ToggleSort("totalTime")'>@LS.T("pcs.totalSessionTime")</th>
+                    <th class="small text-center pc-th-sort @SortClass("sessions")" @onclick='() => ToggleSort("sessions")'>@LS.T("pcs.auditorSessions")</th>
                     <th class="small text-center pc-th-sort @SortClass("visits")" @onclick='() => ToggleSort("visits")'>@LS.T("pcs.totalVisits")</th>
                     <th class="small text-center pc-th-sort @SortClass("purchased")" @onclick='() => ToggleSort("purchased")'>@LS.T("pcs.hoursPurchased")</th>
                     <th class="small pc-th-sort @SortClass("auditor")" @onclick='() => ToggleSort("auditor")'>Auditor</th>
@@ -115,6 +117,7 @@
                             }
                         </td>
                         <td class="small text-center text-muted">@HrsLabel(pc.TotalSessionSec)</td>
+                        <td class="small text-center text-muted">@pc.AuditorSessions</td>
                         <td class="small text-center text-muted">@pc.AcademyVisits</td>
                         <td class="small text-center text-muted">@(pc.HoursPurchased)h</td>
                         <td class="small text-muted text-truncate" style="max-width:120px;">@(string.IsNullOrEmpty(pc.Auditor) ? "\u2014" : pc.Auditor)</td>
@@ -1526,7 +1529,7 @@
 
                     @* ── Used Money ── *@
                     <div class="bal-section bal-sec-used">
-                        <div class="bal-sec-title"><i class="ri-time-line"></i> @LS.T("pcs.usedMoney") <span class="badge bg-secondary ms-1">@ex.BillableSessionCount @LS.T("pcs.sessions")</span></div>
+                        <div class="bal-sec-title"><i class="ri-time-line"></i> @LS.T("pcs.usedMoney") <span class="badge bg-secondary ms-1">@(ex.BillableSessionCount + ex.SoloReviewCount) @LS.T("pcs.sessions")</span></div>
                         <div class="d-flex justify-content-between align-items-center px-3 py-2">
                             <span class="small" style="color:#991b1b;">@LS.T("pcs.totalSessionCost")</span>
                             <span class="fw-bold" style="color:#dc2626;">-@FormatNis2(ex.TotalUsedNis)</span>
@@ -1604,6 +1607,41 @@
                                             <td class="small text-center">₪@(s.RateCentsUsed / 100)</td>
                                             <td class="small text-center"><span class="badge @RateBadgeClass(s.RateSource)">@s.RateSource</span></td>
                                             <td class="small text-end fw-semibold" style="color:#dc2626;">@FormatNis2(s.CostNis)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+
+                    @* ── Solo CS Review Detail Table ── *@
+                    @if (_balShowSessions && _balSoloDetails != null && _balSoloDetails.Count > 0)
+                    {
+                        <div class="bal-sessions-detail" style="animation:balSlideIn .3s ease; margin-top:8px;">
+                            <div class="px-3 py-2 fw-semibold small" style="color:#7c3aed; border-bottom:1px solid #ede9fe;">
+                                <i class="ri-user-line me-1"></i> Solo CS Reviews
+                                <span class="badge ms-1" style="background:#7c3aed;">@_balSoloDetails.Count</span>
+                            </div>
+                            <table class="table table-sm mb-0">
+                                <thead class="table-light" style="position:sticky;top:0;">
+                                    <tr>
+                                        <th class="small text-center">#</th>
+                                        <th class="small">@LS.T("pcs.date")</th>
+                                        <th class="small text-center">@LS.T("pcs.duration")</th>
+                                        <th class="small text-center">@LS.T("pcs.rateLabel")</th>
+                                        <th class="small text-end">@LS.T("pcs.cost")</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @{ int soloIdx = 0; }
+                                    @foreach (var sr in _balSoloDetails)
+                                    {
+                                        <tr style="background:@(soloIdx++ % 2 == 0 ? "#f5f3ff" : "#ede9fe");">
+                                            <td class="small text-center text-muted">@sr.SessionId</td>
+                                            <td class="small">@FormatDate(sr.Date)</td>
+                                            <td class="small text-center">@Hmm(sr.ReviewLengthSec)</td>
+                                            <td class="small text-center">₪@(sr.RateCents / 100)</td>
+                                            <td class="small text-end fw-semibold" style="color:#7c3aed;">@FormatNis2(sr.CostNis)</td>
                                         </tr>
                                     }
                                 </tbody>
@@ -2366,6 +2404,7 @@
     string _balancePcName = "";
     PcBalanceExplanation? _balanceExplanation;
     List<PcSessionCostRow>? _balSessionDetails;
+    List<SoloCsReviewCostRow>? _balSoloDetails;
     bool _balShowSessions;
 
     // SMS state
@@ -2503,6 +2542,8 @@
                 ("hoursLeft", false) => list.OrderByDescending(p => _balances.TryGetValue(p.PcId, out var b) ? b.HoursLeft : 0),
                 ("totalTime", true)  => list.OrderBy(p => p.TotalSessionSec),
                 ("totalTime", false) => list.OrderByDescending(p => p.TotalSessionSec),
+                ("sessions", true)   => list.OrderBy(p => p.AuditorSessions),
+                ("sessions", false)  => list.OrderByDescending(p => p.AuditorSessions),
                 ("visits", true)     => list.OrderBy(p => p.AcademyVisits),
                 ("visits", false)    => list.OrderByDescending(p => p.AcademyVisits),
                 ("purchased", true)  => list.OrderBy(p => p.HoursPurchased),
@@ -3325,6 +3366,7 @@
         _balancePcId = pcId;
         _balancePcName = pcName;
         _balSessionDetails = null;
+        _balSoloDetails = null;
         _balShowSessions = false;
         _balanceExplanation = PcSvc.GetPcBalanceExplanation(pcId);
         _showBalanceModal = true;
@@ -3335,6 +3377,7 @@
         _showBalanceModal = false;
         _balanceExplanation = null;
         _balSessionDetails = null;
+        _balSoloDetails = null;
         _balShowSessions = false;
     }
 
@@ -3342,6 +3385,7 @@
     {
         if (_balShowSessions) { _balShowSessions = false; return; }
         _balSessionDetails ??= PcSvc.GetPcSessionCostDetails(_balancePcId);
+        _balSoloDetails ??= PcSvc.GetSoloCsReviewCostDetails(_balancePcId);
         _balShowSessions = true;
     }
 

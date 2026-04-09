@@ -15,7 +15,7 @@ public record PcSessionInfo(int SessionId, string Date, string AuditorName,
 public record PcStats(int TotalSessions, int FreeSessions, long UsedSec,
     double TotalHoursPurchased, int TotalAmountPaid, string? LastSessionDate);
 public record PcListItemEx(int PcId, string FullName, string Nick, long RemainSec,
-    long TotalSessionSec, int TotalSessions, int AcademyVisits, double HoursPurchased, string Auditor = "");
+    long TotalSessionSec, int TotalSessions, int AuditorSessions, int AcademyVisits, double HoursPurchased, string Auditor = "");
 public record PurchaseListItem(int PurchaseId, int PcId, string PcName, string PurchaseDate,
     string? Notes, string ApprovedStatus, string? ApprovedByName, string? ApprovedAt,
     string? CreatedByName, string CreatedAt, int TotalAmount, double TotalHours, bool IsDeleted = false, string Currency = "ILS", int? TransferPurchaseId = null);
@@ -39,9 +39,11 @@ public record PcSessionCostRow(
     int SessionId, string Date, string AuditorName,
     int LengthSec, int AdminSec, int RateCentsUsed, string RateSource, decimal CostNis);
 
+public record SoloCsReviewCostRow(int SessionId, string Date, int ReviewLengthSec, int RateCents, decimal CostNis);
+
 public record PcBalanceExplanation(
     List<PcPurchaseRow> Purchases, int TotalPurchasedNis,
-    decimal TotalUsedNis, decimal BalanceNis, int BillableSessionCount,
+    decimal TotalUsedNis, decimal BalanceNis, int BillableSessionCount, int SoloReviewCount,
     int EffectiveRateCents, int PurchaseRateCents, double HoursLeft, string RateSource);
 
 public class PcService
@@ -488,6 +490,7 @@ public List<PcListItem> GetAllPcs()
                    (COALESCE(pay.TotalHours, 0) * 3600 - COALESCE(sess.UsedSec, 0)) AS RemainSec,
                    COALESCE(sess.UsedSec, 0) AS TotalSessionSec,
                    COALESCE(sess.SessionCount, 0) AS TotalSessions,
+                   COALESCE(sess.AuditorSessionCount, 0) AS AuditorSessions,
                    COALESCE(acad.VisitCount, 0) AS AcademyVisits,
                    COALESCE(pay.TotalHours, 0) AS HoursPurchased,
                    COALESCE(TRIM(audp.FirstName || ' ' || COALESCE(NULLIF(audp.LastName,''), '')), '') AS Auditor
@@ -501,7 +504,10 @@ public List<PcListItem> GetAllPcs()
                 GROUP BY pu.PcId
             ) pay ON pay.PcId = pc.PcId
             LEFT JOIN (
-                SELECT PcId, SUM(LengthSeconds) AS UsedSec, COUNT(*) AS SessionCount
+                SELECT PcId,
+                       SUM(CASE WHEN AuditorId IS NOT NULL THEN LengthSeconds ELSE 0 END) AS UsedSec,
+                       COUNT(*) AS SessionCount,
+                       SUM(CASE WHEN AuditorId IS NOT NULL THEN 1 ELSE 0 END) AS AuditorSessionCount
                 FROM sess_sessions WHERE IsFreeSession = 0 GROUP BY PcId
             ) sess ON sess.PcId = pc.PcId
             LEFT JOIN (
@@ -522,7 +528,7 @@ public List<PcListItem> GetAllPcs()
         while (r.Read())
             list.Add(new PcListItemEx(
                 r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetInt64(3),
-                r.GetInt64(4), r.GetInt32(5), r.GetInt32(6), r.GetDouble(7), r.GetString(8)));
+                r.GetInt64(4), r.GetInt32(5), r.GetInt32(6), r.GetInt32(7), r.GetDouble(8), r.GetString(9)));
         return list;
     }
 
@@ -588,17 +594,38 @@ public List<PcListItem> GetAllPcs()
             }
         }
 
+        // D: Solo CS review costs (ChargedCentsRatePerHour > 0 only)
+        var soloCosts = new Dictionary<int, decimal>();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT s.PcId, cr.ChargedCentsRatePerHour, cr.ReviewLengthSeconds
+                FROM cs_reviews cr
+                JOIN sess_sessions s ON s.SessionId = cr.SessionId
+                WHERE s.AuditorId IS NULL AND cr.ChargedCentsRatePerHour > 0";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                int pcId = r.GetInt32(0);
+                decimal cost = (decimal)r.GetInt32(1) * r.GetInt32(2) / 3600m / 100m;
+                soloCosts[pcId] = soloCosts.GetValueOrDefault(pcId) + cost;
+            }
+        }
+
         // Calculate per PC
         var result = new Dictionary<int, PcBalanceData>();
-        foreach (int pcId in purchased.Keys.Union(sessions.Keys))
+        foreach (int pcId in purchased.Keys.Union(sessions.Keys).Union(soloCosts.Keys))
         {
             int purchasedNis = purchased.GetValueOrDefault(pcId, 0);
             int purchaseRate = lastPurchaseRate.GetValueOrDefault(pcId, 0);
+            decimal soloUsed = soloCosts.GetValueOrDefault(pcId);
 
             if (!sessions.TryGetValue(pcId, out var list) || list.Count == 0)
             {
-                double hrs = purchaseRate > 0 ? purchasedNis / (purchaseRate / 100.0) : 0;
-                result[pcId] = new(purchasedNis, 0m, purchasedNis, hrs, purchaseRate, purchaseRate, false);
+                decimal totalUsed = soloUsed;
+                decimal bal = purchasedNis - totalUsed;
+                double hrs = purchaseRate > 0 ? (double)(bal / ((decimal)purchaseRate / 100m)) : 0;
+                result[pcId] = new(purchasedNis, totalUsed, bal, hrs, purchaseRate, purchaseRate, false);
                 continue;
             }
 
@@ -618,6 +645,7 @@ public List<PcListItem> GetAllPcs()
                 usedNis += (decimal)rate * (s.admin + s.length) / 3600m / 100m;
             }
 
+            usedNis += soloUsed;
             decimal balance = purchasedNis - usedNis;
             int effective = lastSessRate > 0 ? lastSessRate : purchaseRate;
             double hoursLeft = effective > 0 ? (double)(balance / ((decimal)effective / 100m)) : 0;
@@ -1319,12 +1347,30 @@ public List<PcListItem> GetAllPcs()
             usedNis += (decimal)rate * (s.admin + s.length) / 3600m / 100m;
         }
 
+        // Solo CS review costs
+        int soloCount = 0;
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT cr.ChargedCentsRatePerHour, cr.ReviewLengthSeconds
+                FROM cs_reviews cr
+                JOIN sess_sessions s ON s.SessionId = cr.SessionId
+                WHERE s.PcId = @id AND s.AuditorId IS NULL AND cr.ChargedCentsRatePerHour > 0";
+            cmd.Parameters.AddWithValue("@id", pcId);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                usedNis += (decimal)r.GetInt32(0) * r.GetInt32(1) / 3600m / 100m;
+                soloCount++;
+            }
+        }
+
         decimal balance = totalPurchased - usedNis;
         int effective = lastSessRate > 0 ? lastSessRate : purchaseRate;
         double hoursLeft = effective > 0 ? (double)(balance / ((decimal)effective / 100m)) : 0;
         string source = lastSessRate > 0 ? $"Session #{lastSessId}" : "Purchase";
 
-        return new(purchases, totalPurchased, usedNis, balance, sess.Count,
+        return new(purchases, totalPurchased, usedNis, balance, sess.Count, soloCount,
             effective, purchaseRate, hoursLeft, source);
     }
 
@@ -1388,6 +1434,30 @@ public List<PcListItem> GetAllPcs()
                 result.Add(new(sessionId, r.GetString(1), r.GetString(2),
                     r.GetInt32(3), r.GetInt32(4), rateUsed, src, cost));
             }
+        }
+        return result;
+    }
+
+    public List<SoloCsReviewCostRow> GetSoloCsReviewCostDetails(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        var result = new List<SoloCsReviewCostRow>();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT s.SessionId, s.SessionDate, cr.ReviewLengthSeconds, COALESCE(cr.ChargedCentsRatePerHour, 0)
+            FROM cs_reviews cr
+            JOIN sess_sessions s ON s.SessionId = cr.SessionId
+            WHERE s.PcId = @id AND s.AuditorId IS NULL
+            ORDER BY s.SessionDate, s.SessionId";
+        cmd.Parameters.AddWithValue("@id", pcId);
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            int rateCents = r.GetInt32(3);
+            int lengthSec = r.GetInt32(2);
+            decimal cost = (decimal)rateCents * lengthSec / 3600m / 100m;
+            result.Add(new(r.GetInt32(0), r.GetString(1), lengthSec, rateCents, cost));
         }
         return result;
     }
