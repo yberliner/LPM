@@ -406,7 +406,7 @@
             <br /><span class="text-danger small">This will remove their staff account. Their session history is preserved.</span>
         </div>
         <div class="aud-confirm-footer">
-            <button class="btn btn-outline-secondary btn-sm" @onclick="CancelDelete">Cancel</button>
+            <button class="btn btn-outline-secondary btn-sm" @onclick="CancelDelete">@LS.T("common.cancel")</button>
             <button class="btn btn-danger btn-sm" @onclick="ConfirmDelete">
                 <i class="ri-delete-bin-line me-1"></i>Yes, Delete
             </button>
@@ -471,7 +471,7 @@
                 }
             </div>
             <div class="aud-wizard-footer">
-                <button class="btn btn-link text-muted btn-sm" @onclick="CloseWizard">Cancel</button>
+                <button class="btn btn-link text-muted btn-sm" @onclick="CloseWizard">@LS.T("common.cancel")</button>
                 <button class="btn btn-primary btn-sm ms-auto" @onclick="WizNext"
                         disabled="@(!_wizSelectedPcId.HasValue)">
                     Next <i class="ri-arrow-right-line ms-1"></i>

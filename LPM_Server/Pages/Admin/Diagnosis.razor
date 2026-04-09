@@ -1086,7 +1086,7 @@
                     <div class="mt-1"><strong style="color:#fca5a5;">Files:</strong> @(_pcfdFolders.Sum(f => f.Files.Count)) in @_pcfdFolders.Count folder(s)</div>
                 </div>
                 <div class="d-flex gap-2 justify-content-center">
-                    <button class="btn btn-secondary btn-sm px-4" @onclick="() => _pcfdDeleteStep = 0">Cancel</button>
+                    <button class="btn btn-secondary btn-sm px-4" @onclick="() => _pcfdDeleteStep = 0">@LS.T("common.cancel")</button>
                     <button class="btn btn-danger btn-sm px-4" @onclick="() => _pcfdDeleteStep = 2">
                         Yes, delete everything →
                     </button>
@@ -1118,7 +1118,7 @@
                     <div class="alert alert-danger py-1 px-2 mb-2 diag-feedback" style="font-size:.78rem;">@_pcfdDeleteError</div>
                 }
                 <div class="d-flex gap-2 justify-content-center">
-                    <button class="btn btn-secondary btn-sm px-4" @onclick="() => _pcfdDeleteStep = 0">Cancel</button>
+                    <button class="btn btn-secondary btn-sm px-4" @onclick="() => _pcfdDeleteStep = 0">@LS.T("common.cancel")</button>
                     <button class="btn btn-danger btn-sm px-4 diag-action-btn"
                             disabled="@(_pcfdDeleteInput != "delete")"
                             @onclick="ExecuteDeletePc">
@@ -1254,7 +1254,7 @@
             }
         </div>
         <div class="diag-modal-footer">
-            <button class="btn btn-secondary btn-sm" disabled="@_delSessBusy" @onclick="() => _delSessModal = false">Cancel</button>
+            <button class="btn btn-secondary btn-sm" disabled="@_delSessBusy" @onclick="() => _delSessModal = false">@LS.T("common.cancel")</button>
             <button class="btn btn-danger btn-sm diag-action-btn" disabled="@(_delSessBusy || _delSessInfo == null)"
                     @onclick="ExecuteDeleteSession">
                 @if (_delSessBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
@@ -1333,7 +1333,7 @@
             }
         </div>
         <div class="diag-modal-footer">
-            <button class="btn btn-secondary btn-sm" disabled="@_delPurchBusy" @onclick="() => _delPurchModal = false">Cancel</button>
+            <button class="btn btn-secondary btn-sm" disabled="@_delPurchBusy" @onclick="() => _delPurchModal = false">@LS.T("common.cancel")</button>
             <button class="btn btn-danger btn-sm diag-action-btn" disabled="@(_delPurchBusy || _delPurchInfo == null)"
                     @onclick="ExecuteDeletePurchase">
                 @if (_delPurchBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
@@ -1377,7 +1377,7 @@
             }
         </div>
         <div class="diag-modal-footer">
-            <button class="btn btn-secondary btn-sm" @onclick="CloseEditModal">Cancel</button>
+            <button class="btn btn-secondary btn-sm" @onclick="CloseEditModal">@LS.T("common.cancel")</button>
             <button class="btn btn-primary btn-sm diag-action-btn" disabled="@_editModalBusy" @onclick="SaveEditModal">
                 @if (_editModalBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
                 Save
@@ -1412,7 +1412,7 @@
             }
         </div>
         <div class="diag-modal-footer">
-            <button class="btn btn-secondary btn-sm" @onclick="ClosePcsModal">Cancel</button>
+            <button class="btn btn-secondary btn-sm" @onclick="ClosePcsModal">@LS.T("common.cancel")</button>
             <button class="btn btn-primary btn-sm diag-action-btn" disabled="@_pcsModalBusy" @onclick="SavePcsModal">
                 @if (_pcsModalBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
                 Save

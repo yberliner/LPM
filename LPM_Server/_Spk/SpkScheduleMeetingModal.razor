@@ -92,7 +92,7 @@
 
                 <div class="modal-footer py-2">
                     <button class="btn btn-sm btn-secondary" @onclick="Close"
-                            disabled="@_busy">Cancel</button>
+                            disabled="@_busy">@LS.T("common.cancel")</button>
                     <button class="btn btn-sm btn-primary" @onclick="Save"
                             disabled="@_busy">
                         @if (_busy)

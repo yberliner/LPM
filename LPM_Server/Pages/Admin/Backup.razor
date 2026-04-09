@@ -270,7 +270,7 @@
                         }
                     </div>
                     <div class="modal-footer py-2" style="border-color:#334155;">
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showPasswordModal = false">Cancel</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showPasswordModal = false">@LS.T("common.cancel")</button>
                         <button class="btn btn-sm btn-primary" disabled="@_authBusy" @onclick="AuthAndStartBackup">
                             @if (_authBusy)
                             {

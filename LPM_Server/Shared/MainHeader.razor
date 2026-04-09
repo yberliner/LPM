@@ -294,17 +294,16 @@
                             opacity: 1;
                         }
                         .lang-switcher-btn {
-                            background: transparent;
+                            background: none;
                             border: none;
-                            font-size: 1.25rem;
                             cursor: pointer;
-                            padding: 2px 4px;
-                            border-radius: 6px;
-                            opacity: 0.5;
-                            transition: opacity 0.2s, transform 0.18s;
-                            line-height: 1;
+                            padding: 0;
+                            opacity: 0.45;
+                            transition: opacity 0.15s, transform 0.15s;
+                            line-height: 0;
+                            display: inline-flex;
                         }
-                        .lang-switcher-btn:hover { opacity: 1; transform: scale(1.18); }
+                        .lang-switcher-btn:hover { opacity: 1; transform: scale(1.15); }
                         .lang-switcher-active { opacity: 1 !important; }
                         /* ── Solo badge ── */
                         .solo-badge-inline {
@@ -436,7 +435,7 @@
                             <button class="btn btn-sm btn-warning d-flex align-items-center gap-1"
                                     style="border-radius:8px; font-weight:600; font-size:.82rem; color:#000 !important;"
                                     @onclick="ShowAssignPcModal">
-                                <i class="ri-shield-user-line"></i>Assign PC
+                                <i class="ri-shield-user-line"></i>@LS.T("actions.assignPc")
                             </button>
                         </li>
                         }
@@ -447,7 +446,7 @@
                             <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
                                     style="border-radius:8px; font-weight:600; font-size:.82rem; color:#fff !important;"
                                     @onclick="OpenImportSession">
-                                <i class="ri-upload-2-line"></i>Add Session
+                                <i class="ri-upload-2-line"></i>@LS.T("actions.addSession")
                             </button>
                         </li>
                         <!-- End::header-element import-session -->
@@ -459,26 +458,26 @@
                                         style="border-radius:8px; font-weight:600; font-size:.82rem;
                                                color:var(--header-prime-color); border:1px solid var(--header-prime-color);"
                                         data-bs-toggle="dropdown" aria-expanded="false">
-                                    <i class="ri-menu-add-line"></i>Actions
+                                    <i class="ri-menu-add-line"></i>@LS.T("actions.title")
                                     <i class="ri-arrow-down-s-fill" style="font-size:.7rem;"></i>
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end shadow-sm">
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenActionFolder">
-                                            <i class="ri-folder-open-line" style="color:#3b82f6;"></i>Open Folder
+                                            <i class="ri-folder-open-line" style="color:#3b82f6;"></i>@LS.T("actions.openFolder")
                                         </a>
                                     </li>
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenActionSummary">
-                                            <i class="ri-file-edit-line" style="color:#8b5cf6;"></i>Write to Folder Summary
+                                            <i class="ri-file-edit-line" style="color:#8b5cf6;"></i>@LS.T("actions.writeToSummary")
                                         </a>
                                     </li>
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenMemoWizard">
-                                            <i class="ri-sticky-note-line" style="color:#ec4899;"></i>Add Memo to Folder
+                                            <i class="ri-sticky-note-line" style="color:#ec4899;"></i>@LS.T("actions.addMemo")
                                         </a>
                                     </li>
                                     @if (!_isSoloUser)
@@ -486,38 +485,38 @@
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenScheduleMeeting">
-                                            <i class="ri-calendar-event-line" style="color:#f59e0b;"></i>Schedule Meeting
+                                            <i class="ri-calendar-event-line" style="color:#f59e0b;"></i>@LS.T("actions.scheduleMeeting")
                                         </a>
                                     </li>
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenUploadFrontCover">
-                                            <i class="ri-upload-cloud-2-line" style="color:#10b981;"></i>Upload to Front Cover
+                                            <i class="ri-upload-cloud-2-line" style="color:#10b981;"></i>@LS.T("actions.uploadFrontCover")
                                         </a>
                                     </li>
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenCompletions">
-                                            <i class="ri-trophy-line" style="color:#a855f7;"></i>Finish Auditing Grade
+                                            <i class="ri-trophy-line" style="color:#a855f7;"></i>@LS.T("actions.finishGrade")
                                         </a>
                                     </li>
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenTransferModal">
-                                            <i class="ri-exchange-funds-line" style="color:#0ea5e9;"></i>Transfer Balance
+                                            <i class="ri-exchange-funds-line" style="color:#0ea5e9;"></i>@LS.T("actions.transferBalance")
                                         </a>
                                     </li>
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenSessionManager">
-                                            <i class="ri-database-2-line" style="color:#f97316;"></i>Session Manager
+                                            <i class="ri-database-2-line" style="color:#f97316;"></i>@LS.T("actions.sessionManager")
                                         </a>
                                     </li>
                                     <li><hr class="dropdown-divider" /></li>
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenPrintAllStaff">
-                                            <i class="ri-team-line" style="color:#6366f1;"></i>Print Staff Reports
+                                            <i class="ri-team-line" style="color:#6366f1;"></i>@LS.T("actions.printStaffReports")
                                         </a>
                                     </li>
                                     }
@@ -543,15 +542,11 @@
                         <!-- End::header-element messages -->
 
                         <!-- Start::header-element language switcher -->
-                        <li class="header-element d-flex align-items-center gap-1">
+                        <li class="header-element" style="padding:0;margin:0 0 0 6px;display:flex;align-items:center;gap:3px;">
                             <button class="lang-switcher-btn @(LS.CurrentLanguage == "en" ? "lang-switcher-active" : "")"
-                                    @onclick='() => SwitchLanguage("en")' title="English">
-                                🇬🇧
-                            </button>
+                                    @onclick='() => SwitchLanguage("en")' title="English"><svg viewBox="0 0 60 30" width="20" height="10" style="border-radius:2px;display:block;"><clipPath id="t"><rect width="60" height="30"/></clipPath><clipPath id="s"><path d="M0,0 v30 h60 v-30 z"/></clipPath><g clip-path="url(#s)"><path d="M0,0 v30 h60 v-30z" fill="#012169"/><path d="M0,0 L60,30 M60,0 L0,30" stroke="#fff" stroke-width="6"/><path d="M0,0 L60,30 M60,0 L0,30" clip-path="url(#t)" stroke="#C8102E" stroke-width="4"/><path d="M30,0 v30 M0,15 h60" stroke="#fff" stroke-width="10"/><path d="M30,0 v30 M0,15 h60" stroke="#C8102E" stroke-width="6"/></g></svg></button>
                             <button class="lang-switcher-btn @(LS.CurrentLanguage == "he" ? "lang-switcher-active" : "")"
-                                    @onclick='() => SwitchLanguage("he")' title="עברית">
-                                🇮🇱
-                            </button>
+                                    @onclick='() => SwitchLanguage("he")' title="עברית"><svg viewBox="0 0 220 160" width="20" height="14" style="border-radius:2px;display:block;"><rect width="220" height="160" fill="#fff"/><rect y="15" width="220" height="25" fill="#0038b8"/><rect y="120" width="220" height="25" fill="#0038b8"/><polygon points="110,45 126,75 98,60 122,60 94,75" fill="none" stroke="#0038b8" stroke-width="5"/><polygon points="110,115 126,85 98,100 122,100 94,85" fill="none" stroke="#0038b8" stroke-width="5"/></svg></button>
                         </li>
                         <!-- End::header-element language switcher -->
 
@@ -835,7 +830,7 @@
             <div class="modal-content" style="background:#1e293b; color:#e2e8f0; border:1px solid #334155;">
                 <div class="modal-header py-2" style="background:linear-gradient(135deg,#065f46,#10b981); border-bottom:none;">
                     <h5 class="modal-title fs-15 text-white d-flex align-items-center gap-2">
-                        <i class="ri-upload-cloud-2-line"></i>Upload to Front Cover
+                        <i class="ri-upload-cloud-2-line"></i>@LS.T("actions.uploadFrontCover")
                     </h5>
                     <button type="button" class="btn-close btn-close-white"
                             @onclick="() => _showUploadFrontCover = false"></button>
@@ -912,7 +907,7 @@
                 @if (!_ufcSuccess)
                 {
                 <div class="modal-footer py-2" style="border-top:1px solid #334155;">
-                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showUploadFrontCover = false">Cancel</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showUploadFrontCover = false">@LS.T("common.cancel")</button>
                     <button class="btn btn-sm btn-success d-flex align-items-center gap-1"
                             disabled="@(_ufcPcId == 0 || _ufcFile == null || _ufcDuplicate || _ufcBusy)"
                             @onclick="DoUploadFrontCover">
@@ -941,7 +936,7 @@
             <div class="modal-content">
                 <div class="modal-header py-2" style="background:linear-gradient(135deg,#7c3aed,#a855f7);">
                     <h6 class="modal-title text-white fw-bold mb-0 d-flex align-items-center gap-2">
-                        <i class="ri-trophy-line"></i>Finish Auditing Grade
+                        <i class="ri-trophy-line"></i>@LS.T("actions.finishGrade")
                     </h6>
                     <button type="button" class="btn-close btn-close-white btn-sm"
                             @onclick="CloseCompletions"></button>
@@ -1084,7 +1079,7 @@
             <div class="modal-content" style="background:#1e293b; color:#e2e8f0; border:1px solid #334155;">
                 <div class="modal-header py-2" style="background:linear-gradient(135deg,#1565c0,#1e88e5); border-bottom:none;">
                     <h5 class="modal-title fs-15 text-white d-flex align-items-center gap-2">
-                        <i class="ri-upload-2-line"></i>Add Session
+                        <i class="ri-upload-2-line"></i>@LS.T("actions.addSession")
                     </h5>
                     <div class="d-flex align-items-center gap-2 ms-auto me-2">
                         @if (_importStep >= 2 && _importPcId > 0)
@@ -1196,8 +1191,8 @@
                                     <div class="act-noperm-ring" style="border-color:rgba(220,38,38,.25);"></div>
                                     <i class="ri-lock-line act-noperm-icon"></i>
                                 </div>
-                                <div class="act-noperm-title" style="color:#e2e8f0;">No Folders Assigned</div>
-                                <div class="act-noperm-sub" style="color:#94a3b8;">You haven't been assigned to any PC folders yet.<br>Contact your administrator to request access.</div>
+                                <div class="act-noperm-title" style="color:#e2e8f0;">@LS.T("actions.noFoldersAssigned")</div>
+                                <div class="act-noperm-sub" style="color:#94a3b8;">@LS.T("actions.noFoldersMsg")<br>@LS.T("actions.contactAdmin")</div>
                             </div>
                         }
                         else
@@ -1666,7 +1661,7 @@
                 <div class="modal-footer py-2" style="border-color:#334155;">
                     @if (_importStep == 1)
                     {
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="CloseWizard">Cancel</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="CloseWizard">@LS.T("common.cancel")</button>
                         @if (_isSoloUser || _approvedPcs.Count > 0)
                         {
                             <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
@@ -1682,7 +1677,7 @@
                                 @onclick="() => _importStep = 1">
                             <i class="ri-arrow-left-s-line"></i> Back
                         </button>
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="CloseWizard">Cancel</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="CloseWizard">@LS.T("common.cancel")</button>
                         <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
                                 disabled="@(_importSessionBytes == null || _importDuplicate || !string.IsNullOrEmpty(_importNameEditError) || string.IsNullOrEmpty(_importNormalizedFileName) || (!IsArfTableEmpty && ArfHasTimeErrors) || string.IsNullOrWhiteSpace(_arfSessionLength))"
                                 @onclick="GoToStep3">
@@ -1696,7 +1691,7 @@
                                     @onclick="Step3Back">
                                 <i class="ri-arrow-left-s-line"></i> Back
                             </button>
-                            <button class="btn btn-sm btn-outline-secondary" @onclick="CloseWizard">Cancel</button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="CloseWizard">@LS.T("common.cancel")</button>
                             <div class="d-flex align-items-center gap-2 ms-auto wiz-admin-time-group">
                                 <span style="font-weight:600; color:#cbd5e1; font-size:.85rem; white-space:nowrap;">
                                     Admin Time
@@ -1866,7 +1861,7 @@
                     }
                 </div>
                 <div class="modal-footer py-2 px-4" style="border-color:#1e293b;">
-                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showTransfer = false">Cancel</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showTransfer = false">@LS.T("common.cancel")</button>
                     <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
                             style="min-width:120px; justify-content:center;"
                             disabled="@(_xferBusy || _xferFromPcId == 0 || _xferToPcId == 0 || _xferDeductHours <= 0 || _xferAddHours <= 0 || _xferAmount <= 0 || _xferAmount > _xferFromRemainNis || !string.IsNullOrEmpty(_xferSuccess))"
@@ -1996,7 +1991,7 @@
                 }
                 <div style="font-size:.75rem;color:#94a3b8;word-break:break-all;">@_bgImportError</div>
                 <button class="btn btn-sm btn-outline-secondary mt-2" style="font-size:.72rem;padding:2px 10px;"
-                        @onclick="() => { _bgImportError = string.Empty; _bgSteps.Clear(); }">Dismiss</button>
+                        @onclick="() => { _bgImportError = string.Empty; _bgSteps.Clear(); }">@LS.T("common.dismiss")</button>
             </div>
         }
     </div>
@@ -2012,7 +2007,7 @@
             <div class="modal-content" style="background:#1e293b; color:#e2e8f0; border:1px solid #334155;">
                 <div class="modal-header py-2" style="background:linear-gradient(135deg,#be185d,#ec4899); border-bottom:none;">
                     <h5 class="modal-title fs-15 text-white d-flex align-items-center gap-2">
-                        <i class="ri-sticky-note-line"></i>Add Memo to Folder
+                        <i class="ri-sticky-note-line"></i>@LS.T("actions.addMemo")
                     </h5>
                     <button type="button" class="btn-close btn-close-white"
                             @onclick="() => _showMemoWizard = false"></button>
@@ -2023,7 +2018,7 @@
                     <div class="d-flex align-items-center gap-3 flex-wrap mb-3">
                         <div class="wiz-stepper">
                             @{
-                                var memoStepLabels = new[] { "Choose PC", "Write Memo" };
+                                var memoStepLabels = new[] { LS.T("actions.choosePcStep"), LS.T("actions.writeMemoStep") };
                             }
                             @for (int s = 1; s <= 2; s++)
                             {
@@ -2057,8 +2052,8 @@
                                     <div class="act-noperm-ring" style="border-color:rgba(220,38,38,.25);"></div>
                                     <i class="ri-lock-line act-noperm-icon"></i>
                                 </div>
-                                <div class="act-noperm-title" style="color:#e2e8f0;">No Folders Assigned</div>
-                                <div class="act-noperm-sub" style="color:#94a3b8;">You haven't been assigned to any PC folders yet.<br>Contact your administrator to request access.</div>
+                                <div class="act-noperm-title" style="color:#e2e8f0;">@LS.T("actions.noFoldersAssigned")</div>
+                                <div class="act-noperm-sub" style="color:#94a3b8;">@LS.T("actions.noFoldersMsg")<br>@LS.T("actions.contactAdmin")</div>
                             </div>
                         }
                         else
@@ -2074,7 +2069,7 @@
                                 }
                                 else
                                 {
-                                    <input type="text" class="form-control form-control-sm mb-2" placeholder="Search PCs..."
+                                    <input type="text" class="form-control form-control-sm mb-2" placeholder="@LS.T("actions.searchPcs")"
                                            style="background:#0f172a; color:#e2e8f0; border-color:#475569;"
                                            @bind="_memoPcSearch" @bind:event="oninput" />
                                     <div style="max-height:240px; overflow-y:auto;">
@@ -2110,14 +2105,14 @@
                     {
                         @* ── Step 2: Write Memo ── *@
                         <div class="mb-1">
-                            <label class="form-label" style="font-size:.82rem; color:#94a3b8;">Memo Text</label>
+                            <label class="form-label" style="font-size:.82rem; color:#94a3b8;">@LS.T("actions.memoText")</label>
                             <div id="memo-quill-editor"
                                  style="background:#fff; color:#000; min-height:260px; border-radius:0 0 4px 4px;">
                             </div>
                         </div>
                         <div style="font-size:.72rem; color:#64748b; margin-top:6px;">
                             <i class="ri-information-line me-1"></i>
-                            The memo will be saved as a single A4 PDF page in the PC's WorkSheets folder.
+                            @LS.T("actions.memoSaveNote")
                         </div>
                     }
 
@@ -2125,7 +2120,7 @@
                 <div class="modal-footer" style="background:#0f172a; border-top:1px solid #1e293b;">
                     @if (_memoStep == 1)
                     {
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showMemoWizard = false">Cancel</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showMemoWizard = false">@LS.T("common.cancel")</button>
                         @if (_isSoloUser || _memoPcs.Count > 0)
                         {
                             <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
@@ -2141,7 +2136,7 @@
                                 @onclick="() => _memoStep = 1">
                             <i class="ri-arrow-left-s-line"></i> Back
                         </button>
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showMemoWizard = false">Cancel</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showMemoWizard = false">@LS.T("common.cancel")</button>
                         <button class="btn btn-sm d-flex align-items-center gap-1"
                                 style="background:linear-gradient(135deg,#be185d,#ec4899); color:#fff; border:none;"
                                 @onclick="ExecuteMemo">
@@ -2241,7 +2236,7 @@
             <div style="padding:10px 16px 14px;">
                 <div style="font-size:.75rem;color:#94a3b8;word-break:break-all;">@_memoError</div>
                 <button class="btn btn-sm btn-outline-secondary mt-2" style="font-size:.72rem;padding:2px 10px;"
-                        @onclick="() => { _memoError = string.Empty; _memoSteps.Clear(); }">Dismiss</button>
+                        @onclick="() => { _memoError = string.Empty; _memoSteps.Clear(); }">@LS.T("common.dismiss")</button>
             </div>
         }
     </div>
@@ -2350,7 +2345,7 @@
             <div class="modal-content" style="border:none; border-radius:16px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.25); background:#fff !important; color:#111827 !important;">
                 <div class="modal-header py-2" style="background:linear-gradient(135deg,#1565c0,#42a5f5); border-bottom:none;">
                     <h5 class="modal-title fs-15 text-white d-flex align-items-center gap-2">
-                        <i class="ri-folder-open-line"></i>Open Folder
+                        <i class="ri-folder-open-line"></i>@LS.T("actions.openFolder")
                     </h5>
                     <button type="button" class="btn-close btn-close-white"
                             @onclick="() => _showActionOpenFolder = false"></button>
@@ -2369,7 +2364,7 @@
                                 <div class="act-noperm-ring"></div>
                                 <i class="ri-lock-line act-noperm-icon"></i>
                             </div>
-                            <div class="act-noperm-title">No Folders Assigned</div>
+                            <div class="act-noperm-title">@LS.T("actions.noFoldersAssigned")</div>
                             <div class="act-noperm-sub">You haven't been assigned to any PC folders yet.<br>Contact your administrator to request access.</div>
                         </div>
                     }
@@ -2377,7 +2372,7 @@
                     {
                         <label class="form-label" style="font-size:.82rem; color:#64748b;">Select PC</label>
                         <input type="text" class="form-control form-control-sm mb-2"
-                               placeholder="Search PCs..."
+                               placeholder="@LS.T("actions.searchPcs")"
                                style="border-color:#cbd5e1; background:#fff !important; color:#111827 !important;"
                                @bind="_actionPcSearch" @bind:event="oninput" />
                         <div style="max-height:280px; overflow-y:auto;">
@@ -2421,7 +2416,7 @@
             <div class="modal-content" style="border:none; border-radius:16px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.25); background:#fff !important; color:#111827 !important;">
                 <div class="modal-header py-2" style="background:linear-gradient(135deg,#6d28d9,#8b5cf6); border-bottom:none;">
                     <h5 class="modal-title fs-15 text-white d-flex align-items-center gap-2">
-                        <i class="ri-file-edit-line"></i>Write to Folder Summary
+                        <i class="ri-file-edit-line"></i>@LS.T("actions.writeToSummary")
                     </h5>
                     <button type="button" class="btn-close btn-close-white"
                             @onclick="() => CloseActionSummary()"></button>
@@ -2470,7 +2465,7 @@
                                     <div class="act-noperm-ring"></div>
                                     <i class="ri-lock-line act-noperm-icon"></i>
                                 </div>
-                                <div class="act-noperm-title">No Folders Assigned</div>
+                                <div class="act-noperm-title">@LS.T("actions.noFoldersAssigned")</div>
                                 <div class="act-noperm-sub">You haven't been assigned to any PC folders yet.<br>Contact your administrator to request access.</div>
                             </div>
                         }
@@ -2478,7 +2473,7 @@
                         {
                             <label class="form-label" style="font-size:.82rem; color:#64748b;">Select PC</label>
                             <input type="text" class="form-control form-control-sm mb-2"
-                                   placeholder="Search PCs..."
+                                   placeholder="@LS.T("actions.searchPcs")"
                                    style="border-color:#cbd5e1; background:#fff !important; color:#111827 !important;"
                                    @bind="_actionPcSearch" @bind:event="oninput" />
                             <div style="max-height:280px; overflow-y:auto;">
@@ -2532,7 +2527,7 @@
                 @if (_actionSummaryStep == 2)
                 {
                     <div class="modal-footer py-2" style="border-color:#e2e8f0; background:#fff !important;">
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => CloseActionSummary()">Cancel</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => CloseActionSummary()">@LS.T("common.cancel")</button>
                         <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
                                 disabled="@_actionSummaryBusy"
                                 @onclick="SubmitActionSummary">
@@ -2568,7 +2563,7 @@
             }
             else
             {
-                <span><i class="ri-database-2-line me-2"></i>Session Manager</span>
+                <span><i class="ri-database-2-line me-2"></i>@LS.T("actions.sessionManager")</span>
             }
             <button class="btn-close btn-close-white btn-close-sm ms-auto" @onclick="() => _smOpen = false"></button>
         </div>
@@ -2802,7 +2797,7 @@
                             @if (!_smDelStage2)
                             {
                                 <div class="d-flex gap-2 mt-3">
-                                    <button class="btn btn-sm btn-outline-light" @onclick="() => _smDelStage1 = false">Cancel</button>
+                                    <button class="btn btn-sm btn-outline-light" @onclick="() => _smDelStage1 = false">@LS.T("common.cancel")</button>
                                     <button class="btn btn-sm btn-danger" @onclick="() => _smDelStage2 = true">
                                         <i class="ri-delete-bin-line me-1"></i>Yes, I want to delete
                                     </button>
@@ -2819,7 +2814,7 @@
                                         <div class="text-danger mt-1" style="font-size:.78rem;">@_smDelError</div>
                                     }
                                     <div class="d-flex gap-2 mt-2">
-                                        <button class="btn btn-sm btn-outline-light" @onclick="SmCancelDelete">Cancel</button>
+                                        <button class="btn btn-sm btn-outline-light" @onclick="SmCancelDelete">@LS.T("common.cancel")</button>
                                         <button class="btn btn-sm btn-danger" disabled="@(!string.Equals(_smDelInput?.Trim(), "delete", StringComparison.OrdinalIgnoreCase) || _smDeleting)"
                                                 @onclick="SmDeleteConfirmed">
                                             @if (_smDeleting) { <span class="spinner-border spinner-border-sm me-1"></span> }
@@ -2837,7 +2832,7 @@
                     <i class="ri-delete-bin-line"></i> Delete Session
                 </button>
                 <div class="ms-auto d-flex gap-2">
-                    <button class="btn btn-sm btn-outline-secondary" @onclick="SmBackToList">Cancel</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="SmBackToList">@LS.T("common.cancel")</button>
                     <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
                             disabled="@(_smSaving)"
                             @onclick="SmSave">
@@ -3720,7 +3715,7 @@
                     <i class="ri-team-line"></i>
                 </div>
                 <div>
-                    <div class="psa-header-title">Print Staff Reports</div>
+                    <div class="psa-header-title">@LS.T("actions.printStaffReports")</div>
                     <div class="psa-header-sub">Weekly overview for selected staff members</div>
                 </div>
             </div>
@@ -3809,7 +3804,7 @@
         <div class="psa-footer">
             @if (!_psaBusy && !_psaDone)
             {
-                <button class="psa-cancel-btn" @onclick="() => _showPrintAllStaff = false">Cancel</button>
+                <button class="psa-cancel-btn" @onclick="() => _showPrintAllStaff = false">@LS.T("common.cancel")</button>
                 <button class="psa-generate-btn" disabled="@(_psaList.Count(s => s.Selected) == 0)" @onclick="GenerateAllStaffPdf">
                     <i class="ri-file-pdf-2-line me-2"></i>Generate PDF
                 </button>
@@ -5592,6 +5587,7 @@ string _actionPcSearch = "";
 
     protected override async Task OnInitializedAsync()
     {
+        LS.OnLanguageChanged += OnLanguageChanged;
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         var name = auth.User.Identity?.Name ?? "";
         _logUsername = name;
@@ -5898,9 +5894,15 @@ string _actionPcSearch = "";
         return $"{m}:{s:D2}";
     }
 
+    private async void OnLanguageChanged()
+    {
+        try { await InvokeAsync(StateHasChanged); } catch { }
+    }
+
     public void Dispose()
     {
         _isDisposed = true;
+        LS.OnLanguageChanged -= OnLanguageChanged;
         MsgNotifier.OnNewMessage -= OnNewMessageReceived;
         _headerScrollRef?.Dispose();
         _step3DotNetRef?.Dispose();

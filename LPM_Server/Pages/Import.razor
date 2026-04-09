@@ -609,7 +609,7 @@
                         </button>
                         <button class="btn btn-sm btn-outline-secondary"
                                 disabled="@_deleteCoverBusy"
-                                @onclick="() => _deleteCoverConfirming = false">Cancel</button>
+                                @onclick="() => _deleteCoverConfirming = false">@LS.T("common.cancel")</button>
                     }
                     else
                     {
@@ -853,7 +853,7 @@
     {
         <div class="alert alert-danger mt-3 py-2" style="font-size:.82rem;">
             <i class="ri-error-warning-line me-1"></i>@_adjustError
-            <button class="btn btn-sm btn-outline-secondary ms-3" @onclick="DismissAdjustError">Dismiss</button>
+            <button class="btn btn-sm btn-outline-secondary ms-3" @onclick="DismissAdjustError">@LS.T("common.dismiss")</button>
         </div>
     }
 
@@ -1034,7 +1034,7 @@
                         @filtered.Count of @_excludeList.Count PCs shown
                     </span>
                     <div class="ms-auto d-flex gap-2">
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showExcludeModal = false">Cancel</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showExcludeModal = false">@LS.T("common.cancel")</button>
                         <button class="btn btn-sm btn-warning d-flex align-items-center gap-1" @onclick="ApplyExclusions">
                             <i class="ri-check-line"></i>
                             Apply

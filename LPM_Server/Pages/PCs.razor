@@ -20,23 +20,23 @@
     <div class="d-flex align-items-center gap-2 mb-2 flex-wrap pc-toolbar">
         <input class="form-control form-control-sm" style="max-width:220px;" placeholder="@LS.T("common.search")"
                @bind="_search" @bind:event="oninput" />
-        <button class="pc-report-btn" @onclick="OpenCoursesReportModal" title="Course Completions Report">
-            <i class="ri-graduation-cap-line"></i><span class="pc-btn-label">Completions</span>
+        <button class="pc-report-btn" @onclick="OpenCoursesReportModal" title="@LS.T("pcs.courseCompletionsReport")">
+            <i class="ri-graduation-cap-line"></i><span class="pc-btn-label">@LS.T("pcs.completions")</span>
         </button>
-        <button class="pc-report-btn" @onclick="OpenPendingCoursesModal" title="Show all pending courses">
-            <i class="ri-hourglass-line"></i><span class="pc-btn-label">Pending Courses</span>
+        <button class="pc-report-btn" @onclick="OpenPendingCoursesModal" title="@LS.T("pcs.pendingCourses")">
+            <i class="ri-hourglass-line"></i><span class="pc-btn-label">@LS.T("pcs.pendingCourses")</span>
         </button>
         <div class="form-check form-switch mb-0">
             <input class="form-check-input" type="checkbox" id="filterHasSessions"
                    @bind="_filterHasSessions" style="cursor:pointer;" />
             <label class="form-check-label small fw-semibold" for="filterHasSessions" style="cursor:pointer;color:#6366f1;">
-                <i class="ri-archive-line me-1" style="font-size:.8rem;"></i>Audited Only
+                <i class="ri-archive-line me-1" style="font-size:.8rem;"></i>@LS.T("pcs.auditedOnly")
             </label>
         </div>
-        <button class="pc-report-btn" @onclick="PrintPcTable" title="Download PC table as PDF">
+        <button class="pc-report-btn" @onclick="PrintPcTable" title="@LS.T("common.printPDF")">
             <i class="ri-printer-line"></i>
         </button>
-        <button class="pc-report-btn" @onclick="() => _showColumnGuide = true" title="Column Guide — how each value is calculated">
+        <button class="pc-report-btn" @onclick="() => _showColumnGuide = true" title="@LS.T("pcs.columnGuide")">
             <i class="ri-question-line"></i>
         </button>
         <span class="badge bg-primary-transparent text-primary" style="font-size:.72rem;">
@@ -456,7 +456,7 @@
                 <div class="card-header d-flex align-items-center justify-content-between py-2"
                      style="background:linear-gradient(135deg,#14532d,#22c55e);border:none;">
                     <span class="fw-semibold small text-white">
-                        <i class="ri-trophy-line me-1"></i>Completions
+                        <i class="ri-trophy-line me-1"></i>@LS.T("pcs.completions")
                     </span>
                     <span class="badge bg-white text-success">@_pcCompletions.Count</span>
                 </div>
@@ -465,9 +465,9 @@
                         <table class="table table-sm table-hover mb-0">
                             <thead class="table-light">
                                 <tr>
-                                    <th class="small ps-3">Complete Date</th>
-                                    <th class="small text-center">Grade</th>
-                                    <th class="small text-center">Auditor</th>
+                                    <th class="small ps-3">@LS.T("pcs.completeDate")</th>
+                                    <th class="small text-center">@LS.T("pcs.grade")</th>
+                                    <th class="small text-center">@LS.T("pcs.auditor")</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -505,8 +505,8 @@
                         <i class="ri-bar-chart-grouped-line"></i>
                     </div>
                     <div style="flex:1;">
-                        <div style="font-size:1.05rem;font-weight:700;color:#fff;line-height:1.2;">Course Completions Report</div>
-                        <div style="font-size:.73rem;color:rgba(255,255,255,.7);">Courses finished within the selected period, grouped by PC</div>
+                        <div style="font-size:1.05rem;font-weight:700;color:#fff;line-height:1.2;">@LS.T("pcs.courseCompletionsReport")</div>
+                        <div style="font-size:.73rem;color:rgba(255,255,255,.7);">@LS.T("pcs.courseCompletionsSub")</div>
                     </div>
                     <button type="button" class="btn-close btn-close-white" @onclick="() => _showCoursesReportModal = false" style="opacity:.8;"></button>
                 </div>
@@ -548,14 +548,14 @@
                     {
                         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;color:#94a3b8;font-size:.9rem;">
                             <i class="ri-calendar-search-line" style="font-size:2.5rem;margin-bottom:8px;opacity:.4;"></i>
-                            Select a date range and press Apply.
+                            @LS.T("pcs.selectDateRange")
                         </div>
                     }
                     else if (_courseReportGroups.Count == 0)
                     {
                         <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;color:#94a3b8;font-size:.9rem;">
                             <i class="ri-inbox-line" style="font-size:2.5rem;margin-bottom:8px;opacity:.4;"></i>
-                            No course completions found in this period.
+                            @LS.T("pcs.noCompletionsInPeriod")
                         </div>
                     }
                     else
@@ -1140,7 +1140,7 @@
                         Only an <strong>Admin</strong> can grant or revoke Solo Access for a PC.
                     </div>
                     <button class="btn btn-sm btn-primary px-4"
-                            @onclick="() => _showSoloAdminOnly = false">OK</button>
+                            @onclick="() => _showSoloAdminOnly = false">@LS.T("common.ok")</button>
                 </div>
             </div>
         </div>
@@ -1229,7 +1229,7 @@
                 </div>
 
                 <div class="modal-footer sms-modal-footer">
-                    <button class="btn btn-secondary btn-sm px-4" @onclick="CloseSmsModal">Cancel</button>
+                    <button class="btn btn-secondary btn-sm px-4" @onclick="CloseSmsModal">@LS.T("common.cancel")</button>
                     @if (!string.IsNullOrWhiteSpace(_smsPhone))
                     {
                         <button class="pc-sms-send-btn"
@@ -1285,7 +1285,7 @@
             <div class="modal-content" style="border-radius:12px;background:#fff;color:#212529;">
                 <div class="modal-header py-2 px-3" style="background:#f0f4ff;border-radius:12px 12px 0 0;">
                     <span class="fw-semibold small" style="color:#3949ab;">
-                        <i class="ri-hourglass-line me-1"></i>Pending Courses
+                        <i class="ri-hourglass-line me-1"></i>@LS.T("pcs.pendingCourses")
                         <span class="badge rounded-pill ms-1" style="background:#e0e7ff;color:#3949ab;font-size:.75rem;">@_pendingCourses.Count(e => e.DateFinished == null)</span>
                     </span>
                     <button class="btn-close btn-close-sm" @onclick="() => _pendingCoursesModal = false"></button>
@@ -1293,7 +1293,7 @@
                 <div class="modal-body p-2">
                     @if (_pendingCourses.Count == 0)
                     {
-                        <div class="small text-center py-4" style="color:#6b7280;">No courses.</div>
+                        <div class="small text-center py-4" style="color:#6b7280;">@LS.T("pcs.noPendingCourses")</div>
                     }
                     else
                     {
@@ -1301,12 +1301,12 @@
                         <details open class="mb-3">
                             <summary class="d-flex align-items-center gap-2 px-3 py-2 rounded-top fw-semibold small"
                                      style="background:linear-gradient(135deg,#0d9488,#2dd4bf);color:#fff;cursor:pointer;list-style:none;border-radius:8px 8px 0 0;">
-                                <i class="ri-flask-line me-1"></i>Pre-OT Courses
-                                <span class="badge rounded-pill ms-auto" style="background:rgba(255,255,255,.25);font-size:.72rem;">@otCourses.Count(e => e.DateFinished == null) active</span>
+                                <i class="ri-flask-line me-1"></i>@LS.T("pcs.preOtCourses")
+                                <span class="badge rounded-pill ms-auto" style="background:rgba(255,255,255,.25);font-size:.72rem;">@otCourses.Count(e => e.DateFinished == null) @LS.T("pcs.active")</span>
                             </summary>
                             @if (otCourses.Count == 0)
                             {
-                                <div class="small text-center py-3" style="color:#6b7280;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">No OT courses.</div>
+                                <div class="small text-center py-3" style="color:#6b7280;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">@LS.T("pcs.noOtCourses")</div>
                             }
                             else
                             {
@@ -1314,12 +1314,12 @@
                                 <table class="table table-sm table-hover mb-0" style="font-size:.82rem;">
                                     <thead class="table-light">
                                         <tr>
-                                            <th class="ps-3">PC</th>
-                                            <th>Course</th>
-                                            <th class="text-center">Date Started</th>
-                                            <th class="text-center">Visits</th>
-                                            <th>Instructor</th>
-                                            <th>CS</th>
+                                            <th class="ps-3">@LS.T("pcs.pc")</th>
+                                            <th>@LS.T("pcs.course")</th>
+                                            <th class="text-center">@LS.T("pcs.dateStarted")</th>
+                                            <th class="text-center">@LS.T("pcs.totalVisits")</th>
+                                            <th>@LS.T("pcs.instructor")</th>
+                                            <th>@LS.T("pcs.cs")</th>
                                             <th class="text-center">@LS.T("pcs.action")</th>
                                         </tr>
                                     </thead>
@@ -1397,12 +1397,12 @@
                         <details open>
                             <summary class="d-flex align-items-center gap-2 px-3 py-2 rounded-top fw-semibold small"
                                      style="background:linear-gradient(135deg,#6d28d9,#a855f7);color:#fff;cursor:pointer;list-style:none;border-radius:8px 8px 0 0;">
-                                <i class="ri-book-2-line me-1"></i>Pre-Clear Courses
-                                <span class="badge rounded-pill ms-auto" style="background:rgba(255,255,255,.25);font-size:.72rem;">@pcCourses.Count(e => e.DateFinished == null) active</span>
+                                <i class="ri-book-2-line me-1"></i>@LS.T("pcs.preClearCourses")
+                                <span class="badge rounded-pill ms-auto" style="background:rgba(255,255,255,.25);font-size:.72rem;">@pcCourses.Count(e => e.DateFinished == null) @LS.T("pcs.active")</span>
                             </summary>
                             @if (pcCourses.Count == 0)
                             {
-                                <div class="small text-center py-3" style="color:#6b7280;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">No PC courses.</div>
+                                <div class="small text-center py-3" style="color:#6b7280;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">@LS.T("pcs.noPcCourses")</div>
                             }
                             else
                             {
@@ -1410,10 +1410,10 @@
                                 <table class="table table-sm table-hover mb-0" style="font-size:.82rem;">
                                     <thead class="table-light">
                                         <tr>
-                                            <th class="ps-3">PC</th>
-                                            <th>Course</th>
-                                            <th class="text-center">Date Started</th>
-                                            <th class="text-center">Visits</th>
+                                            <th class="ps-3">@LS.T("pcs.pc")</th>
+                                            <th>@LS.T("pcs.course")</th>
+                                            <th class="text-center">@LS.T("pcs.dateStarted")</th>
+                                            <th class="text-center">@LS.T("pcs.totalVisits")</th>
                                             <th class="text-center">@LS.T("pcs.action")</th>
                                         </tr>
                                     </thead>
