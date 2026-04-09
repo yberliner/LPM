@@ -1686,7 +1686,7 @@
                     {
                         <div class="d-flex align-items-center w-100 gap-2 wiz-step3-footer">
                             <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
-                                    @onclick="() => _importStep = 2">
+                                    @onclick="Step3Back">
                                 <i class="ri-arrow-left-s-line"></i> Back
                             </button>
                             <button class="btn btn-sm btn-outline-secondary" @onclick="CloseWizard">Cancel</button>
@@ -3635,6 +3635,7 @@
     int  _importStep = 1;      // 1 = file upload, 2 = examiner worksheet
     bool _showArfSkipBadge;
     bool _showNextCsSkipBadge;
+    bool _step3Visited;
     DotNetObjectReference<MainHeader>? _step3DotNetRef;
     DotNetObjectReference<MainHeader>? _dropRef;
     int  _importPcId;
@@ -4220,6 +4221,7 @@
         _importStep = 1;
         _arfDate = DateTime.Today.ToString("dd/MM/yy"); _arfGrade = ""; _arfSessionLength = ""; _arfAdminTime = ""; _arfTotalTa = ""; _arfTaRangeFrom = ""; _arfTaRangeTo = ""; _arfExamReport = "F/N"; _arfSummary = "";
         _step3TopHtml = ""; _step3BottomHtml = "";
+        _step3Visited = false;
         _arfRows = [
             new ArfRow { Process = "Beginning of Handling", Results = "", Touched = true, Checked = false, AutoUnchecked = true },
             new ArfRow { Process = "TITS", Results = "FN VGIS", Touched = true, Checked = false, AutoUnchecked = true },
@@ -4291,9 +4293,19 @@
     {
         _arfSessionLength = FormatArfTime(_arfSessionLength.Trim());
         _showArfSkipBadge    = IsArfTableEmpty;
-        // Pre-fill bottom editor with previous session's NextCS
-        var prevNextCs = _importPcId > 0 ? DashSvc.GetLastNextCs(_importPcId) : null;
-        _showNextCsSkipBadge = string.IsNullOrWhiteSpace(prevNextCs);
+
+        // Only fetch previous session's NextCS on first visit; subsequent visits restore user edits
+        string? prevNextCs = null;
+        if (!_step3Visited)
+        {
+            prevNextCs = _importPcId > 0 ? DashSvc.GetLastNextCs(_importPcId) : null;
+            _showNextCsSkipBadge = string.IsNullOrWhiteSpace(prevNextCs);
+        }
+
+        var isFirstVisit = !_step3Visited;
+        var restoreTop = _step3TopHtml;
+        var restoreBot = _step3BottomHtml;
+        _step3Visited = true;
 
         _importStep = 3;
 
@@ -4345,13 +4357,37 @@
                     }
                 });
             ");
-            if (!string.IsNullOrWhiteSpace(prevNextCs))
+            if (isFirstVisit)
             {
-                await JSRuntime.InvokeVoidAsync("eval",
-                    $"var q=window['_quill_step3-bottom-editor']; if(q){{ q.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(prevNextCs)}; setTimeout(function(){{ q.formatText(0, q.getLength(), 'color', '#2563eb'); q.setSelection(q.getLength(),0); }}, 50); }}");
+                // First visit: inject previous session's NextCS into bottom editor
+                if (!string.IsNullOrWhiteSpace(prevNextCs))
+                {
+                    await JSRuntime.InvokeVoidAsync("eval",
+                        $"var q=window['_quill_step3-bottom-editor']; if(q){{ q.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(prevNextCs)}; setTimeout(function(){{ q.formatText(0, q.getLength(), 'color', '#2563eb'); q.setSelection(q.getLength(),0); }}, 50); }}");
+                }
+            }
+            else
+            {
+                // Returning visit: restore user's previous edits
+                if (!string.IsNullOrEmpty(restoreTop))
+                {
+                    await JSRuntime.InvokeVoidAsync("eval",
+                        $"var q=window['_quill_step3-top-editor']; if(q) q.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(restoreTop)};");
+                }
+                if (!string.IsNullOrEmpty(restoreBot))
+                {
+                    await JSRuntime.InvokeVoidAsync("eval",
+                        $"var q=window['_quill_step3-bottom-editor']; if(q) q.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(restoreBot)};");
+                }
             }
             await JSRuntime.InvokeVoidAsync("step3Quill.attachListeners", dotNetRef);
         });
+    }
+
+    async Task Step3Back()
+    {
+        await ReadStep3Html();
+        _importStep = 2;
     }
 
     async Task ReadStep3Html()

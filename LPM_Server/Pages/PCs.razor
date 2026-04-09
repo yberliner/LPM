@@ -248,7 +248,7 @@
                                 @foreach (var sc in AllCoursesSorted)
                                 {
                                     bool isActive = sc.DateFinished == null;
-                                    bool isOT = sc.CourseType == "OT";
+                                    bool isOT = CourseTypes.IsOtLike(sc.CourseType);
                                     var hasPurchase = _coursePurchaseMap.TryGetValue(sc.CourseId, out var coursePurchaseId);
                                     var activeColor = isOT ? "#0d9488" : "#6d28d9";
                                     <tr style="@(!isActive ? "opacity:.65;" : "")"
@@ -1260,8 +1260,8 @@
 @* ── Pending Courses Modal ── *@
 @if (_pendingCoursesModal)
 {
-    var otCourses = _pendingCourses.Where(e => e.CourseType == "OT").OrderBy(x => x.DateFinished != null).ThenByDescending(x => x.DateStarted).ToList();
-    var pcCourses = _pendingCourses.Where(e => e.CourseType != "OT").OrderBy(x => x.DateFinished != null).ThenByDescending(x => x.DateStarted).ToList();
+    var otCourses = _pendingCourses.Where(e => CourseTypes.IsOtLike(e.CourseType)).OrderBy(x => x.DateFinished != null).ThenByDescending(x => x.DateStarted).ToList();
+    var pcCourses = _pendingCourses.Where(e => !CourseTypes.IsOtLike(e.CourseType)).OrderBy(x => x.DateFinished != null).ThenByDescending(x => x.DateStarted).ToList();
     <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.45);z-index:1050;">
         <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content" style="border-radius:12px;background:#fff;color:#212529;">
@@ -1655,12 +1655,21 @@
                                     @{ int soloIdx = 0; }
                                     @foreach (var sr in _balSoloDetails)
                                     {
-                                        <tr style="background:@(soloIdx++ % 2 == 0 ? "#f5f3ff" : "#ede9fe");">
+                                        <tr style="background:@(soloIdx++ % 2 == 0 ? "#f5f3ff" : "#ede9fe");@(sr.IsOtfsFree ? "opacity:.7;" : "")">
                                             <td class="small text-center text-muted">@sr.SessionId</td>
                                             <td class="small">@FormatDate(sr.Date)</td>
                                             <td class="small text-center">@Hmm(sr.ReviewLengthSec)</td>
                                             <td class="small text-center">@CurrSym(balCurr)@(sr.RateCents / 100)</td>
-                                            <td class="small text-end fw-semibold" style="color:#7c3aed;">@CurrSym(balCurr)@(sr.CostNis.ToString("N2"))</td>
+                                            <td class="small text-end fw-semibold" style="color:@(sr.IsOtfsFree ? "#10b981" : "#7c3aed");">
+                                                @if (sr.IsOtfsFree)
+                                                {
+                                                    <span class="badge" style="background:#d1fae5;color:#065f46;font-size:.65rem;">Free (OTFS)</span>
+                                                }
+                                                else
+                                                {
+                                                    @($"{CurrSym(balCurr)}{sr.CostNis:N2}")
+                                                }
+                                            </td>
                                         </tr>
                                     }
                                 </tbody>

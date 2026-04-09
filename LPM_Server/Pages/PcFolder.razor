@@ -1622,6 +1622,8 @@
         background: linear-gradient(135deg, #1e40af, #3b82f6);
         color: #fff; flex-shrink: 0; flex-wrap: nowrap;
         min-height: 44px;
+        overflow-x: auto;
+        scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.3) transparent;
     }
     .pcf-toolbar-file {
         font-size: .85rem; font-weight: 600;
@@ -1763,7 +1765,7 @@
 
     /* ── Voice command badge ── */
     .lpm-voice-badge {
-        position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(12px);
+        position: fixed; bottom: max(28px, env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%) translateY(12px);
         background: rgba(15,23,42,.92); color: #4ade80;
         border: 1px solid rgba(34,197,94,.4); border-radius: 20px;
         padding: 7px 18px; font-size: .82rem; font-weight: 600;
@@ -2208,6 +2210,12 @@
         .pcf-lock-banner { flex-wrap: wrap; font-size: .78rem; }
         .pcf-already-done-banner { flex-wrap: wrap; font-size: .78rem; }
         .pcf-text-input { min-width: 80px; font-size: 16px; } /* 16px prevents iOS auto-zoom on tablets */
+        .pcf-rename-input { font-size: 16px; }
+        .pcf-ws-search input { font-size: 16px; }
+        .pcf-excel-input { font-size: 16px; }
+        .pcf-excel-action-input { font-size: 16px; }
+        .pcf-extract-bar input { font-size: 16px; }
+        .pcf-modal-move input.form-control { font-size: 16px; }
         .pcf-page-wrapper { max-width: calc(100vw - 40px); overflow: hidden; }
     }
 

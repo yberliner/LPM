@@ -108,8 +108,8 @@
                             }
                             @foreach (var oe in openEntries)
                             {
-                                var oeColor = oe.CourseType == "OT" ? "rgba(13,148,136,.18)" : "rgba(124,58,237,.18)";
-                                var oeText  = oe.CourseType == "OT" ? "#0d9488" : "#5b21b6";
+                                var oeColor = CourseTypes.IsOtLike(oe.CourseType) ? "rgba(13,148,136,.18)" : "rgba(124,58,237,.18)";
+                                var oeText  = CourseTypes.IsOtLike(oe.CourseType) ? "#0d9488" : "#5b21b6";
                                 <span style="font-size:.67rem;padding:1px 6px;border-radius:8px;
                                              background:@oeColor;color:@oeText;font-weight:700;flex-shrink:0;">
                                     <i class="ri-book-2-line" style="font-size:.65rem;"></i> @oe.Name (@oe.VisitCount)
@@ -162,7 +162,7 @@
                             {
                                 @foreach (var pe in pEntries)
                                 {
-                                    var peColor = pe.CourseType == "OT" ? "#0d9488" : "#a78bfa";
+                                    var peColor = CourseTypes.IsOtLike(pe.CourseType) ? "#0d9488" : "#a78bfa";
                                     <div style="font-size:.67rem;color:@peColor;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                                         <i class="ri-book-2-line"></i> @pe.Name (@pe.VisitCount)
                                     </div>
@@ -316,8 +316,8 @@
                                     <td class="align-middle">
                                         @foreach (var ce in courseEntries)
                                         {
-                                            var ceBg  = ce.CourseType == "OT" ? "#ccfbf1" : "#ede9fe";
-                                            var ceCol = ce.CourseType == "OT" ? "#0d9488" : "#7c3aed";
+                                            var ceBg  = CourseTypes.IsOtLike(ce.CourseType) ? "#ccfbf1" : "#ede9fe";
+                                            var ceCol = CourseTypes.IsOtLike(ce.CourseType) ? "#0d9488" : "#7c3aed";
                                             <span class="badge rounded-pill me-1" style="background:@ceBg;color:@ceCol;font-size:.72rem;">
                                                 <i class="ri-book-2-line me-1"></i>@ce.Name (@ce.VisitCount)
                                             </span>
@@ -416,8 +416,8 @@
                                     <td class="align-middle">
                                         @foreach (var mce in mCourseEntries)
                                         {
-                                            var mceBg  = mce.CourseType == "OT" ? "#ccfbf1" : "#ede9fe";
-                                            var mceCol = mce.CourseType == "OT" ? "#0d9488" : "#7c3aed";
+                                            var mceBg  = CourseTypes.IsOtLike(mce.CourseType) ? "#ccfbf1" : "#ede9fe";
+                                            var mceCol = CourseTypes.IsOtLike(mce.CourseType) ? "#0d9488" : "#7c3aed";
                                             <span class="badge rounded-pill me-1" style="background:@mceBg;color:@mceCol;font-size:.72rem;">
                                                 <i class="ri-book-2-line me-1"></i>@mce.Name (@mce.VisitCount)
                                             </span>
@@ -630,7 +630,7 @@
                         @foreach (var sc in activeCourses)
                         {
                             var visitsSince = CourseSvc.GetVisitCountSince(_courseMgmtPersonId!.Value, sc.DateStarted);
-                            var isOT = sc.CourseType == "OT";
+                            var isOT = CourseTypes.IsOtLike(sc.CourseType);
                             var cardBg    = isOT ? "#f0fdfa" : "#f5f3ff";
                             var cardBdr   = isOT ? "#99f6e4" : "#ddd6fe";
                             var nameColor = isOT ? "#0d9488" : "#4c1d95";
@@ -720,7 +720,7 @@
                                 <option value="0">— select course —</option>
                                 @foreach (var c in _allCourses)
                                 {
-                                    <option value="@c.CourseId">@(c.CourseType == "OT" ? "[OT] " : "")@c.Name</option>
+                                    <option value="@c.CourseId">@(CourseTypes.IsOtLike(c.CourseType) ? $"[{c.CourseType}] " : "")@c.Name</option>
                                 }
                             </select>
                             <input type="date" class="form-control form-control-sm" style="max-width:145px;"
@@ -734,7 +734,7 @@
                         @{
                             var enrollCourseType = _allCourses.FirstOrDefault(c => c.CourseId == _newEnrollCourseId)?.CourseType;
                         }
-                        @if (enrollCourseType == "OT")
+                        @if (CourseTypes.IsOtLike(enrollCourseType))
                         {
                             <div class="d-flex gap-2 flex-wrap mt-2">
                                 <div class="d-flex align-items-center gap-1">
@@ -777,7 +777,7 @@
                                 <div class="d-flex align-items-center gap-2 mb-1 px-2 py-1 rounded"
                                      style="background:#f9fafb;border:1px solid #e5e7eb;color:#212529;">
                                     <div class="flex-grow-1">
-                                        <span class="badge rounded-pill me-1" style="@(sc.CourseType == "OT" ? "background:#ccfbf1;color:#0d9488;" : "background:#ede9fe;color:#7c3aed;")font-size:.55rem;vertical-align:middle;">@sc.CourseType</span>
+                                        <span class="badge rounded-pill me-1" style="@(CourseTypes.IsOtLike(sc.CourseType) ? "background:#ccfbf1;color:#0d9488;" : "background:#ede9fe;color:#7c3aed;")font-size:.55rem;vertical-align:middle;">@sc.CourseType</span>
                                         <span class="fw-medium" style="font-size:.83rem;color:#374151;">@sc.CourseName</span>
                                         <span class="text-muted ms-2" style="font-size:.73rem;">@sc.DateStarted → @sc.DateFinished</span>
                                     </div>
@@ -1494,7 +1494,7 @@
     {
         _newEnrollCourseId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
         var ct = _allCourses.FirstOrDefault(c => c.CourseId == _newEnrollCourseId)?.CourseType;
-        if (ct == "OT")
+        if (CourseTypes.IsOtLike(ct))
         {
             _enrollInstructorId = _acadDefaultInstructorId ?? 0;
             _enrollCsId = _acadDefaultCsId ?? 0;

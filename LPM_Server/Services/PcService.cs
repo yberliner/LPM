@@ -40,7 +40,7 @@ public record PcSessionCostRow(
     int SessionId, string Date, string AuditorName,
     int LengthSec, int AdminSec, int RateCentsUsed, string RateSource, decimal CostNis);
 
-public record SoloCsReviewCostRow(int SessionId, string Date, int ReviewLengthSec, int RateCents, decimal CostNis);
+public record SoloCsReviewCostRow(int SessionId, string Date, int ReviewLengthSec, int RateCents, decimal CostNis, bool IsOtfsFree = false);
 
 public record PcBalanceExplanation(
     List<PcPurchaseRow> Purchases, int TotalPurchasedNis,
@@ -598,7 +598,7 @@ public List<PcListItem> GetAllPcs()
             }
         }
 
-        // D: Solo CS review costs (ChargedCentsRatePerHour > 0 only)
+        // D: Solo CS review costs (ChargedCentsRatePerHour > 0, excluding OTFS-covered)
         var soloCosts = new Dictionary<int, decimal>();
         using (var cmd = conn.CreateCommand())
         {
@@ -606,7 +606,15 @@ public List<PcListItem> GetAllPcs()
                 SELECT s.PcId, cr.ChargedCentsRatePerHour, cr.ReviewLengthSeconds
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
-                WHERE s.AuditorId IS NULL AND cr.ChargedCentsRatePerHour > 0";
+                WHERE s.AuditorId IS NULL AND cr.ChargedCentsRatePerHour > 0
+                  AND NOT EXISTS (
+                      SELECT 1 FROM acad_student_courses sc
+                      JOIN lkp_courses lc ON lc.CourseId = sc.CourseId
+                      WHERE sc.PersonId = s.PcId
+                        AND lc.CourseType = 'OTFS'
+                        AND sc.DateStarted <= s.SessionDate
+                        AND (sc.DateFinished IS NULL OR sc.DateFinished >= s.SessionDate)
+                  )";
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -717,9 +725,9 @@ public List<PcListItem> GetAllPcs()
                 scCmd.CommandText = @"
                     INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted, InstructorId, CsId)
                     SELECT @personId, @courseId, @date,
-                      CASE WHEN (SELECT CourseType FROM lkp_courses WHERE CourseId=@courseId)='OT'
+                      CASE WHEN (SELECT CourseType FROM lkp_courses WHERE CourseId=@courseId) IN ('OT','OTFS')
                            THEN (SELECT PersonId FROM core_users WHERE Username='aviv' AND IsActive=1 LIMIT 1) END,
-                      CASE WHEN (SELECT CourseType FROM lkp_courses WHERE CourseId=@courseId)='OT'
+                      CASE WHEN (SELECT CourseType FROM lkp_courses WHERE CourseId=@courseId) IN ('OT','OTFS')
                            THEN (SELECT PersonId FROM core_users WHERE Username='tami' AND IsActive=1 LIMIT 1) END
                     WHERE NOT EXISTS (
                         SELECT 1 FROM acad_student_courses
@@ -1106,9 +1114,9 @@ public List<PcListItem> GetAllPcs()
             addSc.CommandText = @"
                 INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted, InstructorId, CsId)
                 SELECT @pid, @cid, @date,
-                  CASE WHEN (SELECT CourseType FROM lkp_courses WHERE CourseId=@cid)='OT'
+                  CASE WHEN (SELECT CourseType FROM lkp_courses WHERE CourseId=@cid) IN ('OT','OTFS')
                        THEN (SELECT PersonId FROM core_users WHERE Username='aviv' AND IsActive=1 LIMIT 1) END,
-                  CASE WHEN (SELECT CourseType FROM lkp_courses WHERE CourseId=@cid)='OT'
+                  CASE WHEN (SELECT CourseType FROM lkp_courses WHERE CourseId=@cid) IN ('OT','OTFS')
                        THEN (SELECT PersonId FROM core_users WHERE Username='tami' AND IsActive=1 LIMIT 1) END
                 WHERE NOT EXISTS (
                     SELECT 1 FROM acad_student_courses WHERE PersonId=@pid AND CourseId=@cid AND DateFinished IS NULL
@@ -1267,9 +1275,9 @@ public List<PcListItem> GetAllPcs()
             q.CommandText = @"
                 INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted, InstructorId, CsId)
                 SELECT p.PcId, pi.CourseId, p.PurchaseDate,
-                  CASE WHEN c.CourseType='OT'
+                  CASE WHEN c.CourseType IN ('OT','OTFS')
                        THEN (SELECT PersonId FROM core_users WHERE Username='aviv' AND IsActive=1 LIMIT 1) END,
-                  CASE WHEN c.CourseType='OT'
+                  CASE WHEN c.CourseType IN ('OT','OTFS')
                        THEN (SELECT PersonId FROM core_users WHERE Username='tami' AND IsActive=1 LIMIT 1) END
                 FROM fin_purchase_items pi
                 JOIN fin_purchases p ON p.PurchaseId = pi.PurchaseId
@@ -1354,7 +1362,7 @@ public List<PcListItem> GetAllPcs()
             usedNis += (decimal)rate * (s.admin + s.length) / 3600m / 100m;
         }
 
-        // Solo CS review costs
+        // Solo CS review costs (excluding OTFS-covered)
         int soloCount = 0;
         using (var cmd = conn.CreateCommand())
         {
@@ -1362,7 +1370,15 @@ public List<PcListItem> GetAllPcs()
                 SELECT cr.ChargedCentsRatePerHour, cr.ReviewLengthSeconds
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
-                WHERE s.PcId = @id AND s.AuditorId IS NULL AND cr.ChargedCentsRatePerHour > 0";
+                WHERE s.PcId = @id AND s.AuditorId IS NULL AND cr.ChargedCentsRatePerHour > 0
+                  AND NOT EXISTS (
+                      SELECT 1 FROM acad_student_courses sc
+                      JOIN lkp_courses lc ON lc.CourseId = sc.CourseId
+                      WHERE sc.PersonId = s.PcId
+                        AND lc.CourseType = 'OTFS'
+                        AND sc.DateStarted <= s.SessionDate
+                        AND (sc.DateFinished IS NULL OR sc.DateFinished >= s.SessionDate)
+                  )";
             cmd.Parameters.AddWithValue("@id", pcId);
             using var r = cmd.ExecuteReader();
             while (r.Read())
@@ -1452,7 +1468,16 @@ public List<PcListItem> GetAllPcs()
         var result = new List<SoloCsReviewCostRow>();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT s.SessionId, s.SessionDate, cr.ReviewLengthSeconds, COALESCE(cr.ChargedCentsRatePerHour, 0)
+            SELECT s.SessionId, s.SessionDate, cr.ReviewLengthSeconds,
+                   COALESCE(cr.ChargedCentsRatePerHour, 0),
+                   CASE WHEN EXISTS (
+                       SELECT 1 FROM acad_student_courses sc
+                       JOIN lkp_courses lc ON lc.CourseId = sc.CourseId
+                       WHERE sc.PersonId = s.PcId
+                         AND lc.CourseType = 'OTFS'
+                         AND sc.DateStarted <= s.SessionDate
+                         AND (sc.DateFinished IS NULL OR sc.DateFinished >= s.SessionDate)
+                   ) THEN 1 ELSE 0 END
             FROM cs_reviews cr
             JOIN sess_sessions s ON s.SessionId = cr.SessionId
             WHERE s.PcId = @id AND s.AuditorId IS NULL
@@ -1463,8 +1488,9 @@ public List<PcListItem> GetAllPcs()
         {
             int rateCents = r.GetInt32(3);
             int lengthSec = r.GetInt32(2);
-            decimal cost = (decimal)rateCents * lengthSec / 3600m / 100m;
-            result.Add(new(r.GetInt32(0), r.GetString(1), lengthSec, rateCents, cost));
+            bool isOtfsFree = r.GetInt32(4) == 1 && rateCents > 0;
+            decimal cost = isOtfsFree ? 0m : (decimal)rateCents * lengthSec / 3600m / 100m;
+            result.Add(new(r.GetInt32(0), r.GetString(1), lengthSec, rateCents, cost, isOtfsFree));
         }
         return result;
     }

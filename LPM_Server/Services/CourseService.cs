@@ -78,9 +78,9 @@ public class CourseService
         bf.CommandText = @"
             INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted, InstructorId, CsId)
             SELECT pu.PcId, pi.CourseId, pu.PurchaseDate,
-              CASE WHEN c.CourseType='OT'
+              CASE WHEN c.CourseType IN ('OT','OTFS')
                    THEN (SELECT PersonId FROM core_users WHERE Username='aviv' AND IsActive=1 LIMIT 1) END,
-              CASE WHEN c.CourseType='OT'
+              CASE WHEN c.CourseType IN ('OT','OTFS')
                    THEN (SELECT PersonId FROM core_users WHERE Username='tami' AND IsActive=1 LIMIT 1) END
             FROM fin_purchase_items pi
             JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
@@ -112,7 +112,7 @@ public class CourseService
         return list;
     }
 
-    public int AddCourse(string name, string book = "", int bookPrice = 0, string courseType = "PC")
+    public int AddCourse(string name, string book = "", int bookPrice = 0, string courseType = CourseTypes.PC)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -130,7 +130,7 @@ public class CourseService
         return courseId;
     }
 
-    public void UpdateCourse(int courseId, string name, string book = "", int bookPrice = 0, string courseType = "PC")
+    public void UpdateCourse(int courseId, string name, string book = "", int bookPrice = 0, string courseType = CourseTypes.PC)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -286,8 +286,8 @@ public class CourseService
         {
             chk.CommandText = "SELECT COALESCE(CourseType,'PC') FROM lkp_courses WHERE CourseId=@cid";
             chk.Parameters.AddWithValue("@cid", courseId);
-            var ct = chk.ExecuteScalar() as string ?? "PC";
-            if (ct == "OT")
+            var ct = chk.ExecuteScalar() as string ?? CourseTypes.PC;
+            if (CourseTypes.IsOtLike(ct))
             {
                 if (!instructorId.HasValue)
                 {

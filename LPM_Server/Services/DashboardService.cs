@@ -2857,7 +2857,7 @@ public class DashboardService
                     refPct = cfg.AuditReferralPct;
                     category = "Auditing";
                 }
-                else if (item.ItemType == "Course" && item.CourseType == "PC")
+                else if (item.ItemType == "Course" && item.CourseType == CourseTypes.PC)
                 {
                     // ── Category 2: PC Courses ──
                     regPct = cfg.CourseRegistrarPct;
@@ -2879,7 +2879,7 @@ public class DashboardService
                             if (instr.PersonId > 0)
                                 Emit(instr.PersonId, pmt.PcName, "Acad. Finish", category, calc.NetBase, instr.FinishCommPct, detail);
                 }
-                else if (item.ItemType == "Course" && item.CourseType == "OT")
+                else if (item.ItemType == "Course" && CourseTypes.IsOtLike(item.CourseType))
                 {
                     // ── Category 3: OT Courses ──
                     regPct = cfg.CourseRegistrarPct;
@@ -3046,13 +3046,13 @@ public class DashboardService
                             courseItem.ItemType, courseItem.ItemName, courseItem.AmountPaid, (int)totalAmount,
                             itemShare, calc.Vat, calc.Cc, bookPriceShare, calc.NetAfter, calc.Reserve, calc.NetBase, 0, fc.DateFinished);
 
-                        if (fc.CourseType == "PC")
+                        if (fc.CourseType == CourseTypes.PC)
                         {
                             foreach (var instr in academyInstructors)
                                 if (instr.PersonId > 0)
                                     Emit(instr.PersonId, pcName, "Acad. Finish", "PC Course", calc.NetBase, instr.FinishCommPct, detail);
                         }
-                        else if (fc.CourseType == "OT")
+                        else if (CourseTypes.IsOtLike(fc.CourseType))
                         {
                             if (fc.InstructorId is > 0)
                                 Emit(fc.InstructorId.Value, pcName, "OT Instructor", "OT Course", calc.NetBase, cfg.InstructorOtPct, detail);
