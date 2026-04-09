@@ -8,6 +8,7 @@
 @inject AuthenticationStateProvider AuthState
 @inject IJSRuntime JS
 @inject LPM.Services.CompletionService CompletionSvc
+@inject PdfService PdfSvc
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using LPM.Services
@@ -32,6 +33,12 @@
                 <i class="ri-archive-line me-1" style="font-size:.8rem;"></i>Audited Only
             </label>
         </div>
+        <button class="pc-report-btn" @onclick="PrintPcTable" title="Download PC table as PDF">
+            <i class="ri-printer-line"></i>
+        </button>
+        <button class="pc-report-btn" @onclick="() => _showColumnGuide = true" title="Column Guide — how each value is calculated">
+            <i class="ri-question-line"></i>
+        </button>
         <span class="badge bg-primary-transparent text-primary" style="font-size:.72rem;">
             @FilteredPcsEx.Count() PCs
         </span>
@@ -1654,6 +1661,98 @@
     </div>
 }
 
+@* ── Column Guide Modal ── *@
+@if (_showColumnGuide)
+{
+    <div class="cg-overlay" @onclick="() => _showColumnGuide = false">
+        <div class="cg-box" @onclick:stopPropagation="true">
+            <div class="cg-hdr">
+                <span><i class="ri-book-open-line me-2"></i>Column Guide</span>
+                <button class="cg-close" @onclick="() => _showColumnGuide = false"><i class="ri-close-line"></i></button>
+            </div>
+            <div class="cg-body">
+                <div class="cg-sec cg-sec-name">
+                    <div class="cg-title"><i class="ri-user-3-line me-1"></i>PC Name</div>
+                    <div class="cg-grid">
+                        <span class="cg-lbl">Shows</span><span>Full name of the PC (client)</span>
+                        <span class="cg-lbl">Solo PCs</span><span>Shown in <strong style="color:#ea580c !important;">orange</strong> with an <strong>S</strong> badge — they work independently without an auditor</span>
+                        <span class="cg-lbl">Nickname</span><span>Appears in parentheses when set</span>
+                    </div>
+                </div>
+                <div class="cg-sec cg-sec-balance">
+                    <div class="cg-title"><i class="ri-money-dollar-circle-line me-1"></i>Balance (₪)</div>
+                    <div class="cg-grid">
+                        <span class="cg-lbl">Formula</span><span><strong>Total Purchased ₪ &minus; Total Used ₪</strong></span>
+                        <span class="cg-lbl">Purchased</span><span>Sum of all AmountPaid from auditing purchases</span>
+                        <span class="cg-lbl">Used (Sessions)</span><span>For each non-solo, non-free session: Rate &times; (Length + Admin) &divide; 3600. Rate falls back to previous session rate, then purchase rate</span>
+                        <span class="cg-lbl">Used (Solo CS)</span><span>For each solo CS review with rate &gt; 0: Rate &times; ReviewLength &divide; 3600. Rate = 0 means not yet billable (set in Sessions page)</span>
+                        <span class="cg-lbl">Color</span><span><strong style="color:#16a34a !important;">Green</strong> = positive &nbsp; <strong style="color:#dc2626 !important;">Red</strong> = owes money</span>
+                    </div>
+                    <div class="cg-example">
+                        <strong>Example:</strong> Purchased ₪5,000. Sessions cost ₪3,200. Solo CS reviews cost ₪400.<br/>
+                        ₪5,000 &minus; ₪3,200 &minus; ₪400 = <strong style="color:#16a34a !important;">₪1,400</strong>
+                    </div>
+                </div>
+                <div class="cg-sec cg-sec-hours">
+                    <div class="cg-title"><i class="ri-hourglass-line me-1"></i>Hours Left</div>
+                    <div class="cg-grid">
+                        <span class="cg-lbl">Formula</span><span><strong>Balance ₪ &divide; Effective Rate (₪/hr)</strong></span>
+                        <span class="cg-lbl">Effective Rate</span><span>Rate from the last session with ChargedRate &gt; 0. If none, falls back to last purchase rate (AmountPaid &divide; HoursBought)</span>
+                        <span class="cg-lbl">Rate Mismatch</span><span>If session rate &ne; purchase rate, a <strong style="color:#92400e !important;">warning</strong> appears — hover to see both rates</span>
+                    </div>
+                    <div class="cg-example">
+                        <strong>Example:</strong> Balance = ₪1,400. Last session rate = ₪200/hr.<br/>
+                        ₪1,400 &divide; ₪200/hr = <strong style="color:#1e40af !important;">7:00</strong>
+                    </div>
+                </div>
+                <div class="cg-sec cg-sec-time">
+                    <div class="cg-title"><i class="ri-time-line me-1"></i>Total Sessions Time</div>
+                    <div class="cg-grid">
+                        <span class="cg-lbl">Shows</span><span>Sum of LengthSeconds from all non-free sessions with an auditor, as H:MM</span>
+                        <span class="cg-lbl">Excludes</span><span>Solo sessions (AuditorId = NULL) are <strong>not</strong> included</span>
+                    </div>
+                </div>
+                <div class="cg-sec cg-sec-sess">
+                    <div class="cg-title"><i class="ri-hashtag me-1"></i># Sessions</div>
+                    <div class="cg-grid">
+                        <span class="cg-lbl">Shows</span><span>Count of non-free sessions with an auditor</span>
+                        <span class="cg-lbl">Excludes</span><span>Solo sessions (AuditorId = NULL) are <strong>not</strong> counted</span>
+                    </div>
+                </div>
+                <div class="cg-sec cg-sec-acad">
+                    <div class="cg-title"><i class="ri-book-2-line me-1"></i>Acad Visits</div>
+                    <div class="cg-grid">
+                        <span class="cg-lbl">Shows</span><span>Total academy attendance records for this PC</span>
+                    </div>
+                </div>
+                <div class="cg-sec cg-sec-purch">
+                    <div class="cg-title"><i class="ri-shopping-cart-2-line me-1"></i>Hours Purchased</div>
+                    <div class="cg-grid">
+                        <span class="cg-lbl">Shows</span><span>Sum of HoursBought from all auditing purchases (non-deleted)</span>
+                    </div>
+                </div>
+                <div class="cg-sec cg-sec-aud">
+                    <div class="cg-title"><i class="ri-user-star-line me-1"></i>Auditor</div>
+                    <div class="cg-grid">
+                        <span class="cg-lbl">Shows</span><span>Auditor from the most recent session. Shows "—" if none</span>
+                    </div>
+                </div>
+                <div class="cg-sec cg-sec-detail">
+                    <div class="cg-title"><i class="ri-calculator-line me-1"></i>Balance Details (₪ icon)</div>
+                    <div class="cg-grid">
+                        <span class="cg-lbl">Purchases</span><span>Each purchase with date, hours, and amount</span>
+                        <span class="cg-lbl">Used Money</span><span>Total cost: regular sessions + solo CS reviews</span>
+                        <span class="cg-lbl">Balance</span><span>Purchased minus used</span>
+                        <span class="cg-lbl">Hours Left</span><span>Balance &divide; effective rate</span>
+                        <span class="cg-lbl">Session Details</span><span>Per-session cost, rate used, and rate source</span>
+                        <span class="cg-lbl">Solo Reviews</span><span>Shown separately in purple — date, duration, rate, cost</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 <style>
     /* ── Page container ── */
     .pc-page-container { display: flex; flex-direction: column; height: calc(100vh - 60px); min-height: 0; }
@@ -2029,15 +2128,15 @@
     }
 
     /* Force dark text inside white-bg modals (purchase modal, delete confirm) */
-    .modal-content .form-label { color: #212529 !important; }
-    .modal-content .form-control,
-    .modal-content .form-select { color: #212529 !important; background-color: #fff !important; border-color: #dee2e6 !important; }
-    .modal-content .form-control::placeholder { color: #6c757d !important; }
-    .modal-content .fw-semibold { color: #212529; }
-    .modal-content .btn-close { filter: none; }
-    .modal-content .modal-footer { border-color: #dee2e6; color: #212529; }
-    .modal-content .card { background: #fff; color: #212529; }
-    .modal-content .card-body { color: #212529; }
+    .modal-content:not(.cg-modal) .form-label { color: #212529 !important; }
+    .modal-content:not(.cg-modal) .form-control,
+    .modal-content:not(.cg-modal) .form-select { color: #212529 !important; background-color: #fff !important; border-color: #dee2e6 !important; }
+    .modal-content:not(.cg-modal) .form-control::placeholder { color: #6c757d !important; }
+    .modal-content:not(.cg-modal) .fw-semibold { color: #212529; }
+    .modal-content:not(.cg-modal) .btn-close { filter: none; }
+    .modal-content:not(.cg-modal) .modal-footer { border-color: #dee2e6; color: #212529; }
+    .modal-content:not(.cg-modal) .card { background: #fff; color: #212529; }
+    .modal-content:not(.cg-modal) .card-body { color: #212529; }
 
     /* ── Resizable columns (JS-driven — see lpmInitColResize) ── */
     .pc-list-table { min-width: 100%; }
@@ -2387,6 +2486,87 @@
         .bal-modal-icon { width: 40px; height: 40px; font-size: 1.2rem; }
         .bal-sessions-detail { max-height: 300px; }
     }
+
+    /* ── Column Guide Modal (same pattern as Salary detail modal) ── */
+    .cg-overlay {
+        position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9999;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .cg-box {
+        background: #fff !important; border-radius: 16px; width: 560px; max-width: 94vw;
+        max-height: 90vh; overflow-y: auto;
+        box-shadow: 0 20px 60px rgba(0,0,0,.25);
+    }
+    .cg-hdr {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 16px 20px; background: linear-gradient(135deg,#4f46e5,#6366f1);
+        color: #fff !important; font-weight: 700; font-size: .95rem;
+        border-radius: 16px 16px 0 0; position: sticky; top: 0; z-index: 1;
+    }
+    .cg-close {
+        background: rgba(255,255,255,.2); border: none; color: #fff !important; border-radius: 8px;
+        width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+        cursor: pointer; font-size: 1.1rem;
+    }
+    .cg-close:hover { background: rgba(255,255,255,.35); }
+    .cg-body { padding: 20px; color: #1e293b !important; }
+    .cg-body * { color: inherit; }
+    .cg-sec { margin-bottom: 16px; border-radius: 8px; padding: 12px 14px; }
+    .cg-title {
+        font-size: .72rem !important; font-weight: 700 !important; text-transform: uppercase;
+        letter-spacing: .5px; margin-bottom: 8px;
+        padding-bottom: 4px; border-bottom: 1px solid rgba(100,116,139,.12);
+    }
+    .cg-grid {
+        display: grid; grid-template-columns: 120px 1fr; gap: 6px 12px; font-size: .85rem;
+    }
+    .cg-lbl { color: #475569 !important; font-size: .82rem; }
+    .cg-example {
+        margin-top: 10px; padding: 8px 12px; border-radius: 6px;
+        background: #f0fdf4 !important; border: 1px solid #bbf7d0;
+        font-size: .84rem; color: #1e293b !important;
+    }
+
+    /* Section colors (same approach as sal-detail-purchase etc.) */
+    .cg-sec-name    { background: #eef2ff !important; border-left: 4px solid #6366f1; }
+    .cg-sec-name .cg-title { color: #4338ca !important; }
+    .cg-sec-name .cg-lbl { color: #475569 !important; }
+
+    .cg-sec-balance { background: #f0fdf4 !important; border-left: 4px solid #22c55e; }
+    .cg-sec-balance .cg-title { color: #166534 !important; }
+    .cg-sec-balance .cg-lbl { color: #475569 !important; }
+
+    .cg-sec-hours   { background: #eff6ff !important; border-left: 4px solid #3b82f6; }
+    .cg-sec-hours .cg-title { color: #1e40af !important; }
+    .cg-sec-hours .cg-lbl { color: #475569 !important; }
+
+    .cg-sec-time    { background: #fff7ed !important; border-left: 4px solid #f97316; }
+    .cg-sec-time .cg-title { color: #9a3412 !important; }
+    .cg-sec-time .cg-lbl { color: #475569 !important; }
+
+    .cg-sec-sess    { background: #faf5ff !important; border-left: 4px solid #a855f7; }
+    .cg-sec-sess .cg-title { color: #7e22ce !important; }
+    .cg-sec-sess .cg-lbl { color: #475569 !important; }
+
+    .cg-sec-acad    { background: #f0fdfa !important; border-left: 4px solid #14b8a6; }
+    .cg-sec-acad .cg-title { color: #0f766e !important; }
+    .cg-sec-acad .cg-lbl { color: #475569 !important; }
+
+    .cg-sec-purch   { background: #fefce8 !important; border-left: 4px solid #eab308; }
+    .cg-sec-purch .cg-title { color: #a16207 !important; }
+    .cg-sec-purch .cg-lbl { color: #475569 !important; }
+
+    .cg-sec-aud     { background: #fff1f2 !important; border-left: 4px solid #f43f5e; }
+    .cg-sec-aud .cg-title { color: #be123c !important; }
+    .cg-sec-aud .cg-lbl { color: #475569 !important; }
+
+    .cg-sec-detail  { background: #f5f3ff !important; border-left: 4px solid #8b5cf6; }
+    .cg-sec-detail .cg-title { color: #6d28d9 !important; }
+    .cg-sec-detail .cg-lbl { color: #475569 !important; }
+
+    @@media (max-width: 480px) {
+        .cg-grid { grid-template-columns: 100px 1fr; font-size: .82rem; }
+    }
 </style>
 
 @code {
@@ -2406,6 +2586,9 @@
     List<PcSessionCostRow>? _balSessionDetails;
     List<SoloCsReviewCostRow>? _balSoloDetails;
     bool _balShowSessions;
+
+    // Column guide modal
+    bool _showColumnGuide;
 
     // SMS state
     bool   _showSmsModal      = false;
@@ -3163,6 +3346,31 @@
         _allPcsEx = PcSvc.GetAllPcsExtended();
         _balances = PcSvc.GetAllPcBalances();
         LoadDetail();
+    }
+
+    async Task PrintPcTable()
+    {
+        var pcs = FilteredPcsEx.ToList();
+        var rows = pcs.Select(pc =>
+        {
+            var bal = _balances.GetValueOrDefault(pc.PcId);
+            return new PdfService.PcPdfRow(
+                Name: pc.FullName + (string.IsNullOrEmpty(pc.Nick) ? "" : $" ({pc.Nick})"),
+                IsSolo: _soloPcIds.Contains(pc.PcId),
+                Balance: bal != null ? $"₪{bal.BalanceNis:N0}" : "—",
+                HoursLeft: bal != null && bal.EffectiveRateCents > 0 ? HrsLabel((long)(bal.HoursLeft * 3600)) : "—",
+                TotalTime: HrsLabel(pc.TotalSessionSec),
+                Sessions: pc.AuditorSessions,
+                AcadVisits: pc.AcademyVisits,
+                HoursPurchased: $"{pc.HoursPurchased}h",
+                Auditor: string.IsNullOrEmpty(pc.Auditor) ? "—" : pc.Auditor
+            );
+        }).ToList();
+
+        var title = _filterHasSessions ? "PC List — Audited Only" : "PC List — All PCs";
+        var pdfBytes = PdfSvc.GeneratePcListPdf(rows, title);
+        var fileName = $"PCs_{DateTime.Now:yyyyMMdd_HHmm}.pdf";
+        await JS.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(pdfBytes));
     }
 
     // Decimal hours label for PC list (e.g. "3:48" / "-1:25")

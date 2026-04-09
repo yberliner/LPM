@@ -2601,5 +2601,107 @@ public class PdfService
             _ => "#000000"
         };
     }
+
+    // ── PC List Table PDF (single A4 page) ───────────────────────────
+
+    public record PcPdfRow(string Name, bool IsSolo, string Balance, string HoursLeft,
+        string TotalTime, int Sessions, int AcadVisits, string HoursPurchased, string Auditor);
+
+    public byte[] GeneratePcListPdf(List<PcPdfRow> rows, string title)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+
+        // A4 landscape to fit all columns
+        float pageW = 841.89f, pageH = 595.28f;
+        float margin = 28f;
+        float usableW = pageW - margin * 2;
+        float usableH = pageH - margin * 2;
+
+        // Calculate font size to fit all rows on one page
+        float headerH = 32f;
+        float titleH = 28f;
+        float footerH = 14f;
+        float availH = usableH - titleH - headerH - footerH;
+        float rowH = rows.Count > 0 ? Math.Min(18f, Math.Max(10f, availH / rows.Count)) : 16f;
+        float fontSize = Math.Min(8f, Math.Max(5f, rowH * 0.6f));
+        float headerFontSize = Math.Min(8f, fontSize + 0.5f);
+
+        // Column widths (proportional)
+        float[] colRatios = [3.2f, 1f, 1f, 1.2f, 0.8f, 0.8f, 1f, 2f];
+        float totalRatio = colRatios.Sum();
+        float[] colW = colRatios.Select(r => r / totalRatio * usableW).ToArray();
+
+        return Document.Create(doc =>
+        {
+            doc.Page(page =>
+            {
+                page.Size(pageW, pageH, Unit.Point);
+                page.Margin(margin, Unit.Point);
+
+                page.Content().Column(col =>
+                {
+                    // Title
+                    col.Item().PaddingBottom(6).Row(row =>
+                    {
+                        row.RelativeItem().Text(title).FontSize(11).Bold().FontColor("#1e293b");
+                        row.ConstantItem(120).AlignRight().Text($"{DateTime.Now:dd/MM/yyyy HH:mm}").FontSize(7).FontColor("#94a3b8");
+                    });
+
+                    // Table
+                    col.Item().Table(table =>
+                    {
+                        table.ColumnsDefinition(cd =>
+                        {
+                            foreach (var w in colW) cd.ConstantColumn(w, Unit.Point);
+                        });
+
+                        // Header
+                        string[] headers = ["PC Name", "Balance", "Hrs Left", "Total Time", "# Sess", "Acad", "Hrs Purch", "Auditor"];
+                        for (int i = 0; i < headers.Length; i++)
+                        {
+                            var idx = i;
+                            table.Cell().Row(1).Column((uint)(idx + 1))
+                                .Background("#1e3a5f")
+                                .Padding(3, Unit.Point)
+                                .AlignMiddle()
+                                .Text(headers[idx]).FontSize(headerFontSize).Bold().FontColor("#ffffff");
+                        }
+
+                        // Data rows
+                        for (int r = 0; r < rows.Count; r++)
+                        {
+                            var pc = rows[r];
+                            uint row = (uint)(r + 2);
+                            string bg = r % 2 == 0 ? "#ffffff" : "#f8fafc";
+                            string nameColor = pc.IsSolo ? "#ea580c" : "#1e293b";
+
+                            void Cell(int c, string text, string color = "#334155", bool bold = false, bool center = false)
+                            {
+                                var cell = table.Cell().Row(row).Column((uint)(c + 1))
+                                    .Background(bg).PaddingHorizontal(3, Unit.Point).PaddingVertical(1, Unit.Point)
+                                    .AlignMiddle();
+                                if (center) cell = cell.AlignCenter();
+                                var t = cell.Text(text).FontSize(fontSize).FontColor(color);
+                                if (bold) t.Bold();
+                            }
+
+                            Cell(0, pc.Name + (pc.IsSolo ? " [S]" : ""), nameColor, bold: pc.IsSolo);
+                            Cell(1, pc.Balance, pc.Balance.StartsWith("-") ? "#dc2626" : "#16a34a", true, true);
+                            Cell(2, pc.HoursLeft, "#334155", false, true);
+                            Cell(3, pc.TotalTime, "#64748b", false, true);
+                            Cell(4, pc.Sessions.ToString(), "#64748b", false, true);
+                            Cell(5, pc.AcadVisits.ToString(), "#64748b", false, true);
+                            Cell(6, pc.HoursPurchased, "#64748b", false, true);
+                            Cell(7, pc.Auditor, "#64748b");
+                        }
+                    });
+
+                    // Footer
+                    col.Item().PaddingTop(4).AlignRight()
+                        .Text($"{rows.Count} PCs").FontSize(6.5f).FontColor("#94a3b8");
+                });
+            });
+        }).GeneratePdf();
+    }
 }
 
