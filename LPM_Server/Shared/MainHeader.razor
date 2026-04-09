@@ -455,8 +455,9 @@
                         <!-- Start::header-element actions -->
                         <li class="header-element me-2">
                             <div class="dropdown">
-                                <button class="btn btn-sm btn-outline-light d-flex align-items-center gap-1"
-                                        style="border-radius:8px; font-weight:600; font-size:.82rem;"
+                                <button class="btn btn-sm d-flex align-items-center gap-1"
+                                        style="border-radius:8px; font-weight:600; font-size:.82rem;
+                                               color:var(--header-prime-color); border:1px solid var(--header-prime-color);"
                                         data-bs-toggle="dropdown" aria-expanded="false">
                                     <i class="ri-menu-add-line"></i>Actions
                                     <i class="ri-arrow-down-s-fill" style="font-size:.7rem;"></i>
@@ -504,6 +505,12 @@
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenTransferModal">
                                             <i class="ri-exchange-funds-line" style="color:#0ea5e9;"></i>Transfer Balance
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
+                                           @onclick="OpenSessionManager">
+                                            <i class="ri-database-2-line" style="color:#f97316;"></i>Session Manager
                                         </a>
                                     </li>
                                     <li><hr class="dropdown-divider" /></li>
@@ -2067,14 +2074,34 @@
                                 }
                                 else
                                 {
-                                    <select class="form-select form-select-sm" style="background:#0f172a; color:#e2e8f0; border-color:#475569;"
-                                            value="@_memoPcId" @onchange="e => _memoPcId = int.TryParse(e.Value?.ToString(), out var mv) ? mv : 0">
-                                        <option value="0">— Choose a PC —</option>
-                                        @foreach (var pc in _memoPcs)
+                                    <input type="text" class="form-control form-control-sm mb-2" placeholder="Search PCs..."
+                                           style="background:#0f172a; color:#e2e8f0; border-color:#475569;"
+                                           @bind="_memoPcSearch" @bind:event="oninput" />
+                                    <div style="max-height:240px; overflow-y:auto;">
+                                        @foreach (var pc in _memoPcs.Where(p => string.IsNullOrEmpty(_memoPcSearch) || p.FullName.Contains(_memoPcSearch, StringComparison.OrdinalIgnoreCase)))
                                         {
-                                            <option value="@pc.PcId">@pc.FullName</option>
+                                            var thisPc = pc;
+                                            @if (!(_isSoloUser && thisPc.IsAlsoSolo))
+                                            {
+                                                <div class="memo-pc-item @(_memoPcId == thisPc.PcId && !_memoSolo ? "memo-pc-sel" : "")"
+                                                     @onclick="() => { _memoPcId = thisPc.PcId; _memoSolo = false; }">
+                                                    <i class="ri-user-line" style="color:#60a5fa; opacity:.7;"></i>
+                                                    <span>@thisPc.FullName</span>
+                                                </div>
+                                            }
+                                            @if (thisPc.IsAlsoSolo)
+                                            {
+                                                <div class="memo-pc-item @(_memoPcId == thisPc.PcId && _memoSolo ? "memo-pc-sel" : "")"
+                                                     @onclick="() => { _memoPcId = thisPc.PcId; _memoSolo = true; }">
+                                                    <i class="ri-user-line" style="color:#ef4444; opacity:.7;"></i>
+                                                    <span>@thisPc.FullName</span>
+                                                    <span style="font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+                                                                 color:#fff; background:linear-gradient(135deg,#ef4444,#b91c1c);
+                                                                 border-radius:999px; padding:2px 8px; margin-left:4px;">Solo</span>
+                                                </div>
+                                            }
                                         }
-                                    </select>
+                                    </div>
                                 }
                             </div>
                         }
@@ -2526,6 +2553,430 @@
     </div>
 }
 
+@* ── Session Manager Modal ─────────────────────────────────────────── *@
+@if (_smOpen)
+{
+    <div class="sm-overlay" @onclick="() => _smOpen = false"></div>
+    <div class="sm-modal">
+        <div class="sm-header">
+            @if (_smDetail != null)
+            {
+                <button class="sm-back-btn" @onclick="SmBackToList" title="Back to list">
+                    <i class="ri-arrow-left-line"></i>
+                </button>
+                <span><i class="ri-file-settings-line me-2"></i>Session #@_smDetail.SessionId — @_smDetail.Name</span>
+            }
+            else
+            {
+                <span><i class="ri-database-2-line me-2"></i>Session Manager</span>
+            }
+            <button class="btn-close btn-close-white btn-close-sm ms-auto" @onclick="() => _smOpen = false"></button>
+        </div>
+
+        @if (_smDetail == null)
+        {
+            @* ── List View ── *@
+            <div class="sm-body">
+                @* PC Selector *@
+                <div class="sm-pc-bar">
+                    <label class="sm-pc-label">PC:</label>
+                    <select class="form-select form-select-sm sm-pc-select" value="@_smPcId" @onchange="SmOnPcChanged">
+                        <option value="0">— Select PC —</option>
+                        @foreach (var pc in _actionAllPcs)
+                        {
+                            <option value="@pc.PcId">@pc.FullName</option>
+                        }
+                    </select>
+                </div>
+
+                @if (!string.IsNullOrEmpty(_smSuccess))
+                {
+                    <div class="alert alert-success py-1 px-3 mb-2" style="font-size:.82rem;">
+                        <i class="ri-check-line me-1"></i>@_smSuccess
+                    </div>
+                }
+
+                @if (_smPcId > 0 && _smList.Count == 0)
+                {
+                    <div class="sm-empty"><i class="ri-inbox-line"></i><div>No sessions found</div></div>
+                }
+                else if (_smPcId > 0)
+                {
+                    <div class="sm-table-wrap">
+                        <table class="sm-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:50px;">#</th>
+                                    <th style="width:100px;">Date</th>
+                                    <th>Name</th>
+                                    <th style="width:120px;">Auditor</th>
+                                    <th style="width:80px;">Duration</th>
+                                    <th style="width:60px;">Free</th>
+                                    <th style="width:80px;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var s in _smList)
+                                {
+                                    <tr class="sm-row" @onclick="() => SmOpenDetail(s.SessionId)">
+                                        <td>@s.SessionId</td>
+                                        <td>@s.SessionDate</td>
+                                        <td class="sm-name-cell" title="@s.Name">@s.Name</td>
+                                        <td>@s.AuditorName</td>
+                                        <td>@FormatSec(s.LengthSec + s.AdminSec)</td>
+                                        <td>@(s.IsFree ? "Yes" : "")</td>
+                                        <td><span class="badge @SmStatusBadge(s.VerifiedStatus)">@s.VerifiedStatus</span></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+            @if (_smPcId > 0 && _smTotal > 50)
+            {
+                <div class="sm-pager">
+                    <button class="btn btn-sm btn-outline-secondary" disabled="@(_smPage == 0)" @onclick="() => SmLoadPage(_smPage - 1)">
+                        <i class="ri-arrow-left-s-line"></i> Prev
+                    </button>
+                    <span class="sm-pager-info">Page @(_smPage + 1) of @((int)Math.Ceiling(_smTotal / 50.0))</span>
+                    <button class="btn btn-sm btn-outline-secondary" disabled="@((_smPage + 1) * 50 >= _smTotal)" @onclick="() => SmLoadPage(_smPage + 1)">
+                        Next <i class="ri-arrow-right-s-line"></i>
+                    </button>
+                </div>
+            }
+        }
+        else
+        {
+            @* ── Detail / Edit View ── *@
+            <div class="sm-body sm-detail-body">
+                @if (!string.IsNullOrEmpty(_smError))
+                {
+                    <div class="alert alert-danger py-1 px-3 mb-2" style="font-size:.82rem;">@_smError</div>
+                }
+                @if (!string.IsNullOrEmpty(_smSuccess))
+                {
+                    <div class="alert alert-success py-1 px-3 mb-2" style="font-size:.82rem;">
+                        <i class="ri-check-line me-1"></i>@_smSuccess
+                    </div>
+                }
+
+                <div class="sm-detail-grid">
+                    @* Left card: Session *@
+                    <div class="sm-card">
+                        <div class="sm-card-head"><i class="ri-file-list-3-line me-2"></i>Session</div>
+                        <div class="sm-field">
+                            <label>SessionId</label>
+                            <input class="form-control form-control-sm" value="@_smDetail.SessionId" readonly />
+                        </div>
+                        <div class="sm-field">
+                            <label>Name</label>
+                            <input class="form-control form-control-sm" @bind="_smEditName" />
+                        </div>
+                        <div class="sm-field">
+                            <label>Date</label>
+                            <input type="date" class="form-control form-control-sm" @bind="_smEditDate" />
+                        </div>
+                        <div class="sm-field-row">
+                            <div class="sm-field">
+                                <label>Session (sec)</label>
+                                <input type="number" class="form-control form-control-sm" @bind="_smEditLenSec" />
+                            </div>
+                            <div class="sm-field">
+                                <label>Admin (sec)</label>
+                                <input type="number" class="form-control form-control-sm" @bind="_smEditAdminSec" />
+                            </div>
+                        </div>
+                        <div class="sm-field-row">
+                            <div class="sm-field">
+                                <label>Charge (sec)</label>
+                                <input type="number" class="form-control form-control-sm" @bind="_smEditChargeSec" />
+                            </div>
+                            <div class="sm-field">
+                                <label>Charged Rate (¢/hr)</label>
+                                <input type="number" class="form-control form-control-sm" @bind="_smEditChargedRate" />
+                            </div>
+                        </div>
+                        <div class="sm-field-row">
+                            <div class="sm-field">
+                                <label>Auditor Salary (¢/hr)</label>
+                                <input type="number" class="form-control form-control-sm" @bind="_smEditAudSalary" />
+                            </div>
+                            <div class="sm-field">
+                                <label>Status</label>
+                                <select class="form-select form-select-sm" @bind="_smEditVerified">
+                                    <option value="Draft">Draft</option>
+                                    <option value="Approved">Approved</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="sm-field">
+                            <label class="d-flex align-items-center gap-2">
+                                <input type="checkbox" class="form-check-input" @bind="_smEditIsFree" /> Free Session
+                            </label>
+                        </div>
+                        <div class="sm-field">
+                            <label>Notes</label>
+                            <textarea class="form-control form-control-sm" rows="2" @bind="_smEditNotes"></textarea>
+                        </div>
+                        <div class="sm-field">
+                            <label>Auditor</label>
+                            <input class="form-control form-control-sm" value="@_smDetail.AuditorName" readonly />
+                        </div>
+                        <div class="sm-field">
+                            <label>Created</label>
+                            <input class="form-control form-control-sm" value="@_smDetail.CreatedAt" readonly />
+                        </div>
+                        <div class="sm-field">
+                            <label class="d-flex align-items-center gap-2">
+                                <input type="checkbox" class="form-check-input" checked="@_smDetail.IsImported" disabled /> Imported
+                            </label>
+                        </div>
+                    </div>
+
+                    @* Right card: CS Review *@
+                    <div class="sm-card">
+                        <div class="sm-card-head"><i class="ri-user-star-line me-2"></i>CS Review</div>
+                        @if (_smDetail.CsReviewId == null)
+                        {
+                            <div class="sm-empty-card"><i class="ri-file-unknow-line"></i> No CS review for this session</div>
+                        }
+                        else
+                        {
+                            <div class="sm-field">
+                                <label>CsReviewId</label>
+                                <input class="form-control form-control-sm" value="@_smDetail.CsReviewId" readonly />
+                            </div>
+                            <div class="sm-field">
+                                <label>CS Name</label>
+                                <input class="form-control form-control-sm" value="@_smDetail.CsName" readonly />
+                            </div>
+                            <div class="sm-field">
+                                <label>Review Length (sec)</label>
+                                <input type="number" class="form-control form-control-sm" @bind="_smEditCsReviewLen" />
+                            </div>
+                            <div class="sm-field">
+                                <label>Status</label>
+                                <select class="form-select form-select-sm" @bind="_smEditCsStatus">
+                                    <option value="Not_Done">Not Done</option>
+                                    @foreach (var kv in _smCsStatuses)
+                                    {
+                                        <option value="@kv.Key">@kv.Value</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="sm-field">
+                                <label>Notes</label>
+                                <textarea class="form-control form-control-sm" rows="2" @bind="_smEditCsNotes"></textarea>
+                            </div>
+                            <div class="sm-field-row">
+                                <div class="sm-field">
+                                    <label>CS Salary (¢/hr)</label>
+                                    <input type="number" class="form-control form-control-sm" @bind="_smEditCsSalary" />
+                                </div>
+                                <div class="sm-field">
+                                    <label>CS Charged (¢/hr)</label>
+                                    <input type="number" class="form-control form-control-sm" @bind="_smEditCsCharged" />
+                                </div>
+                            </div>
+                            <div class="sm-field">
+                                <label>Reviewed At</label>
+                                <input class="form-control form-control-sm" value="@_smDetail.ReviewedAt" readonly />
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                @* ── Delete confirmation overlay ── *@
+                @if (_smDelStage1)
+                {
+                    <div class="sm-del-overlay">
+                        <div class="sm-del-card @(_smDelStage2 ? "" : "sm-del-pulse")">
+                            <i class="ri-error-warning-fill sm-del-icon"></i>
+                            <div class="sm-del-title">Permanently Delete Session?</div>
+                            <div class="sm-del-text">
+                                This will delete session <strong>#@_smDetail.SessionId</strong> (@_smDetail.Name),
+                                all CS reviews, folder summaries, attachments, and worksheet files.<br />
+                                <strong>This action cannot be undone.</strong>
+                            </div>
+                            @if (!_smDelStage2)
+                            {
+                                <div class="d-flex gap-2 mt-3">
+                                    <button class="btn btn-sm btn-outline-light" @onclick="() => _smDelStage1 = false">Cancel</button>
+                                    <button class="btn btn-sm btn-danger" @onclick="() => _smDelStage2 = true">
+                                        <i class="ri-delete-bin-line me-1"></i>Yes, I want to delete
+                                    </button>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="mt-3">
+                                    <label class="sm-del-confirm-label">Type <strong>delete</strong> to confirm:</label>
+                                    <input class="form-control form-control-sm sm-del-input" autocomplete="off"
+                                           @bind="_smDelInput" @bind:event="oninput" placeholder="delete" />
+                                    @if (!string.IsNullOrEmpty(_smDelError))
+                                    {
+                                        <div class="text-danger mt-1" style="font-size:.78rem;">@_smDelError</div>
+                                    }
+                                    <div class="d-flex gap-2 mt-2">
+                                        <button class="btn btn-sm btn-outline-light" @onclick="SmCancelDelete">Cancel</button>
+                                        <button class="btn btn-sm btn-danger" disabled="@(!string.Equals(_smDelInput?.Trim(), "delete", StringComparison.OrdinalIgnoreCase) || _smDeleting)"
+                                                @onclick="SmDeleteConfirmed">
+                                            @if (_smDeleting) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                            <i class="ri-delete-bin-2-line me-1"></i>Confirm Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="sm-footer">
+                <button class="btn btn-sm btn-danger d-flex align-items-center gap-1" @onclick="SmStartDelete">
+                    <i class="ri-delete-bin-line"></i> Delete Session
+                </button>
+                <div class="ms-auto d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="SmBackToList">Cancel</button>
+                    <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
+                            disabled="@(_smSaving)"
+                            @onclick="SmSave">
+                        @if (_smSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        <i class="ri-save-line"></i> Save
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+<style>
+    /* ── Session Manager ── */
+    .sm-overlay {
+        position: fixed; inset: 0; z-index: 10050;
+        background: rgba(0,0,0,.55); backdrop-filter: blur(2px);
+    }
+    .sm-modal {
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+        z-index: 10051; width: min(960px, 96vw); max-height: 92vh;
+        background: #fff; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.3);
+        display: flex; flex-direction: column; overflow: hidden;
+    }
+    .sm-header {
+        display: flex; align-items: center; gap: 8px;
+        padding: 16px 20px;
+        background: linear-gradient(135deg, #ea580c, #f97316);
+        color: #fff; font-weight: 700; font-size: 1rem;
+        flex-shrink: 0;
+    }
+    .sm-back-btn {
+        background: rgba(255,255,255,.2); border: none; color: #fff;
+        border-radius: 6px; width: 32px; height: 32px;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer; font-size: 1.1rem; transition: background .15s;
+    }
+    .sm-back-btn:hover { background: rgba(255,255,255,.35); }
+    .sm-body {
+        padding: 16px 20px; overflow-y: auto; flex: 1; min-height: 0;
+    }
+    .sm-detail-body { padding: 16px 20px; position: relative; }
+    .sm-footer {
+        display: flex; align-items: center; gap: 8px;
+        padding: 12px 20px; border-top: 1px solid #e2e8f0;
+        flex-shrink: 0;
+    }
+    .sm-pc-bar {
+        display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+    }
+    .sm-pc-label { font-weight: 600; font-size: .88rem; color: #475569; white-space: nowrap; }
+    .sm-pc-select { max-width: 280px; }
+    .sm-empty {
+        text-align: center; padding: 40px 0; color: #94a3b8; font-size: .88rem;
+    }
+    .sm-empty i { font-size: 2rem; display: block; margin-bottom: 8px; }
+    .sm-table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #e2e8f0; }
+    .sm-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    .sm-table thead { background: #f8fafc; }
+    .sm-table th {
+        padding: 8px 10px; text-align: left; font-weight: 600;
+        color: #475569; border-bottom: 2px solid #e2e8f0; white-space: nowrap;
+    }
+    .sm-table td { padding: 7px 10px; border-bottom: 1px solid #f1f5f9; }
+    .sm-row { cursor: pointer; transition: background .12s; }
+    .sm-row:hover { background: #f0f7ff; }
+    .sm-name-cell { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sm-pager {
+        display: flex; align-items: center; justify-content: center; gap: 12px;
+        padding: 12px 20px; border-top: 1px solid #e2e8f0; flex-shrink: 0;
+    }
+    .sm-pager-info { font-size: .82rem; color: #64748b; font-weight: 500; }
+    .sm-pager .btn { min-width: 80px; }
+
+    /* Detail grid */
+    .sm-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .sm-card {
+        background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px;
+        padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
+    }
+    .sm-card-head {
+        font-weight: 700; font-size: .92rem; color: #1e293b;
+        padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;
+        display: flex; align-items: center;
+    }
+    .sm-field { display: flex; flex-direction: column; gap: 2px; }
+    .sm-field label { font-size: .75rem; font-weight: 600; color: #64748b; }
+    .sm-field input[readonly], .sm-field input[disabled] { background: #f1f5f9; color: #94a3b8; }
+    .sm-field-row { display: flex; gap: 10px; }
+    .sm-field-row .sm-field { flex: 1; }
+    .sm-empty-card {
+        text-align: center; padding: 30px 0; color: #94a3b8;
+        font-size: .88rem; font-style: italic;
+    }
+
+    /* Delete overlay */
+    .sm-del-overlay {
+        position: absolute; inset: 0; z-index: 10;
+        background: rgba(0,0,0,.7); backdrop-filter: blur(4px);
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 0 0 16px 16px;
+    }
+    .sm-del-card {
+        background: #1c1917; border: 3px solid #ef4444; border-radius: 16px;
+        padding: 30px 36px; max-width: 440px; text-align: center; color: #fecaca;
+    }
+    .sm-del-pulse { animation: sm-pulse 1.2s ease-in-out infinite; }
+    @@keyframes sm-pulse {
+        0%, 100% { border-color: #ef4444; box-shadow: 0 0 20px rgba(239,68,68,.3); }
+        50% { border-color: #fca5a5; box-shadow: 0 0 40px rgba(239,68,68,.6); }
+    }
+    .sm-del-icon { font-size: 3.5rem; color: #ef4444; display: block; margin-bottom: 12px; }
+    .sm-del-title { font-size: 1.2rem; font-weight: 800; color: #fff; margin-bottom: 8px; }
+    .sm-del-text { font-size: .88rem; line-height: 1.5; }
+    .sm-del-confirm-label { font-size: .85rem; color: #cbd5e1; margin-bottom: 6px; display: block; text-align: left; }
+    .sm-del-input {
+        background: #292524; border: 2px solid #78716c; color: #fff;
+        text-align: center; font-size: 1rem; font-weight: 600; letter-spacing: 2px;
+    }
+    .sm-del-input:focus { border-color: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.3); }
+
+    @@media (max-width: 768px) {
+        .sm-modal { width: 98vw; max-height: 96vh; border-radius: 12px; }
+        .sm-detail-grid { grid-template-columns: 1fr; }
+        .sm-header { padding: 12px 14px; font-size: .92rem; }
+        .sm-body { padding: 12px 14px; }
+        .sm-footer { padding: 10px 14px; }
+        .sm-field input, .sm-field select, .sm-field textarea { font-size: 16px; }
+        .sm-del-card { padding: 20px 20px; margin: 0 10px; }
+        .sm-pc-select { max-width: 100%; }
+    }
+    @@media (max-width: 480px) {
+        .sm-modal { border-radius: 8px; }
+        .sm-field-row { flex-direction: column; gap: 10px; }
+        .sm-table { font-size: .75rem; }
+        .sm-table th, .sm-table td { padding: 6px 6px; }
+    }
+</style>
+
 <style>
     /* ── Actions PC list items ── */
     .act-pc-item {
@@ -2534,6 +2985,13 @@
         font-size: .85rem; color: #1e293b; transition: background .15s;
     }
     .act-pc-item:hover { background: #f0f4ff; }
+    .memo-pc-item {
+        display: flex; align-items: center; gap: 8px;
+        padding: 8px 12px; border-radius: 8px; cursor: pointer;
+        font-size: .85rem; color: #e2e8f0; transition: background .15s;
+    }
+    .memo-pc-item:hover { background: #1e293b; }
+    .memo-pc-sel { background: #1e3a5f !important; outline: 1px solid #3b82f6; }
     .act-success-screen {
         text-align: center; padding: 40px 16px; position: relative; overflow: hidden;
     }
@@ -3617,6 +4075,41 @@
     string                       _editFinishedGrade  = "";
     int                          _editAuditorId;
 
+    // ── Session Manager state ──
+    bool _smOpen;
+    int _smPcId;
+    string _smPcName = "";
+    int _smPage;
+    int _smTotal;
+    List<SessionListItem> _smList = [];
+    SessionDetailModel? _smDetail;
+    bool _smSaving;
+    string _smError = "";
+    string _smSuccess = "";
+    Dictionary<string, string> _smCsStatuses = [];
+    // Session Manager edit fields
+    string _smEditName = "";
+    DateOnly _smEditDate;
+    int _smEditLenSec;
+    int _smEditAdminSec;
+    bool _smEditIsFree;
+    string _smEditVerified = "";
+    string _smEditNotes = "";
+    int _smEditChargeSec;
+    int _smEditChargedRate;
+    int _smEditAudSalary;
+    int _smEditCsReviewLen;
+    string _smEditCsStatus = "";
+    string _smEditCsNotes = "";
+    int _smEditCsSalary;
+    int _smEditCsCharged;
+    // Session Manager delete
+    bool _smDelStage1;
+    bool _smDelStage2;
+    string _smDelInput = "";
+    bool _smDeleting;
+    string _smDelError = "";
+
     // ── Upload Front Cover state ──
     bool             _showUploadFrontCover;
     int              _ufcPcId;
@@ -3683,6 +4176,8 @@
     bool   _showMemoWizard;
     int    _memoStep;
     int    _memoPcId;
+    bool   _memoSolo;
+    string _memoPcSearch = "";
     List<DashboardService.ApprovedPc> _memoPcs = [];
     bool   _memoRunning;
     bool   _memoDone;
@@ -4892,7 +5387,12 @@
                         var taaDate = !string.IsNullOrEmpty(capturedDate) ? capturedDate : DateTime.Today.ToString("d.M.yy");
                         if (DateTime.TryParseExact(taaDate, "d/M/yy", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var parsedDate))
                             taaDate = parsedDate.ToString("d.M.yy");
-                        FolderSvc.AppendTaaRow(capturedPcId, taaDate, sessionMinutes, capturedTotalTa);
+                        var taaWrittenPath = FolderSvc.AppendTaaRow(capturedPcId, taaDate, sessionMinutes, capturedTotalTa);
+                        if (taaWrittenPath != null)
+                        {
+                            var taaFolder = Path.GetFileName(Path.GetDirectoryName(taaWrittenPath));
+                            sTaa.Label = $"TAA Excel → {taaFolder}";
+                        }
                         await Advance(sTaa, 2);
                     }),
                     Task.Run(async () =>
@@ -5247,6 +5747,155 @@ string _actionPcSearch = "";
     {
         _showNextCsSkipBadge = isEmpty;
         await InvokeAsync(StateHasChanged);
+    }
+
+    // ── Session Manager Methods ──────────────────────────────────────────────
+
+    void OpenSessionManager()
+    {
+        if (!_msgUserId.HasValue) return;
+        LoadAllPcs();
+        _smPcId = 0; _smPcName = ""; _smPage = 0; _smTotal = 0;
+        _smList = []; _smDetail = null; _smError = ""; _smSuccess = "";
+        _smCsStatuses = DashSvc.GetCsStatusLabels();
+        _smOpen = true;
+    }
+
+    void SmOnPcChanged(ChangeEventArgs e)
+    {
+        _smPcId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        _smPcName = _actionAllPcs.FirstOrDefault(p => p.PcId == _smPcId)?.FullName ?? "";
+        _smDetail = null; _smSuccess = "";
+        if (_smPcId > 0) SmLoadPage(0);
+        else { _smList = []; _smTotal = 0; }
+    }
+
+    void SmLoadPage(int page)
+    {
+        _smPage = page;
+        var (items, total) = DashSvc.GetSessionsForPcPaged(_smPcId, page);
+        _smList = items;
+        _smTotal = total;
+    }
+
+    void SmOpenDetail(int sessionId)
+    {
+        _smDetail = DashSvc.GetSessionDetail(sessionId);
+        if (_smDetail == null) { _smError = "Session not found."; return; }
+        _smError = ""; _smSuccess = "";
+        _smDelStage1 = false; _smDelStage2 = false; _smDelInput = ""; _smDelError = "";
+        SmPopulateEditFields();
+    }
+
+    void SmPopulateEditFields()
+    {
+        if (_smDetail == null) return;
+        _smEditName = _smDetail.Name ?? "";
+        _smEditDate = DateOnly.TryParse(_smDetail.SessionDate, out var d) ? d : DateOnly.FromDateTime(DateTime.Today);
+        _smEditLenSec = _smDetail.LengthSeconds;
+        _smEditAdminSec = _smDetail.AdminSeconds;
+        _smEditIsFree = _smDetail.IsFreeSession;
+        _smEditVerified = _smDetail.VerifiedStatus;
+        _smEditNotes = _smDetail.ApprovedNotes ?? "";
+        _smEditChargeSec = _smDetail.ChargeSeconds;
+        _smEditChargedRate = _smDetail.ChargedRateCentsPerHour;
+        _smEditAudSalary = _smDetail.AuditorSalaryCentsPerHour;
+        _smEditCsReviewLen = _smDetail.ReviewLengthSeconds ?? 0;
+        _smEditCsStatus = _smDetail.CsStatus ?? "";
+        _smEditCsNotes = _smDetail.CsNotes ?? "";
+        _smEditCsSalary = _smDetail.CsSalaryCentsPerHour ?? 0;
+        _smEditCsCharged = _smDetail.CsChargedCentsRatePerHour ?? 0;
+    }
+
+    void SmBackToList()
+    {
+        _smDetail = null; _smError = "";
+        _smDelStage1 = false; _smDelStage2 = false;
+        SmLoadPage(_smPage);
+    }
+
+    async Task SmSave()
+    {
+        if (_smDetail == null) return;
+        _smSaving = true; _smError = ""; _smSuccess = "";
+        var detail = _smDetail;
+        try
+        {
+            await Task.Run(() =>
+            {
+                DashSvc.UpdateSessionAdmin(detail.SessionId, _smEditName, _smEditDate.ToString("yyyy-MM-dd"),
+                    _smEditLenSec, _smEditAdminSec, _smEditIsFree, _smEditVerified,
+                    string.IsNullOrWhiteSpace(_smEditNotes) ? null : _smEditNotes,
+                    _smEditChargeSec, _smEditChargedRate, _smEditAudSalary);
+
+                if (detail.CsReviewId.HasValue)
+                {
+                    DashSvc.UpdateCsReviewAdmin(detail.CsReviewId.Value,
+                        _smEditCsReviewLen, _smEditCsStatus,
+                        string.IsNullOrWhiteSpace(_smEditCsNotes) ? null : _smEditCsNotes,
+                        _smEditCsSalary, _smEditCsCharged);
+                }
+            });
+            _smDetail = DashSvc.GetSessionDetail(detail.SessionId);
+            SmPopulateEditFields();
+            _smSuccess = "Changes saved.";
+            DashSvc.NotifyDataChanged();
+        }
+        catch (Exception ex) { _smError = $"Save failed: {ex.Message}"; }
+        finally { _smSaving = false; }
+    }
+
+    void SmStartDelete()
+    {
+        _smDelStage1 = true; _smDelStage2 = false;
+        _smDelInput = ""; _smDelError = "";
+    }
+
+    void SmCancelDelete()
+    {
+        _smDelStage1 = false; _smDelStage2 = false;
+        _smDelInput = ""; _smDelError = "";
+    }
+
+    async Task SmDeleteConfirmed()
+    {
+        if (_smDetail == null) return;
+        _smDeleting = true; _smDelError = "";
+        try
+        {
+            var sessId = _smDetail.SessionId;
+            var pcId = _smDetail.PcId;
+            var sessName = _smDetail.Name ?? "";
+            await Task.Run(() =>
+            {
+                var info = DashSvc.LoadSessionDeleteInfo(sessId, pcId, sessName, FolderSvc);
+                DashSvc.ExecuteSessionDeletion(info, _logUsername, FolderSvc);
+            });
+            _smDetail = null;
+            _smDelStage1 = false; _smDelStage2 = false; _smDelInput = "";
+            _smSuccess = $"Session #{sessId} deleted.";
+            SmLoadPage(_smPage);
+            // If current page is now empty and not page 0, go back one page
+            if (_smList.Count == 0 && _smPage > 0)
+                SmLoadPage(_smPage - 1);
+            DashSvc.NotifyDataChanged();
+        }
+        catch (Exception ex) { _smDelError = $"Delete failed: {ex.Message}"; }
+        finally { _smDeleting = false; }
+    }
+
+    static string SmStatusBadge(string status) => status switch
+    {
+        "Approved" => "bg-success",
+        "Draft" => "bg-secondary",
+        _ => "bg-warning text-dark"
+    };
+
+    static string FormatSec(int sec)
+    {
+        if (sec <= 0) return "0:00";
+        var m = sec / 60; var s = sec % 60;
+        return $"{m}:{s:D2}";
     }
 
     public void Dispose()
@@ -5873,6 +6522,8 @@ string _actionPcSearch = "";
         if (!_msgUserId.HasValue) return;
         _memoPcs        = DashSvc.GetSessionablePcsForUser(_msgUserId.Value, _logUsername);
         _memoPcId       = _isSoloUser ? _msgUserId.Value : 0;
+        _memoSolo       = _isSoloUser;
+        _memoPcSearch   = "";
         _memoStep       = 1;
         _memoError      = "";
         _showMemoWizard = true;
@@ -5970,7 +6621,7 @@ string _actionPcSearch = "";
             "window._memoQuill ? window._memoQuill.root.innerHTML : ''");
 
         var capturedPcId     = _memoPcId;
-        var capturedSolo     = _isSoloUser;
+        var capturedSolo     = _memoSolo || _isSoloUser;
         var capturedAudId    = _msgUserId!.Value;
         var capturedPcName   = _memoPcs.FirstOrDefault(p => p.PcId == _memoPcId)?.FullName ?? "";
         var capturedDate     = DateOnly.FromDateTime(DateTime.Today);
@@ -5983,7 +6634,7 @@ string _actionPcSearch = "";
         _memoRunning    = true;
         _memoDone       = false;
         _memoError      = "";
-        _memoLabel      = capturedPcName;
+        _memoLabel      = capturedSolo ? $"{capturedPcName} [Solo]" : capturedPcName;
         _memoSteps = new List<BgStep>
         {
             new("Generating memo PDF"),
@@ -6018,7 +6669,7 @@ string _actionPcSearch = "";
                 // Step 3: Insert session row
                 sDb.Status = 1;
                 await InvokeAsync(StateHasChanged);
-                DashSvc.AddMemoSession(capturedAudId, capturedPcId, savedName, capturedDate);
+                DashSvc.AddMemoSession(capturedAudId, capturedPcId, savedName, capturedDate, capturedSolo);
                 DashSvc.NotifyDataChanged();
                 sDb.Status = 2;
                 await InvokeAsync(StateHasChanged);

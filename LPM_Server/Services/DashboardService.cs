@@ -54,6 +54,23 @@ public record UserSalaryGroup(int PersonId, string FullName, List<SalarySessionR
 public record StaffMessage(int Id, int FromId, string FromName, int ToId, string ToName, string MsgText, string CreatedAt, string? AcknowledgedAt);
 
 public record PermissionRequest(int Id, int UserId, string AuditorName, int PcId, string PcName, string RequestedAt);
+
+// ── Session Manager shared records ──────────────────────────────────────────
+public record SessionListItem(int SessionId, string Name, string SessionDate,
+    string AuditorName, int LengthSec, int AdminSec, bool IsFree,
+    string VerifiedStatus, bool IsImported);
+public record SessionDetailModel(
+    int SessionId, int PcId, int? AuditorId, string AuditorName,
+    string SessionDate, int SequenceInDay, int LengthSeconds, int AdminSeconds,
+    bool IsFreeSession, int ChargeSeconds, int ChargedRateCentsPerHour,
+    int AuditorSalaryCentsPerHour, string Name, string VerifiedStatus,
+    string? ApprovedNotes, bool IsImported, string CreatedAt, int? CreatedByUserId,
+    int? CsReviewId, int? CsId, string? CsName, int? ReviewLengthSeconds,
+    string? ReviewedAt, string? CsStatus, string? CsNotes,
+    int? CsSalaryCentsPerHour, int? CsChargedCentsRatePerHour);
+public record SessionFkTable(string Table, List<string> Cols, List<List<string>> Rows);
+public record SessionDeleteInfo(int SessionId, int PcId, string SessionName,
+    List<SessionFkTable> FkTables, List<string> Files);
 public record ApprovedPcEntry(int Id, int PcId, string PcName, string WorkCapacity = StaffRoles.Auditor);
 public record AuditorPermGroup(int AuditorId, string AuditorName, bool AllowAll, List<ApprovedPcEntry> ApprovedPcs, string StaffRole = StaffRoles.Auditor);
 
@@ -1112,7 +1129,7 @@ public class DashboardService
     }
 
     /// <summary>Insert a free-session memo row into sess_sessions. Returns the new SessionId.</summary>
-    public int AddMemoSession(int auditorId, int pcId, string name, DateOnly date)
+    public int AddMemoSession(int auditorId, int pcId, string name, DateOnly date, bool solo = false)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -1140,7 +1157,7 @@ public class DashboardService
                0, 0,
                @name, @creator, datetime('now', '+2 hours'))";
         cmd.Parameters.AddWithValue("@pcId",    pcId);
-        cmd.Parameters.AddWithValue("@audId",   auditorId);
+        cmd.Parameters.AddWithValue("@audId",   solo ? DBNull.Value : auditorId);
         cmd.Parameters.AddWithValue("@date",    dateStr);
         cmd.Parameters.AddWithValue("@seq",     seq);
         cmd.Parameters.AddWithValue("@name",    name);
@@ -3198,5 +3215,264 @@ public class DashboardService
         }
 
         return new SalaryReport(result, unassignedReferrals);
+    }
+
+    // ── Session Manager ─────────────────────────────────────────────────────
+
+    public (List<SessionListItem> Items, int TotalCount) GetSessionsForPcPaged(int pcId, int page, int pageSize = 50)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        using var cntCmd = conn.CreateCommand();
+        cntCmd.CommandText = "SELECT COUNT(*) FROM sess_sessions WHERE PcId = @pcId";
+        cntCmd.Parameters.AddWithValue("@pcId", pcId);
+        var total = Convert.ToInt32(cntCmd.ExecuteScalar());
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $@"
+            SELECT s.SessionId, s.Name, s.SessionDate,
+                   COALESCE({FullNameExpr}, '') AS AuditorName,
+                   s.LengthSeconds, s.AdminSeconds, s.IsFreeSession,
+                   s.VerifiedStatus, s.IsImported
+            FROM sess_sessions s
+            LEFT JOIN core_persons p ON p.PersonId = s.AuditorId
+            WHERE s.PcId = @pcId
+            ORDER BY s.SessionDate DESC, s.SessionId DESC
+            LIMIT @limit OFFSET @offset";
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        cmd.Parameters.AddWithValue("@limit", pageSize);
+        cmd.Parameters.AddWithValue("@offset", page * pageSize);
+        var list = new List<SessionListItem>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new SessionListItem(
+                r.GetInt32(0), r.IsDBNull(1) ? "" : r.GetString(1), r.GetString(2),
+                r.GetString(3), r.GetInt32(4), r.GetInt32(5),
+                r.GetInt32(6) != 0, r.GetString(7), r.GetInt32(8) != 0));
+        return (list, total);
+    }
+
+    public SessionDetailModel? GetSessionDetail(int sessionId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $@"
+            SELECT s.SessionId, s.PcId, s.AuditorId,
+                   COALESCE(TRIM(pa.FirstName || ' ' || COALESCE(NULLIF(pa.LastName,''), '')), '') AS AuditorName,
+                   s.SessionDate, s.SequenceInDay, s.LengthSeconds, s.AdminSeconds,
+                   s.IsFreeSession, s.ChargeSeconds, s.ChargedRateCentsPerHour,
+                   s.AuditorSalaryCentsPerHour, s.Name, s.VerifiedStatus,
+                   s.ApprovedNotes, s.IsImported, s.CreatedAt, s.CreatedByUserId,
+                   cr.CsReviewId, cr.CsId,
+                   COALESCE(TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')), '') AS CsName,
+                   cr.ReviewLengthSeconds, cr.ReviewedAt, cr.Status AS CsStatus,
+                   cr.Notes AS CsNotes, cr.CsSalaryCentsPerHour, cr.ChargedCentsRatePerHour
+            FROM sess_sessions s
+            LEFT JOIN core_persons pa ON pa.PersonId = s.AuditorId
+            LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
+            LEFT JOIN core_persons pc ON pc.PersonId = cr.CsId
+            WHERE s.SessionId = @sid";
+        cmd.Parameters.AddWithValue("@sid", sessionId);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return null;
+        return new SessionDetailModel(
+            r.GetInt32(0), r.GetInt32(1),
+            r.IsDBNull(2) ? null : r.GetInt32(2),
+            r.GetString(3), r.GetString(4), r.GetInt32(5),
+            r.GetInt32(6), r.GetInt32(7),
+            r.GetInt32(8) != 0, r.GetInt32(9), r.GetInt32(10),
+            r.GetInt32(11), r.IsDBNull(12) ? "" : r.GetString(12), r.GetString(13),
+            r.IsDBNull(14) ? null : r.GetString(14), r.GetInt32(15) != 0,
+            r.GetString(16), r.IsDBNull(17) ? null : (int?)r.GetInt32(17),
+            r.IsDBNull(18) ? null : (int?)r.GetInt32(18),
+            r.IsDBNull(19) ? null : (int?)r.GetInt32(19),
+            r.IsDBNull(20) ? null : r.GetString(20),
+            r.IsDBNull(21) ? null : (int?)r.GetInt32(21),
+            r.IsDBNull(22) ? null : r.GetString(22),
+            r.IsDBNull(23) ? null : r.GetString(23),
+            r.IsDBNull(24) ? null : r.GetString(24),
+            r.IsDBNull(25) ? null : (int?)r.GetInt32(25),
+            r.IsDBNull(26) ? null : (int?)r.GetInt32(26));
+    }
+
+    public void UpdateSessionAdmin(int sessionId, string name, string sessionDate,
+        int lengthSec, int adminSec, bool isFree, string verifiedStatus,
+        string? approvedNotes, int chargeSec, int chargedRate, int auditorSalaryRate)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE sess_sessions SET
+                Name = @name, SessionDate = @date,
+                LengthSeconds = @len, AdminSeconds = @admin,
+                IsFreeSession = @free, VerifiedStatus = @vs,
+                ApprovedNotes = @notes, ChargeSeconds = @charge,
+                ChargedRateCentsPerHour = @chargedRate,
+                AuditorSalaryCentsPerHour = @audSalary
+            WHERE SessionId = @sid";
+        cmd.Parameters.AddWithValue("@sid", sessionId);
+        cmd.Parameters.AddWithValue("@name", name);
+        cmd.Parameters.AddWithValue("@date", sessionDate);
+        cmd.Parameters.AddWithValue("@len", lengthSec);
+        cmd.Parameters.AddWithValue("@admin", adminSec);
+        cmd.Parameters.AddWithValue("@free", isFree ? 1 : 0);
+        cmd.Parameters.AddWithValue("@vs", verifiedStatus);
+        cmd.Parameters.AddWithValue("@notes", (object?)approvedNotes ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@charge", chargeSec);
+        cmd.Parameters.AddWithValue("@chargedRate", chargedRate);
+        cmd.Parameters.AddWithValue("@audSalary", auditorSalaryRate);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[SessionManager] Updated session {sessionId}");
+    }
+
+    public void UpdateCsReviewAdmin(int csReviewId, int reviewLenSec, string status,
+        string? notes, int csSalaryRate, int csChargedRate)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE cs_reviews SET
+                ReviewLengthSeconds = @len, Status = @status,
+                Notes = @notes, CsSalaryCentsPerHour = @salary,
+                ChargedCentsRatePerHour = @charged
+            WHERE CsReviewId = @id";
+        cmd.Parameters.AddWithValue("@id", csReviewId);
+        cmd.Parameters.AddWithValue("@len", reviewLenSec);
+        cmd.Parameters.AddWithValue("@status", status);
+        cmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@salary", csSalaryRate);
+        cmd.Parameters.AddWithValue("@charged", csChargedRate);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[SessionManager] Updated cs_review {csReviewId}");
+    }
+
+    public SessionDeleteInfo LoadSessionDeleteInfo(int sessionId, int pcId, string sessName, FolderService folderSvc)
+    {
+        var fkTables = new List<SessionFkTable>();
+        foreach (var (tbl, idCol) in new[]
+        {
+            ("cs_reviews",          "CsReviewId"),
+            ("sess_folder_summary", "Id"),
+            ("sess_next_cs",        "Id"),
+            ("sess_questions",      "SessionId"),
+        })
+        {
+            var cols = new List<string>();
+            var rows = new List<List<string>>();
+            try
+            {
+                using var conn2 = new SqliteConnection(_connectionString);
+                conn2.Open();
+                using var cmd2 = conn2.CreateCommand();
+                cmd2.CommandText = $"SELECT * FROM {tbl} WHERE SessionId = @sid";
+                cmd2.Parameters.AddWithValue("@sid", sessionId);
+                using var r = cmd2.ExecuteReader();
+                for (int i = 0; i < r.FieldCount; i++) cols.Add(r.GetName(i));
+                while (r.Read())
+                {
+                    var rr = new List<string>();
+                    for (int i = 0; i < r.FieldCount; i++)
+                        rr.Add(r.IsDBNull(i) ? "" : r.GetValue(i)?.ToString() ?? "");
+                    rows.Add(rr);
+                }
+            }
+            catch { }
+            fkTables.Add(new SessionFkTable(tbl, cols, rows));
+        }
+
+        var files = new List<string>();
+        if (!string.IsNullOrWhiteSpace(sessName))
+        {
+            foreach (var finder in new Func<int, string?>[] {
+                id => folderSvc.FindPcFolder(id),
+                id => folderSvc.FindSoloPcFolder(id) })
+            {
+                var folder = pcId > 0 ? finder(pcId) : null;
+                if (folder == null) continue;
+                var wsPath = Path.Combine(folder, "WorkSheets");
+                if (!Directory.Exists(wsPath)) continue;
+                var nameNoExt = Path.GetFileNameWithoutExtension(sessName);
+                foreach (var f in Directory.GetFiles(wsPath, "*.pdf"))
+                {
+                    var fn = Path.GetFileNameWithoutExtension(f);
+                    if (string.Equals(fn, nameNoExt, StringComparison.OrdinalIgnoreCase) ||
+                        fn.StartsWith(nameNoExt + "_att_", StringComparison.OrdinalIgnoreCase))
+                        files.Add(f);
+                }
+            }
+        }
+        return new SessionDeleteInfo(sessionId, pcId, sessName, fkTables, files);
+    }
+
+    public void ExecuteSessionDeletion(SessionDeleteInfo info, string adminUser, FolderService folderSvc)
+    {
+        Console.WriteLine($"[DeleteSession] ====== START — Admin='{adminUser}' SessionId={info.SessionId} PcId={info.PcId} Name='{info.SessionName}' ======");
+
+        // ── Backup files before deleting ──
+        var pcFoldersRoot = folderSvc.GetPcFoldersRoot();
+        var backupRoot    = Path.Combine(pcFoldersRoot, "_deleted_sessions");
+        var backupFolder  = Path.Combine(backupRoot, $"{info.SessionId}_{DateTime.Now:yyyyMMdd_HHmmss}");
+
+        if (Directory.Exists(backupRoot))
+        {
+            foreach (var old in Directory.GetDirectories(backupRoot))
+            {
+                try
+                {
+                    if (Directory.GetCreationTime(old) < DateTime.Now.AddDays(-10))
+                    {
+                        Directory.Delete(old, recursive: true);
+                        Console.WriteLine($"[DeleteSession]   BACKUP PURGED (>10 days): {old}");
+                    }
+                }
+                catch (Exception ex) { Console.WriteLine($"[DeleteSession]   BACKUP PURGE ERROR: {old} — {ex.Message}"); }
+            }
+        }
+
+        Console.WriteLine($"[DeleteSession] Files to backup+delete: {info.Files.Count}");
+        if (info.Files.Count > 0) Directory.CreateDirectory(backupFolder);
+        foreach (var f in info.Files)
+        {
+            try
+            {
+                var dest = Path.Combine(backupFolder, Path.GetFileName(f));
+                File.Copy(f, dest, overwrite: true);
+                Console.WriteLine($"[DeleteSession]   FILE BACKED UP: {f} → {dest}");
+                File.Delete(f);
+                Console.WriteLine($"[DeleteSession]   FILE DELETED: {f}");
+            }
+            catch (Exception ex) { Console.WriteLine($"[DeleteSession]   FILE ERROR (skipped): {f} — {ex.Message}"); }
+        }
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+
+        foreach (var fkTbl in info.FkTables)
+        {
+            Console.WriteLine($"[DeleteSession] Table {fkTbl.Table}: {fkTbl.Rows.Count} row(s) to delete");
+            foreach (var row in fkTbl.Rows)
+            {
+                var rowDesc = string.Join(", ", fkTbl.Cols.Zip(row, (c, v) => $"{c}={v}"));
+                Console.WriteLine($"[DeleteSession]   ROW: {rowDesc}");
+            }
+            cmd.CommandText = $"DELETE FROM {fkTbl.Table} WHERE SessionId = @sid";
+            cmd.Parameters.Clear();
+            cmd.Parameters.AddWithValue("@sid", info.SessionId);
+            var n = cmd.ExecuteNonQuery();
+            Console.WriteLine($"[DeleteSession]   → {n} row(s) deleted from {fkTbl.Table}");
+        }
+
+        cmd.CommandText = "DELETE FROM sess_sessions WHERE SessionId = @sid";
+        cmd.Parameters.Clear();
+        cmd.Parameters.AddWithValue("@sid", info.SessionId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DeleteSession]   ROW: SessionId={info.SessionId}, PcId={info.PcId}, Name='{info.SessionName}'");
+        Console.WriteLine($"[DeleteSession]   → 1 row deleted from sess_sessions");
+        Console.WriteLine($"[DeleteSession] ====== END — Admin='{adminUser}' SessionId={info.SessionId} ======");
     }
 }

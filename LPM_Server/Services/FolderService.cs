@@ -2833,29 +2833,47 @@ public class FolderService
         Directory.CreateDirectory(frontCover);
         var taaPath = Path.Combine(frontCover, TaaFileName);
 
-        if (!File.Exists(taaPath))
-        {
-            if (!File.Exists(TaaTemplatePath))
-            {
-                Console.WriteLine($"[FolderService] TAA template not found at {TaaTemplatePath}");
-                return null;
-            }
-            File.Copy(TaaTemplatePath, taaPath);
+        // 1. Already exists in Front_Cover root
+        if (File.Exists(taaPath))
+            return taaPath;
 
-            // Set PC name in B3
-            var pcName = GetPcName(pcId) ?? $"PC {pcId}";
-            try
+        // 2. Check PT subfolder under Front_Cover (case-insensitive)
+        var ptDir = Directory.GetDirectories(frontCover)
+            .FirstOrDefault(d => Path.GetFileName(d)
+                .Equals("PT", StringComparison.OrdinalIgnoreCase));
+        if (ptDir != null)
+        {
+            var ptTaa = Directory.GetFiles(ptDir)
+                .FirstOrDefault(f => Path.GetFileName(f)
+                    .Equals(TaaFileName, StringComparison.OrdinalIgnoreCase));
+            if (ptTaa != null)
             {
-                using var wb = new ClosedXML.Excel.XLWorkbook(taaPath);
-                var ws = wb.Worksheets.First();
-                ws.Cell("B3").Value = pcName;
-                wb.Save();
-                Console.WriteLine($"[FolderService] Created TAA Action file for PC {pcId} ({pcName})");
+                Console.WriteLine($"[FolderService] Found TAA file in PT subfolder for PC {pcId}: {ptTaa}");
+                return ptTaa;
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[FolderService] Error setting PC name in TAA file: {ex.Message}");
-            }
+        }
+
+        // 3. Not found anywhere — create from template
+        if (!File.Exists(TaaTemplatePath))
+        {
+            Console.WriteLine($"[FolderService] TAA template not found at {TaaTemplatePath}");
+            return null;
+        }
+        File.Copy(TaaTemplatePath, taaPath);
+
+        // Set PC name in B3
+        var pcName = GetPcName(pcId) ?? $"PC {pcId}";
+        try
+        {
+            using var wb = new ClosedXML.Excel.XLWorkbook(taaPath);
+            var ws = wb.Worksheets.First();
+            ws.Cell("B3").Value = pcName;
+            wb.Save();
+            Console.WriteLine($"[FolderService] Created TAA Action file for PC {pcId} ({pcName})");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FolderService] Error setting PC name in TAA file: {ex.Message}");
         }
 
         return taaPath;
@@ -2864,11 +2882,12 @@ public class FolderService
     /// <summary>
     /// Appends a row to the TAA Action.xlsx for the given PC.
     /// date: session date string (dd.M.yy), minutes: session length in minutes (no admin), totalTa: Total TA value.
+    /// Returns the path written to, or null on failure.
     /// </summary>
-    public void AppendTaaRow(int pcId, string dateStr, int minutes, string totalTa)
+    public string? AppendTaaRow(int pcId, string dateStr, int minutes, string totalTa)
     {
         var taaPath = EnsureTaaFile(pcId);
-        if (taaPath == null) return;
+        if (taaPath == null) return null;
 
         try
         {
@@ -2904,10 +2923,12 @@ public class FolderService
 
             wb.Save();
             Console.WriteLine($"[FolderService] Appended TAA row for PC {pcId}: date={dateStr}, min={minutes}, ta={totalTa} (row {newRow})");
+            return taaPath;
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[FolderService] Error appending TAA row for PC {pcId}: {ex.Message}");
+            return null;
         }
     }
 

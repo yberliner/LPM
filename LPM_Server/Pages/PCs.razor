@@ -262,8 +262,22 @@
                                                 </div>
                                             }
                                         </td>
-                                        <td class="small text-center align-middle">@sc.DateStarted</td>
-                                        <td class="small text-center align-middle">@(sc.DateFinished ?? "\u2014")</td>
+                                        <td class="small text-center align-middle">
+                                            @if (_editDateScId == sc.StudentCourseId)
+                                            {
+                                                <input type="text" class="form-control form-control-sm text-center" style="max-width:90px;font-size:.78rem;margin:0 auto;"
+                                                       placeholder="dd/mm/yy"
+                                                       value="@FormatDate(sc.DateStarted)"
+                                                       @onchange="e => SaveDateStarted(sc.StudentCourseId, e.Value?.ToString())"
+                                                       @onblur="() => _editDateScId = null" />
+                                            }
+                                            else
+                                            {
+                                                <span style="cursor:pointer;" title="Click to edit"
+                                                      @onclick="() => _editDateScId = sc.StudentCourseId">@FormatDate(sc.DateStarted)</span>
+                                            }
+                                        </td>
+                                        <td class="small text-center align-middle">@(sc.DateFinished != null ? FormatDate(sc.DateFinished) : "\u2014")</td>
                                         <td class="small text-center align-middle d-none d-md-table-cell">
                                             @if (isOT && isActive)
                                             {
@@ -386,7 +400,7 @@
                                 @foreach (var ap in _auditingPurchases)
                                 {
                                     <tr>
-                                        <td class="small ps-3">@ap.Date</td>
+                                        <td class="small ps-3">@FormatDate(ap.Date)</td>
                                         <td class="small text-center fw-semibold">@(ap.HoursBought)h</td>
                                         <td class="small text-center">@(ap.Amount > 0 ? $"{CurrSym(ap.Currency)}{ap.Amount}" : "\u2014")</td>
                                         <td class="small text-center">
@@ -854,9 +868,10 @@
                                     {
                                         <div>
                                             <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("purchases.paymentDate")</label>
-                                            <input type="date" class="form-control form-control-sm" style="max-width:140px;font-size:.8rem;"
-                                                   value="@(pm.PaymentDate?.ToString("yyyy-MM-dd"))"
-                                                   @onchange="e => pm.PaymentDate = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : null" />
+                                            <input type="text" class="form-control form-control-sm" style="max-width:140px;font-size:.8rem;"
+                                                   placeholder="dd/mm/yy"
+                                                   value="@(pm.PaymentDate?.ToString("dd/MM/yy") ?? "")"
+                                                   @onchange="e => pm.PaymentDate = ParseDateInput(e.Value?.ToString())" />
                                         </div>
                                     }
                                     @if (pm.MethodType == "CreditCard")
@@ -912,7 +927,10 @@
                             <div class="d-flex gap-3 flex-wrap mb-3">
                                 <div>
                                     <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("pcs.date")</label>
-                                    <input type="date" class="form-control form-control-sm" @bind="_purchaseDate" style="max-width:150px;" />
+                                    <input type="text" class="form-control form-control-sm" style="max-width:150px;"
+                                           placeholder="dd/mm/yy"
+                                           value="@(_purchaseDate.ToString("dd/MM/yy"))"
+                                           @onchange="e => { var d = ParseDateInput(e.Value?.ToString()); if (d.HasValue) _purchaseDate = d.Value; }" />
                                 </div>
                                 <div>
                                     <label class="form-label small mb-0" style="font-size:.72rem;">Currency</label>
@@ -1312,7 +1330,7 @@
                                             <tr style="@(!isActive ? "opacity:.65;" : "")">
                                                 <td class="ps-3 fw-medium">@e.PCFullName</td>
                                                 <td style="color:@(isActive ? "#0d9488" : "#6b7280");font-weight:600;">@e.CourseName</td>
-                                                <td class="text-center">@e.DateStarted</td>
+                                                <td class="text-center">@FormatDate(e.DateStarted)</td>
                                                 <td class="text-center fw-semibold" style="color:#34d399;">@e.VisitCount</td>
                                                 <td>
                                                     @if (isActive)
@@ -1406,7 +1424,7 @@
                                             <tr style="@(!isActive ? "opacity:.65;" : "")">
                                                 <td class="ps-3 fw-medium">@e.PCFullName</td>
                                                 <td style="color:@(isActive ? "#6d28d9" : "#6b7280");font-weight:600;">@e.CourseName</td>
-                                                <td class="text-center">@e.DateStarted</td>
+                                                <td class="text-center">@FormatDate(e.DateStarted)</td>
                                                 <td class="text-center fw-semibold" style="color:#34d399;">@e.VisitCount</td>
                                                 <td class="text-center">
                                                     @if (isActive)
@@ -1706,7 +1724,8 @@
                         <span class="cg-lbl">Formula</span><span><strong>Total Purchased ₪ &minus; Total Used ₪</strong></span>
                         <span class="cg-lbl">Purchased</span><span>Sum of all AmountPaid from auditing purchases</span>
                         <span class="cg-lbl">Used (Sessions)</span><span>For each non-solo, non-free session: Rate &times; (Length + Admin) &divide; 3600. Rate falls back to previous session rate, then purchase rate</span>
-                        <span class="cg-lbl">Used (Solo CS)</span><span>For each solo CS review with rate &gt; 0: Rate &times; ReviewLength &divide; 3600. Rate = 0 means not yet billable (set in Sessions page)</span>
+                        <span class="cg-lbl">Used (Solo CS)</span><span>For each solo CS review with rate &gt; 0: <strong>Rate &times; ReviewLength &divide; 3600</strong>. Rate = 0 means not yet billable (set in Sessions page).<br/>
+                            <strong style="color:#10b981 !important;">OTFS exception:</strong> if the PC was enrolled in an active OTFS course at the time of the session (DateStarted &le; SessionDate and course not yet finished), that review is <strong>free</strong> — cost = 0</span>
                         <span class="cg-lbl">Color</span><span><strong style="color:#16a34a !important;">Green</strong> = positive &nbsp; <strong style="color:#dc2626 !important;">Red</strong> = owes money</span>
                     </div>
                     <div class="cg-example">
@@ -1762,11 +1781,11 @@
                     <div class="cg-title"><i class="ri-calculator-line me-1"></i>Balance Details (₪ icon)</div>
                     <div class="cg-grid">
                         <span class="cg-lbl">Purchases</span><span>Each purchase with date, hours, and amount</span>
-                        <span class="cg-lbl">Used Money</span><span>Total cost: regular sessions + solo CS reviews</span>
+                        <span class="cg-lbl">Used Money</span><span>Total cost: regular sessions + solo CS reviews (OTFS-covered reviews excluded)</span>
                         <span class="cg-lbl">Balance</span><span>Purchased minus used</span>
                         <span class="cg-lbl">Hours Left</span><span>Balance &divide; effective rate</span>
                         <span class="cg-lbl">Session Details</span><span>Per-session cost, rate used, and rate source</span>
-                        <span class="cg-lbl">Solo Reviews</span><span>Shown separately in purple — date, duration, rate, cost</span>
+                        <span class="cg-lbl">Solo Reviews</span><span>Shown separately in purple — date, duration, rate, cost. OTFS-covered reviews appear with a green <strong style="color:#065f46 !important;">Free (OTFS)</strong> badge and cost = 0</span>
                     </div>
                 </div>
             </div>
@@ -2900,6 +2919,18 @@
     void RefreshPendingCourses() =>
         _pendingCourses = CourseSvc.GetCourseEnrollmentReport();
 
+    // ── Inline date-started edit ──
+    int? _editDateScId;
+
+    void SaveDateStarted(int studentCourseId, string? val)
+    {
+        _editDateScId = null;
+        var d = ParseDateInput(val);
+        if (d == null) return;
+        CourseSvc.UpdateStudentCourseDateStarted(studentCourseId, d.Value.ToString("yyyy-MM-dd"));
+        LoadDetail();
+    }
+
     // ── Instructor/CS change ──
     void OnInstructorChanged(StudentCourseItem sc, ChangeEventArgs e)
     {
@@ -3412,6 +3443,15 @@
     }
     static string FormatDate(string dateStr) =>
         DateOnly.TryParse(dateStr, out var d) ? d.ToString("dd/MM/yy") : dateStr;
+
+    static readonly string[] _dateFmts = { "dd/MM/yy", "d/M/yy", "dd/MM/yyyy", "d/M/yyyy", "yyyy-MM-dd" };
+    static DateTime? ParseDateInput(string? val)
+    {
+        if (string.IsNullOrWhiteSpace(val)) return null;
+        return DateTime.TryParseExact(val, _dateFmts,
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var d) ? d : null;
+    }
 
     // ── Solo access toggle ──
 

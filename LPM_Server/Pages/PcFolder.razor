@@ -2029,15 +2029,16 @@
     .pcf-pane-overlay {
         position: absolute; top: 6px; right: 6px; z-index: 20;
         display: flex; align-items: center; gap: 2px;
-        background: rgba(15,23,42,.72); backdrop-filter: blur(4px);
+        background: rgba(15,23,42,.18); backdrop-filter: blur(2px);
         border-radius: 6px; padding: 2px 3px;
-        opacity: 0; transition: opacity .18s;
+        opacity: 0; transition: opacity .18s, background .18s;
         pointer-events: none;
     }
     .pcf-pane:hover .pcf-pane-overlay { opacity: 1; pointer-events: auto; }
+    .pcf-pane-overlay:hover { background: rgba(15,23,42,.65); }
     /* Always slightly visible on touch devices */
     @@media (hover: none) {
-        .pcf-pane-overlay { opacity: .55; pointer-events: auto; }
+        .pcf-pane-overlay { opacity: .7; pointer-events: auto; }
         /* Enlarge touch targets inside the pane overlay */
         .pcf-overlay-btn { width: 36px; height: 36px; }
         /* Popup controls — bigger tap targets on touch screens */

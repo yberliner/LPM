@@ -520,6 +520,17 @@ public class CourseService
         return list;
     }
 
+    public void UpdateStudentCourseDateStarted(int studentCourseId, string dateStarted)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE acad_student_courses SET DateStarted=@ds WHERE StudentCourseId=@id";
+        cmd.Parameters.AddWithValue("@ds", dateStarted);
+        cmd.Parameters.AddWithValue("@id", studentCourseId);
+        cmd.ExecuteNonQuery();
+    }
+
     public void UpdateStudentCourseStaff(int studentCourseId, int? instructorId, int? csId)
     {
         using var conn = new SqliteConnection(_connectionString);

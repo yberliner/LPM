@@ -4,10 +4,12 @@
 @using System.Security.Cryptography
 @using System.Security.Claims
 @using Microsoft.Data.Sqlite
+@using LPM.Services
 @inject IConfiguration Config
 @inject Microsoft.AspNetCore.Http.IHttpContextAccessor HttpCtx
 @inject LPM.Services.PdfShrinkService PdfShrinkSvc
 @inject LPM.Services.FolderService FolderSvc
+@inject LPM.Services.DashboardService DashSvc
 @inject LPM.Services.UserActivityService ActivitySvc
 @inject IJSRuntime JS
 
@@ -1701,10 +1703,7 @@
     bool   _delSessModal = false;
     bool   _delSessBusy  = false;
     string _delSessError = "";
-    record DelSessFkTable(string Table, List<string> Cols, List<List<string>> Rows);
-    record DelSessInfo(int SessionId, int PcId, string SessionName,
-        List<DelSessFkTable> FkTables, List<string> Files);
-    DelSessInfo? _delSessInfo;
+    SessionDeleteInfo? _delSessInfo;
 
     // ── Delete Purchase state ──
     bool   _delPurchModal = false;
@@ -2835,77 +2834,15 @@
 
         if (!int.TryParse(pkVal, out var sessionId)) return;
 
-        // Read PcId and Name from the row already loaded in memory
         int pcIdIdx   = table.Columns.IndexOf("PcId");
         int nameIdx   = table.Columns.IndexOf("Name");
-        // Strip display annotation e.g. "94 (Yaniv Berliner)" → "94"
         var pcIdRaw = (row.ElementAtOrDefault(pcIdIdx) ?? "").Split(' ')[0];
         int pcId    = int.TryParse(pcIdRaw, out var p) ? p : 0;
         string sessName = nameIdx >= 0 ? (row.ElementAtOrDefault(nameIdx) ?? "") : "";
 
         Task.Run(() =>
         {
-            var cs = DbCs();
-            var fkTables = new List<DelSessFkTable>();
-
-            // FK tables that reference sess_sessions.SessionId
-            foreach (var (tbl, idCol) in new[]
-            {
-                ("cs_reviews",          "CsReviewId"),
-                ("sess_folder_summary", "Id"),
-                ("sess_next_cs",        "Id"),
-                ("sess_questions",      "SessionId"),
-            })
-            {
-                var cols = new List<string>();
-                var rows = new List<List<string>>();
-                try
-                {
-                    using var conn2 = new SqliteConnection(cs);
-                    conn2.Open();
-                    using var cmd2 = conn2.CreateCommand();
-                    cmd2.CommandText = $"SELECT * FROM {tbl} WHERE SessionId = @sid";
-                    cmd2.Parameters.AddWithValue("@sid", sessionId);
-                    using var r = cmd2.ExecuteReader();
-                    for (int i = 0; i < r.FieldCount; i++) cols.Add(r.GetName(i));
-                    while (r.Read())
-                    {
-                        var rr = new List<string>();
-                        for (int i = 0; i < r.FieldCount; i++)
-                            rr.Add(r.IsDBNull(i) ? "" : r.GetValue(i)?.ToString() ?? "");
-                        rows.Add(rr);
-                    }
-                }
-                catch { }
-                fkTables.Add(new DelSessFkTable(tbl, cols, rows));
-            }
-
-            // Find session files on disk
-            var files = new List<string>();
-            if (!string.IsNullOrWhiteSpace(sessName))
-            {
-                foreach (var finder in new Func<int, string?>[] {
-                    id => FolderSvc.FindPcFolder(id),
-                    id => FolderSvc.FindSoloPcFolder(id) })
-                {
-                    var folder = pcId > 0 ? finder(pcId) : null;
-                    if (folder == null) continue;
-                    var wsPath = Path.Combine(folder, "WorkSheets");
-                    if (!Directory.Exists(wsPath)) continue;
-                    var nameNoExt = Path.GetFileNameWithoutExtension(sessName);
-                    foreach (var f in Directory.GetFiles(wsPath, "*.pdf"))
-                    {
-                        var fn = Path.GetFileNameWithoutExtension(f);
-                        if (string.Equals(fn, nameNoExt, StringComparison.OrdinalIgnoreCase) ||
-                            fn.StartsWith(nameNoExt + "_att_", StringComparison.OrdinalIgnoreCase))
-                        {
-                            files.Add(f);
-                        }
-                    }
-                }
-            }
-
-            _delSessInfo = new DelSessInfo(sessionId, pcId, sessName, fkTables, files);
+            _delSessInfo = DashSvc.LoadSessionDeleteInfo(sessionId, pcId, sessName, FolderSvc);
             InvokeAsync(StateHasChanged);
         });
     }
@@ -2919,89 +2856,7 @@
         var admin = AdminUser();
         try
         {
-            await Task.Run(() =>
-            {
-                Console.WriteLine($"[DeleteSession] ====== START — Admin='{admin}' SessionId={info.SessionId} PcId={info.PcId} Name='{info.SessionName}' ======");
-
-                // ── Backup files to _deleted_sessions before deleting ──────────
-                var pcFoldersRoot  = FolderSvc.GetPcFoldersRoot();
-                var backupRoot     = Path.Combine(pcFoldersRoot, "_deleted_sessions");
-                var backupFolder   = Path.Combine(backupRoot,
-                    $"{info.SessionId}_{DateTime.Now:yyyyMMdd_HHmmss}");
-
-                // Purge backup subfolders older than 10 days
-                if (Directory.Exists(backupRoot))
-                {
-                    foreach (var old in Directory.GetDirectories(backupRoot))
-                    {
-                        try
-                        {
-                            if (Directory.GetCreationTime(old) < DateTime.Now.AddDays(-10))
-                            {
-                                Directory.Delete(old, recursive: true);
-                                Console.WriteLine($"[DeleteSession]   BACKUP PURGED (>10 days): {old}");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"[DeleteSession]   BACKUP PURGE ERROR: {old} — {ex.Message}");
-                        }
-                    }
-                }
-
-                // Copy files to backup folder
-                Console.WriteLine($"[DeleteSession] Files to backup+delete: {info.Files.Count}");
-                if (info.Files.Count > 0)
-                {
-                    Directory.CreateDirectory(backupFolder);
-                    Console.WriteLine($"[DeleteSession]   Backup folder: {backupFolder}");
-                }
-                foreach (var f in info.Files)
-                {
-                    try
-                    {
-                        var dest = Path.Combine(backupFolder, Path.GetFileName(f));
-                        File.Copy(f, dest, overwrite: true);
-                        Console.WriteLine($"[DeleteSession]   FILE BACKED UP: {f} → {dest}");
-                        File.Delete(f);
-                        Console.WriteLine($"[DeleteSession]   FILE DELETED: {f}");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"[DeleteSession]   FILE ERROR (skipped): {f} — {ex.Message}");
-                    }
-                }
-
-                using var conn = new SqliteConnection(DbCs());
-                conn.Open();
-                using var cmd = conn.CreateCommand();
-
-                // Delete FK rows — log each row using the data already loaded in the modal
-                foreach (var fkTbl in info.FkTables)
-                {
-                    Console.WriteLine($"[DeleteSession] Table {fkTbl.Table}: {fkTbl.Rows.Count} row(s) to delete");
-                    foreach (var row in fkTbl.Rows)
-                    {
-                        var rowDesc = string.Join(", ", fkTbl.Cols.Zip(row, (c, v) => $"{c}={v}"));
-                        Console.WriteLine($"[DeleteSession]   ROW: {rowDesc}");
-                    }
-                    cmd.CommandText = $"DELETE FROM {fkTbl.Table} WHERE SessionId = @sid";
-                    cmd.Parameters.Clear();
-                    cmd.Parameters.AddWithValue("@sid", info.SessionId);
-                    var n = cmd.ExecuteNonQuery();
-                    Console.WriteLine($"[DeleteSession]   → {n} row(s) deleted from {fkTbl.Table}");
-                }
-
-                // Delete the session itself last
-                cmd.CommandText = "DELETE FROM sess_sessions WHERE SessionId = @sid";
-                cmd.Parameters.Clear();
-                cmd.Parameters.AddWithValue("@sid", info.SessionId);
-                cmd.ExecuteNonQuery();
-                Console.WriteLine($"[DeleteSession]   ROW: SessionId={info.SessionId}, PcId={info.PcId}, Name='{info.SessionName}'");
-                Console.WriteLine($"[DeleteSession]   → 1 row deleted from sess_sessions");
-                Console.WriteLine($"[DeleteSession] ====== END — Admin='{admin}' SessionId={info.SessionId} ======");
-            });
-
+            await Task.Run(() => DashSvc.ExecuteSessionDeletion(info, admin, FolderSvc));
             _delSessModal = false;
             _delSessInfo  = null;
             LoadLiveTables();
