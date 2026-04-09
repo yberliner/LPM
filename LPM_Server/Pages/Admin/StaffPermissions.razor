@@ -109,6 +109,35 @@
 
         @if (!_matrixSectionCollapsed)
         {
+            var filteredPcs = GetFilteredPcs();
+
+            <div class="sp-filter-bar mb-3">
+                <button type="button" class="sp-filter-btn @(_matrixFilter == "All" ? "sp-filter-active" : "")"
+                        @onclick='() => _matrixFilter = "All"'>
+                    <i class="ri-apps-2-line"></i>
+                    <span class="d-none d-sm-inline">All PCs</span>
+                    <span class="sp-filter-count">@_allPcs.Count</span>
+                </button>
+                <button type="button" class="sp-filter-btn @(_matrixFilter == "Unassigned" ? "sp-filter-active" : "")"
+                        @onclick='() => _matrixFilter = "Unassigned"'>
+                    <i class="ri-user-unfollow-line"></i>
+                    <span class="d-none d-sm-inline">Unassigned</span>
+                    <span class="sp-filter-count">@CountByFilter("Unassigned")</span>
+                </button>
+                <button type="button" class="sp-filter-btn @(_matrixFilter == "Partial" ? "sp-filter-active" : "")"
+                        @onclick='() => _matrixFilter = "Partial"'>
+                    <i class="ri-user-received-2-line"></i>
+                    <span class="d-none d-sm-inline">Partial Coverage</span>
+                    <span class="sp-filter-count">@CountByFilter("Partial")</span>
+                </button>
+                <button type="button" class="sp-filter-btn sp-filter-btn-solo @(_matrixFilter == "Solo" ? "sp-filter-active" : "")"
+                        @onclick='() => _matrixFilter = "Solo"'>
+                    <i class="ri-user-star-line"></i>
+                    <span class="d-none d-sm-inline">Solo</span>
+                    <span class="sp-filter-count">@CountByFilter("Solo")</span>
+                </button>
+            </div>
+
             <div class="card border-0 shadow-sm sp-card mb-5">
                 <div class="sp-matrix-wrap">
                     <table class="sp-matrix-table">
@@ -129,9 +158,18 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var pc in _allPcs)
+                            @if (filteredPcs.Count == 0)
                             {
-                                <tr class="@(!pc.IsActive ? "sp-mx-row-inactive" : "")">
+                                <tr>
+                                    <td colspan="@(1 + _matrixAuditors.Count)" class="text-center py-5" style="color:#9ca3af;">
+                                        <div><i class="ri-filter-off-line" style="font-size:2.2rem;opacity:.45;"></i></div>
+                                        <div class="mt-2 fw-semibold" style="font-size:.85rem;">No PCs match this filter</div>
+                                    </td>
+                                </tr>
+                            }
+                            @foreach (var pc in filteredPcs)
+                            {
+                                <tr class="@(!pc.IsActive ? "sp-mx-row-inactive" : "") @(_soloPcIds.Contains(pc.PcId) ? "sp-mx-row-solo" : "")">
                                     <td class="sp-mx-pc-col sp-mx-pc-name @(_soloPcIds.Contains(pc.PcId) ? "sp-mx-solo-pc" : "")">
                                         @pc.FullName
                                         @if (_soloPcIds.Contains(pc.PcId))
@@ -422,7 +460,7 @@
     .sp-matrix-wrap {
         overflow-x: scroll;
         overflow-y: auto;
-        max-height: 70vh;
+        max-height: 85vh;
         scrollbar-width: thin;
         scrollbar-color: #94a3b8 #f1f5f9;
     }
@@ -609,7 +647,7 @@
         .sp-mx-aud-col { min-width: 34px; max-width: 34px; width: 34px; }
         .sp-mx-cell { min-width: 34px; width: 34px; }
         .sp-mx-check, .sp-mx-allow-all, .sp-mx-empty { width: 16px; height: 16px; }
-        .sp-matrix-wrap { max-height: 55vh; }
+        .sp-matrix-wrap { max-height: 75vh; }
         .sp-mx-aud-label { font-size: 0.65rem; padding: 6px 8px 4px; }
         .sp-aud-header { padding-left: 12px !important; padding-right: 12px !important; }
     }
@@ -652,12 +690,130 @@
         /* Matrix */
         .sp-mx-pc-col { width: 90px; min-width: 90px; max-width: 90px; }
         .sp-mx-pc-name { font-size: 0.72rem; padding: 4px 6px; }
-        .sp-matrix-wrap { max-height: 50vh; }
+        .sp-matrix-wrap { max-height: 65vh; }
         .sp-mx-aud-col { min-width: 36px; max-width: 36px; width: 36px; height: 90px; }
         .sp-mx-cell { min-width: 36px; width: 36px; padding: 8px 0; }  /* taller touch targets */
 
         /* Toast full width on mobile */
         .toast { min-width: calc(100vw - 32px) !important; }
+    }
+
+    /* ── FILTER BAR ── */
+    .sp-filter-bar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 6px;
+        background: linear-gradient(135deg, rgba(238,241,248,0.9) 0%, rgba(224,232,244,0.9) 100%);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-radius: 14px;
+        border: 1px solid rgba(209,213,219,0.5);
+        box-shadow: 0 1px 8px rgba(30,58,95,0.06);
+        flex-wrap: wrap;
+    }
+    .sp-filter-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 14px;
+        border: 1px solid transparent;
+        border-radius: 10px;
+        background: transparent;
+        color: #6b7280;
+        font-size: 0.78rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+        white-space: nowrap;
+        touch-action: manipulation;
+        min-height: 36px;
+        position: relative;
+        overflow: hidden;
+    }
+    .sp-filter-btn::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        opacity: 0;
+        transition: opacity 0.28s;
+        background: radial-gradient(circle at center, rgba(45,106,159,0.12) 0%, transparent 70%);
+    }
+    .sp-filter-btn:hover:not(.sp-filter-active)::before { opacity: 1; }
+    .sp-filter-btn:hover:not(.sp-filter-active) {
+        color: #1e3a5f;
+        border-color: rgba(45,106,159,0.18);
+    }
+    .sp-filter-btn.sp-filter-active {
+        background: linear-gradient(135deg, #1e3a5f 0%, #2d6a9f 100%);
+        color: #fff;
+        box-shadow: 0 3px 14px rgba(30,58,95,0.3), inset 0 1px 0 rgba(255,255,255,0.15);
+        transform: translateY(-1px);
+    }
+    .sp-filter-btn.sp-filter-active:hover {
+        box-shadow: 0 5px 20px rgba(30,58,95,0.4), inset 0 1px 0 rgba(255,255,255,0.15);
+    }
+    .sp-filter-btn i { font-size: 0.92rem; transition: transform 0.2s; }
+    .sp-filter-btn:hover i { transform: scale(1.15); }
+    .sp-filter-count {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 22px;
+        height: 19px;
+        padding: 0 6px;
+        border-radius: 10px;
+        font-size: 0.65rem;
+        font-weight: 700;
+        background: rgba(107,114,128,0.1);
+        transition: all 0.28s;
+    }
+    .sp-filter-active .sp-filter-count {
+        background: rgba(255,255,255,0.22);
+    }
+
+    /* Solo filter button — orange gradient when active */
+    .sp-filter-btn-solo.sp-filter-active {
+        background: linear-gradient(135deg, #c2410c 0%, #ea580c 50%, #f97316 100%);
+        box-shadow: 0 3px 14px rgba(234,88,12,0.35), inset 0 1px 0 rgba(255,255,255,0.18);
+    }
+    .sp-filter-btn-solo.sp-filter-active:hover {
+        box-shadow: 0 5px 20px rgba(234,88,12,0.45), inset 0 1px 0 rgba(255,255,255,0.18);
+    }
+    .sp-filter-btn-solo:hover:not(.sp-filter-active) {
+        color: #ea580c;
+        border-color: rgba(234,88,12,0.18);
+    }
+    .sp-filter-btn-solo::before {
+        background: radial-gradient(circle at center, rgba(234,88,12,0.1) 0%, transparent 70%);
+    }
+
+    /* Solo row highlight in matrix */
+    .sp-mx-row-solo .sp-mx-pc-name {
+        background: #fff7ed !important;
+        border-right-color: #fed7aa !important;
+    }
+    .sp-mx-row-solo td.sp-mx-cell {
+        background: rgba(254,215,170,0.15);
+    }
+    .sp-mx-row-solo td.sp-mx-cell:hover {
+        background: rgba(234,88,12,0.18) !important;
+    }
+
+    /* Filter bar responsive */
+    @@media (max-width: 768px) {
+        .sp-filter-btn { padding: 6px 10px; font-size: 0.74rem; min-height: 38px; }
+    }
+    @@media (max-width: 480px) {
+        .sp-filter-bar { gap: 4px; padding: 4px; }
+        .sp-filter-btn {
+            flex: 1 1 calc(50% - 4px);
+            justify-content: center;
+            padding: 8px 6px;
+            font-size: 0.73rem;
+            min-height: 44px;
+        }
     }
 
     /* Legend */
@@ -695,6 +851,7 @@
 
     // Tracks cells currently showing the flash animation
     private HashSet<(int AuditorId, int PcId)> _flashingCells = new();
+    private string _matrixFilter = "All";
 
     protected override async Task OnInitializedAsync()
     {
@@ -739,6 +896,7 @@
         _pending.RemoveAll(r => r.Id == id);
         _auditors = DashSvc.GetAuditorPermGroups();
         _matrixAuditors = _auditors.Where(a => a.StaffRole != StaffRoles.Solo).ToList();
+        _soloPcIds = _auditors.Where(a => a.StaffRole == StaffRoles.Solo).Select(a => a.AuditorId).ToHashSet();
         ShowMsg("Permission approved.", false);
     }
 
@@ -784,6 +942,7 @@
         _busy = false;
         _auditors = DashSvc.GetAuditorPermGroups();
         _matrixAuditors = _auditors.Where(a => a.StaffRole != StaffRoles.Solo).ToList();
+        _soloPcIds = _auditors.Where(a => a.StaffRole == StaffRoles.Solo).Select(a => a.AuditorId).ToHashSet();
         _addPcSelection[auditorId] = 0;
         ShowMsg($"{pc.FullName} added as {capacity}.", false);
     }
@@ -833,7 +992,31 @@
         }
         _auditors = DashSvc.GetAuditorPermGroups();
         _matrixAuditors = _auditors.Where(a => a.StaffRole != StaffRoles.Solo).ToList();
+        _soloPcIds = _auditors.Where(a => a.StaffRole == StaffRoles.Solo).Select(a => a.AuditorId).ToHashSet();
     }
+
+    // ── Filter helpers ──
+    private bool PcHasAuditor(int pcId)
+        => _matrixAuditors.Any(a => a.ApprovedPcs.Any(p => p.PcId == pcId && p.WorkCapacity == StaffRoles.Auditor));
+
+    private bool PcHasCs(int pcId)
+        => _matrixAuditors.Any(a => a.ApprovedPcs.Any(p => p.PcId == pcId && p.WorkCapacity != StaffRoles.Auditor));
+
+    private List<PcInfo> GetFilteredPcs() => _matrixFilter switch
+    {
+        "Unassigned" => _allPcs.Where(pc => !PcHasAuditor(pc.PcId) && !PcHasCs(pc.PcId)).ToList(),
+        "Partial"    => _allPcs.Where(pc => PcHasAuditor(pc.PcId) != PcHasCs(pc.PcId)).ToList(),
+        "Solo"       => _allPcs.Where(pc => _soloPcIds.Contains(pc.PcId)).ToList(),
+        _            => _allPcs
+    };
+
+    private int CountByFilter(string filter) => filter switch
+    {
+        "Unassigned" => _allPcs.Count(pc => !PcHasAuditor(pc.PcId) && !PcHasCs(pc.PcId)),
+        "Partial"    => _allPcs.Count(pc => PcHasAuditor(pc.PcId) != PcHasCs(pc.PcId)),
+        "Solo"       => _allPcs.Count(pc => _soloPcIds.Contains(pc.PcId)),
+        _            => _allPcs.Count
+    };
 
     private void ShowMsg(string msg, bool isError) { _msg = msg; _msgIsError = isError; }
 

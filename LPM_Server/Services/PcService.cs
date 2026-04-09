@@ -31,9 +31,10 @@ public record PurchasePaymentMethodInfo(int PaymentMethodId, string MethodType,
 // ── Balance calculation records ──
 public record PcBalanceData(
     int PurchasedNis, decimal UsedNis, decimal BalanceNis,
-    double HoursLeft, int EffectiveRateCents, int PurchaseRateCents, bool RateMismatch);
+    double HoursLeft, int EffectiveRateCents, int PurchaseRateCents, bool RateMismatch,
+    string Currency = "ILS");
 
-public record PcPurchaseRow(int PurchaseId, string Date, double Hours, int AmountNis);
+public record PcPurchaseRow(int PurchaseId, string Date, double Hours, int AmountNis, string Currency = "ILS");
 
 public record PcSessionCostRow(
     int SessionId, string Date, string AuditorName,
@@ -553,16 +554,18 @@ public List<PcListItem> GetAllPcs()
             while (r.Read()) purchased[r.GetInt32(0)] = r.GetInt32(1);
         }
 
-        // B: Last purchase rate per PC (highest PurchaseId with total AmountPaid > 0)
+        // B: Last purchase rate + currency per PC (highest PurchaseId with total AmountPaid > 0)
         var lastPurchaseRate = new Dictionary<int, int>();
+        var pcCurrency = new Dictionary<int, string>();
         using (var cmd = conn.CreateCommand())
         {
             cmd.CommandText = @"
-                SELECT pu.PcId, pu.PurchaseId, SUM(pi.AmountPaid), SUM(pi.HoursBought)
+                SELECT pu.PcId, pu.PurchaseId, SUM(pi.AmountPaid), SUM(pi.HoursBought),
+                       COALESCE(pu.Currency, 'ILS')
                 FROM fin_purchase_items pi
                 JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
                 WHERE pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
-                GROUP BY pu.PcId, pu.PurchaseId
+                GROUP BY pu.PcId, pu.PurchaseId, pu.Currency
                 HAVING SUM(pi.AmountPaid) > 0
                 ORDER BY pu.PcId, pu.PurchaseId";
             using var r = cmd.ExecuteReader();
@@ -571,6 +574,7 @@ public List<PcListItem> GetAllPcs()
                 int pcId = r.GetInt32(0);
                 int amt = r.GetInt32(2);
                 double hrs = r.GetDouble(3);
+                pcCurrency[pcId] = r.GetString(4); // last one wins (highest PurchaseId)
                 if (hrs > 0)
                     lastPurchaseRate[pcId] = (int)((double)amt / hrs * 100);
             }
@@ -620,12 +624,14 @@ public List<PcListItem> GetAllPcs()
             int purchaseRate = lastPurchaseRate.GetValueOrDefault(pcId, 0);
             decimal soloUsed = soloCosts.GetValueOrDefault(pcId);
 
+            string currency = pcCurrency.GetValueOrDefault(pcId, "ILS");
+
             if (!sessions.TryGetValue(pcId, out var list) || list.Count == 0)
             {
                 decimal totalUsed = soloUsed;
                 decimal bal = purchasedNis - totalUsed;
                 double hrs = purchaseRate > 0 ? (double)(bal / ((decimal)purchaseRate / 100m)) : 0;
-                result[pcId] = new(purchasedNis, totalUsed, bal, hrs, purchaseRate, purchaseRate, false);
+                result[pcId] = new(purchasedNis, totalUsed, bal, hrs, purchaseRate, purchaseRate, false, currency);
                 continue;
             }
 
@@ -651,7 +657,7 @@ public List<PcListItem> GetAllPcs()
             double hoursLeft = effective > 0 ? (double)(balance / ((decimal)effective / 100m)) : 0;
             bool mismatch = effective > 0 && purchaseRate > 0 && effective != purchaseRate;
 
-            result[pcId] = new(purchasedNis, usedNis, balance, hoursLeft, effective, purchaseRate, mismatch);
+            result[pcId] = new(purchasedNis, usedNis, balance, hoursLeft, effective, purchaseRate, mismatch, currency);
         }
         return result;
     }
@@ -1295,18 +1301,19 @@ public List<PcListItem> GetAllPcs()
         {
             cmd.CommandText = @"
                 SELECT pu.PurchaseId, pu.PurchaseDate,
-                       COALESCE(SUM(pi.HoursBought), 0), COALESCE(SUM(pi.AmountPaid), 0)
+                       COALESCE(SUM(pi.HoursBought), 0), COALESCE(SUM(pi.AmountPaid), 0),
+                       COALESCE(pu.Currency, 'ILS')
                 FROM fin_purchase_items pi
                 JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
                 WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
-                GROUP BY pu.PurchaseId, pu.PurchaseDate
+                GROUP BY pu.PurchaseId, pu.PurchaseDate, pu.Currency
                 ORDER BY pu.PurchaseId";
             cmd.Parameters.AddWithValue("@id", pcId);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
                 int amt = r.GetInt32(3);
-                purchases.Add(new(r.GetInt32(0), r.GetString(1), r.GetDouble(2), amt));
+                purchases.Add(new(r.GetInt32(0), r.GetString(1), r.GetDouble(2), amt, r.GetString(4)));
                 totalPurchased += amt;
             }
         }
