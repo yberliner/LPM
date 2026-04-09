@@ -755,8 +755,8 @@
                     </button>
                     <span style="font-size:.72rem; color:#64748b;">
                         @_manifest.Sum(m => m.Files.Count(f => f.Include)) files to import across @_manifest.Count(m => !m.IsExcluded) PC(s)
-                        @{ var skippedCount = _manifest.Sum(m => m.Files.Count(f => !f.Include && f.AlreadyExists)); }
-                        @{ var overrideCount = _manifest.Sum(m => m.Files.Count(f => f.OverrideExisting)); }
+                        @{ var skippedCount = _manifest.Where(m => !m.IsExcluded).Sum(m => m.Files.Count(f => !f.Include && f.AlreadyExists)); }
+                        @{ var overrideCount = _manifest.Where(m => !m.IsExcluded).Sum(m => m.Files.Count(f => f.OverrideExisting)); }
                         @if (skippedCount > 0)
                         {
                             <span style="color:#64748b;"> — @skippedCount skipped</span>
@@ -1271,7 +1271,10 @@
                 foreach (var f in pc.Files)
                 {
                     if (f.Section is "Front_Cover" or "Back_Cover")
+                    {
                         f.Include = _overrideCoverFolders || !f.AlreadyExists;
+                        f.OverrideExisting = _overrideCoverFolders && f.AlreadyExists;
+                    }
                     else
                         f.Include = !f.AlreadyExists;
                 }
