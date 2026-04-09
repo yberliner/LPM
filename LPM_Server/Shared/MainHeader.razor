@@ -2801,7 +2801,8 @@
     .sm-modal {
         position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
         z-index: 10051; width: min(960px, 96vw); max-height: 92vh;
-        background: #fff; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.3);
+        background: var(--custom-white); color: var(--default-text-color);
+        border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.3);
         display: flex; flex-direction: column; overflow: hidden;
     }
     .sm-header {
@@ -2824,54 +2825,54 @@
     .sm-detail-body { padding: 16px 20px; position: relative; }
     .sm-footer {
         display: flex; align-items: center; gap: 8px;
-        padding: 12px 20px; border-top: 1px solid #e2e8f0;
+        padding: 12px 20px; border-top: 1px solid var(--default-border);
         flex-shrink: 0;
     }
     .sm-pc-bar {
         display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
     }
-    .sm-pc-label { font-weight: 600; font-size: .88rem; color: #475569; white-space: nowrap; }
+    .sm-pc-label { font-weight: 600; font-size: .88rem; color: var(--default-text-color); white-space: nowrap; }
     .sm-pc-select { max-width: 280px; }
     .sm-empty {
-        text-align: center; padding: 40px 0; color: #94a3b8; font-size: .88rem;
+        text-align: center; padding: 40px 0; color: var(--text-muted); font-size: .88rem;
     }
     .sm-empty i { font-size: 2rem; display: block; margin-bottom: 8px; }
-    .sm-table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #e2e8f0; }
-    .sm-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
-    .sm-table thead { background: #f8fafc; }
+    .sm-table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--default-border); }
+    .sm-table { width: 100%; border-collapse: collapse; font-size: .82rem; color: var(--default-text-color); }
+    .sm-table thead { background: var(--default-background); }
     .sm-table th {
         padding: 8px 10px; text-align: left; font-weight: 600;
-        color: #475569; border-bottom: 2px solid #e2e8f0; white-space: nowrap;
+        color: var(--default-text-color); border-bottom: 2px solid var(--default-border); white-space: nowrap;
     }
-    .sm-table td { padding: 7px 10px; border-bottom: 1px solid #f1f5f9; }
+    .sm-table td { padding: 7px 10px; border-bottom: 1px solid var(--default-border); color: var(--default-text-color); }
     .sm-row { cursor: pointer; transition: background .12s; }
-    .sm-row:hover { background: #f0f7ff; }
+    .sm-row:hover { background: rgb(var(--light-rgb)); }
     .sm-name-cell { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sm-pager {
         display: flex; align-items: center; justify-content: center; gap: 12px;
-        padding: 12px 20px; border-top: 1px solid #e2e8f0; flex-shrink: 0;
+        padding: 12px 20px; border-top: 1px solid var(--default-border); flex-shrink: 0;
     }
-    .sm-pager-info { font-size: .82rem; color: #64748b; font-weight: 500; }
+    .sm-pager-info { font-size: .82rem; color: var(--text-muted); font-weight: 500; }
     .sm-pager .btn { min-width: 80px; }
 
     /* Detail grid */
     .sm-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
     .sm-card {
-        background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px;
+        background: var(--default-background); border: 1px solid var(--default-border); border-radius: 12px;
         padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
     }
     .sm-card-head {
-        font-weight: 700; font-size: .92rem; color: #1e293b;
-        padding-bottom: 6px; border-bottom: 2px solid #e2e8f0;
+        font-weight: 700; font-size: .92rem; color: var(--default-text-color);
+        padding-bottom: 6px; border-bottom: 2px solid var(--default-border);
         display: flex; align-items: center;
     }
     .sm-field { display: flex; flex-direction: column; gap: 2px; }
-    .sm-field label { font-size: .75rem; font-weight: 600; color: #64748b; }
-    .sm-field input[readonly], .sm-field input[disabled] { background: #f1f5f9; color: #94a3b8; }
+    .sm-field label { font-size: .75rem; font-weight: 600; color: var(--text-muted); }
+    .sm-field input[readonly], .sm-field input[disabled] { background: var(--default-background); color: var(--text-muted); }
     .sm-field-row { display: flex; gap: 10px; }
     .sm-field-row .sm-field { flex: 1; }
     .sm-empty-card {
-        text-align: center; padding: 30px 0; color: #94a3b8;
+        text-align: center; padding: 30px 0; color: var(--text-muted);
         font-size: .88rem; font-style: italic;
     }
 
