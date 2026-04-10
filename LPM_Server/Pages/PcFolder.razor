@@ -6337,7 +6337,7 @@
 
     void OnTreeDrop(string folderRelPath, string section)
     {
-        if (_dragNode == null || _dragNode.IsFolder || _dragSection != section)
+        if (_dragNode == null || _dragNode.IsFolder)
         {
             _dragNode = null; _dragSection = "";
             return;
