@@ -515,40 +515,40 @@ window.interop = {
       document.addEventListener('keydown', function (e) {
           var el = e.target;
           if (!el || !el.id) return;
-          var m = el.id.match(/^arf-c-(\d+)-(\d+)$/);
+          var m = el.id.match(/^arf-c-(\d+)-(\d+)-(\d+)$/);
           if (!m) return;
 
-          var row = parseInt(m[1]), col = parseInt(m[2]);
+          var tbl = parseInt(m[1]), row = parseInt(m[2]), col = parseInt(m[3]);
           var maxCol = 3;
           var key = e.key;
 
           if (key === 'ArrowUp') {
-              if (hasNewlines(el)) return; // let browser handle multi-line
-              if (row > 0) { e.preventDefault(); focusCell('arf-c-' + (row - 1) + '-' + col, true); }
+              if (hasNewlines(el)) return;
+              if (row > 0) { e.preventDefault(); focusCell('arf-c-' + tbl + '-' + (row - 1) + '-' + col, true); }
           }
           else if (key === 'ArrowDown') {
               if (hasNewlines(el)) return;
               e.preventDefault();
-              focusCell('arf-c-' + (row + 1) + '-' + col, true);
+              focusCell('arf-c-' + tbl + '-' + (row + 1) + '-' + col, true);
           }
           else if (key === 'ArrowRight' && atEnd(el)) {
               if (col < maxCol) {
                   e.preventDefault();
-                  focusCell('arf-c-' + row + '-' + (col + 1), false);
+                  focusCell('arf-c-' + tbl + '-' + row + '-' + (col + 1), false);
               } else {
-                  // Wrap to next row, col 0
+                  // Wrap to next row, col 0 (same table)
                   e.preventDefault();
-                  focusCell('arf-c-' + (row + 1) + '-0', false);
+                  focusCell('arf-c-' + tbl + '-' + (row + 1) + '-0', false);
               }
           }
           else if (key === 'ArrowLeft' && atStart(el)) {
               if (col > 0) {
                   e.preventDefault();
-                  focusCell('arf-c-' + row + '-' + (col - 1), true);
+                  focusCell('arf-c-' + tbl + '-' + row + '-' + (col - 1), true);
               } else if (row > 0) {
-                  // Wrap to prev row, last col
+                  // Wrap to prev row, last col (same table)
                   e.preventDefault();
-                  focusCell('arf-c-' + (row - 1) + '-' + maxCol, true);
+                  focusCell('arf-c-' + tbl + '-' + (row - 1) + '-' + maxCol, true);
               }
           }
       });

@@ -126,7 +126,7 @@
                         <td class="small text-center text-muted">@HrsLabel(pc.TotalSessionSec)</td>
                         <td class="small text-center text-muted">@pc.AuditorSessions</td>
                         <td class="small text-center text-muted">@pc.AcademyVisits</td>
-                        <td class="small text-center text-muted">@(pc.HoursPurchased)h</td>
+                        <td class="small text-center text-muted">@FormatHoursMinutes(pc.HoursPurchased)</td>
                         <td class="small text-muted text-truncate" style="max-width:120px;">@(string.IsNullOrEmpty(pc.Auditor) ? "\u2014" : pc.Auditor)</td>
                         <td class="small text-center" style="padding:0;">
                             <button class="btn btn-link btn-sm p-0 bal-detail-btn"
@@ -401,7 +401,7 @@
                                 {
                                     <tr>
                                         <td class="small ps-3">@FormatDate(ap.Date)</td>
-                                        <td class="small text-center fw-semibold">@(ap.HoursBought)h</td>
+                                        <td class="small text-center fw-semibold">@(ap.HoursBought < 0 ? "-" : "")@FormatHoursMinutes(ap.HoursBought)</td>
                                         <td class="small text-center">@(ap.Amount > 0 ? $"{CurrSym(ap.Currency)}{ap.Amount}" : "\u2014")</td>
                                         <td class="small text-center">
                                             @{
@@ -426,7 +426,8 @@
                             <tfoot class="table-light">
                                 <tr>
                                     <td class="small ps-3 fw-semibold">@LS.T("pcs.total")</td>
-                                    <td class="small text-center fw-semibold">@(_auditingPurchases.Sum(a => a.HoursBought))h</td>
+                                    @{ var apTotal = _auditingPurchases.Sum(a => a.HoursBought); }
+                                    <td class="small text-center fw-semibold">@(apTotal < 0 ? "-" : "")@FormatHoursMinutes(apTotal)</td>
                                     <td class="small text-center fw-semibold">
                                         @{
                                             var auditGroups = _auditingPurchases.Where(a => a.Amount > 0)
@@ -1539,7 +1540,7 @@
                                     {
                                         <tr>
                                             <td class="small">@FormatDate(p.Date)</td>
-                                            <td class="small text-center">@(p.Hours)h</td>
+                                            <td class="small text-center">@(p.Hours < 0 ? "-" : "")@FormatHoursMinutes(p.Hours)</td>
                                             <td class="small text-end fw-semibold" style="color:#16a34a;">@CurrSym(p.Currency)@(p.AmountNis.ToString("N0"))</td>
                                         </tr>
                                     }
@@ -1589,7 +1590,7 @@
                             <span class="bal-formula-op">&divide;</span>
                             <span class="bal-formula-item">@CurrSym(balCurr)@(ex.EffectiveRateCents / 100)/hr</span>
                             <span class="bal-formula-op">=</span>
-                            <span class="bal-formula-result">@(ex.EffectiveRateCents > 0 ? $"{ex.HoursLeft:N1}h" : "\u2014")</span>
+                            <span class="bal-formula-result">@(ex.EffectiveRateCents > 0 ? $"{(ex.HoursLeft < 0 ? "-" : "")}{FormatHoursMinutes(ex.HoursLeft)}" : "\u2014")</span>
                         </div>
                         <div class="px-3 pb-2 small">
                             <span style="color:#475569;">@LS.T("pcs.rateUsed"): <strong>@CurrSym(balCurr)@(ex.EffectiveRateCents / 100)/hr</strong></span>
@@ -3414,7 +3415,7 @@
                 TotalTime: HrsLabel(pc.TotalSessionSec),
                 Sessions: pc.AuditorSessions,
                 AcadVisits: pc.AcademyVisits,
-                HoursPurchased: $"{pc.HoursPurchased}h",
+                HoursPurchased: FormatHoursMinutes(pc.HoursPurchased),
                 Auditor: string.IsNullOrEmpty(pc.Auditor) ? "—" : pc.Auditor
             );
         }).ToList();

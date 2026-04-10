@@ -506,7 +506,7 @@ public List<PcListItem> GetAllPcs()
             ) pay ON pay.PcId = pc.PcId
             LEFT JOIN (
                 SELECT PcId,
-                       SUM(CASE WHEN AuditorId IS NOT NULL THEN LengthSeconds ELSE 0 END) AS UsedSec,
+                       SUM(CASE WHEN AuditorId IS NOT NULL THEN LengthSeconds + COALESCE(AdminSeconds, 0) ELSE 0 END) AS UsedSec,
                        COUNT(*) AS SessionCount,
                        SUM(CASE WHEN AuditorId IS NOT NULL THEN 1 ELSE 0 END) AS AuditorSessionCount
                 FROM sess_sessions WHERE IsFreeSession = 0 GROUP BY PcId

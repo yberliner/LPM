@@ -3889,7 +3889,7 @@
                     var pdfBytes = PdfSvc.GenerateArfPdf(
                         arfData.PcName, arfData.Date, arfData.Grade, arfData.SessionLength,
                         arfData.AdminTime, arfData.TotalTa, arfData.TaRange,
-                        arfData.Rows, html);
+                        arfData.GetGroups(), html);
                     if (FolderSvc.TryOverwriteArfPdf(PcId, sessionFileName, pdfBytes, Solo))
                     {
                         // Reload any pane that currently shows arf.pdf

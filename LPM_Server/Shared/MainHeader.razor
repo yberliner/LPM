@@ -1377,108 +1377,108 @@
                                 </div>
                             </div>
 
-                            @* ── Table: Process / Time / Tone Arm Reads / Results and Comments ── *@
-                            <table class="arf-table">
-                                <thead>
-                                    <tr>
-                                        <th style="width:3%;"></th>
-                                        <th style="width:35%;">Process</th>
-                                        <th style="width:10%;">Time</th>
-                                        <th style="width:10%;">Tone Arm<br/>Reads</th>
-                                        <th style="width:35%;">Results and Comments</th>
-                                        <th style="width:7%;"></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @{
-                                        int arfBlockNum = 0;
-                                    }
-                                    @for (int i = 0; i < _arfRows.Count; i++)
-                                    {
-                                        var idx = i;
-                                        var proc = _arfRows[idx].Process?.Trim() ?? "";
-                                        if (proc.Equals("Beginning of Handling", StringComparison.OrdinalIgnoreCase) && idx > 0)
-                                            arfBlockNum++;
-                                        var blockBg = arfBlockNum % 2 == 0
-                                            ? "background:transparent;"
-                                            : "background:rgba(59,130,246,.04);";
-                                        <tr style="@blockBg">
-                                            <td style="text-align:center; vertical-align:middle;">
-                                                <input type="checkbox" checked="@_arfRows[idx].Checked"
-                                                       @onchange="e => { _arfRows[idx].Checked = (bool)(e.Value ?? false); RebuildArfSummary(); }"
-                                                       style="accent-color:#3b82f6; cursor:pointer;" />
-                                            </td>
-                                            <td style="vertical-align:top;">
-                                                <textarea id="arf-c-@idx-0"
-                                                       class="arf-cell-input arf-cell-textarea"
-                                                       rows="1" dir="auto"
-                                                       @onblur="() => _arfRows[idx].Touched = true"
-                                                       @oninput="e => { _arfRows[idx].Process = e.Value?.ToString() ?? string.Empty; var _kw = HasAutoUncheckKeyword(_arfRows[idx].Process); if (!_kw) _arfRows[idx].AutoUnchecked = false; if (_kw && !_arfRows[idx].AutoUnchecked && _arfRows[idx].Checked) { _arfRows[idx].Checked = false; _arfRows[idx].AutoUnchecked = true; } RebuildArfSummary(); }">@_arfRows[idx].Process</textarea>
-                                            </td>
-                                            <td>
-                                                <input id="arf-c-@idx-1" type="text" inputmode="numeric" maxlength="5"
-                                                       class="arf-cell-input arf-cell-center arf-time-input @(!IsValidArfTime(_arfRows[idx].Time) || (!string.IsNullOrWhiteSpace(_arfRows[idx].Time) && !IsArfTimeOrdered(idx)) ? "arf-cell-invalid" : "")"
-                                                       placeholder="HH:MM"
-                                                       value="@_arfRows[idx].Time"
-                                                       @onblur="() => _arfRows[idx].Touched = true"
-                                                       @onchange="e => SetArfTimeCell(idx, e)"/>
-                                            </td>
-                                            <td>
-                                                <input id="arf-c-@idx-2" type="text" inputmode="numeric" maxlength="4"
-                                                       class="arf-cell-input arf-cell-center"
-                                                       onkeydown="var k=event.key,v=event.target.value;if(['Backspace','Delete','Tab','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(k))return;if(k==='.'&&!v.includes('.')&&v.length===1)return;if(/[0-9]/.test(k))return;event.preventDefault();"
-                                                       value="@_arfRows[idx].ToneArm"
-                                                       @oninput="e => { _arfRows[idx].ToneArm = FormatToneArm(e.Value?.ToString() ?? string.Empty); RebuildArfSummary(); }"/>
-                                            </td>
-                                            <td style="vertical-align:top;">
-                                                <textarea id="arf-c-@idx-3" class="arf-cell-input arf-cell-textarea"
-                                                       rows="1" dir="auto"
-                                                       @oninput="e => { _arfRows[idx].Results = e.Value?.ToString() ?? string.Empty; RebuildArfSummary(); }"
-                                                       @onkeydown="e => OnArfResultsKeyDown(e, idx)">@_arfRows[idx].Results</textarea>
-                                            </td>
-                                            <td style="text-align:center; vertical-align:middle;">
-                                                <div class="d-flex align-items-center justify-content-center gap-0">
-                                                    @if (CanInsertArfRow(idx, false))
-                                                    {
-                                                        <button class="btn btn-sm p-0 arf-row-action-btn" title="Insert row above"
-                                                                @onclick="() => InsertArfRow(idx, false)">
-                                                            <i class="ri-arrow-up-s-line"></i>
-                                                        </button>
-                                                    }
-                                                    @if (CanInsertArfRow(idx, true))
-                                                    {
-                                                        <button class="btn btn-sm p-0 arf-row-action-btn" title="Insert row below"
-                                                                @onclick="() => InsertArfRow(idx, true)">
-                                                            <i class="ri-arrow-down-s-line"></i>
-                                                        </button>
-                                                    }
-                                                    @if (_arfRows.Count > 1)
-                                                    {
-                                                        <button class="btn btn-sm p-0 arf-del-row-btn" title="Delete row"
-                                                                @onclick="() => RemoveArfRow(idx)">
-                                                            <i class="ri-close-line"></i>
-                                                        </button>
-                                                    }
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-
-                            @if (!string.IsNullOrEmpty(_arfBlockedMsg))
+                            @* ── ARF Tables: Process / Time / Tone Arm Reads / Results and Comments ── *@
+                            @for (int ti = 0; ti < _arfTables.Count; ti++)
                             {
-                                <div class="arf-blocked-msg">
-                                    <i class="ri-arrow-down-line arf-blocked-arrow"></i>
-                                    <span>@_arfBlockedMsg</span>
+                                var tIdx = ti;
+                                var tblDuration = GetArfTableDuration(tIdx);
+                                <div class="arf-table-card">
+                                    <div class="arf-table-header">
+                                        <span>ARF @(tIdx + 1)</span>
+                                        @if (!string.IsNullOrEmpty(tblDuration))
+                                        {
+                                            <span class="arf-table-duration">Duration: @tblDuration</span>
+                                        }
+                                    </div>
+                                    <table class="arf-table">
+                                        <thead>
+                                            <tr>
+                                                <th style="width:3%;"></th>
+                                                <th style="width:35%;">Process</th>
+                                                <th style="width:10%;">Time</th>
+                                                <th style="width:10%;">Tone Arm<br/>Reads</th>
+                                                <th style="width:35%;">Results and Comments</th>
+                                                <th style="width:7%;"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @for (int ri = 0; ri < _arfTables[tIdx].Rows.Count; ri++)
+                                            {
+                                                var rIdx = ri;
+                                                var row = _arfTables[tIdx].Rows[rIdx];
+                                                <tr>
+                                                    <td style="text-align:center; vertical-align:middle;">
+                                                        <input type="checkbox" checked="@row.Checked"
+                                                               @onchange="e => { _arfTables[tIdx].Rows[rIdx].Checked = (bool)(e.Value ?? false); RebuildArfSummary(); }"
+                                                               style="accent-color:#3b82f6; cursor:pointer;" />
+                                                    </td>
+                                                    <td style="vertical-align:top;">
+                                                        <textarea id="arf-c-@tIdx-@rIdx-0"
+                                                               class="arf-cell-input arf-cell-textarea"
+                                                               rows="1" dir="auto"
+                                                               @onblur="() => _arfTables[tIdx].Rows[rIdx].Touched = true"
+                                                               @oninput="e => { _arfTables[tIdx].Rows[rIdx].Process = e.Value?.ToString() ?? string.Empty; var _kw = HasAutoUncheckKeyword(_arfTables[tIdx].Rows[rIdx].Process); if (!_kw) _arfTables[tIdx].Rows[rIdx].AutoUnchecked = false; if (_kw && !_arfTables[tIdx].Rows[rIdx].AutoUnchecked && _arfTables[tIdx].Rows[rIdx].Checked) { _arfTables[tIdx].Rows[rIdx].Checked = false; _arfTables[tIdx].Rows[rIdx].AutoUnchecked = true; } RebuildArfSummary(); }">@row.Process</textarea>
+                                                    </td>
+                                                    <td>
+                                                        <input id="arf-c-@tIdx-@rIdx-1" type="text" inputmode="numeric" maxlength="5"
+                                                               class="arf-cell-input arf-cell-center arf-time-input @(!IsValidArfTime(row.Time) || (!string.IsNullOrWhiteSpace(row.Time) && !IsArfTimeOrdered(tIdx, rIdx)) ? "arf-cell-invalid" : "")"
+                                                               placeholder="HH:MM"
+                                                               value="@row.Time"
+                                                               @onblur="() => _arfTables[tIdx].Rows[rIdx].Touched = true"
+                                                               @onchange="e => SetArfTimeCell(tIdx, rIdx, e)"/>
+                                                    </td>
+                                                    <td>
+                                                        <input id="arf-c-@tIdx-@rIdx-2" type="text" inputmode="numeric" maxlength="4"
+                                                               class="arf-cell-input arf-cell-center"
+                                                               onkeydown="var k=event.key,v=event.target.value;if(['Backspace','Delete','Tab','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(k))return;if(k==='.'&&!v.includes('.')&&v.length===1)return;if(/[0-9]/.test(k))return;event.preventDefault();"
+                                                               value="@row.ToneArm"
+                                                               @oninput="e => { _arfTables[tIdx].Rows[rIdx].ToneArm = FormatToneArm(e.Value?.ToString() ?? string.Empty); RebuildArfSummary(); }"/>
+                                                    </td>
+                                                    <td style="vertical-align:top;">
+                                                        <textarea id="arf-c-@tIdx-@rIdx-3" class="arf-cell-input arf-cell-textarea"
+                                                               rows="1" dir="auto"
+                                                               @oninput="e => { _arfTables[tIdx].Rows[rIdx].Results = e.Value?.ToString() ?? string.Empty; RebuildArfSummary(); }"
+                                                               @onkeydown="e => OnArfResultsKeyDown(e, tIdx, rIdx)">@row.Results</textarea>
+                                                    </td>
+                                                    <td style="text-align:center; vertical-align:middle;">
+                                                        <div class="d-flex align-items-center justify-content-center gap-0">
+                                                            <button class="btn btn-sm p-0 arf-row-action-btn" title="Insert row above"
+                                                                    @onclick="() => InsertArfRow(tIdx, rIdx, false)">
+                                                                <i class="ri-arrow-up-s-line"></i>
+                                                            </button>
+                                                            <button class="btn btn-sm p-0 arf-row-action-btn" title="Insert row below"
+                                                                    @onclick="() => InsertArfRow(tIdx, rIdx, true)">
+                                                                <i class="ri-arrow-down-s-line"></i>
+                                                            </button>
+                                                            @if (!(_arfTables.Count == 1 && _arfTables[0].Rows.Count == 1))
+                                                            {
+                                                                <button class="btn btn-sm p-0 arf-del-row-btn" title="Delete row"
+                                                                        @onclick="() => RemoveArfRow(tIdx, rIdx)">
+                                                                    <i class="ri-close-line"></i>
+                                                                </button>
+                                                            }
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                    <div class="d-flex justify-content-end mt-1">
+                                        <button class="btn btn-sm p-0 d-flex align-items-center gap-1"
+                                                style="color:#64748b; font-size:.72rem;"
+                                                title="Add a row to this ARF table"
+                                                @onclick="() => AddArfRow(tIdx)">
+                                            <i class="ri-add-line"></i> + Row
+                                        </button>
+                                    </div>
                                 </div>
                             }
                             <div class="d-flex justify-content-end mt-1">
-                                <button class="btn btn-sm p-0 d-flex align-items-center gap-1 @(!string.IsNullOrEmpty(_arfBlockedMsg) ? "arf-block-btn-pulse" : "")"
-                                        style="color:#64748b; font-size:.72rem;"
-                                        title="Append a new handling block (Beginning/TITS/EOS/End)"
-                                        @onclick="AppendArfBlock">
-                                    <i class="ri-file-copy-line"></i> + Block
+                                <button class="btn btn-sm p-0 d-flex align-items-center gap-1"
+                                        style="color:#3b82f6; font-size:.76rem; font-weight:600;"
+                                        title="Add a new independent ARF session table"
+                                        @onclick="AddArfTable">
+                                    <i class="ri-file-add-line"></i> + Add Session ARF
                                 </button>
                             </div>
 
@@ -3429,31 +3429,27 @@
     }
     .arf-del-row-btn:hover { color: #ef4444; }
 
-    /* ── ARF blocked message + pulse ── */
-    .arf-blocked-msg {
-        display: flex; align-items: center; gap: 6px; padding: 6px 12px; margin-top: 6px;
-        background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.3);
-        border-radius: 6px; font-size: .76rem; color: #f59e0b;
-        animation: arf-blocked-in .4s ease-out;
+    /* ── ARF table card ── */
+    .arf-table-card {
+        border: 1px solid #334155;
+        border-radius: 8px;
+        padding: 8px 10px;
+        margin-bottom: 12px;
     }
-    .arf-blocked-arrow {
-        animation: arf-arrow-bounce .6s ease-in-out infinite;
+    .arf-table-card .arf-table { margin-top: 4px; }
+    .arf-table-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 2px 4px;
+        font-size: .8rem;
+        font-weight: 600;
+        color: #94a3b8;
     }
-    .arf-block-btn-pulse {
-        color: #14b8a6 !important; font-weight: 600;
-        animation: arf-btn-pulse .8s ease-in-out 3;
-    }
-    @@keyframes arf-blocked-in {
-        from { opacity: 0; transform: translateY(-8px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    @@keyframes arf-arrow-bounce {
-        0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(4px); }
-    }
-    @@keyframes arf-btn-pulse {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(1.15); }
+    .arf-table-duration {
+        font-weight: 400;
+        color: #64748b;
+        font-size: .75rem;
     }
 
     /* ── Drop zone ── */
@@ -4184,7 +4180,20 @@
     string _arfTaRangeTo     = "";
     string _arfExamReport    = "F/N";
     string _arfSummary       = "";
-    List<ArfRow> _arfRows    = [new() { Touched = true }];
+    class ArfTable
+    {
+        public List<ArfRow> Rows = MakeDefaultRows();
+        static List<ArfRow> MakeDefaultRows() =>
+        [
+            new ArfRow { Process = "Beginning of Handling", Checked = false, AutoUnchecked = true, Touched = true },
+            new ArfRow { Process = "TITS", Results = "FN VGIS", Checked = false, AutoUnchecked = true, Touched = true },
+            new ArfRow { Touched = true },
+            new ArfRow { Process = "EOS", Results = "FN VGIS", Checked = false, AutoUnchecked = true, Touched = true },
+            new ArfRow { Process = "End of Handling", Checked = false, AutoUnchecked = true, Touched = true },
+        ];
+    }
+    List<ArfTable> _arfTables = [new ArfTable()];
+    IEnumerable<ArfRow> AllArfRows => _arfTables.SelectMany(t => t.Rows);
 
     class ArfRow
     {
@@ -4226,159 +4235,56 @@
                 $"var el=document.getElementById('arf-ta-to');if(el)el.value={System.Text.Json.JsonSerializer.Serialize(_arfTaRangeTo)};");
     }
 
-    bool CanAddArfRow => true;
+    void AddArfRow(int tblIdx) { _arfTables[tblIdx].Rows.Add(new ArfRow { Touched = true }); RebuildArfSummary(); }
 
-    void AddArfRow() { _arfRows.Add(new ArfRow { Touched = true }); RebuildArfSummary(); }
+    void AddArfTable() { _arfTables.Add(new ArfTable()); RebuildArfSummary(); }
 
-    // Remove empty blocks (only BOH/TITS/EOS/EOH with no user-added rows between TITS and EOS)
-    static List<ArfRow> FilterEmptyArfBlocks(List<ArfRow> rows)
+    string GetArfTableDuration(int tblIdx)
     {
-        // Split into blocks: each block starts at "Beginning of Handling"
-        var blocks = new List<List<ArfRow>>();
-        List<ArfRow>? current = null;
-        foreach (var r in rows)
-        {
-            var p = r.Process?.Trim() ?? "";
-            if (p.Equals("Beginning of Handling", StringComparison.OrdinalIgnoreCase))
-            {
-                current = new List<ArfRow>();
-                blocks.Add(current);
-            }
-            current?.Add(r);
-        }
-
-        // If no blocks found, return all rows as-is
-        if (blocks.Count == 0) return rows;
-
-        var result = new List<ArfRow>();
-        var templateNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Beginning of Handling", "TITS", "EOS", "End of Handling" };
-
-        foreach (var block in blocks)
-        {
-            // A block is empty if every row is either a template row or a blank row,
-            // and no row has any time or tone arm entered
-            bool isEmpty = block.All(r =>
-                string.IsNullOrWhiteSpace(r.Time) && string.IsNullOrWhiteSpace(r.ToneArm))
-                && block.All(r =>
-                {
-                    var p = r.Process?.Trim() ?? "";
-                    return templateNames.Contains(p) || string.IsNullOrWhiteSpace(p);
-                });
-
-            if (!isEmpty)
-                result.AddRange(block);
-        }
-
-        return result;
+        var validTimes = _arfTables[tblIdx].Rows
+            .Select(r => ArfTimeToMinutes(r.Time))
+            .Where(t => t >= 0)
+            .ToList();
+        if (validTimes.Count < 2) return "";
+        var diff = validTimes[^1] - validTimes[0];
+        return diff > 0 ? $"{diff / 60}:{diff % 60:D2}" : "";
     }
 
-    void AppendArfBlock()
+    void InsertArfRow(int tblIdx, int rowIdx, bool below)
     {
-        _arfRows.Add(new ArfRow { Process = "Beginning of Handling", Results = "", Touched = true, Checked = false, AutoUnchecked = true });
-        _arfRows.Add(new ArfRow { Process = "TITS", Results = "FN VGIS", Touched = true, Checked = false, AutoUnchecked = true });
-        _arfRows.Add(new ArfRow { Touched = true });
-        _arfRows.Add(new ArfRow { Process = "EOS",  Results = "FN VGIS", Touched = true, Checked = false, AutoUnchecked = true });
-        _arfRows.Add(new ArfRow { Process = "End of Handling", Results = "", Touched = true, Checked = false, AutoUnchecked = true });
-        RebuildArfSummary();
-    }
-    string _arfBlockedMsg = "";
-
-    // Check if inserting above/below a row is allowed.
-    // Protected pairs: Beginning→TITS (no insert between), EOS→End (no insert between),
-    // End of Handling (no insert below).
-    bool CanInsertArfRow(int idx, bool below)
-    {
-        var process = (_arfRows[idx].Process?.Trim() ?? "");
-        var isBOH = process.Equals("Beginning of Handling", StringComparison.OrdinalIgnoreCase);
-        var isEOS = process.Equals("EOS", StringComparison.OrdinalIgnoreCase);
-        var isEOH = process.Equals("End of Handling", StringComparison.OrdinalIgnoreCase);
-        var isTITS = process.Equals("TITS", StringComparison.OrdinalIgnoreCase);
-
-        // No insert above Beginning of Handling
-        if (!below && isBOH) return false;
-
-        // No insert below Beginning of Handling (between BOH and TITS)
-        if (below && isBOH) return false;
-
-        // No insert below EOS (between EOS and EOH)
-        if (below && isEOS) return false;
-
-        // No insert below End of Handling (must use + Block)
-        if (below && isEOH) return false;
-
-        // No insert above TITS if preceded by BOH
-        if (!below && isTITS &&
-            idx > 0 && (_arfRows[idx - 1].Process?.Trim() ?? "").Equals("Beginning of Handling", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        // No insert above EOH if preceded by EOS
-        if (!below && isEOH &&
-            idx > 0 && (_arfRows[idx - 1].Process?.Trim() ?? "").Equals("EOS", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        return true;
-    }
-
-    string GetInsertBlockedReason(int idx, bool below)
-    {
-        var process = (_arfRows[idx].Process?.Trim() ?? "");
-        if (!below && process.Equals("Beginning of Handling", StringComparison.OrdinalIgnoreCase))
-            return "Cannot insert before Beginning of Handling";
-        if (below && process.Equals("Beginning of Handling", StringComparison.OrdinalIgnoreCase))
-            return "Cannot insert between Beginning of Handling and TITS";
-        if (below && process.Equals("EOS", StringComparison.OrdinalIgnoreCase))
-            return "Cannot insert between EOS and End of Handling";
-        if (below && process.Equals("End of Handling", StringComparison.OrdinalIgnoreCase))
-            return "Use the \"+ Block\" button to add a new handling block";
-        if (!below && process.Equals("TITS", StringComparison.OrdinalIgnoreCase) &&
-            idx > 0 && (_arfRows[idx - 1].Process?.Trim() ?? "").Equals("Beginning of Handling", StringComparison.OrdinalIgnoreCase))
-            return "Cannot insert between Beginning of Handling and TITS";
-        if (!below && process.Equals("End of Handling", StringComparison.OrdinalIgnoreCase) &&
-            idx > 0 && (_arfRows[idx - 1].Process?.Trim() ?? "").Equals("EOS", StringComparison.OrdinalIgnoreCase))
-            return "Cannot insert between EOS and End of Handling";
-        return "";
-    }
-
-    void InsertArfRow(int idx, bool below)
-    {
-        if (!CanInsertArfRow(idx, below))
-        {
-            _arfBlockedMsg = GetInsertBlockedReason(idx, below);
-            _ = ClearArfBlockedMsg();
-            return;
-        }
-        _arfBlockedMsg = "";
-        var insertAt = below ? idx + 1 : idx;
-        _arfRows.Insert(insertAt, new ArfRow { Touched = true });
+        var insertAt = below ? rowIdx + 1 : rowIdx;
+        _arfTables[tblIdx].Rows.Insert(insertAt, new ArfRow { Touched = true });
+        RecalcSessionLength();
         RebuildArfSummary();
     }
 
-    async Task ClearArfBlockedMsg()
+    void RemoveArfRow(int tblIdx, int rowIdx)
     {
-        await Task.Delay(4000);
-        _arfBlockedMsg = "";
-        await InvokeAsync(StateHasChanged);
+        var tbl = _arfTables[tblIdx];
+        tbl.Rows.RemoveAt(rowIdx);
+        if (tbl.Rows.Count == 0)
+        {
+            if (_arfTables.Count > 1)
+                _arfTables.RemoveAt(tblIdx);
+            else
+                tbl.Rows.Add(new ArfRow { Touched = true });
+        }
+        RecalcSessionLength();
+        RebuildArfSummary();
     }
-    void RemoveArfRow(int idx) { if (_arfRows.Count > 1) { _arfRows.RemoveAt(idx); RecalcSessionLength(); RebuildArfSummary(); } }
-    async Task OnArfResultsKeyDown(KeyboardEventArgs e, int idx)
+
+    async Task OnArfResultsKeyDown(KeyboardEventArgs e, int tblIdx, int rowIdx)
     {
         if (e.Key != "Tab" && e.Key != "Enter") return;
-        if (!CanInsertArfRow(idx, true))
-        {
-            _arfBlockedMsg = GetInsertBlockedReason(idx, true);
-            _ = ClearArfBlockedMsg();
-            return;
-        }
-        InsertArfRow(idx, true);
-        var newIdx = idx + 1;
+        InsertArfRow(tblIdx, rowIdx, true);
+        var newRowIdx = rowIdx + 1;
         await JSRuntime.InvokeVoidAsync("eval",
-            $"setTimeout(()=>{{var el=document.getElementById('arf-c-{newIdx}-0');if(el)el.focus();}},30)");
+            $"setTimeout(()=>{{var el=document.getElementById('arf-c-{tblIdx}-{newRowIdx}-0');if(el)el.focus();}},30)");
     }
 
     void RebuildArfSummary(bool pushToEditor = true)
     {
-        var lines = _arfRows
+        var lines = AllArfRows
             .Where(r => r.Checked && !string.IsNullOrWhiteSpace(r.Process))
             .Select(r =>
             {
@@ -4428,10 +4334,10 @@
     }
 
     // Auto-format time: "2347" → "23:47", "947" → "9:47", "23:47" stays
-    void SetArfTimeCell(int idx, ChangeEventArgs e)
+    void SetArfTimeCell(int tblIdx, int rowIdx, ChangeEventArgs e)
     {
         var raw = e.Value?.ToString()?.Trim() ?? "";
-        _arfRows[idx].Time = FormatArfTime(raw);
+        _arfTables[tblIdx].Rows[rowIdx].Time = FormatArfTime(raw);
         RecalcSessionLength();
         RebuildArfSummary();
     }
@@ -4439,52 +4345,19 @@
     void RecalcSessionLength()
     {
         _arfSessionLength = "";
-
-        // Sum time only within "Beginning of Handling" → "End of Handling" blocks.
-        // Gaps between blocks are excluded.
         int totalMinutes = 0;
-        int blockStart = -1; // minutes of current block's "Beginning of Handling"
-
-        for (int i = 0; i < _arfRows.Count; i++)
+        foreach (var tbl in _arfTables)
         {
-            var process = _arfRows[i].Process?.Trim() ?? "";
-            var time = ArfTimeToMinutes(_arfRows[i].Time);
-
-            if (process.Equals("Beginning of Handling", StringComparison.OrdinalIgnoreCase))
+            var validTimes = tbl.Rows
+                .Select(r => ArfTimeToMinutes(r.Time))
+                .Where(t => t >= 0)
+                .ToList();
+            if (validTimes.Count >= 2)
             {
-                // Use own time, or look forward for the first time in this block
-                var effectiveTime = time >= 0 ? time : FindNextTime(i + 1);
-                if (effectiveTime >= 0)
-                    blockStart = effectiveTime;
-            }
-            else if (process.Equals("End of Handling", StringComparison.OrdinalIgnoreCase) && blockStart >= 0)
-            {
-                // Use own time, or look backward for the last time in this block
-                var effectiveTime = time >= 0 ? time : FindPrevTime(i - 1);
-                if (effectiveTime >= 0)
-                {
-                    var blockDuration = effectiveTime - blockStart;
-                    if (blockDuration > 0)
-                        totalMinutes += blockDuration;
-                }
-                blockStart = -1;
+                var diff = validTimes[^1] - validTimes[0];
+                if (diff > 0) totalMinutes += diff;
             }
         }
-
-        // Fallback: only if NO handling block rows exist at all (old-style ARF without blocks)
-        bool hasHandlingRows = _arfRows.Any(r =>
-            (r.Process?.Trim() ?? "").Equals("Beginning of Handling", StringComparison.OrdinalIgnoreCase) ||
-            (r.Process?.Trim() ?? "").Equals("End of Handling", StringComparison.OrdinalIgnoreCase));
-        if (totalMinutes == 0 && !hasHandlingRows)
-        {
-            var validRows = _arfRows.Where(r => ArfTimeToMinutes(r.Time) >= 0).ToList();
-            if (validRows.Count >= 2)
-            {
-                var diff = ArfTimeToMinutes(validRows[^1].Time) - ArfTimeToMinutes(validRows[0].Time);
-                if (diff > 0) totalMinutes = diff;
-            }
-        }
-
         if (totalMinutes > 0)
             _arfSessionLength = $"{totalMinutes / 60}:{totalMinutes % 60:D2}";
     }
@@ -4522,51 +4395,25 @@
         return h * 60 + m;
     }
 
-    // Find the first valid time in rows after startIdx (looking forward within the block)
-    int FindNextTime(int startIdx)
+    bool IsArfTimeOrdered(int tblIdx, int rowIdx)
     {
-        for (int i = startIdx; i < _arfRows.Count; i++)
-        {
-            // Stop at the next "End of Handling" — don't look past this block
-            if ((_arfRows[i].Process?.Trim() ?? "").Equals("End of Handling", StringComparison.OrdinalIgnoreCase))
-                break;
-            var t = ArfTimeToMinutes(_arfRows[i].Time);
-            if (t >= 0) return t;
-        }
-        return -1;
-    }
-
-    // Find the last valid time in rows before startIdx (looking backward within the block)
-    int FindPrevTime(int startIdx)
-    {
-        for (int i = startIdx; i >= 0; i--)
-        {
-            // Stop at "Beginning of Handling" — don't look past this block
-            if ((_arfRows[i].Process?.Trim() ?? "").Equals("Beginning of Handling", StringComparison.OrdinalIgnoreCase))
-                break;
-            var t = ArfTimeToMinutes(_arfRows[i].Time);
-            if (t >= 0) return t;
-        }
-        return -1;
-    }
-
-    bool IsArfTimeOrdered(int idx)
-    {
-        if (idx == 0) return true;
-        var cur = ArfTimeToMinutes(_arfRows[idx].Time);
-        var prev = ArfTimeToMinutes(_arfRows[idx - 1].Time);
-        if (cur < 0 || prev < 0) return true; // don't flag if either is empty/invalid
+        if (rowIdx == 0) return true;
+        var rows = _arfTables[tblIdx].Rows;
+        var cur = ArfTimeToMinutes(rows[rowIdx].Time);
+        var prev = ArfTimeToMinutes(rows[rowIdx - 1].Time);
+        if (cur < 0 || prev < 0) return true;
         return cur >= prev;
     }
 
-    bool ArfHasTimeErrors => _arfRows.Select((_, i) => i).Any(i =>
-        (!IsValidArfTime(_arfRows[i].Time) && !string.IsNullOrWhiteSpace(_arfRows[i].Time))
-        || !IsArfTimeOrdered(i));
+    bool ArfHasTimeErrors => _arfTables.SelectMany((tbl, tIdx) =>
+        tbl.Rows.Select((r, rIdx) => new { r, tIdx, rIdx }))
+        .Any(x => (!IsValidArfTime(x.r.Time) && !string.IsNullOrWhiteSpace(x.r.Time))
+            || !IsArfTimeOrdered(x.tIdx, x.rIdx));
 
-    bool ArfHasIncompleteRows => _arfRows.Any(r =>
+    bool ArfHasIncompleteRows => AllArfRows.Any(r =>
         !string.IsNullOrWhiteSpace(r.Time) && !IsValidArfTime(r.Time));
 
-    bool IsArfTableEmpty => _arfRows.All(r =>
+    bool IsArfTableEmpty => AllArfRows.All(r =>
         string.IsNullOrWhiteSpace(r.Time)
         && string.IsNullOrWhiteSpace(r.ToneArm));
 
@@ -4594,19 +4441,6 @@
             2 => $"{digits[0]}.{digits[1]}",
             _ => $"{digits[0]}.{digits[1]}{digits[2]}"
         };
-    }
-
-    void SetArfCell(int row, int col, ChangeEventArgs e)
-    {
-        var v = e.Value?.ToString() ?? string.Empty;
-        switch (col)
-        {
-            case 0: _arfRows[row].Process = v; break;
-            case 1: _arfRows[row].Time    = v; break;
-            case 2: _arfRows[row].ToneArm = v; break;
-            case 3: _arfRows[row].Results = v; break;
-        }
-        RebuildArfSummary();
     }
 
     // ── Upload Front Cover ──────────────────────────────────
@@ -4706,13 +4540,7 @@
         _arfDate = DateTime.Today.ToString("dd/MM/yy"); _arfGrade = ""; _arfSessionLength = ""; _arfAdminTime = ""; _arfTotalTa = ""; _arfTaRangeFrom = ""; _arfTaRangeTo = ""; _arfExamReport = "F/N"; _arfSummary = "";
         _step3TopHtml = ""; _step3BottomHtml = "";
         _step3Visited = false;
-        _arfRows = [
-            new ArfRow { Process = "Beginning of Handling", Results = "", Touched = true, Checked = false, AutoUnchecked = true },
-            new ArfRow { Process = "TITS", Results = "FN VGIS", Touched = true, Checked = false, AutoUnchecked = true },
-            new ArfRow { Touched = true },
-            new ArfRow { Process = "EOS",  Results = "FN VGIS", Touched = true, Checked = false, AutoUnchecked = true },
-            new ArfRow { Process = "End of Handling", Results = "", Touched = true, Checked = false, AutoUnchecked = true }
-        ];
+        _arfTables = [new ArfTable()];
         // Auto-load files from scan inbox (PWA share target)
         LoadInboxFiles();
         _showImportWizard = true;
@@ -5246,8 +5074,10 @@
         var capturedTaTo        = _arfTaRangeTo;
         var capturedDate        = _arfDate;
         var capturedSummary     = string.IsNullOrWhiteSpace(_arfSummary) ? null : _arfSummary;
-        var capturedRows        = FilterEmptyArfBlocks(_arfRows)
-            .Select(r => new PdfService.ArfRowData(r.Checked, r.Process, r.Time, r.ToneArm, r.Results)).ToList();
+        var capturedRowGroups    = _arfTables.Select(t => t.Rows
+            .Where(r => !string.IsNullOrWhiteSpace(r.Process) || !string.IsNullOrWhiteSpace(r.Time))
+            .Select(r => new PdfService.ArfRowData(r.Checked, r.Process, r.Time, r.ToneArm, r.Results)).ToList())
+            .Where(g => g.Count > 0).ToList();
         var capturedPcName      = _approvedPcs.FirstOrDefault(p => p.PcId == _importPcId)?.FullName ?? "";
         var capturedUsername    = _logUsername;
         var capturedIsSolo      = _isSoloUser;
@@ -5360,7 +5190,7 @@
                             AdminTime     = capturedAdminTime,
                             TotalTa       = capturedTotalTa,
                             TaRange       = taRange,
-                            Rows          = capturedRows
+                            RowGroups     = capturedRowGroups
                         };
                         DashSvc.AddFolderSummary(sessionId, capturedPcId,
                             capturedIsSolo ? null : capturedUserId,
@@ -5467,7 +5297,7 @@
                     arfPdfBytes = PdfSvc.GenerateArfPdf(
                         capturedPcName, capturedDate,
                         capturedGrade, capturedSessLen, capturedAdminTime,
-                        capturedTotalTa, taRange, capturedRows, capturedSummary,
+                        capturedTotalTa, taRange, capturedRowGroups, capturedSummary,
                         pageWidthPt: targetW, pageHeightPt: targetH);
                     await Advance(sArf, 2);
                     normalizedBytes = PdfSvc.CombinePdfs(arfPdfBytes, normalizedBytes);

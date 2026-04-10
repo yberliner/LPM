@@ -1601,12 +1601,17 @@ public class PdfService
         public string TotalTa       { get; set; } = "";
         public string TaRange       { get; set; } = "";
         public List<ArfRowData> Rows { get; set; } = [];
+        public List<List<ArfRowData>>? RowGroups { get; set; }
+
+        /// <summary>Returns grouped rows: uses RowGroups if present, otherwise wraps Rows as a single group.</summary>
+        public List<List<ArfRowData>> GetGroups() =>
+            RowGroups is { Count: > 0 } ? RowGroups : [Rows];
     }
 
     public byte[] GenerateArfPdf(
         string pcName, string date, string grade, string sessionLength,
         string adminTime, string totalTa, string taRange,
-        List<ArfRowData> rows, string? summaryHtml,
+        List<List<ArfRowData>> rowGroups, string? summaryHtml,
         double? pageWidthPt = null, double? pageHeightPt = null)
     {
         // Generated with PdfSharpCore (native PDF text/path operators) — fully vector,
@@ -1839,41 +1844,62 @@ public class PdfService
             return result;
         }
 
-        // ── Table rows ──
+        // ── Table rows (grouped by ARF table) ──
         double lineH    = fCell.Size * 1.4;
         double minRowH  = 30 * scale;
-        bool alt = false;
-        foreach (var r in rows)
+        var penSep = new PdfSharpCore.Drawing.XPen(PdfSharpCore.Drawing.XColor.FromArgb(0x33, 0x33, 0x33), 1.5);
+        var bSepBg = new PdfSharpCore.Drawing.XSolidBrush(PdfSharpCore.Drawing.XColor.FromArgb(0xe2, 0xe8, 0xf0));
+        var fSepLbl = MakeFont(11, bold: true);
+
+        for (int gi = 0; gi < rowGroups.Count; gi++)
         {
-            var procLines = WrapText(NormalizeForPdf(r.Process), procW - 2 * pad);
-            var resLines  = WrapText(NormalizeForPdf(r.Results),  resW  - 2 * pad);
-            int lineCount = Math.Max(procLines.Count, resLines.Count);
-            double rowH   = Math.Max(minRowH, lineCount * lineH + 2 * pad);
-
-            if (alt) gfx.DrawRectangle(bAltRow, R(x0, y, cw, rowH));
-            gfx.DrawLine(penBdr, x0, y + rowH, x0 + cw, y + rowH);
-
-            for (int li = 0; li < procLines.Count; li++)
+            // Draw separator between ARF tables (skip before the first)
+            if (gi > 0)
             {
-                var (vis, rtl) = procLines[li];
-                var fmt = rtl ? fmtCR : fmtCL;
-                var rx  = rtl ? x0          : x0 + pad;
-                var rw  = rtl ? procW - pad  : procW - 2 * pad;
-                gfx.DrawString(vis, fCell, bDark, R(rx, y + pad + li * lineH, rw, lineH), fmt);
-            }
-            gfx.DrawString(r.Time    ?? "", fCell, bDark, R(x1, y, timeW, rowH), fmtCC);
-            gfx.DrawString(r.ToneArm ?? "", fCell, bDark, R(x2, y, toneW, rowH), fmtCC);
-            for (int li = 0; li < resLines.Count; li++)
-            {
-                var (vis, rtl) = resLines[li];
-                var fmt = rtl ? fmtCR : fmtCL;
-                var rx  = rtl ? x3          : x3 + pad;
-                var rw  = rtl ? resW - pad   : resW - 2 * pad;
-                gfx.DrawString(vis, fCell, bDark, R(rx, y + pad + li * lineH, rw, lineH), fmt);
+                double sepH = 22 * scale;
+                y += 4 * scale;
+                gfx.DrawRectangle(bSepBg, R(x0, y, cw, sepH));
+                gfx.DrawLine(penSep, x0, y, x0 + cw, y);
+                gfx.DrawString($"ARF {gi + 1}", fSepLbl,
+                    new PdfSharpCore.Drawing.XSolidBrush(PdfSharpCore.Drawing.XColor.FromArgb(0x47, 0x55, 0x69)),
+                    R(x0, y, cw, sepH), fmtCC);
+                gfx.DrawLine(penSep, x0, y + sepH, x0 + cw, y + sepH);
+                y += sepH;
             }
 
-            y += rowH;
-            alt = !alt;
+            bool alt = false;
+            foreach (var r in rowGroups[gi])
+            {
+                var procLines = WrapText(NormalizeForPdf(r.Process), procW - 2 * pad);
+                var resLines  = WrapText(NormalizeForPdf(r.Results),  resW  - 2 * pad);
+                int lineCount = Math.Max(procLines.Count, resLines.Count);
+                double rowH   = Math.Max(minRowH, lineCount * lineH + 2 * pad);
+
+                if (alt) gfx.DrawRectangle(bAltRow, R(x0, y, cw, rowH));
+                gfx.DrawLine(penBdr, x0, y + rowH, x0 + cw, y + rowH);
+
+                for (int li = 0; li < procLines.Count; li++)
+                {
+                    var (vis, rtl2) = procLines[li];
+                    var fmt = rtl2 ? fmtCR : fmtCL;
+                    var rx  = rtl2 ? x0          : x0 + pad;
+                    var rw  = rtl2 ? procW - pad  : procW - 2 * pad;
+                    gfx.DrawString(vis, fCell, bDark, R(rx, y + pad + li * lineH, rw, lineH), fmt);
+                }
+                gfx.DrawString(r.Time    ?? "", fCell, bDark, R(x1, y, timeW, rowH), fmtCC);
+                gfx.DrawString(r.ToneArm ?? "", fCell, bDark, R(x2, y, toneW, rowH), fmtCC);
+                for (int li = 0; li < resLines.Count; li++)
+                {
+                    var (vis, rtl2) = resLines[li];
+                    var fmt = rtl2 ? fmtCR : fmtCL;
+                    var rx  = rtl2 ? x3          : x3 + pad;
+                    var rw  = rtl2 ? resW - pad   : resW - 2 * pad;
+                    gfx.DrawString(vis, fCell, bDark, R(rx, y + pad + li * lineH, rw, lineH), fmt);
+                }
+
+                y += rowH;
+                alt = !alt;
+            }
         }
 
         // ── TA Range ──
