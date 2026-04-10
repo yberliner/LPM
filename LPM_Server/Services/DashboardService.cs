@@ -1956,7 +1956,7 @@ public class DashboardService
                   SELECT pu2.PurchaseId FROM fin_purchases pu2
                   JOIN fin_purchase_items pi2 ON pi2.PurchaseId = pu2.PurchaseId
                   WHERE pu2.PcId = @pc AND pu2.IsDeleted = 0 AND pi2.ItemType = 'Auditing'
-                  GROUP BY pu2.PurchaseId HAVING SUM(pi2.AmountPaid) > 0
+                  GROUP BY pu2.PurchaseId HAVING SUM(pi2.AmountPaid) <> 0
                   ORDER BY pu2.PurchaseId DESC LIMIT 1
               )";
         cmd.Parameters.AddWithValue("@pc", pcId);
@@ -1964,7 +1964,7 @@ public class DashboardService
         if (r.Read() && !r.IsDBNull(0) && !r.IsDBNull(1))
         {
             double hrs = r.GetDouble(1);
-            if (hrs > 0) return (int)((double)r.GetInt32(0) / hrs * 100);
+            if (Math.Abs(hrs) > 0) return (int)(Math.Abs((double)r.GetInt32(0) / hrs) * 100);
         }
         return 0;
     }

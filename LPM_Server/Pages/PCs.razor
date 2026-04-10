@@ -402,7 +402,7 @@
                                     <tr>
                                         <td class="small ps-3">@FormatDate(ap.Date)</td>
                                         <td class="small text-center fw-semibold">@(ap.HoursBought < 0 ? "-" : "")@FormatHoursMinutes(ap.HoursBought)</td>
-                                        <td class="small text-center">@(ap.Amount > 0 ? $"{CurrSym(ap.Currency)}{ap.Amount}" : "\u2014")</td>
+                                        <td class="small text-center">@(ap.Amount != 0 ? $"{CurrSym(ap.Currency)}{ap.Amount}" : "\u2014")</td>
                                         <td class="small text-center">
                                             @{
                                                 var (apCls, apLbl) = ap.Status switch {
@@ -430,7 +430,7 @@
                                     <td class="small text-center fw-semibold">@(apTotal < 0 ? "-" : "")@FormatHoursMinutes(apTotal)</td>
                                     <td class="small text-center fw-semibold">
                                         @{
-                                            var auditGroups = _auditingPurchases.Where(a => a.Amount > 0)
+                                            var auditGroups = _auditingPurchases.Where(a => a.Amount != 0)
                                                 .GroupBy(a => a.Currency)
                                                 .Select(g => $"{CurrSym(g.Key)}{g.Sum(a => a.Amount)}")
                                                 .ToList();
@@ -1541,7 +1541,7 @@
                                         <tr>
                                             <td class="small">@FormatDate(p.Date)</td>
                                             <td class="small text-center">@(p.Hours < 0 ? "-" : "")@FormatHoursMinutes(p.Hours)</td>
-                                            <td class="small text-end fw-semibold" style="color:#16a34a;">@CurrSym(p.Currency)@(p.AmountNis.ToString("N0"))</td>
+                                            <td class="small text-end fw-semibold" style="color:@(p.AmountNis >= 0 ? "#16a34a" : "#dc2626");">@CurrSym(p.Currency)@(p.AmountNis.ToString("N0"))</td>
                                         </tr>
                                     }
                                 </tbody>

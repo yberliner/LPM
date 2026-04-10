@@ -1526,7 +1526,7 @@ public List<PcListItem> GetAllPcs()
         long usedSec = (long)sCmd.ExecuteScalar()!;
 
         double remainHrs = hours - (double)usedSec / 3600.0;
-        int rate = hours > 0 ? (int)(amount / hours) : 0;
+        int rate = Math.Abs(hours) > 0 ? (int)Math.Abs(amount / hours) : 0;
         int remainNis = (int)(remainHrs * rate);
 
         return new PcAuditingBalance(hours, amount, usedSec, remainHrs, remainNis, rate);

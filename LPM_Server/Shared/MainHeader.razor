@@ -1023,7 +1023,7 @@
          style="background:rgba(0,0,0,.5); z-index:9999;">
         <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wiz-modal-dialog @(_importStep >= 2 ? "modal-lg" : "modal-md")"
              @onclick:stopPropagation="true">
-            <div class="modal-content" style="background:#1e293b; color:#e2e8f0; border:1px solid #334155;">
+            <div class="modal-content wiz-modal-content">
                 <div class="modal-header py-2" style="background:linear-gradient(135deg,#1565c0,#1e88e5); border-bottom:none;">
                     <h5 class="modal-title fs-15 text-white d-flex align-items-center gap-2">
                         <i class="ri-upload-2-line"></i>@LS.T("actions.addSession")
@@ -1542,24 +1542,24 @@
                     {
                         @* ── Step 3: Next C/S Sheet ── *@
                         <div class="arf wiz-step3-content" style="display:flex; flex-direction:column; min-height:480px;">
-                            <div class="arf-subtitle">Dror Center, Haifa, Israel</div>
+                            <div class="s3-subtitle">Dror Center, Haifa, Israel</div>
 
                             @* extra line *@
                             <div style="height:.9rem;"></div>
 
-                            @* PC Name + Date row — big, red, ":" labels, Date tight *@
+                            @* PC Name + Date row *@
                             <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px;">
-                                <span style="font-size:1.35rem; font-weight:600; color:#e2e8f0;">
-                                    PC's Name:&nbsp;<span style="color:#ef4444;">@(_approvedPcs.FirstOrDefault(p => p.PcId == _importPcId)?.FullName ?? "")</span>
+                                <span class="s3-label" style="font-size:1.35rem;">
+                                    PC's Name:&nbsp;<span class="s3-value">@(_approvedPcs.FirstOrDefault(p => p.PcId == _importPcId)?.FullName ?? "")</span>
                                 </span>
-                                <span style="font-size:1.35rem; font-weight:600; color:#e2e8f0;">
-                                    Date:&nbsp;<span style="color:#ef4444;">@_arfDate</span>
+                                <span class="s3-label" style="font-size:1.35rem;">
+                                    Date:&nbsp;<span class="s3-value">@_arfDate</span>
                                 </span>
                             </div>
 
-                            @* Auditor row — aligned left, same size *@
-                            <div style="font-size:1.35rem; font-weight:600; color:#e2e8f0; margin-top:4px;">
-                                Auditor:&nbsp;<span style="color:#ef4444;">@(string.IsNullOrWhiteSpace(_importAuditorFullName) ? _logUsername : _importAuditorFullName)</span>
+                            @* Auditor row *@
+                            <div class="s3-label" style="font-size:1.35rem; margin-top:4px;">
+                                Auditor:&nbsp;<span class="s3-value">@(string.IsNullOrWhiteSpace(_importAuditorFullName) ? _logUsername : _importAuditorFullName)</span>
                             </div>
 
                             @* Free text — above "The Next C/S:" *@
@@ -1571,8 +1571,7 @@
                             <div style="min-height:32px;"></div>
 
                             @* The Next C/S: — centred, bold, underlined *@
-                            <div style="text-align:center; font-size:1.7rem; font-weight:700;
-                                        text-decoration:underline; color:#e2e8f0; padding:8px 0;">
+                            <div class="s3-heading">
                                 The Next C/S:
                             </div>
 
@@ -1584,9 +1583,8 @@
                             @* lower spacer *@
                             <div style="min-height:32px;"></div>
 
-                            @* Auditor signature — bottom right, big, red *@
-                            <div style="text-align:right; color:#ef4444; font-weight:600;
-                                        font-size:1.35rem; margin-top:16px;">
+                            @* Auditor signature — bottom right *@
+                            <div class="s3-signature">
                                 @(string.IsNullOrWhiteSpace(_importAuditorFullName) ? _logUsername : _importAuditorFullName)
                             </div>
                         </div>
@@ -3452,6 +3450,31 @@
         font-size: .75rem;
     }
 
+    /* ── Step 3 (Next C/S) theme-aware ── */
+    .s3-subtitle {
+        text-align: center; font-size: .85rem; font-weight: 500;
+        color: #94a3b8; margin-bottom: 2px; letter-spacing: .3px;
+    }
+    .s3-label {
+        font-weight: 600; color: #e2e8f0;
+    }
+    .s3-value {
+        color: #ef4444; font-weight: 700;
+    }
+    .s3-heading {
+        text-align: center; font-size: 1.7rem; font-weight: 700;
+        text-decoration: underline; color: #e2e8f0; padding: 8px 0;
+    }
+    .s3-signature {
+        text-align: right; color: #ef4444; font-weight: 600;
+        font-size: 1.35rem; margin-top: 16px;
+    }
+    :root[data-theme-mode="light"] .s3-subtitle { color: #64748b; }
+    :root[data-theme-mode="light"] .s3-label { color: #1e293b; }
+    :root[data-theme-mode="light"] .s3-value { color: #dc2626; }
+    :root[data-theme-mode="light"] .s3-heading { color: #1e293b; }
+    :root[data-theme-mode="light"] .s3-signature { color: #dc2626; }
+
     /* ── Drop zone ── */
     .drop-zone {
         position: relative; border: 2px dashed transparent; border-radius: 8px;
@@ -3597,6 +3620,117 @@
 </style>
 
 <style>
+    /* ── Wizard modal theme ── */
+    .wiz-modal-content {
+        background: #1e293b; color: #e2e8f0; border: 1px solid #334155;
+    }
+    :root[data-theme-mode="light"] .wiz-modal-content {
+        background: #ffffff; color: #1e293b; border: 1px solid #cbd5e1;
+    }
+    /* Light-mode: all inputs/selects/textareas inside wizard */
+    :root[data-theme-mode="light"] .wiz-modal-content input,
+    :root[data-theme-mode="light"] .wiz-modal-content select,
+    :root[data-theme-mode="light"] .wiz-modal-content textarea,
+    :root[data-theme-mode="light"] .wiz-modal-content .form-control,
+    :root[data-theme-mode="light"] .wiz-modal-content .form-select {
+        background: #ffffff !important; color: #1e293b !important; border-color: #cbd5e1 !important;
+    }
+    :root[data-theme-mode="light"] .wiz-modal-content input::placeholder,
+    :root[data-theme-mode="light"] .wiz-modal-content textarea::placeholder {
+        color: #94a3b8 !important;
+    }
+    /* Light-mode: labels, muted text, captions */
+    :root[data-theme-mode="light"] .wiz-modal-content .form-label,
+    :root[data-theme-mode="light"] .wiz-modal-content [style*="color:#94a3b8"],
+    :root[data-theme-mode="light"] .wiz-modal-content [style*="color: #94a3b8"] {
+        color: #475569 !important;
+    }
+    :root[data-theme-mode="light"] .wiz-modal-content [style*="color:#e2e8f0"],
+    :root[data-theme-mode="light"] .wiz-modal-content [style*="color: #e2e8f0"] {
+        color: #1e293b !important;
+    }
+    :root[data-theme-mode="light"] .wiz-modal-content [style*="color:#64748b"],
+    :root[data-theme-mode="light"] .wiz-modal-content [style*="color: #64748b"] {
+        color: #64748b !important;
+    }
+    /* Light-mode: inline dark backgrounds */
+    :root[data-theme-mode="light"] .wiz-modal-content [style*="background:#0f172a"],
+    :root[data-theme-mode="light"] .wiz-modal-content [style*="background: #0f172a"] {
+        background: #ffffff !important;
+    }
+    :root[data-theme-mode="light"] .wiz-modal-content [style*="background:#1e293b"],
+    :root[data-theme-mode="light"] .wiz-modal-content [style*="background: #1e293b"] {
+        background: #f8fafc !important;
+    }
+    :root[data-theme-mode="light"] .wiz-modal-content [style*="background:rgba(255,255,255,.03)"],
+    :root[data-theme-mode="light"] .wiz-modal-content [style*="background:rgba(255,255,255,.05)"] {
+        background: #f1f5f9 !important;
+    }
+    /* Light-mode: borders */
+    :root[data-theme-mode="light"] .wiz-modal-content [style*="border-color:#475569"],
+    :root[data-theme-mode="light"] .wiz-modal-content [style*="border-color: #475569"] {
+        border-color: #cbd5e1 !important;
+    }
+    :root[data-theme-mode="light"] .wiz-modal-content [style*="border-color:#334155"],
+    :root[data-theme-mode="light"] .wiz-modal-content [style*="border-color: #334155"] {
+        border-color: #e2e8f0 !important;
+    }
+    :root[data-theme-mode="light"] .wiz-modal-content hr {
+        border-color: #e2e8f0 !important;
+    }
+    :root[data-theme-mode="light"] .wiz-modal-content .modal-footer {
+        border-color: #e2e8f0 !important;
+    }
+    /* Light-mode: reference browser dropdown */
+    :root[data-theme-mode="light"] .wiz-modal-content [style*="border:1px solid #3b82f6"] {
+        background: #ffffff !important; border-color: #93c5fd !important;
+        box-shadow: 0 8px 24px rgba(0,0,0,.12) !important;
+    }
+    :root[data-theme-mode="light"] .wiz-modal-content [style*="border-bottom:1px solid #0f172a"] {
+        border-bottom-color: #e2e8f0 !important;
+    }
+    :root[data-theme-mode="light"] .wiz-modal-content [style*="border-bottom:1px solid #334155"] {
+        border-bottom-color: #e2e8f0 !important;
+    }
+    /* Light-mode: file cards */
+    :root[data-theme-mode="light"] .wiz-modal-content .imp-file-card {
+        background: #f1f5f9; border-color: #cbd5e1; color: #1e293b;
+    }
+    /* Light-mode: ARF specific */
+    :root[data-theme-mode="light"] .arf {
+        background: #f8fafc; border-color: #cbd5e1;
+    }
+    :root[data-theme-mode="light"] .arf-subtitle { color: #64748b; }
+    :root[data-theme-mode="light"] .arf-title { color: #1e293b; }
+    :root[data-theme-mode="light"] .arf-lbl { color: #475569; }
+    :root[data-theme-mode="light"] .arf-val { color: #1e293b; }
+    :root[data-theme-mode="light"] .arf-table th {
+        background: #f1f5f9; color: #475569; border-color: #cbd5e1;
+    }
+    :root[data-theme-mode="light"] .arf-table td { border-color: #e2e8f0; }
+    :root[data-theme-mode="light"] .arf-cell-input { color: #1e293b; }
+    :root[data-theme-mode="light"] .arf-cell-input:focus { background: rgba(59,130,246,.06); }
+    :root[data-theme-mode="light"] .arf-cell-input::placeholder { color: #94a3b8; }
+    :root[data-theme-mode="light"] .arf-table-card { border-color: #cbd5e1; }
+    :root[data-theme-mode="light"] .arf-table-header { color: #475569; }
+    :root[data-theme-mode="light"] .arf-table-duration { color: #64748b; }
+    :root[data-theme-mode="light"] .arf-input,
+    :root[data-theme-mode="light"] .arf-input-short,
+    :root[data-theme-mode="light"] .arf-input-xs {
+        color: #1e293b; background: #ffffff; border-color: #cbd5e1;
+    }
+    :root[data-theme-mode="light"] .arf-row-action-btn { color: #94a3b8; }
+    :root[data-theme-mode="light"] .arf-del-row-btn { color: #94a3b8; }
+    /* Light-mode: stepper */
+    :root[data-theme-mode="light"] .wiz-future .wiz-circle {
+        border-color: #cbd5e1; color: #94a3b8; background: #f8fafc;
+    }
+    :root[data-theme-mode="light"] .wiz-future .wiz-label { color: #94a3b8; }
+    :root[data-theme-mode="light"] .wiz-active .wiz-label { color: #1565c0; }
+    :root[data-theme-mode="light"] .wiz-done .wiz-label { color: #059669; }
+    :root[data-theme-mode="light"] .wiz-label { color: #64748b; }
+    :root[data-theme-mode="light"] .wiz-conn { background: #e2e8f0; }
+
     /* ── Add Session wizard stepper ── */
     .wiz-stepper { display:flex; align-items:center; justify-content:center; padding:4px 0 2px; }
     .wiz-step    { display:flex; flex-direction:column; align-items:center; gap:5px; flex-shrink:0; }
@@ -3624,9 +3758,9 @@
 
         /* Step 3 content: smaller fonts */
         .wiz-step3-content { min-height: 320px !important; }
-        .wiz-step3-content span[style*="font-size:1.35rem"] { font-size: 1rem !important; }
-        .wiz-step3-content div[style*="font-size:1.7rem"] { font-size: 1.3rem !important; }
-        .wiz-step3-content div[style*="font-size:1.35rem"] { font-size: 1rem !important; }
+        .wiz-step3-content .s3-label { font-size: 1rem !important; }
+        .wiz-step3-content .s3-heading { font-size: 1.3rem !important; }
+        .wiz-step3-content .s3-signature { font-size: 1rem !important; }
 
         /* Modal header Reference button */
         .modal-header .btn[title="Open a reference file from this PC's folder"] { font-size: .65rem; padding: 2px 6px; }
