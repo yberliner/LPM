@@ -566,7 +566,7 @@ public List<PcListItem> GetAllPcs()
                 JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
                 WHERE pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
                 GROUP BY pu.PcId, pu.PurchaseId, pu.Currency
-                HAVING SUM(pi.AmountPaid) > 0
+                HAVING SUM(pi.AmountPaid) <> 0
                 ORDER BY pu.PcId, pu.PurchaseId";
             using var r = cmd.ExecuteReader();
             while (r.Read())
@@ -575,8 +575,8 @@ public List<PcListItem> GetAllPcs()
                 int amt = r.GetInt32(2);
                 double hrs = r.GetDouble(3);
                 pcCurrency[pcId] = r.GetString(4); // last one wins (highest PurchaseId)
-                if (hrs > 0)
-                    lastPurchaseRate[pcId] = (int)((double)amt / hrs * 100);
+                if (Math.Abs(hrs) > 0)
+                    lastPurchaseRate[pcId] = (int)(Math.Abs((double)amt / hrs) * 100);
             }
         }
 
@@ -1329,8 +1329,8 @@ public List<PcListItem> GetAllPcs()
         // Last purchase rate
         int purchaseRate = 0;
         for (int i = purchases.Count - 1; i >= 0; i--)
-            if (purchases[i].AmountNis > 0 && purchases[i].Hours > 0)
-            { purchaseRate = (int)((double)purchases[i].AmountNis / purchases[i].Hours * 100); break; }
+            if (purchases[i].AmountNis != 0 && Math.Abs(purchases[i].Hours) > 0)
+            { purchaseRate = (int)(Math.Abs((double)purchases[i].AmountNis / purchases[i].Hours) * 100); break; }
 
         // Billable sessions
         var sess = new List<(int sid, int rate, int admin, int length)>();
@@ -1417,7 +1417,7 @@ public List<PcListItem> GetAllPcs()
                       WHERE pu2.PcId = @id AND pu2.IsDeleted = 0
                         AND pi2.ItemType = 'Auditing'
                       GROUP BY pu2.PurchaseId
-                      HAVING SUM(pi2.AmountPaid) > 0
+                      HAVING SUM(pi2.AmountPaid) <> 0
                       ORDER BY pu2.PurchaseId DESC LIMIT 1
                   )";
             cmd.Parameters.AddWithValue("@id", pcId);
@@ -1425,7 +1425,7 @@ public List<PcListItem> GetAllPcs()
             if (r.Read() && !r.IsDBNull(0) && !r.IsDBNull(1))
             {
                 double hrs = r.GetDouble(1);
-                if (hrs > 0) purchaseRate = (int)(r.GetInt32(0) / hrs * 100);
+                if (Math.Abs(hrs) > 0) purchaseRate = (int)(Math.Abs(r.GetInt32(0) / hrs) * 100);
             }
         }
 

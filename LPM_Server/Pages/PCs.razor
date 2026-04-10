@@ -3072,7 +3072,7 @@
                 m.HoursH = wh.ToString();
                 m.HoursM = wm.ToString("D2");
                 m.IsNegativeHours = it.HoursBought < 0;
-                m.RatePerHour = it.HoursBought != 0 ? (int)Math.Abs(it.AmountPaid / it.HoursBought) : 0;
+                m.RatePerHour = it.HoursBought != 0 ? (int)Math.Round(Math.Abs(it.AmountPaid / it.HoursBought)) : 0;
             }
             return m;
         }).ToList();
