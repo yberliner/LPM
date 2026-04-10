@@ -1292,6 +1292,18 @@ public class DashboardService
     /// Deletes the cs_reviews row for a given session. Returns rows affected (must be 1).
     /// Throws if more than 1 row would be affected (safety guard).
     /// </summary>
+    public bool IsCsReviewApproved(int sessionId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Status, COALESCE(CsSalaryCentsPerHour, 0) FROM cs_reviews WHERE SessionId = @s LIMIT 1";
+        cmd.Parameters.AddWithValue("@s", sessionId);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return false;
+        return r.GetString(0) == "Approved" || r.GetInt32(1) > 0;
+    }
+
     public int DeleteCsReview(int sessionId)
     {
         using var conn = new SqliteConnection(_connectionString);

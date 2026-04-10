@@ -115,6 +115,34 @@ public class AuditorService(IConfiguration config, UserDb userDb)
         Console.WriteLine($"[AuditorService] Updated auditor {auditorId} isAdmin={isAdmin} allowAll={allowAll} sendSms={sendSms}");
     }
 
+    public record AuditorUsageInfo(int SessionCount, int CsReviewCount, int CompletionCount,
+        int MiscChargeCount, int WorkLogCount, int PermissionCount, int MessageCount,
+        int WeeklyRemarkCount, int InstructorCourseCount, int CsCourseCount);
+
+    public AuditorUsageInfo GetAuditorUsages(int auditorId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        int Count(string sql) { using var c = conn.CreateCommand(); c.CommandText = sql; c.Parameters.AddWithValue("@id", auditorId); return (int)(long)c.ExecuteScalar()!; }
+        return new(
+            SessionCount:          Count("SELECT COUNT(*) FROM sess_sessions WHERE AuditorId = @id"),
+            CsReviewCount:         Count("SELECT COUNT(*) FROM cs_reviews WHERE CsId = @id"),
+            CompletionCount:       Count("SELECT COUNT(*) FROM sess_completions WHERE AuditorId = @id"),
+            MiscChargeCount:       Count("SELECT COUNT(*) FROM sess_misc_charges WHERE AuditorId = @id"),
+            WorkLogCount:          Count("SELECT COUNT(*) FROM cs_work_log WHERE CsId = @id"),
+            PermissionCount:       Count("SELECT COUNT(*) FROM sys_staff_pc_list WHERE UserId = @id"),
+            MessageCount:          Count("SELECT COUNT(*) FROM sys_staff_messages WHERE FromStaffId = @id OR ToStaffId = @id"),
+            WeeklyRemarkCount:     Count("SELECT COUNT(*) FROM sys_weekly_remarks WHERE AuditorId = @id"),
+            InstructorCourseCount: Count("SELECT COUNT(*) FROM acad_student_courses WHERE InstructorId = @id"),
+            CsCourseCount:         Count("SELECT COUNT(*) FROM acad_student_courses WHERE CsId = @id")
+        );
+    }
+
+    public bool HasAuditorUsages(AuditorUsageInfo u) =>
+        u.SessionCount + u.CsReviewCount + u.CompletionCount + u.MiscChargeCount +
+        u.WorkLogCount + u.PermissionCount + u.MessageCount + u.WeeklyRemarkCount +
+        u.InstructorCourseCount + u.CsCourseCount > 0;
+
     public void DeleteAuditor(int auditorId)
     {
         using var conn = new SqliteConnection(_connectionString);

@@ -136,12 +136,6 @@
                 <i class="ri-folder-download-line" style="font-size:1.3rem;"></i>
                 Download to Folder
             </button>
-            <button class="btn btn-outline-secondary btn-lg d-flex align-items-center gap-2 @(_shakeActive ? "bk-shake" : "")"
-                    disabled="@(!string.IsNullOrEmpty(_blockedByUser))"
-                    @onclick="ShowPasswordPrompt">
-                <i class="ri-file-zip-line" style="font-size:1.3rem;"></i>
-                Download as ZIP
-            </button>
             @if (!_fbfSupported)
             {
                 <span style="font-size:.75rem;color:#94a3b8;">Folder download requires Chrome or Edge</span>

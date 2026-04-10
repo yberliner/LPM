@@ -414,6 +414,29 @@
     </div>
 }
 
+@* ── Delete Blocked Modal ── *@
+@if (_showDeleteBlocked && _detail != null)
+{
+    <div class="modal show d-block" tabindex="-1" style="background:rgba(0,0,0,.5);z-index:9999;">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
+            <div class="modal-content" style="border:2px solid #dc2626;">
+                <div class="modal-header py-2" style="background:#fef2f2;border-bottom:1px solid #fecaca;">
+                    <h5 class="modal-title d-flex align-items-center gap-2" style="font-size:.95rem;color:#991b1b;">
+                        <i class="ri-error-warning-fill" style="font-size:1.3rem;color:#dc2626;"></i> Cannot delete @_detail.FirstName @_detail.LastName
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="() => _showDeleteBlocked = false"></button>
+                </div>
+                <div class="modal-body" style="max-height:400px;overflow-y:auto;">
+                    @((MarkupString)_deleteBlockedBody)
+                </div>
+                <div class="modal-footer py-2">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showDeleteBlocked = false">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @* ── Add Auditor Wizard ── *@
 @if (_showWizard)
 {
@@ -819,6 +842,8 @@
 
     // Delete confirm
     bool _showDeleteConfirm;
+    bool _showDeleteBlocked;
+    string _deleteBlockedBody = "";
 
     // Wizard
     bool   _showWizard;
@@ -886,7 +911,34 @@
 
     void CancelEdit() { _editMode = false; _editError = ""; }
 
-    void AskDelete() { _showDeleteConfirm = true; }
+    void AskDelete()
+    {
+        if (!_selId.HasValue || _detail == null) return;
+        var u = AuditorSvc.GetAuditorUsages(_selId.Value);
+        if (AuditorSvc.HasAuditorUsages(u))
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append($"<p><strong>{_detail.FirstName} {_detail.LastName}</strong> is referenced in the database:</p>");
+            sb.Append("<table class='table table-sm mb-2' style='font-size:.82rem;'><tbody>");
+            void Row(string label, int count) { if (count > 0) sb.Append($"<tr><td>{label}</td><td class='fw-bold text-end'>{count}</td></tr>"); }
+            Row("Sessions (as auditor)", u.SessionCount);
+            Row("CS Reviews", u.CsReviewCount);
+            Row("Completions", u.CompletionCount);
+            Row("Misc Charges", u.MiscChargeCount);
+            Row("CS Work Log entries", u.WorkLogCount);
+            Row("PC Permission assignments", u.PermissionCount);
+            Row("Staff Messages", u.MessageCount);
+            Row("Weekly Remarks", u.WeeklyRemarkCount);
+            Row("Courses (as instructor)", u.InstructorCourseCount);
+            Row("Courses (as CS)", u.CsCourseCount);
+            sb.Append("</tbody></table>");
+            sb.Append("<div class='small text-muted'><i class='ri-information-line me-1'></i>Deactivate this user instead of deleting to preserve data integrity.</div>");
+            _deleteBlockedBody = sb.ToString();
+            _showDeleteBlocked = true;
+            return;
+        }
+        _showDeleteConfirm = true;
+    }
     void CancelDelete() { _showDeleteConfirm = false; }
     void ConfirmDelete()
     {

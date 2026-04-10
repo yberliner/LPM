@@ -1161,6 +1161,25 @@
     </div>
 }
 
+@* ── Delete Blocked (FK Dependencies) Modal ──────────────────────────────── *@
+@if (_showDiagDeleteBlocked)
+{
+    <div class="diag-modal-backdrop" @onclick="() => _showDiagDeleteBlocked = false"></div>
+    <div class="diag-modal-content" style="max-width:500px;border:2px solid #dc2626;">
+        <div class="d-flex align-items-center gap-2 mb-2" style="color:#991b1b;">
+            <i class="ri-error-warning-fill" style="font-size:1.3rem;color:#dc2626;"></i>
+            <strong style="font-size:.92rem;">@_diagDeleteBlockedTitle</strong>
+            <button class="btn-close btn-close-sm ms-auto" @onclick="() => _showDiagDeleteBlocked = false"></button>
+        </div>
+        <div style="max-height:350px;overflow-y:auto;font-size:.85rem;">
+            @((MarkupString)_diagDeleteBlockedBody)
+        </div>
+        <div class="text-end mt-2">
+            <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showDiagDeleteBlocked = false">Close</button>
+        </div>
+    </div>
+}
+
 @* ── Delete Session Modal ─────────────────────────────────────────────────── *@
 @if (_delSessModal)
 {
@@ -1699,6 +1718,11 @@
     // ── Inline delete confirmation (sess_* / cs_* rows) ───────────────────
     (string Table, string PkVal)? _pendingDelete;
 
+    // ── Delete-blocked modal (FK dependencies found) ────────────────────
+    bool   _showDiagDeleteBlocked;
+    string _diagDeleteBlockedTitle = "";
+    string _diagDeleteBlockedBody  = "";
+
     // ── Delete Session modal ───────────────────────────────────────────────
     bool   _delSessModal = false;
     bool   _delSessBusy  = false;
@@ -1759,6 +1783,43 @@
         var table        = _editModalTable;
         var pkCol        = _editModalPkCol;
         var admin        = AdminUser();
+
+        // Validate FK columns: check if the referenced parent row exists
+        try
+        {
+            using var vConn = new SqliteConnection(DbCs());
+            vConn.Open();
+            using var fkCmd = vConn.CreateCommand();
+            fkCmd.CommandText = $"PRAGMA foreign_key_list(\"{table}\")";
+            var fkDefs = new Dictionary<string, (string ToTable, string ToCol)>();
+            using (var fr = fkCmd.ExecuteReader())
+                while (fr.Read())
+                {
+                    var from = fr["from"]?.ToString() ?? "";
+                    var toT  = fr["table"]?.ToString() ?? "";
+                    var to   = fr["to"]?.ToString() ?? "";
+                    if (!string.IsNullOrEmpty(from) && !string.IsNullOrEmpty(toT))
+                        fkDefs[from] = (toT, string.IsNullOrEmpty(to) ? "rowid" : to);
+                }
+            for (int i = 0; i < editableCols.Count; i++)
+            {
+                if (fkDefs.TryGetValue(editableCols[i], out var fk) && !string.IsNullOrEmpty(editableVals[i]))
+                {
+                    using var ck = vConn.CreateCommand();
+                    ck.CommandText = $"SELECT COUNT(*) FROM \"{fk.ToTable}\" WHERE \"{fk.ToCol}\"=@v";
+                    ck.Parameters.AddWithValue("@v", long.TryParse(editableVals[i], out var lv) ? (object)lv : editableVals[i]);
+                    if ((long)ck.ExecuteScalar()! == 0)
+                    {
+                        _editModalMsg = $"Invalid value for {editableCols[i]}: no matching row in {fk.ToTable}.{fk.ToCol} = '{editableVals[i]}'";
+                        _editModalOk = false;
+                        _editModalBusy = false;
+                        return;
+                    }
+                }
+            }
+        }
+        catch { } // FK validation is best-effort
+
         try
         {
             await Task.Run(() =>
@@ -1792,6 +1853,18 @@
     {
         _pendingDelete = null;
         var admin = AdminUser();
+
+        // FK dependency check
+        var pk = long.TryParse(pkVal, out var pkLong0) ? (object)pkLong0 : pkVal;
+        var deps = GetDependentRows(tableName, pkCol, pk);
+        if (deps.Count > 0)
+        {
+            _diagDeleteBlockedTitle = $"Cannot delete from {tableName} ({pkCol}={pkVal})";
+            _diagDeleteBlockedBody = FormatDepsMessage(deps);
+            _showDiagDeleteBlocked = true;
+            return;
+        }
+
         try
         {
             await Task.Run(() =>
@@ -1799,11 +1872,11 @@
                 using var conn = new SqliteConnection(DbCs());
                 conn.Open();
                 using var cmd = conn.CreateCommand();
-                var pk = long.TryParse(pkVal, out var pkLong2) ? (object)pkLong2 : pkVal;
+                var pk2 = long.TryParse(pkVal, out var pkLong2) ? (object)pkLong2 : pkVal;
 
                 // Fetch the row before deleting so we can log it fully
                 cmd.CommandText = $"SELECT * FROM {tableName} WHERE {pkCol}=@pk";
-                cmd.Parameters.AddWithValue("@pk", pk);
+                cmd.Parameters.AddWithValue("@pk", pk2);
                 var rowDesc = "";
                 using (var r = cmd.ExecuteReader())
                 {
@@ -1818,7 +1891,7 @@
 
                 cmd.CommandText = $"DELETE FROM {tableName} WHERE {pkCol}=@pk";
                 cmd.Parameters.Clear();
-                cmd.Parameters.AddWithValue("@pk", pk);
+                cmd.Parameters.AddWithValue("@pk", pk2);
                 cmd.ExecuteNonQuery();
                 Console.WriteLine($"[Diagnosis] Admin '{admin}' deleted row from {tableName}: {rowDesc}");
             });
@@ -2003,6 +2076,25 @@
         var editableVals = editableCols.Select(c => _userEditVals[c]).ToList();
         var targetUser   = _userList.FirstOrDefault(u => u.Id == _selectedUserId)?.Username ?? _selectedUserId.ToString();
         var admin        = AdminUser();
+
+        // Validate PersonId exists in core_persons
+        int pidIdx = editableCols.IndexOf("PersonId");
+        if (pidIdx >= 0 && !string.IsNullOrEmpty(editableVals[pidIdx]) && int.TryParse(editableVals[pidIdx], out var newPid))
+        {
+            using var vConn = new SqliteConnection(DbCs());
+            vConn.Open();
+            using var ck = vConn.CreateCommand();
+            ck.CommandText = "SELECT COUNT(*) FROM core_persons WHERE PersonId=@v";
+            ck.Parameters.AddWithValue("@v", newPid);
+            if ((long)ck.ExecuteScalar()! == 0)
+            {
+                _userMsg = $"Invalid PersonId: no person with PersonId={newPid} exists in core_persons.";
+                _userMsgOk = false;
+                _userBusy = false;
+                return;
+            }
+        }
+
         try
         {
             await Task.Run(() =>
@@ -2325,6 +2417,19 @@
         _pcsBusy = true; _pcsMsg = "";
         var admin = AdminUser();
         var name  = _pcsRows.FirstOrDefault(x => x.PcId == pcId)?.PersonName ?? "";
+
+        // FK dependency check
+        var deps = GetDependentRows("core_pcs", "PcId", pcId);
+        if (deps.Count > 0)
+        {
+            _diagDeleteBlockedTitle = $"Cannot delete PC #{pcId} ({name})";
+            _diagDeleteBlockedBody = FormatDepsMessage(deps);
+            _showDiagDeleteBlocked = true;
+            _pendingDeletePcId = 0;
+            _pcsBusy = false;
+            return;
+        }
+
         try
         {
             await Task.Run(() =>
@@ -2403,12 +2508,37 @@
             {
                 using var conn = new SqliteConnection(DbCs());
                 conn.Open();
+                using var tx = conn.BeginTransaction();
+                // Cascade PcId change to all known referencing tables
+                foreach (var (tbl, col) in new[] {
+                    ("sess_sessions", "PcId"), ("fin_purchases", "PcId"),
+                    ("sys_staff_pc_list", "PcId"), ("acad_student_courses", "PersonId"),
+                    ("sess_completions", "PcId"), ("sess_misc_charges", "PcId"),
+                    ("cs_work_log", "PcId"), ("acad_attendance", "PersonId") })
+                {
+                    using var u = conn.CreateCommand();
+                    u.Transaction = tx;
+                    u.CommandText = $"UPDATE \"{tbl}\" SET \"{col}\"=@newId WHERE \"{col}\"=@oldId";
+                    u.Parameters.AddWithValue("@newId", newId);
+                    u.Parameters.AddWithValue("@oldId", oldId);
+                    var n = u.ExecuteNonQuery();
+                    if (n > 0) Console.WriteLine($"[Diagnosis]   Cascaded PcId {oldId}→{newId} in {tbl}.{col}: {n} row(s)");
+                }
                 using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
                 cmd.CommandText = "UPDATE core_pcs SET PcId=@newId WHERE PcId=@oldId";
                 cmd.Parameters.AddWithValue("@newId", newId);
                 cmd.Parameters.AddWithValue("@oldId", oldId);
                 cmd.ExecuteNonQuery();
-                Console.WriteLine($"[Diagnosis] Admin '{admin}' changed core_pcs PcId {oldId} → {newId}");
+                // Also update core_persons.PersonId if it matches
+                using var pCmd = conn.CreateCommand();
+                pCmd.Transaction = tx;
+                pCmd.CommandText = "UPDATE core_persons SET PersonId=@newId WHERE PersonId=@oldId";
+                pCmd.Parameters.AddWithValue("@newId", newId);
+                pCmd.Parameters.AddWithValue("@oldId", oldId);
+                pCmd.ExecuteNonQuery();
+                tx.Commit();
+                Console.WriteLine($"[Diagnosis] Admin '{admin}' changed PcId {oldId} → {newId} (with cascade)");
             });
             _pcsModalMsg = $"Saved: PcId {oldId} → {newId}."; _pcsModalOk = true;
             _pcsModalOldId = newId;
@@ -3012,6 +3142,40 @@
     {
         _pendingOrphanDelete.Remove((orphan.Table, orphan.RowId));
         var admin = AdminUser();
+
+        // Check if this orphan has its own dependents (would create new orphans)
+        try
+        {
+            using var vConn = new SqliteConnection(DbCs());
+            vConn.Open();
+            // Get PK column and value for this row
+            using var pkCmd = vConn.CreateCommand();
+            pkCmd.CommandText = $"PRAGMA table_info(\"{orphan.Table}\")";
+            string? pkColName = null;
+            using (var pr = pkCmd.ExecuteReader())
+                while (pr.Read()) { if (pr.GetInt32(5) == 1) { pkColName = pr.GetString(1); break; } }
+            if (pkColName != null)
+            {
+                using var valCmd = vConn.CreateCommand();
+                valCmd.CommandText = $"SELECT \"{pkColName}\" FROM \"{orphan.Table}\" WHERE rowid = @rid";
+                valCmd.Parameters.AddWithValue("@rid", orphan.RowId);
+                var pkVal = valCmd.ExecuteScalar();
+                if (pkVal != null)
+                {
+                    var deps = GetDependentRows(orphan.Table, pkColName, pkVal);
+                    if (deps.Count > 0)
+                    {
+                        _diagDeleteBlockedTitle = $"Cannot delete orphan from {orphan.Table} (rowid={orphan.RowId})";
+                        _diagDeleteBlockedBody = FormatDepsMessage(deps) +
+                            "<div class='small text-muted mt-1'><i class='ri-information-line me-1'></i>This orphan has its own dependents. Delete those first.</div>";
+                        _showDiagDeleteBlocked = true;
+                        return;
+                    }
+                }
+            }
+        }
+        catch { } // best-effort
+
         try
         {
             await Task.Run(() =>
@@ -3038,17 +3202,65 @@
 
     async Task DeleteAllOrphans()
     {
-        var toDelete = _orphans.ToList();
-        var admin    = AdminUser();
+        var admin = AdminUser();
         try
         {
+            int deleted = 0, skipped = 0;
             await Task.Run(() =>
             {
                 using var conn = new SqliteConnection(DbCs());
                 conn.Open();
-                Console.WriteLine($"[Diagnosis] Admin '{admin}' deleting all {toDelete.Count} orphan(s)");
+
+                // Build FK parent→child map for topological sort
+                var allTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var childOf = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+                foreach (var o in _orphans) allTables.Add(o.Table);
+                using (var tCmd = conn.CreateCommand())
+                {
+                    tCmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'";
+                    using var tr = tCmd.ExecuteReader();
+                    while (tr.Read()) allTables.Add(tr.GetString(0));
+                }
+                foreach (var tbl in allTables)
+                {
+                    using var fCmd = conn.CreateCommand();
+                    fCmd.CommandText = $"PRAGMA foreign_key_list(\"{tbl}\")";
+                    using var fr = fCmd.ExecuteReader();
+                    while (fr.Read())
+                    {
+                        var parent = fr["table"]?.ToString() ?? "";
+                        if (!string.IsNullOrEmpty(parent))
+                        {
+                            if (!childOf.ContainsKey(parent)) childOf[parent] = new(StringComparer.OrdinalIgnoreCase);
+                            childOf[parent].Add(tbl);
+                        }
+                    }
+                }
+
+                // Topological depth: children get higher depth → deleted first
+                var depth = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                int GetDepth(string t, HashSet<string> visited)
+                {
+                    if (depth.TryGetValue(t, out var d)) return d;
+                    if (!visited.Add(t)) return 0; // cycle guard
+                    int maxChild = 0;
+                    if (childOf.TryGetValue(t, out var children))
+                        foreach (var c in children) maxChild = Math.Max(maxChild, GetDepth(c, visited) + 1);
+                    depth[t] = maxChild;
+                    return maxChild;
+                }
+                foreach (var tbl in allTables) GetDepth(tbl, new());
+
+                // Wait, we want children deleted FIRST, so sort by depth DESCENDING
+                // Actually: depth = max distance to leaf. Parents have higher depth. So sort ASC = leaves first.
+                // No: depth of a parent = 1 + max child depth. So parent has higher depth. Sort ASC = children (leaves) first.
+                // Hmm, let me reconsider. depth[leaf] = 0 (no children). depth[parent] = 1 + max(child depths).
+                // So sorting ASC gives leaves first → correct for deletion order.
+                var sorted = _orphans.OrderBy(o => depth.GetValueOrDefault(o.Table, 0)).ToList();
+
+                Console.WriteLine($"[Diagnosis] Admin '{admin}' deleting all {sorted.Count} orphan(s) (topologically sorted, children first)");
                 using var cmd = conn.CreateCommand();
-                foreach (var o in toDelete)
+                foreach (var o in sorted)
                 {
                     var rowDesc = FetchRowDesc(conn, o.Table, o.RowId);
                     cmd.CommandText = $"DELETE FROM \"{o.Table}\" WHERE rowid = @rid";
@@ -3057,22 +3269,101 @@
                     try
                     {
                         cmd.ExecuteNonQuery();
+                        deleted++;
                         Console.WriteLine($"[Diagnosis] Admin '{admin}' deleted orphan from {o.Table}: {rowDesc}");
                     }
                     catch (Exception ex)
                     {
+                        skipped++;
                         Console.WriteLine($"[Diagnosis] Warning: could not delete orphan from {o.Table} rowid={o.RowId}: {ex.Message}");
                     }
                 }
             });
             _orphans             = [];
             _pendingOrphanDelete = [];
-            _integrityMsg        = "All orphans deleted.";
+            _integrityMsg        = $"Deleted {deleted} orphan(s)." + (skipped > 0 ? $" {skipped} skipped (errors)." : "");
         }
         catch (Exception ex)
         {
             _integrityMsg = $"Error: {ex.Message}";
         }
+    }
+
+    /// Checks if a row in a table has dependent (child) rows in other tables.
+    /// Returns a list of (childTable, count) pairs where count > 0.
+    List<(string Table, int Count)> GetDependentRows(string tableName, string pkCol, object pkVal)
+    {
+        var deps = new List<(string Table, int Count)>();
+        using var conn = new SqliteConnection(DbCs());
+        conn.Open();
+        // Get all tables
+        var tables = new List<string>();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'";
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) tables.Add(r.GetString(0));
+        }
+        // For each table, check if it has an FK pointing to our table
+        foreach (var tbl in tables)
+        {
+            if (tbl == tableName) continue;
+            using var fkCmd = conn.CreateCommand();
+            fkCmd.CommandText = $"PRAGMA foreign_key_list(\"{tbl}\")";
+            using var fr = fkCmd.ExecuteReader();
+            while (fr.Read())
+            {
+                var toTable = fr["table"]?.ToString() ?? "";
+                var fromCol = fr["from"]?.ToString() ?? "";
+                var toCol   = fr["to"]?.ToString() ?? "";
+                if (string.IsNullOrEmpty(toCol)) toCol = pkCol;
+                if (string.Equals(toTable, tableName, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(toCol, pkCol, StringComparison.OrdinalIgnoreCase))
+                {
+                    using var cCmd = conn.CreateCommand();
+                    cCmd.CommandText = $"SELECT COUNT(*) FROM \"{tbl}\" WHERE \"{fromCol}\" = @v";
+                    cCmd.Parameters.AddWithValue("@v", pkVal);
+                    var cnt = (int)(long)cCmd.ExecuteScalar()!;
+                    if (cnt > 0) deps.Add((tbl, cnt));
+                }
+            }
+        }
+        // Also check well-known non-FK references (columns named like the PK but without FK constraint)
+        var knownRefs = new Dictionary<(string table, string pk), List<(string childTable, string childCol)>>
+        {
+            [("sess_sessions", "SessionId")] = new() { ("cs_reviews", "SessionId"), ("sess_folder_summary", "SessionId"), ("sess_next_cs", "SessionId"), ("sess_questions", "SessionId") },
+            [("core_persons", "PersonId")]   = new() { ("core_pcs", "PcId"), ("core_users", "PersonId"), ("sess_sessions", "AuditorId"), ("sess_sessions", "PcId"), ("cs_reviews", "CsId"), ("sess_completions", "AuditorId"), ("sess_misc_charges", "AuditorId"), ("fin_purchases", "PcId"), ("acad_student_courses", "PersonId"), ("acad_student_courses", "InstructorId"), ("acad_student_courses", "CsId"), ("sys_staff_pc_list", "UserId"), ("sys_staff_messages", "FromStaffId"), ("sys_staff_messages", "ToStaffId"), ("sys_weekly_remarks", "AuditorId"), ("cs_work_log", "CsId") },
+            [("core_pcs", "PcId")]           = new() { ("sess_sessions", "PcId"), ("sys_staff_pc_list", "PcId"), ("fin_purchases", "PcId"), ("acad_student_courses", "PersonId"), ("sess_completions", "PcId"), ("sess_misc_charges", "PcId"), ("cs_work_log", "PcId") },
+        };
+        if (knownRefs.TryGetValue((tableName, pkCol), out var extraRefs))
+        {
+            foreach (var (ct, cc) in extraRefs)
+            {
+                if (deps.Any(d => d.Table == ct)) continue; // already found via FK pragma
+                try
+                {
+                    using var cCmd = conn.CreateCommand();
+                    cCmd.CommandText = $"SELECT COUNT(*) FROM \"{ct}\" WHERE \"{cc}\" = @v";
+                    cCmd.Parameters.AddWithValue("@v", pkVal);
+                    var cnt = (int)(long)cCmd.ExecuteScalar()!;
+                    if (cnt > 0) deps.Add((ct, cnt));
+                }
+                catch { } // table might not exist
+            }
+        }
+        return deps;
+    }
+
+    string FormatDepsMessage(List<(string Table, int Count)> deps)
+    {
+        if (deps.Count == 0) return "";
+        var sb = new System.Text.StringBuilder();
+        sb.Append("<strong style='color:#dc2626;'>Cannot delete — referenced by:</strong>");
+        sb.Append("<table class='table table-sm mt-1 mb-2' style='font-size:.8rem;'><tbody>");
+        foreach (var (tbl, cnt) in deps)
+            sb.Append($"<tr><td>{tbl}</td><td class='fw-bold text-end'>{cnt} row(s)</td></tr>");
+        sb.Append("</tbody></table>");
+        return sb.ToString();
     }
 
     static string HashPassword(string password)

@@ -2010,6 +2010,11 @@
         try
         {
             var sessionId = _csCtxSession.SessionId;
+            if (DashSvc.IsCsReviewApproved(sessionId))
+            {
+                _csCtxError = "This review has been approved with salary data. It cannot be undone from here — use the Sessions admin page to manage approved reviews.";
+                return;
+            }
             var affected  = await Task.Run(() => DashSvc.DeleteCsReview(sessionId));
             if (affected != 1)
             {
