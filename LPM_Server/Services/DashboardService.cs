@@ -2333,6 +2333,56 @@ public class DashboardService
         return cmd2.ExecuteScalar() != null ? "Unassigned" : "No sessions yet";
     }
 
+    public bool HasActiveOtfsCourse(int pcId, string sessionDate)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT 1 FROM acad_student_courses sc
+            JOIN lkp_courses lc ON lc.CourseId = sc.CourseId
+            WHERE sc.PersonId = @pcId AND lc.CourseType = 'OTFS'
+              AND sc.DateStarted <= @dt
+              AND (sc.DateFinished IS NULL OR sc.DateFinished >= @dt)
+            LIMIT 1";
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        cmd.Parameters.AddWithValue("@dt", sessionDate);
+        return cmd.ExecuteScalar() != null;
+    }
+
+    public string GetSessionDate(int sessionId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT SessionDate FROM sess_sessions WHERE SessionId = @sid";
+        cmd.Parameters.AddWithValue("@sid", sessionId);
+        return cmd.ExecuteScalar() as string ?? DateTime.Today.ToString("yyyy-MM-dd");
+    }
+
+    public bool GetSessionFreeFlag(int sessionId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT IsFreeSession FROM sess_sessions WHERE SessionId = @sid";
+        cmd.Parameters.AddWithValue("@sid", sessionId);
+        var result = cmd.ExecuteScalar();
+        return result is long l && l == 1;
+    }
+
+    public void UpdateSessionFreeFlag(int sessionId, bool isFree)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE sess_sessions SET IsFreeSession = @free WHERE SessionId = @sid";
+        cmd.Parameters.AddWithValue("@free", isFree ? 1 : 0);
+        cmd.Parameters.AddWithValue("@sid", sessionId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] Updated IsFreeSession={isFree} for session {sessionId}");
+    }
+
     public string? GetSessionName(int sessionId)
     {
         using var conn = new SqliteConnection(_connectionString);
@@ -2390,6 +2440,28 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@sid", sessionId);
         using var r = cmd.ExecuteReader();
         return r.Read() ? (r.GetInt32(0), r.GetInt32(1)) : null;
+    }
+
+    public string? GetCsReviewNotes(int sessionId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Notes FROM cs_reviews WHERE SessionId = @sid LIMIT 1";
+        cmd.Parameters.AddWithValue("@sid", sessionId);
+        return cmd.ExecuteScalar() as string;
+    }
+
+    public void UpdateCsReviewNotes(int csReviewId, string? notes)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE cs_reviews SET Notes = @notes WHERE CsReviewId = @id";
+        cmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@id", csReviewId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] Updated notes for CsReviewId={csReviewId} to '{notes}'");
     }
 
     public void UpdateCsReviewTime(int csReviewId, int reviewSec)

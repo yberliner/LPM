@@ -810,6 +810,17 @@
                             <i class="ri-error-warning-line pcf-timer-warn" title="Review time is 0 — update before marking done"></i>
                         }
                     </div>
+                    @if (Solo)
+                    {
+                        <div class="pcf-free-cs-wrap" title="@(_csFreeSession ? "This session will NOT be charged (OTFS active)" : "This session WILL be charged to balance")">
+                            <label class="pcf-free-cs-toggle">
+                                <input type="checkbox" class="form-check-input pcf-free-cs-check"
+                                       checked="@_csFreeSession"
+                                       @onchange="e => _csFreeSession = (bool)(e.Value ?? false)" />
+                                <span class="pcf-free-cs-label">OTFS (Free)</span>
+                            </label>
+                        </div>
+                    }
                 </div>
             }
             <div class="pcf-tools-right">
@@ -1901,6 +1912,37 @@
         color: #ef4444; font-size: .7rem;
         animation: pcf-warn-blink 1s ease-in-out infinite;
     }
+    /* ── OTFS (Free) toggle — glowing ── */
+    .pcf-free-cs-wrap {
+        display: flex; align-items: center;
+        margin-left: 10px; padding: 4px 14px;
+        background: rgba(251, 191, 36, .2);
+        border: 2px solid #f59e0b;
+        border-radius: 10px;
+        animation: pcf-free-glow 1.8s ease-in-out infinite;
+    }
+    .pcf-free-cs-toggle {
+        display: flex; align-items: center; gap: 8px;
+        cursor: pointer; user-select: none; margin: 0;
+    }
+    .pcf-free-cs-check {
+        width: 18px; height: 18px; cursor: pointer;
+        border-color: #fbbf24 !important;
+    }
+    .pcf-free-cs-check:checked {
+        background-color: #16a34a !important;
+        border-color: #16a34a !important;
+    }
+    .pcf-free-cs-label {
+        color: #fbbf24; font-weight: 700; font-size: .82rem;
+        letter-spacing: .3px; white-space: nowrap;
+        text-shadow: 0 0 6px rgba(251,191,36,.4);
+    }
+    @@keyframes pcf-free-glow {
+        0%, 100% { box-shadow: 0 0 4px rgba(251,191,36,.3); }
+        50%      { box-shadow: 0 0 18px rgba(251,191,36,.8), 0 0 32px rgba(251,191,36,.4); }
+    }
+
     @@keyframes pcf-timer-pulse {
         0%, 100% { box-shadow: 0 0 4px rgba(239,68,68,.2), inset 0 0 4px rgba(239,68,68,.1); }
         50%      { box-shadow: 0 0 16px rgba(239,68,68,.5), inset 0 0 8px rgba(239,68,68,.15); }
@@ -2907,6 +2949,8 @@
 
     // Auto-stopwatch for solo CS (not already done)
     bool _isAutoStopwatchSession;   // Solo && CsMode && !_csAlreadyDone
+    bool _csFreeSession;            // "OTFS (Free)" toggle value
+    bool _existingFreeSession;      // original value on load (detect changes)
     bool _stopwatchRunning;
     PeriodicTimer? _stopwatch;
     System.Threading.CancellationTokenSource? _stopwatchCts;
@@ -3272,6 +3316,19 @@
                         _existingReviewSec = info.Value.ReviewSec;
                         _csReviewSeconds = _existingReviewSec;
                     }
+                    // Load existing Free/Bill from cs_reviews notes for re-opened solo sessions
+                    if (Solo)
+                    {
+                        _csFreeSession = DashSvc.GetCsReviewNotes(_csSessionId) == "Free";
+                        _existingFreeSession = _csFreeSession;
+                    }
+                }
+                else if (Solo && CsMode)
+                {
+                    // Auto-detect OTFS for new solo sessions
+                    var sessDate = DashSvc.GetSessionDate(_csSessionId);
+                    _csFreeSession = DashSvc.HasActiveOtfsCourse(PcId, sessDate);
+                    _existingFreeSession = _csFreeSession;
                 }
                 _isAutoStopwatchSession = Solo && CsMode && !_csAlreadyDone && !_csLocked;
                 if (_isAutoStopwatchSession)
@@ -4846,11 +4903,23 @@
                 .Select(i => JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]).AsTask()));
             _ = FolderSvc.BurnAnnotationSidecarsForSessionAsync(PcId, _csSessionName + ".pdf", Solo);
 
-            var newSec = _csReviewSeconds;
-            if (newSec != _existingReviewSec)
+            // Update notes if free flag changed (solo sessions)
+            bool freeChanged = Solo && _csFreeSession != _existingFreeSession;
+            if (freeChanged)
             {
-                Console.WriteLine($"[PcFolder] Updating review time from {FormatReviewTime(_existingReviewSec)} to {FormatReviewTime(newSec)} — CsReviewId={_existingCsReviewId}");
-                DashSvc.UpdateCsReviewTime(_existingCsReviewId, newSec);
+                Console.WriteLine($"[PcFolder] Updating CS review notes from {(_existingFreeSession ? "Free" : "Bill")} to {(_csFreeSession ? "Free" : "Bill")} — CsReviewId={_existingCsReviewId}");
+                DashSvc.UpdateCsReviewNotes(_existingCsReviewId, _csFreeSession ? "Free" : "Bill");
+                _existingFreeSession = _csFreeSession;
+            }
+
+            var newSec = _csReviewSeconds;
+            if (newSec != _existingReviewSec || freeChanged)
+            {
+                if (newSec != _existingReviewSec)
+                {
+                    Console.WriteLine($"[PcFolder] Updating review time from {FormatReviewTime(_existingReviewSec)} to {FormatReviewTime(newSec)} — CsReviewId={_existingCsReviewId}");
+                    DashSvc.UpdateCsReviewTime(_existingCsReviewId, newSec);
+                }
                 DashSvc.NotifyDataChanged();
                 await JS.InvokeVoidAsync("showCsTimeUpdated", _pcName, _csSessionName, _existingReviewSec, newSec);
             }
@@ -4889,11 +4958,12 @@
             // Create cs_review if one doesn't already exist — use the GUI value
             if (!DashSvc.HasCsReview(_csSessionId))
             {
+                var csNotes = Solo ? (_csFreeSession ? "Free" : "Bill") : null;
                 DashSvc.AddCsReview(csId: UserPersonId, sessionId: _csSessionId,
-                    reviewSec: _csReviewSeconds, status: "Done", notes: null);
+                    reviewSec: _csReviewSeconds, status: "Done", notes: csNotes);
             }
 
-            Console.WriteLine($"[PcFolder] CS review created by '{_userName}' — session {_csSessionId} ('{_csSessionName}'), review time: {FormatReviewTime(_csReviewSeconds)}, for PC {PcId}");
+            Console.WriteLine($"[PcFolder] CS review created by '{_userName}' — session {_csSessionId} ('{_csSessionName}'), review time: {FormatReviewTime(_csReviewSeconds)}, free={_csFreeSession}, for PC {PcId}");
 
             // Refresh the CSed session IDs so sidebar turns green
             _csedSessionIds = DashSvc.GetCsedSessionIdsForPc(PcId, isSolo: Solo);
