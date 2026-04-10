@@ -424,7 +424,7 @@
         <div class="pcf-ctx-menu" style="top:@(_wsCtxY)px;left:@(_wsCtxX)px;">
             @if (!_wsCtxIsAttachment)
             {
-                @if (CsMode)
+                @if (_isUserCS)
                 {
                     <button @onclick="WsCtxAddPinkSheet"><i class="ri-file-add-line me-2" style="color:#ec4899 !important;"></i>Add Pink Sheet</button>
                     <button @onclick='() => WsCtxAddWhiteSheet("Instruct")'><i class="ri-file-add-line me-2" style="color:#60a5fa !important;"></i>Add Instruct</button>
@@ -2900,6 +2900,7 @@
     int _existingCsReviewId;     // CsReviewId when _csAlreadyDone
     int _existingReviewSec;      // original review time in seconds (for comparison)
     bool _showCsCloseWarning;    // true when CS tries to close before marking Done
+    bool _isUserCS;              // true when logged-in user's StaffRole is CS or SeniorCS
     string _errorToast = "";
     int _csReviewSeconds;        // editable review time (session + admin) in seconds
 
@@ -3176,6 +3177,7 @@
         var _pcfStaffRole = HttpContextAccessor.HttpContext?.User.FindFirst("StaffRole")?.Value ?? "";
         var _pcfUsername  = HttpContextAccessor.HttpContext?.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
         _loginUsername = _pcfUsername;
+        _isUserCS = StaffRoles.IsCS(_pcfStaffRole);
         if (_pcfStaffRole == StaffRoles.Solo)
         {
             // Solo user: can only open their own PC's solo folder
