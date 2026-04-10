@@ -3382,11 +3382,14 @@
     .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="18px"]::before  { content: 'Large';  }
     .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="24px"]::before,
     .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="24px"]::before  { content: 'Huge';   }
-    #step3-top-editor .ql-container.ql-snow {
-        height: 48px; overflow-y: auto;
+    #step3-top-editor .ql-container.ql-snow,
+    #step3-bottom-editor .ql-container.ql-snow {
+        min-height: 48px; max-height: 120px; overflow-y: auto;
     }
-    #step3-top-editor .ql-editor {
-        min-height: 0 !important; max-height: none;
+    #step3-top-editor .ql-editor,
+    #step3-bottom-editor .ql-editor {
+        min-height: 44px !important; max-height: 116px;
+        padding: 6px 10px;
     }
     #arf-summary-wrap .ql-editor {
         min-height: 70px; font-size: .82rem;

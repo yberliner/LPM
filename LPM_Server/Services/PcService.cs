@@ -576,7 +576,7 @@ public List<PcListItem> GetAllPcs()
                 double hrs = r.GetDouble(3);
                 pcCurrency[pcId] = r.GetString(4); // last one wins (highest PurchaseId)
                 if (Math.Abs(hrs) > 0)
-                    lastPurchaseRate[pcId] = (int)(Math.Abs((double)amt / hrs) * 100);
+                    lastPurchaseRate[pcId] = (int)Math.Round(Math.Abs((double)amt / hrs)) * 100;
             }
         }
 
@@ -1330,7 +1330,7 @@ public List<PcListItem> GetAllPcs()
         int purchaseRate = 0;
         for (int i = purchases.Count - 1; i >= 0; i--)
             if (purchases[i].AmountNis != 0 && Math.Abs(purchases[i].Hours) > 0)
-            { purchaseRate = (int)(Math.Abs((double)purchases[i].AmountNis / purchases[i].Hours) * 100); break; }
+            { purchaseRate = (int)Math.Round(Math.Abs((double)purchases[i].AmountNis / purchases[i].Hours)) * 100; break; }
 
         // Billable sessions
         var sess = new List<(int sid, int rate, int admin, int length)>();
@@ -1425,7 +1425,7 @@ public List<PcListItem> GetAllPcs()
             if (r.Read() && !r.IsDBNull(0) && !r.IsDBNull(1))
             {
                 double hrs = r.GetDouble(1);
-                if (Math.Abs(hrs) > 0) purchaseRate = (int)(Math.Abs(r.GetInt32(0) / hrs) * 100);
+                if (Math.Abs(hrs) > 0) purchaseRate = (int)Math.Round(Math.Abs(r.GetInt32(0) / hrs)) * 100;
             }
         }
 
@@ -1526,8 +1526,8 @@ public List<PcListItem> GetAllPcs()
         long usedSec = (long)sCmd.ExecuteScalar()!;
 
         double remainHrs = hours - (double)usedSec / 3600.0;
-        int rate = Math.Abs(hours) > 0 ? (int)Math.Abs(amount / hours) : 0;
-        int remainNis = (int)(remainHrs * rate);
+        int rate = Math.Abs(hours) > 0 ? (int)Math.Round(Math.Abs(amount / hours)) : 0;
+        int remainNis = (int)Math.Round(remainHrs * rate);
 
         return new PcAuditingBalance(hours, amount, usedSec, remainHrs, remainNis, rate);
     }

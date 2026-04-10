@@ -3679,7 +3679,7 @@
         m = Math.Clamp(m, 0, 59);
         double hrs = Math.Abs(h) + m / 60.0;
         item.HoursBought = item.IsNegativeHours ? -hrs : hrs;
-        item.AmountPaid = (int)(item.HoursBought * item.RatePerHour);
+        item.AmountPaid = (int)Math.Round(item.HoursBought * item.RatePerHour);
     }
     static string RateBadgeClass(string source) => source switch
     {

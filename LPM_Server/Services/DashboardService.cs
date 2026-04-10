@@ -1964,7 +1964,7 @@ public class DashboardService
         if (r.Read() && !r.IsDBNull(0) && !r.IsDBNull(1))
         {
             double hrs = r.GetDouble(1);
-            if (Math.Abs(hrs) > 0) return (int)(Math.Abs((double)r.GetInt32(0) / hrs) * 100);
+            if (Math.Abs(hrs) > 0) return (int)Math.Round(Math.Abs((double)r.GetInt32(0) / hrs)) * 100;
         }
         return 0;
     }
