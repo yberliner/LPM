@@ -957,11 +957,13 @@
                         disabled="@(string.IsNullOrEmpty(_panes[_activeIdx].File))">
                     <i class="ri-download-2-line"></i>
                 </button>
+                @* Voice button hidden — uncomment to restore
                 <button class="pcf-tool-btn pcf-voice-btn @(_voiceOn ? "pcf-voice-active" : "")"
                         title="@(_voiceOn ? "Voice commands ON — click to turn off" : "Voice commands OFF — click to turn on")"
                         @onclick="ToggleVoice">
                     <i class="ri-mic-@(_voiceOn ? "fill" : "line")"></i>
                 </button>
+                *@
                 @if (_csSessionId > 0)
                 {
                     <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
