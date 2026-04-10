@@ -145,6 +145,75 @@ public class CourseService
         Console.WriteLine($"[CourseService] Updated course {courseId}: '{name.Trim()}'");
     }
 
+    public record CourseEnrollmentUsage(string PcName, string DateStarted, string? DateFinished);
+    public record PurchaseItemUsage(int PurchaseId, string PcName, string PurchaseDate, int AmountPaid);
+
+    /// Check if a course is referenced anywhere. Returns (enrollments, purchaseItems).
+    public (List<CourseEnrollmentUsage> Enrollments, List<PurchaseItemUsage> Purchases) GetCourseUsages(int courseId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        var enrollments = new List<CourseEnrollmentUsage>();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS PcName,
+                       sc.DateStarted, sc.DateFinished
+                FROM acad_student_courses sc
+                JOIN core_persons p ON p.PersonId = sc.PersonId
+                WHERE sc.CourseId = @id
+                ORDER BY p.FirstName, p.LastName";
+            cmd.Parameters.AddWithValue("@id", courseId);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                enrollments.Add(new(r.GetString(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2)));
+        }
+
+        var purchases = new List<PurchaseItemUsage>();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                SELECT pu.PurchaseId,
+                       TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS PcName,
+                       pu.PurchaseDate, pi.AmountPaid
+                FROM fin_purchase_items pi
+                JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+                JOIN core_persons p ON p.PersonId = pu.PcId
+                WHERE pi.CourseId = @id AND pu.IsDeleted = 0
+                ORDER BY pu.PurchaseDate, p.FirstName";
+            cmd.Parameters.AddWithValue("@id", courseId);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                purchases.Add(new(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetInt32(3)));
+        }
+
+        return (enrollments, purchases);
+    }
+
+    /// Check if a book is referenced in any purchase.
+    public List<PurchaseItemUsage> GetBookUsages(int bookId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT pu.PurchaseId,
+                   TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS PcName,
+                   pu.PurchaseDate, pi.AmountPaid
+            FROM fin_purchase_items pi
+            JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+            JOIN core_persons p ON p.PersonId = pu.PcId
+            WHERE pi.BookId = @id AND pu.IsDeleted = 0
+            ORDER BY pu.PurchaseDate, p.FirstName";
+        cmd.Parameters.AddWithValue("@id", bookId);
+        var result = new List<PurchaseItemUsage>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            result.Add(new(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetInt32(3)));
+        return result;
+    }
+
     public void DeleteCourse(int courseId)
     {
         using var conn = new SqliteConnection(_connectionString);

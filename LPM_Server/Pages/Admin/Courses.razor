@@ -112,7 +112,7 @@
                                         <i class="ri-edit-line"></i>
                                     </button>
                                     <button class="btn btn-sm btn-link text-danger py-0 px-1"
-                                            title="Delete" @onclick="() => DeleteCourse(c.CourseId)">
+                                            title="Delete" @onclick="() => AskDeleteCourse(c.CourseId, c.Name)">
                                         <i class="ri-delete-bin-line"></i>
                                     </button>
                                 }
@@ -236,7 +236,7 @@
                                         <i class="ri-edit-line"></i>
                                     </button>
                                     <button class="btn btn-sm btn-link text-danger py-0 px-1"
-                                            title="Delete" @onclick="() => DeleteBook(b.BookId)">
+                                            title="Delete" @onclick="() => AskDeleteBook(b.BookId, b.Name)">
                                         <i class="ri-delete-bin-line"></i>
                                     </button>
                                 }
@@ -351,6 +351,53 @@
         }
     </div>
 
+    @if (_showDeleteConfirm)
+    {
+        <div class="modal show d-block" tabindex="-1" style="background:rgba(0,0,0,.5);z-index:9998;">
+            <div class="modal-dialog modal-dialog-centered modal-sm" @onclick:stopPropagation="true">
+                <div class="modal-content">
+                    <div class="modal-header py-2">
+                        <h5 class="modal-title d-flex align-items-center gap-2" style="font-size:.95rem;">
+                            <i class="ri-delete-bin-line" style="color:#dc2626;"></i> Delete @_deleteConfirmType
+                        </h5>
+                        <button type="button" class="btn-close" @onclick="() => _showDeleteConfirm = false"></button>
+                    </div>
+                    <div class="modal-body" style="font-size:.88rem;">
+                        Are you sure you want to delete <strong>@_deleteConfirmName</strong>?
+                    </div>
+                    <div class="modal-footer py-2">
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showDeleteConfirm = false">Cancel</button>
+                        <button class="btn btn-sm btn-danger" @onclick="ConfirmDelete">
+                            <i class="ri-delete-bin-line me-1"></i>Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (_showDeleteBlocked)
+    {
+        <div class="modal show d-block" tabindex="-1" style="background:rgba(0,0,0,.5);z-index:9999;">
+            <div class="modal-dialog modal-dialog-centered modal-lg" @onclick:stopPropagation="true">
+                <div class="modal-content" style="border:2px solid #dc2626;">
+                    <div class="modal-header py-2" style="background:#fef2f2;border-bottom:1px solid #fecaca;">
+                        <h5 class="modal-title d-flex align-items-center gap-2" style="font-size:.95rem;color:#991b1b;">
+                            <i class="ri-error-warning-fill" style="font-size:1.3rem;color:#dc2626;"></i> @_deleteBlockedTitle
+                        </h5>
+                        <button type="button" class="btn-close" @onclick="() => _showDeleteBlocked = false"></button>
+                    </div>
+                    <div class="modal-body" style="max-height:400px;overflow-y:auto;">
+                        @((MarkupString)_deleteBlockedBody)
+                    </div>
+                    <div class="modal-footer py-2">
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showDeleteBlocked = false">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
 </div>
 
 <style>
@@ -386,6 +433,15 @@
     string _editBook      = "";
     int    _editBookPrice = 0;
     string _editCourseType = CourseTypes.PC;
+
+    // ── Delete confirm + blocked modal state ──
+    bool   _showDeleteConfirm;
+    string _deleteConfirmType = "";   // "Course" or "Book"
+    int    _deleteConfirmId;
+    string _deleteConfirmName = "";
+    bool   _showDeleteBlocked;
+    string _deleteBlockedTitle = "";
+    string _deleteBlockedBody  = "";
 
     // ── Books state ──
     List<BookItem> _books      = [];
@@ -450,10 +506,76 @@
         }
     }
 
-    void DeleteCourse(int id)
+    void AskDeleteCourse(int id, string name)
     {
-        Console.WriteLine($"[Courses] Deleted course {id} by 'admin'");
-        CourseSvc.DeleteCourse(id);
+        var (enrollments, purchases) = CourseSvc.GetCourseUsages(id);
+        if (enrollments.Count > 0 || purchases.Count > 0)
+        {
+            _deleteBlockedTitle = $"Cannot delete course \"{name}\"";
+            var sb = new System.Text.StringBuilder();
+            if (enrollments.Count > 0)
+            {
+                sb.Append("<div class='mb-3'><strong style='color:#dc2626;'>Enrolled students:</strong>");
+                sb.Append("<table class='table table-sm mt-1 mb-0' style='font-size:.8rem;'><thead><tr><th>PC Name</th><th>Started</th><th>Finished</th></tr></thead><tbody>");
+                foreach (var e in enrollments)
+                    sb.Append($"<tr><td class='fw-semibold'>{Enc(e.PcName)}</td><td>{Enc(e.DateStarted)}</td><td>{e.DateFinished ?? "<span class='text-success'>Active</span>"}</td></tr>");
+                sb.Append("</tbody></table></div>");
+            }
+            if (purchases.Count > 0)
+            {
+                sb.Append("<div class='mb-2'><strong style='color:#dc2626;'>Purchase references:</strong>");
+                sb.Append("<table class='table table-sm mt-1 mb-0' style='font-size:.8rem;'><thead><tr><th>PC Name</th><th>Purchase Date</th><th>Amount</th><th>Purchase #</th></tr></thead><tbody>");
+                foreach (var p in purchases)
+                    sb.Append($"<tr><td class='fw-semibold'>{Enc(p.PcName)}</td><td>{Enc(p.PurchaseDate)}</td><td>₪{p.AmountPaid}</td><td>#{p.PurchaseId}</td></tr>");
+                sb.Append("</tbody></table></div>");
+            }
+            sb.Append("<div class='small text-muted mt-2'><i class='ri-information-line me-1'></i>Remove these references first, then try deleting again.</div>");
+            _deleteBlockedBody = sb.ToString();
+            _showDeleteBlocked = true;
+            return;
+        }
+        _deleteConfirmType = "Course";
+        _deleteConfirmId = id;
+        _deleteConfirmName = name;
+        _showDeleteConfirm = true;
+    }
+
+    void AskDeleteBook(int id, string name)
+    {
+        var purchases = CourseSvc.GetBookUsages(id);
+        if (purchases.Count > 0)
+        {
+            _deleteBlockedTitle = $"Cannot delete book \"{name}\"";
+            var sb = new System.Text.StringBuilder();
+            sb.Append("<div class='mb-2'><strong style='color:#dc2626;'>Purchase references:</strong>");
+            sb.Append("<table class='table table-sm mt-1 mb-0' style='font-size:.8rem;'><thead><tr><th>PC Name</th><th>Purchase Date</th><th>Amount</th><th>Purchase #</th></tr></thead><tbody>");
+            foreach (var p in purchases)
+                sb.Append($"<tr><td class='fw-semibold'>{Enc(p.PcName)}</td><td>{Enc(p.PurchaseDate)}</td><td>₪{p.AmountPaid}</td><td>#{p.PurchaseId}</td></tr>");
+            sb.Append("</tbody></table></div>");
+            sb.Append("<div class='small text-muted mt-2'><i class='ri-information-line me-1'></i>Remove these purchase items first, then try deleting again.</div>");
+            _deleteBlockedBody = sb.ToString();
+            _showDeleteBlocked = true;
+            return;
+        }
+        _deleteConfirmType = "Book";
+        _deleteConfirmId = id;
+        _deleteConfirmName = name;
+        _showDeleteConfirm = true;
+    }
+
+    void ConfirmDelete()
+    {
+        _showDeleteConfirm = false;
+        if (_deleteConfirmType == "Course")
+        {
+            Console.WriteLine($"[Courses] Deleted course {_deleteConfirmId} ('{_deleteConfirmName}') by 'admin'");
+            CourseSvc.DeleteCourse(_deleteConfirmId);
+        }
+        else
+        {
+            Console.WriteLine($"[Courses] Deleted book {_deleteConfirmId} ('{_deleteConfirmName}') by 'admin'");
+            CourseSvc.DeleteBook(_deleteConfirmId);
+        }
         Reload();
     }
 
@@ -489,10 +611,5 @@
 
     void OnEditBkKeyDown(KeyboardEventArgs e) { if (e.Key == "Enter") SaveEditBook(); }
 
-    void DeleteBook(int id)
-    {
-        Console.WriteLine($"[Courses] Deleted book {id} by 'admin'");
-        CourseSvc.DeleteBook(id);
-        Reload();
-    }
+    static string Enc(string s) => System.Net.WebUtility.HtmlEncode(s);
 }

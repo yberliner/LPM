@@ -1672,11 +1672,19 @@
                     </div>
 
                     @* ── Session Details Toggle ── *@
-                    <div class="text-center py-3">
+                    <div class="d-flex align-items-center justify-content-center gap-3 py-3">
                         <button class="btn bal-sessions-btn" @onclick="ToggleSessionDetails">
                             <i class="@(_balShowSessions ? "ri-arrow-up-s-line" : "ri-list-check")"></i>
                             @(_balShowSessions ? LS.T("pcs.hideSessions") : LS.T("pcs.showAllSessions"))
                         </button>
+                        @if (_balShowSessions)
+                        {
+                            <label class="form-check form-check-inline mb-0" style="cursor:pointer;font-size:.78rem;">
+                                <input class="form-check-input" type="checkbox" checked="@_balHideImported"
+                                       @onchange="e => _balHideImported = (bool)(e.Value ?? false)" />
+                                <span class="text-muted">Hide imported</span>
+                            </label>
+                        }
                     </div>
 
                     @* ── Session Detail Table ── *@
@@ -1693,21 +1701,23 @@
                                         <th class="small text-center">@LS.T("pcs.admin")</th>
                                         <th class="small text-center">@LS.T("pcs.rateLabel")</th>
                                         <th class="small text-center">@LS.T("pcs.source")</th>
+                                        <th class="small text-center">Imp</th>
                                         <th class="small text-end">@LS.T("pcs.cost")</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @{ int rowIdx = 0; }
-                                    @foreach (var s in _balSessionDetails)
+                                    @{ int rowIdx = 0; var filteredSessions = _balHideImported ? _balSessionDetails.Where(s => !s.IsImported) : _balSessionDetails; }
+                                    @foreach (var s in filteredSessions)
                                     {
                                         <tr style="background:@(rowIdx++ % 2 == 0 ? "#fafafa" : "#fff");">
                                             <td class="small text-center text-muted">@s.SessionId</td>
                                             <td class="small">@FormatDate(s.Date)</td>
                                             <td class="small">@s.AuditorName</td>
-                                            <td class="small text-center">@Hmm(s.LengthSec)</td>
-                                            <td class="small text-center">@Hmm(s.AdminSec)</td>
+                                            <td class="small text-center" title="@Hmmss(s.LengthSec)">@HmmRound(s.LengthSec)</td>
+                                            <td class="small text-center" title="@Hmmss(s.AdminSec)">@HmmRound(s.AdminSec)</td>
                                             <td class="small text-center">@CurrSym(balCurr)@(s.RateCentsUsed / 100)</td>
                                             <td class="small text-center"><span class="badge @RateBadgeClass(s.RateSource)">@s.RateSource</span></td>
+                                            <td class="small text-center">@if (s.IsImported) { <i class="ri-download-cloud-line" style="color:#6366f1;" title="Imported session"></i> }</td>
                                             <td class="small text-end fw-semibold" style="color:#dc2626;">@CurrSym(balCurr)@(s.CostNis.ToString("N2"))</td>
                                         </tr>
                                     }
@@ -1731,18 +1741,20 @@
                                         <th class="small">@LS.T("pcs.date")</th>
                                         <th class="small text-center">@LS.T("pcs.duration")</th>
                                         <th class="small text-center">@LS.T("pcs.rateLabel")</th>
+                                        <th class="small text-center">Imp</th>
                                         <th class="small text-end">@LS.T("pcs.cost")</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @{ int soloIdx = 0; }
-                                    @foreach (var sr in _balSoloDetails)
+                                    @{ int soloIdx = 0; var filteredSolo = _balHideImported ? _balSoloDetails.Where(sr => !sr.IsImported) : _balSoloDetails; }
+                                    @foreach (var sr in filteredSolo)
                                     {
                                         <tr style="background:@(soloIdx++ % 2 == 0 ? "#f5f3ff" : "#ede9fe");@(sr.IsOtfsFree ? "opacity:.7;" : "")">
                                             <td class="small text-center text-muted">@sr.SessionId</td>
                                             <td class="small">@FormatDate(sr.Date)</td>
-                                            <td class="small text-center">@Hmm(sr.ReviewLengthSec)</td>
+                                            <td class="small text-center" title="@Hmmss(sr.ReviewLengthSec)">@HmmRound(sr.ReviewLengthSec)</td>
                                             <td class="small text-center">@CurrSym(balCurr)@(sr.RateCents / 100)</td>
+                                            <td class="small text-center">@if (sr.IsImported) { <i class="ri-download-cloud-line" style="color:#6366f1;" title="Imported session"></i> }</td>
                                             <td class="small text-end fw-semibold" style="color:@(sr.IsOtfsFree ? "#10b981" : "#7c3aed");">
                                                 @if (sr.IsOtfsFree)
                                                 {
@@ -2764,6 +2776,7 @@
     List<PcSessionCostRow>? _balSessionDetails;
     List<SoloCsReviewCostRow>? _balSoloDetails;
     bool _balShowSessions;
+    bool _balHideImported;
 
     // Column guide modal
     bool _showColumnGuide;
@@ -2961,6 +2974,7 @@
         _balances   = PcSvc.GetAllPcBalances();
         _mixedRates = PcSvc.GetPcsWithMixedRates();
         _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
+        _mixedRates = PcSvc.GetPcsWithMixedRates();
         _soloPcIds  = DashSvc.GetSoloPcIds();
         _allCourses = CourseSvc.GetAllCourses();
         _allBooks   = CourseSvc.GetAllBooks();
@@ -3056,6 +3070,7 @@
         _allPcsEx = PcSvc.GetAllPcsExtended();
         _balances = PcSvc.GetAllPcBalances();
         _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
+        _mixedRates = PcSvc.GetPcsWithMixedRates();
         LoadDetail();
     }
 
@@ -3475,6 +3490,7 @@
         _allPcsEx = PcSvc.GetAllPcsExtended();
         _balances = PcSvc.GetAllPcBalances();
         _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
+        _mixedRates = PcSvc.GetPcsWithMixedRates();
         LoadDetail();
     }
 
@@ -3549,6 +3565,7 @@
         _allPcsEx = PcSvc.GetAllPcsExtended();
         _balances = PcSvc.GetAllPcBalances();
         _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
+        _mixedRates = PcSvc.GetPcsWithMixedRates();
         LoadDetail();
     }
 
@@ -3592,6 +3609,19 @@
     {
         int s = Math.Abs(secs);
         return $"{s / 3600}:{(s % 3600) / 60:00}";
+    }
+    // Rounded: 30+ leftover seconds → +1 minute
+    static string HmmRound(int secs)
+    {
+        int s = Math.Abs(secs);
+        int totalMin = s / 60 + (s % 60 >= 30 ? 1 : 0);
+        return $"{totalMin / 60}:{totalMin % 60:00}";
+    }
+    // Exact with seconds for tooltip
+    static string Hmmss(int secs)
+    {
+        int s = Math.Abs(secs);
+        return $"{s / 3600}:{(s % 3600) / 60:00}:{s % 60:00}";
     }
     static string FormatDate(string dateStr) =>
         DateOnly.TryParse(dateStr, out var d) ? d.ToString("dd/MM/yy") : dateStr;
@@ -3789,6 +3819,7 @@
         _balSessionDetails = null;
         _balSoloDetails = null;
         _balShowSessions = false;
+        _balHideImported = false;
         _balanceExplanation = PcSvc.GetPcBalanceExplanation(pcId);
         _showBalanceModal = true;
     }
@@ -3800,6 +3831,7 @@
         _balSessionDetails = null;
         _balSoloDetails = null;
         _balShowSessions = false;
+        _balHideImported = false;
     }
 
     void ToggleSessionDetails()

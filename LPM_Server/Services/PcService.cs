@@ -38,9 +38,9 @@ public record PcPurchaseRow(int PurchaseId, string Date, double Hours, int Amoun
 
 public record PcSessionCostRow(
     int SessionId, string Date, string AuditorName,
-    int LengthSec, int AdminSec, int RateCentsUsed, string RateSource, decimal CostNis);
+    int LengthSec, int AdminSec, int RateCentsUsed, string RateSource, decimal CostNis, bool IsImported = false);
 
-public record SoloCsReviewCostRow(int SessionId, string Date, int ReviewLengthSec, int RateCents, decimal CostNis, bool IsOtfsFree = false);
+public record SoloCsReviewCostRow(int SessionId, string Date, int ReviewLengthSec, int RateCents, decimal CostNis, bool IsOtfsFree = false, bool IsImported = false);
 
 public record PcBalanceExplanation(
     List<PcPurchaseRow> Purchases, int TotalPurchasedNis,
@@ -538,7 +538,7 @@ public List<PcListItem> GetAllPcs()
 
     public record PurchaseRateEntry(string Date, double Hours, int RatePerHour);
 
-    /// Returns PCs that have 2+ auditing purchases with different per-hour rates in the last 365 days.
+    /// Returns PCs that have 2+ auditing items with different per-hour rates in the last 365 days.
     public Dictionary<int, List<PurchaseRateEntry>> GetPcsWithMixedRates()
     {
         using var conn = new SqliteConnection(_connectionString);
@@ -546,16 +546,13 @@ public List<PcListItem> GetAllPcs()
         using var cmd = conn.CreateCommand();
         var cutoff = DateTime.Today.AddDays(-365).ToString("yyyy-MM-dd");
         cmd.CommandText = @"
-            SELECT pu.PcId, pu.PurchaseDate,
-                   SUM(pi.HoursBought) AS Hours,
-                   SUM(pi.AmountPaid)  AS Amount
+            SELECT pu.PcId, pu.PurchaseDate, pi.HoursBought, pi.AmountPaid
             FROM fin_purchase_items pi
             JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
             WHERE pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
               AND pu.PurchaseDate >= @cutoff
-            GROUP BY pu.PcId, pu.PurchaseId, pu.PurchaseDate
-            HAVING SUM(pi.AmountPaid) <> 0 AND ABS(SUM(pi.HoursBought)) > 0
-            ORDER BY pu.PcId, pu.PurchaseId";
+              AND pi.AmountPaid <> 0 AND ABS(pi.HoursBought) > 0
+            ORDER BY pu.PcId, pu.PurchaseId, pi.PurchaseItemId";
         cmd.Parameters.AddWithValue("@cutoff", cutoff);
 
         var all = new Dictionary<int, List<PurchaseRateEntry>>();
@@ -1527,7 +1524,8 @@ public List<PcListItem> GetAllPcs()
             cmd.CommandText = @"
                 SELECT s.SessionId, s.SessionDate,
                        COALESCE(TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')), '?'),
-                       s.LengthSeconds, s.AdminSeconds, s.ChargedRateCentsPerHour
+                       s.LengthSeconds, s.AdminSeconds, s.ChargedRateCentsPerHour,
+                       COALESCE(s.IsImported, 0)
                 FROM sess_sessions s
                 LEFT JOIN core_persons p ON p.PersonId = s.AuditorId
                 WHERE s.PcId = @id AND s.AuditorId IS NOT NULL AND s.IsFreeSession = 0
@@ -1544,8 +1542,9 @@ public List<PcListItem> GetAllPcs()
                 else { rateUsed = purchaseRate; src = "Purchase"; }
 
                 decimal cost = (decimal)rateUsed * (r.GetInt32(4) + r.GetInt32(3)) / 3600m / 100m;
+                bool imported = r.GetInt32(6) == 1;
                 result.Add(new(sessionId, r.GetString(1), r.GetString(2),
-                    r.GetInt32(3), r.GetInt32(4), rateUsed, src, cost));
+                    r.GetInt32(3), r.GetInt32(4), rateUsed, src, cost, imported));
             }
         }
         return result;
@@ -1560,7 +1559,8 @@ public List<PcListItem> GetAllPcs()
         cmd.CommandText = @"
             SELECT s.SessionId, s.SessionDate, cr.ReviewLengthSeconds,
                    COALESCE(cr.ChargedCentsRatePerHour, 0),
-                   COALESCE(cr.Notes, '')
+                   COALESCE(cr.Notes, ''),
+                   COALESCE(s.IsImported, 0)
             FROM cs_reviews cr
             JOIN sess_sessions s ON s.SessionId = cr.SessionId
             WHERE s.PcId = @id AND s.AuditorId IS NULL
@@ -1574,8 +1574,9 @@ public List<PcListItem> GetAllPcs()
             string notes = r.GetString(4);
             // Only 'Bill' is charged; 'Free' and NULL/empty (old data) are free
             bool isFree = notes != "Bill";
+            bool imported = r.GetInt32(5) == 1;
             decimal cost = isFree ? 0m : (decimal)rateCents * lengthSec / 3600m / 100m;
-            result.Add(new(r.GetInt32(0), r.GetString(1), lengthSec, rateCents, cost, isFree));
+            result.Add(new(r.GetInt32(0), r.GetString(1), lengthSec, rateCents, cost, isFree, imported));
         }
         return result;
     }
