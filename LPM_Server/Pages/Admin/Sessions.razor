@@ -162,7 +162,7 @@
                             <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
                                 <span class="sa-input-label" style="color:#6b7280;">Set all:</span>
                                 <div class="input-group input-group-sm sa-rate-input" style="width:125px;">
-                                    <span class="input-group-text">₪ Rate</span>
+                                    <span class="input-group-text">@PcCurrSym(pcGroup.PcId) Rate</span>
                                     <input type="number" class="form-control" placeholder="0" min="0" step="1"
                                            value="@pcDef.ChargeRate" onfocus="this.select()"
                                            @onchange="e => PropagateRate(group.AuditorId, pcGroup.PcId,
@@ -193,7 +193,7 @@
                                     <th class="text-center">@LS.T("sessions.duration")</th>
                                     <th class="text-center">@LS.T("sessions.admin")</th>
                                     <th class="text-center">@LS.T("sessions.free")</th>
-                                    <th style="width:115px;">@LS.T("sessions.rate")</th>
+                                    <th style="width:115px;">@LS.T("sessions.rate") @PcCurrSym(pcGroup.PcId)/hr</th>
                                     <th style="width:115px;">@LS.T("sessions.salary")</th>
                                     <th style="width:105px;">@LS.T("common.status")</th>
                                     <th class="pe-4" style="width:90px;"></th>
@@ -332,7 +332,7 @@
                                     <th class="text-center">Review Duration</th>
                                     @if (pcGroup.Reviews.Any(r => r.IsSolo))
                                     {
-                                        <th style="width:115px;">Rate ₪/hr</th>
+                                        <th style="width:115px;">Rate @PcCurrSym(pcGroup.PcId)/hr</th>
                                     }
                                     <th style="width:115px;">CS Salary ₪/hr</th>
                                     <th style="width:105px;">Status</th>
@@ -562,6 +562,10 @@
     class PcDefaults { public int ChargeRate { get; set; } public int Salary { get; set; } }
     class RowEdit     { public int ChargeRate { get; set; } public int Salary { get; set; } }
 
+    private Dictionary<int, string> _pcCurrency = new(); // PcId → currency code
+    static string CurrSym(string code) => code switch { "USD" => "$", "EUR" => "€", _ => "₪" };
+    string PcCurrSym(int pcId) => CurrSym(_pcCurrency.GetValueOrDefault(pcId, "ILS"));
+
     // ── Lifecycle ─────────────────────────────────────────────────
     protected override async Task OnInitializedAsync()
     {
@@ -619,6 +623,7 @@
         _pcDefaults.Clear();
         _rowEdits.Clear();
         _auditorAvatars.Clear();
+        _pcCurrency.Clear();
 
         foreach (var group in _groups)
         {
@@ -627,6 +632,8 @@
 
             foreach (var pcGroup in group.PcGroups)
             {
+                if (!_pcCurrency.ContainsKey(pcGroup.PcId))
+                    _pcCurrency[pcGroup.PcId] = DashSvc.GetLastPurchaseCurrency(pcGroup.PcId);
                 var key = (group.AuditorId, pcGroup.PcId);
                 var (defRate, defSalary) = DashSvc.GetLastApprovedDefaultsForPc(group.AuditorId, pcGroup.PcId);
                 _pcDefaults[key] = new PcDefaults { ChargeRate = defRate / 100, Salary = defSalary / 100 };
@@ -653,6 +660,8 @@
 
             foreach (var pcGroup in csGroup.PcGroups)
             {
+                if (!_pcCurrency.ContainsKey(pcGroup.PcId))
+                    _pcCurrency[pcGroup.PcId] = DashSvc.GetLastPurchaseCurrency(pcGroup.PcId);
                 var key = (csGroup.CsId, pcGroup.PcId);
                 var defCsSalary = DashSvc.GetLastApprovedCsSalaryForPc(pcGroup.PcId);
                 _csPcDefaults[key] = defCsSalary / 100;

@@ -477,6 +477,110 @@ public List<PcListItem> GetAllPcs()
         return result == null ? null : (int)(long)result;
     }
 
+    // ── Mixed-currency detection ───────────────────────────────────
+
+    /// Returns PcIds that have auditing purchases in more than one currency.
+    public HashSet<int> GetPcsWithMixedCurrencies()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT pu.PcId
+            FROM fin_purchase_items pi
+            JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+            WHERE pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+            GROUP BY pu.PcId
+            HAVING COUNT(DISTINCT COALESCE(pu.Currency, 'ILS')) > 1";
+        var result = new HashSet<int>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) result.Add(r.GetInt32(0));
+        return result;
+    }
+
+    /// Returns the set of distinct currencies used in auditing purchases for a given PC.
+    public List<string> GetPcAuditingCurrencies(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT DISTINCT COALESCE(pu.Currency, 'ILS')
+            FROM fin_purchase_items pi
+            JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+            WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'";
+        cmd.Parameters.AddWithValue("@id", pcId);
+        var result = new List<string>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) result.Add(r.GetString(0));
+        return result;
+    }
+
+    /// Returns the currency of the last auditing purchase for a PC, or "ILS" if none.
+    public string GetLastPurchaseCurrencyForPc(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT COALESCE(pu.Currency, 'ILS')
+            FROM fin_purchases pu
+            JOIN fin_purchase_items pi ON pi.PurchaseId = pu.PurchaseId
+            WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+            GROUP BY pu.PurchaseId
+            ORDER BY pu.PurchaseId DESC LIMIT 1";
+        cmd.Parameters.AddWithValue("@id", pcId);
+        var result = cmd.ExecuteScalar();
+        return result is string s ? s : "ILS";
+    }
+
+    // ── Rate-change detection (last 365 days) ─────────────────────
+
+    public record PurchaseRateEntry(string Date, double Hours, int RatePerHour);
+
+    /// Returns PCs that have 2+ auditing purchases with different per-hour rates in the last 365 days.
+    public Dictionary<int, List<PurchaseRateEntry>> GetPcsWithMixedRates()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        var cutoff = DateTime.Today.AddDays(-365).ToString("yyyy-MM-dd");
+        cmd.CommandText = @"
+            SELECT pu.PcId, pu.PurchaseDate,
+                   SUM(pi.HoursBought) AS Hours,
+                   SUM(pi.AmountPaid)  AS Amount
+            FROM fin_purchase_items pi
+            JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+            WHERE pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+              AND pu.PurchaseDate >= @cutoff
+            GROUP BY pu.PcId, pu.PurchaseId, pu.PurchaseDate
+            HAVING SUM(pi.AmountPaid) <> 0 AND ABS(SUM(pi.HoursBought)) > 0
+            ORDER BY pu.PcId, pu.PurchaseId";
+        cmd.Parameters.AddWithValue("@cutoff", cutoff);
+
+        var all = new Dictionary<int, List<PurchaseRateEntry>>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            int pcId = r.GetInt32(0);
+            string date = r.GetString(1);
+            double hrs = r.GetDouble(2);
+            int amt = r.GetInt32(3);
+            int rate = (int)Math.Round(Math.Abs((double)amt / hrs));
+            if (!all.ContainsKey(pcId)) all[pcId] = new();
+            all[pcId].Add(new PurchaseRateEntry(date, hrs, rate));
+        }
+
+        // Keep only PCs with 2+ distinct rates
+        var result = new Dictionary<int, List<PurchaseRateEntry>>();
+        foreach (var (pcId, entries) in all)
+        {
+            if (entries.Select(e => e.RatePerHour).Distinct().Count() >= 2)
+                result[pcId] = entries;
+        }
+        return result;
+    }
+
     // ── Extended PC list with stats for table view ────────────────
 
     public List<PcListItemEx> GetAllPcsExtended()

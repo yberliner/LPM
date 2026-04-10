@@ -98,31 +98,62 @@
                     <tr class="@(_selPcId == pc.PcId ? "table-primary" : "")"
                         style="cursor:pointer;"
                         @onclick="() => SelectPc(pc.PcId)">
-                        <td class="small ps-2 text-truncate" style="@(_soloPcIds.Contains(pc.PcId) ? "color:#ea580c;font-weight:600;" : "")">@pc.FullName@if (_soloPcIds.Contains(pc.PcId)) { <span style="display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:3px;background:#ea580c;color:#fff;font-size:.58rem;font-weight:700;margin-left:3px;vertical-align:middle;">S</span> }@if (!string.IsNullOrEmpty(pc.Nick)) { <span class="text-muted" style="font-size:.7rem;"> (@pc.Nick)</span> }</td>
-                        <td class="small text-center fw-semibold"
-                            style="color:@(bal == null ? "#9ca3af" : bal.BalanceNis >= 0 ? "#22c55e" : "#ef4444");">
-                            @(bal != null ? $"{CurrSym(bal.Currency)}{bal.BalanceNis:N0}" : "\u2014")
-                        </td>
-                        @{ var hlClass = bal?.RateMismatch == true ? "bal-rate-mismatch" : ""; }
-                        <td class="small text-center fw-semibold @hlClass"
-                            tabindex="@(bal?.RateMismatch == true ? "0" : null)"
-                            style="color:@(bal == null ? "#9ca3af" : bal.HoursLeft >= 0 ? "#4ade80" : "#f87171");">
-                            @if (bal != null && bal.EffectiveRateCents > 0)
+                        @{ var hasMixed = _mixedRates.ContainsKey(pc.PcId); }
+                        <td class="small ps-2 @(hasMixed ? "pc-mixed-rate" : "")"
+                            style="@(_soloPcIds.Contains(pc.PcId) ? "color:#ea580c;font-weight:600;" : hasMixed ? "color:#b45309;font-weight:600;" : "")"
+                            tabindex="@(hasMixed ? "0" : null)">
+                            <span class="text-truncate d-inline-block" style="max-width:100%;vertical-align:middle;">@pc.FullName@if (_soloPcIds.Contains(pc.PcId)) { <span style="display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:3px;background:#ea580c;color:#fff;font-size:.58rem;font-weight:700;margin-left:3px;vertical-align:middle;">S</span> }@if (!string.IsNullOrEmpty(pc.Nick)) { <span class="text-muted" style="font-size:.7rem;"> (@pc.Nick)</span> }</span>
+                            @if (hasMixed)
                             {
-                                @HrsLabel((long)(bal.HoursLeft * 3600))
-                                @if (bal.RateMismatch)
+                                <span class="pc-mixed-tip">
+                                    <strong>Different rates (last 12 months):</strong><br/>
+                                    @foreach (var e in _mixedRates[pc.PcId])
+                                    {
+                                        <text>@FormatDate(e.Date) — @FormatHoursMinutes(e.Hours) hrs @@ @(CurrSym(bal?.Currency ?? "ILS"))@e.RatePerHour/hr</text><br/>
+                                    }
+                                </span>
+                            }
+                        </td>
+                        @{ var isMixedCurr = _mixedCurrencyPcs.Contains(pc.PcId); }
+                        @if (isMixedCurr)
+                        {
+                            <td class="small text-center fw-semibold pc-mixed-curr" tabindex="0"
+                                style="color:#b45309;" title="Mixed currencies — balance unreliable">
+                                <i class="ri-error-warning-line"></i> Mix
+                                <span class="pc-mixed-curr-tip">Multiple currencies used in purchases.<br/>Balance cannot be calculated accurately.<br/>Please adjust purchases to use a single currency.</span>
+                            </td>
+                            <td class="small text-center fw-semibold pc-mixed-curr" tabindex="0"
+                                style="color:#b45309;" title="Mixed currencies — hours unreliable">
+                                <i class="ri-error-warning-line"></i>
+                                <span class="pc-mixed-curr-tip">Hours left unavailable — mixed currencies.</span>
+                            </td>
+                        }
+                        else
+                        {
+                            <td class="small text-center fw-semibold"
+                                style="color:@(bal == null ? "#9ca3af" : bal.BalanceNis >= 0 ? "#22c55e" : "#ef4444");">
+                                @(bal != null ? $"{CurrSym(bal.Currency)}{bal.BalanceNis:N0}" : "\u2014")
+                            </td>
+                            <td class="small text-center fw-semibold @(bal?.RateMismatch == true ? "bal-rate-mismatch" : "")"
+                                tabindex="@(bal?.RateMismatch == true ? "0" : null)"
+                                style="color:@(bal == null ? "#9ca3af" : bal.HoursLeft >= 0 ? "#4ade80" : "#f87171");">
+                                @if (bal != null && bal.EffectiveRateCents > 0)
                                 {
-                                    <span class="bal-rate-tip">
-                                        @LS.T("pcs.sessionRate"): @CurrSym(bal.Currency)@(bal.EffectiveRateCents / 100)/hr<br />
-                                        @LS.T("pcs.purchaseRate"): @CurrSym(bal.Currency)@(bal.PurchaseRateCents / 100)/hr
-                                    </span>
+                                    @HrsLabel((long)(bal.HoursLeft * 3600))
+                                    @if (bal.RateMismatch)
+                                    {
+                                        <span class="bal-rate-tip">
+                                            @LS.T("pcs.sessionRate"): @CurrSym(bal.Currency)@(bal.EffectiveRateCents / 100)/hr<br />
+                                            @LS.T("pcs.purchaseRate"): @CurrSym(bal.Currency)@(bal.PurchaseRateCents / 100)/hr
+                                        </span>
+                                    }
                                 }
-                            }
-                            else
-                            {
-                                <text>—</text>
-                            }
-                        </td>
+                                else
+                                {
+                                    <text>—</text>
+                                }
+                            </td>
+                        }
                         <td class="small text-center text-muted">@HrsLabel(pc.TotalSessionSec)</td>
                         <td class="small text-center text-muted">@pc.AuditorSessions</td>
                         <td class="small text-center text-muted">@pc.AcademyVisits</td>
@@ -941,7 +972,7 @@
                                             var c = cur;
                                             <button class="btn btn-sm @(_purchaseCurrency == c ? "btn-primary" : "btn-outline-secondary")"
                                                     style="font-size:.72rem;padding:2px 8px;"
-                                                    @onclick="() => _purchaseCurrency = c">@c</button>
+                                                    @onclick="() => OnCurrencyClick(c)">@c</button>
                                         }
                                     </div>
                                 </div>
@@ -1039,6 +1070,39 @@
 }
 
 @* ── Purchase Success Toast ── *@
+@* ── Currency mismatch warning popup ── *@
+@if (_showCurrencyWarning)
+{
+    <div class="modal show d-block" tabindex="-1" style="background:rgba(0,0,0,.6);z-index:10100;">
+        <div class="modal-dialog modal-dialog-centered modal-sm" @onclick:stopPropagation="true">
+            <div class="modal-content" style="background:#1e293b;color:#e2e8f0;border:2px solid #f59e0b;">
+                <div class="modal-header py-2" style="background:#92400e;border-bottom:none;">
+                    <h5 class="modal-title text-white d-flex align-items-center gap-2" style="font-size:.95rem;">
+                        <i class="ri-error-warning-fill" style="font-size:1.3rem;color:#fbbf24;"></i> Currency Mismatch
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CancelCurrencyChange"></button>
+                </div>
+                <div class="modal-body" style="font-size:.85rem;line-height:1.6;">
+                    <p>This PC already has auditing purchases in <strong style="color:#fbbf24;">@_currencyWarningExisting</strong>.</p>
+                    <p>Switching to <strong style="color:#fbbf24;">@_currencyWarningNew</strong> will cause <strong>mixed currencies</strong> which means:</p>
+                    <ul style="padding-left:18px;margin:8px 0;">
+                        <li>Balance calculation will be <strong>inaccurate</strong> (amounts in different currencies will be mixed)</li>
+                        <li>Hours remaining cannot be calculated correctly</li>
+                        <li>Balance and hours columns will show a <span style="color:#f59e0b;">⚠ warning</span> instead of values</li>
+                    </ul>
+                    <p class="mb-0" style="color:#94a3b8;">To fix this later, edit the purchase and change it back to a single currency.</p>
+                </div>
+                <div class="modal-footer py-2" style="border-top:1px solid #334155;">
+                    <button class="btn btn-sm btn-outline-light" @onclick="CancelCurrencyChange">Cancel</button>
+                    <button class="btn btn-sm btn-warning fw-semibold" @onclick="ConfirmCurrencyChange">
+                        <i class="ri-error-warning-line me-1"></i>Change to @_currencyWarningNew anyway
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @if (_showPurchaseSuccess)
 {
     <div class="pcs-success-overlay">
@@ -2426,6 +2490,79 @@
         from { opacity: 0; transform: translateX(-50%) translateY(4px); }
         to   { opacity: 1; transform: translateX(-50%) translateY(0); }
     }
+    /* ── Mixed-rate highlight on PC name ── */
+    .pc-mixed-rate {
+        position: relative;
+        cursor: help;
+        background: #fef9c3 !important;
+        overflow: visible !important;
+    }
+    .pc-mixed-tip {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        background: #1e293b;
+        color: #fff;
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: .72rem;
+        white-space: nowrap;
+        z-index: 10;
+        pointer-events: none;
+        box-shadow: 0 4px 12px rgba(0,0,0,.2);
+    }
+    .pc-mixed-tip::after {
+        content: '';
+        position: absolute;
+        bottom: 100%;
+        left: 20px;
+        border: 5px solid transparent;
+        border-bottom-color: #1e293b;
+    }
+    .pc-mixed-rate:hover .pc-mixed-tip,
+    .pc-mixed-rate:focus .pc-mixed-tip {
+        display: block;
+        animation: balTipIn .2s ease;
+    }
+
+    /* ── Mixed-currency warning on balance/hours cells ── */
+    .pc-mixed-curr {
+        position: relative;
+        cursor: help;
+        background: #fef3c7 !important;
+    }
+    .pc-mixed-curr-tip {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #1e293b;
+        color: #fff;
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: .72rem;
+        white-space: nowrap;
+        z-index: 10;
+        pointer-events: none;
+        box-shadow: 0 4px 12px rgba(0,0,0,.2);
+    }
+    .pc-mixed-curr-tip::after {
+        content: '';
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        border: 5px solid transparent;
+        border-bottom-color: #1e293b;
+    }
+    .pc-mixed-curr:hover .pc-mixed-curr-tip,
+    .pc-mixed-curr:focus .pc-mixed-curr-tip {
+        display: block;
+        animation: balTipIn .2s ease;
+    }
+
     .bal-detail-btn { line-height: 1; min-height: 32px; min-width: 32px; }
     .bal-detail-btn:hover i { color: #4f46e5 !important; transform: scale(1.15); transition: all .15s ease; }
 
@@ -2648,6 +2785,15 @@
     bool   _showSoloAdminOnly;  // non-admin clicked Solo Access button
     bool   _isAdmin;
 
+    // Mixed-rate detection (last 365 days)
+    Dictionary<int, List<PcService.PurchaseRateEntry>> _mixedRates = new();
+
+    // Mixed-currency detection
+    HashSet<int> _mixedCurrencyPcs = new();
+    bool _showCurrencyWarning;
+    string _currencyWarningExisting = "";
+    string _currencyWarningNew = "";
+
     // Sort state
     string _sortCol  = "hoursLeft";
     bool   _sortAsc  = true;
@@ -2813,6 +2959,8 @@
     {
         _allPcsEx   = PcSvc.GetAllPcsExtended();
         _balances   = PcSvc.GetAllPcBalances();
+        _mixedRates = PcSvc.GetPcsWithMixedRates();
+        _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
         _soloPcIds  = DashSvc.GetSoloPcIds();
         _allCourses = CourseSvc.GetAllCourses();
         _allBooks   = CourseSvc.GetAllBooks();
@@ -2907,6 +3055,7 @@
             d.DateOfBirth, d.Gender, orgId: d.OrgId > 0 ? d.OrgId : null);
         _allPcsEx = PcSvc.GetAllPcsExtended();
         _balances = PcSvc.GetAllPcBalances();
+        _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
         LoadDetail();
     }
 
@@ -3014,7 +3163,7 @@
         _purchaseError     = "";
         _skipSignature     = false;
         _hasSigned         = false;
-        _purchaseCurrency  = "ILS";
+        _purchaseCurrency  = _selPcId.HasValue ? PcSvc.GetLastPurchaseCurrencyForPc(_selPcId.Value) : "ILS";
         _allCourses        = CourseSvc.GetAllCourses();
         _allBooks          = CourseSvc.GetAllBooks();
         _purchaseRegistrarId = _currentPersonId ?? 0;
@@ -3325,6 +3474,7 @@
 
         _allPcsEx = PcSvc.GetAllPcsExtended();
         _balances = PcSvc.GetAllPcBalances();
+        _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
         LoadDetail();
     }
 
@@ -3398,6 +3548,7 @@
         _confirmDeletePurchaseId = null;
         _allPcsEx = PcSvc.GetAllPcsExtended();
         _balances = PcSvc.GetAllPcBalances();
+        _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
         LoadDetail();
     }
 
@@ -3670,6 +3821,34 @@
         int m = (int)Math.Round((hours - h) * 60);
         if (m >= 60) { h++; m = 0; }
         return $"{h}:{m:D2}";
+    }
+
+    void OnCurrencyClick(string newCurrency)
+    {
+        if (newCurrency == _purchaseCurrency) return;
+        if (_selPcId.HasValue && _purchaseItems.Any(i => i.ItemType == "Auditing"))
+        {
+            var existing = PcSvc.GetPcAuditingCurrencies(_selPcId.Value);
+            if (existing.Count > 0 && existing.Any(c => c != newCurrency))
+            {
+                _currencyWarningExisting = string.Join(", ", existing);
+                _currencyWarningNew = newCurrency;
+                _showCurrencyWarning = true;
+                return;
+            }
+        }
+        _purchaseCurrency = newCurrency;
+    }
+
+    void ConfirmCurrencyChange()
+    {
+        _purchaseCurrency = _currencyWarningNew;
+        _showCurrencyWarning = false;
+    }
+
+    void CancelCurrencyChange()
+    {
+        _showCurrencyWarning = false;
     }
 
     void RecalcAuditing(PurchaseItemModel item)

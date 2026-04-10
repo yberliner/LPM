@@ -1987,6 +1987,25 @@ public class DashboardService
         return result is long l ? (int)l : 0;
     }
 
+    /// Returns the currency from the last auditing purchase for a PC (e.g. "ILS", "USD", "EUR").
+    public string GetLastPurchaseCurrency(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT COALESCE(pu.Currency, 'ILS')
+            FROM fin_purchases pu
+            JOIN fin_purchase_items pi ON pi.PurchaseId = pu.PurchaseId
+            WHERE pu.PcId = @pc AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+            GROUP BY pu.PurchaseId
+            HAVING SUM(pi.AmountPaid) <> 0
+            ORDER BY pu.PurchaseId DESC LIMIT 1";
+        cmd.Parameters.AddWithValue("@pc", pcId);
+        var result = cmd.ExecuteScalar();
+        return result is string s ? s : "ILS";
+    }
+
     /// Returns the last ChargedCentsRatePerHour from a solo CS review for a given PC.
     public int GetLastSoloCsRateForPc(int pcId)
     {
