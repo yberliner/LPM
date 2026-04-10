@@ -1746,7 +1746,7 @@
                                             <td class="small text-end fw-semibold" style="color:@(sr.IsOtfsFree ? "#10b981" : "#7c3aed");">
                                                 @if (sr.IsOtfsFree)
                                                 {
-                                                    <span class="badge" style="background:#d1fae5;color:#065f46;font-size:.65rem;">Free (OTFS)</span>
+                                                    <span class="badge" style="background:#d1fae5;color:#065f46;font-size:.65rem;">Free</span>
                                                 }
                                                 else
                                                 {
@@ -1789,8 +1789,8 @@
                         <span class="cg-lbl">Formula</span><span><strong>Total Purchased ₪ &minus; Total Used ₪</strong></span>
                         <span class="cg-lbl">Purchased</span><span>Sum of all AmountPaid from auditing purchases</span>
                         <span class="cg-lbl">Used (Sessions)</span><span>For each non-solo, non-free session: Rate &times; (Length + Admin) &divide; 3600. Rate falls back to previous session rate, then purchase rate</span>
-                        <span class="cg-lbl">Used (Solo CS)</span><span>For each solo CS review with rate &gt; 0: <strong>Rate &times; ReviewLength &divide; 3600</strong>. Rate = 0 means not yet billable (set in Sessions page).<br/>
-                            <strong style="color:#10b981 !important;">OTFS exception:</strong> if the PC was enrolled in an active OTFS course at the time of the session (DateStarted &le; SessionDate and course not yet finished), that review is <strong>free</strong> — cost = 0</span>
+                        <span class="cg-lbl">Used (Solo CS)</span><span>For each solo CS review with rate &gt; 0 and Notes = <strong>"Bill"</strong>: <strong>Rate &times; ReviewLength &divide; 3600</strong>. Rate = 0 means not yet billable (set in Sessions page).<br/>
+                            Reviews marked <strong style="color:#10b981 !important;">"Free"</strong> (OTFS) or with no notes (old data) are <strong>not charged</strong> — cost = 0</span>
                         <span class="cg-lbl">Color</span><span><strong style="color:#16a34a !important;">Green</strong> = positive &nbsp; <strong style="color:#dc2626 !important;">Red</strong> = owes money</span>
                     </div>
                     <div class="cg-example">
@@ -1846,11 +1846,11 @@
                     <div class="cg-title"><i class="ri-calculator-line me-1"></i>Balance Details (₪ icon)</div>
                     <div class="cg-grid">
                         <span class="cg-lbl">Purchases</span><span>Each purchase with date, hours, and amount</span>
-                        <span class="cg-lbl">Used Money</span><span>Total cost: regular sessions + solo CS reviews (OTFS-covered reviews excluded)</span>
+                        <span class="cg-lbl">Used Money</span><span>Total cost: regular sessions + solo CS reviews marked "Bill" (reviews marked "Free" or with no notes are excluded)</span>
                         <span class="cg-lbl">Balance</span><span>Purchased minus used</span>
                         <span class="cg-lbl">Hours Left</span><span>Balance &divide; effective rate</span>
                         <span class="cg-lbl">Session Details</span><span>Per-session cost, rate used, and rate source</span>
-                        <span class="cg-lbl">Solo Reviews</span><span>Shown separately in purple — date, duration, rate, cost. OTFS-covered reviews appear with a green <strong style="color:#065f46 !important;">Free (OTFS)</strong> badge and cost = 0</span>
+                        <span class="cg-lbl">Solo Reviews</span><span>Shown separately in purple — date, duration, rate, cost. Reviews marked "Free" appear with a green <strong style="color:#065f46 !important;">Free</strong> badge and cost = 0. Only "Bill" reviews are charged.</span>
                     </div>
                 </div>
             </div>

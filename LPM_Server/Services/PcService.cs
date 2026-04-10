@@ -702,7 +702,7 @@ public List<PcListItem> GetAllPcs()
             }
         }
 
-        // D: Solo CS review costs (ChargedCentsRatePerHour > 0, excluding OTFS-covered)
+        // D: Solo CS review costs (only where cs_reviews.Notes = 'Bill')
         var soloCosts = new Dictionary<int, decimal>();
         using (var cmd = conn.CreateCommand())
         {
@@ -711,14 +711,7 @@ public List<PcListItem> GetAllPcs()
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
                 WHERE s.AuditorId IS NULL AND cr.ChargedCentsRatePerHour > 0
-                  AND NOT EXISTS (
-                      SELECT 1 FROM acad_student_courses sc
-                      JOIN lkp_courses lc ON lc.CourseId = sc.CourseId
-                      WHERE sc.PersonId = s.PcId
-                        AND lc.CourseType = 'OTFS'
-                        AND sc.DateStarted <= s.SessionDate
-                        AND (sc.DateFinished IS NULL OR sc.DateFinished >= s.SessionDate)
-                  )";
+                  AND cr.Notes = 'Bill'";
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -1466,7 +1459,7 @@ public List<PcListItem> GetAllPcs()
             usedNis += (decimal)rate * (s.admin + s.length) / 3600m / 100m;
         }
 
-        // Solo CS review costs (excluding OTFS-covered)
+        // Solo CS review costs (only where cs_reviews.Notes = 'Bill')
         int soloCount = 0;
         using (var cmd = conn.CreateCommand())
         {
@@ -1475,14 +1468,7 @@ public List<PcListItem> GetAllPcs()
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
                 WHERE s.PcId = @id AND s.AuditorId IS NULL AND cr.ChargedCentsRatePerHour > 0
-                  AND NOT EXISTS (
-                      SELECT 1 FROM acad_student_courses sc
-                      JOIN lkp_courses lc ON lc.CourseId = sc.CourseId
-                      WHERE sc.PersonId = s.PcId
-                        AND lc.CourseType = 'OTFS'
-                        AND sc.DateStarted <= s.SessionDate
-                        AND (sc.DateFinished IS NULL OR sc.DateFinished >= s.SessionDate)
-                  )";
+                  AND cr.Notes = 'Bill'";
             cmd.Parameters.AddWithValue("@id", pcId);
             using var r = cmd.ExecuteReader();
             while (r.Read())
@@ -1574,14 +1560,7 @@ public List<PcListItem> GetAllPcs()
         cmd.CommandText = @"
             SELECT s.SessionId, s.SessionDate, cr.ReviewLengthSeconds,
                    COALESCE(cr.ChargedCentsRatePerHour, 0),
-                   CASE WHEN EXISTS (
-                       SELECT 1 FROM acad_student_courses sc
-                       JOIN lkp_courses lc ON lc.CourseId = sc.CourseId
-                       WHERE sc.PersonId = s.PcId
-                         AND lc.CourseType = 'OTFS'
-                         AND sc.DateStarted <= s.SessionDate
-                         AND (sc.DateFinished IS NULL OR sc.DateFinished >= s.SessionDate)
-                   ) THEN 1 ELSE 0 END
+                   COALESCE(cr.Notes, '')
             FROM cs_reviews cr
             JOIN sess_sessions s ON s.SessionId = cr.SessionId
             WHERE s.PcId = @id AND s.AuditorId IS NULL
@@ -1592,9 +1571,11 @@ public List<PcListItem> GetAllPcs()
         {
             int rateCents = r.GetInt32(3);
             int lengthSec = r.GetInt32(2);
-            bool isOtfsFree = r.GetInt32(4) == 1 && rateCents > 0;
-            decimal cost = isOtfsFree ? 0m : (decimal)rateCents * lengthSec / 3600m / 100m;
-            result.Add(new(r.GetInt32(0), r.GetString(1), lengthSec, rateCents, cost, isOtfsFree));
+            string notes = r.GetString(4);
+            // Only 'Bill' is charged; 'Free' and NULL/empty (old data) are free
+            bool isFree = notes != "Bill";
+            decimal cost = isFree ? 0m : (decimal)rateCents * lengthSec / 3600m / 100m;
+            result.Add(new(r.GetInt32(0), r.GetString(1), lengthSec, rateCents, cost, isFree));
         }
         return result;
     }
