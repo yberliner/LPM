@@ -136,6 +136,11 @@
                     <span class="d-none d-sm-inline">Solo</span>
                     <span class="sp-filter-count">@CountByFilter("Solo")</span>
                 </button>
+                <label class="form-check form-check-inline ms-3 mb-0" style="cursor:pointer;font-size:.82rem;">
+                    <input class="form-check-input" type="checkbox" checked="@_hideFullCoverage"
+                           @onchange="e => _hideFullCoverage = (bool)(e.Value ?? false)" />
+                    <span class="text-muted">Hide full coverage (A+CS)</span>
+                </label>
             </div>
 
             <div class="card border-0 shadow-sm sp-card mb-5">
@@ -852,6 +857,7 @@
     // Tracks cells currently showing the flash animation
     private HashSet<(int AuditorId, int PcId)> _flashingCells = new();
     private string _matrixFilter = "All";
+    private bool   _hideFullCoverage;
 
     protected override async Task OnInitializedAsync()
     {
@@ -873,7 +879,7 @@
 
         _pending  = DashSvc.GetPendingPermissionRequests();
         _auditors = DashSvc.GetAuditorPermGroups();
-        _allPcs   = DashSvc.GetAllPcs().ToList();
+        _allPcs   = DashSvc.GetAllPcs().OrderBy(p => p.FullName).ToList();
         _matrixAuditors = _auditors.Where(a => a.StaffRole != StaffRoles.Solo).ToList();
         _soloPcIds = _auditors.Where(a => a.StaffRole == StaffRoles.Solo).Select(a => a.AuditorId).ToHashSet();
 
@@ -1002,13 +1008,21 @@
     private bool PcHasCs(int pcId)
         => _matrixAuditors.Any(a => a.ApprovedPcs.Any(p => p.PcId == pcId && p.WorkCapacity != StaffRoles.Auditor));
 
-    private List<PcInfo> GetFilteredPcs() => _matrixFilter switch
+    private bool IsFullCoverage(int pcId) => PcHasAuditor(pcId) && PcHasCs(pcId);
+
+    private List<PcInfo> GetFilteredPcs()
     {
-        "Unassigned" => _allPcs.Where(pc => !PcHasAuditor(pc.PcId) && !PcHasCs(pc.PcId)).ToList(),
-        "Partial"    => _allPcs.Where(pc => PcHasAuditor(pc.PcId) != PcHasCs(pc.PcId)).ToList(),
-        "Solo"       => _allPcs.Where(pc => _soloPcIds.Contains(pc.PcId)).ToList(),
-        _            => _allPcs
-    };
+        var list = _matrixFilter switch
+        {
+            "Unassigned" => _allPcs.Where(pc => !PcHasAuditor(pc.PcId) && !PcHasCs(pc.PcId)),
+            "Partial"    => _allPcs.Where(pc => PcHasAuditor(pc.PcId) != PcHasCs(pc.PcId)),
+            "Solo"       => _allPcs.Where(pc => _soloPcIds.Contains(pc.PcId)),
+            _            => _allPcs.AsEnumerable()
+        };
+        if (_hideFullCoverage)
+            list = list.Where(pc => !IsFullCoverage(pc.PcId));
+        return list.ToList();
+    }
 
     private int CountByFilter(string filter) => filter switch
     {
