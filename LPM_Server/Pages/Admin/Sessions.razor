@@ -349,7 +349,18 @@
                                         <td class="ps-4 py-2"><span class="fw-semibold sa-date">@FormatDate(rev.SessionDate)</span></td>
                                         <td class="text-center py-2">
                                             <span class="badge rounded-pill bg-light border text-dark px-2" style="font-size:0.78rem;">@DashboardService.Fmt(rev.ReviewLengthSeconds)</span>
-                                            @if (rev.IsSolo) { <span class="ms-1" style="background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;font-size:.65rem;font-weight:700;padding:2px 8px;border-radius:10px;letter-spacing:.3px;">Solo</span> }
+                                            @if (rev.IsSolo)
+                                            {
+                                                <span class="ms-1" style="background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;font-size:.65rem;font-weight:700;padding:2px 8px;border-radius:10px;letter-spacing:.3px;">Solo</span>
+                                                @if (rev.Notes == "Free")
+                                                {
+                                                    <span class="ms-1" style="background:#d1fae5;color:#065f46;font-size:.65rem;font-weight:700;padding:2px 8px;border-radius:10px;">Free</span>
+                                                }
+                                                else if (rev.Notes == "Bill")
+                                                {
+                                                    <span class="ms-1" style="background:#fee2e2;color:#991b1b;font-size:.65rem;font-weight:700;padding:2px 8px;border-radius:10px;">Bill</span>
+                                                }
+                                            }
                                         </td>
                                         @if (_hasSoloInGroup)
                                         {

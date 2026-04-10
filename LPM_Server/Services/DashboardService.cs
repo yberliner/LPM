@@ -26,7 +26,7 @@ public record AuditorSessionGroup(int AuditorId, string AuditorName, List<PcSess
 public record AdminCsRow(
     int CsReviewId, int SessionId, int PcId, string PcName, int CsId, string CsName,
     string SessionDate, int ReviewLengthSeconds, int CsSalaryCentsPerHour, string CsStatus,
-    bool IsSolo = false, int ChargedCentsRatePerHour = 0);
+    bool IsSolo = false, int ChargedCentsRatePerHour = 0, string? Notes = null);
 public record PcCsGroup(int PcId, string PcName, List<AdminCsRow> Reviews);
 public record CsReviewerGroup(int CsId, string CsName, List<PcCsGroup> PcGroups);
 
@@ -1845,7 +1845,8 @@ public class DashboardService
                    TRIM(pcs.FirstName || ' ' || COALESCE(NULLIF(pcs.LastName,''), '')) AS CsName,
                    s.SessionDate, cr.ReviewLengthSeconds, cr.CsSalaryCentsPerHour, cr.Status,
                    CASE WHEN s.AuditorId IS NULL THEN 1 ELSE 0 END AS IsSolo,
-                   COALESCE(cr.ChargedCentsRatePerHour, 0) AS ChargedCentsRatePerHour
+                   COALESCE(cr.ChargedCentsRatePerHour, 0) AS ChargedCentsRatePerHour,
+                   cr.Notes
             FROM cs_reviews cr
             JOIN sess_sessions  s   ON s.SessionId   = cr.SessionId
             JOIN core_persons   pc  ON pc.PersonId   = s.PcId
@@ -1871,7 +1872,8 @@ public class DashboardService
                 r.GetString(6), r.IsDBNull(7) ? 0 : r.GetInt32(7), r.IsDBNull(8) ? 0 : r.GetInt32(8),
                 r.IsDBNull(9) ? "Done" : r.GetString(9),
                 !r.IsDBNull(10) && r.GetInt32(10) == 1,
-                r.IsDBNull(11) ? 0 : r.GetInt32(11));
+                r.IsDBNull(11) ? 0 : r.GetInt32(11),
+                r.IsDBNull(12) ? null : r.GetString(12));
 
             csNames.TryAdd(csId, csName);
             pcNames.TryAdd(key, pcName);
