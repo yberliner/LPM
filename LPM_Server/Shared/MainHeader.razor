@@ -119,21 +119,15 @@
 
                         .lpm-username-shimmer {
                             font-size: 1.4rem; font-weight: 000; letter-spacing: 0.03em;
-                            background: linear-gradient(90deg,
-                                var(--default-text-color) 0%,
-                                var(--default-text-color) 35%,
-                                #a5b4fc 50%,
-                                var(--default-text-color) 65%,
-                                var(--default-text-color) 100%);
-                            background-size: 300% 100%;
-                            -webkit-background-clip: text;
-                            -webkit-text-fill-color: transparent;
-                            background-clip: text;
+                            color: rgba(255, 255, 255, 0.8);
                             animation: lpm-name-shimmer 6s ease-in-out infinite;
                         }
+                        :root[data-theme-mode="light"] .lpm-username-shimmer {
+                            color: #2563eb;
+                        }
                         @@keyframes lpm-name-shimmer {
-                            0%, 100% { background-position: 100% 0; }
-                            50%       { background-position:   0% 0; }
+                            0%, 100% { opacity: 1; }
+                            50%       { opacity: 0.55; }
                         }
                         .avatar-trigger {
                             display: flex;
