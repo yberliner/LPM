@@ -1027,6 +1027,17 @@
                 <div class="modal-header py-2" style="background:linear-gradient(135deg,#1565c0,#1e88e5); border-bottom:none;">
                     <h5 class="modal-title fs-15 text-white d-flex align-items-center gap-2">
                         <i class="ri-upload-2-line"></i>@LS.T("actions.addSession")
+                        @if (_importStep >= 2 && _importPcId > 0)
+                        {
+                            var pcName = _approvedPcs.FirstOrDefault(p => p.PcId == _importPcId)?.FullName ?? "";
+                            <span style="opacity:.85; font-size:.82rem; font-weight:400;">
+                                — @pcName
+                                @if (_importStep == 3 && !string.IsNullOrWhiteSpace(_arfSessionLength))
+                                {
+                                    <span style="margin-left:8px; opacity:.7;">(@_arfSessionLength)</span>
+                                }
+                            </span>
+                        }
                     </h5>
                     <div class="d-flex align-items-center gap-2 ms-auto me-2">
                         @if (_importStep >= 2 && _importPcId > 0)
@@ -1144,6 +1155,17 @@
                         }
                         else
                         {
+                        <div class="mb-3 d-flex align-items-center gap-2">
+                            <input type="checkbox" id="chk-free-session" class="form-check-input"
+                                   checked="@_importFreeSession"
+                                   @onchange="e => _importFreeSession = (bool)(e.Value ?? false)"
+                                   style="accent-color:#3b82f6; cursor:pointer; width:1rem; height:1rem;" />
+                            <label for="chk-free-session" class="form-check-label"
+                                   style="font-size:.82rem; color:#94a3b8; cursor:pointer; user-select:none;">
+                                Free Session
+                            </label>
+                        </div>
+
                         <div class="mb-3">
                             <label class="form-label" style="font-size:.82rem; color:#94a3b8;">PC</label>
                             @if (_isSoloUser)
@@ -1165,20 +1187,6 @@
                                 </select>
                             }
                         </div>
-
-                        @if (_importPcId > 0)
-                        {
-                            <div class="mb-3 d-flex align-items-center gap-2">
-                                <input type="checkbox" id="chk-free-session" class="form-check-input"
-                                       checked="@_importFreeSession"
-                                       @onchange="e => _importFreeSession = (bool)(e.Value ?? false)"
-                                       style="accent-color:#3b82f6; cursor:pointer; width:1rem; height:1rem;" />
-                                <label for="chk-free-session" class="form-check-label"
-                                       style="font-size:.82rem; color:#94a3b8; cursor:pointer; user-select:none;">
-                                    Free Session
-                                </label>
-                            </div>
-                        }
                         } @* end else (has approved PCs) *@
                     }
                     else if (_importStep == 2)
@@ -1607,7 +1615,7 @@
                     @if (_importStep == 1)
                     {
                         <button class="btn btn-sm btn-outline-secondary" @onclick="CloseWizard">@LS.T("common.cancel")</button>
-                        @if (_isSoloUser || _approvedPcs.Count > 0)
+                        @if (_isSoloUser)
                         {
                             <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
                                     disabled="@(_importPcId == 0)"
@@ -1619,7 +1627,7 @@
                     else if (_importStep == 2)
                     {
                         <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
-                                @onclick="() => _importStep = 1">
+                                @onclick="() => { _importStep = 1; if (!_isSoloUser) _importPcId = 0; }">
                             <i class="ri-arrow-left-s-line"></i> Back
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="CloseWizard">@LS.T("common.cancel")</button>
@@ -4999,6 +5007,8 @@
     {
         _importPcId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
         CheckDuplicateSession();
+        if (_importPcId > 0)
+            GoToExamStep();
     }
 
     void CheckDuplicateSession()
