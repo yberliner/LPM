@@ -1512,17 +1512,22 @@
                                     <div class="d-flex gap-2">
                                         @foreach (var opt in new[] { "F/N", "RT", "YT", "PT" })
                                         {
-                                            var examColor = opt switch {
+                                            var localOpt = opt;
+                                            var isActive = _arfExamReport == localOpt;
+                                            var examColor = localOpt switch {
                                                 "F/N" => "#16a34a",
                                                 "RT"  => "#dc2626",
                                                 "YT"  => "#ca8a04",
                                                 "PT"  => "#db2777",
                                                 _     => "#64748b"
                                             };
-                                            <button class="btn btn-sm @(_arfExamReport == opt ? "" : "btn-outline-secondary")"
-                                                    style="@(_arfExamReport == opt ? $"background:{examColor};border-color:{examColor};color:#fff;font-weight:600;" : $"color:{examColor};border-color:{examColor};")"
-                                                    @onclick="() => { _arfExamReport = opt; RebuildArfSummary(); }">
-                                                @opt
+                                            var btnClass = isActive ? "btn btn-sm" : "btn btn-sm btn-outline-secondary";
+                                            var btnStyle = isActive
+                                                ? $"background:{examColor};border-color:{examColor};color:#fff;font-weight:600;"
+                                                : $"color:{examColor};border-color:{examColor};";
+                                            <button type="button" class="@btnClass" style="@btnStyle"
+                                                    @onclick="() => ToggleExamReport(localOpt)">
+                                                @localOpt
                                             </button>
                                         }
                                     </div>
@@ -4477,6 +4482,18 @@
             $"setTimeout(()=>{{var el=document.getElementById('arf-c-{tblIdx}-{newRowIdx}-0');if(el)el.focus();}},30)");
     }
 
+    void ToggleExamReport(string opt)
+    {
+        Console.WriteLine($"[TOGGLE] clicked={opt} current={_arfExamReport}");
+        if (_arfExamReport == opt)
+            _arfExamReport = "";
+        else
+            _arfExamReport = opt;
+        Console.WriteLine($"[TOGGLE] after={_arfExamReport}");
+        RebuildArfSummary();
+        StateHasChanged();
+    }
+
     void RebuildArfSummary(bool pushToEditor = true)
     {
         var lines = AllArfRows
@@ -4489,14 +4506,17 @@
             })
             .ToList();
 
-        var examColor = _arfExamReport switch {
-            "F/N" => "#16a34a",
-            "RT"  => "#dc2626",
-            "YT"  => "#ca8a04",
-            "PT"  => "#db2777",
-            _     => "#64748b"
-        };
-        lines.Add($"<span style=\"color:{examColor};\">Exam report: {System.Net.WebUtility.HtmlEncode(_arfExamReport)}</span>");
+        if (!string.IsNullOrEmpty(_arfExamReport))
+        {
+            var examColor = _arfExamReport switch {
+                "F/N" => "#16a34a",
+                "RT"  => "#dc2626",
+                "YT"  => "#ca8a04",
+                "PT"  => "#db2777",
+                _     => "#64748b"
+            };
+            lines.Add($"<span style=\"color:{examColor};\">Exam report: {System.Net.WebUtility.HtmlEncode(_arfExamReport)}</span>");
+        }
 
         _arfSummary = string.Join("", lines.Select(l => $"<p style=\"margin:0;line-height:1.35;\">{l}</p>"));
         if (pushToEditor)
@@ -5392,7 +5412,8 @@
                         DashSvc.AddFolderSummary(sessionId, capturedPcId,
                             capturedIsSolo ? null : capturedUserId,
                             capturedSummary ?? "",
-                            System.Text.Json.JsonSerializer.Serialize(arfData));
+                            System.Text.Json.JsonSerializer.Serialize(arfData),
+                            sessionDate: dbDate);
                         await Advance(sCreate, 2);
                     }),
                     Task.Run(async () =>

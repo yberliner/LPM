@@ -2199,18 +2199,19 @@ public class DashboardService
         cmd.ExecuteNonQuery();
     }
 
-    public void AddFolderSummary(int? sessionId, int pcId, int? auditorId, string summaryHtml, string? arfJson = null)
+    public void AddFolderSummary(int? sessionId, int pcId, int? auditorId, string summaryHtml, string? arfJson = null, string? sessionDate = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO sess_folder_summary (SessionId, PcId, AuditorId, SummaryHtml, CreatedAt, ArfJson)
-            VALUES (@sid, @pcId, @audId, @html, datetime('now', '+2 hours'), @arfJson)";
+            VALUES (@sid, @pcId, @audId, @html, @createdAt, @arfJson)";
         cmd.Parameters.AddWithValue("@sid", (object?)sessionId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@pcId", pcId);
         cmd.Parameters.AddWithValue("@audId", (object?)auditorId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@html", summaryHtml);
+        cmd.Parameters.AddWithValue("@createdAt", sessionDate ?? DateTime.UtcNow.AddHours(2).ToString("yyyy-MM-dd HH:mm:ss"));
         cmd.Parameters.AddWithValue("@arfJson", (object?)arfJson ?? DBNull.Value);
         cmd.ExecuteNonQuery();
     }
@@ -3430,6 +3431,13 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@chargedRate", chargedRate);
         cmd.Parameters.AddWithValue("@audSalary", auditorSalaryRate);
         cmd.ExecuteNonQuery();
+
+        using var fsCmd = conn.CreateCommand();
+        fsCmd.CommandText = "UPDATE sess_folder_summary SET CreatedAt = @date WHERE SessionId = @sid";
+        fsCmd.Parameters.AddWithValue("@sid", sessionId);
+        fsCmd.Parameters.AddWithValue("@date", sessionDate);
+        fsCmd.ExecuteNonQuery();
+
         Console.WriteLine($"[SessionManager] Updated session {sessionId}");
     }
 
