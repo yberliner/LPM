@@ -1656,6 +1656,72 @@ window.pcfViewer = {
         };
         viewer.addEventListener('mouseup',    stopDrag);
         viewer.addEventListener('mouseleave', stopDrag);
+
+        // ── Touch pinch-to-zoom ──
+        let pinchStartDist = 0;
+        let pinchStartZoom = 1.0;
+        let pinchActive = false;
+        let pinchLastApply = 0;
+
+        function getTouchDist(t1, t2) {
+            const dx = t1.clientX - t2.clientX;
+            const dy = t1.clientY - t2.clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        viewer.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                const d = getTouchDist(e.touches[0], e.touches[1]);
+                if (d < 10) return; // fingers too close — ignore
+                pinchActive = true;
+                pinchStartDist = d;
+                const pId = viewer.id.replace('pcf-viewer-', '');
+                const pane = self.panes[pId];
+                pinchStartZoom = pane ? (pane.zoomLevel || 1.0) : 1.0;
+                pinchLastApply = 0;
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        viewer.addEventListener('touchmove', (e) => {
+            if (!pinchActive || e.touches.length < 2) return;
+            e.preventDefault();
+
+            const now = Date.now();
+            if (now - pinchLastApply < 80) return;
+            pinchLastApply = now;
+
+            const curDist = getTouchDist(e.touches[0], e.touches[1]);
+            const ratio = curDist / pinchStartDist;
+            const rawLevel = pinchStartZoom * ratio;
+
+            let best = self._zoomLevels[0];
+            let bestDiff = Math.abs(rawLevel - best);
+            for (const z of self._zoomLevels) {
+                const d = Math.abs(rawLevel - z);
+                if (d < bestDiff) { best = z; bestDiff = d; }
+            }
+
+            const pId = viewer.id.replace('pcf-viewer-', '');
+            const pane = self.panes[pId];
+            if (!pane || best === pane.zoomLevel) return;
+
+            self._setZoom(pId, best);
+        }, { passive: false });
+
+        viewer.addEventListener('touchend', (e) => {
+            if (!pinchActive) return;
+            if (e.touches.length < 2) {
+                pinchActive = false;
+                const pId = viewer.id.replace('pcf-viewer-', '');
+                const pane = self.panes[pId];
+                if (pane && self.dotNetRef) {
+                    self.dotNetRef.invokeMethodAsync('OnPinchZoomEnd', Math.round((pane.zoomLevel || 1) * 100));
+                }
+            }
+        });
+
+        viewer.addEventListener('touchcancel', () => { pinchActive = false; });
     },
 
     // ── Extract pages mode ──

@@ -1384,6 +1384,7 @@
         background: #f1f5f9 !important; color: #1e293b !important;
         position: fixed !important; top: 0; left: 0; right: 0; bottom: 0;
         z-index: 9999; margin: 0 !important; padding: 0 !important;
+        touch-action: pan-x pan-y;
     }
 
     /* ── Sidebar ── */
@@ -2132,6 +2133,7 @@
         display: flex; flex-direction: column; align-items: flex-start;
         padding: 20px; gap: 12px; background: #64748b;
         scrollbar-width: auto; scrollbar-color: #475569 #64748b;
+        touch-action: pan-y;
     }
     .pcf-viewer.pcf-dual-mode { overflow: hidden !important; scrollbar-width: none !important; }
     .pcf-viewer.pcf-dual-mode::-webkit-scrollbar { display: none !important; }
@@ -4511,6 +4513,15 @@
         _zoomPercent = await JS.InvokeAsync<int>("pcfViewer.fitPage", PaneIds[_activeIdx]);
         _showZoomMenu = false;
         PersistDualSessionZoom();
+    }
+
+    [JSInvokable]
+    public void OnPinchZoomEnd(int zoomPct)
+    {
+        _zoomPercent = zoomPct;
+        _fitMode = false;
+        PersistDualSessionZoom();
+        InvokeAsync(StateHasChanged);
     }
 
     void PersistDualSessionZoom()
