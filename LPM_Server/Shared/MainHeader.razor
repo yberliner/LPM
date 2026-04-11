@@ -1433,6 +1433,7 @@
                                                                placeholder="HH:MM"
                                                                value="@row.Time"
                                                                @onblur="() => _arfTables[tIdx].Rows[rIdx].Touched = true"
+                                                               @oninput="e => OnArfTimeLive(tIdx, rIdx, e)"
                                                                @onchange="e => SetArfTimeCell(tIdx, rIdx, e)"/>
                                                     </td>
                                                     <td>
@@ -1636,11 +1637,25 @@
                             <i class="ri-arrow-left-s-line"></i> Back
                         </button>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="CloseWizard">@LS.T("common.cancel")</button>
-                        <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                                disabled="@(_importSessionBytes == null || _importDuplicate || !string.IsNullOrEmpty(_importNameEditError) || string.IsNullOrEmpty(_importNormalizedFileName) || (!IsArfTableEmpty && ArfHasTimeErrors) || string.IsNullOrWhiteSpace(_arfSessionLength))"
-                                @onclick="GoToStep3">
-                            Next <i class="ri-arrow-right-s-line"></i>
-                        </button>
+                        var step2Reasons = Step2DisabledReasons;
+                        <div class="wiz-next-wrap">
+                            <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
+                                    disabled="@(step2Reasons.Count > 0)"
+                                    @onclick="GoToStep3">
+                                Next <i class="ri-arrow-right-s-line"></i>
+                            </button>
+                            @if (step2Reasons.Count > 0)
+                            {
+                                <div class="wiz-next-hover-zone"></div>
+                                <div class="wiz-next-tooltip">
+                                    <div class="wiz-next-tooltip-title"><i class="ri-error-warning-line"></i> Cannot proceed</div>
+                                    @foreach (var reason in step2Reasons)
+                                    {
+                                        <div class="wiz-next-tooltip-item"><i class="ri-close-circle-line"></i> @reason</div>
+                                    }
+                                </div>
+                            }
+                        </div>
                     }
                     else
                     {
@@ -3820,6 +3835,49 @@
     .wiz-future .wiz-circle { background:transparent; border-color:#475569; color:#64748b; }
     .wiz-future .wiz-label  { color:#475569; }
 
+    /* ── Wizard Next button disabled tooltip ── */
+    .wiz-next-wrap {
+        position: relative; display: inline-flex;
+    }
+    .wiz-next-hover-zone {
+        position: absolute; inset: 0; z-index: 2; cursor: not-allowed;
+    }
+    .wiz-next-tooltip {
+        position: absolute; bottom: calc(100% + 10px); right: 0;
+        min-width: 260px; max-width: 340px;
+        background: #0f172a; color: #e2e8f0;
+        border: 1px solid #334155; border-radius: 12px;
+        padding: 12px 14px; box-shadow: 0 12px 40px rgba(0,0,0,.45);
+        pointer-events: none;
+        opacity: 0; transform: translateY(6px) scale(0.96);
+        transition: opacity .2s ease, transform .2s ease;
+        z-index: 10;
+    }
+    .wiz-next-tooltip::after {
+        content: ''; position: absolute; top: 100%; right: 18px;
+        border: 7px solid transparent; border-top-color: #0f172a;
+    }
+    .wiz-next-hover-zone:hover ~ .wiz-next-tooltip {
+        opacity: 1; transform: translateY(0) scale(1);
+    }
+    .wiz-next-tooltip-title {
+        display: flex; align-items: center; gap: 6px;
+        font-weight: 700; font-size: .82rem; color: #f87171;
+        margin-bottom: 8px; padding-bottom: 6px;
+        border-bottom: 1px solid rgba(248,113,113,.15);
+    }
+    .wiz-next-tooltip-item {
+        display: flex; align-items: flex-start; gap: 6px;
+        font-size: .78rem; color: #cbd5e1; padding: 3px 0;
+    }
+    .wiz-next-tooltip-item i { color: #f87171; font-size: .82rem; margin-top: 1px; flex-shrink: 0; }
+    :root[data-theme-mode="light"] .wiz-next-tooltip {
+        background: #ffffff; color: #1e293b;
+        border-color: #e2e8f0; box-shadow: 0 12px 40px rgba(0,0,0,.15);
+    }
+    :root[data-theme-mode="light"] .wiz-next-tooltip::after { border-top-color: #ffffff; }
+    :root[data-theme-mode="light"] .wiz-next-tooltip-item { color: #475569; }
+
     /* ── Wizard responsive: mobile ── */
     @@media (max-width: 480px) {
         .wiz-circle { width: 28px; height: 28px; font-size: .75rem; }
@@ -4556,6 +4614,17 @@
     }
 
     // Auto-format time: "2347" → "23:47", "947" → "9:47", "23:47" stays
+    void OnArfTimeLive(int tblIdx, int rowIdx, ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString()?.Trim() ?? "";
+        var digits = new string(raw.Where(char.IsDigit).ToArray());
+        if (digits.Length >= 4)
+        {
+            _arfTables[tblIdx].Rows[rowIdx].Time = FormatArfTime(raw);
+            RecalcSessionLength();
+        }
+    }
+
     void SetArfTimeCell(int tblIdx, int rowIdx, ChangeEventArgs e)
     {
         var raw = e.Value?.ToString()?.Trim() ?? "";
@@ -4638,6 +4707,25 @@
     bool IsArfTableEmpty => AllArfRows.All(r =>
         string.IsNullOrWhiteSpace(r.Time)
         && string.IsNullOrWhiteSpace(r.ToneArm));
+
+    List<string> Step2DisabledReasons
+    {
+        get
+        {
+            var reasons = new List<string>();
+            if (_importSessionBytes == null || string.IsNullOrEmpty(_importNormalizedFileName))
+                reasons.Add("Upload a session file");
+            if (_importDuplicate)
+                reasons.Add("Duplicate session — this file already exists");
+            if (!string.IsNullOrEmpty(_importNameEditError))
+                reasons.Add($"File name error: {_importNameEditError}");
+            if (!IsArfTableEmpty && ArfHasTimeErrors)
+                reasons.Add("Fix time format errors in the ARF table");
+            if (string.IsNullOrWhiteSpace(_arfSessionLength))
+                reasons.Add("Enter the Session Length");
+            return reasons;
+        }
+    }
 
     // Formats raw input as #.##.
     // With dot:    "3.42" → "3.42", "3." → "3." (in-progress), "3.4" → "3.4"
