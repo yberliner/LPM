@@ -8,6 +8,8 @@ public class UserActivityService
     private readonly string _connectionString;
     // In-memory circuit count only — intentionally resets on server restart
     private readonly ConcurrentDictionary<string, int> _circuits = new(StringComparer.OrdinalIgnoreCase);
+    // In-memory last-interaction timestamp (mouse/keyboard/touch heartbeat, no DB)
+    private readonly ConcurrentDictionary<string, DateTime> _lastInteraction = new(StringComparer.OrdinalIgnoreCase);
 
     public record ActivitySummary(string Username, string LastActivityAt, string LastAction, string LastKind, bool IsOnline);
     public record ActivityEntry(long Id, string ActivityAt, string Action, string Kind);
@@ -130,6 +132,33 @@ public class UserActivityService
             Console.WriteLine($"[ActivitySvc] GetAuditLog error: {ex.Message}");
         }
         return result;
+    }
+
+    // ── Interaction heartbeat (in-memory only) ─────────────────────────────
+
+    public void RecordInteraction(string username)
+    {
+        if (string.IsNullOrWhiteSpace(username)) return;
+        _lastInteraction[username.ToLowerInvariant()] = DateTime.UtcNow;
+    }
+
+    public string LastActiveAgo(string username)
+    {
+        if (!_lastInteraction.TryGetValue(username.ToLowerInvariant(), out var dt))
+            return "—";
+        var diff = DateTime.UtcNow - dt;
+        if (diff.TotalSeconds < 45)  return "Active now";
+        if (diff.TotalSeconds < 90)  return "Idle 1m";
+        if (diff.TotalMinutes < 60)  return $"Idle {(int)diff.TotalMinutes}m";
+        if (diff.TotalHours < 24)    return $"Idle {(int)diff.TotalHours}h {diff.Minutes}m";
+        return $"Idle {(int)diff.TotalDays}d";
+    }
+
+    public bool IsRecentlyActive(string username)
+    {
+        if (!_lastInteraction.TryGetValue(username.ToLowerInvariant(), out var dt))
+            return false;
+        return (DateTime.UtcNow - dt).TotalSeconds < 45;
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────

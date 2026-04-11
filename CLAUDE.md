@@ -21,6 +21,9 @@
 - No backward compatibility needed — just change the code, no shims or migration paths
 - All UI (new pages, modified pages, refactored components) MUST be responsive and work correctly on mobile and tablet. Use Bootstrap responsive classes and/or CSS media queries (breakpoints: 480px mobile, 768px tablet). Minimum touch target size 44px. Font sizes must be at least 16px on inputs to prevent iOS auto-zoom.
 
+## Shorthand Commands
+- **GD** = "Go Debug" — When the user writes `GD`: (1) prepare a detailed implementation plan, (2) debug the plan 5 times for logic/edge-case issues, (3) implement the code, (4) debug the written code 10 times looking for bugs and fix any found.
+
 ## Build
 - Solution: `LPM_Server/LPM.sln`
 - Publish: linux-x64, self-contained → `C:\PublishedApps\LPM\`

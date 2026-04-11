@@ -155,12 +155,15 @@
                                 <th>User</th>
                                 <th>Last Action</th>
                                 <th style="width:110px;">When</th>
+                                <th style="width:100px;">Last Active</th>
                                 <th style="width:80px;"></th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var u in _activityUsers)
                             {
+                                var lastActive = ActivitySvc.LastActiveAgo(u.Username);
+                                var isActive = ActivitySvc.IsRecentlyActive(u.Username);
                                 <tr>
                                     <td>
                                         <span class="@(u.IsOnline ? "diag-dot-online" : "diag-dot-offline")" title="@(u.IsOnline ? "Online" : "Offline")">●</span>
@@ -169,6 +172,9 @@
                                     <td style="color:#94a3b8;font-size:.85rem;">@u.LastAction</td>
                                     <td style="color:#64748b;font-size:.82rem;white-space:nowrap;">
                                         @LPM.Services.UserActivityService.TimeAgo(u.LastActivityAt)
+                                    </td>
+                                    <td style="font-size:.82rem;white-space:nowrap;color:@(isActive ? "#22c55e" : "#64748b");font-weight:@(isActive ? "600" : "400");">
+                                        @lastActive
                                     </td>
                                     <td>
                                         <button class="btn btn-sm diag-history-btn"
