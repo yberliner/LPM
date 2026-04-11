@@ -838,7 +838,7 @@
   "actions.title": "Actions",
   "actions.openFolder": "Open Folder",
   "actions.writeToSummary": "Write to Folder Summary",
-  "actions.addMemo": "Add Memo to Folder",
+  "actions.addMemo": "Add Miscellaneous Report to Folder",
   "actions.scheduleMeeting": "Schedule Meeting",
   "actions.uploadFrontCover": "Upload to Front Cover",
   "actions.finishGrade": "Finish Auditing Grade",
