@@ -211,6 +211,22 @@
                             title="@(_isSolo ? "Revoke solo auditor access" : "Grant solo auditor access")">
                         <i class="ri-user-star-line"></i>Solo Access
                     </button>
+                    @if (_isAdmin)
+                    {
+                        <div class="pc-reset-budget-wrap">
+                            <button class="pc-reset-budget-btn" @onclick="OpenResetBudgetModal">
+                                <i class="ri-restart-line"></i>Reset Budget
+                            </button>
+                            <div class="pc-reset-tooltip">
+                                <div class="pc-reset-tooltip-title"><i class="ri-information-line"></i> What does Reset Budget do?</div>
+                                <p>Sets a <strong>cutoff date</strong> — all balance calculations will only include purchases and sessions <strong>from that date forward</strong>.</p>
+                                <p>Previous financial history is completely ignored for balance, hours left, and cost calculations.</p>
+                                <div class="pc-reset-tooltip-example">
+                                    <strong>Example:</strong> A PC was paying in <span style="color:#ef4444;">EUR</span> and now switches to <span style="color:#22c55e;">ILS</span>. Reset the budget to start fresh with the new currency.
+                                </div>
+                            </div>
+                        </div>
+                    }
                 </div>
                 <div class="pc-header-meta">
                     <span class="pc-auditor-label"><i class="ri-shield-user-line"></i>Auditor: <strong>@_pcAuditorLabel</strong></span>
@@ -1212,6 +1228,156 @@
     </div>
 }
 
+@* ── Reset Budget Modal ── *@
+@if (_showResetModal && _detail != null)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5);z-index:1060;" @onclick="() => { if (!_resetSuccess && !_resetDeleted) _showResetModal = false; }">
+        <div class="modal-dialog modal-dialog-centered" style="max-width:500px;" @onclick:stopPropagation="true">
+            <div class="modal-content" style="background:#1e293b;border:1px solid #334155;border-radius:12px;overflow:hidden;">
+
+                @if (_resetSuccess)
+                {
+                    <div class="reset-success-overlay">
+                        <div class="reset-success-icon">
+                            <i class="ri-checkbox-circle-fill"></i>
+                        </div>
+                        <div class="reset-success-title">Budget Reset!</div>
+                        <div class="reset-success-sub">Balance recalculated from @_resetDate.ToString("dd/MM/yyyy") forward</div>
+                    </div>
+                }
+                else if (_resetDeleted)
+                {
+                    <div class="reset-success-overlay">
+                        <div class="reset-success-icon" style="background:linear-gradient(135deg,#ef4444,#b91c1c);">
+                            <i class="ri-delete-bin-line"></i>
+                        </div>
+                        <div class="reset-success-title" style="color:#ef4444;">Reset Removed!</div>
+                        <div class="reset-success-sub">Balance now includes all historical transactions again</div>
+                    </div>
+                }
+                else if (_resetConfirmDelete)
+                {
+                    <div class="modal-header" style="border-bottom:1px solid #334155;padding:16px 20px;">
+                        <h6 class="modal-title" style="color:#ef4444;font-weight:700;"><i class="ri-error-warning-line me-2"></i>Delete Budget Reset</h6>
+                        <button type="button" class="btn-close btn-close-white" @onclick="() => { _resetConfirmDelete = false; }"></button>
+                    </div>
+                    <div class="modal-body" style="padding:24px;">
+                        <div style="text-align:center;margin-bottom:20px;">
+                            <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#ef4444,#b91c1c);
+                                        display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;">
+                                <i class="ri-delete-bin-line" style="font-size:1.8rem;color:#fff;"></i>
+                            </div>
+                            <div style="color:#e2e8f0;font-weight:700;font-size:1.05rem;">Are you sure?</div>
+                        </div>
+                        <div style="background:#1c0a0a;border:1px solid #ef4444;border-radius:8px;padding:14px;margin-bottom:16px;font-size:.85rem;color:#fca5a5;">
+                            <p style="margin:0 0 8px;"><strong>You are about to delete the budget reset from @_resetDeleteDate.</strong></p>
+                            <p style="margin:0 0 6px;"><i class="ri-arrow-right-s-line"></i> All historical purchases and sessions will be included in balance calculations again.</p>
+                            <p style="margin:0 0 6px;"><i class="ri-arrow-right-s-line"></i> The balance, hours left, and cost will change immediately.</p>
+                            <p style="margin:0;"><i class="ri-arrow-right-s-line"></i> If this PC had mixed currencies before the reset, the "Mix" warning may reappear.</p>
+                        </div>
+                    </div>
+                    <div class="modal-footer" style="border-top:1px solid #334155;padding:12px 20px;">
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => { _resetConfirmDelete = false; }">Cancel</button>
+                        <button class="btn btn-sm btn-danger" style="font-weight:600;" @onclick="ExecuteDeleteReset">
+                            <i class="ri-delete-bin-line me-1"></i>Yes, Delete Reset
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    <div class="modal-header" style="border-bottom:1px solid #334155;padding:16px 20px;">
+                        <h6 class="modal-title" style="color:#f59e0b;font-weight:700;"><i class="ri-restart-line me-2"></i>Reset Budget</h6>
+                        <button type="button" class="btn-close btn-close-white" @onclick="() => _showResetModal = false"></button>
+                    </div>
+                    <div class="modal-body" style="padding:20px;max-height:65vh;overflow-y:auto;">
+                        <p style="color:#94a3b8;font-size:.88rem;margin-bottom:16px;">
+                            All balance calculations for <strong style="color:#e2e8f0;">@_detail.FullName</strong> will only include
+                            transactions from the selected date forward.
+                        </p>
+
+                        @* ── History ── *@
+                        @if (_resetHistory.Count > 0)
+                        {
+                            <div style="margin-bottom:16px;">
+                                <div style="color:#64748b;font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">
+                                    <i class="ri-history-line me-1"></i>Previous Resets
+                                </div>
+                                <div style="background:#0f172a;border-radius:8px;border:1px solid #1e293b;overflow:hidden;">
+                                    <table class="table table-sm mb-0" style="font-size:.8rem;">
+                                        <thead>
+                                            <tr style="background:#1a2332;">
+                                                <th style="color:#64748b;font-weight:600;padding:6px 10px;">Date</th>
+                                                <th style="color:#64748b;font-weight:600;padding:6px 10px;">By</th>
+                                                <th style="color:#64748b;font-weight:600;padding:6px 10px;">Notes</th>
+                                                <th style="color:#64748b;font-weight:600;padding:6px 10px;">Created</th>
+                                                <th style="width:36px;"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var h in _resetHistory)
+                                            {
+                                                var hId = h.Id;
+                                                var hDate = h.ResetDate;
+                                                var hActive = h.IsActive;
+                                                <tr style="border-top:1px solid #1e293b;@(!hActive ? "opacity:.4;" : "")">
+                                                    <td style="color:@(hActive ? "#f59e0b" : "#64748b");padding:5px 10px;font-weight:600;@(!hActive ? "text-decoration:line-through;" : "")">@h.ResetDate</td>
+                                                    <td style="color:#94a3b8;padding:5px 10px;">@h.CreatedBy</td>
+                                                    <td style="color:#94a3b8;padding:5px 10px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@h.Notes">@(h.Notes ?? "—")</td>
+                                                    <td style="color:#475569;padding:5px 10px;white-space:nowrap;">@h.CreatedAt</td>
+                                                    <td style="padding:3px 6px;">
+                                                        @if (hActive)
+                                                        {
+                                                            <button class="btn btn-sm" style="padding:2px 5px;color:#ef4444;font-size:.75rem;"
+                                                                    title="Deactivate this reset"
+                                                                    @onclick="() => AskDeleteReset(hId, hDate)">
+                                                                <i class="ri-delete-bin-line"></i>
+                                                            </button>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span style="font-size:.68rem;color:#475569;" title="Deactivated">removed</span>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        }
+
+                        @* ── New reset form ── *@
+                        <div style="background:#0f172a;border-radius:8px;border:1px solid #334155;padding:14px;">
+                            <div style="color:#e2e8f0;font-size:.82rem;font-weight:600;margin-bottom:10px;">
+                                <i class="ri-add-line me-1" style="color:#f59e0b;"></i>New Reset
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" style="color:#94a3b8;font-size:.82rem;">Reset Date</label>
+                                <input type="date" class="form-control form-control-sm"
+                                       style="background:#1e293b;color:#e2e8f0;border-color:#475569;"
+                                       @bind="_resetDate" />
+                            </div>
+                            <div>
+                                <label class="form-label" style="color:#94a3b8;font-size:.82rem;">Notes (reason for reset)</label>
+                                <textarea class="form-control form-control-sm" rows="2"
+                                          style="background:#1e293b;color:#e2e8f0;border-color:#475569;"
+                                          placeholder="e.g. Switched from EUR to ILS"
+                                          @bind="_resetNotes"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer" style="border-top:1px solid #334155;padding:12px 20px;">
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => _showResetModal = false">Cancel</button>
+                        <button class="btn btn-sm btn-warning" style="font-weight:600;" @onclick="ConfirmResetBudget">
+                            <i class="ri-restart-line me-1"></i>Reset Budget
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
 @* ── SMS Compose Modal ── *@
 @if (_showSmsModal && _detail != null)
 {
@@ -1588,6 +1754,19 @@
                 </div>
 
                 <div class="modal-body p-0" style="max-height:70vh;overflow-y:auto;">
+                    @{
+                        var balResetDate = PcSvc.GetBudgetResetDate(_balancePcId);
+                    }
+                    @if (balResetDate != null)
+                    {
+                        <div style="background:linear-gradient(135deg,#2d1b00,#1e293b);border-bottom:2px solid #f59e0b;padding:12px 20px;display:flex;align-items:center;gap:10px;">
+                            <i class="ri-restart-line" style="color:#f59e0b;font-size:1.3rem;"></i>
+                            <div>
+                                <div style="color:#fbbf24;font-weight:700;font-size:.9rem;">Budget Reset Active</div>
+                                <div style="color:#94a3b8;font-size:.8rem;">Only showing transactions from <strong style="color:#e2e8f0;">@balResetDate</strong> forward</div>
+                            </div>
+                        </div>
+                    }
                     @* ── Purchases ── *@
                     <div class="bal-section bal-sec-purchased">
                         <div class="bal-sec-title"><i class="ri-shopping-cart-2-line"></i> @LS.T("pcs.auditingPurchases")</div>
@@ -2023,6 +2202,91 @@
     @@keyframes soloActivePulse {
         0%, 70%, 100% { box-shadow: 0 0 0 0 rgba(234,88,12,0); }
         35%            { box-shadow: 0 0 0 3px rgba(234,88,12,0.18); }
+    }
+
+    /* Reset Budget button + tooltip */
+    .pc-reset-budget-wrap {
+        position: relative; display: inline-block;
+    }
+    .pc-reset-budget-btn {
+        display: inline-flex; align-items: center; gap: 3px;
+        border: 1.5px solid #f59e0b; background: transparent;
+        color: #f59e0b; font-size: .75rem; font-weight: 500;
+        cursor: pointer; padding: 4px 10px; border-radius: 6px;
+        transition: all .18s ease;
+        min-height: 32px;
+    }
+    .pc-reset-budget-btn i { font-size: .85rem; }
+    .pc-reset-budget-btn:hover {
+        background: #f59e0b; color: #000; box-shadow: 0 0 12px rgba(245,158,11,.35);
+    }
+    .pc-reset-tooltip {
+        display: none; position: absolute; left: 50%; top: calc(100% + 10px);
+        transform: translateX(-50%); z-index: 1100;
+        width: 320px; padding: 16px; border-radius: 10px;
+        background: #1e293b; border: 1.5px solid #f59e0b;
+        box-shadow: 0 8px 32px rgba(0,0,0,.45);
+        color: #cbd5e1; font-size: .82rem; line-height: 1.45;
+        opacity: 0;
+        animation: resetTooltipIn .25s ease forwards;
+    }
+    .pc-reset-budget-wrap:hover .pc-reset-tooltip {
+        display: block;
+    }
+    .pc-reset-tooltip-title {
+        color: #f59e0b; font-weight: 700; font-size: .88rem; margin-bottom: 8px;
+    }
+    .pc-reset-tooltip p { margin: 0 0 8px 0; }
+    .pc-reset-tooltip-example {
+        background: #0f172a; border-radius: 6px; padding: 8px 10px;
+        border-left: 3px solid #f59e0b; font-size: .8rem;
+    }
+    @@keyframes resetTooltipIn {
+        from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+        to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+
+    /* Reset success animation */
+    .reset-success-overlay {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        padding: 48px 24px; text-align: center;
+        animation: resetSuccessFadeIn .4s ease;
+    }
+    .reset-success-icon {
+        width: 80px; height: 80px; border-radius: 50%;
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+        display: flex; align-items: center; justify-content: center;
+        margin-bottom: 18px;
+        animation: resetSuccessPop .5s cubic-bezier(.34,1.56,.64,1);
+        box-shadow: 0 0 0 0 rgba(245,158,11,.4);
+        animation: resetSuccessPop .5s cubic-bezier(.34,1.56,.64,1), resetSuccessGlow 1.2s ease-in-out .4s infinite alternate;
+    }
+    .reset-success-icon i {
+        font-size: 2.4rem; color: #000;
+    }
+    .reset-success-title {
+        color: #f59e0b; font-size: 1.4rem; font-weight: 800; letter-spacing: .03em;
+        margin-bottom: 6px;
+        animation: resetSuccessSlideUp .5s ease .15s both;
+    }
+    .reset-success-sub {
+        color: #94a3b8; font-size: .88rem;
+        animation: resetSuccessSlideUp .5s ease .3s both;
+    }
+    @@keyframes resetSuccessFadeIn {
+        from { opacity: 0; } to { opacity: 1; }
+    }
+    @@keyframes resetSuccessPop {
+        0%   { transform: scale(0); }
+        100% { transform: scale(1); }
+    }
+    @@keyframes resetSuccessGlow {
+        from { box-shadow: 0 0 0 0 rgba(245,158,11,.4); }
+        to   { box-shadow: 0 0 24px 8px rgba(245,158,11,.2); }
+    }
+    @@keyframes resetSuccessSlideUp {
+        from { opacity: 0; transform: translateY(12px); }
+        to   { opacity: 1; transform: translateY(0); }
     }
 
     /* Solo confirm modal icon */
@@ -2777,6 +3041,19 @@
     List<SoloCsReviewCostRow>? _balSoloDetails;
     bool _balShowSessions;
     bool _balHideImported;
+
+    // Budget reset
+    bool     _showResetModal;
+    bool     _resetSuccess;
+    bool     _resetDeleted;
+    bool     _resetConfirmDelete;
+    int      _resetDeleteId;
+    string   _resetDeleteDate = "";
+    DateTime _resetDate = DateTime.Today;
+    string   _resetNotes = "";
+    string? _existingResetDate;
+    string? _existingResetBy;
+    List<PcService.BudgetResetRow> _resetHistory = [];
 
     // Column guide modal
     bool _showColumnGuide;
@@ -3832,6 +4109,60 @@
         _balSoloDetails = null;
         _balShowSessions = false;
         _balHideImported = false;
+    }
+
+    // ── Budget Reset ──
+    void OpenResetBudgetModal()
+    {
+        if (!_selPcId.HasValue || _detail == null) return;
+        _resetDate = DateTime.Today;
+        _resetNotes = "";
+        _resetSuccess = false;
+        _resetDeleted = false;
+        _resetConfirmDelete = false;
+        _resetHistory = PcSvc.GetBudgetResets(_selPcId.Value);
+        var activeReset = _resetHistory.FirstOrDefault(r => r.IsActive);
+        _existingResetDate = activeReset?.ResetDate;
+        _existingResetBy = activeReset?.CreatedBy;
+        _showResetModal = true;
+    }
+
+    async Task ConfirmResetBudget()
+    {
+        if (!_selPcId.HasValue) return;
+        var username = _username;
+        PcSvc.AddBudgetReset(_selPcId.Value, _resetDate.ToString("yyyy-MM-dd"), username, string.IsNullOrWhiteSpace(_resetNotes) ? null : _resetNotes.Trim());
+        Console.WriteLine($"[PCs] Budget reset for PC {_selPcId.Value} on {_resetDate:yyyy-MM-dd} by '{username}': {_resetNotes}");
+        _resetSuccess = true;
+        StateHasChanged();
+        await Task.Delay(2200);
+        _showResetModal = false;
+        _resetSuccess = false;
+        _balances = PcSvc.GetAllPcBalances();
+        _allPcsEx = PcSvc.GetAllPcsExtended();
+        _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
+    }
+
+    void AskDeleteReset(int resetId, string resetDate)
+    {
+        _resetDeleteId = resetId;
+        _resetDeleteDate = resetDate;
+        _resetConfirmDelete = true;
+    }
+
+    async Task ExecuteDeleteReset()
+    {
+        PcSvc.DeleteBudgetReset(_resetDeleteId);
+        Console.WriteLine($"[PCs] Deleted budget reset #{_resetDeleteId} (date {_resetDeleteDate}) for PC {_selPcId} by '{_username}'");
+        _resetConfirmDelete = false;
+        _resetDeleted = true;
+        StateHasChanged();
+        await Task.Delay(2200);
+        _resetDeleted = false;
+        _showResetModal = false;
+        _balances = PcSvc.GetAllPcBalances();
+        _allPcsEx = PcSvc.GetAllPcsExtended();
+        _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
     }
 
     void ToggleSessionDetails()

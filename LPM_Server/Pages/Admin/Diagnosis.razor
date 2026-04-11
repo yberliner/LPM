@@ -2729,7 +2729,8 @@
             ("fin_purchases",       "ri-shopping-cart-line",  "ORDER BY PurchaseId      DESC", null),
             ("fin_purchase_items",  "ri-list-check",          "ORDER BY PurchaseItemId  DESC", null),
             ("fin_payments",        "ri-bank-card-line",      "ORDER BY PaymentId       DESC", null),
-            ("fin_payment_methods", "ri-secure-payment-line", "ORDER BY PaymentMethodId DESC", null)));
+            ("fin_payment_methods", "ri-secure-payment-line", "ORDER BY PaymentMethodId DESC", null),
+            ("fin_budget_reset",   "ri-restart-line",        "ORDER BY Id              DESC", null)));
 
         var tAcad = Task.Run(() => Group(
             ("acad_attendance",      "ri-check-double-line", "ORDER BY StudentId       DESC", null),

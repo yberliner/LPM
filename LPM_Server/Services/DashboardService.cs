@@ -1960,20 +1960,32 @@ public class DashboardService
 
     private static int GetPcPurchaseRateCents(SqliteConnection conn, int pcId)
     {
+        // Budget reset date
+        string? resetDate = null;
+        using (var rdCmd = conn.CreateCommand())
+        {
+            rdCmd.CommandText = "SELECT ResetDate FROM fin_budget_reset WHERE PcId = @pc AND IsActive=1 ORDER BY ResetDate DESC LIMIT 1";
+            rdCmd.Parameters.AddWithValue("@pc", pcId);
+            resetDate = rdCmd.ExecuteScalar() as string;
+        }
+        var rdFilter = resetDate != null ? " AND pu.PurchaseDate >= @rd" : "";
+        var rdFilter2 = resetDate != null ? " AND pu2.PurchaseDate >= @rd" : "";
+
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT SUM(pi.AmountPaid), SUM(pi.HoursBought)
             FROM fin_purchase_items pi
             JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
-            WHERE pu.PcId = @pc AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+            WHERE pu.PcId = @pc AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'" + rdFilter + @"
               AND pu.PurchaseId = (
                   SELECT pu2.PurchaseId FROM fin_purchases pu2
                   JOIN fin_purchase_items pi2 ON pi2.PurchaseId = pu2.PurchaseId
-                  WHERE pu2.PcId = @pc AND pu2.IsDeleted = 0 AND pi2.ItemType = 'Auditing'
+                  WHERE pu2.PcId = @pc AND pu2.IsDeleted = 0 AND pi2.ItemType = 'Auditing'" + rdFilter2 + @"
                   GROUP BY pu2.PurchaseId HAVING SUM(pi2.AmountPaid) <> 0
                   ORDER BY pu2.PurchaseId DESC LIMIT 1
               )";
         cmd.Parameters.AddWithValue("@pc", pcId);
+        if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
         using var r = cmd.ExecuteReader();
         if (r.Read() && !r.IsDBNull(0) && !r.IsDBNull(1))
         {
@@ -2006,16 +2018,27 @@ public class DashboardService
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
+
+        string? resetDate = null;
+        using (var rdCmd = conn.CreateCommand())
+        {
+            rdCmd.CommandText = "SELECT ResetDate FROM fin_budget_reset WHERE PcId = @pc AND IsActive=1 ORDER BY ResetDate DESC LIMIT 1";
+            rdCmd.Parameters.AddWithValue("@pc", pcId);
+            resetDate = rdCmd.ExecuteScalar() as string;
+        }
+
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT COALESCE(pu.Currency, 'ILS')
             FROM fin_purchases pu
             JOIN fin_purchase_items pi ON pi.PurchaseId = pu.PurchaseId
-            WHERE pu.PcId = @pc AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+            WHERE pu.PcId = @pc AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'"
+            + (resetDate != null ? " AND pu.PurchaseDate >= @rd" : "") + @"
             GROUP BY pu.PurchaseId
             HAVING SUM(pi.AmountPaid) <> 0
             ORDER BY pu.PurchaseId DESC LIMIT 1";
         cmd.Parameters.AddWithValue("@pc", pcId);
+        if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
         var result = cmd.ExecuteScalar();
         return result is string s ? s : "ILS";
     }
@@ -2025,15 +2048,26 @@ public class DashboardService
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
+
+        string? resetDate = null;
+        using (var rdCmd = conn.CreateCommand())
+        {
+            rdCmd.CommandText = "SELECT ResetDate FROM fin_budget_reset WHERE PcId = @pc AND IsActive=1 ORDER BY ResetDate DESC LIMIT 1";
+            rdCmd.Parameters.AddWithValue("@pc", pcId);
+            resetDate = rdCmd.ExecuteScalar() as string;
+        }
+
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT cr.ChargedCentsRatePerHour
             FROM cs_reviews cr
             JOIN sess_sessions s ON s.SessionId = cr.SessionId
-            WHERE s.PcId = @pc AND s.AuditorId IS NULL AND cr.ChargedCentsRatePerHour > 0
+            WHERE s.PcId = @pc AND s.AuditorId IS NULL AND cr.ChargedCentsRatePerHour > 0"
+            + (resetDate != null ? " AND s.SessionDate >= @rd" : "") + @"
             ORDER BY s.SessionDate DESC, s.SequenceInDay DESC
             LIMIT 1";
         cmd.Parameters.AddWithValue("@pc", pcId);
+        if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
         var result = cmd.ExecuteScalar();
         return result is long l ? (int)l : 0;
     }

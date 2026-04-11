@@ -79,12 +79,18 @@ public List<PcListItem> GetAllPcs()
                 SELECT pu.PcId, SUM(pi.HoursBought) AS TotalHours
                 FROM fin_purchase_items pi
                 JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+                LEFT JOIN (SELECT PcId, MAX(ResetDate) AS ResetDate FROM fin_budget_reset WHERE IsActive=1 GROUP BY PcId) br ON br.PcId = pu.PcId
                 WHERE pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+                  AND (br.ResetDate IS NULL OR pu.PurchaseDate >= br.ResetDate)
                 GROUP BY pu.PcId
             ) pay ON pay.PcId = pc.PcId
             LEFT JOIN (
-                SELECT PcId, SUM(LengthSeconds) AS UsedSec
-                FROM sess_sessions WHERE IsFreeSession = 0 GROUP BY PcId
+                SELECT s.PcId, SUM(s.LengthSeconds) AS UsedSec
+                FROM sess_sessions s
+                LEFT JOIN (SELECT PcId, MAX(ResetDate) AS ResetDate FROM fin_budget_reset WHERE IsActive=1 GROUP BY PcId) br ON br.PcId = s.PcId
+                WHERE s.IsFreeSession = 0
+                  AND (br.ResetDate IS NULL OR s.SessionDate >= br.ResetDate)
+                GROUP BY s.PcId
             ) sess ON sess.PcId = pc.PcId
             WHERE COALESCE(p.IsActive, 1) = 1
             ORDER BY RemainSec ASC, p.FirstName, p.LastName";
@@ -371,14 +377,25 @@ public List<PcListItem> GetAllPcs()
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
+        // Budget reset date
+        string? resetDate = null;
+        using (var rdCmd = conn.CreateCommand())
+        {
+            rdCmd.CommandText = "SELECT ResetDate FROM fin_budget_reset WHERE PcId = @id AND IsActive=1 ORDER BY ResetDate DESC LIMIT 1";
+            rdCmd.Parameters.AddWithValue("@id", pcId);
+            resetDate = rdCmd.ExecuteScalar() as string;
+        }
+
         using var sCmd = conn.CreateCommand();
         sCmd.CommandText = @"
             SELECT COUNT(*),
                    COALESCE(SUM(CASE WHEN IsFreeSession=1 THEN 1 ELSE 0 END), 0),
                    COALESCE(SUM(CASE WHEN IsFreeSession=0 THEN LengthSeconds ELSE 0 END), 0),
                    MAX(SessionDate)
-            FROM sess_sessions WHERE PcId=@id";
+            FROM sess_sessions WHERE PcId=@id"
+            + (resetDate != null ? " AND SessionDate >= @rd" : "");
         sCmd.Parameters.AddWithValue("@id", pcId);
+        if (resetDate != null) sCmd.Parameters.AddWithValue("@rd", resetDate);
         using var sr = sCmd.ExecuteReader();
         sr.Read();
         int    total     = sr.GetInt32(0);
@@ -392,8 +409,10 @@ public List<PcListItem> GetAllPcs()
                    COALESCE(SUM(pi.AmountPaid),0)
             FROM fin_purchase_items pi
             JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
-            WHERE pu.PcId=@id AND pu.IsDeleted = 0";
+            WHERE pu.PcId=@id AND pu.IsDeleted = 0"
+            + (resetDate != null ? " AND pu.PurchaseDate >= @rd" : "");
         pCmd.Parameters.AddWithValue("@id", pcId);
+        if (resetDate != null) pCmd.Parameters.AddWithValue("@rd", resetDate);
         using var pr = pCmd.ExecuteReader();
         pr.Read();
         double hours = pr.GetDouble(0);
@@ -489,7 +508,9 @@ public List<PcListItem> GetAllPcs()
             SELECT pu.PcId
             FROM fin_purchase_items pi
             JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+            LEFT JOIN (SELECT PcId, MAX(ResetDate) AS ResetDate FROM fin_budget_reset WHERE IsActive=1 GROUP BY PcId) br ON br.PcId = pu.PcId
             WHERE pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+              AND (br.ResetDate IS NULL OR pu.PurchaseDate >= br.ResetDate)
             GROUP BY pu.PcId
             HAVING COUNT(DISTINCT COALESCE(pu.Currency, 'ILS')) > 1";
         var result = new HashSet<int>();
@@ -503,13 +524,24 @@ public List<PcListItem> GetAllPcs()
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
+
+        string? resetDate = null;
+        using (var rdCmd = conn.CreateCommand())
+        {
+            rdCmd.CommandText = "SELECT ResetDate FROM fin_budget_reset WHERE PcId = @id AND IsActive=1 ORDER BY ResetDate DESC LIMIT 1";
+            rdCmd.Parameters.AddWithValue("@id", pcId);
+            resetDate = rdCmd.ExecuteScalar() as string;
+        }
+
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT DISTINCT COALESCE(pu.Currency, 'ILS')
             FROM fin_purchase_items pi
             JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
-            WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'";
+            WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'"
+            + (resetDate != null ? " AND pu.PurchaseDate >= @rd" : "");
         cmd.Parameters.AddWithValue("@id", pcId);
+        if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
         var result = new List<string>();
         using var r = cmd.ExecuteReader();
         while (r.Read()) result.Add(r.GetString(0));
@@ -521,15 +553,26 @@ public List<PcListItem> GetAllPcs()
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
+
+        string? resetDate = null;
+        using (var rdCmd = conn.CreateCommand())
+        {
+            rdCmd.CommandText = "SELECT ResetDate FROM fin_budget_reset WHERE PcId = @id AND IsActive=1 ORDER BY ResetDate DESC LIMIT 1";
+            rdCmd.Parameters.AddWithValue("@id", pcId);
+            resetDate = rdCmd.ExecuteScalar() as string;
+        }
+
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT COALESCE(pu.Currency, 'ILS')
             FROM fin_purchases pu
             JOIN fin_purchase_items pi ON pi.PurchaseId = pu.PurchaseId
-            WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+            WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'"
+            + (resetDate != null ? " AND pu.PurchaseDate >= @rd" : "") + @"
             GROUP BY pu.PurchaseId
             ORDER BY pu.PurchaseId DESC LIMIT 1";
         cmd.Parameters.AddWithValue("@id", pcId);
+        if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
         var result = cmd.ExecuteScalar();
         return result is string s ? s : "ILS";
     }
@@ -549,8 +592,10 @@ public List<PcListItem> GetAllPcs()
             SELECT pu.PcId, pu.PurchaseDate, pi.HoursBought, pi.AmountPaid
             FROM fin_purchase_items pi
             JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+            LEFT JOIN (SELECT PcId, MAX(ResetDate) AS ResetDate FROM fin_budget_reset WHERE IsActive=1 GROUP BY PcId) br ON br.PcId = pu.PcId
             WHERE pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
               AND pu.PurchaseDate >= @cutoff
+              AND (br.ResetDate IS NULL OR pu.PurchaseDate >= br.ResetDate)
               AND pi.AmountPaid <> 0 AND ABS(pi.HoursBought) > 0
             ORDER BY pu.PcId, pu.PurchaseId, pi.PurchaseItemId";
         cmd.Parameters.AddWithValue("@cutoff", cutoff);
@@ -602,15 +647,21 @@ public List<PcListItem> GetAllPcs()
                 SELECT pu.PcId, SUM(pi.HoursBought) AS TotalHours
                 FROM fin_purchase_items pi
                 JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+                LEFT JOIN (SELECT PcId, MAX(ResetDate) AS ResetDate FROM fin_budget_reset WHERE IsActive=1 GROUP BY PcId) br ON br.PcId = pu.PcId
                 WHERE pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+                  AND (br.ResetDate IS NULL OR pu.PurchaseDate >= br.ResetDate)
                 GROUP BY pu.PcId
             ) pay ON pay.PcId = pc.PcId
             LEFT JOIN (
-                SELECT PcId,
-                       SUM(CASE WHEN AuditorId IS NOT NULL THEN LengthSeconds + COALESCE(AdminSeconds, 0) ELSE 0 END) AS UsedSec,
+                SELECT s.PcId,
+                       SUM(CASE WHEN s.AuditorId IS NOT NULL THEN s.LengthSeconds + COALESCE(s.AdminSeconds, 0) ELSE 0 END) AS UsedSec,
                        COUNT(*) AS SessionCount,
-                       SUM(CASE WHEN AuditorId IS NOT NULL THEN 1 ELSE 0 END) AS AuditorSessionCount
-                FROM sess_sessions WHERE IsFreeSession = 0 GROUP BY PcId
+                       SUM(CASE WHEN s.AuditorId IS NOT NULL THEN 1 ELSE 0 END) AS AuditorSessionCount
+                FROM sess_sessions s
+                LEFT JOIN (SELECT PcId, MAX(ResetDate) AS ResetDate FROM fin_budget_reset WHERE IsActive=1 GROUP BY PcId) br ON br.PcId = s.PcId
+                WHERE s.IsFreeSession = 0
+                  AND (br.ResetDate IS NULL OR s.SessionDate >= br.ResetDate)
+                GROUP BY s.PcId
             ) sess ON sess.PcId = pc.PcId
             LEFT JOIN (
                 SELECT PersonId, COUNT(*) AS VisitCount
@@ -649,7 +700,9 @@ public List<PcListItem> GetAllPcs()
                 SELECT pu.PcId, COALESCE(SUM(pi.AmountPaid), 0)
                 FROM fin_purchase_items pi
                 JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+                LEFT JOIN (SELECT PcId, MAX(ResetDate) AS ResetDate FROM fin_budget_reset WHERE IsActive=1 GROUP BY PcId) br ON br.PcId = pu.PcId
                 WHERE pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+                  AND (br.ResetDate IS NULL OR pu.PurchaseDate >= br.ResetDate)
                 GROUP BY pu.PcId";
             using var r = cmd.ExecuteReader();
             while (r.Read()) purchased[r.GetInt32(0)] = r.GetInt32(1);
@@ -665,7 +718,9 @@ public List<PcListItem> GetAllPcs()
                        COALESCE(pu.Currency, 'ILS')
                 FROM fin_purchase_items pi
                 JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+                LEFT JOIN (SELECT PcId, MAX(ResetDate) AS ResetDate FROM fin_budget_reset WHERE IsActive=1 GROUP BY PcId) br ON br.PcId = pu.PcId
                 WHERE pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+                  AND (br.ResetDate IS NULL OR pu.PurchaseDate >= br.ResetDate)
                 GROUP BY pu.PcId, pu.PurchaseId, pu.Currency
                 HAVING SUM(pi.AmountPaid) <> 0
                 ORDER BY pu.PcId, pu.PurchaseId";
@@ -686,10 +741,12 @@ public List<PcListItem> GetAllPcs()
         using (var cmd = conn.CreateCommand())
         {
             cmd.CommandText = @"
-                SELECT PcId, SessionId, ChargedRateCentsPerHour, AdminSeconds, LengthSeconds
-                FROM sess_sessions
-                WHERE AuditorId IS NOT NULL AND IsFreeSession = 0
-                ORDER BY PcId, SessionId";
+                SELECT s.PcId, s.SessionId, s.ChargedRateCentsPerHour, s.AdminSeconds, s.LengthSeconds
+                FROM sess_sessions s
+                LEFT JOIN (SELECT PcId, MAX(ResetDate) AS ResetDate FROM fin_budget_reset WHERE IsActive=1 GROUP BY PcId) br ON br.PcId = s.PcId
+                WHERE s.AuditorId IS NOT NULL AND s.IsFreeSession = 0
+                  AND (br.ResetDate IS NULL OR s.SessionDate >= br.ResetDate)
+                ORDER BY s.PcId, s.SessionId";
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -707,8 +764,10 @@ public List<PcListItem> GetAllPcs()
                 SELECT s.PcId, cr.ChargedCentsRatePerHour, cr.ReviewLengthSeconds
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
+                LEFT JOIN (SELECT PcId, MAX(ResetDate) AS ResetDate FROM fin_budget_reset WHERE IsActive=1 GROUP BY PcId) br ON br.PcId = s.PcId
                 WHERE s.AuditorId IS NULL AND cr.ChargedCentsRatePerHour > 0
-                  AND cr.Notes = 'Bill'";
+                  AND cr.Notes = 'Bill'
+                  AND (br.ResetDate IS NULL OR s.SessionDate >= br.ResetDate)";
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -1396,6 +1455,17 @@ public List<PcListItem> GetAllPcs()
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
+        // Budget reset date (latest)
+        string? resetDate = null;
+        using (var rdCmd = conn.CreateCommand())
+        {
+            rdCmd.CommandText = "SELECT ResetDate FROM fin_budget_reset WHERE PcId = @id AND IsActive=1 ORDER BY ResetDate DESC LIMIT 1";
+            rdCmd.Parameters.AddWithValue("@id", pcId);
+            resetDate = rdCmd.ExecuteScalar() as string;
+        }
+        var rdFilter = resetDate != null ? " AND pu.PurchaseDate >= @rd" : "";
+        var sdFilter = resetDate != null ? " AND s.SessionDate >= @rd" : "";
+
         // Purchases
         var purchases = new List<PcPurchaseRow>();
         int totalPurchased = 0;
@@ -1407,10 +1477,11 @@ public List<PcListItem> GetAllPcs()
                        COALESCE(pu.Currency, 'ILS')
                 FROM fin_purchase_items pi
                 JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
-                WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+                WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'" + rdFilter + @"
                 GROUP BY pu.PurchaseId, pu.PurchaseDate, pu.Currency
                 ORDER BY pu.PurchaseId";
             cmd.Parameters.AddWithValue("@id", pcId);
+            if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -1431,11 +1502,12 @@ public List<PcListItem> GetAllPcs()
         using (var cmd = conn.CreateCommand())
         {
             cmd.CommandText = @"
-                SELECT SessionId, ChargedRateCentsPerHour, AdminSeconds, LengthSeconds
-                FROM sess_sessions
-                WHERE PcId = @id AND AuditorId IS NOT NULL AND IsFreeSession = 0
-                ORDER BY SessionId";
+                SELECT s.SessionId, s.ChargedRateCentsPerHour, s.AdminSeconds, s.LengthSeconds
+                FROM sess_sessions s
+                WHERE s.PcId = @id AND s.AuditorId IS NOT NULL AND s.IsFreeSession = 0" + sdFilter.Replace("s.", "s.") + @"
+                ORDER BY s.SessionId";
             cmd.Parameters.AddWithValue("@id", pcId);
+            if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
             using var r = cmd.ExecuteReader();
             while (r.Read()) sess.Add((r.GetInt32(0), r.GetInt32(1), r.GetInt32(2), r.GetInt32(3)));
         }
@@ -1465,8 +1537,9 @@ public List<PcListItem> GetAllPcs()
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
                 WHERE s.PcId = @id AND s.AuditorId IS NULL AND cr.ChargedCentsRatePerHour > 0
-                  AND cr.Notes = 'Bill'";
+                  AND cr.Notes = 'Bill'" + sdFilter;
             cmd.Parameters.AddWithValue("@id", pcId);
+            if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -1489,6 +1562,18 @@ public List<PcListItem> GetAllPcs()
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
+        // Budget reset date
+        string? resetDate = null;
+        using (var rdCmd = conn.CreateCommand())
+        {
+            rdCmd.CommandText = "SELECT ResetDate FROM fin_budget_reset WHERE PcId = @id AND IsActive=1 ORDER BY ResetDate DESC LIMIT 1";
+            rdCmd.Parameters.AddWithValue("@id", pcId);
+            resetDate = rdCmd.ExecuteScalar() as string;
+        }
+        var rdFilter = resetDate != null ? " AND pu.PurchaseDate >= @rd" : "";
+        var rdFilter2 = resetDate != null ? " AND pu2.PurchaseDate >= @rd" : "";
+        var sdFilter = resetDate != null ? " AND s.SessionDate >= @rd" : "";
+
         // Purchase rate fallback (for sessions with no prior rated session)
         int purchaseRate = 0;
         using (var cmd = conn.CreateCommand())
@@ -1497,17 +1582,18 @@ public List<PcListItem> GetAllPcs()
                 SELECT SUM(pi.AmountPaid), SUM(pi.HoursBought)
                 FROM fin_purchase_items pi
                 JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
-                WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
+                WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'" + rdFilter + @"
                   AND pu.PurchaseId = (
                       SELECT pu2.PurchaseId FROM fin_purchases pu2
                       JOIN fin_purchase_items pi2 ON pi2.PurchaseId = pu2.PurchaseId
                       WHERE pu2.PcId = @id AND pu2.IsDeleted = 0
-                        AND pi2.ItemType = 'Auditing'
+                        AND pi2.ItemType = 'Auditing'" + rdFilter2 + @"
                       GROUP BY pu2.PurchaseId
                       HAVING SUM(pi2.AmountPaid) <> 0
                       ORDER BY pu2.PurchaseId DESC LIMIT 1
                   )";
             cmd.Parameters.AddWithValue("@id", pcId);
+            if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
             using var r = cmd.ExecuteReader();
             if (r.Read() && !r.IsDBNull(0) && !r.IsDBNull(1))
             {
@@ -1528,9 +1614,10 @@ public List<PcListItem> GetAllPcs()
                        COALESCE(s.IsImported, 0)
                 FROM sess_sessions s
                 LEFT JOIN core_persons p ON p.PersonId = s.AuditorId
-                WHERE s.PcId = @id AND s.AuditorId IS NOT NULL AND s.IsFreeSession = 0
+                WHERE s.PcId = @id AND s.AuditorId IS NOT NULL AND s.IsFreeSession = 0" + sdFilter + @"
                 ORDER BY s.SessionId";
             cmd.Parameters.AddWithValue("@id", pcId);
+            if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -1554,6 +1641,15 @@ public List<PcListItem> GetAllPcs()
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
+
+        string? resetDate = null;
+        using (var rdCmd = conn.CreateCommand())
+        {
+            rdCmd.CommandText = "SELECT ResetDate FROM fin_budget_reset WHERE PcId = @id AND IsActive=1 ORDER BY ResetDate DESC LIMIT 1";
+            rdCmd.Parameters.AddWithValue("@id", pcId);
+            resetDate = rdCmd.ExecuteScalar() as string;
+        }
+
         var result = new List<SoloCsReviewCostRow>();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
@@ -1563,9 +1659,11 @@ public List<PcListItem> GetAllPcs()
                    COALESCE(s.IsImported, 0)
             FROM cs_reviews cr
             JOIN sess_sessions s ON s.SessionId = cr.SessionId
-            WHERE s.PcId = @id AND s.AuditorId IS NULL
+            WHERE s.PcId = @id AND s.AuditorId IS NULL"
+            + (resetDate != null ? " AND s.SessionDate >= @rd" : "") + @"
             ORDER BY s.SessionDate, s.SessionId";
         cmd.Parameters.AddWithValue("@id", pcId);
+        if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
         using var r = cmd.ExecuteReader();
         while (r.Read())
         {
@@ -1581,6 +1679,61 @@ public List<PcListItem> GetAllPcs()
         return result;
     }
 
+    // ── Budget Reset ──────────────────────────────────────────────
+
+    public record BudgetResetRow(int Id, int PcId, string ResetDate, string CreatedBy, string CreatedAt, string? Notes, bool IsActive);
+
+    public void AddBudgetReset(int pcId, string resetDate, string createdBy, string? notes)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "INSERT INTO fin_budget_reset (PcId, ResetDate, CreatedBy, CreatedAt, Notes, IsActive) VALUES (@pc, @rd, @cb, @ca, @n, 1)";
+        cmd.Parameters.AddWithValue("@pc", pcId);
+        cmd.Parameters.AddWithValue("@rd", resetDate);
+        cmd.Parameters.AddWithValue("@cb", createdBy);
+        cmd.Parameters.AddWithValue("@ca", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"));
+        cmd.Parameters.AddWithValue("@n", (object?)notes ?? DBNull.Value);
+        cmd.ExecuteNonQuery();
+    }
+
+    public string? GetBudgetResetDate(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT ResetDate FROM fin_budget_reset WHERE PcId = @pc AND IsActive=1 ORDER BY ResetDate DESC LIMIT 1";
+        cmd.Parameters.AddWithValue("@pc", pcId);
+        return cmd.ExecuteScalar() as string;
+    }
+
+    public List<BudgetResetRow> GetBudgetResets(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Id, PcId, ResetDate, CreatedBy, CreatedAt, Notes, IsActive FROM fin_budget_reset WHERE PcId = @pc ORDER BY IsActive DESC, ResetDate DESC";
+        cmd.Parameters.AddWithValue("@pc", pcId);
+        using var r = cmd.ExecuteReader();
+        var list = new List<BudgetResetRow>();
+        while (r.Read())
+            list.Add(new(r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3), r.GetString(4), r.IsDBNull(5) ? null : r.GetString(5), r.GetInt32(6) == 1));
+        return list;
+    }
+
+    public void DeleteBudgetReset(int resetId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE fin_budget_reset SET IsActive = 0 WHERE Id = @id";
+        cmd.Parameters.AddWithValue("@id", resetId);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>Helper: loads all budget reset dates (latest per PC) using an existing connection.</summary>
+    private static string BudgetResetSubquery => "(SELECT PcId, MAX(ResetDate) AS ResetDate FROM fin_budget_reset WHERE IsActive=1 GROUP BY PcId)";
+
     // ── Transfer Balance ──────────────────────────────────────────
 
     public record PcAuditingBalance(double HoursPurchased, int AuditingAmountPaid, long UsedSec, double RemainingHours, int RemainingNis, int RatePerHour);
@@ -1590,6 +1743,14 @@ public List<PcListItem> GetAllPcs()
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
+        string? resetDate = null;
+        using (var rdCmd = conn.CreateCommand())
+        {
+            rdCmd.CommandText = "SELECT ResetDate FROM fin_budget_reset WHERE PcId = @id AND IsActive=1 ORDER BY ResetDate DESC LIMIT 1";
+            rdCmd.Parameters.AddWithValue("@id", pcId);
+            resetDate = rdCmd.ExecuteScalar() as string;
+        }
+
         // Auditing-only approved purchases
         using var pCmd = conn.CreateCommand();
         pCmd.CommandText = @"
@@ -1597,8 +1758,10 @@ public List<PcListItem> GetAllPcs()
             FROM fin_purchase_items pi
             JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
             WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
-              AND pu.ApprovedStatus = 'Approved'";
+              AND pu.ApprovedStatus = 'Approved'"
+            + (resetDate != null ? " AND pu.PurchaseDate >= @rd" : "");
         pCmd.Parameters.AddWithValue("@id", pcId);
+        if (resetDate != null) pCmd.Parameters.AddWithValue("@rd", resetDate);
         using var pr = pCmd.ExecuteReader();
         pr.Read();
         double hours = pr.GetDouble(0);
@@ -1607,8 +1770,10 @@ public List<PcListItem> GetAllPcs()
 
         // Used seconds (paid sessions only)
         using var sCmd = conn.CreateCommand();
-        sCmd.CommandText = "SELECT COALESCE(SUM(LengthSeconds), 0) FROM sess_sessions WHERE PcId = @id AND IsFreeSession = 0";
+        sCmd.CommandText = "SELECT COALESCE(SUM(LengthSeconds), 0) FROM sess_sessions WHERE PcId = @id AND IsFreeSession = 0"
+            + (resetDate != null ? " AND SessionDate >= @rd" : "");
         sCmd.Parameters.AddWithValue("@id", pcId);
+        if (resetDate != null) sCmd.Parameters.AddWithValue("@rd", resetDate);
         long usedSec = (long)sCmd.ExecuteScalar()!;
 
         double remainHrs = hours - (double)usedSec / 3600.0;
@@ -1628,17 +1793,30 @@ public List<PcListItem> GetAllPcs()
 
         try
         {
+            // Budget reset date for source PC
+            string? fromResetDate = null;
+            using (var rdCmd = conn.CreateCommand())
+            {
+                rdCmd.Transaction = tx;
+                rdCmd.CommandText = "SELECT ResetDate FROM fin_budget_reset WHERE PcId = @id AND IsActive=1 ORDER BY ResetDate DESC LIMIT 1";
+                rdCmd.Parameters.AddWithValue("@id", fromPcId);
+                fromResetDate = rdCmd.ExecuteScalar() as string;
+            }
+
             // Re-check remaining balance inside transaction
             using (var chk = conn.CreateCommand())
             {
                 chk.Transaction = tx;
                 chk.CommandText = @"
                     SELECT (COALESCE(SUM(pi.HoursBought), 0) * 3600 - COALESCE(
-                        (SELECT SUM(LengthSeconds) FROM sess_sessions WHERE PcId = @id AND IsFreeSession = 0), 0))
+                        (SELECT SUM(LengthSeconds) FROM sess_sessions WHERE PcId = @id AND IsFreeSession = 0"
+                        + (fromResetDate != null ? " AND SessionDate >= @rd" : "") + @"), 0))
                     FROM fin_purchase_items pi
                     JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
-                    WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing' AND pu.ApprovedStatus = 'Approved'";
+                    WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing' AND pu.ApprovedStatus = 'Approved'"
+                    + (fromResetDate != null ? " AND pu.PurchaseDate >= @rd" : "");
                 chk.Parameters.AddWithValue("@id", fromPcId);
+                if (fromResetDate != null) chk.Parameters.AddWithValue("@rd", fromResetDate);
                 var remainSec = Convert.ToDouble(chk.ExecuteScalar()!);
                 if (remainSec / 3600.0 < deductHours)
                     throw new InvalidOperationException($"Insufficient balance: {remainSec / 3600} hours remaining, {deductHours} requested");
