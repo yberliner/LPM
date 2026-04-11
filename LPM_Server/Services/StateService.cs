@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.JSInterop;
 using System.Text.Json;
 
@@ -146,13 +147,23 @@ public class StateService
     // Event to notify subscribers about state changes
     public event Action? OnStateChanged;
 
-    public StateService(IJSRuntime jsRuntime, SessionService sessionService, AppState appState, ILogger<AppState> logger)
+    public StateService(IJSRuntime jsRuntime, SessionService sessionService, AppState appState, ILogger<AppState> logger, IHttpContextAccessor httpContextAccessor)
     {
         _jsRuntime = jsRuntime;
         _sessionService = sessionService;
         _currentState = new AppState();
+
+        // Seed theme from cookie so the initial server-rendered HTML matches the user's preference
+        var cookieTheme = httpContextAccessor.HttpContext?.Request.Cookies["lpm-theme"];
+        if (cookieTheme == "light" || cookieTheme == "dark")
+        {
+            _currentState.ColorTheme = cookieTheme;
+            _currentState.HeaderColor = cookieTheme;
+            _currentState.MenuColor = cookieTheme == "light" ? "dark" : cookieTheme;
+        }
+
         OnChange = () => { };
-        _logger = logger; // Initialize ILogger in constructor
+        _logger = logger;
 
         Task.Run(async () => await InitializeAppStateAsync());
     }
@@ -232,6 +243,10 @@ public class StateService
             _currentState.ThemeBackground = ""; // Update the color theme in the app state
             _currentState.ThemeBackground1 = ""; // Update the color theme in the app state
         }
+        // Persist theme in cookie so server can render correct theme on next page load (no flash)
+        var safeVal = val == "light" ? "light" : "dark";
+        await _jsRuntime.InvokeVoidAsync("eval",
+            $"document.cookie='lpm-theme={safeVal}; path=/; max-age=31536000; SameSite=Strict';");
         await _jsRuntime.InvokeVoidAsync("interop.setclearCssVariables");
 
         await _jsRuntime.InvokeVoidAsync("interop.addAttributeToHtml", "data-theme-mode", val);

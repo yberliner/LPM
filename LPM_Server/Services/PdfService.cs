@@ -1929,7 +1929,7 @@ public class PdfService
             {
                 page.Size(PageSizes.A4);
                 page.Margin(30);
-                page.DefaultTextStyle(x => x.FontSize(14).FontColor("#1a1a1a"));
+                page.DefaultTextStyle(x => x.FontSize(14).FontColor("#1a1a1a").FontFamily("DejaVu Sans"));
                 page.Content().ScaleToFit().Column(col =>
                 {
                     if (!string.IsNullOrWhiteSpace(html))

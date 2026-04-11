@@ -224,6 +224,15 @@ var autoLoginProtector = app.Services.GetRequiredService<IDataProtectionProvider
 // Register embedded font resolver so PdfSharpCore works on Linux without system fonts
 PdfSharpCore.Fonts.GlobalFontSettings.FontResolver = LPM.Services.EmbeddedFontResolver.Instance;
 
+// Register DejaVu Sans with QuestPDF so Hebrew/Cyrillic text renders correctly in generated PDFs
+{
+    var asm = System.Reflection.Assembly.GetExecutingAssembly();
+    using var regular = asm.GetManifestResourceStream("LPM.Fonts.DejaVuSans.ttf")!;
+    using var bold = asm.GetManifestResourceStream("LPM.Fonts.DejaVuSans-Bold.ttf")!;
+    QuestPDF.Drawing.FontManager.RegisterFont(regular);
+    QuestPDF.Drawing.FontManager.RegisterFont(bold);
+}
+
 // Log the SQLite version bundled at runtime
 {
     using var _sc = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");

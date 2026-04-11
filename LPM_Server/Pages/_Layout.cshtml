@@ -3,9 +3,10 @@
 @addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
 @inject StateService stateService
 @using System.Text.Json;
-@{ 
+@{
     var appState = stateService.GetAppState();
-
+    var cookieTheme = Context.Request.Cookies["lpm-theme"];
+    var effectiveTheme = (cookieTheme == "light" || cookieTheme == "dark") ? cookieTheme : appState?.ColorTheme;
 }
 
 <!DOCTYPE html>
@@ -18,17 +19,21 @@
     {
         <text>data-nav-layout="@appState.NavigationStyles"</text>
     }
-    @if (!string.IsNullOrEmpty(appState?.ColorTheme))
+    @if (!string.IsNullOrEmpty(effectiveTheme))
     {
-        <text>data-theme-mode="@appState.ColorTheme"</text>
+        <text>data-theme-mode="@effectiveTheme"</text>
     }
-    @if (!string.IsNullOrEmpty(appState?.HeaderColor))
-    {
-        <text>data-header-styles="@appState.HeaderColor"</text>
+    @{
+        var effHeader = !string.IsNullOrEmpty(cookieTheme) ? effectiveTheme : appState?.HeaderColor;
+        var effMenu = !string.IsNullOrEmpty(cookieTheme) ? (cookieTheme == "light" ? "dark" : cookieTheme) : appState?.MenuColor;
     }
-    @if (!string.IsNullOrEmpty(appState?.MenuColor))
+    @if (!string.IsNullOrEmpty(effHeader))
     {
-        <text>data-menu-styles="@appState.MenuColor"</text>
+        <text>data-header-styles="@effHeader"</text>
+    }
+    @if (!string.IsNullOrEmpty(effMenu))
+    {
+        <text>data-menu-styles="@effMenu"</text>
     }
     @if (!string.IsNullOrEmpty(appState?.MenuStyles))
     {
