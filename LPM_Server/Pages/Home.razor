@@ -1961,12 +1961,12 @@
     }
 
     // ── CS The Session ──
-    void OnCsTheSession(int sessionId, string? sessionName)
+    void OnCsTheSession(int sessionId, string? sessionName, bool isSolo = false)
     {
-        Console.WriteLine($"[Home] CS The Session — sessionId={sessionId}, sessionName={sessionName}, pcId={_selPcId} by '{_username}'");
+        Console.WriteLine($"[Home] CS The Session — sessionId={sessionId}, sessionName={sessionName}, pcId={_selPcId}, solo={isSolo} by '{_username}'");
         if (!_selPcId.HasValue) return;
         var url = $"/PcFolder/{_selPcId.Value}?sessionId={sessionId}&csMode=true";
-        if (_selRole == "CSSolo") url += "&solo=true";
+        if (isSolo || _selRole == "CSSolo") url += "&solo=true";
         if (!string.IsNullOrWhiteSpace(sessionName))
             url += $"&file={Uri.EscapeDataString(sessionName)}";
         Nav.NavigateTo(url, forceLoad: true);
@@ -2611,7 +2611,7 @@
                                     </div>
                                     <div class="mt-1 mb-1">
                                         <button class="btn btn-sm home-cs-session-btn"
-                                                @onclick="() => OnCsTheSession(s.SessionId, s.Name)">
+                                                @onclick="() => OnCsTheSession(s.SessionId, s.Name, s.IsSolo)">
                                             <i class="ri-folder-open-line me-1"></i>CS The Session
                                         </button>
                                     </div>
