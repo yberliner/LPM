@@ -5,6 +5,7 @@
 @inject PdfService PdfSvc
 @inject LPM.Services.CsNotificationService CsNotifySvc
 @inject LPM.Services.ShortcutService ShortcutSvc
+@inject LPM.Services.UserActivityService ActivitySvc
 @inject LPM.Services.QuestionService QuestionSvc
 @inject IJSRuntime JS
 @inject NavigationManager NavManager
@@ -3271,6 +3272,7 @@
             _pcName = FolderSvc.GetPcName(PcId) ?? $"PC {PcId}";
             _programInsertFiles = FolderSvc.GetProgramInsertFiles();
             Console.WriteLine($"[PcFolder] Opened PC folder for '{_pcName}' (PC {PcId}) by '{_userName}'{(_csSessionId > 0 ? $" — CS session {_csSessionId}" : "")}");
+            ActivitySvc.RecordActivity(_userName, $"Opened PC folder: {_pcName}", "folder");
             _csedSessionIds = DashSvc.GetCsedSessionIdsForPc(PcId, isSolo: Solo);
             foreach (var pair in DashSvc.GetSessionsForPc(PcId, isSolo: Solo))
             {
@@ -5187,6 +5189,7 @@
     public void Dispose()
     {
         Console.WriteLine($"[PcFolder] Closed PC folder for '{_pcName}' (PC {PcId}) by '{_userName}'{(_csSessionId > 0 ? $" — CS session {_csSessionId} released" : "")}");
+        ActivitySvc.RecordActivity(_userName, $"Closed PC folder: {_pcName}", "folder");
         try { JS.InvokeVoidAsync("lpmVoice.stop"); } catch { }
         // Unregister this session from active CS tracker (only if we still own it)
         if (_csSessionId > 0 && !_csLocked

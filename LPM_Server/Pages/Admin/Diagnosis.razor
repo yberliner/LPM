@@ -263,6 +263,8 @@
                                                 @if (entry.Kind == "login")          { <i class="ri-login-box-line"></i> }
                                                 else if (entry.Kind == "logout")     { <i class="ri-logout-box-r-line"></i> }
                                                 else if (entry.Kind == "navigation") { <i class="ri-compass-3-line"></i> }
+                                                else if (entry.Kind == "folder")     { <i class="ri-folder-open-line"></i> }
+                                                else if (entry.Kind == "session")    { <i class="ri-calendar-check-line"></i> }
                                                 else                                 { <i class="ri-cursor-line"></i> }
                                             </td>
                                             <td class="diag-audit-kind-cell">@entry.Kind</td>

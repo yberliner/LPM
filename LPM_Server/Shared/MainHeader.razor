@@ -6,6 +6,7 @@
 @inject LPM.Services.DashboardService DashSvc
 @inject LPM.Services.PcService PcSvc
 @inject LPM.Services.MessageNotifier MsgNotifier
+@inject LPM.Services.UserActivityService ActivitySvc
 @inject LPM.Services.FolderService FolderSvc
 @inject LPM.Services.CompletionService CompletionSvc
 @inject PdfService PdfSvc
@@ -5650,6 +5651,7 @@
                 });
 
                 Console.WriteLine($"[MainHeader] Imported session '{capturedFileName}' for PC {capturedPcId} with {capturedAttachments.Count} attachments by '{capturedUsername}'");
+                ActivitySvc.RecordActivity(capturedUsername, $"Added session for: {capturedPcName}", "session");
 
                 await InvokeAsync(() =>
                 {
