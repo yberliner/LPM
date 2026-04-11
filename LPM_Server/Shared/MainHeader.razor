@@ -14,6 +14,14 @@
 @using Microsoft.AspNetCore.Components.Forms
 @implements IDisposable
 
+@if (_impersonatingAs != null)
+{
+    <div style="background:#f59e0b;color:#000;text-align:center;padding:5px 12px;font-size:.82rem;font-weight:600;">
+        <i class="ri-spy-line"></i> Impersonating: @_impersonatingAs
+        <span style="margin-left:12px;">—</span>
+        <a href="/Admin/Diagnosis" style="color:#000;margin-left:4px;text-decoration:underline;">Return to Yaniv</a>
+    </div>
+}
             <header class="app-header sticky @headerClass" id="header">
                 <!-- Start::main-header-container -->
                 <div class="main-header-container container-fluid">
@@ -4204,6 +4212,7 @@
     private bool _isSoloUser;   // true when logged-in user has StaffRole = "Solo"
     private bool _isAllowAll;   // true when logged-in user has AllowAll = 1 in core_users
     private bool _isSeniorCS;  // true when logged-in user has StaffRole = 'SeniorCS'
+    private string? _impersonatingAs;  // non-null when Yaniv is impersonating another user
 
     // ── Add PC state ──
     SpkNewPersonModal _addPcModal = default!;
@@ -4484,12 +4493,10 @@
 
     void ToggleExamReport(string opt)
     {
-        Console.WriteLine($"[TOGGLE] clicked={opt} current={_arfExamReport}");
         if (_arfExamReport == opt)
             _arfExamReport = "";
         else
             _arfExamReport = opt;
-        Console.WriteLine($"[TOGGLE] after={_arfExamReport}");
         RebuildArfSummary();
         StateHasChanged();
     }
@@ -5636,6 +5643,8 @@ string _actionPcSearch = "";
             ? char.ToUpper(name[0]) + name[1..]
             : "LP Management";
         _avatarUrl = UserDb.GetAvatarPath(name.ToLower());
+        _impersonatingAs = auth.User.FindFirst("OriginalUser")?.Value != null ? name : null;
+
         var apcStaffRole = auth.User.FindFirst("StaffRole")?.Value ?? "";
         _isSoloUser   = apcStaffRole == StaffRoles.Solo;
         _isSeniorCS   = apcStaffRole == StaffRoles.SeniorCS;

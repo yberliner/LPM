@@ -1,5 +1,5 @@
 @page "/Admin/Diagnosis"
-@attribute [Authorize(Roles = "Admin")]
+@attribute [Authorize(Policy = "DiagnosisAccess")]
 @implements IDisposable
 @using System.Security.Cryptography
 @using System.Security.Claims
@@ -38,6 +38,53 @@
     </div>
     <i class="ri-error-warning-fill diag-danger-icon"></i>
 </div>
+
+@{
+    var _impOrigUser = HttpCtx.HttpContext?.User?.FindFirst("OriginalUser")?.Value;
+    var _impCurrentUser = HttpCtx.HttpContext?.User?.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value;
+    var _impIsYaniv = string.Equals(_impOrigUser ?? _impCurrentUser, "yaniv", StringComparison.OrdinalIgnoreCase);
+    var _impIsActive = _impOrigUser != null;
+}
+
+@if (_impIsYaniv)
+{
+    <div style="max-width:960px;margin:0 auto 16px auto;padding:14px 20px;border-radius:10px;
+                background:#1e293b;border:2px solid @(_impIsActive ? "#f59e0b" : "#3b82f6");">
+        @if (_impIsActive)
+        {
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="ri-spy-line" style="color:#f59e0b;font-size:1.3rem;"></i>
+                    <span style="color:#f59e0b;font-weight:600;">Viewing as: @_impCurrentUser</span>
+                </div>
+                <form method="post" action="/admin/stop-impersonate">
+                    <button type="submit" class="btn btn-sm btn-warning" style="font-weight:600;">
+                        <i class="ri-arrow-go-back-line me-1"></i>Return to Yaniv
+                    </button>
+                </form>
+            </div>
+        }
+        else
+        {
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <i class="ri-spy-line" style="color:#3b82f6;font-size:1.3rem;"></i>
+                <span style="color:#94a3b8;font-weight:500;">Impersonate user:</span>
+                <form method="post" action="/admin/impersonate" class="d-flex align-items-center gap-2">
+                    <select name="targetUsername" class="form-select form-select-sm"
+                            style="width:auto;background:#0f172a;color:#e2e8f0;border-color:#475569;">
+                        @foreach (var u in _userList.Where(u => !string.Equals(u.Username, "yaniv", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            <option value="@u.Username">@u.Username (@u.StaffRole)</option>
+                        }
+                    </select>
+                    <button type="submit" class="btn btn-sm btn-primary" style="font-weight:600;">
+                        <i class="ri-user-shared-line me-1"></i>Impersonate
+                    </button>
+                </form>
+            </div>
+        }
+    </div>
+}
 
 <div class="container-fluid py-4" style="max-width:960px;@(_pageLoading ? "pointer-events:none;filter:blur(2px);opacity:.4;" : "")">
 

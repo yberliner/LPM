@@ -204,6 +204,14 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         };
     });
 
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("DiagnosisAccess", policy =>
+        policy.RequireAssertion(context =>
+            context.User.IsInRole("Admin") ||
+            context.User.HasClaim(c => c.Type == "OriginalUser")));
+});
+
 var app = builder.Build();
 //Globals.ServiceProvider = app.Services;
 
@@ -409,6 +417,57 @@ static async Task SignInUser(HttpContext ctx, UserDb db, string username,
     await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
     ctx.Response.Cookies.Delete("lpm_pending");
 }
+
+// ── Impersonation (Yaniv-only debug feature) ─────────────────────────────
+
+app.MapPost("/admin/impersonate", async (HttpContext ctx, UserDb db) =>
+{
+    var originalUser = ctx.User.FindFirst("OriginalUser")?.Value;
+    var currentUser  = ctx.User.FindFirst(ClaimTypes.Name)?.Value;
+    var realUser     = originalUser ?? currentUser;
+    if (!string.Equals(realUser, "yaniv", StringComparison.OrdinalIgnoreCase))
+        return Results.Redirect("/Admin/Diagnosis");
+
+    var form = await ctx.Request.ReadFormAsync();
+    var target = form["targetUsername"].ToString().Trim();
+    if (string.IsNullOrEmpty(target))
+        return Results.Redirect("/Admin/Diagnosis");
+
+    var flags = db.GetLoginFlags(target);
+    if (flags == null)
+        return Results.Redirect("/Admin/Diagnosis");
+
+    var claims = new List<Claim>
+    {
+        new(ClaimTypes.Name, flags.Username),
+        new("StaffRole", flags.StaffRole),
+        new("PersonId", flags.PersonId.ToString()),
+        new("UserId", flags.UserId.ToString()),
+        new("OriginalUser", "yaniv"),
+    };
+    foreach (var r in flags.Roles)
+        claims.Add(new Claim(ClaimTypes.Role, r));
+
+    var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+    await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+    Console.WriteLine($"[Impersonate] yaniv → {flags.Username}");
+    return Results.Redirect("/Home");
+});
+
+app.MapPost("/admin/stop-impersonate", async (HttpContext ctx, UserDb db) =>
+{
+    var originalUser = ctx.User.FindFirst("OriginalUser")?.Value;
+    if (!string.Equals(originalUser, "yaniv", StringComparison.OrdinalIgnoreCase))
+        return Results.Redirect("/Home");
+
+    var flags = db.GetLoginFlags("yaniv");
+    if (flags == null)
+        return Results.Redirect("/login");
+
+    await SignInUser(ctx, db, "yaniv", flags);
+    Console.WriteLine("[Impersonate] Returned to yaniv");
+    return Results.Redirect("/Admin/Diagnosis");
+});
 
 static void SetTrustCookie(HttpContext ctx, UserDb db, int userId)
 {
