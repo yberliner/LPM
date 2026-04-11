@@ -2525,7 +2525,7 @@ public class DashboardService
                 AND spl.WorkCapacity = '{StaffRoles.CS}'
             LEFT JOIN core_persons pa ON pa.PersonId = s.AuditorId
             LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
-            WHERE 1=1
+            WHERE s.IsImported = 0
               {doneFilter}
               {dateFilter}
             ORDER BY spl.IsApproved DESC, cr.CsReviewId IS NULL DESC, PcName, s.SessionDate, s.SequenceInDay";
@@ -2583,7 +2583,7 @@ public class DashboardService
                 JOIN core_persons p ON p.PersonId = s.PcId
                 LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
                 LEFT JOIN core_persons pc ON pc.PersonId = cr.CsId
-                WHERE s.PcId = @aid AND s.AuditorId IS NULL
+                WHERE s.PcId = @aid AND s.AuditorId IS NULL AND s.IsImported = 0
                   {dateFilter}
                 ORDER BY PcName, s.SessionDate, s.SequenceInDay";
         }
@@ -2609,7 +2609,7 @@ public class DashboardService
                     AND spl.IsApproved IN (0,1)
                 LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
                 LEFT JOIN core_persons pc ON pc.PersonId = cr.CsId
-                WHERE s.AuditorId = @aid
+                WHERE s.AuditorId = @aid AND s.IsImported = 0
                   {dateFilter}
                 ORDER BY spl.IsApproved DESC, PcName, s.SessionDate, s.SequenceInDay";
         }
