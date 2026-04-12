@@ -2363,6 +2363,7 @@
         var pcIdRaw = (row.ElementAtOrDefault(pcIdIdx) ?? "").Split(' ')[0];
         int pcId = int.TryParse(pcIdRaw, out var p) ? p : 0;
 
+        var ct = _cts.Token;
         Task.Run(() =>
         {
             var cs = DbCs();
@@ -2370,6 +2371,7 @@
 
             foreach (var tbl in new[] { "fin_purchase_items", "fin_payment_methods", "fin_payments" })
             {
+                if (ct.IsCancellationRequested) return;
                 var cols = new List<string>();
                 var rows = new List<List<string>>();
                 try
@@ -2393,9 +2395,10 @@
                 fkTables.Add(new DelPurchFkTable(tbl, cols, rows));
             }
 
+            if (ct.IsCancellationRequested) return;
             _delPurchInfo = new DelPurchInfo(purchaseId, pcId, fkTables);
             InvokeAsync(StateHasChanged);
-        });
+        }, ct);
     }
 
     async Task ExecuteDeletePurchase()
@@ -3035,11 +3038,13 @@
         int pcId    = int.TryParse(pcIdRaw, out var p) ? p : 0;
         string sessName = nameIdx >= 0 ? (row.ElementAtOrDefault(nameIdx) ?? "") : "";
 
+        var ct2 = _cts.Token;
         Task.Run(() =>
         {
+            if (ct2.IsCancellationRequested) return;
             _delSessInfo = DashSvc.LoadSessionDeleteInfo(sessionId, pcId, sessName, FolderSvc);
-            InvokeAsync(StateHasChanged);
-        });
+            if (!ct2.IsCancellationRequested) InvokeAsync(StateHasChanged);
+        }, ct2);
     }
 
     async Task ExecuteDeleteSession()

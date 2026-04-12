@@ -460,8 +460,9 @@
             if (_fbfSupported && await JS.InvokeAsync<bool>("lpmFileBackup.isRunning"))
             {
                 _fbfDownloading = true;
-                var dotNetRef = DotNetObjectReference.Create(this);
-                await JS.InvokeVoidAsync("lpmFileBackup.reconnectDotNetRef", dotNetRef);
+                _fbfDotNetRef?.Dispose();
+                _fbfDotNetRef = DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("lpmFileBackup.reconnectDotNetRef", _fbfDotNetRef);
             }
             StateHasChanged();
         }
@@ -724,6 +725,7 @@
         StateHasChanged();
     }
 
+    DotNetObjectReference<Backup>? _fbfDotNetRef;
     bool _fbfPendingStart; // true = after auth, start folder backup instead of ZIP
 
     async Task StartFolderBackupWithToken(string token)
@@ -741,9 +743,10 @@
         try
         {
             await JS.InvokeVoidAsync("eval", "navigator.wakeLock?.request('screen').catch(()=>{})");
-            var dotNetRef = DotNetObjectReference.Create(this);
+            _fbfDotNetRef?.Dispose();
+            _fbfDotNetRef = DotNetObjectReference.Create(this);
             // Fire-and-forget: JS calls OnBackupComplete when done (InvokeAsync would timeout on long backups)
-            await JS.InvokeVoidAsync("lpmFileBackup.start", token, dotNetRef);
+            await JS.InvokeVoidAsync("lpmFileBackup.start", token, _fbfDotNetRef);
         }
         catch (Exception ex)
         {
@@ -801,6 +804,7 @@
     public void Dispose()
     {
         _pollTimer?.Dispose();
+        _fbfDotNetRef?.Dispose();
     }
 
     static string FormatSize(long bytes)

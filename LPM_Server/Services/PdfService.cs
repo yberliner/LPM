@@ -570,7 +570,8 @@ public class PdfService
                             using (var skCanvas = SKSvgCanvas.Create(new SKRect(0, 0, size.Width, size.Height), stream))
                                 DrawAcademyChart(skCanvas, new SKSize(size.Width, size.Height), weeklyTotals, weekStart);
                             stream.Position = 0;
-                            return new System.IO.StreamReader(stream).ReadToEnd();
+                            using var reader = new System.IO.StreamReader(stream);
+                            return reader.ReadToEnd();
                         });
                     }
                 });
@@ -743,7 +744,8 @@ public class PdfService
                                 using (var skCanvas = SKSvgCanvas.Create(new SKRect(0, 0, size.Width, size.Height), stream))
                                     DrawAcademyMonthlyChart(skCanvas, new SKSize(size.Width, size.Height), monthlyChartData);
                                 stream.Position = 0;
-                                return new System.IO.StreamReader(stream).ReadToEnd();
+                                using var reader = new System.IO.StreamReader(stream);
+                                return reader.ReadToEnd();
                             });
                         }
                     });
@@ -1022,7 +1024,8 @@ public class PdfService
                         using (var skCanvas = SKSvgCanvas.Create(new SKRect(0, 0, size.Width, size.Height), stream))
                             DrawWeeklyChart(skCanvas, new SKSize(size.Width, size.Height), weekHistory, weekStart);
                         stream.Position = 0;
-                        return new StreamReader(stream).ReadToEnd();
+                        using var reader = new StreamReader(stream);
+                        return reader.ReadToEnd();
                     });
                 });
             });
@@ -1178,7 +1181,8 @@ public class PdfService
                                 using (var skCanvas = SKSvgCanvas.Create(new SKRect(0, 0, size.Width, size.Height), stream))
                                     DrawMonthlyChart(skCanvas, new SKSize(size.Width, size.Height), monthHistory, monthStart ?? default);
                                 stream.Position = 0;
-                                return new StreamReader(stream).ReadToEnd();
+                                using var reader = new StreamReader(stream);
+                                return reader.ReadToEnd();
                             });
                         }
                     });

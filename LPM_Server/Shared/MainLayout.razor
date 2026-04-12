@@ -73,8 +73,16 @@
                 await JSRuntime.InvokeVoidAsync("eval", @"
                     window._lpmStartHeartbeat = function(ref) {
                         if (window._lpmHeartbeatId) clearInterval(window._lpmHeartbeatId);
+                        // Remove previously attached listeners
+                        if (window._lpmHeartbeatHandler) {
+                            var h = window._lpmHeartbeatHandler;
+                            ['mousemove','keydown','click','scroll','touchstart'].forEach(function(e) {
+                                document.removeEventListener(e, h);
+                            });
+                        }
                         var active = true;
                         var handler = function() { active = true; };
+                        window._lpmHeartbeatHandler = handler;
                         document.addEventListener('mousemove', handler, {passive:true});
                         document.addEventListener('keydown', handler, {passive:true});
                         document.addEventListener('click', handler, {passive:true});
@@ -202,7 +210,10 @@
         LS.OnLanguageChanged -= HandleLanguageChanged;
         NavigationManager.LocationChanged -= OnLocationChanged;
         _scrollVisRef?.Dispose();
-        try { JSRuntime.InvokeVoidAsync("eval", "if(window._lpmHeartbeatId){clearInterval(window._lpmHeartbeatId);window._lpmHeartbeatId=null;}"); } catch { }
+        try { _ = JSRuntime.InvokeVoidAsync("eval", @"
+            if(window._lpmHeartbeatId){clearInterval(window._lpmHeartbeatId);window._lpmHeartbeatId=null;}
+            if(window._lpmHeartbeatHandler){var h=window._lpmHeartbeatHandler;['mousemove','keydown','click','scroll','touchstart'].forEach(function(e){document.removeEventListener(e,h);});window._lpmHeartbeatHandler=null;}
+        "); } catch { }
         _heartbeatRef?.Dispose();
     }
 }

@@ -54,7 +54,7 @@ public class UserActivityService
                 cmd.Parameters.AddWithValue("@k", kind);
                 await cmd.ExecuteNonQueryAsync();
             }
-            catch { }
+            catch (Exception ex) { Console.WriteLine($"[ActivitySvc] RecordActivity error: {ex.Message}"); }
         });
     }
 
@@ -69,6 +69,12 @@ public class UserActivityService
     {
         if (string.IsNullOrWhiteSpace(username)) return;
         _circuits.AddOrUpdate(username, 0, (_, old) => Math.Max(0, old - 1));
+        // Clean up entries with zero circuits to prevent unbounded dictionary growth
+        if (_circuits.TryGetValue(username, out var count) && count <= 0)
+        {
+            _circuits.TryRemove(username, out _);
+            _lastInteraction.TryRemove(username, out _);
+        }
         RecordActivity(username, "Left the system", "logout");
     }
 

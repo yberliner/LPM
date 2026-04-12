@@ -974,7 +974,7 @@
         }
         dotNetObjectReference?.Dispose();
         _scrollRef?.Dispose();
-        JSRuntime.InvokeVoidAsync("resizeFunctions.detachScrollListener");
-        JSRuntime.InvokeVoidAsync("interop.unregisterScrollListener");
+        try { _ = JSRuntime.InvokeVoidAsync("resizeFunctions.detachScrollListener"); } catch { }
+        try { _ = JSRuntime.InvokeVoidAsync("interop.unregisterScrollListener"); } catch { }
     }
 }

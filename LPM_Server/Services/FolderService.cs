@@ -1898,9 +1898,10 @@ public class FolderService
     private byte[]? TryNormalizeWithPdfSharp(byte[] pdfBytes)
     {
         PdfSharpCore.Pdf.PdfDocument doc;
+        MemoryStream ms;
         try
         {
-            var ms = new MemoryStream(pdfBytes);
+            ms = new MemoryStream(pdfBytes);
             doc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Modify);
         }
         catch (Exception ex)
@@ -1911,6 +1912,7 @@ public class FolderService
 
         try
         {
+        using (ms)
         using (doc)
         {
             Console.WriteLine($"[Norm] Opened PDF: {doc.PageCount} pages");

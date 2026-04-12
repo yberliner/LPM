@@ -3,7 +3,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace LPM.Services;
 
-public record CourseItem(int CourseId, string Name, string Book, int BookPrice, string CourseType);
+public record CourseItem(int CourseId, string Name, string Book, int BookPrice, string CourseType, int Price = 0);
 public record BookItem(int BookId, string Name, int Price);
 public record CourseEnrollmentItem(
     int StudentCourseId, int PersonId, string PCFullName,
@@ -78,9 +78,9 @@ public class CourseService
         bf.CommandText = @"
             INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted, InstructorId, CsId)
             SELECT pu.PcId, pi.CourseId, pu.PurchaseDate,
-              CASE WHEN c.CourseType IN ('OT','OTFS')
+              CASE WHEN c.CourseType = 'Advanced'
                    THEN (SELECT PersonId FROM core_users WHERE Username='aviv' AND IsActive=1 LIMIT 1) END,
-              CASE WHEN c.CourseType IN ('OT','OTFS')
+              CASE WHEN c.CourseType = 'Advanced'
                    THEN (SELECT PersonId FROM core_users WHERE Username='tami' AND IsActive=1 LIMIT 1) END
             FROM fin_purchase_items pi
             JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
@@ -104,24 +104,25 @@ public class CourseService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT CourseId, Name, COALESCE(Book,'') AS Book, COALESCE(BookPrice,0) AS BookPrice, COALESCE(CourseType,'PC') FROM lkp_courses ORDER BY Name";
+        cmd.CommandText = "SELECT CourseId, Name, COALESCE(Book,'') AS Book, COALESCE(BookPrice,0) AS BookPrice, COALESCE(CourseType,'Academy'), COALESCE(Price,0) AS Price FROM lkp_courses ORDER BY Name";
         var list = new List<CourseItem>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add(new CourseItem(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetInt32(3), r.GetString(4)));
+            list.Add(new CourseItem(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetInt32(3), r.GetString(4), r.GetInt32(5)));
         return list;
     }
 
-    public int AddCourse(string name, string book = "", int bookPrice = 0, string courseType = CourseTypes.PC)
+    public int AddCourse(string name, string book = "", int bookPrice = 0, string courseType = CourseTypes.Academy, int price = 0)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT INTO lkp_courses (Name, Book, BookPrice, CourseType) VALUES (@name, @book, @bookPrice, @ct)";
+        cmd.CommandText = "INSERT INTO lkp_courses (Name, Book, BookPrice, CourseType, Price) VALUES (@name, @book, @bookPrice, @ct, @price)";
         cmd.Parameters.AddWithValue("@name", name.Trim());
         cmd.Parameters.AddWithValue("@book", book.Trim());
         cmd.Parameters.AddWithValue("@bookPrice", bookPrice);
         cmd.Parameters.AddWithValue("@ct", courseType);
+        cmd.Parameters.AddWithValue("@price", price);
         cmd.ExecuteNonQuery();
         using var idCmd = conn.CreateCommand();
         idCmd.CommandText = "SELECT last_insert_rowid()";
@@ -130,16 +131,17 @@ public class CourseService
         return courseId;
     }
 
-    public void UpdateCourse(int courseId, string name, string book = "", int bookPrice = 0, string courseType = CourseTypes.PC)
+    public void UpdateCourse(int courseId, string name, string book = "", int bookPrice = 0, string courseType = CourseTypes.Academy, int price = 0)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE lkp_courses SET Name=@name, Book=@book, BookPrice=@bookPrice, CourseType=@ct WHERE CourseId=@id";
+        cmd.CommandText = "UPDATE lkp_courses SET Name=@name, Book=@book, BookPrice=@bookPrice, CourseType=@ct, Price=@price WHERE CourseId=@id";
         cmd.Parameters.AddWithValue("@name", name.Trim());
         cmd.Parameters.AddWithValue("@book", book.Trim());
         cmd.Parameters.AddWithValue("@bookPrice", bookPrice);
         cmd.Parameters.AddWithValue("@ct", courseType);
+        cmd.Parameters.AddWithValue("@price", price);
         cmd.Parameters.AddWithValue("@id", courseId);
         cmd.ExecuteNonQuery();
         Console.WriteLine($"[CourseService] Updated course {courseId}: '{name.Trim()}'");
@@ -285,7 +287,7 @@ public class CourseService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT sc.StudentCourseId, sc.PersonId, sc.CourseId, c.Name, sc.DateStarted, sc.DateFinished,
-                   COALESCE(c.CourseType,'PC'),
+                   COALESCE(c.CourseType,'Academy'),
                    sc.InstructorId,
                    TRIM(ip.FirstName || ' ' || COALESCE(NULLIF(ip.LastName,''),'')),
                    sc.CsId,
@@ -325,7 +327,7 @@ public class CourseService
             SELECT sc.PersonId, c.Name,
                    (SELECT COUNT(*) FROM acad_attendance s
                     WHERE s.PersonId = sc.PersonId AND s.VisitDate >= sc.DateStarted) AS VisitCount,
-                   COALESCE(c.CourseType,'PC')
+                   COALESCE(c.CourseType,'Academy')
             FROM acad_student_courses sc
             JOIN lkp_courses c ON c.CourseId = sc.CourseId
             WHERE sc.PersonId IN ({string.Join(",", paramNames)}) AND sc.DateFinished IS NULL
@@ -353,10 +355,10 @@ public class CourseService
         // For OT courses, auto-fill defaults if not provided
         using (var chk = conn.CreateCommand())
         {
-            chk.CommandText = "SELECT COALESCE(CourseType,'PC') FROM lkp_courses WHERE CourseId=@cid";
+            chk.CommandText = "SELECT COALESCE(CourseType,'Academy') FROM lkp_courses WHERE CourseId=@cid";
             chk.Parameters.AddWithValue("@cid", courseId);
-            var ct = chk.ExecuteScalar() as string ?? CourseTypes.PC;
-            if (CourseTypes.IsOtLike(ct))
+            var ct = chk.ExecuteScalar() as string ?? CourseTypes.Academy;
+            if (CourseTypes.IsAdvanced(ct))
             {
                 if (!instructorId.HasValue)
                 {
@@ -446,7 +448,7 @@ public class CourseService
                    END AS ReferralName,
                    (SELECT COUNT(*) FROM acad_attendance s
                     WHERE s.PersonId = sc.PersonId AND s.VisitDate >= sc.DateStarted) AS VisitCount,
-                   COALESCE(c.CourseType,'PC'),
+                   COALESCE(c.CourseType,'Academy'),
                    sc.InstructorId,
                    TRIM(COALESCE(insp.FirstName,'') || ' ' || COALESCE(NULLIF(insp.LastName,''),'')),
                    sc.CsId,

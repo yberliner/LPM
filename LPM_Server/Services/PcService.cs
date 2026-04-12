@@ -41,7 +41,7 @@ public record PcSessionCostRow(
     int SessionId, string Date, string AuditorName,
     int LengthSec, int AdminSec, int RateCentsUsed, string RateSource, decimal CostNis, bool IsImported = false);
 
-public record SoloCsReviewCostRow(int SessionId, string Date, int ReviewLengthSec, int RateCents, decimal CostNis, bool IsOtfsFree = false, bool IsImported = false);
+public record SoloCsReviewCostRow(int SessionId, string Date, int ReviewLengthSec, int RateCents, decimal CostNis, bool IsFree = false, bool IsImported = false);
 
 public record PcBalanceExplanation(
     List<PcPurchaseRow> Purchases, int TotalPurchasedNis,
@@ -907,9 +907,9 @@ public List<PcListItem> GetAllPcs()
                 scCmd.CommandText = @"
                     INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted, InstructorId, CsId)
                     SELECT @personId, @courseId, @date,
-                      CASE WHEN (SELECT CourseType FROM lkp_courses WHERE CourseId=@courseId) IN ('OT','OTFS')
+                      CASE WHEN (SELECT CourseType FROM lkp_courses WHERE CourseId=@courseId) = 'Advanced'
                            THEN (SELECT PersonId FROM core_users WHERE Username='aviv' AND IsActive=1 LIMIT 1) END,
-                      CASE WHEN (SELECT CourseType FROM lkp_courses WHERE CourseId=@courseId) IN ('OT','OTFS')
+                      CASE WHEN (SELECT CourseType FROM lkp_courses WHERE CourseId=@courseId) = 'Advanced'
                            THEN (SELECT PersonId FROM core_users WHERE Username='tami' AND IsActive=1 LIMIT 1) END
                     WHERE NOT EXISTS (
                         SELECT 1 FROM acad_student_courses
@@ -1296,9 +1296,9 @@ public List<PcListItem> GetAllPcs()
             addSc.CommandText = @"
                 INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted, InstructorId, CsId)
                 SELECT @pid, @cid, @date,
-                  CASE WHEN (SELECT CourseType FROM lkp_courses WHERE CourseId=@cid) IN ('OT','OTFS')
+                  CASE WHEN (SELECT CourseType FROM lkp_courses WHERE CourseId=@cid) = 'Advanced'
                        THEN (SELECT PersonId FROM core_users WHERE Username='aviv' AND IsActive=1 LIMIT 1) END,
-                  CASE WHEN (SELECT CourseType FROM lkp_courses WHERE CourseId=@cid) IN ('OT','OTFS')
+                  CASE WHEN (SELECT CourseType FROM lkp_courses WHERE CourseId=@cid) = 'Advanced'
                        THEN (SELECT PersonId FROM core_users WHERE Username='tami' AND IsActive=1 LIMIT 1) END
                 WHERE NOT EXISTS (
                     SELECT 1 FROM acad_student_courses WHERE PersonId=@pid AND CourseId=@cid AND DateFinished IS NULL
@@ -1457,9 +1457,9 @@ public List<PcListItem> GetAllPcs()
             q.CommandText = @"
                 INSERT INTO acad_student_courses (PersonId, CourseId, DateStarted, InstructorId, CsId)
                 SELECT p.PcId, pi.CourseId, p.PurchaseDate,
-                  CASE WHEN c.CourseType IN ('OT','OTFS')
+                  CASE WHEN c.CourseType = 'Advanced'
                        THEN (SELECT PersonId FROM core_users WHERE Username='aviv' AND IsActive=1 LIMIT 1) END,
-                  CASE WHEN c.CourseType IN ('OT','OTFS')
+                  CASE WHEN c.CourseType = 'Advanced'
                        THEN (SELECT PersonId FROM core_users WHERE Username='tami' AND IsActive=1 LIMIT 1) END
                 FROM fin_purchase_items pi
                 JOIN fin_purchases p ON p.PurchaseId = pi.PurchaseId

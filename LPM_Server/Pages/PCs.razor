@@ -352,7 +352,7 @@
                                 @foreach (var sc in AllCoursesSorted)
                                 {
                                     bool isActive = sc.DateFinished == null;
-                                    bool isOT = CourseTypes.IsOtLike(sc.CourseType);
+                                    bool isOT = CourseTypes.IsAdvanced(sc.CourseType);
                                     var hasPurchase = _coursePurchaseMap.TryGetValue(sc.CourseId, out var coursePurchaseId);
                                     var activeColor = isOT ? "#0d9488" : "#6d28d9";
                                     <tr style="@(!isActive ? "opacity:.65;" : "")"
@@ -870,7 +870,7 @@
                                                     <label class="form-label small mb-0">@LS.T("pcs.course")</label>
                                                     <select class="form-select form-select-sm @(item.CourseId <= 0 ? "field-invalid" : "field-valid")" style="max-width:200px;"
                                                             value="@item.CourseId"
-                                                            @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) item.CourseId = v; }">
+                                                            @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) { item.CourseId = v; AutoFillCoursePrice(item); } }">
                                                         <option value="0">— @LS.T("pcs.selectCourse") —</option>
                                                         @foreach (var c in _allCourses)
                                                         {
@@ -1566,8 +1566,8 @@
 @* ── Pending Courses Modal ── *@
 @if (_pendingCoursesModal)
 {
-    var otCourses = _pendingCourses.Where(e => CourseTypes.IsOtLike(e.CourseType)).OrderBy(x => x.DateFinished != null).ThenByDescending(x => x.DateStarted).ToList();
-    var pcCourses = _pendingCourses.Where(e => !CourseTypes.IsOtLike(e.CourseType)).OrderBy(x => x.DateFinished != null).ThenByDescending(x => x.DateStarted).ToList();
+    var otCourses = _pendingCourses.Where(e => CourseTypes.IsAdvanced(e.CourseType)).OrderBy(x => x.DateFinished != null).ThenByDescending(x => x.DateStarted).ToList();
+    var pcCourses = _pendingCourses.Where(e => !CourseTypes.IsAdvanced(e.CourseType)).OrderBy(x => x.DateFinished != null).ThenByDescending(x => x.DateStarted).ToList();
     <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.45);z-index:1050;">
         <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content" style="border-radius:12px;background:#fff;color:#212529;">
@@ -1585,7 +1585,7 @@
                     }
                     else
                     {
-                        @* ── OT Courses Section ── *@
+                        @* ── Advanced Courses Section ── *@
                         <details open class="mb-3">
                             <summary class="d-flex align-items-center gap-2 px-3 py-2 rounded-top fw-semibold small"
                                      style="background:linear-gradient(135deg,#0d9488,#2dd4bf);color:#fff;cursor:pointer;list-style:none;border-radius:8px 8px 0 0;">
@@ -1681,7 +1681,7 @@
                             }
                         </details>
 
-                        @* ── PC Courses Section ── *@
+                        @* ── Academy Courses Section ── *@
                         <details open>
                             <summary class="d-flex align-items-center gap-2 px-3 py-2 rounded-top fw-semibold small"
                                      style="background:linear-gradient(135deg,#6d28d9,#a855f7);color:#fff;cursor:pointer;list-style:none;border-radius:8px 8px 0 0;">
@@ -1985,14 +1985,14 @@
                                     @{ int soloIdx = 0; var filteredSolo = _balHideImported ? _balSoloDetails.Where(sr => !sr.IsImported) : _balSoloDetails; }
                                     @foreach (var sr in filteredSolo)
                                     {
-                                        <tr style="background:@(soloIdx++ % 2 == 0 ? "#f5f3ff" : "#ede9fe");@(sr.IsOtfsFree ? "opacity:.7;" : "")">
+                                        <tr style="background:@(soloIdx++ % 2 == 0 ? "#f5f3ff" : "#ede9fe");@(sr.IsFree ? "opacity:.7;" : "")">
                                             <td class="small text-center text-muted">@sr.SessionId</td>
                                             <td class="small">@FormatDate(sr.Date)</td>
                                             <td class="small text-center" title="@Hmmss(sr.ReviewLengthSec)">@HmmRound(sr.ReviewLengthSec)</td>
                                             <td class="small text-center">@CurrSym(balCurr)@(sr.RateCents / 100)</td>
                                             <td class="small text-center">@if (sr.IsImported) { <i class="ri-download-cloud-line" style="color:#6366f1;" title="Imported session"></i> }</td>
-                                            <td class="small text-end fw-semibold" style="color:@(sr.IsOtfsFree ? "#10b981" : "#7c3aed");">
-                                                @if (sr.IsOtfsFree)
+                                            <td class="small text-end fw-semibold" style="color:@(sr.IsFree ? "#10b981" : "#7c3aed");">
+                                                @if (sr.IsFree)
                                                 {
                                                     <span class="badge" style="background:#d1fae5;color:#065f46;font-size:.65rem;">Free</span>
                                                 }
@@ -2038,7 +2038,7 @@
                         <span class="cg-lbl">Purchased</span><span>Sum of all AmountPaid from auditing purchases</span>
                         <span class="cg-lbl">Used (Sessions)</span><span>For each non-solo, non-free session: Rate &times; (Length + Admin) &divide; 3600. Rate falls back to previous session rate, then purchase rate</span>
                         <span class="cg-lbl">Used (Solo CS)</span><span>For each solo CS review with rate &gt; 0 and Notes = <strong>"Bill"</strong>: <strong>Rate &times; ReviewLength &divide; 3600</strong>. Rate = 0 means not yet billable (set in Sessions page).<br/>
-                            Reviews marked <strong style="color:#10b981 !important;">"Free"</strong> (OTFS) or with no notes (old data) are <strong>not charged</strong> — cost = 0</span>
+                            Reviews marked <strong style="color:#10b981 !important;">"Free"</strong> or with no notes (old data) are <strong>not charged</strong> — cost = 0</span>
                         <span class="cg-lbl">Color</span><span><strong style="color:#16a34a !important;">Green</strong> = positive &nbsp; <strong style="color:#dc2626 !important;">Red</strong> = owes money</span>
                     </div>
                     <div class="cg-example">
@@ -3855,7 +3855,7 @@
             int defRate = _selPcId.HasValue && _balances.TryGetValue(_selPcId.Value, out var b) ? b.PurchaseRateCents / 100 : 0;
             item.RatePerHour = defRate;
         }
-        if (prev == "Auditing" && type != "Auditing") item.AmountPaid = 0;
+        if (prev != type) item.AmountPaid = 0;
         if (type == "Auditing" && prev != "Auditing") RecalcAuditing(item);
     }
 
@@ -3864,6 +3864,13 @@
         if (item.AmountPaid != 0) return;
         var book = _allBooks.FirstOrDefault(b => b.BookId == item.BookId);
         if (book != null) item.AmountPaid = book.Price;
+    }
+
+    void AutoFillCoursePrice(PurchaseItemModel item)
+    {
+        if (item.AmountPaid != 0) return;
+        var course = _allCourses.FirstOrDefault(c => c.CourseId == item.CourseId);
+        if (course != null && course.Price > 0) item.AmountPaid = course.Price;
     }
 
     bool HasValidPurchaseItems()

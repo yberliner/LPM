@@ -1,12 +1,15 @@
 namespace LPM.Services;
 
-/// <summary>Course type constants stored in lkp_courses.CourseType.</summary>
+/// <summary>Course type constants stored in lkp_courses.CourseType.
+/// All comparisons must go through IsAcademy / IsAdvanced — never compare raw strings.</summary>
 public static class CourseTypes
 {
-    public const string PC = "PC";
-    public const string OT = "OT";
-    public const string OTFS = "OTFS";
+    public const string Academy = "Academy";
+    public const string Advanced = "Advanced";
 
-    /// <summary>True for OT-like types (OT, OTFS) that have instructor/CS and OT-specific behavior.</summary>
-    public static bool IsOtLike(string? type) => type is OT or OTFS;
+    public static bool IsAcademy(string? type) =>
+        string.Equals(type, Academy, System.StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsAdvanced(string? type) =>
+        string.Equals(type, Advanced, System.StringComparison.OrdinalIgnoreCase);
 }

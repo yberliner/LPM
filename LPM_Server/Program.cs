@@ -722,7 +722,8 @@ app.MapPost("/api/passkey/register", async (HttpContext ctx, UserDb db, IFido2 f
         return Results.BadRequest("No pending registration");
 
     var options = CredentialCreateOptions.FromJson(optionsJson);
-    var body = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
+    using var regReader = new StreamReader(ctx.Request.Body);
+    var body = await regReader.ReadToEndAsync();
     var response = System.Text.Json.JsonSerializer.Deserialize<AuthenticatorAttestationRawResponse>(body);
     if (response == null) return Results.BadRequest("Invalid response");
 
@@ -750,7 +751,8 @@ app.MapPost("/api/passkey/register", async (HttpContext ctx, UserDb db, IFido2 f
 
 app.MapPost("/api/passkey/login-options", async (HttpContext ctx, UserDb db, IFido2 fido2) =>
 {
-    var body = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
+    using var optReader = new StreamReader(ctx.Request.Body);
+    var body = await optReader.ReadToEndAsync();
     var req = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(body);
     var username = req.TryGetProperty("username", out var u) ? u.GetString() ?? "" : "";
     if (string.IsNullOrEmpty(username)) return Results.BadRequest("Username required");
@@ -780,7 +782,8 @@ app.MapPost("/api/passkey/login-options", async (HttpContext ctx, UserDb db, IFi
 app.MapPost("/api/passkey/login", async (HttpContext ctx, UserDb db, IFido2 fido2) =>
 {
     // We need to find which user this assertion belongs to from the credential
-    var body = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
+    using var loginReader = new StreamReader(ctx.Request.Body);
+    var body = await loginReader.ReadToEndAsync();
     var response = System.Text.Json.JsonSerializer.Deserialize<AuthenticatorAssertionRawResponse>(body);
     if (response == null) return Results.BadRequest("Invalid response");
 

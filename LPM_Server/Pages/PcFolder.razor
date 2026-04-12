@@ -813,12 +813,12 @@
                     </div>
                     @if (Solo)
                     {
-                        <div class="pcf-free-cs-wrap" title="@(_csFreeSession ? "This session will NOT be charged (OTFS active)" : "This session WILL be charged to balance")">
+                        <div class="pcf-free-cs-wrap" title="@(_csFreeSession ? "This session will NOT be charged" : "This session WILL be charged to balance")">
                             <label class="pcf-free-cs-toggle">
                                 <input type="checkbox" class="form-check-input pcf-free-cs-check"
                                        checked="@_csFreeSession"
                                        @onchange="e => _csFreeSession = (bool)(e.Value ?? false)" />
-                                <span class="pcf-free-cs-label">OTFS (Free)</span>
+                                <span class="pcf-free-cs-label">Free</span>
                             </label>
                         </div>
                     }
@@ -1914,7 +1914,7 @@
         color: #ef4444; font-size: .7rem;
         animation: pcf-warn-blink 1s ease-in-out infinite;
     }
-    /* ── OTFS (Free) toggle — glowing ── */
+    /* ── Free toggle — glowing ── */
     .pcf-free-cs-wrap {
         display: flex; align-items: center;
         margin-left: 10px; padding: 4px 14px;
@@ -2952,7 +2952,7 @@
 
     // Auto-stopwatch for solo CS (not already done)
     bool _isAutoStopwatchSession;   // Solo && CsMode && !_csAlreadyDone
-    bool _csFreeSession;            // "OTFS (Free)" toggle value
+    bool _csFreeSession;            // "Free" toggle value
     bool _existingFreeSession;      // original value on load (detect changes)
     bool _stopwatchRunning;
     PeriodicTimer? _stopwatch;
@@ -3329,9 +3329,8 @@
                 }
                 else if (Solo && CsMode)
                 {
-                    // Auto-detect OTFS for new solo sessions
-                    var sessDate = DashSvc.GetSessionDate(_csSessionId);
-                    _csFreeSession = DashSvc.HasActiveOtfsCourse(PcId, sessDate);
+                    // Default free flag from previous CS review (no previous = default free)
+                    _csFreeSession = DashSvc.GetPreviousCsFreeStatus(PcId);
                     _existingFreeSession = _csFreeSession;
                 }
                 _isAutoStopwatchSession = Solo && CsMode && !_csAlreadyDone && !_csLocked;

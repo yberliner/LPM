@@ -2409,21 +2409,24 @@ public class DashboardService
         return cmd2.ExecuteScalar() != null ? "Unassigned" : "No sessions yet";
     }
 
-    public bool HasActiveOtfsCourse(int pcId, string sessionDate)
+    /// <summary>Returns the Free/Bill status of the most recent solo CS review for this PC.
+    /// True = free (default when no previous review exists).</summary>
+    public bool GetPreviousCsFreeStatus(int pcId)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT 1 FROM acad_student_courses sc
-            JOIN lkp_courses lc ON lc.CourseId = sc.CourseId
-            WHERE sc.PersonId = @pcId AND lc.CourseType = 'OTFS'
-              AND sc.DateStarted <= @dt
-              AND (sc.DateFinished IS NULL OR sc.DateFinished >= @dt)
+            SELECT COALESCE(cr.Notes, '')
+            FROM cs_reviews cr
+            JOIN sess_sessions s ON s.SessionId = cr.SessionId
+            WHERE s.PcId = @pcId AND s.AuditorId IS NULL
+            ORDER BY s.SessionDate DESC, s.SessionId DESC
             LIMIT 1";
         cmd.Parameters.AddWithValue("@pcId", pcId);
-        cmd.Parameters.AddWithValue("@dt", sessionDate);
-        return cmd.ExecuteScalar() != null;
+        var result = cmd.ExecuteScalar() as string;
+        // No previous review → default free; 'Bill' → not free; anything else → free
+        return result != "Bill";
     }
 
     public string GetSessionDate(int sessionId)
@@ -2923,7 +2926,7 @@ public class DashboardService
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT pi.PurchaseId, pi.PurchaseItemId, pi.ItemType, pi.CourseId, pi.AmountPaid,
-                       COALESCE(lc.CourseType, 'PC') AS CourseType,
+                       COALESCE(lc.CourseType, 'Academy') AS CourseType,
                        CASE pi.ItemType
                          WHEN 'Course' THEN COALESCE(lc.Name, 'Course')
                          WHEN 'Book' THEN COALESCE(lb.Name, 'Book')
@@ -3041,7 +3044,7 @@ public class DashboardService
                     refPct = cfg.AuditReferralPct;
                     category = "Auditing";
                 }
-                else if (item.ItemType == "Course" && item.CourseType == CourseTypes.PC)
+                else if (item.ItemType == "Course" && item.CourseType == CourseTypes.Academy)
                 {
                     // ── Category 2: PC Courses ──
                     regPct = cfg.CourseRegistrarPct;
@@ -3063,7 +3066,7 @@ public class DashboardService
                             if (instr.PersonId > 0)
                                 Emit(instr.PersonId, pmt.PcName, "Acad. Finish", category, calc.NetBase, instr.FinishCommPct, detail);
                 }
-                else if (item.ItemType == "Course" && CourseTypes.IsOtLike(item.CourseType))
+                else if (item.ItemType == "Course" && CourseTypes.IsAdvanced(item.CourseType))
                 {
                     // ── Category 3: OT Courses ──
                     regPct = cfg.CourseRegistrarPct;
@@ -3104,7 +3107,7 @@ public class DashboardService
         {
             cmd.CommandText = @"
                 SELECT sc.PersonId, sc.CourseId, sc.InstructorId, sc.CsId,
-                       COALESCE(lc.CourseType, 'PC') AS CourseType, sc.DateFinished
+                       COALESCE(lc.CourseType, 'Academy') AS CourseType, sc.DateFinished
                 FROM acad_student_courses sc
                 INNER JOIN (
                     SELECT PersonId, CourseId, MAX(DateFinished) AS MDF
@@ -3160,7 +3163,7 @@ public class DashboardService
                         using var cmd = conn.CreateCommand();
                         cmd.CommandText = $@"
                             SELECT pi.PurchaseId, pi.PurchaseItemId, pi.ItemType, pi.CourseId, pi.AmountPaid,
-                                   COALESCE(lc.CourseType, 'PC') AS CourseType,
+                                   COALESCE(lc.CourseType, 'Academy') AS CourseType,
                                    CASE pi.ItemType
                                      WHEN 'Course' THEN COALESCE(lc.Name, 'Course')
                                      WHEN 'Book' THEN COALESCE(lb.Name, 'Book')
@@ -3230,13 +3233,13 @@ public class DashboardService
                             courseItem.ItemType, courseItem.ItemName, courseItem.AmountPaid, (int)totalAmount,
                             itemShare, calc.Vat, calc.Cc, bookPriceShare, calc.NetAfter, calc.Reserve, calc.NetBase, 0, fc.DateFinished);
 
-                        if (fc.CourseType == CourseTypes.PC)
+                        if (fc.CourseType == CourseTypes.Academy)
                         {
                             foreach (var instr in academyInstructors)
                                 if (instr.PersonId > 0)
                                     Emit(instr.PersonId, pcName, "Acad. Finish", "PC Course", calc.NetBase, instr.FinishCommPct, detail);
                         }
-                        else if (CourseTypes.IsOtLike(fc.CourseType))
+                        else if (CourseTypes.IsAdvanced(fc.CourseType))
                         {
                             if (fc.InstructorId is > 0)
                                 Emit(fc.InstructorId.Value, pcName, "OT Instructor", "OT Course", calc.NetBase, cfg.InstructorOtPct, detail);

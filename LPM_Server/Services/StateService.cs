@@ -184,7 +184,7 @@ public class StateService
 
             // Notify state change if needed
             OnChange?.Invoke();
-            NotifyStateChanged();
+            await NotifyStateChanged();
 
             //_logger.LogInformation("AppState initialized: {AppState}", JsonSerializer.Serialize(_currentState));
         }
@@ -203,7 +203,7 @@ public class StateService
         // Initialize AppState from session or default values
         await _currentState.InitializeFromSession(sessionState, _sessionService);
         // Notify state change
-        NotifyStateChanged();
+        await NotifyStateChanged();
     }
     public async Task InitializeLandingAppState1()
     {
@@ -215,9 +215,9 @@ public class StateService
         await _currentState.InitializeFromSession(sessionState, _sessionService);
 
         // Notify state change
-        NotifyStateChanged();
+        await NotifyStateChanged();
     }
-    private async void NotifyStateChanged()
+    private async Task NotifyStateChanged()
     {
         await _sessionService.SetAppStateToSession(_currentState);
         // Invoke the event to notify subscribers
@@ -228,7 +228,7 @@ public class StateService
         _currentState.Direction = val; // Update the color theme in the app state
 
         await _jsRuntime.InvokeVoidAsync("interop.addAttributeToHtml", "dir", val);
-        NotifyStateChanged();
+        await NotifyStateChanged();
     }
     public Task setCurrentItem(MainMenuItems val)
     {
@@ -273,7 +273,7 @@ public class StateService
         await _jsRuntime.InvokeVoidAsync("interop.removeCssVariable", "--form-control-bg");
         await _jsRuntime.InvokeVoidAsync("interop.removeCssVariable", "--input-border");
         await _jsRuntime.InvokeVoidAsync("interop.removeCssVariable", "--gray-3");
-        NotifyStateChanged();
+        await NotifyStateChanged();
         await PersistState();
     }
 
@@ -315,7 +315,7 @@ public class StateService
         {
             await _jsRuntime.InvokeAsync<string>("interop.addAttributeToHtml", "data-toggled", "close");
         }
-        NotifyStateChanged();
+        await NotifyStateChanged();
     }
     public async Task layoutStylesFn(string val)
     {
@@ -371,7 +371,7 @@ public class StateService
         {
             await _jsRuntime.InvokeAsync<string>("interop.addAttributeToHtml", "data-toggled", "close");
         }
-        NotifyStateChanged();
+        await NotifyStateChanged();
     }
     public async Task menuStylesFn(string val)
     {
@@ -388,49 +388,49 @@ public class StateService
         {
             await _jsRuntime.InvokeAsync<string>("interop.addAttributeToHtml", "data-toggled", "close");
         }
-        NotifyStateChanged();
+        await NotifyStateChanged();
     }
     public async Task pageStyleFn(string val)
     {
         _currentState.PageStyles = val; // Update the color theme in the app state
         await _jsRuntime.InvokeVoidAsync("interop.addAttributeToHtml", "data-page-style", val);
-        NotifyStateChanged();
+        await NotifyStateChanged();
     }
     public async Task widthStylessFn(string val)
     {
         _currentState.WidthStyles = val; // Update the color theme in the app state
         await _jsRuntime.InvokeVoidAsync("interop.addAttributeToHtml", "data-width", val);
-        NotifyStateChanged();
+        await NotifyStateChanged();
     }
     public async Task menuPositionFn(string val)
     {
         _currentState.MenuPosition = val; // Update the color theme in the app state
         await _jsRuntime.InvokeVoidAsync("interop.addAttributeToHtml", "data-menu-position", val);
-        NotifyStateChanged();
+        await NotifyStateChanged();
     }
     public async Task headerPositionFn(string val)
     {
         _currentState.HeaderPosition = val; // Update the color theme in the app state
         await _jsRuntime.InvokeVoidAsync("interop.addAttributeToHtml", "data-header-position", val);
-        NotifyStateChanged();
+        await NotifyStateChanged();
     }
     public async Task menuColorFn(string val)
     {
         _currentState.MenuColor = val; // Update the color theme in the app state
         await _jsRuntime.InvokeVoidAsync("interop.addAttributeToHtml", "data-menu-styles", val);
-        NotifyStateChanged();
+        await NotifyStateChanged();
     }
     public async Task headerColorFn(string val)
     {
         _currentState.HeaderColor = val; // Update the color theme in the app state
         await _jsRuntime.InvokeVoidAsync("interop.addAttributeToHtml", "data-header-styles", val);
-        NotifyStateChanged();
+        await NotifyStateChanged();
     }
     public async Task themePrimaryFn(string val)
     {
         _currentState.ThemePrimary = val; // Update the color theme in the app state
         await _jsRuntime.InvokeVoidAsync("interop.setCssVariable", "--primary-rgb", val);
-        NotifyStateChanged();
+        await NotifyStateChanged();
     }
     public async Task themeBackgroundFn(string val, string val2,bool stateClick)
     {
@@ -451,13 +451,13 @@ public class StateService
         await _jsRuntime.InvokeVoidAsync("interop.setCssVariable", "--form-control-bg", $"rgb({val2})");
         await _jsRuntime.InvokeVoidAsync("interop.setCssVariable", "--input-border", "rgba(255,255,255,0.1)");
         await _jsRuntime.InvokeVoidAsync("interop.setCssVariable", "--gray-3", $"rgb({val2})");
-        NotifyStateChanged();
+        await NotifyStateChanged();
     }
     public async Task backgroundImageFn(string val)
     {
         _currentState.BackgroundImage = val; // Update the color theme in the app state
         await _jsRuntime.InvokeVoidAsync("interop.addAttributeToHtml", "data-bg-img", val);
-        NotifyStateChanged();
+        await NotifyStateChanged();
     }
     public async Task reset()
     {
@@ -518,7 +518,7 @@ public class StateService
         await headerPositionFn("fixed");
 
         _sessionService.DeleteAppStateFromSession();
-        NotifyStateChanged();
+        await NotifyStateChanged();
     }
     public async Task Landingreset()
     {
@@ -538,7 +538,7 @@ public class StateService
         await menuColorFn("light");
         _currentState.ThemePrimary = "";
         _sessionService.DeleteAppStateFromSession();
-        NotifyStateChanged();
+        await NotifyStateChanged();
     }
     public async Task retrieveFromLocalStorage()
     {

@@ -38,6 +38,7 @@
                 <thead class="table-light">
                     <tr>
                         <th class="ps-3 small">@LS.T("courses.courseName")</th>
+                        <th class="small text-end" style="width:100px;">Price ₪</th>
                         <th class="small text-center" style="width:70px;">Type</th>
                         <th class="small">Book</th>
                         <th class="small text-end">Book Price</th>
@@ -60,16 +61,27 @@
                                     <span class="fw-medium">@c.Name</span>
                                 }
                             </td>
+                            <td class="align-middle text-end">
+                                @if (_editId == c.CourseId)
+                                {
+                                    <input type="number" class="form-control form-control-sm" style="max-width:100px;margin-left:auto;"
+                                           @bind="_editPrice" @bind:event="oninput"
+                                           @onkeydown="OnEditKeyDown" />
+                                }
+                                else
+                                {
+                                    <span class="text-muted">@(c.Price > 0 ? $"₪{c.Price}" : "—")</span>
+                                }
+                            </td>
                             <td class="align-middle text-center">
                                 <select class="form-select form-select-sm py-0" style="width:78px;font-size:.78rem;
-                                        background:@(CourseTypes.IsOtLike(c.CourseType) ? "#f0fdfa" : "#f5f3ff");
-                                        color:@(CourseTypes.IsOtLike(c.CourseType) ? "#0d9488" : "#7c3aed");
-                                        border-color:@(CourseTypes.IsOtLike(c.CourseType) ? "#99f6e4" : "#ddd6fe");font-weight:600;"
+                                        background:@(CourseTypes.IsAdvanced(c.CourseType) ? "#f0fdfa" : "#f5f3ff");
+                                        color:@(CourseTypes.IsAdvanced(c.CourseType) ? "#0d9488" : "#7c3aed");
+                                        border-color:@(CourseTypes.IsAdvanced(c.CourseType) ? "#99f6e4" : "#ddd6fe");font-weight:600;"
                                         value="@c.CourseType"
                                         @onchange="(e) => QuickSetCourseType(c.CourseId, e)">
-                                    <option value="@CourseTypes.PC">@CourseTypes.PC</option>
-                                    <option value="@CourseTypes.OT">@CourseTypes.OT</option>
-                                    <option value="@CourseTypes.OTFS">@CourseTypes.OTFS</option>
+                                    <option value="@CourseTypes.Academy">@CourseTypes.Academy</option>
+                                    <option value="@CourseTypes.Advanced">@CourseTypes.Advanced</option>
                                 </select>
                             </td>
                             <td class="align-middle">
@@ -132,11 +144,16 @@
                                 <div class="text-danger small mt-1">@_addError</div>
                             }
                         </td>
+                        <td class="py-2 text-end">
+                            <input type="number" class="form-control form-control-sm" style="max-width:100px;margin-left:auto;"
+                                   placeholder="Price"
+                                   @bind="_newPrice" @bind:event="oninput"
+                                   @onkeydown="OnAddKeyDown" />
+                        </td>
                         <td class="py-2 text-center">
                             <select class="form-select form-select-sm" style="width:78px;" @bind="_newCourseType">
-                                <option value="@CourseTypes.PC">@CourseTypes.PC</option>
-                                <option value="@CourseTypes.OT">@CourseTypes.OT</option>
-                                <option value="@CourseTypes.OTFS">@CourseTypes.OTFS</option>
+                                <option value="@CourseTypes.Academy">@CourseTypes.Academy</option>
+                                <option value="@CourseTypes.Advanced">@CourseTypes.Advanced</option>
                             </select>
                         </td>
                         <td class="py-2">
@@ -323,10 +340,10 @@
                                 <td class="ps-3 fw-medium">@e.PCFullName</td>
                                 <td>@e.CourseName</td>
                                 <td class="text-center">
-                                    <span class="badge rounded-pill" style="@(CourseTypes.IsOtLike(e.CourseType) ? "background:#ccfbf1;color:#0d9488;" : "background:#ede9fe;color:#7c3aed;")font-size:.7rem;">@e.CourseType</span>
+                                    <span class="badge rounded-pill" style="@(CourseTypes.IsAdvanced(e.CourseType) ? "background:#ccfbf1;color:#0d9488;" : "background:#ede9fe;color:#7c3aed;")font-size:.7rem;">@e.CourseType</span>
                                 </td>
-                                <td class="text-muted">@(CourseTypes.IsOtLike(e.CourseType) ? (e.InstructorName ?? "—") : "—")</td>
-                                <td class="text-muted">@(CourseTypes.IsOtLike(e.CourseType) ? (e.CsName ?? "—") : "—")</td>
+                                <td class="text-muted">@(CourseTypes.IsAdvanced(e.CourseType) ? (e.InstructorName ?? "—") : "—")</td>
+                                <td class="text-muted">@(CourseTypes.IsAdvanced(e.CourseType) ? (e.CsName ?? "—") : "—")</td>
                                 <td class="text-end">@(e.PaidAmount > 0 ? $"₪{e.PaidAmount}" : "—")</td>
                                 <td class="text-muted">@(e.RegistrarName ?? "—")</td>
                                 <td class="text-muted">@(e.ReferralName ?? "—")</td>
@@ -426,13 +443,15 @@
     string _newName      = "";
     string _newBook      = "";
     int    _newBookPrice = 0;
+    int    _newPrice     = 0;
     string _addError     = "";
-    string _newCourseType = CourseTypes.PC;
+    string _newCourseType = CourseTypes.Academy;
     int?   _editId;
     string _editName      = "";
     string _editBook      = "";
     int    _editBookPrice = 0;
-    string _editCourseType = CourseTypes.PC;
+    int    _editPrice     = 0;
+    string _editCourseType = CourseTypes.Academy;
 
     // ── Delete confirm + blocked modal state ──
     bool   _showDeleteConfirm;
@@ -468,8 +487,8 @@
         if (string.IsNullOrWhiteSpace(_newName)) { _addError = LS.T("courses.nameRequired"); return; }
         _addError = "";
         Console.WriteLine($"[Courses] Added course '{_newName.Trim()}' by 'admin'");
-        CourseSvc.AddCourse(_newName.Trim(), _newBook.Trim(), _newBookPrice, _newCourseType);
-        _newName = ""; _newBook = ""; _newBookPrice = 0; _newCourseType = CourseTypes.PC;
+        CourseSvc.AddCourse(_newName.Trim(), _newBook.Trim(), _newBookPrice, _newCourseType, _newPrice);
+        _newName = ""; _newBook = ""; _newBookPrice = 0; _newCourseType = CourseTypes.Academy; _newPrice = 0;
         Reload();
     }
 
@@ -479,7 +498,7 @@
     {
         _editId = c.CourseId; _editName = c.Name;
         _editBook = c.Book; _editBookPrice = c.BookPrice;
-        _editCourseType = c.CourseType;
+        _editPrice = c.Price; _editCourseType = c.CourseType;
     }
 
     void SaveEdit()
@@ -487,7 +506,7 @@
         if (_editId.HasValue && !string.IsNullOrWhiteSpace(_editName))
         {
             Console.WriteLine($"[Courses] Updated course {_editId.Value} to '{_editName.Trim()}' by 'admin'");
-            CourseSvc.UpdateCourse(_editId.Value, _editName.Trim(), _editBook.Trim(), _editBookPrice, _editCourseType);
+            CourseSvc.UpdateCourse(_editId.Value, _editName.Trim(), _editBook.Trim(), _editBookPrice, _editCourseType, _editPrice);
         }
         _editId = null;
         Reload();
@@ -497,11 +516,11 @@
 
     void QuickSetCourseType(int courseId, ChangeEventArgs e)
     {
-        var newType = e.Value?.ToString() ?? CourseTypes.PC;
+        var newType = e.Value?.ToString() ?? CourseTypes.Academy;
         var c = _courses.FirstOrDefault(x => x.CourseId == courseId);
         if (c != null)
         {
-            CourseSvc.UpdateCourse(courseId, c.Name, c.Book, c.BookPrice, newType);
+            CourseSvc.UpdateCourse(courseId, c.Name, c.Book, c.BookPrice, newType, c.Price);
             Reload();
         }
     }
