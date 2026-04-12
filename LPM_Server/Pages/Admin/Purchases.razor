@@ -241,7 +241,7 @@
                                         <td class="small text-center fw-semibold" style="color:#212529;">
                                             @if (item.ItemType == "Course") { <span style="color:#34d399;">Course</span> }
                                             else if (item.ItemType == "Book") { <span style="color:#d97706;">Book</span> }
-                                            else { @($"{item.HoursBought}h") }
+                                            else { @($"{(item.HoursBought < 0 ? "-" : "")}{FmtHM(item.HoursBought)}") }
                                         </td>
                                         <td class="small text-end" style="color:#212529;">@(item.AmountPaid > 0 ? $"{CurrSym(_viewDetail.Currency)}{item.AmountPaid}" : "\u2014")</td>
                                     </tr>
@@ -252,7 +252,7 @@
                                     <td class="small fw-semibold" style="color:#212529;">@LS.T("stats.total")</td>
                                     <td class="small text-center fw-semibold" style="color:#212529;">
                                         @{ var hrs = _viewDetail.Items.Where(i => i.ItemType == "Auditing").Sum(i => i.HoursBought); }
-                                        @(hrs > 0 ? $"{hrs}h" : "\u2014")
+                                        @(hrs != 0 ? $"{(hrs < 0 ? "-" : "")}{FmtHM(hrs)}" : "\u2014")
                                     </td>
                                     <td class="small text-end fw-semibold" style="color:#212529;">
                                         @{ var totalAmt = _viewDetail.Items.Sum(i => i.AmountPaid); }
@@ -756,8 +756,8 @@
                                 @GetItemCount(pid)
                             </span>
                         </td>
-                        <td class="text-end py-2 small fw-semibold">@(p.TotalHours > 0 ? $"{p.TotalHours}h" : "\u2014")</td>
-                        <td class="text-end py-2 small fw-semibold">@(p.TotalAmount > 0 ? $"{CurrSym(p.Currency)}{p.TotalAmount}" : "\u2014")</td>
+                        <td class="text-end py-2 small fw-semibold" style="@(p.TotalHours < 0 ? "color:#dc2626;" : "")">@(p.TotalHours != 0 ? $"{(p.TotalHours < 0 ? "-" : "")}{FmtHM(p.TotalHours)}" : "\u2014")</td>
+                        <td class="text-end py-2 small fw-semibold" style="@(p.TotalAmount < 0 ? "color:#dc2626;" : "")">@(p.TotalAmount != 0 ? $"{(p.TotalAmount < 0 ? "-" : "")}{CurrSym(p.Currency)}{Math.Abs(p.TotalAmount)}" : "\u2014")</td>
                         <td class="py-2 small" style="color:#6b7280;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@p.Notes">@(p.Notes ?? "\u2014")</td>
                         <td class="py-2 small" style="color:#6b7280;">@p.CreatedByName</td>
                         <td class="text-center py-2">
@@ -827,4 +827,13 @@
             </tbody>
         </table>
     };
+
+    static string FmtHM(double hours)
+    {
+        hours = Math.Abs(hours);
+        int h = (int)hours;
+        int m = (int)Math.Round((hours - h) * 60);
+        if (m >= 60) { h++; m = 0; }
+        return $"{h}:{m:D2}";
+    }
 }

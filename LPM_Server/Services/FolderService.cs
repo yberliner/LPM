@@ -700,25 +700,70 @@ public class FolderService
                         catch { /* keep default */ }
                     }
 
-                    var font = new PdfSharpCore.Drawing.XFont("Arial", fontSizePt, PdfSharpCore.Drawing.XFontStyle.Regular);
+                    // Two fonts: Latin (DejaVu Sans / Arial) for digits+Latin, Hebrew for Hebrew chars
+                    var latinFont  = new PdfSharpCore.Drawing.XFont("Arial", fontSizePt, PdfSharpCore.Drawing.XFontStyle.Regular);
+                    var hebrewFont = new PdfSharpCore.Drawing.XFont("Noto Sans Hebrew", fontSizePt, PdfSharpCore.Drawing.XFontStyle.Regular);
+                    static bool IsHebChar(char c) => (c >= '\u0590' && c <= '\u05FF') || (c >= '\uFB1D' && c <= '\uFB4F');
+                    bool hasHebrew = ann.Text.Any(IsHebChar);
+                    var mainFont = hasHebrew ? hebrewFont : latinFont;
                     double lineHeightPt = fontSizePt * 1.3;
                     double maxWidthPt = ann.MaxWidth.HasValue && ann.MaxWidth.Value > 0
                         ? ann.MaxWidth.Value / scale
                         : 0;
 
-                    var lines = WrapTextForPdf(gfx, font, ann.Text, maxWidthPt);
+                    var lines = WrapTextForPdf(gfx, mainFont, ann.Text, maxWidthPt);
+                    var brush = new PdfSharpCore.Drawing.XSolidBrush(color);
+
+                    // Helper: draw a single line using segment-by-segment font switching
+                    void DrawLineSegmented(string line, double lx, double ly, PdfSharpCore.Drawing.XStringFormat? lfmt = null)
+                    {
+                        bool lineHasHeb = line.Any(IsHebChar);
+                        bool lineHasLat = line.Any(c => (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'));
+                        if (!lineHasHeb || !lineHasLat)
+                        {
+                            // Pure script — single draw
+                            var f = lineHasHeb ? hebrewFont : latinFont;
+                            if (lfmt != null) gfx.DrawString(line, f, brush, lx, ly, lfmt);
+                            else              gfx.DrawString(line, f, brush, lx, ly);
+                            return;
+                        }
+                        // Mixed: split into segments, then draw with correct alignment
+                        var mixSegs = new List<(string Seg, PdfSharpCore.Drawing.XFont F)>();
+                        int p = 0;
+                        while (p < line.Length)
+                        {
+                            bool heb = IsHebChar(line[p]);
+                            int s = p; p++;
+                            while (p < line.Length)
+                            {
+                                if (line[p] == ' ') { p++; continue; }
+                                if (IsHebChar(line[p]) != heb) break;
+                                p++;
+                            }
+                            mixSegs.Add((line[s..p], heb ? hebrewFont : latinFont));
+                        }
+                        // For RTL (Far alignment), offset left by total width so text right-aligns at lx
+                        double totalMixW = mixSegs.Sum(ms => gfx.MeasureString(ms.Seg, ms.F).Width);
+                        bool isFar = lfmt != null && lfmt.Alignment == PdfSharpCore.Drawing.XStringAlignment.Far;
+                        double cx = isFar ? lx - totalMixW : lx;
+                        foreach (var ms in mixSegs)
+                        {
+                            gfx.DrawString(ms.Seg, ms.F, brush, cx, ly);
+                            cx += gfx.MeasureString(ms.Seg, ms.F).Width;
+                        }
+                    }
+
                     if (ann.Rtl == true && maxWidthPt > 0)
                     {
                         var rtlFmt = new PdfSharpCore.Drawing.XStringFormat { Alignment = PdfSharpCore.Drawing.XStringAlignment.Far };
                         for (int li = 0; li < lines.Count; li++)
-                            gfx.DrawString(ReorderRtlForPdf(lines[li]), font, new PdfSharpCore.Drawing.XSolidBrush(color),
+                            DrawLineSegmented(ReorderRtlForPdf(lines[li]),
                                 pdfX + maxWidthPt, pdfY + li * lineHeightPt, rtlFmt);
                     }
                     else
                     {
                         for (int li = 0; li < lines.Count; li++)
-                            gfx.DrawString(lines[li], font, new PdfSharpCore.Drawing.XSolidBrush(color),
-                                pdfX, pdfY + li * lineHeightPt);
+                            DrawLineSegmented(lines[li], pdfX, pdfY + li * lineHeightPt);
                     }
                 }
             }
@@ -1530,7 +1575,7 @@ public class FolderService
         var counter  = 2;
         while (File.Exists(fullPath))
         {
-            fileName = $"{baseName}{counter}.pdf";
+            fileName = $"{baseName} {counter}.pdf";
             fullPath  = Path.Combine(wsPath, fileName);
             counter++;
         }

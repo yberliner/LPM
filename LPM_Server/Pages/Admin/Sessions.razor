@@ -215,7 +215,18 @@
                                                     else             { <span class="badge rounded-pill sa-badge-pending">@LS.T("sessions.pending")</span> }
                                                 </div>
                                             }
-                                            <span class="fw-semibold sa-date">@FormatDate(s.SessionDate)</span>
+                                            @if (_editingSessionDateId == s.SessionId)
+                                            {
+                                                <input type="date" class="form-control form-control-sm sa-row-input" style="width:140px;"
+                                                       value="@s.SessionDate"
+                                                       @onchange="e => OnSessionDateChanged(s.SessionId, e.Value?.ToString())"
+                                                       @onblur="() => _editingSessionDateId = null" />
+                                            }
+                                            else
+                                            {
+                                                <span class="fw-semibold sa-date sa-date-editable" @onclick="() => _editingSessionDateId = s.SessionId"
+                                                      title="Click to change date">@FormatDate(s.SessionDate)</span>
+                                            }
                                         </td>
                                         <td class="text-center py-2">
                                             <span class="badge rounded-pill bg-light border text-dark px-2" style="font-size:0.78rem;">@DashboardService.Fmt(s.LengthSec)</span>
@@ -329,6 +340,7 @@
                             <thead>
                                 <tr class="sa-cs-thead">
                                     <th class="ps-4">Session Date</th>
+                                    <th style="width:140px;">CS By</th>
                                     <th class="text-center">Review Duration</th>
                                     @if (pcGroup.Reviews.Any(r => r.IsSolo))
                                     {
@@ -346,7 +358,42 @@
                                     bool csApproved = rev.CsStatus == "Approved";
                                     var csSalary    = _csRowEdits.GetValueOrDefault(rev.CsReviewId);
                                     <tr class="@(csApproved ? "sa-row-approved" : "sa-row-draft")">
-                                        <td class="ps-4 py-2"><span class="fw-semibold sa-date">@FormatDate(rev.SessionDate)</span></td>
+                                        <td class="ps-4 py-2">
+                                            @if (_editingCsDateId == rev.CsReviewId)
+                                            {
+                                                <input type="date" class="form-control form-control-sm sa-row-input" style="width:140px;"
+                                                       value="@rev.SessionDate"
+                                                       @onchange="e => OnCsDateChanged(rev.CsReviewId, rev.SessionId, e.Value?.ToString())"
+                                                       @onblur="() => _editingCsDateId = null" />
+                                            }
+                                            else
+                                            {
+                                                <span class="fw-semibold sa-date sa-date-editable" @onclick="() => _editingCsDateId = rev.CsReviewId"
+                                                      title="Click to change date">@FormatDate(rev.SessionDate)</span>
+                                            }
+                                        </td>
+                                        <td class="py-1">
+                                            @if (_editingCsPersonId == rev.CsReviewId)
+                                            {
+                                                <select class="form-select form-select-sm sa-row-input"
+                                                        value="@rev.CsId"
+                                                        @onchange="e => OnCsPersonChanged(rev.CsReviewId, e.Value?.ToString())"
+                                                        @onblur="() => _editingCsPersonId = null">
+                                                    @foreach (var staff in _csStaffList)
+                                                    {
+                                                        <option value="@staff.PersonId">@staff.FullName</option>
+                                                    }
+                                                </select>
+                                            }
+                                            else
+                                            {
+                                                <span class="sa-cs-name-editable" @onclick="() => _editingCsPersonId = rev.CsReviewId"
+                                                      title="Click to reassign">
+                                                    <i class="ri-user-line" style="font-size:.72rem;opacity:.5;"></i>
+                                                    @CsStaffName(rev.CsId)
+                                                </span>
+                                            }
+                                        </td>
                                         <td class="text-center py-2">
                                             <span class="badge rounded-pill bg-light border text-dark px-2" style="font-size:0.78rem;">@DashboardService.Fmt(rev.ReviewLengthSeconds)</span>
                                             @if (rev.IsSolo)
@@ -530,6 +577,14 @@
     .sa-btn-cs-all { background: #4a7fc1; color: #fff; border: none; border-radius: 7px; font-size: 0.75rem; font-weight: 600; }
     .sa-btn-cs-all:hover:not(:disabled) { background: #1e3a5f; color: #fff; }
 
+    /* Editable date — subtle hover cue */
+    .sa-date-editable { cursor: pointer; border-bottom: 1px dashed transparent; transition: border-color .15s; }
+    .sa-date-editable:hover { border-bottom-color: #2d6a9f; }
+
+    /* Editable CS name — subtle hover cue */
+    .sa-cs-name-editable { cursor: pointer; font-size: 0.8rem; color: #1e3a5f; border-bottom: 1px dashed transparent; transition: border-color .15s; display: inline-flex; align-items: center; gap: 4px; }
+    .sa-cs-name-editable:hover { border-bottom-color: #4a7fc1; }
+
     /* Spinner */
     .sa-spin { display: inline-block; animation: sa-spin-anim 1s linear infinite; }
     @@keyframes sa-spin-anim { to { transform: rotate(360deg); } }
@@ -554,6 +609,14 @@
     private Dictionary<int, int>                   _csRowEdits  = new();    // CsReviewId → salary
     private Dictionary<int, int>                   _csRateEdits = new();    // CsReviewId → charged rate (₪/hr, solo only)
     private Dictionary<int, string?>               _csAvatars   = new();
+
+    // ── CS staff for reassignment ────────────────────────────────
+    private List<(int PersonId, string FullName)> _csStaffList = new();
+
+    // ── Inline editing state ──────────────────────────────────────
+    private int? _editingSessionDateId;   // SessionId being date-edited
+    private int? _editingCsDateId;        // CsReviewId being date-edited
+    private int? _editingCsPersonId;      // CsReviewId being reassigned
 
     // ── UI state ──────────────────────────────────────────────────
     private bool _loading = true;
@@ -588,6 +651,7 @@
         }
         _username = authState.User.Identity?.Name ?? "";
         _userId   = DashSvc.GetUserIdByUsername(_username) ?? 0;
+        _csStaffList = DashSvc.GetCsStaffList(0);
         await LoadData();
     }
 
@@ -855,4 +919,41 @@
 
     private static string FormatDate(string dateStr) =>
         DateOnly.TryParse(dateStr, out var d) ? d.ToString("dd/MM/yy") : dateStr;
+
+    private string CsStaffName(int csId) =>
+        _csStaffList.FirstOrDefault(s => s.PersonId == csId).FullName ?? $"ID {csId}";
+
+    // ── Inline edit: session date ─────────────────────────────────
+    private async Task OnSessionDateChanged(int sessionId, string? newVal)
+    {
+        _editingSessionDateId = null;
+        if (string.IsNullOrWhiteSpace(newVal) || !DateOnly.TryParse(newVal, out _)) return;
+        DashSvc.UpdateSessionDate(sessionId, newVal);
+        Console.WriteLine($"[Sessions] Changed session {sessionId} date to {newVal} by '{_username}'");
+        ShowMsg("Session date updated.", false);
+        await LoadData();
+    }
+
+    // ── Inline edit: CS review date (updates session date) ────────
+    private async Task OnCsDateChanged(int csReviewId, int sessionId, string? newVal)
+    {
+        _editingCsDateId = null;
+        if (string.IsNullOrWhiteSpace(newVal) || !DateOnly.TryParse(newVal, out _)) return;
+        DashSvc.UpdateSessionDate(sessionId, newVal);
+        Console.WriteLine($"[Sessions] Changed CS review {csReviewId} session {sessionId} date to {newVal} by '{_username}'");
+        ShowMsg("Session date updated.", false);
+        await LoadData();
+    }
+
+    // ── Inline edit: reassign CS person ───────────────────────────
+    private async Task OnCsPersonChanged(int csReviewId, string? newVal)
+    {
+        _editingCsPersonId = null;
+        if (!int.TryParse(newVal, out var newCsId) || newCsId <= 0) return;
+        DashSvc.ReassignCsReview(csReviewId, newCsId);
+        var name = CsStaffName(newCsId);
+        Console.WriteLine($"[Sessions] Reassigned CS review {csReviewId} to {name} (PersonId={newCsId}) by '{_username}'");
+        ShowMsg($"CS reassigned to {name}.", false);
+        await LoadData();
+    }
 }

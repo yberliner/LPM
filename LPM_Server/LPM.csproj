@@ -71,6 +71,8 @@
   <ItemGroup>
     <EmbeddedResource Include="Fonts\DejaVuSans.ttf" />
     <EmbeddedResource Include="Fonts\DejaVuSans-Bold.ttf" />
+    <EmbeddedResource Include="Fonts\NotoSansHebrew-Regular.ttf" />
+    <EmbeddedResource Include="Fonts\NotoSansHebrew-Bold.ttf" />
   </ItemGroup>
 
   <ItemGroup>

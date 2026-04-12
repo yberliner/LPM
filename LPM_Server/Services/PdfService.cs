@@ -42,7 +42,7 @@ public class PdfService
             {
                 page.Size(PageSizes.A4.Landscape());
                 page.Margin(20);
-                page.DefaultTextStyle(x => x.FontSize(10));
+                page.DefaultTextStyle(x => x.FontSize(10).FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
 
                 page.Content().ScaleToFit().Column(col =>
                 {
@@ -336,7 +336,7 @@ public class PdfService
             {
                 page.Size(PageSizes.A4);
                 page.Margin(12, Unit.Millimetre);
-                page.DefaultTextStyle(x => x.FontSize(10));
+                page.DefaultTextStyle(x => x.FontSize(10).FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
 
                 page.Content().ScaleToFit().Column(col =>
                 {
@@ -583,7 +583,7 @@ public class PdfService
                 {
                     page.Size(PageSizes.A4);
                     page.Margin(12, Unit.Millimetre);
-                    page.DefaultTextStyle(x => x.FontSize(10));
+                    page.DefaultTextStyle(x => x.FontSize(10).FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
 
                     page.Content().ScaleToFit().Column(col =>
                     {
@@ -837,7 +837,7 @@ public class PdfService
             {
                 page.Size(PageSizes.A4);
                 page.Margin(10, Unit.Millimetre);
-                page.DefaultTextStyle(x => x.FontSize(9));
+                page.DefaultTextStyle(x => x.FontSize(9).FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
 
                 page.Content().ScaleToFit().Column(col =>
                 {
@@ -1034,7 +1034,7 @@ public class PdfService
                 {
                     page.Size(PageSizes.A4);
                     page.Margin(10, Unit.Millimetre);
-                    page.DefaultTextStyle(x => x.FontSize(9));
+                    page.DefaultTextStyle(x => x.FontSize(9).FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
 
                     page.Content().ScaleToFit().Column(col =>
                     {
@@ -1646,6 +1646,16 @@ public class PdfService
                 catch { }
             return new PdfSharpCore.Drawing.XFont("Courier New", sz, style);
         }
+        PdfSharpCore.Drawing.XFont MakeHebrewFont(double pt, bool bold = false)
+        {
+            var style = bold ? PdfSharpCore.Drawing.XFontStyle.Bold
+                             : PdfSharpCore.Drawing.XFontStyle.Regular;
+            return new PdfSharpCore.Drawing.XFont("Noto Sans Hebrew", pt * scale, style);
+        }
+        static bool IsHebrewChar(char c) =>
+            (c >= '\u0590' && c <= '\u05FF') || (c >= '\uFB1D' && c <= '\uFB4F');
+        static bool ContainsHebrew(string? text) =>
+            text != null && text.Any(IsHebrewChar);
 
         var fTitle = MakeFont(24, bold: true);
         var fLabel = MakeFont(14);
@@ -1692,6 +1702,72 @@ public class PdfService
         using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(pg);
         double y = margin;
 
+        // Draws text segment-by-segment: Hebrew chars with Hebrew font, everything else with Latin font.
+        void DrawMixed(string? text, double pt, bool bold,
+                       PdfSharpCore.Drawing.XBrush brush,
+                       PdfSharpCore.Drawing.XRect rect,
+                       PdfSharpCore.Drawing.XStringFormat fmt)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                gfx.DrawString("", MakeFont(pt, bold), brush, rect, fmt);
+                return;
+            }
+            var latinFont  = MakeFont(pt, bold);
+            var hebrewFont = MakeHebrewFont(pt, bold);
+
+            if (!ContainsHebrew(text))
+            {
+                gfx.DrawString(text, latinFont, brush, rect, fmt);
+                return;
+            }
+            if (!text.Any(c => (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')))
+            {
+                gfx.DrawString(text, hebrewFont, brush, rect, fmt);
+                return;
+            }
+
+            // Mixed: split into segments by script
+            var segs = new List<(string Txt, PdfSharpCore.Drawing.XFont Fnt)>();
+            int p = 0;
+            while (p < text.Length)
+            {
+                bool heb = IsHebrewChar(text[p]);
+                int start = p;
+                p++;
+                while (p < text.Length)
+                {
+                    char ch = text[p];
+                    if (ch == ' ') { p++; continue; }
+                    if (IsHebrewChar(ch) != heb) break;
+                    p++;
+                }
+                segs.Add((text[start..p], heb ? hebrewFont : latinFont));
+            }
+
+            double totalW = segs.Sum(s => gfx.MeasureString(s.Txt, s.Fnt).Width);
+            double sx;
+            if (fmt.Alignment == PdfSharpCore.Drawing.XStringAlignment.Far)
+                sx = rect.Right - totalW;
+            else if (fmt.Alignment == PdfSharpCore.Drawing.XStringAlignment.Center)
+                sx = rect.X + (rect.Width - totalW) / 2;
+            else
+                sx = rect.X;
+
+            var segFmt = new PdfSharpCore.Drawing.XStringFormat
+            {
+                Alignment     = PdfSharpCore.Drawing.XStringAlignment.Near,
+                LineAlignment = fmt.LineAlignment
+            };
+            foreach (var s in segs)
+            {
+                double w = gfx.MeasureString(s.Txt, s.Fnt).Width;
+                gfx.DrawString(s.Txt, s.Fnt, brush,
+                    new PdfSharpCore.Drawing.XRect(sx, rect.Y, w + 1, rect.Height), segFmt);
+                sx += w;
+            }
+        }
+
         // ── Title ──
         double titleH = 30 * scale;
         gfx.DrawString("Auditor Report Form", fTitle, bDark, R(x0, y, cw, titleH), fmtTC);
@@ -1705,10 +1781,10 @@ public class PdfService
             double half = cw / 2;
             double lw1 = gfx.MeasureString(lbl1, fLabel).Width;
             gfx.DrawString(lbl1, fLabel, bGray, R(x0,          y, lw1,         fieldH), fmtCL);
-            gfx.DrawString(val1, fValue, bDark, R(x0 + lw1,    y, half - lw1,  fieldH), fmtCL);
+            DrawMixed(val1, 16, true, bDark, R(x0 + lw1,    y, half - lw1,  fieldH), fmtCL);
             double lw2 = gfx.MeasureString(lbl2, fLabel).Width;
             gfx.DrawString(lbl2, fLabel, bGray, R(x0 + half,       y, lw2,          fieldH), fmtCL);
-            gfx.DrawString(val2, fValue, bDark, R(x0 + half + lw2, y, half - lw2,   fieldH), fmtCL);
+            DrawMixed(val2, 16, true, bDark, R(x0 + half + lw2, y, half - lw2,   fieldH), fmtCL);
         }
 
         FieldPair("PC's Name:  ",  pcName,       "Date:  ",           date);          y += fieldH + 6 * scale;
@@ -1884,7 +1960,7 @@ public class PdfService
                     var fmt = rtl2 ? fmtCR : fmtCL;
                     var rx  = rtl2 ? x0          : x0 + pad;
                     var rw  = rtl2 ? procW - pad  : procW - 2 * pad;
-                    gfx.DrawString(vis, fCell, bDark, R(rx, y + pad + li * lineH, rw, lineH), fmt);
+                    DrawMixed(vis, 15, false, bDark, R(rx, y + pad + li * lineH, rw, lineH), fmt);
                 }
                 gfx.DrawString(r.Time    ?? "", fCell, bDark, R(x1, y, timeW, rowH), fmtCC);
                 gfx.DrawString(r.ToneArm ?? "", fCell, bDark, R(x2, y, toneW, rowH), fmtCC);
@@ -1894,7 +1970,7 @@ public class PdfService
                     var fmt = rtl2 ? fmtCR : fmtCL;
                     var rx  = rtl2 ? x3          : x3 + pad;
                     var rw  = rtl2 ? resW - pad   : resW - 2 * pad;
-                    gfx.DrawString(vis, fCell, bDark, R(rx, y + pad + li * lineH, rw, lineH), fmt);
+                    DrawMixed(vis, 15, false, bDark, R(rx, y + pad + li * lineH, rw, lineH), fmt);
                 }
 
                 y += rowH;
@@ -1929,7 +2005,7 @@ public class PdfService
             {
                 page.Size(PageSizes.A4);
                 page.Margin(30);
-                page.DefaultTextStyle(x => x.FontSize(14).FontColor("#1a1a1a").FontFamily("DejaVu Sans"));
+                page.DefaultTextStyle(x => x.FontSize(14).FontColor("#1a1a1a").FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
                 page.Content().ScaleToFit().Column(col =>
                 {
                     if (!string.IsNullOrWhiteSpace(html))
@@ -2006,7 +2082,7 @@ public class PdfService
             {
                 page.Size(new PageSize((float)pageWidthPt, (float)pageHeightPt));
                 page.Margin(36);
-                page.DefaultTextStyle(x => x.FontSize(22).FontColor("#1a1a1a"));
+                page.DefaultTextStyle(x => x.FontSize(22).FontColor("#1a1a1a").FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
 
                 // Content scales to fit so everything stays on one page.
                 page.Content().ScaleToFit().Column(col =>
@@ -2070,7 +2146,7 @@ public class PdfService
             {
                 page.Size(new PageSize((float)widthPt, (float)heightPt));
                 page.Margin(36);
-                page.DefaultTextStyle(x => x.FontSize(11).FontColor("#1a1a1a"));
+                page.DefaultTextStyle(x => x.FontSize(11).FontColor("#1a1a1a").FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
 
                 page.Content().ScaleToFit().Column(col =>
                 {
@@ -2215,7 +2291,7 @@ public class PdfService
                 {
                     page.Size(PageSizes.A4);
                     page.Margin(25);
-                    page.DefaultTextStyle(x => x.FontSize(11).FontColor("#1a1a1a"));
+                    page.DefaultTextStyle(x => x.FontSize(11).FontColor("#1a1a1a").FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
 
                     page.Header().Column(hdr =>
                     {
@@ -2545,7 +2621,7 @@ public class PdfService
             item.Text(text =>
             {
                 float baseFs = 10f * fontSizeMultiplier;
-                text.DefaultTextStyle(x => x.FontSize(baseFs));
+                text.DefaultTextStyle(x => x.FontSize(baseFs).FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
 
                 // Parse inline elements: <strong>, <em>, <u>, <s>, <span style="...">, plain text
                 var parts = Regex.Split(innerHtml, @"(<(?:strong|em|u|s|span|br)\b[^>]*>|</(?:strong|em|u|s|span)>)");
@@ -2663,6 +2739,7 @@ public class PdfService
             {
                 page.Size(pageW, pageH, Unit.Point);
                 page.Margin(margin, Unit.Point);
+                page.DefaultTextStyle(x => x.FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
 
                 page.Content().Column(col =>
                 {

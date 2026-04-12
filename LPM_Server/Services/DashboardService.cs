@@ -2112,6 +2112,30 @@ public class DashboardService
         Console.WriteLine($"[DashboardService] Approved CS review {csReviewId}, chargedRate={chargedRateCents}");
     }
 
+    public void ReassignCsReview(int csReviewId, int newCsId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE cs_reviews SET CsId = @cs WHERE CsReviewId = @id";
+        cmd.Parameters.AddWithValue("@cs", newCsId);
+        cmd.Parameters.AddWithValue("@id", csReviewId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] Reassigned CS review {csReviewId} to CsId={newCsId}");
+    }
+
+    public void UpdateSessionDate(int sessionId, string newDate)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE sess_sessions SET SessionDate = @d WHERE SessionId = @id";
+        cmd.Parameters.AddWithValue("@d", newDate);
+        cmd.Parameters.AddWithValue("@id", sessionId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] Updated session {sessionId} date to {newDate}");
+    }
+
     /// Returns session IDs that have a cs_review for a given PC (filtered to solo or non-solo).
     public HashSet<int> GetCsedSessionIdsForPc(int pcId, bool isSolo = false)
     {

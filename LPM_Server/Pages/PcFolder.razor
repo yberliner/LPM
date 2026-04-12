@@ -3350,6 +3350,8 @@
             int defaultPreset;
             if (_csSessionId == 0)
                 defaultPreset = 0;  // no session — skip presets, fallback loads latest worksheet
+            else if (_csSessionName != null && IsMemoOrNextCsFile(_csSessionName))
+                defaultPreset = 2;  // memo / next-cs sessions always open #2
             else if (!CsMode)
                 defaultPreset = 3;  // auditor / solo-auditor always opens #3
             else if (_loginUsername.Equals("aviv", StringComparison.OrdinalIgnoreCase))
@@ -3674,6 +3676,13 @@
                 await ShowDupeToast(_panes[pi].FileName ?? fileName, pi + 1);
                 return;
             }
+        }
+
+        // Auto-switch to 2 panes for memo / next-cs files
+        if (_paneCount != 2 && IsMemoOrNextCsFile(fileName))
+        {
+            await SetPaneCount(2);
+            idx = _activeIdx; // SetPaneCount may move focus to the new empty slot
         }
 
         Console.WriteLine($"[PcFolder] Selected file '{fileName}' (section: {section}) by '{_userName}' — for PC {PcId}");
@@ -4885,6 +4894,12 @@
         System.Text.RegularExpressions.Regex.IsMatch(
             _csSessionName,
             @"(?<![a-zA-Z])memo(?![a-zA-Z])",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    static bool IsMemoOrNextCsFile(string name) =>
+        System.Text.RegularExpressions.Regex.IsMatch(
+            name,
+            @"(?<![a-zA-Z])memo(?![a-zA-Z])|(?<![a-zA-Z])next[\s_\-]*c[\s_\-/\\]*s(?![a-zA-Z])",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     async Task DoneCs()

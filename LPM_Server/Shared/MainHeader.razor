@@ -428,6 +428,12 @@
                                             <i class="ri-sticky-note-line" style="color:#ec4899;"></i>@LS.T("actions.addMemo")
                                         </a>
                                     </li>
+                                    <li>
+                                        <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
+                                           @onclick="OpenNcWizard">
+                                            <i class="ri-user-follow-line" style="color:#14b8a6;"></i>Add Next C/S
+                                        </a>
+                                    </li>
                                     @if (!_isSoloUser)
                                     {
                                     <li>
@@ -2053,7 +2059,7 @@
                                             @if (!(_isSoloUser && thisPc.IsAlsoSolo))
                                             {
                                                 <div class="memo-pc-item @(_memoPcId == thisPc.PcId && !_memoSolo ? "memo-pc-sel" : "")"
-                                                     @onclick="() => { _memoPcId = thisPc.PcId; _memoSolo = false; }">
+                                                     @onclick="() => { _memoPcId = thisPc.PcId; _memoSolo = false; MemoNext(); }">
                                                     <i class="ri-user-line" style="color:#60a5fa; opacity:.7;"></i>
                                                     <span>@thisPc.FullName</span>
                                                 </div>
@@ -2061,7 +2067,177 @@
                                             @if (thisPc.IsAlsoSolo)
                                             {
                                                 <div class="memo-pc-item @(_memoPcId == thisPc.PcId && _memoSolo ? "memo-pc-sel" : "")"
-                                                     @onclick="() => { _memoPcId = thisPc.PcId; _memoSolo = true; }">
+                                                     @onclick="() => { _memoPcId = thisPc.PcId; _memoSolo = true; MemoNext(); }">
+                                                    <i class="ri-user-line" style="color:#ef4444; opacity:.7;"></i>
+                                                    <span>@thisPc.FullName</span>
+                                                    <span style="font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+                                                                 color:#fff; background:linear-gradient(135deg,#ef4444,#b91c1c);
+                                                                 border-radius:999px; padding:2px 8px; margin-left:4px;">Solo</span>
+                                                </div>
+                                            }
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                    else if (_memoScanBoxAnim)
+                    {
+                        @* ── ScanBox success animation ── *@
+                        <div class="scanbox-success-screen">
+                            <div class="scanbox-ripple"></div>
+                            <div class="scanbox-icon-wrap">
+                                <i class="ri-file-download-line scanbox-file-icon"></i>
+                                <i class="ri-checkbox-circle-fill scanbox-check-icon"></i>
+                            </div>
+                            <div class="scanbox-msg">File imported from ScanBox</div>
+                            <div class="scanbox-sub">@_memoScanBoxFileName</div>
+                        </div>
+                    }
+                    else
+                    {
+                        @* ── Step 2: Write Memo ── *@
+                        <div class="mb-1" id="memo-quill-wrap">
+                            <label class="form-label" style="font-size:.82rem; color:#94a3b8;">@LS.T("actions.memoText")</label>
+                            <div id="memo-quill-editor"
+                                 style="background:#fff; color:#000; min-height:260px; border-radius:0 0 4px 4px;">
+                            </div>
+                        </div>
+                        <div style="font-size:.72rem; color:#64748b; margin-top:6px;">
+                            <i class="ri-information-line me-1"></i>
+                            @LS.T("actions.memoSaveNote")
+                        </div>
+                        @if (!string.IsNullOrEmpty(_memoScanBoxError))
+                        {
+                            <div class="alert alert-warning d-flex align-items-center gap-2 mt-2 mb-0 py-2" style="font-size:.82rem;">
+                                <i class="ri-inbox-archive-line"></i>@_memoScanBoxError
+                            </div>
+                        }
+                    }
+
+                </div>
+                <div class="modal-footer" style="background:#0f172a; border-top:1px solid #1e293b;">
+                    @if (_memoStep == 1)
+                    {
+                        <button class="btn btn-sm btn-outline-light" @onclick="() => _showMemoWizard = false">@LS.T("common.cancel")</button>
+                    }
+                    else if (!_memoScanBoxAnim)
+                    {
+                        <button class="btn btn-sm btn-outline-light d-flex align-items-center gap-1"
+                                @onclick="() => _memoStep = 1">
+                            <i class="ri-arrow-left-s-line"></i> Back
+                        </button>
+                        <button class="btn btn-sm d-flex align-items-center gap-1"
+                                style="background:linear-gradient(135deg,#0ea5e9,#6366f1); color:#fff; border:none;"
+                                @onclick="ExecuteMemoFromScanBox">
+                            <i class="ri-inbox-archive-line me-1"></i>Import from ScanBox
+                        </button>
+                        <button class="btn btn-sm btn-outline-light" @onclick="() => _showMemoWizard = false">@LS.T("common.cancel")</button>
+                        <button class="btn btn-sm d-flex align-items-center gap-1"
+                                style="background:linear-gradient(135deg,#be185d,#ec4899); color:#fff; border:none;"
+                                @onclick="ExecuteMemo">
+                            <i class="ri-sticky-note-line"></i>Submit
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ══════════════════════════════════════════════════════════════════════ *@
+@* ── Add Next C/S Wizard ── *@
+@* ══════════════════════════════════════════════════════════════════════ *@
+@if (_showNcWizard)
+{
+    <div class="modal show d-block" tabindex="-1"
+         style="background:rgba(0,0,0,.5); z-index:9999;">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable @(_ncStep == 2 ? "modal-lg" : "modal-md")"
+             @onclick:stopPropagation="true">
+            <div class="modal-content memo-modal-content">
+                <div class="modal-header py-2" style="background:linear-gradient(135deg,#0d9488,#14b8a6); border-bottom:none;">
+                    <h5 class="modal-title fs-15 text-white d-flex align-items-center gap-2">
+                        <i class="ri-user-follow-line"></i>Add Next C/S
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white"
+                            @onclick="() => _showNcWizard = false"></button>
+                </div>
+                <div class="modal-body">
+
+                    @* ── Stepper ── *@
+                    <div class="d-flex align-items-center gap-3 flex-wrap mb-3">
+                        <div class="wiz-stepper">
+                            @{
+                                var ncStepLabels = new[] { "Choose PC", "Next C/S" };
+                            }
+                            @for (int s = 1; s <= 2; s++)
+                            {
+                                var sn  = s;
+                                var lbl = ncStepLabels[sn - 1];
+                                var isDone   = _ncStep > sn;
+                                var isActive = _ncStep == sn;
+                                var cls = isActive ? "wiz-active" : isDone ? "wiz-done" : "wiz-future";
+                                <div class="wiz-step @cls">
+                                    <div class="wiz-circle">
+                                        @if (isDone) { <i class="ri-check-line"></i> }
+                                        else { @sn }
+                                    </div>
+                                    <div class="wiz-label">@lbl</div>
+                                </div>
+                                @if (sn < 2)
+                                {
+                                    <div class="wiz-conn @(isDone ? "wiz-conn-done" : "")"></div>
+                                }
+                            }
+                        </div>
+                    </div>
+
+                    @if (_ncStep == 1)
+                    {
+                        @* ── Step 1: Choose PC ── *@
+                        @if (!_isSoloUser && _ncPcs.Count == 0)
+                        {
+                            <div class="act-noperm-screen" style="padding:28px 16px 20px;">
+                                <div class="act-noperm-icon-wrap">
+                                    <div class="act-noperm-ring" style="border-color:rgba(220,38,38,.25);"></div>
+                                    <i class="ri-lock-line act-noperm-icon"></i>
+                                </div>
+                                <div class="act-noperm-title" style="color:#e2e8f0;">@LS.T("actions.noFoldersAssigned")</div>
+                                <div class="act-noperm-sub" style="color:#94a3b8;">@LS.T("actions.noFoldersMsg")<br>@LS.T("actions.contactAdmin")</div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="mb-3">
+                                <label class="form-label" style="font-size:.82rem; color:#94a3b8;">PC</label>
+                                @if (_isSoloUser)
+                                {
+                                    <div class="form-control form-control-sm" style="background:#0f172a; color:#e2e8f0; border-color:#475569;">
+                                        @(_ncPcs.FirstOrDefault(p => p.PcId == _ncPcId)?.FullName ?? "Solo")
+                                        <span class="badge bg-primary ms-2" style="font-size:.7rem;">Solo</span>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <input type="text" class="form-control form-control-sm mb-2" placeholder="@LS.T("actions.searchPcs")"
+                                           style="background:#0f172a; color:#e2e8f0; border-color:#475569;"
+                                           @bind="_ncPcSearch" @bind:event="oninput" />
+                                    <div style="max-height:240px; overflow-y:auto;">
+                                        @foreach (var pc in _ncPcs.Where(p => string.IsNullOrEmpty(_ncPcSearch) || p.FullName.Contains(_ncPcSearch, StringComparison.OrdinalIgnoreCase)))
+                                        {
+                                            var thisPc = pc;
+                                            @if (!(_isSoloUser && thisPc.IsAlsoSolo))
+                                            {
+                                                <div class="memo-pc-item @(_ncPcId == thisPc.PcId && !_ncSolo ? "memo-pc-sel" : "")"
+                                                     @onclick="() => { _ncPcId = thisPc.PcId; _ncSolo = false; NcNext(); }">
+                                                    <i class="ri-user-line" style="color:#60a5fa; opacity:.7;"></i>
+                                                    <span>@thisPc.FullName</span>
+                                                </div>
+                                            }
+                                            @if (thisPc.IsAlsoSolo)
+                                            {
+                                                <div class="memo-pc-item @(_ncPcId == thisPc.PcId && _ncSolo ? "memo-pc-sel" : "")"
+                                                     @onclick="() => { _ncPcId = thisPc.PcId; _ncSolo = true; NcNext(); }">
                                                     <i class="ri-user-line" style="color:#ef4444; opacity:.7;"></i>
                                                     <span>@thisPc.FullName</span>
                                                     <span style="font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
@@ -2077,49 +2253,133 @@
                     }
                     else
                     {
-                        @* ── Step 2: Write Memo ── *@
-                        <div class="mb-1" id="memo-quill-wrap">
-                            <label class="form-label" style="font-size:.82rem; color:#94a3b8;">@LS.T("actions.memoText")</label>
-                            <div id="memo-quill-editor"
-                                 style="background:#fff; color:#000; min-height:260px; border-radius:0 0 4px 4px;">
+                        @* ── Step 2: Next C/S Form ── *@
+                        <div class="arf wiz-step3-content" style="display:flex; flex-direction:column; min-height:480px;">
+                            <div class="s3-subtitle">Dror Center, Haifa, Israel</div>
+                            <div style="height:.9rem;"></div>
+                            <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px;">
+                                <span class="s3-label" style="font-size:1.35rem;">
+                                    PC's Name:&nbsp;<span class="s3-value">@(_ncPcs.FirstOrDefault(p => p.PcId == _ncPcId)?.FullName ?? "")</span>
+                                </span>
+                                <span class="s3-label" style="font-size:1.35rem;">
+                                    Date:&nbsp;<span class="s3-value">@DateTime.Today.ToString("dd/MM/yy")</span>
+                                </span>
                             </div>
-                        </div>
-                        <div style="font-size:.72rem; color:#64748b; margin-top:6px;">
-                            <i class="ri-information-line me-1"></i>
-                            @LS.T("actions.memoSaveNote")
+                            <div class="s3-label" style="font-size:1.35rem; margin-top:4px;">
+                                Auditor:&nbsp;<span class="s3-value">@_ncAuditorName</span>
+                            </div>
+                            <div class="mt-2">
+                                <div id="nc-top-editor"></div>
+                            </div>
+                            <div style="min-height:32px;"></div>
+                            <div class="s3-heading">
+                                The Next C/S:
+                            </div>
+                            <div class="mt-2">
+                                <div id="nc-bottom-editor"></div>
+                            </div>
+                            <div style="min-height:32px;"></div>
+                            <div class="s3-signature">
+                                @_ncAuditorName
+                            </div>
                         </div>
                     }
 
                 </div>
                 <div class="modal-footer" style="background:#0f172a; border-top:1px solid #1e293b;">
-                    @if (_memoStep == 1)
+                    @if (_ncStep == 1)
                     {
-                        <button class="btn btn-sm btn-outline-light" @onclick="() => _showMemoWizard = false">@LS.T("common.cancel")</button>
-                        @if (_isSoloUser || _memoPcs.Count > 0)
-                        {
-                            <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                                    disabled="@(_memoPcId == 0)"
-                                    @onclick="MemoNext">
-                                Next <i class="ri-arrow-right-s-line"></i>
-                            </button>
-                        }
+                        <button class="btn btn-sm btn-outline-light" @onclick="() => _showNcWizard = false">@LS.T("common.cancel")</button>
                     }
                     else
                     {
                         <button class="btn btn-sm btn-outline-light d-flex align-items-center gap-1"
-                                @onclick="() => _memoStep = 1">
+                                @onclick="NcBack">
                             <i class="ri-arrow-left-s-line"></i> Back
                         </button>
-                        <button class="btn btn-sm btn-outline-light" @onclick="() => _showMemoWizard = false">@LS.T("common.cancel")</button>
+                        <button class="btn btn-sm btn-outline-light" @onclick="() => _showNcWizard = false">@LS.T("common.cancel")</button>
                         <button class="btn btn-sm d-flex align-items-center gap-1"
-                                style="background:linear-gradient(135deg,#be185d,#ec4899); color:#fff; border:none;"
-                                @onclick="ExecuteMemo">
-                            <i class="ri-sticky-note-line"></i>Submit
+                                style="background:linear-gradient(135deg,#0d9488,#14b8a6); color:#fff; border:none;"
+                                @onclick="ExecuteNc">
+                            <i class="ri-user-follow-line"></i>Submit
                         </button>
                     }
                 </div>
             </div>
         </div>
+    </div>
+}
+
+@* ── Next C/S Toast ── *@
+@if (_ncRunning || _ncDone || !string.IsNullOrEmpty(_ncError))
+{
+    var ncDoneCount  = _ncSteps.Count(s => s.Status == 2);
+    var ncTotalCount = _ncSteps.Count;
+    var ncPct        = ncTotalCount > 0 ? (int)(ncDoneCount * 100.0 / ncTotalCount) : 0;
+
+    <div style="position:fixed;bottom:24px;right:24px;z-index:99999;min-width:310px;max-width:390px;
+                border-radius:14px;box-shadow:0 16px 48px rgba(0,0,0,.45);
+                background:#0f172a;color:#f1f5f9;overflow:hidden;
+                animation:bgImportSlideIn .3s cubic-bezier(.175,.885,.32,1.275) both;">
+
+        <div style="padding:13px 16px 11px;border-bottom:1px solid #1e293b;display:flex;align-items:center;gap:10px;">
+            @if (_ncRunning)
+            {
+                <span class="spinner-border spinner-border-sm flex-shrink-0" style="color:#14b8a6;width:15px;height:15px;border-width:2px;"></span>
+            }
+            else if (_ncDone)
+            {
+                <i class="ri-checkbox-circle-fill flex-shrink-0" style="font-size:1.15rem;color:#22c55e;line-height:1;"></i>
+            }
+            else
+            {
+                <i class="ri-error-warning-fill flex-shrink-0" style="font-size:1.15rem;color:#f87171;line-height:1;"></i>
+            }
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:700;font-size:.875rem;letter-spacing:.01em;line-height:1.3;">
+                    @if (_ncRunning)      { <text>Adding Next C/S&hellip;</text> }
+                    else if (_ncDone)     { <span style="color:#22c55e;">Next C/S Added!</span> }
+                    else                  { <span style="color:#f87171;">Next C/S Failed</span> }
+                </div>
+                <div style="font-size:.71rem;color:#475569;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@_ncLabel">
+                    @_ncLabel
+                </div>
+            </div>
+        </div>
+
+        @if (_ncRunning || _ncDone)
+        {
+            <div style="padding:10px 16px 4px;display:flex;flex-direction:column;gap:5px;">
+                @foreach (var ns in _ncSteps)
+                {
+                    var nsc = ns.Status switch {
+                        1 => "#e2e8f0",
+                        2 => "#22c55e",
+                        3 => "#f87171",
+                        _ => "#334155"
+                    };
+                    <div style="display:flex;align-items:flex-start;gap:8px;font-size:.78rem;color:@nsc;">
+                        @if (ns.Status == 1) { <span class="spinner-border spinner-border-sm flex-shrink-0" style="width:12px;height:12px;border-width:1.5px;color:#14b8a6;margin-top:2px;"></span> }
+                        else if (ns.Status == 2) { <i class="ri-checkbox-circle-fill flex-shrink-0" style="font-size:.85rem;margin-top:1px;"></i> }
+                        else if (ns.Status == 3) { <i class="ri-close-circle-fill flex-shrink-0" style="font-size:.85rem;margin-top:1px;"></i> }
+                        else { <i class="ri-time-line flex-shrink-0" style="font-size:.85rem;margin-top:1px;opacity:.5;"></i> }
+                        <span>@ns.Label</span>
+                    </div>
+                }
+            </div>
+            <div style="margin:8px 16px 12px;height:4px;border-radius:2px;background:#1e293b;overflow:hidden;">
+                <div style="height:100%;width:@(ncPct)%;background:linear-gradient(90deg,#14b8a6,#22c55e);transition:width .4s;border-radius:2px;
+                            @(_ncRunning ? "animation:bgBarPulse 1.2s ease-in-out infinite;" : "")"></div>
+            </div>
+        }
+        else
+        {
+            <div style="padding:10px 16px 14px;">
+                <div style="font-size:.75rem;color:#94a3b8;word-break:break-all;">@_ncError</div>
+                <button class="btn btn-sm btn-outline-secondary mt-2" style="font-size:.72rem;padding:2px 10px;"
+                        @onclick="() => { _ncError = string.Empty; _ncSteps.Clear(); }">@LS.T("common.dismiss")</button>
+            </div>
+        }
     </div>
 }
 
@@ -2533,7 +2793,7 @@
                 <button class="sm-back-btn" @onclick="SmBackToList" title="Back to list">
                     <i class="ri-arrow-left-line"></i>
                 </button>
-                <span><i class="ri-file-settings-line me-2"></i>Session #@_smDetail.SessionId — @_smDetail.Name</span>
+                <span><i class="ri-file-settings-line me-2"></i>@_smPcName — @_smDetail.SessionDate — #@_smDetail.SessionId</span>
             }
             else
             {
@@ -2718,7 +2978,13 @@
                             </div>
                             <div class="sm-field">
                                 <label>CS Name</label>
-                                <input class="form-control form-control-sm" value="@_smDetail.CsName" readonly />
+                                <select class="form-select form-select-sm" @bind="_smEditCsId">
+                                    <option value="0">— None —</option>
+                                    @foreach (var cs in _smCsList)
+                                    {
+                                        <option value="@cs.PersonId">@cs.FullName</option>
+                                    }
+                                </select>
                             </div>
                             <div class="sm-field">
                                 <label>Review Length (sec)</label>
@@ -2800,6 +3066,20 @@
                         </div>
                     </div>
                 }
+
+                @* ── Save success overlay ── *@
+                @if (_smSaveSuccess)
+                {
+                    <div class="sm-save-overlay">
+                        <div class="sm-save-ripple"></div>
+                        <div class="sm-save-icon-wrap">
+                            <i class="ri-save-line sm-save-file-icon"></i>
+                            <i class="ri-checkbox-circle-fill sm-save-check-icon"></i>
+                        </div>
+                        <div class="sm-save-msg">Changes Saved</div>
+                        <div class="sm-save-sub">@_smSaveSummary</div>
+                    </div>
+                }
             </div>
             <div class="sm-footer">
                 <button class="btn btn-sm btn-danger d-flex align-items-center gap-1" @onclick="SmStartDelete">
@@ -2808,7 +3088,7 @@
                 <div class="ms-auto d-flex gap-2">
                     <button class="btn btn-sm btn-outline-secondary" @onclick="SmBackToList">@LS.T("common.cancel")</button>
                     <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                            disabled="@(_smSaving)"
+                            disabled="@(_smSaving || _smSaveSuccess)"
                             @onclick="SmSave">
                         @if (_smSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
                         <i class="ri-save-line"></i> Save
@@ -2928,6 +3208,43 @@
         text-align: center; font-size: 1rem; font-weight: 600; letter-spacing: 2px;
     }
     .sm-del-input:focus { border-color: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.3); }
+
+    /* Save success overlay */
+    .sm-save-overlay {
+        position: absolute; inset: 0; z-index: 20;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background: rgba(15,23,42,.92); border-radius: 8px;
+        animation: smSaveFadeIn .3s ease both;
+    }
+    @@keyframes smSaveFadeIn { 0% { opacity:0; } 100% { opacity:1; } }
+    .sm-save-ripple {
+        position: absolute; width: 180px; height: 180px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(34,197,94,.18) 0%, transparent 70%);
+        animation: smSaveRipple 1.5s ease-out both;
+    }
+    @@keyframes smSaveRipple { 0% { transform:scale(0); opacity:1; } 100% { transform:scale(2.5); opacity:0; } }
+    .sm-save-icon-wrap { position: relative; display: inline-block; margin-bottom: 14px; }
+    .sm-save-file-icon {
+        font-size: 2.8rem; color: #22c55e;
+        animation: smSaveDrop .5s cubic-bezier(.175,.885,.32,1.275) both;
+    }
+    @@keyframes smSaveDrop { 0% { transform:translateY(-20px) scale(.6); opacity:0; } 60% { transform:translateY(3px) scale(1.05); opacity:1; } 100% { transform:translateY(0) scale(1); } }
+    .sm-save-check-icon {
+        position: absolute; bottom: -4px; right: -10px;
+        font-size: 1.3rem; color: #22c55e;
+        animation: smSaveCheck .35s cubic-bezier(.175,.885,.32,1.275) .4s both;
+    }
+    @@keyframes smSaveCheck { 0% { transform:scale(0); opacity:0; } 100% { transform:scale(1); opacity:1; } }
+    .sm-save-msg {
+        font-size: 1.05rem; font-weight: 700; color: #e2e8f0; margin-bottom: 4px;
+        animation: smSaveFadeUp .35s ease .25s both;
+    }
+    .sm-save-sub {
+        font-size: .78rem; color: #94a3b8; max-width: 300px; text-align: center;
+        animation: smSaveFadeUp .35s ease .4s both;
+    }
+    @@keyframes smSaveFadeUp { 0% { opacity:0; transform:translateY(8px); } 100% { opacity:1; transform:translateY(0); } }
 
     @@media (max-width: 768px) {
         .sm-modal { width: 98vw; max-height: 96vh; border-radius: 12px; }
@@ -3089,6 +3406,69 @@
     :root[data-theme-mode="light"] .memo-modal-content .modal-footer {
         border-color: #e2e8f0 !important;
     }
+    :root[data-theme-mode="light"] .memo-pc-item {
+        color: #1e293b;
+    }
+    :root[data-theme-mode="light"] .memo-pc-item:hover {
+        background: #f0f4ff;
+    }
+    :root[data-theme-mode="light"] .memo-pc-sel {
+        background: #dbeafe !important; outline-color: #3b82f6;
+    }
+
+    /* ── ScanBox import animation ── */
+    .scanbox-success-screen {
+        text-align: center; padding: 40px 16px 32px; position: relative; overflow: hidden;
+    }
+    .scanbox-ripple {
+        position: absolute; top: 50%; left: 50%;
+        width: 200px; height: 200px;
+        margin: -100px 0 0 -100px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(99,102,241,.15) 0%, transparent 70%);
+        animation: scanboxRipple 1.5s ease-out both;
+    }
+    @@keyframes scanboxRipple {
+        0%   { transform: scale(0); opacity: 1; }
+        100% { transform: scale(2.5); opacity: 0; }
+    }
+    .scanbox-icon-wrap {
+        position: relative; display: inline-block; margin-bottom: 16px;
+    }
+    .scanbox-file-icon {
+        font-size: 3rem; color: #6366f1;
+        animation: scanboxFileDrop .6s cubic-bezier(.175,.885,.32,1.275) both;
+    }
+    @@keyframes scanboxFileDrop {
+        0%   { transform: translateY(-30px) scale(.5); opacity: 0; }
+        60%  { transform: translateY(4px) scale(1.05); opacity: 1; }
+        100% { transform: translateY(0) scale(1); opacity: 1; }
+    }
+    .scanbox-check-icon {
+        position: absolute; bottom: -4px; right: -10px;
+        font-size: 1.4rem; color: #22c55e;
+        animation: scanboxCheck .4s cubic-bezier(.175,.885,.32,1.275) .5s both;
+    }
+    @@keyframes scanboxCheck {
+        0%   { transform: scale(0); opacity: 0; }
+        100% { transform: scale(1); opacity: 1; }
+    }
+    .scanbox-msg {
+        font-size: 1rem; font-weight: 700; color: #e2e8f0; margin-bottom: 4px;
+        animation: scanboxFade .4s ease .3s both;
+    }
+    .scanbox-sub {
+        font-size: .78rem; color: #94a3b8;
+        animation: scanboxFade .4s ease .5s both;
+        max-width: 280px; margin: 0 auto;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    @@keyframes scanboxFade {
+        0%   { opacity: 0; transform: translateY(8px); }
+        100% { opacity: 1; transform: translateY(0); }
+    }
+    :root[data-theme-mode="light"] .scanbox-msg { color: #1e293b; }
+    :root[data-theme-mode="light"] .scanbox-sub { color: #64748b; }
 
     /* ── Memo Quill toolbar (dark modal background) ── */
     #memo-quill-wrap .ql-toolbar.ql-snow {
@@ -3470,12 +3850,19 @@
     .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="24px"]::before,
     .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="24px"]::before  { content: 'Huge';   }
     #step3-top-editor .ql-container.ql-snow,
-    #step3-bottom-editor .ql-container.ql-snow {
-        min-height: 48px; max-height: 120px; overflow-y: auto;
+    #step3-bottom-editor .ql-container.ql-snow,
+    #nc-top-editor .ql-container.ql-snow,
+    #nc-bottom-editor .ql-container.ql-snow {
+        min-height: 60px; overflow-y: auto;
     }
     #step3-top-editor .ql-editor,
     #step3-bottom-editor .ql-editor {
         min-height: 44px !important; max-height: 116px;
+        padding: 6px 10px;
+    }
+    #nc-top-editor .ql-editor,
+    #nc-bottom-editor .ql-editor {
+        min-height: 56px !important;
         padding: 6px 10px;
     }
     #arf-summary-wrap .ql-editor {
@@ -4356,6 +4743,10 @@
     string _smEditCsNotes = "";
     int _smEditCsSalary;
     int _smEditCsCharged;
+    int _smEditCsId;
+    List<(int PersonId, string FullName)> _smCsList = [];
+    bool _smSaveSuccess;
+    string _smSaveSummary = "";
     // Session Manager delete
     bool _smDelStage1;
     bool _smDelStage2;
@@ -4437,6 +4828,26 @@
     string _memoError = "";
     string _memoLabel = "";
     List<BgStep> _memoSteps = new();
+    bool   _memoScanBoxAnim;
+    string _memoScanBoxFileName = "";
+    string _memoScanBoxError = "";
+
+    // ── Add Next C/S wizard state ──
+    bool   _showNcWizard;
+    int    _ncStep;
+    int    _ncPcId;
+    bool   _ncSolo;
+    string _ncPcSearch = "";
+    List<DashboardService.ApprovedPc> _ncPcs = [];
+    string _ncAuditorName = "";
+    string _ncTopHtml = "";
+    string _ncBottomHtml = "";
+    bool   _ncVisited;
+    bool   _ncRunning;
+    bool   _ncDone;
+    string _ncError = "";
+    string _ncLabel = "";
+    List<BgStep> _ncSteps = new();
 
     // Auditor Report Form fields (step 2)
     string _arfDate          = "";
@@ -5920,6 +6331,7 @@ string _actionPcSearch = "";
         if (_smDetail == null) { _smError = "Session not found."; return; }
         _smError = ""; _smSuccess = "";
         _smDelStage1 = false; _smDelStage2 = false; _smDelInput = ""; _smDelError = "";
+        _smCsList = DashSvc.GetCsStaffList(0);
         SmPopulateEditFields();
     }
 
@@ -5941,6 +6353,7 @@ string _actionPcSearch = "";
         _smEditCsNotes = _smDetail.CsNotes ?? "";
         _smEditCsSalary = _smDetail.CsSalaryCentsPerHour ?? 0;
         _smEditCsCharged = _smDetail.CsChargedCentsRatePerHour ?? 0;
+        _smEditCsId = _smDetail.CsId ?? 0;
     }
 
     void SmBackToList()
@@ -5957,6 +6370,26 @@ string _actionPcSearch = "";
         var detail = _smDetail;
         try
         {
+            // Build summary of what changed
+            var changes = new List<string>();
+            if (_smEditName != (detail.Name ?? "")) changes.Add("Name");
+            if (_smEditDate.ToString("yyyy-MM-dd") != detail.SessionDate) changes.Add("Date");
+            if (_smEditLenSec != detail.LengthSeconds) changes.Add("Duration");
+            if (_smEditAdminSec != detail.AdminSeconds) changes.Add("Admin");
+            if (_smEditIsFree != detail.IsFreeSession) changes.Add("Free");
+            if (_smEditVerified != detail.VerifiedStatus) changes.Add("Status");
+            if (_smEditChargeSec != detail.ChargeSeconds) changes.Add("Charge");
+            if (_smEditChargedRate != detail.ChargedRateCentsPerHour) changes.Add("Rate");
+            if (_smEditAudSalary != detail.AuditorSalaryCentsPerHour) changes.Add("Aud Salary");
+            if (detail.CsReviewId.HasValue)
+            {
+                if (_smEditCsReviewLen != (detail.ReviewLengthSeconds ?? 0)) changes.Add("CS Length");
+                if (_smEditCsStatus != (detail.CsStatus ?? "")) changes.Add("CS Status");
+                if (_smEditCsSalary != (detail.CsSalaryCentsPerHour ?? 0)) changes.Add("CS Salary");
+                if (_smEditCsCharged != (detail.CsChargedCentsRatePerHour ?? 0)) changes.Add("CS Rate");
+                if (_smEditCsId > 0 && _smEditCsId != (detail.CsId ?? 0)) changes.Add("CS Reassigned");
+            }
+
             await Task.Run(() =>
             {
                 DashSvc.UpdateSessionAdmin(detail.SessionId, _smEditName, _smEditDate.ToString("yyyy-MM-dd"),
@@ -5970,15 +6403,26 @@ string _actionPcSearch = "";
                         _smEditCsReviewLen, _smEditCsStatus,
                         string.IsNullOrWhiteSpace(_smEditCsNotes) ? null : _smEditCsNotes,
                         _smEditCsSalary, _smEditCsCharged);
+
+                    if (_smEditCsId > 0 && _smEditCsId != (detail.CsId ?? 0))
+                        DashSvc.ReassignCsReview(detail.CsReviewId.Value, _smEditCsId);
                 }
             });
-            _smDetail = DashSvc.GetSessionDetail(detail.SessionId);
-            SmPopulateEditFields();
-            _smSuccess = "Changes saved.";
+
             DashSvc.NotifyDataChanged();
+            _smSaving = false;
+            _smSaveSummary = changes.Count > 0 ? string.Join(" · ", changes) : "No changes";
+            _smSaveSuccess = true;
+            StateHasChanged();
+
+            await Task.Delay(1800);
+            _smSaveSuccess = false;
+            _smDetail = null;
+            _smError = "";
+            SmLoadPage(_smPage);
+            StateHasChanged();
         }
-        catch (Exception ex) { _smError = $"Save failed: {ex.Message}"; }
-        finally { _smSaving = false; }
+        catch (Exception ex) { _smError = $"Save failed: {ex.Message}"; _smSaving = false; }
     }
 
     void SmStartDelete()
@@ -6665,15 +7109,23 @@ string _actionPcSearch = "";
         _memoPcs        = DashSvc.GetSessionablePcsForUser(_msgUserId.Value, _logUsername);
         _memoPcId       = _isSoloUser ? _msgUserId.Value : 0;
         _memoSolo       = _isSoloUser;
-        _memoPcSearch   = "";
-        _memoStep       = 1;
-        _memoError      = "";
-        _showMemoWizard = true;
+        _memoPcSearch        = "";
+        _memoStep            = 1;
+        _memoError           = "";
+        _memoScanBoxAnim     = false;
+        _memoScanBoxFileName = "";
+        _memoScanBoxError    = "";
+        _showMemoWizard      = true;
+
+        // Solo users have a pre-set PC — skip step 1 and go directly to step 2
+        if (_isSoloUser)
+            MemoNext();
     }
 
     void MemoNext()
     {
         _memoStep = 2;
+        _memoScanBoxError = "";
         _ = Task.Run(async () =>
         {
             await Task.Delay(100);
@@ -6838,6 +7290,325 @@ string _actionPcSearch = "";
                 {
                     _memoRunning = false;
                     _memoError   = ex.Message;
+                    StateHasChanged();
+                });
+            }
+        });
+    }
+
+    // ── Memo: Import from ScanBox ───────────────────────────────────────────
+
+    async Task ExecuteMemoFromScanBox()
+    {
+        _memoScanBoxError = "";
+        var inboxFiles = FolderSvc.GetScanInboxFiles(_logUsername);
+        if (inboxFiles.Count == 0)
+        {
+            _memoScanBoxError = "ScanBox is empty — share a file from another app first.";
+            StateHasChanged();
+            return;
+        }
+
+        // Take the first session file (non-attachment), or first file
+        var picked = inboxFiles.FirstOrDefault(f => !f.IsAttachment);
+        if (picked.Data == null) picked = inboxFiles[0];
+
+        _memoScanBoxFileName = picked.FileName;
+        _memoScanBoxAnim = true;
+        StateHasChanged();
+
+        // Let the animation play for 1.5 seconds
+        await Task.Delay(1500);
+
+        var capturedPcId   = _memoPcId;
+        var capturedSolo   = _memoSolo || _isSoloUser;
+        var capturedAudId  = _msgUserId!.Value;
+        var capturedPcName = _memoPcs.FirstOrDefault(p => p.PcId == _memoPcId)?.FullName ?? "";
+        var capturedDate   = DateOnly.FromDateTime(DateTime.Today);
+        var capturedName   = DateTime.Today.ToString("yyMMdd") + " memo";
+        var capturedBytes  = picked.Data;
+
+        // Close modal, start background toast
+        _showMemoWizard    = false;
+        _memoScanBoxAnim   = false;
+        _memoRunning       = true;
+        _memoDone          = false;
+        _memoError         = "";
+        _memoLabel         = capturedSolo ? $"{capturedPcName} [Solo]" : capturedPcName;
+        _memoSteps = new List<BgStep>
+        {
+            new("Saving to WorkSheets"),
+            new("Adding session entry"),
+            new("Clearing ScanBox"),
+        };
+        StateHasChanged();
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var sSave = _memoSteps[0];
+                var sDb   = _memoSteps[1];
+                var sClr  = _memoSteps[2];
+
+                // Step 1: Save file to WorkSheets
+                sSave.Status = 1;
+                await InvokeAsync(StateHasChanged);
+                var savedName = await Task.Run(() =>
+                    FolderSvc.SaveMemoFile(capturedPcId, capturedName, capturedBytes, capturedSolo));
+                sSave.Status = 2;
+                await InvokeAsync(StateHasChanged);
+
+                // Step 2: Insert session row
+                sDb.Status = 1;
+                await InvokeAsync(StateHasChanged);
+                DashSvc.AddMemoSession(capturedAudId, capturedPcId, savedName, capturedDate, capturedSolo);
+                DashSvc.NotifyDataChanged();
+                sDb.Status = 2;
+                await InvokeAsync(StateHasChanged);
+
+                // Step 3: Clear ScanBox
+                sClr.Status = 1;
+                await InvokeAsync(StateHasChanged);
+                FolderSvc.ClearScanInbox(_logUsername);
+                sClr.Status = 2;
+                await InvokeAsync(StateHasChanged);
+
+                await InvokeAsync(() =>
+                {
+                    _memoRunning = false;
+                    _memoDone    = true;
+                    StateHasChanged();
+                });
+
+                await Task.Delay(3000);
+                await InvokeAsync(() =>
+                {
+                    _memoDone = false;
+                    StateHasChanged();
+                });
+            }
+            catch (Exception ex)
+            {
+                foreach (var s in _memoSteps.Where(s => s.Status == 1))
+                    s.Status = 3;
+                await InvokeAsync(() =>
+                {
+                    _memoRunning = false;
+                    _memoError   = ex.Message;
+                    StateHasChanged();
+                });
+            }
+        });
+    }
+
+    // ── Add Next C/S ─────────────────────────────────────────────────────────
+
+    void OpenNcWizard()
+    {
+        if (!_msgUserId.HasValue) return;
+        _ncPcs          = DashSvc.GetSessionablePcsForUser(_msgUserId.Value, _logUsername);
+        _ncPcId         = _isSoloUser ? _msgUserId.Value : 0;
+        _ncSolo         = _isSoloUser;
+        _ncPcSearch     = "";
+        _ncStep         = 1;
+        _ncError        = "";
+        _ncTopHtml      = "";
+        _ncBottomHtml   = "";
+        _ncVisited      = false;
+        _ncAuditorName  = DashSvc.GetPersonName(_msgUserId.Value);
+        if (string.IsNullOrWhiteSpace(_ncAuditorName)) _ncAuditorName = _logUsername;
+        _showNcWizard   = true;
+
+        if (_isSoloUser) NcNext();
+    }
+
+    void NcNext()
+    {
+        _ncStep = 2;
+
+        string? prevNextCs = null;
+        if (!_ncVisited)
+        {
+            prevNextCs = _ncPcId > 0 ? DashSvc.GetLastNextCs(_ncPcId) : null;
+        }
+
+        var isFirstVisit = !_ncVisited;
+        var restoreTop   = _ncTopHtml;
+        var restoreBot   = _ncBottomHtml;
+        _ncVisited = true;
+
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(100);
+            await JSRuntime.InvokeVoidAsync("eval", @"
+                var _defaultColors = { 'nc-top-editor': '#dc2626', 'nc-bottom-editor': '#2563eb' };
+                ['nc-top-editor','nc-bottom-editor'].forEach(function(id) {
+                    var el = document.getElementById(id);
+                    if (!el) return;
+                    var key = '_quill_' + id;
+                    if (window[key]) {
+                        try { window[key].container.parentElement.removeChild(window[key].container.previousSibling); window[key].container.remove(); } catch(e) {}
+                    }
+                    var q = new Quill(el, {
+                        theme: 'snow',
+                        placeholder: 'Type here...',
+                        modules: { toolbar: [
+                            ['bold','italic','underline'],
+                            [{ 'color': [] }],
+                            [{ 'size': ['10px','14px','18px','24px'] }],
+                            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                            ['clean']
+                        ]}
+                    });
+                    window[key] = q;
+                    var defColor = _defaultColors[id];
+                    if (defColor) {
+                        q.format('color', defColor);
+                        q.on('selection-change', function(range) {
+                            if (range && range.length === 0) {
+                                var fmt = q.getFormat(range.index);
+                                if (!fmt.color) q.format('color', defColor, 'silent');
+                            }
+                        });
+                        q.on('text-change', function() {
+                            var sel = q.getSelection();
+                            if (sel) {
+                                var fmt = q.getFormat(sel.index);
+                                if (!fmt.color) q.format('color', defColor, 'silent');
+                            }
+                        });
+                    }
+                });
+            ");
+            if (isFirstVisit)
+            {
+                if (!string.IsNullOrWhiteSpace(prevNextCs))
+                {
+                    await JSRuntime.InvokeVoidAsync("eval",
+                        $"var q=window['_quill_nc-bottom-editor']; if(q){{ q.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(prevNextCs)}; setTimeout(function(){{ q.formatText(0, q.getLength(), 'color', '#2563eb'); q.setSelection(q.getLength(),0); }}, 50); }}");
+                }
+            }
+            else
+            {
+                if (!string.IsNullOrEmpty(restoreTop))
+                {
+                    await JSRuntime.InvokeVoidAsync("eval",
+                        $"var q=window['_quill_nc-top-editor']; if(q) q.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(restoreTop)};");
+                }
+                if (!string.IsNullOrEmpty(restoreBot))
+                {
+                    await JSRuntime.InvokeVoidAsync("eval",
+                        $"var q=window['_quill_nc-bottom-editor']; if(q) q.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(restoreBot)};");
+                }
+            }
+        });
+    }
+
+    async Task NcBack()
+    {
+        await ReadNcHtml();
+        _ncStep = 1;
+    }
+
+    async Task ReadNcHtml()
+    {
+        var top = await JSRuntime.InvokeAsync<string>("eval",
+            "window['_quill_nc-top-editor'] ? window['_quill_nc-top-editor'].root.innerHTML : ''");
+        _ncTopHtml = (top == "<p><br></p>" || string.IsNullOrWhiteSpace(top)) ? "" : top;
+
+        var bot = await JSRuntime.InvokeAsync<string>("eval",
+            "window['_quill_nc-bottom-editor'] ? window['_quill_nc-bottom-editor'].root.innerHTML : ''");
+        _ncBottomHtml = (bot == "<p><br></p>" || string.IsNullOrWhiteSpace(bot)) ? "" : bot;
+    }
+
+    async Task ExecuteNc()
+    {
+        await ReadNcHtml();
+
+        var capturedPcId        = _ncPcId;
+        var capturedSolo        = _ncSolo || _isSoloUser;
+        var capturedAudId       = _msgUserId!.Value;
+        var capturedPcName      = _ncPcs.FirstOrDefault(p => p.PcId == _ncPcId)?.FullName ?? "";
+        var capturedDate        = DateOnly.FromDateTime(DateTime.Today);
+        var capturedDateStr     = DateTime.Today.ToString("dd/MM/yy");
+        var capturedFileName    = DateTime.Today.ToString("yyMMdd") + " Next CS";
+        var capturedAuditorName = _ncAuditorName;
+        var capturedTopHtml     = _ncTopHtml;
+        var capturedBottomHtml  = _ncBottomHtml;
+
+        _showNcWizard = false;
+        _ncRunning    = true;
+        _ncDone       = false;
+        _ncError      = "";
+        _ncLabel      = capturedSolo ? $"{capturedPcName} [Solo]" : capturedPcName;
+        _ncSteps = new List<BgStep>
+        {
+            new("Generating Next C/S PDF"),
+            new("Saving to WorkSheets"),
+            new("Adding session entry"),
+        };
+        StateHasChanged();
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var sGen  = _ncSteps[0];
+                var sSave = _ncSteps[1];
+                var sDb   = _ncSteps[2];
+
+                // Step 1: Generate PDF
+                sGen.Status = 1;
+                await InvokeAsync(StateHasChanged);
+                string? footer = capturedSolo ? DashSvc.GetCsNameForPc(capturedPcId) : null;
+                var pdfBytes = PdfSvc.GenerateNextCsPdf(
+                    capturedPcName, capturedDateStr,
+                    capturedAuditorName, capturedTopHtml, capturedBottomHtml,
+                    footerName: footer);
+                sGen.Status = 2;
+                await InvokeAsync(StateHasChanged);
+
+                // Step 2: Save to WorkSheets
+                sSave.Status = 1;
+                await InvokeAsync(StateHasChanged);
+                var savedName = await Task.Run(() =>
+                    FolderSvc.SaveMemoFile(capturedPcId, capturedFileName, pdfBytes, capturedSolo));
+                sSave.Status = 2;
+                await InvokeAsync(StateHasChanged);
+
+                // Step 3: Add session entry + save Next CS to DB
+                sDb.Status = 1;
+                await InvokeAsync(StateHasChanged);
+                var sessionId = DashSvc.AddMemoSession(capturedAudId, capturedPcId, savedName, capturedDate, capturedSolo);
+                if (!string.IsNullOrWhiteSpace(capturedBottomHtml))
+                    DashSvc.SaveNextCs(sessionId, capturedBottomHtml);
+                DashSvc.NotifyDataChanged();
+                sDb.Status = 2;
+                await InvokeAsync(StateHasChanged);
+
+                await InvokeAsync(() =>
+                {
+                    _ncRunning = false;
+                    _ncDone    = true;
+                    StateHasChanged();
+                });
+
+                await Task.Delay(3000);
+                await InvokeAsync(() =>
+                {
+                    _ncDone = false;
+                    StateHasChanged();
+                });
+            }
+            catch (Exception ex)
+            {
+                foreach (var s in _ncSteps.Where(s => s.Status == 1))
+                    s.Status = 3;
+                await InvokeAsync(() =>
+                {
+                    _ncRunning = false;
+                    _ncError   = ex.Message;
                     StateHasChanged();
                 });
             }
