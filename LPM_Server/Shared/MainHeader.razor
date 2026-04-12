@@ -2411,9 +2411,9 @@
             }
             <div style="flex:1;min-width:0;">
                 <div style="font-weight:700;font-size:.875rem;letter-spacing:.01em;line-height:1.3;">
-                    @if (_memoRunning)      { <text>Adding Memo&hellip;</text> }
-                    else if (_memoDone)     { <span style="color:#22c55e;">Memo Added!</span> }
-                    else                    { <span style="color:#f87171;">Memo Failed</span> }
+                    @if (_memoRunning)      { <text>Adding Report&hellip;</text> }
+                    else if (_memoDone)     { <span style="color:#22c55e;">Report Added!</span> }
+                    else                    { <span style="color:#f87171;">Report Failed</span> }
                 </div>
                 <div style="font-size:.71rem;color:#475569;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@_memoLabel">
                     @_memoLabel
@@ -7140,7 +7140,7 @@ string _actionPcSearch = "";
                 if (el) {
                     window._memoQuill = new Quill(el, {
                         theme: 'snow',
-                        placeholder: 'Type memo text...',
+                        placeholder: 'Type report text...',
                         modules: {
                             keyboard: { bindings: {
                                 tab: { key: 9, handler: function() {
@@ -7219,7 +7219,7 @@ string _actionPcSearch = "";
         var capturedAudId    = _msgUserId!.Value;
         var capturedPcName   = _memoPcs.FirstOrDefault(p => p.PcId == _memoPcId)?.FullName ?? "";
         var capturedDate     = DateOnly.FromDateTime(DateTime.Today);
-        var capturedMemoName = DateTime.Today.ToString("yyMMdd") + " memo";
+        var capturedMemoName = DateTime.Today.ToString("yyMMdd") + " report";
 
         Console.WriteLine($"[Memo] Quill HTML: {html}");
 
@@ -7231,7 +7231,7 @@ string _actionPcSearch = "";
         _memoLabel      = capturedSolo ? $"{capturedPcName} [Solo]" : capturedPcName;
         _memoSteps = new List<BgStep>
         {
-            new("Generating memo PDF"),
+            new("Generating report PDF"),
             new("Saving to WorkSheets"),
             new("Adding session entry"),
         };
@@ -7325,7 +7325,7 @@ string _actionPcSearch = "";
         var capturedAudId  = _msgUserId!.Value;
         var capturedPcName = _memoPcs.FirstOrDefault(p => p.PcId == _memoPcId)?.FullName ?? "";
         var capturedDate   = DateOnly.FromDateTime(DateTime.Today);
-        var capturedName   = DateTime.Today.ToString("yyMMdd") + " memo";
+        var capturedName   = DateTime.Today.ToString("yyMMdd") + " report";
         var capturedBytes  = picked.Data;
 
         // Close modal, start background toast
