@@ -116,7 +116,21 @@
             @* ══════ MOBILE ADD SESSION BUTTON ══════ *@
             @if (_isAuditor || _isSolo)
             {
-                <div class="d-md-none mx-3 mt-3 mb-2">
+                <div class="d-md-none mx-3 mb-1" style="margin-top:-0.5rem;">
+                    @if (_isSolo)
+                    {
+                    @* ── Solo hero name + badge ── *@
+                    <div class="solo-hero">
+                        <div class="solo-hero-orb"></div>
+                        <div class="solo-hero-ring"></div>
+                        <div class="solo-hero-name">@_soloFirstName</div>
+                        <div class="solo-hero-name solo-hero-reflection">@_soloFirstName</div>
+                        <div class="solo-hero-badge">
+                            <span class="solo-badge-dot"></span>
+                            Solo Auditor
+                        </div>
+                    </div>
+                    }
                     <button class="home-mobile-add-session"
                             @onclick="OnMobileAddSession">
                         <span class="hmas-shimmer"></span>
@@ -924,6 +938,110 @@
 </div>
 
 <style>
+    /* ── Solo hero name + badge (mobile only, tiny) ── */
+    .solo-hero {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 6px 0 2px;
+        margin-bottom: 2px;
+        overflow: hidden;
+    }
+    .solo-hero-orb {
+        position: absolute;
+        width: 36px; height: 36px;
+        top: 2px; right: 30%;
+        border-radius: 50%;
+        background: rgba(139,92,246,.22);
+        filter: blur(12px);
+        pointer-events: none;
+        animation: soloOrbDrift 8s ease-in-out infinite;
+    }
+    .solo-hero-ring {
+        position: absolute;
+        top: 50%; left: 50%;
+        width: 52px; height: 52px;
+        margin: -26px 0 0 -26px;
+        border: 1px solid rgba(167,139,250,.08);
+        border-top-color: rgba(167,139,250,.3);
+        border-radius: 50%;
+        animation: soloRingSpin 10s linear infinite;
+        pointer-events: none;
+    }
+    .solo-hero-name {
+        position: relative;
+        z-index: 1;
+        font-size: .92rem;
+        font-weight: 700;
+        letter-spacing: .02em;
+        line-height: 1.15;
+        background: linear-gradient(120deg, #e9d5ff 0%, #a78bfa 40%, #f0abfc 70%, #c4b5fd 100%);
+        background-size: 250% 100%;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        animation: soloNameShimmer 5s ease-in-out infinite;
+        filter: drop-shadow(0 0 6px rgba(167,139,250,.25));
+    }
+    .solo-hero-reflection {
+        transform: scaleY(-0.3);
+        transform-origin: top center;
+        opacity: .15;
+        mask-image: linear-gradient(to bottom, rgba(0,0,0,.35) 0%, transparent 100%);
+        -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,.35) 0%, transparent 100%);
+        pointer-events: none;
+        margin-top: -1px;
+        height: 10px;
+        overflow: hidden;
+    }
+    .solo-hero-badge {
+        position: relative;
+        z-index: 1;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-top: 2px;
+        padding: 2px 9px;
+        font-size: .58rem;
+        font-weight: 700;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        color: #c4b5fd;
+        background: rgba(139,92,246,.1);
+        border: 1px solid rgba(167,139,250,.18);
+        border-radius: 999px;
+        animation: soloBadgeFloat 4s ease-in-out infinite;
+    }
+    .solo-badge-dot {
+        width: 4px; height: 4px;
+        border-radius: 50%;
+        background: #a78bfa;
+        box-shadow: 0 0 4px 1px rgba(167,139,250,.5);
+        animation: soloDotPulse 2s ease-in-out infinite;
+    }
+
+    @@keyframes soloNameShimmer {
+        0%   { background-position: 0% 50%; }
+        50%  { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+    @@keyframes soloOrbDrift {
+        0%, 100% { transform: translate(0, 0) scale(1); opacity: .5; }
+        50%      { transform: translate(5px, -3px) scale(1.08); opacity: .7; }
+    }
+    @@keyframes soloRingSpin {
+        to { transform: rotate(360deg); }
+    }
+    @@keyframes soloBadgeFloat {
+        0%, 100% { transform: translateY(0); }
+        50%      { transform: translateY(-1.5px); }
+    }
+    @@keyframes soloDotPulse {
+        0%, 100% { box-shadow: 0 0 3px 1px rgba(167,139,250,.4); opacity: .7; }
+        50%      { box-shadow: 0 0 6px 2px rgba(167,139,250,.7); opacity: 1; }
+    }
+
     /* ── Mobile Add Session button ── */
     .home-mobile-add-session {
         position: relative;
@@ -1599,6 +1717,7 @@
     bool          _isAuditor, _isCS;
     bool          _isSoloAuditor;
     bool          _isSolo;        // true = StaffRole is 'Solo' — always shows solo grid, no toggle
+    string        _soloFirstName = "";
     PcInfo?       _soloSelf;
     DateOnly      _weekStart;
     List<PcInfo>   _myPcs  = [];
@@ -1743,6 +1862,11 @@
         var staffRole  = auth.User.FindFirst("StaffRole")?.Value ?? StaffRoles.None;
         _isSolo        = staffRole == StaffRoles.Solo;
         _userId = DashSvc.GetUserIdByUsername(username);
+        if (_isSolo && _userId.HasValue)
+        {
+            var fullName = DashSvc.GetPersonName(_userId.Value);
+            _soloFirstName = fullName.Split(' ')[0];
+        }
         // NeedsContactConfirm operates on core_users.Id, not PersonId — use GetLoginFlags for the correct Id
         var loginFlags = UserDb.GetLoginFlags(username);
         var coreUserId = loginFlags?.UserId ?? 0;
