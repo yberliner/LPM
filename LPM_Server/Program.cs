@@ -427,7 +427,12 @@ static async Task SignInUser(HttpContext ctx, UserDb db, string username,
     foreach (var r in flags.Roles)
         claims.Add(new Claim(ClaimTypes.Role, r));
     var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-    await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+    var authProps = new AuthenticationProperties
+    {
+        IsPersistent = true,
+        ExpiresUtc = DateTimeOffset.UtcNow.AddDays(36500)
+    };
+    await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity), authProps);
     ctx.Response.Cookies.Delete("lpm_pending");
 }
 
@@ -462,7 +467,12 @@ app.MapPost("/admin/impersonate", async (HttpContext ctx, UserDb db) =>
         claims.Add(new Claim(ClaimTypes.Role, r));
 
     var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-    await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+    var authProps = new AuthenticationProperties
+    {
+        IsPersistent = true,
+        ExpiresUtc = DateTimeOffset.UtcNow.AddDays(36500)
+    };
+    await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity), authProps);
     Console.WriteLine($"[Impersonate] yaniv → {flags.Username}");
     return Results.Redirect("/Home");
 });
