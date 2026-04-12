@@ -1352,7 +1352,7 @@
                                 <div class="arf-field">
                                     <span class="arf-lbl arf-lbl-right-fixed">Date</span>
                                     <input type="text" class="form-control form-control-sm arf-input-short"
-                                           @bind="_arfDate" @bind:event="oninput"
+                                           @bind="_arfDate" @bind:event="oninput" @bind:after="SyncArfDate"
                                            placeholder="dd/mm/yy" maxlength="8"
                                            style="width:5.5rem; text-align:center;" />
                                 </div>
@@ -5266,6 +5266,20 @@
         // Auto-load files from scan inbox (PWA share target)
         LoadInboxFiles();
         _showImportWizard = true;
+    }
+
+    void SyncArfDate()
+    {
+        // Sync the file name prefix when user types a valid dd/MM/yy date
+        if (DateTime.TryParseExact(_arfDate, "d/M/yy",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var parsed))
+        {
+            _importNormalizedDate = parsed;
+            _importNormalizedFileName = string.IsNullOrEmpty(_importNormalizedSuffix)
+                ? parsed.ToString("yyMMdd")
+                : $"{parsed:yyMMdd} {_importNormalizedSuffix}";
+        }
     }
 
     void GoToExamStep()

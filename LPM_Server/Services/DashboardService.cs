@@ -5,7 +5,7 @@ using System.Globalization;
 namespace LPM.Services;
 
 public record PcInfo(int PcId, string FullName, string WorkCapacity, string Nick = "", bool IsActive = true);
-public record SessionRow(int SessionId, int LengthSec, int AdminSec, bool IsFree, string? Summary, string CreatedAt, string AuditorName, string VerifiedStatus = "Pending", string? Name = null, bool IsSolo = false);
+public record SessionRow(int SessionId, int LengthSec, int AdminSec, bool IsFree, string? Summary, string CreatedAt, string AuditorName, string VerifiedStatus = "Pending", string? Name = null, bool IsSolo = false, string SessionDate = "");
 public record CsReviewRow(int CsReviewId, int SessionId, int ReviewSec, string Status, string? Notes);
 public record CsWorkRow(int CsWorkLogId, int LengthSec, string? Notes, string CreatedAt);
 public record PcWeekItem(string FullName, int Seconds);
@@ -1002,7 +1002,8 @@ public class DashboardService
                     r.IsDBNull(4) ? ""   : r.GetString(4),
                     r.IsDBNull(5) ? ""   : r.GetString(5),
                     r.IsDBNull(6) ? "Pending" : r.GetString(6),
-                    r.IsDBNull(7) ? null : r.GetString(7)));
+                    r.IsDBNull(7) ? null : r.GetString(7),
+                    SessionDate: dateStr));
             }
         }
         else  // CS or CSSolo role
@@ -1038,7 +1039,8 @@ public class DashboardService
                     rs.IsDBNull(5) ? ""   : rs.GetString(5),
                     rs.IsDBNull(6) ? "Pending" : rs.GetString(6),
                     rs.IsDBNull(7) ? null : rs.GetString(7),
-                    IsSolo: isCSSolo));
+                    IsSolo: isCSSolo,
+                    SessionDate: dateStr));
             }
 
             // All reviews for those sessions (by any CS worker — UNIQUE per session anyway)

@@ -70,7 +70,7 @@
             <button class="pc-org-pill @(_filterOrgId == oid ? "active" : "") @(_dragPcId != null && _dragOverOrgId == oid ? "drag-over" : "")"
                     @onclick="() => SetOrgFilter(oid)"
                     ondragover="event.preventDefault();"
-                    @ondragenter="() => { _dragOverOrgId = oid; }"
+                    @ondragenter="() => OnDragEnterOrg(oid)"
                     @ondrop="() => OnDropOnOrg(oid)"
                     @ondrop:preventDefault>
                 @org.Name <span class="pc-org-count">@_allPcsEx.Count(p => p.OrgId == oid)</span>
@@ -79,7 +79,7 @@
         <button class="pc-org-pill pc-org-pill-ungrouped @(_filterOrgId == 0 ? "active" : "") @(_dragPcId != null && _dragOverOrgId == 0 ? "drag-over" : "")"
                 @onclick="() => SetOrgFilter(0)"
                 ondragover="event.preventDefault();"
-                @ondragenter="() => { _dragOverOrgId = 0; }"
+                @ondragenter="() => OnDragEnterOrg(0)"
                 @ondrop="() => OnDropOnOrg(0)"
                 @ondrop:preventDefault>
             <i class="ri-inbox-unarchive-line"></i> Ungrouped <span class="pc-org-count">@_allPcsEx.Count(p => p.OrgId == 0)</span>
@@ -3431,6 +3431,8 @@
     void OnDragStart(int pcId) => _dragPcId = pcId;
 
     void OnDragEnd() { _dragPcId = null; _dragOverOrgId = null; }
+
+    void OnDragEnterOrg(int orgId) => _dragOverOrgId = orgId;
 
     void OnDropOnOrg(int orgId)
     {

@@ -1526,6 +1526,16 @@ public class FolderService
         var finalName = safeName;
         var fullPath = Path.Combine(wsPath, finalName);
 
+        var counter = 2;
+        var nameNoExt = Path.GetFileNameWithoutExtension(safeName);
+        var ext = Path.GetExtension(safeName);
+        while (File.Exists(fullPath))
+        {
+            finalName = $"{nameNoExt}({counter}){ext}";
+            fullPath = Path.Combine(wsPath, finalName);
+            counter++;
+        }
+
         // Backup the original upload before shrink+encrypt
         BackupBytes(pcId, finalName, fileBytes);
 
