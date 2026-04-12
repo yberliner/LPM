@@ -58,6 +58,34 @@
         </div>
     </div>
 
+    @* ── Org pill bar ── *@
+    <div class="pc-org-bar">
+        <button class="pc-org-pill @(_filterOrgId == null ? "active" : "")"
+                @onclick="() => SetOrgFilter(null)">
+            All <span class="pc-org-count">@_allPcsEx.Count</span>
+        </button>
+        @foreach (var org in _organizations)
+        {
+            var oid = org.Id;
+            <button class="pc-org-pill @(_filterOrgId == oid ? "active" : "") @(_dragPcId != null && _dragOverOrgId == oid ? "drag-over" : "")"
+                    @onclick="() => SetOrgFilter(oid)"
+                    ondragover="event.preventDefault();"
+                    @ondragenter="() => { _dragOverOrgId = oid; }"
+                    @ondrop="() => OnDropOnOrg(oid)"
+                    @ondrop:preventDefault>
+                @org.Name <span class="pc-org-count">@_allPcsEx.Count(p => p.OrgId == oid)</span>
+            </button>
+        }
+        <button class="pc-org-pill pc-org-pill-ungrouped @(_filterOrgId == 0 ? "active" : "") @(_dragPcId != null && _dragOverOrgId == 0 ? "drag-over" : "")"
+                @onclick="() => SetOrgFilter(0)"
+                ondragover="event.preventDefault();"
+                @ondragenter="() => { _dragOverOrgId = 0; }"
+                @ondrop="() => OnDropOnOrg(0)"
+                @ondrop:preventDefault>
+            <i class="ri-inbox-unarchive-line"></i> Ungrouped <span class="pc-org-count">@_allPcsEx.Count(p => p.OrgId == 0)</span>
+        </button>
+    </div>
+
     @* ── PC Table (full width) ── *@
     <div class="overflow-x-auto pc-table-wrapper @(_selPcId.HasValue ? "pc-table-drawer-open" : "")">
         @if (!FilteredPcsEx.Any())
@@ -95,8 +123,13 @@
                 @foreach (var pc in FilteredPcsEx)
                 {
                     var bal = _balances.GetValueOrDefault(pc.PcId);
-                    <tr class="@(_selPcId == pc.PcId ? "table-primary" : "")"
+                    <tr class="@(_selPcId == pc.PcId ? "table-primary" : "") @(_dragPcId == pc.PcId ? "pc-row-dragging" : "")"
                         style="cursor:pointer;"
+                        draggable="true"
+                        @ondragstart="() => OnDragStart(pc.PcId)"
+                        @ondragend="OnDragEnd"
+                        @oncontextmenu="(e) => OpenPcCtxMenu(e, pc.PcId, pc.OrgId)"
+                        @oncontextmenu:preventDefault
                         @onclick="() => SelectPc(pc.PcId)">
                         @{ var hasMixed = _mixedRates.ContainsKey(pc.PcId); }
                         <td class="small ps-2 @(hasMixed ? "pc-mixed-rate" : "")"
@@ -173,6 +206,30 @@
         </table>
         }
     </div>
+
+    @* ── PC right-click context menu ── *@
+    @if (_showPcCtxMenu)
+    {
+        <div class="pc-ctx-backdrop" @onclick="ClosePcCtxMenu"></div>
+        <div class="pc-ctx-menu" style="top:@(_pcCtxY)px;left:@(_pcCtxX)px;">
+            <div class="pc-ctx-title"><i class="ri-arrow-right-up-line"></i> Move to</div>
+            @foreach (var org in _organizations)
+            {
+                var oid = org.Id;
+                <button class="pc-ctx-item @(_ctxMenuPcOrgId == oid ? "pc-ctx-current" : "")"
+                        @onclick="() => MovePcViaCtx(oid)">
+                    @if (_ctxMenuPcOrgId == oid) { <i class="ri-check-line pc-ctx-check"></i> }
+                    @org.Name
+                </button>
+            }
+            <div class="pc-ctx-divider"></div>
+            <button class="pc-ctx-item @(_ctxMenuPcOrgId == 0 ? "pc-ctx-current" : "")"
+                    @onclick="() => MovePcViaCtx(0)">
+                @if (_ctxMenuPcOrgId == 0) { <i class="ri-check-line pc-ctx-check"></i> }
+                <i class="ri-inbox-unarchive-line"></i> Ungrouped
+            </button>
+        </div>
+    }
 
     @* ── Detail panel (replaces table when a PC is selected) ── *@
     <div class="pc-drawer @(_selPcId.HasValue && _detail != null ? "pc-drawer-open" : "")">
@@ -3021,6 +3078,117 @@
     @@media (max-width: 480px) {
         .cg-grid { grid-template-columns: 100px 1fr; font-size: .82rem; }
     }
+
+    /* ── Org pill bar ── */
+    .pc-org-bar {
+        display: flex; gap: 6px; padding: 6px 8px;
+        background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+        border-radius: 14px; margin-bottom: 8px;
+        overflow-x: auto; flex-shrink: 0;
+        border: 1px solid rgba(0,0,0,.05);
+        scrollbar-width: thin;
+    }
+    .pc-org-pill {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 7px 16px; border: 2px solid transparent;
+        border-radius: 10px; background: transparent;
+        color: #64748b; font-size: .8rem; font-weight: 600;
+        cursor: pointer; white-space: nowrap;
+        transition: all .2s cubic-bezier(.4,0,.2,1);
+        min-height: 38px; position: relative;
+        user-select: none;
+    }
+    .pc-org-pill:hover {
+        background: #e2e8f0; color: #334155;
+        transform: translateY(-1px);
+    }
+    .pc-org-pill.active {
+        background: linear-gradient(135deg, #6366f1, #818cf8);
+        color: #fff;
+        box-shadow: 0 3px 12px rgba(99,102,241,.35);
+        border-color: transparent;
+        transform: translateY(-1px);
+    }
+    .pc-org-pill.active:hover {
+        background: linear-gradient(135deg, #4f46e5, #6366f1);
+        box-shadow: 0 4px 16px rgba(99,102,241,.45);
+    }
+    .pc-org-pill.drag-over {
+        border-color: #6366f1;
+        background: #eef2ff;
+        box-shadow: 0 0 0 3px rgba(99,102,241,.2), 0 4px 14px rgba(99,102,241,.25);
+        transform: translateY(-2px) scale(1.03);
+        color: #4338ca;
+    }
+    .pc-org-pill.active.drag-over {
+        box-shadow: 0 0 0 3px rgba(99,102,241,.3), 0 6px 20px rgba(99,102,241,.4);
+        transform: translateY(-2px) scale(1.05);
+    }
+    .pc-org-count {
+        display: inline-flex; align-items: center; justify-content: center;
+        min-width: 22px; height: 20px; padding: 0 6px;
+        border-radius: 10px; font-size: .68rem; font-weight: 700;
+    }
+    .pc-org-pill:not(.active) .pc-org-count {
+        background: #e2e8f0; color: #475569;
+    }
+    .pc-org-pill.active .pc-org-count {
+        background: rgba(255,255,255,.25); color: #fff;
+    }
+    .pc-org-pill-ungrouped { color: #94a3b8; }
+    .pc-org-pill-ungrouped i { font-size: .9rem; }
+
+    /* Dragging row */
+    .pc-row-dragging { opacity: .45; }
+
+    /* ── PC context menu ── */
+    .pc-ctx-backdrop {
+        position: fixed; inset: 0; z-index: 1050; background: transparent;
+    }
+    .pc-ctx-menu {
+        position: fixed; z-index: 1051;
+        background: #fff; border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0,0,0,.15), 0 2px 8px rgba(0,0,0,.08);
+        border: 1px solid rgba(0,0,0,.08);
+        min-width: 180px; padding: 6px;
+        animation: pcCtxIn .15s ease;
+    }
+    @@keyframes pcCtxIn {
+        from { opacity: 0; transform: scale(.95) translateY(-4px); }
+        to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .pc-ctx-title {
+        padding: 6px 10px 4px; font-size: .7rem; font-weight: 700;
+        color: #94a3b8; text-transform: uppercase; letter-spacing: .04em;
+        display: flex; align-items: center; gap: 4px;
+    }
+    .pc-ctx-title i { font-size: .8rem; }
+    .pc-ctx-divider {
+        height: 1px; background: #e2e8f0; margin: 4px 8px;
+    }
+    .pc-ctx-item {
+        display: flex; align-items: center; gap: 8px;
+        width: 100%; padding: 8px 12px; border: none;
+        background: transparent; color: #334155;
+        font-size: .82rem; font-weight: 500;
+        border-radius: 8px; cursor: pointer;
+        transition: all .12s ease; text-align: left;
+        min-height: 38px;
+    }
+    .pc-ctx-item:hover {
+        background: #f1f5f9; color: #6366f1;
+    }
+    .pc-ctx-item i { font-size: .9rem; }
+    .pc-ctx-current {
+        color: #6366f1; font-weight: 600;
+        background: #eef2ff;
+    }
+    .pc-ctx-check { color: #6366f1; font-size: .85rem; }
+
+    @@media (max-width: 480px) {
+        .pc-org-pill { padding: 6px 10px; font-size: .75rem; min-height: 44px; }
+        .pc-org-bar { gap: 4px; padding: 4px 6px; }
+    }
 </style>
 
 @code {
@@ -3083,6 +3251,20 @@
     bool _showCurrencyWarning;
     string _currencyWarningExisting = "";
     string _currencyWarningNew = "";
+
+    // Org pills
+    List<(int Id, string Name)> _organizations = [];
+    int? _filterOrgId; // null=All, 0=Ungrouped, >0=specific org
+
+    // Drag & drop
+    int? _dragPcId;
+    int? _dragOverOrgId;
+
+    // PC context menu
+    bool _showPcCtxMenu;
+    double _pcCtxX, _pcCtxY;
+    int _ctxMenuPcId;
+    int _ctxMenuPcOrgId;
 
     // Sort state
     string _sortCol  = "hoursLeft";
@@ -3192,6 +3374,14 @@
             if (_filterHasSessions)
                 list = list.Where(p => p.TotalSessions > 0);
 
+            if (_filterOrgId.HasValue)
+            {
+                var fid = _filterOrgId.Value;
+                list = fid == 0
+                    ? list.Where(p => p.OrgId == 0)
+                    : list.Where(p => p.OrgId == fid);
+            }
+
             list = (_sortCol, _sortAsc) switch
             {
                 ("name", true)       => list.OrderBy(p => p.FullName),
@@ -3228,7 +3418,52 @@
     string SortClass(string col) =>
         _sortCol != col ? "" : _sortAsc ? "sort-asc" : "sort-desc";
 
+    // ── Org pill filter ──
 
+    async Task SetOrgFilter(int? orgId)
+    {
+        _filterOrgId = orgId;
+        await JS.InvokeVoidAsync("localStorage.setItem", "pcs_orgFilter", orgId?.ToString() ?? "-1");
+    }
+
+    // ── Drag & drop ──
+
+    void OnDragStart(int pcId) => _dragPcId = pcId;
+
+    void OnDragEnd() { _dragPcId = null; _dragOverOrgId = null; }
+
+    void OnDropOnOrg(int orgId)
+    {
+        if (_dragPcId == null) return;
+        var dbOrgId = orgId == 0 ? (int?)null : orgId;
+        PcSvc.MovePcToOrg(_dragPcId.Value, dbOrgId);
+        Console.WriteLine($"[PCs] Moved PC {_dragPcId.Value} to org {orgId} via drag & drop");
+        _allPcsEx = PcSvc.GetAllPcsExtended();
+        _dragPcId = null;
+        _dragOverOrgId = null;
+    }
+
+    // ── PC context menu ──
+
+    void OpenPcCtxMenu(MouseEventArgs e, int pcId, int orgId)
+    {
+        _ctxMenuPcId = pcId;
+        _ctxMenuPcOrgId = orgId;
+        _pcCtxX = e.ClientX;
+        _pcCtxY = e.ClientY;
+        _showPcCtxMenu = true;
+    }
+
+    void ClosePcCtxMenu() => _showPcCtxMenu = false;
+
+    void MovePcViaCtx(int orgId)
+    {
+        var dbOrgId = orgId == 0 ? (int?)null : orgId;
+        PcSvc.MovePcToOrg(_ctxMenuPcId, dbOrgId);
+        Console.WriteLine($"[PCs] Moved PC {_ctxMenuPcId} to org {orgId} via context menu");
+        _allPcsEx = PcSvc.GetAllPcsExtended();
+        _showPcCtxMenu = false;
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -3238,6 +3473,10 @@
             var asc = await JS.InvokeAsync<string>("localStorage.getItem", "pcs_sortAsc");
             if (!string.IsNullOrEmpty(col)) _sortCol = col;
             if (!string.IsNullOrEmpty(asc)) _sortAsc = asc == "True";
+
+            var orgFilter = await JS.InvokeAsync<string>("localStorage.getItem", "pcs_orgFilter");
+            if (!string.IsNullOrEmpty(orgFilter) && int.TryParse(orgFilter, out var oid))
+                _filterOrgId = oid == -1 ? null : oid;
 
             StateHasChanged();
             try { await JS.InvokeVoidAsync("lpmInitColResize", "pc-list-table"); }
@@ -3253,6 +3492,7 @@
         _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
         _mixedRates = PcSvc.GetPcsWithMixedRates();
         _soloPcIds  = DashSvc.GetSoloPcIds();
+        _organizations = PcSvc.GetAllOrganizations();
         _allCourses = CourseSvc.GetAllCourses();
         _allBooks   = CourseSvc.GetAllBooks();
         _instructorList = CourseSvc.GetCoreUsers();

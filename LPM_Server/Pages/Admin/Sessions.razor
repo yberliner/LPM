@@ -3,6 +3,7 @@
 @using LPM.Services
 @using LPM.Auth
 @using Microsoft.AspNetCore.Authorization
+@using System.Globalization
 @inject DashboardService DashSvc
 @inject UserDb UserDb
 @inject AuthenticationStateProvider AuthStateProvider
@@ -163,19 +164,19 @@
                                 <span class="sa-input-label" style="color:#6b7280;">Set all:</span>
                                 <div class="input-group input-group-sm sa-rate-input" style="width:125px;">
                                     <span class="input-group-text">@PcCurrSym(pcGroup.PcId) Rate</span>
-                                    <input type="number" class="form-control" placeholder="0" min="0" step="1"
-                                           value="@pcDef.ChargeRate" onfocus="this.select()"
+                                    <input type="number" class="form-control" placeholder="0" min="0" step="0.01"
+                                           value="@pcDef.ChargeRate.ToString(CultureInfo.InvariantCulture)" onfocus="this.select()"
                                            @onchange="e => PropagateRate(group.AuditorId, pcGroup.PcId,
-                                               int.TryParse(e.Value?.ToString(), out var rv) ? rv : pcDef.ChargeRate,
+                                               double.TryParse(e.Value?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var rv) ? rv : pcDef.ChargeRate,
                                                pcDef.Salary)" />
                                 </div>
                                 <div class="input-group input-group-sm sa-rate-input" style="width:135px;">
                                     <span class="input-group-text">₪ Sal.</span>
-                                    <input type="number" class="form-control" placeholder="0" min="0" step="1"
-                                           value="@pcDef.Salary" onfocus="this.select()"
+                                    <input type="number" class="form-control" placeholder="0" min="0" step="0.01"
+                                           value="@pcDef.Salary.ToString(CultureInfo.InvariantCulture)" onfocus="this.select()"
                                            @onchange="e => PropagateRate(group.AuditorId, pcGroup.PcId,
                                                pcDef.ChargeRate,
-                                               int.TryParse(e.Value?.ToString(), out var sv) ? sv : pcDef.Salary)" />
+                                               double.TryParse(e.Value?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var sv) ? sv : pcDef.Salary)" />
                                 </div>
                                 <button class="btn btn-sm sa-btn-approve-all d-flex align-items-center gap-1"
                                         @onclick="() => SubmitAllForPc(group.AuditorId, pcGroup.PcId)" disabled="@_busy">
@@ -233,8 +234,8 @@
                                         </td>
                                         <td class="text-center py-2" style="font-size:0.83rem;color:#6b7280;">@DashboardService.Fmt(s.AdminSec)</td>
                                         <td class="text-center py-2">@if (s.IsFree) { <span class="badge sa-badge-free">FREE</span> }</td>
-                                        <td class="py-1"><input type="number" class="form-control form-control-sm sa-row-input" @bind="edit.ChargeRate" min="0" step="1" onfocus="this.select()" /></td>
-                                        <td class="py-1"><input type="number" class="form-control form-control-sm sa-row-input" @bind="edit.Salary" min="0" step="1" onfocus="this.select()" /></td>
+                                        <td class="py-1"><input type="number" class="form-control form-control-sm sa-row-input" @bind="edit.ChargeRate" @bind:culture="CultureInfo.InvariantCulture" min="0" step="0.01" onfocus="this.select()" /></td>
+                                        <td class="py-1"><input type="number" class="form-control form-control-sm sa-row-input" @bind="edit.Salary" @bind:culture="CultureInfo.InvariantCulture" min="0" step="0.01" onfocus="this.select()" /></td>
                                         <td class="py-2">
                                             @if (isApproved) { <span class="badge sa-badge-status-approved"><i class="ri-check-line me-1"></i>@LS.T("sessions.approvedStatus")</span> }
                                             else             { <span class="badge sa-badge-status-draft">@LS.T("sessions.pendingStatus")</span> }
@@ -304,7 +305,7 @@
                 @foreach (var pcGroup in csGroup.PcGroups)
                 {
                     var csPcKey    = (csGroup.CsId, pcGroup.PcId);
-                    int csPcDef    = _csPcDefaults.GetValueOrDefault(csPcKey);
+                    double csPcDef = _csPcDefaults.GetValueOrDefault(csPcKey);
                     int csPcTotal  = pcGroup.Reviews.Count;
                     int csPcNotDone = pcGroup.Reviews.Count(r => r.CsStatus != "Approved");
                     int csPcDone    = pcGroup.Reviews.Count(r => r.CsStatus == "Approved");
@@ -323,10 +324,10 @@
                             <span class="sa-input-label" style="color:#6b7280;">Set all:</span>
                             <div class="input-group input-group-sm sa-rate-input" style="width:140px;">
                                 <span class="input-group-text">CS Sal.</span>
-                                <input type="number" class="form-control" placeholder="0" min="0" step="1"
-                                       value="@csPcDef" onfocus="this.select()"
+                                <input type="number" class="form-control" placeholder="0" min="0" step="0.01"
+                                       value="@csPcDef.ToString(CultureInfo.InvariantCulture)" onfocus="this.select()"
                                        @onchange="e => PropagateCSRate(csGroup.CsId, pcGroup.PcId,
-                                           int.TryParse(e.Value?.ToString(), out var csv) ? csv : csPcDef)" />
+                                           double.TryParse(e.Value?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var csv) ? csv : csPcDef)" />
                             </div>
                             <button class="btn btn-sm sa-btn-cs-all d-flex align-items-center gap-1"
                                     @onclick="() => SubmitAllCsForPc(csGroup.CsId, pcGroup.PcId)" disabled="@_busy">
@@ -415,15 +416,15 @@
                                                 @if (rev.IsSolo)
                                                 {
                                                     <input type="number" class="form-control form-control-sm sa-row-input"
-                                                           value="@_csRateEdits.GetValueOrDefault(rev.CsReviewId)" min="0" step="1" onfocus="this.select()"
-                                                           @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) _csRateEdits[rev.CsReviewId] = v; }" />
+                                                           value="@_csRateEdits.GetValueOrDefault(rev.CsReviewId).ToString(CultureInfo.InvariantCulture)" min="0" step="0.01" onfocus="this.select()"
+                                                           @onchange="e => { if (double.TryParse(e.Value?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var v)) _csRateEdits[rev.CsReviewId] = v; }" />
                                                 }
                                             </td>
                                         }
                                         <td class="py-1">
                                             <input type="number" class="form-control form-control-sm sa-row-input"
-                                                   value="@csSalary" min="0" step="1" onfocus="this.select()"
-                                                   @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) _csRowEdits[rev.CsReviewId] = v; }" />
+                                                   value="@csSalary.ToString(CultureInfo.InvariantCulture)" min="0" step="0.01" onfocus="this.select()"
+                                                   @onchange="e => { if (double.TryParse(e.Value?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var v)) _csRowEdits[rev.CsReviewId] = v; }" />
                                         </td>
                                         <td class="py-2">
                                             @if (csApproved) { <span class="badge sa-badge-status-approved"><i class="ri-check-line me-1"></i>@LS.T("sessions.approvedStatus")</span> }
@@ -605,9 +606,9 @@
 
     // ── CS data ───────────────────────────────────────────────────
     private List<CsReviewerGroup>                  _csGroups    = new();
-    private Dictionary<(int cs, int pc), int>      _csPcDefaults = new();   // default CS salary per CS+PC
-    private Dictionary<int, int>                   _csRowEdits  = new();    // CsReviewId → salary
-    private Dictionary<int, int>                   _csRateEdits = new();    // CsReviewId → charged rate (₪/hr, solo only)
+    private Dictionary<(int cs, int pc), double>    _csPcDefaults = new();   // default CS salary per CS+PC
+    private Dictionary<int, double>                _csRowEdits  = new();    // CsReviewId → salary
+    private Dictionary<int, double>                _csRateEdits = new();    // CsReviewId → charged rate (₪/hr, solo only)
     private Dictionary<int, string?>               _csAvatars   = new();
 
     // ── CS staff for reassignment ────────────────────────────────
@@ -633,8 +634,8 @@
     private int _csNotDone => _csGroups.Sum(g => g.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus != "Approved")));
     private int _csDone    => _csGroups.Sum(g => g.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus == "Approved")));
 
-    class PcDefaults { public int ChargeRate { get; set; } public int Salary { get; set; } }
-    class RowEdit     { public int ChargeRate { get; set; } public int Salary { get; set; } }
+    class PcDefaults { public double ChargeRate { get; set; } public double Salary { get; set; } }
+    class RowEdit     { public double ChargeRate { get; set; } public double Salary { get; set; } }
 
     private Dictionary<int, string> _pcCurrency = new(); // PcId → currency code
     static string CurrSym(string code) => code switch { "USD" => "$", "EUR" => "€", _ => "₪" };
@@ -711,12 +712,12 @@
                     _pcCurrency[pcGroup.PcId] = DashSvc.GetLastPurchaseCurrency(pcGroup.PcId);
                 var key = (group.AuditorId, pcGroup.PcId);
                 var (defRate, defSalary) = DashSvc.GetLastApprovedDefaultsForPc(group.AuditorId, pcGroup.PcId);
-                _pcDefaults[key] = new PcDefaults { ChargeRate = defRate / 100, Salary = defSalary / 100 };
+                _pcDefaults[key] = new PcDefaults { ChargeRate = defRate / 100.0, Salary = defSalary / 100.0 };
                 foreach (var s in pcGroup.Sessions)
                     _rowEdits[s.SessionId] = new RowEdit
                     {
-                        ChargeRate = s.ChargedRateCentsPerHour  > 0 ? s.ChargedRateCentsPerHour  / 100 : defRate   / 100,
-                        Salary     = s.AuditorSalaryCentsPerHour > 0 ? s.AuditorSalaryCentsPerHour / 100 : defSalary / 100
+                        ChargeRate = s.ChargedRateCentsPerHour  > 0 ? s.ChargedRateCentsPerHour  / 100.0 : defRate   / 100.0,
+                        Salary     = s.AuditorSalaryCentsPerHour > 0 ? s.AuditorSalaryCentsPerHour / 100.0 : defSalary / 100.0
                     };
             }
         }
@@ -739,17 +740,17 @@
                     _pcCurrency[pcGroup.PcId] = DashSvc.GetLastPurchaseCurrency(pcGroup.PcId);
                 var key = (csGroup.CsId, pcGroup.PcId);
                 var defCsSalary = DashSvc.GetLastApprovedCsSalaryForPc(pcGroup.PcId);
-                _csPcDefaults[key] = defCsSalary / 100;
+                _csPcDefaults[key] = defCsSalary / 100.0;
                 var defSoloRate = DashSvc.GetLastSoloCsRateForPc(pcGroup.PcId);
                 foreach (var rev in pcGroup.Reviews)
                 {
                     _csRowEdits[rev.CsReviewId] = rev.CsSalaryCentsPerHour > 0
-                        ? rev.CsSalaryCentsPerHour / 100
-                        : defCsSalary / 100;
+                        ? rev.CsSalaryCentsPerHour / 100.0
+                        : defCsSalary / 100.0;
                     if (rev.IsSolo)
                         _csRateEdits[rev.CsReviewId] = rev.ChargedCentsRatePerHour > 0
-                            ? rev.ChargedCentsRatePerHour / 100
-                            : defSoloRate / 100;
+                            ? rev.ChargedCentsRatePerHour / 100.0
+                            : defSoloRate / 100.0;
                 }
             }
         }
@@ -758,7 +759,7 @@
     }
 
     // ── Session rate propagation (draft sessions only) ────────────
-    private void PropagateRate(int auditorId, int pcId, int newRate, int newSalary)
+    private void PropagateRate(int auditorId, int pcId, double newRate, double newSalary)
     {
         var key = (auditorId, pcId);
         if (_pcDefaults.TryGetValue(key, out var pcDef)) { pcDef.ChargeRate = newRate; pcDef.Salary = newSalary; }
@@ -773,7 +774,7 @@
     }
 
     // ── CS salary propagation (draft CS reviews only) ─────────────
-    private void PropagateCSRate(int csId, int pcId, int newCsSalary)
+    private void PropagateCSRate(int csId, int pcId, double newCsSalary)
     {
         _csPcDefaults[(csId, pcId)] = newCsSalary;
         var pcGroup = _csGroups.FirstOrDefault(g => g.CsId == csId)
@@ -791,9 +792,11 @@
                        .FirstOrDefault(x => x.SessionId == sessionId);
         Console.WriteLine($"[Sessions] Approved session {sessionId} — PC='{s?.PcName}' auditor='{s?.AuditorName}' date={s?.SessionDate} rate=₪{edit.ChargeRate}/hr auditorSalary=₪{edit.Salary}/hr by '{_username}'");
         _busy = true;
-        DashSvc.ApproveSession(sessionId, edit.ChargeRate * 100, edit.Salary * 100, _userId);
+        int rateCents = (int)Math.Round(edit.ChargeRate * 100);
+        int salCents  = (int)Math.Round(edit.Salary * 100);
+        DashSvc.ApproveSession(sessionId, rateCents, salCents, _userId);
         _busy = false;
-        ApplySessionApprovalInMemory(sessionId, edit.ChargeRate * 100, edit.Salary * 100);
+        ApplySessionApprovalInMemory(sessionId, rateCents, salCents);
         ShowMsg("Session saved.", false);
     }
 
@@ -802,6 +805,16 @@
         var audGroup = _groups.FirstOrDefault(g => g.AuditorId == auditorId);
         var pcGroup  = audGroup?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
         if (pcGroup is null) return;
+
+        // Force-update all row text boxes to match "Set all" defaults
+        var defKey = (auditorId, pcId);
+        if (_pcDefaults.TryGetValue(defKey, out var def))
+        {
+            foreach (var s in pcGroup.Sessions)
+                if (_rowEdits.TryGetValue(s.SessionId, out var ed))
+                    { ed.ChargeRate = def.ChargeRate; ed.Salary = def.Salary; }
+        }
+
         Console.WriteLine($"[Sessions] Approve ALL sessions — auditor='{audGroup?.AuditorName}' (id={auditorId}) PC='{pcGroup.PcName}' (id={pcId}) by '{_username}'");
         _busy = true;
         int count = 0;
@@ -809,9 +822,11 @@
         foreach (var s in pcGroup.Sessions.ToList())
         {
             if (!_rowEdits.TryGetValue(s.SessionId, out var edit)) continue;
+            int rateCents = (int)Math.Round(edit.ChargeRate * 100);
+            int salCents  = (int)Math.Round(edit.Salary * 100);
             Console.WriteLine($"[Sessions]   → session {s.SessionId} date={s.SessionDate} rate=₪{edit.ChargeRate}/hr auditorSalary=₪{edit.Salary}/hr");
-            DashSvc.ApproveSession(s.SessionId, edit.ChargeRate * 100, edit.Salary * 100, _userId);
-            ApplySessionApprovalInMemory(s.SessionId, edit.ChargeRate * 100, edit.Salary * 100);
+            DashSvc.ApproveSession(s.SessionId, rateCents, salCents, _userId);
+            ApplySessionApprovalInMemory(s.SessionId, rateCents, salCents);
             count++;
         }
         _busy = false;
@@ -824,12 +839,13 @@
         if (!_csRowEdits.TryGetValue(csReviewId, out var salary)) return;
         var rev = _csGroups.SelectMany(g => g.PcGroups).SelectMany(p => p.Reviews)
                            .FirstOrDefault(r => r.CsReviewId == csReviewId);
-        int chargedRate = _csRateEdits.GetValueOrDefault(csReviewId) * 100;
+        int salaryCents = (int)Math.Round(salary * 100);
+        int chargedRate = (int)Math.Round(_csRateEdits.GetValueOrDefault(csReviewId) * 100);
         Console.WriteLine($"[Sessions] Approved CS review {csReviewId} — PC='{rev?.PcName}' CS='{rev?.CsName}' sessionDate={rev?.SessionDate} csSalary=₪{salary}/hr chargedRate={chargedRate} by '{_username}'");
         _busy = true;
-        DashSvc.ApproveCsReview(csReviewId, salary * 100, chargedRate);
+        DashSvc.ApproveCsReview(csReviewId, salaryCents, chargedRate);
         _busy = false;
-        ApplyCsApprovalInMemory(csReviewId, salary * 100);
+        ApplyCsApprovalInMemory(csReviewId, salaryCents);
         ShowMsg("CS review saved.", false);
     }
 
@@ -838,6 +854,13 @@
         var csGroup = _csGroups.FirstOrDefault(g => g.CsId == csId);
         var pcGroup = csGroup?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
         if (pcGroup is null) return;
+
+        // Force-update all row text boxes to match "Set all" defaults
+        var defKey = (csId, pcId);
+        var defSal = _csPcDefaults.GetValueOrDefault(defKey);
+        foreach (var rev in pcGroup.Reviews)
+            _csRowEdits[rev.CsReviewId] = defSal;
+
         Console.WriteLine($"[Sessions] Approve ALL CS reviews — CS='{csGroup?.CsName}' (id={csId}) PC='{pcGroup.PcName}' (id={pcId}) by '{_username}'");
         _busy = true;
         int count = 0;
@@ -845,10 +868,11 @@
         foreach (var rev in pcGroup.Reviews.ToList())
         {
             if (!_csRowEdits.TryGetValue(rev.CsReviewId, out var salary)) continue;
-            int chargedRate = _csRateEdits.GetValueOrDefault(rev.CsReviewId) * 100;
+            int salaryCents = (int)Math.Round(salary * 100);
+            int chargedRate = (int)Math.Round(_csRateEdits.GetValueOrDefault(rev.CsReviewId) * 100);
             Console.WriteLine($"[Sessions]   → CS review {rev.CsReviewId} sessionId={rev.SessionId} date={rev.SessionDate} csSalary=₪{salary}/hr chargedRate={chargedRate}");
-            DashSvc.ApproveCsReview(rev.CsReviewId, salary * 100, chargedRate);
-            ApplyCsApprovalInMemory(rev.CsReviewId, salary * 100);
+            DashSvc.ApproveCsReview(rev.CsReviewId, salaryCents, chargedRate);
+            ApplyCsApprovalInMemory(rev.CsReviewId, salaryCents);
             count++;
         }
         _busy = false;

@@ -15,7 +15,8 @@ public record PcSessionInfo(int SessionId, string Date, string AuditorName,
 public record PcStats(int TotalSessions, int FreeSessions, long UsedSec,
     double TotalHoursPurchased, int TotalAmountPaid, string? LastSessionDate);
 public record PcListItemEx(int PcId, string FullName, string Nick, long RemainSec,
-    long TotalSessionSec, int TotalSessions, int AuditorSessions, int AcademyVisits, double HoursPurchased, string Auditor = "");
+    long TotalSessionSec, int TotalSessions, int AuditorSessions, int AcademyVisits, double HoursPurchased, string Auditor = "",
+    int OrgId = 0, string OrgName = "");
 public record PurchaseListItem(int PurchaseId, int PcId, string PcName, string PurchaseDate,
     string? Notes, string ApprovedStatus, string? ApprovedByName, string? ApprovedAt,
     string? CreatedByName, string CreatedAt, int TotalAmount, double TotalHours, bool IsDeleted = false, string Currency = "ILS", int? TransferPurchaseId = null);
@@ -346,6 +347,30 @@ public List<PcListItem> GetAllPcs()
         Console.WriteLine($"[PcService] Updated person data for {pcId}");
     }
 
+    public void MovePcToOrg(int pcId, int? orgId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE core_persons SET Org = @org WHERE PersonId = @id";
+        cmd.Parameters.AddWithValue("@org", orgId.HasValue ? (object)orgId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@id", pcId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[PcService] Moved PC {pcId} to org {orgId?.ToString() ?? "NULL"}");
+    }
+
+    public List<(int Id, string Name)> GetAllOrganizations()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT OrgId, Name FROM lkp_organizations ORDER BY OrgId";
+        var list = new List<(int, string)>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) list.Add((r.GetInt32(0), r.GetString(1)));
+        return list;
+    }
+
     /// <summary>Saves only the email and phone for a person (used in WelcomeContact).</summary>
     public (string Email, string Phone) GetPersonContact(int personId)
     {
@@ -640,9 +665,12 @@ public List<PcListItem> GetAllPcs()
                    COALESCE(sess.AuditorSessionCount, 0) AS AuditorSessions,
                    COALESCE(acad.VisitCount, 0) AS AcademyVisits,
                    COALESCE(pay.TotalHours, 0) AS HoursPurchased,
-                   COALESCE(TRIM(audp.FirstName || ' ' || COALESCE(NULLIF(audp.LastName,''), '')), '') AS Auditor
+                   COALESCE(TRIM(audp.FirstName || ' ' || COALESCE(NULLIF(audp.LastName,''), '')), '') AS Auditor,
+                   COALESCE(p.Org, 0) AS OrgId,
+                   COALESCE(og.Name, '') AS OrgName
             FROM core_pcs pc
             JOIN core_persons p ON p.PersonId = pc.PcId
+            LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
             LEFT JOIN (
                 SELECT pu.PcId, SUM(pi.HoursBought) AS TotalHours
                 FROM fin_purchase_items pi
@@ -681,7 +709,8 @@ public List<PcListItem> GetAllPcs()
         while (r.Read())
             list.Add(new PcListItemEx(
                 r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetInt64(3),
-                r.GetInt64(4), r.GetInt32(5), r.GetInt32(6), r.GetInt32(7), r.GetDouble(8), r.GetString(9)));
+                r.GetInt64(4), r.GetInt32(5), r.GetInt32(6), r.GetInt32(7), r.GetDouble(8), r.GetString(9),
+                r.GetInt32(10), r.GetString(11)));
         return list;
     }
 
