@@ -4893,13 +4893,13 @@
         _csSessionName is not null &&
         System.Text.RegularExpressions.Regex.IsMatch(
             _csSessionName,
-            @"(?<![a-zA-Z])memo(?![a-zA-Z])",
+            @"(?<![a-zA-Z])(memo|report)(?![a-zA-Z])",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     static bool IsMemoOrNextCsFile(string name) =>
         System.Text.RegularExpressions.Regex.IsMatch(
             name,
-            @"(?<![a-zA-Z])memo(?![a-zA-Z])|(?<![a-zA-Z])next[\s_\-]*c[\s_\-/\\]*s(?![a-zA-Z])",
+            @"(?<![a-zA-Z])(memo|report)(?![a-zA-Z])|(?<![a-zA-Z])next[\s_\-]*c[\s_\-/\\]*s(?![a-zA-Z])",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     async Task DoneCs()
