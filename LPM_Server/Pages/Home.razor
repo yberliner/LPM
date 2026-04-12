@@ -1444,6 +1444,41 @@
     :root[data-theme-mode="light"] .home-cs-ctx-confirm-text {
         color: #334155;
     }
+    :root[data-theme-mode="light"] .home-overview-header {
+        color: #1e40af;
+    }
+    :root[data-theme-mode="light"] .home-overview-header:hover {
+        color: #1e3a8a;
+    }
+    :root[data-theme-mode="light"] .home-nav-week {
+        color: #334155;
+    }
+    :root[data-theme-mode="light"] .home-nav-btn {
+        background: rgba(0,0,0,.06); color: #334155;
+        border-color: rgba(0,0,0,.15);
+    }
+    :root[data-theme-mode="light"] .home-nav-btn:hover,
+    :root[data-theme-mode="light"] .home-nav-btn:focus {
+        background: rgba(0,0,0,.12); color: #1e293b;
+        border-color: rgba(0,0,0,.25);
+    }
+    :root[data-theme-mode="light"] .home-nav-btn:disabled {
+        opacity: .4; color: #64748b;
+    }
+    :root[data-theme-mode="light"] .home-filter-btn {
+        background: rgba(0,0,0,.06); color: #475569;
+        border-color: rgba(0,0,0,.15);
+    }
+    :root[data-theme-mode="light"] .home-filter-btn:hover {
+        background: rgba(0,0,0,.1); color: #1e293b;
+    }
+    :root[data-theme-mode="light"] .home-filter-active {
+        background: #1e40af; color: #fff;
+        border-color: #1e40af;
+    }
+    :root[data-theme-mode="light"] .home-filter-active:hover {
+        background: #1e3a8a; color: #fff;
+    }
 </style>
 
 @code {
@@ -1464,7 +1499,7 @@
     Dictionary<(int, int), int> _grid = [];
     Dictionary<string, string> _csStatusLabels = [];
 
-    bool   _hideEmpty;
+    bool   _hideEmpty = true;
 
     bool HasWeekData(PcInfo pc) => Enumerable.Range(0, 7)
         .Any(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d)) > 0
