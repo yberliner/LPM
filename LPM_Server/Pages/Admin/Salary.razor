@@ -294,13 +294,16 @@
                                 <tbody>
                                     @foreach (var c in group.CsReviews)
                                     {
-                                        <tr class="@(c.IsApproved ? "" : "sal-row-pending")">
+                                        <tr class="@(c.IsApproved ? "" : "sal-row-pending")" style="@(c.IsFree ? "opacity:.7;" : "")">
                                             <td class="sal-date">@FormatDate(c.Date)</td>
-                                            <td class="sal-pc">@c.PcName</td>
+                                            <td class="sal-pc">
+                                                @c.PcName
+                                                @if (c.IsFree) { <span class="sal-free-tag">Free</span> }
+                                            </td>
                                             <td class="text-center"><span class="sal-dur-badge">@FmtDur(c.DurationSec)</span></td>
-                                            <td class="text-end sal-rate">@if (c.IsApproved) { @($"₪ {c.RateCentsPerHour / 100}") } else { <span class="sal-pending-dash">—</span> }</td>
-                                            <td class="text-end sal-payment">@if (c.IsApproved) { @($"₪ {FormatShekel(c.PaymentCents)}") } else { <span class="sal-pending-dash">—</span> }</td>
-                                            <td class="text-center">@if (c.IsApproved) { <span class="sal-badge-approved">Approved</span> } else { <span class="sal-badge-pending">Pending</span> }</td>
+                                            <td class="text-end sal-rate">@if (c.IsFree) { <span style="color:#dc2626;font-weight:600;">₪ 0</span> } else if (c.IsApproved) { @($"₪ {c.RateCentsPerHour / 100}") } else { <span class="sal-pending-dash">—</span> }</td>
+                                            <td class="text-end sal-payment">@if (c.IsFree) { <span style="color:#dc2626;font-weight:600;">₪ 0</span> } else if (c.IsApproved) { @($"₪ {FormatShekel(c.PaymentCents)}") } else { <span class="sal-pending-dash">—</span> }</td>
+                                            <td class="text-center">@if (c.IsFree) { <span class="sal-free-tag">Free session</span> } else if (c.IsApproved) { <span class="sal-badge-approved">Approved</span> } else { <span class="sal-badge-pending">Pending</span> }</td>
                                         </tr>
                                     }
                                 </tbody>
@@ -598,11 +601,11 @@
                         <span class="sal-hc-lbl" style="font-weight:700;color:#94a3b8;">CS Reviews</span>
                         <span></span>
                     </div>
-                    @foreach (var c in g.CsReviews.Where(c => c.IsApproved))
+                    @foreach (var c in g.CsReviews.Where(c => c.IsApproved || c.IsFree))
                     {
-                        <div class="sal-hc-row">
-                            <span>@c.PcName · @FmtDur(c.DurationSec)</span>
-                            <span>₪@FormatShekel(c.PaymentCents)</span>
+                        <div class="sal-hc-row" style="@(c.IsFree ? "opacity:.6;" : "")">
+                            <span>@c.PcName · @FmtDur(c.DurationSec)@(c.IsFree ? " (Free)" : "")</span>
+                            <span>₪@(c.IsFree ? "0" : FormatShekel(c.PaymentCents))</span>
                         </div>
                     }
                     @{ var pendingCs = g.CsReviews.Count(c => !c.IsApproved); }
@@ -1026,6 +1029,12 @@
     .sal-badge-pending {
         background: rgba(234,179,8,.12); color: #b45309;
         border-radius: 8px; padding: 2px 9px; font-size: .68rem; font-weight: 700;
+    }
+    .sal-free-tag {
+        display: inline-block;
+        background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5;
+        border-radius: 6px; padding: 1px 7px; font-size: .62rem; font-weight: 700;
+        margin-left: 4px; white-space: nowrap;
     }
 
     /* ── Pending (not approved) rows ── */

@@ -33,7 +33,7 @@ public record CsReviewerGroup(int CsId, string CsName, List<PcCsGroup> PcGroups)
 public record StaffMember(int PersonId, string FullName);
 
 public record SalarySessionRow(string Date, string PcName, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved);
-public record SalaryCsRow(string Date, string PcName, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved);
+public record SalaryCsRow(string Date, string PcName, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved, bool IsFree = false);
 public record CommissionDetail(
     int PurchaseId, string PurchaseDate,
     string PaymentMethod, int PaymentGross, string PaymentDate,
@@ -3307,7 +3307,8 @@ public class DashboardService
                    TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS PcName,
                    cr.ReviewLengthSeconds,
                    cr.CsSalaryCentsPerHour,
-                   cr.Status
+                   cr.Status,
+                   COALESCE(cr.Notes, '')
             FROM cs_reviews cr
             JOIN sess_sessions s  ON s.SessionId  = cr.SessionId
             JOIN core_persons  pc ON pc.PersonId  = s.PcId
@@ -3326,10 +3327,12 @@ public class DashboardService
                 var isApproved = r.GetString(5) == "Approved";
                 var durSec     = r.IsDBNull(3) ? 0 : r.GetInt32(3);
                 var rateCents  = r.IsDBNull(4) ? 0 : r.GetInt32(4);
-                var payment    = isApproved ? (long)rateCents * durSec / 3600L : 0L;
+                var notes      = r.GetString(6);
+                bool isFree    = notes != "Bill";
+                var payment    = isApproved && !isFree ? (long)rateCents * durSec / 3600L : 0L;
                 var row = new SalaryCsRow(
                     r.GetString(1), r.GetString(2),
-                    durSec, rateCents, payment, isApproved);
+                    durSec, rateCents, payment, isApproved, isFree);
                 if (!csByUser.ContainsKey(csId)) csByUser[csId] = new();
                 csByUser[csId].Add(row);
             }

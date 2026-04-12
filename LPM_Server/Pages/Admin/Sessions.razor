@@ -410,21 +410,36 @@
                                                 }
                                             }
                                         </td>
+                                        @{ bool rowIsFree = rev.IsSolo && rev.Notes == "Free"; }
                                         @if (_hasSoloInGroup)
                                         {
                                             <td class="py-1">
                                                 @if (rev.IsSolo)
                                                 {
-                                                    <input type="number" class="form-control form-control-sm sa-row-input"
-                                                           value="@_csRateEdits.GetValueOrDefault(rev.CsReviewId).ToString(CultureInfo.InvariantCulture)" min="0" step="0.01" onfocus="this.select()"
-                                                           @onchange="e => { if (double.TryParse(e.Value?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var v)) _csRateEdits[rev.CsReviewId] = v; }" />
+                                                    @if (rowIsFree)
+                                                    {
+                                                        <span class="sa-free-badge">FREE — ignored</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <input type="number" class="form-control form-control-sm sa-row-input"
+                                                               value="@_csRateEdits.GetValueOrDefault(rev.CsReviewId).ToString(CultureInfo.InvariantCulture)" min="0" step="0.01" onfocus="this.select()"
+                                                               @onchange="e => { if (double.TryParse(e.Value?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var v)) _csRateEdits[rev.CsReviewId] = v; }" />
+                                                    }
                                                 }
                                             </td>
                                         }
                                         <td class="py-1">
-                                            <input type="number" class="form-control form-control-sm sa-row-input"
-                                                   value="@csSalary.ToString(CultureInfo.InvariantCulture)" min="0" step="0.01" onfocus="this.select()"
-                                                   @onchange="e => { if (double.TryParse(e.Value?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var v)) _csRowEdits[rev.CsReviewId] = v; }" />
+                                            @if (rowIsFree)
+                                            {
+                                                <span class="sa-free-badge">FREE — ₪0</span>
+                                            }
+                                            else
+                                            {
+                                                <input type="number" class="form-control form-control-sm sa-row-input"
+                                                       value="@csSalary.ToString(CultureInfo.InvariantCulture)" min="0" step="0.01" onfocus="this.select()"
+                                                       @onchange="e => { if (double.TryParse(e.Value?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var v)) _csRowEdits[rev.CsReviewId] = v; }" />
+                                            }
                                         </td>
                                         <td class="py-2">
                                             @if (csApproved) { <span class="badge sa-badge-status-approved"><i class="ri-check-line me-1"></i>@LS.T("sessions.approvedStatus")</span> }
@@ -589,6 +604,20 @@
     /* Spinner */
     .sa-spin { display: inline-block; animation: sa-spin-anim 1s linear infinite; }
     @@keyframes sa-spin-anim { to { transform: rotate(360deg); } }
+
+    /* Free solo CS badge */
+    .sa-free-badge {
+        display: inline-block;
+        font-size: .68rem; font-weight: 700; letter-spacing: .03em;
+        color: #dc2626; background: #fef2f2;
+        border: 1px solid #fca5a5; border-radius: 6px;
+        padding: 2px 8px; white-space: nowrap;
+        animation: sa-free-pulse 1.5s ease-in-out infinite;
+    }
+    @@keyframes sa-free-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,.3); }
+        50%      { box-shadow: 0 0 0 4px rgba(220,38,38,.15); }
+    }
 </style>
 
 @code {
