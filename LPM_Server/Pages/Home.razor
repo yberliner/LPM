@@ -113,6 +113,22 @@
                 <div class="home-cs-ctx-backdrop" @onclick="CloseCsCtxMenu"></div>
             }
 
+            @* ══════ MOBILE ADD SESSION BUTTON ══════ *@
+            @if (_isAuditor || _isSolo)
+            {
+                <div class="d-md-none mx-3 mt-3 mb-2">
+                    <button class="home-mobile-add-session"
+                            @onclick="OnMobileAddSession">
+                        <span class="hmas-shimmer"></span>
+                        <span class="hmas-content">
+                            <i class="ri-upload-2-line hmas-icon"></i>
+                            <span class="hmas-text">Add Session</span>
+                            <i class="ri-arrow-right-line hmas-arrow"></i>
+                        </span>
+                    </button>
+                </div>
+            }
+
             @* ══════ MY AUDITING STATUS ══════ *@
             @if (_isAuditor || _isSolo)
             {
@@ -908,6 +924,96 @@
 </div>
 
 <style>
+    /* ── Mobile Add Session button ── */
+    .home-mobile-add-session {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        padding: 16px 24px;
+        border-radius: 14px;
+        border: none;
+        min-height: 56px;
+        overflow: hidden;
+        cursor: pointer;
+        background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 40%, #3b82f6 100%);
+        box-shadow: 0 4px 20px rgba(37,99,235,.4),
+                    0 0 0 0 rgba(59,130,246,0);
+        animation: hmasPulse 3s ease-in-out infinite;
+    }
+    .home-mobile-add-session:active {
+        transform: scale(0.96);
+        animation: none;
+        box-shadow: 0 2px 8px rgba(37,99,235,.3);
+    }
+
+    /* Shimmer sweep */
+    .hmas-shimmer {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+            105deg,
+            transparent 30%,
+            rgba(255,255,255,.15) 45%,
+            rgba(255,255,255,.25) 50%,
+            rgba(255,255,255,.15) 55%,
+            transparent 70%
+        );
+        background-size: 250% 100%;
+        animation: hmasShimmer 3.5s ease-in-out infinite;
+        pointer-events: none;
+    }
+
+    /* Content row */
+    .hmas-content {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #fff;
+        z-index: 1;
+    }
+    .hmas-icon {
+        font-size: 1.3rem;
+        animation: hmasBounce 2.5s ease-in-out infinite;
+    }
+    .hmas-text {
+        font-weight: 700;
+        font-size: 1.05rem;
+        letter-spacing: .03em;
+    }
+    .hmas-arrow {
+        font-size: 1.1rem;
+        opacity: .7;
+        animation: hmasArrow 2s ease-in-out infinite;
+    }
+
+    /* Gentle glow pulse */
+    @@keyframes hmasPulse {
+        0%, 100% { box-shadow: 0 4px 20px rgba(37,99,235,.4), 0 0 0 0 rgba(59,130,246,0); }
+        50%      { box-shadow: 0 6px 28px rgba(37,99,235,.5), 0 0 0 6px rgba(59,130,246,.12); }
+    }
+
+    /* Light sweep across button */
+    @@keyframes hmasShimmer {
+        0%, 100% { background-position: 150% 0; }
+        50%      { background-position: -50% 0; }
+    }
+
+    /* Upload icon gentle bounce */
+    @@keyframes hmasBounce {
+        0%, 100% { transform: translateY(0); }
+        40%      { transform: translateY(-3px); }
+        60%      { transform: translateY(1px); }
+    }
+
+    /* Arrow nudge right */
+    @@keyframes hmasArrow {
+        0%, 100% { transform: translateX(0); opacity: .7; }
+        50%      { transform: translateX(4px); opacity: 1; }
+    }
+
     /* ── Nav bar ── */
     .home-nav-bar {
         background: linear-gradient(135deg, #0f2057 0%, #1a237e 55%, #283593 100%);
@@ -1482,6 +1588,8 @@
 </style>
 
 @code {
+
+    async Task OnMobileAddSession() => await JS.InvokeVoidAsync("lpmClickById", "btn-add-session");
 
     string _displayName = "LP Management";
     string _username = "";

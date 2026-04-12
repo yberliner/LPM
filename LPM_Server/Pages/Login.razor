@@ -5,6 +5,7 @@
 @using LPM._Spk
 @inject IJSRuntime JS
 @inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthStateProvider
 
 <div class="authentication-background">
     <div class="container">
@@ -165,8 +166,16 @@
     private bool _passkeyError;
     private bool _passkeyNoUser;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
+        // If already authenticated (e.g. phone back button), skip login
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated == true)
+        {
+            Nav.NavigateTo("/Home", forceLoad: true);
+            return;
+        }
+
         var uri = new Uri(Nav.Uri);
         var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
         _error = query["error"] == "1";

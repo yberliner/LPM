@@ -296,7 +296,8 @@ app.UseAuthorization();
 app.Use(async (ctx, next) =>
 {
     var path = ctx.Request.Path.Value ?? "";
-    if ((path == "/" || path.Equals("/index", StringComparison.OrdinalIgnoreCase))
+    if ((path == "/" || path.Equals("/index", StringComparison.OrdinalIgnoreCase)
+                     || path.Equals("/login", StringComparison.OrdinalIgnoreCase))
         && ctx.Request.Method == "GET")
     {
         // Already authenticated → check security flags before going to dashboard
