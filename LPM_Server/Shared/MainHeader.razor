@@ -1039,7 +1039,7 @@
                             var pcName = _approvedPcs.FirstOrDefault(p => p.PcId == _importPcId)?.FullName ?? "";
                             <span style="opacity:.85; font-size:.82rem; font-weight:400;">
                                 — @pcName
-                                @if (_importStep == 3 && !string.IsNullOrWhiteSpace(_arfSessionLength))
+                                @if ((_importStep == 3 || _isSoloUser) && !string.IsNullOrWhiteSpace(_arfSessionLength))
                                 {
                                     <span style="margin-left:8px; opacity:.7;">(@_arfSessionLength)</span>
                                 }
@@ -1110,7 +1110,9 @@
                 </div>
                 <div class="modal-body">
 
-                    @* ── Stepper ── *@
+                    @* ── Stepper (hidden for solo — single page) ── *@
+                    @if (!_isSoloUser)
+                    {
                     <div class="d-flex align-items-center gap-3 flex-wrap mb-3">
                         <div class="wiz-stepper">
                             @{
@@ -1145,6 +1147,7 @@
                             </div>
                         }
                     </div>
+                    }
 
                     @if (_importStep == 1)
                     {
@@ -1337,6 +1340,39 @@
                             }
                         </div>
 
+                        @if (_isSoloUser)
+                        {
+                        @* ── Solo: simplified fields (no full ARF) ── *@
+                        <hr style="border-color:#334155; margin:4px 0 12px;" />
+
+                        <div class="arf-row">
+                            <div class="arf-field">
+                                <span class="arf-lbl arf-lbl-fixed" style="font-weight:600; color:#cbd5e1; font-size:.85rem;">
+                                    Session Length
+                                    @if (string.IsNullOrWhiteSpace(_arfSessionLength))
+                                    {
+                                        <span style="color:#ef4444;font-weight:700;margin-left:2px;">*</span>
+                                    }
+                                </span>
+                                <input type="text" inputmode="numeric" maxlength="5"
+                                       class="form-control form-control-sm arf-time-input"
+                                       style="width:80px; @(string.IsNullOrWhiteSpace(_arfSessionLength) ? "border:2px solid #ef4444 !important;background:rgba(239,68,68,.08) !important;" : "")"
+                                       placeholder="H:MM"
+                                       value="@_arfSessionLength"
+                                       @oninput="e => _arfSessionLength = e.Value?.ToString() ?? string.Empty" />
+                            </div>
+                        </div>
+
+                        <div class="mt-3">
+                            <span class="arf-lbl" style="font-weight:600; color:#cbd5e1; font-size:.85rem;">Summary</span>
+                            <div id="arf-summary-wrap">
+                                <div id="arf-summary-editor"></div>
+                            </div>
+                        </div>
+                        }
+                        else
+                        {
+                        @* ── Non-solo: full ARF form ── *@
                         <hr style="border-color:#334155; margin:4px 0 12px;" />
 
                         <div class="arf">
@@ -1558,6 +1594,7 @@
                                 </div>
                             </div>
                         </div>
+                        } @* end non-solo ARF *@
                     }
                     else
                     {
@@ -1639,6 +1676,48 @@
                     }
                     else if (_importStep == 2)
                     {
+                        @if (_isSoloUser)
+                        {
+                        @* ── Solo footer: Back, Cancel, Admin Time + Go ── *@
+                        <div class="d-flex align-items-center w-100 gap-2 wiz-step3-footer">
+                            <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                                    @onclick="() => { _importStep = 1; }">
+                                <i class="ri-arrow-left-s-line"></i> Back
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="CloseWizard">@LS.T("common.cancel")</button>
+                            <div class="d-flex align-items-center gap-2 ms-auto wiz-admin-time-group">
+                                <span style="font-weight:600; color:#cbd5e1; font-size:.85rem; white-space:nowrap;">
+                                    Admin Time
+                                    @if (string.IsNullOrWhiteSpace(_arfAdminTime))
+                                    {
+                                        <span style="color:#ef4444;font-weight:700;margin-left:2px;">*</span>
+                                    }
+                                </span>
+                                <input type="text" inputmode="numeric" maxlength="5"
+                                       class="form-control form-control-sm arf-time-input"
+                                       style="width:72px; color:#e2e8f0; background:#1e293b; border-color:#475569; @(string.IsNullOrWhiteSpace(_arfAdminTime) ? "border:2px solid #ef4444 !important;background:rgba(239,68,68,.08) !important;" : "")"
+                                       placeholder="H:MM"
+                                       value="@_arfAdminTime"
+                                       @oninput="e => _arfAdminTime = e.Value?.ToString() ?? string.Empty" />
+                                @{
+                                    var soloGoDisabled = _importSessionBytes == null
+                                        || string.IsNullOrWhiteSpace(_arfSessionLength)
+                                        || string.IsNullOrWhiteSpace(_arfAdminTime)
+                                        || _importDuplicate
+                                        || !string.IsNullOrEmpty(_importNameEditError);
+                                }
+                                <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
+                                        disabled="@soloGoDisabled"
+                                        @onclick="ExecuteImport">
+                                    <i class="ri-upload-2-line"></i>
+                                    Go
+                                </button>
+                            </div>
+                        </div>
+                        }
+                        else
+                        {
+                        @* ── Non-solo footer: Back, Cancel, Next ── *@
                         <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
                                 @onclick="() => { _importStep = 1; if (!_isSoloUser) _importPcId = 0; }">
                             <i class="ri-arrow-left-s-line"></i> Back
@@ -1663,6 +1742,7 @@
                                 </div>
                             }
                         </div>
+                        }
                     }
                     else
                     {
@@ -5266,6 +5346,12 @@
         // Auto-load files from scan inbox (PWA share target)
         LoadInboxFiles();
         _showImportWizard = true;
+        // Solo: skip step 1 (PC is auto-set), clear exam report so summary starts empty
+        if (_isSoloUser)
+        {
+            _arfExamReport = "";
+            GoToExamStep();
+        }
     }
 
     void SyncArfDate()
