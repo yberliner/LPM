@@ -95,7 +95,7 @@
 
         <!-- iOS home screen support -->
         <link rel="apple-touch-icon" href="/icons/icon-192.png">
-        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="mobile-web-app-capable" content="yes">
         <meta name="apple-mobile-web-app-status-bar-style" content="default">
 
     
@@ -140,6 +140,19 @@
 	</head>
 
         <body>
+
+        <!-- iOS non-Safari install banner (hidden by default, shown via JS) -->
+        <div id="ios-safari-banner" class="ios-safari-banner" style="display:none;">
+            <div class="ios-safari-banner-content">
+                <svg class="ios-safari-banner-icon" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+                    <polyline points="16 6 12 2 8 6"/>
+                    <line x1="12" y1="2" x2="12" y2="15"/>
+                </svg>
+                <span>To install this app, open in <b>Safari</b> &rarr; tap <b>Share</b> &rarr; <b>Add to Home Screen</b></span>
+            </div>
+            <button class="ios-safari-banner-close" onclick="pwa.dismissIosBanner()" aria-label="Close">&times;</button>
+        </div>
 
         @RenderBody()
 @*

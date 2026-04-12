@@ -1,0 +1,319 @@
+@implements IDisposable
+@using System.Diagnostics
+@using System.IO
+@using System.Runtime.InteropServices
+
+<div class="shg-row">
+    @* CPU *@
+    <div class="shg-card">
+        <svg class="shg-ring" viewBox="0 0 120 120">
+            <circle class="shg-track" cx="60" cy="60" r="52" />
+            <circle class="shg-fill" cx="60" cy="60" r="52"
+                    stroke="@GaugeColor(_cpuPercent)"
+                    stroke-dasharray="@DashArray(_cpuPercent)"
+                    style="transition: stroke-dasharray .8s ease, stroke .5s;" />
+        </svg>
+        <div class="shg-label-wrap">
+            <div class="shg-value" style="color:@GaugeColor(_cpuPercent)">@(_cpuPercent.ToString("F0"))%</div>
+            <div class="shg-label"><i class="ri-cpu-line"></i> CPU</div>
+        </div>
+    </div>
+
+    @* Memory *@
+    <div class="shg-card">
+        <svg class="shg-ring" viewBox="0 0 120 120">
+            <circle class="shg-track" cx="60" cy="60" r="52" />
+            <circle class="shg-fill" cx="60" cy="60" r="52"
+                    stroke="@GaugeColor(_memPercent)"
+                    stroke-dasharray="@DashArray(_memPercent)"
+                    style="transition: stroke-dasharray .8s ease, stroke .5s;" />
+        </svg>
+        <div class="shg-label-wrap">
+            <div class="shg-value" style="color:@GaugeColor(_memPercent)">@(_memPercent.ToString("F0"))%</div>
+            <div class="shg-label"><i class="ri-ram-line"></i> Memory</div>
+            <div class="shg-sub">@FormatGB(_memUsedBytes) / @FormatGB(_memTotalBytes)</div>
+        </div>
+    </div>
+
+    @* Refresh indicator *@
+    <div class="shg-refresh-bar">
+        <span class="shg-refresh-dot @(_refreshFlash ? "shg-flash" : "")"></span>
+        <span class="shg-refresh-text">Updated @_lastUpdate.ToString("HH:mm:ss")</span>
+        <span class="shg-refresh-next">next in @(_countdown)s</span>
+    </div>
+
+    @* Disk *@
+    <div class="shg-card">
+        <svg class="shg-ring" viewBox="0 0 120 120">
+            <circle class="shg-track" cx="60" cy="60" r="52" />
+            <circle class="shg-fill" cx="60" cy="60" r="52"
+                    stroke="@GaugeColor(_diskPercent)"
+                    stroke-dasharray="@DashArray(_diskPercent)"
+                    style="transition: stroke-dasharray .8s ease, stroke .5s;" />
+        </svg>
+        <div class="shg-label-wrap">
+            <div class="shg-value" style="color:@GaugeColor(_diskPercent)">@FormatGB(_diskFreeBytes)</div>
+            <div class="shg-label"><i class="ri-hard-drive-3-line"></i> Disk Free</div>
+            <div class="shg-sub">@FormatGB(_diskUsedBytes) / @FormatGB(_diskTotalBytes) used</div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .shg-row {
+        display: flex; gap: 16px; margin-bottom: 20px;
+        flex-wrap: wrap; justify-content: center;
+    }
+    .shg-card {
+        position: relative; display: flex; align-items: center; justify-content: center;
+        background: #1e293b; border: 1px solid #334155; border-radius: 14px;
+        padding: 20px 28px; min-width: 180px; flex: 1; max-width: 280px;
+    }
+    .shg-ring { width: 90px; height: 90px; flex-shrink: 0; transform: rotate(-90deg); }
+    .shg-track {
+        fill: none; stroke: rgba(255,255,255,.08); stroke-width: 8;
+    }
+    .shg-fill {
+        fill: none; stroke-width: 8; stroke-linecap: round;
+    }
+    .shg-label-wrap {
+        display: flex; flex-direction: column; align-items: flex-start;
+        margin-left: 16px; gap: 2px;
+    }
+    .shg-value { font-size: 1.5rem; font-weight: 800; line-height: 1.1; }
+    .shg-label { font-size: .78rem; color: #94a3b8; font-weight: 600; display: flex; align-items: center; gap: 4px; }
+    .shg-sub   { font-size: .7rem; color: #475569; margin-top: 2px; }
+
+    /* Refresh indicator */
+    .shg-refresh-bar {
+        width: 100%; display: flex; align-items: center; gap: 8px;
+        justify-content: center; margin-bottom: 10px;
+    }
+    .shg-refresh-dot {
+        width: 8px; height: 8px; border-radius: 50%;
+        background: #334155; flex-shrink: 0;
+        transition: background .3s;
+    }
+    .shg-refresh-dot.shg-flash {
+        background: #22c55e;
+        animation: shg-pulse .8s ease-out;
+    }
+    @@keyframes shg-pulse {
+        0%   { box-shadow: 0 0 0 0 rgba(34,197,94,.6); }
+        100% { box-shadow: 0 0 0 10px rgba(34,197,94,0); }
+    }
+    .shg-refresh-text { font-size: .75rem; color: #64748b; font-weight: 500; }
+    .shg-refresh-next { font-size: .7rem; color: #475569; margin-left: auto; }
+
+    /* Light mode */
+    :root[data-theme-mode="light"] .shg-card {
+        background: #f8fafc; border-color: #e2e8f0;
+    }
+    :root[data-theme-mode="light"] .shg-track {
+        stroke: rgba(0,0,0,.08);
+    }
+    :root[data-theme-mode="light"] .shg-label { color: #64748b; }
+    :root[data-theme-mode="light"] .shg-sub   { color: #94a3b8; }
+
+    @@media (max-width: 600px) {
+        .shg-row { flex-direction: column; align-items: stretch; }
+        .shg-card { max-width: none; }
+    }
+</style>
+
+@code {
+    System.Threading.Timer? _timer;
+    double _cpuPercent;
+    double _memPercent;
+    long   _memTotalBytes;
+    long   _memUsedBytes;
+    double _diskPercent;
+    long   _diskTotalBytes;
+    long   _diskFreeBytes;
+    long   _diskUsedBytes;
+
+    // CPU calculation state (Linux /proc/stat)
+    long _prevIdle, _prevTotal;
+
+    // Refresh indicator
+    DateTime _lastUpdate = DateTime.Now;
+    bool     _refreshFlash;
+    int      _countdown = 5;
+    const int RefreshIntervalSec = 5;
+
+    const double Circumference = 2 * Math.PI * 52; // r=52
+
+    protected override void OnInitialized()
+    {
+        ReadMetrics();
+        _lastUpdate = DateTime.Now;
+        // Tick every 1s for countdown; read metrics every RefreshIntervalSec
+        _timer = new System.Threading.Timer(async _ =>
+        {
+            _countdown--;
+            if (_countdown <= 0)
+            {
+                ReadMetrics();
+                _lastUpdate = DateTime.Now;
+                _countdown = RefreshIntervalSec;
+                _refreshFlash = true;
+                await InvokeAsync(StateHasChanged);
+                // Turn off flash after animation
+                await Task.Delay(800);
+                _refreshFlash = false;
+            }
+            await InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+
+    void ReadMetrics()
+    {
+        ReadCpu();
+        ReadMemory();
+        ReadDisk();
+    }
+
+    // ── CPU ──────────────────────────────────────────────────────────
+    void ReadCpu()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            try
+            {
+                var line = File.ReadLines("/proc/stat").FirstOrDefault(l => l.StartsWith("cpu "));
+                if (line == null) return;
+                var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                // parts: cpu user nice system idle iowait irq softirq steal
+                if (parts.Length < 5) return;
+                long user   = long.Parse(parts[1]);
+                long nice   = long.Parse(parts[2]);
+                long system = long.Parse(parts[3]);
+                long idle   = long.Parse(parts[4]);
+                long iowait = parts.Length > 5 ? long.Parse(parts[5]) : 0;
+                long irq    = parts.Length > 6 ? long.Parse(parts[6]) : 0;
+                long sirq   = parts.Length > 7 ? long.Parse(parts[7]) : 0;
+                long steal  = parts.Length > 8 ? long.Parse(parts[8]) : 0;
+
+                long totalIdle = idle + iowait;
+                long total     = user + nice + system + idle + iowait + irq + sirq + steal;
+
+                if (_prevTotal > 0)
+                {
+                    long dTotal = total - _prevTotal;
+                    long dIdle  = totalIdle - _prevIdle;
+                    _cpuPercent = dTotal > 0 ? (1.0 - (double)dIdle / dTotal) * 100.0 : 0;
+                }
+
+                _prevIdle  = totalIdle;
+                _prevTotal = total;
+            }
+            catch { /* /proc/stat unavailable */ }
+        }
+        else
+        {
+            // Windows: use process CPU as approximation
+            try
+            {
+                var proc = Process.GetCurrentProcess();
+                _cpuPercent = proc.TotalProcessorTime.TotalMilliseconds /
+                    (Environment.ProcessorCount * proc.StartTime.Subtract(DateTime.MinValue).TotalMilliseconds) * 100;
+                _cpuPercent = Math.Clamp(_cpuPercent, 0, 100);
+            }
+            catch { _cpuPercent = 0; }
+        }
+    }
+
+    // ── Memory ───────────────────────────────────────────────────────
+    void ReadMemory()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            try
+            {
+                long memTotal = 0, memAvail = 0;
+                foreach (var line in File.ReadLines("/proc/meminfo"))
+                {
+                    if (line.StartsWith("MemTotal:"))
+                        memTotal = ParseMemInfoKb(line);
+                    else if (line.StartsWith("MemAvailable:"))
+                        memAvail = ParseMemInfoKb(line);
+                    if (memTotal > 0 && memAvail > 0) break;
+                }
+                _memTotalBytes = memTotal * 1024;
+                _memUsedBytes  = (memTotal - memAvail) * 1024;
+                _memPercent    = memTotal > 0 ? (double)_memUsedBytes / _memTotalBytes * 100 : 0;
+            }
+            catch { }
+        }
+        else
+        {
+            try
+            {
+                var gcInfo = GC.GetGCMemoryInfo();
+                _memTotalBytes = gcInfo.TotalAvailableMemoryBytes;
+                var proc = Process.GetCurrentProcess();
+                _memUsedBytes = proc.WorkingSet64;
+                _memPercent = _memTotalBytes > 0 ? (double)_memUsedBytes / _memTotalBytes * 100 : 0;
+            }
+            catch { }
+        }
+    }
+
+    static long ParseMemInfoKb(string line)
+    {
+        // "MemTotal:       16384000 kB"
+        var parts = line.Split(':', 2);
+        if (parts.Length < 2) return 0;
+        var val = parts[1].Trim().Split(' ')[0];
+        return long.TryParse(val, out var kb) ? kb : 0;
+    }
+
+    // ── Disk ─────────────────────────────────────────────────────────
+    void ReadDisk()
+    {
+        try
+        {
+            var appRoot = Path.GetPathRoot(AppContext.BaseDirectory) ?? "/";
+            var drive = DriveInfo.GetDrives()
+                .Where(d => d.IsReady)
+                .FirstOrDefault(d => string.Equals(d.RootDirectory.FullName, appRoot, StringComparison.OrdinalIgnoreCase))
+                ?? DriveInfo.GetDrives().FirstOrDefault(d => d.IsReady && d.DriveType == DriveType.Fixed);
+
+            if (drive != null)
+            {
+                _diskTotalBytes = drive.TotalSize;
+                _diskFreeBytes  = drive.AvailableFreeSpace;
+                _diskUsedBytes  = _diskTotalBytes - _diskFreeBytes;
+                _diskPercent    = _diskTotalBytes > 0 ? (double)_diskUsedBytes / _diskTotalBytes * 100 : 0;
+            }
+        }
+        catch { }
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────
+    static string GaugeColor(double pct)
+    {
+        if (pct < 60) return "#22c55e";
+        if (pct < 80) return "#eab308";
+        return "#ef4444";
+    }
+
+    string DashArray(double pct)
+    {
+        var filled = Circumference * Math.Clamp(pct, 0, 100) / 100.0;
+        return $"{filled:F1} {Circumference:F1}";
+    }
+
+    static string FormatGB(long bytes)
+    {
+        double gb = bytes / (1024.0 * 1024 * 1024);
+        return gb >= 100 ? $"{gb:F0} GB"
+             : gb >= 10  ? $"{gb:F1} GB"
+                         : $"{gb:F2} GB";
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+    }
+}

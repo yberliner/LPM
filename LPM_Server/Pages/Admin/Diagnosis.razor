@@ -105,9 +105,18 @@
                 <i class="ri-user-search-line me-1"></i>PC Full Data
             </a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link @(_diagTab == "health" ? "active" : "")" @onclick='() => _diagTab = "health"' href="javascript:void(0)">
+                <i class="ri-pulse-line me-1"></i>System Health
+            </a>
+        </li>
     </ul>
 
-    @if (_diagTab == "db")
+    @if (_diagTab == "health")
+    {
+        <SpkSystemHealth />
+    }
+    else if (_diagTab == "db")
     {
 
     @* ── User Activity Monitor ── *@

@@ -285,3 +285,52 @@
     .btn.motor-btn:hover {
         background-color: #eee7d0;
     }*/
+
+/* ───── iOS Safari install banner ─────────────────────────── */
+.ios-safari-banner {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 99998;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: #e8f4fd;
+    border-top: 1px solid #b6d4e8;
+    color: #1a5276;
+    font-size: 14px;
+    line-height: 1.4;
+    gap: 10px;
+    box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
+}
+.ios-safari-banner-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+}
+.ios-safari-banner-icon {
+    flex-shrink: 0;
+    color: #2980b9;
+}
+.ios-safari-banner-close {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    font-size: 22px;
+    line-height: 1;
+    color: #1a5276;
+    cursor: pointer;
+    padding: 4px 8px;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+@media (max-width: 480px) {
+    .ios-safari-banner { font-size: 13px; padding: 10px 12px; }
+}
