@@ -1279,10 +1279,30 @@
                                 }
                             }
 
-                            <div class="mb-2">
-                                <label class="form-label" style="font-size:.82rem; color:#94a3b8;">
+                            @{  var attDisabled = _importSessionBytes == null; }
+                            <div class="mb-2" style="@(attDisabled ? "opacity:.45; pointer-events:none;" : "")">
+                                <label class="form-label d-flex align-items-center gap-1" style="font-size:.82rem; color:@(_isSoloUser ? "#a78bfa" : "#94a3b8");">
+                                    <i class="ri-attachment-line" style="color:@(_isSoloUser ? "#a78bfa" : "#94a3b8");"></i>
                                     Attachments <span class="text-muted">(optional, multiple PDFs)</span>
+                                    @if (!attDisabled)
+                                    {
+                                    <span class="att-info-trigger" tabindex="0">
+                                        <i class="ri-question-line" style="color:#a78bfa; cursor:pointer; font-size:.9rem;"></i>
+                                        <span class="att-info-tooltip">
+                                            <i class="ri-lightbulb-flash-line" style="color:#fbbf24; margin-right:4px;"></i>
+                                            Attach extra documents for this session — worksheets, notes, references. They'll be saved alongside the session file.
+                                        </span>
+                                    </span>
+                                    }
                                 </label>
+                                @if (attDisabled)
+                                {
+                                    <div style="font-size:.75rem; color:#64748b; font-style:italic;">
+                                        <i class="ri-arrow-up-line me-1"></i>Upload a session file first
+                                    </div>
+                                }
+                                else
+                                {
                                 <div class="drop-zone" id="dz-attachments"
                                      ondragover="event.preventDefault();this.classList.add('drop-zone-active');"
                                      ondragleave="this.classList.remove('drop-zone-active');"
@@ -1294,6 +1314,7 @@
                                         <i class="ri-drag-drop-line"></i> Drop PDFs here
                                     </div>
                                 </div>
+                                }
                             </div>
 
                             @if (_importAttachmentBytes.Count > 0)
@@ -6175,10 +6196,7 @@
                 await InvokeAsync(() =>
                 {
                     _bgImportDone = false;
-                    StateHasChanged();
-                    // NotifyDataChanged fires right before forceLoad navigate so any
-                    // _onDataChanged handlers on the current page are racing with the
-                    // circuit teardown — the hard reload delivers fresh data anyway.
+                    // Notify other users (singleton event) then hard-reload this user
                     DashSvc.NotifyDataChanged();
                     NavigationManager.NavigateTo("/Home", forceLoad: true);
                 });

@@ -334,3 +334,77 @@
 @media (max-width: 480px) {
     .ios-safari-banner { font-size: 13px; padding: 10px 12px; }
 }
+
+/* ───── Attachment info tooltip (solo wizard) ─────────────── */
+.att-info-trigger {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+.att-info-trigger .att-info-tooltip {
+    position: absolute;
+    left: 50%;
+    top: calc(100% + 10px);
+    transform: translateX(-70%) scale(0.85);
+    min-width: 260px;
+    max-width: 320px;
+    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+    color: #e0e7ff;
+    font-size: .78rem;
+    line-height: 1.45;
+    padding: 12px 14px;
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.45), 0 0 0 1px rgba(167,139,250,.25);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .3s cubic-bezier(.4,0,.2,1),
+                transform .3s cubic-bezier(.4,0,.2,1);
+    z-index: 100;
+    white-space: normal;
+}
+.att-info-trigger .att-info-tooltip::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: 70%;
+    transform: translateX(-50%);
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-bottom: 7px solid #1e1b4b;
+}
+.att-info-trigger:hover .att-info-tooltip {
+    opacity: 1;
+    transform: translateX(-70%) scale(1);
+    pointer-events: auto;
+}
+/* Subtle glow pulse on the question icon */
+.att-info-trigger > i {
+    transition: text-shadow .3s ease, transform .2s ease;
+}
+.att-info-trigger:hover > i {
+    text-shadow: 0 0 8px rgba(167,139,250,.6), 0 0 20px rgba(167,139,250,.3);
+    transform: scale(1.15);
+}
+/* Mobile: tooltip on tap (focus-within), reposition to avoid overflow */
+@media (max-width: 768px) {
+    .att-info-trigger > i { min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; }
+    .att-info-trigger:focus-within .att-info-tooltip,
+    .att-info-trigger:active .att-info-tooltip {
+        opacity: 1;
+        transform: translateX(-70%) scale(1);
+        pointer-events: auto;
+    }
+    .att-info-trigger .att-info-tooltip {
+        left: 0;
+        transform: translateX(0) scale(0.85);
+        min-width: 220px;
+    }
+    .att-info-trigger:hover .att-info-tooltip,
+    .att-info-trigger:focus-within .att-info-tooltip,
+    .att-info-trigger:active .att-info-tooltip {
+        transform: translateX(0) scale(1);
+    }
+    .att-info-trigger .att-info-tooltip::before {
+        left: 16px;
+    }
+}
