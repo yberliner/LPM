@@ -189,9 +189,7 @@
                                         var hrs = totalMin / 60;
                                         var mins = totalMin % 60;
                                         var durStr = hrs > 0 ? $"{hrs}h {mins:D2}m" : $"{mins}m";
-                                        var dateStr = DateTime.TryParse(s.CreatedAt, out var dt2)
-                                            ? dt2.ToString("dd/MM/yy HH:mm")
-                                            : (DateOnly.TryParse(s.SessionDate, out var d2) ? d2.ToString("dd/MM/yy") : s.SessionDate);
+                                        var dateStr = DateOnly.TryParse(s.SessionDate, out var d2) ? d2.ToString("dd/MM/yy") : s.SessionDate;
                                         var statusClass = s.CsStatus switch {
                                             "Waiting"  => "home-aud-st-waiting",
                                             "Done"     => "home-aud-st-done",
@@ -2203,9 +2201,7 @@
                         var hrs = totalMin / 60;
                         var mins = totalMin % 60;
                         var durStr = hrs > 0 ? $"{hrs}h {mins:D2}m" : $"{mins}m";
-                        var dateStr = DateTime.TryParse(s.CreatedAt, out var dt)
-                            ? dt.ToString("dd/MM/yy HH:mm")
-                            : (DateOnly.TryParse(s.SessionDate, out var d) ? d.ToString("dd/MM/yy") : s.SessionDate);
+                        var dateStr = DateOnly.TryParse(s.SessionDate, out var d) ? d.ToString("dd/MM/yy") : s.SessionDate;
                         var isDoneCs     = s.CsStatus is "Done" or "Approved";
                         var isApprovedCs = s.CsStatus == "Approved";
                         var hasActiveQ   = _sessionQuestions.TryGetValue(s.SessionId, out var qInfo);
@@ -2295,8 +2291,8 @@
         q = sortCol switch
         {
             "date" => sortAsc
-                ? q.OrderBy(s => DateTime.TryParse(s.CreatedAt, out var dt) ? dt : DateTime.MinValue).ThenBy(s => s.PcName)
-                : q.OrderByDescending(s => DateTime.TryParse(s.CreatedAt, out var dt) ? dt : DateTime.MinValue).ThenBy(s => s.PcName),
+                ? q.OrderBy(s => DateOnly.TryParse(s.SessionDate, out var dt) ? dt : DateOnly.MinValue).ThenBy(s => s.PcName)
+                : q.OrderByDescending(s => DateOnly.TryParse(s.SessionDate, out var dt) ? dt : DateOnly.MinValue).ThenBy(s => s.PcName),
             "dur" => sortAsc
                 ? q.OrderBy(s => s.TotalSeconds).ThenBy(s => s.PcName)
                 : q.OrderByDescending(s => s.TotalSeconds).ThenBy(s => s.PcName),
@@ -2325,8 +2321,8 @@
         q = _audSortCol switch
         {
             "date" => _audSortAsc
-                ? q.OrderBy(s => DateTime.TryParse(s.CreatedAt, out var dt) ? dt : DateTime.MinValue).ThenBy(s => s.PcName)
-                : q.OrderByDescending(s => DateTime.TryParse(s.CreatedAt, out var dt) ? dt : DateTime.MinValue).ThenBy(s => s.PcName),
+                ? q.OrderBy(s => DateOnly.TryParse(s.SessionDate, out var dt) ? dt : DateOnly.MinValue).ThenBy(s => s.PcName)
+                : q.OrderByDescending(s => DateOnly.TryParse(s.SessionDate, out var dt) ? dt : DateOnly.MinValue).ThenBy(s => s.PcName),
             "dur" => _audSortAsc
                 ? q.OrderBy(s => s.TotalSeconds).ThenBy(s => s.PcName)
                 : q.OrderByDescending(s => s.TotalSeconds).ThenBy(s => s.PcName),
@@ -2418,9 +2414,7 @@
                         <ul class="list-unstyled mb-2">
                             @foreach (var s in _detail.Sessions)
                             {
-                                var audSessionTime = !string.IsNullOrEmpty(s.CreatedAt) && s.CreatedAt.Contains(' ')
-                                    ? s.CreatedAt.Split(' ')[1][..5]
-                                    : "";
+                                var audSessionTime = DateOnly.TryParse(s.SessionDate, out var asd) ? asd.ToString("dd/MM/yy") : s.SessionDate;
                                 <li class="mb-1">
                                     @if (_editSessionId == s.SessionId)
                                     {
@@ -2463,7 +2457,7 @@
                                             @if (!string.IsNullOrEmpty(audSessionTime))
                                             {
                                                 <span class="text-muted small">
-                                                    <i class="ri-time-line"></i> @audSessionTime
+                                                    <i class="ri-calendar-line"></i> @audSessionTime
                                                 </span>
                                             }
                                             @if (!string.IsNullOrEmpty(s.AuditorName))
@@ -2571,15 +2565,13 @@
                             @foreach (var s in _detail.Sessions)
                             {
                                 var rev = _detail.Reviews.FirstOrDefault(r => r.SessionId == s.SessionId);
-                                var sessionTime = !string.IsNullOrEmpty(s.CreatedAt) && s.CreatedAt.Contains(' ')
-                                    ? s.CreatedAt.Split(' ')[1][..5]
-                                    : "";
+                                var sessionTime = DateOnly.TryParse(s.SessionDate, out var csd) ? csd.ToString("dd/MM/yy") : s.SessionDate;
                                 <li class="mb-2 border rounded p-2">
                                     <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
                                         @if (!string.IsNullOrEmpty(sessionTime))
                                         {
                                             <span class="text-muted small">
-                                                <i class="ri-time-line"></i> @sessionTime
+                                                <i class="ri-calendar-line"></i> @sessionTime
                                             </span>
                                         }
                                         <span class="fw-semibold small" style="color:#a78bfa;">

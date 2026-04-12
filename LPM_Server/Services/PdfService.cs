@@ -1699,7 +1699,7 @@ public class PdfService
         mb.Elements.Add(new PdfSharpCore.Pdf.PdfReal(ph));
         pg.Elements["/MediaBox"] = mb;
 
-        using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(pg);
+        var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(pg);
         double y = margin;
 
         // Draws text segment-by-segment: Hebrew chars with Hebrew font, everything else with Latin font.
@@ -1791,15 +1791,35 @@ public class PdfService
         FieldPair("PC's Grade:  ", grade,         "Session Length:  ", sessionLength); y += fieldH + 6 * scale;
         FieldPair("Admin Time:  ", adminTime,     "Total TA:  ",       totalTa);       y += fieldH + 12 * scale;
 
-        // ── Table header ──
+        // ── Table header (extracted for reuse on continuation pages) ──
         double hdrH = 38 * scale;
-        gfx.DrawRectangle(bDarkBg, R(x0, y, cw, hdrH));
-        gfx.DrawString("Process",              fHdr,   PdfSharpCore.Drawing.XBrushes.White, R(x0 + pad, y, procW - 2*pad, hdrH), fmtCL);
-        gfx.DrawString("Time",                 fHdr,   PdfSharpCore.Drawing.XBrushes.White, R(x1,       y, timeW,         hdrH), fmtCC);
-        gfx.DrawString("Tone Arm",             fSmHdr, PdfSharpCore.Drawing.XBrushes.White, R(x2,       y,         toneW, hdrH / 2), fmtCC);
-        gfx.DrawString("Reads",                fSmHdr, PdfSharpCore.Drawing.XBrushes.White, R(x2, y + hdrH/2,     toneW, hdrH / 2), fmtCC);
-        gfx.DrawString("Results and Comments", fHdr,   PdfSharpCore.Drawing.XBrushes.White, R(x3 + pad, y, resW  - 2*pad, hdrH), fmtCL);
-        y += hdrH;
+        void DrawColumnHeader()
+        {
+            gfx.DrawRectangle(bDarkBg, R(x0, y, cw, hdrH));
+            gfx.DrawString("Process",              fHdr,   PdfSharpCore.Drawing.XBrushes.White, R(x0 + pad, y, procW - 2*pad, hdrH), fmtCL);
+            gfx.DrawString("Time",                 fHdr,   PdfSharpCore.Drawing.XBrushes.White, R(x1,       y, timeW,         hdrH), fmtCC);
+            gfx.DrawString("Tone Arm",             fSmHdr, PdfSharpCore.Drawing.XBrushes.White, R(x2,       y,         toneW, hdrH / 2), fmtCC);
+            gfx.DrawString("Reads",                fSmHdr, PdfSharpCore.Drawing.XBrushes.White, R(x2, y + hdrH/2,     toneW, hdrH / 2), fmtCC);
+            gfx.DrawString("Results and Comments", fHdr,   PdfSharpCore.Drawing.XBrushes.White, R(x3 + pad, y, resW  - 2*pad, hdrH), fmtCL);
+            y += hdrH;
+        }
+
+        void StartNewPage()
+        {
+            gfx.Dispose();
+            var newPg = doc.AddPage();
+            var newMb = new PdfSharpCore.Pdf.PdfArray();
+            newMb.Elements.Add(new PdfSharpCore.Pdf.PdfReal(0));
+            newMb.Elements.Add(new PdfSharpCore.Pdf.PdfReal(0));
+            newMb.Elements.Add(new PdfSharpCore.Pdf.PdfReal(pw));
+            newMb.Elements.Add(new PdfSharpCore.Pdf.PdfReal(ph));
+            newPg.Elements["/MediaBox"] = newMb;
+            gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(newPg);
+            y = margin;
+            DrawColumnHeader();
+        }
+
+        DrawColumnHeader();
 
         // ── Normalize text for PDF: map smart/Unicode chars to ASCII equivalents ──
         static string NormalizeForPdf(string? text)
@@ -1920,16 +1940,40 @@ public class PdfService
             return result;
         }
 
-        // ── Table rows (grouped by ARF table) ──
+        // ── Table rows (grouped by ARF table, with multi-page support) ──
         double lineH    = fCell.Size * 1.4;
         double minRowH  = 30 * scale;
+        double sepFullH = 4 * scale + 22 * scale;
         var penSep = new PdfSharpCore.Drawing.XPen(PdfSharpCore.Drawing.XColor.FromArgb(0x33, 0x33, 0x33), 1.5);
         var bSepBg = new PdfSharpCore.Drawing.XSolidBrush(PdfSharpCore.Drawing.XColor.FromArgb(0xe2, 0xe8, 0xf0));
         var fSepLbl = MakeFont(11, bold: true);
+        double pageBottom = ph - margin;
+        double pageContentStartY = y;
 
         for (int gi = 0; gi < rowGroups.Count; gi++)
         {
-            // Draw separator between ARF tables (skip before the first)
+            // ── Pre-measure this entire ARF group ──
+            double groupH = gi > 0 ? sepFullH : 0;
+            var preRows = new List<(List<(string Visual, bool IsRtl)> Proc,
+                                    List<(string Visual, bool IsRtl)> Res, double H)>();
+            foreach (var r in rowGroups[gi])
+            {
+                var procLines = WrapText(NormalizeForPdf(r.Process), procW - 2 * pad);
+                var resLines  = WrapText(NormalizeForPdf(r.Results),  resW  - 2 * pad);
+                int lineCount = Math.Max(procLines.Count, resLines.Count);
+                double rowH   = Math.Max(minRowH, lineCount * lineH + 2 * pad);
+                preRows.Add((procLines, resLines, rowH));
+                groupH += rowH;
+            }
+
+            // ── Page break if this ARF group doesn't fit and page has content ──
+            if (y + groupH > pageBottom && y > pageContentStartY)
+            {
+                StartNewPage();
+                pageContentStartY = y;
+            }
+
+            // ── Draw separator between ARF tables (skip before the first) ──
             if (gi > 0)
             {
                 double sepH = 22 * scale;
@@ -1943,13 +1987,12 @@ public class PdfService
                 y += sepH;
             }
 
+            // ── Draw rows using pre-computed layout ──
             bool alt = false;
-            foreach (var r in rowGroups[gi])
+            for (int ri = 0; ri < rowGroups[gi].Count; ri++)
             {
-                var procLines = WrapText(NormalizeForPdf(r.Process), procW - 2 * pad);
-                var resLines  = WrapText(NormalizeForPdf(r.Results),  resW  - 2 * pad);
-                int lineCount = Math.Max(procLines.Count, resLines.Count);
-                double rowH   = Math.Max(minRowH, lineCount * lineH + 2 * pad);
+                var r = rowGroups[gi][ri];
+                var (procLines, resLines, rowH) = preRows[ri];
 
                 if (alt) gfx.DrawRectangle(bAltRow, R(x0, y, cw, rowH));
                 gfx.DrawLine(penBdr, x0, y + rowH, x0 + cw, y + rowH);
@@ -1979,12 +2022,19 @@ public class PdfService
         }
 
         // ── TA Range ──
+        double taBlockH = 12 * scale + fieldH;
+        if (y + taBlockH > pageBottom && y > pageContentStartY)
+        {
+            StartNewPage();
+            pageContentStartY = y;
+        }
         y += 12 * scale;
         double taLW = gfx.MeasureString("TA Range:  ", fLabel).Width;
         gfx.DrawString("TA Range:  ", fLabel, bGray, R(x0,        y, taLW,      fieldH), fmtCL);
         gfx.DrawString(taRange,       fValue, bDark, R(x0 + taLW, y, cw - taLW, fieldH), fmtCL);
         y += fieldH;
 
+        gfx.Dispose();
         using var ms = new System.IO.MemoryStream();
         doc.Save(ms);
         return ms.ToArray();
