@@ -2764,19 +2764,19 @@ public class FolderService
         catch { }
     }
 
-    public bool SectionFileExistsAtPath(int pcId, string relativeFolder, string fileName, bool solo = false)
+    public bool SectionFileExistsAtPath(int pcId, string relativeFolder, string fileName, bool solo = false, bool enforcePdf = true)
     {
         var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return false;
         var targetDir = SafeResolvePath(folder, relativeFolder);
         if (targetDir == null) return false;
         var safeName = SanitizeName(fileName);
-        if (!safeName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        if (enforcePdf && !safeName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
             safeName += ".pdf";
         return File.Exists(Path.Combine(targetDir, safeName));
     }
 
-    public bool SaveSectionFileToPath(int pcId, string relativeFolder, string fileName, byte[] fileBytes, bool overwrite = false, bool solo = false)
+    public bool SaveSectionFileToPath(int pcId, string relativeFolder, string fileName, byte[] fileBytes, bool overwrite = false, bool solo = false, bool enforcePdf = true)
     {
         var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return false;
@@ -2784,7 +2784,7 @@ public class FolderService
         if (targetDir == null) return false;
         Directory.CreateDirectory(targetDir);
         var safeName = SanitizeName(fileName);
-        if (!safeName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        if (enforcePdf && !safeName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
             safeName += ".pdf";
         var fullPath = Path.Combine(targetDir, safeName);
         if (File.Exists(fullPath))

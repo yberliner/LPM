@@ -481,7 +481,7 @@
 
     @* ── New menu popover ── *@
     @* Hidden file input — always in DOM, triggered programmatically *@
-    <InputFile id="pcf-upload-input" accept=".pdf,.doc,.docx" multiple OnChange="NewMenuUploadFile"
+    <InputFile id="pcf-upload-input" multiple OnChange="NewMenuUploadFile"
                style="display:none;" />
     @* Hidden file input for "Insert file above" in program pages *@
     <InputFile id="pcf-insert-input" accept=".pdf,.doc,.docx" OnChange="OnInsertFileSelected"
@@ -3045,7 +3045,7 @@
 
     // Upload overwrite confirmation
     bool _showOverwriteConfirm;
-    List<(string Name, byte[] Data)> _uploadPendingFiles = [];
+    List<(string Name, byte[] Data, bool EnforcePdf)> _uploadPendingFiles = [];
     List<string> _uploadDuplicateNames = [];
 
     // Doc→PDF conversion toasts
@@ -6226,6 +6226,7 @@
         var parentFolder = _newMenuParentFolder;
 
         var pdfsToSave = new List<(string Name, byte[] Data)>();
+        var rawToSave = new List<(string Name, byte[] Data)>();
 
         foreach (var file in e.GetMultipleFiles(20))
         {
@@ -6244,24 +6245,43 @@
                 var capturedParent = parentFolder;
                 _ = RunConversionAsync(toast, capturedBytes, capturedName, capturedParent);
             }
-            else
+            else if (ext.Equals(".pdf", StringComparison.OrdinalIgnoreCase))
             {
                 pdfsToSave.Add((file.Name, rawBytes));
             }
+            else
+            {
+                rawToSave.Add((file.Name, rawBytes));
+            }
         }
 
-        // Handle plain PDF uploads synchronously (existing behaviour)
+        // Handle plain PDF uploads (enforcePdf = true)
         foreach (var (name, data) in pdfsToSave)
         {
             if (FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, name, Solo))
             {
-                _uploadPendingFiles.Add((name, data));
+                _uploadPendingFiles.Add((name, data, true));
                 _uploadDuplicateNames.Add(name);
             }
             else
             {
                 Console.WriteLine($"[PcFolder] Uploaded file '{name}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
                 FolderSvc.SaveSectionFileToPath(PcId, parentFolder, name, data, solo: Solo);
+            }
+        }
+
+        // Handle non-PDF/non-convertible files as-is (enforcePdf = false)
+        foreach (var (name, data) in rawToSave)
+        {
+            if (FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, name, Solo, enforcePdf: false))
+            {
+                _uploadPendingFiles.Add((name, data, false));
+                _uploadDuplicateNames.Add(name);
+            }
+            else
+            {
+                Console.WriteLine($"[PcFolder] Uploaded file '{name}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
+                FolderSvc.SaveSectionFileToPath(PcId, parentFolder, name, data, solo: Solo, enforcePdf: false);
             }
         }
 
@@ -6314,10 +6334,10 @@
 
     void ConfirmOverwrite()
     {
-        foreach (var (name, data) in _uploadPendingFiles)
+        foreach (var (name, data, enforcePdf) in _uploadPendingFiles)
         {
             Console.WriteLine($"[PcFolder] Overwriting file '{name}' in '{_newMenuParentFolder}' by '{_userName}' — PC {PcId}");
-            FolderSvc.SaveSectionFileToPath(PcId, _newMenuParentFolder, name, data, overwrite: true, solo: Solo);
+            FolderSvc.SaveSectionFileToPath(PcId, _newMenuParentFolder, name, data, overwrite: true, solo: Solo, enforcePdf: enforcePdf);
         }
         _uploadPendingFiles.Clear();
         _uploadDuplicateNames.Clear();
