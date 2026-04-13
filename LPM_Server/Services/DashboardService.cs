@@ -2030,7 +2030,7 @@ public class DashboardService
             SELECT cr.CsSalaryCentsPerHour
             FROM cs_reviews cr
             JOIN sess_sessions s ON s.SessionId = cr.SessionId
-            WHERE s.PcId = @pc AND cr.Status = 'Done'
+            WHERE s.PcId = @pc AND cr.Status IN ('Done','Approved') AND cr.CsSalaryCentsPerHour > 0
             ORDER BY s.SessionDate DESC, s.SequenceInDay DESC
             LIMIT 1";
         cmd.Parameters.AddWithValue("@pc", pcId);
