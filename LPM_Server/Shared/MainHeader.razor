@@ -3094,6 +3094,7 @@
                                         <th style="width:100px;">Date</th>
                                         <th style="width:80px;">Duration</th>
                                         <th style="width:75px;">Sess Free</th>
+                                        <th style="width:90px;">CS</th>
                                         <th style="width:155px;">CS Free/Bill</th>
                                         <th style="width:85px;">CS Status</th>
                                     </tr>
@@ -3114,6 +3115,7 @@
                                                 @if (s.IsFreeSession) { <span class="badge bg-success" style="font-size:.7rem;">Yes</span> }
                                                 else { <span class="badge bg-secondary" style="font-size:.7rem;">No</span> }
                                             </td>
+                                            <td style="font-size:.8rem;color:#cbd5e1;">@(s.CsName ?? "—")</td>
                                             <td @onclick:stopPropagation="true">
                                                 @if (hasReview)
                                                 {

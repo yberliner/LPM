@@ -61,7 +61,7 @@ public record SessionListItem(int SessionId, string Name, string SessionDate,
     string VerifiedStatus, bool IsImported);
 public record SoloSessionItem(int SessionId, int PcId, string PcName, string SessionDate,
     int LengthSec, int AdminSec, bool IsFreeSession,
-    int? CsReviewId, string? CsNotes, string? CsStatus);
+    int? CsReviewId, string? CsNotes, string? CsStatus, string? CsName);
 public record SessionDetailModel(
     int SessionId, int PcId, int? AuditorId, string AuditorName,
     string SessionDate, int SequenceInDay, int LengthSeconds, int AdminSeconds,
@@ -3432,10 +3432,12 @@ public class DashboardService
             SELECT s.SessionId, s.PcId,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS PcName,
                    s.SessionDate, s.LengthSeconds, s.AdminSeconds, s.IsFreeSession,
-                   cr.CsReviewId, cr.Notes, cr.Status
+                   cr.CsReviewId, cr.Notes, cr.Status,
+                   TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS CsName
             FROM sess_sessions s
             JOIN core_persons p ON p.PersonId = s.PcId
             LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
+            LEFT JOIN core_persons pc ON pc.PersonId = cr.CsId
             WHERE {where}
             ORDER BY s.SessionDate DESC, p.FirstName";
 
@@ -3447,7 +3449,8 @@ public class DashboardService
                 r.GetInt32(4), r.GetInt32(5), r.GetInt32(6) != 0,
                 r.IsDBNull(7) ? null : r.GetInt32(7),
                 r.IsDBNull(8) ? null : r.GetString(8),
-                r.IsDBNull(9) ? null : r.GetString(9)));
+                r.IsDBNull(9) ? null : r.GetString(9),
+                r.IsDBNull(10) ? null : r.GetString(10)));
         return list;
     }
 
