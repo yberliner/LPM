@@ -2344,10 +2344,10 @@ public class FolderService
                 RedirectStandardError = true
             };
             process.StartInfo.ArgumentList.Add("-sDEVICE=pdfwrite");
-            process.StartInfo.ArgumentList.Add("-dCompatibilityLevel=1.4");
             process.StartInfo.ArgumentList.Add("-dNOPAUSE");
             process.StartInfo.ArgumentList.Add("-dQUIET");
             process.StartInfo.ArgumentList.Add("-dBATCH");
+            process.StartInfo.ArgumentList.Add("-dPreserveAnnots=true");
             process.StartInfo.ArgumentList.Add("-dDetectDuplicateImages=true");
             process.StartInfo.ArgumentList.Add("-dCompressFonts=true");
             process.StartInfo.ArgumentList.Add("-dDownsampleColorImages=true");
@@ -2378,8 +2378,36 @@ public class FolderService
             if (process.ExitCode == 0 && File.Exists(tempOutput))
             {
                 var shrunkSize = new FileInfo(tempOutput).Length;
-                if (shrunkSize > 0 && shrunkSize < originalSize)
+                var savingPct = 100 - (shrunkSize * 100 / Math.Max(1, originalSize));
+
+                // Only accept if at least 30% smaller
+                if (shrunkSize > 0 && savingPct >= 30)
                 {
+                    // Validate page count: shrunk PDF must have the same number of pages
+                    try
+                    {
+                        int origPages, shrunkPages;
+                        using (var msOrig = new MemoryStream(File.ReadAllBytes(pdfPath)))
+                        using (var docOrig = PdfSharpCore.Pdf.IO.PdfReader.Open(msOrig, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.InformationOnly))
+                            origPages = docOrig.PageCount;
+                        using (var msShrunk = new MemoryStream(File.ReadAllBytes(tempOutput)))
+                        using (var docShrunk = PdfSharpCore.Pdf.IO.PdfReader.Open(msShrunk, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.InformationOnly))
+                            shrunkPages = docShrunk.PageCount;
+
+                        if (origPages != shrunkPages)
+                        {
+                            Console.WriteLine($"[PDF Shrink] Page count mismatch on '{Path.GetFileName(pdfPath)}': original={origPages}, shrunk={shrunkPages} — keeping original");
+                            File.Delete(tempOutput);
+                            return (false, 0, 0);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[PDF Shrink] Page count validation failed on '{Path.GetFileName(pdfPath)}': {ex.Message} — keeping original");
+                        File.Delete(tempOutput);
+                        return (false, 0, 0);
+                    }
+
                     File.Delete(pdfPath);
                     File.Move(tempOutput, pdfPath);
                     return (true, originalSize / 1024, shrunkSize / 1024);
