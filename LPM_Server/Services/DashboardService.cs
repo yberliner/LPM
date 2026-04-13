@@ -59,6 +59,9 @@ public record PermissionRequest(int Id, int UserId, string AuditorName, int PcId
 public record SessionListItem(int SessionId, string Name, string SessionDate,
     string AuditorName, int LengthSec, int AdminSec, bool IsFree,
     string VerifiedStatus, bool IsImported);
+public record SoloSessionItem(int SessionId, int PcId, string PcName, string SessionDate,
+    int LengthSec, int AdminSec, bool IsFreeSession,
+    int? CsReviewId, string? CsNotes, string? CsStatus);
 public record SessionDetailModel(
     int SessionId, int PcId, int? AuditorId, string AuditorName,
     string SessionDate, int SequenceInDay, int LengthSeconds, int AdminSeconds,
@@ -3391,6 +3394,43 @@ public class DashboardService
     }
 
     // ── Session Manager ─────────────────────────────────────────────────────
+
+    public List<SoloSessionItem> GetSoloSessionsForManager(int? daysBack)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+
+        var where = "s.AuditorId IS NULL AND COALESCE(s.IsImported, 0) = 0";
+        if (daysBack.HasValue)
+        {
+            where += " AND s.SessionDate >= @cutoff";
+            cmd.Parameters.AddWithValue("@cutoff",
+                DateOnly.FromDateTime(DateTime.Today.AddDays(-daysBack.Value)).ToString("yyyy-MM-dd"));
+        }
+
+        cmd.CommandText = $@"
+            SELECT s.SessionId, s.PcId,
+                   TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS PcName,
+                   s.SessionDate, s.LengthSeconds, s.AdminSeconds, s.IsFreeSession,
+                   cr.CsReviewId, cr.Notes, cr.Status
+            FROM sess_sessions s
+            JOIN core_persons p ON p.PersonId = s.PcId
+            LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
+            WHERE {where}
+            ORDER BY s.SessionDate DESC, p.FirstName";
+
+        var list = new List<SoloSessionItem>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new SoloSessionItem(
+                r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3),
+                r.GetInt32(4), r.GetInt32(5), r.GetInt32(6) != 0,
+                r.IsDBNull(7) ? null : r.GetInt32(7),
+                r.IsDBNull(8) ? null : r.GetString(8),
+                r.IsDBNull(9) ? null : r.GetString(9)));
+        return list;
+    }
 
     public (List<SessionListItem> Items, int TotalCount) GetSessionsForPcPaged(int pcId, int page, int pageSize = 50)
     {

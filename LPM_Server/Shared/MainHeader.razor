@@ -2921,16 +2921,38 @@
         {
             @* ── List View ── *@
             <div class="sm-body">
-                @* PC Selector *@
+                @* Mode toggle + PC Selector *@
                 <div class="sm-pc-bar">
-                    <label class="sm-pc-label">PC:</label>
-                    <select class="form-select form-select-sm sm-pc-select" value="@_smPcId" @onchange="SmOnPcChanged">
-                        <option value="0">— Select PC —</option>
-                        @foreach (var pc in _actionAllPcs)
-                        {
-                            <option value="@pc.PcId">@pc.FullName</option>
-                        }
-                    </select>
+                    @if (_smSoloMode)
+                    {
+                        <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" @onclick="SmToggleSoloMode">
+                            <i class="ri-arrow-left-line"></i> PC View
+                        </button>
+                        <div class="btn-group btn-group-sm ms-auto" role="group">
+                            <button type="button" class="btn @(_smSoloDays == 3 ? "btn-primary" : "btn-outline-secondary")"
+                                    @onclick="() => SmSoloDaysChanged(3)">3d</button>
+                            <button type="button" class="btn @(_smSoloDays == 7 ? "btn-primary" : "btn-outline-secondary")"
+                                    @onclick="() => SmSoloDaysChanged(7)">7d</button>
+                            <button type="button" class="btn @(_smSoloDays == 30 ? "btn-primary" : "btn-outline-secondary")"
+                                    @onclick="() => SmSoloDaysChanged(30)">30d</button>
+                            <button type="button" class="btn @(_smSoloDays == 0 ? "btn-primary" : "btn-outline-secondary")"
+                                    @onclick="() => SmSoloDaysChanged(0)">ALL</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <label class="sm-pc-label">PC:</label>
+                        <select class="form-select form-select-sm sm-pc-select" value="@_smPcId" @onchange="SmOnPcChanged">
+                            <option value="0">— Select PC —</option>
+                            @foreach (var pc in _actionAllPcs)
+                            {
+                                <option value="@pc.PcId">@pc.FullName</option>
+                            }
+                        </select>
+                        <button class="btn btn-sm btn-outline-warning ms-auto d-flex align-items-center gap-1" @onclick="SmToggleSoloMode">
+                            <i class="ri-user-voice-line"></i> Solo
+                        </button>
+                    }
                 </div>
 
                 @if (!string.IsNullOrEmpty(_smSuccess))
@@ -2940,7 +2962,81 @@
                     </div>
                 }
 
-                @if (_smPcId > 0 && _smList.Count == 0)
+                @if (_smSoloMode)
+                {
+                    @if (_smSoloList.Count == 0)
+                    {
+                        <div class="sm-empty"><i class="ri-user-voice-line"></i><div>No solo sessions found</div></div>
+                    }
+                    else
+                    {
+                        <div class="sm-table-wrap">
+                            <table class="sm-table">
+                                <thead>
+                                    <tr>
+                                        <th>PC Name</th>
+                                        <th style="width:100px;">Date</th>
+                                        <th style="width:80px;">Duration</th>
+                                        <th style="width:75px;">Sess Free</th>
+                                        <th style="width:155px;">CS Free/Bill</th>
+                                        <th style="width:85px;">CS Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var s in _smSoloList)
+                                    {
+                                        var hasReview = s.CsReviewId.HasValue;
+                                        var hasEdit = hasReview && _smSoloEdits.ContainsKey(s.CsReviewId!.Value);
+                                        var displayNotes = hasEdit ? _smSoloEdits[s.CsReviewId!.Value] : (s.CsNotes ?? "");
+                                        var warnRow = hasReview && displayNotes != "Free" && displayNotes != "Bill";
+
+                                        <tr class="sm-row @(warnRow ? "sm-solo-warn" : "")" @onclick="() => SmOpenSoloDetail(s)">
+                                            <td>@s.PcName</td>
+                                            <td>@s.SessionDate</td>
+                                            <td>@FormatSec(s.LengthSec + s.AdminSec)</td>
+                                            <td>
+                                                @if (s.IsFreeSession) { <span class="badge bg-success" style="font-size:.7rem;">Yes</span> }
+                                                else { <span class="badge bg-secondary" style="font-size:.7rem;">No</span> }
+                                            </td>
+                                            <td @onclick:stopPropagation="true">
+                                                @if (hasReview)
+                                                {
+                                                    <div class="d-flex align-items-center gap-1">
+                                                        <select class="form-select form-select-sm sm-solo-select"
+                                                                value="@displayNotes"
+                                                                @onchange="e => SmSoloNoteChanged(s.CsReviewId!.Value, e.Value?.ToString())">
+                                                            <option value="">—</option>
+                                                            <option value="Free">Free</option>
+                                                            <option value="Bill">Bill</option>
+                                                        </select>
+                                                        @if (hasEdit)
+                                                        {
+                                                            <button class="btn btn-sm btn-success sm-solo-save-btn"
+                                                                    @onclick="() => SmSaveSoloNotes(s.CsReviewId!.Value)" title="Save">
+                                                                <i class="ri-check-line"></i>
+                                                            </button>
+                                                        }
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted" style="font-size:.72rem;font-style:italic;">No review</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (hasReview)
+                                                {
+                                                    <span class="badge @SmStatusBadge(s.CsStatus ?? "")">@(s.CsStatus ?? "—")</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                }
+                else if (_smPcId > 0 && _smList.Count == 0)
                 {
                     <div class="sm-empty"><i class="ri-inbox-line"></i><div>No sessions found</div></div>
                 }
@@ -2977,7 +3073,7 @@
                     </div>
                 }
             </div>
-            @if (_smPcId > 0 && _smTotal > 50)
+            @if (!_smSoloMode && _smPcId > 0 && _smTotal > 50)
             {
                 <div class="sm-pager">
                     <button class="btn btn-sm btn-outline-secondary" disabled="@(_smPage == 0)" @onclick="() => SmLoadPage(_smPage - 1)">
@@ -3361,6 +3457,16 @@
     }
     @@keyframes smSaveFadeUp { 0% { opacity:0; transform:translateY(8px); } 100% { opacity:1; transform:translateY(0); } }
 
+    /* Solo sessions view */
+    .sm-solo-warn { background: #fef3c7 !important; }
+    :root[data-theme-mode="dark"] .sm-solo-warn { background: rgba(217,159,42,.18) !important; }
+    .sm-solo-select { width: 80px; padding: 2px 6px; font-size: .78rem; height: 28px; }
+    .sm-solo-save-btn {
+        padding: 2px 6px; font-size: .72rem; line-height: 1;
+        min-width: 28px; height: 28px;
+        display: flex; align-items: center; justify-content: center;
+    }
+
     @@media (max-width: 768px) {
         .sm-modal { width: 98vw; max-height: 96vh; border-radius: 12px; }
         .sm-detail-grid { grid-template-columns: 1fr; }
@@ -3370,6 +3476,7 @@
         .sm-field input, .sm-field select, .sm-field textarea { font-size: 16px; }
         .sm-del-card { padding: 20px 20px; margin: 0 10px; }
         .sm-pc-select { max-width: 100%; }
+        .sm-solo-select { font-size: 16px; }
     }
     @@media (max-width: 480px) {
         .sm-modal { border-radius: 8px; }
@@ -4868,6 +4975,11 @@
     string _smDelInput = "";
     bool _smDeleting;
     string _smDelError = "";
+    // Session Manager solo view
+    bool _smSoloMode;
+    int _smSoloDays = 7;
+    List<SoloSessionItem> _smSoloList = [];
+    Dictionary<int, string> _smSoloEdits = [];
 
     // ── Upload Front Cover state ──
     bool             _showUploadFrontCover;
@@ -6439,6 +6551,7 @@ string _actionPcSearch = "";
         _smPcId = 0; _smPcName = ""; _smPage = 0; _smTotal = 0;
         _smList = []; _smDetail = null; _smError = ""; _smSuccess = "";
         _smCsStatuses = DashSvc.GetCsStatusLabels();
+        _smSoloMode = false; _smSoloDays = 7; _smSoloList = []; _smSoloEdits = [];
         _smOpen = true;
     }
 
@@ -6494,7 +6607,8 @@ string _actionPcSearch = "";
     {
         _smDetail = null; _smError = "";
         _smDelStage1 = false; _smDelStage2 = false;
-        SmLoadPage(_smPage);
+        if (_smSoloMode) SmLoadSoloSessions();
+        else SmLoadPage(_smPage);
     }
 
     async Task SmSave()
@@ -6553,7 +6667,8 @@ string _actionPcSearch = "";
             _smSaveSuccess = false;
             _smDetail = null;
             _smError = "";
-            SmLoadPage(_smPage);
+            if (_smSoloMode) SmLoadSoloSessions();
+            else SmLoadPage(_smPage);
             StateHasChanged();
         }
         catch (Exception ex) { _smError = $"Save failed: {ex.Message}"; _smSaving = false; }
@@ -6588,10 +6703,14 @@ string _actionPcSearch = "";
             _smDetail = null;
             _smDelStage1 = false; _smDelStage2 = false; _smDelInput = "";
             _smSuccess = $"Session #{sessId} deleted.";
-            SmLoadPage(_smPage);
-            // If current page is now empty and not page 0, go back one page
-            if (_smList.Count == 0 && _smPage > 0)
-                SmLoadPage(_smPage - 1);
+            if (_smSoloMode)
+                SmLoadSoloSessions();
+            else
+            {
+                SmLoadPage(_smPage);
+                if (_smList.Count == 0 && _smPage > 0)
+                    SmLoadPage(_smPage - 1);
+            }
             DashSvc.NotifyDataChanged();
         }
         catch (Exception ex) { _smDelError = $"Delete failed: {ex.Message}"; }
@@ -6604,6 +6723,55 @@ string _actionPcSearch = "";
         "Draft" => "bg-secondary",
         _ => "bg-warning text-dark"
     };
+
+    // ── Solo sessions methods ──
+
+    void SmToggleSoloMode()
+    {
+        _smSoloMode = !_smSoloMode;
+        if (_smSoloMode) SmLoadSoloSessions();
+        else { _smSoloList = []; _smSoloEdits = []; }
+    }
+
+    void SmLoadSoloSessions()
+    {
+        int? days = _smSoloDays == 0 ? null : _smSoloDays;
+        _smSoloList = DashSvc.GetSoloSessionsForManager(days);
+        _smSoloEdits = [];
+    }
+
+    void SmSoloDaysChanged(int days)
+    {
+        _smSoloDays = days;
+        SmLoadSoloSessions();
+    }
+
+    void SmOpenSoloDetail(SoloSessionItem item)
+    {
+        _smPcId = item.PcId;
+        _smPcName = item.PcName;
+        SmOpenDetail(item.SessionId);
+    }
+
+    void SmSoloNoteChanged(int csReviewId, string? val)
+    {
+        var v = val ?? "";
+        var orig = _smSoloList.FirstOrDefault(s => s.CsReviewId == csReviewId)?.CsNotes ?? "";
+        if (v == orig) _smSoloEdits.Remove(csReviewId);
+        else _smSoloEdits[csReviewId] = v;
+    }
+
+    void SmSaveSoloNotes(int csReviewId)
+    {
+        if (!_smSoloEdits.TryGetValue(csReviewId, out var val)) return;
+        var notes = string.IsNullOrEmpty(val) ? null : val;
+        DashSvc.UpdateCsReviewNotes(csReviewId, notes);
+        var idx = _smSoloList.FindIndex(s => s.CsReviewId == csReviewId);
+        if (idx >= 0)
+            _smSoloList[idx] = _smSoloList[idx] with { CsNotes = notes };
+        _smSoloEdits.Remove(csReviewId);
+        DashSvc.NotifyDataChanged();
+    }
 
     static string FormatSec(int sec)
     {
