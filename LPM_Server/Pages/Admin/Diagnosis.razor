@@ -2711,7 +2711,8 @@
             ("sys_activity_log",     "ri-history-line",        "ORDER BY Id DESC",   null),
             ("sys_financial_config", "ri-money-dollar-circle-line", "ORDER BY Id",   null),
             ("sys_passkeys",         "ri-fingerprint-line",    "ORDER BY Id DESC",   null),
-            ("sys_magic_links",      "ri-mail-send-line",      "ORDER BY Id DESC",   null)));
+            ("sys_magic_links",      "ri-mail-send-line",      "ORDER BY Id DESC",   null),
+            ("sys_file_audit",       "ri-history-line",         "ORDER BY Id DESC",   null)));
 
         var tLkp = Task.Run(() => Group(
             ("lkp_grades",           "ri-medal-line",     "ORDER BY SortOrder",       null),
@@ -2981,7 +2982,7 @@
             "cs_work_log", "cs_reviews", "cs_case_supervisors",
             "sys_weekly_remarks", "sys_auditor_pc_permissions",
             "sys_staff_messages", "sys_staff_pc_list", "sys_trusted_devices",
-            "sys_passkeys", "sys_magic_links",
+            "sys_passkeys", "sys_magic_links", "sys_file_audit",
             "core_user_roles", "core_users", "core_pcs", "core_persons",
         })
         {

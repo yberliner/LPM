@@ -8,6 +8,7 @@
 @inject LPM.Services.MessageNotifier MsgNotifier
 @inject LPM.Services.UserActivityService ActivitySvc
 @inject LPM.Services.FolderService FolderSvc
+@inject LPM.Services.FileAuditService FileAuditSvc
 @inject LPM.Services.CompletionService CompletionSvc
 @inject PdfService PdfSvc
 @using LPM._Spk
@@ -467,6 +468,12 @@
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenSessionManager">
                                             <i class="ri-database-2-line" style="color:#f97316;"></i>@LS.T("actions.sessionManager")
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
+                                           @onclick="OpenFileHistory">
+                                            <i class="ri-history-line" style="color:#64748b;"></i>File History
                                         </a>
                                     </li>
                                     <li><hr class="dropdown-divider" /></li>
@@ -2903,7 +2910,14 @@
     <div class="sm-overlay" @onclick="() => _smOpen = false"></div>
     <div class="sm-modal">
         <div class="sm-header">
-            @if (_smDetail != null)
+            @if (_smAddMode)
+            {
+                <button class="sm-back-btn" @onclick="SmCancelAdd" title="Back to list">
+                    <i class="ri-arrow-left-line"></i>
+                </button>
+                <span><i class="ri-add-circle-line me-2"></i>Add Session</span>
+            }
+            else if (_smDetail != null)
             {
                 <button class="sm-back-btn" @onclick="SmBackToList" title="Back to list">
                     <i class="ri-arrow-left-line"></i>
@@ -2917,7 +2931,84 @@
             <button class="btn-close btn-close-white btn-close-sm ms-auto" @onclick="() => _smOpen = false"></button>
         </div>
 
-        @if (_smDetail == null)
+        @if (_smAddMode)
+        {
+            @* ── Add Session View ── *@
+            <div class="sm-body">
+                @if (!string.IsNullOrEmpty(_smAddError))
+                {
+                    <div class="alert alert-danger py-1 px-3 mb-2" style="font-size:.82rem;">@_smAddError</div>
+                }
+
+                <div class="sm-card">
+                    <div class="sm-field">
+                        <label>PC</label>
+                        <select class="form-select form-select-sm" @bind="_smAddPcId">
+                            <option value="0">— Select PC —</option>
+                            @foreach (var pc in _actionAllPcs)
+                            {
+                                <option value="@pc.PcId">@pc.FullName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="sm-field-row">
+                        <div class="sm-field">
+                            <label>Auditor</label>
+                            <select class="form-select form-select-sm" @bind="_smAddAuditorId">
+                                <option value="0">Solo (no auditor)</option>
+                                @foreach (var s in _smAddAuditorList)
+                                {
+                                    <option value="@s.PersonId">@s.FullName</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="sm-field">
+                            <label>CS</label>
+                            <select class="form-select form-select-sm" @bind="_smAddCsId">
+                                <option value="-1">None</option>
+                                @foreach (var s in _smCsList)
+                                {
+                                    <option value="@s.PersonId">@s.FullName</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <div class="sm-field">
+                        <label>Session Date</label>
+                        <input type="date" class="form-control form-control-sm" @bind="_smAddDate" />
+                    </div>
+                    <div class="sm-field-row">
+                        <div class="sm-field">
+                            <label>Session (min)</label>
+                            <input type="number" class="form-control form-control-sm" @bind="_smAddLenMin" min="0" />
+                        </div>
+                        <div class="sm-field">
+                            <label>Admin (min)</label>
+                            <input type="number" class="form-control form-control-sm" @bind="_smAddAdminMin" min="0" />
+                        </div>
+                    </div>
+                    <div class="sm-field">
+                        <label class="d-flex align-items-center gap-2">
+                            <input type="checkbox" class="form-check-input" @bind="_smAddIsFree" /> Free Session
+                        </label>
+                    </div>
+                    <div class="sm-field">
+                        <label>Notes</label>
+                        <textarea class="form-control form-control-sm" rows="2" @bind="_smAddNotes"></textarea>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2 mt-3 justify-content-end">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="SmCancelAdd">Cancel</button>
+                    <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
+                            disabled="@_smAddSaving" @onclick="SmSaveAdd">
+                        @if (_smAddSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        <i class="ri-save-line"></i> Create Session
+                    </button>
+                </div>
+            </div>
+        }
+        else if (_smDetail == null)
         {
             @* ── List View ── *@
             <div class="sm-body">
@@ -2938,6 +3029,9 @@
                             <button type="button" class="btn @(_smSoloDays == 0 ? "btn-primary" : "btn-outline-secondary")"
                                     @onclick="() => SmSoloDaysChanged(0)">ALL</button>
                         </div>
+                        <button class="btn btn-sm btn-outline-success ms-2 d-flex align-items-center gap-1" @onclick="SmOpenAdd">
+                            <i class="ri-add-line"></i> Add
+                        </button>
                     }
                     else
                     {
@@ -2949,9 +3043,14 @@
                                 <option value="@pc.PcId">@pc.FullName</option>
                             }
                         </select>
-                        <button class="btn btn-sm btn-outline-warning ms-auto d-flex align-items-center gap-1" @onclick="SmToggleSoloMode">
-                            <i class="ri-user-voice-line"></i> Solo
-                        </button>
+                        <div class="ms-auto d-flex gap-1">
+                            <button class="btn btn-sm btn-outline-warning d-flex align-items-center gap-1" @onclick="SmToggleSoloMode">
+                                <i class="ri-user-voice-line"></i> Solo
+                            </button>
+                            <button class="btn btn-sm btn-outline-success d-flex align-items-center gap-1" @onclick="SmOpenAdd">
+                                <i class="ri-add-line"></i> Add
+                            </button>
+                        </div>
                     }
                 </div>
 
@@ -3494,6 +3593,21 @@
         font-size: .85rem; color: #1e293b; transition: background .15s;
     }
     .act-pc-item:hover { background: #f0f4ff; }
+    .fh-file-item {
+        display: flex; align-items: center; gap: 6px;
+        padding: 4px 12px; border-radius: 6px; cursor: pointer;
+        color: #e2e8f0; font-size: .82rem; transition: background .15s;
+    }
+    .fh-file-item:hover { background: rgba(99,102,241,.15); }
+    .fh-stats-badge {
+        margin-left: auto; font-size: .65rem; font-weight: 700;
+        background: rgba(99,102,241,.15); color: #818cf8;
+        padding: 0 6px; border-radius: 10px; min-width: 18px;
+        text-align: center; line-height: 1.5;
+    }
+    .fh-stats-date {
+        font-size: .62rem; color: #64748b; white-space: nowrap;
+    }
     .memo-pc-item {
         display: flex; align-items: center; gap: 8px;
         padding: 8px 12px; border-radius: 8px; cursor: pointer;
@@ -4686,6 +4800,189 @@
 </div>
 }
 
+@* ── File History Modal ── *@
+@if (_showFileHistory)
+{
+<div class="modal show d-block" tabindex="-1"
+     style="background:rgba(0,0,0,.45); z-index:9999;"
+     @onclick="() => _showFileHistory = false">
+    <div class="modal-dialog modal-dialog-centered modal-lg"
+         @onclick:stopPropagation="true">
+        <div class="modal-content" style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;">
+            <div class="modal-header py-2" style="border-bottom:1px solid #334155;">
+                <h5 class="modal-title fs-15 text-white d-flex align-items-center gap-2">
+                    <i class="ri-history-line"></i>File History
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        @onclick="() => _showFileHistory = false"></button>
+            </div>
+            <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
+
+                @if (_fhPcId == null)
+                {
+                    @* Step 1: Select PC *@
+                    <label class="form-label" style="font-size:.82rem; color:#64748b;">Select PC</label>
+                    <input type="text" class="form-control form-control-sm mb-2"
+                           style="background:#0f172a;color:#e2e8f0;border-color:#475569;"
+                           placeholder="Search PCs…"
+                           @bind="_fhPcSearch" @bind:event="oninput" />
+                    <div style="max-height:300px;overflow-y:auto;">
+                        @foreach (var pc in _actionAllPcs.Where(p => string.IsNullOrEmpty(_fhPcSearch) || p.FullName.Contains(_fhPcSearch, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            var thisPc = pc;
+                            <div class="act-pc-item" style="color:#e2e8f0;" @onclick="() => FhSelectPc(thisPc.PcId, thisPc.FullName, false)">
+                                <i class="ri-user-line" style="color:#3b82f6;opacity:.6;"></i>
+                                <span>@thisPc.FullName</span>
+                            </div>
+                            @if (thisPc.IsAlsoSolo)
+                            {
+                                <div class="act-pc-item" style="color:#e2e8f0;" @onclick="() => FhSelectPc(thisPc.PcId, thisPc.FullName, true)">
+                                    <i class="ri-user-line" style="color:#ef4444;opacity:.7;"></i>
+                                    <span>@thisPc.FullName</span>
+                                    <span style="font-size:.65rem;color:#ef4444;background:rgba(239,68,68,.12);padding:1px 6px;border-radius:4px;margin-left:4px;">Solo</span>
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+                else if (_fhSelectedFile == null)
+                {
+                    @* Step 2: Browse files *@
+                    <button class="btn btn-sm btn-outline-secondary mb-2" @onclick="() => { _fhPcId = null; _fhFolder = null; }">
+                        <i class="ri-arrow-left-s-line"></i> Back to PCs
+                    </button>
+                    <div class="fw-bold mb-2" style="color:#94a3b8;">@_fhPcName @(_fhSolo ? "(Solo)" : "")</div>
+
+                    @if (_fhFolder != null)
+                    {
+                        @* Current files on disk *@
+                        <div class="fw-semibold mb-1" style="font-size:.78rem;color:#64748b;">Current files:</div>
+                        @foreach (var sec in new[] { ("Front_Cover", _fhFolder.FrontCoverTree), ("Back_Cover", _fhFolder.BackCoverTree) })
+                        {
+                            @if (sec.Item2 != null)
+                            {
+                                <div class="fw-semibold mt-2 mb-1" style="font-size:.78rem;color:#94a3b8;">
+                                    <i class="ri-folder-line me-1"></i>@sec.Item1
+                                </div>
+                                @RenderFhTree(sec.Item2.Children, 0)
+                            }
+                        }
+                        <div class="fw-semibold mt-2 mb-1" style="font-size:.78rem;color:#94a3b8;">
+                            <i class="ri-folder-line me-1"></i>WorkSheets
+                        </div>
+                        @foreach (var ws in _fhFolder.WorkSheets)
+                        {
+                            var wsStats = _fhAuditStats.GetValueOrDefault(ws.File.RelativePath);
+                            <div class="fh-file-item" @onclick="() => FhSelectFile(ws.File.RelativePath)">
+                                <i class="ri-file-pdf-2-line" style="color:#ef5350;font-size:.7rem;"></i>
+                                <span style="font-size:.8rem;">@ws.File.FileName</span>
+                                @if (wsStats != null)
+                                {
+                                    <span class="fh-stats-badge">@wsStats.Count</span>
+                                    <span class="fh-stats-date">@wsStats.LastChange</span>
+                                }
+                            </div>
+                            @foreach (var att in ws.Attachments)
+                            {
+                                var attStats = _fhAuditStats.GetValueOrDefault(att.RelativePath);
+                                <div class="fh-file-item" style="padding-left:24px;" @onclick="() => FhSelectFile(att.RelativePath)">
+                                    <i class="ri-attachment-line" style="color:#94a3b8;font-size:.65rem;"></i>
+                                    <span style="font-size:.75rem;">@att.FileName</span>
+                                    @if (attStats != null)
+                                    {
+                                        <span class="fh-stats-badge">@attStats.Count</span>
+                                        <span class="fh-stats-date">@attStats.LastChange</span>
+                                    }
+                                </div>
+                            }
+                        }
+
+                        @* Files with audit history but no longer on disk *@
+                        @if (_fhAuditStats.Any(kv => !_fhDiskFiles.Contains(kv.Key)))
+                        {
+                            <div class="fw-semibold mt-3 mb-1" style="font-size:.78rem;color:#f59e0b;">
+                                <i class="ri-ghost-line me-1"></i>Deleted / moved files with history:
+                            </div>
+                            @foreach (var kv in _fhAuditStats.Where(kv => !_fhDiskFiles.Contains(kv.Key)))
+                            {
+                                <div class="fh-file-item" style="opacity:.6;" @onclick="() => FhSelectFile(kv.Key)">
+                                    <i class="ri-file-unknow-line" style="color:#64748b;font-size:.7rem;"></i>
+                                    <span style="font-size:.8rem;">@kv.Key</span>
+                                    <span class="fh-stats-badge">@kv.Value.Count</span>
+                                    <span class="fh-stats-date">@kv.Value.LastChange</span>
+                                </div>
+                            }
+                        }
+                    }
+                    else
+                    {
+                        <div style="color:#475569;font-size:.85rem;">Folder not found.</div>
+                    }
+                }
+                else
+                {
+                    @* Step 3: File history *@
+                    <button class="btn btn-sm btn-outline-secondary mb-2" @onclick="() => { _fhSelectedFile = null; _fhEntries = null; }">
+                        <i class="ri-arrow-left-s-line"></i> Back to files
+                    </button>
+                    <div class="fw-bold mb-2" style="font-size:.85rem;color:#94a3b8;word-break:break-all;">@_fhSelectedFile</div>
+
+                    @if (_fhLoading)
+                    {
+                        <div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></div>
+                    }
+                    else if (_fhEntries == null || _fhEntries.Count == 0)
+                    {
+                        <div style="color:#475569;font-size:.85rem;">No history recorded for this file.</div>
+                    }
+                    else
+                    {
+                        <table style="width:100%;border-collapse:collapse;font-size:.75rem;">
+                            <thead>
+                                <tr style="border-bottom:1px solid #334155;">
+                                    <th style="padding:4px 8px;color:#64748b;font-weight:700;">Date</th>
+                                    <th style="padding:4px 8px;color:#64748b;font-weight:700;">Operation</th>
+                                    <th style="padding:4px 8px;color:#64748b;font-weight:700;">User</th>
+                                    <th style="padding:4px 8px;color:#64748b;font-weight:700;">Size</th>
+                                    <th style="padding:4px 8px;color:#64748b;font-weight:700;">Context</th>
+                                    <th style="padding:4px 8px;color:#64748b;font-weight:700;">Detail</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var e in _fhEntries)
+                                {
+                                    var opColor = e.Operation switch
+                                    {
+                                        "create" => "#22c55e",
+                                        "overwrite" => "#f59e0b",
+                                        "delete" => "#ef4444",
+                                        "shrink" => "#3b82f6",
+                                        "rename" or "move" => "#94a3b8",
+                                        "annotation_burn" => "#a855f7",
+                                        "excel_edit" => "#14b8a6",
+                                        _ => "#64748b"
+                                    };
+                                    <tr style="border-bottom:1px solid #1e293b;">
+                                        <td style="padding:3px 8px;white-space:nowrap;color:#94a3b8;">@e.CreatedAt</td>
+                                        <td style="padding:3px 8px;">
+                                            <span style="background:@(opColor)22;color:@opColor;padding:1px 6px;border-radius:4px;font-size:.68rem;font-weight:600;">@e.Operation</span>
+                                        </td>
+                                        <td style="padding:3px 8px;color:#e2e8f0;">@(e.Username ?? "system")</td>
+                                        <td style="padding:3px 8px;color:#94a3b8;white-space:nowrap;">@(e.SizeBytes.HasValue ? $"{e.SizeBytes.Value / 1024}KB" : "—")</td>
+                                        <td style="padding:3px 8px;color:#64748b;">@e.Context</td>
+                                        <td style="padding:3px 8px;color:#64748b;max-width:200px;overflow:hidden;text-overflow:ellipsis;" title="@e.Detail">@(e.Detail ?? "")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+</div>
+}
+
 <style>
     /* ── Print All Staff Modal ── */
     .psa-overlay {
@@ -4980,6 +5277,19 @@
     int _smSoloDays = 7;
     List<SoloSessionItem> _smSoloList = [];
     Dictionary<int, string> _smSoloEdits = [];
+    // Session Manager add session
+    bool _smAddMode;
+    int _smAddPcId;
+    int _smAddAuditorId;
+    int _smAddCsId = -1;
+    DateOnly _smAddDate;
+    int _smAddLenMin;
+    int _smAddAdminMin;
+    bool _smAddIsFree;
+    string _smAddNotes = "";
+    string _smAddError = "";
+    bool _smAddSaving;
+    List<(int PersonId, string FullName)> _smAddAuditorList = [];
 
     // ── Upload Front Cover state ──
     bool             _showUploadFrontCover;
@@ -6369,6 +6679,19 @@ string _actionPcSearch = "";
     bool   _actionSummaryBusy;
     List<DashboardService.ApprovedPc> _actionAllPcs = [];   // Open Folder + Write to Folder Summary (AllowAll respected)
 
+    // ── File History state ──
+    bool _showFileHistory;
+    string _fhPcSearch = "";
+    int? _fhPcId;
+    string _fhPcName = "";
+    bool _fhSolo;
+    PcFolderInfo? _fhFolder;
+    string? _fhSelectedFile;
+    List<FileAuditEntry>? _fhEntries;
+    bool _fhLoading;
+    Dictionary<string, FileAuditStats> _fhAuditStats = new(StringComparer.OrdinalIgnoreCase);
+    HashSet<string> _fhDiskFiles = new(StringComparer.OrdinalIgnoreCase);
+
     // ── Messaging state ──
     int?   _msgUserId;
     int    _pendingMsgCount;
@@ -6552,6 +6875,7 @@ string _actionPcSearch = "";
         _smList = []; _smDetail = null; _smError = ""; _smSuccess = "";
         _smCsStatuses = DashSvc.GetCsStatusLabels();
         _smSoloMode = false; _smSoloDays = 7; _smSoloList = []; _smSoloEdits = [];
+        _smAddMode = false;
         _smOpen = true;
     }
 
@@ -6773,6 +7097,85 @@ string _actionPcSearch = "";
         DashSvc.NotifyDataChanged();
     }
 
+    // ── Add session methods ──
+
+    void SmOpenAdd()
+    {
+        _smAddPcId = _smPcId;
+        _smAddAuditorId = 0;
+        _smAddCsId = -1;
+        _smAddDate = DateOnly.FromDateTime(DateTime.Today);
+        _smAddLenMin = 0;
+        _smAddAdminMin = 0;
+        _smAddIsFree = false;
+        _smAddNotes = "";
+        _smAddError = "";
+        _smAddSaving = false;
+        _smSuccess = "";
+        _smAddAuditorList = DashSvc.GetAuditorCsStaffList();
+        _smCsList = DashSvc.GetCsStaffList(0);
+        _smAddMode = true;
+    }
+
+    void SmCancelAdd()
+    {
+        _smAddMode = false;
+    }
+
+    async Task SmSaveAdd()
+    {
+        _smAddError = "";
+        if (_smAddPcId <= 0) { _smAddError = "Please select a PC."; return; }
+        if (_smAddLenMin <= 0) { _smAddError = "Session length must be greater than 0."; return; }
+
+        _smAddSaving = true;
+        try
+        {
+            var auditorId = _smAddAuditorId > 0 ? (int?)_smAddAuditorId : null;
+            var dateStr = _smAddDate.ToString("yyyy-MM-dd");
+            var lengthSec = _smAddLenMin * 60;
+            var adminSec = _smAddAdminMin * 60;
+            bool isSolo = auditorId == null;
+
+            await Task.Run(() =>
+            {
+                // Generate session name with unique index
+                var datePrefix = DateTime.Now.ToString("yyMMdd");
+                string sessionName = "";
+                for (int i = 1; i <= 100; i++)
+                {
+                    var candidate = $"{datePrefix} Added manual session {i}";
+                    if (!FolderSvc.SectionFileExistsAtPath(_smAddPcId, "WorkSheets", $"{candidate}.pdf", solo: isSolo))
+                    {
+                        sessionName = candidate;
+                        break;
+                    }
+                }
+                if (string.IsNullOrEmpty(sessionName))
+                    sessionName = $"{datePrefix} Added manual session";
+
+                // Create dummy PDF and save to WorkSheets (encrypted)
+                var pdfBytes = FolderSvc.CreateDummySessionPdf();
+                var saved = FolderSvc.SaveSectionFileToPath(_smAddPcId, "WorkSheets", $"{sessionName}.pdf", pdfBytes, solo: isSolo);
+                if (!saved)
+                    Console.WriteLine($"[SessionManager] Warning: could not save PDF for PC {_smAddPcId} (folder may not exist)");
+
+                DashSvc.AddSessionFromManager(_smAddPcId, auditorId, _smAddCsId, dateStr,
+                    lengthSec, adminSec, _smAddIsFree,
+                    string.IsNullOrWhiteSpace(_smAddNotes) ? null : _smAddNotes,
+                    _msgUserId!.Value, sessionName);
+            });
+
+            _smAddMode = false;
+            _smSuccess = "Session added successfully.";
+            if (_smSoloMode) SmLoadSoloSessions();
+            else if (_smPcId > 0) SmLoadPage(_smPage);
+            DashSvc.NotifyDataChanged();
+        }
+        catch (Exception ex) { _smAddError = $"Failed: {ex.Message}"; }
+        finally { _smAddSaving = false; }
+    }
+
     static string FormatSec(int sec)
     {
         if (sec <= 0) return "0:00";
@@ -6970,6 +7373,81 @@ string _actionPcSearch = "";
             Console.WriteLine($"[MainHeader] Open Folder DENIED + permission requested: PC='{pcName}' (id={pcId}) user='{_logUsername}'");
         }
     }
+
+    void OpenFileHistory()
+    {
+        LoadAllPcs();
+        _fhPcSearch = "";
+        _fhPcId = null;
+        _fhFolder = null;
+        _fhSelectedFile = null;
+        _fhEntries = null;
+        _fhAuditStats = new(StringComparer.OrdinalIgnoreCase);
+        _fhDiskFiles = new(StringComparer.OrdinalIgnoreCase);
+        _showFileHistory = true;
+    }
+
+    void FhSelectPc(int pcId, string pcName, bool solo)
+    {
+        _fhPcId = pcId;
+        _fhPcName = pcName;
+        _fhSolo = solo;
+        _fhFolder = FolderSvc.GetFolderInfo(pcId, solo);
+        _fhAuditStats = FileAuditSvc.GetAuditedFiles(pcId, solo);
+
+        // Build set of current disk files for comparison
+        _fhDiskFiles = new(StringComparer.OrdinalIgnoreCase);
+        if (_fhFolder != null)
+        {
+            foreach (var f in _fhFolder.FrontCover) _fhDiskFiles.Add(f.RelativePath);
+            foreach (var f in _fhFolder.BackCover) _fhDiskFiles.Add(f.RelativePath);
+            foreach (var ws in _fhFolder.WorkSheets)
+            {
+                _fhDiskFiles.Add(ws.File.RelativePath);
+                foreach (var att in ws.Attachments) _fhDiskFiles.Add(att.RelativePath);
+            }
+        }
+    }
+
+    async Task FhSelectFile(string relativePath)
+    {
+        _fhSelectedFile = relativePath;
+        _fhLoading = true;
+        StateHasChanged();
+        await Task.Run(() =>
+        {
+            _fhEntries = FileAuditSvc.GetHistory(_fhPcId!.Value, relativePath, _fhSolo);
+        });
+        _fhLoading = false;
+    }
+
+    RenderFragment RenderFhTree(List<FolderTreeNode> nodes, int depth) => __builder =>
+    {
+        foreach (var node in nodes)
+        {
+            if (node.IsFolder)
+            {
+                <div style="padding-left:@(depth * 16)px;padding:2px 0;">
+                    <i class="ri-folder-line" style="color:#f59e0b;font-size:.7rem;"></i>
+                    <span style="font-size:.78rem;color:#94a3b8;font-weight:600;">@node.Name</span>
+                </div>
+                @RenderFhTree(node.Children, depth + 1)
+            }
+            else
+            {
+                var nodeStats = _fhAuditStats.GetValueOrDefault(node.RelativePath);
+                <div class="fh-file-item" style="padding-left:@(depth * 16 + 4)px;" @onclick="() => FhSelectFile(node.RelativePath)">
+                    <i class="ri-file-pdf-2-line" style="color:#ef5350;font-size:.7rem;"></i>
+                    <span style="font-size:.8rem;">@node.Name</span>
+                    @if (nodeStats != null)
+                    {
+                        <span class="fh-stats-badge">@nodeStats.Count</span>
+                        <span class="fh-stats-date">@nodeStats.LastChange</span>
+                    }
+                </div>
+            }
+        }
+    };
 
     void OpenActionSummary()
     {

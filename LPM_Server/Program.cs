@@ -123,6 +123,7 @@ builder.Services.AddSingleton<LPM.Services.AcademyService>();
 builder.Services.AddSingleton<LPM.Services.StatisticsService>();
 builder.Services.AddSingleton<LPM.Services.CourseService>();
 builder.Services.AddSingleton<LPM.Services.MessageNotifier>();
+builder.Services.AddSingleton<LPM.Services.FileAuditService>();
 builder.Services.AddSingleton<LPM.Services.FolderService>();
 builder.Services.AddSingleton<LPM.Services.MeetingService>();
 builder.Services.AddHostedService<LPM.Services.DbBackupService>();
@@ -1090,7 +1091,7 @@ app.MapPost("/api/pc-file-save", async (HttpContext ctx, LPM.Services.FolderServ
     await ctx.Request.Body.CopyToAsync(ms);
     var saveUser = ctx.User?.Identity?.Name ?? "unknown";
     Console.WriteLine($"[PcFile] Saved PC file pcId={pcId}: {path} by '{saveUser}'");
-    return svc.SaveFile(pcId, path, ms.ToArray(), solo) ? Results.Ok() : Results.NotFound();
+    return svc.SaveFile(pcId, path, ms.ToArray(), solo, auditUser: saveUser) ? Results.Ok() : Results.NotFound();
 }).RequireAuthorization();
 
 app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.FolderService svc,
@@ -1208,7 +1209,7 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
     newDoc.Save(outputMs);
     var annotUser = ctx.User?.Identity?.Name ?? "unknown";
     Console.WriteLine($"[PcFile] Saved annotated PDF pcId={pcId}: {path} solo={solo} by '{annotUser}'");
-    var saved = svc.SaveFile(pcId, path, outputMs.ToArray(), solo);
+    var saved = svc.SaveFile(pcId, path, outputMs.ToArray(), solo, auditUser: annotUser);
     return saved ? Results.Ok() : Results.NotFound();
 }).RequireAuthorization();
 

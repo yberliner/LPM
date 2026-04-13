@@ -756,6 +756,25 @@ public class DashboardService
         return list;
     }
 
+    /// <summary>Returns all active staff with Auditor/CS/SeniorCS role.</summary>
+    public List<(int PersonId, string FullName)> GetAuditorCsStaffList()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $@"
+            SELECT u.PersonId, TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName
+            FROM core_users u
+            JOIN core_persons p ON p.PersonId = u.PersonId
+            WHERE u.StaffRole IN {StaffRoles.SqlInAuditorCS()} AND u.IsActive = 1
+            ORDER BY p.FirstName, p.LastName";
+        var list = new List<(int, string)>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add((r.GetInt32(0), r.GetString(1)));
+        return list;
+    }
+
     public List<PcInfo> GetUserPcs(int userId)
     {
         using var conn = new SqliteConnection(_connectionString);
@@ -3430,6 +3449,65 @@ public class DashboardService
                 r.IsDBNull(8) ? null : r.GetString(8),
                 r.IsDBNull(9) ? null : r.GetString(9)));
         return list;
+    }
+
+    public int AddSessionFromManager(int pcId, int? auditorId, int csId, string sessionDate,
+        int lengthSec, int adminSec, bool isFree, string? notes, int createdByUserId, string? name = null)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        using var seqCmd = conn.CreateCommand();
+        seqCmd.CommandText = @"
+            SELECT COALESCE(MAX(SequenceInDay), 0) + 1
+            FROM sess_sessions
+            WHERE PcId = @pcId AND SessionDate = @date";
+        seqCmd.Parameters.AddWithValue("@pcId", pcId);
+        seqCmd.Parameters.AddWithValue("@date", sessionDate);
+        var seq = (long)(seqCmd.ExecuteScalar() ?? 1L);
+
+        var chargeSec = isFree ? 0 : lengthSec + adminSec;
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO sess_sessions
+              (PcId, AuditorId, SessionDate, SequenceInDay,
+               LengthSeconds, AdminSeconds, IsFreeSession,
+               ChargeSeconds, ChargedRateCentsPerHour,
+               ApprovedNotes, Name, CreatedByUserId, CreatedAt)
+            VALUES
+              (@pcId, @audId, @date, @seq,
+               @len, @adm, @free,
+               @charge, 0,
+               @notes, @name, @creator, datetime('now', '+2 hours'))";
+        cmd.Parameters.AddWithValue("@pcId",    pcId);
+        cmd.Parameters.AddWithValue("@audId",   auditorId.HasValue ? auditorId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@date",    sessionDate);
+        cmd.Parameters.AddWithValue("@seq",     seq);
+        cmd.Parameters.AddWithValue("@len",     lengthSec);
+        cmd.Parameters.AddWithValue("@adm",     adminSec);
+        cmd.Parameters.AddWithValue("@free",    isFree ? 1 : 0);
+        cmd.Parameters.AddWithValue("@charge",  chargeSec);
+        cmd.Parameters.AddWithValue("@notes",   (object?)notes ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@name",    (object?)name ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@creator", createdByUserId);
+        cmd.ExecuteNonQuery();
+
+        using var rowIdCmd = conn.CreateCommand();
+        rowIdCmd.CommandText = "SELECT last_insert_rowid()";
+        var sessionId = (int)(long)rowIdCmd.ExecuteScalar()!;
+
+        var reviewLen = csId == -1 ? 0 : lengthSec + adminSec;
+        using var crCmd = conn.CreateCommand();
+        crCmd.CommandText = @"
+            INSERT INTO cs_reviews (SessionId, CsId, ReviewLengthSeconds, ReviewedAt, Status)
+            VALUES (@sid, @csId, @revLen, datetime('now', '+2 hours'), 'Done')";
+        crCmd.Parameters.AddWithValue("@sid",    sessionId);
+        crCmd.Parameters.AddWithValue("@csId",   csId);
+        crCmd.Parameters.AddWithValue("@revLen", reviewLen);
+        crCmd.ExecuteNonQuery();
+
+        Console.WriteLine($"[SessionManager] Added session {sessionId} for PC {pcId}, auditor {(auditorId?.ToString() ?? "Solo")}, CS {csId}");
+        return sessionId;
     }
 
     public (List<SessionListItem> Items, int TotalCount) GetSessionsForPcPaged(int pcId, int page, int pageSize = 50)

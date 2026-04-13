@@ -20,7 +20,8 @@ namespace LPM.Services;
 public class PdfShrinkService(
     IConfiguration config,
     ILogger<PdfShrinkService> logger,
-    FolderService folderSvc) : BackgroundService
+    FolderService folderSvc,
+    FileAuditService auditSvc) : BackgroundService
 {
     // Files created on or before this date are never candidates (pre-feature backlog).
     private static readonly DateTime CutoffDate = new(2026, 3, 23);
@@ -146,7 +147,16 @@ public class PdfShrinkService(
                 continue;
             }
 
-            var (shrunk, originalKb, shrunkKb) = folderSvc.TryShrinkEncryptedPdf(fullPath);
+            // Extract PcId from folder name (e.g. "70-Nurlan Mukaev" → 70)
+            int? pcId = null;
+            var relParts = relativePath.Split('/');
+            if (relParts.Length >= 1)
+            {
+                var dash = relParts[0].IndexOf('-');
+                if (dash > 0 && int.TryParse(relParts[0][..dash], out var pid)) pcId = pid;
+            }
+
+            var (shrunk, originalKb, shrunkKb) = folderSvc.TryShrinkEncryptedPdf(fullPath, pcId);
 
             if (shrunk)
             {
@@ -171,6 +181,15 @@ public class PdfShrinkService(
         Console.WriteLine($"[PdfShrink] Cycle complete — {shrunkCount} shrunk, {skippedCount} unchanged/skipped");
 
         PruneOldBackupDirs(backupBase);
+
+        // Prune file audit entries older than 6 months
+        try
+        {
+            var pruned = auditSvc.PruneOlderThan(6);
+            if (pruned > 0)
+                Console.WriteLine($"[PdfShrink] Pruned {pruned} file audit entries older than 6 months");
+        }
+        catch (Exception ex) { Console.WriteLine($"[PdfShrink] Audit prune error: {ex.Message}"); }
     }
 
     private static void PruneOldBackupDirs(string backupBase)

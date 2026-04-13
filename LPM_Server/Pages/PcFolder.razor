@@ -4694,7 +4694,7 @@
             }
             using var remainingStream = new System.IO.MemoryStream();
             remainingDoc.Save(remainingStream);
-            FolderSvc.SaveFile(PcId, file, remainingStream.ToArray(), Solo);
+            FolderSvc.SaveFile(PcId, file, remainingStream.ToArray(), Solo, auditUser: _userName);
 
             Console.WriteLine($"[PcFolder] Extracted {indices.Length} pages from '{file}' by '{_userName}' — for PC {PcId}, attachment: '{_extractAttName}'");
 

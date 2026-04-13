@@ -133,8 +133,9 @@ public class FolderService
     private readonly string? _libreOfficePath;
     private readonly byte[]? _encKey;
     private readonly IMemoryCache _cache;
+    private readonly FileAuditService _audit;
 
-    public FolderService(IConfiguration config, IMemoryCache cache)
+    public FolderService(IConfiguration config, IMemoryCache cache, FileAuditService audit)
     {
         _basePath = Path.Combine(Directory.GetCurrentDirectory(), "PC-Folders");
         var dbPath = config["Database:Path"] ?? "lifepower.db";
@@ -145,6 +146,7 @@ public class FolderService
         if (!string.IsNullOrEmpty(keyStr))
             _encKey = Convert.FromBase64String(keyStr);
         _cache = cache;
+        _audit = audit;
     }
 
     // ── Decrypted-file cache helpers ──────────────────────────────────────────
@@ -875,7 +877,7 @@ public class FolderService
         {
             var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
             if (folder == null) return;
-            BurnSidecarsInDirectory(folder);
+            BurnSidecarsInDirectory(folder, pcId, solo);
         });
     }
 
@@ -901,20 +903,20 @@ public class FolderService
                 });
 
             foreach (var pdfPath in targets)
-                BurnSidecarForFile(pdfPath);
+                BurnSidecarForFile(pdfPath, null, pcId, solo);
         });
     }
 
-    private void BurnSidecarsInDirectory(string directory)
+    private void BurnSidecarsInDirectory(string directory, int? auditPcId = null, bool auditSolo = false)
     {
         foreach (var sidecar in Directory.GetFiles(directory, "*.ann.json", SearchOption.AllDirectories))
         {
             var pdfPath = sidecar[..^".ann.json".Length];
-            BurnSidecarForFile(pdfPath, sidecar);
+            BurnSidecarForFile(pdfPath, sidecar, auditPcId, auditSolo);
         }
     }
 
-    private void BurnSidecarForFile(string pdfPath, string? sidecarPath = null)
+    private void BurnSidecarForFile(string pdfPath, string? sidecarPath = null, int? auditPcId = null, bool auditSolo = false)
     {
         sidecarPath ??= pdfPath + ".ann.json";
         if (!File.Exists(sidecarPath)) return;
@@ -928,6 +930,11 @@ public class FolderService
             File.WriteAllBytes(pdfPath, EncryptBytes(baked));
             StoreInCache(pdfPath, baked);
             File.Delete(sidecarPath);
+            if (auditPcId.HasValue)
+            {
+                var relPath = ExtractRelativePath(pdfPath);
+                _audit.Log(auditPcId.Value, auditSolo, relPath, "overwrite", baked.Length, null, null, "AnnotationBurn");
+            }
             Console.WriteLine($"[FolderService] Burned annotation sidecar into '{Path.GetFileName(pdfPath)}'");
         }
         catch (Exception ex)
@@ -938,7 +945,7 @@ public class FolderService
     }
 
     /// <summary>Save annotated PDF bytes back to disk (encrypted)</summary>
-    public bool SaveFile(int pcId, string relativePath, byte[] pdfBytes, bool solo = false)
+    public bool SaveFile(int pcId, string relativePath, byte[] pdfBytes, bool solo = false, string? auditUser = null)
     {
         var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return false;
@@ -948,6 +955,7 @@ public class FolderService
 
         File.WriteAllBytes(fullPath, EncryptBytes(pdfBytes));
         StoreInCache(fullPath, pdfBytes); // warm cache with fresh bytes
+        _audit.Log(pcId, solo, relativePath, "overwrite", pdfBytes.Length, null, auditUser, "Save");
         Console.WriteLine($"[FolderService] Saved file PC {pcId}: {relativePath}");
         return true;
     }
@@ -1331,6 +1339,8 @@ public class FolderService
 
         File.WriteAllBytes(fullPath, fileBytes);
         EncryptFileInPlace(fullPath);
+        var auditPath = string.IsNullOrEmpty(subPath) ? $"{section}/{safeName}" : $"{section}/{subPath}/{safeName}";
+        _audit.Log(pcId, false, auditPath, "create", fileBytes.Length, null, null, "Import");
         Console.WriteLine($"[FolderService] Saved section file '{fileName}' to {section}/{subPath} for PC {pcId}");
     }
 
@@ -1360,6 +1370,7 @@ public class FolderService
 
         File.WriteAllBytes(fullPath, fileBytes);
         EncryptFileInPlace(fullPath);
+        _audit.Log(pcId, false, backupRef, "overwrite", fileBytes.Length, null, null, "Import");
         Console.WriteLine($"[FolderService] Overwrote section file '{fileName}' in {section}/{subPath} for PC {pcId}");
     }
 
@@ -1381,6 +1392,7 @@ public class FolderService
 
         File.WriteAllBytes(fullPath, fileBytes);
         EncryptFileInPlace(fullPath);
+        _audit.Log(pcId, false, $"WorkSheets/{flatName}", "create", fileBytes.Length, null, null, "Import");
         Console.WriteLine($"[FolderService] Saved imported attachment '{attFileName}' for session '{sessionFileName}', PC {pcId}");
     }
 
@@ -1473,6 +1485,8 @@ public class FolderService
         if (File.Exists(fullPath)) return;
         File.WriteAllBytes(fullPath, fileBytes);
         EncryptFileInPlace(fullPath);
+        var auditPath = string.IsNullOrEmpty(subPath) ? $"{section}/{safeName}" : $"{section}/{subPath}/{safeName}";
+        _audit.Log(pcId, true, auditPath, "create", fileBytes.Length, null, null, "Import");
         Console.WriteLine($"[FolderService] Saved solo section file '{fileName}' to {section}/{subPath} for PC {pcId}");
     }
 
@@ -1486,6 +1500,8 @@ public class FolderService
         var fullPath    = Path.Combine(targetDir, safeName);
         File.WriteAllBytes(fullPath, fileBytes);
         EncryptFileInPlace(fullPath);
+        var auditPath = string.IsNullOrEmpty(subPath) ? $"{section}/{safeName}" : $"{section}/{subPath}/{safeName}";
+        _audit.Log(pcId, true, auditPath, "overwrite", fileBytes.Length, null, null, "Import");
         Console.WriteLine($"[FolderService] Overwrote solo section file '{fileName}' in {section}/{subPath} for PC {pcId}");
     }
 
@@ -1510,6 +1526,7 @@ public class FolderService
         if (File.Exists(fullPath)) return;
         File.WriteAllBytes(fullPath, fileBytes);
         EncryptFileInPlace(fullPath);
+        _audit.Log(pcId, true, $"WorkSheets/{flatName}", "create", fileBytes.Length, null, null, "Import");
         Console.WriteLine($"[FolderService] Saved solo imported attachment '{attFileName}' for session '{sessionFileName}', PC {pcId}");
     }
 
@@ -1541,6 +1558,7 @@ public class FolderService
 
         File.WriteAllBytes(fullPath, fileBytes);
         EncryptFileInPlace(fullPath);
+        _audit.Log(pcId, false, $"WorkSheets/{Path.GetFileName(fullPath)}", "create", fileBytes.Length, null, null, "Upload");
         Console.WriteLine($"[FolderService] Saved uploaded file '{fileName}' for PC {pcId}");
         return Path.GetFileName(fullPath);
     }
@@ -1566,6 +1584,7 @@ public class FolderService
 
         File.WriteAllBytes(fullPath, fileBytes);
         EncryptFileInPlace(fullPath);
+        _audit.Log(pcId, true, $"WorkSheets/{Path.GetFileName(fullPath)}", "create", fileBytes.Length, null, null, "Upload");
         Console.WriteLine($"[FolderService] Saved solo uploaded file '{fileName}' for PC {pcId}");
         return Path.GetFileName(fullPath);
     }
@@ -1592,6 +1611,7 @@ public class FolderService
 
         File.WriteAllBytes(fullPath, pdfBytes);
         EncryptFileInPlace(fullPath);
+        _audit.Log(pcId, solo, $"WorkSheets/{fileName}", "create", pdfBytes.Length, null, null, "Memo");
         Console.WriteLine($"[FolderService] Saved memo '{fileName}' for PC {pcId} (solo={solo})");
         return Path.GetFileNameWithoutExtension(fileName);
     }
@@ -1621,6 +1641,7 @@ public class FolderService
 
         File.WriteAllBytes(fullPath, fileBytes);
         EncryptFileInPlace(fullPath);
+        _audit.Log(pcId, solo, $"WorkSheets/{Path.GetFileName(fullPath)}", "create", fileBytes.Length, null, null, "Upload");
         Console.WriteLine($"[FolderService] Saved attachment '{attFileName}' for session '{sessionFileName}', PC {pcId}");
     }
 
@@ -1668,6 +1689,7 @@ public class FolderService
         if (!File.Exists(fullPath)) return false;
         File.WriteAllBytes(fullPath, pdfBytes);
         EncryptFileInPlace(fullPath);
+        _audit.Log(pcId, solo, $"WorkSheets/{sessionNoExt}_att_arf.pdf", "overwrite", pdfBytes.Length, null, null, "Save");
         Console.WriteLine($"[FolderService] Overwrote arf.pdf for session '{sessionFileName}', PC {pcId}");
         return true;
     }
@@ -2281,7 +2303,7 @@ public class FolderService
         }
     }
 
-    internal (bool Shrunk, long OriginalKb, long ShrunkKb) TryShrinkEncryptedPdf(string pdfPath)
+    internal (bool Shrunk, long OriginalKb, long ShrunkKb) TryShrinkEncryptedPdf(string pdfPath, int? auditPcId = null)
     {
         if (!File.Exists(pdfPath)) return (false, 0, 0);
 
@@ -2309,6 +2331,15 @@ public class FolderService
             StoreInCache(pdfPath, shrunkPlainBytes); // warm cache with shrunk bytes
 
             var newEncryptedKb = new FileInfo(pdfPath).Length / 1024;
+            if (auditPcId.HasValue)
+            {
+                var relPath = ExtractRelativePath(pdfPath);
+                var origKb = plainBytes.Length / 1024;
+                var sKb = shrunkPlainBytes.Length / 1024;
+                var pct = 100 - (sKb * 100 / Math.Max(1, origKb));
+                var isSolo = pdfPath.Replace('\\', '/').Contains(" Solo/", StringComparison.OrdinalIgnoreCase);
+                _audit.Log(auditPcId.Value, isSolo, relPath, "shrink", shrunkPlainBytes.Length, null, null, "PdfShrink", $"{origKb}KB → {sKb}KB ({pct}%)");
+            }
             return (true, originalEncryptedSize / 1024, newEncryptedKb);
         }
         catch (Exception ex)
@@ -2517,6 +2548,7 @@ public class FolderService
         var newPath = Path.Combine(parentPath, sanitized);
         if (Directory.Exists(newPath)) return false;
         Directory.CreateDirectory(newPath);
+        _audit.Log(pcId, solo, $"{parentRelativePath}/{sanitized}", "create", null, null, null, "ContextMenu", "New folder");
         Console.WriteLine($"[FolderService] Created subfolder '{sanitized}' in {parentRelativePath} for PC {pcId}");
         return true;
     }
@@ -2534,6 +2566,8 @@ public class FolderService
         if (File.Exists(destPath)) return false; // no silent overwrite
         File.Move(srcPath, destPath);
         InvalidateCache(srcPath);
+        var destRelPath = $"{destFolderRelativePath}/{fileName}";
+        _audit.Log(pcId, solo, destRelPath, "move", null, null, null, "ContextMenu", $"Moved from {sourceRelativePath}");
         Console.WriteLine($"[FolderService] Moved '{sourceRelativePath}' → '{destFolderRelativePath}/{fileName}' for PC {pcId}");
         return true;
     }
@@ -2553,6 +2587,9 @@ public class FolderService
         if (File.Exists(destPath)) return false;
         File.Move(fullPath, destPath);
         InvalidateCache(fullPath);
+        var parentRel = Path.GetDirectoryName(relativePath)?.Replace('\\', '/') ?? "";
+        var newRelPath = string.IsNullOrEmpty(parentRel) ? sanitized : $"{parentRel}/{sanitized}";
+        _audit.Log(pcId, solo, newRelPath, "rename", null, null, null, "ContextMenu", $"Renamed from {Path.GetFileName(relativePath)}");
         Console.WriteLine($"[FolderService] Renamed '{relativePath}' → '{sanitized}' for PC {pcId}");
         return true;
     }
@@ -2569,6 +2606,9 @@ public class FolderService
         var destPath = Path.Combine(parentDir, sanitized);
         if (Directory.Exists(destPath)) return false;
         Directory.Move(fullPath, destPath);
+        var parentRel = Path.GetDirectoryName(relativePath)?.Replace('\\', '/') ?? "";
+        var newRelPath = string.IsNullOrEmpty(parentRel) ? sanitized : $"{parentRel}/{sanitized}";
+        _audit.Log(pcId, solo, newRelPath, "rename", null, null, null, "ContextMenu", $"Folder renamed from {Path.GetFileName(relativePath)}");
         Console.WriteLine($"[FolderService] Renamed folder '{relativePath}' → '{sanitized}' for PC {pcId}");
         return true;
     }
@@ -2582,6 +2622,7 @@ public class FolderService
         BackupFile(pcId, relativePath, solo);
         File.Delete(fullPath);
         InvalidateCache(fullPath);
+        _audit.Log(pcId, solo, relativePath, "delete", null, null, null, "ContextMenu");
         Console.WriteLine($"[FolderService] Deleted (backed up) '{relativePath}' for PC {pcId}");
         return true;
     }
@@ -2594,6 +2635,7 @@ public class FolderService
         if (fullPath == null || !Directory.Exists(fullPath)) return false;
         if (Directory.GetFileSystemEntries(fullPath).Length > 0) return false; // not empty
         Directory.Delete(fullPath);
+        _audit.Log(pcId, solo, relativePath, "delete", null, null, null, "ContextMenu", "Empty folder");
         Console.WriteLine($"[FolderService] Deleted empty folder '{relativePath}' for PC {pcId}");
         return true;
     }
@@ -2684,6 +2726,7 @@ public class FolderService
         if (File.Exists(destPath)) return false;
         File.Move(fullPath, destPath);
         InvalidateCache(fullPath);
+        _audit.Log(pcId, solo, $"WorkSheets/{newName}", "rename", null, null, null, "ContextMenu", $"Renamed from {fileName}");
         Console.WriteLine($"[FolderService] Renamed attachment '{fileName}' → '{newName}' for PC {pcId}");
         return true;
     }
@@ -2695,6 +2738,25 @@ public class FolderService
         var page = doc.AddPage();
         page.Width  = PdfSharpCore.Drawing.XUnit.FromPoint(widthPt);
         page.Height = PdfSharpCore.Drawing.XUnit.FromPoint(heightPt);
+        doc.Save(ms);
+        return ms.ToArray();
+    }
+
+    public byte[] CreateDummySessionPdf(double widthPt = 595.28, double heightPt = 841.89)
+    {
+        using var ms = new MemoryStream();
+        var doc = new PdfSharpCore.Pdf.PdfDocument();
+        var page = doc.AddPage();
+        page.Width  = PdfSharpCore.Drawing.XUnit.FromPoint(widthPt);
+        page.Height = PdfSharpCore.Drawing.XUnit.FromPoint(heightPt);
+        var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page);
+        var font = new PdfSharpCore.Drawing.XFont("Arial", 48, PdfSharpCore.Drawing.XFontStyle.Bold);
+        var size = gfx.MeasureString("Dummy session", font);
+        gfx.DrawString("Dummy session", font,
+            PdfSharpCore.Drawing.XBrushes.DarkGray,
+            (page.Width - size.Width) / 2, page.Height / 2,
+            PdfSharpCore.Drawing.XStringFormats.Default);
+        gfx.Dispose();
         doc.Save(ms);
         return ms.ToArray();
     }
@@ -2836,6 +2898,8 @@ public class FolderService
         }
         File.WriteAllBytes(fullPath, fileBytes);
         EncryptFileInPlace(fullPath);
+        var auditRelPath = $"{relativeFolder}/{safeName}".Replace('\\', '/');
+        _audit.Log(pcId, solo, auditRelPath, overwrite ? "overwrite" : "create", fileBytes.Length, null, null, "Upload");
         Console.WriteLine($"[FolderService] Saved '{safeName}' to {relativeFolder} for PC {pcId}{(overwrite ? " (overwrite)" : "")}");
         return true;
     }
@@ -2945,6 +3009,7 @@ public class FolderService
             return null;
         }
         File.Copy(TaaTemplatePath, taaPath);
+        _audit.Log(pcId, false, $"Front_Cover/{TaaFileName}", "create", new FileInfo(taaPath).Length, null, null, "Import", "From template");
 
         // Set PC name in B3
         var pcName = GetPcName(pcId) ?? $"PC {pcId}";
@@ -3126,6 +3191,7 @@ public class FolderService
             }
 
             wb.Save();
+            _audit.Log(pcId, solo, relativePath, "excel_edit", null, null, null, "ExcelEdit", $"{updates.Count} cells");
             Console.WriteLine($"[FolderService] Saved {updates.Count} Excel changes to '{relativePath}' for PC {pcId}");
             return true;
         }
@@ -3153,6 +3219,7 @@ public class FolderService
             ws.Cell(newRow, 4).FormulaA1 = $"IFERROR(C{newRow}*60/B{newRow},0)";
             ws.Cell(newRow, 5).FormulaA1 = $"TEXT(SUM($B$7:B{newRow})/1440, \"[h]:mm\")";
             wb.Save();
+            _audit.Log(pcId, solo, relativePath, "excel_edit", null, null, null, "ExcelEdit", $"Added row {newRow}");
             Console.WriteLine($"[FolderService] Added empty Excel row {newRow} in '{relativePath}' for PC {pcId}");
             return true;
         }
@@ -3185,6 +3252,7 @@ public class FolderService
                 r++;
             }
             wb.Save();
+            _audit.Log(pcId, solo, relativePath, "excel_edit", null, null, null, "ExcelEdit", $"Deleted row {row}");
             Console.WriteLine($"[FolderService] Deleted Excel row {row} in '{relativePath}' for PC {pcId}");
             return true;
         }
@@ -3193,6 +3261,24 @@ public class FolderService
             Console.WriteLine($"[FolderService] Error deleting Excel row: {ex.Message}");
             return false;
         }
+    }
+
+    /// <summary>Extract a relative path (Section/SubPath/File) from an absolute path under PC-Folders.</summary>
+    private string ExtractRelativePath(string absolutePath)
+    {
+        // absolutePath: .../PC-Folders/70-Name/Front_Cover/sub/file.pdf
+        // We want: Front_Cover/sub/file.pdf
+        try
+        {
+            var idx = absolutePath.Replace('\\', '/').IndexOf("/PC-Folders/", StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) return Path.GetFileName(absolutePath);
+            var afterPcFolders = absolutePath[(idx + "/PC-Folders/".Length)..];
+            // Skip the PC folder name (e.g. "70-Name/")
+            var slashIdx = afterPcFolders.IndexOfAny(['/', '\\']);
+            if (slashIdx < 0) return Path.GetFileName(absolutePath);
+            return afterPcFolders[(slashIdx + 1)..].Replace('\\', '/');
+        }
+        catch { return Path.GetFileName(absolutePath); }
     }
 
     private static string SanitizeName(string name)
