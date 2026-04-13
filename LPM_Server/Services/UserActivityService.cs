@@ -148,6 +148,9 @@ public class UserActivityService
         _lastInteraction[username.ToLowerInvariant()] = DateTime.UtcNow;
     }
 
+    public DateTime? GetLastInteractionUtc(string username) =>
+        _lastInteraction.TryGetValue(username.ToLowerInvariant(), out var dt) ? dt : null;
+
     public string LastActiveAgo(string username)
     {
         if (!_lastInteraction.TryGetValue(username.ToLowerInvariant(), out var dt))

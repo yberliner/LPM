@@ -160,16 +160,27 @@
                     <table class="diag-act-table">
                         <thead>
                             <tr>
-                                <th style="width:14px;"></th>
-                                <th>User</th>
-                                <th>Last Action</th>
-                                <th style="width:110px;">When</th>
-                                <th style="width:100px;">Last Active</th>
+                                @{ bool aOn = _actSortCol == "online"; bool aUsr = _actSortCol == "user"; bool aAct = _actSortCol == "action"; bool aWhn = _actSortCol == "when"; bool aLa = _actSortCol == "lastactive"; }
+                                <th class="diag-act-th" style="width:14px;" @onclick='() => SetActSort("online")'>
+                                    @if (aOn) { <i class="@(_actSortAsc ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line")" style="font-size:.75rem;"></i> }
+                                </th>
+                                <th class="diag-act-th" @onclick='() => SetActSort("user")'>
+                                    User @if (aUsr) { <i class="@(_actSortAsc ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line")" style="font-size:.75rem;"></i> }
+                                </th>
+                                <th class="diag-act-th" @onclick='() => SetActSort("action")'>
+                                    Last Action @if (aAct) { <i class="@(_actSortAsc ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line")" style="font-size:.75rem;"></i> }
+                                </th>
+                                <th class="diag-act-th" style="width:110px;" @onclick='() => SetActSort("when")'>
+                                    When @if (aWhn) { <i class="@(_actSortAsc ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line")" style="font-size:.75rem;"></i> }
+                                </th>
+                                <th class="diag-act-th" style="width:100px;" @onclick='() => SetActSort("lastactive")'>
+                                    Last Active @if (aLa) { <i class="@(_actSortAsc ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line")" style="font-size:.75rem;"></i> }
+                                </th>
                                 <th style="width:80px;"></th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var u in _activityUsers)
+                            @foreach (var u in SortedActivityUsers)
                             {
                                 var lastActive = ActivitySvc.LastActiveAgo(u.Username);
                                 var isActive = ActivitySvc.IsRecentlyActive(u.Username);
@@ -2011,6 +2022,25 @@
     // ── User Activity state ────────────────────────────────────────────────
     List<LPM.Services.UserActivityService.ActivitySummary> _activityUsers = [];
     bool   _activityExpanded = true;
+    string _actSortCol = "lastactive";
+    bool   _actSortAsc = false;
+
+    IEnumerable<LPM.Services.UserActivityService.ActivitySummary> SortedActivityUsers =>
+        _actSortCol switch
+        {
+            "online"     => _actSortAsc ? _activityUsers.OrderBy(u => u.IsOnline)              : _activityUsers.OrderByDescending(u => u.IsOnline),
+            "user"       => _actSortAsc ? _activityUsers.OrderBy(u => u.Username)              : _activityUsers.OrderByDescending(u => u.Username),
+            "action"     => _actSortAsc ? _activityUsers.OrderBy(u => u.LastAction)            : _activityUsers.OrderByDescending(u => u.LastAction),
+            "when"       => _actSortAsc ? _activityUsers.OrderBy(u => u.LastActivityAt)        : _activityUsers.OrderByDescending(u => u.LastActivityAt),
+            _            => _actSortAsc ? _activityUsers.OrderBy(u => ActivitySvc.GetLastInteractionUtc(u.Username) ?? DateTime.MinValue)
+                                        : _activityUsers.OrderByDescending(u => ActivitySvc.GetLastInteractionUtc(u.Username) ?? DateTime.MinValue),
+        };
+
+    void SetActSort(string col)
+    {
+        if (_actSortCol == col) _actSortAsc = !_actSortAsc;
+        else { _actSortCol = col; _actSortAsc = col != "lastactive" && col != "when"; }
+    }
     bool   _showAuditModal = false;
     string _auditUser      = "";
     int    _auditDays      = 7;
@@ -3843,6 +3873,8 @@
         color: #475569; padding: 4px 10px 8px; border-bottom: 1px solid #334155;
         text-align: left;
     }
+    .diag-act-th { cursor: pointer; user-select: none; }
+    .diag-act-th:hover { color: #e2e8f0; }
     .diag-act-table td { padding: 8px 10px; border-bottom: 1px solid #1e293b; vertical-align: middle; }
     .diag-act-table tbody tr:hover td { background: rgba(255,255,255,.03); }
     .diag-dot-online  { color: #22c55e; font-size: 1rem; }
