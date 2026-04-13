@@ -10,6 +10,7 @@
 @inject LPM.Services.FolderService FolderSvc
 @inject LPM.Services.FileAuditService FileAuditSvc
 @inject LPM.Services.CompletionService CompletionSvc
+@inject LPM.Services.CourseService CourseSvc
 @inject PdfService PdfSvc
 @using LPM._Spk
 @using LPM.Services
@@ -948,7 +949,15 @@
                                         <tr style="background:#f0fdf4;">
                                             <td><input type="date" class="form-control form-control-sm" value="@_editCompleteDate" @onchange="e => _editCompleteDate = e.Value?.ToString() ?? string.Empty" /></td>
                                             <td><span class="text-muted small">@DateTime.Today.ToString("yyyy-MM-dd")</span></td>
-                                            <td><input type="text" class="form-control form-control-sm" placeholder="Grade…" @bind="_editFinishedGrade" /></td>
+                                            <td>
+                                                <select class="form-select form-select-sm" @bind="_editFinishedGrade">
+                                                    <option value="">-- none --</option>
+                                                    @foreach (var g in _completionGrades)
+                                                    {
+                                                        <option value="@g.Code">@g.Code</option>
+                                                    }
+                                                </select>
+                                            </td>
                                             <td>
                                                 <select class="form-select form-select-sm" @bind="_editAuditorId">
                                                     <option value="0">-- none --</option>
@@ -976,7 +985,15 @@
                                             <tr style="background:#eff6ff;">
                                                 <td><input type="date" class="form-control form-control-sm" value="@_editCompleteDate" @onchange="e => _editCompleteDate = e.Value?.ToString() ?? string.Empty" /></td>
                                                 <td><span class="text-muted small">@row.CreateDate</span></td>
-                                                <td><input type="text" class="form-control form-control-sm" @bind="_editFinishedGrade" /></td>
+                                                <td>
+                                                    <select class="form-select form-select-sm" @bind="_editFinishedGrade">
+                                                        <option value="">-- none --</option>
+                                                        @foreach (var g in _completionGrades)
+                                                        {
+                                                            <option value="@g.Code">@g.Code</option>
+                                                        }
+                                                    </select>
+                                                </td>
                                                 <td>
                                                     <select class="form-select form-select-sm" @bind="_editAuditorId">
                                                         <option value="0">-- none --</option>
@@ -5228,6 +5245,7 @@
     List<PcCompletion>           _completions        = [];
     List<AuditorItem>            _completionAuditors = [];
     List<PcItem>                 _completionAllPcs   = [];
+    List<CourseService.GradeItem> _completionGrades  = [];
     bool                         _completionAddMode;
     int                          _completionEditId;   // 0 = none
     string                       _editCompleteDate   = "";
@@ -5607,16 +5625,33 @@
     string FormatArfTime(string raw)
     {
         if (string.IsNullOrEmpty(raw)) return "";
-        if (raw.Contains(':')) return raw;
+        if (raw.Contains(':'))
+        {
+            // Pad existing h:mm to HH:MM
+            var p = raw.Split(':');
+            if (p.Length == 2 && int.TryParse(p[0], out var ph) && int.TryParse(p[1], out var pm))
+                return $"{ph:D2}:{pm:D2}";
+            return raw;
+        }
         var digits = new string(raw.Where(char.IsDigit).ToArray());
         if (digits.Length == 0) return "";
-        if (digits.Length <= 2)  // 1-2 digits = minutes → "0:MM"
+        if (digits.Length <= 2)
         {
             var m = int.Parse(digits);
-            return $"0:{m:D2}";
+            return $"00:{m:D2}";
         }
-        if (digits.Length == 3) return digits[..1] + ":" + digits[1..];
-        if (digits.Length >= 4) return digits[..^2] + ":" + digits[^2..];
+        if (digits.Length == 3)
+        {
+            var h = int.Parse(digits[..1]);
+            var m = int.Parse(digits[1..]);
+            return $"{h:D2}:{m:D2}";
+        }
+        if (digits.Length >= 4)
+        {
+            var h = int.Parse(digits[..^2]);
+            var m = int.Parse(digits[^2..]);
+            return $"{h:D2}:{m:D2}";
+        }
         return raw;
     }
 
@@ -5626,7 +5661,9 @@
         var parts = val.Split(':');
         if (parts.Length != 2) return false;
         if (!int.TryParse(parts[0], out var h) || !int.TryParse(parts[1], out var m)) return false;
-        return h >= 0 && h <= 23 && m >= 0 && m <= 59;
+        if (h < 0 || h > 23 || m < 0 || m > 59) return false;
+        // Must be exactly HH:MM (2 digits : 2 digits)
+        return parts[0].Length == 2 && parts[1].Length == 2;
     }
 
     int ArfTimeToMinutes(string val)
@@ -5671,7 +5708,7 @@
             if (!string.IsNullOrEmpty(_importNameEditError))
                 reasons.Add($"File name error: {_importNameEditError}");
             if (!IsArfTableEmpty && ArfHasTimeErrors)
-                reasons.Add("Fix time format errors in the ARF table");
+                reasons.Add("Fix time errors in the ARF table — every time must be exactly 4 digits in HH:MM format (e.g. 01:30, not 1:30). Add a leading zero if the hour is single-digit.");
             if (string.IsNullOrWhiteSpace(_arfSessionLength))
                 reasons.Add("Enter the Session Length");
             return reasons;
@@ -7803,6 +7840,7 @@ string _actionPcSearch = "";
     {
         _completionAllPcs   = CompletionSvc.GetAllNonSoloPcs();
         _completionAuditors = CompletionSvc.GetActiveAuditors();
+        _completionGrades   = CourseSvc.GetAllGrades();
         _completionPcId     = 0;
         _completions        = [];
         _completionAddMode  = false;

@@ -182,6 +182,98 @@
         }
     </div>
 
+    @* ── Grades (lkp_grades) ── *@
+    <div class="card shadow-sm mb-4" style="border-radius:12px;border:none;">
+        <div class="card-header py-2 px-3 d-flex align-items-center justify-content-between"
+             style="background:#fff8e1;color:#212529;border-radius:12px 12px 0 0;border-bottom:1px solid #ffe082;cursor:pointer;"
+             @onclick="() => _showGrades = !_showGrades">
+            <span class="fw-semibold small" style="color:#f57f17;">
+                <i class="ri-trophy-line me-1"></i>Grades
+            </span>
+            <span class="d-flex align-items-center gap-2">
+                <span class="badge rounded-pill" style="background:#ffe082;color:#f57f17;font-size:.75rem;">
+                    @_grades.Count
+                </span>
+                <i class="ri-arrow-down-s-line" style="transition:transform .2s;@(_showGrades ? "" : "transform:rotate(-90deg);")"></i>
+            </span>
+        </div>
+        @if (_showGrades)
+        {
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-3 small">Grade Name</th>
+                        <th style="width:130px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var g in _grades)
+                    {
+                        <tr>
+                            <td class="ps-3 align-middle">
+                                @if (_editGradeId == g.GradeId)
+                                {
+                                    <input class="form-control form-control-sm" style="max-width:280px;"
+                                           @bind="_editGradeCode" @bind:event="oninput"
+                                           @onkeydown="OnEditGradeKeyDown" />
+                                }
+                                else
+                                {
+                                    <span class="fw-medium">@g.Code</span>
+                                }
+                            </td>
+                            <td class="text-end pe-3 align-middle">
+                                @if (_editGradeId == g.GradeId)
+                                {
+                                    <button class="btn btn-sm btn-success py-0 px-2 me-1" @onclick="SaveEditGrade">
+                                        <i class="ri-save-line"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-link text-muted py-0 px-1"
+                                            @onclick="() => _editGradeId = null">@LS.T("common.cancel")</button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-link text-primary py-0 px-1"
+                                            title="Edit" @onclick="() => StartEditGrade(g)">
+                                        <i class="ri-edit-line"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-link text-danger py-0 px-1"
+                                            title="Delete" @onclick="() => AskDeleteGrade(g.GradeId, g.Code)">
+                                        <i class="ri-delete-bin-line"></i>
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr style="background:#fffde7;color:#212529;">
+                        <td class="ps-3 py-2">
+                            <input class="form-control form-control-sm" style="max-width:280px;"
+                                   placeholder="New grade name"
+                                   @bind="_newGradeCode" @bind:event="oninput"
+                                   @onkeydown="OnAddGradeKeyDown" />
+                            @if (!string.IsNullOrEmpty(_addGradeError))
+                            {
+                                <div class="text-danger small mt-1">@_addGradeError</div>
+                            }
+                        </td>
+                        <td class="text-end pe-3 py-2 align-middle">
+                            <button class="btn btn-sm btn-success" @onclick="AddGrade"
+                                    disabled="@string.IsNullOrWhiteSpace(_newGradeCode)">
+                                <i class="ri-add-line me-1"></i>@LS.T("common.add")
+                            </button>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+          </div>
+        </div>
+        }
+    </div>
+
     @* ── Books ── *@
     <div class="card shadow-sm mb-4" style="border-radius:12px;border:none;">
         <div class="card-header py-2 px-3 d-flex align-items-center justify-content-between"
@@ -435,7 +527,7 @@
     bool _showCourses     = true;
     bool _showBooks        = true;
 
-    bool _showEnrollments  = true;
+    bool _showEnrollments  = false;
 
     // ── Courses state ──
     List<CourseItem>           _courses     = [];
@@ -471,6 +563,14 @@
     string _editBkName  = "";
     int    _editBkPrice = 0;
 
+    // ── Grades state ──
+    bool _showGrades = true;
+    List<CourseService.GradeItem> _grades = [];
+    string _newGradeCode = "";
+    string _addGradeError = "";
+    int? _editGradeId;
+    string _editGradeCode = "";
+
     protected override void OnInitialized() => Reload();
 
     void Reload()
@@ -478,6 +578,7 @@
         _courses     = CourseSvc.GetAllCourses();
         _enrollments = CourseSvc.GetCourseEnrollmentReport();
         _books       = CourseSvc.GetAllBooks();
+        _grades      = CourseSvc.GetAllGrades();
     }
 
     // ── Courses CRUD ──
@@ -590,6 +691,11 @@
             Console.WriteLine($"[Courses] Deleted course {_deleteConfirmId} ('{_deleteConfirmName}') by 'admin'");
             CourseSvc.DeleteCourse(_deleteConfirmId);
         }
+        else if (_deleteConfirmType == "Grade")
+        {
+            Console.WriteLine($"[Courses] Deleted grade {_deleteConfirmId} ('{_deleteConfirmName}') by 'admin'");
+            CourseSvc.DeleteGrade(_deleteConfirmId);
+        }
         else
         {
             Console.WriteLine($"[Courses] Deleted book {_deleteConfirmId} ('{_deleteConfirmName}') by 'admin'");
@@ -629,6 +735,71 @@
     }
 
     void OnEditBkKeyDown(KeyboardEventArgs e) { if (e.Key == "Enter") SaveEditBook(); }
+
+    // ── Grades CRUD ──
+
+    void AddGrade()
+    {
+        if (string.IsNullOrWhiteSpace(_newGradeCode)) return;
+        if (_grades.Any(g => g.Code.Equals(_newGradeCode.Trim(), StringComparison.OrdinalIgnoreCase)))
+        { _addGradeError = "Grade already exists"; return; }
+        CourseSvc.AddGrade(_newGradeCode.Trim());
+        _newGradeCode = ""; _addGradeError = "";
+        Reload();
+    }
+
+    void OnAddGradeKeyDown(KeyboardEventArgs e) { if (e.Key == "Enter") AddGrade(); }
+
+    void StartEditGrade(CourseService.GradeItem g)
+    {
+        _editGradeId = g.GradeId; _editGradeCode = g.Code;
+    }
+
+    void SaveEditGrade()
+    {
+        if (_editGradeId.HasValue && !string.IsNullOrWhiteSpace(_editGradeCode))
+        {
+            CourseSvc.UpdateGrade(_editGradeId.Value, _editGradeCode.Trim());
+        }
+        _editGradeId = null;
+        Reload();
+    }
+
+    void OnEditGradeKeyDown(KeyboardEventArgs e) { if (e.Key == "Enter") SaveEditGrade(); }
+
+    void AskDeleteGrade(int id, string code)
+    {
+        var (auditors, completions) = CourseSvc.GetGradeUsages(id);
+        if (auditors.Count > 0 || completions.Count > 0)
+        {
+            _deleteBlockedTitle = $"Cannot delete grade \"{code}\"";
+            var sb = new System.Text.StringBuilder();
+            if (auditors.Count > 0)
+            {
+                sb.Append("<div class='mb-3'><strong style='color:#dc2626;'>Staff using this grade:</strong>");
+                sb.Append("<table class='table table-sm mt-1 mb-0' style='font-size:.8rem;'><thead><tr><th>Username</th><th>Role</th></tr></thead><tbody>");
+                foreach (var a in auditors)
+                    sb.Append($"<tr><td class='fw-semibold'>{Enc(a.Username)}</td><td>{Enc(a.StaffRole)}</td></tr>");
+                sb.Append("</tbody></table></div>");
+            }
+            if (completions.Count > 0)
+            {
+                sb.Append("<div class='mb-2'><strong style='color:#dc2626;'>PC completions using this grade:</strong>");
+                sb.Append("<table class='table table-sm mt-1 mb-0' style='font-size:.8rem;'><thead><tr><th>PC Name</th><th>Date</th></tr></thead><tbody>");
+                foreach (var c in completions)
+                    sb.Append($"<tr><td class='fw-semibold'>{Enc(c.PcName)}</td><td>{c.CompleteDate ?? "—"}</td></tr>");
+                sb.Append("</tbody></table></div>");
+            }
+            sb.Append("<div class='small text-muted mt-2'><i class='ri-information-line me-1'></i>Remove these references first, then try deleting again.</div>");
+            _deleteBlockedBody = sb.ToString();
+            _showDeleteBlocked = true;
+            return;
+        }
+        _deleteConfirmType = "Grade";
+        _deleteConfirmId = id;
+        _deleteConfirmName = code;
+        _showDeleteConfirm = true;
+    }
 
     static string Enc(string s) => System.Net.WebUtility.HtmlEncode(s);
 }

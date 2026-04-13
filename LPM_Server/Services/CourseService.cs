@@ -653,4 +653,112 @@ public class CourseService
             dict[r.GetInt32(0)] = r.GetString(1).Trim();
         return dict;
     }
+
+    // ── Grades (lkp_grades) CRUD ────────────────────────────────────────────
+
+    public record GradeItem(int GradeId, string Code, int SortOrder);
+
+    public List<GradeItem> GetAllGrades()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT GradeId, Code, SortOrder FROM lkp_grades ORDER BY SortOrder";
+        var list = new List<GradeItem>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new(r.GetInt32(0), r.GetString(1), r.GetInt32(2)));
+        return list;
+    }
+
+    public void AddGrade(string code)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"INSERT INTO lkp_grades (Code, SortOrder, DefaultRateCentsPerHour)
+            VALUES (@code, (SELECT COALESCE(MAX(SortOrder),0)+1 FROM lkp_grades), 0)";
+        cmd.Parameters.AddWithValue("@code", code.Trim());
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[CourseService] Added grade '{code}'");
+    }
+
+    public void UpdateGrade(int gradeId, string code)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        // Update Code and also update any sess_completions.FinishedGrade that referenced the old code
+        string? oldCode = null;
+        using (var q = conn.CreateCommand())
+        {
+            q.CommandText = "SELECT Code FROM lkp_grades WHERE GradeId=@id";
+            q.Parameters.AddWithValue("@id", gradeId);
+            oldCode = q.ExecuteScalar()?.ToString();
+        }
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE lkp_grades SET Code=@code WHERE GradeId=@id";
+        cmd.Parameters.AddWithValue("@code", code.Trim());
+        cmd.Parameters.AddWithValue("@id", gradeId);
+        cmd.ExecuteNonQuery();
+        // Cascade rename in completions
+        if (oldCode != null && oldCode != code.Trim())
+        {
+            using var upd = conn.CreateCommand();
+            upd.CommandText = "UPDATE sess_completions SET FinishedGrade=@newCode WHERE FinishedGrade=@oldCode";
+            upd.Parameters.AddWithValue("@newCode", code.Trim());
+            upd.Parameters.AddWithValue("@oldCode", oldCode);
+            var affected = upd.ExecuteNonQuery();
+            if (affected > 0)
+                Console.WriteLine($"[CourseService] Cascaded grade rename '{oldCode}' → '{code.Trim()}' in {affected} completion(s)");
+        }
+        Console.WriteLine($"[CourseService] Updated grade {gradeId} → '{code}'");
+    }
+
+    public void DeleteGrade(int gradeId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM lkp_grades WHERE GradeId=@id";
+        cmd.Parameters.AddWithValue("@id", gradeId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[CourseService] Deleted grade {gradeId}");
+    }
+
+    public record GradeUsageAuditor(string Username, string StaffRole);
+    public record GradeUsageCompletion(string PcName, string? CompleteDate);
+
+    public (List<GradeUsageAuditor> Auditors, List<GradeUsageCompletion> Completions) GetGradeUsages(int gradeId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Check core_users referencing this grade
+        var auditors = new List<GradeUsageAuditor>();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "SELECT Username, StaffRole FROM core_users WHERE GradeId=@id";
+            cmd.Parameters.AddWithValue("@id", gradeId);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                auditors.Add(new(r.GetString(0), r.IsDBNull(1) ? "" : r.GetString(1)));
+        }
+
+        // Check sess_completions referencing this grade code
+        var completions = new List<GradeUsageCompletion>();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"SELECT TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')), c.CompleteDate
+                FROM sess_completions c
+                JOIN core_persons p ON p.PersonId = c.PcId
+                WHERE c.FinishedGrade = (SELECT Code FROM lkp_grades WHERE GradeId=@id)
+                ORDER BY p.FirstName";
+            cmd.Parameters.AddWithValue("@id", gradeId);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                completions.Add(new(r.GetString(0), r.IsDBNull(1) ? null : r.GetString(1)));
+        }
+
+        return (auditors, completions);
+    }
 }
