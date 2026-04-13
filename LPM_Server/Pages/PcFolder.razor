@@ -4892,7 +4892,7 @@
         _csSessionName is not null &&
         System.Text.RegularExpressions.Regex.IsMatch(
             _csSessionName,
-            @"(?<![a-zA-Z])(memo|report)(?![a-zA-Z])",
+            @"(?<![a-zA-Z])(memo|report|Next\s*CS)(?![a-zA-Z])",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     static bool IsMemoOrNextCsFile(string name) =>

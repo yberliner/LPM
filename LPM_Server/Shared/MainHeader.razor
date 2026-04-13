@@ -428,12 +428,15 @@
                                             <i class="ri-sticky-note-line" style="color:#ec4899;"></i>@LS.T("actions.addMemo")
                                         </a>
                                     </li>
+                                    @if (!_isSoloUser)
+                                    {
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenNcWizard">
                                             <i class="ri-user-follow-line" style="color:#14b8a6;"></i>Add Next C/S
                                         </a>
                                     </li>
+                                    }
                                     @if (!_isSoloUser)
                                     {
                                     <li>
@@ -2198,6 +2201,13 @@
                     else
                     {
                         @* ── Step 2: Write Memo ── *@
+                        <div class="mb-2 d-flex align-items-center gap-2">
+                            <label style="font-size:.82rem; color:#94a3b8; white-space:nowrap;">Date</label>
+                            <input type="date" class="form-control form-control-sm"
+                                   style="width:160px; background:#0f172a; color:#e2e8f0; border-color:#475569;"
+                                   value="@_memoDate.ToString("yyyy-MM-dd")"
+                                   @onchange="e => { if (DateOnly.TryParse(e.Value?.ToString(), out var d)) _memoDate = d; }" />
+                        </div>
                         <div class="mb-1" id="memo-quill-wrap">
                             <label class="form-label" style="font-size:.82rem; color:#94a3b8;">@LS.T("actions.memoText")</label>
                             <div id="memo-quill-editor"
@@ -2362,8 +2372,12 @@
                                 <span class="s3-label" style="font-size:1.35rem;">
                                     PC's Name:&nbsp;<span class="s3-value">@(_ncPcs.FirstOrDefault(p => p.PcId == _ncPcId)?.FullName ?? "")</span>
                                 </span>
-                                <span class="s3-label" style="font-size:1.35rem;">
-                                    Date:&nbsp;<span class="s3-value">@DateTime.Today.ToString("dd/MM/yy")</span>
+                                <span class="s3-label d-flex align-items-center gap-1" style="font-size:1.35rem;">
+                                    Date:&nbsp;
+                                    <input type="date" class="form-control form-control-sm"
+                                           style="width:150px; background:#0f172a; color:#e2e8f0; border-color:#475569; font-size:.9rem;"
+                                           value="@_ncDate.ToString("yyyy-MM-dd")"
+                                           @onchange="e => { if (DateOnly.TryParse(e.Value?.ToString(), out var d)) _ncDate = d; }" />
                                 </span>
                             </div>
                             <div class="s3-label" style="font-size:1.35rem; margin-top:4px;">
@@ -4932,6 +4946,7 @@
     bool   _memoScanBoxAnim;
     string _memoScanBoxFileName = "";
     string _memoScanBoxError = "";
+    DateOnly _memoDate = DateOnly.FromDateTime(DateTime.Today);
 
     // ── Add Next C/S wizard state ──
     bool   _showNcWizard;
@@ -4944,6 +4959,7 @@
     string _ncTopHtml = "";
     string _ncBottomHtml = "";
     bool   _ncVisited;
+    DateOnly _ncDate = DateOnly.FromDateTime(DateTime.Today);
     bool   _ncRunning;
     bool   _ncDone;
     string _ncError = "";
@@ -7233,6 +7249,7 @@ string _actionPcSearch = "";
         _memoScanBoxAnim     = false;
         _memoScanBoxFileName = "";
         _memoScanBoxError    = "";
+        _memoDate            = DateOnly.FromDateTime(DateTime.Today);
         _showMemoWizard      = true;
 
         // Solo users have a pre-set PC — skip step 1 and go directly to step 2
@@ -7336,8 +7353,8 @@ string _actionPcSearch = "";
         var capturedSolo     = _memoSolo || _isSoloUser;
         var capturedAudId    = _msgUserId!.Value;
         var capturedPcName   = _memoPcs.FirstOrDefault(p => p.PcId == _memoPcId)?.FullName ?? "";
-        var capturedDate     = DateOnly.FromDateTime(DateTime.Today);
-        var capturedMemoName = DateTime.Today.ToString("yyMMdd") + " report";
+        var capturedDate     = _memoDate;
+        var capturedMemoName = _memoDate.ToString("yyMMdd") + " report";
 
         Console.WriteLine($"[Memo] Quill HTML: {html}");
 
@@ -7442,8 +7459,8 @@ string _actionPcSearch = "";
         var capturedSolo   = _memoSolo || _isSoloUser;
         var capturedAudId  = _msgUserId!.Value;
         var capturedPcName = _memoPcs.FirstOrDefault(p => p.PcId == _memoPcId)?.FullName ?? "";
-        var capturedDate   = DateOnly.FromDateTime(DateTime.Today);
-        var capturedName   = DateTime.Today.ToString("yyMMdd") + " report";
+        var capturedDate   = _memoDate;
+        var capturedName   = _memoDate.ToString("yyMMdd") + " report";
         var capturedBytes  = picked.Data;
 
         // Close modal, start background toast
@@ -7536,6 +7553,7 @@ string _actionPcSearch = "";
         _ncVisited      = false;
         _ncAuditorName  = DashSvc.GetPersonName(_msgUserId.Value);
         if (string.IsNullOrWhiteSpace(_ncAuditorName)) _ncAuditorName = _logUsername;
+        _ncDate         = DateOnly.FromDateTime(DateTime.Today);
         _showNcWizard   = true;
 
         if (_isSoloUser) NcNext();
@@ -7648,9 +7666,9 @@ string _actionPcSearch = "";
         var capturedSolo        = _ncSolo || _isSoloUser;
         var capturedAudId       = _msgUserId!.Value;
         var capturedPcName      = _ncPcs.FirstOrDefault(p => p.PcId == _ncPcId)?.FullName ?? "";
-        var capturedDate        = DateOnly.FromDateTime(DateTime.Today);
-        var capturedDateStr     = DateTime.Today.ToString("dd/MM/yy");
-        var capturedFileName    = DateTime.Today.ToString("yyMMdd") + " Next CS";
+        var capturedDate        = _ncDate;
+        var capturedDateStr     = _ncDate.ToString("dd/MM/yy");
+        var capturedFileName    = _ncDate.ToString("yyMMdd") + " Next CS";
         var capturedAuditorName = _ncAuditorName;
         var capturedTopHtml     = _ncTopHtml;
         var capturedBottomHtml  = _ncBottomHtml;
