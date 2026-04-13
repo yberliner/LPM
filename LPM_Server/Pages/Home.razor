@@ -140,6 +140,23 @@
                             <i class="ri-arrow-right-line hmas-arrow"></i>
                         </span>
                     </button>
+                    @if (_isSolo)
+                    {
+                    <button class="home-mobile-open-folder"
+                            @onclick="OpenSoloFolder">
+                        <span class="hmof-glow"></span>
+                        <span class="hmof-particles">
+                            <span class="hmof-particle"></span>
+                            <span class="hmof-particle"></span>
+                            <span class="hmof-particle"></span>
+                        </span>
+                        <span class="hmof-content">
+                            <i class="ri-folder-open-line hmof-icon"></i>
+                            <span class="hmof-text">Open Folder</span>
+                            <i class="ri-arrow-right-up-line hmof-arrow"></i>
+                        </span>
+                    </button>
+                    }
                 </div>
             }
 
@@ -1132,6 +1149,121 @@
         50%      { transform: translateX(4px); opacity: 1; }
     }
 
+    /* ── Mobile Open Folder button (Solo) ── */
+    .home-mobile-open-folder {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        padding: 14px 24px;
+        margin-top: 8px;
+        border-radius: 14px;
+        border: 1px solid rgba(139,92,246,.35);
+        min-height: 52px;
+        overflow: hidden;
+        cursor: pointer;
+        background: linear-gradient(135deg, #1e1046 0%, #2d1b69 40%, #4c1d95 100%);
+        box-shadow: 0 4px 20px rgba(139,92,246,.3),
+                    inset 0 1px 0 rgba(255,255,255,.08);
+        animation: hmofBreath 4s ease-in-out infinite;
+        transition: transform .15s, box-shadow .15s;
+    }
+    .home-mobile-open-folder:active {
+        transform: scale(0.96);
+        animation: none;
+        box-shadow: 0 2px 8px rgba(139,92,246,.25);
+    }
+
+    .hmof-glow {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(ellipse at 30% 50%, rgba(167,139,250,.2) 0%, transparent 60%);
+        animation: hmofGlowMove 5s ease-in-out infinite;
+        pointer-events: none;
+    }
+
+    .hmof-particles {
+        position: absolute; inset: 0; pointer-events: none; overflow: hidden;
+    }
+    .hmof-particle {
+        position: absolute;
+        width: 3px; height: 3px;
+        border-radius: 50%;
+        background: rgba(196,181,253,.6);
+        box-shadow: 0 0 6px 1px rgba(167,139,250,.4);
+    }
+    .hmof-particle:nth-child(1) {
+        top: 25%; left: 15%;
+        animation: hmofFloat 6s ease-in-out infinite;
+    }
+    .hmof-particle:nth-child(2) {
+        top: 60%; left: 70%;
+        animation: hmofFloat 5s ease-in-out 1.5s infinite;
+    }
+    .hmof-particle:nth-child(3) {
+        top: 40%; left: 85%;
+        animation: hmofFloat 7s ease-in-out 3s infinite;
+    }
+
+    .hmof-content {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #e9d5ff;
+        z-index: 1;
+    }
+    .hmof-icon {
+        font-size: 1.25rem;
+        color: #c4b5fd;
+        filter: drop-shadow(0 0 4px rgba(167,139,250,.5));
+        animation: hmofIconPulse 3s ease-in-out infinite;
+    }
+    .hmof-text {
+        font-weight: 700;
+        font-size: 1rem;
+        letter-spacing: .03em;
+        background: linear-gradient(90deg, #e9d5ff, #c4b5fd, #a78bfa, #c4b5fd, #e9d5ff);
+        background-size: 200% 100%;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        animation: hmofTextShimmer 4s ease-in-out infinite;
+    }
+    .hmof-arrow {
+        font-size: 1rem;
+        color: #a78bfa;
+        animation: hmofArrowDrift 2.5s ease-in-out infinite;
+    }
+
+    @@keyframes hmofBreath {
+        0%, 100% { box-shadow: 0 4px 20px rgba(139,92,246,.3), inset 0 1px 0 rgba(255,255,255,.08); }
+        50%      { box-shadow: 0 6px 30px rgba(139,92,246,.45), inset 0 1px 0 rgba(255,255,255,.12), 0 0 0 4px rgba(139,92,246,.08); }
+    }
+    @@keyframes hmofGlowMove {
+        0%, 100% { background-position: 30% 50%; opacity: .6; }
+        50%      { background-position: 70% 50%; opacity: 1; }
+    }
+    @@keyframes hmofFloat {
+        0%, 100% { transform: translate(0, 0) scale(1); opacity: .4; }
+        25%      { transform: translate(8px, -6px) scale(1.3); opacity: .8; }
+        50%      { transform: translate(-4px, -10px) scale(1); opacity: .5; }
+        75%      { transform: translate(6px, 4px) scale(1.2); opacity: .7; }
+    }
+    @@keyframes hmofIconPulse {
+        0%, 100% { transform: scale(1); filter: drop-shadow(0 0 4px rgba(167,139,250,.5)); }
+        50%      { transform: scale(1.08); filter: drop-shadow(0 0 8px rgba(167,139,250,.8)); }
+    }
+    @@keyframes hmofTextShimmer {
+        0%, 100% { background-position: 0% 50%; }
+        50%      { background-position: 100% 50%; }
+    }
+    @@keyframes hmofArrowDrift {
+        0%, 100% { transform: translate(0, 0); opacity: .6; }
+        50%      { transform: translate(3px, -3px); opacity: 1; }
+    }
+
     /* ── Nav bar ── */
     .home-nav-bar {
         background: linear-gradient(135deg, #0f2057 0%, #1a237e 55%, #283593 100%);
@@ -1708,6 +1840,8 @@
 @code {
 
     async Task OnMobileAddSession() => await JS.InvokeVoidAsync("lpmClickById", "btn-add-session");
+
+    void OpenSoloFolder() => Nav.NavigateTo($"/PcFolder/{_userId}?solo=true", forceLoad: true);
 
     string _displayName = "LP Management";
     string _username = "";
