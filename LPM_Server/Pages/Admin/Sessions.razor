@@ -171,7 +171,7 @@
                                                pcDef.Salary)" />
                                 </div>
                                 <div class="input-group input-group-sm sa-rate-input" style="width:135px;">
-                                    <span class="input-group-text">₪ Sal.</span>
+                                    <span class="input-group-text">@PcCurrSym(pcGroup.PcId) Sal.</span>
                                     <input type="number" class="form-control" placeholder="0" min="0" step="0.01"
                                            value="@pcDef.Salary.ToString(CultureInfo.InvariantCulture)" onfocus="this.select()"
                                            @onchange="e => PropagateRate(group.AuditorId, pcGroup.PcId,
@@ -195,7 +195,7 @@
                                     <th class="text-center">@LS.T("sessions.admin")</th>
                                     <th class="text-center">@LS.T("sessions.free")</th>
                                     <th style="width:115px;">@LS.T("sessions.rate") @PcCurrSym(pcGroup.PcId)/hr</th>
-                                    <th style="width:115px;">@LS.T("sessions.salary")</th>
+                                    <th style="width:115px;">@LS.T("sessions.salary") @PcCurrSym(pcGroup.PcId)/hr</th>
                                     <th style="width:105px;">@LS.T("common.status")</th>
                                     <th class="pe-4" style="width:90px;"></th>
                                 </tr>
@@ -323,7 +323,7 @@
                         <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
                             <span class="sa-input-label" style="color:#6b7280;">Set all:</span>
                             <div class="input-group input-group-sm sa-rate-input" style="width:140px;">
-                                <span class="input-group-text">CS Sal.</span>
+                                <span class="input-group-text">@PcCurrSym(pcGroup.PcId) CS Sal.</span>
                                 <input type="number" class="form-control" placeholder="0" min="0" step="0.01"
                                        value="@csPcDef.ToString(CultureInfo.InvariantCulture)" onfocus="this.select()"
                                        @onchange="e => PropagateCSRate(csGroup.CsId, pcGroup.PcId,
@@ -347,7 +347,7 @@
                                     {
                                         <th style="width:115px;">Rate @PcCurrSym(pcGroup.PcId)/hr</th>
                                     }
-                                    <th style="width:115px;">CS Salary ₪/hr</th>
+                                    <th style="width:115px;">CS Salary @PcCurrSym(pcGroup.PcId)/hr</th>
                                     <th style="width:105px;">Status</th>
                                     <th class="pe-4" style="width:90px;"></th>
                                 </tr>
@@ -432,7 +432,7 @@
                                         <td class="py-1">
                                             @if (rowIsFree)
                                             {
-                                                <span class="sa-free-badge">FREE — ₪0</span>
+                                                <span class="sa-free-badge">FREE — @PcCurrSym(pcGroup.PcId)0</span>
                                             }
                                             else
                                             {
