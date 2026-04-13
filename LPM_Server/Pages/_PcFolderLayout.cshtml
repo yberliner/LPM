@@ -104,6 +104,14 @@
             for (const p of meta.pages) {
                 if (p.action === 'original') {
                     metaForSend.pages.push({ action: 'original', srcPageIdx: p.srcPageIdx });
+                } else if (p.action === 'bg_color') {
+                    metaForSend.pages.push({ action: 'bg_color', srcPageIdx: p.srcPageIdx, color: p.color });
+                } else if (p.action === 'bg_color_overlay') {
+                    const resp = await fetch(p.dataUrl);
+                    const blob = await resp.blob();
+                    formData.append('img_' + imgIdx, blob, 'img_' + imgIdx + '.png');
+                    metaForSend.pages.push({ action: 'bg_color_overlay', srcPageIdx: p.srcPageIdx, color: p.color, w: p.w, h: p.h, imgIdx });
+                    imgIdx++;
                 } else {
                     const resp = await fetch(p.dataUrl);
                     const blob = await resp.blob();

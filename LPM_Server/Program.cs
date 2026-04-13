@@ -1122,7 +1122,7 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
     if (meta?.Pages == null) return Results.BadRequest("Invalid meta");
 
     // Only load original PDF if any page needs vector data from it
-    var needsOriginal = meta.Pages.Any(p => p.Action == "original" || p.Action == "overlay");
+    var needsOriginal = meta.Pages.Any(p => p.Action is "original" or "overlay" or "bg_color" or "bg_color_overlay");
     PdfSharpCore.Pdf.PdfDocument? originalDoc = null;
     if (needsOriginal)
     {
@@ -1188,7 +1188,7 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
             case "full_replace":
             case "full_new":
             {
-                // Full raster: bg-changed original page or new blank/inserted page
+                // Full raster: new blank/inserted page (no original to reference)
                 var imgFile = form.Files["img_" + pg.ImgIdx];
                 if (imgFile == null) break;
                 using var imgMs = new MemoryStream();
@@ -1200,6 +1200,40 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
                 using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page);
                 var xImg = PdfSharpCore.Drawing.XImage.FromStream(() => new MemoryStream(imgBytes));
                 gfx.DrawImage(xImg, 0, 0, page.Width, page.Height);
+                break;
+            }
+
+            case "bg_color":
+            {
+                // Vector-preserving background color: copy original page + append multiply rectangle
+                if (pg.SrcPageIdx < 0 || pg.SrcPageIdx >= originalDoc!.PageCount) break;
+                var page = newDoc.AddPage(originalDoc.Pages[pg.SrcPageIdx]!);
+                if (!string.IsNullOrEmpty(pg.Color) && pg.Color != "#ffffff" && pg.Color != "#FFFFFF")
+                    PdfBgHelper.AppendMultiplyBackground(newDoc, page, pg.Color);
+                break;
+            }
+
+            case "bg_color_overlay":
+            {
+                // Vector-preserving background color + draw stroke overlay
+                if (pg.SrcPageIdx < 0 || pg.SrcPageIdx >= originalDoc!.PageCount) break;
+                var page = newDoc.AddPage(originalDoc.Pages[pg.SrcPageIdx]!);
+                if (!string.IsNullOrEmpty(pg.Color) && pg.Color != "#ffffff" && pg.Color != "#FFFFFF")
+                    PdfBgHelper.AppendMultiplyBackground(newDoc, page, pg.Color);
+                // Append draw overlay (same as overlay case)
+                var imgFile = form.Files["img_" + pg.ImgIdx];
+                if (imgFile != null)
+                {
+                    using var imgMs = new MemoryStream();
+                    await imgFile.CopyToAsync(imgMs);
+                    var imgBytes = imgMs.ToArray();
+                    using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page, PdfSharpCore.Drawing.XGraphicsPdfPageOptions.Append);
+                    var xImg = PdfSharpCore.Drawing.XImage.FromStream(() => new MemoryStream(imgBytes));
+                    var mb = page.MediaBox;
+                    double drawX = mb.X1;
+                    double drawY = page.Height.Point - mb.Y2;
+                    gfx.DrawImage(xImg, drawX, drawY, page.Width, page.Height);
+                }
                 break;
             }
         }
@@ -1902,5 +1936,77 @@ LPM.Services.FolderService.EnsureDummyProgramInserts();
 app.Run();
 
 // Models for overlay-based annotation save
-record AnnPageInfo(string Action, int SrcPageIdx, int W, int H, int ImgIdx);
+record AnnPageInfo(string Action, int SrcPageIdx, int W, int H, int ImgIdx, string? Color = null);
 record AnnSaveMeta(int TotalPages, AnnPageInfo[] Pages);
+
+static class PdfBgHelper
+{
+    public static (double r, double g, double b) ParseHexColor(string hex)
+    {
+        hex = hex.TrimStart('#');
+        if (hex.Length < 6) return (1, 1, 1);
+        return (
+            int.Parse(hex[0..2], System.Globalization.NumberStyles.HexNumber) / 255.0,
+            int.Parse(hex[2..4], System.Globalization.NumberStyles.HexNumber) / 255.0,
+            int.Parse(hex[4..6], System.Globalization.NumberStyles.HexNumber) / 255.0
+        );
+    }
+
+    /// <summary>Appends a full-page colored rectangle with PDF Multiply blend mode to preserve vectors.</summary>
+    public static void AppendMultiplyBackground(PdfSharpCore.Pdf.PdfDocument doc, PdfSharpCore.Pdf.PdfPage page, string hexColor)
+    {
+        var (r, g, b) = ParseHexColor(hexColor);
+
+        // 1. Create ExtGState with Multiply blend mode
+        var gsDict = new PdfSharpCore.Pdf.PdfDictionary(doc);
+        gsDict.Elements.SetName("/Type", "/ExtGState");
+        gsDict.Elements.SetName("/BM", "/Multiply");
+        doc.Internals.AddObject(gsDict);
+
+        // 2. Register in page Resources → ExtGState
+        // Use XGraphics briefly to ensure resources are properly initialized for this page
+        using (var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page, PdfSharpCore.Drawing.XGraphicsPdfPageOptions.Append))
+        {
+            // Draw the colored rectangle using XGraphics (this creates a proper content stream)
+            var brush = new PdfSharpCore.Drawing.XSolidBrush(
+                PdfSharpCore.Drawing.XColor.FromArgb((int)(r * 255), (int)(g * 255), (int)(b * 255)));
+            gfx.DrawRectangle(brush, 0, 0, page.Width, page.Height);
+        }
+
+        // 3. Now add the ExtGState with Multiply blend mode to the page resources
+        var resources = page.Resources;
+        var extGStates = resources.Elements.GetDictionary("/ExtGState");
+        if (extGStates == null)
+        {
+            extGStates = new PdfSharpCore.Pdf.PdfDictionary(doc);
+            resources.Elements["/ExtGState"] = extGStates;
+        }
+        doc.Internals.AddObject(gsDict);
+        extGStates.Elements["/GSBgLPM"] = gsDict.Reference;
+
+        // 4. Inject the blend mode operator into the last content stream
+        // XGraphics wrote: "q R G B rg 0 0 W H re f Q" — we need to insert "/GSBgLPM gs" after "q"
+        // Get the last content stream (the one XGraphics just created)
+        var contentsArr = page.Elements.GetArray("/Contents");
+        if (contentsArr != null && contentsArr.Elements.Count > 0)
+        {
+            var lastItem = contentsArr.Elements[contentsArr.Elements.Count - 1];
+            // Dereference if needed
+            var lastStream = lastItem as PdfSharpCore.Pdf.PdfDictionary;
+            if (lastStream == null && lastItem is PdfSharpCore.Pdf.PdfObject pdfObj && pdfObj.Reference != null)
+                lastStream = doc.Internals.GetObject(pdfObj.Reference.ObjectID) as PdfSharpCore.Pdf.PdfDictionary;
+            if (lastStream?.Stream != null)
+            {
+                var bytes = lastStream.Stream.Value;
+                var content = System.Text.Encoding.ASCII.GetString(bytes);
+                // Insert "/GSBgLPM gs " right after the first "q\n" or "q "
+                var modified = content.Replace("q\n", "q\n/GSBgLPM gs\n", StringComparison.Ordinal);
+                if (modified == content) // fallback: try "q " prefix
+                    modified = "q\n/GSBgLPM gs\n" + content.TrimStart('q').TrimStart();
+                lastStream.Stream.Value = System.Text.Encoding.ASCII.GetBytes(modified);
+            }
+        }
+
+        Console.WriteLine($"[AnnSave] Appended multiply bg color={hexColor} to page (w={page.Width.Point:F0} h={page.Height.Point:F0})");
+    }
+}

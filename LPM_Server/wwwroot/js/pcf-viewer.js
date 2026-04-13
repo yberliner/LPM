@@ -1508,13 +1508,33 @@ window.pcfViewer = {
             const hasBgChange = bgChangePages.has(i);
             const hasOverlay  = overlayPages.has(i);
 
-            if (!isOriginal || hasBgChange) {
-                // Blank/inserted page or bg-changed original: send full composite
+            if (isOriginal && hasBgChange) {
+                // Original page with bg-color change: send color to server (vectors preserved)
+                const lastBg = [...pane.annotations].reverse().find(a => a.type === 'bg-change' && a.pageIdx === i);
+                const bgColor = lastBg?.color || '#ffffff';
+                if (hasOverlay) {
+                    // Also has draw strokes: send color + overlay PNG
+                    const oc = document.createElement('canvas');
+                    oc.width = pg.overlay.width; oc.height = pg.overlay.height;
+                    const octx = oc.getContext('2d');
+                    for (const ann of pane.annotations) {
+                        if (ann.pageIdx !== i || ann.type !== 'draw') continue;
+                        this._drawStroke(octx, ann.stroke);
+                    }
+                    pages.push({
+                        action: 'bg_color_overlay', srcPageIdx, color: bgColor,
+                        w: oc.width, h: oc.height, dataUrl: oc.toDataURL('image/png')
+                    });
+                } else {
+                    // bg-color only: no image needed at all
+                    pages.push({ action: 'bg_color', srcPageIdx, color: bgColor });
+                }
+            } else if (!isOriginal) {
+                // Blank/inserted page: send full composite (no original to reference)
                 const fc = document.createElement('canvas');
                 fc.width = pg.canvas.width; fc.height = pg.canvas.height;
                 const fctx = fc.getContext('2d');
                 fctx.drawImage(pg.canvas, 0, 0);
-                // Draw only draw strokes — scale from overlay (CSS) coords to canvas (HiDPI) coords
                 const strokeDpr = pg.canvas.width / pg.overlay.width;
                 if (Math.abs(strokeDpr - 1) > 0.01) fctx.setTransform(strokeDpr, 0, 0, strokeDpr, 0, 0);
                 for (const ann of pane.annotations) {
@@ -1523,10 +1543,8 @@ window.pcfViewer = {
                 }
                 if (Math.abs(strokeDpr - 1) > 0.01) fctx.setTransform(1, 0, 0, 1, 0, 0);
                 pages.push({
-                    action: isOriginal ? 'full_replace' : 'full_new',
-                    srcPageIdx,
-                    w: fc.width, h: fc.height,
-                    dataUrl: fc.toDataURL('image/png')
+                    action: 'full_new', srcPageIdx,
+                    w: fc.width, h: fc.height, dataUrl: fc.toDataURL('image/png')
                 });
             } else if (hasOverlay) {
                 // Original page with draw strokes: send transparent annotation overlay only.
@@ -1898,7 +1916,7 @@ window.pcfViewer = {
         snapshot.width = w;
         snapshot.height = h;
         snapshot.getContext('2d').drawImage(pg.canvas, 0, 0);
-        pane.annotations.push({ type: 'bg-change', pageIdx, snapshot });
+        pane.annotations.push({ type: 'bg-change', pageIdx, color, snapshot });
 
         // Use per-page source doc/page tracking set at render time
         const hasSrc = pg.srcDoc && pg.srcPageNum;
