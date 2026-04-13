@@ -1964,16 +1964,6 @@ static class PdfBgHelper
         doc.Internals.AddObject(gsDict);
 
         // 2. Register in page Resources → ExtGState
-        // Use XGraphics briefly to ensure resources are properly initialized for this page
-        using (var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page, PdfSharpCore.Drawing.XGraphicsPdfPageOptions.Append))
-        {
-            // Draw the colored rectangle using XGraphics (this creates a proper content stream)
-            var brush = new PdfSharpCore.Drawing.XSolidBrush(
-                PdfSharpCore.Drawing.XColor.FromArgb((int)(r * 255), (int)(g * 255), (int)(b * 255)));
-            gfx.DrawRectangle(brush, 0, 0, page.Width, page.Height);
-        }
-
-        // 3. Now add the ExtGState with Multiply blend mode to the page resources
         var resources = page.Resources;
         var extGStates = resources.Elements.GetDictionary("/ExtGState");
         if (extGStates == null)
@@ -1981,32 +1971,35 @@ static class PdfBgHelper
             extGStates = new PdfSharpCore.Pdf.PdfDictionary(doc);
             resources.Elements["/ExtGState"] = extGStates;
         }
-        doc.Internals.AddObject(gsDict);
         extGStates.Elements["/GSBgLPM"] = gsDict.Reference;
 
-        // 4. Inject the blend mode operator into the last content stream
-        // XGraphics wrote: "q R G B rg 0 0 W H re f Q" — we need to insert "/GSBgLPM gs" after "q"
-        // Get the last content stream (the one XGraphics just created)
-        var contentsArr = page.Elements.GetArray("/Contents");
-        if (contentsArr != null && contentsArr.Elements.Count > 0)
+        // 3. Build raw content stream: colored rectangle with multiply blend
+        double w = page.MediaBox.Width;
+        double h = page.MediaBox.Height;
+        var ops = System.Text.Encoding.ASCII.GetBytes(
+            $"q /GSBgLPM gs {r:F3} {g:F3} {b:F3} rg 0 0 {w:F2} {h:F2} re f Q\n");
+
+        // 4. Create stream object and register it
+        var streamObj = new PdfSharpCore.Pdf.PdfDictionary(doc);
+        streamObj.CreateStream(ops);
+        doc.Internals.AddObject(streamObj);
+
+        // 5. Append to page's Contents
+        var contentsItem = page.Elements["/Contents"];
+        if (contentsItem is PdfSharpCore.Pdf.PdfArray arr)
         {
-            var lastItem = contentsArr.Elements[contentsArr.Elements.Count - 1];
-            // Dereference if needed
-            var lastStream = lastItem as PdfSharpCore.Pdf.PdfDictionary;
-            if (lastStream == null && lastItem is PdfSharpCore.Pdf.PdfObject pdfObj && pdfObj.Reference != null)
-                lastStream = doc.Internals.GetObject(pdfObj.Reference.ObjectID) as PdfSharpCore.Pdf.PdfDictionary;
-            if (lastStream?.Stream != null)
-            {
-                var bytes = lastStream.Stream.Value;
-                var content = System.Text.Encoding.ASCII.GetString(bytes);
-                // Insert "/GSBgLPM gs " right after the first "q\n" or "q "
-                var modified = content.Replace("q\n", "q\n/GSBgLPM gs\n", StringComparison.Ordinal);
-                if (modified == content) // fallback: try "q " prefix
-                    modified = "q\n/GSBgLPM gs\n" + content.TrimStart('q').TrimStart();
-                lastStream.Stream.Value = System.Text.Encoding.ASCII.GetBytes(modified);
-            }
+            arr.Elements.Add(streamObj.Reference);
+        }
+        else
+        {
+            // Single content stream or reference — wrap in array
+            var newArr = new PdfSharpCore.Pdf.PdfArray(doc);
+            if (contentsItem != null)
+                newArr.Elements.Add(contentsItem);
+            newArr.Elements.Add(streamObj.Reference);
+            page.Elements["/Contents"] = newArr;
         }
 
-        Console.WriteLine($"[AnnSave] Appended multiply bg color={hexColor} to page (w={page.Width.Point:F0} h={page.Height.Point:F0})");
+        Console.WriteLine($"[AnnSave] Appended multiply bg color={hexColor} to page (w={w:F0} h={h:F0})");
     }
 }
