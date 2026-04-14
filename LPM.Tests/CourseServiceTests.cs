@@ -225,8 +225,8 @@ public class CourseServiceTests : IDisposable
 
         var result = _svc.GetOpenCoursesForPersons(new List<int> { pid });
         Assert.True(result.ContainsKey(pid));
-        Assert.Contains("Open Course", result[pid]);
-        Assert.DoesNotContain("Done Course", result[pid]);
+        Assert.Contains(result[pid], e => e.Name == "Open Course");
+        Assert.DoesNotContain(result[pid], e => e.Name == "Done Course");
     }
 
     // =========================================================================
@@ -295,6 +295,101 @@ public class CourseServiceTests : IDisposable
     // =========================================================================
     // Private helpers
     // =========================================================================
+
+    // =========================================================================
+    // Grades CRUD (lkp_grades)
+    // =========================================================================
+
+    [Fact]
+    public void GetAllGrades_ReturnsSeeded()
+    {
+        var grades = _svc.GetAllGrades();
+        Assert.True(grades.Count >= 3); // BA, MA, PHD seeded
+    }
+
+    [Fact]
+    public void AddGrade_InsertsAndReturnsInList()
+    {
+        var before = _svc.GetAllGrades().Count;
+        _svc.AddGrade("TestGrade");
+        var after = _svc.GetAllGrades();
+        Assert.Equal(before + 1, after.Count);
+        Assert.Contains(after, g => g.Code == "TestGrade");
+    }
+
+    [Fact]
+    public void UpdateGrade_ChangesCode()
+    {
+        _svc.AddGrade("OldName");
+        var grade = _svc.GetAllGrades().First(g => g.Code == "OldName");
+        _svc.UpdateGrade(grade.GradeId, "NewName");
+        var updated = _svc.GetAllGrades();
+        Assert.DoesNotContain(updated, g => g.Code == "OldName");
+        Assert.Contains(updated, g => g.Code == "NewName");
+    }
+
+    [Fact]
+    public void UpdateGrade_CascadesToCompletions()
+    {
+        _svc.AddGrade("GradeX");
+        using var conn = Open();
+        var pcId = TestDbHelper.InsertPerson(conn, "PC1");
+        TestDbHelper.InsertPC(conn, pcId);
+        TestDbHelper.Exec(conn, $"INSERT INTO sess_completions (PcId, FinishedGrade) VALUES ({pcId}, 'GradeX')");
+
+        var grade = _svc.GetAllGrades().First(g => g.Code == "GradeX");
+        _svc.UpdateGrade(grade.GradeId, "GradeY");
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT FinishedGrade FROM sess_completions WHERE PcId = @id";
+        cmd.Parameters.AddWithValue("@id", pcId);
+        Assert.Equal("GradeY", cmd.ExecuteScalar()?.ToString());
+    }
+
+    [Fact]
+    public void DeleteGrade_RemovesFromList()
+    {
+        _svc.AddGrade("ToDelete");
+        var grade = _svc.GetAllGrades().First(g => g.Code == "ToDelete");
+        _svc.DeleteGrade(grade.GradeId);
+        Assert.DoesNotContain(_svc.GetAllGrades(), g => g.Code == "ToDelete");
+    }
+
+    [Fact]
+    public void GetGradeUsages_DetectsAuditorReferences()
+    {
+        using var conn = Open();
+        var gradeId = _svc.GetAllGrades().First().GradeId; // BA
+        var pid = TestDbHelper.InsertPerson(conn, "Aud1");
+        TestDbHelper.InsertAuditor(conn, pid, gradeId: gradeId);
+
+        var (auditors, completions) = _svc.GetGradeUsages(gradeId);
+        Assert.NotEmpty(auditors);
+    }
+
+    [Fact]
+    public void GetGradeUsages_DetectsCompletionReferences()
+    {
+        _svc.AddGrade("UsedGrade");
+        using var conn = Open();
+        var pcId = TestDbHelper.InsertPerson(conn, "PC2");
+        TestDbHelper.InsertPC(conn, pcId);
+        TestDbHelper.Exec(conn, $"INSERT INTO sess_completions (PcId, FinishedGrade) VALUES ({pcId}, 'UsedGrade')");
+
+        var grade = _svc.GetAllGrades().First(g => g.Code == "UsedGrade");
+        var (auditors, completions) = _svc.GetGradeUsages(grade.GradeId);
+        Assert.NotEmpty(completions);
+    }
+
+    [Fact]
+    public void GetGradeUsages_EmptyWhenUnused()
+    {
+        _svc.AddGrade("UnusedGrade");
+        var grade = _svc.GetAllGrades().First(g => g.Code == "UnusedGrade");
+        var (auditors, completions) = _svc.GetGradeUsages(grade.GradeId);
+        Assert.Empty(auditors);
+        Assert.Empty(completions);
+    }
 
     private SqliteConnection Open()
     {

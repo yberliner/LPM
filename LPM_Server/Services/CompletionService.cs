@@ -49,7 +49,7 @@ public class CompletionService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $"""
-            SELECT u.PersonId, p.FirstName || ' ' || p.LastName
+            SELECT u.PersonId, TRIM(p.FirstName || ' ' || COALESCE(p.LastName, ''))
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
             WHERE u.StaffRole IN {StaffRoles.SqlInAuditorCS()} AND u.IsActive = 1
@@ -68,7 +68,7 @@ public class CompletionService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT pc.PcId, p.FirstName || ' ' || p.LastName
+            SELECT pc.PcId, TRIM(p.FirstName || ' ' || COALESCE(p.LastName, ''))
             FROM core_pcs pc
             JOIN core_persons p ON p.PersonId = pc.PcId
             WHERE pc.PcId NOT IN (
@@ -127,7 +127,7 @@ public class CompletionService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT p.FirstName || ' ' || p.LastName, c.CompleteDate, c.FinishedGrade
+            SELECT TRIM(p.FirstName || ' ' || COALESCE(p.LastName, '')), c.CompleteDate, c.FinishedGrade
             FROM sess_completions c
             JOIN core_persons p ON p.PersonId = c.PcId
             WHERE c.AuditorId = @auditorId
@@ -152,7 +152,7 @@ public class CompletionService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT c.Id, c.CompleteDate, c.CreateDate, c.FinishedGrade,
-                   a.FirstName || ' ' || a.LastName
+                   TRIM(a.FirstName || ' ' || COALESCE(a.LastName, ''))
             FROM sess_completions c
             LEFT JOIN core_persons a ON a.PersonId = c.AuditorId
             WHERE c.PcId = @pcId
@@ -178,8 +178,8 @@ public class CompletionService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT c.PcId, p.FirstName || ' ' || p.LastName, c.CompleteDate, c.FinishedGrade,
-                   a.FirstName || ' ' || a.LastName
+            SELECT c.PcId, TRIM(p.FirstName || ' ' || COALESCE(p.LastName, '')), c.CompleteDate, c.FinishedGrade,
+                   TRIM(a.FirstName || ' ' || COALESCE(a.LastName, ''))
             FROM sess_completions c
             JOIN core_persons p ON p.PersonId = c.PcId
             LEFT JOIN core_persons a ON a.PersonId = c.AuditorId

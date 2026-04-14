@@ -16,12 +16,14 @@
                 <li><a onclick="document.getElementById('gettingStarted')?.scrollIntoView({behavior:'smooth'})" class="guide-nav-link" style="cursor:pointer;"><i class="ri-login-box-line"></i>@LS.T("guide.nav.gettingStarted")</a></li>
                 <li><a onclick="document.getElementById('dashboard')?.scrollIntoView({behavior:'smooth'})" class="guide-nav-link" style="cursor:pointer;"><i class="ri-dashboard-line"></i>@LS.T("guide.nav.dashboard")</a></li>
                 <li><a onclick="document.getElementById('addSession')?.scrollIntoView({behavior:'smooth'})" class="guide-nav-link" style="cursor:pointer;"><i class="ri-upload-2-line"></i>@LS.T("guide.nav.addSession")</a></li>
+                <li><a onclick="document.getElementById('import')?.scrollIntoView({behavior:'smooth'})" class="guide-nav-link" style="cursor:pointer;"><i class="ri-download-2-line"></i>@LS.T("guide.nav.import")</a></li>
                 <li><a onclick="document.getElementById('pcFolder')?.scrollIntoView({behavior:'smooth'})" class="guide-nav-link" style="cursor:pointer;"><i class="ri-folder-open-line"></i>@LS.T("guide.nav.pcFolder")</a></li>
                 <li><a onclick="document.getElementById('pcs')?.scrollIntoView({behavior:'smooth'})" class="guide-nav-link" style="cursor:pointer;"><i class="ri-contacts-book-2-line"></i>@LS.T("guide.nav.pcs")</a></li>
                 <li><a onclick="document.getElementById('academy')?.scrollIntoView({behavior:'smooth'})" class="guide-nav-link" style="cursor:pointer;"><i class="ri-graduation-cap-line"></i>@LS.T("guide.nav.academy")</a></li>
                 <li><a onclick="document.getElementById('statistics')?.scrollIntoView({behavior:'smooth'})" class="guide-nav-link" style="cursor:pointer;"><i class="ri-bar-chart-box-line"></i>@LS.T("guide.nav.statistics")</a></li>
                 <li><a onclick="document.getElementById('management')?.scrollIntoView({behavior:'smooth'})" class="guide-nav-link" style="cursor:pointer;"><i class="ri-settings-3-line"></i>@LS.T("guide.nav.management")</a></li>
                 <li><a onclick="document.getElementById('admin')?.scrollIntoView({behavior:'smooth'})" class="guide-nav-link" style="cursor:pointer;"><i class="ri-shield-user-line"></i>@LS.T("guide.nav.admin")</a></li>
+                <li><a onclick="document.getElementById('sessionManager')?.scrollIntoView({behavior:'smooth'})" class="guide-nav-link" style="cursor:pointer;"><i class="ri-database-2-line"></i>@LS.T("guide.nav.sessionManager")</a></li>
                 <li><a onclick="document.getElementById('soloUsers')?.scrollIntoView({behavior:'smooth'})" class="guide-nav-link" style="cursor:pointer;"><i class="ri-user-star-line"></i>@LS.T("guide.nav.soloUsers")</a></li>
                 <li><a onclick="document.getElementById('settings')?.scrollIntoView({behavior:'smooth'})" class="guide-nav-link" style="cursor:pointer;"><i class="ri-settings-4-line"></i>@LS.T("guide.nav.settings")</a></li>
                 <li><a onclick="document.getElementById('tips')?.scrollIntoView({behavior:'smooth'})" class="guide-nav-link" style="cursor:pointer;"><i class="ri-lightbulb-line"></i>@LS.T("guide.nav.tips")</a></li>
@@ -42,9 +44,11 @@
                 <div class="guide-hero-pills">
                     <span class="guide-pill" style="background:#e0e7ff;color:#3730a3;"><i class="ri-dashboard-line me-1"></i>@LS.T("guide.nav.dashboard")</span>
                     <span class="guide-pill" style="background:#ccfbf1;color:#0f766e;"><i class="ri-upload-2-line me-1"></i>@LS.T("guide.nav.addSession")</span>
+                    <span class="guide-pill" style="background:#ccfbf1;color:#0d9488;"><i class="ri-download-2-line me-1"></i>@LS.T("guide.nav.import")</span>
                     <span class="guide-pill" style="background:#dbeafe;color:#1e40af;"><i class="ri-folder-open-line me-1"></i>@LS.T("guide.nav.pcFolder")</span>
                     <span class="guide-pill" style="background:#fef3c7;color:#92400e;"><i class="ri-contacts-book-2-line me-1"></i>@LS.T("guide.nav.pcs")</span>
                     <span class="guide-pill" style="background:#dcfce7;color:#166534;"><i class="ri-graduation-cap-line me-1"></i>@LS.T("guide.nav.academy")</span>
+                    <span class="guide-pill" style="background:#fff7ed;color:#ea580c;"><i class="ri-database-2-line me-1"></i>@LS.T("guide.nav.sessionManager")</span>
                     <span class="guide-pill" style="background:#fef9c3;color:#854d0e;"><i class="ri-user-star-line me-1"></i>@LS.T("guide.nav.soloUsers")</span>
                 </div>
             </div>
@@ -169,7 +173,7 @@
         </section>
 
         @* ══════════════════════════════════════════════════════════
-           SECTION 3 — DASHBOARD
+           SECTION 3 — DASHBOARD (EXPANDED)
         ══════════════════════════════════════════════════════════ *@
         <section id="dashboard" class="guide-section">
             <div class="guide-section-header" style="background:linear-gradient(135deg,#312e81,#6366f1);">
@@ -238,11 +242,69 @@
                         </div>
                     </div>
                 </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.dashboard.teamCsHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6366f1;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.dashboard.teamCs1title")</h4>
+                            <p>@LS.T("guide.dashboard.teamCs1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6366f1;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.dashboard.teamCs2title")</h4>
+                            <p>@LS.T("guide.dashboard.teamCs2text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.dashboard.weeklyHistoryHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6366f1;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.dashboard.weeklyHistory1title")</h4>
+                            <p>@LS.T("guide.dashboard.weeklyHistory1text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.dashboard.mobileHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6366f1;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.dashboard.mobile1title")</h4>
+                            <p>@LS.T("guide.dashboard.mobile1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6366f1;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.dashboard.mobile2title")</h4>
+                            <p>@LS.T("guide.dashboard.mobile2text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.dashboard.detailPanelHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6366f1;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.dashboard.detailPanel1title")</h4>
+                            <p>@LS.T("guide.dashboard.detailPanel1text")</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
 
         @* ══════════════════════════════════════════════════════════
-           SECTION 4 — ADD SESSION
+           SECTION 4 — ADD SESSION (EXPANDED)
         ══════════════════════════════════════════════════════════ *@
         <section id="addSession" class="guide-section">
             <div class="guide-section-header" style="background:linear-gradient(135deg,#0f766e,#14b8a6);">
@@ -291,6 +353,24 @@
                     </div>
                 </div>
 
+                <h3 class="guide-sub-heading">@LS.T("guide.addSession.arfHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#14b8a6;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.addSession.arf1title")</h4>
+                            <p>@LS.T("guide.addSession.arf1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#14b8a6;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.addSession.arf2title")</h4>
+                            <p>@LS.T("guide.addSession.arf2text")</p>
+                        </div>
+                    </div>
+                </div>
+
                 <h3 class="guide-sub-heading">@LS.T("guide.addSession.scanInboxHeading")</h3>
                 <div class="guide-steps">
                     <div class="guide-step">
@@ -298,6 +378,35 @@
                         <div class="guide-step-content">
                             <h4>@LS.T("guide.addSession.scan1title")</h4>
                             <p>@LS.T("guide.addSession.scan1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#14b8a6;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.addSession.scan2title")</h4>
+                            <p>@LS.T("guide.addSession.scan2text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.addSession.docConversionHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#14b8a6;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.addSession.docConv1title")</h4>
+                            <p>@LS.T("guide.addSession.docConv1text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.addSession.multiArfHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#14b8a6;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.addSession.multiArf1title")</h4>
+                            <p>@LS.T("guide.addSession.multiArf1text")</p>
                         </div>
                     </div>
                 </div>
@@ -310,7 +419,91 @@
         </section>
 
         @* ══════════════════════════════════════════════════════════
-           SECTION 5 — PC FOLDER
+           SECTION 5 — IMPORT (NEW)
+        ══════════════════════════════════════════════════════════ *@
+        <section id="import" class="guide-section">
+            <div class="guide-section-header" style="background:linear-gradient(135deg,#0d9488,#2dd4bf);">
+                <i class="ri-download-2-line guide-section-icon"></i>
+                <div>
+                    <h2 class="guide-section-title">@LS.T("guide.import.title")</h2>
+                    <p class="guide-section-sub">@LS.T("guide.import.sub")</p>
+                </div>
+            </div>
+            <div class="guide-section-body">
+
+                <h3 class="guide-sub-heading">@LS.T("guide.import.bulkHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0d9488;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.import.bulk1title")</h4>
+                            <p>@LS.T("guide.import.bulk1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0d9488;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.import.bulk2title")</h4>
+                            <p>@LS.T("guide.import.bulk2text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0d9488;">3</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.import.bulk3title")</h4>
+                            <p>@LS.T("guide.import.bulk3text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0d9488;">4</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.import.bulk4title")</h4>
+                            <p>@LS.T("guide.import.bulk4text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0d9488;">5</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.import.bulk5title")</h4>
+                            <p>@LS.T("guide.import.bulk5text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.import.namesOnlyHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0d9488;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.import.names1title")</h4>
+                            <p>@LS.T("guide.import.names1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0d9488;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.import.names2title")</h4>
+                            <p>@LS.T("guide.import.names2text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#0d9488;">3</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.import.names3title")</h4>
+                            <p>@LS.T("guide.import.names3text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="guide-tip">
+                    <i class="ri-information-line guide-tip-icon"></i>
+                    <div>@LS.T("guide.import.tip")</div>
+                </div>
+            </div>
+        </section>
+
+        @* ══════════════════════════════════════════════════════════
+           SECTION 6 — PC FOLDER (EXPANDED)
         ══════════════════════════════════════════════════════════ *@
         <section id="pcFolder" class="guide-section">
             <div class="guide-section-header" style="background:linear-gradient(135deg,#1e40af,#3b82f6);">
@@ -358,11 +551,111 @@
                         </div>
                     </div>
                 </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.pcFolder.docViewingHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#3b82f6;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcFolder.docView1title")</h4>
+                            <p>@LS.T("guide.pcFolder.docView1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#3b82f6;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcFolder.docView2title")</h4>
+                            <p>@LS.T("guide.pcFolder.docView2text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#3b82f6;">3</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcFolder.docView3title")</h4>
+                            <p>@LS.T("guide.pcFolder.docView3text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.pcFolder.annotationsHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#3b82f6;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcFolder.annot1title")</h4>
+                            <p>@LS.T("guide.pcFolder.annot1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#3b82f6;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcFolder.annot2title")</h4>
+                            <p>@LS.T("guide.pcFolder.annot2text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.pcFolder.worksheetMgmtHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#3b82f6;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcFolder.wsMgmt1title")</h4>
+                            <p>@LS.T("guide.pcFolder.wsMgmt1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#3b82f6;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcFolder.wsMgmt2title")</h4>
+                            <p>@LS.T("guide.pcFolder.wsMgmt2text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#3b82f6;">3</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcFolder.wsMgmt3title")</h4>
+                            <p>@LS.T("guide.pcFolder.wsMgmt3text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.pcFolder.fileOpsHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#3b82f6;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcFolder.fileOps1title")</h4>
+                            <p>@LS.T("guide.pcFolder.fileOps1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#3b82f6;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcFolder.fileOps2title")</h4>
+                            <p>@LS.T("guide.pcFolder.fileOps2text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#3b82f6;">3</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcFolder.fileOps3title")</h4>
+                            <p>@LS.T("guide.pcFolder.fileOps3text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#3b82f6;">4</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.pcFolder.fileOps4title")</h4>
+                            <p>@LS.T("guide.pcFolder.fileOps4text")</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
 
         @* ══════════════════════════════════════════════════════════
-           SECTION 6 — PCs
+           SECTION 7 — PCs
         ══════════════════════════════════════════════════════════ *@
         <section id="pcs" class="guide-section">
             <div class="guide-section-header" style="background:linear-gradient(135deg,#78350f,#f59e0b);">
@@ -514,7 +807,7 @@
         </section>
 
         @* ══════════════════════════════════════════════════════════
-           SECTION 7 — ACADEMY
+           SECTION 8 — ACADEMY
         ══════════════════════════════════════════════════════════ *@
         <section id="academy" class="guide-section">
             <div class="guide-section-header" style="background:linear-gradient(135deg,#064e3b,#10b981);">
@@ -628,7 +921,7 @@
         </section>
 
         @* ══════════════════════════════════════════════════════════
-           SECTION 8 — STATISTICS
+           SECTION 9 — STATISTICS
         ══════════════════════════════════════════════════════════ *@
         <section id="statistics" class="guide-section">
             <div class="guide-section-header" style="background:linear-gradient(135deg,#4c1d95,#7c3aed);">
@@ -694,7 +987,7 @@
         </section>
 
         @* ══════════════════════════════════════════════════════════
-           SECTION 9 — MANAGEMENT
+           SECTION 10 — MANAGEMENT
         ══════════════════════════════════════════════════════════ *@
         <section id="management" class="guide-section">
             <div class="guide-section-header" style="background:linear-gradient(135deg,#0c4a6e,#0284c7);">
@@ -813,7 +1106,7 @@
         </section>
 
         @* ══════════════════════════════════════════════════════════
-           SECTION 10 — ADMIN
+           SECTION 11 — ADMIN (EXPANDED)
         ══════════════════════════════════════════════════════════ *@
         <section id="admin" class="guide-section">
             <div class="guide-section-header" style="background:linear-gradient(135deg,#6b21a8,#a855f7);">
@@ -950,11 +1243,189 @@
                     </div>
                 </div>
 
+                <h3 class="guide-sub-heading">@LS.T("guide.admin.sessionMgrHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.admin.sessMgr1title")</h4>
+                            <p>@LS.T("guide.admin.sessMgr1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.admin.sessMgr2title")</h4>
+                            <p>@LS.T("guide.admin.sessMgr2text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.admin.diagnosisHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.admin.diag1title")</h4>
+                            <p>@LS.T("guide.admin.diag1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.admin.diag2title")</h4>
+                            <p>@LS.T("guide.admin.diag2text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.admin.backupHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.admin.backup1title")</h4>
+                            <p>@LS.T("guide.admin.backup1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.admin.backup2title")</h4>
+                            <p>@LS.T("guide.admin.backup2text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">3</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.admin.backup3title")</h4>
+                            <p>@LS.T("guide.admin.backup3text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.admin.salaryHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#a855f7;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.admin.salary1title")</h4>
+                            <p>@LS.T("guide.admin.salary1text")</p>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </section>
 
         @* ══════════════════════════════════════════════════════════
-           SECTION 11 — SOLO USERS
+           SECTION 12 — SESSION MANAGER (NEW)
+        ══════════════════════════════════════════════════════════ *@
+        <section id="sessionManager" class="guide-section">
+            <div class="guide-section-header" style="background:linear-gradient(135deg,#ea580c,#f97316);">
+                <i class="ri-database-2-line guide-section-icon"></i>
+                <div>
+                    <h2 class="guide-section-title">@LS.T("guide.sessionManager.title")</h2>
+                    <p class="guide-section-sub">@LS.T("guide.sessionManager.sub")</p>
+                </div>
+            </div>
+            <div class="guide-section-body">
+
+                <h3 class="guide-sub-heading">@LS.T("guide.sessionManager.pcViewHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#ea580c;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.sessionManager.pcView1title")</h4>
+                            <p>@LS.T("guide.sessionManager.pcView1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#ea580c;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.sessionManager.pcView2title")</h4>
+                            <p>@LS.T("guide.sessionManager.pcView2text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#ea580c;">3</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.sessionManager.pcView3title")</h4>
+                            <p>@LS.T("guide.sessionManager.pcView3text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.sessionManager.soloViewHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#ea580c;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.sessionManager.soloView1title")</h4>
+                            <p>@LS.T("guide.sessionManager.soloView1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#ea580c;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.sessionManager.soloView2title")</h4>
+                            <p>@LS.T("guide.sessionManager.soloView2text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.sessionManager.addSessionHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#ea580c;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.sessionManager.addSess1title")</h4>
+                            <p>@LS.T("guide.sessionManager.addSess1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#ea580c;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.sessionManager.addSess2title")</h4>
+                            <p>@LS.T("guide.sessionManager.addSess2text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.sessionManager.detailEditorHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#ea580c;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.sessionManager.detail1title")</h4>
+                            <p>@LS.T("guide.sessionManager.detail1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#ea580c;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.sessionManager.detail2title")</h4>
+                            <p>@LS.T("guide.sessionManager.detail2text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#ea580c;">3</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.sessionManager.detail3title")</h4>
+                            <p>@LS.T("guide.sessionManager.detail3text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="guide-tip">
+                    <i class="ri-information-line guide-tip-icon"></i>
+                    <div>@LS.T("guide.sessionManager.tip")</div>
+                </div>
+            </div>
+        </section>
+
+        @* ══════════════════════════════════════════════════════════
+           SECTION 13 — SOLO USERS
         ══════════════════════════════════════════════════════════ *@
         <section id="soloUsers" class="guide-section">
             <div class="guide-section-header" style="background:linear-gradient(135deg,#b45309,#f59e0b);">
@@ -1039,7 +1510,7 @@
         </section>
 
         @* ══════════════════════════════════════════════════════════
-           SECTION 12 — SETTINGS
+           SECTION 14 — SETTINGS (EXPANDED)
         ══════════════════════════════════════════════════════════ *@
         <section id="settings" class="guide-section">
             <div class="guide-section-header" style="background:linear-gradient(135deg,#374151,#6b7280);">
@@ -1066,11 +1537,62 @@
                         </div>
                     </div>
                 </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.settings.cameraHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6b7280;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.settings.camera1title")</h4>
+                            <p>@LS.T("guide.settings.camera1text")</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6b7280;">2</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.settings.camera2title")</h4>
+                            <p>@LS.T("guide.settings.camera2text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.settings.themeHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6b7280;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.settings.theme1title")</h4>
+                            <p>@LS.T("guide.settings.theme1text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.settings.languageHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6b7280;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.settings.lang1title")</h4>
+                            <p>@LS.T("guide.settings.lang1text")</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="guide-sub-heading">@LS.T("guide.settings.shortcutsHeading")</h3>
+                <div class="guide-steps">
+                    <div class="guide-step">
+                        <div class="guide-step-num" style="background:#6b7280;">1</div>
+                        <div class="guide-step-content">
+                            <h4>@LS.T("guide.settings.shortcuts1title")</h4>
+                            <p>@LS.T("guide.settings.shortcuts1text")</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
 
         @* ══════════════════════════════════════════════════════════
-           SECTION 13 — TIPS
+           SECTION 15 — TIPS (EXPANDED)
         ══════════════════════════════════════════════════════════ *@
         <section id="tips" class="guide-section" style="margin-bottom:60px;">
             <div class="guide-section-header" style="background:linear-gradient(135deg,#0f172a,#475569);">
@@ -1141,6 +1663,26 @@
                         <div class="guide-tip-card-icon" style="color:#14b8a6;"><i class="ri-calendar-line"></i></div>
                         <h4>@LS.T("guide.tips.weekNavTitle")</h4>
                         <p>@LS.T("guide.tips.weekNavText")</p>
+                    </div>
+                    <div class="guide-tip-card">
+                        <div class="guide-tip-card-icon" style="color:#ea580c;"><i class="ri-database-2-line"></i></div>
+                        <h4>@LS.T("guide.tips.soloSessionMgrTitle")</h4>
+                        <p>@LS.T("guide.tips.soloSessionMgrText")</p>
+                    </div>
+                    <div class="guide-tip-card">
+                        <div class="guide-tip-card-icon" style="color:#7c3aed;"><i class="ri-mouse-line"></i></div>
+                        <h4>@LS.T("guide.tips.rightClickTitle")</h4>
+                        <p>@LS.T("guide.tips.rightClickText")</p>
+                    </div>
+                    <div class="guide-tip-card">
+                        <div class="guide-tip-card-icon" style="color:#0284c7;"><i class="ri-exchange-funds-line"></i></div>
+                        <h4>@LS.T("guide.tips.transferBalanceTitle")</h4>
+                        <p>@LS.T("guide.tips.transferBalanceText")</p>
+                    </div>
+                    <div class="guide-tip-card">
+                        <div class="guide-tip-card-icon" style="color:#0d9488;"><i class="ri-download-2-line"></i></div>
+                        <h4>@LS.T("guide.tips.importFoldersTitle")</h4>
+                        <p>@LS.T("guide.tips.importFoldersText")</p>
                     </div>
                 </div>
             </div>

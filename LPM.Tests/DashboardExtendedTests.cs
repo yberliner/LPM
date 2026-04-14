@@ -711,7 +711,7 @@ public class DashboardExtendedTests : IDisposable
 
         // Buy 5 hours via CreatePurchase
         pcSvc.CreatePurchase(pcId, "2024-01-01", null, null, null,
-            new List<(string, int?, int, int)> { ("Auditing", null, 5, 1500) });
+            new List<(string, int?, int?, double, int)> { ("Auditing", null, null, 5.0, 1500) });
 
         // Use 3600 sec (1 hour) via DashboardService
         using var conn = Open();

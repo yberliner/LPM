@@ -108,7 +108,7 @@ public class PcServiceTests : IDisposable
         var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "");
         // Buy 2 hours = 7200 sec via CreatePurchase
         _svc.CreatePurchase(pcId, "2024-01-10", null, null, null,
-            new List<(string, int?, int, int)> { ("Auditing", null, 2, 500) });
+            new List<(string, int?, int?, double, int)> { ("Auditing", null, null, 2.0, 500) });
 
         // Session of 1 hour = 3600 sec (not free)
         using var conn = Open();
@@ -127,7 +127,7 @@ public class PcServiceTests : IDisposable
         var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "");
         // Buy only 1 hour
         _svc.CreatePurchase(pcId, "2024-01-10", null, null, null,
-            new List<(string, int?, int, int)> { ("Auditing", null, 1, 300) });
+            new List<(string, int?, int?, double, int)> { ("Auditing", null, null, 1.0, 300) });
 
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "Auditor1");
@@ -146,7 +146,7 @@ public class PcServiceTests : IDisposable
     {
         var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "");
         _svc.CreatePurchase(pcId, "2024-01-10", null, null, null,
-            new List<(string, int?, int, int)> { ("Auditing", null, 2, 0) }); // 7200 sec
+            new List<(string, int?, int?, double, int)> { ("Auditing", null, null, 2.0, 0) }); // 7200 sec
 
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "Auditor1");
@@ -248,9 +248,9 @@ public class PcServiceTests : IDisposable
     {
         var pcId = _svc.AddPcWithPerson("Bob", "B", "", "", "", "");
         _svc.CreatePurchase(pcId, "2024-01-01", null, null, null,
-            new List<(string, int?, int, int)> { ("Auditing", null, 3, 900) });
+            new List<(string, int?, int?, double, int)> { ("Auditing", null, null, 3.0, 900) });
         _svc.CreatePurchase(pcId, "2024-02-01", null, null, null,
-            new List<(string, int?, int, int)> { ("Auditing", null, 5, 1500) });
+            new List<(string, int?, int?, double, int)> { ("Auditing", null, null, 5.0, 1500) });
 
         var stats = _svc.GetPcStats(pcId);
         Assert.Equal(8,    stats.TotalHoursPurchased);
@@ -326,7 +326,7 @@ public class PcServiceTests : IDisposable
     {
         var pcId = _svc.AddPcWithPerson("Alice", "A", "", "", "", "");
         _svc.CreatePurchase(pcId, "2024-01-01", null, null, null,
-            new List<(string, int?, int, int)> { ("Auditing", null, 10, 3000) }); // 10 h = 36000 sec
+            new List<(string, int?, int?, double, int)> { ("Auditing", null, null, 10.0, 3000) }); // 10 h = 36000 sec
 
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "AudQ");
@@ -345,9 +345,9 @@ public class PcServiceTests : IDisposable
     {
         var pcId = _svc.AddPcWithPerson("Bob", "B", "", "", "", "");
         _svc.CreatePurchase(pcId, "2024-01-01", null, null, null,
-            new List<(string, int?, int, int)> { ("Auditing", null, 5, 1500) }); // 5 h
+            new List<(string, int?, int?, double, int)> { ("Auditing", null, null, 5.0, 1500) }); // 5 h
         _svc.CreatePurchase(pcId, "2024-02-01", null, null, null,
-            new List<(string, int?, int, int)> { ("Auditing", null, 5, 1500) }); // 5 h = total 10 h = 36000 sec
+            new List<(string, int?, int?, double, int)> { ("Auditing", null, null, 5.0, 1500) }); // 5 h = total 10 h = 36000 sec
 
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "AudW");
@@ -365,7 +365,7 @@ public class PcServiceTests : IDisposable
         // LengthSeconds counts as used time in the remaining-hours query
         var pcId = _svc.AddPcWithPerson("Carol", "C", "", "", "", "");
         _svc.CreatePurchase(pcId, "2024-01-01", null, null, null,
-            new List<(string, int?, int, int)> { ("Auditing", null, 2, 0) }); // 7200 sec
+            new List<(string, int?, int?, double, int)> { ("Auditing", null, null, 2.0, 0) }); // 7200 sec
 
         using var conn = Open();
         var audId = TestDbHelper.InsertPerson(conn, "AudV");

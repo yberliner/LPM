@@ -79,13 +79,20 @@ public static class TestDbHelper
             CREATE TABLE IF NOT EXISTS lkp_grades (
                 GradeId   INTEGER PRIMARY KEY AUTOINCREMENT,
                 Code      TEXT NOT NULL UNIQUE,
-                SortOrder INTEGER NOT NULL DEFAULT 0
+                SortOrder INTEGER NOT NULL DEFAULT 0,
+                DefaultRateCentsPerHour INTEGER NOT NULL DEFAULT 0,
+                UpdatedAt TEXT,
+                UpdatedByUserId INTEGER
             )");
 
         Exec(conn, @"
             CREATE TABLE IF NOT EXISTS lkp_courses (
-                CourseId INTEGER PRIMARY KEY AUTOINCREMENT,
-                Name     TEXT    NOT NULL
+                CourseId   INTEGER PRIMARY KEY AUTOINCREMENT,
+                Name       TEXT    NOT NULL,
+                Book       TEXT    DEFAULT '',
+                BookPrice  INTEGER DEFAULT 0,
+                CourseType TEXT    NOT NULL DEFAULT 'PC',
+                Price      INTEGER NOT NULL DEFAULT 0
             )");
 
         Exec(conn, @"
@@ -131,7 +138,8 @@ public static class TestDbHelper
                 TotpSecret      TEXT,
                 AvatarPath      TEXT,
                 ContactConfirmed INTEGER NOT NULL DEFAULT 1,
-                Require2FA      INTEGER NOT NULL DEFAULT 0
+                Require2FA      INTEGER NOT NULL DEFAULT 0,
+                SendSms         INTEGER NOT NULL DEFAULT 0
             )");
 
         Exec(conn, @"
@@ -166,7 +174,8 @@ public static class TestDbHelper
                 Status              TEXT    NOT NULL DEFAULT 'Draft'
                                     CHECK(Status IN ('Draft','Approved','NeedsCorrection','Rejected','Done')),
                 Notes               TEXT,
-                CsSalaryCentsPerHour INTEGER NOT NULL DEFAULT 0
+                CsSalaryCentsPerHour INTEGER NOT NULL DEFAULT 0,
+                ChargedCentsRatePerHour INTEGER NOT NULL DEFAULT 0
             )");
 
         Exec(conn, @"
@@ -195,7 +204,9 @@ public static class TestDbHelper
                 PersonId        INTEGER NOT NULL,
                 CourseId        INTEGER NOT NULL,
                 DateStarted     TEXT    NOT NULL,
-                DateFinished    TEXT    NULL
+                DateFinished    TEXT    NULL,
+                InstructorId    INTEGER NULL,
+                CsId            INTEGER NULL
             )");
 
         Exec(conn, @"
@@ -212,7 +223,9 @@ public static class TestDbHelper
                 CreatedAt          TEXT NOT NULL DEFAULT (datetime('now')),
                 IsDeleted          INTEGER NOT NULL DEFAULT 0,
                 RegistrarId        INTEGER,
-                ReferralId         INTEGER
+                ReferralId         INTEGER,
+                Currency           TEXT NOT NULL DEFAULT 'ILS',
+                TransferPurchaseId INTEGER NULL
             )");
 
         Exec(conn, @"
@@ -223,8 +236,7 @@ public static class TestDbHelper
                 CourseId       INTEGER,
                 HoursBought    INTEGER NOT NULL DEFAULT 0,
                 AmountPaid     INTEGER NOT NULL DEFAULT 0,
-                RegistrarId    INTEGER,
-                ReferralId     INTEGER,
+                BookId         INTEGER DEFAULT NULL,
                 FOREIGN KEY (PurchaseId) REFERENCES fin_purchases(PurchaseId)
             )");
 
@@ -237,6 +249,7 @@ public static class TestDbHelper
                 PaymentDate     TEXT,
                 IsMoneyInBank   INTEGER NOT NULL DEFAULT 0,
                 MoneyInBankDate TEXT,
+                Installments    INTEGER NOT NULL DEFAULT 1,
                 FOREIGN KEY (PurchaseId) REFERENCES fin_purchases(PurchaseId)
             )");
 
@@ -333,6 +346,131 @@ public static class TestDbHelper
             CREATE TABLE IF NOT EXISTS lkp_shortcuts (
                 KeyChar TEXT NOT NULL PRIMARY KEY,
                 Text    TEXT
+            )");
+
+        Exec(conn, @"
+            CREATE TABLE IF NOT EXISTS lkp_books (
+                BookId INTEGER PRIMARY KEY AUTOINCREMENT,
+                Name   TEXT NOT NULL DEFAULT '',
+                Price  INTEGER NOT NULL DEFAULT 0
+            )");
+
+        Exec(conn, @"
+            CREATE TABLE IF NOT EXISTS fin_payments (
+                PaymentId   INTEGER PRIMARY KEY AUTOINCREMENT,
+                PcId        INTEGER NOT NULL,
+                PaymentDate TEXT    NOT NULL,
+                HoursBought INTEGER NOT NULL DEFAULT 0,
+                AmountPaid  INTEGER NOT NULL DEFAULT 0,
+                CreatedAt   TEXT NOT NULL DEFAULT (datetime('now')),
+                PaymentType TEXT DEFAULT 'Auditing',
+                CourseId    INTEGER,
+                RegistrarId INTEGER,
+                ReferralId  INTEGER,
+                PurchaseId  INTEGER
+            )");
+
+        Exec(conn, @"
+            CREATE TABLE IF NOT EXISTS fin_budget_reset (
+                Id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                PcId      INTEGER NOT NULL,
+                ResetDate TEXT NOT NULL,
+                CreatedBy TEXT NOT NULL,
+                CreatedAt TEXT NOT NULL,
+                Notes     TEXT,
+                IsActive  INTEGER NOT NULL DEFAULT 1
+            )");
+
+        Exec(conn, @"
+            CREATE TABLE IF NOT EXISTS sess_next_cs (
+                Id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                SessionId INTEGER NOT NULL,
+                NextCS    TEXT NOT NULL DEFAULT '',
+                UpdatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+            )");
+        Exec(conn, "CREATE UNIQUE INDEX IF NOT EXISTS ux_sess_next_cs_session ON sess_next_cs(SessionId)");
+
+        Exec(conn, @"
+            CREATE TABLE IF NOT EXISTS sess_questions (
+                QuestionId INTEGER PRIMARY KEY AUTOINCREMENT,
+                SessionId  INTEGER NOT NULL,
+                AskerId    INTEGER NOT NULL,
+                ReplierId  INTEGER,
+                ClosedById INTEGER,
+                Status     TEXT NOT NULL DEFAULT 'Pending',
+                CreatedAt  TEXT NOT NULL DEFAULT (datetime('now')),
+                RepliedAt  TEXT,
+                ClosedAt   TEXT
+            )");
+        Exec(conn, "CREATE UNIQUE INDEX IF NOT EXISTS idx_sess_questions_session ON sess_questions(SessionId)");
+
+        Exec(conn, @"
+            CREATE TABLE IF NOT EXISTS sys_trusted_devices (
+                DeviceToken TEXT PRIMARY KEY,
+                UserId      INTEGER NOT NULL,
+                CreatedAt   TEXT NOT NULL
+            )");
+
+        Exec(conn, @"
+            CREATE TABLE IF NOT EXISTS sys_shrunk_files (
+                Id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                FilePath       TEXT NOT NULL,
+                ShrunkAt       TEXT NOT NULL,
+                OriginalSizeKb INTEGER NOT NULL,
+                ShrunkSizeKb   INTEGER NOT NULL
+            )");
+
+        Exec(conn, @"
+            CREATE TABLE IF NOT EXISTS sys_passkeys (
+                Id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                PersonId     INTEGER NOT NULL,
+                CredentialId BLOB NOT NULL,
+                PublicKey    BLOB NOT NULL,
+                SignCount    INTEGER NOT NULL DEFAULT 0,
+                DeviceName   TEXT NOT NULL DEFAULT '',
+                CreatedAt    TEXT NOT NULL DEFAULT (datetime('now')),
+                UserId       INTEGER
+            )");
+
+        Exec(conn, @"
+            CREATE TABLE IF NOT EXISTS sys_magic_links (
+                Id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                PersonId  INTEGER NOT NULL,
+                Token     TEXT NOT NULL UNIQUE,
+                ExpiresAt TEXT NOT NULL,
+                UsedAt    TEXT,
+                UserId    INTEGER
+            )");
+
+        Exec(conn, @"
+            CREATE TABLE IF NOT EXISTS sys_financial_config (
+                Id                   INTEGER PRIMARY KEY CHECK (Id = 1),
+                VatPct               REAL NOT NULL DEFAULT 17,
+                CcCommissionPct      REAL NOT NULL DEFAULT 2.5,
+                AuditRegistrarPct    REAL NOT NULL DEFAULT 10,
+                CourseRegistrarPct   REAL NOT NULL DEFAULT 10,
+                AuditReferralPct     REAL NOT NULL DEFAULT 5,
+                CourseReferralPct    REAL NOT NULL DEFAULT 5,
+                ReserveDeductPct     REAL NOT NULL DEFAULT 0.1,
+                AcademyInstructorIds TEXT NOT NULL DEFAULT '',
+                InstructorOtPct      REAL NOT NULL DEFAULT 0,
+                CsOtPct              REAL NOT NULL DEFAULT 0
+            )");
+        Exec(conn, @"INSERT OR IGNORE INTO sys_financial_config (Id) VALUES (1)");
+
+        Exec(conn, @"
+            CREATE TABLE IF NOT EXISTS sys_file_audit (
+                Id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                PcId      INTEGER NOT NULL,
+                Solo      INTEGER NOT NULL DEFAULT 0,
+                FilePath  TEXT    NOT NULL,
+                Operation TEXT    NOT NULL,
+                SizeBytes INTEGER,
+                UserId    INTEGER,
+                Username  TEXT,
+                Context   TEXT    NOT NULL,
+                Detail    TEXT,
+                CreatedAt TEXT    NOT NULL DEFAULT (datetime('now'))
             )");
 
         // Seed standard grades
