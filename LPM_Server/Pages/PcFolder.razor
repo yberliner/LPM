@@ -1038,7 +1038,7 @@
                 }
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
                 <button class="pcf-home-btn" title="Return to Home" @onclick="CloseToHome">
-                    <i class="ri-arrow-left-line"></i><i class="ri-home-4-line" style="font-size:.95em;"></i>
+                    <i class="ri-arrow-left-line pcf-home-arrow"></i><i class="ri-home-4-line pcf-home-icon"></i>
                 </button>
             </div>
         </div>
@@ -1688,14 +1688,40 @@
     }
     .pcf-sidebar-open-btn:hover .pcf-sidebar-tooltip { display: block; }
     .pcf-home-btn {
-        background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25);
-        color: #e2e8f0; border-radius: 6px; padding: 4px 12px;
-        font-size: .82rem; font-weight: 600; cursor: pointer;
-        transition: background .15s, transform .15s;
+        background: linear-gradient(135deg, #d97706, #f59e0b, #fbbf24) !important;
+        border: 1px solid rgba(251,191,36,.5) !important;
+        color: #fff !important; border-radius: 8px; padding: 4px 14px; gap: 3px;
+        font-size: .85rem; font-weight: 600; cursor: pointer;
         display: inline-flex; align-items: center; justify-content: center;
         height: 30px; box-sizing: border-box; white-space: nowrap;
+        box-shadow: 0 2px 8px rgba(217,119,6,.35), inset 0 1px 0 rgba(255,255,255,.25);
+        transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
+        position: relative; overflow: hidden;
     }
-    .pcf-home-btn:hover { background: rgba(255,255,255,.25); transform: translateY(-1px); }
+    .pcf-home-btn::before {
+        content: ''; position: absolute; inset: 0;
+        background: linear-gradient(135deg, rgba(255,255,255,.2) 0%, transparent 50%, rgba(255,255,255,.1) 100%);
+        border-radius: inherit; pointer-events: none;
+    }
+    .pcf-home-btn:hover {
+        transform: translateY(-2px) scale(1.04);
+        box-shadow: 0 4px 16px rgba(217,119,6,.5), 0 0 20px rgba(251,191,36,.3), inset 0 1px 0 rgba(255,255,255,.3);
+        filter: brightness(1.1);
+    }
+    .pcf-home-btn:active {
+        transform: translateY(0) scale(.97);
+        box-shadow: 0 1px 4px rgba(217,119,6,.3);
+        filter: brightness(.95);
+    }
+    .pcf-home-arrow {
+        font-size: .8em; opacity: .85;
+        transition: transform .2s ease;
+    }
+    .pcf-home-btn:hover .pcf-home-arrow { transform: translateX(-2px); }
+    .pcf-home-icon {
+        font-size: 1em;
+        filter: drop-shadow(0 1px 2px rgba(0,0,0,.2));
+    }
     .pcf-zoom-single {
         background: rgba(255,255,255,.1); border: none; color: rgba(255,255,255,.9);
         font-size: .75rem; font-weight: 600; min-width: 46px; height: 30px;
@@ -2249,7 +2275,8 @@
         .pcf-toolbar .vr { display: none; }
         .pcf-toolbar-file { font-size: .78rem; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
         .pcf-tool-btn { padding: 4px 8px; font-size: .78rem; min-height: 44px; }
-        .pcf-save-btn, .pcf-done-btn, .pcf-home-btn { padding: 4px 10px; font-size: .78rem; min-height: 44px; }
+        .pcf-save-btn, .pcf-done-btn { padding: 4px 10px; font-size: .78rem; min-height: 44px; }
+        .pcf-home-btn { padding: 4px 12px; font-size: .78rem; min-height: 44px; border-radius: 10px; }
         .pcf-zoom-single { height: 44px; }
         .pcf-viewer { padding: 10px; gap: 8px; }
         .pcf-timer-num { width: 32px; font-size: 16px; } /* 16px prevents iOS auto-zoom on tablets */
@@ -2288,7 +2315,7 @@
                         display: inline-flex; align-items: center; justify-content: center; }
         .pcf-save-btn { padding: 4px 10px; font-size: .72rem; min-height: 44px; }
         .pcf-done-btn { padding: 4px 10px; font-size: .72rem; white-space: nowrap; min-height: 44px; }
-        .pcf-home-btn { padding: 4px 10px; font-size: .72rem; min-height: 44px; }
+        .pcf-home-btn { padding: 4px 10px; font-size: .75rem; min-height: 44px; border-radius: 10px; }
         .pcf-zoom-single { height: 44px; min-width: 54px; }
         .pcf-cs-session-label { font-size: .65rem; padding: 2px 6px; min-height: 44px; display: inline-flex; align-items: center; }
         .pcf-timer { padding: 1px 4px; }
