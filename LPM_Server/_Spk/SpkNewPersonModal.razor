@@ -135,11 +135,45 @@
                     }
                 </div>
 
+                @if (_showSimilarWarning && _similarMatches.Count > 0)
+                {
+                    <div class="spk-dup-warn mx-3 mb-2">
+                        <div class="spk-dup-warn-title">
+                            <i class="ri-error-warning-line"></i>
+                            Similar PCs already exist:
+                        </div>
+                        <ul class="spk-dup-warn-list">
+                            @foreach (var m in _similarMatches)
+                            {
+                                <li>
+                                    <span class="spk-dup-name">@m.Name</span>
+                                    <span class="spk-dup-pct">@m.Pct% match</span>
+                                </li>
+                            }
+                        </ul>
+                        <div class="spk-dup-warn-msg">
+                            Are you sure <strong>"@(_firstName.Trim()) @(_lastName.Trim())"</strong> is a different person?
+                        </div>
+                    </div>
+                }
+
                 <div class="modal-footer py-2" style="background:#f8faff; border-top:1px solid #e8edff;">
-                    <button class="btn btn-sm btn-link text-muted" @onclick="Cancel">@LS.T("common.cancel")</button>
-                    <button class="btn btn-sm btn-primary" @onclick="Save">
-                        <i class="ri-save-line me-1"></i>@LS.T("common.save")
-                    </button>
+                    @if (_showSimilarWarning)
+                    {
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="CancelSimilarWarning">
+                            <i class="ri-arrow-left-line me-1"></i>Go Back
+                        </button>
+                        <button class="btn btn-sm btn-warning" @onclick="ConfirmAddAnyway">
+                            <i class="ri-check-line me-1"></i>Yes, Add Anyway
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-sm btn-link text-muted" @onclick="Cancel">@LS.T("common.cancel")</button>
+                        <button class="btn btn-sm btn-primary" @onclick="Save">
+                            <i class="ri-save-line me-1"></i>@LS.T("common.save")
+                        </button>
+                    }
                 </div>
 
             </div>
@@ -153,6 +187,57 @@
     .spk-new-person-modal .modal-body .form-select {
         background: #fff !important; color: #212529 !important;
         border-color: #ced4da !important;
+    }
+
+    /* ── Fuzzy duplicate warning ── */
+    .spk-dup-warn {
+        background: #fffbeb;
+        border-left: 4px solid #f59e0b;
+        border-radius: 0 8px 8px 0;
+        padding: 12px 14px;
+        animation: spkDupSlide 0.3s ease;
+    }
+    .spk-dup-warn-title {
+        font-weight: 700;
+        font-size: .88rem;
+        color: #92400e;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .spk-dup-warn-title i { font-size: 1.15rem; color: #f59e0b; }
+    .spk-dup-warn-list {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 10px;
+    }
+    .spk-dup-warn-list li {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 5px 10px;
+        margin-bottom: 4px;
+        background: #fef3c7;
+        border-radius: 6px;
+        font-size: .84rem;
+    }
+    .spk-dup-name { font-weight: 600; color: #78350f; }
+    .spk-dup-pct {
+        font-weight: 700;
+        font-size: .76rem;
+        padding: 2px 8px;
+        border-radius: 10px;
+        background: #fbbf24;
+        color: #78350f;
+    }
+    .spk-dup-warn-msg {
+        font-size: .82rem;
+        color: #92400e;
+    }
+    @@keyframes spkDupSlide {
+        from { opacity: 0; transform: translateY(-8px); }
+        to   { opacity: 1; transform: translateY(0); }
     }
 </style>
 
@@ -178,6 +263,11 @@
     bool      _visible;
     string?   _editOriginalFullName;
 
+    // ── Fuzzy duplicate state ──
+    bool _showSimilarWarning;
+    bool _userConfirmedSimilar;
+    List<(string Name, int Pct)> _similarMatches = [];
+
     protected override void OnInitialized()
     {
         _sourceOptions = AcademySvc.GetAllReferralSources();
@@ -191,6 +281,9 @@
         _orgId = 0;
         _courseId = 0;
         _editOriginalFullName = null;
+        _showSimilarWarning = false;
+        _userConfirmedSimilar = false;
+        _similarMatches = [];
         _visible  = true;
         StateHasChanged();
     }
@@ -212,6 +305,9 @@
         _courseId   = 0;
         _error     = "";
         _editOriginalFullName = $"{firstName.Trim()} {lastName.Trim()}";
+        _showSimilarWarning = false;
+        _userConfirmedSimilar = false;
+        _similarMatches = [];
         _visible   = true;
         StateHasChanged();
     }
@@ -229,6 +325,7 @@
 
     async Task Save()
     {
+        _error = "";
         if (string.IsNullOrWhiteSpace(_firstName))
             { _error = "First name is required."; return; }
         if (string.IsNullOrWhiteSpace(_lastName))
@@ -250,9 +347,22 @@
             { _error = "Please select a course."; return; }
 
         var fullName = $"{_firstName.Trim()} {_lastName.Trim()}";
+
         // Only check duplicates when adding (not editing)
         if (_editOriginalFullName == null)
         {
+            // Fuzzy similarity check (before exact check)
+            if (!_userConfirmedSimilar && ExistingFullNames != null && ExistingFullNames.Count > 0)
+            {
+                var matches = FindSimilarNames(_firstName.Trim(), _lastName.Trim(), ExistingFullNames);
+                if (matches.Count > 0)
+                {
+                    _similarMatches = matches;
+                    _showSimilarWarning = true;
+                    return;
+                }
+            }
+
             var dup = PcSvc.CheckDuplicatePc(_firstName, _lastName, _nick);
             if (dup == "ACTIVE_DUPLICATE")
             {
@@ -269,7 +379,110 @@
             _orgId, _source, _notes.Trim(), _courseId, _nick.Trim()));
     }
 
+    void CancelSimilarWarning()
+    {
+        _showSimilarWarning = false;
+        _userConfirmedSimilar = false;
+        _similarMatches = [];
+    }
+
+    async Task ConfirmAddAnyway()
+    {
+        _showSimilarWarning = false;
+        _userConfirmedSimilar = true;
+        await Save();
+    }
+
     void Cancel() => _visible = false;
 
     void OnBackdropClick() => _visible = false;
+
+    // ── Fuzzy duplicate detection ──────────────────────────────
+
+    /// <summary>
+    /// Find existing names that are similar to the given first+last name.
+    /// Returns matches above 80% similarity, sorted by highest first, max 5.
+    /// </summary>
+    static List<(string Name, int Pct)> FindSimilarNames(string first, string last, HashSet<string> existing)
+    {
+        var inputFull = $"{first} {last}".ToLowerInvariant();
+        var inputSwapped = $"{last} {first}".ToLowerInvariant();
+        var inputFirst = first.ToLowerInvariant();
+        var inputLast = last.ToLowerInvariant();
+        const int threshold = 80;
+
+        var results = new List<(string Name, int Pct)>();
+
+        foreach (var name in existing)
+        {
+            var existingLower = name.ToLowerInvariant().Trim();
+            if (existingLower.Length == 0) continue;
+
+            // Exact match is handled by CheckDuplicatePc — skip here
+            if (existingLower == inputFull) continue;
+
+            // Score 1: full name comparison
+            int score1 = SimilarityPct(inputFull, existingLower);
+
+            // Score 2: swapped first/last vs existing
+            int score2 = SimilarityPct(inputSwapped, existingLower);
+
+            // Score 3: compare first+last parts separately (weighted average)
+            int score3 = 0;
+            var parts = existingLower.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 2)
+            {
+                int firstSim = SimilarityPct(inputFirst, parts[0]);
+                int lastSim  = SimilarityPct(inputLast,  parts[1]);
+                score3 = (firstSim + lastSim) / 2;
+            }
+
+            int bestScore = Math.Max(score1, Math.Max(score2, score3));
+            if (bestScore >= threshold)
+                results.Add((name, bestScore));
+        }
+
+        return results
+            .OrderByDescending(r => r.Pct)
+            .Take(5)
+            .ToList();
+    }
+
+    /// <summary>Returns similarity percentage (0-100) between two strings.</summary>
+    static int SimilarityPct(string a, string b)
+    {
+        if (a.Length == 0 && b.Length == 0) return 100;
+        int maxLen = Math.Max(a.Length, b.Length);
+        if (maxLen == 0) return 100;
+        int dist = LevenshteinDistance(a, b);
+        return (int)Math.Round((1.0 - (double)dist / maxLen) * 100);
+    }
+
+    /// <summary>Compute Levenshtein edit distance between two strings.</summary>
+    static int LevenshteinDistance(string a, string b)
+    {
+        int n = a.Length, m = b.Length;
+        if (n == 0) return m;
+        if (m == 0) return n;
+
+        // Use single-row optimization for memory efficiency
+        var prev = new int[m + 1];
+        var curr = new int[m + 1];
+
+        for (int j = 0; j <= m; j++) prev[j] = j;
+
+        for (int i = 1; i <= n; i++)
+        {
+            curr[0] = i;
+            for (int j = 1; j <= m; j++)
+            {
+                int cost = a[i - 1] == b[j - 1] ? 0 : 1;
+                curr[j] = Math.Min(
+                    Math.Min(curr[j - 1] + 1, prev[j] + 1),
+                    prev[j - 1] + cost);
+            }
+            (prev, curr) = (curr, prev);
+        }
+        return prev[m];
+    }
 }

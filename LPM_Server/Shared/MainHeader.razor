@@ -368,11 +368,11 @@
                         <!-- Start::header-element new-pc -->
                         @if (!_isSoloUser)
                         {
-                        <li class="header-element me-2">
-                            <button class="btn btn-sm btn-success d-flex align-items-center gap-1"
-                                    style="border-radius:8px; font-weight:600; font-size:.82rem; color:#fff !important;"
+                        <li class="header-element me-1">
+                            <button class="hdr-action-btn hdr-ab-green" title="@LS.T("pcs.newPc")"
                                     @onclick="() => _addPcModal.Show()">
-                                <i class="ri-user-add-line"></i>@LS.T("pcs.newPc")
+                                <i class="ri-user-add-line hdr-ab-icon"></i>
+                                <span class="hdr-ab-label">@LS.T("pcs.newPc")</span>
                             </button>
                         </li>
                         }
@@ -381,22 +381,32 @@
                         <!-- Start::header-element assign-pc -->
                         @if (!_isSoloUser)
                         {
-                        <li class="header-element me-2">
-                            <button class="btn btn-sm btn-warning d-flex align-items-center gap-1"
-                                    style="border-radius:8px; font-weight:600; font-size:.82rem; color:#000 !important;"
+                        <li class="header-element me-1">
+                            <button class="hdr-action-btn hdr-ab-amber" title="@LS.T("actions.assignPc")"
                                     @onclick="ShowAssignPcModal">
-                                <i class="ri-shield-user-line"></i>@LS.T("actions.assignPc")
+                                <i class="ri-shield-user-line hdr-ab-icon"></i>
+                                <span class="hdr-ab-label">@LS.T("actions.assignPc")</span>
                             </button>
                         </li>
                         }
                         <!-- End::header-element assign-pc -->
 
+                        <!-- Start::header-element open-folder -->
+                        <li class="header-element me-1">
+                            <button class="hdr-action-btn hdr-ab-indigo" title="@LS.T("actions.openFolder")"
+                                    @onclick="OpenActionFolder">
+                                <i class="ri-folder-open-line hdr-ab-icon"></i>
+                                <span class="hdr-ab-label">@LS.T("actions.openFolder")</span>
+                            </button>
+                        </li>
+                        <!-- End::header-element open-folder -->
+
                         <!-- Start::header-element import-session -->
-                        <li class="header-element me-2">
-                            <button id="btn-add-session" class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                                    style="border-radius:8px; font-weight:600; font-size:.82rem; color:#fff !important;"
+                        <li class="header-element me-1">
+                            <button id="btn-add-session" class="hdr-action-btn hdr-ab-blue" title="@LS.T("actions.addSession")"
                                     @onclick="OpenImportSession">
-                                <i class="ri-upload-2-line"></i>@LS.T("actions.addSession")
+                                <i class="ri-upload-2-line hdr-ab-icon"></i>
+                                <span class="hdr-ab-label">@LS.T("actions.addSession")</span>
                             </button>
                         </li>
                         <!-- End::header-element import-session -->
@@ -1783,9 +1793,22 @@
                                 <div class="wiz-next-hover-zone"></div>
                                 <div class="wiz-next-tooltip">
                                     <div class="wiz-next-tooltip-title"><i class="ri-error-warning-line"></i> Cannot proceed</div>
+                                    @{ var hasAnyAmPm = false; }
                                     @foreach (var reason in step2Reasons)
                                     {
-                                        <div class="wiz-next-tooltip-item"><i class="ri-close-circle-line"></i> @reason</div>
+                                        var isAmPm = reason.Contains("AM/PM");
+                                        if (isAmPm) hasAnyAmPm = true;
+                                        <div class="wiz-next-tooltip-item @(isAmPm ? "wiz-tooltip-ampm" : "")">
+                                            <i class="@(isAmPm ? "ri-time-line" : "ri-close-circle-line")"></i>
+                                            @reason
+                                        </div>
+                                    }
+                                    @if (hasAnyAmPm)
+                                    {
+                                        <div class="wiz-tooltip-hint">
+                                            <i class="ri-lightbulb-line"></i>
+                                            Tip: Use 24-hour format — add 12 to PM hours (e.g. 2:32 PM → 14:32)
+                                        </div>
                                     }
                                 </div>
                             }
@@ -3922,6 +3945,94 @@
         padding: 0 4px; line-height: 1;
     }
 
+    /* ── Header action buttons (icon → expand-on-hover pill) ── */
+    /* Parent li: override theme's align-items:stretch so button stays compact */
+    .header-element:has(.hdr-action-btn) {
+        align-items: center !important;
+    }
+    .hdr-action-btn {
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 0;
+        border: none !important;
+        border-radius: 17px !important;   /* override Bootstrap button{border-radius:0} */
+        height: 34px !important;
+        padding: 0 !important;
+        font-weight: 600;
+        cursor: pointer;
+        color: #fff;
+        overflow: hidden;
+        white-space: nowrap;
+        box-shadow: 0 2px 8px rgba(0,0,0,.18);
+        transition: box-shadow 0.3s ease, transform 0.25s ease;
+        position: relative;
+        align-self: center;
+    }
+    .hdr-action-btn:hover {
+        transform: translateY(-2px);
+    }
+    .hdr-action-btn:active {
+        transform: scale(0.95) translateY(0);
+        transition-duration: 0.1s;
+    }
+
+    .hdr-ab-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 34px;
+        height: 34px;
+        font-size: 1.05rem;
+        flex-shrink: 0;
+        transition: transform 0.25s ease;
+    }
+    .hdr-action-btn:hover .hdr-ab-icon {
+        transform: scale(1.15);
+    }
+
+    .hdr-ab-label {
+        display: inline-block;
+        max-width: 0;
+        opacity: 0;
+        overflow: hidden;
+        font-size: .78rem;
+        white-space: nowrap;
+        padding-right: 0;
+        transition: max-width 0.35s cubic-bezier(0.4,0,0.2,1),
+                    opacity 0.2s ease 0.05s,
+                    padding 0.35s cubic-bezier(0.4,0,0.2,1);
+    }
+    .hdr-action-btn:hover .hdr-ab-label {
+        max-width: 120px;
+        opacity: 1;
+        padding-right: 12px;
+    }
+
+    /* Color variants */
+    .hdr-ab-green  { background: linear-gradient(135deg, #16a34a, #22c55e) !important; }
+    .hdr-ab-amber  { background: linear-gradient(135deg, #d97706, #f59e0b) !important; color: #000 !important; }
+    .hdr-ab-indigo { background: linear-gradient(135deg, #4f46e5, #6366f1) !important; }
+    .hdr-ab-blue   { background: linear-gradient(135deg, #2563eb, #3b82f6) !important; }
+
+    .hdr-ab-green:hover  { box-shadow: 0 4px 18px rgba(22,163,74,.5); }
+    .hdr-ab-amber:hover  { box-shadow: 0 4px 18px rgba(245,158,11,.5); }
+    .hdr-ab-indigo:hover { box-shadow: 0 4px 18px rgba(99,102,241,.5); }
+    .hdr-ab-blue:hover   { box-shadow: 0 4px 18px rgba(59,130,246,.5); }
+
+    /* Mobile: disable hover expand, ensure touch target */
+    @@media (max-width: 768px) {
+        .hdr-action-btn { min-width: 40px; min-height: 40px; border-radius: 20px !important; height: 40px !important; }
+        .hdr-ab-icon { width: 40px; height: 40px; }
+        .hdr-action-btn:hover .hdr-ab-label {
+            max-width: 0;
+            opacity: 0;
+            padding-right: 0;
+        }
+        .hdr-action-btn:hover {
+            transform: none;
+        }
+    }
+
     /* ── Message modal ── */
     .hdr-msg-modal {
         border: none; border-radius: 16px; overflow: hidden;
@@ -4587,7 +4698,7 @@
     }
     .wiz-next-tooltip {
         position: absolute; bottom: calc(100% + 10px); right: 0;
-        min-width: 260px; max-width: 340px;
+        min-width: 280px; max-width: 400px;
         background: #0f172a; color: #e2e8f0;
         border: 1px solid #334155; border-radius: 12px;
         padding: 12px 14px; box-shadow: 0 12px 40px rgba(0,0,0,.45);
@@ -4614,15 +4725,34 @@
         font-size: .78rem; color: #cbd5e1; padding: 3px 0;
     }
     .wiz-next-tooltip-item i { color: #f87171; font-size: .82rem; margin-top: 1px; flex-shrink: 0; }
+    .wiz-tooltip-ampm {
+        background: rgba(251,146,60,.1); border: 1px solid rgba(251,146,60,.25);
+        border-radius: 8px; padding: 6px 8px !important; margin: 4px 0;
+    }
+    .wiz-tooltip-ampm i { color: #fb923c !important; }
+    .wiz-tooltip-hint {
+        display: flex; align-items: center; gap: 6px;
+        font-size: .74rem; color: #86efac; padding: 4px 8px;
+        background: rgba(34,197,94,.08); border-radius: 6px;
+        margin: 2px 0 4px 0;
+    }
+    .wiz-tooltip-hint i { color: #fbbf24; font-size: .82rem; flex-shrink: 0; }
     :root[data-theme-mode="light"] .wiz-next-tooltip {
         background: #ffffff; color: #1e293b;
         border-color: #e2e8f0; box-shadow: 0 12px 40px rgba(0,0,0,.15);
     }
     :root[data-theme-mode="light"] .wiz-next-tooltip::after { border-top-color: #ffffff; }
     :root[data-theme-mode="light"] .wiz-next-tooltip-item { color: #475569; }
+    :root[data-theme-mode="light"] .wiz-tooltip-ampm {
+        background: rgba(251,146,60,.08); border-color: rgba(251,146,60,.2);
+    }
+    :root[data-theme-mode="light"] .wiz-tooltip-hint {
+        color: #15803d; background: rgba(34,197,94,.06);
+    }
 
     /* ── Wizard responsive: mobile ── */
     @@media (max-width: 480px) {
+        .wiz-next-tooltip { max-width: calc(100vw - 24px); min-width: 200px; right: -8px; }
         .wiz-circle { width: 28px; height: 28px; font-size: .75rem; }
         .wiz-label  { font-size: .6rem; }
         .wiz-conn   { margin: 0 4px; margin-bottom: 18px; }
@@ -5678,18 +5808,26 @@
 
     bool IsArfTimeOrdered(int tblIdx, int rowIdx)
     {
-        if (rowIdx == 0) return true;
         var rows = _arfTables[tblIdx].Rows;
         var cur = ArfTimeToMinutes(rows[rowIdx].Time);
-        var prev = ArfTimeToMinutes(rows[rowIdx - 1].Time);
-        if (cur < 0 || prev < 0) return true;
-        return cur >= prev;
+        if (cur < 0) return true; // empty/invalid — nothing to check
+        // Look back to the nearest previous row with a valid time
+        for (int i = rowIdx - 1; i >= 0; i--)
+        {
+            var prev = ArfTimeToMinutes(rows[i].Time);
+            if (prev >= 0) return cur >= prev;
+        }
+        return true; // no prior valid time found
     }
 
-    bool ArfHasTimeErrors => _arfTables.SelectMany((tbl, tIdx) =>
-        tbl.Rows.Select((r, rIdx) => new { r, tIdx, rIdx }))
-        .Any(x => (!IsValidArfTime(x.r.Time) && !string.IsNullOrWhiteSpace(x.r.Time))
-            || !IsArfTimeOrdered(x.tIdx, x.rIdx));
+    bool ArfHasInvalidFormat => _arfTables.SelectMany(tbl => tbl.Rows)
+        .Any(r => !IsValidArfTime(r.Time) && !string.IsNullOrWhiteSpace(r.Time));
+
+    bool ArfHasTimeOrderErrors => _arfTables.Select((tbl, tIdx) => new { tbl, tIdx })
+        .Any(x => x.tbl.Rows.Select((r, rIdx) => rIdx)
+            .Any(rIdx => !IsArfTimeOrdered(x.tIdx, rIdx)));
+
+    bool ArfHasTimeErrors => ArfHasInvalidFormat || ArfHasTimeOrderErrors;
 
     bool ArfHasIncompleteRows => AllArfRows.Any(r =>
         !string.IsNullOrWhiteSpace(r.Time) && !IsValidArfTime(r.Time));
@@ -5697,6 +5835,51 @@
     bool IsArfTableEmpty => AllArfRows.All(r =>
         string.IsNullOrWhiteSpace(r.Time)
         && string.IsNullOrWhiteSpace(r.ToneArm));
+
+    /// Finds rows where time goes backwards and checks if it looks like an AM/PM mistake.
+    /// Returns a list of detailed reason strings for the tooltip.
+    List<string> GetArfTimeOrderReasons()
+    {
+        var reasons = new List<string>();
+        for (int tIdx = 0; tIdx < _arfTables.Count; tIdx++)
+        {
+            var rows = _arfTables[tIdx].Rows;
+            for (int rIdx = 1; rIdx < rows.Count; rIdx++)
+            {
+                var cur = ArfTimeToMinutes(rows[rIdx].Time);
+                if (cur < 0) continue;
+
+                // Find the nearest earlier row with a valid time
+                int prev = -1;
+                string prevTime = "";
+                for (int i = rIdx - 1; i >= 0; i--)
+                {
+                    prev = ArfTimeToMinutes(rows[i].Time);
+                    if (prev >= 0) { prevTime = rows[i].Time; break; }
+                }
+                if (prev < 0 || cur >= prev) continue;
+
+                // Time goes backwards — check if adding 12 hours fixes it (AM/PM confusion)
+                var corrected = cur + 12 * 60;
+                var curTime = rows[rIdx].Time;
+                var tableLabel = _arfTables.Count > 1 ? $"ARF {tIdx + 1}, " : "";
+
+                if (corrected < 24 * 60 && corrected >= prev)
+                {
+                    var suggestedH = corrected / 60;
+                    var suggestedM = corrected % 60;
+                    reasons.Add($"{tableLabel}Row {rIdx + 1}: {curTime} is earlier than {prevTime} — " +
+                        $"did you mean {suggestedH:D2}:{suggestedM:D2}? (AM/PM mix-up)");
+                }
+                else
+                {
+                    reasons.Add($"{tableLabel}Row {rIdx + 1}: {curTime} is earlier than the previous time {prevTime} — " +
+                        "times must go forward within a session");
+                }
+            }
+        }
+        return reasons;
+    }
 
     List<string> Step2DisabledReasons
     {
@@ -5709,8 +5892,14 @@
                 reasons.Add("Duplicate session — this file already exists");
             if (!string.IsNullOrEmpty(_importNameEditError))
                 reasons.Add($"File name error: {_importNameEditError}");
-            if (!IsArfTableEmpty && ArfHasTimeErrors)
-                reasons.Add("Fix time errors in the ARF table — every time must be exactly 4 digits in HH:MM format (e.g. 01:30, not 1:30). Add a leading zero if the hour is single-digit.");
+            if (!IsArfTableEmpty && ArfHasInvalidFormat)
+                reasons.Add("Fix time format errors — every time must be exactly HH:MM (e.g. 01:30, not 1:30)");
+            if (!IsArfTableEmpty && ArfHasTimeOrderErrors)
+            {
+                var orderReasons = GetArfTimeOrderReasons();
+                foreach (var r in orderReasons)
+                    reasons.Add(r);
+            }
             if (string.IsNullOrWhiteSpace(_arfSessionLength))
                 reasons.Add("Enter the Session Length");
             return reasons;

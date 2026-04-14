@@ -1037,8 +1037,8 @@
                     }
                 }
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
-                <button class="pcf-tool-btn pcf-close-btn" title="Close — return to Home" @onclick="CloseToHome">
-                    <i class="ri-close-line"></i>
+                <button class="pcf-home-btn" title="Return to Home" @onclick="CloseToHome">
+                    <i class="ri-arrow-left-line"></i><i class="ri-home-4-line" style="font-size:.95em;"></i>
                 </button>
             </div>
         </div>
@@ -1632,10 +1632,10 @@
         min-width: 0; min-height: 0; overflow: hidden;
     }
     .pcf-toolbar {
-        display: flex; align-items: center; gap: 8px;
+        display: flex; align-items: center; gap: 4px 8px;
         padding: 8px 16px;
         background: linear-gradient(135deg, #1e40af, #3b82f6);
-        color: #fff; flex-shrink: 0; flex-wrap: nowrap;
+        color: #fff; flex-shrink: 0; flex-wrap: wrap;
         min-height: 44px;
         overflow: visible;
     }
@@ -1651,7 +1651,7 @@
     }
     .pcf-tools-right {
         display: flex; align-items: center; gap: 2px;
-        flex-shrink: 0; flex-wrap: nowrap;
+        flex-wrap: wrap; margin-left: auto;
     }
     .pcf-tool-btn {
         background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.25);
@@ -1687,7 +1687,15 @@
         border: 5px solid transparent; border-bottom-color: #1e293b;
     }
     .pcf-sidebar-open-btn:hover .pcf-sidebar-tooltip { display: block; }
-    .pcf-close-btn:hover { background: rgba(239,68,68,.55) !important; border-color: rgba(239,68,68,.7) !important; }
+    .pcf-home-btn {
+        background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25);
+        color: #e2e8f0; border-radius: 6px; padding: 4px 12px;
+        font-size: .82rem; font-weight: 600; cursor: pointer;
+        transition: background .15s, transform .15s;
+        display: inline-flex; align-items: center; justify-content: center;
+        height: 30px; box-sizing: border-box; white-space: nowrap;
+    }
+    .pcf-home-btn:hover { background: rgba(255,255,255,.25); transform: translateY(-1px); }
     .pcf-zoom-single {
         background: rgba(255,255,255,.1); border: none; color: rgba(255,255,255,.9);
         font-size: .75rem; font-weight: 600; min-width: 46px; height: 30px;
@@ -2236,13 +2244,12 @@
         }
         .pcf-toolbar {
             padding: 6px 10px; gap: 4px 8px;
-            flex-wrap: wrap; min-height: auto;
+            min-height: auto;
         }
-        .pcf-toolbar > .pcf-tools-right { flex-wrap: wrap; gap: 4px; }
         .pcf-toolbar .vr { display: none; }
         .pcf-toolbar-file { font-size: .78rem; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
         .pcf-tool-btn { padding: 4px 8px; font-size: .78rem; min-height: 44px; }
-        .pcf-save-btn, .pcf-done-btn { padding: 4px 10px; font-size: .78rem; min-height: 44px; }
+        .pcf-save-btn, .pcf-done-btn, .pcf-home-btn { padding: 4px 10px; font-size: .78rem; min-height: 44px; }
         .pcf-zoom-single { height: 44px; }
         .pcf-viewer { padding: 10px; gap: 8px; }
         .pcf-timer-num { width: 32px; font-size: 16px; } /* 16px prevents iOS auto-zoom on tablets */
@@ -2281,6 +2288,7 @@
                         display: inline-flex; align-items: center; justify-content: center; }
         .pcf-save-btn { padding: 4px 10px; font-size: .72rem; min-height: 44px; }
         .pcf-done-btn { padding: 4px 10px; font-size: .72rem; white-space: nowrap; min-height: 44px; }
+        .pcf-home-btn { padding: 4px 10px; font-size: .72rem; min-height: 44px; }
         .pcf-zoom-single { height: 44px; min-width: 54px; }
         .pcf-cs-session-label { font-size: .65rem; padding: 2px 6px; min-height: 44px; display: inline-flex; align-items: center; }
         .pcf-timer { padding: 1px 4px; }
