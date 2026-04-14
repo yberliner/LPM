@@ -1173,6 +1173,12 @@
                             <i class="ri-close-line"></i>
                         </button>
                     </div>
+                    @if (_prevCsFile != null && p.File == _prevCsFile)
+                    {
+                        <div class="pcf-prevcs-badge">
+                            <i class="ri-arrow-left-circle-line"></i> PREV CS
+                        </div>
+                    }
                     @{
                         var isExcelPane = _excelData != null && p.File == _excelRelPath && idx == _activeIdx;
                         var isPdfPane = !string.IsNullOrEmpty(p.File) && !isExcelPane;
@@ -1582,6 +1588,25 @@
         0%, 100% { opacity: .45; transform: scale(.85); text-shadow: 0 0 2px rgba(96,165,250,.2); }
         50%      { opacity: 1;   transform: scale(1.15); text-shadow: 0 0 8px rgba(96,165,250,.95), 0 0 14px rgba(96,165,250,.5); }
     }
+    /* ── Prev CS floating badge ── */
+    .pcf-prevcs-badge {
+        position: absolute; top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 30; pointer-events: none; user-select: none;
+        font-size: 2.2rem; font-weight: 900; letter-spacing: .08em;
+        color: #fb923c; white-space: nowrap;
+        text-shadow: 0 0 20px rgba(251,146,60,.6), 0 0 50px rgba(251,146,60,.3);
+        opacity: .35;
+        animation: pcf-prevcs-pulse 3s ease-in-out infinite;
+    }
+    .pcf-prevcs-badge i { font-size: 1.8rem; margin-right: 6px; vertical-align: middle; }
+    @@keyframes pcf-prevcs-pulse {
+        0%, 100% { opacity: .25; transform: translate(-50%, -50%) scale(.95);
+                   text-shadow: 0 0 12px rgba(251,146,60,.4), 0 0 30px rgba(251,146,60,.15); }
+        50%      { opacity: .5; transform: translate(-50%, -50%) scale(1.05);
+                   text-shadow: 0 0 28px rgba(251,146,60,.8), 0 0 60px rgba(251,146,60,.4), 0 0 90px rgba(251,146,60,.15); }
+    }
+
     .pcf-att-toggle {
         font-size: .75rem; color: #64748b; cursor: pointer;
         flex-shrink: 0; padding: 0 2px; transition: color .12s;
@@ -3129,6 +3154,7 @@
     int _savedDualSessionZoom;    // persisted zoom % for maximize+dual session mode
     int _activePreset = 0;        // 0=none, 1-4=active preset
     bool _presetLoading = false;  // prevents double-click during preset switch
+    string? _prevCsFile;          // relative path of the "previous session Next CS" file (for overlay badge)
 
     static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
         { ".jpg", ".jpeg", ".png" };
@@ -3836,7 +3862,7 @@
 
     async Task SelectFile(string relativePath, string fileName, string section = "", bool fitAfterLoad = false)
     {
-        _activePreset = 0; // manual selection breaks preset state
+        _activePreset = 0; _prevCsFile = null; // manual selection breaks preset state
         // Block if this file is already open in a DIFFERENT pane
         var idx = _paneCount == 1 ? 0 : _activeIdx;
         for (int pi = 0; pi < _paneCount; pi++)
@@ -4386,6 +4412,7 @@
     {
         if (presetNum == _activePreset || _presetLoading || _folder == null) return;
 
+        _prevCsFile = null;
         // Resolve files FIRST — bail before touching any state
         var files = ResolvePresetFiles(presetNum);
         if (files.Count == 0) return;
@@ -5497,6 +5524,7 @@
                     files.Add((summary.RelativePath, summary.Name, "Front Cover"));
 
                 // 3. Previous session's Next CS (only if in CS mode)
+                _prevCsFile = null;
                 if (_csSessionId > 0)
                 {
                     var prev = DashSvc.GetPreviousSession(PcId, _csSessionId, Solo);
@@ -5509,7 +5537,10 @@
                             var nextCsAtt = prevWs.Attachments.FirstOrDefault(a =>
                                 a.FileName.Contains("_att_Next CS", StringComparison.OrdinalIgnoreCase));
                             if (nextCsAtt != null)
+                            {
+                                _prevCsFile = nextCsAtt.RelativePath;
                                 files.Add((nextCsAtt.RelativePath, nextCsAtt.FileName, "WorkSheet"));
+                            }
                         }
                     }
                 }
