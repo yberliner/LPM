@@ -4202,16 +4202,18 @@
             + $"<div class='pcs-success-badge'>{(isEdit ? "Updated" : "Created")}</div>";
 
         await ClosePurchaseModal();
-        _showPurchaseSuccess = true;
-        StateHasChanged();
-        await Task.Delay(3500);
-        _showPurchaseSuccess = false;
 
+        // Refresh data immediately so the UI shows updated values behind the toast
         _allPcsEx = PcSvc.GetAllPcsExtended();
         _balances = PcSvc.GetAllPcBalances();
         _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
         _mixedRates = PcSvc.GetPcsWithMixedRates();
         LoadDetail();
+
+        _showPurchaseSuccess = true;
+        StateHasChanged();
+        await Task.Delay(3500);
+        _showPurchaseSuccess = false;
     }
 
     async Task ToggleSkipSignature(ChangeEventArgs e)
