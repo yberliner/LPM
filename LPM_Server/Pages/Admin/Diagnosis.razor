@@ -171,10 +171,10 @@
                                     Last Action @if (aAct) { <i class="@(_actSortAsc ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line")" style="font-size:.75rem;"></i> }
                                 </th>
                                 <th class="diag-act-th" style="width:110px;" @onclick='() => SetActSort("when")'>
-                                    When @if (aWhn) { <i class="@(_actSortAsc ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line")" style="font-size:.75rem;"></i> }
+                                    Last Event @if (aWhn) { <i class="@(_actSortAsc ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line")" style="font-size:.75rem;"></i> }
                                 </th>
-                                <th class="diag-act-th" style="width:100px;" @onclick='() => SetActSort("lastactive")'>
-                                    Last Active @if (aLa) { <i class="@(_actSortAsc ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line")" style="font-size:.75rem;"></i> }
+                                <th class="diag-act-th" style="width:120px;" @onclick='() => SetActSort("lastactive")'>
+                                    Last Interaction @if (aLa) { <i class="@(_actSortAsc ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line")" style="font-size:.75rem;"></i> }
                                 </th>
                                 <th style="width:80px;"></th>
                             </tr>

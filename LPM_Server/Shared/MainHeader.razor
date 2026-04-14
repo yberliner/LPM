@@ -2255,6 +2255,20 @@
                                    value="@_memoDate.ToString("yyyy-MM-dd")"
                                    @onchange="e => { if (DateOnly.TryParse(e.Value?.ToString(), out var d)) _memoDate = d; }" />
                         </div>
+                        <div class="mb-2 d-flex align-items-center gap-2">
+                            <label style="font-size:.82rem; color:#94a3b8; white-space:nowrap;">Name</label>
+                            <div class="d-flex align-items-center gap-1" style="flex:1; min-width:0;">
+                                <span style="font-size:.78rem; color:#64748b; white-space:nowrap;">@_memoDate.ToString("yyMMdd")</span>
+                                <input type="text" class="form-control form-control-sm"
+                                       style="background:#0f172a; color:#e2e8f0; border-color:#475569; flex:1;"
+                                       placeholder="e.g. progress update"
+                                       @bind="_memoFileName" @bind:event="oninput" />
+                                @{ var _memoPreviewName = BuildMemoFileName(_memoDate, _memoFileName); }
+                            </div>
+                        </div>
+                        <div style="font-size:.7rem; color:#64748b; margin:-4px 0 8px 52px;">
+                            File will be saved as: <span style="color:#94a3b8; font-weight:600;">@(_memoPreviewName).pdf</span>
+                        </div>
                         <div class="mb-1" id="memo-quill-wrap">
                             <label class="form-label" style="font-size:.82rem; color:#94a3b8;">@LS.T("actions.memoText")</label>
                             <div id="memo-quill-editor"
@@ -5519,6 +5533,7 @@
     string _memoScanBoxFileName = "";
     string _memoScanBoxError = "";
     DateOnly _memoDate = DateOnly.FromDateTime(DateTime.Today);
+    string _memoFileName = "";
 
     // ── Add Next C/S wizard state ──
     bool   _showNcWizard;
@@ -8126,11 +8141,34 @@ string _actionPcSearch = "";
         _memoScanBoxFileName = "";
         _memoScanBoxError    = "";
         _memoDate            = DateOnly.FromDateTime(DateTime.Today);
+        _memoFileName        = "";
         _showMemoWizard      = true;
 
         // Solo users have a pre-set PC — skip step 1 and go directly to step 2
         if (_isSoloUser)
             MemoNext();
+    }
+
+    /// Build memo file name: yymmdd {custom} report
+    /// - If custom is empty → "yymmdd report"
+    /// - If custom already starts with the date prefix → don't duplicate it
+    /// - If custom already contains "report" (case-insensitive) → don't append "report"
+    static string BuildMemoFileName(DateOnly date, string custom)
+    {
+        var datePrefix = date.ToString("yyMMdd");
+        var trimmed = custom?.Trim() ?? "";
+
+        // Strip leading date prefix if user typed it
+        if (trimmed.StartsWith(datePrefix, StringComparison.Ordinal))
+            trimmed = trimmed[datePrefix.Length..].TrimStart(' ', '_', '-');
+
+        // Build: datePrefix + custom + report (if not already present)
+        var hasReport = trimmed.Contains("report", StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return $"{datePrefix} report";
+        if (hasReport)
+            return $"{datePrefix} {trimmed}";
+        return $"{datePrefix} {trimmed} report";
     }
 
     void MemoNext()
@@ -8230,7 +8268,7 @@ string _actionPcSearch = "";
         var capturedAudId    = _msgUserId!.Value;
         var capturedPcName   = _memoPcs.FirstOrDefault(p => p.PcId == _memoPcId)?.FullName ?? "";
         var capturedDate     = _memoDate;
-        var capturedMemoName = _memoDate.ToString("yyMMdd") + " report";
+        var capturedMemoName = BuildMemoFileName(_memoDate, _memoFileName);
 
         Console.WriteLine($"[Memo] Quill HTML: {html}");
 
@@ -8336,7 +8374,7 @@ string _actionPcSearch = "";
         var capturedAudId  = _msgUserId!.Value;
         var capturedPcName = _memoPcs.FirstOrDefault(p => p.PcId == _memoPcId)?.FullName ?? "";
         var capturedDate   = _memoDate;
-        var capturedName   = _memoDate.ToString("yyMMdd") + " report";
+        var capturedName   = BuildMemoFileName(_memoDate, _memoFileName);
         var capturedBytes  = picked.Data;
 
         // Close modal, start background toast
