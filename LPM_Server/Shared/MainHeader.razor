@@ -5729,14 +5729,18 @@
         return sb.ToString();
     }
 
-    // Auto-format time: "2347" → "23:47", "947" → "9:47", "23:47" stays
+    // Auto-format time live: insert colon but do NOT pad with leading zero
+    // (padding happens on blur via SetArfTimeCell → FormatArfTime)
     void OnArfTimeLive(int tblIdx, int rowIdx, ChangeEventArgs e)
     {
         var raw = e.Value?.ToString()?.Trim() ?? "";
         var digits = new string(raw.Where(char.IsDigit).ToArray());
         if (digits.Length >= 4)
         {
-            _arfTables[tblIdx].Rows[rowIdx].Time = FormatArfTime(raw);
+            // Insert colon without zero-padding so the user doesn't see extra characters
+            var h = digits[..^2];
+            var m = digits[^2..];
+            _arfTables[tblIdx].Rows[rowIdx].Time = $"{h}:{m}";
             RecalcSessionLength();
         }
     }
