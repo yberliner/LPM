@@ -476,8 +476,8 @@ public class FolderService
         {
             var secPath = Path.Combine(folder, dirName);
             if (!Directory.Exists(secPath)) continue;
-            var files = Directory.GetFiles(secPath, "*.pdf", SearchOption.AllDirectories)
-                .Concat(Directory.GetFiles(secPath, "*.xlsx", SearchOption.AllDirectories))
+            var files = new[] { "*.pdf", "*.xlsx", "*.jpg", "*.jpeg", "*.png" }
+                .SelectMany(ext => Directory.GetFiles(secPath, ext, SearchOption.AllDirectories))
                 .OrderBy(f => f);
             foreach (var f in files)
             {
@@ -546,7 +546,7 @@ public class FolderService
         var sectionPath = Path.Combine(pcFolder, section);
         if (!Directory.Exists(sectionPath)) return [];
 
-        var extensions = new[] { "*.pdf", "*.xlsx" };
+        var extensions = new[] { "*.pdf", "*.xlsx", "*.jpg", "*.jpeg", "*.png" };
         return extensions
             .SelectMany(ext => Directory.GetFiles(sectionPath, ext, SearchOption.AllDirectories))
             .Select(f =>
@@ -2484,11 +2484,15 @@ public class FolderService
     private byte[] DecryptBytes(byte[] raw)
     {
         if (_encKey == null) return raw;
-        // Detect unencrypted legacy files — PDF starts with %PDF, ZIP/XLSX starts with PK
+        // Detect unencrypted legacy files by magic bytes
         if (raw.Length >= 4 && raw[0] == '%' && raw[1] == 'P' && raw[2] == 'D' && raw[3] == 'F')
-            return raw;
+            return raw; // PDF: %PDF
         if (raw.Length >= 4 && raw[0] == 'P' && raw[1] == 'K')
-            return raw;
+            return raw; // ZIP/XLSX: PK
+        if (raw.Length >= 2 && raw[0] == 0xFF && raw[1] == 0xD8)
+            return raw; // JPEG: FF D8
+        if (raw.Length >= 8 && raw[0] == 0x89 && raw[1] == 'P' && raw[2] == 'N' && raw[3] == 'G')
+            return raw; // PNG: 89 50 4E 47
         if (raw.Length < 17) return raw; // too small to be encrypted (16 IV + at least 1 block)
         using var aes = Aes.Create();
         aes.Key = _encKey;
@@ -2522,8 +2526,8 @@ public class FolderService
             children.Add(BuildTreeRecursive(pcFolder, subDir, sectionName));
         }
 
-        // Files (sorted alphabetically) — include both .pdf and .xlsx
-        var sectionFiles = new[] { "*.pdf", "*.xlsx" }
+        // Files (sorted alphabetically) — pdf, xlsx, and images
+        var sectionFiles = new[] { "*.pdf", "*.xlsx", "*.jpg", "*.jpeg", "*.png" }
             .SelectMany(ext => Directory.GetFiles(dirPath, ext))
             .OrderBy(f => Path.GetFileName(f), StringComparer.OrdinalIgnoreCase);
         foreach (var file in sectionFiles)

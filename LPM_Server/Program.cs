@@ -941,7 +941,15 @@ app.MapGet("/api/pc-file", (int pcId, string path, LPM.Services.FolderService sv
         : svc.ReadFileBytes(pcId, path, solo);
     Console.WriteLine($"[api/pc-file] bytes={(bytes == null ? "NULL (not found)" : bytes.Length + " bytes")}");
     if (bytes == null) return Results.NotFound();
-    return Results.File(bytes, "application/pdf", enableRangeProcessing: true);
+    var ext = Path.GetExtension(path).ToLowerInvariant();
+    var mime = ext switch
+    {
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".png" => "image/png",
+        ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        _ => "application/pdf"
+    };
+    return Results.File(bytes, mime, enableRangeProcessing: true);
 }).RequireAuthorization();
 
 app.MapGet("/api/program-insert", (string name, LPM.Services.FolderService svc) =>

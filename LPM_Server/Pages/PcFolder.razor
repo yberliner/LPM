@@ -482,7 +482,7 @@
     @* ── New menu popover ── *@
     @* Hidden file input — always in DOM, triggered programmatically *@
     <InputFile id="pcf-upload-input" multiple OnChange="NewMenuUploadFile"
-               accept=".pdf,.doc,.docx" style="display:none;" />
+               accept=".pdf,.doc,.docx,.odt,.rtf,.jpg,.jpeg,.png" style="display:none;" />
     @* Hidden file input for "Insert file above" in program pages *@
     <InputFile id="pcf-insert-input" accept=".pdf,.doc,.docx" OnChange="OnInsertFileSelected"
                style="display:none;" />
@@ -2191,6 +2191,20 @@
         border: 2px solid #64748b;
     }
     .pcf-viewer::-webkit-scrollbar-thumb:hover { background: #334155; }
+
+    /* ── Image viewer inside pane ── */
+    .pcf-image-wrap {
+        display: flex; justify-content: center; align-items: flex-start;
+        width: 100%; min-height: 100%;
+    }
+    .pcf-image-view {
+        max-width: 100%; height: auto;
+        border-radius: 4px;
+        box-shadow: 0 2px 12px rgba(0,0,0,.3);
+        transition: width .15s ease;
+        user-select: none; -webkit-user-drag: none;
+    }
+
     .pcf-empty {
         display: flex; flex-direction: column; align-items: center;
         justify-content: center; height: 100%; color: #94a3b8;
@@ -2937,7 +2951,7 @@
             </div>
             <div class="pcf-upload-err-hint">
                 <i class="ri-information-line"></i>
-                Accepted formats: <strong>PDF</strong>, <strong>DOC</strong>, <strong>DOCX</strong>, <strong>ODT</strong>, <strong>RTF</strong>
+                Accepted formats: <strong>PDF</strong>, <strong>DOC</strong>, <strong>DOCX</strong>, <strong>ODT</strong>, <strong>RTF</strong>, <strong>JPG</strong>, <strong>PNG</strong>
             </div>
             <div class="pcf-upload-err-hint">
                 <i class="ri-lightbulb-line"></i>
@@ -3108,6 +3122,15 @@
     int _savedDualSessionZoom;    // persisted zoom % for maximize+dual session mode
     int _activePreset = 0;        // 0=none, 1-4=active preset
     bool _presetLoading = false;  // prevents double-click during preset switch
+
+    static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+        { ".jpg", ".jpeg", ".png" };
+    static bool IsImageFile(string? path) =>
+        !string.IsNullOrEmpty(path) && ImageExtensions.Contains(Path.GetExtension(path));
+    static bool IsPdfViewable(string? path) =>
+        !string.IsNullOrEmpty(path)
+        && !path.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase)
+        && !IsImageFile(path);
 
     // "Already open" toast
     string _dupeFileName  = "";
@@ -3852,6 +3875,16 @@
         _excelData = null; // clear excel mode
         _excelRelPath = "";
 
+        // Check if this is an image file
+        if (IsImageFile(fileName))
+        {
+            _hasAnnotations = false;
+            _toolMode = "";
+            var imgUrl = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
+            _ = JS.InvokeVoidAsync("pcfViewer.loadImage", imgUrl, paneId);
+            return;
+        }
+
         _hasAnnotations = false;
         _toolMode = "";
         _zoomPercent = 100;
@@ -4299,7 +4332,7 @@
         var reloads = new List<(string, string)>();
         for (int i = 0; i < _paneCount; i++)
             if (!string.IsNullOrEmpty(_panes[i].File)
-                && !_panes[i].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                && IsPdfViewable(_panes[i].File))
                 reloads.Add((PaneIds[i], _panes[i].File!));
         if (reloads.Count > 0)
             _pendingReloads = reloads;
@@ -4354,7 +4387,7 @@
         // Cancel in-flight loads
         for (int i = 0; i < _paneCount; i++)
             if (!string.IsNullOrEmpty(_panes[i].File)
-                && !_panes[i].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                && IsPdfViewable(_panes[i].File))
                 await JS.InvokeVoidAsync("pcfViewer.cancelLoad", PaneIds[i]);
 
         // Clear stale state
@@ -4386,7 +4419,7 @@
         var reloads = new List<(string, string)>();
         for (int i = 0; i < count; i++)
             if (!string.IsNullOrEmpty(_panes[i].File)
-                && !_panes[i].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                && IsPdfViewable(_panes[i].File))
                 reloads.Add((PaneIds[i], _panes[i].File!));
         if (reloads.Count > 0)
             _pendingReloads = reloads;
@@ -4406,7 +4439,7 @@
 
         // Cancel any in-flight PDF renders BEFORE the layout changes.
         for (int i = 0; i < oldCount; i++)
-            if (!string.IsNullOrEmpty(_panes[i].File) && !_panes[i].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrEmpty(_panes[i].File) && IsPdfViewable(_panes[i].File))
                 await JS.InvokeVoidAsync("pcfViewer.cancelLoad", PaneIds[i]);
 
         // Save panes being hidden in parallel (keep File/FileName — just hidden, not closed)
@@ -4457,7 +4490,7 @@
         var reloads = new List<(string, string)>();
         for (int i = 0; i < newCount; i++)
         {
-            if (!string.IsNullOrEmpty(_panes[i].File) && !_panes[i].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrEmpty(_panes[i].File) && IsPdfViewable(_panes[i].File))
                 reloads.Add((PaneIds[i], _panes[i].File!));
         }
         if (reloads.Count > 0)
@@ -4483,7 +4516,7 @@
                 .Equals(_csSessionName, StringComparison.OrdinalIgnoreCase);
         if (isSessionPane && !_dualPanes.Contains(PaneIds[idx]))
             _pendingDualPaneId = PaneIds[idx];
-        else if (!string.IsNullOrEmpty(_panes[idx].File) && !_panes[idx].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+        else if (!string.IsNullOrEmpty(_panes[idx].File) && IsPdfViewable(_panes[idx].File))
             _pendingReloads = [(PaneIds[idx], _panes[idx].File!)];  // normal maximize: reload for full-width sharpness
 
         await JS.InvokeVoidAsync("pcfViewer.setActivePane", PaneIds[idx]);
@@ -4497,7 +4530,7 @@
         // Reload all visible panes so they re-fit their now-narrower viewports
         var reloads = new List<(string, string)>();
         for (int i = 0; i < _paneCount; i++)
-            if (!string.IsNullOrEmpty(_panes[i].File) && !_panes[i].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrEmpty(_panes[i].File) && IsPdfViewable(_panes[i].File))
                 reloads.Add((PaneIds[i], _panes[i].File!));
         if (reloads.Count > 0)
             _pendingReloads = reloads;
@@ -4557,7 +4590,7 @@
         // Reload remaining PDF panes to fill new width
         var reloads = new List<(string, string)>();
         for (int i = 0; i < _paneCount; i++)
-            if (!string.IsNullOrEmpty(_panes[i].File) && !_panes[i].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrEmpty(_panes[i].File) && IsPdfViewable(_panes[i].File))
                 reloads.Add((PaneIds[i], _panes[i].File!));
         if (reloads.Count > 0)
             _pendingReloads = reloads;
@@ -4878,7 +4911,7 @@
                 _pendingReloads ??= new();
                 for (int i = 0; i < _paneCount; i++)
                 {
-                    if (!string.IsNullOrEmpty(_panes[i].File) && !_panes[i].File!.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                    if (!string.IsNullOrEmpty(_panes[i].File) && IsPdfViewable(_panes[i].File))
                         _pendingReloads.Add((PaneIds[i], _panes[i].File!));
                 }
             }
@@ -6159,7 +6192,11 @@
                 }
                 else
                 {
-                    @if (!string.IsNullOrEmpty(clr))
+                    @if (IsImageFile(node.Name))
+                    {
+                        <i class="ri-image-line" style="color:#60a5fa;font-size:.78rem;flex-shrink:0;"></i>
+                    }
+                    else if (!string.IsNullOrEmpty(clr))
                     {
                         <span class="pcf-cover-dot" style="background:@clr;"></span>
                     }
@@ -6361,7 +6398,7 @@
     }
 
     static readonly HashSet<string> AllowedUploadExtensions = new(StringComparer.OrdinalIgnoreCase)
-        { ".pdf", ".doc", ".docx", ".odt", ".rtf" };
+        { ".pdf", ".doc", ".docx", ".odt", ".rtf", ".jpg", ".jpeg", ".png" };
 
     async Task NewMenuUploadFile(InputFileChangeEventArgs e)
     {
@@ -6399,6 +6436,20 @@
             else if (ext.Equals(".pdf", StringComparison.OrdinalIgnoreCase))
             {
                 pdfsToSave.Add((file.Name, rawBytes));
+            }
+            else if (ImageExtensions.Contains(ext))
+            {
+                // Save image as-is (no PDF conversion)
+                if (FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, file.Name, Solo, enforcePdf: false))
+                {
+                    _uploadPendingFiles.Add((file.Name, rawBytes, false));
+                    _uploadDuplicateNames.Add(file.Name);
+                }
+                else
+                {
+                    Console.WriteLine($"[PcFolder] Uploaded image '{file.Name}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
+                    FolderSvc.SaveSectionFileToPath(PcId, parentFolder, file.Name, rawBytes, solo: Solo, enforcePdf: false);
+                }
             }
         }
 

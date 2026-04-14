@@ -67,6 +67,7 @@ window.pcfViewer = {
     async loadPdf(url, paneId, targetPage) {
         paneId = paneId || this.activePane;
         const pane = this._initPane(paneId);
+        pane.isImage = false; // clear image flag when loading PDF
 
         // Generation counter — if a newer loadPdf starts while this one is mid-await,
         // the stale call detects the mismatch and exits without touching the DOM.
@@ -467,6 +468,58 @@ window.pcfViewer = {
             if (tw) viewer.scrollTop = tw.offsetTop;
         }
         viewer.style.visibility = '';
+    },
+
+    // Load an image file (jpg/jpeg/png) into a pane — read-only, no annotations
+    loadImage(url, paneId) {
+        paneId = paneId || this.activePane;
+        const pane = this._initPane(paneId);
+        pane.loadGen = (pane.loadGen || 0) + 1;
+
+        // Clear PDF state
+        if (pane.pdfDoc) { pane.pdfDoc.destroy(); pane.pdfDoc = null; }
+        pane.pages = [];
+        pane.annotations = [];
+        pane.filePath = url;
+        pane.isImage = true;
+
+        const viewer = document.getElementById('pcf-viewer-' + paneId);
+        if (!viewer) return;
+        viewer.innerHTML = '';
+
+        const wrap = document.createElement('div');
+        wrap.className = 'pcf-image-wrap';
+
+        const img = document.createElement('img');
+        img.className = 'pcf-image-view';
+        img.src = url;
+        img.alt = 'Image';
+        img.draggable = false;
+        img.onload = () => {
+            // Apply current zoom
+            const z = pane.zoomLevel || 1;
+            img.style.width = (z * 100) + '%';
+        };
+        img.onerror = () => {
+            viewer.innerHTML = '<div style="color:#f87171;padding:40px;text-align:center;">' +
+                '<i class="ri-image-line" style="font-size:2rem;display:block;margin-bottom:8px;"></i>' +
+                'Failed to load image</div>';
+        };
+
+        wrap.appendChild(img);
+        viewer.appendChild(wrap);
+    },
+
+    // Apply zoom to an image pane
+    zoomImage(paneId, zoomLevel) {
+        paneId = paneId || this.activePane;
+        const pane = this.panes[paneId];
+        if (!pane || !pane.isImage) return;
+        pane.zoomLevel = zoomLevel;
+        const viewer = document.getElementById('pcf-viewer-' + paneId);
+        if (!viewer) return;
+        const img = viewer.querySelector('.pcf-image-view');
+        if (img) img.style.width = (zoomLevel * 100) + '%';
     },
 
     // Fast rescale: same file already in DOM — instant CSS zoom then re-render per page in background.
@@ -1600,6 +1653,11 @@ window.pcfViewer = {
         const pane = this.panes[paneId];
         if (!pane) return 100;
         pane.zoomLevel = level;
+        // Image pane — zoom the img element
+        if (pane.isImage) {
+            this.zoomImage(paneId, level);
+            return Math.round(level * 100);
+        }
         const ds = pane.dualScale || 1;
         for (const pg of pane.pages) {
             const wrapper = pg.canvas.parentElement;
@@ -1610,7 +1668,10 @@ window.pcfViewer = {
 
     fitPage(paneId) {
         const pane = this.panes[paneId];
-        if (!pane || !pane.pages.length) return 100;
+        if (!pane) return 100;
+        // Image pane — fit to viewer width
+        if (pane.isImage) return this._setZoom(paneId, 1.0);
+        if (!pane.pages.length) return 100;
         const viewer = document.getElementById('pcf-viewer-' + paneId);
         if (!viewer) return 100;
 
