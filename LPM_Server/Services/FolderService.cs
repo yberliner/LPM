@@ -503,16 +503,23 @@ public class FolderService
             .ToList<(string, string, string)>();
     }
 
+    private static readonly string[] WsAttachmentPatterns = ["*.pdf", "*.jpg", "*.jpeg", "*.png"];
+
     private List<WorkSheetItem> GetWorkSheets(string pcFolder)
     {
         var wsPath = Path.Combine(pcFolder, "WorkSheets");
         if (!Directory.Exists(wsPath)) return [];
 
-        var allPdfs = Directory.GetFiles(wsPath, "*.pdf").Select(Path.GetFileName).ToList();
+        // All files that can be attachments (PDFs + images)
+        var allFiles = WsAttachmentPatterns
+            .SelectMany(ext => Directory.GetFiles(wsPath, ext))
+            .Select(Path.GetFileName)
+            .ToList();
 
         // Session files = PDFs that don't contain _att_ in their name
-        var files = allPdfs
-            .Where(name => !name!.Contains("_att_", StringComparison.OrdinalIgnoreCase))
+        var files = allFiles
+            .Where(name => name!.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
+                        && !name.Contains("_att_", StringComparison.OrdinalIgnoreCase))
             .Select(name =>
             {
                 var relativePath = $"WorkSheets/{name}";
@@ -524,10 +531,10 @@ public class FolderService
         var items = new List<WorkSheetItem>();
         foreach (var file in files)
         {
-            // Attachments are files matching {sessionNameNoExt}_att_*.pdf
+            // Attachments are files matching {sessionNameNoExt}_att_* (any supported extension)
             var nameNoExt = Path.GetFileNameWithoutExtension(file.FileName);
             var prefix = $"{nameNoExt}_att_";
-            var attachments = allPdfs
+            var attachments = allFiles
                 .Where(n => n!.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                 .Select(n =>
                 {
@@ -1616,11 +1623,11 @@ public class FolderService
         return Path.GetFileNameWithoutExtension(fileName);
     }
 
-    /// <summary>Save an attachment file as flat file in WorkSheets: {session}_att_{name}.</summary>
-    public void SaveAttachment(int pcId, string sessionFileName, string attFileName, byte[] fileBytes, bool solo = false)
+    /// <summary>Save an attachment file as flat file in WorkSheets: {session}_att_{name}. Returns the actual saved filename.</summary>
+    public string? SaveAttachment(int pcId, string sessionFileName, string attFileName, byte[] fileBytes, bool solo = false)
     {
         var folder = solo ? GetOrCreateSoloPcFolderPath(pcId) : FindPcFolder(pcId);
-        if (folder == null) return;
+        if (folder == null) return null;
 
         var wsPath = Path.Combine(folder, "WorkSheets");
         Directory.CreateDirectory(wsPath);
@@ -1641,8 +1648,10 @@ public class FolderService
 
         File.WriteAllBytes(fullPath, fileBytes);
         EncryptFileInPlace(fullPath);
-        _audit.Log(pcId, solo, $"WorkSheets/{Path.GetFileName(fullPath)}", "create", fileBytes.Length, null, null, "Upload");
+        var savedName = Path.GetFileName(fullPath);
+        _audit.Log(pcId, solo, $"WorkSheets/{savedName}", "create", fileBytes.Length, null, null, "Upload");
         Console.WriteLine($"[FolderService] Saved attachment '{attFileName}' for session '{sessionFileName}', PC {pcId}");
+        return savedName;
     }
 
     /// <summary>

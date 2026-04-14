@@ -201,7 +201,14 @@
                                      @oncontextmenu:preventDefault="true"
                                      @onclick="@(() => SelectFile(att.RelativePath, att.FileName, "WorkSheet"))">
                                     <span class="pcf-att-line"></span>
-                                    <i class="ri-file-pdf-2-line" style="font-size:.7rem; opacity:.5; flex-shrink:0;"></i>
+                                    @if (IsImageFile(attName))
+                                    {
+                                        <i class="ri-image-line" style="font-size:.7rem; color:#60a5fa; flex-shrink:0;"></i>
+                                    }
+                                    else
+                                    {
+                                        <i class="ri-file-pdf-2-line" style="font-size:.7rem; opacity:.5; flex-shrink:0;"></i>
+                                    }
                                     @if (_isRenamingAtt && _renameAttPath == attRelPath)
                                     {
                                         <input class="pcf-rename-input" value="@_renameAttValue"
@@ -5877,8 +5884,13 @@
         else
         {
             Console.WriteLine($"[PcFolder] Upload attachment '{file.Name}' to session '{_wsAttTargetSession}' by '{_userName}' — PC {PcId}");
-            FolderSvc.SaveAttachment(PcId, _wsAttTargetSession, file.Name, rawBytes, Solo);
+            var savedName = FolderSvc.SaveAttachment(PcId, _wsAttTargetSession, file.Name, rawBytes, Solo);
             RefreshFolder();
+            if (savedName != null)
+            {
+                var relPath = $"WorkSheets/{savedName}";
+                await SelectFile(relPath, savedName, "WorkSheet");
+            }
         }
     }
 
@@ -5896,10 +5908,12 @@
             }
 
             Console.WriteLine($"[PcFolder] Converted+saved attachment '{pdfName}' to session '{sessionFileName}' by '{_userName}' — PC {PcId}");
-            FolderSvc.SaveAttachment(PcId, sessionFileName, pdfName, pdfBytes, Solo);
+            var savedName = FolderSvc.SaveAttachment(PcId, sessionFileName, pdfName, pdfBytes, Solo);
 
             toast.Status = ConvStatus.Done;
             RefreshFolder();
+            if (savedName != null)
+                await InvokeAsync(async () => await SelectFile($"WorkSheets/{savedName}", savedName, "WorkSheet"));
             await InvokeAsync(StateHasChanged);
 
             await Task.Delay(3000);
