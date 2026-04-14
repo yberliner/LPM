@@ -237,15 +237,17 @@
                                         var mins = totalMin % 60;
                                         var durStr = hrs > 0 ? $"{hrs}h {mins:D2}m" : $"{mins}m";
                                         var dateStr = DateOnly.TryParse(s.SessionDate, out var d2) ? d2.ToString("dd/MM/yy") : s.SessionDate;
-                                        var statusClass = s.CsStatus switch {
-                                            "Waiting"  => "home-aud-st-waiting",
-                                            "Done"     => "home-aud-st-done",
-                                            "Approved" => "home-aud-st-done",
-                                            _          => ""
+                                        var effectiveStatus = string.IsNullOrEmpty(s.CsStatus) ? "Waiting" : s.CsStatus;
+                                        var statusClass = effectiveStatus switch {
+                                            "Waiting"    => "home-aud-st-waiting",
+                                            "Done"       => "home-aud-st-done",
+                                            "Approved"   => "home-aud-st-done",
+                                            "Correction" => "home-aud-st-correction",
+                                            _            => "home-aud-st-waiting"
                                         };
-                                        var statusLabel = s.CsStatus == "Approved"
+                                        var statusLabel = effectiveStatus == "Approved"
                                             ? (_csStatusLabels.TryGetValue("Done", out var doneLbl) ? doneLbl : "CS Done")
-                                            : (_csStatusLabels.TryGetValue(s.CsStatus ?? "", out var lbl) ? lbl : (s.CsStatus ?? ""));
+                                            : (_csStatusLabels.TryGetValue(effectiveStatus, out var lbl) ? lbl : effectiveStatus);
                                         var attTypes = _audAttachTypes.GetValueOrDefault(s.SessionId);
                                         var hasPink    = attTypes != null && attTypes.Contains("PinkSheet");
                                         var hasCram    = attTypes != null && attTypes.Contains("Cramming");
@@ -1567,7 +1569,7 @@
         cursor: pointer; transition: background .15s;
     }
     .home-pcs-row:hover {
-        background: rgba(244,114,182,.1) !important;
+        background: rgba(59,130,246,.12) !important;
     }
     .home-pcs-row td {
         padding: 7px 12px; vertical-align: middle;
@@ -1675,16 +1677,16 @@
         letter-spacing: .3px; white-space: nowrap;
     }
     .home-aud-st-waiting {
-        background: rgba(251,191,36,.2); color: #fbbf24;
+        background: #332b00; color: #fbbf24;
     }
     .home-aud-st-done {
-        background: rgba(34,197,94,.2); color: #22c55e;
+        background: #052e16; color: #22c55e;
     }
     .home-aud-st-approved {
-        background: rgba(59,130,246,.2); color: #60a5fa;
+        background: #0c1a3d; color: #60a5fa;
     }
     .home-aud-st-correction {
-        background: rgba(239,68,68,.2); color: #ef4444;
+        background: #3b0a0a; color: #ef4444;
     }
 
     /* ── Attachment row border stripes ── */
@@ -1693,7 +1695,7 @@
     .home-aud-row-att-yellow { border-left: 4px solid #ca8a04 !important; }
 
     /* ── Attachment chips ── */
-    .home-aud-st-cell { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+    .home-aud-st-cell { white-space: nowrap; }
     .home-approved-tick {
         display: inline-flex; align-items: center; justify-content: center;
         font-size: .65rem; font-weight: 800; line-height: 1;
@@ -1705,6 +1707,7 @@
     .home-att-chip {
         font-size: .6rem; font-weight: 700; padding: 1px 6px;
         border-radius: 10px; white-space: nowrap; letter-spacing: .2px;
+        margin-left: 4px;
     }
     .home-att-chip-pink   { background: rgba(236,72,153,.2);  color: #ec4899; }
     .home-att-chip-orange { background: rgba(249,115,22,.2);  color: #f97316; }
@@ -1772,6 +1775,10 @@
     :root[data-theme-mode="light"] .home-pcs-row-even td {
         background: rgba(0,0,0,.04);
     }
+    :root[data-theme-mode="light"] .home-aud-st-waiting    { background: #fef9c3; color: #a16207; }
+    :root[data-theme-mode="light"] .home-aud-st-done       { background: #dcfce7; color: #15803d; }
+    :root[data-theme-mode="light"] .home-aud-st-approved   { background: #dbeafe; color: #1d4ed8; }
+    :root[data-theme-mode="light"] .home-aud-st-correction { background: #fee2e2; color: #dc2626; }
     :root[data-theme-mode="light"] .home-pcs-sortable:hover {
         color: #1e293b;
     }
