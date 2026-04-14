@@ -6621,7 +6621,8 @@
                         capturedPcName, capturedDate,
                         capturedGrade, capturedSessLen, capturedAdminTime,
                         capturedTotalTa, taRange, capturedRowGroups, capturedSummary,
-                        pageWidthPt: targetW, pageHeightPt: targetH);
+                        pageWidthPt: targetW, pageHeightPt: targetH,
+                        sessionId: sessionId);
                     await Advance(sArf, 2);
                     normalizedBytes = PdfSvc.CombinePdfs(arfPdfBytes, normalizedBytes);
                 }

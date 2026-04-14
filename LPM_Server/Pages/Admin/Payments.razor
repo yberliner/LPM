@@ -260,7 +260,7 @@
                                             else if (item.ItemType == "Book") { <span style="color:#d97706;">Book</span> }
                                             else { @($"{item.HoursBought}h") }
                                         </td>
-                                        <td class="small text-end" style="color:#212529;">@(item.AmountPaid > 0 ? $"{CurrSym(_viewDetail.Currency)}{item.AmountPaid}" : "\u2014")</td>
+                                        <td class="small text-end" style="color:#212529;">@(item.AmountPaid > 0 ? $"{CurrSym(_viewDetail.Currency)}{(int)Math.Round(item.AmountPaid)}" : "\u2014")</td>
                                     </tr>
                                 }
                             </tbody>
@@ -272,7 +272,7 @@
                                         @(hrs > 0 ? $"{hrs}h" : "\u2014")
                                     </td>
                                     <td class="small text-end fw-semibold" style="color:#212529;">
-                                        @{ var totalAmt = _viewDetail.Items.Sum(i => i.AmountPaid); }
+                                        @{ var totalAmt = (int)Math.Round(_viewDetail.Items.Sum(i => i.AmountPaid)); }
                                         @(totalAmt > 0 ? $"{CurrSym(_viewDetail.Currency)}{totalAmt}" : "\u2014")
                                     </td>
                                 </tr>

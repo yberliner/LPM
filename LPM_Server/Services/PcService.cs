@@ -13,15 +13,15 @@ public record PcDetailInfo(int PcId, string FirstName, string LastName, string N
 public record PcSessionInfo(int SessionId, string Date, string AuditorName,
     int LengthSec, int AdminSec, bool IsFree, string VerifiedStatus);
 public record PcStats(int TotalSessions, int FreeSessions, long UsedSec,
-    double TotalHoursPurchased, int TotalAmountPaid, string? LastSessionDate);
+    double TotalHoursPurchased, double TotalAmountPaid, string? LastSessionDate);
 public record PcListItemEx(int PcId, string FullName, string Nick, long RemainSec,
     long TotalSessionSec, int TotalSessions, int AuditorSessions, int AcademyVisits, double HoursPurchased, string Auditor = "",
     int OrgId = 0, string OrgName = "");
 public record PurchaseListItem(int PurchaseId, int PcId, string PcName, string PurchaseDate,
     string? Notes, string ApprovedStatus, string? ApprovedByName, string? ApprovedAt,
-    string? CreatedByName, string CreatedAt, int TotalAmount, double TotalHours, bool IsDeleted = false, string Currency = "ILS", int? TransferPurchaseId = null);
+    string? CreatedByName, string CreatedAt, double TotalAmount, double TotalHours, bool IsDeleted = false, string Currency = "ILS", int? TransferPurchaseId = null);
 public record PurchaseItemInfo(int PurchaseItemId, string ItemType, int? CourseId,
-    string? CourseName, int? BookId, string? BookName, double HoursBought, int AmountPaid);
+    string? CourseName, int? BookId, string? BookName, double HoursBought, double AmountPaid);
 public record PurchaseDetail(int PurchaseId, int PcId, string PcName, string PurchaseDate,
     string? Notes, string? SignatureData, string ApprovedStatus, string? ApprovedByName,
     string? CreatedByName, List<PurchaseItemInfo> Items, List<PurchasePaymentMethodInfo> PaymentMethods,
@@ -31,11 +31,11 @@ public record PurchasePaymentMethodInfo(int PaymentMethodId, string MethodType,
 
 // ── Balance calculation records ──
 public record PcBalanceData(
-    int PurchasedNis, decimal UsedNis, decimal BalanceNis,
+    double PurchasedNis, decimal UsedNis, decimal BalanceNis,
     double HoursLeft, int EffectiveRateCents, int PurchaseRateCents, bool RateMismatch,
     string Currency = "ILS");
 
-public record PcPurchaseRow(int PurchaseId, string Date, double Hours, int AmountNis, string Currency = "ILS");
+public record PcPurchaseRow(int PurchaseId, string Date, double Hours, double AmountNis, string Currency = "ILS");
 
 public record PcSessionCostRow(
     int SessionId, string Date, string AuditorName,
@@ -44,7 +44,7 @@ public record PcSessionCostRow(
 public record SoloCsReviewCostRow(int SessionId, string Date, int ReviewLengthSec, int RateCents, decimal CostNis, bool IsFree = false, bool IsImported = false);
 
 public record PcBalanceExplanation(
-    List<PcPurchaseRow> Purchases, int TotalPurchasedNis,
+    List<PcPurchaseRow> Purchases, double TotalPurchasedNis,
     decimal TotalUsedNis, decimal BalanceNis, int BillableSessionCount, int SoloReviewCount,
     int EffectiveRateCents, int PurchaseRateCents, double HoursLeft, string RateSource);
 
@@ -441,7 +441,7 @@ public List<PcListItem> GetAllPcs()
         using var pr = pCmd.ExecuteReader();
         pr.Read();
         double hours = pr.GetDouble(0);
-        int amount = pr.GetInt32(1);
+        double amount = pr.GetDouble(1);
 
         return new PcStats(total, free, usedSec, hours, amount, lastDate);
     }
@@ -632,8 +632,8 @@ public List<PcListItem> GetAllPcs()
             int pcId = r.GetInt32(0);
             string date = r.GetString(1);
             double hrs = r.GetDouble(2);
-            int amt = r.GetInt32(3);
-            int rate = (int)Math.Round(Math.Abs((double)amt / hrs));
+            double amt = r.GetDouble(3);
+            int rate = (int)Math.Round(Math.Abs(amt / hrs));
             if (!all.ContainsKey(pcId)) all[pcId] = new();
             all[pcId].Add(new PurchaseRateEntry(date, hrs, rate));
         }
@@ -722,7 +722,7 @@ public List<PcListItem> GetAllPcs()
         conn.Open();
 
         // A: Total purchased ₪ per PC (auditing items, non-deleted purchases)
-        var purchased = new Dictionary<int, int>();
+        var purchased = new Dictionary<int, double>();
         using (var cmd = conn.CreateCommand())
         {
             cmd.CommandText = @"
@@ -734,7 +734,7 @@ public List<PcListItem> GetAllPcs()
                   AND (br.ResetDate IS NULL OR pu.PurchaseDate >= br.ResetDate)
                 GROUP BY pu.PcId";
             using var r = cmd.ExecuteReader();
-            while (r.Read()) purchased[r.GetInt32(0)] = r.GetInt32(1);
+            while (r.Read()) purchased[r.GetInt32(0)] = r.GetDouble(1);
         }
 
         // B: Last purchase rate + currency per PC (highest PurchaseId with total AmountPaid > 0)
@@ -757,11 +757,11 @@ public List<PcListItem> GetAllPcs()
             while (r.Read())
             {
                 int pcId = r.GetInt32(0);
-                int amt = r.GetInt32(2);
+                double amt = r.GetDouble(2);
                 double hrs = r.GetDouble(3);
                 pcCurrency[pcId] = r.GetString(4); // last one wins (highest PurchaseId)
                 if (Math.Abs(hrs) > 0)
-                    lastPurchaseRate[pcId] = (int)Math.Round(Math.Abs((double)amt / hrs)) * 100;
+                    lastPurchaseRate[pcId] = (int)Math.Round(Math.Abs(amt / hrs)) * 100;
             }
         }
 
@@ -810,7 +810,7 @@ public List<PcListItem> GetAllPcs()
         var result = new Dictionary<int, PcBalanceData>();
         foreach (int pcId in purchased.Keys.Union(sessions.Keys).Union(soloCosts.Keys))
         {
-            int purchasedNis = purchased.GetValueOrDefault(pcId, 0);
+            double purchasedNis = purchased.GetValueOrDefault(pcId, 0);
             int purchaseRate = lastPurchaseRate.GetValueOrDefault(pcId, 0);
             decimal soloUsed = soloCosts.GetValueOrDefault(pcId);
 
@@ -819,7 +819,7 @@ public List<PcListItem> GetAllPcs()
             if (!sessions.TryGetValue(pcId, out var list) || list.Count == 0)
             {
                 decimal totalUsed = soloUsed;
-                decimal bal = purchasedNis - totalUsed;
+                decimal bal = (decimal)purchasedNis - totalUsed;
                 double hrs = purchaseRate > 0 ? (double)(bal / ((decimal)purchaseRate / 100m)) : 0;
                 result[pcId] = new(purchasedNis, totalUsed, bal, hrs, purchaseRate, purchaseRate, false, currency);
                 continue;
@@ -842,7 +842,7 @@ public List<PcListItem> GetAllPcs()
             }
 
             usedNis += soloUsed;
-            decimal balance = purchasedNis - usedNis;
+            decimal balance = (decimal)purchasedNis - usedNis;
             int effective = lastSessRate > 0 ? lastSessRate : purchaseRate;
             double hoursLeft = effective > 0 ? (double)(balance / ((decimal)effective / 100m)) : 0;
             bool mismatch = effective > 0 && purchaseRate > 0 && effective != purchaseRate;
@@ -856,7 +856,7 @@ public List<PcListItem> GetAllPcs()
 
     public int CreatePurchase(int pcId, string date, string? notes, string? signatureData,
         int? createdByPersonId,
-        List<(string itemType, int? courseId, int? bookId, double hoursBought, int amountPaid)> items,
+        List<(string itemType, int? courseId, int? bookId, double hoursBought, double amountPaid)> items,
         List<(string methodType, int amount, string? paymentDate, int installments)>? paymentMethods = null,
         int? registrarId = null, int? referralId = null, string currency = "ILS")
     {
@@ -1030,7 +1030,7 @@ public List<PcListItem> GetAllPcs()
                 r.IsDBNull(7) ? null : r.GetString(7),
                 r.IsDBNull(8) ? null : r.GetString(8).Trim(),
                 r.GetString(9),
-                r.GetInt32(10), r.GetDouble(11),
+                r.GetDouble(10), r.GetDouble(11),
                 r.GetInt32(12) == 1, r.GetString(13),
                 r.IsDBNull(14) ? null : (int?)r.GetInt32(14)));
         return list;
@@ -1103,7 +1103,7 @@ public List<PcListItem> GetAllPcs()
                 ir.IsDBNull(3) ? null : ir.GetString(3),
                 ir.IsDBNull(4) ? null : ir.GetInt32(4),
                 ir.IsDBNull(5) ? null : ir.GetString(5),
-                ir.GetDouble(6), ir.GetInt32(7)));
+                ir.GetDouble(6), ir.GetDouble(7)));
         ir.Close();
 
         // Load payment methods
@@ -1160,7 +1160,7 @@ public List<PcListItem> GetAllPcs()
                 r.IsDBNull(7) ? null : r.GetString(7),
                 r.IsDBNull(8) ? null : r.GetString(8).Trim(),
                 r.GetString(9),
-                r.GetInt32(10), r.GetDouble(11),
+                r.GetDouble(10), r.GetDouble(11),
                 Currency: r.GetString(12)));
         return list;
     }
@@ -1203,13 +1203,13 @@ public List<PcListItem> GetAllPcs()
                 r.IsDBNull(7) ? null : r.GetString(7),
                 r.IsDBNull(8) ? null : r.GetString(8).Trim(),
                 r.GetString(9),
-                r.GetInt32(10), r.GetDouble(11),
+                r.GetDouble(10), r.GetDouble(11),
                 Currency: r.GetString(12)));
         return list;
     }
 
     public void UpdatePurchase(int purchaseId, string date, string? notes,
-        List<(string itemType, int? courseId, int? bookId, double hoursBought, int amountPaid)> items,
+        List<(string itemType, int? courseId, int? bookId, double hoursBought, double amountPaid)> items,
         List<(string methodType, int amount, string? paymentDate, int installments)> paymentMethods,
         int? registrarId = null, int? referralId = null, string currency = "ILS")
     {
@@ -1497,7 +1497,7 @@ public List<PcListItem> GetAllPcs()
 
         // Purchases
         var purchases = new List<PcPurchaseRow>();
-        int totalPurchased = 0;
+        double totalPurchased = 0;
         using (var cmd = conn.CreateCommand())
         {
             cmd.CommandText = @"
@@ -1514,7 +1514,7 @@ public List<PcListItem> GetAllPcs()
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
-                int amt = r.GetInt32(3);
+                double amt = r.GetDouble(3);
                 purchases.Add(new(r.GetInt32(0), r.GetString(1), r.GetDouble(2), amt, r.GetString(4)));
                 totalPurchased += amt;
             }
@@ -1524,7 +1524,7 @@ public List<PcListItem> GetAllPcs()
         int purchaseRate = 0;
         for (int i = purchases.Count - 1; i >= 0; i--)
             if (purchases[i].AmountNis != 0 && Math.Abs(purchases[i].Hours) > 0)
-            { purchaseRate = (int)Math.Round(Math.Abs((double)purchases[i].AmountNis / purchases[i].Hours)) * 100; break; }
+            { purchaseRate = (int)Math.Round(Math.Abs(purchases[i].AmountNis / purchases[i].Hours)) * 100; break; }
 
         // Billable sessions
         var sess = new List<(int sid, int rate, int admin, int length)>();
@@ -1577,7 +1577,7 @@ public List<PcListItem> GetAllPcs()
             }
         }
 
-        decimal balance = totalPurchased - usedNis;
+        decimal balance = (decimal)totalPurchased - usedNis;
         int effective = lastSessRate > 0 ? lastSessRate : purchaseRate;
         double hoursLeft = effective > 0 ? (double)(balance / ((decimal)effective / 100m)) : 0;
         string source = lastSessRate > 0 ? $"Session #{lastSessId}" : "Purchase";
@@ -1627,7 +1627,7 @@ public List<PcListItem> GetAllPcs()
             if (r.Read() && !r.IsDBNull(0) && !r.IsDBNull(1))
             {
                 double hrs = r.GetDouble(1);
-                if (Math.Abs(hrs) > 0) purchaseRate = (int)Math.Round(Math.Abs(r.GetInt32(0) / hrs)) * 100;
+                if (Math.Abs(hrs) > 0) purchaseRate = (int)Math.Round(Math.Abs(r.GetDouble(0) / hrs)) * 100;
             }
         }
 
@@ -1765,7 +1765,7 @@ public List<PcListItem> GetAllPcs()
 
     // ── Transfer Balance ──────────────────────────────────────────
 
-    public record PcAuditingBalance(double HoursPurchased, int AuditingAmountPaid, long UsedSec, double RemainingHours, int RemainingNis, int RatePerHour);
+    public record PcAuditingBalance(double HoursPurchased, double AuditingAmountPaid, long UsedSec, double RemainingHours, int RemainingNis, int RatePerHour);
 
     public PcAuditingBalance GetPcAuditingBalance(int pcId)
     {
@@ -1794,7 +1794,7 @@ public List<PcListItem> GetAllPcs()
         using var pr = pCmd.ExecuteReader();
         pr.Read();
         double hours = pr.GetDouble(0);
-        int amount = pr.GetInt32(1);
+        double amount = pr.GetDouble(1);
         pr.Close();
 
         // Used seconds (paid sessions only)

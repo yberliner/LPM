@@ -482,7 +482,7 @@
     @* ── New menu popover ── *@
     @* Hidden file input — always in DOM, triggered programmatically *@
     <InputFile id="pcf-upload-input" multiple OnChange="NewMenuUploadFile"
-               style="display:none;" />
+               accept=".pdf,.doc,.docx" style="display:none;" />
     @* Hidden file input for "Insert file above" in program pages *@
     <InputFile id="pcf-insert-input" accept=".pdf,.doc,.docx" OnChange="OnInsertFileSelected"
                style="display:none;" />
@@ -3961,7 +3961,8 @@
                     var pdfBytes = PdfSvc.GenerateArfPdf(
                         arfData.PcName, arfData.Date, arfData.Grade, arfData.SessionLength,
                         arfData.AdminTime, arfData.TotalTa, arfData.TaRange,
-                        arfData.GetGroups(), html);
+                        arfData.GetGroups(), html,
+                        sessionId: _csSessionId);
                     if (FolderSvc.TryOverwriteArfPdf(PcId, sessionFileName, pdfBytes, Solo))
                     {
                         // Reload any pane that currently shows arf.pdf

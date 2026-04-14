@@ -436,7 +436,7 @@
                                 </td>
                                 <td class="text-muted">@(CourseTypes.IsAdvanced(e.CourseType) ? (e.InstructorName ?? "—") : "—")</td>
                                 <td class="text-muted">@(CourseTypes.IsAdvanced(e.CourseType) ? (e.CsName ?? "—") : "—")</td>
-                                <td class="text-end">@(e.PaidAmount > 0 ? $"₪{e.PaidAmount}" : "—")</td>
+                                <td class="text-end">@(e.PaidAmount > 0 ? $"₪{(int)Math.Round(e.PaidAmount)}" : "—")</td>
                                 <td class="text-muted">@(e.RegistrarName ?? "—")</td>
                                 <td class="text-muted">@(e.ReferralName ?? "—")</td>
                                 <td class="text-center fw-semibold" style="color:#34d399;">@e.VisitCount</td>
@@ -646,7 +646,7 @@
                 sb.Append("<div class='mb-2'><strong style='color:#dc2626;'>Purchase references:</strong>");
                 sb.Append("<table class='table table-sm mt-1 mb-0' style='font-size:.8rem;'><thead><tr><th>PC Name</th><th>Purchase Date</th><th>Amount</th><th>Purchase #</th></tr></thead><tbody>");
                 foreach (var p in purchases)
-                    sb.Append($"<tr><td class='fw-semibold'>{Enc(p.PcName)}</td><td>{Enc(p.PurchaseDate)}</td><td>₪{p.AmountPaid}</td><td>#{p.PurchaseId}</td></tr>");
+                    sb.Append($"<tr><td class='fw-semibold'>{Enc(p.PcName)}</td><td>{Enc(p.PurchaseDate)}</td><td>₪{(int)Math.Round(p.AmountPaid)}</td><td>#{p.PurchaseId}</td></tr>");
                 sb.Append("</tbody></table></div>");
             }
             sb.Append("<div class='small text-muted mt-2'><i class='ri-information-line me-1'></i>Remove these references first, then try deleting again.</div>");
@@ -670,7 +670,7 @@
             sb.Append("<div class='mb-2'><strong style='color:#dc2626;'>Purchase references:</strong>");
             sb.Append("<table class='table table-sm mt-1 mb-0' style='font-size:.8rem;'><thead><tr><th>PC Name</th><th>Purchase Date</th><th>Amount</th><th>Purchase #</th></tr></thead><tbody>");
             foreach (var p in purchases)
-                sb.Append($"<tr><td class='fw-semibold'>{Enc(p.PcName)}</td><td>{Enc(p.PurchaseDate)}</td><td>₪{p.AmountPaid}</td><td>#{p.PurchaseId}</td></tr>");
+                sb.Append($"<tr><td class='fw-semibold'>{Enc(p.PcName)}</td><td>{Enc(p.PurchaseDate)}</td><td>₪{(int)Math.Round(p.AmountPaid)}</td><td>#{p.PurchaseId}</td></tr>");
             sb.Append("</tbody></table></div>");
             sb.Append("<div class='small text-muted mt-2'><i class='ri-information-line me-1'></i>Remove these purchase items first, then try deleting again.</div>");
             _deleteBlockedBody = sb.ToString();

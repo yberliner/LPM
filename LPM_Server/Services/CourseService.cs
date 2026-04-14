@@ -8,7 +8,7 @@ public record BookItem(int BookId, string Name, int Price);
 public record CourseEnrollmentItem(
     int StudentCourseId, int PersonId, string PCFullName,
     int CourseId, string CourseName, string DateStarted, string? DateFinished,
-    int PaidAmount, int? RegistrarId, string? RegistrarName,
+    double PaidAmount, int? RegistrarId, string? RegistrarName,
     int? ReferralId, string? ReferralName, int VisitCount,
     string CourseType, int? InstructorId, string? InstructorName, int? CsId, string? CsName);
 public record StudentCourseItem(int StudentCourseId, int PersonId, int CourseId, string CourseName,
@@ -148,7 +148,7 @@ public class CourseService
     }
 
     public record CourseEnrollmentUsage(string PcName, string DateStarted, string? DateFinished);
-    public record PurchaseItemUsage(int PurchaseId, string PcName, string PurchaseDate, int AmountPaid);
+    public record PurchaseItemUsage(int PurchaseId, string PcName, string PurchaseDate, double AmountPaid);
 
     /// Check if a course is referenced anywhere. Returns (enrollments, purchaseItems).
     public (List<CourseEnrollmentUsage> Enrollments, List<PurchaseItemUsage> Purchases) GetCourseUsages(int courseId)
@@ -187,7 +187,7 @@ public class CourseService
             cmd.Parameters.AddWithValue("@id", courseId);
             using var r = cmd.ExecuteReader();
             while (r.Read())
-                purchases.Add(new(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetInt32(3)));
+                purchases.Add(new(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetDouble(3)));
         }
 
         return (enrollments, purchases);
@@ -212,7 +212,7 @@ public class CourseService
         var result = new List<PurchaseItemUsage>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            result.Add(new(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetInt32(3)));
+            result.Add(new(r.GetInt32(0), r.GetString(1), r.GetString(2), r.GetDouble(3)));
         return result;
     }
 
@@ -477,7 +477,7 @@ public class CourseService
                 r.GetInt32(0), r.GetInt32(1), r.GetString(2).Trim(),
                 r.GetInt32(3), r.GetString(4),
                 r.GetString(5), r.IsDBNull(6) ? null : r.GetString(6),
-                r.GetInt32(7),
+                r.GetDouble(7),
                 r.IsDBNull(8)  ? null : r.GetInt32(8),
                 r.IsDBNull(9)  ? null : r.GetString(9).Trim(),
                 r.IsDBNull(10) ? null : r.GetInt32(10),

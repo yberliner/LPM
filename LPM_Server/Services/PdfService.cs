@@ -1616,7 +1616,8 @@ public class PdfService
         string pcName, string date, string grade, string sessionLength,
         string adminTime, string totalTa, string taRange,
         List<List<ArfRowData>> rowGroups, string? summaryHtml,
-        double? pageWidthPt = null, double? pageHeightPt = null)
+        double? pageWidthPt = null, double? pageHeightPt = null,
+        int? sessionId = null)
     {
         // Generated with PdfSharpCore (native PDF text/path operators) — fully vector,
         // crisp at any zoom. All sizes scale from the A4 baseline (cw=535pt).
@@ -1774,7 +1775,26 @@ public class PdfService
 
         // ── Title ──
         double titleH = 30 * scale;
-        gfx.DrawString("Auditor Report Form", fTitle, bDark, R(x0, y, cw, titleH), fmtTC);
+        if (sessionId.HasValue)
+        {
+            // Draw title + session ID as one line, ID in tiny light-gray font
+            var fTiny = MakeFont(6);
+            var bGrayId = new PdfSharpCore.Drawing.XSolidBrush(PdfSharpCore.Drawing.XColor.FromArgb(160, 160, 160));
+            string titleStr = "Auditor Report Form";
+            string idStr = $"  (# {sessionId.Value})";
+            double tw = gfx.MeasureString(titleStr, fTitle).Width;
+            double iw = gfx.MeasureString(idStr, fTiny).Width;
+            double totalW = tw + iw;
+            double startX = x0 + (cw - totalW) / 2; // center the combined text
+            gfx.DrawString(titleStr, fTitle, bDark, R(startX, y, tw + 1, titleH), fmtCL);
+            // Align tiny text to baseline of the title
+            double baselineOffset = titleH - 8 * scale;
+            gfx.DrawString(idStr, fTiny, bGrayId, R(startX + tw, y + baselineOffset, iw + 1, titleH - baselineOffset), fmtCL);
+        }
+        else
+        {
+            gfx.DrawString("Auditor Report Form", fTitle, bDark, R(x0, y, cw, titleH), fmtTC);
+        }
         y += titleH + 14 * scale;
 
         // ── Header field pairs ──

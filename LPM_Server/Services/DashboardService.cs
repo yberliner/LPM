@@ -2015,7 +2015,7 @@ public class DashboardService
         if (r.Read() && !r.IsDBNull(0) && !r.IsDBNull(1))
         {
             double hrs = r.GetDouble(1);
-            if (Math.Abs(hrs) > 0) return (int)Math.Round(Math.Abs((double)r.GetInt32(0) / hrs)) * 100;
+            if (Math.Abs(hrs) > 0) return (int)Math.Round(Math.Abs(r.GetDouble(0) / hrs)) * 100;
         }
         return 0;
     }
@@ -2942,7 +2942,7 @@ public class DashboardService
             return (commByUser, unassigned);
 
         // ── Step B: Batch-load items for those purchases ──
-        var itemsByPurchase = new Dictionary<int, List<(int PurchaseItemId, string ItemType, int? CourseId, int AmountPaid, string CourseType, string ItemName, decimal BookPrice)>>();
+        var itemsByPurchase = new Dictionary<int, List<(int PurchaseItemId, string ItemType, int? CourseId, double AmountPaid, string CourseType, string ItemName, decimal BookPrice)>>();
         if (purchaseIds.Count > 0)
         {
             using var cmd = conn.CreateCommand();
@@ -2965,7 +2965,7 @@ public class DashboardService
                 var pid = r.GetInt32(0);
                 if (!itemsByPurchase.ContainsKey(pid)) itemsByPurchase[pid] = new();
                 itemsByPurchase[pid].Add((r.GetInt32(1), r.GetString(2),
-                    r.IsDBNull(3) ? null : r.GetInt32(3), r.GetInt32(4), r.GetString(5), r.GetString(6),
+                    r.IsDBNull(3) ? null : r.GetInt32(3), r.GetDouble(4), r.GetString(5), r.GetString(6),
                     r.GetDecimal(7)));
             }
         }
@@ -3031,7 +3031,7 @@ public class DashboardService
         foreach (var pmt in payments)
         {
             if (!itemsByPurchase.TryGetValue(pmt.PurchaseId, out var items)) continue;
-            var totalAmount = items.Sum(i => (long)i.AmountPaid);
+            var totalAmount = items.Sum(i => i.AmountPaid);
             if (totalAmount == 0) continue;
 
             foreach (var item in items)
@@ -3053,7 +3053,7 @@ public class DashboardService
                 var detail = new CommissionDetail(
                     pmt.PurchaseId, pmt.PurchaseDate,
                     pmt.MethodType, pmt.Amount, pmt.PaymentDate,
-                    item.ItemType, item.ItemName, item.AmountPaid, (int)totalAmount,
+                    item.ItemType, item.ItemName, (int)Math.Round(item.AmountPaid), (int)Math.Round(totalAmount),
                     itemShare, calc.Vat, calc.Cc, bookPriceShare, calc.NetAfter, calc.Reserve, calc.NetBase, 0, finishDate);
 
                 double regPct, refPct;
@@ -3200,12 +3200,12 @@ public class DashboardService
                         using var r = cmd.ExecuteReader();
                         while (r.Read())
                             citems.Add((r.GetInt32(1), r.GetString(2),
-                                r.IsDBNull(3) ? null : r.GetInt32(3), r.GetInt32(4), r.GetString(5), r.GetString(6),
+                                r.IsDBNull(3) ? null : r.GetInt32(3), r.GetDouble(4), r.GetString(5), r.GetString(6),
                                 r.GetDecimal(7)));
                         itemsByPurchase[cpid] = citems;
                     }
 
-                    var totalAmount = citems.Sum(i => (long)i.AmountPaid);
+                    var totalAmount = citems.Sum(i => i.AmountPaid);
                     if (totalAmount == 0) continue;
 
                     var courseItem = citems.FirstOrDefault(i => i.ItemType == "Course" && i.CourseId == fc.CourseId);
@@ -3252,7 +3252,7 @@ public class DashboardService
                         var detail = new CommissionDetail(
                             cpid, purchaseDate,
                             pp.MethodType, pp.Amount, pp.PaymentDate,
-                            courseItem.ItemType, courseItem.ItemName, courseItem.AmountPaid, (int)totalAmount,
+                            courseItem.ItemType, courseItem.ItemName, (int)Math.Round(courseItem.AmountPaid), (int)Math.Round(totalAmount),
                             itemShare, calc.Vat, calc.Cc, bookPriceShare, calc.NetAfter, calc.Reserve, calc.NetBase, 0, fc.DateFinished);
 
                         if (fc.CourseType == CourseTypes.Academy)
