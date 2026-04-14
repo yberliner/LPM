@@ -2706,6 +2706,67 @@
     .pcf-toast-close { background: none; border: none; color: #64748b; cursor: pointer; padding: 0 2px; font-size: .9rem; flex-shrink: 0; }
     .pcf-toast-close:hover { color: #e2e8f0; }
 
+    /* ── Upload error toast ── */
+    .pcf-upload-err-toast {
+        position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+        z-index: 99999; cursor: pointer;
+        display: flex; align-items: flex-start; gap: 12px;
+        padding: 16px 20px; border-radius: 14px;
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        border: 1px solid rgba(239,68,68,.4);
+        color: #e2e8f0;
+        box-shadow: 0 8px 32px rgba(0,0,0,.5), 0 0 24px rgba(239,68,68,.15);
+        max-width: 420px; width: calc(100vw - 32px);
+        animation: pcf-uerr-slide .4s cubic-bezier(.34,1.4,.64,1);
+        overflow: hidden;
+    }
+    @@keyframes pcf-uerr-slide {
+        from { opacity: 0; transform: translateX(-50%) translateY(30px) scale(.92); }
+        to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+    }
+    .pcf-upload-err-icon {
+        font-size: 1.8rem; color: #f87171;
+        animation: pcf-uerr-shake .5s .3s ease-in-out;
+        flex-shrink: 0;
+    }
+    @@keyframes pcf-uerr-shake {
+        0%, 100% { transform: rotate(0); }
+        20%      { transform: rotate(-12deg); }
+        40%      { transform: rotate(10deg); }
+        60%      { transform: rotate(-6deg); }
+        80%      { transform: rotate(4deg); }
+    }
+    .pcf-upload-err-body { flex: 1; min-width: 0; }
+    .pcf-upload-err-title {
+        font-size: .92rem; font-weight: 700; color: #f87171;
+        margin-bottom: 6px;
+    }
+    .pcf-upload-err-files { margin-bottom: 8px; }
+    .pcf-upload-err-file {
+        display: flex; align-items: center; gap: 6px;
+        font-size: .8rem; color: #fca5a5; padding: 2px 0;
+    }
+    .pcf-upload-err-file i { font-size: .78rem; flex-shrink: 0; }
+    .pcf-upload-err-file span {
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .pcf-upload-err-hint {
+        display: flex; align-items: center; gap: 6px;
+        font-size: .74rem; color: #94a3b8; padding: 3px 0;
+    }
+    .pcf-upload-err-hint i { color: #60a5fa; font-size: .82rem; flex-shrink: 0; }
+    .pcf-upload-err-hint strong { color: #e2e8f0; }
+    .pcf-upload-err-progress {
+        position: absolute; bottom: 0; left: 0; right: 0; height: 3px;
+        background: linear-gradient(90deg, #f87171, #fbbf24);
+        border-radius: 0 0 14px 14px;
+        animation: pcf-uerr-shrink 6s linear forwards;
+    }
+    @@keyframes pcf-uerr-shrink {
+        from { transform: scaleX(1); transform-origin: left; }
+        to   { transform: scaleX(0); transform-origin: left; }
+    }
+
     /* ── CS Close Warning ── */
     .pcf-cswarn-overlay {
         position: fixed; inset: 0; z-index: 20000;
@@ -2853,6 +2914,37 @@
                 }
             </div>
         }
+    </div>
+}
+
+@* ── Upload rejected files toast ── *@
+@if (_showUploadError)
+{
+    <div class="pcf-upload-err-toast" @onclick="() => { _showUploadError = false; _uploadRejectedFiles.Clear(); }">
+        <div class="pcf-upload-err-icon">
+            <i class="ri-file-forbid-line"></i>
+        </div>
+        <div class="pcf-upload-err-body">
+            <div class="pcf-upload-err-title">Unsupported file format</div>
+            <div class="pcf-upload-err-files">
+                @foreach (var name in _uploadRejectedFiles)
+                {
+                    <div class="pcf-upload-err-file">
+                        <i class="ri-close-circle-line"></i>
+                        <span>@name</span>
+                    </div>
+                }
+            </div>
+            <div class="pcf-upload-err-hint">
+                <i class="ri-information-line"></i>
+                Accepted formats: <strong>PDF</strong>, <strong>DOC</strong>, <strong>DOCX</strong>, <strong>ODT</strong>, <strong>RTF</strong>
+            </div>
+            <div class="pcf-upload-err-hint">
+                <i class="ri-lightbulb-line"></i>
+                Word &amp; ODT files are automatically converted to PDF on upload
+            </div>
+        </div>
+        <div class="pcf-upload-err-progress"></div>
     </div>
 }
 
@@ -3097,6 +3189,10 @@
     enum ConvStatus { Running, Done, Failed }
     record ConversionToast(Guid Id, string FileName) { public ConvStatus Status { get; set; } = ConvStatus.Running; }
     List<ConversionToast> _conversionToasts = [];
+
+    // Upload error toast
+    bool _showUploadError;
+    List<string> _uploadRejectedFiles = [];
 
     // Worksheet context menu
     bool _showWsCtxMenu;
@@ -6264,22 +6360,32 @@
         CloseNewMenu();
     }
 
+    static readonly HashSet<string> AllowedUploadExtensions = new(StringComparer.OrdinalIgnoreCase)
+        { ".pdf", ".doc", ".docx", ".odt", ".rtf" };
+
     async Task NewMenuUploadFile(InputFileChangeEventArgs e)
     {
         _uploadPendingFiles.Clear();
         _uploadDuplicateNames.Clear();
+        _uploadRejectedFiles.Clear();
+        _showUploadError = false;
         var parentFolder = _newMenuParentFolder;
 
         var pdfsToSave = new List<(string Name, byte[] Data)>();
-        var rawToSave = new List<(string Name, byte[] Data)>();
 
         foreach (var file in e.GetMultipleFiles(20))
         {
+            var ext = Path.GetExtension(file.Name);
+            if (string.IsNullOrEmpty(ext) || !AllowedUploadExtensions.Contains(ext))
+            {
+                _uploadRejectedFiles.Add(file.Name);
+                continue;
+            }
+
             using var ms = new MemoryStream();
             await file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024).CopyToAsync(ms);
             var rawBytes = ms.ToArray();
 
-            var ext = Path.GetExtension(file.Name);
             if (FolderService.ConvertibleExtensions.Contains(ext))
             {
                 // Fire background conversion — close menu immediately
@@ -6294,10 +6400,12 @@
             {
                 pdfsToSave.Add((file.Name, rawBytes));
             }
-            else
-            {
-                rawToSave.Add((file.Name, rawBytes));
-            }
+        }
+
+        if (_uploadRejectedFiles.Count > 0)
+        {
+            _showUploadError = true;
+            _ = AutoDismissUploadError();
         }
 
         // Handle plain PDF uploads (enforcePdf = true)
@@ -6312,21 +6420,6 @@
             {
                 Console.WriteLine($"[PcFolder] Uploaded file '{name}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
                 FolderSvc.SaveSectionFileToPath(PcId, parentFolder, name, data, solo: Solo);
-            }
-        }
-
-        // Handle non-PDF/non-convertible files as-is (enforcePdf = false)
-        foreach (var (name, data) in rawToSave)
-        {
-            if (FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, name, Solo, enforcePdf: false))
-            {
-                _uploadPendingFiles.Add((name, data, false));
-                _uploadDuplicateNames.Add(name);
-            }
-            else
-            {
-                Console.WriteLine($"[PcFolder] Uploaded file '{name}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
-                FolderSvc.SaveSectionFileToPath(PcId, parentFolder, name, data, solo: Solo, enforcePdf: false);
             }
         }
 
@@ -6396,6 +6489,14 @@
         _uploadDuplicateNames.Clear();
         _showOverwriteConfirm = false;
         RefreshFolder(); // still refresh for non-duplicate files that were saved
+    }
+
+    async Task AutoDismissUploadError()
+    {
+        await Task.Delay(6000);
+        _showUploadError = false;
+        _uploadRejectedFiles.Clear();
+        await InvokeAsync(StateHasChanged);
     }
 
     // ── Delete ──
