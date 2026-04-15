@@ -3706,7 +3706,7 @@
                     var code = e.code;
                     if (code === 'KeyZ' && !e.shiftKey) { e.preventDefault(); ref.invokeMethodAsync('OnCtrlZ'); }
                     else if (code === 'KeyS') { e.preventDefault(); ref.invokeMethodAsync('OnCtrlS'); }
-                    else if (code === 'KeyW') { ref.invokeMethodAsync('OnCtrlW'); }
+                    else if (code === 'KeyW') { e.preventDefault(); ref.invokeMethodAsync('OnCtrlW'); }
                 });
             ");
 
