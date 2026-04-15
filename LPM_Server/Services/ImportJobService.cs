@@ -582,7 +582,7 @@ public class ImportJobService
             int? auditorUserId = null;
             using (var cmd = conn.CreateCommand())
             {
-                cmd.CommandText = $"SELECT UserId FROM sys_staff_pc_list WHERE PcId = @p AND WorkCapacity = '{StaffRoles.Auditor}' ORDER BY Id LIMIT 1";
+                cmd.CommandText = $"SELECT UserId FROM sys_staff_pc_list WHERE PcId = @p AND WorkCapacity IN {StaffRoles.SqlInAuditorCapacity()} ORDER BY Id LIMIT 1";
                 cmd.Parameters.AddWithValue("@p", pcId);
                 var res = cmd.ExecuteScalar();
                 if (res != null && res != DBNull.Value) auditorUserId = Convert.ToInt32(res);
@@ -591,7 +591,7 @@ public class ImportJobService
             if (!auditorUserId.HasValue)
             {
                 using var cmd = conn.CreateCommand();
-                cmd.CommandText = $"SELECT UserId FROM sys_staff_pc_list WHERE PcId = @p AND WorkCapacity = '{StaffRoles.CS}' ORDER BY Id LIMIT 1";
+                cmd.CommandText = $"SELECT UserId FROM sys_staff_pc_list WHERE PcId = @p AND WorkCapacity IN {StaffRoles.SqlInCsCapacity()} ORDER BY Id LIMIT 1";
                 cmd.Parameters.AddWithValue("@p", pcId);
                 var res = cmd.ExecuteScalar();
                 if (res != null && res != DBNull.Value) auditorUserId = Convert.ToInt32(res);
@@ -635,7 +635,7 @@ public class ImportJobService
             int? csUserId = null;
             using (var cmd = conn.CreateCommand())
             {
-                cmd.CommandText = $"SELECT UserId FROM sys_staff_pc_list WHERE PcId = @p AND WorkCapacity = '{StaffRoles.CS}' ORDER BY Id LIMIT 1";
+                cmd.CommandText = $"SELECT UserId FROM sys_staff_pc_list WHERE PcId = @p AND WorkCapacity IN {StaffRoles.SqlInCsCapacity()} ORDER BY Id LIMIT 1";
                 cmd.Parameters.AddWithValue("@p", pcId);
                 var res = cmd.ExecuteScalar();
                 if (res != null && res != DBNull.Value) csUserId = Convert.ToInt32(res);
@@ -679,7 +679,7 @@ public class ImportJobService
             int? csUserId = null;
             using (var cmd = conn.CreateCommand())
             {
-                cmd.CommandText = $"SELECT UserId FROM sys_staff_pc_list WHERE PcId = @p AND WorkCapacity = '{StaffRoles.CS}' ORDER BY Id LIMIT 1";
+                cmd.CommandText = $"SELECT UserId FROM sys_staff_pc_list WHERE PcId = @p AND WorkCapacity IN {StaffRoles.SqlInCsCapacity()} ORDER BY Id LIMIT 1";
                 cmd.Parameters.AddWithValue("@p", pcId);
                 var res = cmd.ExecuteScalar();
                 if (res != null && res != DBNull.Value) csUserId = Convert.ToInt32(res);

@@ -642,8 +642,8 @@
                     var myPcRoles = _apcMyPcs
                         .GroupBy(p => p.PcId)
                         .ToDictionary(g => g.Key, g => (
-                            HasAud: g.Any(p => p.WorkCapacity == StaffRoles.Auditor),
-                            HasCS: g.Any(p => p.WorkCapacity == StaffRoles.CS)
+                            HasAud: g.Any(p => StaffRoles.IsAuditorCapacity(p.WorkCapacity)),
+                            HasCS: g.Any(p => StaffRoles.IsCsCapacity(p.WorkCapacity))
                         ));
                     bool dualRole = _apcIsAuditor && _apcIsCS;
                     var singleRole = _apcIsAuditor ? StaffRoles.Auditor : StaffRoles.CS;
@@ -762,8 +762,8 @@
                                 PcId = g.Key,
                                 FullName = g.First().FullName,
                                 Nick = g.First().Nick,
-                                HasAuditor = g.Any(p => p.WorkCapacity == StaffRoles.Auditor),
-                                HasCS = g.Any(p => p.WorkCapacity == StaffRoles.CS),
+                                HasAuditor = g.Any(p => StaffRoles.IsAuditorCapacity(p.WorkCapacity)),
+                                HasCS = g.Any(p => StaffRoles.IsCsCapacity(p.WorkCapacity)),
                                 IsPending = _apcUnapproved.Contains(g.Key)
                             })
                             .OrderBy(x => x.FullName)

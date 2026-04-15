@@ -11,6 +11,7 @@
 @inject LPM.Services.FolderService FolderSvc
 @inject LPM.Services.DashboardService DashSvc
 @inject LPM.Services.UserActivityService ActivitySvc
+@inject LPM.Services.PcService PcSvc
 @inject IJSRuntime JS
 
 <PageTitle>Diagnosis — LPM</PageTitle>
@@ -859,6 +860,115 @@
             }
             } @* end else (_loadingRecent) *@
         </div>
+    </div>
+
+    @* ── PC History Log ── *@
+    <div class="diag-editor-card mb-4 mt-4">
+        <div class="diag-editor-header" style="cursor:pointer;user-select:none;" @onclick="TogglePchExpand">
+            <i class="ri-history-line me-2"></i>PC History Log
+            <span class="diag-editor-sub">sys_pc_history</span>
+            <i class="@(_pchExpanded ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line") ms-auto"></i>
+        </div>
+        @if (_pchExpanded)
+        {
+        <div class="diag-editor-body">
+            @* Filters *@
+            <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+                <select class="form-select form-select-sm" style="width:auto;font-size:.75rem;"
+                        value="@_pchDays" @onchange="OnPchDaysChanged">
+                    <option value="1">Today</option>
+                    <option value="7">Last 7 days</option>
+                    <option value="30">Last 30 days</option>
+                    <option value="0">All time</option>
+                </select>
+                <select class="form-select form-select-sm" style="width:auto;font-size:.75rem;"
+                        @bind="_pchUserFilter">
+                    <option value="">All users</option>
+                    @foreach (var u in _pchEntries.Select(e => e.ChangedBy).Distinct().OrderBy(u => u))
+                    {
+                        <option value="@u">@u</option>
+                    }
+                </select>
+                <select class="form-select form-select-sm" style="width:auto;font-size:.75rem;"
+                        @bind="_pchActionFilter">
+                    <option value="">All actions</option>
+                    @foreach (var a in _pchEntries.Select(e => e.Action).Distinct().OrderBy(a => a))
+                    {
+                        <option value="@a">@a</option>
+                    }
+                </select>
+                <input class="form-control form-control-sm" style="width:180px;font-size:.75rem;"
+                       placeholder="Search..." @bind="_pchSearch" @bind:event="oninput" />
+                <button class="btn btn-outline-secondary btn-sm py-0" style="font-size:.72rem;"
+                        disabled="@_pchLoading" @onclick="LoadPcHistory">
+                    @if (_pchLoading) { <span class="spinner-border spinner-border-sm me-1" style="width:.6rem;height:.6rem;border-width:2px;"></span> }
+                    else { <i class="ri-refresh-line me-1"></i> }
+                    Refresh
+                </button>
+            </div>
+
+            @if (_pchLoading)
+            {
+                <div class="cedb-section-loading">
+                    <span class="spinner-border spinner-border-sm me-2" style="color:#60a5fa;"></span>Loading history…
+                </div>
+            }
+            else if (!_pchEntries.Any())
+            {
+                <div class="cedb-empty">No PC history entries found.</div>
+            }
+            else
+            {
+                var filteredPch = FilteredPchEntries.ToList();
+                <div class="cedb-table-wrap">
+                    <table class="cedb-table">
+                        <thead>
+                            <tr>
+                                @{  bool phId = _pchSortCol == "id"; bool phPc = _pchSortCol == "pc"; bool phAct = _pchSortCol == "action";
+                                    bool phBy = _pchSortCol == "by"; bool phWhen = _pchSortCol == "when"; }
+                                <th class="diag-audit-th" style="width:50px;" @onclick='() => SetPchSort("id")'>
+                                    # @if (phId) { <i class="@(_pchSortAsc ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line")" style="font-size:.75rem;"></i> }
+                                </th>
+                                <th class="diag-audit-th" @onclick='() => SetPchSort("pc")'>
+                                    PC @if (phPc) { <i class="@(_pchSortAsc ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line")" style="font-size:.75rem;"></i> }
+                                </th>
+                                <th class="diag-audit-th" style="width:90px;" @onclick='() => SetPchSort("action")'>
+                                    Action @if (phAct) { <i class="@(_pchSortAsc ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line")" style="font-size:.75rem;"></i> }
+                                </th>
+                                <th>Details</th>
+                                <th class="diag-audit-th" style="width:90px;" @onclick='() => SetPchSort("by")'>
+                                    By @if (phBy) { <i class="@(_pchSortAsc ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line")" style="font-size:.75rem;"></i> }
+                                </th>
+                                <th class="diag-audit-th" style="width:140px;white-space:nowrap;" @onclick='() => SetPchSort("when")'>
+                                    When @if (phWhen) { <i class="@(_pchSortAsc ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line")" style="font-size:.75rem;"></i> }
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var e in filteredPch)
+                            {
+                                <tr>
+                                    <td style="color:#64748b;font-size:.75rem;">@e.Id</td>
+                                    <td style="font-weight:600;">@e.PcName</td>
+                                    <td>
+                                        @if (e.Action == "Created") { <span style="color:#22c55e;font-weight:600;font-size:.82rem;"><i class="ri-add-circle-line me-1"></i>Created</span> }
+                                        else if (e.Action == "Edited") { <span style="color:#3b82f6;font-weight:600;font-size:.82rem;"><i class="ri-edit-line me-1"></i>Edited</span> }
+                                        else { <span style="color:#94a3b8;font-size:.82rem;">@e.Action</span> }
+                                    </td>
+                                    <td style="font-size:.8rem;color:#94a3b8;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@e.Details">@(e.Details ?? "—")</td>
+                                    <td style="font-size:.82rem;">@e.ChangedBy</td>
+                                    <td style="font-size:.8rem;white-space:nowrap;color:#64748b;">@FormatPchTimestamp(e.ChangedAt)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div style="text-align:center;color:#475569;font-size:.75rem;padding:6px 0;">
+                    Showing @filteredPch.Count of @_pchEntries.Count entries
+                </div>
+            }
+        </div>
+        }
     </div>
 
     } @* end _diagTab == "db" *@
@@ -2021,6 +2131,18 @@
     bool                _recentMsgOk;
     int                 _recentLimit      = 200; // 0 = ALL
 
+    // ── PC History state ───────────────────────────────────────────────────
+    List<PcService.PcHistoryEntry> _pchEntries = [];
+    bool   _pchExpanded;
+    bool   _pchLoaded;
+    bool   _pchLoading;
+    int    _pchDays = 7;
+    string _pchUserFilter = "";
+    string _pchActionFilter = "";
+    string _pchSearch = "";
+    string _pchSortCol = "id";
+    bool   _pchSortAsc = false;
+
     // ── User Activity state ────────────────────────────────────────────────
     List<LPM.Services.UserActivityService.ActivitySummary> _activityUsers = [];
     bool   _activityExpanded = true;
@@ -2727,6 +2849,74 @@
             _recentMsg = $"Error: {ex.Message}"; _recentMsgOk = false;
             Console.WriteLine($"[Diagnosis] Admin '{admin}' failed to delete file '{fullPath}': {ex.Message}");
         }
+    }
+
+    // ── PC History methods ────────────────────────────────────────────────
+
+    async Task TogglePchExpand()
+    {
+        _pchExpanded = !_pchExpanded;
+        if (_pchExpanded && !_pchLoaded)
+            await LoadPcHistory();
+    }
+
+    async Task LoadPcHistory()
+    {
+        _pchLoading = true;
+        StateHasChanged();
+        await Task.Run(() => { _pchEntries = PcSvc.GetPcHistoryAll(_pchDays); });
+        _pchLoaded = true;
+        _pchLoading = false;
+        StateHasChanged();
+    }
+
+    async Task OnPchDaysChanged(ChangeEventArgs e)
+    {
+        _pchDays = int.TryParse(e.Value?.ToString(), out var d) ? d : 7;
+        await LoadPcHistory();
+    }
+
+    IEnumerable<PcService.PcHistoryEntry> FilteredPchEntries
+    {
+        get
+        {
+            var q = _pchEntries.AsEnumerable();
+            if (!string.IsNullOrEmpty(_pchUserFilter))
+                q = q.Where(e => e.ChangedBy.Equals(_pchUserFilter, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrEmpty(_pchActionFilter))
+                q = q.Where(e => e.Action.Equals(_pchActionFilter, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(_pchSearch))
+            {
+                var s = _pchSearch.Trim();
+                q = q.Where(e => e.PcName.Contains(s, StringComparison.OrdinalIgnoreCase)
+                              || (e.Details ?? "").Contains(s, StringComparison.OrdinalIgnoreCase)
+                              || e.ChangedBy.Contains(s, StringComparison.OrdinalIgnoreCase)
+                              || e.Action.Contains(s, StringComparison.OrdinalIgnoreCase));
+            }
+            q = _pchSortCol switch
+            {
+                "pc"     => _pchSortAsc ? q.OrderBy(e => e.PcName)   : q.OrderByDescending(e => e.PcName),
+                "action" => _pchSortAsc ? q.OrderBy(e => e.Action)   : q.OrderByDescending(e => e.Action),
+                "by"     => _pchSortAsc ? q.OrderBy(e => e.ChangedBy): q.OrderByDescending(e => e.ChangedBy),
+                "when"   => _pchSortAsc ? q.OrderBy(e => e.ChangedAt): q.OrderByDescending(e => e.ChangedAt),
+                _        => _pchSortAsc ? q.OrderBy(e => e.Id)       : q.OrderByDescending(e => e.Id),
+            };
+            return q;
+        }
+    }
+
+    void SetPchSort(string col)
+    {
+        if (_pchSortCol == col) _pchSortAsc = !_pchSortAsc;
+        else { _pchSortCol = col; _pchSortAsc = col == "pc"; }
+    }
+
+    static string FormatPchTimestamp(string ts)
+    {
+        // ChangedAt is already local time (UTC+2 from DB default)
+        if (DateTime.TryParse(ts, out var dt))
+            return dt.ToString("dd/MM/yyyy HH:mm");
+        return ts;
     }
 
     // ── Table loading ──────────────────────────────────────────────────────

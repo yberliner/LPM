@@ -906,8 +906,8 @@ public class DashboardService
         var dates    = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
         var dateList = string.Join(",", dates.Select(d => $"'{d:yyyy-MM-dd}'"));
 
-        var auditorPcIds = userPcs.Where(p => p.WorkCapacity == StaffRoles.Auditor).Select(p => p.PcId).ToList();
-        var csPcIds      = userPcs.Where(p => p.WorkCapacity == StaffRoles.CS).Select(p => p.PcId).ToList();
+        var auditorPcIds = userPcs.Where(p => StaffRoles.IsAuditorCapacity(p.WorkCapacity)).Select(p => p.PcId).ToList();
+        var csPcIds      = userPcs.Where(p => StaffRoles.IsCsCapacity(p.WorkCapacity)).Select(p => p.PcId).ToList();
         var soloAuditorIds = csPcIds.Count > 0 ? GetSoloPcIds().Intersect(csPcIds).ToList() : new List<int>();
 
         using var conn = new SqliteConnection(_connectionString);
@@ -1380,7 +1380,7 @@ public class DashboardService
             return weeks.Select(w => new WeekTotal(w, 0)).ToList();
 
         var startStr = weeks[0].ToString("yyyy-MM-dd");
-        var auditorPcIds = userPcs.Where(p => p.WorkCapacity == StaffRoles.Auditor).Select(p => p.PcId).ToList();
+        var auditorPcIds = userPcs.Where(p => StaffRoles.IsAuditorCapacity(p.WorkCapacity)).Select(p => p.PcId).ToList();
 
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -1481,7 +1481,7 @@ public class DashboardService
     {
         var result = new HashSet<(int pcId, int dayIndex)>();
 
-        var allCsPcIds   = userPcs.Where(p => p.WorkCapacity == StaffRoles.CS).Select(p => p.PcId).ToList();
+        var allCsPcIds   = userPcs.Where(p => StaffRoles.IsCsCapacity(p.WorkCapacity)).Select(p => p.PcId).ToList();
         var soloSet      = allCsPcIds.Count > 0 ? GetSoloPcIds() : new HashSet<int>();
         var soloPcIds    = allCsPcIds.Where(id => soloSet.Contains(id)).ToList();
         var regularPcIds = allCsPcIds.Where(id => !soloSet.Contains(id)).ToList();
@@ -1776,7 +1776,7 @@ public class DashboardService
         }
 
         // Regular mode: auditor sessions only (CS excluded from graph)
-        var auditorPcIds = userPcs.Where(p => p.WorkCapacity == StaffRoles.Auditor).Select(p => p.PcId).ToList();
+        var auditorPcIds = userPcs.Where(p => StaffRoles.IsAuditorCapacity(p.WorkCapacity)).Select(p => p.PcId).ToList();
 
         if (auditorPcIds.Count > 0)
         {
@@ -2358,7 +2358,7 @@ public class DashboardService
             SELECT {FullNameExpr} AS FullName
             FROM sys_staff_pc_list spl
             JOIN core_persons p ON p.PersonId = spl.UserId
-            WHERE spl.PcId = @pcId AND spl.WorkCapacity IN ('{StaffRoles.CS}','{StaffRoles.SeniorCS}')
+            WHERE spl.PcId = @pcId AND spl.WorkCapacity IN {StaffRoles.SqlInCsCapacity()}
             ORDER BY spl.Id DESC
             LIMIT 1";
         cmd.Parameters.AddWithValue("@pcId", pcId);
@@ -2631,7 +2631,7 @@ public class DashboardService
             JOIN sys_staff_pc_list spl ON spl.PcId = s.PcId
                 AND spl.UserId = @csUserId
                 AND spl.IsApproved IN (0,1)
-                AND spl.WorkCapacity = '{StaffRoles.CS}'
+                AND spl.WorkCapacity IN {StaffRoles.SqlInCsCapacity()}
             LEFT JOIN core_persons pa ON pa.PersonId = s.AuditorId
             LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
             WHERE s.IsImported = 0
@@ -2714,7 +2714,7 @@ public class DashboardService
                 JOIN core_persons p ON p.PersonId = s.PcId
                 JOIN sys_staff_pc_list spl ON spl.PcId = s.PcId
                     AND spl.UserId = @aid
-                    AND spl.WorkCapacity = '{StaffRoles.Auditor}'
+                    AND spl.WorkCapacity IN {StaffRoles.SqlInAuditorCapacity()}
                     AND spl.IsApproved IN (0,1)
                 LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
                 LEFT JOIN core_persons pc ON pc.PersonId = cr.CsId

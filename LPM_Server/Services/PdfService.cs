@@ -23,11 +23,11 @@ public class PdfService
         bool hasData(PcInfo pc) => Enumerable.Range(0, 7).Any(d => grid.GetValueOrDefault((DashboardService.GKey(pc), d)) > 0);
         // Solo CS PCs: CS-assigned PCs that are solo auditors — shown with negative GKey
         var csSoloPcs = pcs
-            .Where(pc => pc.WorkCapacity == StaffRoles.CS && (soloPcIds?.Contains(pc.PcId) ?? false))
+            .Where(pc => StaffRoles.IsCsCapacity(pc.WorkCapacity) && (soloPcIds?.Contains(pc.PcId) ?? false))
             .Select(pc => pc with { WorkCapacity = "CSSolo" })
             .Where(hasData).ToList();
-        var csPcs  = pcs.Where(pc => pc.WorkCapacity == StaffRoles.CS && hasData(pc)).ToList();
-        var audPcs = pcs.Where(pc => pc.WorkCapacity == StaffRoles.Auditor && hasData(pc)).ToList();
+        var csPcs  = pcs.Where(pc => StaffRoles.IsCsCapacity(pc.WorkCapacity) && hasData(pc)).ToList();
+        var audPcs = pcs.Where(pc => StaffRoles.IsAuditorCapacity(pc.WorkCapacity) && hasData(pc)).ToList();
 
         var weekEnd = weekStart.AddDays(6);
 
@@ -802,6 +802,7 @@ public class PdfService
     {
         "CSSolo"        => "Solo",
         "CS"            => "CS",
+        "AuditorAndCS"  => "A+CS",
         "Miscellaneous" => "Other",
         "SoloAuditor"   => "Solo",
         _               => "Auditor",

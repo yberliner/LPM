@@ -1874,20 +1874,20 @@
                || _pendingCs.Contains((DashboardService.GKey(pc), d)));
 
     List<PcInfo> AuditorPcs => _myPcs
-        .Where(pc => pc.WorkCapacity == StaffRoles.Auditor)
+        .Where(pc => StaffRoles.IsAuditorCapacity(pc.WorkCapacity))
         .Where(pc => !_hideEmpty || HasWeekData(pc))
         .ToList();
 
     // CS-assigned PCs that are solo auditors — shown in the CS Solo table (negative GKey)
     List<PcInfo> CsSoloPcs => _myPcs
-        .Where(pc => pc.WorkCapacity == StaffRoles.CS && _soloPcIds.Contains(pc.PcId))
+        .Where(pc => StaffRoles.IsCsCapacity(pc.WorkCapacity) && _soloPcIds.Contains(pc.PcId))
         .Select(pc => pc with { WorkCapacity = "CSSolo" })
         .Where(pc => !_hideEmpty || HasWeekData(pc))
         .ToList();
 
     // All CS-assigned PCs — shown in the CS table (positive GKey)
     List<PcInfo> CsPcs => _myPcs
-        .Where(pc => pc.WorkCapacity == StaffRoles.CS)
+        .Where(pc => StaffRoles.IsCsCapacity(pc.WorkCapacity))
         .Where(pc => !_hideEmpty || HasWeekData(pc))
         .ToList();
     HashSet<(int, int)>      _pendingCs   = [];
@@ -2190,7 +2190,7 @@
             if (_isAuditor || _isSolo)  _auditorStatuses   = t_audStatus.Result.ToList();
 
             // ── Phase 2: calls that depend on _myPcs / _auditorStatuses ──────
-            var auditorPcIds = _myPcs.Where(p => p.WorkCapacity == StaffRoles.Auditor).Select(p => p.PcId).ToList();
+            var auditorPcIds = _myPcs.Where(p => StaffRoles.IsAuditorCapacity(p.WorkCapacity)).Select(p => p.PcId).ToList();
             var weekStart    = _weekStart;
             var myPcsSnap    = _myPcs;
 
@@ -2294,15 +2294,15 @@
     {
         _pendingCs = DashSvc.GetPendingCsMarkers(_userId!.Value, _weekStart, _myPcs);
         _pcCsNames = DashSvc.GetLastCsNamesByPc(
-            _myPcs.Where(p => p.WorkCapacity == StaffRoles.Auditor).Select(p => p.PcId).ToList());
+            _myPcs.Where(p => StaffRoles.IsAuditorCapacity(p.WorkCapacity)).Select(p => p.PcId).ToList());
     }
 
     static DateOnly TodayWeekStart => DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
 
     string AudBtnClass(PcInfo pc) =>
-        pc.WorkCapacity == StaffRoles.Auditor ? "btn-sm btn-primary" : "btn-sm btn-outline-secondary";
+        StaffRoles.IsAuditorCapacity(pc.WorkCapacity) ? "btn-sm btn-primary" : "btn-sm btn-outline-secondary";
     string CsBtnClass(PcInfo pc) =>
-        pc.WorkCapacity == StaffRoles.CS ? "btn-sm btn-success" : "btn-sm btn-outline-secondary";
+        StaffRoles.IsCsCapacity(pc.WorkCapacity) ? "btn-sm btn-success" : "btn-sm btn-outline-secondary";
 
     // ── Context menu ──
     void ShowCtxMenu(MouseEventArgs e, PcInfo pc)

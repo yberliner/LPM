@@ -448,6 +448,32 @@ public List<PcListItem> GetAllPcs()
         return list;
     }
 
+    public record PcHistoryEntry(int Id, int PcId, string PcName, string Action, string? Details, string ChangedBy, string ChangedAt);
+
+    public List<PcHistoryEntry> GetPcHistoryAll(int days)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        var where = days > 0 ? $"WHERE h.ChangedAt >= datetime('now', '+2 hours', '-{days} days')" : "";
+        cmd.CommandText = $@"
+            SELECT h.Id, h.PcId,
+                   COALESCE(TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')), 'Unknown (id=' || h.PcId || ')') AS PcName,
+                   h.Action, h.Details, h.ChangedBy, h.ChangedAt
+            FROM sys_pc_history h
+            LEFT JOIN core_persons p ON p.PersonId = h.PcId
+            {where}
+            ORDER BY h.Id DESC";
+        var list = new List<PcHistoryEntry>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new PcHistoryEntry(
+                r.GetInt32(0), r.GetInt32(1), r.GetString(2),
+                r.GetString(3), r.IsDBNull(4) ? null : r.GetString(4),
+                r.GetString(5), r.GetString(6)));
+        return list;
+    }
+
     public void MovePcToOrg(int pcId, int? orgId)
     {
         using var conn = new SqliteConnection(_connectionString);

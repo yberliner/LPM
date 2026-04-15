@@ -197,7 +197,7 @@
                                             @if (hasPerm)
                                             {
                                                 var cap = aud.ApprovedPcs.FirstOrDefault(p => p.PcId == pc.PcId)?.WorkCapacity ?? StaffRoles.Auditor;
-                                                <span class="@(cap == StaffRoles.CS ? "sp-mx-cs" : "sp-mx-aud")">@(cap == StaffRoles.CS ? "CS" : "A")</span>
+                                                <span class="@(cap == StaffRoles.AuditorAndCS ? "sp-mx-both" : cap == StaffRoles.CS ? "sp-mx-cs" : "sp-mx-aud")">@(cap == StaffRoles.AuditorAndCS ? "A+CS" : cap == StaffRoles.CS ? "CS" : "A")</span>
                                             }
                                             else
                                             {
@@ -213,6 +213,7 @@
                 <div class="d-flex align-items-center gap-3 px-4 py-2 sp-mx-legend">
                     <span class="d-flex align-items-center gap-1"><span class="sp-mx-aud sp-lg">A</span> Auditor</span>
                     <span class="d-flex align-items-center gap-1"><span class="sp-mx-cs sp-lg">CS</span> CS</span>
+                    <span class="d-flex align-items-center gap-1"><span class="sp-mx-both sp-lg">A+CS</span> Auditor + CS</span>
                     <span class="d-flex align-items-center gap-1"><span class="sp-mx-empty sp-lg"></span> No permission</span>
                     <span class="d-flex align-items-center gap-1 ms-auto" style="font-size:.75rem;color:#92400e;"><span class="sp-privileged-badge me-1">✦ Privileged</span> = can open any folder regardless of assignments</span>
                 </div>
@@ -831,7 +832,8 @@
     }
     .sp-mx-aud  { display:inline-flex; align-items:center; justify-content:center; width:22px; height:18px; background:#2d6a9f; color:#fff; border-radius:3px; font-size:.62rem; font-weight:700; }
     .sp-mx-cs   { display:inline-flex; align-items:center; justify-content:center; width:22px; height:18px; background:#198754; color:#fff; border-radius:3px; font-size:.62rem; font-weight:700; }
-    .sp-mx-aud.sp-lg, .sp-mx-cs.sp-lg { width:28px; height:20px; font-size:.7rem; }
+    .sp-mx-both { display:inline-flex; align-items:center; justify-content:center; width:30px; height:18px; background:#7c3aed; color:#fff; border-radius:3px; font-size:.55rem; font-weight:700; }
+    .sp-mx-aud.sp-lg, .sp-mx-cs.sp-lg, .sp-mx-both.sp-lg { width:34px; height:20px; font-size:.65rem; }
     .sp-mx-allow-all.sp-lg, .sp-mx-empty.sp-lg { width: 14px; height: 14px; }
     .sp-cap-select { width: auto; min-width: 90px; }
 </style>
@@ -990,9 +992,15 @@
             Console.WriteLine($"[StaffPermissions] MatrixToggle: upgraded Auditor→CS — auditor='{aud.AuditorName}' (id={aud.AuditorId}) PC='{pcName}' (id={pcId}) by '{_username}'");
             DashSvc.AddApprovedPermission(aud.AuditorId, pcId, StaffRoles.CS);
         }
+        else if (existing.WorkCapacity == StaffRoles.CS && StaffRoles.IsCS(aud.StaffRole))
+        {
+            // CS → AuditorAndCS (only for CS staff)
+            Console.WriteLine($"[StaffPermissions] MatrixToggle: upgraded CS→AuditorAndCS — auditor='{aud.AuditorName}' (id={aud.AuditorId}) PC='{pcName}' (id={pcId}) by '{_username}'");
+            DashSvc.AddApprovedPermission(aud.AuditorId, pcId, StaffRoles.AuditorAndCS);
+        }
         else
         {
-            // Auditor (non-CS staff) or CS → remove
+            // Auditor (non-CS staff) or AuditorAndCS → remove
             Console.WriteLine($"[StaffPermissions] MatrixToggle: removed '{existing.WorkCapacity}' — auditor='{aud.AuditorName}' (id={aud.AuditorId}) PC='{pcName}' (id={pcId}) by '{_username}'");
             DashSvc.RemovePermission(existing.Id);
         }
@@ -1003,10 +1011,10 @@
 
     // ── Filter helpers ──
     private bool PcHasAuditor(int pcId)
-        => _matrixAuditors.Any(a => a.ApprovedPcs.Any(p => p.PcId == pcId && p.WorkCapacity == StaffRoles.Auditor));
+        => _matrixAuditors.Any(a => a.ApprovedPcs.Any(p => p.PcId == pcId && StaffRoles.IsAuditorCapacity(p.WorkCapacity)));
 
     private bool PcHasCs(int pcId)
-        => _matrixAuditors.Any(a => a.ApprovedPcs.Any(p => p.PcId == pcId && p.WorkCapacity != StaffRoles.Auditor));
+        => _matrixAuditors.Any(a => a.ApprovedPcs.Any(p => p.PcId == pcId && StaffRoles.IsCsCapacity(p.WorkCapacity)));
 
     private bool IsFullCoverage(int pcId) => PcHasAuditor(pcId) && PcHasCs(pcId);
 
