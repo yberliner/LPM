@@ -5649,12 +5649,12 @@
                 <span style="font-weight:700;font-size:1.05rem;">Staff Statistics</span>
             </div>
             <div class="d-flex align-items-center gap-2">
-                <button class="stat-week-btn" @onclick="StatWeekPrev" disabled="@_statCaching"><i class="ri-arrow-left-s-line"></i></button>
+                <button class="stat-week-btn" @onclick="StatWeekPrev"><i class="ri-arrow-left-s-line"></i></button>
                 <span class="stat-week-label">@_statWeekStart.ToString("dd MMM") — @_statWeekStart.AddDays(6).ToString("dd MMM yyyy")</span>
-                <button class="stat-week-btn" @onclick="StatWeekNext" disabled="@(_statCaching || StatIsCurrentWeek)"><i class="ri-arrow-right-s-line"></i></button>
+                <button class="stat-week-btn" @onclick="StatWeekNext" disabled="@StatIsCurrentWeek"><i class="ri-arrow-right-s-line"></i></button>
                 @if (!StatIsCurrentWeek)
                 {
-                    <button class="stat-today-btn" @onclick="StatWeekToday" disabled="@_statCaching" title="Jump to current week">
+                    <button class="stat-today-btn" @onclick="StatWeekToday" title="Jump to current week">
                         <i class="ri-calendar-todo-line me-1"></i>Today
                     </button>
                 }
@@ -5861,6 +5861,7 @@
     int _statCacheProgress;
     int _statCacheTotal;
     bool _statCaching;       // background generation running
+    bool _statCacheCancelled; // signal to stop current build
 
     // ── Print All Staff state ──
     bool _showPrintAllStaff;
@@ -9469,34 +9470,33 @@ string _actionPcSearch = "";
 
     async Task StatWeekPrev()
     {
-        if (_statCaching) return;
+        _statCacheCancelled = true; // stop current build
         _statWeekStart = _statWeekStart.AddDays(-7);
-        _statCache = new();
-        _statPdfUrl = null;
-        _statPdfBase64 = null;
-        await JSRuntime.InvokeVoidAsync("clearPdfCache");
-        StateHasChanged();
-        await GenerateAllStatPdfs();
+        await RestartStatCache();
     }
 
     bool StatIsCurrentWeek => _statWeekStart >= DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
 
     async Task StatWeekToday()
     {
-        if (_statCaching || StatIsCurrentWeek) return;
+        if (StatIsCurrentWeek) return;
+        _statCacheCancelled = true;
         _statWeekStart = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
-        _statCache = new();
-        _statPdfUrl = null;
-        _statPdfBase64 = null;
-        await JSRuntime.InvokeVoidAsync("clearPdfCache");
-        StateHasChanged();
-        await GenerateAllStatPdfs();
+        await RestartStatCache();
     }
 
     async Task StatWeekNext()
     {
-        if (_statCaching || StatIsCurrentWeek) return;
+        if (StatIsCurrentWeek) return;
+        _statCacheCancelled = true;
         _statWeekStart = _statWeekStart.AddDays(7);
+        await RestartStatCache();
+    }
+
+    async Task RestartStatCache()
+    {
+        // Wait for running loop to notice the cancel flag
+        while (_statCaching) await Task.Delay(50);
         _statCache = new();
         _statPdfUrl = null;
         _statPdfBase64 = null;
@@ -9507,6 +9507,7 @@ string _actionPcSearch = "";
 
     async Task GenerateAllStatPdfs()
     {
+        _statCacheCancelled = false;
         _statCaching = true;
         _statBusy = true;
         _statCacheProgress = 0;
@@ -9517,35 +9518,39 @@ string _actionPcSearch = "";
         var soloPcIds = DashSvc.GetSoloPcIds();
         var tempDir = Path.Combine("wwwroot", "temp");
         Directory.CreateDirectory(tempDir);
-        // Clean old stat files
         foreach (var old in Directory.GetFiles(tempDir, "stat_*.pdf"))
             try { File.Delete(old); } catch { }
 
-        foreach (var staff in _statStaffList)
+        // Generate ALL PDFs in parallel
+        var tasks = _statStaffList.Select(staff => Task.Run(() =>
         {
-            if (!_showStat || _isDisposed) break;
-
             var sid = staff.PersonId;
-            var pdfBytes = await Task.Run(() =>
-            {
-                var pcs = DashSvc.GetUserPcs(sid);
-                var grid = DashSvc.GetWeekGrid(sid, weekStart, pcs);
-                var pcIds = pcs.Select(p => p.PcId).ToList();
-                var csNames = DashSvc.GetLastCsNamesByPc(pcIds);
-                var weekKey = weekStart.ToString("yyyy-MM-dd");
-                var remarks = DashSvc.GetWeeklyRemarks(sid, weekKey);
-                var completions = CompletionSvc.GetForWeek(sid, weekStart, weekStart.AddDays(6));
-                return PdfSvc.GenerateWeeklyTablePdf(staff.FullName, weekStart, pcs, grid, csNames, remarks, soloPcIds, completions);
-            });
-
+            var pcs = DashSvc.GetUserPcs(sid);
+            var grid = DashSvc.GetWeekGrid(sid, weekStart, pcs);
+            var pcIds = pcs.Select(p => p.PcId).ToList();
+            var csNames = DashSvc.GetLastCsNamesByPc(pcIds);
+            var weekKey = weekStart.ToString("yyyy-MM-dd");
+            var remarks = DashSvc.GetWeeklyRemarks(sid, weekKey);
+            var completions = CompletionSvc.GetForWeek(sid, weekStart, weekStart.AddDays(6));
+            var pdfBytes = PdfSvc.GenerateWeeklyTablePdf(staff.FullName, weekStart, pcs, grid, csNames, remarks, soloPcIds, completions);
             var fileName = $"stat_{sid}_{weekStart:yyyyMMdd}.pdf";
-            await File.WriteAllBytesAsync(Path.Combine(tempDir, fileName), pdfBytes);
+            File.WriteAllBytes(Path.Combine(tempDir, fileName), pdfBytes);
+            return (sid, fileName, pdfBytes);
+        })).ToList();
+
+        // Process each as it completes
+        while (tasks.Count > 0)
+        {
+            var completed = await Task.WhenAny(tasks);
+            tasks.Remove(completed);
+            if (_statCacheCancelled || !_showStat || _isDisposed) break;
+
+            var (sid, fileName, pdfBytes) = await completed;
             var url = $"/temp/{fileName}?t={DateTime.Now.Ticks}";
             var b64 = Convert.ToBase64String(pdfBytes);
             _statCache[sid] = (url, b64);
             _statCacheProgress++;
 
-            // If this is the selected user, show immediately
             if (sid == _statSelectedId)
             {
                 _statPdfUrl = url;
@@ -9557,20 +9562,18 @@ string _actionPcSearch = "";
             else
             {
                 await InvokeAsync(StateHasChanged);
-                // Pre-render canvas in background so first click is instant
-                await JSRuntime.InvokeVoidAsync("preRenderPdf", url);
             }
         }
 
-        // If selected user was first in list, _statBusy is already false.
-        // If user selected someone not yet generated, show it now.
-        if (_statBusy && _statCache.TryGetValue(_statSelectedId, out var final))
+        // Pre-render canvases sequentially (JS is single-threaded)
+        if (!_statCacheCancelled && _showStat && !_isDisposed)
         {
-            _statPdfUrl = final.Url;
-            _statPdfBase64 = final.Base64;
-            _statBusy = false;
-            await InvokeAsync(StateHasChanged);
-            await JSRuntime.InvokeVoidAsync("showPdfFromUrl", "stat-pdf-viewer", final.Url);
+            foreach (var kv in _statCache)
+            {
+                if (_statCacheCancelled || !_showStat || _isDisposed) break;
+                if (kv.Key != _statSelectedId)
+                    await JSRuntime.InvokeVoidAsync("preRenderPdf", kv.Value.Url);
+            }
         }
 
         _statCaching = false;
