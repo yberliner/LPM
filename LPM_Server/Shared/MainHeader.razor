@@ -9521,7 +9521,8 @@ string _actionPcSearch = "";
         foreach (var old in Directory.GetFiles(tempDir, "stat_*.pdf"))
             try { File.Delete(old); } catch { }
 
-        // Generate ALL PDFs in parallel
+        // Phase 1: Generate ALL PDFs in parallel on server
+        var results = new List<(int Sid, string Key, string B64)>();
         var tasks = _statStaffList.Select(staff => Task.Run(() =>
         {
             var sid = staff.PersonId;
@@ -9535,41 +9536,43 @@ string _actionPcSearch = "";
             var pdfBytes = PdfSvc.GenerateWeeklyTablePdf(staff.FullName, weekStart, pcs, grid, csNames, remarks, soloPcIds, completions);
             var fileName = $"stat_{sid}_{weekStart:yyyyMMdd}.pdf";
             File.WriteAllBytes(Path.Combine(tempDir, fileName), pdfBytes);
-            return (sid, fileName, pdfBytes);
+            return (Sid: sid, Key: $"stat_{sid}", B64: Convert.ToBase64String(pdfBytes));
         })).ToList();
 
-        // Process each as it completes
+        // Update sidebar as each completes (no JS calls yet)
         while (tasks.Count > 0)
         {
             var completed = await Task.WhenAny(tasks);
             tasks.Remove(completed);
             if (_statCacheCancelled || !_showStat || _isDisposed) break;
-
-            var (sid, fileName, pdfBytes) = await completed;
-            var url = $"/temp/{fileName}";
-            var b64 = Convert.ToBase64String(pdfBytes);
-            var key = $"stat_{sid}";
-            _statCache[sid] = (key, b64);
+            var r = await completed;
+            results.Add(r);
+            _statCache[r.Sid] = (r.Key, r.B64);
             _statCacheProgress++;
-
-            // Push PDF data to browser memory (no file fetch needed later)
-            await JSRuntime.InvokeVoidAsync("cachePdfData", key, b64);
-
-            if (sid == _statSelectedId)
-            {
-                _statPdfUrl = key;
-                _statPdfBase64 = b64;
-                _statBusy = false;
-                await InvokeAsync(StateHasChanged);
-                await JSRuntime.InvokeVoidAsync("showStatPdf", "stat-pdf-viewer", key);
-            }
-            else
-            {
-                await InvokeAsync(StateHasChanged);
-                // Pre-render canvas from browser-local data (no network)
-                await JSRuntime.InvokeVoidAsync("preRenderStatPdf", key);
-            }
+            await InvokeAsync(StateHasChanged);
         }
+
+        if (_statCacheCancelled || !_showStat || _isDisposed) { _statCaching = false; return; }
+
+        // Phase 2: Push ALL data to browser in ONE call
+        var dataMap = results.ToDictionary(r => r.Key, r => r.B64);
+        await JSRuntime.InvokeVoidAsync("cacheAllPdfData", (object)dataMap);
+
+        // Phase 3: Show selected user immediately
+        var selKey = $"stat_{_statSelectedId}";
+        if (_statCache.TryGetValue(_statSelectedId, out var sel))
+        {
+            _statPdfUrl = sel.Url;
+            _statPdfBase64 = sel.Base64;
+            _statBusy = false;
+            await InvokeAsync(StateHasChanged);
+            await JSRuntime.InvokeVoidAsync("showStatPdf", "stat-pdf-viewer", selKey);
+        }
+
+        // Phase 4: Pre-render all other canvases (sequential, data already in browser)
+        var otherKeys = results.Where(r => r.Sid != _statSelectedId).Select(r => r.Key).ToArray();
+        if (otherKeys.Length > 0 && !_statCacheCancelled && _showStat && !_isDisposed)
+            await JSRuntime.InvokeVoidAsync("preRenderAllStatPdfs", (object)otherKeys);
 
         _statCaching = false;
         _statBusy = false;

@@ -490,8 +490,9 @@
           window._pdfCanvasCache = {};
           window._pdfDataCache = {};
 
-          window.cachePdfData = (key, base64Data) => {
-            window._pdfDataCache[key] = base64Data;
+          window.cacheAllPdfData = (dataMap) => {
+            for (const [key, b64] of Object.entries(dataMap))
+              window._pdfDataCache[key] = b64;
           };
 
           window.showStatPdf = async (containerId, key) => {
@@ -530,31 +531,33 @@
             } catch(e) { console.error('showStatPdf failed:', e); }
           };
 
-          window.preRenderStatPdf = async (key) => {
-            try {
-              if (window._pdfCanvasCache[key]) return;
+          window.preRenderAllStatPdfs = async (keys) => {
+            for (const key of keys) {
+              if (window._pdfCanvasCache[key]) continue;
               const b64 = window._pdfDataCache[key];
-              if (!b64) return;
-              const pdfjsLib = window['pdfjs-dist/build/pdf'];
-              if (!pdfjsLib) return;
-              const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-              const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
-              const canvases = [];
-              for (let i = 1; i <= pdf.numPages; i++) {
-                const page = await pdf.getPage(i);
-                const viewport = page.getViewport({ scale: 1.2 });
-                const canvas = document.createElement('canvas');
-                canvas.width = viewport.width;
-                canvas.height = viewport.height;
-                canvas.style.display = 'block';
-                canvas.style.margin = '0 auto 8px auto';
-                canvas.style.boxShadow = '0 2px 12px rgba(0,0,0,.18)';
-                canvas.style.borderRadius = '3px';
-                await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
-                canvases.push(canvas);
-              }
-              window._pdfCanvasCache[key] = canvases;
-            } catch(e) { console.error('preRenderStatPdf failed:', e); }
+              if (!b64) continue;
+              try {
+                const pdfjsLib = window['pdfjs-dist/build/pdf'];
+                if (!pdfjsLib) continue;
+                const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+                const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+                const canvases = [];
+                for (let i = 1; i <= pdf.numPages; i++) {
+                  const page = await pdf.getPage(i);
+                  const viewport = page.getViewport({ scale: 1.2 });
+                  const canvas = document.createElement('canvas');
+                  canvas.width = viewport.width;
+                  canvas.height = viewport.height;
+                  canvas.style.display = 'block';
+                  canvas.style.margin = '0 auto 8px auto';
+                  canvas.style.boxShadow = '0 2px 12px rgba(0,0,0,.18)';
+                  canvas.style.borderRadius = '3px';
+                  await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+                  canvases.push(canvas);
+                }
+                window._pdfCanvasCache[key] = canvases;
+              } catch(e) { console.error('preRender failed for', key, e); }
+            }
           };
 
           window.clearPdfCache = () => { window._pdfCanvasCache = {}; window._pdfDataCache = {}; };
