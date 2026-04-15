@@ -56,8 +56,9 @@ builder.Services.AddServerSideBlazor()
     .AddHubOptions(options =>
     {
         options.MaximumReceiveMessageSize = 1024 * 1024 * 500; // 500MB
-        // Keep client alive through long GC pauses / backup processing stalls
-        options.KeepAliveInterval      = TimeSpan.FromMinutes(5);
+        // Server pings client every 15s (must be < client's 30s default serverTimeout)
+        options.KeepAliveInterval      = TimeSpan.FromSeconds(15);
+        // Server tolerates client silence for 12 min (long backups / GC pauses)
         options.ClientTimeoutInterval  = TimeSpan.FromMinutes(12);
     })
     .AddCircuitOptions(options =>
