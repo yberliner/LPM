@@ -276,7 +276,161 @@
             An error has occurred. <a href="" onclick="location.reload()">Reload</a>
         </div>
 
-        <script src="_framework/blazor.server.js"></script>
+        <div id="components-reconnect-modal" style="display:none;">
+            <div style="position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,.7);
+                 display:flex;align-items:center;justify-content:center;">
+                <div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:32px 24px;
+                     text-align:center;color:#e2e8f0;box-shadow:0 20px 60px rgba(0,0,0,.5);max-width:340px;
+                     width:calc(100vw - 32px);box-sizing:border-box;" role="dialog" aria-label="Connection status">
+                    <div class="components-reconnect-show" style="display:none;">
+                        <div style="margin-bottom:16px;">
+                            <div class="spinner-border text-info" role="status" style="width:2.5rem;height:2.5rem;"></div>
+                        </div>
+                        <div style="font-size:1.1rem;font-weight:700;margin-bottom:6px;">Reconnecting...</div>
+                        <div style="font-size:.82rem;color:#94a3b8;">Please wait, restoring your session</div>
+                        <div style="font-size:.72rem;color:#64748b;margin-top:8px;">Elapsed: <span id="lpm-reconnect-elapsed">0s</span></div>
+                        <button onclick="location.reload()" style="background:transparent;color:#64748b;border:1px solid #334155;
+                            padding:4px 14px;border-radius:6px;font-size:.72rem;cursor:pointer;margin-top:12px;">
+                            Reload instead
+                        </button>
+                    </div>
+                    <div class="components-reconnect-failed" style="display:none;">
+                        <div style="font-size:2rem;margin-bottom:12px;">⚠️</div>
+                        <div style="font-size:1.1rem;font-weight:700;margin-bottom:6px;">Connection lost</div>
+                        <div style="font-size:.82rem;color:#94a3b8;margin-bottom:16px;">Could not reconnect to the server</div>
+                        <button onclick="location.reload()" style="background:linear-gradient(135deg,#3b82f6,#2563eb);
+                            color:#fff;border:none;padding:8px 24px;border-radius:8px;font-weight:600;cursor:pointer;">
+                            Reload Page
+                        </button>
+                    </div>
+                    <div class="components-reconnect-rejected" style="display:none;">
+                        <div style="font-size:2rem;margin-bottom:12px;">🔄</div>
+                        <div style="font-size:1.1rem;font-weight:700;margin-bottom:6px;">Session expired</div>
+                        <div style="font-size:.82rem;color:#94a3b8;margin-bottom:16px;">Your session has ended. Please reload.</div>
+                        <button onclick="location.reload()" style="background:linear-gradient(135deg,#3b82f6,#2563eb);
+                            color:#fff;border:none;padding:8px 24px;border-radius:8px;font-weight:600;cursor:pointer;">
+                            Reload Page
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script src="_framework/blazor.server.js" autostart="false"></script>
+        <script>
+            (function() {
+                var reconnecting = false;   // guard against concurrent Blazor.reconnect() calls
+                var rejectedCount = 0;      // track consecutive rejections (circuit gone)
+                var startTime = 0;          // when reconnection started
+                var reconnectTimeout = null;// timeout for stuck Blazor.reconnect() calls
+                var generation = 0;         // incremented on each onConnectionDown to discard stale callbacks
+
+                function showState(stateName) {
+                    var modal = document.getElementById('components-reconnect-modal');
+                    if (!modal) return;
+                    modal.style.display = stateName ? 'block' : 'none';
+                    ['show','failed','rejected'].forEach(function(s) {
+                        var el = modal.querySelector('.components-reconnect-' + s);
+                        if (el) el.style.display = (s === stateName) ? 'block' : 'none';
+                    });
+                }
+
+                function updateElapsed() {
+                    var el = document.getElementById('lpm-reconnect-elapsed');
+                    if (!el || !startTime) return;
+                    var sec = Math.floor((Date.now() - startTime) / 1000);
+                    var m = Math.floor(sec / 60), s = sec % 60;
+                    el.textContent = m > 0 ? (m + 'm ' + s + 's') : (s + 's');
+                }
+
+                function cleanup() {
+                    if (window._lpmReconnectTimer) clearTimeout(window._lpmReconnectTimer);
+                    if (window._lpmElapsedTimer) clearInterval(window._lpmElapsedTimer);
+                    if (reconnectTimeout) clearTimeout(reconnectTimeout);
+                    reconnecting = false;
+                }
+
+                Blazor.start({
+                    reconnectionHandler: {
+                        onConnectionDown: function(options, error) {
+                            // Clear any previous retry state
+                            cleanup();
+
+                            var myGen = ++generation;
+                            rejectedCount = 0;
+                            startTime = Date.now();
+                            showState('show');
+
+                            // Update elapsed time every second
+                            window._lpmElapsedTimer = setInterval(updateElapsed, 1000);
+
+                            // Retry loop using setTimeout chain (not setInterval) to prevent overlap
+                            function tryReconnect() {
+                                // Stale chain from a previous disconnect — abort silently
+                                if (myGen !== generation) return;
+
+                                if (reconnecting) {
+                                    window._lpmReconnectTimer = setTimeout(tryReconnect, 3000);
+                                    return;
+                                }
+                                reconnecting = true;
+
+                                // Safety timeout: if Blazor.reconnect() hangs for 15s, force-release the guard
+                                reconnectTimeout = setTimeout(function() {
+                                    reconnecting = false;
+                                }, 15000);
+
+                                Blazor.reconnect().then(function(result) {
+                                    clearTimeout(reconnectTimeout);
+                                    reconnecting = false;
+                                    if (myGen !== generation) return; // stale — newer cycle took over
+                                    if (result) {
+                                        // Success — circuit restored
+                                        rejectedCount = 0;
+                                        cleanup();
+                                        showState(null);
+                                        return;
+                                    }
+                                    // false = circuit rejected (server disposed it)
+                                    rejectedCount++;
+                                    if (rejectedCount >= 3) {
+                                        cleanup();
+                                        showState('rejected');
+                                        return;
+                                    }
+                                    window._lpmReconnectTimer = setTimeout(tryReconnect, 3000);
+                                }).catch(function(e) {
+                                    // Network error — reset rejected count (server may still have the circuit)
+                                    clearTimeout(reconnectTimeout);
+                                    reconnecting = false;
+                                    if (myGen !== generation) return; // stale
+                                    rejectedCount = 0;
+                                    var elapsed = Date.now() - startTime;
+                                    if (elapsed > 50 * 60 * 1000) {
+                                        cleanup();
+                                        showState('failed');
+                                        return;
+                                    }
+                                    window._lpmReconnectTimer = setTimeout(tryReconnect, 3000);
+                                });
+                            }
+
+                            // First attempt after 2 seconds (give browser a moment to wake up)
+                            window._lpmReconnectTimer = setTimeout(tryReconnect, 2000);
+                        },
+                        onConnectionUp: function() {
+                            cleanup();
+                            rejectedCount = 0;
+                            showState(null);
+                        }
+                    }
+                }).catch(function(e) {
+                    // Blazor.start() failed (server unreachable on page load) — reload after delay
+                    console.error('[LPM] Blazor.start() failed:', e);
+                    setTimeout(function() { location.reload(); }, 5000);
+                });
+            })();
+        </script>
 
         <script>
         function CaptureElementAndCallBlazorFunction(event, menuData) {

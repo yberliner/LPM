@@ -57,8 +57,8 @@ builder.Services.AddServerSideBlazor()
     {
         options.MaximumReceiveMessageSize = 1024 * 1024 * 500; // 500MB
         // Keep client alive through long GC pauses / backup processing stalls
-        options.KeepAliveInterval      = TimeSpan.FromSeconds(15);
-        options.ClientTimeoutInterval  = TimeSpan.FromMinutes(5);
+        options.KeepAliveInterval      = TimeSpan.FromMinutes(5);
+        options.ClientTimeoutInterval  = TimeSpan.FromMinutes(12);
     })
     .AddCircuitOptions(options =>
     {
