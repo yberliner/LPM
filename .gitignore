@@ -57,6 +57,7 @@ Log/
 glibc*
 RKS
 *.pdf
+!LPM_Server/Templates/**
 
 !/Forsight_Server/wwwroot/
 !/Forsight_Server/wwwroot/**

@@ -1088,7 +1088,7 @@
                             var n = pn;
                             var needsSession = n >= 2 && n <= 3;
                             var tip = n switch {
-                                1 => "Program + Folder Summary + previous session's Next CS",
+                                1 => "Program files (from Program folder) + Folder Summary + previous session's Next CS",
                                 2 => "Session + attachments (not Next CS/Pink/Instruct/Cramming) + PT files",
                                 3 => "Session + this session's Next CS",
                                 _ => "Reserved"
@@ -2813,6 +2813,48 @@
         to   { transform: scaleX(0); transform-origin: left; }
     }
 
+    /* ── Program redirect toast ── */
+    .pcf-program-toast {
+        position: fixed; bottom: 24px; right: 24px; z-index: 10000;
+        display: flex; gap: 12px; align-items: flex-start;
+        background: linear-gradient(135deg, #1e3a5f, #0f172a);
+        border: 1px solid #3b82f6;
+        border-radius: 14px; padding: 16px 18px;
+        box-shadow: 0 8px 32px rgba(59,130,246,.35), 0 0 60px rgba(99,102,241,.15);
+        max-width: 380px; cursor: pointer;
+        animation: pcf-prog-slide .4s cubic-bezier(.34,1.56,.64,1);
+        overflow: hidden;
+    }
+    @@keyframes pcf-prog-slide {
+        from { transform: translateX(120%); opacity: 0; }
+        to   { transform: translateX(0); opacity: 1; }
+    }
+    .pcf-program-toast-icon {
+        width: 36px; height: 36px; border-radius: 10px;
+        background: linear-gradient(135deg, #3b82f6, #6366f1);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.2rem; color: #fff; flex-shrink: 0;
+        animation: pcf-prog-pulse 2s ease-in-out infinite;
+    }
+    @@keyframes pcf-prog-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,.4); }
+        50%      { box-shadow: 0 0 0 8px rgba(59,130,246,0); }
+    }
+    .pcf-program-toast-body { flex: 1; min-width: 0; }
+    .pcf-program-toast-title { font-size: .88rem; font-weight: 700; color: #e2e8f0; margin-bottom: 2px; }
+    .pcf-program-toast-subtitle { font-size: .72rem; color: #64748b; margin-bottom: 6px; }
+    .pcf-program-toast-file {
+        display: flex; align-items: center; gap: 6px;
+        font-size: .78rem; color: #93c5fd; margin-bottom: 2px;
+    }
+    .pcf-program-toast-file i { font-size: .72rem; color: #3b82f6; }
+    .pcf-program-toast-progress {
+        position: absolute; bottom: 0; left: 0; right: 0; height: 3px;
+        background: linear-gradient(90deg, #3b82f6, #6366f1, #818cf8);
+        border-radius: 0 0 14px 14px;
+        animation: pcf-uerr-shrink 5s linear forwards;
+    }
+
     /* ── CS Close Warning ── */
     .pcf-cswarn-overlay {
         position: fixed; inset: 0; z-index: 20000;
@@ -2994,6 +3036,28 @@
     </div>
 }
 
+@* ── Program file redirect toast ── *@
+@if (_showProgramRedirect)
+{
+    <div class="pcf-program-toast" @onclick="() => { _showProgramRedirect = false; _programRedirectFiles.Clear(); }">
+        <div class="pcf-program-toast-icon">
+            <i class="ri-folder-transfer-line"></i>
+        </div>
+        <div class="pcf-program-toast-body">
+            <div class="pcf-program-toast-title">Moved to Program folder</div>
+            <div class="pcf-program-toast-subtitle">Program files are stored in Front Cover / Program</div>
+            @foreach (var name in _programRedirectFiles)
+            {
+                <div class="pcf-program-toast-file">
+                    <i class="ri-arrow-right-circle-line"></i>
+                    <span>@name</span>
+                </div>
+            }
+        </div>
+        <div class="pcf-program-toast-progress"></div>
+    </div>
+}
+
 @* ── "Already open in pane N" toast ── *@
 @if (_dupeVisible)
 {
@@ -3155,6 +3219,7 @@
     int _activePreset = 0;        // 0=none, 1-4=active preset
     bool _presetLoading = false;  // prevents double-click during preset switch
     string? _prevCsFile;          // relative path of the "previous session Next CS" file (for overlay badge)
+    string? _presetFloatFile;      // file to open in floating window after preset loads
 
     static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
         { ".jpg", ".jpeg", ".png" };
@@ -3249,6 +3314,38 @@
     // Upload error toast
     bool _showUploadError;
     List<string> _uploadRejectedFiles = [];
+
+    // Program file redirect toast
+    bool _showProgramRedirect;
+    List<string> _programRedirectFiles = [];
+
+    bool IsProgramFileName(string name) =>
+        name.Contains("program", StringComparison.OrdinalIgnoreCase);
+
+    bool IsInCoverSection(string parentFolder) =>
+        parentFolder.StartsWith("Front_Cover", StringComparison.OrdinalIgnoreCase)
+        || parentFolder.StartsWith("Back_Cover", StringComparison.OrdinalIgnoreCase);
+
+    bool ShouldRedirectToProgram(string fileName, string parentFolder) =>
+        IsProgramFileName(fileName) && IsInCoverSection(parentFolder)
+        && !parentFolder.Contains("Program", StringComparison.OrdinalIgnoreCase);
+
+    void SaveToProgram(string fileName, byte[] data, bool enforcePdf = true)
+    {
+        var programFolder = "Front_Cover/Program";
+        FolderSvc.SaveSectionFileToPath(PcId, programFolder, fileName, data, solo: Solo, enforcePdf: enforcePdf);
+        _programRedirectFiles.Add(fileName);
+        Console.WriteLine($"[PcFolder] Redirected '{fileName}' → Program/ by '{_userName}' — PC {PcId}");
+        ActivitySvc.RecordActivity(_loginUsername, $"Uploaded program file '{fileName}' to Program/ for: {_pcName}", "folder");
+    }
+
+    async Task AutoDismissProgramRedirect()
+    {
+        await Task.Delay(5000);
+        _showProgramRedirect = false;
+        _programRedirectFiles.Clear();
+        await InvokeAsync(StateHasChanged);
+    }
 
     // Worksheet context menu
     bool _showWsCtxMenu;
@@ -3465,7 +3562,7 @@
         {
             // ── Phase 1: load data (deferred from OnInitialized so toolbar paints first) ──
             _userName = DashSvc.GetPersonName(UserPersonId) ?? $"User {UserPersonId}";
-            await Task.Run(() => { RefreshFolder(); EnsureFolderSummaryExists(); });
+            await Task.Run(() => { FolderSvc.EnsureProgramDirectory(PcId, Solo); RefreshFolder(); EnsureFolderSummaryExists(); });
             _pcName = FolderSvc.GetPcName(PcId) ?? $"PC {PcId}";
             _programInsertFiles = FolderSvc.GetProgramInsertFiles();
             Console.WriteLine($"[PcFolder] Opened PC folder for '{_pcName}' (PC {PcId}) by '{_userName}'{(_csSessionId > 0 ? $" — CS session {_csSessionId}" : "")}");
@@ -3610,6 +3707,20 @@
                 }
             }
             await Task.WhenAll(paneTasks);
+
+            // Auto-open Program Bridge template in floating read-only window
+            if (_folder != null)
+            {
+                var progDir = _folder.FrontCoverTree?.Children
+                    .FirstOrDefault(c => c.IsFolder && c.Name.Equals("Program", StringComparison.OrdinalIgnoreCase));
+                var bridge = progDir?.Children
+                    .FirstOrDefault(c => !c.IsFolder && c.Name.Equals("Program Bridge.pdf", StringComparison.OrdinalIgnoreCase));
+                if (bridge != null)
+                {
+                    var floatUrl = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(bridge.RelativePath)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
+                    await JS.InvokeVoidAsync("pcfViewer.floatFile", floatUrl, "Program Bridge");
+                }
+            }
 
             // (context menu attachment happens for all renders below)
 
@@ -4463,6 +4574,15 @@
             _pendingReloads = reloads;
 
         await JS.InvokeVoidAsync("pcfViewer.setActivePane", PaneIds[_activeIdx]);
+
+        // Open Program Bridge template in floating read-only window
+        if (!string.IsNullOrEmpty(_presetFloatFile))
+        {
+            var floatUrl = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_presetFloatFile)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
+            await JS.InvokeVoidAsync("pcfViewer.floatFile", floatUrl, "Program Bridge");
+            _presetFloatFile = null;
+        }
+
         _presetLoading = false;
     }
 
@@ -5503,13 +5623,29 @@
             {
                 var rootFiles = _folder.FrontCoverTree.Children.Where(c => !c.IsFolder);
 
-                // 1. Program file
+                // 1. All files from the Program subfolder (except Program Bridge → float)
+                _presetFloatFile = null;
+                var programFolder = _folder.FrontCoverTree.Children
+                    .FirstOrDefault(c => c.IsFolder && c.Name.Equals("Program", StringComparison.OrdinalIgnoreCase));
+                if (programFolder != null)
+                {
+                    foreach (var pf in programFolder.Children.Where(c => !c.IsFolder))
+                    {
+                        if (pf.Name.Equals("Program Bridge.pdf", StringComparison.OrdinalIgnoreCase))
+                            _presetFloatFile = pf.RelativePath;
+                        else
+                            files.Add((pf.RelativePath, pf.Name, "Front Cover"));
+                    }
+                }
+
+                // 2. Program file at root level (legacy — in case any remain outside the subfolder)
                 var prog = rootFiles.FirstOrDefault(f =>
                 {
                     var l = Path.GetFileNameWithoutExtension(f.Name).ToLowerInvariant();
                     return l.Contains("program") || l.Contains("prog");
                 });
-                if (prog != null) files.Add((prog.RelativePath, prog.Name, "Front Cover"));
+                if (prog != null && !files.Any(x => x.Item2 == prog.Name))
+                    files.Add((prog.RelativePath, prog.Name, "Front Cover"));
 
                 // 2. Folder Summary (skip if same file as program — e.g. "Program Summary.pdf")
                 var summary = rootFiles.FirstOrDefault(f => IsFolderSummaryFile(f.Name, f.RelativePath));
@@ -6457,6 +6593,8 @@
         _uploadDuplicateNames.Clear();
         _uploadRejectedFiles.Clear();
         _showUploadError = false;
+        _programRedirectFiles.Clear();
+        _showProgramRedirect = false;
         var parentFolder = _newMenuParentFolder;
 
         var pdfsToSave = new List<(string Name, byte[] Data)>();
@@ -6496,6 +6634,10 @@
                     _uploadPendingFiles.Add((file.Name, rawBytes, false));
                     _uploadDuplicateNames.Add(file.Name);
                 }
+                else if (ShouldRedirectToProgram(file.Name, parentFolder))
+                {
+                    SaveToProgram(file.Name, rawBytes, enforcePdf: false);
+                }
                 else
                 {
                     Console.WriteLine($"[PcFolder] Uploaded image '{file.Name}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
@@ -6519,12 +6661,22 @@
                 _uploadPendingFiles.Add((name, data, true));
                 _uploadDuplicateNames.Add(name);
             }
+            else if (ShouldRedirectToProgram(name, parentFolder))
+            {
+                SaveToProgram(name, data);
+            }
             else
             {
                 Console.WriteLine($"[PcFolder] Uploaded file '{name}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
                 FolderSvc.SaveSectionFileToPath(PcId, parentFolder, name, data, solo: Solo);
                 ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{name}' to {parentFolder} for: {_pcName}", "folder");
             }
+        }
+
+        if (_programRedirectFiles.Count > 0)
+        {
+            _showProgramRedirect = true;
+            _ = AutoDismissProgramRedirect();
         }
 
         if (_uploadDuplicateNames.Count > 0)
@@ -6553,10 +6705,19 @@
             }
 
             // Save (overwrite if exists — doc upload implies intent to replace)
-            var overwrite = FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, pdfName, Solo);
-            FolderSvc.SaveSectionFileToPath(PcId, parentFolder, pdfName, pdfBytes, overwrite, Solo);
-            Console.WriteLine($"[PcFolder] Converted+saved '{pdfName}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
-            ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{originalName}' (converted to PDF) to {parentFolder} for: {_pcName}", "folder");
+            if (ShouldRedirectToProgram(pdfName, parentFolder))
+            {
+                SaveToProgram(pdfName, pdfBytes);
+                _showProgramRedirect = true;
+                _ = AutoDismissProgramRedirect();
+            }
+            else
+            {
+                var overwrite = FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, pdfName, Solo);
+                FolderSvc.SaveSectionFileToPath(PcId, parentFolder, pdfName, pdfBytes, overwrite, Solo);
+                Console.WriteLine($"[PcFolder] Converted+saved '{pdfName}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
+                ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{originalName}' (converted to PDF) to {parentFolder} for: {_pcName}", "folder");
+            }
 
             toast.Status = ConvStatus.Done;
             RefreshFolder();

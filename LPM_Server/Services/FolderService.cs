@@ -477,6 +477,69 @@ public class FolderService
     }
 
     /// <summary>Delete Front_Cover and Back_Cover for every PC folder (regular and solo) on the server.</summary>
+    /// <summary>
+    /// Ensures Front_Cover/Program exists, copies the template Program.pdf into it,
+    /// and moves any files with "program" in the name from Front/Back Cover into the Program subfolder.
+    /// </summary>
+    public void EnsureProgramDirectory(int pcId, bool solo)
+    {
+        var pcFolder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
+        if (pcFolder == null) return;
+
+        var frontCover = Path.Combine(pcFolder, "Front_Cover");
+        if (!Directory.Exists(frontCover)) return;
+
+        var programDir = Path.Combine(frontCover, "Program");
+        Directory.CreateDirectory(programDir);
+
+        // Copy template only if it doesn't already exist in the Program directory
+        var templatePath = Path.Combine(Directory.GetCurrentDirectory(), "Templates", "Program Bridge.pdf");
+        var destPath = Path.Combine(programDir, "Program Bridge.pdf");
+        if (File.Exists(templatePath) && !File.Exists(destPath))
+        {
+            File.WriteAllBytes(destPath, EncryptBytes(File.ReadAllBytes(templatePath)));
+        }
+
+        // Move files with "program" in name from Front_Cover and Back_Cover (recursive)
+        var searchDirs = new[] { frontCover, Path.Combine(pcFolder, "Back_Cover") };
+        foreach (var searchDir in searchDirs)
+        {
+            if (!Directory.Exists(searchDir)) continue;
+            foreach (var file in Directory.GetFiles(searchDir, "*", SearchOption.AllDirectories))
+            {
+                // Skip files already in the Program directory
+                if (file.StartsWith(programDir, StringComparison.OrdinalIgnoreCase)) continue;
+
+                var fileName = Path.GetFileName(file);
+                if (fileName.Contains("program", StringComparison.OrdinalIgnoreCase))
+                {
+                    var dest = Path.Combine(programDir, fileName);
+                    if (File.Exists(dest))
+                        RenameWithPostfix(dest);
+                    File.Move(file, dest);
+                    Console.WriteLine($"[FolderService] Moved '{fileName}' → Program/ for PC {pcId}");
+                }
+            }
+        }
+    }
+
+    /// <summary>Renames an existing file by appending _1, _2, etc. before the extension.</summary>
+    private static void RenameWithPostfix(string filePath)
+    {
+        var dir = Path.GetDirectoryName(filePath)!;
+        var nameNoExt = Path.GetFileNameWithoutExtension(filePath);
+        var ext = Path.GetExtension(filePath);
+        for (int i = 1; i < 1000; i++)
+        {
+            var candidate = Path.Combine(dir, $"{nameNoExt}_{i}{ext}");
+            if (!File.Exists(candidate))
+            {
+                File.Move(filePath, candidate);
+                return;
+            }
+        }
+    }
+
     public void DeleteAllCoverDirectories()
     {
         if (!Directory.Exists(_basePath)) return;
