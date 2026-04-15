@@ -432,6 +432,26 @@ public List<PcListItem> GetAllPcs()
         cmd.ExecuteNonQuery();
     }
 
+    public List<(int PcId, string PcName, string Action, string? Details, string ChangedAt)> GetPcHistoryByUser(int personId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT h.PcId, TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS PcName,
+                   h.Action, h.Details, h.ChangedAt
+            FROM sys_pc_history h
+            JOIN core_users u ON LOWER(u.Username) = LOWER(h.ChangedBy) AND u.PersonId = @pid
+            JOIN core_persons p ON p.PersonId = h.PcId
+            ORDER BY h.Id DESC";
+        cmd.Parameters.AddWithValue("@pid", personId);
+        var list = new List<(int, string, string, string?, string)>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add((r.GetInt32(0), r.GetString(1), r.GetString(2), r.IsDBNull(3) ? null : r.GetString(3), r.GetString(4)));
+        return list;
+    }
+
     public List<(string Action, string? Details, string ChangedBy, string ChangedAt)> GetPcHistory(int pcId)
     {
         using var conn = new SqliteConnection(_connectionString);
@@ -472,6 +492,142 @@ public List<PcListItem> GetAllPcs()
                 r.GetString(3), r.IsDBNull(4) ? null : r.GetString(4),
                 r.GetString(5), r.GetString(6)));
         return list;
+    }
+
+    // ── Combine / Merge PCs ─────────────────────────────────────────────
+
+    public record MergePreviewRow(string TableName, int RowCount);
+
+    public List<MergePreviewRow> GetMergePreview(int sourcePcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        var result = new List<MergePreviewRow>();
+        var tables = new (string Table, string Col)[] {
+            ("sess_sessions", "PcId"), ("sess_folder_summary", "PcId"),
+            ("sess_misc_charges", "PcId"), ("sess_completions", "PcId"),
+            ("sess_meetings", "PcId"), ("fin_purchases", "PcId"),
+            ("fin_payments", "PcId"), ("fin_budget_reset", "PcId"),
+            ("cs_work_log", "PcId"), ("sys_staff_pc_list", "PcId"),
+            ("sys_file_audit", "PcId"), ("sys_pc_history", "PcId"),
+            ("acad_attendance", "PersonId"), ("acad_student_courses", "PersonId"),
+        };
+        foreach (var (table, col) in tables)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"SELECT COUNT(*) FROM [{table}] WHERE [{col}] = @id";
+            cmd.Parameters.AddWithValue("@id", sourcePcId);
+            var count = Convert.ToInt32(cmd.ExecuteScalar());
+            if (count > 0) result.Add(new MergePreviewRow(table, count));
+        }
+        return result;
+    }
+
+    public List<string> MergePcs(int sourcePcId, int targetPcId, string adminUser)
+    {
+        var log = new List<string>();
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var tx = conn.BeginTransaction();
+        try
+        {
+            // Tables with no UNIQUE constraints on PcId — simple UPDATE
+            var simpleTables = new (string Table, string Col)[] {
+                ("sess_sessions", "PcId"), ("sess_folder_summary", "PcId"),
+                ("sess_misc_charges", "PcId"), ("sess_completions", "PcId"),
+                ("sess_meetings", "PcId"), ("fin_purchases", "PcId"),
+                ("fin_payments", "PcId"), ("fin_budget_reset", "PcId"),
+                ("cs_work_log", "PcId"), ("sys_file_audit", "PcId"),
+                ("sys_pc_history", "PcId"), ("acad_student_courses", "PersonId"),
+            };
+            foreach (var (table, col) in simpleTables)
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"UPDATE [{table}] SET [{col}] = @tgt WHERE [{col}] = @src";
+                cmd.Parameters.AddWithValue("@tgt", targetPcId);
+                cmd.Parameters.AddWithValue("@src", sourcePcId);
+                var n = cmd.ExecuteNonQuery();
+                if (n > 0) log.Add($"Moved {n} rows in {table}");
+            }
+
+            // sys_staff_pc_list: UNIQUE(UserId, PcId) — remove duplicates first
+            {
+                using var del = conn.CreateCommand();
+                del.CommandText = @"DELETE FROM sys_staff_pc_list
+                    WHERE PcId = @src AND UserId IN (SELECT UserId FROM sys_staff_pc_list WHERE PcId = @tgt)";
+                del.Parameters.AddWithValue("@src", sourcePcId);
+                del.Parameters.AddWithValue("@tgt", targetPcId);
+                var d = del.ExecuteNonQuery();
+                if (d > 0) log.Add($"Removed {d} duplicate staff assignments");
+
+                using var upd = conn.CreateCommand();
+                upd.CommandText = "UPDATE sys_staff_pc_list SET PcId = @tgt WHERE PcId = @src";
+                upd.Parameters.AddWithValue("@tgt", targetPcId);
+                upd.Parameters.AddWithValue("@src", sourcePcId);
+                var u = upd.ExecuteNonQuery();
+                if (u > 0) log.Add($"Moved {u} staff assignments");
+            }
+
+            // acad_attendance: UNIQUE(PersonId, VisitDate) — remove duplicates first
+            {
+                using var del = conn.CreateCommand();
+                del.CommandText = @"DELETE FROM acad_attendance
+                    WHERE PersonId = @src AND VisitDate IN (SELECT VisitDate FROM acad_attendance WHERE PersonId = @tgt)";
+                del.Parameters.AddWithValue("@src", sourcePcId);
+                del.Parameters.AddWithValue("@tgt", targetPcId);
+                var d = del.ExecuteNonQuery();
+                if (d > 0) log.Add($"Removed {d} duplicate attendance records");
+
+                using var upd = conn.CreateCommand();
+                upd.CommandText = "UPDATE acad_attendance SET PersonId = @tgt WHERE PersonId = @src";
+                upd.Parameters.AddWithValue("@tgt", targetPcId);
+                upd.Parameters.AddWithValue("@src", sourcePcId);
+                var u = upd.ExecuteNonQuery();
+                if (u > 0) log.Add($"Moved {u} attendance records");
+            }
+
+            // Delete source's user login (solo user entry)
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "DELETE FROM core_users WHERE PersonId = @src";
+                cmd.Parameters.AddWithValue("@src", sourcePcId);
+                var d = cmd.ExecuteNonQuery();
+                if (d > 0) log.Add($"Removed source user login");
+            }
+
+            // Deactivate source person
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "UPDATE core_persons SET IsActive = 0 WHERE PersonId = @src";
+                cmd.Parameters.AddWithValue("@src", sourcePcId);
+                cmd.ExecuteNonQuery();
+                log.Add("Deactivated source PC");
+            }
+
+            // Record merge in history
+            foreach (var (pcId, detail) in new[] {
+                (sourcePcId, $"Merged into PC #{targetPcId}"),
+                (targetPcId, $"Merged from PC #{sourcePcId}") })
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "INSERT INTO sys_pc_history (PcId, Action, Details, ChangedBy) VALUES (@pc, 'Merged', @det, @by)";
+                cmd.Parameters.AddWithValue("@pc", pcId);
+                cmd.Parameters.AddWithValue("@det", detail);
+                cmd.Parameters.AddWithValue("@by", adminUser);
+                cmd.ExecuteNonQuery();
+            }
+            log.Add("Recorded merge history");
+
+            tx.Commit();
+            log.Add("Database merge complete");
+        }
+        catch (Exception ex)
+        {
+            tx.Rollback();
+            log.Add($"ERROR: DB rolled back — {ex.Message}");
+            return log;
+        }
+        return log;
     }
 
     public void MovePcToOrg(int pcId, int? orgId)

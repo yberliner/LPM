@@ -259,6 +259,47 @@
                     </div>
                 }
             </div>
+            @* PC changes made by this auditor *@
+            <div class="card mb-3" style="border-color:var(--default-border);">
+                <div class="card-header py-2 d-flex align-items-center gap-2" style="background:var(--custom-white); border-bottom:1px solid var(--default-border);">
+                    <i class="ri-history-line" style="color:#f59e0b;"></i>
+                    <span class="fw-semibold small">PC Changes (@_pcChanges.Count)</span>
+                </div>
+                @if (_pcChanges.Count > 0)
+                {
+                    <div class="card-body p-0">
+                        <table class="table table-sm table-hover mb-0" style="font-size:.8rem;">
+                            <thead>
+                                <tr style="background:var(--custom-white);">
+                                    <th class="ps-3">PC</th>
+                                    <th>Action</th>
+                                    <th>Details</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var ch in _pcChanges)
+                                {
+                                    <tr>
+                                        <td class="ps-3">@ch.PcName</td>
+                                        <td>
+                                            <span class="badge @(ch.Action == "Created" ? "bg-success" : "bg-info text-dark")" style="font-size:.7rem;">@ch.Action</span>
+                                        </td>
+                                        <td style="color:#64748b; max-width:250px; white-space:normal;">@(ch.Details ?? "")</td>
+                                        <td class="text-muted" style="white-space:nowrap;">@(DateTime.TryParse(ch.ChangedAt, out var cdt) ? cdt.ToString("dd/MM/yy HH:mm") : ch.ChangedAt)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="card-body py-3 text-center" style="font-size:.82rem; color:#94a3b8;">
+                        <i class="ri-information-line me-1"></i>No PC changes recorded for this auditor
+                    </div>
+                }
+            </div>
         }
         else
         {
@@ -873,6 +914,7 @@
     AuditorDetail? _detail;
     AuditorStats?  _stats;
     List<(int PcId, string FullName, string CreatedAt)> _createdPcs = [];
+    List<(int PcId, string PcName, string Action, string? Details, string ChangedAt)> _pcChanges = [];
 
     // Edit mode
     bool   _editMode;
@@ -937,6 +979,7 @@
         _detail = AuditorSvc.GetAuditorDetail(_selId.Value);
         _stats  = AuditorSvc.GetAuditorStats(_selId.Value);
         _createdPcs = PcSvc.GetPcsCreatedByUser(_selId.Value);
+        _pcChanges = PcSvc.GetPcHistoryByUser(_selId.Value);
     }
 
     void StartEdit()

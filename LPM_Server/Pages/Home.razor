@@ -238,7 +238,9 @@
                                         var durStr = hrs > 0 ? $"{hrs}h {mins:D2}m" : $"{mins}m";
                                         var dateStr = DateOnly.TryParse(s.SessionDate, out var d2) ? d2.ToString("dd/MM/yy") : s.SessionDate;
                                         var effectiveStatus = string.IsNullOrEmpty(s.CsStatus) ? "Waiting" : s.CsStatus;
-                                        var statusClass = effectiveStatus switch {
+                                        var hasNoCsAssigned = effectiveStatus == "Waiting" && !_pcsWithCs.Contains(s.PcId);
+                                        var statusClass = hasNoCsAssigned ? "home-aud-st-no-cs"
+                                            : effectiveStatus switch {
                                             "Waiting"    => "home-aud-st-waiting",
                                             "Done"       => "home-aud-st-done",
                                             "Approved"   => "home-aud-st-done",
@@ -293,8 +295,30 @@
                                             <td class="home-pcs-dur">
                                                 <i class="ri-time-line me-1" style="opacity:.4;"></i>@durStr
                                             </td>
-                                            <td class="home-aud-st-cell">
-                                                <span class="home-aud-st-badge @statusClass">@statusLabel</span>
+                                            <td class="home-aud-st-cell @(hasNoCsAssigned ? "home-aud-no-cs-cell" : "")">
+                                                @if (hasNoCsAssigned)
+                                                {
+                                                    <div class="home-no-cs-wrap">
+                                                        <span class="home-aud-st-badge home-aud-st-no-cs">
+                                                            <i class="ri-error-warning-fill me-1"></i>No CS
+                                                        </span>
+                                                        <div class="home-no-cs-tooltip">
+                                                            <div class="home-no-cs-tooltip-icon"><i class="ri-shield-user-line"></i></div>
+                                                            <div class="home-no-cs-tooltip-title">No Case Supervisor Assigned</div>
+                                                            <div class="home-no-cs-tooltip-body">
+                                                                This PC has no CS assigned in Staff Permissions.
+                                                                The session cannot be reviewed until a CS is assigned.
+                                                            </div>
+                                                            <div class="home-no-cs-tooltip-action">
+                                                                <i class="ri-arrow-right-line"></i> Ask an admin to assign a CS in <strong>Staff Permissions</strong>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <span class="home-aud-st-badge @statusClass">@statusLabel</span>
+                                                }
                                                 @if (s.IsSessionVerified) { <span class="home-approved-tick" title="Session approved by admin">✓</span> }
                                                 @if (hasPink)    { <span class="home-att-chip home-att-chip-pink home-aud-att-pink">🩷 Pink</span> }
                                                 @if (hasCram)    { <span class="home-att-chip home-att-chip-orange home-aud-att-orange">📙 Cram</span> }
@@ -1679,6 +1703,50 @@
     .home-aud-st-waiting {
         background: #332b00; color: #fbbf24;
     }
+    .home-aud-st-no-cs {
+        background: #7f1d1d; color: #fca5a5;
+        animation: home-no-cs-pulse 1.5s ease-in-out infinite;
+    }
+    @@keyframes home-no-cs-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,.4); }
+        50%      { box-shadow: 0 0 0 6px rgba(239,68,68,0); }
+    }
+    .home-aud-no-cs-cell { position: relative; }
+    .home-no-cs-wrap { position: relative; display: inline-block; }
+    .home-no-cs-tooltip {
+        display: none;
+        position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%);
+        z-index: 1000; width: 280px;
+        background: linear-gradient(135deg, #1e293b, #0f172a);
+        border: 1px solid #ef4444; border-radius: 12px;
+        padding: 14px; box-shadow: 0 8px 32px rgba(239,68,68,.25);
+        text-align: center;
+        animation: home-no-cs-tooltip-in .2s ease-out;
+    }
+    @@keyframes home-no-cs-tooltip-in {
+        from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+        to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+    .home-no-cs-tooltip::after {
+        content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+        border: 8px solid transparent; border-top-color: #ef4444;
+    }
+    .home-no-cs-wrap:hover .home-no-cs-tooltip { display: block; }
+    .home-no-cs-tooltip-icon {
+        font-size: 1.5rem; color: #ef4444; margin-bottom: 6px;
+        animation: home-no-cs-icon-shake .5s ease-in-out;
+    }
+    @@keyframes home-no-cs-icon-shake {
+        0%, 100% { transform: rotate(0); }
+        25%      { transform: rotate(-10deg); }
+        75%      { transform: rotate(10deg); }
+    }
+    .home-no-cs-tooltip-title { font-size: .82rem; font-weight: 700; color: #fca5a5; margin-bottom: 6px; }
+    .home-no-cs-tooltip-body { font-size: .72rem; color: #94a3b8; line-height: 1.4; margin-bottom: 8px; }
+    .home-no-cs-tooltip-action {
+        font-size: .7rem; color: #60a5fa; display: flex; align-items: center; justify-content: center; gap: 4px;
+        padding-top: 8px; border-top: 1px dashed #334155;
+    }
     .home-aud-st-done {
         background: #052e16; color: #22c55e;
     }
@@ -1775,6 +1843,11 @@
     :root[data-theme-mode="light"] .home-pcs-row-even td {
         background: rgba(0,0,0,.04);
     }
+    :root[data-theme-mode="light"] .home-aud-st-no-cs       { background: #fecaca; color: #dc2626; }
+    :root[data-theme-mode="light"] .home-no-cs-tooltip     { background: linear-gradient(135deg, #fff, #fef2f2); border-color: #ef4444; }
+    :root[data-theme-mode="light"] .home-no-cs-tooltip-title { color: #dc2626; }
+    :root[data-theme-mode="light"] .home-no-cs-tooltip-body  { color: #6b7280; }
+    :root[data-theme-mode="light"] .home-no-cs-tooltip-action { color: #2563eb; border-top-color: #e5e7eb; }
     :root[data-theme-mode="light"] .home-aud-st-waiting    { background: #fef9c3; color: #a16207; }
     :root[data-theme-mode="light"] .home-aud-st-done       { background: #dcfce7; color: #15803d; }
     :root[data-theme-mode="light"] .home-aud-st-approved   { background: #dbeafe; color: #1d4ed8; }
@@ -1864,6 +1937,7 @@
     List<PcInfo>   _myPcs  = [];
     HashSet<int>   _unapprovedPcIds = [];
     HashSet<int>   _soloPcIds = [];
+    HashSet<int>   _pcsWithCs = [];
     Dictionary<(int, int), int> _grid = [];
     Dictionary<string, string> _csStatusLabels = [];
 
@@ -2156,6 +2230,7 @@
 
             var t_pcs        = Task.Run(() => DashSvc.GetUserPcs(uid));
             var t_solo       = Task.Run(() => DashSvc.GetSoloPcIds());
+            var t_pcsWithCs  = Task.Run(() => DashSvc.GetPcIdsWithCsAssigned());
             var t_unapproved = Task.Run(() => DashSvc.GetUnapprovedPcIds(uid, _username));
             var t_remarks    = Task.Run(() => DashSvc.GetWeeklyRemarks(uid, weekKey) ?? "");
             var t_csQueue    = _isCS
@@ -2170,10 +2245,11 @@
                 ? Task.Run(() => DashSvc.GetCsStaffList(uid))
                 : Task.FromResult(_teamCsStaff);
 
-            await Task.WhenAll(t_pcs, t_solo, t_unapproved, t_remarks, t_csQueue, t_audStatus, t_teamStaff);
+            await Task.WhenAll(t_pcs, t_solo, t_unapproved, t_remarks, t_csQueue, t_audStatus, t_teamStaff, t_pcsWithCs);
 
             _myPcs           = t_pcs.Result;
             _soloPcIds       = t_solo.Result;
+            _pcsWithCs       = t_pcsWithCs.Result;
             _unapprovedPcIds = t_unapproved.Result;
             _weekRemarks     = t_remarks.Result;
             if (_isCS)                  _pendingCsSessions = t_csQueue.Result.ToList();

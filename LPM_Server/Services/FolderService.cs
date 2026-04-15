@@ -424,6 +424,79 @@ public class FolderService
             });
     }
 
+    /// <summary>Find all folders (regular + solo) for a PC.</summary>
+    private List<string> FindAllPcFolders(int pcId)
+    {
+        if (!Directory.Exists(_basePath)) return [];
+        var prefix = $"{pcId}-";
+        return Directory.GetDirectories(_basePath)
+            .Where(d => Path.GetFileName(d).StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    /// <summary>Count total files across all folders for a PC.</summary>
+    public int CountPcFolderFiles(int pcId)
+    {
+        return FindAllPcFolders(pcId)
+            .Sum(f => Directory.Exists(f) ? Directory.GetFiles(f, "*", SearchOption.AllDirectories).Length : 0);
+    }
+
+    /// <summary>Move all files from source PC folders into target PC folder. Returns (filesMoved, log).</summary>
+    public (int FilesMoved, List<string> Log) MergePcFolders(int sourcePcId, int targetPcId)
+    {
+        var log = new List<string>();
+        int moved = 0;
+
+        var srcFolders = FindAllPcFolders(sourcePcId);
+        if (srcFolders.Count == 0)
+        {
+            log.Add("No source folders found on disk");
+            return (0, log);
+        }
+
+        var tgtFolders = FindAllPcFolders(targetPcId);
+        var targetFolder = tgtFolders.FirstOrDefault(f =>
+                !Path.GetFileName(f).EndsWith(" Solo", StringComparison.OrdinalIgnoreCase))
+            ?? tgtFolders.FirstOrDefault();
+        if (targetFolder == null)
+        {
+            log.Add("No target folder found on disk — skipping file merge");
+            return (0, log);
+        }
+
+        foreach (var srcFolder in srcFolders)
+        {
+            var files = Directory.GetFiles(srcFolder, "*", SearchOption.AllDirectories);
+            foreach (var srcFile in files)
+            {
+                var rel = Path.GetRelativePath(srcFolder, srcFile);
+                var tgtPath = Path.Combine(targetFolder, rel);
+                Directory.CreateDirectory(Path.GetDirectoryName(tgtPath)!);
+
+                if (File.Exists(tgtPath))
+                {
+                    var dir = Path.GetDirectoryName(tgtPath)!;
+                    var name = Path.GetFileNameWithoutExtension(tgtPath);
+                    var ext = Path.GetExtension(tgtPath);
+                    tgtPath = Path.Combine(dir, $"{name}_merged{sourcePcId}{ext}");
+                    int c = 2;
+                    while (File.Exists(tgtPath))
+                    {
+                        tgtPath = Path.Combine(dir, $"{name}_merged{sourcePcId}_{c}{ext}");
+                        c++;
+                    }
+                }
+
+                File.Move(srcFile, tgtPath);
+                moved++;
+            }
+            try { Directory.Delete(srcFolder, true); } catch { /* leave if not empty */ }
+            log.Add($"Moved {files.Length} files from {Path.GetFileName(srcFolder)}");
+        }
+
+        return (moved, log);
+    }
+
     /// <summary>Rename the PC folder on disk to match updated name (e.g. "106-Old Name" → "106-New Name"). Also renames Solo folder if it exists.</summary>
     public void RenamePcFolder(int pcId, string newFirstName, string newLastName)
     {

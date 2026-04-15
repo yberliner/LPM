@@ -2353,6 +2353,21 @@ public class DashboardService
     }
 
     /// <summary>
+    /// Returns PcIds that have at least one CS assignment (any CS capacity) in sys_staff_pc_list.
+    /// </summary>
+    public HashSet<int> GetPcIdsWithCsAssigned()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"SELECT DISTINCT PcId FROM sys_staff_pc_list WHERE IsApproved = 1 AND WorkCapacity IN {StaffRoles.SqlInCsCapacity()}";
+        var set = new HashSet<int>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read()) set.Add(r.GetInt32(0));
+        return set;
+    }
+
+    /// <summary>
     /// Returns the full name of the CS assigned to the given PC (last entry in sys_staff_pc_list).
     /// </summary>
     public string? GetCsNameForPc(int pcId)
@@ -2803,6 +2818,26 @@ public class DashboardService
         using var r = cmd.ExecuteReader();
         while (r.Read())
             list.Add(new StaffMember(r.GetInt32(0), r.GetString(1)));
+        return list;
+    }
+
+    public record StaffMemberWithRole(int PersonId, string FullName, string StaffRole);
+
+    public List<StaffMemberWithRole> GetNonSoloStaffWithRoles()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $@"
+            SELECT DISTINCT p.PersonId, {FullNameExpr} AS FullName, COALESCE(u.StaffRole, '') AS StaffRole
+            FROM core_persons p
+            JOIN core_users u ON u.PersonId = p.PersonId
+            WHERE u.IsActive = 1 AND u.StaffRole NOT IN ('Solo', 'None')
+            ORDER BY p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
+        var list = new List<StaffMemberWithRole>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new StaffMemberWithRole(r.GetInt32(0), r.GetString(1), r.GetString(2)));
         return list;
     }
 

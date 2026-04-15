@@ -111,6 +111,11 @@
                 <i class="ri-pulse-line me-1"></i>System Health
             </a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link @(_diagTab == "merge" ? "active" : "")" @onclick="SwitchToMergeTab" href="javascript:void(0)">
+                <i class="ri-merge-cells-horizontal me-1"></i>Combine PCs
+            </a>
+        </li>
     </ul>
 
     @if (_diagTab == "health")
@@ -1627,6 +1632,201 @@
     </div>
 }
 
+@* ── Combine PCs Tab ── *@
+@if (_diagTab == "merge")
+{
+    <div class="diag-editor-card mb-4">
+        <div class="diag-editor-header">
+            <i class="ri-merge-cells-horizontal me-2"></i>Combine Two PCs
+            <span class="diag-editor-sub">Merge source → target, deactivate source</span>
+        </div>
+        <div class="diag-editor-body">
+            <div class="alert py-2 px-3 mb-3" style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);color:#fbbf24;font-size:.82rem;border-radius:8px;">
+                <i class="ri-error-warning-line me-1"></i>
+                All data (sessions, purchases, files, summaries, etc.) from the <strong>Source PC</strong> will be moved to the <strong>Target PC</strong>. The source is deactivated after merge. <strong>This cannot be undone.</strong>
+            </div>
+
+            <div class="d-flex gap-3 flex-wrap mb-3">
+                @* Source PC *@
+                <div style="flex:1;min-width:220px;background:#1e293b;border-radius:10px;padding:14px 16px;border:1px solid #334155;">
+                    <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#ef4444;margin-bottom:8px;">
+                        <i class="ri-logout-box-r-line me-1"></i>Source PC (discard)
+                    </div>
+                    <select class="form-select form-select-sm" style="background:#0f172a;color:#e2e8f0;border-color:#475569;font-size:.85rem;"
+                            value="@_mergeSrcId" @onchange="OnMergeSrcChanged">
+                        <option value="0">— Select source PC —</option>
+                        @foreach (var pc in _mergeAllPcs)
+                        {
+                            <option value="@pc.PcId">@pc.PcId — @pc.FullName @(!string.IsNullOrEmpty(pc.Nick) ? $"({pc.Nick})" : "")</option>
+                        }
+                    </select>
+                    @if (_mergeSrcId > 0 && _mergePreview.Count > 0)
+                    {
+                        <div class="mt-2" style="font-size:.78rem;color:#94a3b8;">
+                            @foreach (var row in _mergePreview)
+                            {
+                                <div class="d-flex justify-content-between py-1" style="border-bottom:1px solid #1e293b;">
+                                    <span>@row.TableName</span>
+                                    <span style="color:#60a5fa;font-weight:600;">@row.RowCount</span>
+                                </div>
+                            }
+                            @if (_mergeSrcFiles > 0)
+                            {
+                                <div class="d-flex justify-content-between py-1">
+                                    <span><i class="ri-folder-3-line me-1"></i>Files on disk</span>
+                                    <span style="color:#60a5fa;font-weight:600;">@_mergeSrcFiles</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else if (_mergeSrcId > 0 && _mergePreview.Count == 0 && _mergeSrcFiles == 0)
+                    {
+                        <div class="mt-2" style="font-size:.78rem;color:#64748b;font-style:italic;">No data found for this PC.</div>
+                    }
+                </div>
+
+                @* Arrow *@
+                <div class="d-flex align-items-center" style="font-size:1.8rem;color:#60a5fa;">
+                    <i class="ri-arrow-right-line"></i>
+                </div>
+
+                @* Target PC *@
+                <div style="flex:1;min-width:220px;background:#1e293b;border-radius:10px;padding:14px 16px;border:1px solid #334155;">
+                    <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#22c55e;margin-bottom:8px;">
+                        <i class="ri-login-box-line me-1"></i>Target PC (keep)
+                    </div>
+                    <select class="form-select form-select-sm" style="background:#0f172a;color:#e2e8f0;border-color:#475569;font-size:.85rem;"
+                            value="@_mergeTgtId" @onchange="e => _mergeTgtId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0">
+                        <option value="0">— Select target PC —</option>
+                        @foreach (var pc in _mergeAllPcs.Where(p => p.PcId != _mergeSrcId))
+                        {
+                            <option value="@pc.PcId">@pc.PcId — @pc.FullName @(!string.IsNullOrEmpty(pc.Nick) ? $"({pc.Nick})" : "")</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            @* Action buttons *@
+            @if (_mergeSrcId > 0 && _mergeTgtId > 0 && !_mergeDone)
+            {
+                <button class="btn btn-warning btn-sm" style="font-weight:600;" disabled="@_mergeBusy"
+                        @onclick="OpenMergeConfirm">
+                    <i class="ri-merge-cells-horizontal me-1"></i>Merge Source → Target
+                </button>
+            }
+
+            @* Log *@
+            @if (_mergeLog.Count > 0)
+            {
+                <div class="mt-3" style="background:#0f172a;border-radius:8px;padding:12px 16px;font-family:monospace;font-size:.78rem;max-height:300px;overflow-y:auto;">
+                    @for (int mi = 0; mi < _mergeLog.Count; mi++)
+                    {
+                        var line = _mergeLog[mi];
+                        var isErr = line.StartsWith("ERROR");
+                        var isLast = _mergeDone && mi == _mergeLog.Count - 1;
+                        <div style="color:@(isErr ? "#ef4444" : isLast ? "#22c55e" : "#94a3b8");padding:2px 0;">
+                            <i class="@(isErr ? "ri-close-circle-line" : "ri-check-line") me-1" style="font-size:.7rem;"></i>@line
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@* ── Merge Danger Confirmation Modal ── *@
+@if (_mergeConfirm)
+{
+    var mSrcName = _mergeAllPcs.FirstOrDefault(p => p.PcId == _mergeSrcId)?.FullName ?? $"#{_mergeSrcId}";
+    var mTgtName = _mergeAllPcs.FirstOrDefault(p => p.PcId == _mergeTgtId)?.FullName ?? $"#{_mergeTgtId}";
+
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.75);z-index:10000;">
+        <div class="modal-dialog modal-dialog-centered" style="max-width:480px;">
+            <div class="modal-content" style="background:#1a0000;border:2px solid #dc2626;border-radius:14px;overflow:hidden;">
+
+                <div class="merge-danger-banner">
+                    <i class="ri-alarm-warning-fill merge-danger-flash-icon"></i>
+                    <div class="merge-danger-title">DANGER — IRREVERSIBLE OPERATION</div>
+                    <i class="ri-alarm-warning-fill merge-danger-flash-icon"></i>
+                </div>
+
+                <div style="padding:20px 24px;color:#fca5a5;">
+                    <div style="font-size:.88rem;line-height:1.6;margin-bottom:16px;">
+                        You are about to <strong style="color:#fff;">permanently merge</strong> all data from:
+                    </div>
+
+                    <div class="d-flex align-items-center gap-3 mb-3" style="background:#2a0a0a;border-radius:10px;padding:12px 16px;border:1px solid #450a0a;">
+                        <div style="flex:1;text-align:center;">
+                            <div style="font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;color:#ef4444;font-weight:700;">Source (discard)</div>
+                            <div style="font-size:1rem;font-weight:700;color:#fbbf24;margin-top:4px;">@mSrcName</div>
+                            <div style="font-size:.72rem;color:#64748b;">PC #@_mergeSrcId</div>
+                        </div>
+                        <i class="ri-arrow-right-double-fill" style="font-size:1.5rem;color:#ef4444;"></i>
+                        <div style="flex:1;text-align:center;">
+                            <div style="font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;color:#22c55e;font-weight:700;">Target (keep)</div>
+                            <div style="font-size:1rem;font-weight:700;color:#4ade80;margin-top:4px;">@mTgtName</div>
+                            <div style="font-size:.72rem;color:#64748b;">PC #@_mergeTgtId</div>
+                        </div>
+                    </div>
+
+                    <div style="font-size:.8rem;color:#ef4444;font-weight:600;margin-bottom:6px;">
+                        <i class="ri-error-warning-fill me-1"></i>This will:
+                    </div>
+                    <ul style="font-size:.78rem;color:#d4d4d8;margin:0 0 16px 0;padding-left:18px;line-height:1.8;">
+                        <li>Move <strong>all sessions, purchases, payments, files</strong> to the target</li>
+                        <li>Move <strong>all folder summaries, staff assignments, history</strong></li>
+                        <li><strong style="color:#ef4444;">Permanently deactivate</strong> the source PC</li>
+                        <li><strong style="color:#ef4444;">Cannot be undone</strong></li>
+                    </ul>
+
+                    <div style="background:#2a0a0a;border:1px solid #450a0a;border-radius:8px;padding:12px 14px;">
+                        <label style="font-size:.78rem;color:#fca5a5;font-weight:600;display:block;margin-bottom:6px;">
+                            Type <strong style="color:#fff;font-size:.9rem;letter-spacing:.1em;">MERGE</strong> to confirm:
+                        </label>
+                        <input class="form-control form-control-sm" style="background:#0f0000;color:#fff;border-color:#7f1d1d;text-align:center;font-size:1.1rem;font-weight:700;letter-spacing:.15em;"
+                               placeholder="MERGE" @bind="_mergeConfirmText" @bind:event="oninput" autocomplete="off" />
+                    </div>
+                </div>
+
+                <div style="padding:12px 24px 20px;display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #450a0a;">
+                    <button class="btn btn-sm btn-outline-secondary" style="min-width:80px;"
+                            @onclick="CloseMergeConfirm">
+                        Cancel
+                    </button>
+                    <button class="btn btn-sm btn-danger" style="font-weight:800;min-width:140px;letter-spacing:.03em;"
+                            disabled="@(_mergeConfirmText != "MERGE" || _mergeBusy)"
+                            @onclick="ExecuteMerge">
+                        @if (_mergeBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        <i class="ri-skull-2-fill me-1"></i>EXECUTE MERGE
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .merge-danger-banner {
+        background: linear-gradient(135deg, #7f1d1d, #dc2626, #7f1d1d);
+        padding: 14px 20px;
+        display: flex; align-items: center; justify-content: center; gap: 12px;
+        border-bottom: 2px solid #ef4444;
+    }
+    .merge-danger-title {
+        font-size: 1rem; font-weight: 900; color: #fff;
+        letter-spacing: .08em; text-transform: uppercase;
+        text-shadow: 0 0 20px rgba(239,68,68,.6);
+    }
+    .merge-danger-flash-icon {
+        font-size: 1.6rem; color: #fbbf24;
+        animation: mergeDangerFlash 0.8s ease-in-out infinite;
+    }
+    @@keyframes mergeDangerFlash {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50%      { opacity: 0.3; transform: scale(1.2); }
+    }
+</style>
+
 @code {
     // ── Read-only table display ────────────────────────────────────────────
     record TableData(string Name, string Icon, List<string> Columns, List<List<string>> Rows);
@@ -2130,6 +2330,19 @@
     string              _recentMsg        = "";
     bool                _recentMsgOk;
     int                 _recentLimit      = 200; // 0 = ALL
+
+    // ── Combine PCs state ──────────────────────────────────────────────────
+    int _mergeSrcId;
+    int _mergeTgtId;
+    List<PcService.MergePreviewRow> _mergePreview = [];
+    int _mergeSrcFiles;
+    List<string> _mergeLog = [];
+    bool _mergeBusy;
+    bool _mergeConfirm;
+    string _mergeConfirmText = "";
+    bool _mergeDone;
+    List<PcListItem> _mergeAllPcs = [];
+    bool _mergeLoaded;
 
     // ── PC History state ───────────────────────────────────────────────────
     List<PcService.PcHistoryEntry> _pchEntries = [];
@@ -2917,6 +3130,89 @@
         if (DateTime.TryParse(ts, out var dt))
             return dt.ToString("dd/MM/yyyy HH:mm");
         return ts;
+    }
+
+    // ── Combine PCs methods ────────────────────────────────────────────────
+
+    void SwitchToMergeTab()
+    {
+        _diagTab = "merge";
+        if (!_mergeLoaded)
+        {
+            _mergeAllPcs = PcSvc.GetAllPcs();
+            _mergeLoaded = true;
+        }
+    }
+
+    void OpenMergeConfirm() { _mergeConfirm = true; _mergeConfirmText = ""; }
+    void CloseMergeConfirm() { _mergeConfirm = false; _mergeConfirmText = ""; }
+
+    void OnMergeSrcChanged(ChangeEventArgs e)
+    {
+        _mergeSrcId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        if (_mergeTgtId == _mergeSrcId) _mergeTgtId = 0;
+        _mergePreview = [];
+        _mergeSrcFiles = 0;
+        _mergeConfirm = false;
+        _mergeLog = [];
+        _mergeDone = false;
+        if (_mergeSrcId > 0)
+        {
+            _mergePreview = PcSvc.GetMergePreview(_mergeSrcId);
+            _mergeSrcFiles = FolderSvc.CountPcFolderFiles(_mergeSrcId);
+        }
+    }
+
+    async Task ExecuteMerge()
+    {
+        if (_mergeSrcId <= 0 || _mergeTgtId <= 0 || _mergeBusy || _mergeConfirmText != "MERGE") return;
+        _mergeBusy = true;
+        _mergeConfirm = false;
+        _mergeConfirmText = "";
+        _mergeLog = [];
+        _mergeDone = false;
+        StateHasChanged();
+
+        var admin = AdminUser();
+        var srcName = _mergeAllPcs.FirstOrDefault(p => p.PcId == _mergeSrcId)?.FullName ?? $"#{_mergeSrcId}";
+        var tgtName = _mergeAllPcs.FirstOrDefault(p => p.PcId == _mergeTgtId)?.FullName ?? $"#{_mergeTgtId}";
+        Console.WriteLine($"[Diagnosis] Admin '{admin}' merging PC '{srcName}' (#{_mergeSrcId}) → '{tgtName}' (#{_mergeTgtId})");
+
+        try
+        {
+            // DB merge
+            var dbLog = await Task.Run(() => PcSvc.MergePcs(_mergeSrcId, _mergeTgtId, admin));
+            _mergeLog.AddRange(dbLog);
+            await InvokeAsync(StateHasChanged);
+
+            if (dbLog.Any(l => l.StartsWith("ERROR")))
+            {
+                Console.WriteLine($"[Diagnosis] Merge DB failed for '{srcName}' → '{tgtName}'");
+                return;
+            }
+
+            // File merge
+            var (filesMoved, fileLog) = await Task.Run(() => FolderSvc.MergePcFolders(_mergeSrcId, _mergeTgtId));
+            _mergeLog.AddRange(fileLog);
+
+            _mergeLog.Add($"Merge complete: {srcName} → {tgtName}");
+            _mergeDone = true;
+            _mergeConfirm = false;
+
+            // Refresh PC list (source is now inactive)
+            _mergeAllPcs = PcSvc.GetAllPcs();
+            Console.WriteLine($"[Diagnosis] Merge complete: '{srcName}' → '{tgtName}', files moved: {filesMoved}");
+        }
+        catch (Exception ex)
+        {
+            _mergeLog.Add($"ERROR: {ex.Message}");
+            Console.WriteLine($"[Diagnosis] Merge failed: {ex.Message}");
+        }
+        finally
+        {
+            _mergeBusy = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     // ── Table loading ──────────────────────────────────────────────────────
