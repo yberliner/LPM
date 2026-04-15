@@ -254,7 +254,7 @@ public class PdfService
                     int secs = grid.GetValueOrDefault((DashboardService.GKey(pc), d));
                     if (compact)
                         table.Cell().Element(CellStyle).AlignCenter()
-                            .Text(t => t.Span(DashboardService.FmtOrBlank(secs)).FontSize(8).FontColor(textColor));
+                            .Text(t => t.Span(DashboardService.FmtOrBlank(secs)).FontColor(textColor));
                     else
                         table.Cell().Element(CellStyle).AlignCenter()
                             .Text(DashboardService.FmtOrBlank(secs));
@@ -273,7 +273,7 @@ public class PdfService
                     .Sum(d => grid.GetValueOrDefault((DashboardService.GKey(pc), d)));
                 if (compact)
                     table.Cell().Element(WeekTotalCell).AlignCenter()
-                        .Text(t => t.Span(DashboardService.FmtOrBlank(total)).FontSize(8).FontColor(textColor).SemiBold());
+                        .Text(t => t.Span(DashboardService.FmtOrBlank(total)).FontColor(textColor).SemiBold());
                 else
                     table.Cell().Element(WeekTotalCell).AlignCenter()
                         .Text(DashboardService.FmtOrBlank(total)).SemiBold();
