@@ -522,6 +522,29 @@
             } catch(e) { console.error('showPdfFromUrl failed:', e); }
           };
           window.clearPdfCache = () => { window._pdfCanvasCache = {}; };
+          window.preRenderPdf = async (url) => {
+            try {
+              if (window._pdfCanvasCache[url]) return;
+              const pdfjsLib = window['pdfjs-dist/build/pdf'];
+              if (!pdfjsLib) return;
+              const pdf = await pdfjsLib.getDocument(url).promise;
+              const canvases = [];
+              for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const viewport = page.getViewport({ scale: 1.2 });
+                const canvas = document.createElement('canvas');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                canvas.style.display = 'block';
+                canvas.style.margin = '0 auto 8px auto';
+                canvas.style.boxShadow = '0 2px 12px rgba(0,0,0,.18)';
+                canvas.style.borderRadius = '3px';
+                await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+                canvases.push(canvas);
+              }
+              window._pdfCanvasCache[url] = canvases;
+            } catch(e) { /* ignore pre-render errors */ }
+          };
         </script>
 
         <!-- PDF.js for PC Folder viewer -->

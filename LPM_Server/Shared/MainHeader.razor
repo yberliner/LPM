@@ -5659,7 +5659,13 @@
                     </button>
                 }
             </div>
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex align-items-center gap-3">
+                @if (_statPdfBase64 != null && !_statBusy)
+                {
+                    <button class="stat-today-btn" @onclick="DownloadStatPdf" title="Download this PDF">
+                        <i class="ri-download-2-line me-1"></i>Download
+                    </button>
+                }
                 @if (_statCaching)
                 {
                     <span style="font-size:.72rem;color:#64748b;">
@@ -5706,15 +5712,6 @@
                     </div>
                 }
                 <div id="stat-pdf-viewer" class="stat-pdf-container"></div>
-
-                @if (_statPdfUrl != null && !_statBusy)
-                {
-                    <div class="stat-download">
-                        <button class="btn btn-sm btn-outline-primary d-flex align-items-center gap-1" @onclick="DownloadStatPdf">
-                            <i class="ri-download-2-line"></i>Download PDF
-                        </button>
-                    </div>
-                }
             </div>
         </div>
     </div>
@@ -8186,12 +8183,23 @@ string _actionPcSearch = "";
     public void Dispose()
     {
         _isDisposed = true;
+        _showStat = false;       // stop background stat generation loop
+        _statCache = new();
         LS.OnLanguageChanged -= OnLanguageChanged;
         MsgNotifier.OnNewMessage -= OnNewMessageReceived;
         _headerScrollRef?.Dispose();
         _step3DotNetRef?.Dispose();
         _dropRef?.Dispose();
         JSRuntime.InvokeVoidAsync("interop.unregisterheaderScrollListener");
+        // Clean temp stat files
+        try
+        {
+            var tempDir = Path.Combine("wwwroot", "temp");
+            if (Directory.Exists(tempDir))
+                foreach (var f in Directory.GetFiles(tempDir, "stat_*.pdf"))
+                    try { File.Delete(f); } catch { }
+        }
+        catch { }
     }
 
     DotNetObjectReference<MainHeader>? _headerScrollRef;
@@ -9436,12 +9444,13 @@ string _actionPcSearch = "";
         await GenerateAllStatPdfs();
     }
 
-    void CloseShowStat()
+    async Task CloseShowStat()
     {
         _showStat = false;
         _statPdfUrl = null;
         _statPdfBase64 = null;
         _statCache = new();
+        try { await JSRuntime.InvokeVoidAsync("clearPdfCache"); } catch { }
     }
 
     async Task SelectStatUser(int personId)
@@ -9514,7 +9523,7 @@ string _actionPcSearch = "";
 
         foreach (var staff in _statStaffList)
         {
-            if (!_showStat) break; // user closed the popup
+            if (!_showStat || _isDisposed) break;
 
             var sid = staff.PersonId;
             var pdfBytes = await Task.Run(() =>
@@ -9548,7 +9557,8 @@ string _actionPcSearch = "";
             else
             {
                 await InvokeAsync(StateHasChanged);
-                await Task.Delay(30);
+                // Pre-render canvas in background so first click is instant
+                await JSRuntime.InvokeVoidAsync("preRenderPdf", url);
             }
         }
 
