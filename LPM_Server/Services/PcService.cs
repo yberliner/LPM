@@ -111,22 +111,37 @@ public List<PcListItem> GetAllPcs()
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
+
+        // Normalize input for comparison (strip diacritics + lowercase)
+        var normFn = ImportJobService.NormalizeToAscii(firstName).ToLower().Trim();
+        var normLn = ImportJobService.NormalizeToAscii(lastName).ToLower().Trim();
+        var normNick = ImportJobService.NormalizeToAscii(nick ?? "").ToLower().Trim();
+
+        // Scan all PCs and compare normalized names in C# (SQLite LOWER doesn't strip diacritics)
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT p.PersonId, COALESCE(p.IsActive, 1)
+            SELECT p.PersonId, COALESCE(p.IsActive, 1), p.FirstName, COALESCE(p.LastName,''), COALESCE(p.Nick,'')
             FROM core_persons p
-            JOIN core_pcs pc ON pc.PcId = p.PersonId
-            WHERE LOWER(TRIM(p.FirstName)) = LOWER(@fn)
-              AND LOWER(COALESCE(TRIM(p.LastName),'')) = LOWER(@ln)
-              AND LOWER(COALESCE(TRIM(p.Nick),'')) = LOWER(@nick)";
-        cmd.Parameters.AddWithValue("@fn", firstName.Trim());
-        cmd.Parameters.AddWithValue("@ln", lastName.Trim());
-        cmd.Parameters.AddWithValue("@nick", nick?.Trim() ?? "");
+            JOIN core_pcs pc ON pc.PcId = p.PersonId";
+        int existingId = 0;
+        bool isActive = true;
         using var r = cmd.ExecuteReader();
-        if (!r.Read()) return null; // no conflict
-
-        var existingId = r.GetInt32(0);
-        var isActive = r.GetInt32(1) == 1;
+        bool found = false;
+        while (r.Read())
+        {
+            var dbFn = ImportJobService.NormalizeToAscii(r.GetString(2)).ToLower().Trim();
+            var dbLn = ImportJobService.NormalizeToAscii(r.GetString(3)).ToLower().Trim();
+            var dbNick = ImportJobService.NormalizeToAscii(r.GetString(4)).ToLower().Trim();
+            if (dbFn == normFn && dbLn == normLn && dbNick == normNick)
+            {
+                existingId = r.GetInt32(0);
+                isActive = r.GetInt32(1) == 1;
+                found = true;
+                break;
+            }
+        }
+        r.Close();
+        if (!found) return null; // no conflict
 
         if (!isActive)
         {
@@ -382,14 +397,18 @@ public List<PcListItem> GetAllPcs()
         if (old != null && changedBy != null)
         {
             var changes = new List<string>();
-            if (old.FirstName != firstName.Trim() || old.LastName != lastName.Trim())
-                changes.Add($"Name: {old.FirstName} {old.LastName} → {firstName.Trim()} {lastName.Trim()}");
-            if (old.Phone != Nv(phone)) changes.Add($"Phone: {old.Phone} → {Nv(phone)}");
-            if (old.Email != Nv(email)) changes.Add($"Email: {old.Email} → {Nv(email)}");
-            if (old.Nick != Nv(nick)) changes.Add($"Nick: {old.Nick} → {Nv(nick)}");
-            if (old.DateOfBirth != Nv(dateOfBirth)) changes.Add($"DOB: {old.DateOfBirth} → {Nv(dateOfBirth)}");
-            if (old.Gender != Nv(gender)) changes.Add($"Gender: {old.Gender} → {Nv(gender)}");
-            if (old.Notes != Nv(notes)) changes.Add($"Notes changed");
+            var newFn = CapitalizeName(firstName); var newLn = CapitalizeName(lastName);
+            if (old.FirstName != newFn || old.LastName != newLn)
+                changes.Add($"Name: {old.FirstName} {old.LastName} → {newFn} {newLn}");
+            var newPhone = phone?.Trim() ?? ""; var newEmail = email?.Trim() ?? "";
+            var newNick = nick?.Trim() ?? ""; var newDob = dateOfBirth?.Trim() ?? "";
+            var newGender = gender?.Trim() ?? ""; var newNotes = notes?.Trim() ?? "";
+            if (old.Phone != newPhone) changes.Add($"Phone: {old.Phone} → {newPhone}");
+            if (old.Email != newEmail) changes.Add($"Email: {old.Email} → {newEmail}");
+            if (old.Nick != newNick) changes.Add($"Nick: {old.Nick} → {newNick}");
+            if (old.DateOfBirth != newDob) changes.Add($"DOB: {old.DateOfBirth} → {newDob}");
+            if (old.Gender != newGender) changes.Add($"Gender: {old.Gender} → {newGender}");
+            if (old.Notes != newNotes) changes.Add($"Notes changed");
             var newOrgId = orgId ?? 0;
             if (old.OrgId != newOrgId) changes.Add($"Org changed");
             if (changes.Count > 0)
@@ -2069,7 +2088,9 @@ public List<PcListItem> GetAllPcs()
     internal static string CapitalizeName(string name)
     {
         if (string.IsNullOrWhiteSpace(name)) return name;
-        var chars = name.Trim().ToCharArray();
+        // Strip diacritics first (é→e, á→a, etc.) to avoid duplicates
+        var normalized = ImportJobService.NormalizeToAscii(name.Trim());
+        var chars = normalized.ToCharArray();
         bool capitalizeNext = true;
         for (int i = 0; i < chars.Length; i++)
         {
