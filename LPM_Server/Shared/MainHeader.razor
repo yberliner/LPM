@@ -2997,7 +2997,8 @@
                 <div class="sm-card">
                     <div class="sm-field">
                         <label>PC</label>
-                        <select class="form-select form-select-sm" @bind="_smAddPcId">
+                        <select class="form-select form-select-sm" value="@_smAddPcId"
+                                @onchange="SmAddPcChanged">
                             <option value="0">— Select PC —</option>
                             @foreach (var pc in _actionAllPcs)
                             {
@@ -7363,6 +7364,25 @@ string _actionPcSearch = "";
         _smAddAuditorList = DashSvc.GetAuditorCsStaffList();
         _smCsList = DashSvc.GetCsStaffList(0);
         _smAddMode = true;
+        // Auto-fill auditor/CS from the most recent session for this PC
+        if (_smAddPcId > 0) SmAutoFillStaff(_smAddPcId);
+    }
+
+    void SmAddPcChanged(ChangeEventArgs e)
+    {
+        _smAddPcId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        _smAddAuditorId = 0;
+        _smAddCsId = -1;
+        if (_smAddPcId > 0) SmAutoFillStaff(_smAddPcId);
+    }
+
+    void SmAutoFillStaff(int pcId)
+    {
+        var (auditorId, csId) = DashSvc.GetLastSessionStaff(pcId);
+        if (auditorId.HasValue && _smAddAuditorList.Any(a => a.PersonId == auditorId.Value))
+            _smAddAuditorId = auditorId.Value;
+        if (csId.HasValue && csId.Value >= 0 && _smCsList.Any(c => c.PersonId == csId.Value))
+            _smAddCsId = csId.Value;
     }
 
     void SmCancelAdd()

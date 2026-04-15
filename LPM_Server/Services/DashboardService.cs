@@ -775,6 +775,29 @@ public class DashboardService
         return list;
     }
 
+    /// <summary>
+    /// Returns the AuditorId and CsId from the most recent session for a given PC.
+    /// </summary>
+    public (int? AuditorId, int? CsId) GetLastSessionStaff(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT s.AuditorId, cr.CsId
+            FROM sess_sessions s
+            LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
+            WHERE s.PcId = @pcId
+            ORDER BY s.SessionDate DESC, s.SessionId DESC
+            LIMIT 1";
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return (null, null);
+        var auditorId = r.IsDBNull(0) ? (int?)null : r.GetInt32(0);
+        var csId = r.IsDBNull(1) ? (int?)null : r.GetInt32(1);
+        return (auditorId, csId);
+    }
+
     public List<PcInfo> GetUserPcs(int userId)
     {
         using var conn = new SqliteConnection(_connectionString);
