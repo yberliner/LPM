@@ -5649,17 +5649,26 @@
                 <span style="font-weight:700;font-size:1.05rem;">Staff Statistics</span>
             </div>
             <div class="d-flex align-items-center gap-2">
-                <button class="stat-week-btn" @onclick="StatWeekPrev" disabled="@_statBusy"><i class="ri-arrow-left-s-line"></i></button>
+                <button class="stat-week-btn" @onclick="StatWeekPrev" disabled="@_statCaching"><i class="ri-arrow-left-s-line"></i></button>
                 <span class="stat-week-label">@_statWeekStart.ToString("dd MMM") — @_statWeekStart.AddDays(6).ToString("dd MMM yyyy")</span>
-                <button class="stat-week-btn" @onclick="StatWeekNext" disabled="@(_statBusy || StatIsCurrentWeek)"><i class="ri-arrow-right-s-line"></i></button>
+                <button class="stat-week-btn" @onclick="StatWeekNext" disabled="@(_statCaching || StatIsCurrentWeek)"><i class="ri-arrow-right-s-line"></i></button>
                 @if (!StatIsCurrentWeek)
                 {
-                    <button class="stat-today-btn" @onclick="StatWeekToday" disabled="@_statBusy" title="Jump to current week">
+                    <button class="stat-today-btn" @onclick="StatWeekToday" disabled="@_statCaching" title="Jump to current week">
                         <i class="ri-calendar-todo-line me-1"></i>Today
                     </button>
                 }
             </div>
-            <button class="btn-close btn-close-white" @onclick="CloseShowStat"></button>
+            <div class="d-flex align-items-center gap-2">
+                @if (_statCaching)
+                {
+                    <span style="font-size:.72rem;color:#64748b;">
+                        <span class="spinner-border spinner-border-sm me-1" style="width:.6rem;height:.6rem;border-width:2px;color:#60a5fa;"></span>
+                        @_statCacheProgress/@_statCacheTotal
+                    </span>
+                }
+                <button class="btn-close btn-close-white" @onclick="CloseShowStat"></button>
+            </div>
         </div>
 
         <div class="stat-body">
@@ -5673,11 +5682,12 @@
                     {
                         var sid = staff.PersonId;
                         var isActive = sid == _statSelectedId;
-                        <button class="stat-user-btn @(isActive ? "stat-user-active" : "")"
-                                disabled="@_statBusy"
+                        var isCached = _statCache.ContainsKey(sid);
+                        <button class="stat-user-btn @(isActive ? "stat-user-active" : "") @(!isCached ? "stat-user-pending" : "")"
+                                disabled="@(!isCached)"
                                 @onclick="() => SelectStatUser(sid)"
-                                title="@staff.FullName">
-                            <span class="stat-user-dot" style="background:@StatRoleColor(staff.StaffRole);" title="@staff.StaffRole"></span>
+                                title="@(isCached ? staff.FullName : staff.FullName + " (generating...)")">
+                            <span class="stat-user-dot" style="background:@(isCached ? StatRoleColor(staff.StaffRole) : "#475569");" title="@staff.StaffRole"></span>
                             @if (_statSidebarOpen)
                             {
                                 <span class="stat-user-name">@staff.FullName</span>
@@ -5772,7 +5782,8 @@
         white-space: nowrap; overflow: hidden;
     }
     .stat-user-btn:hover:not(:disabled) { background: #334155; color: #e2e8f0; }
-    .stat-user-btn:disabled { cursor: wait; }
+    .stat-user-btn:disabled { cursor: default; }
+    .stat-user-pending { opacity: .35; }
     .stat-user-active { background: #1e3a5f !important; color: #60a5fa !important; font-weight: 600; border-right: 3px solid #3b82f6; }
     .stat-user-dot { width: 8px; height: 8px; border-radius: 50% !important; flex-shrink: 0; }
     .stat-user-name { overflow: hidden; text-overflow: ellipsis; }
@@ -5846,9 +5857,13 @@
     List<DashboardService.StaffMemberWithRole> _statStaffList = [];
     int _statSelectedId;
     DateOnly _statWeekStart;
-    bool _statBusy;
+    bool _statBusy;          // true while selected user's PDF is loading
     string? _statPdfUrl;
     string? _statPdfBase64;
+    Dictionary<int, (string Url, string Base64)> _statCache = new();
+    int _statCacheProgress;
+    int _statCacheTotal;
+    bool _statCaching;       // background generation running
 
     // ── Print All Staff state ──
     bool _showPrintAllStaff;
@@ -9415,10 +9430,10 @@ string _actionPcSearch = "";
         _statPdfBase64 = null;
         _statPdfUrl = null;
         _statSidebarOpen = true;
+        _statCache = new();
         _showStat = true;
         StateHasChanged();
-        if (_statSelectedId > 0)
-            await GenerateStatPdf();
+        await GenerateAllStatPdfs();
     }
 
     void CloseShowStat()
@@ -9426,77 +9441,131 @@ string _actionPcSearch = "";
         _showStat = false;
         _statPdfUrl = null;
         _statPdfBase64 = null;
+        _statCache = new();
     }
 
     async Task SelectStatUser(int personId)
     {
-        if (_statBusy || personId == _statSelectedId) return;
+        if (personId == _statSelectedId) return;
         _statSelectedId = personId;
-        await GenerateStatPdf();
+        if (_statCache.TryGetValue(personId, out var cached))
+        {
+            _statPdfUrl = cached.Url;
+            _statPdfBase64 = cached.Base64;
+            _statBusy = false;
+            StateHasChanged();
+            await JSRuntime.InvokeVoidAsync("showPdfFromUrl", "stat-pdf-viewer", cached.Url);
+        }
     }
 
     async Task StatWeekPrev()
     {
-        if (_statBusy) return;
+        if (_statCaching) return;
         _statWeekStart = _statWeekStart.AddDays(-7);
-        await GenerateStatPdf();
+        _statCache = new();
+        _statPdfUrl = null;
+        _statPdfBase64 = null;
+        await JSRuntime.InvokeVoidAsync("clearPdfCache");
+        StateHasChanged();
+        await GenerateAllStatPdfs();
     }
 
     bool StatIsCurrentWeek => _statWeekStart >= DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
 
     async Task StatWeekToday()
     {
-        if (_statBusy || StatIsCurrentWeek) return;
+        if (_statCaching || StatIsCurrentWeek) return;
         _statWeekStart = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
-        await GenerateStatPdf();
+        _statCache = new();
+        _statPdfUrl = null;
+        _statPdfBase64 = null;
+        await JSRuntime.InvokeVoidAsync("clearPdfCache");
+        StateHasChanged();
+        await GenerateAllStatPdfs();
     }
 
     async Task StatWeekNext()
     {
-        if (_statBusy || StatIsCurrentWeek) return;
+        if (_statCaching || StatIsCurrentWeek) return;
         _statWeekStart = _statWeekStart.AddDays(7);
-        await GenerateStatPdf();
-    }
-
-    async Task GenerateStatPdf()
-    {
-        if (_statSelectedId <= 0) return;
-        _statBusy = true;
+        _statCache = new();
         _statPdfUrl = null;
         _statPdfBase64 = null;
+        await JSRuntime.InvokeVoidAsync("clearPdfCache");
         StateHasChanged();
+        await GenerateAllStatPdfs();
+    }
 
-        var staff = _statStaffList.FirstOrDefault(s => s.PersonId == _statSelectedId);
-        if (staff == null) { _statBusy = false; return; }
+    async Task GenerateAllStatPdfs()
+    {
+        _statCaching = true;
+        _statBusy = true;
+        _statCacheProgress = 0;
+        _statCacheTotal = _statStaffList.Count;
+        StateHasChanged();
 
         var weekStart = _statWeekStart;
         var soloPcIds = DashSvc.GetSoloPcIds();
-
-        var pdfBytes = await Task.Run(() =>
-        {
-            var pcs = DashSvc.GetUserPcs(staff.PersonId);
-            var grid = DashSvc.GetWeekGrid(staff.PersonId, weekStart, pcs);
-            var pcIds = pcs.Select(p => p.PcId).ToList();
-            var csNames = DashSvc.GetLastCsNamesByPc(pcIds);
-            var weekKey = weekStart.ToString("yyyy-MM-dd");
-            var remarks = DashSvc.GetWeeklyRemarks(staff.PersonId, weekKey);
-            var completions = CompletionSvc.GetForWeek(staff.PersonId, weekStart, weekStart.AddDays(6));
-            return PdfSvc.GenerateWeeklyTablePdf(staff.FullName, weekStart, pcs, grid, csNames, remarks, soloPcIds, completions);
-        });
-
-        // Clean old temp files, write new one
         var tempDir = Path.Combine("wwwroot", "temp");
         Directory.CreateDirectory(tempDir);
+        // Clean old stat files
         foreach (var old in Directory.GetFiles(tempDir, "stat_*.pdf"))
             try { File.Delete(old); } catch { }
-        var fileName = $"stat_{_statSelectedId}_{_statWeekStart:yyyyMMdd}.pdf";
-        await File.WriteAllBytesAsync(Path.Combine(tempDir, fileName), pdfBytes);
 
-        _statPdfUrl = $"/temp/{fileName}?t={DateTime.Now.Ticks}";
-        _statPdfBase64 = Convert.ToBase64String(pdfBytes);
+        foreach (var staff in _statStaffList)
+        {
+            if (!_showStat) break; // user closed the popup
+
+            var sid = staff.PersonId;
+            var pdfBytes = await Task.Run(() =>
+            {
+                var pcs = DashSvc.GetUserPcs(sid);
+                var grid = DashSvc.GetWeekGrid(sid, weekStart, pcs);
+                var pcIds = pcs.Select(p => p.PcId).ToList();
+                var csNames = DashSvc.GetLastCsNamesByPc(pcIds);
+                var weekKey = weekStart.ToString("yyyy-MM-dd");
+                var remarks = DashSvc.GetWeeklyRemarks(sid, weekKey);
+                var completions = CompletionSvc.GetForWeek(sid, weekStart, weekStart.AddDays(6));
+                return PdfSvc.GenerateWeeklyTablePdf(staff.FullName, weekStart, pcs, grid, csNames, remarks, soloPcIds, completions);
+            });
+
+            var fileName = $"stat_{sid}_{weekStart:yyyyMMdd}.pdf";
+            await File.WriteAllBytesAsync(Path.Combine(tempDir, fileName), pdfBytes);
+            var url = $"/temp/{fileName}?t={DateTime.Now.Ticks}";
+            var b64 = Convert.ToBase64String(pdfBytes);
+            _statCache[sid] = (url, b64);
+            _statCacheProgress++;
+
+            // If this is the selected user, show immediately
+            if (sid == _statSelectedId)
+            {
+                _statPdfUrl = url;
+                _statPdfBase64 = b64;
+                _statBusy = false;
+                await InvokeAsync(StateHasChanged);
+                await JSRuntime.InvokeVoidAsync("showPdfFromUrl", "stat-pdf-viewer", url);
+            }
+            else
+            {
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(30);
+            }
+        }
+
+        // If selected user was first in list, _statBusy is already false.
+        // If user selected someone not yet generated, show it now.
+        if (_statBusy && _statCache.TryGetValue(_statSelectedId, out var final))
+        {
+            _statPdfUrl = final.Url;
+            _statPdfBase64 = final.Base64;
+            _statBusy = false;
+            await InvokeAsync(StateHasChanged);
+            await JSRuntime.InvokeVoidAsync("showPdfFromUrl", "stat-pdf-viewer", final.Url);
+        }
+
+        _statCaching = false;
         _statBusy = false;
         await InvokeAsync(StateHasChanged);
-        await JSRuntime.InvokeVoidAsync("showPdfFromUrl", "stat-pdf-viewer", _statPdfUrl);
     }
 
     static string StatRoleColor(string role) => role switch

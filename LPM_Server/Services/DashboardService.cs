@@ -2833,6 +2833,7 @@ public class DashboardService
             FROM core_persons p
             JOIN core_users u ON u.PersonId = p.PersonId
             WHERE u.IsActive = 1 AND u.StaffRole NOT IN ('Solo', 'None')
+              AND LOWER(u.Username) != 'admin'
             ORDER BY p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
         var list = new List<StaffMemberWithRole>();
         using var r = cmd.ExecuteReader();

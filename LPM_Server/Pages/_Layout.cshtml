@@ -487,18 +487,26 @@
         </script>
 
         <script>
+          window._pdfCanvasCache = {};
           window.showPdfFromUrl = async (containerId, url) => {
             try {
               const container = document.getElementById(containerId);
               if (!container) return;
+              // Instant swap if already rendered
+              if (window._pdfCanvasCache[url]) {
+                container.innerHTML = '';
+                window._pdfCanvasCache[url].forEach(c => container.appendChild(c));
+                return;
+              }
               container.innerHTML = '';
               const pdfjsLib = window['pdfjs-dist/build/pdf'];
               if (!pdfjsLib) { container.innerHTML = '<div style="color:#ef4444;padding:20px;">PDF.js not loaded</div>'; return; }
               const pdf = await pdfjsLib.getDocument(url).promise;
+              const canvases = [];
               for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
-                const scale = (container.clientWidth - 24) / page.getViewport({ scale: 1 }).width;
-                const viewport = page.getViewport({ scale: Math.max(scale, 0.5) });
+                const rawScale = (container.clientWidth - 24) / page.getViewport({ scale: 1 }).width;
+                const viewport = page.getViewport({ scale: Math.min(rawScale, 1.5) });
                 const canvas = document.createElement('canvas');
                 canvas.width = viewport.width;
                 canvas.height = viewport.height;
@@ -508,9 +516,12 @@
                 canvas.style.borderRadius = '3px';
                 container.appendChild(canvas);
                 await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+                canvases.push(canvas);
               }
+              window._pdfCanvasCache[url] = canvases;
             } catch(e) { console.error('showPdfFromUrl failed:', e); }
           };
+          window.clearPdfCache = () => { window._pdfCanvasCache = {}; };
         </script>
 
         <!-- PDF.js for PC Folder viewer -->
