@@ -272,7 +272,7 @@
                                             :  "No assignments from CS");
                                         var audPendingStyle = s.IsPendingApproval ? "opacity:.4; pointer-events:none;" : "";
                                         <tr class="@rowClass home-pcs-row @rowBorderClass" style="@audPendingStyle"
-                                            title="@attTooltip"
+                                            title="@($"{s.PcName} — {RoleTooltip(s.WorkCapacity)} | {attTooltip}")"
                                             @onclick="() => { if (!s.IsPendingApproval) OpenAuditorSession(s); }">
                                             <td class="home-pcs-pcname">
                                                 @if (isNewPc)
@@ -504,7 +504,7 @@
                                     @oncontextmenu="e => { if (!isPendingApprv) ShowCtxMenu(e, pc); }"
                                     @oncontextmenu:preventDefault="true">
                                     <span class="badge rounded-pill"
-                                          title="@(isPendingApprv ? pc.FullName + " — " + LS.T("home.pendingApproval") : pc.FullName)"
+                                          title="@PcTooltip(pc, isPendingApprv)"
                                           style="@(isPendingApprv
                                               ? "background:#f1f3f5; color:#868e96; border:1px solid #ced4da;"
                                               : hasPendingCs
@@ -633,7 +633,7 @@
                                     @oncontextmenu="e => { if (!isPendingApprv) ShowCtxMenu(e, pc); }"
                                     @oncontextmenu:preventDefault="true">
                                     <span class="badge rounded-pill"
-                                          title="@(isPendingApprv ? pc.FullName + " — " + LS.T("home.pendingApproval") : pc.FullName)"
+                                          title="@PcTooltip(pc, isPendingApprv)"
                                           style="@(isPendingApprv
                                               ? "background:#f1f3f5; color:#868e96; border:1px solid #ced4da;"
                                               : hasPendingCs
@@ -774,7 +774,7 @@
                                     @oncontextmenu="e => { if (!isPendingApprv) ShowCtxMenu(e, pc); }"
                                     @oncontextmenu:preventDefault="true">
                                     <span class="badge rounded-pill"
-                                          title="@(isPendingApprv ? pc.FullName + " — " + LS.T("home.pendingApproval") : pc.FullName)"
+                                          title="@PcTooltip(pc, isPendingApprv)"
                                           style="@(isPendingApprv
                                               ? "background:#f1f3f5; color:#868e96; border:1px solid #ced4da;"
                                               : hasPendingCs
@@ -1879,8 +1879,10 @@
         .ToList();
 
     // CS-assigned PCs that are solo auditors — shown in the CS Solo table (negative GKey)
+    // Includes: CS/AuditorAndCS capacity where PC is solo, plus CSSolo/AuditorAndCSSolo capacity always
     List<PcInfo> CsSoloPcs => _myPcs
-        .Where(pc => StaffRoles.IsCsCapacity(pc.WorkCapacity) && _soloPcIds.Contains(pc.PcId))
+        .Where(pc => StaffRoles.IsCsSoloCapacity(pc.WorkCapacity)
+            || (StaffRoles.IsCsCapacity(pc.WorkCapacity) && !StaffRoles.IsCsReviewCapacity(pc.WorkCapacity) && _soloPcIds.Contains(pc.PcId)))
         .Select(pc => pc with { WorkCapacity = "CSSolo" })
         .Where(pc => !_hideEmpty || HasWeekData(pc))
         .ToList();
@@ -2304,6 +2306,24 @@
     string CsBtnClass(PcInfo pc) =>
         StaffRoles.IsCsCapacity(pc.WorkCapacity) ? "btn-sm btn-success" : "btn-sm btn-outline-secondary";
 
+    static string RoleTooltip(string cap) => cap switch
+    {
+        StaffRoles.Auditor            => "Auditor",
+        StaffRoles.CS                 => "CS (all sessions)",
+        StaffRoles.CSReview           => "CS Review (non-solo)",
+        StaffRoles.CSSolo             => "CS Solo",
+        StaffRoles.AuditorAndCS       => "Auditor + CS (all)",
+        StaffRoles.AuditorAndCSReview => "Auditor + CS Review",
+        StaffRoles.AuditorAndCSSolo   => "Auditor + CS Solo",
+        _ => cap
+    };
+
+    string PcTooltip(PcInfo pc, bool isPending)
+    {
+        var role = RoleTooltip(pc.WorkCapacity);
+        return isPending ? $"{pc.FullName} — {role} — {LS.T("home.pendingApproval")}" : $"{pc.FullName} — {role}";
+    }
+
     // ── Context menu ──
     void ShowCtxMenu(MouseEventArgs e, PcInfo pc)
     {
@@ -2615,6 +2635,7 @@
                         var hasActiveQ   = _sessionQuestions.TryGetValue(s.SessionId, out var qInfo);
                         var pendingStyle = s.IsPendingApproval ? "opacity:.4; pointer-events:none;" : (isDoneCs && !hasActiveQ ? "opacity:.55;" : "");
                         <tr class="@rowClass home-pcs-row @(isDoneCs ? "home-csq-done-row" : "")" style="@pendingStyle"
+                            title="@($"{s.PcName} — {RoleTooltip(s.WorkCapacity)}")"
                             @onclick="() => { if (!s.IsPendingApproval) OpenPendingCs(s); }"
                             @oncontextmenu="e => ShowCsCtxMenu(e, s, ctxOwnerId)"
                             @oncontextmenu:preventDefault="true">

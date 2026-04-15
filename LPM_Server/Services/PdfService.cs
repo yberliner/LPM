@@ -23,7 +23,8 @@ public class PdfService
         bool hasData(PcInfo pc) => Enumerable.Range(0, 7).Any(d => grid.GetValueOrDefault((DashboardService.GKey(pc), d)) > 0);
         // Solo CS PCs: CS-assigned PCs that are solo auditors — shown with negative GKey
         var csSoloPcs = pcs
-            .Where(pc => StaffRoles.IsCsCapacity(pc.WorkCapacity) && (soloPcIds?.Contains(pc.PcId) ?? false))
+            .Where(pc => StaffRoles.IsCsSoloCapacity(pc.WorkCapacity)
+                || (StaffRoles.IsCsCapacity(pc.WorkCapacity) && !StaffRoles.IsCsReviewCapacity(pc.WorkCapacity) && (soloPcIds?.Contains(pc.PcId) ?? false)))
             .Select(pc => pc with { WorkCapacity = "CSSolo" })
             .Where(hasData).ToList();
         var csPcs  = pcs.Where(pc => StaffRoles.IsCsCapacity(pc.WorkCapacity) && hasData(pc)).ToList();
@@ -800,12 +801,15 @@ public class PdfService
 
     static string RoleLabel(PcInfo pc) => pc.WorkCapacity switch
     {
-        "CSSolo"        => "Solo",
-        "CS"            => "CS",
-        "AuditorAndCS"  => "A+CS",
-        "Miscellaneous" => "Other",
-        "SoloAuditor"   => "Solo",
-        _               => "Auditor",
+        "CSSolo"              => "Solo",
+        "CS"                  => "CS",
+        "CSReview"            => "CS Review",
+        "AuditorAndCS"        => "A+CS",
+        "AuditorAndCSReview"  => "A+CS Review",
+        "AuditorAndCSSolo"    => "A+CS Solo",
+        "Miscellaneous"       => "Other",
+        "SoloAuditor"         => "Solo",
+        _                     => "Auditor",
     };
 
     // ════════════════════════════════════════════════════════════════════════

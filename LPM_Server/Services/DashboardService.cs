@@ -2603,7 +2603,7 @@ public class DashboardService
     public record PendingCsSession(
         int SessionId, int PcId, string PcName, string SessionName,
         string SessionDate, int TotalSeconds, bool IsSolo, string AuditorName, string CreatedAt,
-        bool IsPendingApproval = false, string CsStatus = "");
+        bool IsPendingApproval = false, string CsStatus = "", string WorkCapacity = "");
 
     /// Returns sessions from the last <paramref name="lookbackDays"/> days,
     /// limited to PCs where <paramref name="csUserId"/> has an approved CS work-capacity assignment.
@@ -2625,7 +2625,8 @@ public class DashboardService
                    COALESCE(TRIM(pa.FirstName || ' ' || COALESCE(NULLIF(pa.LastName,''), '')), 'Solo') AS AuditorName,
                    COALESCE(s.CreatedAt, '') AS CreatedAt,
                    spl.IsApproved AS IsApproved,
-                   COALESCE(cr.Status, '') AS CsStatus
+                   COALESCE(cr.Status, '') AS CsStatus,
+                   spl.WorkCapacity
             FROM sess_sessions s
             JOIN core_persons p ON p.PersonId = s.PcId
             JOIN sys_staff_pc_list spl ON spl.PcId = s.PcId
@@ -2635,6 +2636,11 @@ public class DashboardService
             LEFT JOIN core_persons pa ON pa.PersonId = s.AuditorId
             LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
             WHERE s.IsImported = 0
+              AND (
+                spl.WorkCapacity IN ('{StaffRoles.CS}','{StaffRoles.AuditorAndCS}')
+                OR (spl.WorkCapacity IN ('{StaffRoles.CSReview}','{StaffRoles.AuditorAndCSReview}') AND s.AuditorId IS NOT NULL)
+                OR (spl.WorkCapacity IN ('{StaffRoles.CSSolo}','{StaffRoles.AuditorAndCSSolo}') AND s.AuditorId IS NULL)
+              )
               {doneFilter}
               {dateFilter}
             ORDER BY spl.IsApproved DESC, cr.CsReviewId IS NULL DESC, PcName COLLATE NOCASE, s.SessionDate, s.SequenceInDay";
@@ -2651,7 +2657,8 @@ public class DashboardService
                 r.GetString(4), r.IsDBNull(5) ? 0 : r.GetInt32(5),
                 r.GetInt32(6) == 1, r.GetString(7), r.GetString(8),
                 IsPendingApproval: r.GetInt32(9) == 0,
-                CsStatus: r.GetString(10)));
+                CsStatus: r.GetString(10),
+                WorkCapacity: r.GetString(11)));
         }
         return list;
     }
@@ -2661,7 +2668,7 @@ public class DashboardService
     public record AuditorSessionStatus(
         int SessionId, int PcId, string PcName, string SessionName,
         string SessionDate, int TotalSeconds, string CsStatus, string? CsName, string CreatedAt,
-        bool IsPendingApproval = false, bool IsSessionVerified = false);
+        bool IsPendingApproval = false, bool IsSessionVerified = false, string WorkCapacity = "");
 
     /// <summary>
     /// Returns sessions the auditor conducted in the last <paramref name="lookbackDays"/> days
@@ -2687,7 +2694,8 @@ public class DashboardService
                        TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS CsName,
                        COALESCE(s.CreatedAt, '') AS CreatedAt,
                        1 AS IsApproved,
-                       CASE WHEN s.VerifiedStatus = 'Approved' THEN 1 ELSE 0 END AS IsSessionVerified
+                       CASE WHEN s.VerifiedStatus = 'Approved' THEN 1 ELSE 0 END AS IsSessionVerified,
+                       'Solo' AS WorkCapacity
                 FROM sess_sessions s
                 JOIN core_persons p ON p.PersonId = s.PcId
                 LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
@@ -2709,7 +2717,8 @@ public class DashboardService
                        TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS CsName,
                        COALESCE(s.CreatedAt, '') AS CreatedAt,
                        spl.IsApproved AS IsApproved,
-                       CASE WHEN s.VerifiedStatus = 'Approved' THEN 1 ELSE 0 END AS IsSessionVerified
+                       CASE WHEN s.VerifiedStatus = 'Approved' THEN 1 ELSE 0 END AS IsSessionVerified,
+                       spl.WorkCapacity
                 FROM sess_sessions s
                 JOIN core_persons p ON p.PersonId = s.PcId
                 JOIN sys_staff_pc_list spl ON spl.PcId = s.PcId
@@ -2735,7 +2744,8 @@ public class DashboardService
                 r.GetString(4), r.IsDBNull(5) ? 0 : r.GetInt32(5),
                 r.GetString(6), r.IsDBNull(7) ? null : r.GetString(7), r.GetString(8),
                 IsPendingApproval: r.GetInt32(9) == 0,
-                IsSessionVerified: r.GetInt32(10) == 1));
+                IsSessionVerified: r.GetInt32(10) == 1,
+                WorkCapacity: r.GetString(11)));
         }
         return list;
     }

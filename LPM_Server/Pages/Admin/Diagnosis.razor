@@ -73,7 +73,7 @@
                 <form method="post" action="/admin/impersonate" class="d-flex align-items-center gap-2">
                     <select name="targetUsername" class="form-select form-select-sm"
                             style="width:auto;background:#0f172a;color:#e2e8f0;border-color:#475569;">
-                        @foreach (var u in _userList.Where(u => !string.Equals(u.Username, "yaniv", StringComparison.OrdinalIgnoreCase)))
+                        @foreach (var u in _userList.Where(u => !string.Equals(u.Username, "yaniv", StringComparison.OrdinalIgnoreCase)).OrderBy(u => u.Username, StringComparer.OrdinalIgnoreCase))
                         {
                             <option value="@u.Username">@u.Username (@u.StaffRole)</option>
                         }

@@ -143,6 +143,7 @@
                 </label>
             </div>
 
+            <div class="sp-matrix-with-legend">
             <div class="card border-0 shadow-sm sp-card mb-5">
                 <div class="sp-matrix-wrap">
                     <table class="sp-matrix-table">
@@ -193,11 +194,11 @@
                                         var flashing = _flashingCells.Contains(cellKey);
                                         <td class="sp-mx-cell @(flashing ? "sp-mx-flash" : "") @(aud.AllowAll ? "sp-mx-cell-priv" : "")"
                                             @onclick="() => MatrixToggle(aud, pc.PcId)"
-                                            title="@aud.AuditorName — @pc.FullName">
+                                            title="@CellTooltip(aud, pc.PcId, hasPerm)">
                                             @if (hasPerm)
                                             {
                                                 var cap = aud.ApprovedPcs.FirstOrDefault(p => p.PcId == pc.PcId)?.WorkCapacity ?? StaffRoles.Auditor;
-                                                <span class="@(cap == StaffRoles.AuditorAndCS ? "sp-mx-both" : cap == StaffRoles.CS ? "sp-mx-cs" : "sp-mx-aud")">@(cap == StaffRoles.AuditorAndCS ? "A+CS" : cap == StaffRoles.CS ? "CS" : "A")</span>
+                                                <span class="@CapCssClass(cap)">@CapLabel(cap)</span>
                                             }
                                             else
                                             {
@@ -210,14 +211,93 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="d-flex align-items-center gap-3 px-4 py-2 sp-mx-legend">
-                    <span class="d-flex align-items-center gap-1"><span class="sp-mx-aud sp-lg">A</span> Auditor</span>
-                    <span class="d-flex align-items-center gap-1"><span class="sp-mx-cs sp-lg">CS</span> CS</span>
-                    <span class="d-flex align-items-center gap-1"><span class="sp-mx-both sp-lg">A+CS</span> Auditor + CS</span>
-                    <span class="d-flex align-items-center gap-1"><span class="sp-mx-empty sp-lg"></span> No permission</span>
-                    <span class="d-flex align-items-center gap-1 ms-auto" style="font-size:.75rem;color:#92400e;"><span class="sp-privileged-badge me-1">✦ Privileged</span> = can open any folder regardless of assignments</span>
+            </div>
+
+            @* ── Legend Panel (right side) ── *@
+            <div class="sp-legend-panel">
+                <div class="sp-legend-title">
+                    <i class="ri-map-2-line"></i> Permission Guide
+                </div>
+                <div class="sp-legend-section">
+                    <div class="sp-legend-section-title">Auditor Roles</div>
+                    <div class="sp-legend-item" title="Auditor only — conducts auditing sessions for this PC">
+                        <span class="sp-mx-aud sp-lg">A</span>
+                        <div class="sp-legend-text">
+                            <strong>Auditor</strong>
+                            <span>Conducts auditing sessions</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="sp-legend-section">
+                    <div class="sp-legend-section-title">CS Roles</div>
+                    <div class="sp-legend-item" title="Case Supervisor for all session types (solo + non-solo)">
+                        <span class="sp-mx-cs sp-lg">CS</span>
+                        <div class="sp-legend-text">
+                            <strong>CS (All)</strong>
+                            <span>Supervises all sessions</span>
+                        </div>
+                    </div>
+                    <div class="sp-legend-item" title="Case Supervisor for non-solo (audited) sessions only">
+                        <span class="sp-mx-csr sp-lg">CSR</span>
+                        <div class="sp-legend-text">
+                            <strong>CS Review</strong>
+                            <span>Non-solo sessions only</span>
+                        </div>
+                    </div>
+                    <div class="sp-legend-item" title="Case Supervisor for solo sessions only">
+                        <span class="sp-mx-css sp-lg">CSS</span>
+                        <div class="sp-legend-text">
+                            <strong>CS Solo</strong>
+                            <span>Solo sessions only</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="sp-legend-section">
+                    <div class="sp-legend-section-title">Combined Roles</div>
+                    <div class="sp-legend-item" title="Both auditor and case supervisor for all session types">
+                        <span class="sp-mx-both sp-lg">A+CS</span>
+                        <div class="sp-legend-text">
+                            <strong>Auditor + CS</strong>
+                            <span>Both roles, all sessions</span>
+                        </div>
+                    </div>
+                    <div class="sp-legend-item" title="Auditor + case supervisor for non-solo sessions only">
+                        <span class="sp-mx-bothr sp-lg">A+R</span>
+                        <div class="sp-legend-text">
+                            <strong>Auditor + CS Review</strong>
+                            <span>Both roles, non-solo only</span>
+                        </div>
+                    </div>
+                    <div class="sp-legend-item" title="Auditor + case supervisor for solo sessions only">
+                        <span class="sp-mx-boths sp-lg">A+S</span>
+                        <div class="sp-legend-text">
+                            <strong>Auditor + CS Solo</strong>
+                            <span>Both roles, solo only</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="sp-legend-section">
+                    <div class="sp-legend-section-title">Other</div>
+                    <div class="sp-legend-item" title="No permission assigned — click to grant">
+                        <span class="sp-mx-empty sp-lg"></span>
+                        <div class="sp-legend-text">
+                            <strong>No Permission</strong>
+                            <span>Click cell to assign</span>
+                        </div>
+                    </div>
+                    <div class="sp-legend-item" title="Privileged users can open any PC folder regardless of assignments">
+                        <span class="sp-privileged-badge">✦</span>
+                        <div class="sp-legend-text">
+                            <strong>Privileged</strong>
+                            <span>Unrestricted folder access</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="sp-legend-hint">
+                    <i class="ri-cursor-line"></i> Click a cell to cycle through roles
                 </div>
             </div>
+        </div>
         }
 
         @* ══════════════════════════════════════════════════════════
@@ -830,10 +910,107 @@
         color: #6b7280;
         flex-wrap: wrap;
     }
-    .sp-mx-aud  { display:inline-flex; align-items:center; justify-content:center; width:22px; height:18px; background:#2d6a9f; color:#fff; border-radius:3px; font-size:.62rem; font-weight:700; }
-    .sp-mx-cs   { display:inline-flex; align-items:center; justify-content:center; width:22px; height:18px; background:#198754; color:#fff; border-radius:3px; font-size:.62rem; font-weight:700; }
-    .sp-mx-both { display:inline-flex; align-items:center; justify-content:center; width:30px; height:18px; background:#7c3aed; color:#fff; border-radius:3px; font-size:.55rem; font-weight:700; }
-    .sp-mx-aud.sp-lg, .sp-mx-cs.sp-lg, .sp-mx-both.sp-lg { width:34px; height:20px; font-size:.65rem; }
+
+    /* ── Legend Panel ── */
+    .sp-matrix-with-legend { display: flex; gap: 16px; align-items: flex-start; }
+    .sp-matrix-with-legend > .sp-card { flex: 1; min-width: 0; overflow: auto; }
+    .sp-legend-panel {
+        flex: 0 0 220px;
+        background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 16px 14px;
+        position: sticky;
+        top: 80px;
+        box-shadow: 0 4px 16px rgba(0,0,0,.06);
+    }
+    .sp-legend-title {
+        font-size: .82rem;
+        font-weight: 700;
+        color: #1e293b;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding-bottom: 8px;
+        border-bottom: 2px solid #e2e8f0;
+    }
+    .sp-legend-title i { font-size: 1rem; color: #3b82f6; }
+    .sp-legend-section { margin-bottom: 10px; }
+    .sp-legend-section-title {
+        font-size: .62rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .8px;
+        color: #94a3b8;
+        margin-bottom: 6px;
+    }
+    .sp-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 6px;
+        border-radius: 8px;
+        cursor: default;
+        transition: all .15s ease;
+    }
+    .sp-legend-item:hover {
+        background: rgba(59,130,246,.08);
+        transform: translateX(2px);
+    }
+    .sp-legend-text {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        min-width: 0;
+    }
+    .sp-legend-text strong {
+        font-size: .72rem;
+        font-weight: 600;
+        color: #334155;
+        line-height: 1.2;
+    }
+    .sp-legend-text span {
+        font-size: .62rem;
+        color: #94a3b8;
+        line-height: 1.2;
+    }
+    .sp-legend-hint {
+        margin-top: 10px;
+        padding-top: 8px;
+        border-top: 1px dashed #cbd5e1;
+        font-size: .65rem;
+        color: #64748b;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .sp-legend-hint i { color: #3b82f6; font-size: .78rem; }
+    @@media (max-width: 1200px) {
+        .sp-matrix-with-legend { flex-direction: column; }
+        .sp-legend-panel { flex: none; width: 100%; position: static; }
+    }
+
+    [data-theme-mode="dark"] .sp-legend-panel {
+        background: linear-gradient(135deg, #1e293b, #0f172a);
+        border-color: #334155;
+        box-shadow: 0 4px 16px rgba(0,0,0,.3);
+    }
+    [data-theme-mode="dark"] .sp-legend-title { color: #e2e8f0; border-bottom-color: #334155; }
+    [data-theme-mode="dark"] .sp-legend-section-title { color: #64748b; }
+    [data-theme-mode="dark"] .sp-legend-text strong { color: #e2e8f0; }
+    [data-theme-mode="dark"] .sp-legend-text span { color: #64748b; }
+    [data-theme-mode="dark"] .sp-legend-item:hover { background: rgba(59,130,246,.12); }
+    [data-theme-mode="dark"] .sp-legend-hint { border-top-color: #334155; color: #94a3b8; }
+
+    .sp-mx-aud   { display:inline-flex; align-items:center; justify-content:center; width:22px; height:18px; background:#2d6a9f; color:#fff; border-radius:3px; font-size:.62rem; font-weight:700; }
+    .sp-mx-cs    { display:inline-flex; align-items:center; justify-content:center; width:22px; height:18px; background:#198754; color:#fff; border-radius:3px; font-size:.62rem; font-weight:700; }
+    .sp-mx-csr   { display:inline-flex; align-items:center; justify-content:center; width:26px; height:18px; background:#0d9488; color:#fff; border-radius:3px; font-size:.55rem; font-weight:700; }
+    .sp-mx-css   { display:inline-flex; align-items:center; justify-content:center; width:26px; height:18px; background:#d97706; color:#fff; border-radius:3px; font-size:.55rem; font-weight:700; }
+    .sp-mx-both  { display:inline-flex; align-items:center; justify-content:center; width:30px; height:18px; background:#7c3aed; color:#fff; border-radius:3px; font-size:.55rem; font-weight:700; }
+    .sp-mx-bothr { display:inline-flex; align-items:center; justify-content:center; width:26px; height:18px; background:#6d28d9; color:#fff; border-radius:3px; font-size:.55rem; font-weight:700; }
+    .sp-mx-boths { display:inline-flex; align-items:center; justify-content:center; width:26px; height:18px; background:#9333ea; color:#fff; border-radius:3px; font-size:.55rem; font-weight:700; }
+    .sp-mx-aud.sp-lg, .sp-mx-cs.sp-lg, .sp-mx-csr.sp-lg, .sp-mx-css.sp-lg, .sp-mx-both.sp-lg, .sp-mx-bothr.sp-lg, .sp-mx-boths.sp-lg { width:34px; height:20px; font-size:.6rem; }
     .sp-mx-allow-all.sp-lg, .sp-mx-empty.sp-lg { width: 14px; height: 14px; }
     .sp-cap-select { width: auto; min-width: 90px; }
 </style>
@@ -980,27 +1157,33 @@
 
         var pcName = _allPcs.FirstOrDefault(p => p.PcId == pcId)?.FullName ?? $"PC {pcId}";
         var existing = aud.ApprovedPcs.FirstOrDefault(p => p.PcId == pcId);
+        var isCs = StaffRoles.IsCS(aud.StaffRole);
+        // Click cycle for CS staff: Auditor → CS → CSReview → CSSolo → AuditorAndCS → AuditorAndCSReview → AuditorAndCSSolo → Remove
+        // Click cycle for non-CS staff: Auditor → Remove
+        string? nextCap = (existing?.WorkCapacity, isCs) switch
+        {
+            (null, _)                              => StaffRoles.Auditor,
+            (StaffRoles.Auditor, true)             => StaffRoles.CS,
+            (StaffRoles.CS, true)                  => StaffRoles.CSReview,
+            (StaffRoles.CSReview, true)            => StaffRoles.CSSolo,
+            (StaffRoles.CSSolo, true)              => StaffRoles.AuditorAndCS,
+            (StaffRoles.AuditorAndCS, true)        => StaffRoles.AuditorAndCSReview,
+            (StaffRoles.AuditorAndCSReview, true)  => StaffRoles.AuditorAndCSSolo,
+            _                                      => null, // remove
+        };
+
         if (existing is null)
         {
-            // No perm → grant as Auditor
-            Console.WriteLine($"[StaffPermissions] MatrixToggle: granted Auditor — auditor='{aud.AuditorName}' (id={aud.AuditorId}) PC='{pcName}' (id={pcId}) by '{_username}'");
-            DashSvc.AddApprovedPermission(aud.AuditorId, pcId, StaffRoles.Auditor);
+            Console.WriteLine($"[StaffPermissions] MatrixToggle: granted {nextCap} — auditor='{aud.AuditorName}' (id={aud.AuditorId}) PC='{pcName}' (id={pcId}) by '{_username}'");
+            DashSvc.AddApprovedPermission(aud.AuditorId, pcId, nextCap!);
         }
-        else if (existing.WorkCapacity == StaffRoles.Auditor && StaffRoles.IsCS(aud.StaffRole))
+        else if (nextCap != null)
         {
-            // Auditor → CS (only for CS staff)
-            Console.WriteLine($"[StaffPermissions] MatrixToggle: upgraded Auditor→CS — auditor='{aud.AuditorName}' (id={aud.AuditorId}) PC='{pcName}' (id={pcId}) by '{_username}'");
-            DashSvc.AddApprovedPermission(aud.AuditorId, pcId, StaffRoles.CS);
-        }
-        else if (existing.WorkCapacity == StaffRoles.CS && StaffRoles.IsCS(aud.StaffRole))
-        {
-            // CS → AuditorAndCS (only for CS staff)
-            Console.WriteLine($"[StaffPermissions] MatrixToggle: upgraded CS→AuditorAndCS — auditor='{aud.AuditorName}' (id={aud.AuditorId}) PC='{pcName}' (id={pcId}) by '{_username}'");
-            DashSvc.AddApprovedPermission(aud.AuditorId, pcId, StaffRoles.AuditorAndCS);
+            Console.WriteLine($"[StaffPermissions] MatrixToggle: {existing.WorkCapacity}→{nextCap} — auditor='{aud.AuditorName}' (id={aud.AuditorId}) PC='{pcName}' (id={pcId}) by '{_username}'");
+            DashSvc.AddApprovedPermission(aud.AuditorId, pcId, nextCap);
         }
         else
         {
-            // Auditor (non-CS staff) or AuditorAndCS → remove
             Console.WriteLine($"[StaffPermissions] MatrixToggle: removed '{existing.WorkCapacity}' — auditor='{aud.AuditorName}' (id={aud.AuditorId}) PC='{pcName}' (id={pcId}) by '{_username}'");
             DashSvc.RemovePermission(existing.Id);
         }
@@ -1008,6 +1191,51 @@
         _matrixAuditors = _auditors.Where(a => a.StaffRole != StaffRoles.Solo).ToList();
         _soloPcIds = _auditors.Where(a => a.StaffRole == StaffRoles.Solo).Select(a => a.AuditorId).ToHashSet();
     }
+
+    // ── Capacity display helpers ──
+    static string CapLabel(string cap) => cap switch
+    {
+        StaffRoles.Auditor            => "A",
+        StaffRoles.CS                 => "CS",
+        StaffRoles.CSReview           => "CSR",
+        StaffRoles.CSSolo             => "CSS",
+        StaffRoles.AuditorAndCS       => "A+CS",
+        StaffRoles.AuditorAndCSReview => "A+R",
+        StaffRoles.AuditorAndCSSolo   => "A+S",
+        _ => "?"
+    };
+
+    string CellTooltip(AuditorPermGroup aud, int pcId, bool hasPerm)
+    {
+        var pcName = _allPcs.FirstOrDefault(p => p.PcId == pcId)?.FullName ?? $"PC {pcId}";
+        if (!hasPerm) return $"{aud.AuditorName} — {pcName}";
+        var cap = aud.ApprovedPcs.FirstOrDefault(p => p.PcId == pcId)?.WorkCapacity ?? StaffRoles.Auditor;
+        return $"{aud.AuditorName} — {pcName} [{CapTooltip(cap)}]";
+    }
+
+    static string CapTooltip(string cap) => cap switch
+    {
+        StaffRoles.Auditor            => "Auditor",
+        StaffRoles.CS                 => "CS (all sessions)",
+        StaffRoles.CSReview           => "CS Review (non-solo only)",
+        StaffRoles.CSSolo             => "CS Solo (solo only)",
+        StaffRoles.AuditorAndCS       => "Auditor + CS (all sessions)",
+        StaffRoles.AuditorAndCSReview => "Auditor + CS Review (non-solo only)",
+        StaffRoles.AuditorAndCSSolo   => "Auditor + CS Solo (solo only)",
+        _ => cap
+    };
+
+    static string CapCssClass(string cap) => cap switch
+    {
+        StaffRoles.Auditor            => "sp-mx-aud",
+        StaffRoles.CS                 => "sp-mx-cs",
+        StaffRoles.CSReview           => "sp-mx-csr",
+        StaffRoles.CSSolo             => "sp-mx-css",
+        StaffRoles.AuditorAndCS       => "sp-mx-both",
+        StaffRoles.AuditorAndCSReview => "sp-mx-bothr",
+        StaffRoles.AuditorAndCSSolo   => "sp-mx-boths",
+        _ => "sp-mx-aud"
+    };
 
     // ── Filter helpers ──
     private bool PcHasAuditor(int pcId)
