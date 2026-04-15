@@ -1417,7 +1417,10 @@ window.pcfViewer = {
         }
 
         // Insert into pane.pages array
-        const newPage = { canvas, overlay, vp: refPg.vp, pageIdx: insertIdx, scale: refPg.scale };
+        // Store natural PDF page dimensions (points) so the server can create the correct page size
+        const naturalPtW = refPg.vp ? refPg.vp.width / (refPg.scale || pane.baseScale) : cssW;
+        const naturalPtH = refPg.vp ? refPg.vp.height / (refPg.scale || pane.baseScale) : cssH;
+        const newPage = { canvas, overlay, vp: refPg.vp, pageIdx: insertIdx, scale: refPg.scale, pdfPtW: naturalPtW, pdfPtH: naturalPtH };
         pane.pages.splice(insertIdx, 0, newPage);
 
         // Re-index all pages and annotations after insertion
@@ -1505,7 +1508,7 @@ window.pcfViewer = {
                 viewer.appendChild(wrapper);
             }
 
-            const newPage = { canvas, overlay, vp, pageIdx: insertIdx, scale: insertScale, srcDoc: insertDoc, srcPageNum: i };
+            const newPage = { canvas, overlay, vp, pageIdx: insertIdx, scale: insertScale, srcDoc: insertDoc, srcPageNum: i, pdfPtW: naturalVp.width, pdfPtH: naturalVp.height };
             pane.pages.splice(insertIdx, 0, newPage);
 
             this._attachEvents(overlay, insertIdx, paneId);
@@ -1595,10 +1598,12 @@ window.pcfViewer = {
                     this._drawStroke(fctx, ann.stroke);
                 }
                 if (Math.abs(strokeDpr - 1) > 0.01) fctx.setTransform(1, 0, 0, 1, 0, 0);
-                pages.push({
+                const entry = {
                     action: 'full_new', srcPageIdx,
                     w: fc.width, h: fc.height, dataUrl: fc.toDataURL('image/png')
-                });
+                };
+                if (pg.pdfPtW > 0 && pg.pdfPtH > 0) { entry.pdfPtW = pg.pdfPtW; entry.pdfPtH = pg.pdfPtH; }
+                pages.push(entry);
             } else if (hasOverlay) {
                 // Original page with draw strokes: send transparent annotation overlay only.
                 // Text is excluded entirely — it lives in the sidecar and is never burned into the PDF.
@@ -1896,7 +1901,9 @@ window.pcfViewer = {
                 const arr = new Uint8Array(byteStr.length);
                 for (let j = 0; j < byteStr.length; j++) arr[j] = byteStr.charCodeAt(j);
                 formData.append('img_' + imgIdx, new Blob([arr], { type: 'image/png' }), 'img_' + imgIdx + '.png');
-                metaForSend.pages.push({ action: p.action, srcPageIdx: p.srcPageIdx ?? -1, w: p.w, h: p.h, imgIdx });
+                const entry = { action: p.action, srcPageIdx: p.srcPageIdx ?? -1, w: p.w, h: p.h, imgIdx };
+                if (p.pdfPtW > 0 && p.pdfPtH > 0) { entry.pdfPtW = p.pdfPtW; entry.pdfPtH = p.pdfPtH; }
+                metaForSend.pages.push(entry);
                 imgIdx++;
             }
         }

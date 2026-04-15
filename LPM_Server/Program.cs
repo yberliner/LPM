@@ -1203,8 +1203,17 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
                 await imgFile.CopyToAsync(imgMs);
                 var imgBytes = imgMs.ToArray();
                 var page = newDoc.AddPage();
-                page.Width  = PdfSharpCore.Drawing.XUnit.FromPoint(pg.W / pxScale);
-                page.Height = PdfSharpCore.Drawing.XUnit.FromPoint(pg.H / pxScale);
+                // Use natural PDF page dimensions (points) if provided, otherwise fall back to pixel-based calculation
+                if (pg.PdfPtW is > 0 && pg.PdfPtH is > 0)
+                {
+                    page.Width  = PdfSharpCore.Drawing.XUnit.FromPoint(pg.PdfPtW.Value);
+                    page.Height = PdfSharpCore.Drawing.XUnit.FromPoint(pg.PdfPtH.Value);
+                }
+                else
+                {
+                    page.Width  = PdfSharpCore.Drawing.XUnit.FromPoint(pg.W / pxScale);
+                    page.Height = PdfSharpCore.Drawing.XUnit.FromPoint(pg.H / pxScale);
+                }
                 using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page);
                 var xImg = PdfSharpCore.Drawing.XImage.FromStream(() => new MemoryStream(imgBytes));
                 gfx.DrawImage(xImg, 0, 0, page.Width, page.Height);
@@ -1944,7 +1953,7 @@ LPM.Services.FolderService.EnsureDummyProgramInserts();
 app.Run();
 
 // Models for overlay-based annotation save
-record AnnPageInfo(string Action, int SrcPageIdx, int W, int H, int ImgIdx, string? Color = null);
+record AnnPageInfo(string Action, int SrcPageIdx, int W, int H, int ImgIdx, string? Color = null, double? PdfPtW = null, double? PdfPtH = null);
 record AnnSaveMeta(int TotalPages, AnnPageInfo[] Pages);
 
 static class PdfBgHelper

@@ -91,7 +91,7 @@
     <script src="/js/javaScriptInterop.js?v=4"></script>
 
     <!-- PC Folder viewer -->
-    <script src="/js/pcf-viewer.js?v=59"></script>
+    <script src="/js/pcf-viewer.js?v=60"></script>
 
     <script src="/_framework/blazor.server.js"></script>
     <script>
@@ -116,7 +116,9 @@
                     const resp = await fetch(p.dataUrl);
                     const blob = await resp.blob();
                     formData.append('img_' + imgIdx, blob, 'img_' + imgIdx + '.png');
-                    metaForSend.pages.push({ action: p.action, srcPageIdx: p.srcPageIdx ?? -1, w: p.w, h: p.h, imgIdx });
+                    const entry = { action: p.action, srcPageIdx: p.srcPageIdx ?? -1, w: p.w, h: p.h, imgIdx };
+                    if (p.pdfPtW > 0 && p.pdfPtH > 0) { entry.pdfPtW = p.pdfPtW; entry.pdfPtH = p.pdfPtH; }
+                    metaForSend.pages.push(entry);
                     imgIdx++;
                 }
             }
@@ -143,7 +145,9 @@
                         ctx.drawImage(pg.overlay, 0, 0);
                         const blob = await new Promise(res => off.toBlob(res, 'image/png'));
                         rfd.append('img_' + ri, blob, 'img_' + ri + '.png');
-                        rmeta.pages.push({ action: 'full_new', srcPageIdx: -1, w: pg.canvas.width, h: pg.canvas.height, imgIdx: ri });
+                        const rentry = { action: 'full_new', srcPageIdx: -1, w: pg.canvas.width, h: pg.canvas.height, imgIdx: ri };
+                        if (pg.pdfPtW > 0 && pg.pdfPtH > 0) { rentry.pdfPtW = pg.pdfPtW; rentry.pdfPtH = pg.pdfPtH; }
+                        rmeta.pages.push(rentry);
                         ri++;
                     }
                     rfd.append('meta', JSON.stringify(rmeta));
