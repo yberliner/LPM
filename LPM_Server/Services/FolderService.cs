@@ -424,6 +424,58 @@ public class FolderService
             });
     }
 
+    /// <summary>Rename the PC folder on disk to match updated name (e.g. "106-Old Name" → "106-New Name"). Also renames Solo folder if it exists.</summary>
+    public void RenamePcFolder(int pcId, string newFirstName, string newLastName)
+    {
+        var fn = PcService.CapitalizeName(newFirstName);
+        var ln = PcService.CapitalizeName(newLastName);
+        var fullName = string.IsNullOrEmpty(ln) ? fn : $"{fn} {ln}";
+        var sanitized = SanitizeName(fullName);
+        if (string.IsNullOrWhiteSpace(sanitized)) return;
+        var newDirName = $"{pcId}-{sanitized}";
+
+        var regular = FindPcFolder(pcId);
+        if (regular != null)
+        {
+            var dest = Path.Combine(_basePath, newDirName);
+            if (!string.Equals(regular, dest, StringComparison.Ordinal))
+            {
+                // Windows: can't rename to same name with different case directly — use temp
+                if (string.Equals(regular, dest, StringComparison.OrdinalIgnoreCase))
+                {
+                    var tmp = regular + "_tmp_rename";
+                    Directory.Move(regular, tmp);
+                    Directory.Move(tmp, dest);
+                }
+                else
+                {
+                    Directory.Move(regular, dest);
+                }
+                Console.WriteLine($"[FolderService] Renamed PC folder '{Path.GetFileName(regular)}' → '{newDirName}'");
+            }
+        }
+
+        var solo = FindSoloPcFolder(pcId);
+        if (solo != null)
+        {
+            var soloDest = Path.Combine(_basePath, $"{newDirName} Solo");
+            if (!string.Equals(solo, soloDest, StringComparison.Ordinal))
+            {
+                if (string.Equals(solo, soloDest, StringComparison.OrdinalIgnoreCase))
+                {
+                    var tmp = solo + "_tmp_rename";
+                    Directory.Move(solo, tmp);
+                    Directory.Move(tmp, soloDest);
+                }
+                else
+                {
+                    Directory.Move(solo, soloDest);
+                }
+                Console.WriteLine($"[FolderService] Renamed Solo folder '{Path.GetFileName(solo)}' → '{Path.GetFileName(soloDest)}'");
+            }
+        }
+    }
+
     /// <summary>Delete Front_Cover and Back_Cover for every PC folder (regular and solo) on the server.</summary>
     public void DeleteAllCoverDirectories()
     {

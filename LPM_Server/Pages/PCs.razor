@@ -8,6 +8,7 @@
 @inject AuthenticationStateProvider AuthState
 @inject IJSRuntime JS
 @inject LPM.Services.CompletionService CompletionSvc
+@inject LPM.Services.FolderService FolderSvc
 @inject PdfService PdfSvc
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
@@ -3791,6 +3792,7 @@
             d.FirstName, d.LastName, d.Nick,
             d.Phone, d.Email, d.Notes,
             d.DateOfBirth, d.Gender, orgId: d.OrgId > 0 ? d.OrgId : null, changedBy: _username);
+        FolderSvc.RenamePcFolder(_selPcId!.Value, d.FirstName, d.LastName);
         _allPcsEx = PcSvc.GetAllPcsExtended();
         _balances = PcSvc.GetAllPcBalances();
         _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
