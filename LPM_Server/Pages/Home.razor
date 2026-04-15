@@ -2106,8 +2106,8 @@
         }
         if (_userId.HasValue)
         {
-            _isAuditor     = DashSvc.IsAuditor(_userId.Value);
-            _isCS          = DashSvc.IsCS(_userId.Value);
+            _isAuditor     = StaffRoles.IsAuditorOrCS(staffRole);
+            _isCS          = StaffRoles.IsCS(staffRole);
             _isSeniorCS    = staffRole == StaffRoles.SeniorCS;
             _isSoloAuditor = _isSolo;
             if (_isSoloAuditor)
