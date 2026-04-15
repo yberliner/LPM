@@ -2231,14 +2231,15 @@ public class DashboardService
         var soloFilter = isSolo ? "AND fs.AuditorId IS NULL" : "AND fs.AuditorId IS NOT NULL";
         cmd.CommandText = $@"
             SELECT COALESCE(s.Name, ''),
-                   COALESCE(s.SessionDate, SUBSTR(fs.CreatedAt, 1, 10)),
+                   COALESCE(NULLIF(fs.SessionDate,''), s.SessionDate, SUBSTR(fs.CreatedAt, 1, 10)),
                    fs.SummaryHtml,
-                   COALESCE(s.LengthSeconds, 0), COALESCE(s.AdminSeconds, 0)
+                   COALESCE(NULLIF(fs.LengthSeconds,0), s.LengthSeconds, 0),
+                   COALESCE(NULLIF(fs.AdminSeconds,0), s.AdminSeconds, 0)
             FROM sess_folder_summary fs
             LEFT JOIN sess_sessions s ON s.SessionId = fs.SessionId
             WHERE fs.PcId = @pcId AND fs.SummaryHtml IS NOT NULL AND fs.SummaryHtml != ''
             {soloFilter}
-            ORDER BY fs.CreatedAt DESC";
+            ORDER BY COALESCE(NULLIF(fs.SessionDate,''), fs.CreatedAt) DESC";
         cmd.Parameters.AddWithValue("@pcId", pcId);
         var list = new List<SessionSummaryInfo>();
         using var r = cmd.ExecuteReader();
@@ -2269,17 +2270,18 @@ public class DashboardService
         cmd.CommandText = $@"
             SELECT fs.Id, COALESCE(s.SessionId, 0),
                    COALESCE(s.Name, ''),
-                   COALESCE(s.SessionDate, SUBSTR(fs.CreatedAt, 1, 10)),
+                   COALESCE(NULLIF(fs.SessionDate,''), s.SessionDate, SUBSTR(fs.CreatedAt, 1, 10)),
                    COALESCE(fs.CreatedAt, ''),
                    fs.SummaryHtml,
-                   COALESCE(s.LengthSeconds, 0), COALESCE(s.AdminSeconds, 0),
+                   COALESCE(NULLIF(fs.LengthSeconds,0), s.LengthSeconds, 0),
+                   COALESCE(NULLIF(fs.AdminSeconds,0), s.AdminSeconds, 0),
                    COALESCE(TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')), '')
             FROM sess_folder_summary fs
             LEFT JOIN sess_sessions s ON s.SessionId = fs.SessionId
             LEFT JOIN core_persons p ON p.PersonId = fs.AuditorId
             WHERE fs.PcId = @pcId AND fs.SummaryHtml IS NOT NULL AND fs.SummaryHtml != ''
             {soloFilter}
-            ORDER BY fs.CreatedAt DESC";
+            ORDER BY COALESCE(NULLIF(fs.SessionDate,''), fs.CreatedAt) DESC";
         cmd.Parameters.AddWithValue("@pcId", pcId);
         var list = new List<SessionSummaryEditInfo>();
         using var r = cmd.ExecuteReader();
@@ -2305,20 +2307,24 @@ public class DashboardService
         cmd.ExecuteNonQuery();
     }
 
-    public void AddFolderSummary(int? sessionId, int pcId, int? auditorId, string summaryHtml, string? arfJson = null, string? sessionDate = null)
+    public void AddFolderSummary(int? sessionId, int pcId, int? auditorId, string summaryHtml, string? arfJson = null, string? sessionDate = null,
+        int? lengthSeconds = null, int? adminSeconds = null, string? folderSummaryDate = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO sess_folder_summary (SessionId, PcId, AuditorId, SummaryHtml, CreatedAt, ArfJson)
-            VALUES (@sid, @pcId, @audId, @html, @createdAt, @arfJson)";
+            INSERT INTO sess_folder_summary (SessionId, PcId, AuditorId, SummaryHtml, CreatedAt, ArfJson, LengthSeconds, AdminSeconds, SessionDate)
+            VALUES (@sid, @pcId, @audId, @html, @createdAt, @arfJson, @lenSec, @admSec, @fsDate)";
         cmd.Parameters.AddWithValue("@sid", (object?)sessionId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@pcId", pcId);
         cmd.Parameters.AddWithValue("@audId", (object?)auditorId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@html", summaryHtml);
         cmd.Parameters.AddWithValue("@createdAt", sessionDate ?? DateTime.UtcNow.AddHours(2).ToString("yyyy-MM-dd HH:mm:ss"));
         cmd.Parameters.AddWithValue("@arfJson", (object?)arfJson ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@lenSec", (object?)lengthSeconds ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@admSec", (object?)adminSeconds ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@fsDate", (object?)folderSummaryDate ?? DBNull.Value);
         cmd.ExecuteNonQuery();
     }
 

@@ -1463,33 +1463,80 @@
 
                         @if (_isSoloUser)
                         {
-                        @* ── Solo: simplified fields (no full ARF) ── *@
+                        @* ── Solo: multi-section (date + length + admin + summary) ── *@
                         <hr style="border-color:#334155; margin:4px 0 12px;" />
 
-                        <div class="arf-row">
-                            <div class="arf-field">
-                                <span class="arf-lbl arf-lbl-fixed" style="font-weight:600; color:#cbd5e1; font-size:.85rem;">
-                                    Session Length
-                                    @if (string.IsNullOrWhiteSpace(_arfSessionLength))
-                                    {
-                                        <span style="color:#ef4444;font-weight:700;margin-left:2px;">*</span>
-                                    }
-                                </span>
-                                <input type="text" inputmode="numeric" maxlength="5"
-                                       class="form-control form-control-sm arf-time-input"
-                                       style="width:80px; @(string.IsNullOrWhiteSpace(_arfSessionLength) ? "border:2px solid #ef4444 !important;background:rgba(239,68,68,.08) !important;" : "")"
-                                       placeholder="H:MM"
-                                       value="@_arfSessionLength"
-                                       @oninput="e => _arfSessionLength = e.Value?.ToString() ?? string.Empty" />
+                        @for (int si = 0; si < _soloSections.Count; si++)
+                        {
+                            var idx = si;
+                            var sec = _soloSections[idx];
+                            var secLabel = _soloSections.Count > 1 ? $"Section {idx + 1}" : "";
+                            <div class="solo-section @(idx > 0 ? "solo-section-extra" : "")">
+                                @if (_soloSections.Count > 1)
+                                {
+                                    <div class="solo-section-header">
+                                        <span class="solo-section-badge">@secLabel</span>
+                                        <button class="solo-section-remove" title="Remove this section"
+                                                @onclick="() => _soloSections.RemoveAt(idx)">
+                                            <i class="ri-close-circle-line"></i>
+                                        </button>
+                                    </div>
+                                }
+                                <div class="solo-section-fields">
+                                    <div class="solo-field">
+                                        <label class="solo-field-label">Date</label>
+                                        <input type="date" class="form-control form-control-sm solo-input"
+                                               value="@sec.Date"
+                                               @onchange="e => { sec.Date = e.Value?.ToString() ?? SoloTodayStr(); }" />
+                                    </div>
+                                    <div class="solo-field">
+                                        <label class="solo-field-label">
+                                            Length
+                                            @if (string.IsNullOrWhiteSpace(sec.SessionLength))
+                                            {
+                                                <span class="solo-required">*</span>
+                                            }
+                                        </label>
+                                        <input type="text" inputmode="numeric" maxlength="5"
+                                               class="form-control form-control-sm solo-input solo-time @(string.IsNullOrWhiteSpace(sec.SessionLength) ? "solo-input-error" : "")"
+                                               placeholder="H:MM"
+                                               value="@sec.SessionLength"
+                                               @oninput="e => sec.SessionLength = e.Value?.ToString() ?? string.Empty" />
+                                    </div>
+                                    <div class="solo-field">
+                                        <label class="solo-field-label">
+                                            Admin
+                                            @if (string.IsNullOrWhiteSpace(sec.AdminTime))
+                                            {
+                                                <span class="solo-required">*</span>
+                                            }
+                                        </label>
+                                        <input type="text" inputmode="numeric" maxlength="5"
+                                               class="form-control form-control-sm solo-input solo-time @(string.IsNullOrWhiteSpace(sec.AdminTime) ? "solo-input-error" : "")"
+                                               placeholder="H:MM"
+                                               value="@sec.AdminTime"
+                                               @oninput="e => sec.AdminTime = e.Value?.ToString() ?? string.Empty" />
+                                    </div>
+                                </div>
+                                <div class="solo-summary-wrap">
+                                    <label class="solo-field-label">
+                                        Summary
+                                        @if (string.IsNullOrWhiteSpace(sec.Summary))
+                                        {
+                                            <span class="solo-required">*</span>
+                                        }
+                                    </label>
+                                    <textarea class="form-control form-control-sm solo-summary @(string.IsNullOrWhiteSpace(sec.Summary) ? "solo-input-error" : "")"
+                                              rows="2" placeholder="Session summary..."
+                                              value="@sec.Summary"
+                                              @oninput="e => sec.Summary = e.Value?.ToString() ?? string.Empty"></textarea>
+                                </div>
                             </div>
-                        </div>
+                        }
 
-                        <div class="mt-3">
-                            <span class="arf-lbl" style="font-weight:600; color:#cbd5e1; font-size:.85rem;">Summary</span>
-                            <div id="arf-summary-wrap">
-                                <div id="arf-summary-editor"></div>
-                            </div>
-                        </div>
+                        <button class="solo-add-btn" @onclick="() => _soloSections.Add(new SoloSection())">
+                            <i class="ri-add-circle-line me-1"></i> Add session summary
+                        </button>
                         }
                         else
                         {
@@ -1799,40 +1846,33 @@
                     {
                         @if (_isSoloUser)
                         {
-                        @* ── Solo footer: Back, Cancel, Admin Time + Go ── *@
+                        @* ── Solo footer: Back, Cancel, Go with validation ── *@
                         <div class="d-flex align-items-center w-100 gap-2 wiz-step3-footer">
                             <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
                                     @onclick="() => { _importStep = 1; }">
                                 <i class="ri-arrow-left-s-line"></i> Back
                             </button>
                             <button class="btn btn-sm btn-outline-secondary" @onclick="CloseWizard">@LS.T("common.cancel")</button>
-                            <div class="d-flex align-items-center gap-2 ms-auto wiz-admin-time-group">
-                                <span style="font-weight:600; color:#cbd5e1; font-size:.85rem; white-space:nowrap;">
-                                    Admin Time
-                                    @if (string.IsNullOrWhiteSpace(_arfAdminTime))
-                                    {
-                                        <span style="color:#ef4444;font-weight:700;margin-left:2px;">*</span>
-                                    }
-                                </span>
-                                <input type="text" inputmode="numeric" maxlength="5"
-                                       class="form-control form-control-sm arf-time-input"
-                                       style="width:72px; color:#e2e8f0; background:#1e293b; border-color:#475569; @(string.IsNullOrWhiteSpace(_arfAdminTime) ? "border:2px solid #ef4444 !important;background:rgba(239,68,68,.08) !important;" : "")"
-                                       placeholder="H:MM"
-                                       value="@_arfAdminTime"
-                                       @oninput="e => _arfAdminTime = e.Value?.ToString() ?? string.Empty" />
-                                @{
-                                    var soloGoDisabled = _importSessionBytes == null
-                                        || string.IsNullOrWhiteSpace(_arfSessionLength)
-                                        || string.IsNullOrWhiteSpace(_arfAdminTime)
-                                        || _importDuplicate
-                                        || !string.IsNullOrEmpty(_importNameEditError);
-                                }
+                            @{
+                                var soloReasons = GetSoloGoReasons();
+                            }
+                            <div class="wiz-next-wrap ms-auto">
                                 <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                                        disabled="@soloGoDisabled"
-                                        @onclick="ExecuteImport">
-                                    <i class="ri-upload-2-line"></i>
-                                    Go
+                                        disabled="@(soloReasons.Count > 0)"
+                                        @onclick="ExecuteSoloImport">
+                                    <i class="ri-upload-2-line"></i> Go
                                 </button>
+                                @if (soloReasons.Count > 0)
+                                {
+                                    <div class="wiz-next-hover-zone"></div>
+                                    <div class="wiz-next-tooltip">
+                                        <div class="wiz-next-tooltip-title"><i class="ri-error-warning-line"></i> Cannot submit</div>
+                                        @foreach (var reason in soloReasons)
+                                        {
+                                            <div class="wiz-next-tooltip-item"><i class="ri-close-circle-line"></i> @reason</div>
+                                        }
+                                    </div>
+                                }
                             </div>
                         </div>
                         }
@@ -4702,6 +4742,95 @@
     :root[data-theme-mode="light"] .wiz-modal-content .modal-footer {
         border-color: #e2e8f0 !important;
     }
+
+    /* ── Solo multi-section ── */
+    .solo-section {
+        background: rgba(255,255,255,.03);
+        border: 1px solid #334155;
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 10px;
+        transition: border-color .2s;
+    }
+    .solo-section:hover { border-color: #475569; }
+    .solo-section-extra { border-left: 3px solid #6366f1; }
+    .solo-section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+    }
+    .solo-section-badge {
+        font-size: .7rem;
+        font-weight: 700;
+        color: #818cf8;
+        text-transform: uppercase;
+        letter-spacing: .5px;
+    }
+    .solo-section-remove {
+        background: none;
+        border: none;
+        color: #ef4444;
+        cursor: pointer;
+        font-size: 1.1rem;
+        padding: 0;
+        opacity: .6;
+        transition: opacity .15s;
+    }
+    .solo-section-remove:hover { opacity: 1; }
+    .solo-section-fields {
+        display: flex;
+        gap: 10px;
+        align-items: flex-end;
+        flex-wrap: wrap;
+    }
+    .solo-field { display: flex; flex-direction: column; gap: 2px; }
+    .solo-field-label {
+        font-size: .72rem;
+        font-weight: 600;
+        color: #94a3b8;
+    }
+    .solo-required { color: #ef4444; font-weight: 700; margin-left: 2px; }
+    .solo-input {
+        background: #0f172a !important;
+        color: #e2e8f0 !important;
+        border-color: #475569 !important;
+    }
+    .solo-time { width: 72px; text-align: center; }
+    .solo-input-error {
+        border: 2px solid #ef4444 !important;
+        background: rgba(239,68,68,.08) !important;
+    }
+    .solo-summary-wrap { margin-top: 8px; }
+    .solo-summary {
+        background: #0f172a !important;
+        color: #e2e8f0 !important;
+        border-color: #475569 !important;
+        font-size: .82rem;
+        resize: vertical;
+        min-height: 48px;
+    }
+    .solo-add-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        padding: 8px;
+        background: transparent;
+        border: 2px dashed #334155;
+        border-radius: 10px;
+        color: #64748b;
+        font-size: .8rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all .2s;
+        margin-bottom: 8px;
+    }
+    .solo-add-btn:hover {
+        border-color: #6366f1;
+        color: #818cf8;
+        background: rgba(99,102,241,.06);
+    }
     /* Light-mode: reference browser dropdown */
     :root[data-theme-mode="light"] .wiz-modal-content [style*="border:1px solid #3b82f6"] {
         background: #ffffff !important; border-color: #93c5fd !important;
@@ -5641,6 +5770,34 @@
     string           _ufcError  = "";
     List<PcInfo>     _ufcAllPcs = [];
 
+    // ── Solo multi-section state ──
+    class SoloSection
+    {
+        public string Date { get; set; } = DateTime.Today.ToString("yyyy-MM-dd");
+        public string SessionLength { get; set; } = "";
+        public string AdminTime { get; set; } = "";
+        public string Summary { get; set; } = "";
+    }
+    List<SoloSection> _soloSections = [new SoloSection()];
+    static string SoloTodayStr() => DateTime.Today.ToString("yyyy-MM-dd");
+
+    List<string> GetSoloGoReasons()
+    {
+        var reasons = new List<string>();
+        if (_importSessionBytes == null) reasons.Add("Upload a session file");
+        if (_importDuplicate) reasons.Add("Duplicate session — this file already exists");
+        if (!string.IsNullOrEmpty(_importNameEditError)) reasons.Add(_importNameEditError);
+        for (int i = 0; i < _soloSections.Count; i++)
+        {
+            var s = _soloSections[i];
+            var label = _soloSections.Count > 1 ? $"Section {i + 1}" : "Session";
+            if (string.IsNullOrWhiteSpace(s.SessionLength)) reasons.Add($"{label}: Session length is required");
+            if (string.IsNullOrWhiteSpace(s.AdminTime)) reasons.Add($"{label}: Admin time is required");
+            if (string.IsNullOrWhiteSpace(s.Summary)) reasons.Add($"{label}: Summary is required");
+        }
+        return reasons;
+    }
+
     // ── Add Session state ──
     bool _showImportWizard;
     int  _importStep = 1;      // 1 = file upload, 2 = examiner worksheet
@@ -6227,6 +6384,7 @@
         _showImportWizard = true;
         ActivitySvc.RecordActivity(_logUsername, "Opened Add Session wizard", "session");
         // Solo: skip step 1 (PC is auto-set), clear exam report so summary starts empty
+        _soloSections = [new SoloSection()];
         if (_isSoloUser)
         {
             _arfExamReport = "";
@@ -6731,6 +6889,198 @@
                 _importError = $"Drop failed: {ex.Message}";
                 Console.WriteLine($"[Drop] Failed: {ex.Message}");
                 StateHasChanged();
+            }
+        });
+    }
+
+    async Task ExecuteSoloImport()
+    {
+        if (!_msgUserId.HasValue || _importPcId == 0 || _importSessionBytes == null) return;
+        var pcName = _approvedPcs.FirstOrDefault(p => p.PcId == _importPcId)?.FullName ?? $"PC {_importPcId}";
+        ActivitySvc.RecordActivity(_logUsername, $"Clicked Go on Solo Add Session for: {pcName} ({_soloSections.Count} sections)", "session");
+
+        // Capture data
+        var capturedPcId        = _importPcId;
+        var capturedUserId      = _msgUserId.Value;
+        var capturedFileName    = _importNormalizedFileName + ".pdf";
+        var capturedBytes       = _importSessionBytes;
+        var capturedAttachments = _importAttachmentBytes.ToList();
+        var capturedFreeSession = _importFreeSession;
+        var capturedPcName      = pcName;
+        var capturedUsername    = _logUsername;
+        var capturedSections    = _soloSections.Select(s => new
+        {
+            Date = s.Date,
+            LengthSec = ArfTimeToMinutes(FormatArfTime(s.SessionLength.Trim())) * 60,
+            AdminSec = ArfTimeToMinutes(FormatArfTime(s.AdminTime.Trim())) * 60,
+            Summary = s.Summary.Trim()
+        }).ToList();
+
+        // Calculate totals
+        var totalLengthSec = capturedSections.Sum(s => Math.Max(0, s.LengthSec));
+        var totalAdminSec  = capturedSections.Sum(s => Math.Max(0, s.AdminSec));
+        var earliestDate   = capturedSections
+            .Select(s => DateOnly.TryParse(s.Date, out var d) ? d : DateOnly.FromDateTime(DateTime.Today))
+            .Min().ToString("yyyy-MM-dd");
+
+        // Close reference float if open
+        await JSRuntime.InvokeVoidAsync("wizardRef.closeFloat");
+        _refBrowserOpen = false;
+        FolderSvc.ClearScanInbox(_logUsername);
+
+        // Close modal and reset
+        _showImportWizard        = false;
+        _importSessionFile       = null;
+        _importSessionBytes      = null;
+        _importSessionFileName   = "";
+        _importNormalizedFileName = "";
+        _importNormalizedSuffix  = "";
+        _importDateWasPrepended  = false;
+        _importNormalizedDate    = DateTime.Today;
+        _importAttachments.Clear();
+        _importAttachmentBytes.Clear();
+        _importPcId      = 0;
+        _importStep      = 1;
+        _importError     = "";
+        _importSuccess   = "";
+        _refBrowserOpen  = false;
+        _refFileList.Clear();
+
+        var saveLabel = capturedAttachments.Count > 0
+            ? $"Saving to folder (+{capturedAttachments.Count} attachment{(capturedAttachments.Count == 1 ? "" : "s")})"
+            : "Saving to folder";
+        _bgSteps = new List<BgStep>
+        {
+            new("Creating session"),
+            new("Normalizing pages"),
+            new("Generating Next C/S"),
+            new(saveLabel),
+        };
+
+        _bgImportRunning = true;
+        _bgImportDone    = false;
+        _bgImportError   = "";
+        _bgImportLabel   = capturedFileName;
+        StateHasChanged();
+
+        _ = Task.Run(async () =>
+        {
+            async Task Advance(BgStep s, int status)
+            {
+                s.Status = status;
+                await InvokeAsync(StateHasChanged);
+            }
+
+            try
+            {
+                var sessionName   = Path.GetFileNameWithoutExtension(capturedFileName);
+                var sCreate = _bgSteps[0];
+                var sNorm   = _bgSteps[1];
+                var sNextCs = _bgSteps[2];
+                var sSave   = _bgSteps[3];
+
+                sCreate.Status = 1; sNorm.Status = 1;
+                await InvokeAsync(StateHasChanged);
+
+                int    sessionId       = 0;
+                byte[] normalizedBytes = capturedBytes;
+                byte[] nextCsPdfBytes  = Array.Empty<byte>();
+
+                await Task.WhenAll(
+                    Task.Run(async () =>
+                    {
+                        // Create session with total length/admin, earliest date
+                        sessionId = DashSvc.CreateImportedSession(capturedPcId, capturedUserId, sessionName,
+                            totalLengthSec, totalAdminSec, capturedFreeSession, isSolo: true, sessionDate: earliestDate);
+
+                        // Create one folder summary per section
+                        foreach (var sec in capturedSections)
+                        {
+                            var dbDate = DateOnly.TryParse(sec.Date, out var pd) ? pd.ToString("yyyy-MM-dd") : earliestDate;
+                            var html = $"<p>{System.Net.WebUtility.HtmlEncode(sec.Summary)}</p>";
+                            var lenSec = sec.LengthSec > 0 ? sec.LengthSec : (int?)null;
+                            var admSec = sec.AdminSec > 0 ? sec.AdminSec : (int?)null;
+                            DashSvc.AddFolderSummary(sessionId, capturedPcId, null, html,
+                                sessionDate: dbDate,
+                                lengthSeconds: lenSec,
+                                adminSeconds: admSec,
+                                folderSummaryDate: dbDate);
+                        }
+                        await Advance(sCreate, 2);
+                    }),
+                    Task.Run(async () =>
+                    {
+                        var direct = FolderSvc.TryNormalizePdfDirect(capturedBytes);
+                        if (direct != null)
+                        {
+                            normalizedBytes = direct;
+                            await Advance(sNorm, 2);
+                            return;
+                        }
+                        const int repairSec = 20;
+                        int secsLeft = repairSec;
+                        sNorm.SubLabel = $"Ghostscript + LibreOffice: {secsLeft}s";
+                        await InvokeAsync(StateHasChanged);
+                        using var tickerCts = new System.Threading.CancellationTokenSource();
+                        _ = Task.Run(async () =>
+                        {
+                            while (!tickerCts.Token.IsCancellationRequested && secsLeft > 0)
+                            {
+                                await Task.Delay(1000);
+                                if (tickerCts.Token.IsCancellationRequested) break;
+                                secsLeft = Math.Max(0, secsLeft - 1);
+                                sNorm.SubLabel = secsLeft > 0 ? $"Ghostscript + LibreOffice: {secsLeft}s" : "finishing…";
+                                await InvokeAsync(StateHasChanged);
+                            }
+                        });
+                        var gsTask    = Task.Run(() => FolderSvc.RepairAndNormalizeViaGhostscript(capturedBytes, repairSec * 1000));
+                        var loTask    = Task.Run(() => FolderSvc.RepairAndNormalizeViaLibreOffice(capturedBytes, repairSec * 1000));
+                        await Task.WhenAll(gsTask, loTask);
+                        tickerCts.Cancel();
+                        normalizedBytes = gsTask.Result ?? loTask.Result ?? capturedBytes;
+                        await Advance(sNorm, 2);
+                    })
+                );
+
+                // Generate Next C/S (empty content for solo, but PDF with header/footer is still created)
+                sNextCs.Status = 1;
+                await InvokeAsync(StateHasChanged);
+                var firstDate = capturedSections.FirstOrDefault()?.Date is string fd && DateOnly.TryParse(fd, out var fpd)
+                    ? fpd.ToString("dd/MM/yy") : DateTime.Today.ToString("dd/MM/yy");
+                string? nextCsFooter = DashSvc.GetCsNameForPc(capturedPcId);
+                nextCsPdfBytes = PdfSvc.GenerateNextCsPdf(
+                    capturedPcName, firstDate,
+                    capturedUsername, "", "",
+                    footerName: nextCsFooter);
+                await Advance(sNextCs, 2);
+
+                // Save to folder
+                sSave.Status = 1;
+                await InvokeAsync(StateHasChanged);
+                var savedSessionFileName = FolderSvc.SaveSoloUploadedFile(capturedPcId, capturedFileName, normalizedBytes);
+                if (savedSessionFileName == null)
+                    Console.WriteLine($"[SoloImport] Warning: could not save PDF for PC {capturedPcId}");
+                else
+                {
+                    foreach (var (attName, attData, _) in capturedAttachments)
+                        FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, attName, attData, solo: true);
+                    if (nextCsPdfBytes.Length > 0)
+                        FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, "Next CS.pdf", nextCsPdfBytes, solo: true);
+                }
+                await Advance(sSave, 2);
+
+                _bgImportDone = true;
+                ActivitySvc.RecordActivity(capturedUsername, $"Added solo session for: {capturedPcName} ({capturedSections.Count} sections)", "session");
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(1500);
+                await InvokeAsync(() => NavigationManager.NavigateTo("/Home", forceLoad: true));
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SoloImport] FAILED: {ex}");
+                _bgImportError = ex.Message;
+                foreach (var s in _bgSteps.Where(s => s.Status == 1)) s.Status = 3;
+                await InvokeAsync(StateHasChanged);
             }
         });
     }
