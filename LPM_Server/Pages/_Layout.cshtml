@@ -488,25 +488,33 @@
 
         <script>
           window._pdfCanvasCache = {};
-          window.showPdfFromUrl = async (containerId, url) => {
+          window._pdfDataCache = {};
+
+          window.cachePdfData = (key, base64Data) => {
+            window._pdfDataCache[key] = base64Data;
+          };
+
+          window.showStatPdf = async (containerId, key) => {
             try {
               const container = document.getElementById(containerId);
               if (!container) return;
-              // Instant swap if already rendered
-              if (window._pdfCanvasCache[url]) {
+              if (window._pdfCanvasCache[key]) {
                 container.innerHTML = '';
-                window._pdfCanvasCache[url].forEach(c => container.appendChild(c));
+                window._pdfCanvasCache[key].forEach(c => container.appendChild(c));
                 return;
               }
               container.innerHTML = '';
+              const b64 = window._pdfDataCache[key];
+              if (!b64) return;
               const pdfjsLib = window['pdfjs-dist/build/pdf'];
               if (!pdfjsLib) { container.innerHTML = '<div style="color:#ef4444;padding:20px;">PDF.js not loaded</div>'; return; }
-              const pdf = await pdfjsLib.getDocument(url).promise;
+              const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+              const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
               const canvases = [];
               for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
                 const rawScale = (container.clientWidth - 24) / page.getViewport({ scale: 1 }).width;
-                const viewport = page.getViewport({ scale: Math.min(rawScale, 1.5) });
+                const viewport = page.getViewport({ scale: Math.min(Math.max(rawScale, 0.8), 1.5) });
                 const canvas = document.createElement('canvas');
                 canvas.width = viewport.width;
                 canvas.height = viewport.height;
@@ -518,16 +526,19 @@
                 await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
                 canvases.push(canvas);
               }
-              window._pdfCanvasCache[url] = canvases;
-            } catch(e) { console.error('showPdfFromUrl failed:', e); }
+              window._pdfCanvasCache[key] = canvases;
+            } catch(e) { console.error('showStatPdf failed:', e); }
           };
-          window.clearPdfCache = () => { window._pdfCanvasCache = {}; };
-          window.preRenderPdf = async (url) => {
+
+          window.preRenderStatPdf = async (key) => {
             try {
-              if (window._pdfCanvasCache[url]) return;
+              if (window._pdfCanvasCache[key]) return;
+              const b64 = window._pdfDataCache[key];
+              if (!b64) return;
               const pdfjsLib = window['pdfjs-dist/build/pdf'];
               if (!pdfjsLib) return;
-              const pdf = await pdfjsLib.getDocument(url).promise;
+              const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+              const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
               const canvases = [];
               for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
@@ -542,9 +553,11 @@
                 await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
                 canvases.push(canvas);
               }
-              window._pdfCanvasCache[url] = canvases;
-            } catch(e) { /* ignore pre-render errors */ }
+              window._pdfCanvasCache[key] = canvases;
+            } catch(e) { console.error('preRenderStatPdf failed:', e); }
           };
+
+          window.clearPdfCache = () => { window._pdfCanvasCache = {}; window._pdfDataCache = {}; };
         </script>
 
         <!-- PDF.js for PC Folder viewer -->

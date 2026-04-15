@@ -9464,7 +9464,7 @@ string _actionPcSearch = "";
             _statPdfBase64 = cached.Base64;
             _statBusy = false;
             StateHasChanged();
-            await JSRuntime.InvokeVoidAsync("showPdfFromUrl", "stat-pdf-viewer", cached.Url);
+            await JSRuntime.InvokeVoidAsync("showStatPdf", "stat-pdf-viewer", cached.Url);
         }
     }
 
@@ -9546,33 +9546,28 @@ string _actionPcSearch = "";
             if (_statCacheCancelled || !_showStat || _isDisposed) break;
 
             var (sid, fileName, pdfBytes) = await completed;
-            var url = $"/temp/{fileName}?t={DateTime.Now.Ticks}";
+            var url = $"/temp/{fileName}";
             var b64 = Convert.ToBase64String(pdfBytes);
-            _statCache[sid] = (url, b64);
+            var key = $"stat_{sid}";
+            _statCache[sid] = (key, b64);
             _statCacheProgress++;
+
+            // Push PDF data to browser memory (no file fetch needed later)
+            await JSRuntime.InvokeVoidAsync("cachePdfData", key, b64);
 
             if (sid == _statSelectedId)
             {
-                _statPdfUrl = url;
+                _statPdfUrl = key;
                 _statPdfBase64 = b64;
                 _statBusy = false;
                 await InvokeAsync(StateHasChanged);
-                await JSRuntime.InvokeVoidAsync("showPdfFromUrl", "stat-pdf-viewer", url);
+                await JSRuntime.InvokeVoidAsync("showStatPdf", "stat-pdf-viewer", key);
             }
             else
             {
                 await InvokeAsync(StateHasChanged);
-            }
-        }
-
-        // Pre-render canvases sequentially (JS is single-threaded)
-        if (!_statCacheCancelled && _showStat && !_isDisposed)
-        {
-            foreach (var kv in _statCache)
-            {
-                if (_statCacheCancelled || !_showStat || _isDisposed) break;
-                if (kv.Key != _statSelectedId)
-                    await JSRuntime.InvokeVoidAsync("preRenderPdf", kv.Value.Url);
+                // Pre-render canvas from browser-local data (no network)
+                await JSRuntime.InvokeVoidAsync("preRenderStatPdf", key);
             }
         }
 
