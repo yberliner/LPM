@@ -237,7 +237,7 @@ public class UserDb
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
             LEFT JOIN lkp_grades g ON g.GradeId = u.GradeId
-            ORDER BY p.FirstName, u.Username";
+            ORDER BY p.FirstName COLLATE NOCASE, u.Username COLLATE NOCASE";
         var list = new List<UserListItem>();
         using var r = cmd.ExecuteReader();
         while (r.Read())

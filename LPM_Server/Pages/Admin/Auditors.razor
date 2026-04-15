@@ -67,11 +67,15 @@
                                 <div class="row g-2">
                                     <div class="col-auto">
                                         <label class="form-label small mb-0">@LS.T("members.firstName")</label>
-                                        <input class="form-control form-control-sm" @bind="_editFirstName" />
+                                        <input class="form-control form-control-sm"
+                                               value="@_editFirstName"
+                                               @onchange="e => _editFirstName = CapVal(e)" />
                                     </div>
                                     <div class="col-auto">
                                         <label class="form-label small mb-0">@LS.T("members.lastName")</label>
-                                        <input class="form-control form-control-sm" @bind="_editLastName" />
+                                        <input class="form-control form-control-sm"
+                                               value="@_editLastName"
+                                               @onchange="e => _editLastName = CapVal(e)" />
                                     </div>
                                     <div class="col-auto">
                                         <label class="form-label small mb-0">@LS.T("auditors.grade")</label>
@@ -217,6 +221,44 @@
                     </div>
                 </div>
             }
+
+            @* PCs inserted by this auditor *@
+            <div class="card mb-3" style="border-color:var(--default-border);">
+                <div class="card-header py-2 d-flex align-items-center gap-2" style="background:var(--custom-white); border-bottom:1px solid var(--default-border);">
+                    <i class="ri-user-add-line" style="color:#3b82f6;"></i>
+                    <span class="fw-semibold small">PCs Inserted (@_createdPcs.Count)</span>
+                </div>
+                @if (_createdPcs.Count > 0)
+                {
+                    <div class="card-body p-0">
+                        <table class="table table-sm table-hover mb-0" style="font-size:.8rem;">
+                            <thead>
+                                <tr style="background:var(--custom-white);">
+                                    <th class="ps-3">ID</th>
+                                    <th>PC Name</th>
+                                    <th>Date Inserted</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var cp in _createdPcs)
+                                {
+                                    <tr>
+                                        <td class="ps-3 text-muted">@cp.PcId</td>
+                                        <td>@cp.FullName</td>
+                                        <td class="text-muted">@(DateTime.TryParse(cp.CreatedAt, out var cdt) ? cdt.ToString("dd/MM/yy") : cp.CreatedAt)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="card-body py-3 text-center" style="font-size:.82rem; color:#94a3b8;">
+                        <i class="ri-information-line me-1"></i>This auditor has not inserted any PCs
+                    </div>
+                }
+            </div>
         }
         else
         {
@@ -830,10 +872,12 @@
 
     AuditorDetail? _detail;
     AuditorStats?  _stats;
+    List<(int PcId, string FullName, string CreatedAt)> _createdPcs = [];
 
     // Edit mode
     bool   _editMode;
     string _editFirstName = "", _editLastName = "", _editGradeId = "", _editError = "";
+    static string CapVal(ChangeEventArgs e) => PcService.CapitalizeName(e.Value?.ToString() ?? "");
     string _editStaffRole = StaffRoles.Auditor;
     bool   _editIsActive;
     bool   _editIsAdmin;
@@ -892,6 +936,7 @@
         if (!_selId.HasValue) return;
         _detail = AuditorSvc.GetAuditorDetail(_selId.Value);
         _stats  = AuditorSvc.GetAuditorStats(_selId.Value);
+        _createdPcs = PcSvc.GetPcsCreatedByUser(_selId.Value);
     }
 
     void StartEdit()

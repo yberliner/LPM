@@ -143,6 +143,8 @@
                         No active users — safe to update the server
                     </div>
                 }
+                <span style="font-size:.68rem; color:#64748b; font-weight:400; font-variant-numeric:tabular-nums;"
+                      title="Auto-refresh countdown">@(_activityCountdown)s</span>
                 <i class="@(_activityExpanded ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line")"
                    style="font-size:1.1rem;color:#64748b;"></i>
             </div>
@@ -2022,6 +2024,8 @@
     // ── User Activity state ────────────────────────────────────────────────
     List<LPM.Services.UserActivityService.ActivitySummary> _activityUsers = [];
     bool   _activityExpanded = true;
+    int    _activityCountdown = 30;
+    const int ActivityRefreshSec = 30;
     string _actSortCol = "lastactive";
     bool   _actSortAsc = false;
 
@@ -2101,6 +2105,22 @@
 
         _ = Task.Run(LoadRecentFiles, ct)
                 .ContinueWith(_ => { if (!ct.IsCancellationRequested) InvokeAsync(() => { _loadingRecent = false; StateHasChanged(); }); });
+
+        // Auto-refresh user activity every N seconds with countdown
+        _ = Task.Run(async () =>
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            while (!ct.IsCancellationRequested && await timer.WaitForNextTickAsync(ct))
+            {
+                _activityCountdown--;
+                if (_activityCountdown <= 0)
+                {
+                    _activityUsers = ActivitySvc.GetSummary();
+                    _activityCountdown = ActivityRefreshSec;
+                }
+                await InvokeAsync(StateHasChanged);
+            }
+        }, ct);
 
         return Task.CompletedTask;
     }

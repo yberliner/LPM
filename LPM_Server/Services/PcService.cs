@@ -6,7 +6,7 @@ namespace LPM.Services;
 public record PcListItem(int PcId, string FullName, string Nick, long RemainSec);
 public record PcDetailInfo(int PcId, string FirstName, string LastName, string Nick,
     string Phone, string Email, string Notes, string DateOfBirth, string Gender,
-    string Org, string Source, int OrgId = 0)
+    string Org, string Source, int OrgId = 0, string CreatedAt = "", string CreatedByName = "")
 {
     public string FullName => string.IsNullOrEmpty(LastName) ? FirstName : $"{FirstName} {LastName}";
 }
@@ -94,7 +94,7 @@ public List<PcListItem> GetAllPcs()
                 GROUP BY s.PcId
             ) sess ON sess.PcId = pc.PcId
             WHERE COALESCE(p.IsActive, 1) = 1
-            ORDER BY RemainSec ASC, p.FirstName, p.LastName";
+            ORDER BY RemainSec ASC, p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
         var list = new List<PcListItem>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -258,17 +258,17 @@ public List<PcListItem> GetAllPcs()
 
     public int AddPcWithPerson(string firstName, string lastName,
         string phone, string email, string dateOfBirth, string gender,
-        int? orgId = null, int? sourceId = null, string notes = "", string nick = "")
+        int? orgId = null, int? sourceId = null, string notes = "", string nick = "", int? createdByUserId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
         using var pCmd = conn.CreateCommand();
         pCmd.CommandText = @"
-            INSERT INTO core_persons (FirstName, LastName, Phone, Email, DateOfBirth, Gender, Org, Source, Notes, Nick)
-            VALUES (@fn, @ln, @ph, @em, @dob, @gender, @org, @srcId, @notes, @nick)";
-        pCmd.Parameters.AddWithValue("@fn",  firstName.Trim());
-        pCmd.Parameters.AddWithValue("@ln",  lastName.Trim());
+            INSERT INTO core_persons (FirstName, LastName, Phone, Email, DateOfBirth, Gender, Org, Source, Notes, Nick, CreatedByUserId)
+            VALUES (@fn, @ln, @ph, @em, @dob, @gender, @org, @srcId, @notes, @nick, @creator)";
+        pCmd.Parameters.AddWithValue("@fn",  CapitalizeName(firstName));
+        pCmd.Parameters.AddWithValue("@ln",  CapitalizeName(lastName));
         pCmd.Parameters.AddWithValue("@ph",  Nv(phone));
         pCmd.Parameters.AddWithValue("@em",  Nv(email));
         pCmd.Parameters.AddWithValue("@dob", Nv(dateOfBirth));
@@ -276,7 +276,8 @@ public List<PcListItem> GetAllPcs()
         pCmd.Parameters.AddWithValue("@org", orgId.HasValue ? (object)orgId.Value : DBNull.Value);
         pCmd.Parameters.AddWithValue("@srcId", sourceId.HasValue ? (object)sourceId.Value : DBNull.Value);
         pCmd.Parameters.AddWithValue("@notes", Nv(notes));
-        pCmd.Parameters.AddWithValue("@nick", Nv(nick));
+        pCmd.Parameters.AddWithValue("@nick", CapitalizeName(nick));
+        pCmd.Parameters.AddWithValue("@creator", createdByUserId.HasValue ? (object)createdByUserId.Value : DBNull.Value);
         pCmd.ExecuteNonQuery();
 
         using var idCmd = conn.CreateCommand();
@@ -292,6 +293,31 @@ public List<PcListItem> GetAllPcs()
         return personId;
     }
 
+    /// <summary>
+    /// Returns PCs created by a given auditor (by PersonId → UserId → CreatedByUserId).
+    /// </summary>
+    public List<(int PcId, string FullName, string CreatedAt)> GetPcsCreatedByUser(int personId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT pc.PcId,
+                   TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName,
+                   COALESCE(p.CreatedAt, '')
+            FROM core_users u
+            JOIN core_persons p ON p.CreatedByUserId = u.Id
+            JOIN core_pcs pc ON pc.PcId = p.PersonId
+            WHERE u.PersonId = @pid
+            ORDER BY p.CreatedAt DESC";
+        cmd.Parameters.AddWithValue("@pid", personId);
+        var list = new List<(int, string, string)>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add((r.GetInt32(0), r.GetString(1), r.GetString(2)));
+        return list;
+    }
+
     public PcDetailInfo? GetPcDetail(int pcId)
     {
         using var conn = new SqliteConnection(_connectionString);
@@ -303,11 +329,14 @@ public List<PcListItem> GetAllPcs()
                    COALESCE(p.Email,''),        COALESCE(p.Notes,''),
                    COALESCE(p.DateOfBirth,''), COALESCE(p.Gender,''),
                    COALESCE(og.Name,''),        COALESCE(rs.Name,''),
-                   COALESCE(p.Org, 0)
+                   COALESCE(p.Org, 0),          COALESCE(p.CreatedAt,''),
+                   COALESCE(TRIM(cp.FirstName || ' ' || COALESCE(NULLIF(cp.LastName,''), '')), '')
             FROM core_pcs pc
             JOIN core_persons p ON p.PersonId = pc.PcId
             LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
             LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
+            LEFT JOIN core_users cu ON cu.Id = p.CreatedByUserId
+            LEFT JOIN core_persons cp ON cp.PersonId = cu.PersonId
             WHERE pc.PcId = @id";
         cmd.Parameters.AddWithValue("@id", pcId);
         using var r = cmd.ExecuteReader();
@@ -316,13 +345,16 @@ public List<PcListItem> GetAllPcs()
             r.GetString(0), r.GetString(1), r.GetString(2),
             r.GetString(3), r.GetString(4), r.GetString(5),
             r.GetString(6), r.GetString(7), r.GetString(8), r.GetString(9),
-            r.GetInt32(10));
+            r.GetInt32(10), r.GetString(11), r.GetString(12));
     }
 
     public void UpdatePcDetail(int pcId, string firstName, string lastName,
         string nick, string phone, string email, string notes,
-        string dateOfBirth, string gender, int? orgId = null, int? sourceId = null)
+        string dateOfBirth, string gender, int? orgId = null, int? sourceId = null, string? changedBy = null)
     {
+        // Capture old values for diff
+        var old = changedBy != null ? GetPcDetail(pcId) : null;
+
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
@@ -332,19 +364,69 @@ public List<PcListItem> GetAllPcs()
                                Phone=@ph, Email=@em, DateOfBirth=@dob, Gender=@gender,
                                Nick=@nick, Notes=@nt, Org=@org, Source=@srcId
             WHERE PersonId=@id";
-        pCmd.Parameters.AddWithValue("@fn",   firstName.Trim());
-        pCmd.Parameters.AddWithValue("@ln",   lastName.Trim());
+        pCmd.Parameters.AddWithValue("@fn",   CapitalizeName(firstName));
+        pCmd.Parameters.AddWithValue("@ln",   CapitalizeName(lastName));
         pCmd.Parameters.AddWithValue("@ph",   Nv(phone));
         pCmd.Parameters.AddWithValue("@em",   Nv(email));
         pCmd.Parameters.AddWithValue("@dob",  Nv(dateOfBirth));
         pCmd.Parameters.AddWithValue("@gender", Nv(gender));
-        pCmd.Parameters.AddWithValue("@nick", Nv(nick));
+        pCmd.Parameters.AddWithValue("@nick", CapitalizeName(nick));
         pCmd.Parameters.AddWithValue("@nt",   Nv(notes));
         pCmd.Parameters.AddWithValue("@org",  orgId.HasValue ? (object)orgId.Value : DBNull.Value);
         pCmd.Parameters.AddWithValue("@srcId", sourceId.HasValue ? (object)sourceId.Value : DBNull.Value);
         pCmd.Parameters.AddWithValue("@id",   pcId);
         pCmd.ExecuteNonQuery();
         Console.WriteLine($"[PcService] Updated person data for {pcId}");
+
+        // Record change history
+        if (old != null && changedBy != null)
+        {
+            var changes = new List<string>();
+            if (old.FirstName != firstName.Trim() || old.LastName != lastName.Trim())
+                changes.Add($"Name: {old.FirstName} {old.LastName} → {firstName.Trim()} {lastName.Trim()}");
+            if (old.Phone != Nv(phone)) changes.Add($"Phone: {old.Phone} → {Nv(phone)}");
+            if (old.Email != Nv(email)) changes.Add($"Email: {old.Email} → {Nv(email)}");
+            if (old.Nick != Nv(nick)) changes.Add($"Nick: {old.Nick} → {Nv(nick)}");
+            if (old.DateOfBirth != Nv(dateOfBirth)) changes.Add($"DOB: {old.DateOfBirth} → {Nv(dateOfBirth)}");
+            if (old.Gender != Nv(gender)) changes.Add($"Gender: {old.Gender} → {Nv(gender)}");
+            if (old.Notes != Nv(notes)) changes.Add($"Notes changed");
+            var newOrgId = orgId ?? 0;
+            if (old.OrgId != newOrgId) changes.Add($"Org changed");
+            if (changes.Count > 0)
+                RecordPcHistory(pcId, "Edited", string.Join("; ", changes), changedBy);
+        }
+    }
+
+    // ── PC History ──────────────────────────────────────────────────────────
+
+    public void RecordPcHistory(int pcId, string action, string? details, string changedBy)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"INSERT INTO sys_pc_history (PcId, Action, Details, ChangedBy)
+                            VALUES (@pcId, @action, @details, @by)";
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        cmd.Parameters.AddWithValue("@action", action);
+        cmd.Parameters.AddWithValue("@details", (object?)details ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@by", changedBy);
+        cmd.ExecuteNonQuery();
+    }
+
+    public List<(string Action, string? Details, string ChangedBy, string ChangedAt)> GetPcHistory(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"SELECT Action, Details, ChangedBy, ChangedAt
+                            FROM sys_pc_history WHERE PcId = @pcId
+                            ORDER BY Id DESC";
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        var list = new List<(string, string?, string, string)>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add((r.GetString(0), r.IsDBNull(1) ? null : r.GetString(1), r.GetString(2), r.GetString(3)));
+        return list;
     }
 
     public void MovePcToOrg(int pcId, int? orgId)
@@ -484,7 +566,7 @@ public List<PcListItem> GetAllPcs()
             WHERE p.PersonId IN (
                 SELECT PersonId FROM core_users WHERE StaffRole != 'None' AND IsActive = 1
             )
-            ORDER BY p.FirstName";
+            ORDER BY p.FirstName COLLATE NOCASE";
         var list = new List<(int, string)>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -500,7 +582,7 @@ public List<PcListItem> GetAllPcs()
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT PersonId, TRIM(FirstName || ' ' || COALESCE(NULLIF(LastName,''),''))
-            FROM core_persons WHERE COALESCE(IsActive,1) = 1 ORDER BY FirstName, LastName";
+            FROM core_persons WHERE COALESCE(IsActive,1) = 1 ORDER BY FirstName COLLATE NOCASE, LastName COLLATE NOCASE";
         var list = new List<(int, string)>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -703,7 +785,7 @@ public List<PcListItem> GetAllPcs()
             ) aud ON aud.PcId = pc.PcId
             LEFT JOIN core_persons audp ON audp.PersonId = aud.AuditorId
             WHERE COALESCE(p.IsActive, 1) = 1
-            ORDER BY RemainSec ASC, p.FirstName, p.LastName";
+            ORDER BY RemainSec ASC, p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
         var list = new List<PcListItemEx>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -1979,4 +2061,32 @@ public List<PcListItem> GetAllPcs()
 
     private static object Nv(string? s) =>
         string.IsNullOrWhiteSpace(s) ? DBNull.Value : (object)s.Trim();
+
+    /// <summary>
+    /// Capitalize the first letter of each word if it's a Latin letter (a-z).
+    /// Leaves Hebrew and other non-Latin text unchanged.
+    /// </summary>
+    internal static string CapitalizeName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return name;
+        var chars = name.Trim().ToCharArray();
+        bool capitalizeNext = true;
+        for (int i = 0; i < chars.Length; i++)
+        {
+            if (char.IsWhiteSpace(chars[i]) || chars[i] == '-')
+            {
+                capitalizeNext = true;
+            }
+            else if (capitalizeNext && chars[i] >= 'a' && chars[i] <= 'z')
+            {
+                chars[i] = (char)(chars[i] - 32);
+                capitalizeNext = false;
+            }
+            else
+            {
+                capitalizeNext = false;
+            }
+        }
+        return new string(chars);
+    }
 }

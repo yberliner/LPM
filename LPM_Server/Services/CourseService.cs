@@ -104,7 +104,7 @@ public class CourseService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT CourseId, Name, COALESCE(Book,'') AS Book, COALESCE(BookPrice,0) AS BookPrice, COALESCE(CourseType,'Academy'), COALESCE(Price,0) AS Price FROM lkp_courses ORDER BY Name";
+        cmd.CommandText = "SELECT CourseId, Name, COALESCE(Book,'') AS Book, COALESCE(BookPrice,0) AS BookPrice, COALESCE(CourseType,'Academy'), COALESCE(Price,0) AS Price FROM lkp_courses ORDER BY Name COLLATE NOCASE";
         var list = new List<CourseItem>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -165,7 +165,7 @@ public class CourseService
                 FROM acad_student_courses sc
                 JOIN core_persons p ON p.PersonId = sc.PersonId
                 WHERE sc.CourseId = @id
-                ORDER BY p.FirstName, p.LastName";
+                ORDER BY p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
             cmd.Parameters.AddWithValue("@id", courseId);
             using var r = cmd.ExecuteReader();
             while (r.Read())
@@ -183,7 +183,7 @@ public class CourseService
                 JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
                 JOIN core_persons p ON p.PersonId = pu.PcId
                 WHERE pi.CourseId = @id AND pu.IsDeleted = 0
-                ORDER BY pu.PurchaseDate, p.FirstName";
+                ORDER BY pu.PurchaseDate, p.FirstName COLLATE NOCASE";
             cmd.Parameters.AddWithValue("@id", courseId);
             using var r = cmd.ExecuteReader();
             while (r.Read())
@@ -207,7 +207,7 @@ public class CourseService
             JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
             JOIN core_persons p ON p.PersonId = pu.PcId
             WHERE pi.BookId = @id AND pu.IsDeleted = 0
-            ORDER BY pu.PurchaseDate, p.FirstName";
+            ORDER BY pu.PurchaseDate, p.FirstName COLLATE NOCASE";
         cmd.Parameters.AddWithValue("@id", bookId);
         var result = new List<PurchaseItemUsage>();
         using var r = cmd.ExecuteReader();
@@ -234,7 +234,7 @@ public class CourseService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT BookId, Name, COALESCE(Price,0) FROM lkp_books ORDER BY Name";
+        cmd.CommandText = "SELECT BookId, Name, COALESCE(Price,0) FROM lkp_books ORDER BY Name COLLATE NOCASE";
         var list = new List<BookItem>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -469,7 +469,7 @@ public class CourseService
             LEFT JOIN core_persons rf   ON rf.PersonId   = pu.ReferralId
             LEFT JOIN core_persons insp ON insp.PersonId = sc.InstructorId
             LEFT JOIN core_persons csp  ON csp.PersonId  = sc.CsId
-            ORDER BY c.Name, p.FirstName, p.LastName";
+            ORDER BY c.Name COLLATE NOCASE, p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
         var list = new List<CourseEnrollmentItem>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -565,7 +565,7 @@ public class CourseService
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
             WHERE u.IsActive = 1 AND u.StaffRole != 'Solo'
-            ORDER BY p.FirstName, p.LastName";
+            ORDER BY p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
         var list = new List<(int, string)>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -583,7 +583,7 @@ public class CourseService
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
             WHERE u.IsActive = 1 AND u.StaffRole IN ('CS','SeniorCS')
-            ORDER BY p.FirstName, p.LastName";
+            ORDER BY p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
         var list = new List<(int, string)>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -752,7 +752,7 @@ public class CourseService
                 FROM sess_completions c
                 JOIN core_persons p ON p.PersonId = c.PcId
                 WHERE c.FinishedGrade = (SELECT Code FROM lkp_grades WHERE GradeId=@id)
-                ORDER BY p.FirstName";
+                ORDER BY p.FirstName COLLATE NOCASE";
             cmd.Parameters.AddWithValue("@id", gradeId);
             using var r = cmd.ExecuteReader();
             while (r.Read())

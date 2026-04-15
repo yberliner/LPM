@@ -36,7 +36,7 @@ public class AuditorService(IConfiguration config, UserDb userDb)
             JOIN core_persons p ON p.PersonId = u.PersonId
             LEFT JOIN lkp_grades g ON g.GradeId = u.GradeId
             WHERE u.StaffRole IN {StaffRoles.SqlInAuditorCS()}
-            ORDER BY p.FirstName";
+            ORDER BY p.FirstName COLLATE NOCASE";
         var list = new List<AuditorListItem>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -95,8 +95,8 @@ public class AuditorService(IConfiguration config, UserDb userDb)
 
         using var pCmd = conn.CreateCommand();
         pCmd.CommandText = "UPDATE core_persons SET FirstName=@fn, LastName=@ln WHERE PersonId=@id";
-        pCmd.Parameters.AddWithValue("@fn", firstName.Trim());
-        pCmd.Parameters.AddWithValue("@ln", lastName.Trim());
+        pCmd.Parameters.AddWithValue("@fn", PcService.CapitalizeName(firstName));
+        pCmd.Parameters.AddWithValue("@ln", PcService.CapitalizeName(lastName));
         pCmd.Parameters.AddWithValue("@id", auditorId);
         pCmd.ExecuteNonQuery();
 
@@ -187,7 +187,7 @@ public class AuditorService(IConfiguration config, UserDb userDb)
             JOIN core_persons p ON p.PersonId = u.PersonId
             WHERE u.StaffRole = 'Solo'
               AND (COALESCE(u.AllowAll, 0) != 0 OR COALESCE(u.UserType, 'Standard') != 'Standard')
-            ORDER BY p.FirstName";
+            ORDER BY p.FirstName COLLATE NOCASE";
         var list = new List<SoloPermissionViolation>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -212,7 +212,7 @@ public class AuditorService(IConfiguration config, UserDb userDb)
             WHERE u.StaffRole IN {StaffRoles.SqlInAuditorCS()}
             GROUP BY u.PersonId
             HAVING COUNT(*) > 1
-            ORDER BY p.FirstName";
+            ORDER BY p.FirstName COLLATE NOCASE";
         var list = new List<DuplicateStaffUser>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -236,7 +236,7 @@ public class AuditorService(IConfiguration config, UserDb userDb)
                 FROM core_users u
                 JOIN core_persons p ON p.PersonId = u.PersonId
                 WHERE {where}
-                ORDER BY p.FirstName";
+                ORDER BY p.FirstName COLLATE NOCASE";
             var list = new List<SecuritySummaryItem>();
             using var r = cmd.ExecuteReader();
             while (r.Read())
@@ -254,7 +254,7 @@ public class AuditorService(IConfiguration config, UserDb userDb)
                 FROM core_users u
                 JOIN core_persons p ON p.PersonId = u.PersonId
                 WHERE u.IsActive = 1
-                ORDER BY p.FirstName";
+                ORDER BY p.FirstName COLLATE NOCASE";
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -297,7 +297,7 @@ public class AuditorService(IConfiguration config, UserDb userDb)
                   AND cu.StaffRole IN {StaffRoles.SqlInAuditorCS()}
                   AND cu.IsActive = 1
             )
-            ORDER BY cp.FirstName";
+            ORDER BY cp.FirstName COLLATE NOCASE";
         var list = new List<AvailablePcItem>();
         using var r = cmd.ExecuteReader();
         while (r.Read())

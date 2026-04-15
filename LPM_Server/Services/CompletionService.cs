@@ -53,7 +53,7 @@ public class CompletionService
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
             WHERE u.StaffRole IN {StaffRoles.SqlInAuditorCS()} AND u.IsActive = 1
-            ORDER BY p.FirstName
+            ORDER BY p.FirstName COLLATE NOCASE
             """;
         var list = new List<AuditorItem>();
         using var r = cmd.ExecuteReader();
@@ -74,7 +74,7 @@ public class CompletionService
             WHERE pc.PcId NOT IN (
                 SELECT u.PersonId FROM core_users u WHERE u.StaffRole = 'Solo'
             )
-            ORDER BY p.FirstName
+            ORDER BY p.FirstName COLLATE NOCASE
             """;
         var list = new List<PcItem>();
         using var r = cmd.ExecuteReader();
@@ -184,7 +184,7 @@ public class CompletionService
             JOIN core_persons p ON p.PersonId = c.PcId
             LEFT JOIN core_persons a ON a.PersonId = c.AuditorId
             WHERE c.CompleteDate >= @from AND c.CompleteDate <= @to
-            ORDER BY p.FirstName, c.CompleteDate
+            ORDER BY p.FirstName COLLATE NOCASE, c.CompleteDate
             """;
         cmd.Parameters.AddWithValue("@from", from.ToString("yyyy-MM-dd"));
         cmd.Parameters.AddWithValue("@to", to.ToString("yyyy-MM-dd"));

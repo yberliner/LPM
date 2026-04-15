@@ -285,6 +285,14 @@
                         </div>
                     }
                 </div>
+                <div class="pc-header-meta" style="font-size:.72rem; color:#64748b; gap:10px;">
+                    <span><i class="ri-hashtag" style="margin-right:2px;"></i>ID: @_detail.PcId</span>
+                    @if (!string.IsNullOrEmpty(_detail.CreatedAt))
+                    {
+                        <span><i class="ri-calendar-event-line" style="margin-right:2px;"></i>Added: @FormatCreatedAt(_detail.CreatedAt)</span>
+                    }
+                    <span><i class="ri-user-add-line" style="margin-right:2px;"></i>By: @(string.IsNullOrEmpty(_detail.CreatedByName) ? "Import" : _detail.CreatedByName)</span>
+                </div>
                 <div class="pc-header-meta">
                     <span class="pc-auditor-label"><i class="ri-shield-user-line"></i>Auditor: <strong>@_pcAuditorLabel</strong></span>
                     @if (!string.IsNullOrEmpty(_detail.Phone))
@@ -590,6 +598,54 @@
                 </div>
             </div>
             }
+
+            @* ── Change History ── *@
+            <div class="card shadow-sm mt-3" style="border:none;border-radius:14px;overflow:hidden;">
+                <div class="card-header d-flex align-items-center justify-content-between py-2"
+                     style="background:linear-gradient(135deg,#475569,#64748b);border:none;">
+                    <span class="fw-semibold small text-white">
+                        <i class="ri-history-line me-1"></i>Change History
+                    </span>
+                    @if (_pcHistory.Count > 0)
+                    {
+                        <span class="badge bg-white text-secondary">@_pcHistory.Count</span>
+                    }
+                </div>
+                <div class="card-body p-0">
+                    @if (_pcHistory.Count > 0)
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0" style="font-size:.78rem;">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="ps-3">Action</th>
+                                        <th>Details</th>
+                                        <th>By</th>
+                                        <th>Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var h in _pcHistory)
+                                    {
+                                        <tr>
+                                            <td class="ps-3">
+                                                <span class="badge @(h.Action == "Created" ? "bg-success" : "bg-info text-dark")" style="font-size:.7rem;">@h.Action</span>
+                                            </td>
+                                            <td style="color:#64748b; max-width:250px; white-space:normal;">@(h.Details ?? "")</td>
+                                            <td class="fw-semibold">@h.ChangedBy</td>
+                                            <td class="text-muted" style="white-space:nowrap;">@FormatCreatedAt(h.ChangedAt)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="small text-center py-3" style="color:var(--default-text-color);opacity:.6;">No change history recorded</div>
+                    }
+                </div>
+            </div>
 
         </div>
     }
@@ -3396,6 +3452,7 @@
 
     PcDetailInfo?       _detail;
     string              _pcAuditorLabel = "";
+    List<(string Action, string? Details, string ChangedBy, string ChangedAt)> _pcHistory = [];
 
     // Courses
     List<StudentCourseItem>? _activeCourses;
@@ -3672,6 +3729,7 @@
         _detail            = PcSvc.GetPcDetail(_selPcId.Value);
         _isSolo            = _soloPcIds.Contains(_selPcId.Value);
         _pcAuditorLabel    = DashSvc.GetLastAuditorLabel(_selPcId.Value);
+        _pcHistory         = PcSvc.GetPcHistory(_selPcId.Value);
         _pcPurchases       = PcSvc.GetAllPurchasesForPc(_selPcId.Value);
         var allCourses     = CourseSvc.GetStudentCourses(_selPcId.Value);
         _activeCourses     = allCourses.Where(c => c.DateFinished == null).ToList();
@@ -3732,7 +3790,7 @@
         PcSvc.UpdatePcDetail(_selPcId!.Value,
             d.FirstName, d.LastName, d.Nick,
             d.Phone, d.Email, d.Notes,
-            d.DateOfBirth, d.Gender, orgId: d.OrgId > 0 ? d.OrgId : null);
+            d.DateOfBirth, d.Gender, orgId: d.OrgId > 0 ? d.OrgId : null, changedBy: _username);
         _allPcsEx = PcSvc.GetAllPcsExtended();
         _balances = PcSvc.GetAllPcBalances();
         _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
@@ -4347,6 +4405,9 @@
     }
     static string FormatDate(string dateStr) =>
         DateOnly.TryParse(dateStr, out var d) ? d.ToString("dd/MM/yy") : dateStr;
+
+    static string FormatCreatedAt(string createdAt) =>
+        DateTime.TryParse(createdAt, out var dt) ? dt.ToString("dd/MM/yy") : createdAt;
 
     static readonly string[] _dateFmts = { "dd/MM/yy", "d/M/yy", "dd/MM/yyyy", "d/M/yyyy", "yyyy-MM-dd" };
     static DateTime? ParseDateInput(string? val)

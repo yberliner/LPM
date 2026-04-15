@@ -55,7 +55,7 @@ public class AcademyService
             LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
             LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
             WHERE COALESCE(p.IsActive, 1) = 1
-            ORDER BY p.FirstName, p.LastName";
+            ORDER BY p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
         var list = new List<PersonItem>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -98,8 +98,8 @@ public class AcademyService
         cmd.CommandText = @"
             INSERT INTO core_persons (FirstName, LastName, Phone, Email, DateOfBirth, Gender, Org, Source)
             VALUES (@fn, @ln, @ph, @em, @dob, @gender, @org, @srcId)";
-        cmd.Parameters.AddWithValue("@fn",  firstName.Trim());
-        cmd.Parameters.AddWithValue("@ln",  lastName.Trim());
+        cmd.Parameters.AddWithValue("@fn",  PcService.CapitalizeName(firstName));
+        cmd.Parameters.AddWithValue("@ln",  PcService.CapitalizeName(lastName));
         cmd.Parameters.AddWithValue("@ph",  string.IsNullOrWhiteSpace(phone)       ? DBNull.Value : (object)phone.Trim());
         cmd.Parameters.AddWithValue("@em",  string.IsNullOrWhiteSpace(email)       ? DBNull.Value : (object)email.Trim());
         cmd.Parameters.AddWithValue("@dob", string.IsNullOrWhiteSpace(dateOfBirth) ? DBNull.Value : (object)dateOfBirth);
@@ -140,7 +140,7 @@ public class AcademyService
             LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
             LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
             WHERE s.VisitDate = @date AND COALESCE(p.IsActive, 1) = 1
-            ORDER BY p.FirstName, p.LastName";
+            ORDER BY p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
         cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
         var list = new List<VisitRecord>();
         using var r = cmd.ExecuteReader();
@@ -213,7 +213,7 @@ public class AcademyService
             WHERE s.VisitDate >= @start AND s.VisitDate <= @end
               AND COALESCE(p.IsActive, 1) = 1
             GROUP BY s.PersonId
-            ORDER BY TotalSessions DESC, FullName ASC";
+            ORDER BY TotalSessions DESC, FullName COLLATE NOCASE ASC";
         cmd.Parameters.AddWithValue("@start", rangeStart.ToString("yyyy-MM-dd"));
         cmd.Parameters.AddWithValue("@end",   rangeEnd.ToString("yyyy-MM-dd"));
         var list = new List<(int, string, int, int, string, string, string)>();
@@ -485,7 +485,7 @@ public class AcademyService
             LEFT JOIN (SELECT DISTINCT PersonId FROM core_users WHERE StaffRole != 'None' AND IsActive = 1) cu ON cu.PersonId = p.PersonId
             LEFT JOIN (SELECT PcId, MAX(SessionDate) AS LastSession FROM sess_sessions GROUP BY PcId) sess ON sess.PcId = p.PersonId
             LEFT JOIN (SELECT PersonId, MAX(VisitDate) AS LastAcademy FROM acad_attendance GROUP BY PersonId) acad ON acad.PersonId = p.PersonId
-            ORDER BY COALESCE(p.IsActive,1) DESC, p.FirstName, p.LastName";
+            ORDER BY COALESCE(p.IsActive,1) DESC, p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
         var list = new List<MemberAdminItem>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -511,9 +511,9 @@ public class AcademyService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "UPDATE core_persons SET FirstName=@fn, LastName=@ln, Nick=@nick, IsActive=1 WHERE PersonId=@id";
-        cmd.Parameters.AddWithValue("@fn", firstName.Trim());
-        cmd.Parameters.AddWithValue("@ln", lastName.Trim());
-        cmd.Parameters.AddWithValue("@nick", (object?)nick ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@fn", PcService.CapitalizeName(firstName));
+        cmd.Parameters.AddWithValue("@ln", PcService.CapitalizeName(lastName));
+        cmd.Parameters.AddWithValue("@nick", string.IsNullOrWhiteSpace(nick) ? DBNull.Value : (object)PcService.CapitalizeName(nick));
         cmd.Parameters.AddWithValue("@id", personId);
         cmd.ExecuteNonQuery();
         Console.WriteLine($"[AcademyService] Updated and activated person {personId}");
@@ -566,13 +566,13 @@ public class AcademyService
                    Phone=@ph, Email=@em, DateOfBirth=@dob, Gender=@gender,
                    Nick=@nick, Notes=@nt, Org=@org
             WHERE PersonId=@id";
-        cmd.Parameters.AddWithValue("@fn",     firstName.Trim());
-        cmd.Parameters.AddWithValue("@ln",     lastName.Trim());
+        cmd.Parameters.AddWithValue("@fn",     PcService.CapitalizeName(firstName));
+        cmd.Parameters.AddWithValue("@ln",     PcService.CapitalizeName(lastName));
         cmd.Parameters.AddWithValue("@ph",     string.IsNullOrWhiteSpace(phone) ? DBNull.Value : phone.Trim());
         cmd.Parameters.AddWithValue("@em",     string.IsNullOrWhiteSpace(email) ? DBNull.Value : email.Trim());
         cmd.Parameters.AddWithValue("@dob",    string.IsNullOrWhiteSpace(dateOfBirth) ? DBNull.Value : dateOfBirth);
         cmd.Parameters.AddWithValue("@gender", string.IsNullOrWhiteSpace(gender) ? DBNull.Value : gender);
-        cmd.Parameters.AddWithValue("@nick",   string.IsNullOrWhiteSpace(nick) ? DBNull.Value : nick.Trim());
+        cmd.Parameters.AddWithValue("@nick",   string.IsNullOrWhiteSpace(nick) ? DBNull.Value : PcService.CapitalizeName(nick));
         cmd.Parameters.AddWithValue("@nt",     string.IsNullOrWhiteSpace(notes) ? DBNull.Value : notes.Trim());
         cmd.Parameters.AddWithValue("@org",    orgId.HasValue && orgId.Value > 0 ? (object)orgId.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@id",     personId);

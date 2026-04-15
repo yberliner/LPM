@@ -168,7 +168,7 @@ public class DashboardService
                 SELECT pc.PcId, {FullNameExpr} AS FullName, CASE WHEN EXISTS (SELECT 1 FROM core_users cu WHERE cu.PersonId = pc.PcId AND cu.StaffRole = 'Solo' AND cu.IsActive = 1) THEN 1 ELSE 0 END
                 FROM core_pcs pc
                 JOIN core_persons p ON p.PersonId = pc.PcId
-                ORDER BY p.FirstName, p.LastName";
+                ORDER BY p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
         }
         else
         {
@@ -178,7 +178,7 @@ public class DashboardService
                 JOIN core_pcs pc ON pc.PcId = spl.PcId
                 JOIN core_persons p ON p.PersonId = pc.PcId
                 WHERE spl.UserId = @uid AND spl.IsApproved = 1
-                ORDER BY p.FirstName, p.LastName";
+                ORDER BY p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
             cmd.Parameters.AddWithValue("@uid", userId);
         }
         var list = new List<ApprovedPc>();
@@ -222,7 +222,7 @@ public class DashboardService
                 JOIN core_pcs pc ON pc.PcId = spl.PcId
                 JOIN core_persons p ON p.PersonId = pc.PcId
                 WHERE spl.UserId = @uid AND spl.IsApproved = 1
-                ORDER BY p.FirstName, p.LastName";
+                ORDER BY p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
             cmd.Parameters.AddWithValue("@uid", userId);
         }
         var list = new List<ApprovedPc>();
@@ -521,7 +521,7 @@ public class DashboardService
             JOIN core_persons pa ON pa.PersonId = spl.UserId
             JOIN core_persons pp ON pp.PersonId = spl.PcId
             WHERE spl.IsApproved = 0
-            ORDER BY spl.RequestedAt DESC, pa.FirstName";
+            ORDER BY spl.RequestedAt DESC, pa.FirstName COLLATE NOCASE";
         var list = new List<PermissionRequest>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -569,7 +569,7 @@ public class DashboardService
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
             WHERE u.IsActive = 1 AND u.StaffRole IN {StaffRoles.SqlInAuditorCSSolo()}
-            ORDER BY p.FirstName, p.LastName";
+            ORDER BY p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
         var auditors = new List<(int Id, string Name, bool AllowAll, string StaffRole)>();
         using var ar = audCmd.ExecuteReader();
         while (ar.Read())
@@ -584,7 +584,7 @@ public class DashboardService
             FROM sys_staff_pc_list spl
             JOIN core_persons pp ON pp.PersonId = spl.PcId
             WHERE spl.IsApproved = 1
-            ORDER BY pp.FirstName, pp.LastName";
+            ORDER BY pp.FirstName COLLATE NOCASE, pp.LastName COLLATE NOCASE";
         var permsByAuditor = new Dictionary<int, List<ApprovedPcEntry>>();
         using var pr = permCmd.ExecuteReader();
         while (pr.Read())
@@ -747,7 +747,7 @@ public class DashboardService
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
             WHERE u.StaffRole IN {StaffRoles.SqlInCS()} AND u.IsActive = 1 AND u.PersonId != @exclude
-            ORDER BY p.FirstName, p.LastName";
+            ORDER BY p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
         cmd.Parameters.AddWithValue("@exclude", excludeUserId);
         var list = new List<(int, string)>();
         using var r = cmd.ExecuteReader();
@@ -767,7 +767,7 @@ public class DashboardService
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
             WHERE u.StaffRole IN {StaffRoles.SqlInAuditorCS()} AND u.IsActive = 1
-            ORDER BY p.FirstName, p.LastName";
+            ORDER BY p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
         var list = new List<(int, string)>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -812,7 +812,7 @@ public class DashboardService
             JOIN core_pcs     pc ON pc.PcId    = spl.PcId
             JOIN core_persons p  ON p.PersonId = pc.PcId
             WHERE spl.UserId = @uid
-            ORDER BY p.FirstName, p.LastName";
+            ORDER BY p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
         cmd.Parameters.AddWithValue("@uid", userId);
         var list = new List<PcInfo>();
         using var r = cmd.ExecuteReader();
@@ -848,7 +848,7 @@ public class DashboardService
                    COALESCE(p.IsActive, 1) AS IsActive
             FROM core_pcs     pc
             JOIN core_persons p ON p.PersonId = pc.PcId
-            ORDER BY COALESCE(p.IsActive,1) DESC, p.FirstName, p.LastName";
+            ORDER BY COALESCE(p.IsActive,1) DESC, p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
         var list = new List<PcInfo>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -1835,7 +1835,7 @@ public class DashboardService
             LEFT JOIN core_persons pa ON pa.PersonId = s.AuditorId
             JOIN core_persons pc ON pc.PersonId = s.PcId
             WHERE {where}
-            ORDER BY pa.FirstName, pa.LastName, pc.FirstName, pc.LastName, s.SessionDate, s.SequenceInDay";
+            ORDER BY pa.FirstName COLLATE NOCASE, pa.LastName COLLATE NOCASE, pc.FirstName COLLATE NOCASE, pc.LastName COLLATE NOCASE, s.SessionDate, s.SequenceInDay";
 
         var auditorNames = new Dictionary<int, string>();
         var pcNames      = new Dictionary<(int aud, int pc), string>();
@@ -1912,7 +1912,7 @@ public class DashboardService
             JOIN core_persons   pc  ON pc.PersonId   = s.PcId
             JOIN core_persons   pcs ON pcs.PersonId  = cr.CsId
             WHERE {where}
-            ORDER BY pcs.FirstName, pcs.LastName, pc.FirstName, pc.LastName, s.SessionDate, s.SequenceInDay";
+            ORDER BY pcs.FirstName COLLATE NOCASE, pcs.LastName COLLATE NOCASE, pc.FirstName COLLATE NOCASE, pc.LastName COLLATE NOCASE, s.SessionDate, s.SequenceInDay";
 
         var csNames  = new Dictionary<int, string>();
         var pcNames  = new Dictionary<(int cs, int pc), string>();
@@ -2637,7 +2637,7 @@ public class DashboardService
             WHERE s.IsImported = 0
               {doneFilter}
               {dateFilter}
-            ORDER BY spl.IsApproved DESC, cr.CsReviewId IS NULL DESC, PcName, s.SessionDate, s.SequenceInDay";
+            ORDER BY spl.IsApproved DESC, cr.CsReviewId IS NULL DESC, PcName COLLATE NOCASE, s.SessionDate, s.SequenceInDay";
         cmd.Parameters.AddWithValue("@csUserId", csUserId);
         if (lookbackDays > 0)
             cmd.Parameters.AddWithValue("@cutoff",
@@ -2694,7 +2694,7 @@ public class DashboardService
                 LEFT JOIN core_persons pc ON pc.PersonId = cr.CsId
                 WHERE s.PcId = @aid AND s.AuditorId IS NULL AND s.IsImported = 0
                   {dateFilter}
-                ORDER BY PcName, s.SessionDate, s.SequenceInDay";
+                ORDER BY PcName COLLATE NOCASE, s.SessionDate, s.SequenceInDay";
         }
         else
         {
@@ -2720,7 +2720,7 @@ public class DashboardService
                 LEFT JOIN core_persons pc ON pc.PersonId = cr.CsId
                 WHERE s.AuditorId = @aid AND s.IsImported = 0
                   {dateFilter}
-                ORDER BY spl.IsApproved DESC, PcName, s.SessionDate, s.SequenceInDay";
+                ORDER BY spl.IsApproved DESC, PcName COLLATE NOCASE, s.SessionDate, s.SequenceInDay";
         }
         cmd.Parameters.AddWithValue("@aid", auditorId);
         if (lookbackDays > 0)
@@ -2763,7 +2763,7 @@ public class DashboardService
             FROM core_persons p
             JOIN core_users u ON u.PersonId = p.PersonId
             WHERE u.IsActive = 1 AND (u.StaffRole != 'None' OR u.UserType = 'Admin')
-            ORDER BY p.FirstName, p.LastName";
+            ORDER BY p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
         var list = new List<StaffMember>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -2782,7 +2782,7 @@ public class DashboardService
             FROM core_persons p
             JOIN core_users u ON u.PersonId = p.PersonId
             WHERE u.IsActive = 1 AND u.StaffRole NOT IN ('Solo', 'None')
-            ORDER BY p.FirstName, p.LastName";
+            ORDER BY p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
         var list = new List<StaffMember>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -3399,7 +3399,7 @@ public class DashboardService
             JOIN core_persons cp ON cp.PersonId = cu.PersonId
             WHERE cu.PersonId IN ({inClause})
               AND cu.StaffRole != 'Solo'
-            ORDER BY cp.FirstName, cp.LastName";
+            ORDER BY cp.FirstName COLLATE NOCASE, cp.LastName COLLATE NOCASE";
 
         var result = new List<UserSalaryGroup>();
         // Track which PersonIds we've seen from core_users
@@ -3462,7 +3462,7 @@ public class DashboardService
             LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
             LEFT JOIN core_persons pc ON pc.PersonId = cr.CsId
             WHERE {where}
-            ORDER BY s.SessionDate DESC, p.FirstName";
+            ORDER BY s.SessionDate DESC, p.FirstName COLLATE NOCASE";
 
         var list = new List<SoloSessionItem>();
         using var r = cmd.ExecuteReader();

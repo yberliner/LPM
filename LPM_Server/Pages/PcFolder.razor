@@ -5909,6 +5909,7 @@
         {
             Console.WriteLine($"[PcFolder] Upload attachment '{file.Name}' to session '{_wsAttTargetSession}' by '{_userName}' — PC {PcId}");
             var savedName = FolderSvc.SaveAttachment(PcId, _wsAttTargetSession, file.Name, rawBytes, Solo);
+            ActivitySvc.RecordActivity(_loginUsername, $"Uploaded attachment '{file.Name}' to session '{_wsAttTargetSession}' for: {_pcName}", "folder");
             RefreshFolder();
             if (savedName != null)
             {
@@ -5933,6 +5934,7 @@
 
             Console.WriteLine($"[PcFolder] Converted+saved attachment '{pdfName}' to session '{sessionFileName}' by '{_userName}' — PC {PcId}");
             var savedName = FolderSvc.SaveAttachment(PcId, sessionFileName, pdfName, pdfBytes, Solo);
+            ActivitySvc.RecordActivity(_loginUsername, $"Uploaded attachment '{originalName}' (converted to PDF) to session '{sessionFileName}' for: {_pcName}", "folder");
 
             toast.Status = ConvStatus.Done;
             RefreshFolder();
@@ -6498,6 +6500,7 @@
                 {
                     Console.WriteLine($"[PcFolder] Uploaded image '{file.Name}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
                     FolderSvc.SaveSectionFileToPath(PcId, parentFolder, file.Name, rawBytes, solo: Solo, enforcePdf: false);
+                    ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{file.Name}' to {parentFolder} for: {_pcName}", "folder");
                 }
             }
         }
@@ -6520,6 +6523,7 @@
             {
                 Console.WriteLine($"[PcFolder] Uploaded file '{name}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
                 FolderSvc.SaveSectionFileToPath(PcId, parentFolder, name, data, solo: Solo);
+                ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{name}' to {parentFolder} for: {_pcName}", "folder");
             }
         }
 
@@ -6552,6 +6556,7 @@
             var overwrite = FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, pdfName, Solo);
             FolderSvc.SaveSectionFileToPath(PcId, parentFolder, pdfName, pdfBytes, overwrite, Solo);
             Console.WriteLine($"[PcFolder] Converted+saved '{pdfName}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
+            ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{originalName}' (converted to PDF) to {parentFolder} for: {_pcName}", "folder");
 
             toast.Status = ConvStatus.Done;
             RefreshFolder();
@@ -6576,6 +6581,7 @@
         {
             Console.WriteLine($"[PcFolder] Overwriting file '{name}' in '{_newMenuParentFolder}' by '{_userName}' — PC {PcId}");
             FolderSvc.SaveSectionFileToPath(PcId, _newMenuParentFolder, name, data, overwrite: true, solo: Solo, enforcePdf: enforcePdf);
+            ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{name}' (overwrite) to {_newMenuParentFolder} for: {_pcName}", "folder");
         }
         _uploadPendingFiles.Clear();
         _uploadDuplicateNames.Clear();
