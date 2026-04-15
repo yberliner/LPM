@@ -333,25 +333,30 @@
     async Task Save()
     {
         _error = "";
+        bool isEdit = _editOriginalFullName != null;
         if (string.IsNullOrWhiteSpace(_firstName))
             { _error = "First name is required."; return; }
         if (string.IsNullOrWhiteSpace(_lastName))
             { _error = "Last name is required."; return; }
-        if (string.IsNullOrWhiteSpace(_phone))
-            { _error = "Phone is required."; return; }
-        if (RequireAllFields)
+        if (!isEdit)
         {
-            if (string.IsNullOrWhiteSpace(_sex))
-                { _error = "Gender is required."; return; }
-            if (_orgId <= 0)
-                { _error = "Organization is required."; return; }
-            if (string.IsNullOrWhiteSpace(_source))
-                { _error = "Source is required."; return; }
+            // Full validation only for new entries
+            if (string.IsNullOrWhiteSpace(_phone))
+                { _error = "Phone is required."; return; }
+            if (RequireAllFields)
+            {
+                if (string.IsNullOrWhiteSpace(_sex))
+                    { _error = "Gender is required."; return; }
+                if (_orgId <= 0)
+                    { _error = "Organization is required."; return; }
+                if (string.IsNullOrWhiteSpace(_source))
+                    { _error = "Source is required."; return; }
+            }
+            if (Courses != null && Courses.Count > 0 && _courseId <= 0)
+                { _error = "Please select a course."; return; }
         }
         if (!string.IsNullOrWhiteSpace(_dobText) && ParseDobText() == "")
             { _error = "Date of birth must be dd/mm/yyyy."; return; }
-        if (Courses != null && Courses.Count > 0 && _courseId <= 0)
-            { _error = "Please select a course."; return; }
 
         var fullName = $"{_firstName.Trim()} {_lastName.Trim()}";
 

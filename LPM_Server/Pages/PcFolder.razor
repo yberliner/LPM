@@ -3708,18 +3708,12 @@
             }
             await Task.WhenAll(paneTasks);
 
-            // Auto-open Program Bridge template in floating read-only window
-            if (_folder != null)
+            // Open Program Bridge in float if auto-preset set it
+            if (!string.IsNullOrEmpty(_presetFloatFile))
             {
-                var progDir = _folder.FrontCoverTree?.Children
-                    .FirstOrDefault(c => c.IsFolder && c.Name.Equals("Program", StringComparison.OrdinalIgnoreCase));
-                var bridge = progDir?.Children
-                    .FirstOrDefault(c => !c.IsFolder && c.Name.Equals("Program Bridge.pdf", StringComparison.OrdinalIgnoreCase));
-                if (bridge != null)
-                {
-                    var floatUrl = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(bridge.RelativePath)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
-                    await JS.InvokeVoidAsync("pcfViewer.floatFile", floatUrl, "Program Bridge");
-                }
+                var floatUrl = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_presetFloatFile)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
+                await JS.InvokeVoidAsync("pcfViewer.floatFile", floatUrl, "Program Bridge");
+                _presetFloatFile = null;
             }
 
             // (context menu attachment happens for all renders below)
