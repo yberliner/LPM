@@ -120,7 +120,9 @@ window.pcfViewer = {
         // Fast path: same file already rendered — instant CSS zoom + background re-render
         // Also require viewer has actual DOM children; a superseded load may have cleared innerHTML
         // while pane.pages still holds detached canvas references (length > 0 but not in DOM).
-        if (isSameFile && pane.pages.length > 0 && pane.pdfPages &&
+        // Skip fast path for folder summary files — their content is generated dynamically from DB.
+        var isFolderSummary = url.includes('/api/pc-file-folder-summary');
+        if (isSameFile && !isFolderSummary && pane.pages.length > 0 && pane.pdfPages &&
             pane.pages.length === pane.pdfPages.length &&
             viewer.children.length > 0) {
             await this._rescalePdf(pane, paneId, stableWidth, targetPage, myGen, viewer);
