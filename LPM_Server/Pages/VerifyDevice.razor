@@ -33,7 +33,8 @@
                 <i class="ri-shield-keyhole-line vd-icon"></i>
             </div>
             <h2 class="vd-title">Verify Your Device</h2>
-            <p class="vd-sub">We sent a 6-digit code to <strong>@_email</strong></p>
+            <p class="vd-sub">We sent a 6-digit code to your email:</p>
+            <p class="vd-email"><i class="ri-mail-line"></i> @_email</p>
         </div>
 
         <div class="vd-body">
@@ -55,8 +56,8 @@
             </form>
 
             <div class="vd-note">
-                <i class="ri-time-line"></i>
-                The code expires in 10 minutes
+                <i class="ri-mail-check-line"></i>
+                Check your email inbox — the code expires in 10 minutes
             </div>
         </div>
 
@@ -101,7 +102,14 @@
     @@keyframes vdPulse { 0%,100% { transform:scale(1); opacity:.15; } 50% { transform:scale(1.3); opacity:.05; } }
     .vd-icon { font-size: 2.2rem; position: relative; z-index: 1; }
     .vd-title { font-size: 1.4rem; font-weight: 800; margin: 0 0 8px; }
-    .vd-sub { font-size: .9rem; opacity: .8; margin: 0; }
+    .vd-sub { font-size: 1rem; opacity: .9; margin: 0 0 12px; }
+    .vd-email {
+        font-size: 1.15rem; font-weight: 700; margin: 0;
+        background: rgba(255,255,255,.18); border-radius: 10px;
+        padding: 10px 18px; display: inline-flex; align-items: center; gap: 8px;
+        letter-spacing: .3px;
+    }
+    .vd-email i { font-size: 1.3rem; }
 
     .vd-body { padding: 32px; }
 

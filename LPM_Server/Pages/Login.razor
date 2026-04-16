@@ -86,12 +86,7 @@
 
                         <div class="d-grid mt-4">
                             <button class="btn btn-primary btn-wave"
-                                    @onclick="HandleLogin"
-                                    disabled="@_loading">
-                                @if (_loading)
-                                {
-                                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                                }
+                                    @onclick="HandleLogin">
                                 @LS.T("login.signIn")
                             </button>
                         </div>
@@ -161,7 +156,6 @@
     private bool _expired;
     private bool _emailFail;
     private bool _shake;
-    private bool _loading;
     private bool _passkeyLoading;
     private bool _passkeyError;
     private bool _passkeyNoUser;
@@ -202,9 +196,7 @@
         if (string.IsNullOrWhiteSpace(_username) || string.IsNullOrWhiteSpace(_password))
             return;
 
-        _loading = true;
         Console.WriteLine($"[Login] Login attempt for '{_username}'");
-        await InvokeAsync(StateHasChanged);
         await JS.InvokeVoidAsync("submitLoginForm", _username, _password);
     }
 

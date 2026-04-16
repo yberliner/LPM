@@ -557,7 +557,6 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db, IConfiguration conf
     }
 
     var emailSvc = ctx.RequestServices.GetRequiredService<LPM.Services.EmailService>();
-    var smsSvc = ctx.RequestServices.GetRequiredService<LPM.Services.SmsService>();
     var code = db.CreateMagicLink(flags.PersonId, flags.UserId);
     var displayName = db.GetPersonDisplayName(flags.PersonId) ?? username;
     var emailSent = await emailSvc.SendVerificationCodeAsync(email, code, displayName);
@@ -565,13 +564,6 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db, IConfiguration conf
     {
         Console.WriteLine($"[Login] FAILED to send verification email to '{email}' for '{username}'");
         return Results.Redirect("/login?error=emailfail");
-    }
-    // Also send SMS if phone is available
-    var phone = db.GetPersonPhone(flags.PersonId);
-    if (!string.IsNullOrWhiteSpace(phone))
-    {
-        await smsSvc.SendSmsAsync(phone, $"LPM verification code: {code}");
-        Console.WriteLine($"[Login] SMS sent to '{phone}' for '{username}'");
     }
     ctx.Response.Cookies.Append("lpm_pending", flags.UserId.ToString(), PendingCookieOpts());
     Console.WriteLine($"[Login] Verification code sent to '{email}' for '{username}'");
@@ -632,15 +624,11 @@ app.MapPost("/loginpost-changepwd", async (HttpContext ctx, UserDb db, IConfigur
     }
 
     var emailSvc = ctx.RequestServices.GetRequiredService<LPM.Services.EmailService>();
-    var smsSvc = ctx.RequestServices.GetRequiredService<LPM.Services.SmsService>();
     var mlCode = db.CreateMagicLink(flags2.PersonId, flags2.UserId);
     var dispName = db.GetPersonDisplayName(flags2.PersonId) ?? flags2.Username;
     var mlSent = await emailSvc.SendVerificationCodeAsync(email, mlCode, dispName);
     if (!mlSent)
         return Results.Redirect("/login?error=emailfail");
-    var mlPhone = db.GetPersonPhone(flags2.PersonId);
-    if (!string.IsNullOrWhiteSpace(mlPhone))
-        await smsSvc.SendSmsAsync(mlPhone, $"LPM verification code: {mlCode}");
     ctx.Response.Cookies.Append("lpm_pending", userId.ToString(), PendingCookieOpts());
     return Results.Redirect($"/VerifyDevice?email={Uri.EscapeDataString(email)}");
 }).DisableAntiforgery();

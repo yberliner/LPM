@@ -224,6 +224,12 @@
 *@
         <script>
         window.submitLoginForm = function (username, password) {
+            // Show spinner via JS (not Blazor) to avoid render race on slow devices
+            var btn = document.querySelector('.btn-primary.btn-wave');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>' + btn.textContent.trim();
+            }
             var form = document.createElement('form');
             form.method = 'POST';
             form.action = '/loginpost';
