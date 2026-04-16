@@ -1,0 +1,383 @@
+@page "/effort-log"
+@attribute [Authorize(Roles = "Admin,Customer")]
+@using LPM.Services
+@inject EffortService EffortSvc
+@inject DashboardService DashSvc
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>Effort Log</PageTitle>
+
+<div class="container-xl py-3 eff-log-page">
+
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+        <h4 class="m-0 d-flex align-items-center gap-2">
+            <i class="ri-timer-line" style="color:#06b6d4;"></i> Effort Log
+        </h4>
+        <button class="btn btn-sm btn-primary" style="background:#06b6d4; border-color:#06b6d4; min-height:40px;"
+                @onclick="OpenAdd">
+            <i class="ri-add-line me-1"></i> Add Effort Log
+        </button>
+    </div>
+
+    @* ── Filters ── *@
+    <div class="card shadow-sm mb-3">
+        <div class="card-body p-3">
+            <div class="row g-2 align-items-end">
+                <div class="col-6 col-md-3">
+                    <label class="form-label mb-1" style="font-size:.78rem;">From</label>
+                    <input type="date" class="form-control form-control-sm"
+                           value="@_fromStr"
+                           @onchange="e => { _fromStr = e.Value?.ToString() ?? string.Empty; LoadList(); }" />
+                </div>
+                <div class="col-6 col-md-3">
+                    <label class="form-label mb-1" style="font-size:.78rem;">To</label>
+                    <input type="date" class="form-control form-control-sm"
+                           value="@_toStr"
+                           @onchange="e => { _toStr = e.Value?.ToString() ?? string.Empty; LoadList(); }" />
+                </div>
+
+                @if (_isAdmin)
+                {
+                    <div class="col-12 col-md-3">
+                        <label class="form-label mb-1" style="font-size:.78rem;">Performed By</label>
+                        <select class="form-select form-select-sm"
+                                value="@_fltPerformed"
+                                @onchange='e => { _fltPerformed = int.Parse(e.Value?.ToString() ?? "0"); LoadList(); }'>
+                            <option value="0">All</option>
+                            @foreach (var u in _staffUsers)
+                            {
+                                <option value="@u.UserId">@u.FullName</option>
+                            }
+                        </select>
+                    </div>
+                }
+
+                <div class="col-6 col-md-@(_isAdmin ? "2" : "3")">
+                    <label class="form-label mb-1" style="font-size:.78rem;">Category</label>
+                    <select class="form-select form-select-sm"
+                            value="@_fltCategory"
+                            @onchange='e => { _fltCategory = int.Parse(e.Value?.ToString() ?? "0"); LoadList(); }'>
+                        <option value="0">All</option>
+                        @foreach (var c in _categories)
+                        {
+                            <option value="@c.CategoryId">@c.Label</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="col-6 col-md-@(_isAdmin ? "1" : "3")">
+                    <button class="btn btn-sm btn-outline-secondary w-100" @onclick="ResetFilters" title="Reset">
+                        <i class="ri-refresh-line"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Table ── *@
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            @if (_loading)
+            {
+                <div class="p-4 text-center text-muted">
+                    <span class="spinner-border spinner-border-sm me-2"></span> Loading…
+                </div>
+            }
+            else if (_rows.Count == 0)
+            {
+                <div class="p-4 text-center text-muted" style="font-size:.9rem;">
+                    <i class="ri-inbox-line" style="font-size:1.4rem;"></i><br />
+                    No effort entries in this range.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0 eff-table">
+                        <thead>
+                            <tr>
+                                <th class="sortable" @onclick='() => Sort("date")'>Date @SortCaret("date")</th>
+                                <th class="sortable" @onclick='() => Sort("perf")'>Performed By @SortCaret("perf")</th>
+                                <th class="sortable" @onclick='() => Sort("pc")'>PC @SortCaret("pc")</th>
+                                <th class="sortable" @onclick='() => Sort("cat")'>Category @SortCaret("cat")</th>
+                                <th class="sortable text-end" @onclick='() => Sort("time")'>Time @SortCaret("time")</th>
+                                <th>Notes</th>
+                                <th>Created By</th>
+                                <th>Created At</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in _sortedRows)
+                            {
+                                var canEdit = _isAdmin || r.PerformedByUserId == _currentCoreUserId || r.CreatedByUserId == _currentCoreUserId;
+                                <tr class="@(_deletingId == r.EntryId ? "row-deleting" : "")">
+                                    <td>@FormatDate(r.EffortDate)</td>
+                                    <td>@r.PerformedByName</td>
+                                    <td>@r.PcName</td>
+                                    <td><span class="badge bg-light text-dark border">@r.CategoryLabel</span></td>
+                                    <td class="text-end eff-time-cell">@SecondsToHMM(r.LengthSeconds)</td>
+                                    <td class="eff-notes-cell" title="@(r.Notes ?? "")">
+                                        @(TruncateNotes(r.Notes))
+                                    </td>
+                                    <td>@r.CreatedByName</td>
+                                    <td><span style="font-size:.75rem; color:#64748b;">@FormatDateTime(r.CreatedAt)</span></td>
+                                    <td class="text-end">
+                                        @if (canEdit)
+                                        {
+                                            <button class="btn btn-sm btn-outline-primary me-1" title="Edit"
+                                                    @onclick="() => OpenEdit(r.EntryId)">
+                                                <i class="ri-pencil-line"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" title="Delete"
+                                                    @onclick="() => ConfirmDelete(r.EntryId)">
+                                                <i class="ri-delete-bin-line"></i>
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted" style="font-size:.75rem;">—</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="4" class="text-end fw-semibold">Total</td>
+                                <td class="text-end fw-semibold">@SecondsToHMM(_rows.Sum(r => r.LengthSeconds))</td>
+                                <td colspan="4"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@* ── Delete confirm modal ── *@
+@if (_pendingDeleteId.HasValue)
+{
+    <div class="modal show d-block" tabindex="-1" style="background:rgba(0,0,0,.5); z-index:10000;">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content">
+                <div class="modal-header py-2 bg-danger text-white">
+                    <h6 class="modal-title"><i class="ri-delete-bin-line me-2"></i>Delete entry?</h6>
+                </div>
+                <div class="modal-body" style="font-size:.9rem;">
+                    This will permanently delete the effort log entry. Continue?
+                </div>
+                <div class="modal-footer py-2">
+                    <button class="btn btn-sm btn-secondary" @onclick="() => _pendingDeleteId = null">Cancel</button>
+                    <button class="btn btn-sm btn-danger" @onclick="DoDelete">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<LPM.Shared.EffortEntryModal IsOpen="_modalOpen"
+                             EditingEntryId="_editingId"
+                             CurrentUsername="@_username"
+                             OnClose="CloseModal"
+                             OnSaved="OnSaved" />
+
+<style>
+    .eff-log-page .sortable { cursor:pointer; user-select:none; white-space:nowrap; }
+    .eff-log-page .sortable:hover { background:rgba(6,182,212,.08); }
+    .eff-log-page .eff-table th { font-size:.78rem; color:#475569; font-weight:600; border-top:none; background:#f8fafc; }
+    .eff-log-page .eff-table td { font-size:.85rem; }
+    .eff-log-page .eff-time-cell { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight:600; color:#0f172a; }
+    .eff-log-page .eff-notes-cell {
+        max-width:280px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#475569;
+    }
+    .eff-log-page .row-deleting { opacity:.4; transition:opacity .3s; }
+    .eff-log-page tfoot td { background:#f8fafc; border-top:2px solid #e2e8f0; }
+    @@media (max-width:768px) {
+        .eff-log-page .eff-notes-cell { max-width:120px; }
+        .eff-log-page .eff-table th, .eff-log-page .eff-table td { font-size:.78rem; }
+    }
+    @@media (max-width:480px) {
+        .eff-log-page .eff-table { font-size:.75rem; }
+        .eff-log-page .btn-sm { min-height:36px; min-width:36px; }
+    }
+</style>
+
+@code {
+    List<EffortEntryRow>  _rows      = new();
+    List<EffortStaffUser> _staffUsers = new();
+    List<EffortCategory>  _categories = new();
+
+    string _fromStr = "";
+    string _toStr   = "";
+    int    _fltPerformed;
+    int    _fltCategory;
+
+    bool   _loading = true;
+    bool   _isAdmin;
+    string _username = "";
+    int    _currentCoreUserId;
+
+    bool   _modalOpen;
+    int?   _editingId;
+    int?   _pendingDeleteId;
+    int?   _deletingId;
+
+    string _sortKey = "date";
+    bool   _sortAsc = false;
+
+    IEnumerable<EffortEntryRow> _sortedRows => _sortKey switch
+    {
+        "date" => _sortAsc ? _rows.OrderBy(r => r.EffortDate) : _rows.OrderByDescending(r => r.EffortDate),
+        "perf" => _sortAsc ? _rows.OrderBy(r => r.PerformedByName) : _rows.OrderByDescending(r => r.PerformedByName),
+        "pc"   => _sortAsc ? _rows.OrderBy(r => r.PcName) : _rows.OrderByDescending(r => r.PcName),
+        "cat"  => _sortAsc ? _rows.OrderBy(r => r.CategoryLabel) : _rows.OrderByDescending(r => r.CategoryLabel),
+        "time" => _sortAsc ? _rows.OrderBy(r => r.LengthSeconds) : _rows.OrderByDescending(r => r.LengthSeconds),
+        _      => _rows
+    };
+
+    Action? _onDataChanged;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        _username = auth.User.Identity?.Name ?? "";
+        _isAdmin  = auth.User.IsInRole("Admin");
+        _currentCoreUserId = EffortSvc.GetCoreUserIdByUsername(_username) ?? 0;
+
+        _categories = EffortSvc.GetCategories();
+        if (_isAdmin) _staffUsers = EffortSvc.GetStaffUsers();
+
+        var today = DateTime.Today;
+        _fromStr  = today.AddDays(-30).ToString("yyyy-MM-dd");
+        _toStr    = today.ToString("yyyy-MM-dd");
+
+        _onDataChanged = () => _ = InvokeAsync(async () =>
+        {
+            try { await LoadListAsync(); }
+            catch (Exception ex) { Console.WriteLine($"[EffortLog] Refresh on data changed failed: {ex.Message}"); }
+        });
+        DashSvc.OnDataChanged += _onDataChanged;
+
+        await LoadListAsync();
+    }
+
+    public void Dispose()
+    {
+        if (_onDataChanged != null) DashSvc.OnDataChanged -= _onDataChanged;
+    }
+
+    void Sort(string key)
+    {
+        if (_sortKey == key) _sortAsc = !_sortAsc;
+        else { _sortKey = key; _sortAsc = (key != "date" && key != "time"); }
+    }
+
+    MarkupString SortCaret(string key)
+    {
+        if (_sortKey != key) return (MarkupString)"<i class=\"ri-arrow-up-down-line ms-1\" style=\"font-size:.7rem;opacity:.4;\"></i>";
+        return (MarkupString)(_sortAsc
+            ? "<i class=\"ri-arrow-up-s-fill ms-1\" style=\"font-size:.85rem;color:#06b6d4;\"></i>"
+            : "<i class=\"ri-arrow-down-s-fill ms-1\" style=\"font-size:.85rem;color:#06b6d4;\"></i>");
+    }
+
+    void ResetFilters()
+    {
+        var today = DateTime.Today;
+        _fromStr = today.AddDays(-30).ToString("yyyy-MM-dd");
+        _toStr   = today.ToString("yyyy-MM-dd");
+        _fltPerformed = 0;
+        _fltCategory  = 0;
+        LoadList();
+    }
+
+    void LoadList() => _ = LoadListAsync();
+
+    async Task LoadListAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            DateOnly? from = DateOnly.TryParse(_fromStr, out var f) ? f : null;
+            DateOnly? to   = DateOnly.TryParse(_toStr,   out var t) ? t : null;
+
+            var filter = new EffortFilter(
+                DateFrom: from, DateTo: to,
+                PerformedByUserId: _fltPerformed > 0 ? _fltPerformed : null,
+                CategoryId: _fltCategory > 0 ? _fltCategory : null,
+                CreatedByUserId: _isAdmin ? null : (_currentCoreUserId > 0 ? _currentCoreUserId : -1));
+            _rows = EffortSvc.Query(filter);
+        }
+        finally
+        {
+            _loading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    void OpenAdd() { _editingId = null; _modalOpen = true; }
+    void OpenEdit(int id) { _editingId = id; _modalOpen = true; }
+    Task CloseModal() { _modalOpen = false; _editingId = null; StateHasChanged(); return Task.CompletedTask; }
+    async Task OnSaved()
+    {
+        _modalOpen = false; _editingId = null;
+        DashSvc.NotifyDataChanged();
+        await LoadListAsync();
+    }
+
+    void ConfirmDelete(int id) => _pendingDeleteId = id;
+
+    async Task DoDelete()
+    {
+        if (!_pendingDeleteId.HasValue) return;
+        var id = _pendingDeleteId.Value;
+        _pendingDeleteId = null;
+        _deletingId = id;
+        StateHasChanged();
+        try
+        {
+            EffortSvc.DeleteEntry(id);
+            await Task.Delay(250);
+            _rows = _rows.Where(r => r.EntryId != id).ToList();
+            DashSvc.NotifyDataChanged();
+            await JS.InvokeVoidAsync("lpmToast", "Entry deleted", "success");
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("lpmToast", "Delete failed: " + ex.Message, "error");
+        }
+        finally
+        {
+            _deletingId = null;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    static string FormatDate(string yyyyMMdd)
+    {
+        if (DateTime.TryParse(yyyyMMdd, out var d)) return d.ToString("dd/MM/yy");
+        return yyyyMMdd;
+    }
+
+    static string FormatDateTime(string iso)
+    {
+        if (DateTime.TryParse(iso, out var d)) return d.ToString("dd/MM/yy HH:mm");
+        return iso;
+    }
+
+    static string SecondsToHMM(int seconds)
+    {
+        var totalMin = seconds / 60;
+        return $"{totalMin / 60}:{totalMin % 60:D2}";
+    }
+
+    static string TruncateNotes(string? n)
+    {
+        if (string.IsNullOrEmpty(n)) return "";
+        return n.Length <= 60 ? n : n.Substring(0, 60) + "…";
+    }
+}

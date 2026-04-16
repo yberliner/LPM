@@ -192,6 +192,7 @@
                                         <th class="ps-3 fw-semibold">@LS.T("stats.staffMember")</th>
                                         <th class="text-center fw-semibold">@LS.T("stats.auditing")</th>
                                         <th class="text-center fw-semibold">@LS.T("stats.csSolo")</th>
+                                        <th class="text-center fw-semibold">Extra Effort</th>
                                         <th class="text-center fw-semibold pe-3">@LS.T("stats.total")</th>
                                     </tr>
                                 </thead>
@@ -231,6 +232,11 @@
                                             <td class="text-center align-middle">
                                                 @if (s.SoloCsSec > 0)
                                                 { <span class="badge rounded-pill badge-orange">@Fmt(s.SoloCsSec)</span> }
+                                                else { <span class="text-muted small">–</span> }
+                                            </td>
+                                            <td class="text-center align-middle">
+                                                @if (s.EffortSec > 0)
+                                                { <span class="badge rounded-pill" style="background:#cffafe;color:#0e7490;border:1px solid #06b6d4;">@Fmt(s.EffortSec)</span> }
                                                 else { <span class="text-muted small">–</span> }
                                             </td>
                                             <td class="text-center align-middle pe-3">
@@ -283,6 +289,7 @@
                                         <th class="ps-3 fw-semibold">@LS.T("stats.staffMember")</th>
                                         <th class="text-center fw-semibold">@LS.T("stats.auditing")</th>
                                         <th class="text-center fw-semibold">@LS.T("stats.csSolo")</th>
+                                        <th class="text-center fw-semibold">Extra Effort</th>
                                         <th class="text-center fw-semibold pe-3">@LS.T("stats.total")</th>
                                     </tr>
                                 </thead>
@@ -322,6 +329,11 @@
                                             <td class="text-center align-middle">
                                                 @if (ms.SoloCsSec > 0)
                                                 { <span class="badge rounded-pill badge-orange">@Fmt(ms.SoloCsSec)</span> }
+                                                else { <span class="text-muted small">–</span> }
+                                            </td>
+                                            <td class="text-center align-middle">
+                                                @if (ms.EffortSec > 0)
+                                                { <span class="badge rounded-pill" style="background:#cffafe;color:#0e7490;border:1px solid #06b6d4;">@Fmt(ms.EffortSec)</span> }
                                                 else { <span class="text-muted small">–</span> }
                                             </td>
                                             <td class="text-center align-middle pe-3">
@@ -385,32 +397,39 @@
                 </div>
                 <div class="card-body px-3 py-3">
                     <div class="row g-2">
-                        <div class="col-3">
+                        <div class="col-6 col-md">
                             <div class="stat-metric-box" style="background:#f0f4ff;">
-                                <div class="value" style="color:#6366f1;">@Fmt(_dayStats[_selDay].Staff.Sum(s => s.TotalSec))</div>
+                                <div class="value" style="color:#6366f1;">@Fmt(_dayStats[_selDay].Staff.Sum(s => s.AuditSec + s.SoloCsSec))</div>
                                 <div class="main-lbl">@LS.T("stats.auditingTime")</div>
                                 <div class="sub-lbl">@LS.T("stats.hrsWorked")</div>
                             </div>
                         </div>
-                        <div class="col-3">
+                        <div class="col-6 col-md">
                             <div class="stat-metric-box" style="background:#eff6ff;">
                                 <div class="value" style="color:#2563eb;">@_dayStats[_selDay].PcCount</div>
                                 <div class="main-lbl">@LS.T("stats.pcs")</div>
                                 <div class="sub-lbl">@LS.T("stats.clientsSeen")</div>
                             </div>
                         </div>
-                        <div class="col-3">
+                        <div class="col-6 col-md">
                             <div class="stat-metric-box" style="background:#f0fdf4;">
                                 <div class="value" style="color:#16a34a;">@_dayStats[_selDay].AcademyCount</div>
                                 <div class="main-lbl">@LS.T("stats.students")</div>
                                 <div class="sub-lbl">@LS.T("stats.academyVisits")</div>
                             </div>
                         </div>
-                        <div class="col-3">
+                        <div class="col-6 col-md">
                             <div class="stat-metric-box" style="background:#fff7ed;">
                                 <div class="value" style="color:#ea580c;">@_dayStats[_selDay].BodyInShop</div>
                                 <div class="main-lbl">BIS</div>
                                 <div class="sub-lbl">@LS.T("stats.uniqueVisitors")</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md">
+                            <div class="stat-metric-box" style="background:#ecfeff;">
+                                <div class="value" style="color:#0891b2;">@Fmt(_dayStats[_selDay].EffortSec)</div>
+                                <div class="main-lbl">Effort</div>
+                                <div class="sub-lbl">Extra time</div>
                             </div>
                         </div>
                     </div>
@@ -428,32 +447,39 @@
                 <div class="card-body px-3 py-3">
                     @{ var ws = CurrentWeekSummary; }
                     <div class="row g-2 mb-3">
-                        <div class="col-3">
+                        <div class="col-6 col-md">
                             <div class="stat-metric-box" style="background:#f0f4ff;">
                                 <div class="value" style="color:#6366f1;">@Fmt(ws?.TotalAuditCsSec ?? 0)</div>
                                 <div class="main-lbl">@LS.T("stats.auditingTime")</div>
                                 <div class="sub-lbl">@LS.T("stats.allStaffSold")</div>
                             </div>
                         </div>
-                        <div class="col-3">
+                        <div class="col-6 col-md">
                             <div class="stat-metric-box" style="background:#eff6ff;">
                                 <div class="value" style="color:#2563eb;">@(ws?.PcCount ?? 0)</div>
                                 <div class="main-lbl">@LS.T("stats.pcs")</div>
                                 <div class="sub-lbl">@LS.T("stats.uniqueWeek")</div>
                             </div>
                         </div>
-                        <div class="col-3">
+                        <div class="col-6 col-md">
                             <div class="stat-metric-box" style="background:#f0fdf4;">
                                 <div class="value" style="color:#16a34a;">@(ws?.AcademyCount ?? 0)</div>
                                 <div class="main-lbl">@LS.T("stats.students")</div>
                                 <div class="sub-lbl">@LS.T("stats.uniqueWeek")</div>
                             </div>
                         </div>
-                        <div class="col-3">
+                        <div class="col-6 col-md">
                             <div class="stat-metric-box" style="background:#fff7ed;">
                                 <div class="value" style="color:#ea580c;">@(ws?.BodyInShop ?? 0)</div>
                                 <div class="main-lbl">BIS</div>
                                 <div class="sub-lbl">@LS.T("stats.uniqueWeek")</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md">
+                            <div class="stat-metric-box" style="background:#ecfeff;">
+                                <div class="value" style="color:#0891b2;">@Fmt(ws?.EffortSec ?? 0)</div>
+                                <div class="main-lbl">Effort</div>
+                                <div class="sub-lbl">Extra time</div>
                             </div>
                         </div>
                     </div>
@@ -482,32 +508,39 @@
                     </div>
                     <div class="card-body px-3 py-3">
                         <div class="row g-2">
-                            <div class="col-3">
+                            <div class="col-6 col-md">
                                 <div class="stat-metric-box" style="background:#eef2ff;">
                                     <div class="value" style="color:#4338ca;">@Fmt(_monthSummary.TotalAuditCsSec)</div>
                                     <div class="main-lbl">@LS.T("stats.auditingTime")</div>
                                     <div class="sub-lbl">All staff</div>
                                 </div>
                             </div>
-                            <div class="col-3">
+                            <div class="col-6 col-md">
                                 <div class="stat-metric-box" style="background:#eff6ff;">
                                     <div class="value" style="color:#2563eb;">@_monthSummary.PcCount</div>
                                     <div class="main-lbl">@LS.T("stats.pcs")</div>
                                     <div class="sub-lbl">Unique month</div>
                                 </div>
                             </div>
-                            <div class="col-3">
+                            <div class="col-6 col-md">
                                 <div class="stat-metric-box" style="background:#f0fdf4;">
                                     <div class="value" style="color:#16a34a;">@_monthSummary.AcademyCount</div>
                                     <div class="main-lbl">@LS.T("stats.students")</div>
                                     <div class="sub-lbl">Unique month</div>
                                 </div>
                             </div>
-                            <div class="col-3">
+                            <div class="col-6 col-md">
                                 <div class="stat-metric-box" style="background:#fff7ed;">
                                     <div class="value" style="color:#ea580c;">@_monthSummary.BodyInShop</div>
                                     <div class="main-lbl">BIS</div>
                                     <div class="sub-lbl">Unique month</div>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md">
+                                <div class="stat-metric-box" style="background:#ecfeff;">
+                                    <div class="value" style="color:#0891b2;">@Fmt(_monthSummary.EffortSec)</div>
+                                    <div class="main-lbl">Effort</div>
+                                    <div class="sub-lbl">Extra time</div>
                                 </div>
                             </div>
                         </div>
@@ -563,6 +596,12 @@
                                  SeriesType="SeriesType.Bar"
                                  XValue="@(w => w.WeekRangeLabel)"
                                  YValue="@(w => w.BodyInShop > 0 ? (decimal)w.BodyInShop : 0.1m)" />
+                <ApexPointSeries TItem="WeekStatSummary"
+                                 Items="@_chartHistory"
+                                 Name="Effort (hrs)"
+                                 SeriesType="SeriesType.Bar"
+                                 XValue="@(w => w.WeekRangeLabel)"
+                                 YValue="@(w => w.EffortSec > 0 ? (decimal)Math.Round(w.EffortSec / 3600.0, 2) : 0.1m)" />
             </ApexChart>
         </div>
         }
@@ -615,6 +654,12 @@
                                  SeriesType="SeriesType.Bar"
                                  XValue="@(m => m.MonthLabel)"
                                  YValue="@(m => m.BodyInShop > 0 ? (decimal)m.BodyInShop : 0.1m)" />
+                <ApexPointSeries TItem="MonthStatSummary"
+                                 Items="@_chartMonthHistory"
+                                 Name="Effort (hrs)"
+                                 SeriesType="SeriesType.Bar"
+                                 XValue="@(m => m.MonthLabel)"
+                                 YValue="@(m => m.EffortSec > 0 ? (decimal)Math.Round(m.EffortSec / 3600.0, 2) : 0.1m)" />
             </ApexChart>
         </div>
         }
@@ -662,7 +707,7 @@
         {
             Bar = new PlotOptionsBar { ColumnWidth = "80%", BorderRadius = 2 }
         },
-        Colors = new List<string> { "#6366f1", "#3b82f6", "#22c55e", "#f97316" },
+        Colors = new List<string> { "#6366f1", "#3b82f6", "#22c55e", "#f97316", "#06b6d4" },
         Xaxis  = new XAxis
         {
             Labels = new XAxisLabels
@@ -688,7 +733,7 @@
             Intersect = false,
             Y = new TooltipY
             {
-                Formatter = "function(val, opts){ if(opts.seriesIndex===0){ if(val<0.2) return '0'; var h=Math.floor(val); var m=Math.round((val-h)*60); return h+'h '+String(m).padStart(2,'0')+'m'; } return val<0.2?'0':Math.round(val); }"
+                Formatter = "function(val, opts){ if(opts.seriesIndex===0||opts.seriesIndex===4){ if(val<0.2) return '0'; var h=Math.floor(val); var m=Math.round((val-h)*60); return h+'h '+String(m).padStart(2,'0')+'m'; } return val<0.2?'0':Math.round(val); }"
             }
         },
         Legend = new Legend
@@ -712,7 +757,7 @@
         {
             Bar = new PlotOptionsBar { ColumnWidth = "80%", BorderRadius = 2 }
         },
-        Colors = new List<string> { "#4338ca", "#3b82f6", "#22c55e", "#f97316" },
+        Colors = new List<string> { "#4338ca", "#3b82f6", "#22c55e", "#f97316", "#06b6d4" },
         Xaxis  = new XAxis
         {
             Labels = new XAxisLabels
@@ -738,7 +783,7 @@
             Intersect = false,
             Y = new TooltipY
             {
-                Formatter = "function(val, opts){ if(opts.seriesIndex===0){ if(val<0.2) return '0'; var h=Math.floor(val); var m=Math.round((val-h)*60); return h+'h '+String(m).padStart(2,'0')+'m'; } return val<0.2?'0':Math.round(val); }"
+                Formatter = "function(val, opts){ if(opts.seriesIndex===0||opts.seriesIndex===4){ if(val<0.2) return '0'; var h=Math.floor(val); var m=Math.round((val-h)*60); return h+'h '+String(m).padStart(2,'0')+'m'; } return val<0.2?'0':Math.round(val); }"
             }
         },
         Legend = new Legend
@@ -770,7 +815,7 @@
     {
         _dayStats     = StatSvc.GetWeekDayStats(_weekStart);
         _weekHistory  = StatSvc.GetWeeklySummaries(_weekStart, 20);
-        _chartHistory = _weekHistory.Where(w => w.TotalAuditCsSec > 0 || w.PcCount > 0 || w.AcademyCount > 0 || w.BodyInShop > 0).ToList();
+        _chartHistory = _weekHistory.Where(w => w.TotalAuditCsSec > 0 || w.PcCount > 0 || w.AcademyCount > 0 || w.BodyInShop > 0 || w.EffortSec > 0).ToList();
         _originHours  = StatSvc.GetWeekOriginHours(_weekStart);
         _chartKey++;
         LoadMonth();
@@ -794,7 +839,7 @@
         _monthStaff       = StatSvc.GetMonthStaffLeaderboard(_monthStart, _monthEnd);
         _monthOriginHours = StatSvc.GetMonthOriginHours(_monthStart, _monthEnd);
         _monthHistory     = StatSvc.GetMonthlySummaries(_weekStart, 12);
-        _chartMonthHistory = _monthHistory.Where(m => m.TotalAuditCsSec > 0 || m.PcCount > 0 || m.AcademyCount > 0 || m.BodyInShop > 0).ToList();
+        _chartMonthHistory = _monthHistory.Where(m => m.TotalAuditCsSec > 0 || m.PcCount > 0 || m.AcademyCount > 0 || m.BodyInShop > 0 || m.EffortSec > 0).ToList();
         _monthChartKey++;
     }
 
@@ -817,7 +862,7 @@
         _dayStats
             .SelectMany(d => d.Staff)
             .GroupBy(s => s.PersonId)
-            .Select(g => new StaffStatRow(g.Key, g.First().Name, g.Sum(x => x.AuditSec), g.Sum(x => x.SoloCsSec)))
+            .Select(g => new StaffStatRow(g.Key, g.First().Name, g.Sum(x => x.AuditSec), g.Sum(x => x.SoloCsSec), g.Sum(x => x.EffortSec)))
             .Where(s => s.TotalSec > 0)
             .OrderByDescending(s => s.TotalSec)
             .ToList();

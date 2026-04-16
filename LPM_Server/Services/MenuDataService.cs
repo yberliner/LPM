@@ -48,6 +48,17 @@ public class MenuDataService
             active: false,
             dirChange: false
         ),
+        new MainMenuItems (
+            path: "/effort-log",
+            type: "link",
+            title: "Effort Log",
+            requiredRole: "Admin,Customer",
+            icon: "",
+            svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><circle cx='32' cy='34' r='22' fill='#06b6d4'/><circle cx='32' cy='34' r='17' fill='#cffafe'/><rect x='28' y='6' width='8' height='4' rx='1' fill='#0891b2'/><rect x='30' y='4' width='4' height='4' rx='1' fill='#06b6d4'/><path d='M32 22 L32 34 L42 39' stroke='#0e7490' stroke-width='3' stroke-linecap='round' fill='none'/><circle cx='32' cy='34' r='2.5' fill='#0e7490'/><rect x='12' y='12' width='6' height='2' rx='1' fill='#06b6d4' transform='rotate(-40 15 13)'/><rect x='46' y='12' width='6' height='2' rx='1' fill='#06b6d4' transform='rotate(40 49 13)'/></svg>",
+            selected: false,
+            active: false,
+            dirChange: false
+        ),
         new MainMenuItems(
             menuTitle: "Management",
             requiredRole: "Admin,Customer"

@@ -580,8 +580,8 @@ public class FolderService
             if (!Directory.Exists(searchDir)) continue;
             foreach (var file in Directory.GetFiles(searchDir, "*", SearchOption.AllDirectories))
             {
-                // Skip files already in the Program directory
-                if (file.StartsWith(programDir, StringComparison.OrdinalIgnoreCase)) continue;
+                // Skip files already in the Program directory (append separator to avoid matching "Program.pdf" against "Program/")
+                if (file.StartsWith(programDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) continue;
 
                 var fileName = Path.GetFileName(file);
                 if (fileName.Contains("program", StringComparison.OrdinalIgnoreCase))

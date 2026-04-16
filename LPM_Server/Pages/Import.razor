@@ -9,14 +9,28 @@
 @inject LPM.Services.SmsService SmsSvc
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
+@inject PdfService PdfSvc
 @implements IDisposable
 
 <div class="p-3 p-md-4" style="max-width:960px;">
 
-    <h4 class="fw-bold mb-1" style="color:#37474f;">Import PC Folders</h4>
-    <span class="text-muted" style="font-size:.82rem;">
-        Import a single PC folder or an entire directory of PC folders from your machine.
-    </span>
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+        <div>
+            <h4 class="fw-bold mb-1" style="color:#37474f;">Import PC Folders</h4>
+            <span class="text-muted" style="font-size:.82rem;">
+                Import a single PC folder or an entire directory of PC folders from your machine.
+            </span>
+        </div>
+        <button class="btn btn-outline-warning btn-sm d-flex align-items-center gap-1 ms-auto"
+                disabled="@_valScanning"
+                @onclick="OpenValidationPicker">
+            <i class="ri-folder-warning-line"></i>Validate PC Folders
+        </button>
+    </div>
+
+    @* Hidden input for validation folder picker *@
+    <input type="file" id="val-folder-input" webkitdirectory directory multiple
+           style="display:none;" @onchange="OnValidationFolderSelected" />
 
     @{ var job = ImportJob.CurrentJob; }
 
@@ -799,6 +813,105 @@
 </div>
 
 @* ════════════════════════════════════════════════════════════
+   VALIDATE PC FOLDERS MODAL
+   ════════════════════════════════════════════════════════════ *@
+@if (_showValModal)
+{
+    <div class="modal-backdrop fade show" style="z-index:1040;"></div>
+    <div class="modal d-block fade show" tabindex="-1" style="z-index:1050;" @onclick="() => _showValModal = false">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" style="max-width:960px;" @onclick:stopPropagation="true">
+            <div class="modal-content" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
+                <div class="modal-header py-2" style="border-color:#334155;">
+                    <h6 class="modal-title mb-0" style="font-size:.92rem;">
+                        <i class="ri-folder-warning-line me-2" style="color:#f59e0b;"></i>
+                        PC Folder Validation — @_valResults.Count issue(s) found
+                    </h6>
+                    <div class="d-flex align-items-center gap-2 ms-auto">
+                        @if (_valResults.Count > 0)
+                        {
+                            <button class="btn btn-sm btn-outline-info d-flex align-items-center gap-1"
+                                    @onclick="DownloadValidationPdf">
+                                <i class="ri-download-2-line"></i>Download PDF
+                            </button>
+                        }
+                        <button type="button" class="btn-close btn-close-white" @onclick="() => _showValModal = false"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-0" style="max-height:70vh; overflow:auto;">
+                    @if (_valResults.Count == 0)
+                    {
+                        <div class="text-center py-5" style="color:#34d399;">
+                            <i class="ri-checkbox-circle-line" style="font-size:2.5rem;"></i>
+                            <div class="mt-2 fw-semibold">All PC folders are valid!</div>
+                            <div style="font-size:.78rem; color:#94a3b8;">Every PC folder has Front Cover, Back Cover, and WorkSheets.</div>
+                        </div>
+                    }
+                    else
+                    {
+                        <table class="table table-sm mb-0" style="font-size:.78rem; color:#e2e8f0; min-width:700px;">
+                            <thead style="position:sticky; top:0; z-index:1;">
+                                <tr style="background:#0f172a; color:#94a3b8;">
+                                    <th style="padding:7px 12px;">#</th>
+                                    <th style="padding:7px 12px;">PC Name</th>
+                                    <th style="padding:7px 12px;">Auditor</th>
+                                    <th style="padding:7px 12px; text-align:center;">Sessions</th>
+                                    <th style="padding:7px 12px;">Missing Sections</th>
+                                    <th style="padding:7px 12px;">Unrecognized Files</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @{ int valIdx = 0; }
+                                @foreach (var vr in _valResults)
+                                {
+                                    valIdx++;
+                                    <tr style="border-color:#1e293b;">
+                                        <td style="padding:5px 12px; color:#64748b;">@valIdx</td>
+                                        <td style="padding:5px 12px; font-weight:600;">@vr.PcName</td>
+                                        <td style="padding:5px 12px; color:@(string.IsNullOrEmpty(vr.AuditorName) ? "#64748b" : "#e2e8f0");">
+                                            @(string.IsNullOrEmpty(vr.AuditorName) ? "-" : vr.AuditorName)
+                                        </td>
+                                        <td style="padding:5px 12px; text-align:center;">@vr.SessionCount</td>
+                                        <td style="padding:5px 12px;">
+                                            @foreach (var ms in vr.MissingSections)
+                                            {
+                                                <span class="badge me-1" style="background:rgba(220,38,38,.2); color:#fca5a5; font-size:.68rem;">@ms.Replace("_", " ")</span>
+                                            }
+                                        </td>
+                                        <td style="padding:5px 12px;">
+                                            @if (vr.UnrecognizedFiles.Count > 0)
+                                            {
+                                                <div style="max-height:120px; overflow-y:auto; font-family:monospace; font-size:.7rem;">
+                                                    @foreach (var uf in vr.UnrecognizedFiles)
+                                                    {
+                                                        <div style="color:@(uf.ExistsOnServer ? "#22c55e" : "#f87171");">
+                                                            <i class="@(uf.ExistsOnServer ? "ri-checkbox-circle-line" : "ri-close-circle-line") me-1" style="font-size:.65rem;"></i>@uf.Display
+                                                        </div>
+                                                    }
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <span style="color:#475569;">-</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+                <div class="modal-footer py-2" style="border-color:#334155;">
+                    <span style="font-size:.75rem; color:#94a3b8;">
+                        Scanned @_valTotalPcs PC folder(s) total
+                    </span>
+                    <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => _showValModal = false">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ════════════════════════════════════════════════════════════
    EXCLUDE PCs MODAL
    ════════════════════════════════════════════════════════════ *@
 @if (_showExcludeModal)
@@ -912,6 +1025,27 @@
     string _excludeSearch = "";
     List<ExcludeItem> _excludeList = [];
     HashSet<int> _excludedPcIds = new();
+
+    // Validate PC Folders
+    bool _valScanning;
+    bool _showValModal;
+    int _valTotalPcs;
+    List<ValidationResult> _valResults = [];
+
+    class ValidationResult
+    {
+        public string FolderName { get; set; } = "";
+        public string PcName { get; set; } = "";
+        public string AuditorName { get; set; } = "";
+        public int SessionCount { get; set; }
+        public List<string> MissingSections { get; set; } = [];
+        public List<UnrecFile> UnrecognizedFiles { get; set; } = [];
+    }
+    class UnrecFile
+    {
+        public string Display { get; set; } = "";   // "subDir/fileName"
+        public bool ExistsOnServer { get; set; }
+    }
 
     class NamesOnlyRow
     {
@@ -1779,6 +1913,204 @@
             _uploading = false;
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    // ── Validate PC Folders ─────────────────────────────────────────────
+
+    async Task OpenValidationPicker()
+    {
+        _valScanning = true;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("folderImport.openPicker", "val-folder-input");
+    }
+
+    async Task OnValidationFolderSelected()
+    {
+        try
+        {
+            var entries = await JS.InvokeAsync<List<ManifestEntry>>("folderImport.readManifest", "val-folder-input");
+            if (entries == null || entries.Count == 0) { _valScanning = false; return; }
+
+            RunValidation(entries);
+            _showValModal = true;
+        }
+        finally
+        {
+            _valScanning = false;
+            StateHasChanged();
+        }
+    }
+
+    void RunValidation(List<ManifestEntry> entries)
+    {
+        _valResults.Clear();
+        var requiredSections = new HashSet<string> { "Front_Cover", "Back_Cover", "WorkSheets" };
+
+        // Pass 1: identify PC folders and which sections they have
+        // Key: pcFolder name → detected sections
+        var pcSections = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var e in entries)
+        {
+            var parts = e.relativePath.Split('/');
+            if (parts.Length < 3) continue;
+            if (parts.Any(p => p.Contains("archive", StringComparison.OrdinalIgnoreCase))) continue;
+
+            string? section = null;
+            int sectionIdx = -1;
+
+            for (int i = 0; i < parts.Length - 1; i++)
+            {
+                var seg = parts[i];
+                if (seg.EndsWith("_att", StringComparison.OrdinalIgnoreCase)) break;
+                var detected = DetectSection(seg);
+                if (detected != null) { section = detected; sectionIdx = i; }
+            }
+
+            if (sectionIdx <= 0) continue;
+            var pcFolder = parts[sectionIdx - 1];
+
+            if (!pcSections.ContainsKey(pcFolder))
+                pcSections[pcFolder] = new HashSet<string>();
+
+            if (section != null)
+                pcSections[pcFolder].Add(section);
+        }
+
+        // Pass 2: for each known PC folder, find immediate subdirs that are NOT recognized sections
+        // and collect files under them (as display strings)
+        var pcUnrecFiles = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var pcFolderSet = pcSections.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var e in entries)
+        {
+            var parts = e.relativePath.Split('/');
+            if (parts.Length < 3) continue;
+            if (parts.Any(p => p.Contains("archive", StringComparison.OrdinalIgnoreCase))) continue;
+
+            for (int i = 0; i < parts.Length - 2; i++)
+            {
+                if (!pcFolderSet.Contains(parts[i])) continue;
+
+                var subDir = parts[i + 1];
+                if (subDir.EndsWith("_att", StringComparison.OrdinalIgnoreCase)) break;
+
+                var detected = DetectSection(subDir);
+                if (detected == null)
+                {
+                    var fileName = parts[^1];
+                    if (!pcUnrecFiles.ContainsKey(parts[i]))
+                        pcUnrecFiles[parts[i]] = new List<string>();
+                    pcUnrecFiles[parts[i]].Add($"{subDir}/{fileName}");
+                }
+                break;
+            }
+        }
+
+        // Filter to PCs with issues (missing at least one required section)
+        _valTotalPcs = pcSections.Count;
+        var problemPcs = pcSections
+            .Where(kv => requiredSections.Except(kv.Value).Any())
+            .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (problemPcs.Count == 0) return;
+
+        // DB lookup for auditor names and session counts
+        var pcNames = problemPcs.Select(kv =>
+        {
+            var stripped = System.Text.RegularExpressions.Regex.Replace(kv.Key.Trim(), @"^\d+-\s*", "");
+            return ImportJobService.NormalizeToAscii(PcService.StripNoiseWords(stripped));
+        }).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+        var dbInfo = DashSvc.GetPcValidationInfo(pcNames);
+
+        // Build server-side file index per PC folder for existence checks
+        // Key: pcFolderName → set of file base names (lowercase) found on server
+        var serverFileCache = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (folder, sections) in problemPcs)
+        {
+            var stripped = System.Text.RegularExpressions.Regex.Replace(folder.Trim(), @"^\d+-\s*", "");
+            var pcName = ImportJobService.NormalizeToAscii(PcService.StripNoiseWords(stripped));
+            if (string.IsNullOrWhiteSpace(pcName)) pcName = ImportJobService.NormalizeToAscii(stripped.Trim());
+
+            var missing = requiredSections.Except(sections).ToList();
+            dbInfo.TryGetValue(pcName, out var info);
+
+            // Check server for existing files
+            pcUnrecFiles.TryGetValue(folder, out var rawFiles);
+            var unrecList = new List<UnrecFile>();
+            if (rawFiles != null && rawFiles.Count > 0)
+            {
+                // Build server file index for this PC (lazy, once per PC)
+                // Try raw folder name first, then cleaned pcName (handles noise words like "solo")
+                if (!serverFileCache.TryGetValue(folder, out var serverFiles))
+                {
+                    serverFiles = BuildServerFileIndex(folder);
+                    if (serverFiles.Count == 0 && !string.Equals(folder, pcName, StringComparison.OrdinalIgnoreCase))
+                        serverFiles = BuildServerFileIndex(pcName);
+                    serverFileCache[folder] = serverFiles;
+                }
+
+                foreach (var display in rawFiles)
+                {
+                    // display is "subDir/fileName" — extract just the file name
+                    var slashIdx = display.IndexOf('/');
+                    var justFileName = slashIdx >= 0 ? display[(slashIdx + 1)..] : display;
+                    var baseName = Path.GetFileNameWithoutExtension(justFileName).ToLowerInvariant();
+                    var existsOnServer = serverFiles.Contains(baseName);
+
+                    unrecList.Add(new UnrecFile { Display = display, ExistsOnServer = existsOnServer });
+                }
+            }
+
+            _valResults.Add(new ValidationResult
+            {
+                FolderName = folder,
+                PcName = pcName,
+                AuditorName = info.AuditorName ?? "",
+                SessionCount = info.SessionCount,
+                MissingSections = missing,
+                UnrecognizedFiles = unrecList
+            });
+        }
+    }
+
+    /// <summary>Scan the server PC folder (all subdirs) and return a set of file base names (lowercase, no extension).</summary>
+    HashSet<string> BuildServerFileIndex(string sourceFolderName)
+    {
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var serverPath = FolderSvc.FindFolderBySourceName(sourceFolderName);
+            if (serverPath == null || !Directory.Exists(serverPath)) return result;
+
+            foreach (var file in Directory.GetFiles(serverPath, "*", SearchOption.AllDirectories))
+            {
+                result.Add(Path.GetFileNameWithoutExtension(file).ToLowerInvariant());
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Import] BuildServerFileIndex failed for '{sourceFolderName}': {ex.Message}");
+        }
+        return result;
+    }
+
+    async Task DownloadValidationPdf()
+    {
+        var rows = _valResults.Select(vr => new PdfService.ValidationPdfRow(
+            vr.PcName,
+            vr.AuditorName,
+            vr.SessionCount,
+            string.Join(", ", vr.MissingSections.Select(s => s.Replace("_", " "))),
+            vr.UnrecognizedFiles.Select(uf => (uf.Display, uf.ExistsOnServer)).ToList()
+        )).ToList();
+
+        var pdfBytes = PdfSvc.GenerateValidationReportPdf(rows);
+        var fileName = $"PC_Validation_{DateTime.Now:yyyy_MM_dd_HHmm}.pdf";
+        await JS.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(pdfBytes));
     }
 
     static string FormatBytes(long bytes)

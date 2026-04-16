@@ -4,22 +4,22 @@ using System.Globalization;
 
 namespace LPM.Services;
 
-public record StaffStatRow(int PersonId, string Name, int AuditSec, int SoloCsSec)
+public record StaffStatRow(int PersonId, string Name, int AuditSec, int SoloCsSec, int EffortSec = 0)
 {
-    public int TotalSec => AuditSec + SoloCsSec;
+    public int TotalSec => AuditSec + SoloCsSec + EffortSec;
 }
 
-public record DayStat(DateOnly Date, List<StaffStatRow> Staff, int AcademyCount, int BodyInShop, int PcCount);
+public record DayStat(DateOnly Date, List<StaffStatRow> Staff, int AcademyCount, int BodyInShop, int PcCount, int EffortSec = 0);
 
 public record OriginHours(string Origin, int Seconds);
 
-public record WeekStatSummary(DateOnly WeekStart, int TotalAuditCsSec, int AcademyCount, int BodyInShop, int PcCount)
+public record WeekStatSummary(DateOnly WeekStart, int TotalAuditCsSec, int AcademyCount, int BodyInShop, int PcCount, int EffortSec = 0)
 {
     public string WeekRangeLabel =>
         $"{WeekStart:dd/MM} – {WeekStart.AddDays(6):dd/MM}";
 }
 
-public record MonthStatSummary(DateOnly MonthStart, DateOnly MonthEnd, int TotalAuditCsSec, int AcademyCount, int BodyInShop, int PcCount)
+public record MonthStatSummary(DateOnly MonthStart, DateOnly MonthEnd, int TotalAuditCsSec, int AcademyCount, int BodyInShop, int PcCount, int EffortSec = 0)
 {
     public string MonthLabel =>
         MonthStart.ToString("MMM yyyy", CultureInfo.InvariantCulture);
@@ -135,15 +135,18 @@ public class StatisticsService
             }
         }
 
-        // ── Distinct PC count per day (unique PcIds in Sessions) ────────────────
+        // ── Distinct PC count per day (unique PcIds in Sessions ∪ Effort) ──
         var pcCounts = new int[7];
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT SessionDate, COUNT(DISTINCT PcId)
-                FROM sess_sessions
-                WHERE SessionDate >= @s AND SessionDate <= @e
-                GROUP BY SessionDate";
+                SELECT d, COUNT(DISTINCT pid) FROM (
+                    SELECT SessionDate AS d, PcId AS pid FROM sess_sessions
+                    WHERE  SessionDate >= @s AND SessionDate <= @e
+                    UNION ALL
+                    SELECT EffortDate  AS d, PcId AS pid FROM sys_effort_entries
+                    WHERE  EffortDate  >= @s AND EffortDate <= @e
+                ) GROUP BY d";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
             using var r = cmd.ExecuteReader();
@@ -154,7 +157,7 @@ public class StatisticsService
             }
         }
 
-        // ── Body in shop per day (unique persons: PcId from sessions ∪ PersonId from academy) ──
+        // ── Body in shop per day (sessions ∪ academy ∪ effort) ──
         var bodyInShop = new int[7];
         {
             using var cmd = conn.CreateCommand();
@@ -165,6 +168,9 @@ public class StatisticsService
                     UNION ALL
                     SELECT VisitDate   AS d, PersonId AS pid FROM acad_attendance
                     WHERE  VisitDate   >= @s AND VisitDate   <= @e
+                    UNION ALL
+                    SELECT EffortDate  AS d, PcId     AS pid FROM sys_effort_entries
+                    WHERE  EffortDate  >= @s AND EffortDate  <= @e
                 ) GROUP BY d";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
@@ -176,10 +182,37 @@ public class StatisticsService
             }
         }
 
+        // ── Effort seconds per (personId, dayIndex) ──
+        var effortSecs   = new Dictionary<(int pid, int day), int>();
+        var effortPerDay = new int[7];
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT u.PersonId, e.EffortDate, SUM(e.LengthSeconds)
+                FROM sys_effort_entries e
+                JOIN core_users u ON u.Id = e.PerformedByUserId
+                WHERE e.EffortDate >= @s AND e.EffortDate <= @e
+                GROUP BY u.PersonId, e.EffortDate";
+            cmd.Parameters.AddWithValue("@s", startStr);
+            cmd.Parameters.AddWithValue("@e", endStr);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                int dayIdx = dates.IndexOf(DateOnly.Parse(r.GetString(1)));
+                if (dayIdx < 0) continue;
+                int pid = r.GetInt32(0);
+                int secs = r.GetInt32(2);
+                var key = (pid, dayIdx);
+                effortSecs[key]         = effortSecs.GetValueOrDefault(key) + secs;
+                effortPerDay[dayIdx]   += secs;
+            }
+        }
+
         // ── Build per-day results ────────────────────────────────────────────
         var allPids = new HashSet<int>(auditorNames.Keys);
         foreach (var k in auditSecs.Keys)  allPids.Add(k.pid);
         foreach (var k in soloCsSecs.Keys) allPids.Add(k.pid);
+        foreach (var k in effortSecs.Keys) allPids.Add(k.pid);
 
         return Enumerable.Range(0, 7).Select(dayIdx =>
         {
@@ -189,13 +222,14 @@ public class StatisticsService
                     string name = auditorNames.TryGetValue(pid, out var n) ? n : $"Person {pid}";
                     int audit = auditSecs.GetValueOrDefault((pid, dayIdx));
                     int cs    = soloCsSecs.GetValueOrDefault((pid, dayIdx));
-                    return new StaffStatRow(pid, name, audit, cs);
+                    int eff   = effortSecs.GetValueOrDefault((pid, dayIdx));
+                    return new StaffStatRow(pid, name, audit, cs, eff);
                 })
                 .Where(s => s.TotalSec > 0)
                 .OrderByDescending(s => s.TotalSec)
                 .ToList();
 
-            return new DayStat(dates[dayIdx], staff, academyCounts[dayIdx], bodyInShop[dayIdx], pcCounts[dayIdx]);
+            return new DayStat(dates[dayIdx], staff, academyCounts[dayIdx], bodyInShop[dayIdx], pcCounts[dayIdx], effortPerDay[dayIdx]);
         }).ToList();
     }
 
@@ -216,6 +250,7 @@ public class StatisticsService
         conn.Open();
 
         var auditTotals    = weeks.ToDictionary(w => w, _ => 0);
+        var effortTotals   = weeks.ToDictionary(w => w, _ => 0);
         var academyPersons = weeks.ToDictionary(w => w, _ => new HashSet<int>());
         var bodyPersons    = weeks.ToDictionary(w => w, _ => new HashSet<int>());
         var pcPersons      = weeks.ToDictionary(w => w, _ => new HashSet<int>());
@@ -295,12 +330,34 @@ public class StatisticsService
             }
         }
 
+        // Effort rows: feed into BIS, PcCount, and per-week effort totals
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT EffortDate, PcId, LengthSeconds
+                FROM sys_effort_entries
+                WHERE EffortDate >= @s AND EffortDate <= @e";
+            cmd.Parameters.AddWithValue("@s", startStr);
+            cmd.Parameters.AddWithValue("@e", endStr);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var ws = DashboardService.GetWeekStart(DateOnly.Parse(r.GetString(0)));
+                int pc = r.GetInt32(1);
+                int secs = r.GetInt32(2);
+                if (bodyPersons.ContainsKey(ws))   bodyPersons[ws].Add(pc);
+                if (pcPersons.ContainsKey(ws))     pcPersons[ws].Add(pc);
+                if (effortTotals.ContainsKey(ws))  effortTotals[ws] += secs;
+            }
+        }
+
         return weeks.Select(w => new WeekStatSummary(
             w,
             auditTotals[w],
             academyPersons[w].Count,
             bodyPersons[w].Count,
-            pcPersons[w].Count
+            pcPersons[w].Count,
+            effortTotals[w]
         )).ToList();
     }
 
@@ -354,20 +411,24 @@ public class StatisticsService
             academyCount = Convert.ToInt32(cmd.ExecuteScalar());
         }
 
-        // Unique PCs
+        // Unique PCs (sessions ∪ effort)
         int pcCount = 0;
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT COUNT(DISTINCT PcId)
-                FROM sess_sessions
-                WHERE SessionDate >= @s AND SessionDate <= @e";
+                SELECT COUNT(DISTINCT PcId) FROM (
+                    SELECT PcId FROM sess_sessions
+                    WHERE SessionDate >= @s AND SessionDate <= @e
+                    UNION ALL
+                    SELECT PcId FROM sys_effort_entries
+                    WHERE EffortDate >= @s AND EffortDate <= @e
+                )";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
             pcCount = Convert.ToInt32(cmd.ExecuteScalar());
         }
 
-        // Body in shop (unique persons: PcId from sessions UNION PersonId from academy)
+        // Body in shop (sessions ∪ academy ∪ effort)
         int bodyInShop = 0;
         {
             using var cmd = conn.CreateCommand();
@@ -378,17 +439,34 @@ public class StatisticsService
                     UNION ALL
                     SELECT PersonId AS pid FROM acad_attendance
                     WHERE VisitDate >= @s AND VisitDate <= @e
+                    UNION ALL
+                    SELECT PcId AS pid FROM sys_effort_entries
+                    WHERE EffortDate >= @s AND EffortDate <= @e
                 )";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
             bodyInShop = Convert.ToInt32(cmd.ExecuteScalar());
         }
 
-        return new WeekStatSummary(monthStart, totalSec, academyCount, bodyInShop, pcCount);
+        // Effort total
+        int effortSec = 0;
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT COALESCE(SUM(LengthSeconds), 0)
+                FROM sys_effort_entries
+                WHERE EffortDate >= @s AND EffortDate <= @e";
+            cmd.Parameters.AddWithValue("@s", startStr);
+            cmd.Parameters.AddWithValue("@e", endStr);
+            effortSec = Convert.ToInt32(cmd.ExecuteScalar());
+        }
+
+        return new WeekStatSummary(monthStart, totalSec, academyCount, bodyInShop, pcCount, effortSec);
     }
 
     /// <summary>
     /// Returns auditing hours grouped by PC Origin for the given date range.
+    /// Adds an "Unassigned" bucket for extra effort (which has no organization).
     /// </summary>
     public List<OriginHours> GetMonthOriginHours(DateOnly monthStart, DateOnly monthEnd)
     {
@@ -397,24 +475,41 @@ public class StatisticsService
 
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
-            SELECT COALESCE(og.Name, 'Unknown') AS Org,
-                   SUM(s.LengthSeconds + s.AdminSeconds) AS TotalSec
-            FROM sess_sessions s
-            JOIN core_persons p ON p.PersonId = s.PcId
-            LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
-            WHERE s.SessionDate >= @s AND s.SessionDate <= @e
-            GROUP BY COALESCE(og.Name, 'Unknown')
-            ORDER BY TotalSec DESC";
-        cmd.Parameters.AddWithValue("@s", startStr);
-        cmd.Parameters.AddWithValue("@e", endStr);
 
         var list = new List<OriginHours>();
-        using var r = cmd.ExecuteReader();
-        while (r.Read())
-            list.Add(new OriginHours(r.GetString(0), r.GetInt32(1)));
-        return list;
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT COALESCE(og.Name, 'Unknown') AS Org,
+                       SUM(s.LengthSeconds + s.AdminSeconds) AS TotalSec
+                FROM sess_sessions s
+                JOIN core_persons p ON p.PersonId = s.PcId
+                LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
+                WHERE s.SessionDate >= @s AND s.SessionDate <= @e
+                GROUP BY COALESCE(og.Name, 'Unknown')
+                ORDER BY TotalSec DESC";
+            cmd.Parameters.AddWithValue("@s", startStr);
+            cmd.Parameters.AddWithValue("@e", endStr);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                list.Add(new OriginHours(r.GetString(0), r.GetInt32(1)));
+        }
+
+        int effortSec = 0;
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT COALESCE(SUM(LengthSeconds), 0)
+                FROM sys_effort_entries
+                WHERE EffortDate >= @s AND EffortDate <= @e";
+            cmd.Parameters.AddWithValue("@s", startStr);
+            cmd.Parameters.AddWithValue("@e", endStr);
+            effortSec = Convert.ToInt32(cmd.ExecuteScalar());
+        }
+        if (effortSec > 0)
+            list.Add(new OriginHours("Unassigned", effortSec));
+
+        return list.OrderByDescending(o => o.Seconds).ToList();
     }
 
     /// <summary>
@@ -477,17 +572,36 @@ public class StatisticsService
                 soloCsSecs[r.GetInt32(0)] = r.GetInt32(1);
         }
 
+        // Effort seconds per PersonId
+        var effortSecs = new Dictionary<int, int>();
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT u.PersonId, SUM(e.LengthSeconds)
+                FROM sys_effort_entries e
+                JOIN core_users u ON u.Id = e.PerformedByUserId
+                WHERE e.EffortDate >= @s AND e.EffortDate <= @e
+                GROUP BY u.PersonId";
+            cmd.Parameters.AddWithValue("@s", startStr);
+            cmd.Parameters.AddWithValue("@e", endStr);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                effortSecs[r.GetInt32(0)] = r.GetInt32(1);
+        }
+
         var allPids = new HashSet<int>(auditorNames.Keys);
         foreach (var k in auditSecs.Keys)  allPids.Add(k);
         foreach (var k in soloCsSecs.Keys) allPids.Add(k);
+        foreach (var k in effortSecs.Keys) allPids.Add(k);
 
         return allPids
             .Select(pid =>
             {
                 string name = auditorNames.TryGetValue(pid, out var n) ? n : $"Person {pid}";
-                int audit = auditSecs.GetValueOrDefault(pid);
-                int cs    = soloCsSecs.GetValueOrDefault(pid);
-                return new StaffStatRow(pid, name, audit, cs);
+                int audit  = auditSecs.GetValueOrDefault(pid);
+                int cs     = soloCsSecs.GetValueOrDefault(pid);
+                int effort = effortSecs.GetValueOrDefault(pid);
+                return new StaffStatRow(pid, name, audit, cs, effort);
             })
             .Where(s => s.TotalSec > 0)
             .OrderByDescending(s => s.TotalSec)
@@ -596,10 +710,33 @@ public class StatisticsService
             }
         }
 
+        // Effort per date (both total seconds and distinct PcIds for BIS/PcCount)
+        var effortByDate   = new Dictionary<string, HashSet<int>>();
+        var effortTotsDate = new Dictionary<string, int>();
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT EffortDate, PcId, LengthSeconds FROM sys_effort_entries
+                WHERE EffortDate >= @s AND EffortDate <= @e";
+            cmd.Parameters.AddWithValue("@s", globalStart);
+            cmd.Parameters.AddWithValue("@e", globalEnd);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var dt = r.GetString(0);
+                int pc = r.GetInt32(1);
+                int secs = r.GetInt32(2);
+                if (!effortByDate.ContainsKey(dt)) effortByDate[dt] = new();
+                effortByDate[dt].Add(pc);
+                effortTotsDate[dt] = effortTotsDate.GetValueOrDefault(dt) + secs;
+            }
+        }
+
         // Aggregate per month
         return months.Select(m =>
         {
             int totalSec = 0;
+            int effortSec = 0;
             var acadPersons = new HashSet<int>();
             var bisPersons  = new HashSet<int>();
             var pcPersons   = new HashSet<int>();
@@ -608,6 +745,7 @@ public class StatisticsService
             {
                 var ds = d.ToString("yyyy-MM-dd");
                 totalSec += dayTotals.GetValueOrDefault(ds);
+                effortSec += effortTotsDate.GetValueOrDefault(ds);
                 if (academyByDate.TryGetValue(ds, out var ap))
                 {
                     foreach (var p in ap) { acadPersons.Add(p); bisPersons.Add(p); }
@@ -616,15 +754,19 @@ public class StatisticsService
                 {
                     foreach (var p in sp) { pcPersons.Add(p); bisPersons.Add(p); }
                 }
+                if (effortByDate.TryGetValue(ds, out var ep))
+                {
+                    foreach (var p in ep) { pcPersons.Add(p); bisPersons.Add(p); }
+                }
             }
 
-            return new MonthStatSummary(m.start, m.end, totalSec, acadPersons.Count, bisPersons.Count, pcPersons.Count);
+            return new MonthStatSummary(m.start, m.end, totalSec, acadPersons.Count, bisPersons.Count, pcPersons.Count, effortSec);
         }).ToList();
     }
 
     /// <summary>
     /// Returns auditing hours (LengthSeconds + AdminSeconds) grouped by PC Origin for the given week.
-    /// Ordered by total descending.
+    /// Adds an "Unassigned" bucket for extra effort. Ordered by total descending.
     /// </summary>
     public List<OriginHours> GetWeekOriginHours(DateOnly weekStart)
     {
@@ -634,23 +776,39 @@ public class StatisticsService
 
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
-            SELECT COALESCE(og.Name, 'Unknown') AS Org,
-                   SUM(s.LengthSeconds + s.AdminSeconds) AS TotalSec
-            FROM sess_sessions s
-            JOIN core_persons p ON p.PersonId = s.PcId
-            LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
-            WHERE s.SessionDate >= @s AND s.SessionDate <= @e
-            GROUP BY COALESCE(og.Name, 'Unknown')
-            ORDER BY TotalSec DESC";
-        cmd.Parameters.AddWithValue("@s", startStr);
-        cmd.Parameters.AddWithValue("@e", endStr);
 
         var list = new List<OriginHours>();
-        using var r = cmd.ExecuteReader();
-        while (r.Read())
-            list.Add(new OriginHours(r.GetString(0), r.GetInt32(1)));
-        return list;
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT COALESCE(og.Name, 'Unknown') AS Org,
+                       SUM(s.LengthSeconds + s.AdminSeconds) AS TotalSec
+                FROM sess_sessions s
+                JOIN core_persons p ON p.PersonId = s.PcId
+                LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
+                WHERE s.SessionDate >= @s AND s.SessionDate <= @e
+                GROUP BY COALESCE(og.Name, 'Unknown')";
+            cmd.Parameters.AddWithValue("@s", startStr);
+            cmd.Parameters.AddWithValue("@e", endStr);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                list.Add(new OriginHours(r.GetString(0), r.GetInt32(1)));
+        }
+
+        int effortSec = 0;
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT COALESCE(SUM(LengthSeconds), 0)
+                FROM sys_effort_entries
+                WHERE EffortDate >= @s AND EffortDate <= @e";
+            cmd.Parameters.AddWithValue("@s", startStr);
+            cmd.Parameters.AddWithValue("@e", endStr);
+            effortSec = Convert.ToInt32(cmd.ExecuteScalar());
+        }
+        if (effortSec > 0)
+            list.Add(new OriginHours("Unassigned", effortSec));
+
+        return list.OrderByDescending(o => o.Seconds).ToList();
     }
 }

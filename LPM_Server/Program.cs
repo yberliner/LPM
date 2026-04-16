@@ -150,6 +150,7 @@ builder.Services.AddFido2(options =>
 builder.Services.AddSingleton<LPM.Services.ImportJobService>();
 builder.Services.AddSingleton<LPM.Services.CompletionService>();
 builder.Services.AddSingleton<LPM.Services.QuestionService>();
+builder.Services.AddSingleton<LPM.Services.EffortService>();
 
 // Add session services
 builder.Services.AddDistributedMemoryCache();

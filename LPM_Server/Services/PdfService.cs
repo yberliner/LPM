@@ -16,7 +16,9 @@ public class PdfService
         Dictionary<int, string> pcCsNames,
         string? weeklyRemarks = null,
         HashSet<int>? soloPcIds = null,
-        List<CompletionService.CompletionRow>? completions = null)
+        List<CompletionService.CompletionRow>? completions = null,
+        List<(int PcId, string FullName)>? effortPcs = null,
+        Dictionary<(int pcId, int dayIdx), int>? effortGrid = null)
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
@@ -120,6 +122,28 @@ public class PdfService
                         });
                     }
 
+                    // ══════ EXTRA EFFORT TABLE ══════
+                    if (effortPcs is { Count: > 0 } && effortGrid != null)
+                    {
+                        int effortTotal = effortPcs.Sum(pc => Enumerable.Range(0, 7)
+                            .Sum(d => effortGrid.GetValueOrDefault((pc.PcId, d))));
+                        if (effortTotal > 0)
+                        {
+                            col.Item().PaddingTop(16).Text("Extra Effort").SemiBold().FontSize(10).FontColor("#0891b2");
+                            col.Item().PaddingTop(4);
+                            RenderEffortPdfTable(col, effortPcs, effortGrid, weekStart);
+
+                            col.Item().PaddingTop(6);
+                            col.Item().Background("#0891b2").Padding(6).Row(r =>
+                            {
+                                r.RelativeItem().Text("Extra Effort Total").SemiBold().FontSize(11).FontColor("#ffffff");
+                                r.ConstantItem(150).AlignRight()
+                                    .Text(DashboardService.FmtOrBlank(effortTotal))
+                                    .SemiBold().FontSize(14).FontColor("#ffffff");
+                            });
+                        }
+                    }
+
                     // ══════ WEEKLY REMARKS ══════
                     if (!string.IsNullOrWhiteSpace(weeklyRemarks))
                     {
@@ -173,6 +197,59 @@ public class PdfService
                 });
             });
         }).GeneratePdf();
+    }
+
+    private void RenderEffortPdfTable(
+        ColumnDescriptor col,
+        List<(int PcId, string FullName)> effortPcs,
+        Dictionary<(int pcId, int dayIdx), int> effortGrid,
+        DateOnly weekStart)
+    {
+        col.Item().Table(table =>
+        {
+            table.ColumnsDefinition(columns =>
+            {
+                columns.ConstantColumn(90);
+                for (int i = 0; i < effortPcs.Count; i++) columns.RelativeColumn();
+            });
+
+            static IContainer HeadCell(IContainer c) => c.Background("#0891b2").Padding(4);
+            static IContainer NameCell(IContainer c) => c.Background("#cffafe").BorderBottom(1).BorderColor("#06b6d4").Padding(3);
+            static IContainer BodyCell(IContainer c) => c.BorderBottom(1).BorderColor("#e2e8f0").PaddingVertical(3).PaddingHorizontal(2);
+
+            table.Header(header =>
+            {
+                header.Cell().Element(HeadCell).AlignLeft().Text("Day").SemiBold().FontSize(9).FontColor("#ffffff");
+                foreach (var pc in effortPcs)
+                    header.Cell().Element(NameCell).AlignCenter()
+                        .Text(pc.FullName).FontSize(9).FontColor("#0e7490").SemiBold();
+            });
+
+            for (int d = 0; d < 7; d++)
+            {
+                var day = weekStart.AddDays(d);
+                table.Cell().Element(BodyCell).AlignLeft()
+                    .Text(day.ToString("ddd dd/MM")).FontSize(9).FontColor("#0e7490");
+                foreach (var pc in effortPcs)
+                {
+                    int secs = effortGrid.GetValueOrDefault((pc.PcId, d));
+                    table.Cell().Element(BodyCell).AlignCenter()
+                        .Text(secs > 0 ? DashboardService.Fmt(secs) : "-")
+                        .FontSize(9).FontColor(secs > 0 ? "#0e7490" : Colors.Grey.Medium);
+                }
+            }
+
+            // Weekly total row
+            table.Cell().Element(c => c.Background("#e0f7fa").BorderTop(1).BorderColor("#06b6d4").Padding(3))
+                .AlignLeft().Text("Σ Week").SemiBold().FontSize(9).FontColor("#0e7490");
+            foreach (var pc in effortPcs)
+            {
+                int total = Enumerable.Range(0, 7).Sum(d => effortGrid.GetValueOrDefault((pc.PcId, d)));
+                table.Cell().Element(c => c.Background("#e0f7fa").BorderTop(1).BorderColor("#06b6d4").Padding(3))
+                    .AlignCenter().Text(total > 0 ? DashboardService.Fmt(total) : "-")
+                    .SemiBold().FontSize(9).FontColor("#0e7490");
+            }
+        });
     }
 
     private void RenderPdfTable(
@@ -921,7 +998,7 @@ public class PdfService
                                 for (int d = 0; d < 7; d++)
                                 {
                                     var ds    = dayStats[d];
-                                    var total = ds.Staff.Sum(s => s.AuditSec + s.SoloCsSec);
+                                    var total = ds.Staff.Sum(s => s.AuditSec + s.SoloCsSec + s.EffortSec);
                                     var bg    = d % 2 == 0 ? Colors.White : Colors.Grey.Lighten5;
                                     bool tod  = ds.Date == DateOnly.FromDateTime(DateTime.Today);
                                     table.Cell().Background(bg).Padding(3).Text(t =>
@@ -993,6 +1070,7 @@ public class PdfService
                                         cols.RelativeColumn(2);
                                         cols.RelativeColumn(2);
                                         cols.RelativeColumn(2);
+                                        cols.RelativeColumn(2);
                                     });
                                     table.Header(h =>
                                     {
@@ -1000,6 +1078,7 @@ public class PdfService
                                         h.Cell().Background("#667eea").Padding(3).Text("Name").FontSize(7).SemiBold().FontColor(Colors.White);
                                         h.Cell().Background("#667eea").Padding(3).AlignCenter().Text("Auditing").FontSize(7).SemiBold().FontColor(Colors.White);
                                         h.Cell().Background("#667eea").Padding(3).AlignCenter().Text("CS Solo").FontSize(7).SemiBold().FontColor(Colors.White);
+                                        h.Cell().Background("#667eea").Padding(3).AlignCenter().Text("Effort").FontSize(7).SemiBold().FontColor(Colors.White);
                                         h.Cell().Background("#667eea").Padding(3).AlignCenter().Text("Total").FontSize(7).SemiBold().FontColor(Colors.White);
                                     });
                                     int rank = 1;
@@ -1010,6 +1089,7 @@ public class PdfService
                                         table.Cell().Background(bg).Padding(3).Text(s.Name).FontSize(8).SemiBold();
                                         table.Cell().Background(bg).AlignCenter().Padding(3).Text(s.AuditSec > 0 ? FmtSec(s.AuditSec) : "–").FontSize(8).FontColor(s.AuditSec > 0 ? "#1a73e8" : Colors.Grey.Medium);
                                         table.Cell().Background(bg).AlignCenter().Padding(3).Text(s.SoloCsSec > 0 ? FmtSec(s.SoloCsSec) : "–").FontSize(8).FontColor(s.SoloCsSec > 0 ? "#c5221f" : Colors.Grey.Medium);
+                                        table.Cell().Background(bg).AlignCenter().Padding(3).Text(s.EffortSec > 0 ? FmtSec(s.EffortSec) : "–").FontSize(8).FontColor(s.EffortSec > 0 ? "#0891b2" : Colors.Grey.Medium);
                                         table.Cell().Background(bg).AlignCenter().Padding(3).Text(FmtSec(s.TotalSec)).FontSize(8).SemiBold().FontColor("#6366f1");
                                         rank++;
                                     }
@@ -1112,6 +1192,7 @@ public class PdfService
                                             cols.RelativeColumn(2);
                                             cols.RelativeColumn(2);
                                             cols.RelativeColumn(2);
+                                            cols.RelativeColumn(2);
                                         });
                                         table.Header(h =>
                                         {
@@ -1119,6 +1200,7 @@ public class PdfService
                                             h.Cell().Background("#4338ca").Padding(3).Text("Name").FontSize(7).SemiBold().FontColor(Colors.White);
                                             h.Cell().Background("#4338ca").Padding(3).AlignCenter().Text("Auditing").FontSize(7).SemiBold().FontColor(Colors.White);
                                             h.Cell().Background("#4338ca").Padding(3).AlignCenter().Text("CS Solo").FontSize(7).SemiBold().FontColor(Colors.White);
+                                            h.Cell().Background("#4338ca").Padding(3).AlignCenter().Text("Effort").FontSize(7).SemiBold().FontColor(Colors.White);
                                             h.Cell().Background("#4338ca").Padding(3).AlignCenter().Text("Total").FontSize(7).SemiBold().FontColor(Colors.White);
                                         });
                                         int mrank = 1;
@@ -1129,6 +1211,7 @@ public class PdfService
                                             table.Cell().Background(bg).Padding(3).Text(s.Name).FontSize(8).SemiBold();
                                             table.Cell().Background(bg).AlignCenter().Padding(3).Text(s.AuditSec > 0 ? FmtSec(s.AuditSec) : "–").FontSize(8).FontColor(s.AuditSec > 0 ? "#1a73e8" : Colors.Grey.Medium);
                                             table.Cell().Background(bg).AlignCenter().Padding(3).Text(s.SoloCsSec > 0 ? FmtSec(s.SoloCsSec) : "–").FontSize(8).FontColor(s.SoloCsSec > 0 ? "#c5221f" : Colors.Grey.Medium);
+                                            table.Cell().Background(bg).AlignCenter().Padding(3).Text(s.EffortSec > 0 ? FmtSec(s.EffortSec) : "–").FontSize(8).FontColor(s.EffortSec > 0 ? "#0891b2" : Colors.Grey.Medium);
                                             table.Cell().Background(bg).AlignCenter().Padding(3).Text(FmtSec(s.TotalSec)).FontSize(8).SemiBold().FontColor("#4338ca");
                                             mrank++;
                                         }
@@ -2882,6 +2965,94 @@ public class PdfService
                     col.Item().PaddingTop(4).AlignRight()
                         .Text($"{rows.Count} PCs").FontSize(6.5f).FontColor("#94a3b8");
                 });
+            });
+        }).GeneratePdf();
+    }
+
+    // ── Validation Report PDF ────────────────────────────────────────────
+
+    public record ValidationPdfRow(string PcName, string AuditorName, int SessionCount, string MissingSections, List<(string Display, bool ExistsOnServer)> UnrecognizedFiles);
+
+    public byte[] GenerateValidationReportPdf(List<ValidationPdfRow> rows)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+
+        return Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4.Landscape());
+                page.Margin(20);
+                page.DefaultTextStyle(x => x.FontSize(9).FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
+
+                page.Header().Column(col =>
+                {
+                    col.Item().AlignCenter().Text("PC Folder Validation Report")
+                        .SemiBold().FontSize(16);
+                    col.Item().AlignCenter().Text($"Generated: {DateTime.Now:dd/MM/yyyy HH:mm}")
+                        .FontSize(8).FontColor("#64748b");
+                    col.Item().PaddingTop(4).Text($"Total issues: {rows.Count}")
+                        .FontSize(9).FontColor("#f87171");
+                    col.Item().PaddingBottom(8);
+                });
+
+                page.Content().Table(table =>
+                {
+                    table.ColumnsDefinition(c =>
+                    {
+                        c.RelativeColumn(2);   // PC Name
+                        c.RelativeColumn(2);   // Auditor
+                        c.ConstantColumn(55);  // Sessions
+                        c.RelativeColumn(2);   // Missing Sections
+                        c.RelativeColumn(4);   // Unrecognized Files
+                    });
+
+                    // Header
+                    table.Header(h =>
+                    {
+                        void HeaderCell(IContainer c, string text) =>
+                            c.Background("#1e293b").Padding(5)
+                                .Text(text).FontSize(8).SemiBold().FontColor("#e2e8f0");
+
+                        HeaderCell(h.Cell(), "PC Name");
+                        HeaderCell(h.Cell(), "Auditor");
+                        HeaderCell(h.Cell(), "Sessions");
+                        HeaderCell(h.Cell(), "Missing Sections");
+                        HeaderCell(h.Cell(), "Unrecognized Files");
+                    });
+
+                    // Rows
+                    for (int i = 0; i < rows.Count; i++)
+                    {
+                        var row = rows[i];
+                        var bg = i % 2 == 0 ? "#ffffff" : "#f1f5f9";
+
+                        void DataCell(IContainer c, string text) =>
+                            c.Background(bg).BorderBottom(0.5f).BorderColor("#e2e8f0").Padding(4)
+                                .Text(text).FontSize(8);
+
+                        DataCell(table.Cell(), row.PcName);
+                        DataCell(table.Cell(), string.IsNullOrEmpty(row.AuditorName) ? "-" : row.AuditorName);
+                        table.Cell().Background(bg).BorderBottom(0.5f).BorderColor("#e2e8f0").Padding(4)
+                            .AlignCenter().Text(row.SessionCount.ToString()).FontSize(8);
+                        table.Cell().Background(bg).BorderBottom(0.5f).BorderColor("#e2e8f0").Padding(4)
+                            .Text(row.MissingSections).FontSize(7.5f).FontColor("#dc2626");
+                        table.Cell().Background(bg).BorderBottom(0.5f).BorderColor("#e2e8f0").Padding(4)
+                            .Text(t =>
+                            {
+                                foreach (var uf in row.UnrecognizedFiles)
+                                {
+                                    t.Span(uf.ExistsOnServer ? "[OK] " : "[MISSING] ")
+                                        .FontSize(6.5f).FontColor(uf.ExistsOnServer ? "#16a34a" : "#dc2626");
+                                    t.Span(uf.Display + "\n")
+                                        .FontSize(7).FontColor(uf.ExistsOnServer ? "#16a34a" : "#dc2626");
+                                }
+                            });
+                    }
+                });
+
+                page.Footer().AlignCenter()
+                    .Text(t => { t.CurrentPageNumber().FontSize(7); t.Span(" / ").FontSize(7); t.TotalPages().FontSize(7); });
             });
         }).GeneratePdf();
     }

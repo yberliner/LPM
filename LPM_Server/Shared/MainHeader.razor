@@ -11,6 +11,7 @@
 @inject LPM.Services.FileAuditService FileAuditSvc
 @inject LPM.Services.CompletionService CompletionSvc
 @inject LPM.Services.CourseService CourseSvc
+@inject LPM.Services.EffortService EffortSvc
 @inject PdfService PdfSvc
 @using LPM._Spk
 @using LPM.Services
@@ -442,6 +443,12 @@
                                     </li>
                                     @if (!_isSoloUser)
                                     {
+                                    <li>
+                                        <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
+                                           @onclick="OpenEffortLogModal">
+                                            <i class="ri-timer-line" style="color:#06b6d4;"></i>Add Effort Log
+                                        </a>
+                                    </li>
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenNcWizard">
@@ -3575,6 +3582,13 @@
     </div>
 }
 
+@* ── Add/Edit Effort Log Modal ── *@
+<LPM.Shared.EffortEntryModal IsOpen="_effortModalOpen"
+                             EditingEntryId="_effortEditingId"
+                             CurrentUsername="@_logUsername"
+                             OnClose="CloseEffortLogModal"
+                             OnSaved="OnEffortSaved" />
+
 <style>
     /* ── Session Manager ── */
     .sm-overlay {
@@ -5831,6 +5845,33 @@
     SpkNewPersonModal _addPcModal = default!;
     HashSet<string>? _existingPcNames;
 
+    // ── Effort Log modal state ──
+    bool _effortModalOpen;
+    int? _effortEditingId;
+
+    void OpenEffortLogModal()
+    {
+        _effortEditingId = null;
+        _effortModalOpen = true;
+    }
+
+    Task CloseEffortLogModal()
+    {
+        _effortModalOpen = false;
+        _effortEditingId = null;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    Task OnEffortSaved()
+    {
+        _effortModalOpen = false;
+        _effortEditingId = null;
+        DashSvc.NotifyDataChanged();
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
     // ── Transfer Balance state ──
     bool _showTransfer;
     int _xferFromPcId;
@@ -6651,6 +6692,7 @@
                             [{ 'color': [] }],
                             [{ 'size': ['10px', '14px', '18px', '24px'] }],
                             [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                            [{ 'direction': 'rtl' }, { 'align': [] }],
                             ['clean']
                         ]}
                     });
@@ -6704,6 +6746,7 @@
                             [{ 'color': [] }],
                             [{ 'size': ['10px','14px','18px','24px'] }],
                             [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                            [{ 'direction': 'rtl' }, { 'align': [] }],
                             ['clean']
                         ]}
                     });
@@ -8511,6 +8554,7 @@ string _actionPcSearch = "";
                             [{ 'color': [] }],
                             [{ 'size': ['10px', '14px', '18px', '24px'] }],
                             [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                            [{ 'direction': 'rtl' }, { 'align': [] }],
                             ['clean']
                         ]}
                     });
@@ -9270,6 +9314,7 @@ string _actionPcSearch = "";
                             [{ 'color': [] }],
                             [{ 'size': ['10px','14px','18px','24px'] }],
                             [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                            [{ 'direction': 'rtl' }, { 'align': [] }],
                             ['clean']
                         ]}
                     });
@@ -9533,7 +9578,8 @@ string _actionPcSearch = "";
             var weekKey = weekStart.ToString("yyyy-MM-dd");
             var remarks = DashSvc.GetWeeklyRemarks(sid, weekKey);
             var completions = CompletionSvc.GetForWeek(sid, weekStart, weekStart.AddDays(6));
-            var pdfBytes = PdfSvc.GenerateWeeklyTablePdf(staff.FullName, weekStart, pcs, grid, csNames, remarks, soloPcIds, completions);
+            var effort = EffortSvc.GetWeekEffortGridByPerson(sid, weekStart);
+            var pdfBytes = PdfSvc.GenerateWeeklyTablePdf(staff.FullName, weekStart, pcs, grid, csNames, remarks, soloPcIds, completions, effort.Pcs, effort.Grid);
             var fileName = $"stat_{sid}_{weekStart:yyyyMMdd}.pdf";
             File.WriteAllBytes(Path.Combine(tempDir, fileName), pdfBytes);
             return (Sid: sid, Key: $"stat_{sid}", B64: Convert.ToBase64String(pdfBytes));
@@ -9664,9 +9710,10 @@ string _actionPcSearch = "";
             var csNames = DashSvc.GetLastCsNamesByPc(pcIds);
             var remarks = DashSvc.GetWeeklyRemarks(staff.PersonId, weekKey);
             var completions = CompletionSvc.GetForWeek(staff.PersonId, weekStart, weekStart.AddDays(6));
+            var effort = EffortSvc.GetWeekEffortGridByPerson(staff.PersonId, weekStart);
 
             var pdfBytes = PdfSvc.GenerateWeeklyTablePdf(
-                staff.FullName, weekStart, pcs, grid, csNames, remarks, soloPcIds, completions);
+                staff.FullName, weekStart, pcs, grid, csNames, remarks, soloPcIds, completions, effort.Pcs, effort.Grid);
 
             merged = merged == null ? pdfBytes : PdfSvc.CombinePdfs(merged, pdfBytes);
         }

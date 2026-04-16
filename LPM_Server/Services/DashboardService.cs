@@ -455,6 +455,76 @@ public class DashboardService
         return GetPersonName(conn, personId);
     }
 
+    /// <summary>
+    /// For a list of PC names (cleaned), returns auditor name + session count for each.
+    /// Matches by TRIM(FirstName || ' ' || LastName) COLLATE NOCASE.
+    /// </summary>
+    public Dictionary<string, (string AuditorName, int SessionCount)> GetPcValidationInfo(List<string> pcNames)
+    {
+        if (pcNames.Count == 0) return new();
+        var result = new Dictionary<string, (string, int)>(StringComparer.OrdinalIgnoreCase);
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Build a temp table with the names for efficient joining
+        using (var tmp = conn.CreateCommand())
+        {
+            tmp.CommandText = "CREATE TEMP TABLE _val_names (Name TEXT COLLATE NOCASE)";
+            tmp.ExecuteNonQuery();
+        }
+        using (var ins = conn.CreateCommand())
+        {
+            ins.CommandText = "INSERT INTO _val_names (Name) VALUES (@n)";
+            var p = ins.Parameters.Add("@n", SqliteType.Text);
+            foreach (var name in pcNames)
+            {
+                p.Value = name;
+                ins.ExecuteNonQuery();
+            }
+        }
+
+        // Query: join core_persons → core_pcs to get PcId, then auditor from sys_staff_pc_list, session count from sess_sessions
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $@"
+            SELECT
+                vn.Name,
+                COALESCE(aud_name.FullName, '') AS AuditorName,
+                COALESCE(sc.Cnt, 0) AS SessionCount
+            FROM _val_names vn
+            LEFT JOIN core_persons p ON TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) = vn.Name COLLATE NOCASE
+            LEFT JOIN core_pcs pc ON pc.PcId = p.PersonId
+            LEFT JOIN (
+                SELECT spl.PcId,
+                       {FullNameExpr.Replace("p.", "ap.")} AS FullName
+                FROM sys_staff_pc_list spl
+                JOIN core_persons ap ON ap.PersonId = spl.UserId
+                WHERE spl.WorkCapacity IN ('Auditor','Auditor+CS')
+                  AND spl.IsApproved = 1
+                GROUP BY spl.PcId
+            ) aud_name ON aud_name.PcId = pc.PcId
+            LEFT JOIN (
+                SELECT PcId, COUNT(*) AS Cnt FROM sess_sessions GROUP BY PcId
+            ) sc ON sc.PcId = pc.PcId";
+
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            var name = r.GetString(0);
+            var auditor = r.GetString(1);
+            var sessions = r.GetInt32(2);
+            result[name] = (auditor, sessions);
+        }
+
+        using (var drop = conn.CreateCommand())
+        {
+            drop.CommandText = "DROP TABLE IF EXISTS _val_names";
+            drop.ExecuteNonQuery();
+        }
+
+        return result;
+    }
+
     public void SendAutoMessageToAdmins(int fromStaffId, string msgText)
     {
         using var conn = new SqliteConnection(_connectionString);

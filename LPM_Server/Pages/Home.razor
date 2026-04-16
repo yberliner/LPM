@@ -13,6 +13,7 @@
 @inject NavigationManager Nav
 @inject CompletionService CompletionSvc
 @inject QuestionService QuestionSvc
+@inject EffortService EffortSvc
 @implements IDisposable
 
 <div @onclick="DismissMenu">
@@ -892,6 +893,101 @@
                 {
                     @DetailPanel
                 }
+            }
+
+            @* ══════ EXTRA EFFORT TABLE (non-solo users) ══════ *@
+            <div class="home-table-label px-3 mt-3 mb-1" style="color:#06b6d4; font-weight:600; font-size:.85rem;">
+                <i class="ri-timer-line me-1"></i>Extra Effort
+            </div>
+            @if (_effortPcs.Count == 0)
+            {
+                <div class="px-3 mb-2">
+                    <div style="background:#f0fdfa; border:1px dashed #5eead4; border-radius:6px;
+                                padding:10px 14px; color:#0e7490; font-size:.82rem; text-align:center;">
+                        <i class="ri-inbox-line me-1"></i>No extra effort logged this week.
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive px-3 thick-scroll">
+                <table class="table table-bordered table-hover table-sm mb-0" style="min-width:300px;">
+                    <colgroup>
+                        <col style="width:110px;" />
+                        @foreach (var pc in _effortPcs) { <col /> }
+                    </colgroup>
+                    <thead class="table-light">
+                        <tr>
+                            <th style="min-width:110px;color:#212529;">@LS.T("home.day")</th>
+                            @foreach (var pc in _effortPcs)
+                            {
+                                <th class="text-center user-select-none"
+                                    style="white-space:nowrap; min-width:90px;">
+                                    <span class="badge rounded-pill"
+                                          style="background:#cffafe; color:#0e7490; border:1px solid #06b6d4;
+                                                 font-weight:600; font-size:.82em; padding:.25em .6em;"
+                                          title="@pc.FullName">
+                                        @pc.FullName
+                                    </span>
+                                </th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (int d = 0; d < 7; d++)
+                        {
+                            var day    = _weekStart.AddDays(d);
+                            var dayIdx = d;
+                            var isFuture = day > MaxAllowedDate();
+                            <tr>
+                                <td class="text-nowrap" style="font-size:.82em; color:#06b6d4; @(isFuture ? "opacity:.45;" : "")">@DayLabel(day)</td>
+                                @foreach (var pc in _effortPcs)
+                                {
+                                    var secs = _effortGrid.GetValueOrDefault((pc.PcId, dayIdx));
+                                    <td class="text-center"
+                                        style="@(isFuture ? "opacity:.45;" : "") color:#0e7490; font-size:.82em;">
+                                        @if (secs > 0)
+                                        {
+                                            @DashboardService.Fmt(secs)
+                                        }
+                                        else
+                                        {
+                                            <span style="opacity:.35;">-</span>
+                                        }
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot class="table-light">
+                        <tr>
+                            <td style="font-size:.82em; color:#06b6d4;"><strong>Σ Week</strong></td>
+                            @foreach (var pc in _effortPcs)
+                            {
+                                var total = Enumerable.Range(0, 7)
+                                    .Sum(d => _effortGrid.GetValueOrDefault((pc.PcId, d)));
+                                <td class="text-center" style="color:#0e7490; font-size:.82em;">
+                                    <strong>@DashboardService.Fmt(total)</strong>
+                                </td>
+                            }
+                        </tr>
+                        @{
+                            var effortGrandTotal = _effortPcs.Sum(pc => Enumerable.Range(0, 7)
+                                .Sum(d => _effortGrid.GetValueOrDefault((pc.PcId, d))));
+                        }
+                        <tr style="background:linear-gradient(90deg,#0891b2 0%,#06b6d4 100%) !important; color:#fff !important;">
+                            <td class="fw-bold" style="letter-spacing:.03em; font-size:.85em;color:#fff;">Extra Effort Total</td>
+                            <td colspan="@_effortPcs.Count" style="color:#fff;">
+                                <div class="text-center">
+                                    <span style="font-size:1rem; font-weight:700; letter-spacing:.04em;color:#fff;">
+                                        @DashboardService.Fmt(effortGrandTotal)
+                                    </span>
+                                </div>
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+                </div>
             }
 
             } @* end Weekly Overview *@
@@ -1941,6 +2037,10 @@
     Dictionary<(int, int), int> _grid = [];
     Dictionary<string, string> _csStatusLabels = [];
 
+    // ── Extra Effort state ──
+    List<(int PcId, string FullName)>   _effortPcs  = new();
+    Dictionary<(int, int), int>         _effortGrid = new();
+
     bool   _hideEmpty = true;
 
     bool HasWeekData(PcInfo pc) => Enumerable.Range(0, 7)
@@ -2293,6 +2393,11 @@
             _pendingCs    = t_csMarks.Result;
             _pcCsNames    = t_csNames.Result;
             _audAttachTypes = t_attachTasks.ToDictionary(t => t.Result.SessionId, t => t.Result.Types);
+
+            // Extra Effort grid (non-solo users only)
+            var eff = EffortSvc.GetWeekEffortGridByPerson(uid, weekStart);
+            _effortPcs  = eff.Pcs;
+            _effortGrid = eff.Grid;
         }
 
         // Fetch question status for all visible sessions
@@ -2854,7 +2959,7 @@
         var completions = _userId.HasValue
             ? CompletionSvc.GetForWeek(_userId.Value, _weekStart, _weekStart.AddDays(6))
             : null;
-        var pdfBytes = PdfService.GenerateWeeklyTablePdf(_displayName, _weekStart, _myPcs, _grid, _pcCsNames, _weekRemarks, _soloPcIds, completions);
+        var pdfBytes = PdfService.GenerateWeeklyTablePdf(_displayName, _weekStart, _myPcs, _grid, _pcCsNames, _weekRemarks, _soloPcIds, completions, _effortPcs, _effortGrid);
 
         var fileName = $"Week_{_weekStart:yyyy_MM_dd}.pdf";
         await JS.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(pdfBytes));

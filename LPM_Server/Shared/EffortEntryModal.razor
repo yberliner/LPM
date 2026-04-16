@@ -1,0 +1,305 @@
+@using LPM.Services
+@inject EffortService EffortSvc
+@inject UserActivityService ActivitySvc
+@inject IJSRuntime JS
+
+@if (IsOpen)
+{
+    <div class="modal show d-block effort-modal-wrap" tabindex="-1"
+         style="background:rgba(0,0,0,.55); z-index:10000;" @onclick="CloseIfOutside">
+        <div class="modal-dialog modal-dialog-centered modal-md" @onclick:stopPropagation="true">
+            <div class="modal-content effort-modal-content">
+                <div class="modal-header py-2" style="background:linear-gradient(135deg,#0891b2,#06b6d4); border-bottom:none;">
+                    <h5 class="modal-title fs-15 text-white d-flex align-items-center gap-2">
+                        <i class="ri-timer-line"></i>@(_isEdit ? "Edit Effort Log" : "Add Effort Log")
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="DoClose"></button>
+                </div>
+
+                <div class="modal-body">
+                    @if (_loadError != null)
+                    {
+                        <div class="alert alert-danger py-2 mb-2" style="font-size:.8rem;">@_loadError</div>
+                    }
+
+                    <!-- Performed By -->
+                    <div class="mb-3">
+                        <label class="form-label eff-lbl">Performed By <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm eff-input"
+                                value="@_performedByUserId"
+                                @onchange='e => _performedByUserId = int.Parse(e.Value?.ToString() ?? "0")'>
+                            <option value="0">— Choose —</option>
+                            @foreach (var u in _staffUsers)
+                            {
+                                <option value="@u.UserId">@u.FullName</option>
+                            }
+                        </select>
+                    </div>
+
+                    <!-- PC -->
+                    <div class="mb-3">
+                        <label class="form-label eff-lbl">PC <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm eff-input"
+                                value="@_pcId"
+                                @onchange='e => _pcId = int.Parse(e.Value?.ToString() ?? "0")'>
+                            <option value="0">— Choose a PC —</option>
+                            @foreach (var pc in _pcs)
+                            {
+                                <option value="@pc.PcId">@pc.FullName</option>
+                            }
+                        </select>
+                    </div>
+
+                    <!-- Date -->
+                    <div class="mb-3">
+                        <label class="form-label eff-lbl">Date <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control form-control-sm eff-input"
+                               value="@_dateStr"
+                               @onchange="e => _dateStr = e.Value?.ToString() ?? string.Empty" />
+                    </div>
+
+                    <!-- Time effort -->
+                    <div class="mb-3">
+                        <label class="form-label eff-lbl">
+                            Time Effort <span class="text-danger">*</span>
+                            <span class="text-muted" style="font-size:.72rem; font-weight:400;">(H:MM)</span>
+                        </label>
+                        <input type="text" inputmode="numeric" maxlength="5" placeholder="H:MM"
+                               class="form-control form-control-sm eff-input eff-time"
+                               style="@(IsTimeInvalid ? "border:2px solid #ef4444 !important;background:rgba(239,68,68,.08) !important;" : "")"
+                               value="@_timeStr"
+                               @oninput="e => _timeStr = e.Value?.ToString() ?? string.Empty"
+                               @onblur="OnTimeBlur" />
+                    </div>
+
+                    <!-- Category -->
+                    <div class="mb-3">
+                        <label class="form-label eff-lbl">Category <span class="text-danger">*</span></label>
+                        <select class="form-select form-select-sm eff-input"
+                                value="@_categoryId"
+                                @onchange='e => _categoryId = int.Parse(e.Value?.ToString() ?? "0")'>
+                            <option value="0">— Choose —</option>
+                            @foreach (var c in _categories)
+                            {
+                                <option value="@c.CategoryId">@c.Label</option>
+                            }
+                        </select>
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="mb-3">
+                        <label class="form-label eff-lbl">Notes</label>
+                        <textarea class="form-control form-control-sm eff-input" rows="3" maxlength="2000"
+                                  @bind="_notes"></textarea>
+                    </div>
+                </div>
+
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-sm btn-secondary" @onclick="DoClose" disabled="@_submitting">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-primary"
+                            style="background:#06b6d4; border-color:#06b6d4;"
+                            @onclick="Submit" disabled="@(!CanSubmit || _submitting)">
+                        @if (_submitting) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        @(_isEdit ? "Save" : "Submit")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .effort-modal-content { border-radius:10px; overflow:hidden; }
+    .effort-modal-content .modal-body { max-height:70vh; overflow-y:auto; }
+    .effort-modal-content .eff-lbl {
+        font-size:.82rem; color:#94a3b8; margin-bottom:.25rem; font-weight:500;
+    }
+    .effort-modal-content .eff-input {
+        font-size:1rem; min-height:44px;
+    }
+    @@media (max-width:480px) {
+        .effort-modal-content .eff-input { font-size:16px; }
+    }
+    .effort-modal-content .eff-time { font-family: ui-monospace,Menlo,Consolas,monospace; letter-spacing:.05em; }
+    .effort-modal-content .modal-footer { border-top:1px solid rgba(0,0,0,.08); }
+    .effort-modal-content .modal-footer .btn { min-height:44px; min-width:88px; }
+</style>
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public int? EditingEntryId { get; set; }
+    [Parameter] public string CurrentUsername { get; set; } = "";
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    List<EffortStaffUser> _staffUsers = new();
+    List<EffortCategory>  _categories = new();
+    List<EffortPcOption>  _pcs        = new();
+
+    int    _performedByUserId;
+    int    _pcId;
+    string _dateStr   = "";
+    string _timeStr   = "";
+    int    _categoryId;
+    string _notes     = "";
+    bool   _isEdit    => EditingEntryId.HasValue;
+    bool   _loaded;
+    bool   _wasOpen;
+    bool   _submitting;
+    string? _loadError;
+
+    bool IsTimeInvalid => !string.IsNullOrWhiteSpace(_timeStr) && !IsValidTime(_timeStr);
+    bool CanSubmit => _performedByUserId > 0
+                   && _pcId > 0
+                   && !string.IsNullOrWhiteSpace(_dateStr)
+                   && !string.IsNullOrWhiteSpace(_timeStr) && IsValidTime(_timeStr) && TimeToMinutes(_timeStr) > 0
+                   && _categoryId > 0;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && !_wasOpen) await LoadForOpen();
+        _wasOpen = IsOpen;
+    }
+
+    async Task LoadForOpen()
+    {
+        _loadError = null;
+        _submitting = false;
+        try
+        {
+            if (!_loaded)
+            {
+                _staffUsers = EffortSvc.GetStaffUsers();
+                _categories = EffortSvc.GetCategories();
+                _pcs        = EffortSvc.GetAllPcs();
+                _loaded = true;
+            }
+
+            if (_isEdit)
+            {
+                var row = EffortSvc.GetById(EditingEntryId!.Value);
+                if (row == null) { _loadError = "Entry not found."; return; }
+                _performedByUserId = row.PerformedByUserId;
+                _pcId              = row.PcId;
+                _dateStr           = row.EffortDate;
+                _timeStr           = SecondsToHMM(row.LengthSeconds);
+                _categoryId        = row.CategoryId;
+                _notes             = row.Notes ?? "";
+            }
+            else
+            {
+                _performedByUserId = EffortSvc.GetCoreUserIdByUsername(CurrentUsername) ?? 0;
+                _pcId              = 0;
+                _dateStr           = DateTime.Today.ToString("yyyy-MM-dd");
+                _timeStr           = "";
+                _categoryId        = 0;
+                _notes             = "";
+            }
+        }
+        catch (Exception ex)
+        {
+            _loadError = $"Failed to load: {ex.Message}";
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    void OnTimeBlur()
+    {
+        _timeStr = FormatTime(_timeStr);
+    }
+
+    async Task Submit()
+    {
+        if (!CanSubmit || _submitting) return;
+        _submitting = true;
+
+        try
+        {
+            var date = DateOnly.ParseExact(_dateStr, "yyyy-MM-dd");
+            int secs = TimeToMinutes(FormatTime(_timeStr)) * 60;
+            var catLabel = _categories.FirstOrDefault(c => c.CategoryId == _categoryId)?.Label ?? "";
+            var currentUserCoreId = EffortSvc.GetCoreUserIdByUsername(CurrentUsername);
+            if (currentUserCoreId == null)
+            {
+                _loadError = "Could not resolve current user — please re-login and try again.";
+                _submitting = false;
+                return;
+            }
+
+            if (_isEdit)
+            {
+                EffortSvc.UpdateEntry(EditingEntryId!.Value, _performedByUserId, _pcId, date,
+                                      secs, _categoryId, string.IsNullOrWhiteSpace(_notes) ? null : _notes,
+                                      currentUserCoreId.Value);
+                ActivitySvc.RecordActivity(CurrentUsername, $"Edited effort log #{EditingEntryId} ({FormatTime(_timeStr)} on {catLabel})", "effort");
+                await JS.InvokeVoidAsync("lpmToast", $"Effort updated — {FormatTime(_timeStr)} on {catLabel}", "success");
+            }
+            else
+            {
+                var newId = EffortSvc.AddEntry(_performedByUserId, _pcId, date, secs, _categoryId,
+                                               string.IsNullOrWhiteSpace(_notes) ? null : _notes,
+                                               currentUserCoreId.Value);
+                ActivitySvc.RecordActivity(CurrentUsername, $"Added effort log #{newId} ({FormatTime(_timeStr)} on {catLabel})", "effort");
+                await JS.InvokeVoidAsync("lpmCelebrate");
+                await JS.InvokeVoidAsync("lpmToast", $"Effort logged — {FormatTime(_timeStr)} on {catLabel}", "success");
+            }
+
+            await OnSaved.InvokeAsync();
+            await DoClose();
+        }
+        catch (Exception ex)
+        {
+            _loadError = $"Save failed: {ex.Message}";
+            _submitting = false;
+        }
+    }
+
+    async Task DoClose()
+    {
+        _submitting = false;
+        await OnClose.InvokeAsync();
+    }
+
+    Task CloseIfOutside() => DoClose();
+
+    // ── H:MM helpers (mirrors MainHeader ARF helpers) ──
+    static string FormatTime(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return "";
+        if (raw.Contains(':'))
+        {
+            var p = raw.Split(':');
+            if (p.Length == 2 && int.TryParse(p[0], out var ph) && int.TryParse(p[1], out var pm))
+                return $"{ph:D2}:{pm:D2}";
+            return raw;
+        }
+        var digits = new string(raw.Where(char.IsDigit).ToArray());
+        if (digits.Length == 0) return "";
+        if (digits.Length <= 2) { var m = int.Parse(digits); return $"00:{m:D2}"; }
+        if (digits.Length == 3) { var h = int.Parse(digits[..1]); var m = int.Parse(digits[1..]); return $"{h:D2}:{m:D2}"; }
+        var hh = int.Parse(digits[..^2]); var mm = int.Parse(digits[^2..]); return $"{hh:D2}:{mm:D2}";
+    }
+
+    static bool IsValidTime(string val)
+    {
+        if (string.IsNullOrWhiteSpace(val)) return false;
+        var parts = val.Split(':');
+        if (parts.Length != 2) return false;
+        if (!int.TryParse(parts[0], out var h) || !int.TryParse(parts[1], out var m)) return false;
+        return h >= 0 && h <= 23 && m >= 0 && m <= 59 && parts[0].Length >= 1 && parts[0].Length <= 2 && parts[1].Length == 2;
+    }
+
+    static int TimeToMinutes(string val)
+    {
+        if (string.IsNullOrWhiteSpace(val)) return 0;
+        var parts = val.Split(':');
+        if (parts.Length != 2 || !int.TryParse(parts[0], out var h) || !int.TryParse(parts[1], out var m)) return 0;
+        return h * 60 + m;
+    }
+
+    static string SecondsToHMM(int seconds)
+    {
+        var totalMin = seconds / 60;
+        return $"{totalMin / 60:D2}:{totalMin % 60:D2}";
+    }
+}
