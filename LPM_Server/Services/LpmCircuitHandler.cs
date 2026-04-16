@@ -16,7 +16,9 @@ public class LpmCircuitHandler : CircuitHandler
 
     public override Task OnCircuitOpenedAsync(Circuit circuit, CancellationToken cancellationToken)
     {
-        _activitySvc.RecordLogin(_username);
+        var isFirst = _activitySvc.TrackCircuitOpen(_username);
+        if (isFirst && !string.IsNullOrEmpty(_username))
+            _activitySvc.RecordActivity(_username, "Returned", "login");
         return Task.CompletedTask;
     }
 

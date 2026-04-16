@@ -437,6 +437,10 @@ static async Task SignInUser(HttpContext ctx, UserDb db, string username,
     };
     await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity), authProps);
     ctx.Response.Cookies.Delete("lpm_pending");
+
+    // Record the actual login activity
+    var activitySvc = ctx.RequestServices.GetRequiredService<LPM.Services.UserActivityService>();
+    activitySvc.RecordLogin(username);
 }
 
 // ── Impersonation (Yaniv-only debug feature) ─────────────────────────────

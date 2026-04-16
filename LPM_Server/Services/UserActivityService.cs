@@ -40,6 +40,7 @@ public class UserActivityService
     public void RecordActivity(string username, string action, string kind)
     {
         if (string.IsNullOrWhiteSpace(username)) return;
+        var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff");
         _ = Task.Run(async () =>
         {
             try
@@ -49,13 +50,23 @@ public class UserActivityService
                 using var cmd = conn.CreateCommand();
                 cmd.CommandText = "INSERT INTO sys_activity_log (Username, ActivityAt, Action, Kind) VALUES (@u, @at, @a, @k)";
                 cmd.Parameters.AddWithValue("@u", username);
-                cmd.Parameters.AddWithValue("@at", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"));
+                cmd.Parameters.AddWithValue("@at", timestamp);
                 cmd.Parameters.AddWithValue("@a", action);
                 cmd.Parameters.AddWithValue("@k", kind);
                 await cmd.ExecuteNonQueryAsync();
             }
             catch (Exception ex) { Console.WriteLine($"[ActivitySvc] RecordActivity error: {ex.Message}"); }
         });
+    }
+
+    /// <summary>Returns true if this is the user's first circuit (they just arrived).</summary>
+    public bool TrackCircuitOpen(string username)
+    {
+        if (string.IsNullOrWhiteSpace(username)) return false;
+        bool isFirst = false;
+        _circuits.AddOrUpdate(username, _ => { isFirst = true; return 1; },
+            (_, old) => { isFirst = old <= 0; return old + 1; });
+        return isFirst;
     }
 
     public void RecordLogin(string username)
@@ -89,7 +100,6 @@ public class UserActivityService
             using var conn = new SqliteConnection(_connectionString);
             conn.Open();
             using var cmd = conn.CreateCommand();
-            // SQLite returns Action/Kind from the row that has MAX(ActivityAt) within the group.
             // Group by LOWER(Username) so "Aviv" and "aviv" are treated as the same user.
             cmd.CommandText = @"
                 SELECT LOWER(Username) AS Username, MAX(ActivityAt) AS LastActivityAt, Action, Kind
@@ -172,9 +182,11 @@ public class UserActivityService
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
+    static readonly string[] _tsFormats = { "yyyy-MM-dd HH:mm:ss.fff", "yyyy-MM-dd HH:mm:ss" };
+
     public static string TimeAgo(string activityAtUtc)
     {
-        if (!DateTime.TryParseExact(activityAtUtc, "yyyy-MM-dd HH:mm:ss",
+        if (!DateTime.TryParseExact(activityAtUtc, _tsFormats,
                 System.Globalization.CultureInfo.InvariantCulture,
                 System.Globalization.DateTimeStyles.AssumeUniversal, out var dt))
             return activityAtUtc;
@@ -188,7 +200,7 @@ public class UserActivityService
 
     public static string FormatTimestamp(string activityAtUtc)
     {
-        if (!DateTime.TryParseExact(activityAtUtc, "yyyy-MM-dd HH:mm:ss",
+        if (!DateTime.TryParseExact(activityAtUtc, _tsFormats,
                 System.Globalization.CultureInfo.InvariantCulture,
                 System.Globalization.DateTimeStyles.AssumeUniversal, out var dt))
             return activityAtUtc;

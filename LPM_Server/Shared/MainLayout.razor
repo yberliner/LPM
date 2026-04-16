@@ -123,6 +123,7 @@
     DotNetObjectReference<MainLayout>? _scrollVisRef;
     DotNetObjectReference<MainLayout>? _heartbeatRef;
     private string _activityUsername = "";
+    private string _lastNavUrl = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -134,6 +135,7 @@
             @* await stateService.retrieveFromLocalStorage(); *@
         }
         _activityUsername = HttpContextAccessor.HttpContext?.User?.Identity?.Name ?? "";
+        _lastNavUrl = NavigationManager.Uri;
         if (!string.IsNullOrEmpty(_activityUsername))
             ActivitySvc.RecordActivity(_activityUsername,
                 "Navigated to " + LPM.Services.UserActivityService.FriendlyPageName(NavigationManager.Uri),
@@ -146,10 +148,12 @@
     {
         try
         {
-            if (!string.IsNullOrEmpty(_activityUsername))
+            // Skip if same URL as the one already recorded in OnInitializedAsync
+            if (!string.IsNullOrEmpty(_activityUsername) && e.Location != _lastNavUrl)
                 ActivitySvc.RecordActivity(_activityUsername,
                     "Navigated to " + LPM.Services.UserActivityService.FriendlyPageName(e.Location),
                     "navigation");
+            _lastNavUrl = e.Location;
             var savedLang = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", "lpm-lang");
             if (!string.IsNullOrEmpty(savedLang) && savedLang != LS.CurrentLanguage)
             {
