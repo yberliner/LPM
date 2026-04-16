@@ -138,9 +138,26 @@
                 </button>
                 <label class="form-check form-check-inline ms-3 mb-0" style="cursor:pointer;font-size:.82rem;">
                     <input class="form-check-input" type="checkbox" checked="@_hideFullCoverage"
-                           @onchange="e => _hideFullCoverage = (bool)(e.Value ?? false)" />
+                           @onchange="OnHideFullCoverageChanged" />
                     <span class="text-muted">Hide full coverage (A+CS)</span>
                 </label>
+            </div>
+
+            @* ── PC search (separate row) ── *@
+            <div class="sp-pc-search-row d-flex align-items-center gap-2 mb-3">
+                <div class="position-relative flex-grow-1">
+                    <i class="ri-search-line position-absolute"
+                       style="left:14px; top:50%; transform:translateY(-50%); color:#94a3b8; font-size:1.05rem;"></i>
+                    <input type="text" class="form-control sp-pc-search-input"
+                           placeholder="Search PC name..."
+                           value="@_pcSearchText"
+                           @oninput="e => _pcSearchText = e.Value?.ToString() ?? string.Empty" />
+                </div>
+                <button type="button" class="btn btn-danger sp-pc-search-clear"
+                        disabled="@string.IsNullOrEmpty(_pcSearchText)"
+                        @onclick='() => _pcSearchText = ""'>
+                    <i class="ri-close-circle-line me-1"></i>Clear
+                </button>
             </div>
 
             <div class="sp-matrix-with-legend">
@@ -194,6 +211,8 @@
                                         var flashing = _flashingCells.Contains(cellKey);
                                         <td class="sp-mx-cell @(flashing ? "sp-mx-flash" : "") @(aud.AllowAll ? "sp-mx-cell-priv" : "")"
                                             @onclick="() => MatrixToggle(aud, pc.PcId)"
+                                            @oncontextmenu="e => OpenRoleMenu(e, aud, pc.PcId)"
+                                            @oncontextmenu:preventDefault="true"
                                             title="@CellTooltip(aud, pc.PcId, hasPerm)">
                                             @if (hasPerm)
                                             {
@@ -314,7 +333,7 @@
 
         @if (!_auditorsSectionCollapsed)
         {
-            @foreach (var aud in _auditors)
+            @foreach (var aud in _auditors.Where(a => a.StaffRole != StaffRoles.Solo))
             {
                 var audCollapsed = _collapsedAuditors.Contains(aud.AuditorId);
                 <div class="card border-0 shadow-sm mb-4 sp-card">
@@ -428,6 +447,71 @@
     }
 
 </div>
+
+@* ── Role Picker Context Menu ── *@
+@if (_ctxMenu != null)
+{
+    <div class="sp-ctx-backdrop" @onclick="CloseRoleMenu"
+         @oncontextmenu:preventDefault="true" @oncontextmenu:stopPropagation="true"></div>
+    <div class="sp-ctx-menu" style="@($"top:{_ctxMenu.Y}px; left:{_ctxMenu.X}px;")"
+         @onclick:stopPropagation="true" @oncontextmenu:preventDefault="true">
+        <div class="sp-ctx-head">
+            <div class="sp-ctx-head-title">@_ctxMenu.AuditorName</div>
+            <div class="sp-ctx-head-sub">@_ctxMenu.PcName</div>
+        </div>
+        @{
+            var isCs = _ctxMenu.IsCs;
+            var cur  = _ctxMenu.CurrentCap;
+        }
+        <button class="sp-ctx-item @(cur == StaffRoles.Auditor ? "sp-ctx-active" : "")"
+                @onclick="() => ApplyRole(StaffRoles.Auditor)">
+            <span class="sp-mx-aud sp-ctx-badge">A</span>
+            <span>Auditor</span>
+        </button>
+        @if (isCs)
+        {
+            <button class="sp-ctx-item @(cur == StaffRoles.CS ? "sp-ctx-active" : "")"
+                    @onclick="() => ApplyRole(StaffRoles.CS)">
+                <span class="sp-mx-cs sp-ctx-badge">CS</span>
+                <span>CS (all sessions)</span>
+            </button>
+            <button class="sp-ctx-item @(cur == StaffRoles.CSReview ? "sp-ctx-active" : "")"
+                    @onclick="() => ApplyRole(StaffRoles.CSReview)">
+                <span class="sp-mx-csr sp-ctx-badge">CS-R</span>
+                <span>CS Review (non-solo)</span>
+            </button>
+            <button class="sp-ctx-item @(cur == StaffRoles.CSSolo ? "sp-ctx-active" : "")"
+                    @onclick="() => ApplyRole(StaffRoles.CSSolo)">
+                <span class="sp-mx-css sp-ctx-badge">CS-S</span>
+                <span>CS Solo (solo only)</span>
+            </button>
+            <div class="sp-ctx-divider"></div>
+            <button class="sp-ctx-item @(cur == StaffRoles.AuditorAndCS ? "sp-ctx-active" : "")"
+                    @onclick="() => ApplyRole(StaffRoles.AuditorAndCS)">
+                <span class="sp-mx-ac sp-ctx-badge">A+CS</span>
+                <span>Auditor + CS</span>
+            </button>
+            <button class="sp-ctx-item @(cur == StaffRoles.AuditorAndCSReview ? "sp-ctx-active" : "")"
+                    @onclick="() => ApplyRole(StaffRoles.AuditorAndCSReview)">
+                <span class="sp-mx-acr sp-ctx-badge">A+CS-R</span>
+                <span>Auditor + CS Review</span>
+            </button>
+            <button class="sp-ctx-item @(cur == StaffRoles.AuditorAndCSSolo ? "sp-ctx-active" : "")"
+                    @onclick="() => ApplyRole(StaffRoles.AuditorAndCSSolo)">
+                <span class="sp-mx-acs sp-ctx-badge">A+CS-S</span>
+                <span>Auditor + CS Solo</span>
+            </button>
+        }
+        @if (cur != null)
+        {
+            <div class="sp-ctx-divider"></div>
+            <button class="sp-ctx-item sp-ctx-remove" @onclick="() => ApplyRole(null)">
+                <i class="ri-delete-bin-line"></i>
+                <span>Remove permission</span>
+            </button>
+        }
+    </div>
+}
 
 @* ── Toast ── *@
 @if (!string.IsNullOrEmpty(_msg))
@@ -681,6 +765,67 @@
         100% { background: transparent; }
     }
     .sp-mx-flash { animation: sp-cell-flash 0.15s ease-out forwards; }
+
+    /* PC search row */
+    .sp-pc-search-row .sp-pc-search-input {
+        padding: 10px 14px 10px 42px;
+        font-size: 0.95rem;
+        height: 44px;
+        border-radius: 10px;
+        border: 1px solid #cbd5e1;
+    }
+    .sp-pc-search-row .sp-pc-search-input:focus {
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59,130,246,.18);
+    }
+    .sp-pc-search-row .sp-pc-search-clear {
+        height: 44px; min-width: 110px;
+        font-weight: 600; border-radius: 10px;
+        font-size: 0.9rem;
+    }
+    @@media (max-width: 480px) {
+        .sp-pc-search-row .sp-pc-search-input { font-size: 16px; }
+        .sp-pc-search-row .sp-pc-search-clear { min-width: 90px; font-size: 0.85rem; }
+    }
+
+    /* Role picker right-click menu */
+    .sp-ctx-backdrop {
+        position: fixed; inset: 0; z-index: 9998; background: transparent;
+    }
+    .sp-ctx-menu {
+        position: fixed; z-index: 9999; min-width: 240px;
+        background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px;
+        box-shadow: 0 14px 40px rgba(15, 23, 42, 0.22);
+        padding: 6px 0; overflow: hidden;
+        font-size: 0.85rem;
+    }
+    .sp-ctx-head {
+        padding: 8px 14px; border-bottom: 1px solid #e2e8f0;
+        background: linear-gradient(135deg,#f8fafc,#eef2ff);
+    }
+    .sp-ctx-head-title { font-weight: 600; color: #1e293b; font-size: 0.85rem; }
+    .sp-ctx-head-sub   { font-size: 0.75rem; color: #64748b; margin-top: 1px; }
+    .sp-ctx-item {
+        display: flex; align-items: center; gap: 10px;
+        width: 100%; padding: 8px 14px;
+        background: transparent; border: none; text-align: left;
+        font-size: 0.82rem; color: #334155; cursor: pointer;
+        min-height: 40px;
+    }
+    .sp-ctx-item:hover { background: #eef2ff; color: #1e293b; }
+    .sp-ctx-item.sp-ctx-active { background: #e0f2fe; color: #0369a1; font-weight: 600; }
+    .sp-ctx-item.sp-ctx-remove { color: #dc2626; }
+    .sp-ctx-item.sp-ctx-remove:hover { background: #fee2e2; color: #991b1b; }
+    .sp-ctx-divider { height: 1px; background: #e2e8f0; margin: 4px 0; }
+    .sp-ctx-badge {
+        display: inline-flex; align-items: center; justify-content: center;
+        min-width: 36px; height: 22px; font-size: 0.7rem; font-weight: 700;
+        padding: 0 6px; border-radius: 5px;
+    }
+    @@media (max-width: 480px) {
+        .sp-ctx-menu { min-width: 220px; font-size: 0.9rem; }
+        .sp-ctx-item { min-height: 44px; }
+    }
 
     /* Permission indicators */
     .sp-mx-check {
@@ -1037,6 +1182,12 @@
     private HashSet<(int AuditorId, int PcId)> _flashingCells = new();
     private string _matrixFilter = "All";
     private bool   _hideFullCoverage;
+    private string _pcSearchText = "";
+    private HashSet<int>? _frozenPcIds;  // non-null when "Hide full coverage" is ON — freezes the visible row set
+
+    // Right-click role picker context menu
+    private record RoleCtxMenu(AuditorPermGroup Aud, int PcId, string AuditorName, string PcName, string? CurrentCap, bool IsCs, double X, double Y);
+    private RoleCtxMenu? _ctxMenu;
 
     protected override async Task OnInitializedAsync()
     {
@@ -1248,16 +1399,106 @@
 
     private List<PcInfo> GetFilteredPcs()
     {
-        var list = _matrixFilter switch
+        IEnumerable<PcInfo> list;
+
+        if (_frozenPcIds != null)
         {
-            "Unassigned" => _allPcs.Where(pc => !PcHasAuditor(pc.PcId) && !PcHasCs(pc.PcId)),
-            "Partial"    => _allPcs.Where(pc => PcHasAuditor(pc.PcId) != PcHasCs(pc.PcId)),
-            "Solo"       => _allPcs.Where(pc => _soloPcIds.Contains(pc.PcId)),
-            _            => _allPcs.AsEnumerable()
-        };
-        if (_hideFullCoverage)
-            list = list.Where(pc => !IsFullCoverage(pc.PcId));
+            // Freeze mode: show exactly the rows that were visible when "Hide full coverage" was turned on,
+            // regardless of whether they've since become fully covered.
+            var frozen = _frozenPcIds;
+            list = _allPcs.Where(pc => frozen.Contains(pc.PcId));
+        }
+        else
+        {
+            list = _matrixFilter switch
+            {
+                "Unassigned" => _allPcs.Where(pc => !PcHasAuditor(pc.PcId) && !PcHasCs(pc.PcId)),
+                "Partial"    => _allPcs.Where(pc => PcHasAuditor(pc.PcId) != PcHasCs(pc.PcId)),
+                "Solo"       => _allPcs.Where(pc => _soloPcIds.Contains(pc.PcId)),
+                _            => _allPcs.AsEnumerable()
+            };
+        }
+
+        if (!string.IsNullOrWhiteSpace(_pcSearchText))
+        {
+            var q = _pcSearchText.Trim();
+            list = list.Where(pc => pc.FullName.Contains(q, StringComparison.OrdinalIgnoreCase));
+        }
+
         return list.ToList();
+    }
+
+    private void OpenRoleMenu(MouseEventArgs e, AuditorPermGroup aud, int pcId)
+    {
+        var pcName  = _allPcs.FirstOrDefault(p => p.PcId == pcId)?.FullName ?? $"PC {pcId}";
+        var current = aud.ApprovedPcs.FirstOrDefault(p => p.PcId == pcId)?.WorkCapacity;
+        var isCs    = StaffRoles.IsCS(aud.StaffRole);
+        _ctxMenu = new RoleCtxMenu(aud, pcId, aud.AuditorName, pcName, current, isCs, e.ClientX, e.ClientY);
+    }
+
+    private void CloseRoleMenu() => _ctxMenu = null;
+
+    private void ApplyRole(string? cap)
+    {
+        if (_ctxMenu == null) return;
+        var aud = _ctxMenu.Aud;
+        var pcId = _ctxMenu.PcId;
+        var pcName = _ctxMenu.PcName;
+        var existing = aud.ApprovedPcs.FirstOrDefault(p => p.PcId == pcId);
+
+        if (cap == null)
+        {
+            // Remove
+            if (existing != null)
+            {
+                Console.WriteLine($"[StaffPermissions] Context menu: removed '{existing.WorkCapacity}' — auditor='{aud.AuditorName}' (id={aud.AuditorId}) PC='{pcName}' (id={pcId}) by '{_username}'");
+                DashSvc.RemovePermission(existing.Id);
+            }
+        }
+        else
+        {
+            if (existing == null)
+            {
+                Console.WriteLine($"[StaffPermissions] Context menu: granted {cap} — auditor='{aud.AuditorName}' (id={aud.AuditorId}) PC='{pcName}' (id={pcId}) by '{_username}'");
+                DashSvc.AddApprovedPermission(aud.AuditorId, pcId, cap);
+            }
+            else if (existing.WorkCapacity != cap)
+            {
+                Console.WriteLine($"[StaffPermissions] Context menu: {existing.WorkCapacity}→{cap} — auditor='{aud.AuditorName}' (id={aud.AuditorId}) PC='{pcName}' (id={pcId}) by '{_username}'");
+                DashSvc.AddApprovedPermission(aud.AuditorId, pcId, cap);
+            }
+        }
+
+        var cellKey = (aud.AuditorId, pcId);
+        _flashingCells.Add(cellKey);
+        _ = Task.Delay(150).ContinueWith(_ => { _flashingCells.Remove(cellKey); InvokeAsync(StateHasChanged); });
+
+        _auditors = DashSvc.GetAuditorPermGroups();
+        _matrixAuditors = _auditors.Where(a => a.StaffRole != StaffRoles.Solo).ToList();
+        _soloPcIds = _auditors.Where(a => a.StaffRole == StaffRoles.Solo).Select(a => a.AuditorId).ToHashSet();
+
+        _ctxMenu = null;
+    }
+
+    private void OnHideFullCoverageChanged(ChangeEventArgs e)
+    {
+        _hideFullCoverage = (bool)(e.Value ?? false);
+        if (_hideFullCoverage)
+        {
+            // Snapshot the currently visible (non-full-coverage) PCs and freeze the row set.
+            var current = _matrixFilter switch
+            {
+                "Unassigned" => _allPcs.Where(pc => !PcHasAuditor(pc.PcId) && !PcHasCs(pc.PcId)),
+                "Partial"    => _allPcs.Where(pc => PcHasAuditor(pc.PcId) != PcHasCs(pc.PcId)),
+                "Solo"       => _allPcs.Where(pc => _soloPcIds.Contains(pc.PcId)),
+                _            => _allPcs.AsEnumerable()
+            };
+            _frozenPcIds = current.Where(pc => !IsFullCoverage(pc.PcId)).Select(pc => pc.PcId).ToHashSet();
+        }
+        else
+        {
+            _frozenPcIds = null;
+        }
     }
 
     private int CountByFilter(string filter) => filter switch
