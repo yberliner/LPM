@@ -5,6 +5,7 @@
 @inject DashboardService DashSvc
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <div class="sp-page p-3 p-md-4">
 
@@ -162,7 +163,7 @@
 
             <div class="sp-matrix-with-legend">
             <div class="card border-0 shadow-sm sp-card mb-5">
-                <div class="sp-matrix-wrap">
+                <div class="sp-matrix-wrap" id="sp-matrix-wrap">
                     <table class="sp-matrix-table">
                         <thead>
                             <tr>
@@ -1199,6 +1200,17 @@
         }
         _username = authState.User.Identity?.Name ?? "";
         await LoadData();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Attach the page-first wheel handler once the matrix container is in the DOM.
+        // (Safe to call repeatedly — the JS side is idempotent.)
+        if (!_loading && !_matrixSectionCollapsed)
+        {
+            try { await JS.InvokeVoidAsync("lpmAttachMatrixScroll", "sp-matrix-wrap"); }
+            catch { /* JS not loaded yet or element missing — harmless */ }
+        }
     }
 
     private async Task LoadData()
