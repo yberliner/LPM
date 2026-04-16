@@ -37,7 +37,7 @@ public record PcBalanceData(
     double HoursLeft, int EffectiveRateCents, int PurchaseRateCents, bool RateMismatch,
     string Currency = "ILS");
 
-public record PcPurchaseRow(int PurchaseId, string Date, double Hours, double AmountNis, string Currency = "ILS");
+public record PcPurchaseRow(int PurchaseId, string Date, double Hours, double AmountNis, string Currency = "ILS", int? WalletId = null, string? WalletName = null);
 
 public record PcSessionCostRow(
     int SessionId, string Date, string AuditorName,
@@ -1910,11 +1910,13 @@ public List<PcListItem> GetAllPcs()
             cmd.CommandText = @"
                 SELECT pu.PurchaseId, pu.PurchaseDate,
                        COALESCE(SUM(pi.HoursBought), 0), COALESCE(SUM(pi.AmountPaid), 0),
-                       COALESCE(pu.Currency, 'ILS')
+                       COALESCE(pu.Currency, 'ILS'),
+                       pu.WalletId, w.Name AS WalletName
                 FROM fin_purchase_items pi
                 JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
-                WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'" + rdFilter + @"
-                GROUP BY pu.PurchaseId, pu.PurchaseDate, pu.Currency
+                LEFT JOIN fin_wallets w ON w.WalletId = pu.WalletId
+                WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND (pi.ItemType = 'Auditing' OR pi.ItemType = 'Transfer')" + rdFilter + @"
+                GROUP BY pu.PurchaseId, pu.PurchaseDate, pu.Currency, pu.WalletId, w.Name
                 ORDER BY pu.PurchaseId";
             cmd.Parameters.AddWithValue("@id", pcId);
             if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
@@ -1922,7 +1924,9 @@ public List<PcListItem> GetAllPcs()
             while (r.Read())
             {
                 double amt = r.GetDouble(3);
-                purchases.Add(new(r.GetInt32(0), r.GetString(1), r.GetDouble(2), amt, r.GetString(4)));
+                int? wid = r.IsDBNull(5) ? null : (int?)r.GetInt32(5);
+                string? wname = r.IsDBNull(6) ? null : r.GetString(6);
+                purchases.Add(new(r.GetInt32(0), r.GetString(1), r.GetDouble(2), amt, r.GetString(4), wid, wname));
                 totalPurchased += amt;
             }
         }

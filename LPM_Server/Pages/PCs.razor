@@ -1972,46 +1972,94 @@
                             </div>
                         </div>
                     }
-                    @* ── Purchases ── *@
+                    @* ── Purchases (grouped per wallet) ── *@
                     <div class="bal-section bal-sec-purchased">
                         <div class="bal-sec-title"><i class="ri-shopping-cart-2-line"></i> @LS.T("pcs.auditingPurchases")</div>
                         @if (ex.Purchases.Any())
                         {
-                            <table class="table table-sm mb-0">
-                                <thead><tr>
-                                    <th class="small" style="color:#166534;">@LS.T("pcs.date")</th>
-                                    <th class="small text-center" style="color:#166534;">@LS.T("pcs.hours")</th>
-                                    <th class="small text-end" style="color:#166534;">@LS.T("pcs.amount")</th>
-                                </tr></thead>
-                                <tbody>
-                                    @foreach (var p in ex.Purchases)
-                                    {
-                                        <tr>
-                                            <td class="small">@FormatDate(p.Date)</td>
-                                            <td class="small text-center">@(p.Hours < 0 ? "-" : "")@FormatHoursMinutes(p.Hours)</td>
-                                            <td class="small text-end fw-semibold" style="color:@(p.AmountNis >= 0 ? "#16a34a" : "#dc2626");">@CurrSym(p.Currency)@(p.AmountNis.ToString("N0"))</td>
+                            @foreach (var wGrp in ex.Purchases.GroupBy(p => (p.WalletId, p.WalletName, p.Currency))
+                                                  .OrderBy(g => g.Key.WalletId ?? int.MaxValue))
+                            {
+                                var walletLabel = wGrp.Key.WalletName ?? "(no wallet)";
+                                var wGrpCurr    = wGrp.Key.Currency;
+                                var wGrpTotal   = wGrp.Sum(p => p.AmountNis);
+                                <div class="px-3 py-1 d-flex align-items-center gap-2" style="background:#ecfdf5;border-top:1px solid #d1fae5;">
+                                    <span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:999px; font-size:0.72rem; font-weight:700; background:#dbeafe; color:#1e40af;">
+                                        <span style="font-weight:900; font-size:0.9rem;">@CurrSym(wGrpCurr)</span>
+                                        @walletLabel
+                                        <span style="opacity:.7; font-weight:500;">(@wGrpCurr)</span>
+                                    </span>
+                                </div>
+                                <table class="table table-sm mb-0">
+                                    <thead><tr>
+                                        <th class="small" style="color:#166534;">@LS.T("pcs.date")</th>
+                                        <th class="small text-center" style="color:#166534;">@LS.T("pcs.hours")</th>
+                                        <th class="small text-end" style="color:#166534;">@LS.T("pcs.amount")</th>
+                                    </tr></thead>
+                                    <tbody>
+                                        @foreach (var p in wGrp)
+                                        {
+                                            <tr>
+                                                <td class="small">@FormatDate(p.Date)</td>
+                                                <td class="small text-center">@(p.Hours < 0 ? "-" : "")@FormatHoursMinutes(p.Hours)</td>
+                                                <td class="small text-end fw-semibold" style="color:@(p.AmountNis >= 0 ? "#16a34a" : "#dc2626");">@CurrSym(p.Currency)@(p.AmountNis.ToString("N0"))</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                    <tfoot>
+                                        <tr style="background:#dcfce7;">
+                                            <td class="small fw-bold" style="color:#166534;" colspan="2">Subtotal</td>
+                                            <td class="small fw-bold text-end" style="color:#166534;">
+                                                @($"{CurrSym(wGrpCurr)}{wGrpTotal:N0}")
+                                            </td>
                                         </tr>
-                                    }
-                                </tbody>
-                                <tfoot>
-                                    <tr style="background:#dcfce7;">
-                                        <td class="small fw-bold" style="color:#166534;" colspan="2">@LS.T("pcs.total")</td>
-                                        <td class="small fw-bold text-end" style="color:#166534;">
-                                            @{
-                                                var balGroups = ex.Purchases.GroupBy(p => p.Currency)
-                                                    .Select(g => $"{CurrSym(g.Key)}{g.Sum(p => p.AmountNis):N0}").ToList();
-                                            }
-                                            @(string.Join(" + ", balGroups))
-                                        </td>
-                                    </tr>
-                                </tfoot>
-                            </table>
+                                    </tfoot>
+                                </table>
+                            }
                         }
                         else
                         {
                             <div class="small text-muted px-3 py-2">@LS.T("pcs.noAuditingPurchases")</div>
                         }
                     </div>
+
+                    @* ── Per-wallet balance grid ── *@
+                    @{ var walletBals = _pcWalletBalances.GetValueOrDefault(_balancePcId) ?? new(); }
+                    @if (walletBals.Count > 0)
+                    {
+                        <div class="bal-section">
+                            <div class="bal-sec-title"><i class="ri-wallet-3-line"></i> Per-wallet balance</div>
+                            <table class="table table-sm mb-0">
+                                <thead><tr>
+                                    <th class="small">Wallet</th>
+                                    <th class="small text-end">Purchased</th>
+                                    <th class="small text-end">Used (sessions)</th>
+                                    <th class="small text-end">Remaining</th>
+                                    <th class="small text-end">Rate /hr</th>
+                                    <th class="small text-end">Hours left</th>
+                                </tr></thead>
+                                <tbody>
+                                    @foreach (var wb in walletBals)
+                                    {
+                                        <tr>
+                                            <td class="small">
+                                                <span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px; font-size:0.72rem; font-weight:700; background:#dbeafe; color:#1e40af;">
+                                                    <span style="font-weight:900;">@CurrSym(wb.Currency)</span>
+                                                    @wb.Name
+                                                    <span style="opacity:.7; font-weight:500;">(@wb.Currency)</span>
+                                                </span>
+                                            </td>
+                                            <td class="small text-end">@CurrSym(wb.Currency)@((wb.PurchasedCents / 100.0).ToString("N0"))</td>
+                                            <td class="small text-end text-muted">@CurrSym(wb.Currency)@(((wb.UsedSessionCents + wb.UsedCsReviewCents) / 100.0).ToString("N0"))</td>
+                                            <td class="small text-end fw-bold" style="color:@(wb.RemainingCents >= 0 ? "#16a34a" : "#dc2626");">@CurrSym(wb.Currency)@((wb.RemainingCents / 100.0).ToString("N0"))</td>
+                                            <td class="small text-end">@(wb.EffectiveRateCentsPerHour > 0 ? $"{CurrSym(wb.Currency)}{wb.EffectiveRateCentsPerHour / 100}" : "—")</td>
+                                            <td class="small text-end">@(wb.EffectiveRateCentsPerHour > 0 ? HrsLabel((long)(wb.RemainingHours * 3600)) : "—")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
 
                     @* ── Used Money ── *@
                     <div class="bal-section bal-sec-used">
