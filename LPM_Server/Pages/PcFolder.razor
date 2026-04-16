@@ -800,16 +800,19 @@
                         <div class="pcf-timer-display">
                             <input type="number" min="0" class="pcf-timer-num"
                                    value="@(_csReviewSeconds / 3600)"
+                                   onfocus="this.select()"
                                    @onchange="e => OnTimerHoursChanged(e)"
                                    @attributes="@(_timerReadOnly ? new Dictionary<string,object>{["readonly"]="readonly"} : null)" />
                             <span class="pcf-timer-colon">:</span>
                             <input type="number" min="0" max="59" class="pcf-timer-num"
                                    value="@((_csReviewSeconds % 3600) / 60)"
+                                   onfocus="this.select()"
                                    @onchange="e => OnTimerMinsChanged(e)"
                                    @attributes="@(_timerReadOnly ? new Dictionary<string,object>{["readonly"]="readonly"} : null)" />
                             <span class="pcf-timer-colon">:</span>
                             <input type="number" min="0" max="59" class="pcf-timer-num"
                                    value="@(_csReviewSeconds % 60)"
+                                   onfocus="this.select()"
                                    @onchange="e => OnTimerSecsChanged(e)"
                                    @attributes="@(_timerReadOnly ? new Dictionary<string,object>{["readonly"]="readonly"} : null)" />
                         </div>
