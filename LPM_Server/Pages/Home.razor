@@ -2222,9 +2222,21 @@
     }
 
     private Action? _onDataChangedHandler;
+    private CancellationTokenSource? _refreshDebounce;
     private async Task _onDataChangedAsync()
     {
-        try { await InvokeAsync(async () => { await RefreshAsync(); StateHasChanged(); }); }
+        // Debounce: cancel any pending refresh and wait 300ms before actually refreshing.
+        // This prevents redundant DB queries when multiple NotifyDataChanged fire in quick succession.
+        try
+        {
+            _refreshDebounce?.Cancel();
+            _refreshDebounce = new CancellationTokenSource();
+            var token = _refreshDebounce.Token;
+            await Task.Delay(300, token);
+            if (token.IsCancellationRequested) return;
+            await InvokeAsync(async () => { await RefreshAsync(); StateHasChanged(); });
+        }
+        catch (TaskCanceledException) { /* debounced — newer refresh pending */ }
         catch (Exception ex) { Console.WriteLine($"[Home] _onDataChanged error: {ex.Message}"); }
     }
 
@@ -2282,6 +2294,8 @@
 
     public void Dispose()
     {
+        _refreshDebounce?.Cancel();
+        _refreshDebounce?.Dispose();
         _dotNetRef?.Dispose();
         if (_csNotifyKey != null)
             CsNotifySvc.Unsubscribe(_csNotifyKey);

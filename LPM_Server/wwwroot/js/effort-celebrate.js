@@ -127,6 +127,122 @@
         return c;
     }
 
+    // ── Wallet-create celebration: flying currency symbols + wallet pop ──
+    window.lpmCelebrateWallet = function (currency) {
+        try {
+            ensureStyles();
+            ensureWalletStyles();
+            const symbol = currency === 'EUR' ? '€' : currency === 'USD' ? '$' : '₪';
+            const hue    = currency === 'EUR' ? '#10b981' : currency === 'USD' ? '#0ea5e9' : '#3b82f6';
+
+            const root = document.createElement('div');
+            root.className = 'lpm-celebrate-root';
+            document.body.appendChild(root);
+
+            // Flying currency symbols (like confetti)
+            for (let i = 0; i < 36; i++) {
+                const s = document.createElement('div');
+                s.className = 'lpm-currency-glyph';
+                s.textContent = symbol;
+                const x   = Math.random() * 100;
+                const dx  = (Math.random() - 0.5) * 220;
+                const rot = (Math.random() - 0.5) * 540;
+                const dur = 2.8 + Math.random() * 1.6;
+                s.style.left = x + 'vw';
+                s.style.color = hue;
+                s.style.setProperty('--dx',  dx + 'px');
+                s.style.setProperty('--rot', rot + 'deg');
+                s.style.animationDuration = dur + 's';
+                s.style.animationDelay    = (i * 0.025) + 's';
+                s.style.fontSize = (24 + Math.random() * 28) + 'px';
+                root.appendChild(s);
+            }
+
+            // Center wallet card pop
+            const card = document.createElement('div');
+            card.className = 'lpm-wallet-pop';
+            card.innerHTML = `
+                <div class="lpm-wallet-card" style="background: linear-gradient(135deg, ${hue}, ${shade(hue, -0.25)});">
+                    <div class="lpm-wallet-chip"></div>
+                    <div class="lpm-wallet-currency">${symbol}</div>
+                    <div class="lpm-wallet-label">New wallet</div>
+                </div>
+            `;
+            root.appendChild(card);
+
+            setTimeout(() => card.classList.add('fadeOut'), 1600);
+            setTimeout(() => { try { root.remove(); } catch (_) {} }, 5200);
+        } catch (e) { console.error('lpmCelebrateWallet failed', e); }
+    };
+
+    function shade(hex, pct) {
+        const n = parseInt(hex.slice(1), 16);
+        let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+        const f = 1 + pct;
+        r = Math.max(0, Math.min(255, Math.round(r * f)));
+        g = Math.max(0, Math.min(255, Math.round(g * f)));
+        b = Math.max(0, Math.min(255, Math.round(b * f)));
+        return '#' + ((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1);
+    }
+
+    function ensureWalletStyles() {
+        if (document.getElementById('lpm-wallet-styles')) return;
+        const css = `
+            .lpm-currency-glyph {
+                position:absolute; bottom:-80px; font-weight:900;
+                text-shadow: 0 3px 10px rgba(0,0,0,.25);
+                animation: lpm-currency-float linear forwards;
+            }
+            @keyframes lpm-currency-float {
+                0%   { transform: translate3d(0,0,0) rotate(0deg); opacity:0; }
+                10%  { opacity:1; }
+                100% { transform: translate3d(var(--dx), calc(-100vh - 160px), 0) rotate(var(--rot)); opacity:1; }
+            }
+            .lpm-wallet-pop {
+                position:absolute; left:50%; top:50%;
+                transform: translate(-50%, -50%);
+                animation: lpm-wallet-pop .8s cubic-bezier(.2,1.7,.3,1) both;
+            }
+            .lpm-wallet-card {
+                width:220px; height:140px; border-radius:16px;
+                box-shadow: 0 24px 60px rgba(15,23,42,.45);
+                padding:18px; color:#fff; position:relative; overflow:hidden;
+                display:flex; flex-direction:column; justify-content:space-between;
+            }
+            .lpm-wallet-card::after {
+                content:''; position:absolute; inset:0;
+                background: radial-gradient(circle at 80% 10%, rgba(255,255,255,.35), transparent 55%);
+                pointer-events:none;
+            }
+            .lpm-wallet-chip {
+                width:38px; height:28px; border-radius:6px;
+                background: linear-gradient(135deg, #fde68a, #f59e0b);
+                box-shadow: inset 0 -3px 0 rgba(0,0,0,.15);
+            }
+            .lpm-wallet-currency {
+                font-size:64px; font-weight:900; line-height:1;
+                text-shadow: 0 4px 16px rgba(0,0,0,.3);
+                position:absolute; right:18px; top:16px;
+                letter-spacing:-.02em;
+            }
+            .lpm-wallet-label {
+                font-weight:700; letter-spacing:.03em; font-size:.82rem;
+                text-transform:uppercase; opacity:.9;
+            }
+            @keyframes lpm-wallet-pop {
+                0%   { transform: translate(-50%, -50%) scale(.25) rotate(-12deg); opacity:0; }
+                55%  { transform: translate(-50%, -50%) scale(1.15) rotate(3deg);  opacity:1; }
+                100% { transform: translate(-50%, -50%) scale(1) rotate(0);        opacity:1; }
+            }
+            .lpm-wallet-pop.fadeOut { animation: lpm-wallet-fade .6s ease forwards; }
+            @keyframes lpm-wallet-fade { to { opacity:0; transform: translate(-50%, -50%) scale(.85); } }
+        `;
+        const s = document.createElement('style');
+        s.id = 'lpm-wallet-styles';
+        s.textContent = css;
+        document.head.appendChild(s);
+    }
+
     window.lpmToast = function (message, kind) {
         try {
             ensureStyles();

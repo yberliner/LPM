@@ -1,0 +1,323 @@
+@using LPM.Services
+@inject WalletService WalletSvc
+@inject IJSRuntime JS
+
+@if (IsOpen)
+{
+    <div class="modal show d-block wallet-modal-wrap" tabindex="-1"
+         style="background:rgba(0,0,0,.55); z-index:10000;" @onclick="CloseIfOutside">
+        <div class="modal-dialog modal-dialog-centered" style="max-width:520px;" @onclick:stopPropagation="true">
+            <div class="modal-content wallet-modal-content">
+                <div class="modal-header py-2" style="background:linear-gradient(135deg,#1e293b,#334155); border-bottom:none;">
+                    <h5 class="modal-title fs-15 text-white d-flex align-items-center gap-2">
+                        <i class="ri-wallet-3-fill" style="color:#fbbf24;"></i>
+                        @(_isEdit ? "Edit Wallet" : "Add Wallet")
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="DoClose"></button>
+                </div>
+
+                <div class="modal-body">
+                    @* Big PC name banner *@
+                    <div class="text-center mb-3">
+                        <div style="font-size:.7rem; letter-spacing:.08em; color:#94a3b8; text-transform:uppercase; font-weight:600;">PC</div>
+                        <div style="font-size:1.7rem; font-weight:800; color:#1e293b; line-height:1.1;">@PcName</div>
+                    </div>
+
+                    @if (_loadError != null)
+                    {
+                        <div class="alert alert-danger py-2 mb-2" style="font-size:.8rem;">@_loadError</div>
+                    }
+
+                    @* Live preview card *@
+                    <div class="wallet-preview-wrap mb-3">
+                        <div class="wallet-preview-card" style="background:@WalletGradient(_currency);">
+                            <div class="wp-chip"></div>
+                            <div class="wp-currency">@CurrencySymbol(_currency)</div>
+                            <div class="wp-name">@(string.IsNullOrWhiteSpace(_name) ? "New wallet" : _name)</div>
+                        </div>
+                    </div>
+
+                    <!-- Currency picker -->
+                    <div class="mb-3">
+                        <label class="form-label wallet-lbl">Currency <span class="text-danger">*</span></label>
+                        <div class="wallet-cur-grid">
+                            @foreach (var cur in new[] { "ILS", "EUR", "USD" })
+                            {
+                                var selected = _currency == cur;
+                                var disabled = _isEdit;
+                                <button type="button" class="wallet-cur-btn @(selected ? "wallet-cur-active" : "")"
+                                        disabled="@disabled"
+                                        style="--cur-color:@CurrencyColor(cur);"
+                                        @onclick="() => { if (!_isEdit) _currency = cur; }">
+                                    <span class="wallet-cur-sym">@CurrencySymbol(cur)</span>
+                                    <span class="wallet-cur-code">@cur</span>
+                                </button>
+                            }
+                        </div>
+                        @if (_isEdit)
+                        {
+                            <div class="text-muted" style="font-size:.72rem; margin-top:4px;">
+                                <i class="ri-lock-line me-1"></i>Currency cannot be changed after creation.
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Name -->
+                    <div class="mb-3">
+                        <label class="form-label wallet-lbl">Wallet Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm wallet-input"
+                               value="@_name" maxlength="80"
+                               @oninput="e => _name = e.Value?.ToString() ?? string.Empty"
+                               placeholder="@($"{_currency} wallet")" />
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="mb-3">
+                        <label class="form-label wallet-lbl">Notes</label>
+                        <textarea class="form-control form-control-sm wallet-input" rows="2" maxlength="500"
+                                  @bind="_notes"></textarea>
+                    </div>
+
+                    @if (_isEdit)
+                    {
+                        <div class="mb-2 form-check">
+                            <input type="checkbox" class="form-check-input" id="wallet-active"
+                                   checked="@_isActive"
+                                   @onchange="e => _isActive = (bool)(e.Value ?? false)" />
+                            <label for="wallet-active" class="form-check-label" style="font-size:.85rem;">
+                                Active (unchecked = deactivated, no new purchases/sessions)
+                            </label>
+                        </div>
+                    }
+                </div>
+
+                <div class="modal-footer py-2">
+                    @if (_isEdit)
+                    {
+                        @if (!_confirmDelete)
+                        {
+                            <button type="button" class="btn btn-sm btn-outline-danger me-auto"
+                                    @onclick="() => _confirmDelete = true" disabled="@_submitting">
+                                <i class="ri-delete-bin-line me-1"></i>Delete wallet
+                            </button>
+                        }
+                        else
+                        {
+                            <div class="me-auto d-flex align-items-center gap-2" style="font-size:.82rem; color:#dc2626;">
+                                <i class="ri-error-warning-line"></i>Are you sure?
+                                <button type="button" class="btn btn-sm btn-secondary py-0 px-2"
+                                        @onclick="() => _confirmDelete = false" disabled="@_submitting">No</button>
+                                <button type="button" class="btn btn-sm btn-danger py-0 px-2"
+                                        @onclick="DoDelete" disabled="@_submitting">Yes, delete</button>
+                            </div>
+                        }
+                    }
+                    <button type="button" class="btn btn-sm btn-secondary" @onclick="DoClose" disabled="@_submitting">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-primary wallet-submit"
+                            @onclick="Submit" disabled="@(!CanSubmit || _submitting)">
+                        @if (_submitting) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        @(_isEdit ? "Save" : "Create Wallet")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .wallet-modal-content { border-radius:12px; overflow:hidden; }
+    .wallet-modal-content .wallet-lbl { font-size:.82rem; color:#64748b; margin-bottom:.25rem; font-weight:600; }
+    .wallet-modal-content .wallet-input { font-size:1rem; min-height:44px; border-radius:8px; }
+    @@media (max-width:480px) {
+        .wallet-modal-content .wallet-input { font-size:16px; }
+    }
+    .wallet-modal-content .modal-footer .btn { min-height:44px; min-width:120px; }
+    .wallet-modal-content .wallet-submit {
+        background: linear-gradient(135deg, #0891b2, #06b6d4);
+        border: none; font-weight:600;
+    }
+
+    /* Currency picker */
+    .wallet-cur-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
+    .wallet-cur-btn {
+        background:#fff; border:2px solid #e2e8f0; border-radius:10px;
+        padding:10px; min-height:72px;
+        display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+        cursor:pointer; color:#475569; transition: all .15s ease;
+    }
+    .wallet-cur-btn:hover:not(:disabled) { border-color: var(--cur-color); color: var(--cur-color); }
+    .wallet-cur-btn.wallet-cur-active {
+        border-color: var(--cur-color);
+        background: color-mix(in srgb, var(--cur-color) 10%, white);
+        color: var(--cur-color);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--cur-color) 20%, transparent);
+    }
+    .wallet-cur-btn:disabled { opacity:.55; cursor:not-allowed; }
+    .wallet-cur-sym { font-size:1.6rem; font-weight:900; line-height:1; }
+    .wallet-cur-code { font-size:.72rem; font-weight:700; letter-spacing:.06em; }
+
+    /* Preview card */
+    .wallet-preview-wrap { display:flex; justify-content:center; }
+    .wallet-preview-card {
+        width:100%; max-width:320px; aspect-ratio: 1.6 / 1;
+        border-radius:14px; padding:16px; color:#fff;
+        box-shadow: 0 14px 32px rgba(15,23,42,.22);
+        position:relative; overflow:hidden;
+        display:grid; grid-template-rows:auto 1fr auto; grid-template-columns:1fr auto;
+    }
+    .wallet-preview-card::after {
+        content:''; position:absolute; inset:0;
+        background: radial-gradient(circle at 80% 10%, rgba(255,255,255,.3), transparent 55%);
+        pointer-events:none;
+    }
+    .wp-chip {
+        width:34px; height:26px; border-radius:5px;
+        background: linear-gradient(135deg, #fde68a, #f59e0b);
+        box-shadow: inset 0 -3px 0 rgba(0,0,0,.15);
+        grid-column:1; grid-row:1;
+    }
+    .wp-currency {
+        grid-column:2; grid-row:1 / span 2;
+        font-size:56px; font-weight:900; line-height:1;
+        text-shadow: 0 4px 16px rgba(0,0,0,.3);
+        letter-spacing:-.02em;
+    }
+    .wp-name {
+        grid-column:1 / span 2; grid-row:3;
+        font-weight:700; letter-spacing:.02em; font-size:.85rem;
+        display:flex; justify-content:space-between; align-items:baseline;
+    }
+    .wp-rate {
+        grid-column:1 / span 2; grid-row:2;
+        align-self:end; font-size:.78rem; opacity:.85; font-weight:600;
+    }
+</style>
+
+@code {
+    [Parameter] public bool     IsOpen { get; set; }
+    [Parameter] public int      PcId   { get; set; }
+    [Parameter] public string   PcName { get; set; } = "";
+    [Parameter] public int?     EditingWalletId { get; set; }
+    [Parameter] public int      CurrentUserPersonId { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<int> OnSaved { get; set; }  // fires with WalletId
+    [Parameter] public EventCallback<int> OnDeleted { get; set; } // fires with WalletId
+
+    bool _confirmDelete;
+
+    string _currency = "ILS";
+    string _name     = "";
+    string _notes    = "";
+    bool   _isActive = true;
+    bool   _isEdit   => EditingWalletId.HasValue;
+    bool   _wasOpen;
+    bool   _submitting;
+    string? _loadError;
+
+    bool CanSubmit => !string.IsNullOrWhiteSpace(_currency)
+                   && !string.IsNullOrWhiteSpace(_name);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && !_wasOpen) await LoadForOpen();
+        _wasOpen = IsOpen;
+    }
+
+    async Task LoadForOpen()
+    {
+        _loadError = null;
+        _submitting = false;
+        _confirmDelete = false;
+        try
+        {
+            if (_isEdit)
+            {
+                var w = WalletSvc.GetWallet(EditingWalletId!.Value);
+                if (w == null) { _loadError = "Wallet not found."; return; }
+                _currency = w.Currency;
+                _name     = w.Name;
+                _notes    = w.Notes ?? "";
+                _isActive = w.IsActive;
+            }
+            else
+            {
+                _currency = "ILS";
+                _name     = "";
+                _notes    = "";
+                _isActive = true;
+            }
+        }
+        catch (Exception ex) { _loadError = $"Failed to load: {ex.Message}"; }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task Submit()
+    {
+        if (!CanSubmit || _submitting) return;
+        _submitting = true;
+        try
+        {
+            string? notes = string.IsNullOrWhiteSpace(_notes) ? null : _notes;
+            int walletId;
+            if (_isEdit)
+            {
+                WalletSvc.UpdateWallet(EditingWalletId!.Value, _name.Trim(), notes, _isActive);
+                walletId = EditingWalletId!.Value;
+                try { await JS.InvokeVoidAsync("lpmToast", $"Wallet updated — {_name}", "success"); } catch { }
+            }
+            else
+            {
+                walletId = WalletSvc.AddWallet(PcId, _currency, _name.Trim(), notes, CurrentUserPersonId);
+                // JS calls are best-effort — don't fail the wallet creation if they throw
+                try { await JS.InvokeVoidAsync("lpmCelebrateWallet", _currency); } catch { }
+                try { await JS.InvokeVoidAsync("lpmToast", $"Wallet created — {_name} ({_currency})", "success"); } catch { }
+            }
+            await OnSaved.InvokeAsync(walletId);
+            await DoClose();
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException sx) when (sx.Message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase))
+        {
+            _loadError = $"A wallet named \"{_name.Trim()}\" already exists for this PC. Pick a different name.";
+            _submitting = false;
+        }
+        catch (Exception ex) { _loadError = $"Save failed: {ex.Message}"; _submitting = false; }
+    }
+
+    async Task DoClose() { _submitting = false; _confirmDelete = false; await OnClose.InvokeAsync(); }
+
+    async Task DoDelete()
+    {
+        if (!_isEdit || _submitting) return;
+        _submitting = true;
+        try
+        {
+            var ok = WalletSvc.TryDeleteWallet(EditingWalletId!.Value, out var err);
+            if (!ok)
+            {
+                _loadError = err ?? "Cannot delete — wallet has history. Deactivate it instead.";
+                _confirmDelete = false;
+                _submitting = false;
+                return;
+            }
+            try { await JS.InvokeVoidAsync("lpmToast", $"Wallet deleted — {_name}", "success"); } catch { }
+            await OnDeleted.InvokeAsync(EditingWalletId!.Value);
+            await DoClose();
+        }
+        catch (Exception ex)
+        {
+            _loadError = $"Delete failed: {ex.Message}";
+            _confirmDelete = false;
+            _submitting = false;
+        }
+    }
+    Task CloseIfOutside() => DoClose();
+
+    static string CurrencySymbol(string c) => c switch { "EUR" => "€", "USD" => "$", _ => "₪" };
+    static string CurrencyColor(string c)  => c switch { "EUR" => "#10b981", "USD" => "#0ea5e9", _ => "#3b82f6" };
+    static string WalletGradient(string c) => c switch
+    {
+        "EUR" => "linear-gradient(135deg,#047857,#10b981)",
+        "USD" => "linear-gradient(135deg,#0369a1,#0ea5e9)",
+        _     => "linear-gradient(135deg,#1e40af,#3b82f6)"
+    };
+}

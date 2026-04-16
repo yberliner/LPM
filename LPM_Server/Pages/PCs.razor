@@ -3,6 +3,7 @@
 @inject LPM.Services.PcService PcSvc
 @inject LPM.Services.CourseService CourseSvc
 @inject LPM.Services.DashboardService DashSvc
+@inject LPM.Services.WalletService WalletSvc
 @inject LPM.Auth.UserDb UserDb
 @inject LPM.Services.SmsService SmsSvc
 @inject AuthenticationStateProvider AuthState
@@ -98,6 +99,7 @@
         <table id="pc-list-table" class="table table-sm table-hover mb-0 pc-list-table">
             <colgroup>
                 <col class="pc-col-name" />
+                <col style="width:110px;" />
                 <col style="width:85px;" />
                 <col style="width:80px;" />
                 <col style="width:80px;" />
@@ -105,11 +107,12 @@
                 <col style="width:65px;" />
                 <col style="width:65px;" />
                 <col />
-                <col style="width:36px;" />
+                <col style="width:66px;" />
             </colgroup>
             <thead class="table-light" style="position:sticky;top:0;z-index:1;">
                 <tr>
                     <th class="small ps-2 pc-th-sort @SortClass("name")" @onclick='() => ToggleSort("name")'>@LS.T("pcs.pcName")</th>
+                    <th class="small text-center">Wallet</th>
                     <th class="small text-center pc-th-sort @SortClass("balance")" @onclick='() => ToggleSort("balance")'>@LS.T("pcs.balance")</th>
                     <th class="small text-center pc-th-sort @SortClass("hoursLeft")" @onclick='() => ToggleSort("hoursLeft")'>@LS.T("pcs.hoursLeft")</th>
                     <th class="small text-center pc-th-sort @SortClass("totalTime")" @onclick='() => ToggleSort("totalTime")'>@LS.T("pcs.totalSessionTime")</th>
@@ -117,91 +120,147 @@
                     <th class="small text-center pc-th-sort @SortClass("visits")" @onclick='() => ToggleSort("visits")'>@LS.T("pcs.totalVisits")</th>
                     <th class="small text-center pc-th-sort @SortClass("purchased")" @onclick='() => ToggleSort("purchased")'>@LS.T("pcs.hoursPurchased")</th>
                     <th class="small pc-th-sort @SortClass("auditor")" @onclick='() => ToggleSort("auditor")'>Auditor</th>
-                    <th class="small text-center" style="width:36px;"></th>
+                    <th class="small text-center" style="width:66px;"></th>
                 </tr>
             </thead>
             <tbody>
                 @foreach (var pc in FilteredPcsEx)
                 {
-                    var bal = _balances.GetValueOrDefault(pc.PcId);
-                    <tr class="@(_selPcId == pc.PcId ? "table-primary" : "") @(_dragPcId == pc.PcId ? "pc-row-dragging" : "")"
-                        style="cursor:pointer;"
-                        draggable="true"
-                        @ondragstart="() => OnDragStart(pc.PcId)"
-                        @ondragend="OnDragEnd"
-                        @oncontextmenu="(e) => OpenPcCtxMenu(e, pc.PcId, pc.OrgId)"
-                        @oncontextmenu:preventDefault
-                        @onclick="() => SelectPc(pc.PcId)">
-                        @{ var hasMixed = _mixedRates.ContainsKey(pc.PcId); }
-                        <td class="small ps-2 @(hasMixed ? "pc-mixed-rate" : "")"
-                            style="@(_soloPcIds.Contains(pc.PcId) ? "color:#ea580c;font-weight:600;" : hasMixed ? "color:#b45309;font-weight:600;" : "")"
-                            tabindex="@(hasMixed ? "0" : null)">
-                            <span class="text-truncate d-inline-block" style="max-width:100%;vertical-align:middle;">@pc.FullName@if (_soloPcIds.Contains(pc.PcId)) { <span style="display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:3px;background:#ea580c;color:#fff;font-size:.58rem;font-weight:700;margin-left:3px;vertical-align:middle;">S</span> }@if (!string.IsNullOrEmpty(pc.Nick)) { <span class="text-muted" style="font-size:.7rem;"> (@pc.Nick)</span> }</span>
-                            @if (hasMixed)
-                            {
-                                <span class="pc-mixed-tip">
-                                    <strong>Different rates (last 12 months):</strong><br/>
-                                    @foreach (var e in _mixedRates[pc.PcId])
-                                    {
-                                        <text>@FormatDate(e.Date) — @FormatHoursMinutes(e.Hours) hrs @@ @(CurrSym(bal?.Currency ?? "ILS"))@e.RatePerHour/hr</text><br/>
-                                    }
-                                </span>
-                            }
-                        </td>
-                        @{ var isMixedCurr = _mixedCurrencyPcs.Contains(pc.PcId); }
-                        @if (isMixedCurr)
-                        {
-                            <td class="small text-center fw-semibold pc-mixed-curr" tabindex="0"
-                                style="color:#b45309;" title="Mixed currencies — balance unreliable">
-                                <i class="ri-error-warning-line"></i> Mix
-                                <span class="pc-mixed-curr-tip">Multiple currencies used in purchases.<br/>Balance cannot be calculated accurately.<br/>Please adjust purchases to use a single currency.</span>
+                    var wallets = _pcWalletBalances.GetValueOrDefault(pc.PcId) ?? new();
+                    if (wallets.Count == 0)
+                    {
+                        // Safety: render a minimal row if a PC has no wallet yet
+                        <tr>
+                            <td class="small ps-2">@pc.FullName</td>
+                            <td class="small text-muted text-center" colspan="7">
+                                <i class="ri-wallet-3-line me-1"></i>No wallet
                             </td>
-                            <td class="small text-center fw-semibold pc-mixed-curr" tabindex="0"
-                                style="color:#b45309;" title="Mixed currencies — hours unreliable">
-                                <i class="ri-error-warning-line"></i>
-                                <span class="pc-mixed-curr-tip">Hours left unavailable — mixed currencies.</span>
+                            <td class="small"></td>
+                            <td class="small text-center">
+                                <button class="btn btn-sm btn-link p-0" title="Add wallet"
+                                        @onclick="() => OpenAddWallet(pc.PcId, pc.FullName)"
+                                        @onclick:stopPropagation="true">
+                                    <i class="ri-add-circle-line" style="color:#0891b2;font-size:1.15rem;"></i>
+                                </button>
                             </td>
-                        }
-                        else
-                        {
-                            <td class="small text-center fw-semibold"
-                                style="color:@(bal == null ? "#9ca3af" : bal.BalanceNis >= 0 ? "#22c55e" : "#ef4444");">
-                                @(bal != null ? $"{CurrSym(bal.Currency)}{bal.BalanceNis:N0}" : "\u2014")
-                            </td>
-                            <td class="small text-center fw-semibold @(bal?.RateMismatch == true ? "bal-rate-mismatch" : "")"
-                                tabindex="@(bal?.RateMismatch == true ? "0" : null)"
-                                style="color:@(bal == null ? "#9ca3af" : bal.HoursLeft >= 0 ? "#4ade80" : "#f87171");">
-                                @if (bal != null && bal.EffectiveRateCents > 0)
+                        </tr>
+                        continue;
+                    }
+
+                    for (int i = 0; i < wallets.Count; i++)
+                    {
+                        var w = wallets[i];
+                        var isFirst = (i == 0);
+                        var rowSel  = _selPcId == pc.PcId;
+                        <tr class="@(rowSel ? "table-primary" : "") @(_dragPcId == pc.PcId ? "pc-row-dragging" : "") @(isFirst ? "" : "pc-wallet-row-sub")"
+                            style="cursor:pointer;"
+                            draggable="@isFirst"
+                            @ondragstart="() => OnDragStart(pc.PcId)"
+                            @ondragend="OnDragEnd"
+                            @oncontextmenu="(e) => OpenPcCtxMenu(e, pc.PcId, pc.OrgId)"
+                            @oncontextmenu:preventDefault
+                            @onclick="() => SelectPc(pc.PcId)">
+
+                            @{ var hasMixed = _mixedRates.ContainsKey(pc.PcId); }
+                            <td class="small ps-2 @(hasMixed ? "pc-mixed-rate" : "")"
+                                style="@(isFirst ? "" : "border-top:none; color:#94a3b8;") @(_soloPcIds.Contains(pc.PcId) && isFirst ? "color:#ea580c;font-weight:600;" : hasMixed && isFirst ? "color:#b45309;font-weight:600;" : "")">
+                                @if (isFirst)
                                 {
-                                    @HrsLabel((long)(bal.HoursLeft * 3600))
-                                    @if (bal.RateMismatch)
-                                    {
-                                        <span class="bal-rate-tip">
-                                            @LS.T("pcs.sessionRate"): @CurrSym(bal.Currency)@(bal.EffectiveRateCents / 100)/hr<br />
-                                            @LS.T("pcs.purchaseRate"): @CurrSym(bal.Currency)@(bal.PurchaseRateCents / 100)/hr
-                                        </span>
-                                    }
+                                    <span class="text-truncate d-inline-block" style="max-width:100%;vertical-align:middle;">@pc.FullName@if (_soloPcIds.Contains(pc.PcId)) { <span style="display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:3px;background:#ea580c;color:#fff;font-size:.58rem;font-weight:700;margin-left:3px;vertical-align:middle;">S</span> }@if (!string.IsNullOrEmpty(pc.Nick)) { <span class="text-muted" style="font-size:.7rem;"> (@pc.Nick)</span> }</span>
+                                }
+                                else
+                                {
+                                    <span style="opacity:.35; font-size:.72rem; padding-left:8px;">↳</span>
+                                }
+                            </td>
+
+                            @* Wallet badge *@
+                            <td class="small text-center" style="@(isFirst ? "" : "border-top:none;")">
+                                @{
+                                    var walletTitle = w.IsActive ? w.Name : w.Name + " (inactive)";
+                                }
+                                <span class="pc-wallet-badge @(w.IsActive ? "" : "pc-wallet-inactive")"
+                                      style="background:@WalletBgColor(w.Currency); color:@WalletFgColor(w.Currency);"
+                                      title="@walletTitle">
+                                    <span class="pc-wallet-sym">@WalletSym(w.Currency)</span>
+                                    <span class="pc-wallet-name">@w.Name</span>
+                                </span>
+                            </td>
+
+                            @* Balance (per wallet) *@
+                            <td class="small text-center fw-semibold"
+                                style="@(isFirst ? "" : "border-top:none;") color:@(w.RemainingCents >= 0 ? "#22c55e" : "#ef4444");">
+                                @($"{WalletSym(w.Currency)}{(w.RemainingCents / 100.0):N0}")
+                            </td>
+
+                            @* Hours Left (per wallet) *@
+                            <td class="small text-center fw-semibold"
+                                style="@(isFirst ? "" : "border-top:none;") color:@(w.RemainingHours >= 0 ? "#4ade80" : "#f87171");">
+                                @if (w.EffectiveRateCentsPerHour > 0)
+                                {
+                                    @HrsLabel((long)(w.RemainingHours * 3600))
                                 }
                                 else
                                 {
                                     <text>—</text>
                                 }
                             </td>
-                        }
-                        <td class="small text-center text-muted">@HrsLabel(pc.TotalSessionSec)</td>
-                        <td class="small text-center text-muted">@pc.AuditorSessions</td>
-                        <td class="small text-center text-muted">@pc.AcademyVisits</td>
-                        <td class="small text-center text-muted">@FormatHoursMinutes(pc.HoursPurchased)</td>
-                        <td class="small text-muted text-truncate" style="max-width:120px;">@(string.IsNullOrEmpty(pc.Auditor) ? "\u2014" : pc.Auditor)</td>
-                        <td class="small text-center" style="padding:0;">
-                            <button class="btn btn-link btn-sm p-0 bal-detail-btn"
-                                    title="@LS.T("pcs.balanceDetails")"
-                                    @onclick="() => OpenBalanceModal(pc.PcId, pc.FullName)"
-                                    @onclick:stopPropagation="true">
-                                <i class="ri-file-list-3-line" style="font-size:1rem;color:#6366f1;"></i>
-                            </button>
-                        </td>
-                    </tr>
+
+                            @* Total session time (per wallet) *@
+                            <td class="small text-center text-muted" style="@(isFirst ? "" : "border-top:none;")">
+                                @HrsLabel((long)(w.UsedSessionHours * 3600))
+                            </td>
+
+                            @* Auditor sessions — per-PC, shown only on first row *@
+                            <td class="small text-center text-muted" style="@(isFirst ? "" : "border-top:none;")">
+                                @(isFirst ? pc.AuditorSessions.ToString() : "")
+                            </td>
+                            @* Academy visits — per-PC, shown only on first row *@
+                            <td class="small text-center text-muted" style="@(isFirst ? "" : "border-top:none;")">
+                                @(isFirst ? pc.AcademyVisits.ToString() : "")
+                            </td>
+                            @* Hours Purchased (per wallet) *@
+                            <td class="small text-center text-muted" style="@(isFirst ? "" : "border-top:none;")">
+                                @FormatHoursMinutes(w.PurchasedHours)
+                            </td>
+                            @* Auditor — per-PC, shown only on first row *@
+                            <td class="small text-muted text-truncate" style="@(isFirst ? "" : "border-top:none;") max-width:120px;">
+                                @(isFirst ? (string.IsNullOrEmpty(pc.Auditor) ? "\u2014" : pc.Auditor) : "")
+                            </td>
+                            @* Actions *@
+                            <td class="small text-center" style="@(isFirst ? "" : "border-top:none;") padding:0;">
+                                <div class="d-inline-flex align-items-center gap-1">
+                                    <button class="btn btn-link btn-sm p-0"
+                                            title="Edit wallet"
+                                            @onclick="() => OpenEditWallet(pc.PcId, pc.FullName, w.WalletId)"
+                                            @onclick:stopPropagation="true">
+                                        <i class="ri-edit-line" style="font-size:.95rem;color:#64748b;"></i>
+                                    </button>
+                                    <button class="btn btn-link btn-sm p-0"
+                                            title="Transfer balance"
+                                            @onclick="() => OpenTransferWallet(w.WalletId)"
+                                            @onclick:stopPropagation="true">
+                                        <i class="ri-exchange-funds-line" style="font-size:.95rem;color:#7c3aed;"></i>
+                                    </button>
+                                    @if (isFirst)
+                                    {
+                                        <button class="btn btn-link btn-sm p-0"
+                                                title="Add wallet"
+                                                @onclick="() => OpenAddWallet(pc.PcId, pc.FullName)"
+                                                @onclick:stopPropagation="true">
+                                            <i class="ri-add-circle-line" style="font-size:1rem;color:#0891b2;"></i>
+                                        </button>
+                                        <button class="btn btn-link btn-sm p-0 bal-detail-btn"
+                                                title="@LS.T("pcs.balanceDetails")"
+                                                @onclick="() => OpenBalanceModal(pc.PcId, pc.FullName)"
+                                                @onclick:stopPropagation="true">
+                                            <i class="ri-file-list-3-line" style="font-size:.95rem;color:#6366f1;"></i>
+                                        </button>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
                 }
             </tbody>
         </table>
@@ -826,6 +885,31 @@
                         <div style="font-size:1.6rem;font-weight:800;color:#1e3a5f;">@_detail.FullName</div>
                     </div>
 
+                        @* ═══ Wallet picker (only when PC has 2+ wallets) ═══ *@
+                        @if (_purchaseWalletOptions.Count > 1)
+                        {
+                            <div class="purchase-section mb-3" style="border-left:3px solid @WalletFgColor(_purchaseCurrency);">
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    <i class="ri-wallet-3-fill" style="font-size:1.3rem; color:@WalletFgColor(_purchaseCurrency);"></i>
+                                    <span class="purchase-section-title mb-0">Wallet</span>
+                                    <select class="form-select form-select-sm ms-2" style="min-width:260px; font-size:.9rem; font-weight:600; flex:0 1 auto;"
+                                            value="@_purchaseWalletId"
+                                            @onchange="OnPurchaseWalletChanged">
+                                        @foreach (var w in _purchaseWalletOptions)
+                                        {
+                                            <option value="@w.WalletId">@w.Name — @w.Currency @WalletSym(w.Currency)@(w.IsActive ? "" : " (inactive)")</option>
+                                        }
+                                    </select>
+                                </div>
+                            </div>
+                        }
+                        else if (_purchaseWalletOptions.Count == 0)
+                        {
+                            <div class="alert alert-danger py-2 mb-3" style="font-size:.82rem;">
+                                <i class="ri-error-warning-line me-1"></i>This PC has no wallet — add one first on the PCs page.
+                            </div>
+                        }
+
                         @* ═══ SECTION 1: Purchase Items ═══ *@
                         <div class="purchase-section" style="border-left:3px solid #3b82f6;">
                             <div class="d-flex align-items-center justify-content-between mb-2">
@@ -898,7 +982,7 @@
                                                     </div>
                                                 </div>
                                                 <div class="col-auto">
-                                                    <label class="form-label small mb-0">@LS.T("pcs.ratePerHour")</label>
+                                                    <label class="form-label small mb-0">@LS.T("pcs.ratePerHour") (@CurrSym(_purchaseCurrency))</label>
                                                     <input type="number" class="form-control form-control-sm @(item.RatePerHour <= 0 ? "field-invalid" : "field-valid")"
                                                            value="@item.RatePerHour" min="0" style="max-width:90px;font-size:16px;" placeholder="0"
                                                            onfocus="this.select()"
@@ -1094,18 +1178,6 @@
                                            placeholder="dd/mm/yy"
                                            value="@(_purchaseDate.ToString("dd/MM/yy"))"
                                            @onchange="e => { var d = ParseDateInput(e.Value?.ToString()); if (d.HasValue) _purchaseDate = d.Value; }" />
-                                </div>
-                                <div>
-                                    <label class="form-label small mb-0" style="font-size:.72rem;">Currency</label>
-                                    <div class="d-flex gap-1">
-                                        @foreach (var cur in new[] { "ILS", "USD", "EUR" })
-                                        {
-                                            var c = cur;
-                                            <button class="btn btn-sm @(_purchaseCurrency == c ? "btn-primary" : "btn-outline-secondary")"
-                                                    style="font-size:.72rem;padding:2px 8px;"
-                                                    @onclick="() => OnCurrencyClick(c)">@c</button>
-                                        }
-                                    </div>
                                 </div>
                                 <div>
                                     <label class="form-label small mb-0" style="font-size:.72rem;">@LS.T("courses.registrar")</label>
@@ -3370,12 +3442,48 @@
         .pc-org-pill { padding: 6px 10px; font-size: .75rem; min-height: 44px; }
         .pc-org-bar { gap: 4px; padding: 4px 6px; }
     }
+
+    /* ── Wallet row styling ── */
+    .pc-wallet-row-sub td { background:#fafbfc; }
+    .pc-wallet-badge {
+        display:inline-flex; align-items:center; gap:5px;
+        padding:3px 8px; border-radius:999px;
+        font-size:.72rem; font-weight:700;
+        white-space:nowrap; max-width:130px;
+    }
+    .pc-wallet-badge.pc-wallet-inactive { opacity:.55; text-decoration:line-through; }
+    .pc-wallet-sym  { font-size:.9rem; line-height:1; font-weight:900; }
+    .pc-wallet-name { overflow:hidden; text-overflow:ellipsis; }
 </style>
+
+@* ── Wallet modals ── *@
+<LPM.Shared.WalletModal IsOpen="_walletModalOpen"
+                        PcId="_walletModalPcId"
+                        PcName="@_walletModalPcName"
+                        EditingWalletId="_walletModalEditingId"
+                        CurrentUserPersonId="_currentUserPersonId"
+                        OnClose="CloseWalletModal"
+                        OnSaved="OnWalletSaved"
+                        OnDeleted="OnWalletDeleted" />
+
+<LPM.Shared.WalletTransferModal IsOpen="_walletTransferModalOpen"
+                                SourceWalletId="_walletTransferSourceId"
+                                CurrentUserPersonId="_currentUserPersonId"
+                                OnClose="CloseTransferModal"
+                                OnTransferred="OnTransferred" />
 
 @code {
     List<PcListItemEx> _allPcsEx    = [];
     HashSet<int>       _soloPcIds   = new();
     Dictionary<int, PcBalanceData> _balances = new();
+    Dictionary<int, List<WalletBalance>> _pcWalletBalances = new();
+    // Wallet modal state
+    bool _walletModalOpen;
+    int  _walletModalPcId;
+    string _walletModalPcName = "";
+    int? _walletModalEditingId;
+    bool _walletTransferModalOpen;
+    int? _walletTransferSourceId;
     int?               _selPcId;
     bool               _isSolo;
     string             _search      = "";
@@ -3541,6 +3649,31 @@
     }
 
     string _purchaseCurrency = "ILS";
+    int    _purchaseWalletId;
+    List<Wallet> _purchaseWalletOptions = new();
+
+    void LoadPurchaseWalletOptions()
+    {
+        if (!_selPcId.HasValue) { _purchaseWalletOptions = new(); return; }
+        // Include inactive so editing an inactive-wallet purchase still shows it
+        _purchaseWalletOptions = WalletSvc.GetWalletsForPc(_selPcId.Value, includeInactive: true);
+    }
+
+    void OnPurchaseWalletChanged(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var wid)) return;
+        _purchaseWalletId = wid;
+        var w = _purchaseWalletOptions.FirstOrDefault(x => x.WalletId == wid);
+        if (w != null) _purchaseCurrency = w.Currency;
+
+        // Set rate of every Auditing item to this wallet's last purchase rate (0 if none).
+        var defaultRate = PcSvc.GetLastPurchaseRateForWallet(wid);
+        foreach (var item in _purchaseItems.Where(pi => pi.ItemType == "Auditing"))
+        {
+            item.RatePerHour = defaultRate;
+            RecalcAuditing(item);
+        }
+    }
     static string CurrSym(string code) => code switch { "USD" => "$", "EUR" => "€", _ => "₪" };
 
     /// Formats an amount: whole numbers as "42", fractional as "42<small>.50</small>"
@@ -3695,6 +3828,7 @@
     {
         _allPcsEx   = PcSvc.GetAllPcsExtended();
         _balances   = PcSvc.GetAllPcBalances();
+        LoadWalletBalancesForAll();
         _mixedRates = PcSvc.GetPcsWithMixedRates();
         _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
         _mixedRates = PcSvc.GetPcsWithMixedRates();
@@ -3796,6 +3930,7 @@
         FolderSvc.RenamePcFolder(_selPcId!.Value, d.FirstName, d.LastName);
         _allPcsEx = PcSvc.GetAllPcsExtended();
         _balances = PcSvc.GetAllPcBalances();
+        LoadWalletBalancesForAll();
         _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
         _mixedRates = PcSvc.GetPcsWithMixedRates();
         LoadDetail();
@@ -3906,11 +4041,20 @@
         _skipSignature     = false;
         _hasSigned         = false;
         _purchaseCurrency  = _selPcId.HasValue ? PcSvc.GetLastPurchaseCurrencyForPc(_selPcId.Value) : "ILS";
+        LoadPurchaseWalletOptions();
+        // Preselect wallet: active wallet matching last purchase currency; else first active
+        {
+            var active = _purchaseWalletOptions.Where(w => w.IsActive).ToList();
+            var match = active.FirstOrDefault(w => w.Currency == _purchaseCurrency) ?? active.FirstOrDefault();
+            _purchaseWalletId = match?.WalletId ?? 0;
+            if (match != null) _purchaseCurrency = match.Currency;
+        }
         _allCourses        = CourseSvc.GetAllCourses();
         _allBooks          = CourseSvc.GetAllBooks();
         _purchaseRegistrarId = _currentPersonId ?? 0;
         _purchaseReferralId  = 0;
-        int _defAudRate = _selPcId.HasValue && _balances.TryGetValue(_selPcId.Value, out var _bal) ? _bal.PurchaseRateCents / 100 : 0;
+        // Default rate: last purchase rate for the selected wallet; 0 if none.
+        int _defAudRate = _purchaseWalletId > 0 ? PcSvc.GetLastPurchaseRateForWallet(_purchaseWalletId) : 0;
         _purchaseItems     = new List<PurchaseItemModel>
         {
             new PurchaseItemModel { RatePerHour = _defAudRate }
@@ -3941,6 +4085,8 @@
         _purchaseDate = DateTime.TryParse(detail.PurchaseDate, out var dt) ? dt : DateTime.Today;
         _purchaseNotes = detail.Notes ?? "";
         _purchaseCurrency = detail.Currency;
+        _purchaseWalletId = detail.WalletId ?? 0;
+        LoadPurchaseWalletOptions();
 
         _purchaseRegistrarId = detail.RegistrarId ?? 0;
         _purchaseReferralId  = detail.ReferralId ?? 0;
@@ -4216,7 +4362,8 @@
             PcSvc.UpdatePurchase(_editingPurchaseId.Value,
                 _purchaseDate.ToString("yyyy-MM-dd"),
                 string.IsNullOrWhiteSpace(_purchaseNotes) ? null : _purchaseNotes,
-                items, pmList, regId, refId, _purchaseCurrency);
+                items, pmList, regId, refId, _purchaseCurrency,
+                walletId: _purchaseWalletId > 0 ? _purchaseWalletId : null);
         }
         else
         {
@@ -4229,7 +4376,8 @@
                 string.IsNullOrWhiteSpace(_purchaseNotes) ? null : _purchaseNotes,
                 sigData,
                 _currentPersonId,
-                items, pmList, regId, refId, _purchaseCurrency);
+                items, pmList, regId, refId, _purchaseCurrency,
+                walletId: _purchaseWalletId > 0 ? _purchaseWalletId : null);
 
             // Send automatic message to admins about the purchase
             if (_currentPersonId.HasValue && _detail != null)
@@ -4267,6 +4415,7 @@
         // Refresh data immediately so the UI shows updated values behind the toast
         _allPcsEx = PcSvc.GetAllPcsExtended();
         _balances = PcSvc.GetAllPcBalances();
+        LoadWalletBalancesForAll();
         _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
         _mixedRates = PcSvc.GetPcsWithMixedRates();
         LoadDetail();
@@ -4347,6 +4496,7 @@
         _confirmDeletePurchaseId = null;
         _allPcsEx = PcSvc.GetAllPcsExtended();
         _balances = PcSvc.GetAllPcBalances();
+        LoadWalletBalancesForAll();
         _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
         _mixedRates = PcSvc.GetPcsWithMixedRates();
         LoadDetail();
@@ -4648,6 +4798,7 @@
         _showResetModal = false;
         _resetSuccess = false;
         _balances = PcSvc.GetAllPcBalances();
+        LoadWalletBalancesForAll();
         _allPcsEx = PcSvc.GetAllPcsExtended();
         _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
     }
@@ -4670,6 +4821,7 @@
         _resetDeleted = false;
         _showResetModal = false;
         _balances = PcSvc.GetAllPcBalances();
+        LoadWalletBalancesForAll();
         _allPcsEx = PcSvc.GetAllPcsExtended();
         _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
     }
@@ -4742,5 +4894,100 @@
     public void Dispose()
     {
         _sigRef?.Dispose();
+    }
+
+    // ── Wallet helpers ──────────────────────────────────────────────────────
+
+    void LoadWalletBalancesForAll()
+    {
+        _pcWalletBalances = new();
+        foreach (var pc in _allPcsEx)
+            _pcWalletBalances[pc.PcId] = WalletSvc.GetBalancesForPc(pc.PcId);
+    }
+
+    static string WalletSym(string c) => c switch { "EUR" => "€", "USD" => "$", _ => "₪" };
+    static string WalletBgColor(string c) => c switch
+    {
+        "EUR" => "#d1fae5", "USD" => "#e0f2fe", _ => "#dbeafe"
+    };
+    static string WalletFgColor(string c) => c switch
+    {
+        "EUR" => "#047857", "USD" => "#0369a1", _ => "#1e40af"
+    };
+
+    int _currentUserPersonId;
+
+    async Task EnsureCurrentUserId()
+    {
+        if (_currentUserPersonId > 0) return;
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var uname = auth.User.Identity?.Name ?? "";
+        _currentUserPersonId = DashSvc.GetUserIdByUsername(uname) ?? 0;
+    }
+
+    async Task OpenAddWallet(int pcId, string pcName)
+    {
+        await EnsureCurrentUserId();
+        _walletModalEditingId = null;
+        _walletModalPcId = pcId;
+        _walletModalPcName = pcName;
+        _walletModalOpen = true;
+    }
+
+    async Task OpenEditWallet(int pcId, string pcName, int walletId)
+    {
+        await EnsureCurrentUserId();
+        _walletModalEditingId = walletId;
+        _walletModalPcId = pcId;
+        _walletModalPcName = pcName;
+        _walletModalOpen = true;
+    }
+
+    async Task OpenTransferWallet(int walletId)
+    {
+        await EnsureCurrentUserId();
+        _walletTransferSourceId = walletId;
+        _walletTransferModalOpen = true;
+    }
+
+    Task CloseWalletModal()
+    {
+        _walletModalOpen = false;
+        _walletModalEditingId = null;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    void OnWalletSaved(int walletId)
+    {
+        _walletModalOpen = false;
+        _walletModalEditingId = null;
+        LoadWalletBalancesForAll();
+        StateHasChanged();
+    }
+
+    void OnWalletDeleted(int walletId)
+    {
+        _walletModalOpen = false;
+        _walletModalEditingId = null;
+        LoadWalletBalancesForAll();
+        StateHasChanged();
+    }
+
+    Task CloseTransferModal()
+    {
+        _walletTransferModalOpen = false;
+        _walletTransferSourceId = null;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    void OnTransferred()
+    {
+        _walletTransferModalOpen = false;
+        _walletTransferSourceId = null;
+        LoadWalletBalancesForAll();
+        _balances = PcSvc.GetAllPcBalances();
+        StateHasChanged();
     }
 }

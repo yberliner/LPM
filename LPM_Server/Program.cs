@@ -151,6 +151,7 @@ builder.Services.AddSingleton<LPM.Services.ImportJobService>();
 builder.Services.AddSingleton<LPM.Services.CompletionService>();
 builder.Services.AddSingleton<LPM.Services.QuestionService>();
 builder.Services.AddSingleton<LPM.Services.EffortService>();
+builder.Services.AddSingleton<LPM.Services.WalletService>();
 
 // Add session services
 builder.Services.AddDistributedMemoryCache();

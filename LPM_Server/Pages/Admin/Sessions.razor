@@ -8,6 +8,7 @@
 @inject UserDb UserDb
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
+@inject LPM.Services.WalletService WalletSvc
 
 <div class="sa-page p-3 p-md-4">
 
@@ -162,6 +163,18 @@
                             </div>
                             <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
                                 <span class="sa-input-label" style="color:#6b7280;">Set all:</span>
+                                @{ var pcWalletsTop = _pcWallets.GetValueOrDefault(pcGroup.PcId) ?? new(); }
+                                @if (pcWalletsTop.Count > 1)
+                                {
+                                    <select class="form-select form-select-sm" style="width:170px; font-size:.78rem;"
+                                            value="@(_pcTopWallet.GetValueOrDefault((group.AuditorId, pcGroup.PcId), pcGroup.Sessions.FirstOrDefault()?.WalletId ?? 0))"
+                                            @onchange="e => OnTopWalletChanged(group.AuditorId, pcGroup.PcId, e.Value?.ToString())">
+                                        @foreach (var w in pcWalletsTop)
+                                        {
+                                            <option value="@w.WalletId">@w.Name (@w.Currency)</option>
+                                        }
+                                    </select>
+                                }
                                 <div class="input-group input-group-sm sa-rate-input" style="width:125px;">
                                     <span class="input-group-text">@PcCurrSym(pcGroup.PcId) Rate</span>
                                     <input type="number" class="form-control" placeholder="0" min="0" step="0.01"
@@ -194,6 +207,7 @@
                                     <th class="text-center">@LS.T("sessions.duration")</th>
                                     <th class="text-center">@LS.T("sessions.admin")</th>
                                     <th class="text-center">@LS.T("sessions.free")</th>
+                                    <th style="width:140px;">Wallet</th>
                                     <th style="width:115px;">@LS.T("sessions.rate") @PcCurrSym(pcGroup.PcId)/hr</th>
                                     <th style="width:115px;">@LS.T("sessions.salary") @PcCurrSym(pcGroup.PcId)/hr</th>
                                     <th style="width:105px;">@LS.T("common.status")</th>
@@ -234,6 +248,33 @@
                                         </td>
                                         <td class="text-center py-2" style="font-size:0.83rem;color:#6b7280;">@DashboardService.Fmt(s.AdminSec)</td>
                                         <td class="text-center py-2">@if (s.IsFree) { <span class="badge sa-badge-free">FREE</span> }</td>
+                                        <td class="py-1">
+                                            @{ var pcWallets = _pcWallets.GetValueOrDefault(pcGroup.PcId) ?? new(); }
+                                            @if (pcWallets.Count <= 1)
+                                            {
+                                                var w = pcWallets.FirstOrDefault(x => x.WalletId == (s.WalletId ?? 0)) ?? pcWallets.FirstOrDefault();
+                                                if (w != null)
+                                                {
+                                                    <span class="badge" style="background:#dbeafe; color:#1e40af; font-size:.72rem;">@w.Name (@w.Currency)</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted small">—</span>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <select class="form-select form-select-sm sa-row-input"
+                                                        style="font-size:.78rem;"
+                                                        value="@(s.WalletId ?? 0)"
+                                                        @onchange="e => OnSessionWalletChanged(s.SessionId, e.Value?.ToString())">
+                                                    @foreach (var w in pcWallets)
+                                                    {
+                                                        <option value="@w.WalletId">@w.Name (@w.Currency)</option>
+                                                    }
+                                                </select>
+                                            }
+                                        </td>
                                         <td class="py-1"><input type="number" class="form-control form-control-sm sa-row-input" @bind="edit.ChargeRate" @bind:culture="CultureInfo.InvariantCulture" min="0" step="0.01" onfocus="this.select()" /></td>
                                         <td class="py-1"><input type="number" class="form-control form-control-sm sa-row-input" @bind="edit.Salary" @bind:culture="CultureInfo.InvariantCulture" min="0" step="0.01" onfocus="this.select()" /></td>
                                         <td class="py-2">
@@ -322,6 +363,18 @@
                         </div>
                         <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
                             <span class="sa-input-label" style="color:#6b7280;">Set all:</span>
+                            @{ var csPcWalletsTop = _pcWallets.GetValueOrDefault(pcGroup.PcId) ?? new(); }
+                            @if (csPcWalletsTop.Count > 1)
+                            {
+                                <select class="form-select form-select-sm" style="width:170px; font-size:.78rem;"
+                                        value="@(_csTopWallet.GetValueOrDefault((csGroup.CsId, pcGroup.PcId), pcGroup.Reviews.FirstOrDefault()?.WalletId ?? 0))"
+                                        @onchange="e => OnCsTopWalletChanged(csGroup.CsId, pcGroup.PcId, e.Value?.ToString())">
+                                    @foreach (var w in csPcWalletsTop)
+                                    {
+                                        <option value="@w.WalletId">@w.Name (@w.Currency)</option>
+                                    }
+                                </select>
+                            }
                             <div class="input-group input-group-sm sa-rate-input" style="width:140px;">
                                 <span class="input-group-text">@PcCurrSym(pcGroup.PcId) CS Sal.</span>
                                 <input type="number" class="form-control" placeholder="0" min="0" step="0.01"
@@ -343,6 +396,7 @@
                                     <th class="ps-4">Session Date</th>
                                     <th style="width:140px;">CS By</th>
                                     <th class="text-center">Review Duration</th>
+                                    <th style="width:140px;">Wallet</th>
                                     @if (pcGroup.Reviews.Any(r => r.IsSolo))
                                     {
                                         <th style="width:115px;">Rate @PcCurrSym(pcGroup.PcId)/hr</th>
@@ -408,6 +462,33 @@
                                                 {
                                                     <span class="ms-1" style="background:#fee2e2;color:#991b1b;font-size:.65rem;font-weight:700;padding:2px 8px;border-radius:10px;">Bill</span>
                                                 }
+                                            }
+                                        </td>
+                                        <td class="py-1">
+                                            @{ var csPcWallets = _pcWallets.GetValueOrDefault(pcGroup.PcId) ?? new(); }
+                                            @if (csPcWallets.Count <= 1)
+                                            {
+                                                var cw = csPcWallets.FirstOrDefault(x => x.WalletId == (rev.WalletId ?? 0)) ?? csPcWallets.FirstOrDefault();
+                                                if (cw != null)
+                                                {
+                                                    <span class="badge" style="background:#dbeafe; color:#1e40af; font-size:.72rem;">@cw.Name (@cw.Currency)</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted small">—</span>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <select class="form-select form-select-sm sa-row-input"
+                                                        style="font-size:.78rem;"
+                                                        value="@(rev.WalletId ?? 0)"
+                                                        @onchange="e => OnCsReviewWalletChanged(rev.CsReviewId, e.Value?.ToString())">
+                                                    @foreach (var cw in csPcWallets)
+                                                    {
+                                                        <option value="@cw.WalletId">@cw.Name (@cw.Currency)</option>
+                                                    }
+                                                </select>
                                             }
                                         </td>
                                         @{ bool rowIsFree = rev.IsSolo && rev.Notes == "Free"; }
@@ -632,6 +713,98 @@
     private Dictionary<(int aud, int pc), PcDefaults> _pcDefaults  = new();
     private Dictionary<int, RowEdit>               _rowEdits    = new();
     private Dictionary<int, string?>               _auditorAvatars = new();
+    private Dictionary<int, List<LPM.Services.Wallet>> _pcWallets = new();
+    // Top-row "apply to all" wallet selection per (auditor, PC) group
+    private Dictionary<(int aud, int pc), int> _pcTopWallet   = new();
+    // Top-row wallet selection per (CS, PC) group
+    private Dictionary<(int cs,  int pc), int> _csTopWallet   = new();
+
+    string PcWalletCurrency(int pcId)
+    {
+        // If any top-row selection exists for this PC, use that wallet's currency
+        foreach (var kv in _pcTopWallet)
+            if (kv.Key.pc == pcId)
+            {
+                var w = _pcWallets.GetValueOrDefault(pcId)?.FirstOrDefault(x => x.WalletId == kv.Value);
+                if (w != null) return w.Currency;
+            }
+        foreach (var kv in _csTopWallet)
+            if (kv.Key.pc == pcId)
+            {
+                var w = _pcWallets.GetValueOrDefault(pcId)?.FirstOrDefault(x => x.WalletId == kv.Value);
+                if (w != null) return w.Currency;
+            }
+        return _pcCurrency.GetValueOrDefault(pcId, "ILS");
+    }
+
+    void OnTopWalletChanged(int auditorId, int pcId, string? val)
+    {
+        if (!int.TryParse(val, out var wid) || wid <= 0) return;
+        // No-op if already set to the same wallet (prevents spurious propagation on initial render)
+        if (_pcTopWallet.TryGetValue((auditorId, pcId), out var existing) && existing == wid) return;
+        _pcTopWallet[(auditorId, pcId)] = wid;
+        // Apply to every session in this (auditor, PC) group — only update sessions that differ
+        var audGroup = _groups.FirstOrDefault(g => g.AuditorId == auditorId);
+        var pcGroup  = audGroup?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
+        if (pcGroup == null) return;
+        for (int i = 0; i < pcGroup.Sessions.Count; i++)
+        {
+            var s = pcGroup.Sessions[i];
+            if (s.WalletId == wid) continue;
+            WalletSvc.SetSessionWallet(s.SessionId, wid);
+            pcGroup.Sessions[i] = s with { WalletId = wid };
+        }
+    }
+
+    void OnCsTopWalletChanged(int csId, int pcId, string? val)
+    {
+        if (!int.TryParse(val, out var wid) || wid <= 0) return;
+        if (_csTopWallet.TryGetValue((csId, pcId), out var existing) && existing == wid) return;
+        _csTopWallet[(csId, pcId)] = wid;
+        var csGroup = _csGroups.FirstOrDefault(g => g.CsId == csId);
+        var pcGroup = csGroup?.PcGroups.FirstOrDefault(p => p.PcId == pcId);
+        if (pcGroup == null) return;
+        for (int i = 0; i < pcGroup.Reviews.Count; i++)
+        {
+            var rev = pcGroup.Reviews[i];
+            if (rev.WalletId == wid) continue;
+            WalletSvc.SetCsReviewWallet(rev.CsReviewId, wid);
+            pcGroup.Reviews[i] = rev with { WalletId = wid };
+        }
+    }
+
+    void OnSessionWalletChanged(int sessionId, string? val)
+    {
+        if (!int.TryParse(val, out var wid) || wid <= 0) return;
+        WalletSvc.SetSessionWallet(sessionId, wid);
+        // Update local model so the dropdown reflects the new state
+        foreach (var g in _groups)
+        foreach (var pg in g.PcGroups)
+        {
+            var idx = pg.Sessions.FindIndex(s => s.SessionId == sessionId);
+            if (idx >= 0)
+            {
+                pg.Sessions[idx] = pg.Sessions[idx] with { WalletId = wid };
+                return;
+            }
+        }
+    }
+
+    void OnCsReviewWalletChanged(int csReviewId, string? val)
+    {
+        if (!int.TryParse(val, out var wid) || wid <= 0) return;
+        WalletSvc.SetCsReviewWallet(csReviewId, wid);
+        foreach (var g in _csGroups)
+        foreach (var pg in g.PcGroups)
+        {
+            var idx = pg.Reviews.FindIndex(r => r.CsReviewId == csReviewId);
+            if (idx >= 0)
+            {
+                pg.Reviews[idx] = pg.Reviews[idx] with { WalletId = wid };
+                return;
+            }
+        }
+    }
 
     // ── CS data ───────────────────────────────────────────────────
     private List<CsReviewerGroup>                  _csGroups    = new();
@@ -668,7 +841,7 @@
 
     private Dictionary<int, string> _pcCurrency = new(); // PcId → currency code
     static string CurrSym(string code) => code switch { "USD" => "$", "EUR" => "€", _ => "₪" };
-    string PcCurrSym(int pcId) => CurrSym(_pcCurrency.GetValueOrDefault(pcId, "ILS"));
+    string PcCurrSym(int pcId) => CurrSym(PcWalletCurrency(pcId));
 
     // ── Lifecycle ─────────────────────────────────────────────────
     protected override async Task OnInitializedAsync()
@@ -729,6 +902,9 @@
         _rowEdits.Clear();
         _auditorAvatars.Clear();
         _pcCurrency.Clear();
+        _pcWallets.Clear();
+        _pcTopWallet.Clear();
+        _csTopWallet.Clear();
 
         foreach (var group in _groups)
         {
@@ -739,6 +915,15 @@
             {
                 if (!_pcCurrency.ContainsKey(pcGroup.PcId))
                     _pcCurrency[pcGroup.PcId] = DashSvc.GetLastPurchaseCurrency(pcGroup.PcId);
+                if (!_pcWallets.ContainsKey(pcGroup.PcId))
+                    _pcWallets[pcGroup.PcId] = WalletSvc.GetWalletsForPc(pcGroup.PcId, includeInactive: true);
+                // Seed the top-row wallet selection from the current session wallet so currency icons
+                // reflect the default without requiring an explicit admin pick.
+                var seedWallet = pcGroup.Sessions.FirstOrDefault(s => s.WalletId.HasValue)?.WalletId
+                               ?? _pcWallets[pcGroup.PcId].FirstOrDefault(w => w.IsActive)?.WalletId
+                               ?? 0;
+                if (seedWallet > 0)
+                    _pcTopWallet[(group.AuditorId, pcGroup.PcId)] = seedWallet;
                 var key = (group.AuditorId, pcGroup.PcId);
                 var (defRate, defSalary) = DashSvc.GetLastApprovedDefaultsForPc(group.AuditorId, pcGroup.PcId);
                 _pcDefaults[key] = new PcDefaults { ChargeRate = defRate / 100.0, Salary = defSalary / 100.0 };
@@ -767,6 +952,13 @@
             {
                 if (!_pcCurrency.ContainsKey(pcGroup.PcId))
                     _pcCurrency[pcGroup.PcId] = DashSvc.GetLastPurchaseCurrency(pcGroup.PcId);
+                if (!_pcWallets.ContainsKey(pcGroup.PcId))
+                    _pcWallets[pcGroup.PcId] = WalletSvc.GetWalletsForPc(pcGroup.PcId, includeInactive: true);
+                var csSeedWallet = pcGroup.Reviews.FirstOrDefault(r => r.WalletId.HasValue)?.WalletId
+                                 ?? _pcWallets[pcGroup.PcId].FirstOrDefault(w => w.IsActive)?.WalletId
+                                 ?? 0;
+                if (csSeedWallet > 0)
+                    _csTopWallet[(csGroup.CsId, pcGroup.PcId)] = csSeedWallet;
                 var key = (csGroup.CsId, pcGroup.PcId);
                 var defCsSalary = DashSvc.GetLastApprovedCsSalaryForPc(pcGroup.PcId);
                 _csPcDefaults[key] = defCsSalary / 100.0;

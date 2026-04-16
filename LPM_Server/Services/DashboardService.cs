@@ -19,21 +19,21 @@ public record AdminSessionRow(
     int SessionId, int PcId, string PcName, string AuditorName, string SessionDate,
     int LengthSec, int AdminSec, bool IsFree,
     int ChargedRateCentsPerHour, int AuditorSalaryCentsPerHour,
-    string VerifiedStatus);
+    string VerifiedStatus, int? WalletId = null);
 public record PcSessionGroup(int PcId, string PcName, List<AdminSessionRow> Sessions);
 public record AuditorSessionGroup(int AuditorId, string AuditorName, List<PcSessionGroup> PcGroups);
 
 public record AdminCsRow(
     int CsReviewId, int SessionId, int PcId, string PcName, int CsId, string CsName,
     string SessionDate, int ReviewLengthSeconds, int CsSalaryCentsPerHour, string CsStatus,
-    bool IsSolo = false, int ChargedCentsRatePerHour = 0, string? Notes = null);
+    bool IsSolo = false, int ChargedCentsRatePerHour = 0, string? Notes = null, int? WalletId = null);
 public record PcCsGroup(int PcId, string PcName, List<AdminCsRow> Reviews);
 public record CsReviewerGroup(int CsId, string CsName, List<PcCsGroup> PcGroups);
 
 public record StaffMember(int PersonId, string FullName);
 
-public record SalarySessionRow(string Date, string PcName, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved);
-public record SalaryCsRow(string Date, string PcName, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved, bool IsFree = false);
+public record SalarySessionRow(string Date, string PcName, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved, string Currency = "ILS");
+public record SalaryCsRow(string Date, string PcName, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved, bool IsFree = false, string Currency = "ILS");
 public record CommissionDetail(
     int PurchaseId, string PurchaseDate,
     string PaymentMethod, int PaymentGross, string PaymentDate,
@@ -50,6 +50,17 @@ public record UserSalaryGroup(int PersonId, string FullName, List<SalarySessionR
     public long TotalCents => Sessions.Where(s => s.IsApproved).Sum(s => s.PaymentCents)
                             + CsReviews.Where(c => c.IsApproved).Sum(c => c.PaymentCents)
                             + Commissions.Sum(c => c.AmountCents);
+
+    /// <summary>Per-currency totals across sessions + CS reviews. Commissions assumed ILS.</summary>
+    public Dictionary<string, long> TotalsByCurrency()
+    {
+        var map = new Dictionary<string, long>();
+        foreach (var s in Sessions.Where(s => s.IsApproved))
+            map[s.Currency] = map.GetValueOrDefault(s.Currency) + s.PaymentCents;
+        foreach (var c in CsReviews.Where(c => c.IsApproved))
+            map[c.Currency] = map.GetValueOrDefault(c.Currency) + c.PaymentCents;
+        return map;
+    }
 }
 public record StaffMessage(int Id, int FromId, string FromName, int ToId, string ToName, string MsgText, string CreatedAt, string? AcknowledgedAt);
 
@@ -128,6 +139,17 @@ public class DashboardService
         var pcsInserted = ensurePcsCmd.ExecuteNonQuery();
         if (pcsInserted > 0)
             Console.WriteLine($"[Startup] Added {pcsInserted} staff member(s) to PCs table.");
+
+        // Ensure every PC has at least one wallet (defaults to ILS)
+        using var ensureWalletsCmd = conn.CreateCommand();
+        ensureWalletsCmd.CommandText = @"
+            INSERT INTO fin_wallets (PcId, Currency, Name, Notes, CreatedByPersonId)
+            SELECT pc.PcId, 'ILS', 'ILS wallet', 'Auto-created at startup', -1
+            FROM core_pcs pc
+            WHERE NOT EXISTS (SELECT 1 FROM fin_wallets w WHERE w.PcId = pc.PcId)";
+        var walletsInserted = ensureWalletsCmd.ExecuteNonQuery();
+        if (walletsInserted > 0)
+            Console.WriteLine($"[Startup] Auto-created {walletsInserted} default wallet(s) for PCs without one.");
 
         // BUG check: sessions with AuditorId IS NULL but PC has no Solo user
         using var bugCmd = conn.CreateCommand();
@@ -268,7 +290,7 @@ public class DashboardService
 
     public int CreateImportedSession(int pcId, int auditorId, string sessionName,
         int lengthSeconds = 0, int adminSeconds = 0, bool isFreeSession = false, bool isSolo = false,
-        string? sessionDate = null)
+        string? sessionDate = null, int? walletId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -295,11 +317,14 @@ public class DashboardService
         seqCmd.Parameters.AddWithValue("@dt", today);
         var maxSeq = (long)(seqCmd.ExecuteScalar() ?? 0L);
 
+        // Default wallet: last one used for this PC; fallback to first active wallet.
+        if (!walletId.HasValue) walletId = ResolveDefaultWalletIdForPc(conn, pcId);
+
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO sess_sessions
-                (PcId, AuditorId, SessionDate, SequenceInDay, LengthSeconds, AdminSeconds, IsFreeSession, Name, CreatedByUserId, CreatedAt)
-            VALUES (@pc, @aud, @dt, @seq, @len, @admin, @free, @name, @creator, datetime('now', '+2 hours'));
+                (PcId, AuditorId, SessionDate, SequenceInDay, LengthSeconds, AdminSeconds, IsFreeSession, Name, CreatedByUserId, WalletId, CreatedAt)
+            VALUES (@pc, @aud, @dt, @seq, @len, @admin, @free, @name, @creator, @wallet, datetime('now', '+2 hours'));
             SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("@pc", pcId);
         cmd.Parameters.AddWithValue("@aud", audParam);
@@ -310,8 +335,9 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@free", isFreeSession ? 1 : 0);
         cmd.Parameters.AddWithValue("@name", sessionName);
         cmd.Parameters.AddWithValue("@creator", auditorId);
+        cmd.Parameters.AddWithValue("@wallet", walletId.HasValue ? (object)walletId.Value : DBNull.Value);
         var sessionId = Convert.ToInt32(cmd.ExecuteScalar());
-        Console.WriteLine($"[DashboardService] Created session for PC {pcId}, name: '{sessionName}', length: {lengthSeconds}s, solo: {isSolo}");
+        Console.WriteLine($"[DashboardService] Created session for PC {pcId}, name: '{sessionName}', length: {lengthSeconds}s, solo: {isSolo}, wallet: {walletId}");
         return sessionId;
     }
 
@@ -342,13 +368,15 @@ public class DashboardService
         seqCmd.Parameters.AddWithValue("@dt", sessionDate);
         var maxSeq = (long)(seqCmd.ExecuteScalar() ?? 0L);
 
+        var walletId = ResolveDefaultWalletIdForPc(conn, pcId);
+
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO sess_sessions
                 (PcId, AuditorId, SessionDate, SequenceInDay, LengthSeconds, Name,
-                 CreatedByUserId, CreatedAt, VerifiedStatus, VerifiedByUserId, VerifiedAt, IsImported)
+                 CreatedByUserId, CreatedAt, VerifiedStatus, VerifiedByUserId, VerifiedAt, IsImported, WalletId)
             VALUES (@pc, @aud, @dt, @seq, 0, @name,
-                    @creator, @createdAt, 'Verified', @verifier, @verifiedAt, 1);
+                    @creator, @createdAt, 'Verified', @verifier, @verifiedAt, 1, @wallet);
             SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("@pc", pcId);
         cmd.Parameters.AddWithValue("@aud", isSolo ? DBNull.Value : (object)(-1));
@@ -359,13 +387,15 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@createdAt", createdAt);
         cmd.Parameters.AddWithValue("@verifier", verifiedByUserId);
         cmd.Parameters.AddWithValue("@verifiedAt", createdAt);
+        cmd.Parameters.AddWithValue("@wallet", walletId.HasValue ? (object)walletId.Value : DBNull.Value);
         var sessionId = Convert.ToInt32(cmd.ExecuteScalar());
 
-        // Mark CS review as done by import mechanism (CsId = -1)
+        // Mark CS review as done by import mechanism (CsId = -1). Inherit wallet from session.
         using var crCmd = conn.CreateCommand();
         crCmd.CommandText = @"
-            INSERT INTO cs_reviews (SessionId, CsId, ReviewLengthSeconds, ReviewedAt, Status)
-            VALUES (@sid, -1, 0, @reviewedAt, 'Done')";
+            INSERT INTO cs_reviews (SessionId, CsId, ReviewLengthSeconds, ReviewedAt, Status, WalletId)
+            VALUES (@sid, -1, 0, @reviewedAt, 'Done',
+                    (SELECT WalletId FROM sess_sessions WHERE SessionId = @sid))";
         crCmd.Parameters.AddWithValue("@sid", sessionId);
         crCmd.Parameters.AddWithValue("@reviewedAt", createdAt);
         crCmd.ExecuteNonQuery();
@@ -1217,7 +1247,8 @@ public class DashboardService
 
     public int AddSession(
         int auditorId, int pcId, DateOnly date,
-        int lengthSec, int adminSec, bool isFree, string? summary)
+        int lengthSec, int adminSec, bool isFree, string? summary,
+        int? walletId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -1233,18 +1264,20 @@ public class DashboardService
         seqCmd.Parameters.AddWithValue("@date", dateStr);
         var seq = (long)(seqCmd.ExecuteScalar() ?? 1L);
 
+        if (!walletId.HasValue) walletId = ResolveDefaultWalletIdForPc(conn, pcId);
+
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO sess_sessions
               (PcId, AuditorId, SessionDate, SequenceInDay,
                LengthSeconds, AdminSeconds, IsFreeSession,
                ChargeSeconds, ChargedRateCentsPerHour,
-               CreatedAt)
+               WalletId, CreatedAt)
             VALUES
               (@pcId, @audId, @date, @seq,
                @len, @adm, @free,
                0, 0,
-               datetime('now', '+2 hours'))";
+               @wallet, datetime('now', '+2 hours'))";
         cmd.Parameters.AddWithValue("@pcId",  pcId);
         cmd.Parameters.AddWithValue("@audId", auditorId);
         cmd.Parameters.AddWithValue("@date",  dateStr);
@@ -1252,12 +1285,13 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@len",   lengthSec);
         cmd.Parameters.AddWithValue("@adm",   adminSec);
         cmd.Parameters.AddWithValue("@free",  isFree ? 1 : 0);
+        cmd.Parameters.AddWithValue("@wallet", walletId.HasValue ? (object)walletId.Value : DBNull.Value);
         cmd.ExecuteNonQuery();
 
         using var rowIdCmd = conn.CreateCommand();
         rowIdCmd.CommandText = "SELECT last_insert_rowid()";
         var newSessionId = (int)(long)rowIdCmd.ExecuteScalar()!;
-        Console.WriteLine($"[DashboardService] Added session {newSessionId} for PC {pcId}, auditor {auditorId}");
+        Console.WriteLine($"[DashboardService] Added session {newSessionId} for PC {pcId}, auditor {auditorId}, wallet {walletId}");
         return newSessionId;
     }
 
@@ -1277,24 +1311,27 @@ public class DashboardService
         seqCmd.Parameters.AddWithValue("@date", dateStr);
         var seq = (long)(seqCmd.ExecuteScalar() ?? 1L);
 
+        int? walletId = ResolveDefaultWalletIdForPc(conn, pcId);
+
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO sess_sessions
               (PcId, AuditorId, SessionDate, SequenceInDay,
                LengthSeconds, AdminSeconds, IsFreeSession,
                ChargeSeconds, ChargedRateCentsPerHour,
-               Name, CreatedByUserId, CreatedAt)
+               Name, CreatedByUserId, WalletId, CreatedAt)
             VALUES
               (@pcId, @audId, @date, @seq,
                0, 0, 1,
                0, 0,
-               @name, @creator, datetime('now', '+2 hours'))";
+               @name, @creator, @wallet, datetime('now', '+2 hours'))";
         cmd.Parameters.AddWithValue("@pcId",    pcId);
         cmd.Parameters.AddWithValue("@audId",   solo ? DBNull.Value : auditorId);
         cmd.Parameters.AddWithValue("@date",    dateStr);
         cmd.Parameters.AddWithValue("@seq",     seq);
         cmd.Parameters.AddWithValue("@name",    name);
         cmd.Parameters.AddWithValue("@creator", auditorId);
+        cmd.Parameters.AddWithValue("@wallet",  walletId.HasValue ? (object)walletId.Value : DBNull.Value);
         cmd.ExecuteNonQuery();
 
         using var rowIdCmd2 = conn.CreateCommand();
@@ -1368,9 +1405,10 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO cs_reviews
-              (SessionId, CsId, ReviewLengthSeconds, ReviewedAt, Status, Notes)
+              (SessionId, CsId, ReviewLengthSeconds, ReviewedAt, Status, Notes, WalletId)
             VALUES
-              (@sid, @csId, @rev, datetime('now', '+2 hours'), @status, @notes)";
+              (@sid, @csId, @rev, datetime('now', '+2 hours'), @status, @notes,
+               (SELECT WalletId FROM sess_sessions WHERE SessionId = @sid))";
         cmd.Parameters.AddWithValue("@sid",    sessionId);
         cmd.Parameters.AddWithValue("@csId",   csId);
         cmd.Parameters.AddWithValue("@rev",    reviewSec);
@@ -1560,6 +1598,29 @@ public class DashboardService
     /// Grid-key convention: CSSolo columns use -PcId so same person can appear in both columns.
     /// Before calling GKey, CSAndCSSolo entries must be normalized to CS or CSSolo.
     public static int GKey(PcInfo pc) => pc.WorkCapacity == "CSSolo" ? -(pc.PcId) : pc.PcId;
+
+    /// <summary>
+    /// Default wallet for a new session/CS on a PC: the last-used wallet
+    /// (from this PC's most recent session), falling back to the first active wallet.
+    /// Returns null only if the PC has no wallets at all.
+    /// </summary>
+    private static int? ResolveDefaultWalletIdForPc(SqliteConnection conn, int pcId)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT COALESCE(
+                (SELECT s.WalletId FROM sess_sessions s
+                 WHERE s.PcId = @pc AND s.WalletId IS NOT NULL
+                 ORDER BY s.SessionId DESC LIMIT 1),
+                (SELECT w.WalletId FROM fin_wallets w
+                 WHERE w.PcId = @pc AND w.IsActive = 1
+                 ORDER BY w.WalletId LIMIT 1)
+            )";
+        cmd.Parameters.AddWithValue("@pc", pcId);
+        var r = cmd.ExecuteScalar();
+        if (r == null || r == DBNull.Value) return null;
+        return Convert.ToInt32(r);
+    }
 
     public HashSet<(int pcId, int dayIndex)> GetPendingCsMarkers(
     int csId, DateOnly weekStart, List<PcInfo> userPcs)
@@ -1767,30 +1828,33 @@ public class DashboardService
         seqCmd.Parameters.AddWithValue("@date", dateStr);
         var seq = (long)(seqCmd.ExecuteScalar() ?? 1L);
 
+        int? walletId = ResolveDefaultWalletIdForPc(conn, personId);
+
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO sess_sessions
               (PcId, AuditorId, SessionDate, SequenceInDay,
                LengthSeconds, AdminSeconds, IsFreeSession,
                ChargeSeconds, ChargedRateCentsPerHour,
-               CreatedAt)
+               WalletId, CreatedAt)
             VALUES
               (@pcId, NULL, @date, @seq,
                @len, @adm, @free,
                0, 0,
-               datetime('now', '+2 hours'))";
+               @wallet, datetime('now', '+2 hours'))";
         cmd.Parameters.AddWithValue("@pcId", personId);
         cmd.Parameters.AddWithValue("@date", dateStr);
         cmd.Parameters.AddWithValue("@seq",  seq);
         cmd.Parameters.AddWithValue("@len",  lengthSec);
         cmd.Parameters.AddWithValue("@adm",  adminSec);
         cmd.Parameters.AddWithValue("@free", isFree ? 1 : 0);
+        cmd.Parameters.AddWithValue("@wallet", walletId.HasValue ? (object)walletId.Value : DBNull.Value);
         cmd.ExecuteNonQuery();
 
         using var rowIdCmd = conn.CreateCommand();
         rowIdCmd.CommandText = "SELECT last_insert_rowid()";
         var newSoloId = (int)(long)rowIdCmd.ExecuteScalar()!;
-        Console.WriteLine($"[DashboardService] Added solo session {newSoloId} for personId={personId}");
+        Console.WriteLine($"[DashboardService] Added solo session {newSoloId} for personId={personId}, wallet {walletId}");
         return newSoloId;
     }
 
@@ -1915,7 +1979,8 @@ public class DashboardService
                    COALESCE(TRIM(pa.FirstName || ' ' || COALESCE(NULLIF(pa.LastName,''), '')), 'Solo') AS AuditorName,
                    s.SessionDate, s.LengthSeconds, s.AdminSeconds, s.IsFreeSession,
                    s.ChargedRateCentsPerHour, s.AuditorSalaryCentsPerHour,
-                   s.VerifiedStatus, COALESCE(s.AuditorId, -s.PcId) AS AuditorKey
+                   s.VerifiedStatus, COALESCE(s.AuditorId, -s.PcId) AS AuditorKey,
+                   s.WalletId
             FROM sess_sessions s
             LEFT JOIN core_persons pa ON pa.PersonId = s.AuditorId
             JOIN core_persons pc ON pc.PersonId = s.PcId
@@ -1941,7 +2006,8 @@ public class DashboardService
                 r.GetInt32(5), r.GetInt32(6),
                 r.GetInt32(7) == 1,
                 r.GetInt32(8), r.GetInt32(9),
-                r.IsDBNull(10) ? "Pending" : r.GetString(10));
+                r.IsDBNull(10) ? "Pending" : r.GetString(10),
+                WalletId: r.IsDBNull(12) ? null : r.GetInt32(12));
 
             auditorNames.TryAdd(auditorId, auditorName);
             pcNames.TryAdd(key, pcName);
@@ -1991,7 +2057,8 @@ public class DashboardService
                    s.SessionDate, cr.ReviewLengthSeconds, cr.CsSalaryCentsPerHour, cr.Status,
                    CASE WHEN s.AuditorId IS NULL THEN 1 ELSE 0 END AS IsSolo,
                    COALESCE(cr.ChargedCentsRatePerHour, 0) AS ChargedCentsRatePerHour,
-                   cr.Notes
+                   cr.Notes,
+                   cr.WalletId
             FROM cs_reviews cr
             JOIN sess_sessions  s   ON s.SessionId   = cr.SessionId
             JOIN core_persons   pc  ON pc.PersonId   = s.PcId
@@ -2018,7 +2085,8 @@ public class DashboardService
                 r.IsDBNull(9) ? "Done" : r.GetString(9),
                 !r.IsDBNull(10) && r.GetInt32(10) == 1,
                 r.IsDBNull(11) ? 0 : r.GetInt32(11),
-                r.IsDBNull(12) ? null : r.GetString(12));
+                r.IsDBNull(12) ? null : r.GetString(12),
+                WalletId: r.IsDBNull(13) ? null : r.GetInt32(13));
 
             csNames.TryAdd(csId, csName);
             pcNames.TryAdd(key, pcName);
@@ -3453,9 +3521,11 @@ public class DashboardService
                    TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS PcName,
                    COALESCE(s.LengthSeconds,0) + COALESCE(s.AdminSeconds,0) AS DurationSec,
                    s.AuditorSalaryCentsPerHour,
-                   s.VerifiedStatus
+                   s.VerifiedStatus,
+                   COALESCE(w.Currency, 'ILS') AS Currency
             FROM sess_sessions s
             JOIN core_persons pc ON pc.PersonId = s.PcId
+            LEFT JOIN fin_wallets w ON w.WalletId = s.WalletId
             WHERE s.AuditorId IS NOT NULL
               AND s.SessionDate >= @from AND s.SessionDate <= @to
               AND COALESCE(s.IsImported,0) = 0
@@ -3473,9 +3543,10 @@ public class DashboardService
                 var chargeSec  = r.IsDBNull(3) ? 0 : r.GetInt32(3);
                 var rateCents  = r.IsDBNull(4) ? 0 : r.GetInt32(4);
                 var payment    = isApproved ? (long)rateCents * chargeSec / 3600L : 0L;
+                var currency   = r.IsDBNull(6) ? "ILS" : r.GetString(6);
                 var row = new SalarySessionRow(
                     r.GetString(1), r.GetString(2),
-                    chargeSec, rateCents, payment, isApproved);
+                    chargeSec, rateCents, payment, isApproved, currency);
                 if (!sessionsByUser.ContainsKey(audId)) sessionsByUser[audId] = new();
                 sessionsByUser[audId].Add(row);
             }
@@ -3490,10 +3561,12 @@ public class DashboardService
                    cr.ReviewLengthSeconds,
                    cr.CsSalaryCentsPerHour,
                    cr.Status,
-                   COALESCE(cr.Notes, '')
+                   COALESCE(cr.Notes, ''),
+                   COALESCE(w.Currency, 'ILS') AS Currency
             FROM cs_reviews cr
             JOIN sess_sessions s  ON s.SessionId  = cr.SessionId
             JOIN core_persons  pc ON pc.PersonId  = s.PcId
+            LEFT JOIN fin_wallets w ON w.WalletId = cr.WalletId
             WHERE s.SessionDate >= @from AND s.SessionDate <= @to
               AND COALESCE(s.IsImported,0) = 0
             ORDER BY cr.CsId, s.SessionDate";
@@ -3512,9 +3585,10 @@ public class DashboardService
                 var notes      = r.GetString(6);
                 bool isFree    = notes != "Bill";
                 var payment    = isApproved && !isFree ? (long)rateCents * durSec / 3600L : 0L;
+                var currency   = r.IsDBNull(7) ? "ILS" : r.GetString(7);
                 var row = new SalaryCsRow(
                     r.GetString(1), r.GetString(2),
-                    durSec, rateCents, payment, isApproved, isFree);
+                    durSec, rateCents, payment, isApproved, isFree, currency);
                 if (!csByUser.ContainsKey(csId)) csByUser[csId] = new();
                 csByUser[csId].Add(row);
             }
@@ -3629,6 +3703,8 @@ public class DashboardService
         seqCmd.Parameters.AddWithValue("@date", sessionDate);
         var seq = (long)(seqCmd.ExecuteScalar() ?? 1L);
 
+        int? walletId = ResolveDefaultWalletIdForPc(conn, pcId);
+
         var chargeSec = isFree ? 0 : lengthSec + adminSec;
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
@@ -3636,12 +3712,12 @@ public class DashboardService
               (PcId, AuditorId, SessionDate, SequenceInDay,
                LengthSeconds, AdminSeconds, IsFreeSession,
                ChargeSeconds, ChargedRateCentsPerHour,
-               ApprovedNotes, Name, CreatedByUserId, CreatedAt)
+               ApprovedNotes, Name, CreatedByUserId, WalletId, CreatedAt)
             VALUES
               (@pcId, @audId, @date, @seq,
                @len, @adm, @free,
                @charge, 0,
-               @notes, @name, @creator, datetime('now', '+2 hours'))";
+               @notes, @name, @creator, @wallet, datetime('now', '+2 hours'))";
         cmd.Parameters.AddWithValue("@pcId",    pcId);
         cmd.Parameters.AddWithValue("@audId",   auditorId.HasValue ? auditorId.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@date",    sessionDate);
@@ -3653,6 +3729,7 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@notes",   (object?)notes ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@name",    (object?)name ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@creator", createdByUserId);
+        cmd.Parameters.AddWithValue("@wallet",  walletId.HasValue ? (object)walletId.Value : DBNull.Value);
         cmd.ExecuteNonQuery();
 
         using var rowIdCmd = conn.CreateCommand();
@@ -3662,8 +3739,9 @@ public class DashboardService
         var reviewLen = csId == -1 ? 0 : lengthSec + adminSec;
         using var crCmd = conn.CreateCommand();
         crCmd.CommandText = @"
-            INSERT INTO cs_reviews (SessionId, CsId, ReviewLengthSeconds, ReviewedAt, Status)
-            VALUES (@sid, @csId, @revLen, datetime('now', '+2 hours'), 'Done')";
+            INSERT INTO cs_reviews (SessionId, CsId, ReviewLengthSeconds, ReviewedAt, Status, WalletId)
+            VALUES (@sid, @csId, @revLen, datetime('now', '+2 hours'), 'Done',
+                    (SELECT WalletId FROM sess_sessions WHERE SessionId = @sid))";
         crCmd.Parameters.AddWithValue("@sid",    sessionId);
         crCmd.Parameters.AddWithValue("@csId",   csId);
         crCmd.Parameters.AddWithValue("@revLen", reviewLen);

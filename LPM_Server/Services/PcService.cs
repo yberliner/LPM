@@ -19,13 +19,15 @@ public record PcListItemEx(int PcId, string FullName, string Nick, long RemainSe
     int OrgId = 0, string OrgName = "");
 public record PurchaseListItem(int PurchaseId, int PcId, string PcName, string PurchaseDate,
     string? Notes, string ApprovedStatus, string? ApprovedByName, string? ApprovedAt,
-    string? CreatedByName, string CreatedAt, double TotalAmount, double TotalHours, bool IsDeleted = false, string Currency = "ILS", int? TransferPurchaseId = null);
+    string? CreatedByName, string CreatedAt, double TotalAmount, double TotalHours, bool IsDeleted = false, string Currency = "ILS", int? TransferPurchaseId = null,
+    int? WalletId = null, string? WalletName = null);
 public record PurchaseItemInfo(int PurchaseItemId, string ItemType, int? CourseId,
     string? CourseName, int? BookId, string? BookName, double HoursBought, double AmountPaid);
 public record PurchaseDetail(int PurchaseId, int PcId, string PcName, string PurchaseDate,
     string? Notes, string? SignatureData, string ApprovedStatus, string? ApprovedByName,
     string? CreatedByName, List<PurchaseItemInfo> Items, List<PurchasePaymentMethodInfo> PaymentMethods,
-    int? RegistrarId = null, string? RegistrarName = null, int? ReferralId = null, string? ReferralName = null, string Currency = "ILS");
+    int? RegistrarId = null, string? RegistrarName = null, int? ReferralId = null, string? ReferralName = null, string Currency = "ILS",
+    int? WalletId = null);
 public record PurchasePaymentMethodInfo(int PaymentMethodId, string MethodType,
     int Amount, string? PaymentDate, bool IsMoneyInBank, string? MoneyInBankDate, int Installments = 1);
 
@@ -283,6 +285,38 @@ public List<PcListItem> GetAllPcs()
         return result is long id ? (int)id : null;
     }
 
+    /// <summary>
+    /// Pick the wallet to use for a legacy hours-transfer on the given PC.
+    /// Preference: matching currency (last-used session, else first active).
+    /// Fallback: any last-used wallet; else first active wallet; else null.
+    /// </summary>
+    private static int? ResolveWalletForTransfer(SqliteConnection conn, SqliteTransaction tx, int pcId, string currency)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = @"
+            SELECT COALESCE(
+              (SELECT s.WalletId FROM sess_sessions s
+               JOIN fin_wallets w ON w.WalletId = s.WalletId
+               WHERE s.PcId = @pc AND w.Currency = @cur AND w.IsActive = 1
+               ORDER BY s.SessionId DESC LIMIT 1),
+              (SELECT w.WalletId FROM fin_wallets w
+               WHERE w.PcId = @pc AND w.Currency = @cur AND w.IsActive = 1
+               ORDER BY w.WalletId LIMIT 1),
+              (SELECT s.WalletId FROM sess_sessions s
+               WHERE s.PcId = @pc AND s.WalletId IS NOT NULL
+               ORDER BY s.SessionId DESC LIMIT 1),
+              (SELECT w.WalletId FROM fin_wallets w
+               WHERE w.PcId = @pc AND w.IsActive = 1
+               ORDER BY w.WalletId LIMIT 1)
+            )";
+        cmd.Parameters.AddWithValue("@pc",  pcId);
+        cmd.Parameters.AddWithValue("@cur", currency);
+        var r = cmd.ExecuteScalar();
+        if (r == null || r == DBNull.Value) return null;
+        return Convert.ToInt32(r);
+    }
+
     public int AddPcWithPerson(string firstName, string lastName,
         string phone, string email, string dateOfBirth, string gender,
         int? orgId = null, int? sourceId = null, string notes = "", string nick = "", int? createdByUserId = null)
@@ -316,7 +350,16 @@ public List<PcListItem> GetAllPcs()
         pcCmd.Parameters.AddWithValue("@id", personId);
         pcCmd.ExecuteNonQuery();
 
-        Console.WriteLine($"[PcService] Added PC with person {personId}: '{firstName.Trim()} {lastName.Trim()}'");
+        // Auto-create a default ILS wallet so the PC can immediately receive purchases/sessions.
+        using var wCmd = conn.CreateCommand();
+        wCmd.CommandText = @"
+            INSERT INTO fin_wallets (PcId, Currency, Name, Notes, CreatedByPersonId)
+            VALUES (@pc, 'ILS', 'ILS wallet', 'Auto-created with new PC', @by)";
+        wCmd.Parameters.AddWithValue("@pc", personId);
+        wCmd.Parameters.AddWithValue("@by", createdByUserId.HasValue ? (object)createdByUserId.Value : -1);
+        wCmd.ExecuteNonQuery();
+
+        Console.WriteLine($"[PcService] Added PC with person {personId}: '{firstName.Trim()} {lastName.Trim()}' + default ILS wallet");
         return personId;
     }
 
@@ -869,6 +912,64 @@ public List<PcListItem> GetAllPcs()
     }
 
     /// Returns the currency of the last auditing purchase for a PC, or "ILS" if none.
+    /// <summary>
+    /// Default rate-per-hour (whole currency units) for a wallet, in priority order:
+    ///   1. Most recent approved session's ChargedRateCentsPerHour (÷ 100).
+    ///   2. Most recent Auditing purchase's rate (amount ÷ hours).
+    ///   3. 0 if nothing found.
+    /// </summary>
+    public int GetLastPurchaseRateForWallet(int walletId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // 1. Last approved session's rate
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT ChargedRateCentsPerHour FROM sess_sessions
+                WHERE WalletId = @w
+                  AND VerifiedStatus = 'Approved'
+                  AND ChargedRateCentsPerHour > 0
+                ORDER BY SessionId DESC
+                LIMIT 1";
+            cmd.Parameters.AddWithValue("@w", walletId);
+            var r = cmd.ExecuteScalar();
+            if (r != null && r != DBNull.Value)
+            {
+                int cents = Convert.ToInt32(r);
+                if (cents > 0) return cents / 100;
+            }
+        }
+
+        // 2. Last auditing purchase rate
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT i.AmountPaid, i.HoursBought
+                FROM fin_purchases p
+                JOIN fin_purchase_items i ON i.PurchaseId = p.PurchaseId
+                WHERE p.WalletId = @w
+                  AND i.ItemType = 'Auditing'
+                  AND i.HoursBought > 0
+                  AND (p.IsDeleted IS NULL OR p.IsDeleted = 0)
+                  AND p.ApprovedStatus <> 'Rejected'
+                ORDER BY p.PurchaseId DESC
+                LIMIT 1";
+            cmd.Parameters.AddWithValue("@w", walletId);
+            using var r = cmd.ExecuteReader();
+            if (r.Read())
+            {
+                double amount = r.GetDouble(0);
+                double hours  = r.GetDouble(1);
+                if (hours > 0) return (int)Math.Round(amount / hours);
+            }
+        }
+
+        // 3. No prior data
+        return 0;
+    }
+
     public string GetLastPurchaseCurrencyForPc(int pcId)
     {
         using var conn = new SqliteConnection(_connectionString);
@@ -1153,7 +1254,7 @@ public List<PcListItem> GetAllPcs()
         int? createdByPersonId,
         List<(string itemType, int? courseId, int? bookId, double hoursBought, double amountPaid)> items,
         List<(string methodType, int amount, string? paymentDate, int installments)>? paymentMethods = null,
-        int? registrarId = null, int? referralId = null, string currency = "ILS")
+        int? registrarId = null, int? referralId = null, string currency = "ILS", int? walletId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -1162,8 +1263,8 @@ public List<PcListItem> GetAllPcs()
         using var cmd = conn.CreateCommand();
         cmd.Transaction = tx;
         cmd.CommandText = @"
-            INSERT INTO fin_purchases (PcId, PurchaseDate, Notes, SignatureData, CreatedByPersonId, RegistrarId, ReferralId, Currency)
-            VALUES (@pcId, @date, @notes, @sig, @createdBy, @regId, @refId, @currency)";
+            INSERT INTO fin_purchases (PcId, PurchaseDate, Notes, SignatureData, CreatedByPersonId, RegistrarId, ReferralId, Currency, WalletId)
+            VALUES (@pcId, @date, @notes, @sig, @createdBy, @regId, @refId, @currency, @wallet)";
         cmd.Parameters.AddWithValue("@pcId", pcId);
         cmd.Parameters.AddWithValue("@date", date);
         cmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
@@ -1172,6 +1273,7 @@ public List<PcListItem> GetAllPcs()
         cmd.Parameters.AddWithValue("@regId", registrarId.HasValue ? (object)registrarId.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@refId", referralId.HasValue ? (object)referralId.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@currency", currency);
+        cmd.Parameters.AddWithValue("@wallet", walletId.HasValue ? (object)walletId.Value : DBNull.Value);
         cmd.ExecuteNonQuery();
 
         using var idCmd = conn.CreateCommand();
@@ -1302,11 +1404,14 @@ public List<PcListItem> GetAllPcs()
                    COALESCE(items.TotalHours, 0),
                    COALESCE(p.IsDeleted, 0),
                    COALESCE(p.Currency,'ILS'),
-                   p.TransferPurchaseId
+                   p.TransferPurchaseId,
+                   p.WalletId,
+                   w.Name AS WalletName
             FROM fin_purchases p
             JOIN core_persons per ON per.PersonId = p.PcId
             LEFT JOIN core_persons ap ON ap.PersonId = p.ApprovedByPersonId
             LEFT JOIN core_persons cr ON cr.PersonId = p.CreatedByPersonId
+            LEFT JOIN fin_wallets w ON w.WalletId = p.WalletId
             LEFT JOIN (
                 SELECT PurchaseId, SUM(AmountPaid) AS TotalAmount, SUM(HoursBought) AS TotalHours
                 FROM fin_purchase_items GROUP BY PurchaseId
@@ -1327,7 +1432,9 @@ public List<PcListItem> GetAllPcs()
                 r.GetString(9),
                 r.GetDouble(10), r.GetDouble(11),
                 r.GetInt32(12) == 1, r.GetString(13),
-                r.IsDBNull(14) ? null : (int?)r.GetInt32(14)));
+                r.IsDBNull(14) ? null : (int?)r.GetInt32(14),
+                WalletId:   r.IsDBNull(15) ? null : (int?)r.GetInt32(15),
+                WalletName: r.IsDBNull(16) ? null : r.GetString(16)));
         return list;
     }
 
@@ -1349,7 +1456,8 @@ public List<PcListItem> GetAllPcs()
                    CASE WHEN p.ReferralId = -1 THEN 'Other'
                         ELSE TRIM(COALESCE(rf.FirstName,'') || ' ' || COALESCE(NULLIF(rf.LastName,''),''))
                    END AS ReferralName,
-                   COALESCE(p.Currency,'ILS') AS Currency
+                   COALESCE(p.Currency,'ILS') AS Currency,
+                   p.WalletId
             FROM fin_purchases p
             JOIN core_persons per ON per.PersonId = p.PcId
             LEFT JOIN core_persons ap ON ap.PersonId = p.ApprovedByPersonId
@@ -1376,7 +1484,8 @@ public List<PcListItem> GetAllPcs()
             r.IsDBNull(10) ? null : r.GetString(10).Trim(),
             r.IsDBNull(11) ? null : r.GetInt32(11),
             r.IsDBNull(12) ? null : r.GetString(12).Trim(),
-            Currency: r.GetString(13));
+            Currency: r.GetString(13),
+            WalletId: r.IsDBNull(14) ? null : r.GetInt32(14));
         r.Close();
 
         using var iCmd = conn.CreateCommand();
@@ -1506,7 +1615,7 @@ public List<PcListItem> GetAllPcs()
     public void UpdatePurchase(int purchaseId, string date, string? notes,
         List<(string itemType, int? courseId, int? bookId, double hoursBought, double amountPaid)> items,
         List<(string methodType, int amount, string? paymentDate, int installments)> paymentMethods,
-        int? registrarId = null, int? referralId = null, string currency = "ILS")
+        int? registrarId = null, int? referralId = null, string currency = "ILS", int? walletId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -1526,9 +1635,11 @@ public List<PcListItem> GetAllPcs()
         using (var cmd = conn.CreateCommand())
         {
             cmd.Transaction = tx;
+            // When walletId is null, preserve the existing WalletId (don't clobber).
             cmd.CommandText = @"
                 UPDATE fin_purchases SET PurchaseDate = @date, Notes = @notes,
                     RegistrarId = @regId, ReferralId = @refId, Currency = @currency,
+                    WalletId = COALESCE(@wallet, WalletId),
                     ApprovedStatus = 'Pending', ApprovedByPersonId = NULL, ApprovedAt = NULL
                 WHERE PurchaseId = @id";
             cmd.Parameters.AddWithValue("@id", purchaseId);
@@ -1537,6 +1648,7 @@ public List<PcListItem> GetAllPcs()
             cmd.Parameters.AddWithValue("@regId", registrarId.HasValue ? (object)registrarId.Value : DBNull.Value);
             cmd.Parameters.AddWithValue("@refId", referralId.HasValue ? (object)referralId.Value : DBNull.Value);
             cmd.Parameters.AddWithValue("@currency", currency);
+            cmd.Parameters.AddWithValue("@wallet", walletId.HasValue ? (object)walletId.Value : DBNull.Value);
             cmd.ExecuteNonQuery();
         }
 
@@ -2161,20 +2273,25 @@ public List<PcListItem> GetAllPcs()
             var fromName = GetName(fromPcId);
             var toName = GetName(toPcId);
 
+            // Resolve wallets for each PC (first active match on currency, else any active)
+            int? fromWalletId = ResolveWalletForTransfer(conn, tx, fromPcId, currency);
+            int? toWalletId   = ResolveWalletForTransfer(conn, tx, toPcId,   currency);
+
             // 1. Create FROM purchase (negative hours)
             int fromPurchaseId;
             using (var cmd = conn.CreateCommand())
             {
                 cmd.Transaction = tx;
                 cmd.CommandText = $@"
-                    INSERT INTO fin_purchases (PcId, PurchaseDate, Notes, ApprovedStatus, ApprovedByPersonId, ApprovedAt, CreatedByPersonId, CreatedAt, Currency)
-                    VALUES (@pcId, @date, @notes, 'Approved', @by, {now}, @by, {now}, @cur);
+                    INSERT INTO fin_purchases (PcId, PurchaseDate, Notes, ApprovedStatus, ApprovedByPersonId, ApprovedAt, CreatedByPersonId, CreatedAt, Currency, WalletId)
+                    VALUES (@pcId, @date, @notes, 'Approved', @by, {now}, @by, {now}, @cur, @wallet);
                     SELECT last_insert_rowid();";
                 cmd.Parameters.AddWithValue("@pcId", fromPcId);
                 cmd.Parameters.AddWithValue("@date", date);
                 cmd.Parameters.AddWithValue("@notes", $"Transfer to {toName}");
                 cmd.Parameters.AddWithValue("@by", createdByPersonId);
                 cmd.Parameters.AddWithValue("@cur", currency);
+                cmd.Parameters.AddWithValue("@wallet", fromWalletId.HasValue ? (object)fromWalletId.Value : DBNull.Value);
                 fromPurchaseId = Convert.ToInt32(cmd.ExecuteScalar()!);
             }
             using (var cmd = conn.CreateCommand())
@@ -2200,14 +2317,15 @@ public List<PcListItem> GetAllPcs()
             {
                 cmd.Transaction = tx;
                 cmd.CommandText = $@"
-                    INSERT INTO fin_purchases (PcId, PurchaseDate, Notes, ApprovedStatus, ApprovedByPersonId, ApprovedAt, CreatedByPersonId, CreatedAt, Currency)
-                    VALUES (@pcId, @date, @notes, 'Approved', @by, {now}, @by, {now}, @cur);
+                    INSERT INTO fin_purchases (PcId, PurchaseDate, Notes, ApprovedStatus, ApprovedByPersonId, ApprovedAt, CreatedByPersonId, CreatedAt, Currency, WalletId)
+                    VALUES (@pcId, @date, @notes, 'Approved', @by, {now}, @by, {now}, @cur, @wallet);
                     SELECT last_insert_rowid();";
                 cmd.Parameters.AddWithValue("@pcId", toPcId);
                 cmd.Parameters.AddWithValue("@date", date);
                 cmd.Parameters.AddWithValue("@notes", $"Transfer from {fromName}");
                 cmd.Parameters.AddWithValue("@by", createdByPersonId);
                 cmd.Parameters.AddWithValue("@cur", currency);
+                cmd.Parameters.AddWithValue("@wallet", toWalletId.HasValue ? (object)toWalletId.Value : DBNull.Value);
                 toPurchaseId = Convert.ToInt32(cmd.ExecuteScalar()!);
             }
             using (var cmd = conn.CreateCommand())
