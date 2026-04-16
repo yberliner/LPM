@@ -75,6 +75,18 @@ public class AcademyService
         return list;
     }
 
+    public int? GetReferralIdByName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT ReferralId FROM lkp_referral_sources WHERE Name = @n COLLATE NOCASE";
+        cmd.Parameters.AddWithValue("@n", name);
+        var result = cmd.ExecuteScalar();
+        return result is long id ? (int)id : null;
+    }
+
     public List<(int Id, string Name)> GetAllOrganizations()
     {
         using var conn = new SqliteConnection(_connectionString);
@@ -227,7 +239,7 @@ public class AcademyService
 
     /// <summary>
     /// Returns counts of unique students for the week, grouped by Referral and by Org.
-    /// Empty/null Referral is grouped as "Don"; empty/null Org is omitted.
+    /// Empty/null Referral is grouped as "Haifa"; empty/null Org is omitted.
     /// </summary>
     public (Dictionary<string, int> ByReferral, Dictionary<string, int> ByOrg)
         GetWeeklyStudentBreakdown(DateOnly weekStart)
@@ -253,7 +265,7 @@ public class AcademyService
         using var r = cmd.ExecuteReader();
         while (r.Read())
         {
-            var refKey = r.GetString(0) is { Length: > 0 } rf ? rf : "Don";
+            var refKey = r.GetString(0) is { Length: > 0 } rf ? rf : "Haifa";
             byReferral[refKey] = byReferral.GetValueOrDefault(refKey) + 1;
 
             var org = r.GetString(1);
@@ -296,7 +308,6 @@ public class AcademyService
         var personCounts = weekStarts.ToDictionary(ws => ws, _ => new Dictionary<string, int>());
         var personOrgs   = weekStarts.ToDictionary(ws => ws, _ => new Dictionary<string, string>());
         var personNicks  = weekStarts.ToDictionary(ws => ws, _ => new Dictionary<string, string>());
-        var donCounts    = weekStarts.ToDictionary(ws => ws, _ => 0);
         var friendCounts = weekStarts.ToDictionary(ws => ws, _ => 0);
         var socialCounts = weekStarts.ToDictionary(ws => ws, _ => 0);
         var haifaCounts  = weekStarts.ToDictionary(ws => ws, _ => 0);
@@ -323,9 +334,8 @@ public class AcademyService
                     {
                         case "Friend":          friendCounts[ws]++; break;
                         case "Social Network":  socialCounts[ws]++; break;
-                        case "Haifa":           haifaCounts[ws]++;  break;
                         case "Other":           otherCounts[ws]++;  break;
-                        default:                donCounts[ws]++;    break; // "Don" or empty → green
+                        default:                haifaCounts[ws]++;  break; // "Haifa" or empty → default
                     }
                     break;
                 }
@@ -343,7 +353,7 @@ public class AcademyService
                         personOrgs[ws].GetValueOrDefault(kv.Key, ""),
                         personNicks[ws].GetValueOrDefault(kv.Key, "")))
                     .ToList(),
-                donCounts[ws],
+                0,
                 friendCounts[ws],
                 socialCounts[ws],
                 haifaCounts[ws],
@@ -399,7 +409,6 @@ public class AcademyService
 
         var totalCounts   = months.ToDictionary(m => m.firstThurs, _ => 0);
         var uniquePersons = months.ToDictionary(m => m.firstThurs, _ => new HashSet<int>());
-        var donCounts     = months.ToDictionary(m => m.firstThurs, _ => 0);
         var friendCounts  = months.ToDictionary(m => m.firstThurs, _ => 0);
         var socialCounts  = months.ToDictionary(m => m.firstThurs, _ => 0);
         var haifaCounts   = months.ToDictionary(m => m.firstThurs, _ => 0);
@@ -431,9 +440,8 @@ public class AcademyService
                     {
                         case "Friend":          friendCounts[m.firstThurs]++; break;
                         case "Social Network":  socialCounts[m.firstThurs]++; break;
-                        case "Haifa":           haifaCounts[m.firstThurs]++;  break;
                         case "Other":           otherCounts[m.firstThurs]++;  break;
-                        default:                donCounts[m.firstThurs]++;    break;
+                        default:                haifaCounts[m.firstThurs]++;  break; // "Haifa" or empty → default
                     }
                     break;
                 }
@@ -445,7 +453,7 @@ public class AcademyService
                 m.label,
                 totalCounts[m.firstThurs],
                 uniquePersons[m.firstThurs].Count,
-                donCounts[m.firstThurs],
+                0,
                 friendCounts[m.firstThurs],
                 socialCounts[m.firstThurs],
                 haifaCounts[m.firstThurs],

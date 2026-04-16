@@ -397,7 +397,7 @@ public class PdfService
                 }
                 var cur = byMonth[mLabel];
                 byMonth[mLabel] = (cur.Don + w.DonCount, cur.Friend + w.FriendCount,
-                    cur.Social + w.SocialCount, cur.Haifa + w.HaifaCount,
+                    cur.Social + w.SocialCount, cur.Haifa + w.HaifaCount + w.DonCount,
                     cur.Other + w.OtherCount, cur.Total + w.TotalVisits);
             }
             foreach (var ml in monthOrder)
@@ -1293,7 +1293,6 @@ public class PdfService
         using var hlPaint   = new SKPaint { Color = new SKColor(5, 150, 105, 30), Style = SKPaintStyle.Fill };
 
         // Referral colors matching the UI chart
-        using var donPaint    = new SKPaint { Color = SKColor.Parse("#16a34a"), Style = SKPaintStyle.Fill, IsAntialias = true };
         using var friendPaint = new SKPaint { Color = SKColor.Parse("#f59e0b"), Style = SKPaintStyle.Fill, IsAntialias = true };
         using var socialPaint = new SKPaint { Color = SKColor.Parse("#3b82f6"), Style = SKPaintStyle.Fill, IsAntialias = true };
         using var haifaPaint  = new SKPaint { Color = SKColor.Parse("#7c3aed"), Style = SKPaintStyle.Fill, IsAntialias = true };
@@ -1353,10 +1352,9 @@ public class PdfService
                 cumH += segH;
             }
 
-            DrawStack(w.DonCount, donPaint);
+            DrawStack(w.HaifaCount + w.DonCount, haifaPaint);
             DrawStack(w.FriendCount, friendPaint);
             DrawStack(w.SocialCount, socialPaint);
-            DrawStack(w.HaifaCount, haifaPaint);
             DrawStack(w.OtherCount, otherPaint);
 
             // X label
@@ -1370,11 +1368,10 @@ public class PdfService
 
         // Legend
         float legY = cY + 11f;
-        DrawLegendItem(canvas, cX + 4f,   legY, SKColor.Parse("#16a34a"), "Don",     7f);
-        DrawLegendItem(canvas, cX + 38f,  legY, SKColor.Parse("#f59e0b"), "Friend",  7f);
-        DrawLegendItem(canvas, cX + 82f,  legY, SKColor.Parse("#3b82f6"), "Social",  7f);
-        DrawLegendItem(canvas, cX + 122f, legY, SKColor.Parse("#7c3aed"), "Haifa",   7f);
-        DrawLegendItem(canvas, cX + 162f, legY, SKColor.Parse("#94a3b8"), "Other",   7f);
+        DrawLegendItem(canvas, cX + 4f,   legY, SKColor.Parse("#7c3aed"), "Haifa",   7f);
+        DrawLegendItem(canvas, cX + 44f,  legY, SKColor.Parse("#f59e0b"), "Friend",  7f);
+        DrawLegendItem(canvas, cX + 88f,  legY, SKColor.Parse("#3b82f6"), "Social",  7f);
+        DrawLegendItem(canvas, cX + 128f, legY, SKColor.Parse("#94a3b8"), "Other",   7f);
     }
 
     static void DrawAcademyMonthlyChart(SKCanvas canvas, SKSize size,
@@ -1390,7 +1387,6 @@ public class PdfService
         using var gridPaint = new SKPaint { Color = new SKColor(218, 222, 232), Style = SKPaintStyle.Stroke, StrokeWidth = 0.4f, PathEffect = SKPathEffect.CreateDash(new[] { 3f, 3f }, 0) };
         using var axisPaint = new SKPaint { Color = new SKColor(160, 165, 175), Style = SKPaintStyle.Stroke, StrokeWidth = 0.8f };
 
-        using var donPaint    = new SKPaint { Color = SKColor.Parse("#16a34a"), Style = SKPaintStyle.Fill, IsAntialias = true };
         using var friendPaint = new SKPaint { Color = SKColor.Parse("#f59e0b"), Style = SKPaintStyle.Fill, IsAntialias = true };
         using var socialPaint = new SKPaint { Color = SKColor.Parse("#3b82f6"), Style = SKPaintStyle.Fill, IsAntialias = true };
         using var haifaPaint  = new SKPaint { Color = SKColor.Parse("#7c3aed"), Style = SKPaintStyle.Fill, IsAntialias = true };
@@ -1441,10 +1437,9 @@ public class PdfService
                 cumH += segH;
             }
 
-            DrawStack(m.Don, donPaint);
+            DrawStack(m.Haifa + m.Don, haifaPaint);
             DrawStack(m.Friend, friendPaint);
             DrawStack(m.Social, socialPaint);
-            DrawStack(m.Haifa, haifaPaint);
             DrawStack(m.Other, otherPaint);
 
             float lx = gx + groupW / 2f;
@@ -1453,11 +1448,10 @@ public class PdfService
         }
 
         float legY = cY + 11f;
-        DrawLegendItem(canvas, cX + 4f,   legY, SKColor.Parse("#16a34a"), "Don",     7f);
-        DrawLegendItem(canvas, cX + 38f,  legY, SKColor.Parse("#f59e0b"), "Friend",  7f);
-        DrawLegendItem(canvas, cX + 82f,  legY, SKColor.Parse("#3b82f6"), "Social",  7f);
-        DrawLegendItem(canvas, cX + 122f, legY, SKColor.Parse("#7c3aed"), "Haifa",   7f);
-        DrawLegendItem(canvas, cX + 162f, legY, SKColor.Parse("#94a3b8"), "Other",   7f);
+        DrawLegendItem(canvas, cX + 4f,   legY, SKColor.Parse("#7c3aed"), "Haifa",   7f);
+        DrawLegendItem(canvas, cX + 44f,  legY, SKColor.Parse("#f59e0b"), "Friend",  7f);
+        DrawLegendItem(canvas, cX + 88f,  legY, SKColor.Parse("#3b82f6"), "Social",  7f);
+        DrawLegendItem(canvas, cX + 128f, legY, SKColor.Parse("#94a3b8"), "Other",   7f);
     }
 
     static void DrawMonthlyChart(SKCanvas canvas, SKSize size, IList<MonthStatSummary> history, DateOnly currentMonthStart)

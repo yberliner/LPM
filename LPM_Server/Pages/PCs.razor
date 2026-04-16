@@ -3788,10 +3788,11 @@
         string DateOfBirth, string Gender, int OrgId, string Source, string Notes, int CourseId, string Nick) d)
     {
         Console.WriteLine($"[PCs] Updated PC {_selPcId!.Value} — '{d.FirstName} {d.LastName}' nick='{d.Nick}' by '{_username}'");
+        var sourceId = PcSvc.GetReferralIdByName(d.Source);
         PcSvc.UpdatePcDetail(_selPcId!.Value,
             d.FirstName, d.LastName, d.Nick,
             d.Phone, d.Email, d.Notes,
-            d.DateOfBirth, d.Gender, orgId: d.OrgId > 0 ? d.OrgId : null, changedBy: _username);
+            d.DateOfBirth, d.Gender, orgId: d.OrgId > 0 ? d.OrgId : null, sourceId: sourceId, changedBy: _username);
         FolderSvc.RenamePcFolder(_selPcId!.Value, d.FirstName, d.LastName);
         _allPcsEx = PcSvc.GetAllPcsExtended();
         _balances = PcSvc.GetAllPcBalances();

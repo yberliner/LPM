@@ -271,6 +271,18 @@ public List<PcListItem> GetAllPcs()
     }
 
 
+    public int? GetReferralIdByName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT ReferralId FROM lkp_referral_sources WHERE Name = @n COLLATE NOCASE";
+        cmd.Parameters.AddWithValue("@n", name);
+        var result = cmd.ExecuteScalar();
+        return result is long id ? (int)id : null;
+    }
+
     public int AddPcWithPerson(string firstName, string lastName,
         string phone, string email, string dateOfBirth, string gender,
         int? orgId = null, int? sourceId = null, string notes = "", string nick = "", int? createdByUserId = null)

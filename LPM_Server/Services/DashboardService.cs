@@ -84,7 +84,22 @@ public class DashboardService
 
     /// <summary>Fired after any data-mutating operation in MainHeader. Subscribers should refresh their view.</summary>
     public event Action? OnDataChanged;
-    public void NotifyDataChanged() => OnDataChanged?.Invoke();
+    public void NotifyDataChanged()
+    {
+        // Invoke each subscriber individually so one dead circuit can't block the others
+        var handler = OnDataChanged;
+        if (handler == null) return;
+        foreach (var d in handler.GetInvocationList())
+        {
+            try { ((Action)d).Invoke(); }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[DashboardService] OnDataChanged subscriber threw: {ex.Message}");
+                // Auto-unsubscribe dead handlers to prevent repeated failures
+                try { OnDataChanged -= (Action)d; } catch { }
+            }
+        }
+    }
 
     // Reusable SQL expression for a person's display name (requires alias p for Persons)
     private const string FullNameExpr =

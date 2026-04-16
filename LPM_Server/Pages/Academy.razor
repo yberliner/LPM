@@ -219,7 +219,7 @@
                         <span class="small fw-semibold ms-1" style="color:#6b7280;">By referral —</span>
                         @foreach (var kv in _weekByReferral.OrderByDescending(x => x.Value))
                         {
-                            var dotCol = ReferralDotColor(kv.Key == "Don" ? "Don" : kv.Key);
+                            var dotCol = ReferralDotColor(kv.Key == "Haifa" ? "Haifa" : kv.Key);
                             <span class="d-inline-flex align-items-center gap-1"
                                   style="font-size:.8rem;font-weight:600;color:#1f2937;">
                                 <span style="width:8px;height:8px;border-radius:50%;background:@dotCol;display:inline-block;flex-shrink:0;"></span>
@@ -294,7 +294,7 @@
                                 rowNum++;
                                 var (bg, _, col) = ReferralChipStyle(s.Source);
                                 var dotColor     = ReferralDotColor(s.Source);
-                                var refLabel     = string.IsNullOrEmpty(s.Source) ? "Don" : s.Source;
+                                var refLabel     = string.IsNullOrEmpty(s.Source) ? "Haifa" : s.Source;
                                 var courseEntries = _personOpenCourses.GetValueOrDefault(s.PersonId, []);
                                 <tr style="background:@(rowNum % 2 == 0 ? "#fafafa" : "#fff");">
                                     <td class="ps-3 small text-muted align-middle">@rowNum</td>
@@ -394,7 +394,7 @@
                             {
                                 mRowNum++;
                                 var dotColor  = ReferralDotColor(s.Source);
-                                var refLabel  = string.IsNullOrEmpty(s.Source) ? "Don" : s.Source;
+                                var refLabel  = string.IsNullOrEmpty(s.Source) ? "Haifa" : s.Source;
                                 var mCourseEntries = _personOpenCourses.GetValueOrDefault(s.PersonId, []);
                                 <tr style="background:@(mRowNum % 2 == 0 ? "#f5f3ff" : "#fff");">
                                     <td class="ps-3 small text-muted align-middle">@mRowNum</td>
@@ -486,12 +486,6 @@
                    @key="_chartKey">
             <ApexPointSeries TItem="WeekVisitCount"
                              Items="@_weeklyTotals"
-                             Name="Don / Default"
-                             SeriesType="SeriesType.Bar"
-                             XValue="@(w => w.WeekLabel)"
-                             YValue="@(w => (decimal)w.DonCount)" />
-            <ApexPointSeries TItem="WeekVisitCount"
-                             Items="@_weeklyTotals"
                              Name="Friend"
                              SeriesType="SeriesType.Bar"
                              XValue="@(w => w.WeekLabel)"
@@ -559,12 +553,6 @@
                        Options="@_monthChartOptions"
                        Height="220"
                        @key="_monthChartKey">
-                <ApexPointSeries TItem="MonthVisitCount"
-                                 Items="@_monthlyTotals"
-                                 Name="Don / Default"
-                                 SeriesType="SeriesType.Bar"
-                                 XValue="@(m => m.MonthLabel)"
-                                 YValue="@(m => (decimal)m.DonCount)" />
                 <ApexPointSeries TItem="MonthVisitCount"
                                  Items="@_monthlyTotals"
                                  Name="Friend"
@@ -1133,9 +1121,8 @@
     {
         "Friend"          => "#f59e0b",
         "Social Network"  => "#3b82f6",
-        "Haifa"           => "#7c3aed",
         "Other"           => "#94a3b8",
-        _                 => "#16a34a",  // Don / default
+        _                 => "#7c3aed",  // Haifa / default
     };
 
     protected override async Task OnInitializedAsync()

@@ -12,6 +12,8 @@
 @inject LPM.Services.CompletionService CompletionSvc
 @inject LPM.Services.CourseService CourseSvc
 @inject LPM.Services.EffortService EffortSvc
+@inject LPM.Services.AcademyService AcademySvc
+@inject LPM.Services.StatisticsService StatSvc
 @inject PdfService PdfSvc
 @using LPM._Spk
 @using LPM.Services
@@ -8619,9 +8621,10 @@ string _actionPcSearch = "";
             Console.WriteLine($"[MainHeader] New PC BLOCKED (duplicate): '{firstName} {lastName}' nick='{nick}' by '{_logUsername}'");
             return;
         }
+        var sourceId = PcSvc.GetReferralIdByName(d.Source);
         var newPcId = PcSvc.AddPcWithPerson(firstName, lastName, d.Phone, d.Email,
-            d.DateOfBirth, d.Gender, orgId: d.OrgId > 0 ? d.OrgId : null, notes: d.Notes, nick: nick,
-            createdByUserId: _msgUserId);
+            d.DateOfBirth, d.Gender, orgId: d.OrgId > 0 ? d.OrgId : null, sourceId: sourceId,
+            notes: d.Notes, nick: nick, createdByUserId: _msgUserId);
         PcSvc.RecordPcHistory(newPcId, "Created", $"{firstName} {lastName}", _logUsername);
         Console.WriteLine($"[MainHeader] New PC created: '{firstName} {lastName}' nick='{nick}' phone='{d.Phone}' dob='{d.DateOfBirth}' by '{_logUsername}'");
         // Refresh duplicate-detection set
@@ -9472,13 +9475,23 @@ string _actionPcSearch = "";
         });
     }
 
+    // Sentinel PersonIds for synthetic Show Stat / Staff Report entries
+    private const int STAT_PID_STATISTICS = -1;
+    private const int STAT_PID_ACADEMY    = -2;
+
     // ── Show Stat ────────────────────────────────────────────────────────────
 
     async Task OpenShowStat()
     {
-        _statStaffList = DashSvc.GetNonSoloStaffWithRoles()
+        var staff = DashSvc.GetNonSoloStaffWithRoles()
             .Where(s => !s.FullName.Equals("BBB", StringComparison.OrdinalIgnoreCase))
             .ToList();
+        _statStaffList = new List<DashboardService.StaffMemberWithRole>
+        {
+            new DashboardService.StaffMemberWithRole(STAT_PID_STATISTICS, "Statistics", "Statistics"),
+            new DashboardService.StaffMemberWithRole(STAT_PID_ACADEMY,    "Academy",    "Academy"),
+        };
+        _statStaffList.AddRange(staff);
         _statWeekStart = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today)).AddDays(-7);
         _statSelectedId = _statStaffList.FirstOrDefault()?.PersonId ?? 0;
         _statPdfBase64 = null;
@@ -9571,16 +9584,27 @@ string _actionPcSearch = "";
         var tasks = _statStaffList.Select(staff => Task.Run(() =>
         {
             var sid = staff.PersonId;
-            var pcs = DashSvc.GetUserPcs(sid);
-            var grid = DashSvc.GetWeekGrid(sid, weekStart, pcs);
-            var pcIds = pcs.Select(p => p.PcId).ToList();
-            var csNames = DashSvc.GetLastCsNamesByPc(pcIds);
-            var weekKey = weekStart.ToString("yyyy-MM-dd");
-            var remarks = DashSvc.GetWeeklyRemarks(sid, weekKey) ?? "";
-            Console.WriteLine($"[ShowStat] staff={staff.FullName} sid={sid} week={weekKey} remarksLen={remarks.Length}");
-            var completions = CompletionSvc.GetForWeek(sid, weekStart, weekStart.AddDays(6));
-            var effort = EffortSvc.GetWeekEffortGridByPerson(sid, weekStart);
-            var pdfBytes = PdfSvc.GenerateWeeklyTablePdf(staff.FullName, weekStart, pcs, grid, csNames, remarks, soloPcIds, completions, effort.Pcs, effort.Grid);
+            byte[] pdfBytes;
+            if (sid == STAT_PID_ACADEMY)
+            {
+                pdfBytes = BuildAcademyPdf(weekStart);
+            }
+            else if (sid == STAT_PID_STATISTICS)
+            {
+                pdfBytes = BuildStatisticsPdf(weekStart);
+            }
+            else
+            {
+                var pcs = DashSvc.GetUserPcs(sid);
+                var grid = DashSvc.GetWeekGrid(sid, weekStart, pcs);
+                var pcIds = pcs.Select(p => p.PcId).ToList();
+                var csNames = DashSvc.GetLastCsNamesByPc(pcIds);
+                var weekKey = weekStart.ToString("yyyy-MM-dd");
+                var remarks = DashSvc.GetWeeklyRemarks(sid, weekKey) ?? "";
+                var completions = CompletionSvc.GetForWeek(sid, weekStart, weekStart.AddDays(6));
+                var effort = EffortSvc.GetWeekEffortGridByPerson(sid, weekStart);
+                pdfBytes = PdfSvc.GenerateWeeklyTablePdf(staff.FullName, weekStart, pcs, grid, csNames, remarks, soloPcIds, completions, effort.Pcs, effort.Grid);
+            }
             var fileName = $"stat_{sid}_{weekStart:yyyyMMdd}.pdf";
             File.WriteAllBytes(Path.Combine(tempDir, fileName), pdfBytes);
             return (Sid: sid, Key: $"stat_{sid}", B64: Convert.ToBase64String(pdfBytes));
@@ -9626,12 +9650,103 @@ string _actionPcSearch = "";
         await InvokeAsync(StateHasChanged);
     }
 
+    // ── Academy / Statistics PDF helpers (used by Show Stat & Print Staff Reports) ──
+
+    byte[] BuildAcademyPdf(DateOnly weekStart)
+    {
+        var students = AcademySvc.GetStudentVisitsForWeek(weekStart);
+        var (byRef, byOrg) = AcademySvc.GetWeeklyStudentBreakdown(weekStart);
+        var personIds = students.Select(s => s.PersonId);
+        var coursesRaw = CourseSvc.GetOpenCoursesForPersons(personIds);
+        var courses = coursesRaw.ToDictionary(
+            kv => kv.Key,
+            kv => string.Join(", ", kv.Value.Select(e => $"{e.Name} ({e.VisitCount})")));
+
+        // Month data centered on weekStart
+        var refDate = new DateOnly(weekStart.Year, weekStart.Month, 1);
+        var weeks = new List<DateOnly>();
+        var d = refDate;
+        while (d.DayOfWeek != DayOfWeek.Thursday) d = d.AddDays(1);
+        while (d.Month == refDate.Month) { weeks.Add(d); d = d.AddDays(7); }
+
+        DateOnly? monthStart = null, monthEnd = null;
+        string monthLabel = "";
+        int monthWeekCount = weeks.Count;
+        var monthStudents = new List<(int PersonId, string FullName, int VisitCount, int TotalSessions, string Source, string Org, string Nick)>();
+        if (weeks.Count > 0)
+        {
+            monthStart     = weeks[0];
+            monthEnd       = weeks[^1].AddDays(6);
+            monthLabel     = monthStart.Value.ToString("MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture);
+            monthStudents  = AcademySvc.GetStudentVisitsForDateRange(monthStart.Value, monthEnd.Value);
+        }
+
+        var weeklyTotals = AcademySvc.GetWeeklyVisitCounts(weekStart, 20);
+
+        return PdfSvc.GenerateAcademyWeekPdf(weekStart, students, byRef, byOrg, courses,
+            monthStudents, monthLabel, monthWeekCount, monthStart, monthEnd, weeklyTotals: weeklyTotals);
+    }
+
+    byte[] BuildStatisticsPdf(DateOnly weekStart)
+    {
+        var dayStats     = StatSvc.GetWeekDayStats(weekStart);
+        var weekHistory  = StatSvc.GetWeeklySummaries(weekStart, 20);
+        var currentWeekSummary = weekHistory.FirstOrDefault(w => w.WeekStart == weekStart);
+        var originHours  = StatSvc.GetWeekOriginHours(weekStart);
+
+        // Week leaderboard — aggregate dayStats by person
+        var weekStaff = dayStats.SelectMany(d => d.Staff)
+            .GroupBy(s => s.PersonId)
+            .Select(g => new StaffStatRow(g.Key, g.First().Name, g.Sum(x => x.AuditSec), g.Sum(x => x.SoloCsSec), g.Sum(x => x.EffortSec)))
+            .Where(s => s.TotalSec > 0)
+            .OrderByDescending(s => s.TotalSec)
+            .ToList();
+
+        // Month data — weeks whose Thursday falls in weekStart's month
+        var refDate = new DateOnly(weekStart.Year, weekStart.Month, 1);
+        var mWeeks = new List<DateOnly>();
+        var dd = refDate;
+        while (dd.DayOfWeek != DayOfWeek.Thursday) dd = dd.AddDays(1);
+        while (dd.Month == refDate.Month) { mWeeks.Add(dd); dd = dd.AddDays(7); }
+
+        List<StaffStatRow> monthStaff = new();
+        WeekStatSummary? monthSummary = null;
+        List<OriginHours> monthOriginHours = new();
+        string monthLabel = "";
+        int monthWeekCount = mWeeks.Count;
+        DateOnly? monthStart = null, monthEnd = null;
+        if (mWeeks.Count > 0)
+        {
+            monthStart       = mWeeks[0];
+            monthEnd         = mWeeks[^1].AddDays(6);
+            monthLabel       = monthStart.Value.ToString("MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture);
+            monthSummary     = StatSvc.GetMonthSummary(monthStart.Value, monthEnd.Value);
+            monthStaff       = StatSvc.GetMonthStaffLeaderboard(monthStart.Value, monthEnd.Value);
+            monthOriginHours = StatSvc.GetMonthOriginHours(monthStart.Value, monthEnd.Value);
+        }
+
+        var monthHistory = StatSvc.GetMonthlySummaries(weekStart, 12);
+
+        return PdfSvc.GenerateStatisticsPdf(
+            weekStart, weekStaff, dayStats, weekHistory, currentWeekSummary, originHours,
+            monthStaff: monthStaff,
+            monthSummary: monthSummary,
+            monthOriginHours: monthOriginHours,
+            monthLabel: monthLabel,
+            monthWeekCount: monthWeekCount,
+            monthStart: monthStart,
+            monthEnd: monthEnd,
+            monthHistory: monthHistory);
+    }
+
     static string StatRoleColor(string role) => role switch
     {
-        "Auditor"  => "#3b82f6", // blue
-        "CS"       => "#22c55e", // green
-        "SeniorCS" => "#a855f7", // purple
-        _          => "#64748b", // gray
+        "Auditor"    => "#3b82f6", // blue
+        "CS"         => "#22c55e", // green
+        "SeniorCS"   => "#a855f7", // purple
+        "Statistics" => "#0ea5e9", // sky
+        "Academy"    => "#f59e0b", // amber
+        _            => "#64748b", // gray
     };
 
     async Task DownloadStatPdf()
@@ -9648,7 +9763,12 @@ string _actionPcSearch = "";
     void OpenPrintAllStaff()
     {
         var allStaff = DashSvc.GetNonSoloStaffMembers();
-        _psaList = allStaff.Select(s => new PsaEntry(s, true)).ToList();
+        _psaList = new List<PsaEntry>
+        {
+            new PsaEntry(new StaffMember(STAT_PID_STATISTICS, "Statistics"), true),
+            new PsaEntry(new StaffMember(STAT_PID_ACADEMY,    "Academy"),    true),
+        };
+        _psaList.AddRange(allStaff.Select(s => new PsaEntry(s, true)));
         _psaBusy = false;
         _psaDone = false;
         _psaProgress = 0;
@@ -9705,17 +9825,28 @@ string _actionPcSearch = "";
             await InvokeAsync(StateHasChanged);
             await Task.Delay(50); // let UI paint
 
-            var pcs = DashSvc.GetUserPcs(staff.PersonId);
-            var grid = DashSvc.GetWeekGrid(staff.PersonId, weekStart, pcs);
-            var pcIds = pcs.Select(p => p.PcId).ToList();
-            var csNames = DashSvc.GetLastCsNamesByPc(pcIds);
-            var remarks = DashSvc.GetWeeklyRemarks(staff.PersonId, weekKey) ?? "";
-            Console.WriteLine($"[StaffReport] staff={staff.FullName} sid={staff.PersonId} week={weekKey} remarksLen={remarks.Length}");
-            var completions = CompletionSvc.GetForWeek(staff.PersonId, weekStart, weekStart.AddDays(6));
-            var effort = EffortSvc.GetWeekEffortGridByPerson(staff.PersonId, weekStart);
+            byte[] pdfBytes;
+            if (staff.PersonId == STAT_PID_ACADEMY)
+            {
+                pdfBytes = BuildAcademyPdf(weekStart);
+            }
+            else if (staff.PersonId == STAT_PID_STATISTICS)
+            {
+                pdfBytes = BuildStatisticsPdf(weekStart);
+            }
+            else
+            {
+                var pcs = DashSvc.GetUserPcs(staff.PersonId);
+                var grid = DashSvc.GetWeekGrid(staff.PersonId, weekStart, pcs);
+                var pcIds = pcs.Select(p => p.PcId).ToList();
+                var csNames = DashSvc.GetLastCsNamesByPc(pcIds);
+                var remarks = DashSvc.GetWeeklyRemarks(staff.PersonId, weekKey) ?? "";
+                var completions = CompletionSvc.GetForWeek(staff.PersonId, weekStart, weekStart.AddDays(6));
+                var effort = EffortSvc.GetWeekEffortGridByPerson(staff.PersonId, weekStart);
 
-            var pdfBytes = PdfSvc.GenerateWeeklyTablePdf(
-                staff.FullName, weekStart, pcs, grid, csNames, remarks, soloPcIds, completions, effort.Pcs, effort.Grid);
+                pdfBytes = PdfSvc.GenerateWeeklyTablePdf(
+                    staff.FullName, weekStart, pcs, grid, csNames, remarks, soloPcIds, completions, effort.Pcs, effort.Grid);
+            }
 
             merged = merged == null ? pdfBytes : PdfSvc.CombinePdfs(merged, pdfBytes);
         }
