@@ -1959,16 +1959,19 @@
                 </div>
 
                 <div class="modal-body p-0" style="max-height:70vh;overflow-y:auto;">
-                    @{
-                        var balResetDate = PcSvc.GetBudgetResetDate(_balancePcId);
-                    }
+                    @{ var balResetDate = ex.ResetDate; }
                     @if (balResetDate != null)
                     {
-                        <div style="background:linear-gradient(135deg,#2d1b00,#1e293b);border-bottom:2px solid #f59e0b;padding:12px 20px;display:flex;align-items:center;gap:10px;">
-                            <i class="ri-restart-line" style="color:#f59e0b;font-size:1.3rem;"></i>
-                            <div>
-                                <div style="color:#fbbf24;font-weight:700;font-size:.9rem;">Budget Reset Active</div>
-                                <div style="color:#94a3b8;font-size:.8rem;">Only showing transactions from <strong style="color:#e2e8f0;">@balResetDate</strong> forward</div>
+                        <div style="background:linear-gradient(135deg,#7c2d12,#1e293b);border-bottom:3px solid #f59e0b;padding:18px 24px;display:flex;align-items:center;gap:16px;">
+                            <i class="ri-restart-line" style="color:#f59e0b;font-size:2.4rem;flex-shrink:0;"></i>
+                            <div style="flex:1;">
+                                <div style="color:#fbbf24;font-weight:800;font-size:1.25rem;letter-spacing:.3px;">
+                                    Budget Reset: @FormatDate(balResetDate)
+                                </div>
+                                <div style="color:#e2e8f0;font-size:.85rem;margin-top:3px;">
+                                    Balance calculated from this date forward.
+                                    <span style="color:#94a3b8;">Earlier sessions shown faded below.</span>
+                                </div>
                             </div>
                         </div>
                     }
@@ -2129,6 +2132,7 @@
                                         <th class="small text-center">#</th>
                                         <th class="small">@LS.T("pcs.date")</th>
                                         <th class="small">@LS.T("pcs.auditor")</th>
+                                        <th class="small">Wallet</th>
                                         <th class="small text-center">@LS.T("pcs.duration")</th>
                                         <th class="small text-center">@LS.T("pcs.admin")</th>
                                         <th class="small text-center">@LS.T("pcs.rateLabel")</th>
@@ -2141,16 +2145,40 @@
                                     @{ int rowIdx = 0; var filteredSessions = _balHideImported ? _balSessionDetails.Where(s => !s.IsImported) : _balSessionDetails; }
                                     @foreach (var s in filteredSessions)
                                     {
-                                        <tr style="background:@(rowIdx++ % 2 == 0 ? "#fafafa" : "#fff");">
+                                        var baseBg = rowIdx++ % 2 == 0 ? "#fafafa" : "#fff";
+                                        var rowBg  = s.IsBeforeReset ? "#f1f5f9" : baseBg;
+                                        var rowStyle = $"background:{rowBg};" + (s.IsBeforeReset ? "opacity:.45;filter:grayscale(.6);" : "");
+                                        <tr style="@rowStyle" title="@(s.IsBeforeReset ? "Before budget reset — not counted in current balance" : null)">
                                             <td class="small text-center text-muted">@s.SessionId</td>
                                             <td class="small">@FormatDate(s.Date)</td>
                                             <td class="small">@s.AuditorName</td>
+                                            <td class="small">
+                                                @if (s.WalletId.HasValue)
+                                                {
+                                                    <span class="badge" style="background:@WltBg(s.Currency); color:@WltFg(s.Currency); font-weight:600; white-space:nowrap;">
+                                                        @CurrSym(s.Currency) @(s.WalletName ?? "—") (@s.Currency)
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">—</span>
+                                                }
+                                            </td>
                                             <td class="small text-center" title="@Hmmss(s.LengthSec)">@HmmRound(s.LengthSec)</td>
                                             <td class="small text-center" title="@Hmmss(s.AdminSec)">@HmmRound(s.AdminSec)</td>
-                                            <td class="small text-center">@CurrSym(balCurr)@(s.RateCentsUsed / 100)</td>
+                                            <td class="small text-center">@CurrSym(s.Currency)@(s.RateCentsUsed / 100)</td>
                                             <td class="small text-center"><span class="badge @RateBadgeClass(s.RateSource)">@s.RateSource</span></td>
-                                            <td class="small text-center">@if (s.IsImported) { <i class="ri-download-cloud-line" style="color:#6366f1;" title="Imported session"></i> }</td>
-                                            <td class="small text-end fw-semibold" style="color:#dc2626;">@CurrSym(balCurr)@(s.CostNis.ToString("N2"))</td>
+                                            <td class="small text-center">
+                                                @if (s.IsBeforeReset)
+                                                {
+                                                    <span class="badge" style="background:#fef3c7;color:#92400e;font-size:.62rem;" title="Before budget reset">pre</span>
+                                                }
+                                                else if (s.IsImported)
+                                                {
+                                                    <i class="ri-download-cloud-line" style="color:#6366f1;" title="Imported session"></i>
+                                                }
+                                            </td>
+                                            <td class="small text-end fw-semibold" style="color:#dc2626;">@CurrSym(s.Currency)@(s.CostNis.ToString("N2"))</td>
                                         </tr>
                                     }
                                 </tbody>
@@ -2171,6 +2199,7 @@
                                     <tr>
                                         <th class="small text-center">#</th>
                                         <th class="small">@LS.T("pcs.date")</th>
+                                        <th class="small">Wallet</th>
                                         <th class="small text-center">@LS.T("pcs.duration")</th>
                                         <th class="small text-center">@LS.T("pcs.rateLabel")</th>
                                         <th class="small text-center">Imp</th>
@@ -2181,12 +2210,36 @@
                                     @{ int soloIdx = 0; var filteredSolo = _balHideImported ? _balSoloDetails.Where(sr => !sr.IsImported) : _balSoloDetails; }
                                     @foreach (var sr in filteredSolo)
                                     {
-                                        <tr style="background:@(soloIdx++ % 2 == 0 ? "#f5f3ff" : "#ede9fe");@(sr.IsFree ? "opacity:.7;" : "")">
+                                        var baseSoloBg = soloIdx++ % 2 == 0 ? "#f5f3ff" : "#ede9fe";
+                                        var soloBg = sr.IsBeforeReset ? "#e2e8f0" : baseSoloBg;
+                                        var soloOpacity = sr.IsBeforeReset ? "opacity:.45;filter:grayscale(.6);" : (sr.IsFree ? "opacity:.7;" : "");
+                                        <tr style="background:@soloBg;@soloOpacity" title="@(sr.IsBeforeReset ? "Before budget reset — not counted in current balance" : null)">
                                             <td class="small text-center text-muted">@sr.SessionId</td>
                                             <td class="small">@FormatDate(sr.Date)</td>
+                                            <td class="small">
+                                                @if (sr.WalletId.HasValue)
+                                                {
+                                                    <span class="badge" style="background:@WltBg(sr.Currency); color:@WltFg(sr.Currency); font-weight:600; white-space:nowrap;">
+                                                        @CurrSym(sr.Currency) @(sr.WalletName ?? "—") (@sr.Currency)
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-muted">—</span>
+                                                }
+                                            </td>
                                             <td class="small text-center" title="@Hmmss(sr.ReviewLengthSec)">@HmmRound(sr.ReviewLengthSec)</td>
-                                            <td class="small text-center">@CurrSym(balCurr)@(sr.RateCents / 100)</td>
-                                            <td class="small text-center">@if (sr.IsImported) { <i class="ri-download-cloud-line" style="color:#6366f1;" title="Imported session"></i> }</td>
+                                            <td class="small text-center">@CurrSym(sr.Currency)@(sr.RateCents / 100)</td>
+                                            <td class="small text-center">
+                                                @if (sr.IsBeforeReset)
+                                                {
+                                                    <span class="badge" style="background:#fef3c7;color:#92400e;font-size:.62rem;" title="Before budget reset">pre</span>
+                                                }
+                                                else if (sr.IsImported)
+                                                {
+                                                    <i class="ri-download-cloud-line" style="color:#6366f1;" title="Imported session"></i>
+                                                }
+                                            </td>
                                             <td class="small text-end fw-semibold" style="color:@(sr.IsFree ? "#10b981" : "#7c3aed");">
                                                 @if (sr.IsFree)
                                                 {
@@ -2194,7 +2247,7 @@
                                                 }
                                                 else
                                                 {
-                                                    @($"{CurrSym(balCurr)}{sr.CostNis:N2}")
+                                                    @($"{CurrSym(sr.Currency)}{sr.CostNis:N2}")
                                                 }
                                             </td>
                                         </tr>
@@ -3723,6 +3776,8 @@
         }
     }
     static string CurrSym(string code) => code switch { "USD" => "$", "EUR" => "€", _ => "₪" };
+    static string WltBg(string code)  => code switch { "USD" => "#e0f2fe", "EUR" => "#d1fae5", _ => "#dbeafe" };
+    static string WltFg(string code)  => code switch { "USD" => "#0369a1", "EUR" => "#047857", _ => "#1e40af" };
 
     /// Formats an amount: whole numbers as "42", fractional as "42<small>.50</small>"
     static MarkupString FmtAmt(double amount)

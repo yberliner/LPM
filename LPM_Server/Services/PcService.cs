@@ -41,14 +41,19 @@ public record PcPurchaseRow(int PurchaseId, string Date, double Hours, double Am
 
 public record PcSessionCostRow(
     int SessionId, string Date, string AuditorName,
-    int LengthSec, int AdminSec, int RateCentsUsed, string RateSource, decimal CostNis, bool IsImported = false);
+    int LengthSec, int AdminSec, int RateCentsUsed, string RateSource, decimal CostNis, bool IsImported = false,
+    int? WalletId = null, string? WalletName = null, string Currency = "ILS",
+    bool IsBeforeReset = false);
 
-public record SoloCsReviewCostRow(int SessionId, string Date, int ReviewLengthSec, int RateCents, decimal CostNis, bool IsFree = false, bool IsImported = false);
+public record SoloCsReviewCostRow(int SessionId, string Date, int ReviewLengthSec, int RateCents, decimal CostNis, bool IsFree = false, bool IsImported = false,
+    int? WalletId = null, string? WalletName = null, string Currency = "ILS",
+    bool IsBeforeReset = false);
 
 public record PcBalanceExplanation(
     List<PcPurchaseRow> Purchases, double TotalPurchasedNis,
     decimal TotalUsedNis, decimal BalanceNis, int BillableSessionCount, int SoloReviewCount,
-    int EffectiveRateCents, int PurchaseRateCents, double HoursLeft, string RateSource);
+    int EffectiveRateCents, int PurchaseRateCents, double HoursLeft, string RateSource,
+    string? ResetDate = null);
 
 public class PcService
 {
@@ -1994,7 +1999,7 @@ public List<PcListItem> GetAllPcs()
         string source = lastSessRate > 0 ? $"Session #{lastSessId}" : "Purchase";
 
         return new(purchases, totalPurchased, usedNis, balance, sess.Count, soloCount,
-            effective, purchaseRate, hoursLeft, source);
+            effective, purchaseRate, hoursLeft, source, resetDate);
     }
 
     public List<PcSessionCostRow> GetPcSessionCostDetails(int pcId)
@@ -2010,11 +2015,7 @@ public List<PcListItem> GetAllPcs()
             rdCmd.Parameters.AddWithValue("@id", pcId);
             resetDate = rdCmd.ExecuteScalar() as string;
         }
-        var rdFilter = resetDate != null ? " AND pu.PurchaseDate >= @rd" : "";
-        var rdFilter2 = resetDate != null ? " AND pu2.PurchaseDate >= @rd" : "";
-        var sdFilter = resetDate != null ? " AND s.SessionDate >= @rd" : "";
-
-        // Purchase rate fallback (for sessions with no prior rated session)
+        // Purchase rate fallback (for sessions with no prior rated session) — uses full history
         int purchaseRate = 0;
         using (var cmd = conn.CreateCommand())
         {
@@ -2022,18 +2023,17 @@ public List<PcListItem> GetAllPcs()
                 SELECT SUM(pi.AmountPaid), SUM(pi.HoursBought)
                 FROM fin_purchase_items pi
                 JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
-                WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'" + rdFilter + @"
+                WHERE pu.PcId = @id AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
                   AND pu.PurchaseId = (
                       SELECT pu2.PurchaseId FROM fin_purchases pu2
                       JOIN fin_purchase_items pi2 ON pi2.PurchaseId = pu2.PurchaseId
                       WHERE pu2.PcId = @id AND pu2.IsDeleted = 0
-                        AND pi2.ItemType = 'Auditing'" + rdFilter2 + @"
+                        AND pi2.ItemType = 'Auditing'
                       GROUP BY pu2.PurchaseId
                       HAVING SUM(pi2.AmountPaid) <> 0
                       ORDER BY pu2.PurchaseId DESC LIMIT 1
                   )";
             cmd.Parameters.AddWithValue("@id", pcId);
-            if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
             using var r = cmd.ExecuteReader();
             if (r.Read() && !r.IsDBNull(0) && !r.IsDBNull(1))
             {
@@ -2043,6 +2043,7 @@ public List<PcListItem> GetAllPcs()
         }
 
         // All billable sessions with auditor names — backward-looking fallback
+        // NOTE: no date filter — pre-reset sessions included and flagged via IsBeforeReset
         int prevRate = 0, prevRateId = 0;
         var result = new List<PcSessionCostRow>();
         using (var cmd = conn.CreateCommand())
@@ -2051,13 +2052,14 @@ public List<PcListItem> GetAllPcs()
                 SELECT s.SessionId, s.SessionDate,
                        COALESCE(TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')), '?'),
                        s.LengthSeconds, s.AdminSeconds, s.ChargedRateCentsPerHour,
-                       COALESCE(s.IsImported, 0)
+                       COALESCE(s.IsImported, 0),
+                       s.WalletId, w.Name, COALESCE(w.Currency, 'ILS')
                 FROM sess_sessions s
                 LEFT JOIN core_persons p ON p.PersonId = s.AuditorId
-                WHERE s.PcId = @id AND s.AuditorId IS NOT NULL AND s.IsFreeSession = 0" + sdFilter + @"
+                LEFT JOIN fin_wallets w ON w.WalletId = s.WalletId
+                WHERE s.PcId = @id AND s.AuditorId IS NOT NULL AND s.IsFreeSession = 0
                 ORDER BY s.SessionId";
             cmd.Parameters.AddWithValue("@id", pcId);
-            if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -2070,8 +2072,14 @@ public List<PcListItem> GetAllPcs()
 
                 decimal cost = (decimal)rateUsed * (r.GetInt32(4) + r.GetInt32(3)) / 3600m / 100m;
                 bool imported = r.GetInt32(6) == 1;
-                result.Add(new(sessionId, r.GetString(1), r.GetString(2),
-                    r.GetInt32(3), r.GetInt32(4), rateUsed, src, cost, imported));
+                int? walletId = r.IsDBNull(7) ? (int?)null : r.GetInt32(7);
+                string? walletName = r.IsDBNull(8) ? null : r.GetString(8);
+                string currency = r.IsDBNull(9) ? "ILS" : r.GetString(9);
+                string sessDate = r.GetString(1);
+                bool beforeReset = resetDate != null && string.CompareOrdinal(sessDate, resetDate) < 0;
+                result.Add(new(sessionId, sessDate, r.GetString(2),
+                    r.GetInt32(3), r.GetInt32(4), rateUsed, src, cost, imported,
+                    walletId, walletName, currency, beforeReset));
             }
         }
         return result;
@@ -2092,18 +2100,20 @@ public List<PcListItem> GetAllPcs()
 
         var result = new List<SoloCsReviewCostRow>();
         using var cmd = conn.CreateCommand();
+        // NOTE: no date filter — pre-reset reviews included and flagged via IsBeforeReset
         cmd.CommandText = @"
             SELECT s.SessionId, s.SessionDate, cr.ReviewLengthSeconds,
                    COALESCE(cr.ChargedCentsRatePerHour, 0),
                    COALESCE(cr.Notes, ''),
-                   COALESCE(s.IsImported, 0)
+                   COALESCE(s.IsImported, 0),
+                   COALESCE(cr.WalletId, s.WalletId),
+                   w.Name, COALESCE(w.Currency, 'ILS')
             FROM cs_reviews cr
             JOIN sess_sessions s ON s.SessionId = cr.SessionId
-            WHERE s.PcId = @id AND s.AuditorId IS NULL"
-            + (resetDate != null ? " AND s.SessionDate >= @rd" : "") + @"
+            LEFT JOIN fin_wallets w ON w.WalletId = COALESCE(cr.WalletId, s.WalletId)
+            WHERE s.PcId = @id AND s.AuditorId IS NULL
             ORDER BY s.SessionDate, s.SessionId";
         cmd.Parameters.AddWithValue("@id", pcId);
-        if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
         using var r = cmd.ExecuteReader();
         while (r.Read())
         {
@@ -2114,7 +2124,13 @@ public List<PcListItem> GetAllPcs()
             bool isFree = notes != "Bill";
             bool imported = r.GetInt32(5) == 1;
             decimal cost = isFree ? 0m : (decimal)rateCents * lengthSec / 3600m / 100m;
-            result.Add(new(r.GetInt32(0), r.GetString(1), lengthSec, rateCents, cost, isFree, imported));
+            int? walletId = r.IsDBNull(6) ? (int?)null : r.GetInt32(6);
+            string? walletName = r.IsDBNull(7) ? null : r.GetString(7);
+            string currency = r.IsDBNull(8) ? "ILS" : r.GetString(8);
+            string sessDate = r.GetString(1);
+            bool beforeReset = resetDate != null && string.CompareOrdinal(sessDate, resetDate) < 0;
+            result.Add(new(r.GetInt32(0), sessDate, lengthSec, rateCents, cost, isFree, imported,
+                walletId, walletName, currency, beforeReset));
         }
         return result;
     }
