@@ -64,6 +64,20 @@ public class ImportJobService
     public ImportJobState? CurrentJob { get; private set; }
     public event Action? OnProgressChanged;
 
+    private void FireProgress()
+    {
+        var handler = OnProgressChanged;
+        if (handler == null) return;
+        foreach (var d in handler.GetInvocationList())
+        {
+            try { ((Action)d).Invoke(); }
+            catch
+            {
+                try { OnProgressChanged -= (Action)d; } catch { }
+            }
+        }
+    }
+
     private readonly SmsService _smsSvc;
 
     public ImportJobService(FolderService folderSvc, PcService pcSvc, DashboardService dashSvc,
@@ -164,7 +178,7 @@ public class ImportJobService
 
         CurrentJob.UploadedFiles++;
         CurrentJob.LastActivity = DateTime.UtcNow;
-        OnProgressChanged?.Invoke();
+        FireProgress();
     }
 
     /// <summary>Start background processing after all files are uploaded.</summary>
@@ -175,7 +189,7 @@ public class ImportJobService
 
         CurrentJob.Status = ImportStatus.Processing;
         CurrentJob.ProcessedFiles = 0;
-        OnProgressChanged?.Invoke();
+        FireProgress();
 
         Console.WriteLine($"[ImportJobService] Started processing job {jobId}, {manifest.Count} PCs");
         var userId = CurrentJob.UserId;
@@ -429,7 +443,7 @@ public class ImportJobService
             {
                 CurrentJob.Status = ImportStatus.Complete;
                 CurrentJob.CurrentFileName = "";
-                OnProgressChanged?.Invoke();
+                FireProgress();
             }
         }
         catch (Exception ex)
@@ -438,7 +452,7 @@ public class ImportJobService
             {
                 CurrentJob.Status = ImportStatus.Failed;
                 CurrentJob.ErrorMessage = ex.Message;
-                OnProgressChanged?.Invoke();
+                FireProgress();
             }
             Console.WriteLine($"[Import] Error: {ex}");
         }
@@ -454,7 +468,7 @@ public class ImportJobService
         {
             CurrentJob.CurrentFileName = status;
             CurrentJob.LastActivity = DateTime.UtcNow;
-            OnProgressChanged?.Invoke();
+            FireProgress();
         }
     }
 
@@ -463,7 +477,7 @@ public class ImportJobService
         if (CurrentJob != null && CurrentJob.JobId == jobId)
         {
             CurrentJob.ProcessedFiles++;
-            OnProgressChanged?.Invoke();
+            FireProgress();
         }
     }
 
@@ -475,7 +489,7 @@ public class ImportJobService
             CurrentJob.SkippedCount++;
             CurrentJob.ProcessedFiles++;
             Console.WriteLine($"[Import] SKIPPED ({reason}): PC='{pcName}' File='{fileName}' Section='{section}'");
-            OnProgressChanged?.Invoke();
+            FireProgress();
         }
     }
 

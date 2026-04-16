@@ -16,6 +16,16 @@ public class MessageNotifier
     /// </summary>
     public void NotifyNewMessage(int recipientPersonId)
     {
-        OnNewMessage?.Invoke(recipientPersonId);
+        var handler = OnNewMessage;
+        if (handler == null) return;
+        foreach (var d in handler.GetInvocationList())
+        {
+            try { ((Action<int>)d).Invoke(recipientPersonId); }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[MessageNotifier] OnNewMessage subscriber threw: {ex.Message}");
+                try { OnNewMessage -= (Action<int>)d; } catch { }
+            }
+        }
     }
 }

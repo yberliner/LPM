@@ -39,7 +39,7 @@ public class CsNotificationService
             try
             {
                 if (hasPermission(sub.UserId, pcId))
-                    tasks.Add(sub.OnCsDone(pcId));
+                    tasks.Add(SafeInvoke(kvp.Key, sub, pcId));
             }
             catch
             {
@@ -49,5 +49,15 @@ public class CsNotificationService
         }
 
         await Task.WhenAll(tasks);
+    }
+
+    private async Task SafeInvoke(string key, Subscriber sub, int pcId)
+    {
+        try { await sub.OnCsDone(pcId); }
+        catch
+        {
+            // Callback failed (dead circuit) — auto-unsubscribe
+            _subscribers.TryRemove(key, out _);
+        }
     }
 }
