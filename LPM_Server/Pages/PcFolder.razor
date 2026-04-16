@@ -1546,6 +1546,53 @@
         0%, 100% { opacity: .5; transform: scale(.9); filter: drop-shadow(0 0 2px rgba(251,191,36,.3)); }
         50%      { opacity: 1;  transform: scale(1.15); filter: drop-shadow(0 0 8px rgba(251,191,36,.9)); }
     }
+    /* ── Folder Summary loading floating indicator ── */
+    .pcf-fs-loading-overlay {
+        position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 150;
+        display: flex; align-items: center; gap: 10px;
+        background: rgba(15,23,42,.92); border: 1px solid rgba(99,102,241,.4);
+        border-radius: 40px; padding: 10px 28px;
+        pointer-events: none;
+        box-shadow: 0 4px 30px rgba(99,102,241,.35), 0 0 60px rgba(99,102,241,.15);
+        animation: pcf-fs-float-in .4s ease-out;
+    }
+    @@keyframes pcf-fs-float-in {
+        from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+        to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+    .pcf-fs-loading-ring {
+        width: 28px; height: 28px; border-radius: 50%;
+        border: 3px solid rgba(99,102,241,.15);
+        border-top-color: #818cf8; border-right-color: #6366f1;
+        animation: pcf-fs-ring-spin .8s linear infinite;
+        filter: drop-shadow(0 0 8px rgba(99,102,241,.5));
+        flex-shrink: 0;
+    }
+    @@keyframes pcf-fs-ring-spin { to { transform: rotate(360deg); } }
+    .pcf-fs-loading-text {
+        font-size: 1.1rem; font-weight: 800; letter-spacing: 4px; text-transform: uppercase;
+        color: #c7d2fe; white-space: nowrap;
+        text-shadow: 0 0 15px rgba(129,140,248,.6), 0 0 30px rgba(99,102,241,.3);
+        animation: pcf-fs-text-glow 1.5s ease-in-out infinite;
+    }
+    @@keyframes pcf-fs-text-glow {
+        0%, 100% { opacity: .6; text-shadow: 0 0 8px rgba(129,140,248,.3); }
+        50%      { opacity: 1;  text-shadow: 0 0 20px rgba(129,140,248,.8), 0 0 40px rgba(99,102,241,.4); }
+    }
+    .pcf-fs-loading-dots {
+        font-size: 1.3rem; font-weight: 800; color: #818cf8; letter-spacing: 2px;
+    }
+    .pcf-fs-loading-dots span {
+        display: inline-block;
+        animation: pcf-fs-dot-bounce .6s ease-in-out infinite;
+    }
+    .pcf-fs-loading-dots span:nth-child(2) { animation-delay: .15s; }
+    .pcf-fs-loading-dots span:nth-child(3) { animation-delay: .3s; }
+    @@keyframes pcf-fs-dot-bounce {
+        0%, 100% { opacity: .3; transform: translateY(0); }
+        50%      { opacity: 1;  transform: translateY(-6px); }
+    }
+
     /* ── Cinematic Reading animation overlay ── */
     .pcf-expand-anim-overlay {
         position: absolute; inset: 0; z-index: 200;
@@ -3703,21 +3750,30 @@
                 if (!string.IsNullOrEmpty(_panes[i].File))
                 {
                     var fn = Path.GetFileName(_panes[i].File!);
-                    var endpoint = IsFolderSummaryFile(fn, _panes[i].File!) ? "/api/pc-file-folder-summary" : "/api/pc-file";
-                    var url = $"{endpoint}?pcId={PcId}&path={Uri.EscapeDataString(_panes[i].File!)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
                     var paneId = PaneIds[i];
-                    paneTasks.Add(JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId).AsTask());
+                    if (IsFolderSummaryFile(fn, _panes[i].File!))
+                    {
+                        var relPath = _panes[i].File!;
+                        paneTasks.Add(LoadFolderSummaryTwoPhase(relPath, paneId));
+                    }
+                    else
+                    {
+                        var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_panes[i].File!)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
+                        paneTasks.Add(JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId).AsTask());
+                    }
                 }
             }
-            await Task.WhenAll(paneTasks);
-
-            // Open Program Bridge in float if auto-preset set it
+            // Open Program Bridge in float in parallel with panes (not after)
             if (!string.IsNullOrEmpty(_presetFloatFile))
             {
-                var floatUrl = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_presetFloatFile)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
-                await JS.InvokeVoidAsync("pcfViewer.floatFile", floatUrl, "Program Bridge");
+                var floatPath = _presetFloatFile;
                 _presetFloatFile = null;
+                paneTasks.Add(JS.InvokeVoidAsync("pcfViewer.floatFile",
+                    $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(floatPath)}{SoloParam}&_t={DateTime.UtcNow.Ticks}",
+                    "Program Bridge").AsTask());
             }
+
+            await Task.WhenAll(paneTasks);
 
             // (context menu attachment happens for all renders below)
 
@@ -3879,23 +3935,23 @@
             var items = reloads.Select(item =>
             {
                 var (paneId, file) = item;
-                var endpoint = IsFolderSummaryFile(Path.GetFileName(file), file)
-                    ? "/api/pc-file-folder-summary"
-                    : "/api/pc-file";
-                var url = $"{endpoint}?pcId={PcId}&path={Uri.EscapeDataString(file)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
+                bool isFs = IsFolderSummaryFile(Path.GetFileName(file), file);
+                var url = isFs ? "" : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
                 bool wasDual = _dualPanes.Contains(paneId);
                 int savedPage = savedPages.GetValueOrDefault(paneId, 0);
                 _dualPanes.Remove(paneId);
                 _dualInfo.Remove(paneId);
-                return (paneId, url, wasDual, savedPage);
+                return (paneId, file, url, isFs, wasDual, savedPage);
             }).ToList();
 
-            // Load all panes in parallel; pass savedPage so JS scrolls before revealing (no page-1 flash)
+            // Load all panes in parallel; folder summaries use two-phase load
             await Task.WhenAll(items.Select(i =>
-                JS.InvokeVoidAsync("pcfViewer.loadPdf", i.url, i.paneId, i.savedPage).AsTask()));
+                i.isFs
+                    ? LoadFolderSummaryTwoPhase(i.file, i.paneId)
+                    : JS.InvokeVoidAsync("pcfViewer.loadPdf", i.url, i.paneId, i.savedPage).AsTask()));
 
             // Restore dual mode (with saved page) after all panes are loaded
-            foreach (var (paneId, _, wasDual, savedPage) in items)
+            foreach (var (paneId, _, _, _, wasDual, savedPage) in items)
             {
                 if (wasDual)
                 {
@@ -4024,13 +4080,18 @@
         _zoomPercent = 100;
 
         // Fire-and-forget the PDF load — use special endpoint for folder summary files (Front Cover only)
-        var apiPath = IsFolderSummaryFile(fileName, relativePath)
-            ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}{SoloParam}&_t={DateTime.UtcNow.Ticks}"
-            : $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
-        _ = LoadPdfAsync(gen, apiPath, paneId, fitAfterLoad);
+        if (IsFolderSummaryFile(fileName, relativePath))
+        {
+            _ = LoadPdfAsync(gen, null, paneId, fitAfterLoad, relativePath);
+        }
+        else
+        {
+            var apiPath = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
+            _ = LoadPdfAsync(gen, apiPath, paneId, fitAfterLoad);
+        }
     }
 
-    async Task LoadPdfAsync(int gen, string url, string paneId, bool fitAfterLoad = false)
+    async Task LoadPdfAsync(int gen, string? url, string paneId, bool fitAfterLoad = false, string? fsSummaryRelPath = null)
     {
         await Task.Yield(); // release the Blazor sync context immediately
         if (gen != _selectGeneration) return;
@@ -4038,7 +4099,16 @@
         // loadPdf resets dual state in JS; remove tracking before reload
         _dualPanes.Remove(paneId);
         _dualInfo.Remove(paneId);
-        await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId);
+
+        if (fsSummaryRelPath != null)
+        {
+            // Two-phase folder summary load
+            await LoadFolderSummaryTwoPhase(fsSummaryRelPath, paneId);
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId);
+        }
         if (gen != _selectGeneration) return;
         await JS.InvokeVoidAsync("pcfViewer.setTool", "");
         if (fitAfterLoad)
@@ -4059,6 +4129,25 @@
                 await InvokeAsync(StateHasChanged);
             }
         }
+    }
+
+    /// <summary>Two-phase folder summary load: show summary-only instantly, then swap in full combined version.</summary>
+    async Task LoadFolderSummaryTwoPhase(string relativePath, string paneId)
+    {
+        var ticks = DateTime.UtcNow.Ticks;
+        var baseUrl = $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(relativePath)}{SoloParam}";
+
+        // Phase 1: load summary-only (fast — just QuestPDF text, no original file combine)
+        await JS.InvokeVoidAsync("pcfViewer.loadPdf", $"{baseUrl}&summaryOnly=true&_t={ticks}", paneId);
+
+        // Show floating loading indicator (doesn't cover the summary content)
+        await JS.InvokeVoidAsync("pcfFsOverlay.show", paneId);
+
+        // Phase 2: prefetch full combined PDF in background, then swap atomically (no blank flash)
+        await JS.InvokeVoidAsync("pcfFsOverlay.prefetchAndLoad", $"{baseUrl}&_t={ticks + 1}", paneId);
+
+        // Hide loading indicator
+        await JS.InvokeVoidAsync("pcfFsOverlay.hide", paneId);
     }
 
     // ── Dual-page mode ──
@@ -4293,16 +4382,13 @@
             }
         }
 
-        // Reload folder summary pane if open
+        // Reload folder summary pane if open (two-phase)
         for (int i = 0; i < _paneCount; i++)
         {
             var f = _panes[i].File;
             var fn = _panes[i].FileName;
             if (f != null && fn != null && IsFolderSummaryFile(fn, f))
-            {
-                var url = $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(f)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
-                await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, PaneIds[i]);
-            }
+                await LoadFolderSummaryTwoPhase(f, PaneIds[i]);
         }
     }
 
@@ -4314,15 +4400,12 @@
         _showFsEditModal = false;
         _fsEditingId = null;
 
-        // Reload any pane showing the Folder Summary so edits are visible
+        // Reload any pane showing the Folder Summary so edits are visible (two-phase)
         for (int i = 0; i < _paneCount; i++)
         {
             var f = _panes[i].File; var fn = _panes[i].FileName;
             if (f != null && fn != null && IsFolderSummaryFile(fn, f))
-            {
-                var url = $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(f)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
-                await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, PaneIds[i]);
-            }
+                await LoadFolderSummaryTwoPhase(f, PaneIds[i]);
         }
     }
 
@@ -4432,14 +4515,12 @@
         _fsEditingId = null;
         _showFsEditModal = false;
 
-        // Reload any open folder summary pane
+        // Reload any open folder summary pane (two-phase)
         for (int i = 0; i < _paneCount; i++)
         {
             var f = _panes[i].File; var fn = _panes[i].FileName;
             if (f != null && fn != null && IsFolderSummaryFile(fn, f))
-                await JS.InvokeVoidAsync("pcfViewer.loadPdf",
-                    $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(f)}{SoloParam}&_t={DateTime.UtcNow.Ticks}",
-                    PaneIds[i]);
+                await LoadFolderSummaryTwoPhase(f, PaneIds[i]);
         }
         // Refresh table if modal is open
         if (_showFsModal)

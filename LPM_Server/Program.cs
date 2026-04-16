@@ -956,7 +956,7 @@ app.MapGet("/api/program-insert", (string name, LPM.Services.FolderService svc) 
 app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
     LPM.Services.FolderService folderSvc,
     LPM.Services.DashboardService dashSvc,
-    PdfService pdfSvc, HttpContext ctx, bool solo = false) =>
+    PdfService pdfSvc, HttpContext ctx, bool solo = false, bool summaryOnly = false) =>
 {
     if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
     var originalBytes = folderSvc.ReadFileBytes(pcId, path, solo);
@@ -964,9 +964,18 @@ app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
 
     var pcName = dashSvc.GetPersonName(pcId) ?? $"PC {pcId}";
     var summaries = dashSvc.GetSessionSummariesForPc(pcId, isSolo: solo);
-    Console.WriteLine($"[FolderSummary] PC {pcId} ({pcName}) solo={solo}: {summaries.Count} summaries found");
+    Console.WriteLine($"[FolderSummary] PC {pcId} ({pcName}) solo={solo} summaryOnly={summaryOnly}: {summaries.Count} summaries found");
     if (summaries.Count == 0)
         return Results.File(originalBytes, "application/pdf");
+
+    // Phase 1: return just the QuestPDF summary table (no combine with original)
+    if (summaryOnly)
+    {
+        int origPages = 0;
+        try { origPages = pdfSvc.CountPdfPages(originalBytes); } catch { }
+        var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, origPages);
+        return Results.File(summaryPdf, "application/pdf");
+    }
 
     int originalPageCount = 0;
     int summaryPageCount  = 0;

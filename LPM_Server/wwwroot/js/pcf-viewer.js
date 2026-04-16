@@ -64,7 +64,7 @@ window.pcfViewer = {
         if (pane._currentRenderTask) { try { pane._currentRenderTask.cancel(); } catch(_){} pane._currentRenderTask = null; }
     },
 
-    async loadPdf(url, paneId, targetPage) {
+    async loadPdf(url, paneId, targetPage, prefetchedData) {
         paneId = paneId || this.activePane;
         const pane = this._initPane(paneId);
         pane.isImage = false; // clear image flag when loading PDF
@@ -188,7 +188,10 @@ window.pcfViewer = {
         }
 
         let pdfDoc;
-        const loadingTask = pdfjsLib.getDocument({ url, withCredentials: true, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/', cMapPacked: true });
+        const docSource = prefetchedData
+            ? { data: prefetchedData, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/', cMapPacked: true }
+            : { url, withCredentials: true, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/', cMapPacked: true };
+        const loadingTask = pdfjsLib.getDocument(docSource);
         pane._loadingTask = loadingTask;
         try {
             pdfDoc = await loadingTask.promise;
@@ -2587,6 +2590,47 @@ document.addEventListener('keydown', function (e) {
 });
 
 // Trigger a hidden file-input element by ElementReference — bypasses global-function lookup
+// ── Folder Summary two-phase loading ────────────────────────────────
+window.pcfFsOverlay = {
+    show(paneId) {
+        var viewer = document.getElementById('pcf-viewer-' + paneId);
+        if (!viewer) return;
+        var parent = viewer.parentElement;
+        if (!parent) return;
+        var old = parent.querySelector('.pcf-fs-loading-overlay');
+        if (old) old.remove();
+        var overlay = document.createElement('div');
+        overlay.className = 'pcf-fs-loading-overlay';
+        overlay.innerHTML =
+            '<div class="pcf-fs-loading-ring"></div>' +
+            '<div class="pcf-fs-loading-text">Loading</div>' +
+            '<div class="pcf-fs-loading-dots"><span>.</span><span>.</span><span>.</span></div>';
+        parent.style.position = parent.style.position || 'relative';
+        parent.appendChild(overlay);
+    },
+    hide(paneId) {
+        var viewer = document.getElementById('pcf-viewer-' + paneId);
+        if (!viewer) return;
+        var parent = viewer.parentElement;
+        if (!parent) return;
+        var overlay = parent.querySelector('.pcf-fs-loading-overlay');
+        if (overlay) overlay.remove();
+    },
+    // Pre-fetch full PDF bytes in background, then load via data buffer (no blank flash)
+    async prefetchAndLoad(url, paneId) {
+        try {
+            var resp = await fetch(url, { credentials: 'include' });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            var buf = await resp.arrayBuffer();
+            // Load from pre-fetched data — pdf.js parses from memory (instant, no network wait)
+            await window.pcfViewer.loadPdf(url + '&_prefetched=1', paneId, 0, new Uint8Array(buf));
+        } catch (e) {
+            console.error('[pcfFsOverlay] prefetch failed, falling back to direct load', e);
+            await window.pcfViewer.loadPdf(url, paneId);
+        }
+    }
+};
+
 window.pcfTriggerInput = function (el) { if (el) el.click(); };
 // Fallback for lpmClickById in case javaScriptInterop.js is stale/cached
 window.lpmClickById = window.lpmClickById || function (id) {
