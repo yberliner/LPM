@@ -109,6 +109,7 @@
         <table id="pc-list-table" class="table table-sm table-hover mb-0 pc-list-table">
             <colgroup>
                 <col class="pc-col-name" />
+                <col style="width:72px;" />
                 <col style="width:110px;" />
                 <col style="width:85px;" />
                 <col style="width:80px;" />
@@ -122,6 +123,7 @@
             <thead class="table-light" style="position:sticky;top:0;z-index:1;">
                 <tr>
                     <th class="small ps-2 pc-th-sort @SortClass("name")" @onclick='() => ToggleSort("name")'>@LS.T("pcs.pcName")</th>
+                    <th class="small text-center pc-th-sort @SortClass("org")" @onclick='() => ToggleSort("org")'>Org</th>
                     <th class="small text-center">Wallet</th>
                     <th class="small text-center pc-th-sort @SortClass("balance")" @onclick='() => ToggleSort("balance")'>@LS.T("pcs.balance")</th>
                     <th class="small text-center pc-th-sort @SortClass("hoursLeft")" @onclick='() => ToggleSort("hoursLeft")'>@LS.T("pcs.hoursLeft")</th>
@@ -142,6 +144,13 @@
                         // Safety: render a minimal row if a PC has no wallet yet
                         <tr>
                             <td class="small ps-2">@pc.FullName</td>
+                            <td class="small text-center">
+                                @if (!string.IsNullOrEmpty(pc.OrgName))
+                                {
+                                    <span class="badge rounded-pill"
+                                          style="background:#e0e7ff;color:#4338ca;font-size:.7rem;">@pc.OrgName</span>
+                                }
+                            </td>
                             <td class="small text-muted text-center" colspan="7">
                                 <i class="ri-wallet-3-line me-1"></i>No wallet
                             </td>
@@ -181,6 +190,15 @@
                                 else
                                 {
                                     <span style="opacity:.35; font-size:.72rem; padding-left:8px;">↳</span>
+                                }
+                            </td>
+
+                            @* Org (per-PC, first row only) *@
+                            <td class="small text-center" style="@(isFirst ? "" : "border-top:none;")">
+                                @if (isFirst && !string.IsNullOrEmpty(pc.OrgName))
+                                {
+                                    <span class="badge rounded-pill"
+                                          style="background:#e0e7ff;color:#4338ca;font-size:.7rem;">@pc.OrgName</span>
                                 }
                             </td>
 
@@ -230,8 +248,9 @@
                                 @(isFirst ? pc.AcademyVisits.ToString() : "")
                             </td>
                             @* Hours Purchased (per wallet) *@
-                            <td class="small text-center text-muted" style="@(isFirst ? "" : "border-top:none;")">
-                                @FormatHoursMinutes(w.PurchasedHours)
+                            <td class="small text-center @(w.PurchasedHours < 0 ? "" : "text-muted")"
+                                style="@(isFirst ? "" : "border-top:none;") @(w.PurchasedHours < 0 ? "color:#f87171;font-weight:600;" : "")">
+                                @(w.PurchasedHours < 0 ? "-" : "")@FormatHoursMinutes(w.PurchasedHours)
                             </td>
                             @* Auditor — per-PC, shown only on first row *@
                             <td class="small text-muted text-truncate" style="@(isFirst ? "" : "border-top:none;") max-width:120px;">
@@ -4140,6 +4159,8 @@
                 ("purchased", false) => list.OrderByDescending(p => p.HoursPurchased),
                 ("auditor", true)    => list.OrderBy(p => p.Auditor),
                 ("auditor", false)   => list.OrderByDescending(p => p.Auditor),
+                ("org", true)        => list.OrderBy(p => string.IsNullOrEmpty(p.OrgName) ? "\uFFFF" : p.OrgName),
+                ("org", false)       => list.OrderByDescending(p => string.IsNullOrEmpty(p.OrgName) ? "" : p.OrgName),
                 _ => list.OrderBy(p => _balances.TryGetValue(p.PcId, out var b) ? b.HoursLeft : 0)
             };
 
@@ -4921,7 +4942,7 @@
                 TotalTime: HrsLabel(pc.TotalSessionSec),
                 Sessions: pc.AuditorSessions,
                 AcadVisits: pc.AcademyVisits,
-                HoursPurchased: FormatHoursMinutes(pc.HoursPurchased),
+                HoursPurchased: (pc.HoursPurchased < 0 ? "-" : "") + FormatHoursMinutes(pc.HoursPurchased),
                 Auditor: string.IsNullOrEmpty(pc.Auditor) ? "—" : pc.Auditor
             );
         }).ToList();
