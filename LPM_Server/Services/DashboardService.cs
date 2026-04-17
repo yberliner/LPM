@@ -2301,9 +2301,12 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
+        // Notes='Free' forces salary and charged rate to 0 regardless of caller input.
         cmd.CommandText = @"
             UPDATE cs_reviews
-            SET Status = 'Approved', CsSalaryCentsPerHour = @salary, ChargedCentsRatePerHour = @rate
+            SET Status = 'Approved',
+                CsSalaryCentsPerHour    = CASE WHEN Notes='Free' THEN 0 ELSE @salary END,
+                ChargedCentsRatePerHour = CASE WHEN Notes='Free' THEN 0 ELSE @rate   END
             WHERE CsReviewId = @id";
         cmd.Parameters.AddWithValue("@salary", csSalaryCents);
         cmd.Parameters.AddWithValue("@rate",   chargedRateCents);
@@ -2777,7 +2780,13 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE cs_reviews SET Notes = @notes WHERE CsReviewId = @id";
+        // Flipping Notes to 'Free' also zeroes salary + charged rate atomically.
+        cmd.CommandText = @"
+            UPDATE cs_reviews SET
+                Notes = @notes,
+                CsSalaryCentsPerHour    = CASE WHEN @notes='Free' THEN 0 ELSE CsSalaryCentsPerHour END,
+                ChargedCentsRatePerHour = CASE WHEN @notes='Free' THEN 0 ELSE ChargedCentsRatePerHour END
+            WHERE CsReviewId = @id";
         cmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@id", csReviewId);
         cmd.ExecuteNonQuery();
@@ -3919,11 +3928,13 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
+        // Notes='Free' forces salary and charged rate to 0 regardless of caller input.
         cmd.CommandText = @"
             UPDATE cs_reviews SET
                 ReviewLengthSeconds = @len, Status = @status,
-                Notes = @notes, CsSalaryCentsPerHour = @salary,
-                ChargedCentsRatePerHour = @charged
+                Notes = @notes,
+                CsSalaryCentsPerHour    = CASE WHEN @notes='Free' THEN 0 ELSE @salary  END,
+                ChargedCentsRatePerHour = CASE WHEN @notes='Free' THEN 0 ELSE @charged END
             WHERE CsReviewId = @id";
         cmd.Parameters.AddWithValue("@id", csReviewId);
         cmd.Parameters.AddWithValue("@len", reviewLenSec);

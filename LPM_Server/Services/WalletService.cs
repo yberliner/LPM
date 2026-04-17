@@ -205,126 +205,207 @@ public class WalletService
         conn.Open();
 
         var ids = string.Join(",", wallets.Select(w => w.WalletId));
+        var walletSet = wallets.Select(w => w.WalletId).ToHashSet();
+        int? firstActiveWalletId = wallets.Where(w => w.IsActive)
+                                          .Select(w => (int?)w.WalletId)
+                                          .FirstOrDefault();
 
-        // Purchases totals per wallet.
-        // NOTE: fin_purchase_items.AmountPaid is stored in whole currency units (NIS),
-        // not cents. We multiply by 100 so RemainingCents arithmetic is consistent with
-        // session charges which ARE in cents (ChargedRateCentsPerHour × seconds / 3600).
+        // Budget reset date for this PC (applied to purchases and sessions).
+        string? resetDate;
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"SELECT ResetDate FROM fin_budget_reset
+                                WHERE PcId = @pc AND IsActive = 1
+                                ORDER BY ResetDate DESC LIMIT 1";
+            cmd.Parameters.AddWithValue("@pc", pcId);
+            resetDate = cmd.ExecuteScalar() as string;
+        }
+        string rdPurchFilter  = resetDate != null ? " AND p.PurchaseDate >= @rd"  : "";
+        string rdPurchFilter2 = resetDate != null ? " AND p2.PurchaseDate >= @rd" : "";
+        string rdSessFilter   = resetDate != null ? " AND s.SessionDate >= @rd"   : "";
+
+        // A. Purchases per wallet — Auditing + Transfer items (transfers move balance between
+        // wallets and must be reflected). Book/Course/etc. are excluded so non-audit purchases
+        // don't inflate Hours Left. Reset-date filtered; Rejected excluded.
+        // NULL WalletId purchases on this PC are attributed to the first active wallet (mirrors
+        // the orphan-session handling so legacy pre-wallet data is not silently lost).
+        // fin_purchase_items.AmountPaid is stored in whole currency units; multiply by 100 for cents.
+        int fallbackWalletId = firstActiveWalletId ?? -1;
         var purchCents = new Dictionary<int, long>();
         var purchHours = new Dictionary<int, double>();
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT p.WalletId,
+                SELECT COALESCE(p.WalletId, @fallback) AS EffWalletId,
                        COALESCE(SUM(i.AmountPaid) * 100, 0) AS cents,
                        COALESCE(SUM(i.HoursBought), 0)      AS hrs
                 FROM fin_purchases p
                 JOIN fin_purchase_items i ON i.PurchaseId = p.PurchaseId
-                WHERE p.WalletId IN ({ids})
+                WHERE p.PcId = @pc
+                  AND COALESCE(p.WalletId, @fallback) IN ({ids})
                   AND (p.IsDeleted IS NULL OR p.IsDeleted = 0)
                   AND p.ApprovedStatus <> 'Rejected'
-                GROUP BY p.WalletId";
+                  AND i.ItemType IN ('Auditing', 'Transfer')
+                  {rdPurchFilter}
+                GROUP BY EffWalletId";
+            cmd.Parameters.AddWithValue("@pc", pcId);
+            cmd.Parameters.AddWithValue("@fallback", fallbackWalletId);
+            if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
                 int wid = r.GetInt32(0);
+                if (!walletSet.Contains(wid)) continue; // safety — shouldn't happen
                 purchCents[wid] = r.GetInt64(1);
                 purchHours[wid] = r.GetDouble(2);
             }
         }
 
-        // Session charges per wallet (paid sessions only) — uses LengthSeconds + AdminSeconds
-        // to match the existing PcService billing convention.
-        var sessSec  = new Dictionary<int, long>();
-        var sessCents = new Dictionary<int, long>();
+        // Per-wallet last-Auditing-purchase rate (cents/hr) — used both as fallback inside the
+        // zero-rate session chain and as the effective rate when no rated session exists.
+        // Sums all Auditing items of the latest qualifying purchase (matches old PcService logic).
+        // NULL-WalletId purchases on this PC are attributed to the first active wallet, consistent
+        // with the aggregation above.
+        var lastPurchaseRateCents = new Dictionary<int, int>();
+        foreach (var w in wallets)
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT WalletId,
-                       COALESCE(SUM(CASE WHEN IsFreeSession = 0 THEN LengthSeconds + AdminSeconds ELSE 0 END), 0) AS secs,
-                       COALESCE(SUM(CASE WHEN IsFreeSession = 0
-                                         THEN ((LengthSeconds + AdminSeconds) * ChargedRateCentsPerHour) / 3600
-                                         ELSE 0 END), 0) AS cents
-                FROM sess_sessions
-                WHERE WalletId IN ({ids})
-                GROUP BY WalletId";
-            using var r = cmd.ExecuteReader();
-            while (r.Read())
-            {
-                int wid = r.GetInt32(0);
-                sessSec[wid]   = r.GetInt64(1);
-                sessCents[wid] = r.GetInt64(2);
-            }
-        }
-
-        // Effective rate per wallet:
-        //   1. Most recent approved session's ChargedRateCentsPerHour (already cents/hour).
-        //   2. Else most recent Auditing purchase's rate (amount/hours × 100 to cents/hour).
-        //   3. Else 0.
-        var rateCents = new Dictionary<int, int>();
-        {
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = $@"
-                SELECT WalletId, ChargedRateCentsPerHour
-                FROM (
-                    SELECT WalletId, ChargedRateCentsPerHour, SessionId,
-                           ROW_NUMBER() OVER (PARTITION BY WalletId ORDER BY SessionId DESC) AS rn
-                    FROM sess_sessions
-                    WHERE WalletId IN ({ids})
-                      AND VerifiedStatus = 'Approved'
-                      AND ChargedRateCentsPerHour > 0
-                ) WHERE rn = 1";
-            using var r = cmd.ExecuteReader();
-            while (r.Read())
-                rateCents[r.GetInt32(0)] = r.GetInt32(1);
-        }
-        foreach (var w in wallets.Where(w => !rateCents.ContainsKey(w.WalletId)))
-        {
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                SELECT i.AmountPaid, i.HoursBought
-                FROM fin_purchases p
-                JOIN fin_purchase_items i ON i.PurchaseId = p.PurchaseId
-                WHERE p.WalletId = @w
+                SELECT SUM(i.AmountPaid), SUM(i.HoursBought)
+                FROM fin_purchase_items i
+                JOIN fin_purchases p ON p.PurchaseId = i.PurchaseId
+                WHERE p.PcId = @pc
+                  AND COALESCE(p.WalletId, @fallback) = @w
                   AND i.ItemType = 'Auditing'
-                  AND i.HoursBought > 0
                   AND (p.IsDeleted IS NULL OR p.IsDeleted = 0)
                   AND p.ApprovedStatus <> 'Rejected'
-                ORDER BY p.PurchaseId DESC LIMIT 1";
+                  {rdPurchFilter}
+                  AND p.PurchaseId = (
+                      SELECT p2.PurchaseId
+                      FROM fin_purchases p2
+                      JOIN fin_purchase_items i2 ON i2.PurchaseId = p2.PurchaseId
+                      WHERE p2.PcId = @pc
+                        AND COALESCE(p2.WalletId, @fallback) = @w
+                        AND i2.ItemType = 'Auditing'
+                        AND (p2.IsDeleted IS NULL OR p2.IsDeleted = 0)
+                        AND p2.ApprovedStatus <> 'Rejected'
+                        {rdPurchFilter2}
+                      GROUP BY p2.PurchaseId
+                      HAVING SUM(i2.AmountPaid) <> 0
+                      ORDER BY p2.PurchaseId DESC LIMIT 1
+                  )";
+            cmd.Parameters.AddWithValue("@pc", pcId);
             cmd.Parameters.AddWithValue("@w", w.WalletId);
+            cmd.Parameters.AddWithValue("@fallback", fallbackWalletId);
+            if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
             using var r = cmd.ExecuteReader();
-            if (r.Read())
+            if (r.Read() && !r.IsDBNull(0) && !r.IsDBNull(1))
             {
                 double amt = r.GetDouble(0), hrs = r.GetDouble(1);
-                if (hrs > 0) rateCents[w.WalletId] = (int)Math.Round(amt / hrs * 100);
+                if (Math.Abs(hrs) > 0) lastPurchaseRateCents[w.WalletId] = (int)Math.Round(Math.Abs(amt / hrs) * 100);
             }
         }
 
-        // CS review charges per wallet — only solo CS reviews billed to PC
-        // (matches PcService: s.AuditorId IS NULL AND cr.Notes = 'Bill' AND ChargedCentsRatePerHour > 0)
-        var crSec   = new Dictionary<int, long>();
-        var crCents = new Dictionary<int, long>();
+        // B. Billable sessions (AuditorId IS NOT NULL, IsFreeSession = 0).
+        // NULL WalletId is attributed to the PC's first active wallet so orphan history isn't lost.
+        var sessionsByWallet = new Dictionary<int, List<(int rate, int admin, int length)>>();
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                SELECT s.SessionId,
+                       s.WalletId,
+                       COALESCE(s.ChargedRateCentsPerHour, 0),
+                       COALESCE(s.AdminSeconds, 0),
+                       s.LengthSeconds
+                FROM sess_sessions s
+                WHERE s.PcId = @pc
+                  AND s.AuditorId IS NOT NULL
+                  AND s.IsFreeSession = 0
+                  {rdSessFilter}
+                ORDER BY s.SessionId";
+            cmd.Parameters.AddWithValue("@pc", pcId);
+            if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                int? rowWallet = r.IsDBNull(1) ? null : r.GetInt32(1);
+                int? effWalletN = rowWallet ?? firstActiveWalletId;
+                if (effWalletN is not int eff || !walletSet.Contains(eff)) continue;
+                if (!sessionsByWallet.ContainsKey(eff)) sessionsByWallet[eff] = new();
+                sessionsByWallet[eff].Add((r.GetInt32(2), r.GetInt32(3), r.GetInt32(4)));
+            }
+        }
+
+        // Per-wallet: apply the old backward-looking rate fallback chain (matches
+        // PcService.GetAllPcBalances' pooled logic, now scoped per wallet). Also derive the
+        // effective rate = last session with rate > 0 on that wallet (regardless of approval),
+        // else the last-purchase rate, else 0.
+        var usedSessionCents = new Dictionary<int, long>();
+        var usedSessionSecs  = new Dictionary<int, long>();
+        var effectiveRate    = new Dictionary<int, int>();
+        foreach (var kv in sessionsByWallet)
+        {
+            int wid = kv.Key;
+            int lastSeenRate = 0;
+            int lastRatedSessionRate = 0;
+            decimal centsAcc = 0m;
+            long secsAcc = 0;
+            int purchaseRate = lastPurchaseRateCents.GetValueOrDefault(wid);
+
+            foreach (var s in kv.Value)
+            {
+                int rate;
+                if (s.rate > 0) { rate = s.rate; lastSeenRate = s.rate; lastRatedSessionRate = s.rate; }
+                else            { rate = lastSeenRate > 0 ? lastSeenRate : purchaseRate; }
+                centsAcc += (decimal)rate * (s.admin + s.length) / 3600m;
+                secsAcc  += s.admin + s.length;
+            }
+
+            usedSessionCents[wid] = (long)Math.Round(centsAcc);
+            usedSessionSecs[wid]  = secsAcc;
+            effectiveRate[wid]    = lastRatedSessionRate > 0 ? lastRatedSessionRate : purchaseRate;
+        }
+        // Wallets with no sessions still need an effective rate from the last purchase.
+        foreach (var w in wallets)
+            if (!effectiveRate.ContainsKey(w.WalletId))
+                effectiveRate[w.WalletId] = lastPurchaseRateCents.GetValueOrDefault(w.WalletId);
+
+        // C. Solo CS reviews billed to PC.
+        // Effective wallet = cr.WalletId ?? s.WalletId ?? first-active wallet.
+        // Accumulate cents in decimal, round once at the end (fixes per-row integer-division drift).
+        var crCentsAcc = new Dictionary<int, decimal>();
+        var crSecs     = new Dictionary<int, long>();
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT cr.WalletId,
-                       COALESCE(SUM(cr.ReviewLengthSeconds), 0) AS secs,
-                       COALESCE(SUM((cr.ReviewLengthSeconds * cr.ChargedCentsRatePerHour) / 3600), 0) AS cents
+                       s.WalletId,
+                       cr.ChargedCentsRatePerHour,
+                       COALESCE(cr.ReviewLengthSeconds, 0)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
-                WHERE cr.WalletId IN ({ids})
+                WHERE s.PcId = @pc
                   AND s.AuditorId IS NULL
-                  AND cr.Notes = 'Bill'
+                  AND (cr.Notes IS NULL OR cr.Notes <> 'Free')
                   AND COALESCE(cr.ChargedCentsRatePerHour, 0) > 0
-                GROUP BY cr.WalletId";
+                  {rdSessFilter}";
+            cmd.Parameters.AddWithValue("@pc", pcId);
+            if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
-                int wid = r.GetInt32(0);
-                crSec[wid]   = r.GetInt64(1);
-                crCents[wid] = r.GetInt64(2);
+                int? crWallet = r.IsDBNull(0) ? null : r.GetInt32(0);
+                int? sWallet  = r.IsDBNull(1) ? null : r.GetInt32(1);
+                int? effWalletN = crWallet ?? sWallet ?? firstActiveWalletId;
+                if (effWalletN is not int eff || !walletSet.Contains(eff)) continue;
+
+                int rate = r.GetInt32(2);
+                int len  = r.GetInt32(3);
+                crCentsAcc[eff] = crCentsAcc.GetValueOrDefault(eff) + (decimal)rate * len / 3600m;
+                crSecs[eff]     = crSecs.GetValueOrDefault(eff) + len;
             }
         }
+        var crCents = crCentsAcc.ToDictionary(kv => kv.Key, kv => (long)Math.Round(kv.Value));
 
         return wallets.Select(w => new WalletBalance(
             WalletId:          w.WalletId,
@@ -334,11 +415,11 @@ public class WalletService
             IsActive:          w.IsActive,
             PurchasedCents:    purchCents.GetValueOrDefault(w.WalletId),
             PurchasedHours:    purchHours.GetValueOrDefault(w.WalletId),
-            UsedSessionCents:  sessCents.GetValueOrDefault(w.WalletId),
-            UsedSessionHours:  sessSec.GetValueOrDefault(w.WalletId)   / 3600.0,
+            UsedSessionCents:  usedSessionCents.GetValueOrDefault(w.WalletId),
+            UsedSessionHours:  usedSessionSecs.GetValueOrDefault(w.WalletId) / 3600.0,
             UsedCsReviewCents: crCents.GetValueOrDefault(w.WalletId),
-            UsedCsReviewHours: crSec.GetValueOrDefault(w.WalletId)     / 3600.0,
-            EffectiveRateCentsPerHour: rateCents.GetValueOrDefault(w.WalletId)
+            UsedCsReviewHours: crSecs.GetValueOrDefault(w.WalletId) / 3600.0,
+            EffectiveRateCentsPerHour: effectiveRate.GetValueOrDefault(w.WalletId)
         )).ToList();
     }
 

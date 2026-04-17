@@ -1186,7 +1186,8 @@ public List<PcListItem> GetAllPcs()
             }
         }
 
-        // D: Solo CS review costs (only where cs_reviews.Notes = 'Bill')
+        // D: Solo CS review costs — billed unless Notes is explicitly 'Free'.
+        // Empty/NULL Notes (legacy rows) count as billed.
         var soloCosts = new Dictionary<int, decimal>();
         using (var cmd = conn.CreateCommand())
         {
@@ -1196,7 +1197,7 @@ public List<PcListItem> GetAllPcs()
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
                 LEFT JOIN (SELECT PcId, MAX(ResetDate) AS ResetDate FROM fin_budget_reset WHERE IsActive=1 GROUP BY PcId) br ON br.PcId = s.PcId
                 WHERE s.AuditorId IS NULL AND cr.ChargedCentsRatePerHour > 0
-                  AND cr.Notes = 'Bill'
+                  AND (cr.Notes IS NULL OR cr.Notes <> 'Free')
                   AND (br.ResetDate IS NULL OR s.SessionDate >= br.ResetDate)";
             using var r = cmd.ExecuteReader();
             while (r.Read())
@@ -1973,7 +1974,8 @@ public List<PcListItem> GetAllPcs()
             usedNis += (decimal)rate * (s.admin + s.length) / 3600m / 100m;
         }
 
-        // Solo CS review costs (only where cs_reviews.Notes = 'Bill')
+        // Solo CS review costs — billed unless Notes is explicitly 'Free'.
+        // Empty/NULL Notes (legacy rows) count as billed.
         int soloCount = 0;
         using (var cmd = conn.CreateCommand())
         {
@@ -1982,7 +1984,7 @@ public List<PcListItem> GetAllPcs()
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
                 WHERE s.PcId = @id AND s.AuditorId IS NULL AND cr.ChargedCentsRatePerHour > 0
-                  AND cr.Notes = 'Bill'" + sdFilter;
+                  AND (cr.Notes IS NULL OR cr.Notes <> 'Free')" + sdFilter;
             cmd.Parameters.AddWithValue("@id", pcId);
             if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
             using var r = cmd.ExecuteReader();
@@ -2120,8 +2122,8 @@ public List<PcListItem> GetAllPcs()
             int rateCents = r.GetInt32(3);
             int lengthSec = r.GetInt32(2);
             string notes = r.GetString(4);
-            // Only 'Bill' is charged; 'Free' and NULL/empty (old data) are free
-            bool isFree = notes != "Bill";
+            // Free only if Notes is explicitly 'Free'. Empty/NULL (legacy) and any other text count as billed.
+            bool isFree = notes == "Free";
             bool imported = r.GetInt32(5) == 1;
             decimal cost = isFree ? 0m : (decimal)rateCents * lengthSec / 3600m / 100m;
             int? walletId = r.IsDBNull(6) ? (int?)null : r.GetInt32(6);
