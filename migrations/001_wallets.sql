@@ -27,6 +27,7 @@ CREATE INDEX IF NOT EXISTS ix_fin_wallets_pc ON fin_wallets(PcId);
 ALTER TABLE fin_purchases ADD COLUMN WalletId INTEGER REFERENCES fin_wallets(WalletId);
 ALTER TABLE sess_sessions ADD COLUMN WalletId INTEGER REFERENCES fin_wallets(WalletId);
 ALTER TABLE cs_reviews    ADD COLUMN WalletId INTEGER REFERENCES fin_wallets(WalletId);
+ALTER TABLE fin_purchases ADD COLUMN TransferPurchaseId INTEGER;
 
 -- One wallet per (PcId, Currency) for PCs with existing purchases.
 -- INSERT OR IGNORE prevents duplicates on re-run thanks to UNIQUE(PcId, Name).

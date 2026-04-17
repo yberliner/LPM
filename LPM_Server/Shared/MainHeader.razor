@@ -3384,6 +3384,15 @@
                             <input class="form-control form-control-sm" value="@_smDetail.SessionId" readonly />
                         </div>
                         <div class="sm-field">
+                            <label>PC</label>
+                            <select class="form-select form-select-sm" @bind="_smEditPcId">
+                                @foreach (var pc in _actionAllPcs)
+                                {
+                                    <option value="@pc.PcId">@pc.FullName</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="sm-field">
                             <label>Name</label>
                             <input class="form-control form-control-sm" @bind="_smEditName" />
                         </div>
@@ -5955,6 +5964,7 @@
     string _smSuccess = "";
     Dictionary<string, string> _smCsStatuses = [];
     // Session Manager edit fields
+    int _smEditPcId;
     string _smEditName = "";
     DateOnly _smEditDate;
     int _smEditLenSec;
@@ -7928,6 +7938,7 @@ string _actionPcSearch = "";
     void SmPopulateEditFields()
     {
         if (_smDetail == null) return;
+        _smEditPcId = _smDetail.PcId;
         _smEditName = _smDetail.Name ?? "";
         _smEditDate = DateOnly.TryParse(_smDetail.SessionDate, out var d) ? d : DateOnly.FromDateTime(DateTime.Today);
         _smEditLenSec = _smDetail.LengthSeconds;
@@ -7963,6 +7974,7 @@ string _actionPcSearch = "";
         {
             // Build summary of what changed
             var changes = new List<string>();
+            if (_smEditPcId != detail.PcId) changes.Add("PC");
             if (_smEditName != (detail.Name ?? "")) changes.Add("Name");
             if (_smEditDate.ToString("yyyy-MM-dd") != detail.SessionDate) changes.Add("Date");
             if (_smEditLenSec != detail.LengthSeconds) changes.Add("Duration");
@@ -7986,7 +7998,8 @@ string _actionPcSearch = "";
                 DashSvc.UpdateSessionAdmin(detail.SessionId, _smEditName, _smEditDate.ToString("yyyy-MM-dd"),
                     _smEditLenSec, _smEditAdminSec, _smEditIsFree, _smEditVerified,
                     string.IsNullOrWhiteSpace(_smEditNotes) ? null : _smEditNotes,
-                    _smEditChargeSec, _smEditChargedRate, _smEditAudSalary);
+                    _smEditChargeSec, _smEditChargedRate, _smEditAudSalary,
+                    _smEditPcId != detail.PcId ? _smEditPcId : null);
 
                 if (detail.CsReviewId.HasValue)
                 {
@@ -8010,8 +8023,15 @@ string _actionPcSearch = "";
             _smSaveSuccess = false;
             _smDetail = null;
             _smError = "";
+            // If PcId was changed, switch the list to the new PC
+            if (_smEditPcId != detail.PcId && _smEditPcId > 0)
+            {
+                _smPcId = _smEditPcId;
+                _smPcName = _actionAllPcs.FirstOrDefault(p => p.PcId == _smPcId)?.FullName ?? "";
+                _smSuccess = $"Session moved to {_smPcName}";
+            }
             if (_smSoloMode) SmLoadSoloSessions();
-            else SmLoadPage(_smPage);
+            else SmLoadPage(0);
             StateHasChanged();
         }
         catch (Exception ex) { _smError = $"Save failed: {ex.Message}"; _smSaving = false; }

@@ -3831,12 +3831,13 @@ public class DashboardService
 
     public void UpdateSessionAdmin(int sessionId, string name, string sessionDate,
         int lengthSec, int adminSec, bool isFree, string verifiedStatus,
-        string? approvedNotes, int chargeSec, int chargedRate, int auditorSalaryRate)
+        string? approvedNotes, int chargeSec, int chargedRate, int auditorSalaryRate,
+        int? newPcId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
+        cmd.CommandText = $@"
             UPDATE sess_sessions SET
                 Name = @name, SessionDate = @date,
                 LengthSeconds = @len, AdminSeconds = @admin,
@@ -3844,7 +3845,10 @@ public class DashboardService
                 ApprovedNotes = @notes, ChargeSeconds = @charge,
                 ChargedRateCentsPerHour = @chargedRate,
                 AuditorSalaryCentsPerHour = @audSalary
+                {(newPcId.HasValue ? ", PcId = @newPcId" : "")}
             WHERE SessionId = @sid";
+        if (newPcId.HasValue)
+            cmd.Parameters.AddWithValue("@newPcId", newPcId.Value);
         cmd.Parameters.AddWithValue("@sid", sessionId);
         cmd.Parameters.AddWithValue("@name", name);
         cmd.Parameters.AddWithValue("@date", sessionDate);
