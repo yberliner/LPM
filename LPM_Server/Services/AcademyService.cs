@@ -150,7 +150,7 @@ public class AcademyService
             FROM acad_attendance s
             JOIN core_persons p ON p.PersonId = s.PersonId
             LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
-            LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
+            LEFT JOIN lkp_organizations og ON og.OrgId = COALESCE(s.Org, p.Org)
             WHERE s.VisitDate = @date AND COALESCE(p.IsActive, 1) = 1
             ORDER BY p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
         cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
@@ -161,19 +161,57 @@ public class AcademyService
         return list;
     }
 
-    /// <summary>Adds a visit row. Silently ignored if already visited that day.</summary>
+    /// <summary>Adds a visit row. Silently ignored if already visited that day.
+    /// Org column is pre-filled with the most recent non-NULL override for this person, if any.</summary>
     public void AddVisit(int personId, DateOnly date)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Inherit the most recent explicit Org override for this person, if one exists.
+        int? inheritedOrg = null;
+        using (var lookup = conn.CreateCommand())
+        {
+            lookup.CommandText = @"
+                SELECT Org FROM acad_attendance
+                WHERE PersonId = @pid AND Org IS NOT NULL
+                ORDER BY VisitDate DESC, StudentId DESC
+                LIMIT 1";
+            lookup.Parameters.AddWithValue("@pid", personId);
+            var res = lookup.ExecuteScalar();
+            if (res != null && res != DBNull.Value)
+                inheritedOrg = Convert.ToInt32(res);
+        }
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            INSERT OR IGNORE INTO acad_attendance (PersonId, VisitDate, Org)
+            VALUES (@pid, @date, @org)";
+        cmd.Parameters.AddWithValue("@pid",  personId);
+        cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
+        cmd.Parameters.AddWithValue("@org",  (object?)inheritedOrg ?? DBNull.Value);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[AcademyService] Added attendance for person {personId} (inheritedOrg={inheritedOrg?.ToString() ?? "null"})");
+    }
+
+    /// <summary>
+    /// Overrides the Org column on all acad_attendance rows for a person from a given date onward.
+    /// Future inserts via AddVisit will also inherit this value.
+    /// </summary>
+    public void OverrideOrgFromDate(int personId, DateOnly fromDate, int orgId)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT OR IGNORE INTO acad_attendance (PersonId, VisitDate)
-            VALUES (@pid, @date)";
+            UPDATE acad_attendance
+            SET Org = @org
+            WHERE PersonId = @pid AND VisitDate >= @from";
+        cmd.Parameters.AddWithValue("@org",  orgId);
         cmd.Parameters.AddWithValue("@pid",  personId);
-        cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
-        cmd.ExecuteNonQuery();
-        Console.WriteLine($"[AcademyService] Added attendance for person {personId}");
+        cmd.Parameters.AddWithValue("@from", fromDate.ToString("yyyy-MM-dd"));
+        var rows = cmd.ExecuteNonQuery();
+        Console.WriteLine($"[AcademyService] Org override: PersonId={personId}, From={fromDate:yyyy-MM-dd}, OrgId={orgId}, Rows={rows}");
     }
 
     public void RemoveVisit(int visitId)
@@ -221,7 +259,7 @@ public class AcademyService
             FROM acad_attendance s
             JOIN core_persons p ON p.PersonId = s.PersonId
             LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
-            LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
+            LEFT JOIN lkp_organizations og ON og.OrgId = COALESCE(s.Org, p.Org)
             WHERE s.VisitDate >= @start AND s.VisitDate <= @end
               AND COALESCE(p.IsActive, 1) = 1
             GROUP BY s.PersonId
@@ -254,7 +292,7 @@ public class AcademyService
             FROM acad_attendance s
             JOIN core_persons p ON p.PersonId = s.PersonId
             LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
-            LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
+            LEFT JOIN lkp_organizations og ON og.OrgId = COALESCE(s.Org, p.Org)
             WHERE s.VisitDate >= @start AND s.VisitDate <= @end
             GROUP BY s.PersonId";
         cmd.Parameters.AddWithValue("@start", weekStart.ToString("yyyy-MM-dd"));
@@ -298,7 +336,7 @@ public class AcademyService
             FROM acad_attendance s
             JOIN core_persons p ON p.PersonId = s.PersonId
             LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
-            LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
+            LEFT JOIN lkp_organizations og ON og.OrgId = COALESCE(s.Org, p.Org)
             WHERE s.VisitDate >= @start AND s.VisitDate < @end
               AND COALESCE(p.IsActive, 1) = 1";
         cmd.Parameters.AddWithValue("@start", rangeStart.ToString("yyyy-MM-dd"));
@@ -401,7 +439,7 @@ public class AcademyService
             FROM acad_attendance s
             JOIN core_persons p ON p.PersonId = s.PersonId
             LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
-            LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
+            LEFT JOIN lkp_organizations og ON og.OrgId = COALESCE(s.Org, p.Org)
             WHERE s.VisitDate >= @start AND s.VisitDate < @end
               AND COALESCE(p.IsActive, 1) = 1";
         cmd.Parameters.AddWithValue("@start", rangeStart.ToString("yyyy-MM-dd"));

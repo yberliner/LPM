@@ -301,10 +301,17 @@
                                     <td class="align-middle">
                                         <span class="fw-medium" style="font-size:.86rem;">@s.FullName@if (!string.IsNullOrEmpty(s.Nick)) { <span style="font-size:.72rem;color:#6b7280;"> (@s.Nick)</span> }</span>
                                     </td>
-                                    <td class="align-middle">
+                                    <td class="align-middle acad-org-cell"
+                                        title="Right-click to change org from this week onwards"
+                                        @oncontextmenu:preventDefault="true"
+                                        @oncontextmenu="@(e => OpenOrgMenu(e, s.PersonId, s.FullName, "Week"))">
                                         @if (!string.IsNullOrEmpty(s.Org))
                                         {
                                             <span class="badge rounded-pill" style="background:#e0e7ff;color:#4338ca;font-size:.72rem;">@s.Org</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted" style="font-size:.72rem;">—</span>
                                         }
                                     </td>
                                     <td class="align-middle">
@@ -401,10 +408,17 @@
                                     <td class="align-middle">
                                         <span class="fw-medium" style="font-size:.86rem;">@s.FullName@if (!string.IsNullOrEmpty(s.Nick)) { <span style="font-size:.72rem;color:#6b7280;"> (@s.Nick)</span> }</span>
                                     </td>
-                                    <td class="align-middle">
+                                    <td class="align-middle acad-org-cell"
+                                        title="Right-click to change org from this month onwards"
+                                        @oncontextmenu:preventDefault="true"
+                                        @oncontextmenu="@(e => OpenOrgMenu(e, s.PersonId, s.FullName, "Month"))">
                                         @if (!string.IsNullOrEmpty(s.Org))
                                         {
                                             <span class="badge rounded-pill" style="background:#e0e7ff;color:#4338ca;font-size:.72rem;">@s.Org</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted" style="font-size:.72rem;">—</span>
                                         }
                                     </td>
                                     <td class="align-middle">
@@ -985,7 +999,74 @@
         70%  { transform: scale(.98); }
         100% { transform: scale(1); filter: brightness(1); }
     }
+
+    /* ── Org override right-click target + menu ── */
+    .acad-org-cell { cursor: context-menu; }
+    .acad-org-cell:hover { background: #f1f5f9; }
+
+    .acad-org-menu-backdrop {
+        position: fixed; inset: 0;
+        background: transparent;
+        z-index: 10050;
+    }
+    .acad-org-menu {
+        position: fixed;
+        z-index: 10051;
+        min-width: 200px;
+        background: #fff;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        box-shadow: 0 10px 28px rgba(0, 0, 0, .18);
+        padding: 6px 0;
+        overflow: hidden;
+    }
+    .acad-org-menu-header {
+        padding: 6px 12px;
+        border-bottom: 1px solid #e2e8f0;
+        font-size: .72rem;
+        color: #64748b;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .acad-org-menu-header b { color: #0f172a; font-weight: 600; }
+    .acad-org-menu-item {
+        display: flex; align-items: center; gap: 8px;
+        padding: 7px 14px;
+        font-size: .84rem;
+        color: #0f172a;
+        cursor: pointer;
+        border: 0;
+        background: transparent;
+        width: 100%;
+        text-align: left;
+    }
+    .acad-org-menu-item:hover { background: #e0e7ff; color: #4338ca; }
+    .acad-org-menu-item i { font-size: .9rem; color: #6366f1; }
 </style>
+
+@* ── Org override right-click menu ── *@
+@if (_orgMenuOpen)
+{
+    <div class="acad-org-menu-backdrop"
+         @onclick="CloseOrgMenu"
+         @oncontextmenu:preventDefault="true"
+         @oncontextmenu="CloseOrgMenu"></div>
+    <div class="acad-org-menu" style="left:@(_orgMenuX)px; top:@(_orgMenuY)px;" @onclick:stopPropagation="true">
+        <div class="acad-org-menu-header">
+            Set org for <b>@_orgMenuPersonName</b><br />
+            from @(_orgMenuScope == "Month" ? "start of month" : "start of week")
+            (@_orgMenuFromDate.ToString("dd/MM/yy"))
+        </div>
+        @foreach (var org in _allOrgs)
+        {
+            var oid = org.OrgId;
+            <button type="button" class="acad-org-menu-item" @onclick="() => ApplyOrgOverride(oid)">
+                <i class="ri-building-line"></i>@org.Name
+            </button>
+        }
+    </div>
+}
 
 @* ── No active course warning popup ── *@
 @if (_showNoCourseWarning && _pendingVisitPerson != null)
@@ -1040,6 +1121,37 @@
     List<(int PersonId, string FullName, int VisitCount, int TotalSessions, string Source, string Org, string Nick)> _monthStudents = [];
     Dictionary<int, List<OpenCourseEntry>> _personOpenCourses = [];
     List<CourseItem>        _allCourses        = [];
+
+    // ── Org override context menu ────────────────────────────────────────────
+    bool   _orgMenuOpen;
+    double _orgMenuX;
+    double _orgMenuY;
+    int    _orgMenuPersonId;
+    string _orgMenuPersonName = "";
+    DateOnly _orgMenuFromDate;
+    string _orgMenuScope = ""; // "Week" or "Month"
+    List<(int OrgId, string Name)> _allOrgs = [];
+
+    void OpenOrgMenu(MouseEventArgs e, int personId, string personName, string scope)
+    {
+        if (_allOrgs.Count == 0) _allOrgs = AcademySvc.GetAllOrganizations();
+        _orgMenuPersonId  = personId;
+        _orgMenuPersonName = personName;
+        _orgMenuScope     = scope;
+        _orgMenuFromDate  = scope == "Month" ? _monthStart : _weekStart;
+        _orgMenuX         = e.ClientX;
+        _orgMenuY         = e.ClientY;
+        _orgMenuOpen      = true;
+    }
+
+    void CloseOrgMenu() { _orgMenuOpen = false; }
+
+    void ApplyOrgOverride(int orgId)
+    {
+        AcademySvc.OverrideOrgFromDate(_orgMenuPersonId, _orgMenuFromDate, orgId);
+        _orgMenuOpen = false;
+        RefreshChart();
+    }
 
     // Helper: stringify open courses for display/PDF (backward compat)
     string OpenCoursesStr(int personId)
