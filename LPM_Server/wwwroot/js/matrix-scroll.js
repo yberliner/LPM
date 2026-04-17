@@ -28,6 +28,15 @@
             const dy = e.deltaY;
             if (dy === 0) return;
 
+            // Trackpad detection — pixel-mode events with small per-tick deltas.
+            // For trackpads we must let the browser's native scroll chain run: manually
+            // preventDefault-ing + scrollBy-ing on every micro-event interrupts the OS
+            // momentum accumulation and makes scrolling feel stuck on Mac touchpads.
+            // Mouse wheels (even high-DPI) produce per-tick deltas well above this
+            // threshold, or use deltaMode !== 0 (line/page), so they still get the
+            // custom page-first UX below.
+            if (e.deltaMode === 0 && Math.abs(dy) < 50) return;
+
             const rect = el.getBoundingClientRect();
             const vh   = window.innerHeight;
             const atInternalTop    = el.scrollTop <= 0;

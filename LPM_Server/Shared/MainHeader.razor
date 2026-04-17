@@ -2399,11 +2399,66 @@
                         <div style="font-size:.7rem; color:#64748b; margin:-4px 0 8px 52px;">
                             File will be saved as: <span style="color:#94a3b8; font-weight:600;">@(_memoPreviewName).pdf</span>
                         </div>
-                        <div class="mb-1" id="memo-quill-wrap">
+                        @* Upload existing PDF — alternative to writing in the editor *@
+                        <div class="d-flex align-items-center gap-2 mb-2" style="flex-wrap:wrap;">
+                            @if (!MemoPdfMode)
+                            {
+                                <button type="button"
+                                        class="btn btn-sm d-flex align-items-center gap-1"
+                                        style="background:#1e293b; color:#cbd5e1; border:1px solid #475569; font-size:.78rem;"
+                                        onclick="document.getElementById('memo-pdf-upload-input').click()">
+                                    <i class="ri-file-upload-line"></i> Use existing PDF
+                                </button>
+                                <span style="font-size:.72rem; color:#64748b;">Upload a finished PDF instead of writing a memo.</span>
+                            }
+                            <InputFile id="memo-pdf-upload-input"
+                                       style="display:none;"
+                                       accept=".pdf"
+                                       OnChange="OnMemoPdfUploaded" />
+                        </div>
+
+                        @if (MemoPdfMode)
+                        {
+                            <div class="mb-2 p-2 rounded d-flex align-items-center gap-2"
+                                 style="background:#0b1220; border:1px solid #334155; color:#e2e8f0;">
+                                <i class="ri-file-pdf-2-line" style="font-size:1.4rem; color:#ef4444;"></i>
+                                <div style="flex:1; min-width:0;">
+                                    <div style="font-size:.85rem; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                                        @_memoUploadedPdfName
+                                    </div>
+                                    <div style="font-size:.7rem; color:#94a3b8;">
+                                        @FormatBytes(_memoUploadedPdfSize) · This PDF will be saved instead of the memo editor content.
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-sm p-0"
+                                        style="color:#f87171; background:transparent; border:none;"
+                                        title="Remove uploaded PDF and return to the editor"
+                                        @onclick="RemoveMemoUploadedPdf">
+                                    <i class="ri-close-circle-line" style="font-size:1.3rem;"></i>
+                                </button>
+                            </div>
+                        }
+                        else if (!string.IsNullOrEmpty(_memoUploadedPdfError))
+                        {
+                            <div class="alert alert-danger d-flex align-items-center gap-2 mb-2 py-2" style="font-size:.78rem;">
+                                <i class="ri-error-warning-line"></i>@_memoUploadedPdfError
+                            </div>
+                        }
+
+                        <div class="mb-1 position-relative" id="memo-quill-wrap"
+                             style="@(MemoPdfMode ? "pointer-events:none; opacity:.35;" : "")">
                             <label class="form-label" style="font-size:.82rem; color:#94a3b8;">@LS.T("actions.memoText")</label>
                             <div id="memo-quill-editor"
                                  style="background:#fff; color:#000; min-height:260px; border-radius:0 0 4px 4px;">
                             </div>
+                            @if (MemoPdfMode)
+                            {
+                                <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none;">
+                                    <span style="background:rgba(15,23,42,.88); color:#e2e8f0; padding:6px 14px; border-radius:6px; font-size:.82rem; font-weight:600; box-shadow:0 4px 12px rgba(0,0,0,.3);">
+                                        <i class="ri-lock-line me-1"></i>Editor disabled — using uploaded PDF
+                                    </span>
+                                </div>
+                            }
                         </div>
                         <div style="font-size:.72rem; color:#64748b; margin-top:6px;">
                             <i class="ri-information-line me-1"></i>
@@ -2429,11 +2484,14 @@
                                 @onclick="() => _memoStep = 1">
                             <i class="ri-arrow-left-s-line"></i> Back
                         </button>
-                        <button class="btn btn-sm d-flex align-items-center gap-1"
-                                style="background:linear-gradient(135deg,#0ea5e9,#6366f1); color:#fff; border:none;"
-                                @onclick="ExecuteMemoFromScanBox">
-                            <i class="ri-inbox-archive-line me-1"></i>Import from ScanBox
-                        </button>
+                        @if (!MemoPdfMode)
+                        {
+                            <button class="btn btn-sm d-flex align-items-center gap-1"
+                                    style="background:linear-gradient(135deg,#0ea5e9,#6366f1); color:#fff; border:none;"
+                                    @onclick="ExecuteMemoFromScanBox">
+                                <i class="ri-inbox-archive-line me-1"></i>Import from ScanBox
+                            </button>
+                        }
                         <button class="btn btn-sm btn-outline-light" @onclick="() => _showMemoWizard = false">@LS.T("common.cancel")</button>
                         <button class="btn btn-sm d-flex align-items-center gap-1"
                                 style="background:linear-gradient(135deg,#be185d,#ec4899); color:#fff; border:none;"
@@ -3447,7 +3505,13 @@
                         </div>
                         <div class="sm-field">
                             <label>Auditor</label>
-                            <input class="form-control form-control-sm" value="@_smDetail.AuditorName" readonly />
+                            <select class="form-select form-select-sm" @bind="_smEditAuditorId">
+                                <option value="0">— none (Solo) —</option>
+                                @foreach (var a in _smAddAuditorList)
+                                {
+                                    <option value="@a.PersonId">@a.FullName</option>
+                                }
+                            </select>
                         </div>
                         <div class="sm-field">
                             <label>Created</label>
@@ -6108,6 +6172,7 @@
     string _smEditCsNotes = "";
     int _smEditCsSalary;
     int _smEditCsCharged;
+    int _smEditAuditorId; // 0 = no auditor (solo)
     int _smEditCsId;
     List<(int PersonId, string FullName)> _smCsList = [];
     bool _smSaveSuccess;
@@ -6244,6 +6309,14 @@
     string _memoScanBoxError = "";
     DateOnly _memoDate = DateOnly.FromDateTime(DateTime.Today);
     string _memoFileName = "";
+
+    // Upload-existing-PDF state (alternative to Quill editor)
+    byte[]? _memoUploadedPdfBytes;
+    string  _memoUploadedPdfName  = "";
+    long    _memoUploadedPdfSize;
+    string  _memoUploadedPdfError = "";
+    const long MemoPdfMaxBytes    = 100L * 1024 * 1024; // 100 MB
+    bool MemoPdfMode => _memoUploadedPdfBytes != null;
 
     // ── Add Next C/S wizard state ──
     bool   _showNcWizard;
@@ -8193,6 +8266,7 @@ string _actionPcSearch = "";
         _smDelStage1 = false; _smDelStage2 = false; _smDelInput = ""; _smDelError = "";
         _smShowTransfer = false; _smTransferPcId = 0; _smTransferring = false;
         _smCsList = DashSvc.GetCsStaffList(0);
+        if (_smAddAuditorList.Count == 0) _smAddAuditorList = DashSvc.GetAuditorCsStaffList();
         SmPopulateEditFields();
     }
 
@@ -8215,6 +8289,7 @@ string _actionPcSearch = "";
         _smEditCsSalary = _smDetail.CsSalaryCentsPerHour ?? 0;
         _smEditCsCharged = _smDetail.CsChargedCentsRatePerHour ?? 0;
         _smEditCsId = _smDetail.CsId ?? 0;
+        _smEditAuditorId = _smDetail.AuditorId ?? 0;
     }
 
     void SmBackToList()
@@ -8243,6 +8318,7 @@ string _actionPcSearch = "";
             if (_smEditChargeSec != detail.ChargeSeconds) changes.Add("Charge");
             if (_smEditChargedRate != detail.ChargedRateCentsPerHour) changes.Add("Rate");
             if (_smEditAudSalary != detail.AuditorSalaryCentsPerHour) changes.Add("Aud Salary");
+            if (_smEditAuditorId != (detail.AuditorId ?? 0)) changes.Add("Auditor");
             if (detail.CsReviewId.HasValue)
             {
                 if (_smEditCsReviewLen != (detail.ReviewLengthSeconds ?? 0)) changes.Add("CS Length");
@@ -8257,7 +8333,8 @@ string _actionPcSearch = "";
                 DashSvc.UpdateSessionAdmin(detail.SessionId, _smEditName, _smEditDate.ToString("yyyy-MM-dd"),
                     _smEditLenSec, _smEditAdminSec, _smEditIsFree, _smEditVerified,
                     string.IsNullOrWhiteSpace(_smEditNotes) ? null : _smEditNotes,
-                    _smEditChargeSec, _smEditChargedRate, _smEditAudSalary);
+                    _smEditChargeSec, _smEditChargedRate, _smEditAudSalary,
+                    _smEditAuditorId > 0 ? (int?)_smEditAuditorId : null);
 
                 if (detail.CsReviewId.HasValue)
                 {
@@ -8451,8 +8528,8 @@ string _actionPcSearch = "";
         _smAddAuditorList = DashSvc.GetAuditorCsStaffList();
         _smCsList = DashSvc.GetCsStaffList(0);
         _smAddMode = true;
-        // Auto-fill auditor/CS from the most recent session for this PC
-        if (_smAddPcId > 0) SmAutoFillStaff(_smAddPcId);
+        // Default auditor/CS to the current user (when the current user is in the respective list)
+        SmDefaultStaffToCurrentUser();
     }
 
     void SmAddPcChanged(ChangeEventArgs e)
@@ -8460,16 +8537,15 @@ string _actionPcSearch = "";
         _smAddPcId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
         _smAddAuditorId = 0;
         _smAddCsId = -1;
-        if (_smAddPcId > 0) SmAutoFillStaff(_smAddPcId);
+        SmDefaultStaffToCurrentUser();
     }
 
-    void SmAutoFillStaff(int pcId)
+    void SmDefaultStaffToCurrentUser()
     {
-        var (auditorId, csId) = DashSvc.GetLastSessionStaff(pcId);
-        if (auditorId.HasValue && _smAddAuditorList.Any(a => a.PersonId == auditorId.Value))
-            _smAddAuditorId = auditorId.Value;
-        if (csId.HasValue && csId.Value >= 0 && _smCsList.Any(c => c.PersonId == csId.Value))
-            _smAddCsId = csId.Value;
+        if (!_msgUserId.HasValue) return;
+        var me = _msgUserId.Value;
+        if (_smAddAuditorList.Any(a => a.PersonId == me)) _smAddAuditorId = me;
+        // CS intentionally defaults to None (-1) — user selects manually if needed.
     }
 
     void SmCancelAdd()
@@ -9268,6 +9344,10 @@ string _actionPcSearch = "";
         _memoScanBoxError    = "";
         _memoDate            = DateOnly.FromDateTime(DateTime.Today);
         _memoFileName        = "";
+        _memoUploadedPdfBytes = null;
+        _memoUploadedPdfName  = "";
+        _memoUploadedPdfSize  = 0;
+        _memoUploadedPdfError = "";
         _showMemoWizard      = true;
 
         // Solo users have a pre-set PC — skip step 1 and go directly to step 2
@@ -9383,11 +9463,94 @@ string _actionPcSearch = "";
         });
     }
 
+    async Task OnMemoPdfUploaded(InputFileChangeEventArgs e)
+    {
+        _memoUploadedPdfError = "";
+        try
+        {
+            var file = e.File;
+            if (file == null) return;
+            if (file.Size > MemoPdfMaxBytes)
+            {
+                _memoUploadedPdfError = $"File is too large ({FormatBytes(file.Size)}). Limit is {FormatBytes(MemoPdfMaxBytes)}.";
+                return;
+            }
+
+            using var ms = new System.IO.MemoryStream();
+            await using (var src = file.OpenReadStream(MemoPdfMaxBytes))
+                await src.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+
+            // Validate PDF magic bytes (%PDF-)
+            if (bytes.Length < 5 ||
+                bytes[0] != 0x25 || bytes[1] != 0x50 || bytes[2] != 0x44 ||
+                bytes[3] != 0x46 || bytes[4] != 0x2D)
+            {
+                _memoUploadedPdfError = "That file doesn't look like a valid PDF.";
+                return;
+            }
+
+            _memoUploadedPdfBytes = bytes;
+            _memoUploadedPdfName  = file.Name;
+            _memoUploadedPdfSize  = file.Size;
+
+            // Auto-prefill the memo filename from the uploaded PDF's base name (without extension)
+            if (string.IsNullOrWhiteSpace(_memoFileName))
+            {
+                var baseName = System.IO.Path.GetFileNameWithoutExtension(file.Name) ?? "";
+                _memoFileName = baseName.Trim();
+            }
+        }
+        catch (Exception ex)
+        {
+            _memoUploadedPdfError = $"Could not read the PDF: {ex.Message}";
+        }
+        finally
+        {
+            // Clear the file input's value so re-selecting the same file (after fail or remove) still fires OnChange
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("eval",
+                    "var el=document.getElementById('memo-pdf-upload-input');if(el)el.value='';");
+            }
+            catch { /* non-fatal */ }
+        }
+    }
+
+    async Task RemoveMemoUploadedPdf()
+    {
+        _memoUploadedPdfBytes = null;
+        _memoUploadedPdfName  = "";
+        _memoUploadedPdfSize  = 0;
+        _memoUploadedPdfError = "";
+        // Clear the file input's value so re-selecting the same file still fires OnChange
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("eval",
+                "var el=document.getElementById('memo-pdf-upload-input');if(el)el.value='';");
+        }
+        catch { /* non-fatal */ }
+    }
+
+    static string FormatBytes(long bytes)
+    {
+        if (bytes <= 0)             return "0 B";
+        if (bytes < 1024)           return $"{bytes} B";
+        if (bytes < 1024 * 1024)    return $"{bytes / 1024.0:0.#} KB";
+        if (bytes < 1024L * 1024 * 1024) return $"{bytes / (1024.0 * 1024):0.##} MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):0.##} GB";
+    }
+
     async Task ExecuteMemo()
     {
-        // Read HTML while modal is still open and Quill is in DOM
-        var html = await JSRuntime.InvokeAsync<string>("eval",
-            "window._memoQuill ? window._memoQuill.root.innerHTML : ''");
+        // If the user uploaded a finished PDF, skip Quill and use the bytes directly.
+        var uploadedPdf = _memoUploadedPdfBytes;
+
+        // Read HTML while modal is still open and Quill is in DOM (only needed in editor mode)
+        var html = uploadedPdf != null
+            ? ""
+            : await JSRuntime.InvokeAsync<string>("eval",
+                "window._memoQuill ? window._memoQuill.root.innerHTML : ''");
 
         var capturedPcId     = _memoPcId;
         var capturedSolo     = _memoSolo || _isSoloUser;
@@ -9396,7 +9559,10 @@ string _actionPcSearch = "";
         var capturedDate     = _memoDate;
         var capturedMemoName = BuildMemoFileName(_memoDate, _memoFileName);
 
-        Console.WriteLine($"[Memo] Quill HTML: {html}");
+        if (uploadedPdf != null)
+            Console.WriteLine($"[Memo] Using uploaded PDF: {_memoUploadedPdfName} ({uploadedPdf.Length} bytes)");
+        else
+            Console.WriteLine($"[Memo] Quill HTML: {html}");
 
         // Close modal immediately, start toast
         _showMemoWizard = false;
@@ -9404,30 +9570,48 @@ string _actionPcSearch = "";
         _memoDone       = false;
         _memoError      = "";
         _memoLabel      = capturedSolo ? $"{capturedPcName} [Solo]" : capturedPcName;
-        _memoSteps = new List<BgStep>
-        {
-            new("Generating report PDF"),
-            new("Saving to WorkSheets"),
-            new("Adding session entry"),
-        };
+        _memoSteps = uploadedPdf != null
+            ? new List<BgStep>
+            {
+                new("Saving uploaded PDF"),
+                new("Adding session entry"),
+            }
+            : new List<BgStep>
+            {
+                new("Generating report PDF"),
+                new("Saving to WorkSheets"),
+                new("Adding session entry"),
+            };
         StateHasChanged();
 
         _ = Task.Run(async () =>
         {
             try
             {
-                var sGen  = _memoSteps[0];
-                var sSave = _memoSteps[1];
-                var sDb   = _memoSteps[2];
+                byte[] pdfBytes;
+                BgStep sSave, sDb;
 
-                // Step 1: Generate PDF
-                sGen.Status = 1;
-                await InvokeAsync(StateHasChanged);
-                var pdfBytes = PdfSvc.GenerateMemoPdf(html);
-                sGen.Status = 2;
-                await InvokeAsync(StateHasChanged);
+                if (uploadedPdf != null)
+                {
+                    sSave = _memoSteps[0];
+                    sDb   = _memoSteps[1];
+                    pdfBytes = uploadedPdf;
+                }
+                else
+                {
+                    var sGen = _memoSteps[0];
+                    sSave    = _memoSteps[1];
+                    sDb      = _memoSteps[2];
 
-                // Step 2: Save to WorkSheets
+                    // Step 1: Generate PDF from Quill HTML
+                    sGen.Status = 1;
+                    await InvokeAsync(StateHasChanged);
+                    pdfBytes = PdfSvc.GenerateMemoPdf(html);
+                    sGen.Status = 2;
+                    await InvokeAsync(StateHasChanged);
+                }
+
+                // Save to WorkSheets
                 sSave.Status = 1;
                 await InvokeAsync(StateHasChanged);
                 var savedName = await Task.Run(() =>
@@ -9435,7 +9619,7 @@ string _actionPcSearch = "";
                 sSave.Status = 2;
                 await InvokeAsync(StateHasChanged);
 
-                // Step 3: Insert session row
+                // Insert session row
                 sDb.Status = 1;
                 await InvokeAsync(StateHasChanged);
                 DashSvc.AddMemoSession(capturedAudId, capturedPcId, savedName, capturedDate, capturedSolo);

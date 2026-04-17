@@ -255,19 +255,21 @@
                     {
                         @foreach (var sessCurr in group.Sessions.GroupBy(s => s.Currency).OrderBy(g => g.Key))
                         {
-                            var sessCurrTotal = sessCurr.Where(s => s.IsApproved).Sum(s => s.PaymentCents);
+                            var sessCurrTotal = sessCurr.Where(s => s.IsApproved && !s.IsFree).Sum(s => s.PaymentCents);
                             <div class="sal-section-label">
                                 <i class="ri-stethoscope-line me-1"></i>Sessions — @sessCurr.Key @SalCurrSym(sessCurr.Key)
                             </div>
                             <div class="table-responsive">
                                 <table class="table table-sm mb-0 sal-table sal-table-fixed">
                                     <colgroup>
-                                        <col style="width:10%;" /><col /><col style="width:11%;" />
-                                        <col style="width:12%;" /><col style="width:14%;" /><col style="width:11%;" />
+                                        <col style="width:9%;" /><col style="width:7%;" /><col />
+                                        <col style="width:11%;" /><col style="width:12%;" />
+                                        <col style="width:14%;" /><col style="width:11%;" />
                                     </colgroup>
                                     <thead>
                                         <tr class="sal-thead">
                                             <th>Date</th>
+                                            <th>ID</th>
                                             <th>PC</th>
                                             <th class="text-center">Duration</th>
                                             <th class="text-end">Rate /hr</th>
@@ -278,17 +280,21 @@
                                     <tbody>
                                         @foreach (var s in sessCurr)
                                         {
-                                            <tr class="@(s.IsApproved ? "" : "sal-row-pending")">
+                                            <tr class="@(s.IsApproved ? "" : "sal-row-pending")" style="@(s.IsFree ? "opacity:.7;" : "")">
                                                 <td class="sal-date">@FormatDate(s.Date)</td>
-                                                <td class="sal-pc">@s.PcName</td>
+                                                <td class="sal-id">@s.SessionId</td>
+                                                <td class="sal-pc @(_soloPcIds.Contains(s.PcId) ? "sal-pc-solo" : "")">
+                                                    @s.PcName
+                                                    @if (s.IsFree) { <span class="sal-free-tag">Free</span> }
+                                                </td>
                                                 <td class="text-center"><span class="sal-dur-badge">@FmtDur(s.DurationSec)</span></td>
-                                                <td class="text-end sal-rate">@if (s.IsApproved) { @($"{SalCurrSym(s.Currency)} {s.RateCentsPerHour / 100}") } else { <span class="sal-pending-dash">—</span> }</td>
-                                                <td class="text-end sal-payment">@if (s.IsApproved) { @($"{SalCurrSym(s.Currency)} {FormatShekel(s.PaymentCents)}") } else { <span class="sal-pending-dash">—</span> }</td>
-                                                <td class="text-center">@if (s.IsApproved) { <span class="sal-badge-approved">Approved</span> } else { <span class="sal-badge-pending">Pending</span> }</td>
+                                                <td class="text-end sal-rate">@if (s.IsFree) { <span style="color:#dc2626;font-weight:600;">@SalCurrSym(s.Currency) 0</span> } else if (s.IsApproved) { @($"{SalCurrSym(s.Currency)} {s.RateCentsPerHour / 100}") } else { <span class="sal-pending-dash">—</span> }</td>
+                                                <td class="text-end sal-payment">@if (s.IsFree) { <span style="color:#dc2626;font-weight:600;">@SalCurrSym(s.Currency) 0</span> } else if (s.IsApproved) { @($"{SalCurrSym(s.Currency)} {FormatShekel(s.PaymentCents)}") } else { <span class="sal-pending-dash">—</span> }</td>
+                                                <td class="text-center">@if (s.IsFree) { <span class="sal-free-tag">Free session</span> } else if (s.IsApproved) { <span class="sal-badge-approved">Approved</span> } else { <span class="sal-badge-pending">Pending</span> }</td>
                                             </tr>
                                         }
                                         <tr class="sal-subtotal-row">
-                                            <td colspan="4" class="text-end fw-bold">Subtotal</td>
+                                            <td colspan="5" class="text-end fw-bold">Subtotal</td>
                                             <td class="text-end fw-bold sal-payment">@SalCurrSym(sessCurr.Key) @FormatShekel(sessCurrTotal)</td>
                                             <td></td>
                                         </tr>
@@ -310,12 +316,14 @@
                             <div class="table-responsive">
                                 <table class="table table-sm mb-0 sal-table sal-table-fixed">
                                     <colgroup>
-                                        <col style="width:10%;" /><col /><col style="width:11%;" />
-                                        <col style="width:12%;" /><col style="width:14%;" /><col style="width:11%;" />
+                                        <col style="width:8%;" /><col style="width:15%;" /><col />
+                                        <col style="width:11%;" /><col style="width:12%;" />
+                                        <col style="width:14%;" /><col style="width:11%;" />
                                     </colgroup>
                                     <thead>
                                         <tr class="sal-thead">
                                             <th>Date</th>
+                                            <th>ID</th>
                                             <th>PC</th>
                                             <th class="text-center">Duration</th>
                                             <th class="text-end">Rate /hr</th>
@@ -328,8 +336,12 @@
                                         {
                                             <tr class="@(c.IsApproved ? "" : "sal-row-pending")" style="@(c.IsFree ? "opacity:.7;" : "")">
                                                 <td class="sal-date">@FormatDate(c.Date)</td>
-                                                <td class="sal-pc">
-                                                    @c.PcName
+                                                <td class="sal-id">
+                                                    <span class="sal-id-cs" title="CS Review ID">cs #@c.CsReviewId</span>
+                                                    <span class="sal-id-sess" title="Session ID">sess #@c.SessionId</span>
+                                                </td>
+                                                <td class="sal-pc @(_soloPcIds.Contains(c.PcId) ? "sal-pc-solo" : "")">
+                                                    @c.PcName@(c.IsSolo ? " (solo)" : "")
                                                     @if (c.IsFree) { <span class="sal-free-tag">Free</span> }
                                                 </td>
                                                 <td class="text-center"><span class="sal-dur-badge">@FmtDur(c.DurationSec)</span></td>
@@ -339,7 +351,7 @@
                                             </tr>
                                         }
                                         <tr class="sal-subtotal-row">
-                                            <td colspan="4" class="text-end fw-bold">Subtotal</td>
+                                            <td colspan="5" class="text-end fw-bold">Subtotal</td>
                                             <td class="text-end fw-bold sal-payment">@SalCurrSym(csCurr.Key) @FormatShekel(csCurrTotal)</td>
                                             <td></td>
                                         </tr>
@@ -700,6 +712,7 @@
     string? _error;
     List<UserSalaryGroup>? _groups;
     List<UnassignedReferralRow> _unassigned = new();
+    HashSet<int> _soloPcIds = new();
     int _periodYear;
     int _periodMonth;
     HashSet<string> _collapsed = new();
@@ -861,6 +874,7 @@
             var report = DashSvc.GetSalaryReport(from, to);
             _groups = report.Groups;
             _unassigned = report.UnassignedReferrals;
+            _soloPcIds = DashSvc.GetSoloPcIds();
         }
         catch (Exception ex)
         {
@@ -1055,7 +1069,33 @@
     }
     .sal-table td { padding: 7px 12px; font-size: .83rem; vertical-align: middle; border-bottom: 1px solid rgba(100,116,139,.07); }
     .sal-date   { font-weight: 600; color: var(--custom-black); white-space: nowrap; }
+    .sal-id     { color: #64748b; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    /* CS review id — purple chip (matches CS theme) */
+    .sal-id-cs {
+        display: inline-block;
+        background: #ede9fe;
+        color: #6d28d9;
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-weight: 700;
+        font-size: .68rem;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: .2px;
+    }
+    /* Underlying session id — neutral gray chip, smaller */
+    .sal-id-sess {
+        display: inline-block;
+        background: #f1f5f9;
+        color: #64748b;
+        padding: 1px 5px;
+        border-radius: 4px;
+        font-size: .62rem;
+        margin-left: 3px;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: .2px;
+    }
     .sal-pc     { color: #475569; }
+    .sal-pc-solo { color: #ea580c !important; font-weight: 600; }
     .sal-rate   { color: #64748b; font-size: .78rem; }
     .sal-payment{ font-weight: 700; color: #059669; }
     .sal-dur-badge {

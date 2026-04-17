@@ -23,11 +23,15 @@
         .ql-snow .ql-picker.ql-size .ql-picker-item[data-value=""]::before { content: 'Normal' !important; }
     </style>
     <script>
-        // Block Ctrl+W in PWA window — must be in <head>, capture phase
+        // Block the browser from closing the tab on Ctrl+W (PWA + regular window).
+        // Must be in <head>, capture phase, so it runs before the browser's default.
+        // DO NOT add stopPropagation() or stopImmediatePropagation() here — the Blazor
+        // handler in PcFolder.razor needs to see this event to fire OnCtrlW
+        // (Save & Close / CS Done). Only preventDefault() is needed to stop the browser
+        // from closing the tab; propagation must continue downstream.
         document.addEventListener('keydown', function(e) {
             if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.code === 'KeyW') {
                 e.preventDefault();
-                e.stopImmediatePropagation();
             }
         }, true);
     </script>

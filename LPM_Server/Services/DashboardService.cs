@@ -32,8 +32,8 @@ public record CsReviewerGroup(int CsId, string CsName, List<PcCsGroup> PcGroups)
 
 public record StaffMember(int PersonId, string FullName);
 
-public record SalarySessionRow(string Date, string PcName, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved, string Currency = "ILS");
-public record SalaryCsRow(string Date, string PcName, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved, bool IsFree = false, string Currency = "ILS");
+public record SalarySessionRow(string Date, int SessionId, int PcId, string PcName, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved, bool IsFree = false, string Currency = "ILS");
+public record SalaryCsRow(string Date, int CsReviewId, int SessionId, int PcId, string PcName, bool IsSolo, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved, bool IsFree = false, string Currency = "ILS");
 public record CommissionDetail(
     int PurchaseId, string PurchaseDate,
     string PaymentMethod, int PaymentGross, string PaymentDate,
@@ -2109,10 +2109,12 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
+        // Skip free sessions — they always store rate=0/salary=0, so they'd poison the defaults.
         cmd.CommandText = @"
             SELECT ChargedRateCentsPerHour, AuditorSalaryCentsPerHour
             FROM sess_sessions
             WHERE AuditorId = @id AND VerifiedStatus = 'Approved'
+              AND COALESCE(IsFreeSession, 0) = 0
             ORDER BY SessionDate DESC, SequenceInDay DESC
             LIMIT 1";
         cmd.Parameters.AddWithValue("@id", auditorId);
@@ -2132,10 +2134,12 @@ public class DashboardService
         int rate = 0, salary = 0;
         using (var cmd = conn.CreateCommand())
         {
+            // Skip free sessions — they always store rate=0/salary=0.
             cmd.CommandText = @"
                 SELECT ChargedRateCentsPerHour, AuditorSalaryCentsPerHour
                 FROM sess_sessions
                 WHERE AuditorId = @aud AND PcId = @pc AND VerifiedStatus = 'Approved'
+                  AND COALESCE(IsFreeSession, 0) = 0
                 ORDER BY SessionDate DESC, SequenceInDay DESC
                 LIMIT 1";
             cmd.Parameters.AddWithValue("@aud", auditorId);
@@ -2278,12 +2282,13 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
+        // IsFreeSession=1 forces salary, charged rate, and charge seconds to 0 regardless of caller input.
         cmd.CommandText = @"
             UPDATE sess_sessions
             SET VerifiedStatus = 'Approved',
-                ChargedRateCentsPerHour = @rate,
-                AuditorSalaryCentsPerHour = @salary,
-                ChargeSeconds = CASE WHEN IsFreeSession = 1 THEN 0 ELSE LengthSeconds + AdminSeconds END,
+                ChargedRateCentsPerHour   = CASE WHEN IsFreeSession = 1 THEN 0 ELSE @rate   END,
+                AuditorSalaryCentsPerHour = CASE WHEN IsFreeSession = 1 THEN 0 ELSE @salary END,
+                ChargeSeconds             = CASE WHEN IsFreeSession = 1 THEN 0 ELSE LengthSeconds + AdminSeconds END,
                 VerifiedByUserId = @verifier,
                 VerifiedAt = @verifiedAt
             WHERE SessionId = @id";
@@ -2699,7 +2704,14 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE sess_sessions SET IsFreeSession = @free WHERE SessionId = @sid";
+        // Flipping to free=1 also zeroes salary, charged rate, and charge seconds atomically.
+        cmd.CommandText = @"
+            UPDATE sess_sessions SET
+                IsFreeSession = @free,
+                AuditorSalaryCentsPerHour = CASE WHEN @free = 1 THEN 0 ELSE AuditorSalaryCentsPerHour END,
+                ChargedRateCentsPerHour   = CASE WHEN @free = 1 THEN 0 ELSE ChargedRateCentsPerHour   END,
+                ChargeSeconds             = CASE WHEN @free = 1 THEN 0 ELSE ChargeSeconds             END
+            WHERE SessionId = @sid";
         cmd.Parameters.AddWithValue("@free", isFree ? 1 : 0);
         cmd.Parameters.AddWithValue("@sid", sessionId);
         cmd.ExecuteNonQuery();
@@ -3548,12 +3560,15 @@ public class DashboardService
         var sessCmd = conn.CreateCommand();
         sessCmd.CommandText = @"
             SELECT s.AuditorId,
+                   s.SessionId,
+                   s.PcId,
                    s.SessionDate,
                    TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS PcName,
                    COALESCE(s.LengthSeconds,0) + COALESCE(s.AdminSeconds,0) AS DurationSec,
                    s.AuditorSalaryCentsPerHour,
                    s.VerifiedStatus,
-                   COALESCE(w.Currency, 'ILS') AS Currency
+                   COALESCE(w.Currency, 'ILS') AS Currency,
+                   COALESCE(s.IsFreeSession, 0) AS IsFreeSession
             FROM sess_sessions s
             JOIN core_persons pc ON pc.PersonId = s.PcId
             LEFT JOIN fin_wallets w ON w.WalletId = s.WalletId
@@ -3570,14 +3585,17 @@ public class DashboardService
             while (r.Read())
             {
                 var audId      = r.GetInt32(0);
-                var isApproved = r.GetString(5) == "Approved";
-                var chargeSec  = r.IsDBNull(3) ? 0 : r.GetInt32(3);
-                var rateCents  = r.IsDBNull(4) ? 0 : r.GetInt32(4);
-                var payment    = isApproved ? (long)rateCents * chargeSec / 3600L : 0L;
-                var currency   = r.IsDBNull(6) ? "ILS" : r.GetString(6);
+                var sessionId  = r.GetInt32(1);
+                var pcId       = r.GetInt32(2);
+                var isApproved = r.GetString(7) == "Approved";
+                var chargeSec  = r.IsDBNull(5) ? 0 : r.GetInt32(5);
+                var rateCents  = r.IsDBNull(6) ? 0 : r.GetInt32(6);
+                var currency   = r.IsDBNull(8) ? "ILS" : r.GetString(8);
+                var isFree     = r.GetInt32(9) == 1;
+                var payment    = isApproved && !isFree ? (long)rateCents * chargeSec / 3600L : 0L;
                 var row = new SalarySessionRow(
-                    r.GetString(1), r.GetString(2),
-                    chargeSec, rateCents, payment, isApproved, currency);
+                    r.GetString(3), sessionId, pcId, r.GetString(4),
+                    chargeSec, rateCents, payment, isApproved, isFree, currency);
                 if (!sessionsByUser.ContainsKey(audId)) sessionsByUser[audId] = new();
                 sessionsByUser[audId].Add(row);
             }
@@ -3587,6 +3605,9 @@ public class DashboardService
         var csCmd = conn.CreateCommand();
         csCmd.CommandText = @"
             SELECT cr.CsId,
+                   cr.CsReviewId,
+                   s.SessionId,
+                   s.PcId,
                    s.SessionDate,
                    TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS PcName,
                    cr.ReviewLengthSeconds,
@@ -3611,18 +3632,21 @@ public class DashboardService
             while (r.Read())
             {
                 var csId       = r.GetInt32(0);
-                var isApproved = r.GetString(5) == "Approved";
-                var durSec     = r.IsDBNull(3) ? 0 : r.GetInt32(3);
-                var rateCents  = r.IsDBNull(4) ? 0 : r.GetInt32(4);
-                var notes      = r.GetString(6);
+                var csReviewId = r.GetInt32(1);
+                var sessionId  = r.GetInt32(2);
+                var pcId       = r.GetInt32(3);
+                var isApproved = r.GetString(8) == "Approved";
+                var durSec     = r.IsDBNull(6) ? 0 : r.GetInt32(6);
+                var rateCents  = r.IsDBNull(7) ? 0 : r.GetInt32(7);
+                var notes      = r.GetString(9);
                 // Free/Bill is a Solo-workflow concept. For non-solo sessions (auditor-led, AuditorId NOT NULL)
                 // the CS is always paid for the review — never treat them as Free.
-                bool isSolo    = r.IsDBNull(8);
+                bool isSolo    = r.IsDBNull(11);
                 bool isFree    = isSolo && notes == "Free";
                 var payment    = isApproved && !isFree ? (long)rateCents * durSec / 3600L : 0L;
-                var currency   = r.IsDBNull(7) ? "ILS" : r.GetString(7);
+                var currency   = r.IsDBNull(10) ? "ILS" : r.GetString(10);
                 var row = new SalaryCsRow(
-                    r.GetString(1), r.GetString(2),
+                    r.GetString(4), csReviewId, sessionId, pcId, r.GetString(5), isSolo,
                     durSec, rateCents, payment, isApproved, isFree, currency);
                 if (!csByUser.ContainsKey(csId)) csByUser[csId] = new();
                 csByUser[csId].Add(row);
@@ -3886,23 +3910,28 @@ public class DashboardService
 
     public void UpdateSessionAdmin(int sessionId, string name, string sessionDate,
         int lengthSec, int adminSec, bool isFree, string verifiedStatus,
-        string? approvedNotes, int chargeSec, int chargedRate, int auditorSalaryRate)
+        string? approvedNotes, int chargeSec, int chargedRate, int auditorSalaryRate,
+        int? auditorId)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
+        // IsFreeSession=1 forces salary, charged rate, and charge seconds to 0 regardless of caller input.
         cmd.CommandText = @"
             UPDATE sess_sessions SET
                 Name = @name, SessionDate = @date,
+                AuditorId = @aud,
                 LengthSeconds = @len, AdminSeconds = @admin,
                 IsFreeSession = @free, VerifiedStatus = @vs,
-                ApprovedNotes = @notes, ChargeSeconds = @charge,
-                ChargedRateCentsPerHour = @chargedRate,
-                AuditorSalaryCentsPerHour = @audSalary
+                ApprovedNotes = @notes,
+                ChargeSeconds             = CASE WHEN @free = 1 THEN 0 ELSE @charge      END,
+                ChargedRateCentsPerHour   = CASE WHEN @free = 1 THEN 0 ELSE @chargedRate END,
+                AuditorSalaryCentsPerHour = CASE WHEN @free = 1 THEN 0 ELSE @audSalary   END
             WHERE SessionId = @sid";
         cmd.Parameters.AddWithValue("@sid", sessionId);
         cmd.Parameters.AddWithValue("@name", name);
         cmd.Parameters.AddWithValue("@date", sessionDate);
+        cmd.Parameters.AddWithValue("@aud", (object?)auditorId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@len", lengthSec);
         cmd.Parameters.AddWithValue("@admin", adminSec);
         cmd.Parameters.AddWithValue("@free", isFree ? 1 : 0);
