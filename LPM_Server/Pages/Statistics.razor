@@ -421,7 +421,7 @@
                         <div class="col-6 col-md">
                             <div class="stat-metric-box" style="background:#fff7ed;">
                                 <div class="value" style="color:#ea580c;">@_dayStats[_selDay].BodyInShop</div>
-                                <div class="main-lbl">BIS</div>
+                                <div class="main-lbl">Attendance</div>
                                 <div class="sub-lbl">@LS.T("stats.uniqueVisitors")</div>
                             </div>
                         </div>
@@ -471,7 +471,7 @@
                         <div class="col-6 col-md">
                             <div class="stat-metric-box" style="background:#fff7ed;">
                                 <div class="value" style="color:#ea580c;">@(ws?.BodyInShop ?? 0)</div>
-                                <div class="main-lbl">BIS</div>
+                                <div class="main-lbl">Attendance</div>
                                 <div class="sub-lbl">@LS.T("stats.uniqueWeek")</div>
                             </div>
                         </div>
@@ -532,7 +532,7 @@
                             <div class="col-6 col-md">
                                 <div class="stat-metric-box" style="background:#fff7ed;">
                                     <div class="value" style="color:#ea580c;">@_monthSummary.BodyInShop</div>
-                                    <div class="main-lbl">BIS</div>
+                                    <div class="main-lbl">Attendance</div>
                                     <div class="sub-lbl">Unique month</div>
                                 </div>
                             </div>
@@ -592,7 +592,7 @@
                                  YValue="@(w => w.AcademyCount > 0 ? (decimal)w.AcademyCount : 0.1m)" />
                 <ApexPointSeries TItem="WeekStatSummary"
                                  Items="@_chartHistory"
-                                 Name="BIS"
+                                 Name="Attendance"
                                  SeriesType="SeriesType.Bar"
                                  XValue="@(w => w.WeekRangeLabel)"
                                  YValue="@(w => w.BodyInShop > 0 ? (decimal)w.BodyInShop : 0.1m)" />
@@ -650,7 +650,7 @@
                                  YValue="@(m => m.AcademyCount > 0 ? (decimal)m.AcademyCount : 0.1m)" />
                 <ApexPointSeries TItem="MonthStatSummary"
                                  Items="@_chartMonthHistory"
-                                 Name="BIS"
+                                 Name="Attendance"
                                  SeriesType="SeriesType.Bar"
                                  XValue="@(m => m.MonthLabel)"
                                  YValue="@(m => m.BodyInShop > 0 ? (decimal)m.BodyInShop : 0.1m)" />

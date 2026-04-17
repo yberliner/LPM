@@ -2505,6 +2505,28 @@ public class DashboardService
         catch { return null; }
     }
 
+    /// Returns the most recent ArfData for the given PC audited by the given user.
+    public PdfService.ArfData? GetLastArfForPcAndAuditor(int pcId, int auditorId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT fs.ArfJson
+            FROM sess_folder_summary fs
+            JOIN sess_sessions s ON s.SessionId = fs.SessionId
+            WHERE s.PcId = @pcId AND fs.AuditorId = @auditorId
+              AND fs.ArfJson IS NOT NULL AND fs.ArfJson != ''
+            ORDER BY s.SessionDate DESC, s.SessionId DESC
+            LIMIT 1";
+        cmd.Parameters.AddWithValue("@pcId", pcId);
+        cmd.Parameters.AddWithValue("@auditorId", auditorId);
+        var json = cmd.ExecuteScalar() as string;
+        if (string.IsNullOrEmpty(json)) return null;
+        try { return System.Text.Json.JsonSerializer.Deserialize<PdfService.ArfData>(json); }
+        catch { return null; }
+    }
+
     /// <summary>
     /// Returns PcIds that have at least one CS assignment (any CS capacity) in sys_staff_pc_list.
     /// </summary>

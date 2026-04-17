@@ -944,7 +944,7 @@ public class PdfService
                     {
                         r.RelativeItem().Border(1).BorderColor("#e0e4f0").Background("#f0f4ff").CornerRadius(4).Padding(7).Column(c =>
                         {
-                            c.Item().AlignCenter().Text("Aud+CS Sold").FontSize(7).FontColor(Colors.Grey.Darken2).SemiBold();
+                            c.Item().AlignCenter().Text("Aud+CS Delivered").FontSize(7).FontColor(Colors.Grey.Darken2).SemiBold();
                             c.Item().PaddingTop(3).AlignCenter().Text(FmtSec(currentWeekSummary?.TotalAuditCsSec ?? 0)).FontSize(16).Bold().FontColor("#6366f1");
                         });
                         r.ConstantItem(6);
@@ -962,7 +962,7 @@ public class PdfService
                         r.ConstantItem(6);
                         r.RelativeItem().Border(1).BorderColor("#fde8d8").Background("#fff7ed").CornerRadius(4).Padding(7).Column(c =>
                         {
-                            c.Item().AlignCenter().Text("Body in Shop").FontSize(7).FontColor(Colors.Grey.Darken2).SemiBold();
+                            c.Item().AlignCenter().Text("Attendance").FontSize(7).FontColor(Colors.Grey.Darken2).SemiBold();
                             c.Item().PaddingTop(3).AlignCenter().Text((currentWeekSummary?.BodyInShop ?? 0).ToString()).FontSize(16).Bold().FontColor("#ea580c");
                         });
                     });
@@ -988,7 +988,7 @@ public class PdfService
                                 });
                                 table.Header(h =>
                                 {
-                                    foreach (var (lbl, align) in new[] { ("Day","L"), ("Aud+CS","C"), ("PCs","C"), ("Acad","C"), ("BIS","C") })
+                                    foreach (var (lbl, align) in new[] { ("Day","L"), ("Aud+CS","C"), ("PCs","C"), ("Acad","C"), ("Attend","C") })
                                     {
                                         var cell = h.Cell().Background("#1a1a2e").Padding(3);
                                         if (align == "C") cell.AlignCenter().Text(lbl).FontSize(7).SemiBold().FontColor(Colors.White);
@@ -1028,7 +1028,7 @@ public class PdfService
                                     });
                                     ot.Header(h =>
                                     {
-                                        h.Cell().Background("#4c1d95").Padding(3).Text("Origin").FontSize(7).SemiBold().FontColor(Colors.White);
+                                        h.Cell().Background("#4c1d95").Padding(3).Text("Org").FontSize(7).SemiBold().FontColor(Colors.White);
                                         h.Cell().Background("#4c1d95").Padding(3).AlignCenter().Text("Hours").FontSize(7).SemiBold().FontColor(Colors.White);
                                     });
                                     int orank = 0;
@@ -1101,7 +1101,7 @@ public class PdfService
                     col.Item().PaddingTop(10);
 
                     // ── Weekly History Chart (full width) ────────────────────
-                    col.Item().Text("Weekly History — PCs / Academy / BIS").SemiBold().FontSize(9).FontColor("#1a1a2e");
+                    col.Item().Text("Weekly History — PCs / Academy / Attendance").SemiBold().FontSize(9).FontColor("#1a1a2e");
                     col.Item().PaddingTop(4);
                     col.Item().Height(160).Svg(size =>
                     {
@@ -1145,7 +1145,7 @@ public class PdfService
                         {
                             r.RelativeItem().Border(1).BorderColor("#c7d2fe").Background("#eef2ff").CornerRadius(4).Padding(7).Column(c =>
                             {
-                                c.Item().AlignCenter().Text("Aud+CS Sold").FontSize(7).FontColor(Colors.Grey.Darken2).SemiBold();
+                                c.Item().AlignCenter().Text("Aud+CS Delivered").FontSize(7).FontColor(Colors.Grey.Darken2).SemiBold();
                                 c.Item().PaddingTop(3).AlignCenter().Text(FmtSec(monthSummary!.TotalAuditCsSec)).FontSize(16).Bold().FontColor("#4338ca");
                             });
                             r.ConstantItem(6);
@@ -1163,7 +1163,7 @@ public class PdfService
                             r.ConstantItem(6);
                             r.RelativeItem().Border(1).BorderColor("#fde8d8").Background("#fff7ed").CornerRadius(4).Padding(7).Column(c =>
                             {
-                                c.Item().AlignCenter().Text("Body in Shop").FontSize(7).FontColor(Colors.Grey.Darken2).SemiBold();
+                                c.Item().AlignCenter().Text("Attendance").FontSize(7).FontColor(Colors.Grey.Darken2).SemiBold();
                                 c.Item().PaddingTop(3).AlignCenter().Text(monthSummary!.BodyInShop.ToString()).FontSize(16).Bold().FontColor("#ea580c");
                             });
                         });
@@ -1237,7 +1237,7 @@ public class PdfService
                                         });
                                         ot.Header(h =>
                                         {
-                                            h.Cell().Background("#4338ca").Padding(3).Text("Origin").FontSize(7).SemiBold().FontColor(Colors.White);
+                                            h.Cell().Background("#4338ca").Padding(3).Text("Org").FontSize(7).SemiBold().FontColor(Colors.White);
                                             h.Cell().Background("#4338ca").Padding(3).AlignCenter().Text("Hours").FontSize(7).SemiBold().FontColor(Colors.White);
                                         });
                                         foreach (var oh in monthOriginHours)
@@ -1261,7 +1261,7 @@ public class PdfService
                         if (monthHistory != null && monthHistory.Count > 0)
                         {
                             col.Item().PaddingTop(10);
-                            col.Item().Text("Monthly History — PCs / Academy / BIS").SemiBold().FontSize(9).FontColor("#4338ca");
+                            col.Item().Text("Monthly History — PCs / Academy / Attendance").SemiBold().FontSize(9).FontColor("#4338ca");
                             col.Item().PaddingTop(4);
                             col.Item().Height(160).Svg(size =>
                             {
@@ -1549,7 +1549,7 @@ public class PdfService
         DrawLegendItem(canvas, cX + 4f,   legY, SKColor.Parse("#4338ca"), "Aud+CS (h)", 7f);
         DrawLegendItem(canvas, cX + 66f,  legY, SKColor.Parse("#3b82f6"), "PCs",        7f);
         DrawLegendItem(canvas, cX + 100f, legY, SKColor.Parse("#16a34a"), "Academy",    7f);
-        DrawLegendItem(canvas, cX + 153f, legY, SKColor.Parse("#ea580c"), "BIS",        7f);
+        DrawLegendItem(canvas, cX + 153f, legY, SKColor.Parse("#ea580c"), "Attendance", 7f);
     }
 
     static void DrawWeeklyChart(SKCanvas canvas, SKSize size, IList<WeekStatSummary> history, DateOnly currentWeekStart)
@@ -1648,7 +1648,7 @@ public class PdfService
         DrawLegendItem(canvas, cX + 4f,   legY, SKColor.Parse("#6366f1"), "Aud+CS (h)", 7f);
         DrawLegendItem(canvas, cX + 66f,  legY, SKColor.Parse("#3b82f6"), "PCs",        7f);
         DrawLegendItem(canvas, cX + 100f, legY, SKColor.Parse("#16a34a"), "Academy",    7f);
-        DrawLegendItem(canvas, cX + 153f, legY, SKColor.Parse("#ea580c"), "BIS",        7f);
+        DrawLegendItem(canvas, cX + 153f, legY, SKColor.Parse("#ea580c"), "Attendance", 7f);
     }
 
     static void DrawLegendItem(SKCanvas canvas, float x, float y, SKColor color, string label, float fs)

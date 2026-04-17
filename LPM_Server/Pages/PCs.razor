@@ -973,12 +973,18 @@
                                                         <input type="number" class="form-control form-control-sm aud-hm-input @(hValid ? "field-valid" : "field-invalid")"
                                                                value="@item.HoursH" min="0" style="width:70px;font-size:16px;" placeholder="H"
                                                                onfocus="this.select()"
-                                                               @oninput="@(e => { curItem.HoursH = e.Value?.ToString() ?? ""; RecalcAuditing(curItem); })" />
+                                                               @oninput="@(e => { curItem.HoursH = e.Value?.ToString() ?? ""; curItem.Sec = "00"; RecalcAuditing(curItem); })" />
                                                         <span class="fw-bold" style="font-size:1.1rem;color:#64748b;">:</span>
                                                         <input type="number" class="form-control form-control-sm aud-hm-input @(hValid ? "field-valid" : "field-invalid")"
                                                                value="@item.HoursM" min="0" max="59" style="width:60px;font-size:16px;" placeholder="M"
                                                                onfocus="this.select()"
-                                                               @oninput="@(e => { var s = e.Value?.ToString() ?? ""; if (int.TryParse(s, out var mv) && mv > 59) s = "59"; curItem.HoursM = s; RecalcAuditing(curItem); })" />
+                                                               @oninput="@(e => { var s = e.Value?.ToString() ?? ""; if (int.TryParse(s, out var mv) && mv > 59) s = "59"; curItem.HoursM = s; curItem.Sec = "00"; RecalcAuditing(curItem); })" />
+                                                        <span class="aud-sec-dot">·</span>
+                                                        <div class="aud-sec-wrap" title="Auto-set by Calc from @CurrSym(_purchaseCurrency) button — edit Hours/Minutes instead">
+                                                            <input type="text" class="form-control form-control-sm aud-sec-input" tabindex="-1"
+                                                                   value="@item.Sec" readonly />
+                                                            <span class="aud-sec-tag"><i class="ri-lock-line"></i>sec</span>
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 <div class="col-auto">
@@ -988,7 +994,7 @@
                                                            onfocus="this.select()"
                                                            @oninput="@(e => { curItem.RatePerHour = int.TryParse(e.Value?.ToString(), out var v) ? v : 0; RecalcAuditing(curItem); })" />
                                                 </div>
-                                                <div class="col-auto d-flex align-items-end" style="min-height:38px;">
+                                                <div class="col-auto d-flex align-items-end position-relative" style="min-height:38px;">
                                                     @{
                                                         var totalPay = item.AmountPaid;
                                                         var totalColor = totalPay >= 0 ? "#16a34a" : "#dc2626";
@@ -996,6 +1002,36 @@
                                                     <span class="fw-bold" style="font-size:.9rem;color:@totalColor;">
                                                         = @CurrSym(_purchaseCurrency)@FmtAmt(totalPay)
                                                     </span>
+                                                    <button type="button" class="rev-calc-btn ms-2 @(item.RatePerHour <= 0 ? "rev-calc-disabled" : "")"
+                                                            title="@(item.RatePerHour <= 0 ? "Set rate first" : "Enter total amount — we'll calc the time")"
+                                                            @onclick="@(() => OpenReverseCalc(i))">
+                                                        <span class="rev-calc-shimmer"></span>
+                                                        <span class="rev-calc-icon"><i class="ri-exchange-dollar-line"></i></span>
+                                                        <span class="rev-calc-label">Calc from @CurrSym(_purchaseCurrency)</span>
+                                                        <span class="rev-calc-tooltip" aria-hidden="true">
+                                                            <span class="rev-calc-demo">
+                                                                <span class="rev-calc-demo-amt">@CurrSym(_purchaseCurrency)2000</span>
+                                                                <span class="rev-calc-demo-arrow">→</span>
+                                                                <span class="rev-calc-demo-time">10:00:00</span>
+                                                            </span>
+                                                            <span class="rev-calc-tooltip-sub">Type an amount, we set the time</span>
+                                                        </span>
+                                                    </button>
+                                                    @if (_reverseCalcItemIdx == i)
+                                                    {
+                                                        <div class="rev-calc-popover" @onclick:stopPropagation="true">
+                                                            <div class="rev-calc-pop-title">Total amount (@CurrSym(_purchaseCurrency))</div>
+                                                            <input type="number" class="form-control form-control-sm rev-calc-input"
+                                                                   value="@_reverseCalcAmount" placeholder="e.g. 2000" autofocus min="0"
+                                                                   @onchange="OnReverseCalcAmountChange"
+                                                                   @onkeydown="OnReverseCalcKeyDown" />
+                                                            <div class="rev-calc-pop-actions">
+                                                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CloseReverseCalc">Cancel</button>
+                                                                <button type="button" class="btn btn-sm btn-primary" @onclick="ApplyReverseCalc">Apply</button>
+                                                            </div>
+                                                            <div class="rev-calc-pop-hint">Time may round to the nearest second. The amount stays exactly as you entered.</div>
+                                                        </div>
+                                                    }
                                                 </div>
                                                 <div class="col-12 mt-1">
                                                     <label class="form-check form-check-inline aud-neg-check @(item.IsNegativeHours ? "aud-neg-active" : "")" style="cursor:pointer;">
@@ -1104,9 +1140,9 @@
                                     </div>
                                     <div>
                                         <label class="form-label small mb-0" style="font-size:.72rem;">Amount (@CurrSym(_purchaseCurrency))</label>
-                                        <input type="number" class="form-control form-control-sm @(pm.Amount <= 0 ? "field-invalid" : "field-valid")"
+                                        <input type="number" class="form-control form-control-sm @(pm.Amount == 0 ? "field-invalid" : "field-valid")"
                                                style="max-width:100px;font-size:.8rem;"
-                                               value="@pm.Amount" min="0" placeholder="0"
+                                               value="@pm.Amount" placeholder="0"
                                                onfocus="this.select()"
                                                @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var v)) pm.Amount = v; }" />
                                     </div>
@@ -1143,15 +1179,16 @@
                                 var pmTotal = _purchasePaymentMethods.Sum(m => m.Amount);
                                 var pmBalance = itemsTotal - pmTotal;
                             }
-                            @if (pmTotal > 0 || itemsTotal > 0)
+                            @if (pmTotal != 0 || itemsTotal != 0)
                             {
                                 <div class="payment-summary mt-2">
                                     <span>@LS.T("purchases.paid"): @CurrSym(_purchaseCurrency)@pmTotal / @CurrSym(_purchaseCurrency)@FmtAmt(itemsTotalRaw)</span>
                                     @if (pmBalance != 0)
                                     {
-                                        <span class="@(pmBalance > 0 ? "text-danger" : "text-warning") fw-semibold">
+                                        var underpaid = itemsTotal == 0 ? pmBalance > 0 : Math.Sign(pmBalance) == Math.Sign(itemsTotal);
+                                        <span class="@(underpaid ? "text-danger" : "text-warning") fw-semibold">
                                             <i class="ri-error-warning-line"></i>
-                                            @(pmBalance > 0 ? LS.T("purchases.underpaid") : LS.T("purchases.overpaid")): @CurrSym(_purchaseCurrency)@Math.Abs(pmBalance)
+                                            @(underpaid ? LS.T("purchases.underpaid") : LS.T("purchases.overpaid")): @CurrSym(_purchaseCurrency)@Math.Abs(pmBalance)
                                         </span>
                                     }
                                     else
@@ -3137,6 +3174,232 @@
     .aud-neg-active { color: #dc2626; font-weight: 600; }
     .aud-neg-active .form-check-input { background-color: #dc2626; border-color: #dc2626; }
 
+    /* ── Seconds chip (read-only, derived from Calc from ₪) ── */
+    .aud-sec-dot {
+        color: #cbd5e1;
+        font-size: 1.1rem;
+        margin: 0 2px;
+        user-select: none;
+        line-height: 1;
+        opacity: .55;
+    }
+    .aud-sec-wrap {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1px;
+        padding: 2px 3px;
+        background: #eef2ff;
+        border: 1px dashed #c7d2fe;
+        border-radius: 6px;
+        cursor: help;
+        transition: background .15s ease;
+        width: 34px;
+        flex: 0 0 auto;
+    }
+    .aud-sec-wrap:hover { background: #e0e7ff; }
+    .aud-sec-input {
+        background: transparent !important;
+        color: #4f46e5 !important;
+        border: none !important;
+        box-shadow: none !important;
+        font-family: ui-monospace, "Courier New", monospace !important;
+        font-size: 12px !important;
+        font-weight: 700 !important;
+        line-height: 1 !important;
+        display: block !important;
+        width: 26px !important;
+        min-width: 0 !important;
+        max-width: 26px !important;
+        padding: 1px 0 !important;
+        height: auto !important;
+        text-align: center;
+        letter-spacing: .5px;
+        cursor: not-allowed !important;
+        font-variant-numeric: tabular-nums;
+        flex: 0 0 auto !important;
+    }
+    .aud-sec-input:focus { box-shadow: none !important; }
+    .aud-sec-tag {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1px;
+        font-size: 8px;
+        font-weight: 700;
+        color: #6366f1;
+        letter-spacing: .4px;
+        text-transform: uppercase;
+        line-height: 1;
+        white-space: nowrap;
+        user-select: none;
+    }
+    .aud-sec-tag i { font-size: 8px; }
+
+    /* ── Reverse-calc button + animation ── */
+    .rev-calc-btn {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        font-size: .72rem;
+        font-weight: 600;
+        color: #fff;
+        background: linear-gradient(135deg, #6366f1 0%, #14b8a6 100%);
+        border: none;
+        border-radius: 999px;
+        cursor: pointer;
+        overflow: visible;
+        box-shadow: 0 2px 6px rgba(99,102,241,.25);
+        animation: revCalcBreath 3s ease-in-out infinite;
+        transition: transform .15s ease, box-shadow .15s ease;
+    }
+    .rev-calc-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(99,102,241,.4);
+    }
+    .rev-calc-btn:active { transform: translateY(0) scale(.97); }
+    .rev-calc-btn.rev-calc-disabled {
+        background: #cbd5e1;
+        color: #64748b;
+        cursor: not-allowed;
+        animation: none;
+        box-shadow: none;
+        pointer-events: none;
+    }
+    .rev-calc-icon { display: inline-flex; font-size: .85rem; }
+    .rev-calc-label { font-size: .7rem; letter-spacing: .2px; }
+    .rev-calc-shimmer {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        border-radius: 999px;
+        pointer-events: none;
+    }
+    .rev-calc-shimmer::before {
+        content: "";
+        position: absolute;
+        top: 0; left: -60%;
+        width: 40%; height: 100%;
+        background: linear-gradient(115deg, transparent 20%, rgba(255,255,255,.45) 50%, transparent 80%);
+        animation: revCalcShimmer 6s ease-in-out infinite;
+    }
+    @@keyframes revCalcBreath {
+        0%, 100% { box-shadow: 0 2px 6px rgba(99,102,241,.25); }
+        50%      { box-shadow: 0 2px 14px rgba(20,184,166,.55); }
+    }
+    @@keyframes revCalcShimmer {
+        0%   { left: -60%; }
+        60%  { left: 120%; }
+        100% { left: 120%; }
+    }
+
+    /* ── Reverse-calc hover tooltip (mini demo) ── */
+    .rev-calc-tooltip {
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 50%;
+        transform: translateX(-50%) translateY(4px);
+        background: #0f172a;
+        color: #e2e8f0;
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: .7rem;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity .18s ease, transform .18s ease;
+        box-shadow: 0 8px 24px rgba(15,23,42,.35);
+        z-index: 1080;
+    }
+    .rev-calc-tooltip::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        border: 5px solid transparent;
+        border-top-color: #0f172a;
+    }
+    .rev-calc-btn:hover .rev-calc-tooltip {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+    .rev-calc-demo {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        justify-content: center;
+        font-weight: 700;
+    }
+    .rev-calc-demo-amt {
+        color: #fbbf24;
+        animation: revDemoAmt 3s ease-in-out infinite;
+    }
+    .rev-calc-demo-arrow {
+        color: #a78bfa;
+        animation: revDemoArrow 3s ease-in-out infinite;
+    }
+    .rev-calc-demo-time {
+        color: #34d399;
+        font-variant-numeric: tabular-nums;
+        animation: revDemoTime 3s ease-in-out infinite;
+    }
+    .rev-calc-tooltip-sub {
+        display: block;
+        font-size: .62rem;
+        color: #94a3b8;
+        font-weight: 400;
+        margin-top: 3px;
+        text-align: center;
+    }
+    @@keyframes revDemoAmt {
+        0%, 20%  { opacity: 1; transform: translateX(0); }
+        45%, 55% { opacity: .3; transform: translateX(-4px); }
+        80%,100% { opacity: 1; transform: translateX(0); }
+    }
+    @@keyframes revDemoArrow {
+        0%, 30%  { opacity: .4; }
+        50%      { opacity: 1; }
+        70%,100% { opacity: .4; }
+    }
+    @@keyframes revDemoTime {
+        0%, 35%  { opacity: .3; transform: translateX(4px); }
+        55%, 80% { opacity: 1; transform: translateX(0); }
+        100%     { opacity: .3; transform: translateX(4px); }
+    }
+
+    /* ── Reverse-calc popover ── */
+    .rev-calc-popover {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        min-width: 210px;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 10px;
+        box-shadow: 0 12px 32px rgba(15,23,42,.18);
+        z-index: 1090;
+        animation: revCalcPopIn .18s cubic-bezier(.34,1.56,.64,1);
+    }
+    .rev-calc-pop-title { font-size: .72rem; font-weight: 600; color: #475569; margin-bottom: 4px; }
+    .rev-calc-input { font-size: 16px !important; }
+    .rev-calc-pop-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
+    .rev-calc-pop-hint { margin-top: 6px; font-size: .62rem; color: #94a3b8; line-height: 1.3; }
+    @@keyframes revCalcPopIn {
+        from { opacity: 0; transform: translateY(-6px) scale(.96); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @@media (prefers-reduced-motion: reduce) {
+        .rev-calc-btn { animation: none; }
+        .rev-calc-shimmer { display: none; }
+        .rev-calc-demo-amt, .rev-calc-demo-arrow, .rev-calc-demo-time { animation: none; }
+        .rev-calc-popover { animation: none; }
+    }
+
     /* ── Balance columns ── */
     .bal-rate-mismatch {
         position: relative;
@@ -3696,6 +3959,8 @@
     string   _purchaseError = "";
     List<PurchaseItemModel> _purchaseItems = new();
     List<PaymentMethodModel> _purchasePaymentMethods = new();
+    int _reverseCalcItemIdx = -1;
+    string _reverseCalcAmount = "";
     int? _editingPurchaseId;
     int? _confirmDeletePurchaseId;
     string _origPurchaseSnapshot = "";
@@ -3733,6 +3998,7 @@
         // Auditing-specific UI fields
         public string HoursH { get; set; } = "";
         public string HoursM { get; set; } = "00";
+        public string Sec { get; set; } = "00";
         public bool IsNegativeHours { get; set; }
         public int RatePerHour { get; set; }
     }
@@ -4205,12 +4471,13 @@
             };
             if (it.ItemType == "Auditing")
             {
-                double absHrs = Math.Abs(it.HoursBought);
-                int wh = (int)absHrs;
-                int wm = (int)Math.Round((absHrs - wh) * 60);
-                if (wm >= 60) { wh++; wm = 0; }
+                int totalSec = (int)Math.Round(Math.Abs(it.HoursBought) * 3600);
+                int wh = totalSec / 3600;
+                int wm = (totalSec % 3600) / 60;
+                int ws = totalSec % 60;
                 m.HoursH = wh.ToString();
                 m.HoursM = wm.ToString("D2");
+                m.Sec    = ws.ToString("D2");
                 m.IsNegativeHours = it.HoursBought < 0;
                 m.RatePerHour = it.HoursBought != 0 ? (int)Math.Round(Math.Abs(it.AmountPaid / it.HoursBought)) : 0; // double/double → exact rate
             }
@@ -4351,7 +4618,7 @@
     bool CanAddMorePayments()
     {
         // Only allow adding a new payment if the last one has an amount
-        return _purchasePaymentMethods.Count == 0 || _purchasePaymentMethods[^1].Amount > 0;
+        return _purchasePaymentMethods.Count == 0 || _purchasePaymentMethods[^1].Amount != 0;
     }
 
     bool IsPaymentBalanced()
@@ -4400,10 +4667,12 @@
             var diff = itemsTotal - pmTotal;
             if (pmTotal == 0)
                 reasons.Add($"No payments entered (need {CurrSym(_purchaseCurrency)}{itemsTotalStr})");
-            else if (diff > 0)
-                reasons.Add($"Underpaid by {CurrSym(_purchaseCurrency)}{diff} ({CurrSym(_purchaseCurrency)}{pmTotal} of {CurrSym(_purchaseCurrency)}{itemsTotalStr})");
             else
-                reasons.Add($"Overpaid by {CurrSym(_purchaseCurrency)}{Math.Abs(diff)} ({CurrSym(_purchaseCurrency)}{pmTotal} of {CurrSym(_purchaseCurrency)}{itemsTotalStr})");
+            {
+                var underpaid = itemsTotal == 0 ? diff > 0 : Math.Sign(diff) == Math.Sign(itemsTotal);
+                var label = underpaid ? "Underpaid" : "Overpaid";
+                reasons.Add($"{label} by {CurrSym(_purchaseCurrency)}{Math.Abs(diff)} ({CurrSym(_purchaseCurrency)}{pmTotal} of {CurrSym(_purchaseCurrency)}{itemsTotalStr})");
+            }
         }
         return reasons;
     }
@@ -4447,7 +4716,7 @@
         int? refId = _purchaseReferralId != 0 ? _purchaseReferralId : null;
 
         var pmList = _purchasePaymentMethods
-            .Where(m => m.Amount > 0)
+            .Where(m => m.Amount != 0)
             .Select(m => (m.MethodType, m.Amount, paymentDate: m.PaymentDate?.ToString("yyyy-MM-dd"), m.Installments))
             .ToList();
 
@@ -4982,10 +5251,56 @@
     {
         int.TryParse(item.HoursH, out var h);
         int.TryParse(item.HoursM, out var m);
+        int.TryParse(item.Sec,    out var s);
         m = Math.Clamp(m, 0, 59);
-        double hrs = Math.Abs(h) + m / 60.0;
+        s = Math.Clamp(s, 0, 59);
+        double hrs = Math.Abs(h) + m / 60.0 + s / 3600.0;
         item.HoursBought = item.IsNegativeHours ? -hrs : hrs;
         item.AmountPaid = item.HoursBought * item.RatePerHour;
+    }
+
+    void OpenReverseCalc(int idx)
+    {
+        if (idx < 0 || idx >= _purchaseItems.Count) return;
+        var it = _purchaseItems[idx];
+        if (it.RatePerHour <= 0) return;
+        _reverseCalcItemIdx = idx;
+        _reverseCalcAmount = "";
+    }
+
+    void CloseReverseCalc()
+    {
+        _reverseCalcItemIdx = -1;
+        _reverseCalcAmount = "";
+    }
+
+    void OnReverseCalcAmountChange(ChangeEventArgs e)
+        => _reverseCalcAmount = e.Value?.ToString() ?? "";
+
+    void OnReverseCalcKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") ApplyReverseCalc();
+        else if (e.Key == "Escape") CloseReverseCalc();
+    }
+
+    void ApplyReverseCalc()
+    {
+        if (_reverseCalcItemIdx < 0 || _reverseCalcItemIdx >= _purchaseItems.Count) return;
+        var it = _purchaseItems[_reverseCalcItemIdx];
+        if (it.RatePerHour <= 0) { CloseReverseCalc(); return; }
+        if (!double.TryParse(_reverseCalcAmount, out var amount) || amount <= 0) return;
+        int totalSec = (int)Math.Round(amount / it.RatePerHour * 3600.0);
+        if (totalSec <= 0) { CloseReverseCalc(); return; }
+        int h = totalSec / 3600;
+        int m = (totalSec % 3600) / 60;
+        int s = totalSec % 60;
+        it.HoursH = h.ToString();
+        it.HoursM = m.ToString("D2");
+        it.Sec    = s.ToString("D2");
+        double signedHrs = totalSec / 3600.0;
+        it.HoursBought = it.IsNegativeHours ? -signedHrs : signedHrs;
+        it.AmountPaid  = it.IsNegativeHours ? -amount    : amount;
+        CloseReverseCalc();
     }
     static string RateBadgeClass(string source) => source switch
     {

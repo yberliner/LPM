@@ -1708,8 +1708,20 @@
                                     </div>
                                 </div>
                             }
-                            <div class="d-flex justify-content-end mt-1">
-                                <button class="btn btn-sm p-0 d-flex align-items-center gap-1"
+                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-1">
+                                <button type="button"
+                                        id="copy-prev-arf-btn"
+                                        class="btn btn-sm p-0 d-flex align-items-center gap-1 copy-prev-arf-btn"
+                                        data-bs-toggle="tooltip"
+                                        data-bs-placement="top"
+                                        data-bs-trigger="hover"
+                                        data-bs-html="true"
+                                        data-bs-custom-class="copy-prev-arf-tip"
+                                        data-bs-title="<div class='cparf-tip-title'><i class='ri-file-copy-2-line'></i>&nbsp;Copy from previous ARF</div><div class='cparf-tip-body'>Fetches the <b>most recent ARF</b> for this PC that <b>you</b> audited.<br/><br/>• Fills the <b>Process</b> column + restores each row's <b>checkbox</b> state<br/>• <b>Time</b>, <b>Tone Arm</b> and <b>Results</b> stay untouched — anything you typed remains<br/>• Adjusts the number of rows to match the previous ARF (adds or removes)<br/>• If you have multiple ARF tables on this form, the copy lands in the <b>last</b> one</div>"
+                                        @onclick="CopyFromPrevArf">
+                                    <i class="ri-file-copy-2-line"></i> Copy from prev ARF
+                                </button>
+                                <button type="button" class="btn btn-sm p-0 d-flex align-items-center gap-1"
                                         style="color:#3b82f6; font-size:.76rem; font-weight:600;"
                                         title="Add a new independent ARF session table"
                                         @onclick="AddArfTable">
@@ -5851,7 +5863,109 @@
         .stat-sidebar-toggle { display: none; }
         .stat-week-label { min-width: 140px; font-size: .75rem; }
     }
+
+    /* ── Copy-from-prev-ARF button ── */
+    .copy-prev-arf-btn {
+        color: #64748b;
+        font-size: .72rem;
+        font-weight: 500;
+        transition: color .15s ease, transform .15s ease;
+    }
+    .copy-prev-arf-btn:hover {
+        color: #0ea5e9;
+        transform: translateY(-1px);
+    }
+    .copy-prev-arf-btn i { font-size: .85rem; }
+
+    /* Rich tooltip styling */
+    .tooltip.copy-prev-arf-tip {
+        z-index: 100001; /* sit above the wizard modal (9999) and toast (100000) */
+    }
+    .tooltip.copy-prev-arf-tip .tooltip-inner {
+        max-width: 340px;
+        text-align: left;
+        padding: 10px 12px;
+        background: #0f172a;
+        color: #e2e8f0;
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0,0,0,.28);
+        font-size: .78rem;
+        line-height: 1.4;
+    }
+    .tooltip.copy-prev-arf-tip .tooltip-arrow::before { border-top-color: #0f172a; }
+    .cparf-tip-title {
+        font-weight: 700;
+        font-size: .86rem;
+        color: #38bdf8;
+        margin-bottom: 6px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid #1e293b;
+    }
+    .cparf-tip-body b { color: #f8fafc; }
+
+    /* ── Copy-from-prev-ARF toast ── */
+    .cparf-toast {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 100000;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        min-width: 260px;
+        max-width: min(380px, calc(100vw - 48px));
+        border-radius: 10px;
+        box-shadow: 0 10px 28px rgba(0,0,0,.2);
+        font-size: .86rem;
+        font-weight: 500;
+        color: #0f172a;
+        animation: cparfSlideIn .25s ease-out;
+        backdrop-filter: blur(6px);
+    }
+    .cparf-toast.cparf-toast-success {
+        background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+        border: 1px solid #10b981;
+    }
+    .cparf-toast.cparf-toast-error {
+        background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+        border: 1px solid #ef4444;
+    }
+    .cparf-toast-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        font-size: 1.1rem;
+    }
+    .cparf-toast.cparf-toast-success .cparf-toast-icon { background: #10b981; color: #fff; }
+    .cparf-toast.cparf-toast-error .cparf-toast-icon { background: #ef4444; color: #fff; }
+    .cparf-toast-text { flex: 1; line-height: 1.35; }
+    @@keyframes cparfSlideIn {
+        from { opacity: 0; transform: translateX(24px); }
+        to   { opacity: 1; transform: translateX(0); }
+    }
+    .cparf-toast.cparf-toast-hide {
+        animation: cparfSlideOut .25s ease-in forwards;
+    }
+    @@keyframes cparfSlideOut {
+        from { opacity: 1; transform: translateX(0); }
+        to   { opacity: 0; transform: translateX(24px); }
+    }
 </style>
+
+@if (_cparfToastShow)
+{
+    <div class="cparf-toast @(_cparfToastSuccess ? "cparf-toast-success" : "cparf-toast-error") @(_cparfToastHiding ? "cparf-toast-hide" : "")">
+        <span class="cparf-toast-icon">
+            <i class="@(_cparfToastSuccess ? "ri-checkbox-circle-line" : "ri-error-warning-line")"></i>
+        </span>
+        <span class="cparf-toast-text">@_cparfToastMsg</span>
+    </div>
+}
 
 @code {
     private bool _isDisposed = false;
@@ -6217,6 +6331,135 @@
     void AddArfRow(int tblIdx) { _arfTables[tblIdx].Rows.Add(new ArfRow { Touched = true }); RebuildArfSummary(); }
 
     void AddArfTable() { _arfTables.Add(new ArfTable()); RebuildArfSummary(); }
+
+    // ── Copy from previous ARF (same PC + same auditor) ─────────────────────
+    string _cparfToastMsg     = "";
+    bool   _cparfToastSuccess = false;
+    bool   _cparfToastShow    = false;
+    bool   _cparfToastHiding  = false;
+    int    _cparfToastToken   = 0;
+
+    async Task CopyFromPrevArf()
+    {
+        try
+        {
+            // Dismiss the tooltip immediately (some browsers keep it sticky after click) + blur button
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("eval",
+                    "(function(){var el=document.getElementById('copy-prev-arf-btn');if(!el)return;" +
+                    "if(window.bootstrap&&bootstrap.Tooltip){var t=bootstrap.Tooltip.getInstance(el);if(t)t.hide();}" +
+                    "if(el.blur)el.blur();})();");
+            }
+            catch { /* non-fatal */ }
+
+            if (_importPcId <= 0 || !_msgUserId.HasValue)
+            {
+                await ShowCparfToast("Pick a PC first.", success: false);
+                return;
+            }
+
+            PdfService.ArfData? prev;
+            try { prev = DashSvc.GetLastArfForPcAndAuditor(_importPcId, _msgUserId.Value); }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[CopyPrevArf] DB error: {ex}");
+                await ShowCparfToast("Could not read previous ARF (database error).", success: false);
+                return;
+            }
+
+            if (prev == null)
+            {
+                await ShowCparfToast("No previous ARF found for this PC under your name.", success: false);
+                return;
+            }
+
+            var groups = prev.GetGroups();
+            var source = groups.Count > 0 ? groups[^1] : new List<PdfService.ArfRowData>();
+            if (source.Count == 0)
+            {
+                await ShowCparfToast("Previous ARF has no rows to copy.", success: false);
+                return;
+            }
+
+            if (_isDisposed || _arfTables.Count == 0) return;
+
+            var lastTblIdx = _arfTables.Count - 1;
+            var tgt        = _arfTables[lastTblIdx].Rows;
+
+            // Resize current last ARF to match the previous group's row count
+            while (tgt.Count > source.Count) tgt.RemoveAt(tgt.Count - 1);
+            while (tgt.Count < source.Count) tgt.Add(new ArfRow { Touched = true });
+
+            // Fill Process + Checked from previous ARF; preserve Time / Tone Arm / Results as-is
+            for (int i = 0; i < source.Count; i++)
+            {
+                var newProc = source[i].Process ?? "";
+                tgt[i].Process       = newProc;
+                tgt[i].Checked       = source[i].Checked;
+                tgt[i].AutoUnchecked = !source[i].Checked && HasAutoUncheckKeyword(newProc);
+                tgt[i].Touched       = true;
+            }
+
+            RebuildArfSummary();
+            if (_isDisposed) return;
+            await InvokeAsync(StateHasChanged);
+
+            // Textarea's `value` property doesn't auto-resync from textContent after initial render,
+            // so explicitly push each new Process value to the DOM once the re-render has flushed.
+            await Task.Delay(120);
+            if (_isDisposed) return;
+
+            // State may have drifted during the delay (user edit, row insert/remove, table removed).
+            // Only push values for rows whose in-memory Process still matches what we wrote — so we
+            // never stomp on a live user edit.
+            var sb = new System.Text.StringBuilder();
+            if (lastTblIdx < _arfTables.Count)
+            {
+                var liveRows = _arfTables[lastTblIdx].Rows;
+                for (int i = 0; i < source.Count && i < liveRows.Count; i++)
+                {
+                    var expected = source[i].Process ?? "";
+                    if (liveRows[i].Process != expected) continue; // user changed it — leave alone
+                    var p = System.Text.Json.JsonSerializer.Serialize(expected);
+                    sb.Append($"(function(){{var el=document.getElementById('arf-c-{lastTblIdx}-{i}-0');if(el)el.value={p};}})();");
+                }
+            }
+            if (sb.Length > 0)
+            {
+                try { await JSRuntime.InvokeVoidAsync("eval", sb.ToString()); }
+                catch { /* circuit may have torn down — state is still correct */ }
+            }
+
+            await ShowCparfToast($"Copied {source.Count} row{(source.Count == 1 ? "" : "s")} from previous ARF.", success: true);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[CopyPrevArf] Unexpected error: {ex}");
+            if (!_isDisposed) await ShowCparfToast("Something went wrong. Please try again.", success: false);
+        }
+    }
+
+    async Task ShowCparfToast(string msg, bool success)
+    {
+        if (_isDisposed) return;
+        var token = ++_cparfToastToken;
+        _cparfToastMsg     = msg;
+        _cparfToastSuccess = success;
+        _cparfToastHiding  = false;
+        _cparfToastShow    = true;
+        try { await InvokeAsync(StateHasChanged); } catch { return; }
+
+        await Task.Delay(2600);
+        if (_isDisposed || token != _cparfToastToken) return;
+        _cparfToastHiding = true;
+        try { await InvokeAsync(StateHasChanged); } catch { return; }
+        await Task.Delay(250);
+        if (_isDisposed || token != _cparfToastToken) return;
+        _cparfToastShow   = false;
+        _cparfToastHiding = false;
+        try { await InvokeAsync(StateHasChanged); } catch { /* swallow — already hiding */ }
+    }
 
     string GetArfTableDuration(int tblIdx)
     {
@@ -7855,6 +8098,9 @@ string _actionPcSearch = "";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // Pick up any newly-rendered [data-bs-toggle="tooltip"] elements on every render.
+        try { await JSRuntime.InvokeVoidAsync("initNewTooltips"); } catch { /* JS not ready yet */ }
+
         if (firstRender)
         {
             await AttachHeaderScrollListener();
