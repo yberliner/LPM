@@ -3584,7 +3584,8 @@ public class DashboardService
                    cr.CsSalaryCentsPerHour,
                    cr.Status,
                    COALESCE(cr.Notes, ''),
-                   COALESCE(w.Currency, 'ILS') AS Currency
+                   COALESCE(w.Currency, 'ILS') AS Currency,
+                   s.AuditorId
             FROM cs_reviews cr
             JOIN sess_sessions s  ON s.SessionId  = cr.SessionId
             JOIN core_persons  pc ON pc.PersonId  = s.PcId
@@ -3605,7 +3606,10 @@ public class DashboardService
                 var durSec     = r.IsDBNull(3) ? 0 : r.GetInt32(3);
                 var rateCents  = r.IsDBNull(4) ? 0 : r.GetInt32(4);
                 var notes      = r.GetString(6);
-                bool isFree    = notes != "Bill";
+                // Free/Bill is a Solo-workflow concept. For non-solo sessions (auditor-led, AuditorId NOT NULL)
+                // the CS is always paid for the review — never treat them as Free.
+                bool isSolo    = r.IsDBNull(8);
+                bool isFree    = isSolo && notes == "Free";
                 var payment    = isApproved && !isFree ? (long)rateCents * durSec / 3600L : 0L;
                 var currency   = r.IsDBNull(7) ? "ILS" : r.GetString(7);
                 var row = new SalaryCsRow(
