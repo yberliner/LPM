@@ -575,11 +575,15 @@ public class FolderService
             var dstWsDir = Path.Combine(dstFolder, "WorkSheets");
             Directory.CreateDirectory(dstWsDir);
 
-            // Move session PDF files (match by base name, any extension)
+            // Move session PDF + all attachment files (baseName*.pdf and baseName_att_*.pdf)
             foreach (var file in Directory.GetFiles(wsDir))
             {
                 var fn = Path.GetFileNameWithoutExtension(file);
-                if (!fn.Equals(baseName, StringComparison.OrdinalIgnoreCase)) continue;
+                // Match: exact session name OR attachment prefix ({baseName}_att_*)
+                var isSession = fn.Equals(baseName, StringComparison.OrdinalIgnoreCase);
+                var isAttachment = fn.StartsWith(baseName + "_att_", StringComparison.OrdinalIgnoreCase)
+                               || fn.StartsWith(baseName + "_att.", StringComparison.OrdinalIgnoreCase);
+                if (!isSession && !isAttachment) continue;
 
                 var destPath = Path.Combine(dstWsDir, Path.GetFileName(file));
                 if (File.Exists(destPath)) RenameWithPostfix(destPath);
@@ -597,7 +601,7 @@ public class FolderService
                 }
             }
 
-            // Move attachment folder ({sessionName}_att)
+            // Move attachment subfolder if it exists ({sessionName}_att/)
             var attDir = Path.Combine(wsDir, baseName + "_att");
             if (Directory.Exists(attDir))
             {
