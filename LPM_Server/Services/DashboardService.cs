@@ -3829,15 +3829,34 @@ public class DashboardService
             r.IsDBNull(26) ? null : (int?)r.GetInt32(26));
     }
 
+    /// <summary>Transfer a session to a different PC: updates sess_sessions.PcId and sess_folder_summary.PcId.</summary>
+    public void TransferSessionPcId(int sessionId, int newPcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd1 = conn.CreateCommand();
+        cmd1.CommandText = "UPDATE sess_sessions SET PcId = @pc WHERE SessionId = @sid";
+        cmd1.Parameters.AddWithValue("@pc", newPcId);
+        cmd1.Parameters.AddWithValue("@sid", sessionId);
+        cmd1.ExecuteNonQuery();
+
+        using var cmd2 = conn.CreateCommand();
+        cmd2.CommandText = "UPDATE sess_folder_summary SET PcId = @pc WHERE SessionId = @sid";
+        cmd2.Parameters.AddWithValue("@pc", newPcId);
+        cmd2.Parameters.AddWithValue("@sid", sessionId);
+        cmd2.ExecuteNonQuery();
+
+        Console.WriteLine($"[DashboardService] Transferred session {sessionId} to PcId={newPcId}");
+    }
+
     public void UpdateSessionAdmin(int sessionId, string name, string sessionDate,
         int lengthSec, int adminSec, bool isFree, string verifiedStatus,
-        string? approvedNotes, int chargeSec, int chargedRate, int auditorSalaryRate,
-        int? newPcId = null)
+        string? approvedNotes, int chargeSec, int chargedRate, int auditorSalaryRate)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = $@"
+        cmd.CommandText = @"
             UPDATE sess_sessions SET
                 Name = @name, SessionDate = @date,
                 LengthSeconds = @len, AdminSeconds = @admin,
@@ -3845,10 +3864,7 @@ public class DashboardService
                 ApprovedNotes = @notes, ChargeSeconds = @charge,
                 ChargedRateCentsPerHour = @chargedRate,
                 AuditorSalaryCentsPerHour = @audSalary
-                {(newPcId.HasValue ? ", PcId = @newPcId" : "")}
             WHERE SessionId = @sid";
-        if (newPcId.HasValue)
-            cmd.Parameters.AddWithValue("@newPcId", newPcId.Value);
         cmd.Parameters.AddWithValue("@sid", sessionId);
         cmd.Parameters.AddWithValue("@name", name);
         cmd.Parameters.AddWithValue("@date", sessionDate);

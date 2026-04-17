@@ -549,6 +549,70 @@ public class FolderService
         }
     }
 
+    /// <summary>Transfer session worksheet files (and attachments) from one PC folder to another.</summary>
+    public void TransferSessionFiles(int oldPcId, int newPcId, string sessionName)
+    {
+        if (string.IsNullOrWhiteSpace(sessionName)) return;
+
+        // Try both regular and solo folders for source
+        var srcFolders = new[] { FindPcFolder(oldPcId), FindSoloPcFolder(oldPcId) }.Where(f => f != null).ToList();
+        var dstFolders = new[] { FindPcFolder(newPcId), FindSoloPcFolder(newPcId) }.Where(f => f != null).ToList();
+        var dstFolder = dstFolders.FirstOrDefault();
+        if (dstFolder == null)
+        {
+            Console.WriteLine($"[FolderService] TransferSessionFiles: destination PC {newPcId} folder not found");
+            return;
+        }
+
+        var baseName = Path.GetFileNameWithoutExtension(sessionName);
+        var moved = 0;
+
+        foreach (var src in srcFolders)
+        {
+            var wsDir = Path.Combine(src!, "WorkSheets");
+            if (!Directory.Exists(wsDir)) continue;
+
+            var dstWsDir = Path.Combine(dstFolder, "WorkSheets");
+            Directory.CreateDirectory(dstWsDir);
+
+            // Move session PDF files (match by base name, any extension)
+            foreach (var file in Directory.GetFiles(wsDir))
+            {
+                var fn = Path.GetFileNameWithoutExtension(file);
+                if (!fn.Equals(baseName, StringComparison.OrdinalIgnoreCase)) continue;
+
+                var destPath = Path.Combine(dstWsDir, Path.GetFileName(file));
+                if (File.Exists(destPath)) RenameWithPostfix(destPath);
+                File.Move(file, destPath);
+                moved++;
+                Console.WriteLine($"[FolderService] Transferred file: {Path.GetFileName(file)}");
+
+                // Move .ann.json sidecar if exists
+                var sidecar = file + ".ann.json";
+                if (File.Exists(sidecar))
+                {
+                    var destSidecar = destPath + ".ann.json";
+                    if (File.Exists(destSidecar)) File.Delete(destSidecar);
+                    File.Move(sidecar, destSidecar);
+                }
+            }
+
+            // Move attachment folder ({sessionName}_att)
+            var attDir = Path.Combine(wsDir, baseName + "_att");
+            if (Directory.Exists(attDir))
+            {
+                var destAttDir = Path.Combine(dstWsDir, baseName + "_att");
+                if (Directory.Exists(destAttDir))
+                    destAttDir = destAttDir + "_" + DateTime.Now.Ticks;
+                Directory.Move(attDir, destAttDir);
+                moved++;
+                Console.WriteLine($"[FolderService] Transferred attachment folder: {baseName}_att");
+            }
+        }
+
+        Console.WriteLine($"[FolderService] TransferSessionFiles: moved {moved} item(s) from PC {oldPcId} to PC {newPcId}");
+    }
+
     /// <summary>Delete Front_Cover and Back_Cover for every PC folder (regular and solo) on the server.</summary>
     /// <summary>
     /// Ensures Front_Cover/Program exists, copies the template Program.pdf into it,

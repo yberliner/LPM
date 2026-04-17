@@ -3384,15 +3384,6 @@
                             <input class="form-control form-control-sm" value="@_smDetail.SessionId" readonly />
                         </div>
                         <div class="sm-field">
-                            <label>PC</label>
-                            <select class="form-select form-select-sm" @bind="_smEditPcId">
-                                @foreach (var pc in _actionAllPcs)
-                                {
-                                    <option value="@pc.PcId">@pc.FullName</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="sm-field">
                             <label>Name</label>
                             <input class="form-control form-control-sm" @bind="_smEditName" />
                         </div>
@@ -3577,8 +3568,28 @@
             </div>
             <div class="sm-footer">
                 <button class="btn btn-sm btn-danger d-flex align-items-center gap-1" @onclick="SmStartDelete">
-                    <i class="ri-delete-bin-line"></i> Delete Session
+                    <i class="ri-delete-bin-line"></i> Delete
                 </button>
+                <button class="btn btn-sm btn-outline-warning d-flex align-items-center gap-1"
+                        disabled="@(_smTransferring)" @onclick="() => _smShowTransfer = !_smShowTransfer">
+                    <i class="ri-arrow-right-up-line"></i> Transfer
+                </button>
+                @if (_smShowTransfer)
+                {
+                    <select class="form-select form-select-sm" style="max-width:200px;" @bind="_smTransferPcId">
+                        <option value="0">— Target PC —</option>
+                        @foreach (var pc in _actionAllPcs.Where(p => p.PcId != _smDetail.PcId))
+                        {
+                            <option value="@pc.PcId">@pc.FullName</option>
+                        }
+                    </select>
+                    <button class="btn btn-sm btn-warning d-flex align-items-center gap-1"
+                            disabled="@(_smTransferPcId == 0 || _smTransferring)" @onclick="SmTransferSession">
+                        @if (_smTransferring) { <span class="spinner-border spinner-border-sm"></span> }
+                        else { <i class="ri-check-line"></i> }
+                        Go
+                    </button>
+                }
                 <div class="ms-auto d-flex gap-2">
                     <button class="btn btn-sm btn-outline-secondary" @onclick="SmBackToList">@LS.T("common.cancel")</button>
                     <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
@@ -5963,8 +5974,11 @@
     string _smError = "";
     string _smSuccess = "";
     Dictionary<string, string> _smCsStatuses = [];
+    // Session Manager transfer
+    bool _smShowTransfer;
+    int _smTransferPcId;
+    bool _smTransferring;
     // Session Manager edit fields
-    int _smEditPcId;
     string _smEditName = "";
     DateOnly _smEditDate;
     int _smEditLenSec;
@@ -7931,6 +7945,7 @@ string _actionPcSearch = "";
         if (_smDetail == null) { _smError = "Session not found."; return; }
         _smError = ""; _smSuccess = "";
         _smDelStage1 = false; _smDelStage2 = false; _smDelInput = ""; _smDelError = "";
+        _smShowTransfer = false; _smTransferPcId = 0; _smTransferring = false;
         _smCsList = DashSvc.GetCsStaffList(0);
         SmPopulateEditFields();
     }
@@ -7938,7 +7953,6 @@ string _actionPcSearch = "";
     void SmPopulateEditFields()
     {
         if (_smDetail == null) return;
-        _smEditPcId = _smDetail.PcId;
         _smEditName = _smDetail.Name ?? "";
         _smEditDate = DateOnly.TryParse(_smDetail.SessionDate, out var d) ? d : DateOnly.FromDateTime(DateTime.Today);
         _smEditLenSec = _smDetail.LengthSeconds;
@@ -7974,7 +7988,6 @@ string _actionPcSearch = "";
         {
             // Build summary of what changed
             var changes = new List<string>();
-            if (_smEditPcId != detail.PcId) changes.Add("PC");
             if (_smEditName != (detail.Name ?? "")) changes.Add("Name");
             if (_smEditDate.ToString("yyyy-MM-dd") != detail.SessionDate) changes.Add("Date");
             if (_smEditLenSec != detail.LengthSeconds) changes.Add("Duration");
@@ -7998,8 +8011,7 @@ string _actionPcSearch = "";
                 DashSvc.UpdateSessionAdmin(detail.SessionId, _smEditName, _smEditDate.ToString("yyyy-MM-dd"),
                     _smEditLenSec, _smEditAdminSec, _smEditIsFree, _smEditVerified,
                     string.IsNullOrWhiteSpace(_smEditNotes) ? null : _smEditNotes,
-                    _smEditChargeSec, _smEditChargedRate, _smEditAudSalary,
-                    _smEditPcId != detail.PcId ? _smEditPcId : null);
+                    _smEditChargeSec, _smEditChargedRate, _smEditAudSalary);
 
                 if (detail.CsReviewId.HasValue)
                 {
@@ -8023,18 +8035,57 @@ string _actionPcSearch = "";
             _smSaveSuccess = false;
             _smDetail = null;
             _smError = "";
-            // If PcId was changed, switch the list to the new PC
-            if (_smEditPcId != detail.PcId && _smEditPcId > 0)
-            {
-                _smPcId = _smEditPcId;
-                _smPcName = _actionAllPcs.FirstOrDefault(p => p.PcId == _smPcId)?.FullName ?? "";
-                _smSuccess = $"Session moved to {_smPcName}";
-            }
             if (_smSoloMode) SmLoadSoloSessions();
-            else SmLoadPage(0);
+            else SmLoadPage(_smPage);
             StateHasChanged();
         }
         catch (Exception ex) { _smError = $"Save failed: {ex.Message}"; _smSaving = false; }
+    }
+
+    async Task SmTransferSession()
+    {
+        if (_smDetail == null || _smTransferPcId == 0) return;
+        _smTransferring = true; _smError = ""; _smSuccess = "";
+        StateHasChanged();
+
+        var sessionId = _smDetail.SessionId;
+        var oldPcId = _smDetail.PcId;
+        var newPcId = _smTransferPcId;
+        var sessionName = _smDetail.Name ?? "";
+        var newPcName = _actionAllPcs.FirstOrDefault(p => p.PcId == newPcId)?.FullName ?? $"PC {newPcId}";
+
+        try
+        {
+            await Task.Run(() =>
+            {
+                // 1. Update sess_sessions.PcId
+                DashSvc.TransferSessionPcId(sessionId, newPcId);
+
+                // 2. Move worksheet files on disk
+                FolderSvc.TransferSessionFiles(oldPcId, newPcId, sessionName);
+            });
+
+            Console.WriteLine($"[SessionManager] Transferred session {sessionId} ('{sessionName}') from PC {oldPcId} to PC {newPcId} by '{_logUsername}'");
+
+            DashSvc.NotifyDataChanged();
+            _smTransferring = false;
+            _smShowTransfer = false;
+            _smTransferPcId = 0;
+
+            // Switch to the new PC's session list
+            _smPcId = newPcId;
+            _smPcName = newPcName;
+            _smDetail = null;
+            _smSuccess = $"Session transferred to {newPcName}";
+            if (_smSoloMode) SmLoadSoloSessions();
+            else SmLoadPage(0);
+        }
+        catch (Exception ex)
+        {
+            _smError = $"Transfer failed: {ex.Message}";
+            _smTransferring = false;
+            Console.WriteLine($"[SessionManager] Transfer failed for session {sessionId}: {ex.Message}");
+        }
     }
 
     void SmStartDelete()
