@@ -63,7 +63,7 @@
                             <option value="1">Last 1 day</option>
                             <option value="3">Last 3 days</option>
                             <option value="7">Last 7 days</option>
-                            <option value="10">Last 10 days</option>
+                            <option value="21">Last 21 days</option>
                             <option value="0">All</option>
                         </select>
                     </div>
@@ -178,8 +178,7 @@
                             <option value="1">Last 1 day</option>
                             <option value="3">Last 3 days</option>
                             <option value="7">Last 7 days</option>
-                            <option value="10">Last 10 days</option>
-                            <option value="30">Last 30 days</option>
+                            <option value="21">Last 21 days</option>
                             <option value="0">All</option>
                         </select>
                     </div>
@@ -383,7 +382,7 @@
                             <option value="1">Last 1 day</option>
                             <option value="3">Last 3 days</option>
                             <option value="7">Last 7 days</option>
-                            <option value="10">Last 10 days</option>
+                            <option value="21">Last 21 days</option>
                             <option value="0">All</option>
                         </select>
                     </div>
@@ -2087,13 +2086,13 @@
     bool _dataLoaded  = false;
     bool _pendingCsExpanded = true;
     bool _weeklyOverviewExpanded = true;
-    int  _csQueueDays = 7;
+    int  _csQueueDays = 21;
     bool _showDoneCs  = false;
     List<DashboardService.AuditorSessionStatus> _auditorStatuses = [];
     Dictionary<int, HashSet<string>> _audAttachTypes = new();
     Dictionary<int, QuestionInfo> _sessionQuestions = new();
     bool _audStatusExpanded = true;
-    int _audStatusDays = 7;
+    int _audStatusDays = 21;
     string _pcsSortCol = "pc";   // "pc", "date", "dur"
     bool _pcsSortAsc = true;
     string _audSortCol = "pc";   // "pc", "date", "dur"
@@ -2102,7 +2101,7 @@
     // ── Team CS Review (SeniorCS only) ──
     bool _isSeniorCS;
     bool _teamCsExpanded = true;
-    int  _teamCsDays = 7;
+    int  _teamCsDays = 21;
     bool _showTeamCsDone = false;
     List<(int PersonId, string FullName)> _teamCsStaff = [];
     Dictionary<int, List<DashboardService.PendingCsSession>> _teamCsQueues = new();
@@ -2710,7 +2709,7 @@
 
     async Task OnCsQueueRangeChanged(ChangeEventArgs e)
     {
-        _csQueueDays = int.TryParse(e.Value?.ToString(), out var v) ? v : 7;
+        _csQueueDays = int.TryParse(e.Value?.ToString(), out var v) ? v : 21;
         Console.WriteLine($"[Home] Changed CS queue range to {_csQueueDays} days by '{_username}'");
         _pendingCsSessions = DashSvc.GetPendingCsSessions(_userId!.Value, _csQueueDays, _showDoneCs);
         RefreshQuestions();
@@ -2728,7 +2727,7 @@
     // ── Team CS Review handlers (SeniorCS) ──
     async Task OnTeamCsDaysChanged(ChangeEventArgs e)
     {
-        _teamCsDays = int.TryParse(e.Value?.ToString(), out var v) ? v : 7;
+        _teamCsDays = int.TryParse(e.Value?.ToString(), out var v) ? v : 21;
         await ReloadTeamCsQueues();
     }
 
@@ -2766,7 +2765,7 @@
     async Task OnAudStatusRangeChanged(ChangeEventArgs e)
     {
         if (!_userId.HasValue) return;
-        _audStatusDays = int.TryParse(e.Value?.ToString(), out var v) ? v : 10;
+        _audStatusDays = int.TryParse(e.Value?.ToString(), out var v) ? v : 21;
         Console.WriteLine($"[Home] Changed auditor status range to {_audStatusDays} days by '{_username}'");
         _auditorStatuses = DashSvc.GetAuditorSessionStatuses(_userId.Value, _audStatusDays, isSolo: _isSolo);
         _audAttachTypes  = _auditorStatuses.ToDictionary(s => s.SessionId,
