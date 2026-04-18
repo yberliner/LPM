@@ -4,6 +4,7 @@
 @inject LPM.Services.CourseService CourseSvc
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JS
 
 <PageTitle>Salary Report</PageTitle>
 
@@ -206,13 +207,45 @@
                 <span class="sal-grand-amount">₪ @FormatShekel(_groups.Sum(g => g.TotalCents))</span>
             </div>
 
+            @* Quick-jump nav bar — fixed below the app header so it's ALWAYS visible (Excel-freeze style) *@
+            @if (_groups.Count > 1)
+            {
+                <div class="sal-quick-nav">
+                    <div class="sal-quick-nav-label">
+                        <i class="ri-team-line"></i>
+                    </div>
+                    <div class="sal-quick-nav-strip">
+                        @foreach (var g in _groups)
+                        {
+                            var totByCurrNav = g.TotalsByCurrency();
+                            var commTotalNav = g.Commissions.Sum(c => c.AmountCents);
+                            if (commTotalNav > 0) totByCurrNav["ILS"] = totByCurrNav.GetValueOrDefault("ILS") + commTotalNav;
+                            var ilsTotal = totByCurrNav.GetValueOrDefault("ILS");
+                            var firstName = string.IsNullOrWhiteSpace(g.FullName) ? "?" : g.FullName.Split(' ')[0];
+                            <button type="button" class="sal-quick-nav-chip"
+                                    title="Jump to @g.FullName"
+                                    @onclick="() => JumpTo(g.PersonId, g.FullName)">
+                                <span class="sal-quick-nav-avatar">@(g.FullName.Length > 0 ? char.ToUpper(g.FullName[0]) : '?')</span>
+                                <span class="sal-quick-nav-name">@firstName</span>
+                                @if (ilsTotal > 0)
+                                {
+                                    <span class="sal-quick-nav-total">₪@FormatShekel(ilsTotal)</span>
+                                }
+                            </button>
+                        }
+                    </div>
+                </div>
+                @* Spacer preserves layout flow so content below doesn't slide under the fixed bar *@
+                <div class="sal-quick-nav-spacer" aria-hidden="true"></div>
+            }
+
             @foreach (var group in _groups)
             {
                 var hasSessions = group.Sessions.Count > 0;
                 var hasCsRows   = group.CsReviews.Count > 0;
                 var hasComm     = group.Commissions.Count > 0;
 
-                <div class="sal-user-card">
+                <div class="sal-user-card" id="sal-user-@group.PersonId">
                     @* Card header (clickable to collapse) *@
                     <div class="sal-user-header" style="cursor:pointer;" @onclick="() => ToggleCollapse(group.FullName)">
                         <i class="ri-arrow-down-s-line sal-chevron @(_collapsed.Contains(group.FullName) ? "sal-chevron-collapsed" : "")"></i>
@@ -861,6 +894,41 @@
         if (!_collapsed.Remove(name)) _collapsed.Add(name);
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        // Inline <script> in a .razor file doesn't re-execute on client-side
+        // navigation — define the helper via eval on first render instead.
+        try
+        {
+            await JS.InvokeVoidAsync("eval", @"
+                window.lpmSalaryJumpTo = function(id) {
+                    var el = document.getElementById(id);
+                    if (!el) return;
+                    var rect = el.getBoundingClientRect();
+                    var targetY = rect.top + window.scrollY - 140;
+                    window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+                    el.classList.remove('sal-flash');
+                    void el.offsetWidth;
+                    el.classList.add('sal-flash');
+                    setTimeout(function(){ el.classList.remove('sal-flash'); }, 1700);
+                };
+            ");
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+    }
+
+    async Task JumpTo(int personId, string fullName)
+    {
+        _collapsed.Remove(fullName);
+        StateHasChanged();
+        await Task.Yield();
+        try { await JS.InvokeVoidAsync("lpmSalaryJumpTo", $"sal-user-{personId}"); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+    }
+
     async Task Calculate()
     {
         _error = null;
@@ -1029,6 +1097,88 @@
         animation: sal-fade-in .4s ease;
     }
     .sal-grand-amount { font-size: 1.2rem; font-weight: 800; color: #4ade80; margin-left: 6px; }
+
+    /* ── Quick-jump nav bar ── Excel-freeze style: always pinned below the app header */
+    .sal-quick-nav {
+        position: fixed;
+        top: 4.25rem;                /* matches .app-header height (styles.css:25429) */
+        left: 0; right: 0;           /* mobile default — full width */
+        z-index: 99;                 /* below app-header (z-index:100), above cards */
+        display: flex; align-items: center; gap: 10px;
+        background: rgba(255,255,255,.97);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid rgba(148,163,184,.25);
+        padding: 8px 18px;
+        box-shadow: 0 6px 14px rgba(15,23,42,.08);
+    }
+    /* Desktop: sidebar (.app-sidebar, 15rem) is fixed on the left — inset the bar so chips aren't covered */
+    @@media (min-width: 992px) {
+        .sal-quick-nav { left: 15rem; }
+    }
+    /* Pushes content down by the bar's height so nothing slides under it */
+    .sal-quick-nav-spacer {
+        height: 60px;                /* approx. bar height; matches padding + chip min-height */
+        margin: 6px 0 4px;
+    }
+    .sal-quick-nav-label {
+        flex: 0 0 auto;
+        width: 34px; height: 34px;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 8px;
+        background: linear-gradient(135deg,#1e293b,#334155);
+        color: #e2e8f0; font-size: 1rem;
+    }
+    .sal-quick-nav-strip {
+        flex: 1 1 auto;
+        display: flex; align-items: center; gap: 6px;
+        overflow-x: auto; overflow-y: visible;
+        scrollbar-width: thin;
+        padding: 2px 2px 6px;
+        min-height: 44px;
+    }
+    .sal-quick-nav-strip::-webkit-scrollbar { height: 6px; }
+    .sal-quick-nav-strip::-webkit-scrollbar-thumb { background: rgba(100,116,139,.35); border-radius: 3px; }
+    .sal-quick-nav-chip {
+        flex: 0 0 auto;
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 10px;
+        border: 1px solid rgba(148,163,184,.35);
+        background: #f8fafc;
+        border-radius: 999px;
+        font-size: .78rem; font-weight: 600; color: #334155;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: transform .12s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease;
+        min-height: 34px;
+    }
+    .sal-quick-nav-chip:hover {
+        transform: translateY(-1px);
+        border-color: #3b82f6;
+        background: #eff6ff;
+        box-shadow: 0 4px 10px rgba(59,130,246,.18);
+        color: #1d4ed8;
+    }
+    .sal-quick-nav-chip:active { transform: translateY(0); }
+    .sal-quick-nav-avatar {
+        width: 22px; height: 22px; border-radius: 50%;
+        display: inline-flex; align-items: center; justify-content: center;
+        background: linear-gradient(135deg,#64748b,#475569);
+        color: #fff; font-size: .7rem; font-weight: 700;
+        flex: 0 0 auto;
+    }
+    .sal-quick-nav-name { letter-spacing: .1px; }
+    .sal-quick-nav-total {
+        font-size: .7rem; font-weight: 700; color: #16a34a;
+        background: rgba(22,163,74,.08);
+        padding: 1px 6px; border-radius: 6px;
+    }
+    /* Highlight flash when jumping to a card */
+    @@keyframes sal-highlight-flash {
+        0%   { box-shadow: 0 0 0 0 rgba(59,130,246,.55); }
+        60%  { box-shadow: 0 0 0 6px rgba(59,130,246,.25); }
+        100% { box-shadow: 0 0 0 0 rgba(59,130,246,0); }
+    }
+    .sal-user-card.sal-flash { animation: sal-highlight-flash 1.6s ease; }
 
     /* ── User card ── */
     .sal-user-card {
@@ -1301,11 +1451,16 @@
         .sal-control-group { flex: 1; min-width: 130px; }
         .sal-user-card     { margin: 16px 12px 0; }
         .sal-grand-total   { margin: 16px 12px 4px; }
+        .sal-quick-nav     { padding: 6px 10px; }
+        .sal-quick-nav-spacer { height: 56px; }
         .sal-table td, .sal-thead th { padding: 6px 8px; font-size: .78rem; }
     }
     @@media (max-width: 480px) {
-        .sal-controls      { flex-direction: column; }
-        .sal-control-group { flex: unset; width: 100%; }
-        .sal-calc-btn      { width: 100%; justify-content: center; }
+        .sal-controls         { flex-direction: column; }
+        .sal-control-group    { flex: unset; width: 100%; }
+        .sal-calc-btn         { width: 100%; justify-content: center; }
+        .sal-quick-nav-total  { display: none; }
+        .sal-quick-nav-chip   { font-size: .78rem; padding: 10px 12px; min-height: 44px; }
     }
 </style>
+

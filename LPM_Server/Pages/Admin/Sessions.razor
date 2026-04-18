@@ -9,6 +9,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject LPM.Services.WalletService WalletSvc
+@inject IJSRuntime JS
 
 <div class="sa-page p-3 p-md-4">
 
@@ -89,6 +90,53 @@
         </div>
     </div>
 
+    @* Quick-jump nav bar — fixed below the app header, always visible Excel-freeze style.
+       Combined bar: Auditors on the left, CS Reviewers on the right. *@
+    @if (!_loading && (_groups.Count + _csGroups.Count) > 1)
+    {
+        <div class="sa-quick-nav">
+            <div class="sa-quick-nav-strip">
+                @if (_groups.Count > 0)
+                {
+                    <div class="sa-quick-nav-label sa-quick-nav-label-aud" title="Auditors">
+                        <i class="ri-user-voice-line"></i>
+                    </div>
+                    @foreach (var g in _groups)
+                    {
+                        var firstName = string.IsNullOrWhiteSpace(g.AuditorName) ? "?" : g.AuditorName.Split(' ')[0];
+                        <button type="button" class="sa-quick-nav-chip sa-quick-nav-chip-aud"
+                                title="Jump to @g.AuditorName"
+                                @onclick="() => JumpToAuditor(g.AuditorId)">
+                            <span class="sa-quick-nav-avatar sa-quick-nav-avatar-aud">@(g.AuditorName.Length > 0 ? char.ToUpper(g.AuditorName[0]) : '?')</span>
+                            <span class="sa-quick-nav-name">@firstName</span>
+                        </button>
+                    }
+                }
+                @if (_groups.Count > 0 && _csGroups.Count > 0)
+                {
+                    <div class="sa-quick-nav-divider"></div>
+                }
+                @if (_csGroups.Count > 0)
+                {
+                    <div class="sa-quick-nav-label sa-quick-nav-label-cs" title="CS Reviewers">
+                        <i class="ri-user-star-line"></i>
+                    </div>
+                    @foreach (var c in _csGroups)
+                    {
+                        var firstName = string.IsNullOrWhiteSpace(c.CsName) ? "?" : c.CsName.Split(' ')[0];
+                        <button type="button" class="sa-quick-nav-chip sa-quick-nav-chip-cs"
+                                title="Jump to @c.CsName"
+                                @onclick="() => JumpToCs(c.CsId)">
+                            <span class="sa-quick-nav-avatar sa-quick-nav-avatar-cs">@(c.CsName.Length > 0 ? char.ToUpper(c.CsName[0]) : '?')</span>
+                            <span class="sa-quick-nav-name">@firstName</span>
+                        </button>
+                    }
+                }
+            </div>
+        </div>
+        <div class="sa-quick-nav-spacer" aria-hidden="true"></div>
+    }
+
     @* ══════════════════════════════════════════════════════════
        SECTION 1 — SESSIONS
        ══════════════════════════════════════════════════════════ *@
@@ -126,7 +174,7 @@
             int gApproved = group.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus == "Approved"));
             var audAvatar = _auditorAvatars.GetValueOrDefault(group.AuditorId);
 
-            <div class="card border-0 shadow-sm mb-4 sa-auditor-card">
+            <div class="card border-0 shadow-sm mb-4 sa-auditor-card" id="sa-aud-@group.AuditorId">
                 <div class="card-header d-flex align-items-center gap-3 py-3 px-4 border-0 sa-auditor-header">
                     @if (audAvatar != null) { <img src="@audAvatar" class="sa-avatar-img" alt="@group.AuditorName" /> }
                     else { <div class="sa-avatar">@(group.AuditorName.Length > 0 ? char.ToUpper(group.AuditorName[0]) : '?')</div> }
@@ -346,7 +394,7 @@
             int cgDone    = csGroup.PcGroups.Sum(pg => pg.Reviews.Count(r => r.CsStatus == "Approved"));
             var csAvatar   = _csAvatars.GetValueOrDefault(csGroup.CsId);
 
-            <div class="card border-0 shadow-sm mb-4 sa-auditor-card">
+            <div class="card border-0 shadow-sm mb-4 sa-auditor-card" id="sa-cs-@csGroup.CsId">
                 <div class="card-header d-flex align-items-center gap-3 py-3 px-4 border-0 sa-cs-card-header">
                     @if (csAvatar != null) { <img src="@csAvatar" class="sa-avatar-img" alt="@csGroup.CsName" /> }
                     else { <div class="sa-avatar sa-avatar-cs">@(csGroup.CsName.Length > 0 ? char.ToUpper(csGroup.CsName[0]) : '?')</div> }
@@ -717,7 +765,100 @@
         0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,.3); }
         50%      { box-shadow: 0 0 0 4px rgba(220,38,38,.15); }
     }
+
+    /* ── Quick-jump nav bar ── Excel-freeze style: always pinned below the app header */
+    .sa-quick-nav {
+        position: fixed;
+        top: 4.25rem;                /* matches .app-header height */
+        left: 0; right: 0;           /* mobile default — full width */
+        z-index: 99;                 /* below app-header (z-index:100), above cards */
+        display: flex; align-items: center;
+        background: rgba(255,255,255,.97);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid rgba(148,163,184,.25);
+        padding: 8px 18px;
+        box-shadow: 0 6px 14px rgba(15,23,42,.08);
+    }
+    /* Desktop: sidebar is 15rem wide — inset the bar so chips aren't covered */
+    @@media (min-width: 992px) {
+        .sa-quick-nav { left: 15rem; }
+    }
+    .sa-quick-nav-spacer {
+        height: 60px;                /* matches bar height */
+        margin: 6px 0 4px;
+    }
+    .sa-quick-nav-strip {
+        flex: 1 1 auto;
+        display: flex; align-items: center; gap: 6px;
+        overflow-x: auto; overflow-y: visible;
+        scrollbar-width: thin;
+        padding: 2px 2px 6px;
+        min-height: 44px;
+    }
+    .sa-quick-nav-strip::-webkit-scrollbar { height: 6px; }
+    .sa-quick-nav-strip::-webkit-scrollbar-thumb { background: rgba(100,116,139,.35); border-radius: 3px; }
+    .sa-quick-nav-label {
+        flex: 0 0 auto;
+        width: 34px; height: 34px;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 8px;
+        color: #fff; font-size: 1rem;
+    }
+    .sa-quick-nav-label-aud { background: linear-gradient(135deg,#1e40af,#3b82f6); }
+    .sa-quick-nav-label-cs  { background: linear-gradient(135deg,#3730a3,#6366f1); }
+    .sa-quick-nav-divider {
+        flex: 0 0 auto;
+        width: 1px; height: 24px;
+        background: rgba(148,163,184,.4);
+        margin: 0 4px;
+    }
+    .sa-quick-nav-chip {
+        flex: 0 0 auto;
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 10px;
+        border: 1px solid rgba(148,163,184,.35);
+        background: #f8fafc;
+        border-radius: 999px;
+        font-size: .78rem; font-weight: 600; color: #334155;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: transform .12s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease;
+        min-height: 34px;
+    }
+    .sa-quick-nav-chip:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 10px rgba(59,130,246,.18);
+    }
+    .sa-quick-nav-chip-aud:hover { border-color: #3b82f6; background: #eff6ff; color: #1d4ed8; }
+    .sa-quick-nav-chip-cs:hover  { border-color: #6366f1; background: #eef2ff; color: #3730a3; }
+    .sa-quick-nav-chip:active { transform: translateY(0); }
+    .sa-quick-nav-avatar {
+        width: 22px; height: 22px; border-radius: 50%;
+        display: inline-flex; align-items: center; justify-content: center;
+        color: #fff; font-size: .7rem; font-weight: 700;
+        flex: 0 0 auto;
+    }
+    .sa-quick-nav-avatar-aud { background: linear-gradient(135deg,#1e40af,#3b82f6); }
+    .sa-quick-nav-avatar-cs  { background: linear-gradient(135deg,#3730a3,#6366f1); }
+    .sa-quick-nav-name { letter-spacing: .1px; }
+
+    /* Highlight flash when jumping to a card */
+    @@keyframes sa-highlight-flash {
+        0%   { box-shadow: 0 0 0 0 rgba(59,130,246,.55); }
+        60%  { box-shadow: 0 0 0 6px rgba(59,130,246,.25); }
+        100% { box-shadow: 0 0 0 0 rgba(59,130,246,0); }
+    }
+    .sa-auditor-card.sa-flash { animation: sa-highlight-flash 1.6s ease; }
+
+    @@media (max-width: 991.98px) {
+        .sa-quick-nav         { padding: 6px 10px; }
+        .sa-quick-nav-spacer  { height: 56px; }
+    }
+    @@media (max-width: 480px) {
+        .sa-quick-nav-chip    { font-size: .78rem; padding: 10px 12px; min-height: 44px; }
+    }
 </style>
+
 
 @code {
     // ── Filter state ──────────────────────────────────────────────
@@ -1185,6 +1326,52 @@
 
     private string CsStaffName(int csId) =>
         _csStaffList.FirstOrDefault(s => s.PersonId == csId).FullName ?? $"ID {csId}";
+
+    // ── Quick-jump navigation ─────────────────────────────────────
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        // Inline <script> in a .razor file doesn't re-execute on client-side
+        // navigation — define the helper via eval on first render instead.
+        try
+        {
+            await JS.InvokeVoidAsync("eval", @"
+                window.lpmSessionsJumpTo = function(id) {
+                    var el = document.getElementById(id);
+                    if (!el) return;
+                    var rect = el.getBoundingClientRect();
+                    var targetY = rect.top + window.scrollY - 140;
+                    window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+                    el.classList.remove('sa-flash');
+                    void el.offsetWidth;
+                    el.classList.add('sa-flash');
+                    setTimeout(function(){ el.classList.remove('sa-flash'); }, 1700);
+                };
+            ");
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+    }
+
+    private async Task JumpToAuditor(int auditorId)
+    {
+        _sessCollapsed = false;
+        StateHasChanged();
+        await Task.Yield();
+        try { await JS.InvokeVoidAsync("lpmSessionsJumpTo", $"sa-aud-{auditorId}"); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+    }
+
+    private async Task JumpToCs(int csId)
+    {
+        _csCollapsed = false;
+        StateHasChanged();
+        await Task.Yield();
+        try { await JS.InvokeVoidAsync("lpmSessionsJumpTo", $"sa-cs-{csId}"); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+    }
 
     // ── Inline edit: session date ─────────────────────────────────
     private async Task OnSessionDateChanged(int sessionId, string? newVal)
