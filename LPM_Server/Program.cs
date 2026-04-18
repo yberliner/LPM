@@ -901,7 +901,8 @@ static bool CanAccessPcFile(HttpContext ctx, int pcId, bool solo, LPM.Services.D
 }
 
 // ── PWA Share Target: receive scanned PDF ──
-app.MapPost("/share-receive", async (HttpContext ctx, LPM.Services.FolderService svc) =>
+app.MapPost("/share-receive", async (HttpContext ctx, LPM.Services.FolderService svc,
+    LPM.Services.UserActivityService activitySvc) =>
 {
     var username = ctx.User.Identity?.Name;
     if (string.IsNullOrEmpty(username))
@@ -917,8 +918,12 @@ app.MapPost("/share-receive", async (HttpContext ctx, LPM.Services.FolderService
     await file.CopyToAsync(ms);
     svc.SaveToScanInbox(username, file.FileName ?? "scan.pdf", ms.ToArray());
 
+    var savedName = file.FileName ?? "scan.pdf";
+    activitySvc.RecordActivity(username, $"Shared '{savedName}' to scan inbox", "scan");
+    activitySvc.RecordInteraction(username);
+
     Console.WriteLine($"[ShareTarget] Received '{file.FileName}' ({file.Length} bytes) from '{username}'");
-    return Results.Redirect($"/scan-received?status=ok&name={Uri.EscapeDataString(file.FileName ?? "scan.pdf")}");
+    return Results.Redirect($"/scan-received?status=ok&name={Uri.EscapeDataString(savedName)}");
 });
 
 app.MapGet("/api/pc-file", (int pcId, string path, LPM.Services.FolderService svc,
