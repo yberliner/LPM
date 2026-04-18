@@ -925,7 +925,11 @@ app.MapGet("/api/pc-file", (int pcId, string path, LPM.Services.FolderService sv
     LPM.Services.DashboardService dashSvc, HttpContext ctx, bool solo = false, bool download = false) =>
 {
     var user = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "(unknown)";
-    Console.WriteLine($"[api/pc-file] user='{user}' pcId={pcId} solo={solo} download={download} path='{path}'");
+    // PDF.js issues many range requests per file; suppress the per-chunk noise and log
+    // only the initial non-range GET. The Range header is the reliable signal.
+    var isRange = ctx.Request.Headers.ContainsKey("Range");
+    if (!isRange)
+        Console.WriteLine($"[api/pc-file] user='{user}' pcId={pcId} solo={solo} download={download} path='{path}'");
     if (!CanAccessPcFile(ctx, pcId, solo, dashSvc))
     {
         Console.WriteLine($"[api/pc-file] FORBIDDEN for user='{user}' pcId={pcId}");
@@ -934,7 +938,8 @@ app.MapGet("/api/pc-file", (int pcId, string path, LPM.Services.FolderService sv
     var bytes = download
         ? svc.ReadFileBytesForDownload(pcId, path, solo)
         : svc.ReadFileBytes(pcId, path, solo);
-    Console.WriteLine($"[api/pc-file] bytes={(bytes == null ? "NULL (not found)" : bytes.Length + " bytes")}");
+    if (!isRange)
+        Console.WriteLine($"[api/pc-file] bytes={(bytes == null ? "NULL (not found)" : bytes.Length + " bytes")}");
     if (bytes == null) return Results.NotFound();
     var ext = Path.GetExtension(path).ToLowerInvariant();
     var mime = ext switch
@@ -1039,6 +1044,26 @@ app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
         catch (Exception ex)
         {
             Console.WriteLine($"[FolderSummary] Ghostscript combine threw for PC {pcId}: {ex.Message}");
+        }
+    }
+
+    // ── Step 2.5: unify page sizes so the generated summary (A4) and the on-disk
+    // original render at a single canvas size in the viewer. Uses the same normalizer
+    // as the Add-Session flow (inner-canvas detection + aspect-preserving content scaling).
+    if (combined != null)
+    {
+        try
+        {
+            var normalized = folderSvc.TryNormalizePdfDirect(combined);
+            if (normalized != null && normalized.Length > 0)
+            {
+                combined = normalized;
+                Console.WriteLine($"[FolderSummary] Page-size normalized for PC {pcId}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FolderSummary] Normalization threw for PC {pcId}: {ex.Message} — using un-normalized combined");
         }
     }
 

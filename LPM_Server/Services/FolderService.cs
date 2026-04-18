@@ -905,7 +905,7 @@ public class FolderService
     // ── Text annotation baking ────────────────────────────────────────────────
 
     private record AnnSidecar(double Scale, List<AnnSidecarEntry> Annotations);
-    private record AnnSidecarEntry(int PageIdx, string Text, double X, double Y, double? FontSize, string? Color, double? MaxWidth, bool? Rtl);
+    private record AnnSidecarEntry(int PageIdx, string Text, double X, double Y, double? FontSize, string? Color, double? MaxWidth, bool? Rtl, List<string>? Lines);
 
     /// <summary>
     /// Parse an .ann.json sidecar and render its text annotations onto the PDF using PdfSharp.
@@ -976,7 +976,11 @@ public class FolderService
                         ? ann.MaxWidth.Value / scale
                         : 0;
 
-                    var lines = WrapTextForPdf(gfx, mainFont, ann.Text, maxWidthPt);
+                    // Prefer the client-computed wrapped lines (match what the user saw on screen).
+                    // Fall back to server-side wrapping for legacy sidecars without Lines.
+                    var lines = (ann.Lines is { Count: > 0 })
+                        ? ann.Lines
+                        : WrapTextForPdf(gfx, mainFont, ann.Text, maxWidthPt);
                     var brush = new PdfSharpCore.Drawing.XSolidBrush(color);
 
                     // Helper: draw a single line using segment-by-segment font switching

@@ -1,0 +1,73 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JSRuntime
+@inject IHttpContextAccessor HttpContextAccessor
+@inject LPM.Services.UserActivityService ActivitySvc
+@implements IDisposable
+
+@* Registers a 30s interaction heartbeat on any page that hosts it.
+   Listeners live on `document` so pointer/keyboard activity is detected
+   regardless of which layout renders — works for MainLayout pages and
+   the standalone PcFolder layout alike. *@
+
+@code {
+    DotNetObjectReference<UserHeartbeat>? _selfRef;
+    string _username = "";
+
+    protected override void OnInitialized()
+    {
+        _username = HttpContextAccessor.HttpContext?.User?.Identity?.Name ?? "";
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || string.IsNullOrEmpty(_username)) return;
+        try
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("eval", @"
+                window._lpmStartHeartbeat = function(ref) {
+                    if (window._lpmHeartbeatId) clearInterval(window._lpmHeartbeatId);
+                    if (window._lpmHeartbeatHandler) {
+                        var h = window._lpmHeartbeatHandler;
+                        ['mousemove','keydown','click','scroll','touchstart'].forEach(function(e) {
+                            document.removeEventListener(e, h);
+                        });
+                    }
+                    var active = true;
+                    var handler = function() { active = true; };
+                    window._lpmHeartbeatHandler = handler;
+                    document.addEventListener('mousemove', handler, {passive:true});
+                    document.addEventListener('keydown', handler, {passive:true});
+                    document.addEventListener('click', handler, {passive:true});
+                    document.addEventListener('scroll', handler, {passive:true});
+                    document.addEventListener('touchstart', handler, {passive:true});
+                    window._lpmHeartbeatId = setInterval(function() {
+                        if (active) {
+                            try { ref.invokeMethodAsync('OnUserInteraction'); } catch(e) {}
+                            active = false;
+                        }
+                    }, 30000);
+                };
+            ");
+            await JSRuntime.InvokeVoidAsync("_lpmStartHeartbeat", _selfRef);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+    }
+
+    [JSInvokable]
+    public void OnUserInteraction()
+    {
+        if (!string.IsNullOrEmpty(_username))
+            ActivitySvc.RecordInteraction(_username);
+    }
+
+    public void Dispose()
+    {
+        try { _ = JSRuntime.InvokeVoidAsync("eval", @"
+            if(window._lpmHeartbeatId){clearInterval(window._lpmHeartbeatId);window._lpmHeartbeatId=null;}
+            if(window._lpmHeartbeatHandler){var h=window._lpmHeartbeatHandler;['mousemove','keydown','click','scroll','touchstart'].forEach(function(e){document.removeEventListener(e,h);});window._lpmHeartbeatHandler=null;}
+        "); } catch { }
+        _selfRef?.Dispose();
+    }
+}

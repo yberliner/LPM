@@ -11,6 +11,7 @@
 @implements IDisposable
 
 <Switcher />
+<UserHeartbeat />
 
 <div class="page">
 
@@ -67,36 +68,6 @@
                 var inner = await JSRuntime.InvokeAsync<int>("interop.inner", "innerWidth");
                 if (dataNavLayout == "horizontal" && inner >= 992)
                     navMenuRef?.closeMenuFn();
-
-                // ── User interaction heartbeat (30s interval) ──
-                _heartbeatRef = DotNetObjectReference.Create(this);
-                await JSRuntime.InvokeVoidAsync("eval", @"
-                    window._lpmStartHeartbeat = function(ref) {
-                        if (window._lpmHeartbeatId) clearInterval(window._lpmHeartbeatId);
-                        // Remove previously attached listeners
-                        if (window._lpmHeartbeatHandler) {
-                            var h = window._lpmHeartbeatHandler;
-                            ['mousemove','keydown','click','scroll','touchstart'].forEach(function(e) {
-                                document.removeEventListener(e, h);
-                            });
-                        }
-                        var active = true;
-                        var handler = function() { active = true; };
-                        window._lpmHeartbeatHandler = handler;
-                        document.addEventListener('mousemove', handler, {passive:true});
-                        document.addEventListener('keydown', handler, {passive:true});
-                        document.addEventListener('click', handler, {passive:true});
-                        document.addEventListener('scroll', handler, {passive:true});
-                        document.addEventListener('touchstart', handler, {passive:true});
-                        window._lpmHeartbeatId = setInterval(function() {
-                            if (active) {
-                                try { ref.invokeMethodAsync('OnUserInteraction'); } catch(e) {}
-                                active = false;
-                            }
-                        }, 30000);
-                    };
-                ");
-                await JSRuntime.InvokeVoidAsync("_lpmStartHeartbeat", _heartbeatRef);
             }
             catch (JSDisconnectedException) { /* circuit closed before JS completed — safe to ignore */ }
             catch (TaskCanceledException)   { /* circuit shutdown during await — safe to ignore */ }
@@ -109,19 +80,12 @@
         StateHasChanged();
     }
 
-    [JSInvokable]
-    public void OnUserInteraction()
-    {
-        if (!string.IsNullOrEmpty(_activityUsername))
-            ActivitySvc.RecordInteraction(_activityUsername);
-    }
     async Task ScrollToTop()
     {
         await JSRuntime.InvokeVoidAsync("interop.scrollToTop");
     }
 
     DotNetObjectReference<MainLayout>? _scrollVisRef;
-    DotNetObjectReference<MainLayout>? _heartbeatRef;
     private string _activityUsername = "";
     private string _lastNavUrl = "";
 
@@ -214,10 +178,5 @@
         LS.OnLanguageChanged -= HandleLanguageChanged;
         NavigationManager.LocationChanged -= OnLocationChanged;
         _scrollVisRef?.Dispose();
-        try { _ = JSRuntime.InvokeVoidAsync("eval", @"
-            if(window._lpmHeartbeatId){clearInterval(window._lpmHeartbeatId);window._lpmHeartbeatId=null;}
-            if(window._lpmHeartbeatHandler){var h=window._lpmHeartbeatHandler;['mousemove','keydown','click','scroll','touchstart'].forEach(function(e){document.removeEventListener(e,h);});window._lpmHeartbeatHandler=null;}
-        "); } catch { }
-        _heartbeatRef?.Dispose();
     }
 }

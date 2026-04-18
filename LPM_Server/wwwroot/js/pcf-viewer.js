@@ -446,7 +446,14 @@ window.pcfViewer = {
                 let openAnn = null, openIdx = -1;
                 const restoreMaxW = _textRestore.userWidth ||
                     (_textRestore.existingAnn?.maxWidth) || 0;
-                if (_textRestore.isEditing && _textRestore.existingAnn && _textRestore.existingIdx >= 0) {
+                if (_textRestore.isEditing && _textRestore.existingIdx >= 0
+                    && _textRestore.existingIdx < pane.annotations.length) {
+                    // Reuse preserved annotation (same-file reload kept it via savedAnnotations).
+                    // Do NOT push a copy — that produced a duplicate on commit.
+                    openIdx = _textRestore.existingIdx;
+                    openAnn = pane.annotations[openIdx];
+                } else if (_textRestore.isEditing && _textRestore.existingAnn) {
+                    // Different-file reload or index no longer valid — restore as a fresh copy
                     pane.annotations.push({ ..._textRestore.existingAnn });
                     openIdx = pane.annotations.length - 1;
                     openAnn = pane.annotations[openIdx];
@@ -1201,12 +1208,41 @@ window.pcfViewer = {
             committed = true;
             const text = input.value.trim();
             const pane = self.panes[paneId];
+
+            // Compute the visual lines matching how the textarea wrapped on screen.
+            // We use the mirror div (same font/size/line-height as the textarea) so line
+            // boundaries match exactly what the user saw — the baker will render these
+            // verbatim instead of re-wrapping with PdfSharp's different font metrics.
+            const computeWrappedLines = (src) => {
+                const contentW = Math.max(1, input.offsetWidth - PADDING_H);
+                const out = [];
+                for (const rawLine of src.split('\n')) {
+                    if (!rawLine) { out.push(''); continue; }
+                    const words = rawLine.split(' ');
+                    let current = '';
+                    for (const word of words) {
+                        const candidate = current ? current + ' ' + word : word;
+                        mirror.textContent = candidate;
+                        if (mirror.offsetWidth > contentW && current) {
+                            out.push(current);
+                            current = word;
+                        } else {
+                            current = candidate;
+                        }
+                    }
+                    out.push(current);
+                }
+                return out;
+            };
+
             if (pane) {
                 const rtl = self._isRtl(text);
+                const lines = text ? computeWrappedLines(text) : null;
                 if (isEditing && existingIdx >= 0) {
                     if (text) {
                         // Update existing annotation — apply current color/fontSize/position from toolbar + drag
                         pane.annotations[existingIdx].text = text;
+                        pane.annotations[existingIdx].lines = lines;
                         pane.annotations[existingIdx].color = self.drawColor;
                         pane.annotations[existingIdx].fontSize = self.fontSize;
                         pane.annotations[existingIdx].maxWidth = input.offsetWidth;
@@ -1219,8 +1255,8 @@ window.pcfViewer = {
                     }
                 } else if (text) {
                     // New annotation (also handles restore-as-new when existingIdx = -1)
-                    pane.annotations.push({ pageIdx, type: 'text', text, x, y, color, fontSize, maxWidth: input.offsetWidth, rtl });
-                    console.log('[txt-dbg] pushed annotation: pageIdx=' + pageIdx + ' x=' + x.toFixed(1) + ' y=' + y.toFixed(1) + ' maxWidth=' + input.offsetWidth + ' text="' + text + '" total=' + pane.annotations.length);
+                    pane.annotations.push({ pageIdx, type: 'text', text, lines, x, y, color, fontSize, maxWidth: input.offsetWidth, rtl });
+                    console.log('[txt-dbg] pushed annotation: pageIdx=' + pageIdx + ' x=' + x.toFixed(1) + ' y=' + y.toFixed(1) + ' maxWidth=' + input.offsetWidth + ' lines=' + (lines?.length ?? 0) + ' text="' + text + '" total=' + pane.annotations.length);
                 }
                 self._redrawOverlay(pageIdx, paneId);
                 self._notifyChange();
