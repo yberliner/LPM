@@ -1724,6 +1724,20 @@
         font-size: .65rem; font-weight: 600;
         padding: 2px 8px; border-radius: 10px;
     }
+    .home-pcs-free-badge {
+        display: inline-block;
+        background: linear-gradient(135deg, #fde68a, #fbbf24);
+        color: #78350f;
+        font-size: .62rem; font-weight: 700;
+        padding: 2px 7px; border-radius: 10px;
+        letter-spacing: .3px;
+        border: 1px solid rgba(245,158,11,.55);
+        animation: home-free-glow 2.2s ease-in-out infinite;
+    }
+    @@keyframes home-free-glow {
+        0%, 100% { box-shadow: 0 0 2px rgba(245,158,11,.35), 0 0 4px rgba(245,158,11,.15); }
+        50%      { box-shadow: 0 0 5px rgba(245,158,11,.75), 0 0 10px rgba(245,158,11,.35); }
+    }
     .home-pcs-cs-btn {
         background: linear-gradient(135deg, #0ea5e9, #3b82f6);
         border: none; color: #fff; border-radius: 6px;
@@ -2858,6 +2872,11 @@
                                 @if (s.IsSolo)
                                 {
                                     <span class="home-pcs-solo-badge">Solo</span>
+                                    @if (s.IsCsFree)
+                                    {
+                                        <span class="home-pcs-free-badge ms-1"
+                                              title="This solo session's CS review is marked Free — verify this is intentional">Free</span>
+                                    }
                                 }
                                 else
                                 {
@@ -3488,7 +3507,7 @@
             {
                 if (j > 0) sb.Append(',');
                 var name = pcs[j].FullName.Replace("\\", "\\\\").Replace("'", "\\'");
-                sb.Append($"['{name}',{pcs[j].Seconds}]");
+                sb.Append($"['{name}',{pcs[j].AuditorSeconds},{pcs[j].CsSoloSeconds}]");
             }
             sb.Append(']');
         }
@@ -3503,23 +3522,51 @@
             "var pcs=d[idx]||[];" +
             "var th=Math.floor(t);" +
             "var tm=Math.round((t-th)*60);" +
-            "var r='<div style=\"padding:10px 14px;min-width:220px;font-family:inherit;background:#fff;" +
-                    "border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.14)\">';" +
-            "r+='<div style=\"font-weight:700;font-size:.93rem;color:#1a237e;" +
-                    "border-bottom:1px solid #c5cae9;padding-bottom:5px;margin-bottom:8px\">" +
-                    "Total: '+th+':'+String(tm).padStart(2,'0')+'</div>';" +
+            "function fmt(s){var h=Math.floor(s/3600);var m=Math.floor((s%3600)/60);return h+':'+String(m).padStart(2,'0');}" +
+            "var audSum=0,csSum=0;" +
+            "for(var k=0;k<pcs.length;k++){audSum+=pcs[k][1];csSum+=pcs[k][2];}" +
+            "var r='<div style=\"padding:12px 14px;min-width:300px;font-family:inherit;background:#fff;" +
+                    "border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.16)\">';" +
+            "r+='<div style=\"display:flex;align-items:center;gap:8px;font-weight:700;font-size:.95rem;" +
+                    "color:#1a237e;border-bottom:1px solid #c5cae9;padding-bottom:7px;margin-bottom:9px\">" +
+                    "<span style=\"display:inline-block;width:10px;height:10px;border-radius:3px;" +
+                    "background:linear-gradient(135deg,#3949ab,#5c6bc0)\"></span>" +
+                    "Total <span style=\"margin-left:auto;color:#1a237e;letter-spacing:.5px\">" +
+                    "'+th+':'+String(tm).padStart(2,'0')+'</span></div>';" +
             "if(pcs.length){" +
-            "r+='<div style=\"font-size:.7rem;color:#adb5bd;text-transform:uppercase;" +
-                    "letter-spacing:.7px;margin-bottom:5px\">Top PCs</div>';" +
+            "r+='<table style=\"width:100%;border-collapse:collapse;font-size:.78rem\">';" +
+            "r+='<thead><tr style=\"color:#6c757d;text-transform:uppercase;font-size:.63rem;" +
+                    "letter-spacing:.7px;border-bottom:1px solid #eceff1\">" +
+                    "<th style=\"text-align:left;padding:4px 6px;font-weight:600\">PC</th>" +
+                    "<th style=\"text-align:right;padding:4px 6px;font-weight:600;color:#3949ab\">Audit</th>" +
+                    "<th style=\"text-align:right;padding:4px 6px;font-weight:600;color:#6a1b9a\">CS Solo</th>" +
+                    "<th style=\"text-align:right;padding:4px 6px;font-weight:600\">\u03a3</th>" +
+                    "</tr></thead><tbody>';" +
             "for(var i=0;i<pcs.length;i++){" +
-            "var ph=Math.floor(pcs[i][1]/3600);" +
-            "var pm=Math.floor((pcs[i][1]%3600)/60);" +
-            "r+='<div style=\"display:flex;justify-content:space-between;gap:20px;padding:3px 6px;" +
-                    "border-radius:4px;background:'+(i%2===0?'#f3f4fb':'transparent')+'\">';" +
-            "r+='<span style=\"color:#212529;font-size:.82rem\">'+pcs[i][0]+'</span>';" +
-            "r+='<span style=\"color:#3949ab;font-weight:700;font-size:.82rem\">'+" +
-                    "ph+':'+String(pm).padStart(2,'0')+'</span>';" +
-            "r+='</div>';}" +
+            "var a=pcs[i][1],c=pcs[i][2],sum=a+c;" +
+            "var bg=i%2===0?'#f6f7fb':'transparent';" +
+            "r+='<tr style=\"background:'+bg+'\">';" +
+            "r+='<td style=\"padding:4px 6px;color:#212529;white-space:nowrap\">'+pcs[i][0]+'</td>';" +
+            "r+='<td style=\"padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;color:'" +
+                    "+(a>0?'#3949ab':'#cfd8dc')+';font-weight:'+(a>0?'700':'400')+'\">" +
+                    "'+(a>0?fmt(a):'\u2014')+'</td>';" +
+            "r+='<td style=\"padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;color:'" +
+                    "+(c>0?'#6a1b9a':'#cfd8dc')+';font-weight:'+(c>0?'700':'400')+'\">" +
+                    "'+(c>0?fmt(c):'\u2014')+'</td>';" +
+            "r+='<td style=\"padding:4px 6px;text-align:right;font-variant-numeric:tabular-nums;" +
+                    "color:#111;font-weight:700\">'+fmt(sum)+'</td>';" +
+            "r+='</tr>';}" +
+            "r+='</tbody><tfoot><tr style=\"border-top:1px solid #e0e0e0;background:linear-gradient(" +
+                    "90deg,rgba(57,73,171,.05),rgba(106,27,154,.05))\">" +
+                    "<td style=\"padding:6px 6px;color:#455a64;text-transform:uppercase;font-size:.62rem;" +
+                    "letter-spacing:.7px;font-weight:700\">Total</td>" +
+                    "<td style=\"padding:6px 6px;text-align:right;color:#3949ab;font-weight:800;" +
+                    "font-variant-numeric:tabular-nums\">'+fmt(audSum)+'</td>" +
+                    "<td style=\"padding:6px 6px;text-align:right;color:#6a1b9a;font-weight:800;" +
+                    "font-variant-numeric:tabular-nums\">'+fmt(csSum)+'</td>" +
+                    "<td style=\"padding:6px 6px;text-align:right;color:#1a237e;font-weight:800;" +
+                    "font-variant-numeric:tabular-nums\">'+fmt(audSum+csSum)+'</td>" +
+                    "</tr></tfoot></table>';" +
             "}" +
             "r+='</div>';return r;}";
 

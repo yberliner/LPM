@@ -148,7 +148,7 @@
                                 @if (!string.IsNullOrEmpty(pc.OrgName))
                                 {
                                     <span class="badge rounded-pill"
-                                          style="background:#e0e7ff;color:#4338ca;font-size:.7rem;">@pc.OrgName</span>
+                                          style="background:@OrgBadgeBg(pc.OrgName);color:@OrgBadgeFg(pc.OrgName);font-size:.7rem;">@pc.OrgName</span>
                                 }
                             </td>
                             <td class="small text-muted text-center" colspan="7">
@@ -198,7 +198,7 @@
                                 @if (isFirst && !string.IsNullOrEmpty(pc.OrgName))
                                 {
                                     <span class="badge rounded-pill"
-                                          style="background:#e0e7ff;color:#4338ca;font-size:.7rem;">@pc.OrgName</span>
+                                          style="background:@OrgBadgeBg(pc.OrgName);color:@OrgBadgeFg(pc.OrgName);font-size:.7rem;">@pc.OrgName</span>
                                 }
                             </td>
 
@@ -5385,6 +5385,24 @@
     static string WalletFgColor(string c) => c switch
     {
         "EUR" => "#047857", "USD" => "#0369a1", _ => "#1e40af"
+    };
+
+    // Per-org badge palette: distinct colors per organization (case-insensitive)
+    static string OrgBadgeBg(string org) => (org ?? "").Trim().ToLowerInvariant() switch
+    {
+        "haifa"    => "#e0e7ff", // indigo
+        "riga"     => "#ccfbf1", // teal
+        "tel aviv" => "#fef3c7", // amber
+        "other"    => "#f1f5f9", // slate
+        _           => "#e0e7ff"
+    };
+    static string OrgBadgeFg(string org) => (org ?? "").Trim().ToLowerInvariant() switch
+    {
+        "haifa"    => "#4338ca",
+        "riga"     => "#0f766e",
+        "tel aviv" => "#b45309",
+        "other"    => "#475569",
+        _           => "#4338ca"
     };
 
     int _currentUserPersonId;

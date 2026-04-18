@@ -2182,6 +2182,65 @@ public class FolderService
         return (pg.Width.Point, pg.Height.Point);
     }
 
+    // Detects the "inner-canvas" pattern emitted by some handwriting / ink apps, where
+    // the page's content stream begins with a uniform scale (`q <sx> 0 0 <sy> 0 0 cm`)
+    // followed immediately by a white rectangle (`<x> <y> <w> <h> re f`) defining the
+    // drawable canvas. When this pattern draws the canvas into a sub-region of the page
+    // (leaving large blank margins around the content), returns the canvas rect in page
+    // coordinates. Otherwise returns null.
+    private static readonly System.Text.RegularExpressions.Regex _innerCanvasRx =
+        new System.Text.RegularExpressions.Regex(
+            @"q\s+(-?[0-9]*\.?[0-9]+)\s+0\s+0\s+(-?[0-9]*\.?[0-9]+)\s+0\s+0\s+cm" +
+            @"[\s\S]{0,400}?(-?[0-9]*\.?[0-9]+)\s+(-?[0-9]*\.?[0-9]+)\s+([0-9]*\.?[0-9]+)\s+([0-9]*\.?[0-9]+)\s+re\s+f",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static (double x, double y, double w, double h, double sx, double sy, string detail)?
+        DetectInnerCanvas(PdfSharpCore.Pdf.PdfPage pg, double pageW, double pageH)
+    {
+        string head;
+        try
+        {
+            using var buf = new MemoryStream();
+            foreach (var c in pg.Contents.Elements)
+            {
+                if (c is PdfSharpCore.Pdf.Advanced.PdfReference r && r.Value is PdfSharpCore.Pdf.PdfDictionary d && d.Stream != null)
+                {
+                    var bytes = d.Stream.UnfilteredValue;
+                    buf.Write(bytes, 0, bytes.Length);
+                    if (buf.Length >= 2000) break;
+                }
+            }
+            var arr = buf.ToArray();
+            int len = (int)Math.Min(arr.Length, 2000);
+            head = System.Text.Encoding.ASCII.GetString(arr, 0, len);
+        }
+        catch { return null; }
+
+        var m = _innerCanvasRx.Match(head);
+        if (!m.Success) return null;
+
+        double D(string s) => double.Parse(s, System.Globalization.CultureInfo.InvariantCulture);
+        double sx = D(m.Groups[1].Value);
+        double sy = D(m.Groups[2].Value);
+        double cx = D(m.Groups[3].Value);
+        double cy = D(m.Groups[4].Value);
+        double cw = D(m.Groups[5].Value);
+        double ch = D(m.Groups[6].Value);
+
+        double canvasX = cx * sx;
+        double canvasY = cy * sy;
+        double canvasW = cw * sx;
+        double canvasH = ch * sy;
+
+        // Only treat it as an inner canvas if it's meaningfully smaller than the page.
+        bool isSubregion = canvasW > 10 && canvasH > 10 &&
+                           (canvasW < pageW * 0.97 || canvasH < pageH * 0.97);
+        if (!isSubregion) return null;
+
+        string detail = $"sx={sx:F4} sy={sy:F4} canvas=({canvasX:F1},{canvasY:F1},{canvasW:F1},{canvasH:F1})pt";
+        return (canvasX, canvasY, canvasW, canvasH, sx, sy, detail);
+    }
+
     private byte[]? TryNormalizeWithPdfSharp(byte[] pdfBytes)
     {
         PdfSharpCore.Pdf.PdfDocument doc;
@@ -2189,6 +2248,7 @@ public class FolderService
         try
         {
             ms = new MemoryStream(pdfBytes);
+            // Modify mode: we may overwrite per-page MediaBox when an inner canvas is detected.
             doc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Modify);
         }
         catch (Exception ex)
@@ -2197,6 +2257,7 @@ public class FolderService
             return null; // signal caller to try Ghostscript repair
         }
 
+        string? tempSrcPath = null;
         try
         {
         using (ms)
@@ -2209,109 +2270,155 @@ public class FolderService
                 return pdfBytes;
             }
 
-            // ── Dump every page's boxes and compute max effective display size ──
+            // ── Per-page: detect inner-canvas, override MediaBox when found ──
             double maxW = 0, maxH = 0;
             bool anyCropBox = false;
+            bool anyCanvasDetected = false;
+            var pageInfo = new (double dispW, double dispH, double pageW, double pageH, int rot, bool detected, string detail)[doc.PageCount];
+
             for (int i = 0; i < doc.PageCount; i++)
             {
                 var pg  = doc.Pages[i];
                 var mb  = pg.MediaBox;
-                var (dispW, dispH) = EffectiveDisplaySize(pg);
+                double pageW = pg.Width.Point;
+                double pageH = pg.Height.Point;
+                var (effW, effH) = EffectiveDisplaySize(pg);
                 bool hasCrop  = pg.Elements.ContainsKey("/CropBox");
                 bool hasTrim  = pg.Elements.ContainsKey("/TrimBox");
                 bool hasBleed = pg.Elements.ContainsKey("/BleedBox");
                 if (hasCrop) anyCropBox = true;
-                Console.WriteLine($"[Norm] Page {i}: MB=[{mb.X1:F1},{mb.Y1:F1},{mb.X2:F1},{mb.Y2:F1}]" +
-                    $"  MB_size={pg.Width.Point:F1}×{pg.Height.Point:F1}" +
-                    $"  display={dispW:F1}×{dispH:F1}" +
-                    $"  Rot={pg.Rotate}  Crop={hasCrop}  Trim={hasTrim}  Bleed={hasBleed}");
+
+                double dispW = effW, dispH = effH;
+                bool detected = false;
+                string detail = "";
+
+                var canvas = DetectInnerCanvas(pg, pageW, pageH);
+                if (canvas.HasValue)
+                {
+                    var (cx, cy, cw, ch, _, _, cdetail) = canvas.Value;
+                    // Rewrite the MediaBox to cover only the detected canvas; XPdfForm renders
+                    // MediaBox (not CropBox), so this forces the canvas to be the rendered area.
+                    var mbArr = new PdfSharpCore.Pdf.PdfArray();
+                    mbArr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(cx));
+                    mbArr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(cy));
+                    mbArr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(cx + cw));
+                    mbArr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(cy + ch));
+                    pg.Elements["/MediaBox"] = mbArr;
+                    foreach (var key in new[] { "/CropBox", "/TrimBox", "/BleedBox", "/ArtBox" })
+                        if (pg.Elements.ContainsKey(key)) pg.Elements.Remove(key);
+
+                    dispW = cw;
+                    dispH = ch;
+                    detected = true;
+                    detail = cdetail;
+                    anyCanvasDetected = true;
+
+                    Console.WriteLine($"[Norm] Page {i}: DETECTED inner canvas {cw:F0}×{ch:F0}pt at ({cx:F0},{cy:F0}) on page {pageW:F0}×{pageH:F0} — {cdetail}");
+                }
+                else
+                {
+                    Console.WriteLine($"[Norm] Page {i}: MB=[{mb.X1:F1},{mb.Y1:F1},{mb.X2:F1},{mb.Y2:F1}]" +
+                        $"  MB_size={pageW:F1}×{pageH:F1}  display={effW:F1}×{effH:F1}" +
+                        $"  Rot={pg.Rotate}  Crop={hasCrop}  Trim={hasTrim}  Bleed={hasBleed}");
+                }
+
                 maxW = Math.Max(maxW, dispW);
                 maxH = Math.Max(maxH, dispH);
+                pageInfo[i] = (dispW, dispH, pageW, pageH, pg.Rotate, detected, detail);
             }
-            Console.WriteLine($"[Norm] maxDisplayW={maxW:F2} maxDisplayH={maxH:F2}  anyCropBox={anyCropBox}");
+            Console.WriteLine($"[Norm] maxDisplayW={maxW:F2} maxDisplayH={maxH:F2}  anyCropBox={anyCropBox}  anyCanvasDetected={anyCanvasDetected}");
 
             // ── Decide if normalisation is needed ─────────────────────────
             // needsNorm = any page's effective display size differs from max OR any CropBox present
-            // (CropBoxes are stripped even when all pages are same size, since viewers use them
-            //  as the visible area — removing them makes MediaBox authoritative)
-            bool needsNorm = anyCropBox;
+            // OR any inner-canvas detection that rewrote a MediaBox
+            bool needsNorm = anyCropBox || anyCanvasDetected;
             if (!needsNorm)
             {
                 for (int i = 0; i < doc.PageCount; i++)
                 {
-                    var (dw, dh) = EffectiveDisplaySize(doc.Pages[i]);
+                    var (dw, dh, _, _, _, _, _) = pageInfo[i];
                     if (dw != maxW || dh != maxH) { needsNorm = true; break; }
                 }
             }
 
             if (!needsNorm)
             {
-                Console.WriteLine($"[Norm] All pages uniform ({maxW:F0}×{maxH:F0}pt), no CropBoxes — no change needed");
+                Console.WriteLine($"[Norm] All pages uniform ({maxW:F0}×{maxH:F0}pt), no CropBoxes, no canvas detection — no change needed");
                 return pdfBytes;
             }
 
-            Console.WriteLine($"[Norm] Normalising {doc.PageCount} pages → {maxW:F0}×{maxH:F0}pt");
+            Console.WriteLine($"[Norm] Normalising {doc.PageCount} pages → {maxW:F0}×{maxH:F0}pt (scaling content to fit, preserving aspect)");
 
-            // ── Normalise every page ───────────────────────────────────────
+            // ── Build a new output doc, drawing each source page scaled to fit ──
+            // Save the (possibly MediaBox-modified) source doc to a temp file for XPdfForm.
+            tempSrcPath = Path.Combine(Path.GetTempPath(), $"lpm_norm_src_{Guid.NewGuid():N}.pdf");
+            using (var modMs = new MemoryStream())
+            {
+                doc.Save(modMs);
+                File.WriteAllBytes(tempSrcPath, modMs.ToArray());
+            }
+
+            PdfSharpCore.Drawing.XFont MakeCaptionFont()
+            {
+                foreach (var name in new[] { "DejaVu Sans", "Arial", "Liberation Sans", "Helvetica" })
+                    try { return new PdfSharpCore.Drawing.XFont(name, 4.0, PdfSharpCore.Drawing.XFontStyle.Regular); }
+                    catch { }
+                return new PdfSharpCore.Drawing.XFont("Courier New", 4.0, PdfSharpCore.Drawing.XFontStyle.Regular);
+            }
+
+            using var outDoc = new PdfSharpCore.Pdf.PdfDocument();
             for (int i = 0; i < doc.PageCount; i++)
             {
-                var pg = doc.Pages[i];
-                var (dispW, dispH) = EffectiveDisplaySize(pg);
+                var (dispW, dispH, pageW, pageH, rot, detected, detail) = pageInfo[i];
 
-                // Remove all clip/trim boxes — MediaBox becomes the sole authority
-                foreach (var key in new[] { "/CropBox", "/TrimBox", "/BleedBox", "/ArtBox" })
-                    if (pg.Elements.ContainsKey(key))
-                    {
-                        Console.WriteLine($"[Norm] Page {i}: removing {key}");
-                        pg.Elements.Remove(key);
-                    }
+                var outPg = outDoc.AddPage();
+                outPg.Width  = PdfSharpCore.Drawing.XUnit.FromPoint(maxW);
+                outPg.Height = PdfSharpCore.Drawing.XUnit.FromPoint(maxH);
 
-                if (dispW == maxW && dispH == maxH)
+                double scale = Math.Min(maxW / dispW, maxH / dispH);
+                double scaledW = dispW * scale;
+                double scaledH = dispH * scale;
+                double tx = (maxW - scaledW) / 2.0;
+                double ty = (maxH - scaledH) / 2.0;
+
+                using (var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(outPg))
                 {
-                    // This page's display area already equals the target — but its MediaBox
-                    // may differ (e.g., it had a CropBox that was removed above, or the
-                    // MediaBox happens to be exactly maxW×maxH). In either case, ensure the
-                    // MediaBox is set to exactly maxW×maxH so all pages are byte-consistent.
-                    var mb0 = pg.MediaBox;
-                    double mbW = pg.Width.Point;
-                    double mbH = pg.Height.Point;
-                    if (Math.Abs(mbW - maxW) > 0.5 || Math.Abs(mbH - maxH) > 0.5)
+                    var form = PdfSharpCore.Drawing.XPdfForm.FromFile(tempSrcPath);
+                    form.PageNumber = i + 1;
+                    gfx.DrawImage(form, tx, ty, scaledW, scaledH);
+
+                    bool contentScaled = Math.Abs(scale - 1.0) > 0.0005;
+                    bool canvasGrew    = Math.Abs(dispW - maxW) > 0.5 || Math.Abs(dispH - maxH) > 0.5;
+                    if (contentScaled || canvasGrew || detected)
                     {
-                        // MediaBox doesn't match — expand it to cover maxW×maxH
-                        double ox = (maxW - mbW) / 2.0;
-                        double oy = (maxH - mbH) / 2.0;
-                        var arr = new PdfSharpCore.Pdf.PdfArray();
-                        arr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(mb0.X1 - ox));
-                        arr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(mb0.Y1 - oy));
-                        arr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(mb0.X2 + ox));
-                        arr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(mb0.Y2 + oy));
-                        pg.Elements["/MediaBox"] = arr;
-                        Console.WriteLine($"[Norm] Page {i}: MB adjusted {mbW:F1}×{mbH:F1} → {maxW:F0}×{maxH:F0}pt (was crop-sized)");
+                        try
+                        {
+                            var capFont  = MakeCaptionFont();
+                            var capBrush = new PdfSharpCore.Drawing.XSolidBrush(
+                                PdfSharpCore.Drawing.XColor.FromArgb(60, 60, 60));
+                            var caption =
+                                $"[lpm-norm] p{i + 1}/{doc.PageCount} " +
+                                $"scale={scale:F4}x src={dispW:F2}x{dispH:F2}pt " +
+                                $"page={pageW:F2}x{pageH:F2}pt " +
+                                $"dst={maxW:F2}x{maxH:F2}pt " +
+                                $"draw=({tx:F2},{ty:F2}) {scaledW:F2}x{scaledH:F2}pt rot={rot}" +
+                                (detected ? $" DETECTED {detail}" : "");
+                            gfx.DrawString(caption, capFont, capBrush,
+                                new PdfSharpCore.Drawing.XPoint(1.5, maxH - 1.0));
+                        }
+                        catch (Exception capEx)
+                        {
+                            Console.WriteLine($"[Norm] Page {i}: debug caption failed: {capEx.Message}");
+                        }
                     }
-                    else
-                    {
-                        Console.WriteLine($"[Norm] Page {i}: display={dispW:F1}×{dispH:F1} already matches — boxes cleared");
-                    }
-                    continue;
                 }
 
-                // Expand MediaBox to maxW×maxH, centring the existing content
-                double offsetX = (maxW - dispW) / 2.0;
-                double offsetY = (maxH - dispH) / 2.0;
-                var mb = pg.MediaBox;
-                Console.WriteLine($"[Norm] Page {i}: MB=[{mb.X1:F1},{mb.Y1:F1},{mb.X2:F1},{mb.Y2:F1}]" +
-                    $"  display={dispW:F1}×{dispH:F1}  offset=({offsetX:F1},{offsetY:F1})");
-                var mArr = new PdfSharpCore.Pdf.PdfArray();
-                mArr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(mb.X1 - offsetX));
-                mArr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(mb.Y1 - offsetY));
-                mArr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(mb.X2 + offsetX));
-                mArr.Elements.Add(new PdfSharpCore.Pdf.PdfReal(mb.Y2 + offsetY));
-                pg.Elements["/MediaBox"] = mArr;
-                Console.WriteLine($"[Norm] Page {i}: expanded {dispW:F1}×{dispH:F1} → {maxW:F0}×{maxH:F0}pt");
+                Console.WriteLine($"[Norm] Page {i}: src={dispW:F1}×{dispH:F1} → dst={maxW:F0}×{maxH:F0} " +
+                    $"scale={scale:F4}x offset=({tx:F1},{ty:F1}) rot={rot} detected={detected}");
             }
 
             using var outMs = new MemoryStream();
-            doc.Save(outMs);
+            outDoc.Save(outMs);
             var result = outMs.ToArray();
 
             // ── Verify: re-read saved bytes and confirm page sizes ─────────
@@ -2341,6 +2448,13 @@ public class FolderService
         {
             Console.WriteLine($"[Norm] Normalisation failed: {ex.Message}");
             return null; // caller falls back to Ghostscript / LibreOffice
+        }
+        finally
+        {
+            if (tempSrcPath != null)
+            {
+                try { if (File.Exists(tempSrcPath)) File.Delete(tempSrcPath); } catch { }
+            }
         }
     }
 

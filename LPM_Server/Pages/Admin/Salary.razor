@@ -262,13 +262,14 @@
                             <div class="table-responsive">
                                 <table class="table table-sm mb-0 sal-table sal-table-fixed">
                                     <colgroup>
-                                        <col style="width:9%;" /><col style="width:7%;" /><col />
-                                        <col style="width:11%;" /><col style="width:12%;" />
-                                        <col style="width:14%;" /><col style="width:11%;" />
+                                        <col style="width:9%;" /><col style="width:15%;" /><col style="width:9%;" /><col />
+                                        <col style="width:10%;" /><col style="width:11%;" />
+                                        <col style="width:13%;" /><col style="width:10%;" />
                                     </colgroup>
                                     <thead>
                                         <tr class="sal-thead">
                                             <th>Date</th>
+                                            <th>Name</th>
                                             <th>ID</th>
                                             <th>PC</th>
                                             <th class="text-center">Duration</th>
@@ -282,7 +283,10 @@
                                         {
                                             <tr class="@(s.IsApproved ? "" : "sal-row-pending")" style="@(s.IsFree ? "opacity:.7;" : "")">
                                                 <td class="sal-date">@FormatDate(s.Date)</td>
-                                                <td class="sal-id">@s.SessionId</td>
+                                                <td class="sal-name">@s.Name</td>
+                                                <td class="sal-id">
+                                                    <span class="sal-id-sess" title="Session ID">sess #@s.SessionId</span>
+                                                </td>
                                                 <td class="sal-pc @(_soloPcIds.Contains(s.PcId) ? "sal-pc-solo" : "")">
                                                     @s.PcName
                                                     @if (s.IsFree) { <span class="sal-free-tag">Free</span> }
@@ -294,7 +298,7 @@
                                             </tr>
                                         }
                                         <tr class="sal-subtotal-row">
-                                            <td colspan="5" class="text-end fw-bold">Subtotal</td>
+                                            <td colspan="6" class="text-end fw-bold">Subtotal</td>
                                             <td class="text-end fw-bold sal-payment">@SalCurrSym(sessCurr.Key) @FormatShekel(sessCurrTotal)</td>
                                             <td></td>
                                         </tr>
@@ -316,13 +320,14 @@
                             <div class="table-responsive">
                                 <table class="table table-sm mb-0 sal-table sal-table-fixed">
                                     <colgroup>
-                                        <col style="width:8%;" /><col style="width:15%;" /><col />
-                                        <col style="width:11%;" /><col style="width:12%;" />
-                                        <col style="width:14%;" /><col style="width:11%;" />
+                                        <col style="width:8%;" /><col style="width:15%;" /><col style="width:15%;" /><col />
+                                        <col style="width:10%;" /><col style="width:11%;" />
+                                        <col style="width:13%;" /><col style="width:10%;" />
                                     </colgroup>
                                     <thead>
                                         <tr class="sal-thead">
                                             <th>Date</th>
+                                            <th>Name</th>
                                             <th>ID</th>
                                             <th>PC</th>
                                             <th class="text-center">Duration</th>
@@ -336,6 +341,7 @@
                                         {
                                             <tr class="@(c.IsApproved ? "" : "sal-row-pending")" style="@(c.IsFree ? "opacity:.7;" : "")">
                                                 <td class="sal-date">@FormatDate(c.Date)</td>
+                                                <td class="sal-name">@c.Name</td>
                                                 <td class="sal-id">
                                                     <span class="sal-id-cs" title="CS Review ID">cs #@c.CsReviewId</span>
                                                     <span class="sal-id-sess" title="Session ID">sess #@c.SessionId</span>
@@ -351,7 +357,7 @@
                                             </tr>
                                         }
                                         <tr class="sal-subtotal-row">
-                                            <td colspan="5" class="text-end fw-bold">Subtotal</td>
+                                            <td colspan="6" class="text-end fw-bold">Subtotal</td>
                                             <td class="text-end fw-bold sal-payment">@SalCurrSym(csCurr.Key) @FormatShekel(csCurrTotal)</td>
                                             <td></td>
                                         </tr>

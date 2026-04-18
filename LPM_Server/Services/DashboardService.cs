@@ -8,7 +8,10 @@ public record PcInfo(int PcId, string FullName, string WorkCapacity, string Nick
 public record SessionRow(int SessionId, int LengthSec, int AdminSec, bool IsFree, string? Summary, string CreatedAt, string AuditorName, string VerifiedStatus = "Pending", string? Name = null, bool IsSolo = false, string SessionDate = "");
 public record CsReviewRow(int CsReviewId, int SessionId, int ReviewSec, string Status, string? Notes);
 public record CsWorkRow(int CsWorkLogId, int LengthSec, string? Notes, string CreatedAt);
-public record PcWeekItem(string FullName, int Seconds);
+public record PcWeekItem(string FullName, int AuditorSeconds, int CsSoloSeconds)
+{
+    public int Seconds => AuditorSeconds + CsSoloSeconds;
+}
 public record WeekTotal(DateOnly WeekStart, int TotalSeconds, List<PcWeekItem>? TopPcs = null)
 {
     public string WeekLabel => WeekStart.ToString("dd/MM", CultureInfo.InvariantCulture);
@@ -32,8 +35,8 @@ public record CsReviewerGroup(int CsId, string CsName, List<PcCsGroup> PcGroups)
 
 public record StaffMember(int PersonId, string FullName);
 
-public record SalarySessionRow(string Date, int SessionId, int PcId, string PcName, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved, bool IsFree = false, string Currency = "ILS");
-public record SalaryCsRow(string Date, int CsReviewId, int SessionId, int PcId, string PcName, bool IsSolo, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved, bool IsFree = false, string Currency = "ILS");
+public record SalarySessionRow(string Date, int SessionId, int PcId, string PcName, string Name, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved, bool IsFree = false, string Currency = "ILS");
+public record SalaryCsRow(string Date, int CsReviewId, int SessionId, int PcId, string PcName, bool IsSolo, string Name, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved, bool IsFree = false, string Currency = "ILS");
 public record CommissionDetail(
     int PurchaseId, string PurchaseDate,
     string PaymentMethod, int PaymentGross, string PaymentDate,
@@ -1503,14 +1506,17 @@ public class DashboardService
             return weeks.Select(w => new WeekTotal(w, 0)).ToList();
 
         var startStr = weeks[0].ToString("yyyy-MM-dd");
-        var auditorPcIds = userPcs.Where(p => StaffRoles.IsAuditorCapacity(p.WorkCapacity)).Select(p => p.PcId).ToList();
+        var auditorPcIds   = userPcs.Where(p => StaffRoles.IsAuditorCapacity(p.WorkCapacity)).Select(p => p.PcId).ToList();
+        var csPcIds        = userPcs.Where(p => StaffRoles.IsCsCapacity(p.WorkCapacity)).Select(p => p.PcId).ToList();
+        var soloAuditorIds = csPcIds.Count > 0 ? GetSoloPcIds().Intersect(csPcIds).ToList() : new List<int>();
 
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        var pcTotals = weeks.ToDictionary(w => w, _ => new Dictionary<string, int>());
+        var audTotals    = weeks.ToDictionary(w => w, _ => new Dictionary<string, int>());
+        var csSoloTotals = weeks.ToDictionary(w => w, _ => new Dictionary<string, int>());
 
-        void Accumulate(string dateStr, int secs, string? pcName = null)
+        void Accumulate(string dateStr, int secs, string? pcName, bool isCsSolo)
         {
             if (!DateOnly.TryParse(dateStr, out var d)) return;
             var ws = GetWeekStart(d);
@@ -1518,7 +1524,7 @@ public class DashboardService
             result[ws] += secs;
             if (pcName != null)
             {
-                var dict = pcTotals[ws];
+                var dict = isCsSolo ? csSoloTotals[ws] : audTotals[ws];
                 dict[pcName] = dict.GetValueOrDefault(pcName) + secs;
             }
         }
@@ -1538,16 +1544,38 @@ public class DashboardService
             cmd.Parameters.AddWithValue("@uid",   userId);
             cmd.Parameters.AddWithValue("@start", startStr);
             using var r = cmd.ExecuteReader();
-            while (r.Read()) Accumulate(r.GetString(0), r.GetInt32(2), r.GetString(1));
+            while (r.Read()) Accumulate(r.GetString(0), r.GetInt32(2), r.GetString(1), isCsSolo: false);
         }
 
-        // CS columns intentionally excluded from weekly totals graph
+        // Regular CS excluded; Solo CS included (reviews of solo sessions only)
+        if (soloAuditorIds.Count > 0)
+        {
+            var pcList = string.Join(",", soloAuditorIds);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                SELECT s.SessionDate,
+                       TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS FullName,
+                       SUM(cr.ReviewLengthSeconds)
+                FROM cs_reviews cr
+                JOIN sess_sessions s ON s.SessionId = cr.SessionId
+                JOIN core_persons p ON p.PersonId = s.PcId
+                WHERE cr.CsId = @uid AND s.PcId IN ({pcList}) AND s.AuditorId IS NULL AND s.SessionDate >= @start
+                GROUP BY s.SessionDate, s.PcId";
+            cmd.Parameters.AddWithValue("@uid",   userId);
+            cmd.Parameters.AddWithValue("@start", startStr);
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) Accumulate(r.GetString(0), r.GetInt32(2), r.GetString(1), isCsSolo: true);
+        }
 
         return weeks.Select(w =>
         {
-            var tops = pcTotals[w]
-                .OrderByDescending(kv => kv.Value)
-                .Select(kv => new PcWeekItem(kv.Key, kv.Value))
+            var names = audTotals[w].Keys.Union(csSoloTotals[w].Keys);
+            var tops = names
+                .Select(n => new PcWeekItem(
+                    n,
+                    audTotals[w].GetValueOrDefault(n),
+                    csSoloTotals[w].GetValueOrDefault(n)))
+                .OrderByDescending(i => i.Seconds)
                 .ToList();
             return new WeekTotal(w, result[w], tops);
         }).ToList();
@@ -2820,7 +2848,8 @@ public class DashboardService
     public record PendingCsSession(
         int SessionId, int PcId, string PcName, string SessionName,
         string SessionDate, int TotalSeconds, bool IsSolo, string AuditorName, string CreatedAt,
-        bool IsPendingApproval = false, string CsStatus = "", string WorkCapacity = "");
+        bool IsPendingApproval = false, string CsStatus = "", string WorkCapacity = "",
+        bool IsCsFree = false);
 
     /// Returns sessions from the last <paramref name="lookbackDays"/> days,
     /// limited to PCs where <paramref name="csUserId"/> has an approved CS work-capacity assignment.
@@ -2843,7 +2872,8 @@ public class DashboardService
                    COALESCE(s.CreatedAt, '') AS CreatedAt,
                    spl.IsApproved AS IsApproved,
                    COALESCE(cr.Status, '') AS CsStatus,
-                   spl.WorkCapacity
+                   spl.WorkCapacity,
+                   CASE WHEN cr.Notes = 'Free' THEN 1 ELSE 0 END AS IsCsFree
             FROM sess_sessions s
             JOIN core_persons p ON p.PersonId = s.PcId
             JOIN sys_staff_pc_list spl ON spl.PcId = s.PcId
@@ -2875,7 +2905,8 @@ public class DashboardService
                 r.GetInt32(6) == 1, r.GetString(7), r.GetString(8),
                 IsPendingApproval: r.GetInt32(9) == 0,
                 CsStatus: r.GetString(10),
-                WorkCapacity: r.GetString(11)));
+                WorkCapacity: r.GetString(11),
+                IsCsFree: r.GetInt32(12) == 1));
         }
         return list;
     }
@@ -3568,7 +3599,8 @@ public class DashboardService
                    s.AuditorSalaryCentsPerHour,
                    s.VerifiedStatus,
                    COALESCE(w.Currency, 'ILS') AS Currency,
-                   COALESCE(s.IsFreeSession, 0) AS IsFreeSession
+                   COALESCE(s.IsFreeSession, 0) AS IsFreeSession,
+                   COALESCE(s.Name, '') AS Name
             FROM sess_sessions s
             JOIN core_persons pc ON pc.PersonId = s.PcId
             LEFT JOIN fin_wallets w ON w.WalletId = s.WalletId
@@ -3592,9 +3624,10 @@ public class DashboardService
                 var rateCents  = r.IsDBNull(6) ? 0 : r.GetInt32(6);
                 var currency   = r.IsDBNull(8) ? "ILS" : r.GetString(8);
                 var isFree     = r.GetInt32(9) == 1;
+                var sessName   = r.GetString(10);
                 var payment    = isApproved && !isFree ? (long)rateCents * chargeSec / 3600L : 0L;
                 var row = new SalarySessionRow(
-                    r.GetString(3), sessionId, pcId, r.GetString(4),
+                    r.GetString(3), sessionId, pcId, r.GetString(4), sessName,
                     chargeSec, rateCents, payment, isApproved, isFree, currency);
                 if (!sessionsByUser.ContainsKey(audId)) sessionsByUser[audId] = new();
                 sessionsByUser[audId].Add(row);
@@ -3615,7 +3648,8 @@ public class DashboardService
                    cr.Status,
                    COALESCE(cr.Notes, ''),
                    COALESCE(w.Currency, 'ILS') AS Currency,
-                   s.AuditorId
+                   s.AuditorId,
+                   COALESCE(s.Name, '') AS Name
             FROM cs_reviews cr
             JOIN sess_sessions s  ON s.SessionId  = cr.SessionId
             JOIN core_persons  pc ON pc.PersonId  = s.PcId
@@ -3645,8 +3679,9 @@ public class DashboardService
                 bool isFree    = isSolo && notes == "Free";
                 var payment    = isApproved && !isFree ? (long)rateCents * durSec / 3600L : 0L;
                 var currency   = r.IsDBNull(10) ? "ILS" : r.GetString(10);
+                var sessName   = r.GetString(12);
                 var row = new SalaryCsRow(
-                    r.GetString(4), csReviewId, sessionId, pcId, r.GetString(5), isSolo,
+                    r.GetString(4), csReviewId, sessionId, pcId, r.GetString(5), isSolo, sessName,
                     durSec, rateCents, payment, isApproved, isFree, currency);
                 if (!csByUser.ContainsKey(csId)) csByUser[csId] = new();
                 csByUser[csId].Add(row);
