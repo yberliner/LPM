@@ -8659,26 +8659,25 @@ string _actionPcSearch = "";
 
             await Task.Run(() =>
             {
-                // Generate session name with unique index
+                // Pick the first index whose file doesn't yet exist AND can actually be saved.
+                // The save is attempted with overwrite=false — if it fails (file appeared between
+                // the check and the save, or couldn't be written), we advance to the next index.
                 var datePrefix = DateTime.Now.ToString("yyMMdd");
+                var pdfBytes   = FolderSvc.CreateDummySessionPdf();
                 string sessionName = "";
                 for (int i = 1; i <= 100; i++)
                 {
                     var candidate = $"{datePrefix} Added manual session {i}";
-                    if (!FolderSvc.SectionFileExistsAtPath(_smAddPcId, "WorkSheets", $"{candidate}.pdf", solo: isSolo))
+                    if (FolderSvc.SectionFileExistsAtPath(_smAddPcId, "WorkSheets", $"{candidate}.pdf", solo: isSolo))
+                        continue;
+                    if (FolderSvc.SaveSectionFileToPath(_smAddPcId, "WorkSheets", $"{candidate}.pdf", pdfBytes, solo: isSolo))
                     {
                         sessionName = candidate;
                         break;
                     }
                 }
                 if (string.IsNullOrEmpty(sessionName))
-                    sessionName = $"{datePrefix} Added manual session";
-
-                // Create dummy PDF and save to WorkSheets (encrypted)
-                var pdfBytes = FolderSvc.CreateDummySessionPdf();
-                var saved = FolderSvc.SaveSectionFileToPath(_smAddPcId, "WorkSheets", $"{sessionName}.pdf", pdfBytes, solo: isSolo);
-                if (!saved)
-                    Console.WriteLine($"[SessionManager] Warning: could not save PDF for PC {_smAddPcId} (folder may not exist)");
+                    throw new InvalidOperationException("Could not save session PDF (folder missing or 100 name collisions).");
 
                 DashSvc.AddSessionFromManager(_smAddPcId, auditorId, _smAddCsId, dateStr,
                     lengthSec, adminSec, _smAddIsFree,
