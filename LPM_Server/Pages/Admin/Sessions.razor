@@ -9,6 +9,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject LPM.Services.WalletService WalletSvc
+@inject LPM.Services.SessionManagerLauncher SmLauncher
 @inject IJSRuntime JS
 
 <div class="sa-page p-3 p-md-4">
@@ -33,7 +34,7 @@
                 </span>
             }
             <button class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
-                    @onclick="LoadData" disabled="@_loading">
+                    @onclick="() => LoadData()" disabled="@_loading">
                 <i class="ri-refresh-line @(_loading ? "sa-spin" : "")"></i> @LS.T("common.refresh")
             </button>
         </div>
@@ -252,6 +253,8 @@
                             <thead>
                                 <tr class="sa-thead">
                                     <th class="ps-4">@LS.T("common.date")</th>
+                                    <th>Name</th>
+                                    <th style="width:92px;">ID</th>
                                     <th class="text-center">@LS.T("sessions.duration")</th>
                                     <th class="text-center">@LS.T("sessions.admin")</th>
                                     <th class="text-center">@LS.T("sessions.free")</th>
@@ -259,7 +262,7 @@
                                     <th style="width:115px;">@LS.T("sessions.rate") @PcCurrSym(pcGroup.PcId)/hr</th>
                                     <th style="width:115px;">@LS.T("sessions.salary") @PcCurrSym(pcGroup.PcId)/hr</th>
                                     <th style="width:105px;">@LS.T("common.status")</th>
-                                    <th class="pe-4" style="width:90px;"></th>
+                                    <th class="pe-4" style="width:130px;"></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -267,7 +270,9 @@
                                 {
                                     bool isApproved = s.VerifiedStatus == "Approved";
                                     var edit = _rowEdits[s.SessionId];
-                                    <tr class="@(isApproved ? "sa-row-approved" : "sa-row-draft")">
+                                    <tr class="@(isApproved ? "sa-row-approved" : "sa-row-draft")"
+                                        @oncontextmenu="e => OpenCtxSess(e, s.SessionId, s.IsFree)"
+                                        @oncontextmenu:preventDefault="true">
                                         <td class="ps-4 py-2">
                                             @if (pcTotal == 1)
                                             {
@@ -278,25 +283,18 @@
                                                     else             { <span class="badge rounded-pill sa-badge-pending">@LS.T("sessions.pending")</span> }
                                                 </div>
                                             }
-                                            @if (_editingSessionDateId == s.SessionId)
-                                            {
-                                                <input type="date" class="form-control form-control-sm sa-row-input" style="width:140px;"
-                                                       value="@s.SessionDate"
-                                                       @onchange="e => OnSessionDateChanged(s.SessionId, e.Value?.ToString())"
-                                                       @onblur="() => _editingSessionDateId = null" />
-                                            }
-                                            else
-                                            {
-                                                <span class="fw-semibold sa-date sa-date-editable" @onclick="() => _editingSessionDateId = s.SessionId"
-                                                      title="Click to change date">@FormatDate(s.SessionDate)</span>
-                                            }
+                                            <span class="fw-semibold sa-date">@FormatDate(s.CreatedAt)</span>
+                                        </td>
+                                        <td class="py-2 sa-sess-name" title="@s.Name">@s.Name</td>
+                                        <td class="py-2">
+                                            <span class="sa-id-sess" title="Session ID">sess #@s.SessionId</span>
                                         </td>
                                         <td class="text-center py-2">
                                             <span class="badge rounded-pill bg-light border text-dark px-2" style="font-size:0.78rem;">@DashboardService.Fmt(s.LengthSec)</span>
                                         </td>
                                         <td class="text-center py-2" style="font-size:0.83rem;color:#6b7280;">@DashboardService.Fmt(s.AdminSec)</td>
                                         <td class="text-center py-2">@if (s.IsFree) { <span class="badge sa-badge-free">FREE</span> }</td>
-                                        <td class="py-1">
+                                        <td class="py-1" @oncontextmenu:stopPropagation="true">
                                             @{ var pcWallets = _pcWallets.GetValueOrDefault(pcGroup.PcId) ?? new(); }
                                             @if (pcWallets.Count <= 1)
                                             {
@@ -323,7 +321,7 @@
                                                 </select>
                                             }
                                         </td>
-                                        <td class="py-1">
+                                        <td class="py-1" @oncontextmenu:stopPropagation="true">
                                             @if (s.IsFree)
                                             {
                                                 <span class="sa-free-badge">FREE — ignored</span>
@@ -333,7 +331,7 @@
                                                 <input type="number" class="form-control form-control-sm sa-row-input" @bind="edit.ChargeRate" @bind:culture="CultureInfo.InvariantCulture" min="0" step="0.01" onfocus="this.select()" />
                                             }
                                         </td>
-                                        <td class="py-1">
+                                        <td class="py-1" @oncontextmenu:stopPropagation="true">
                                             @if (s.IsFree)
                                             {
                                                 <span class="sa-free-badge">FREE — @PcCurrSym(pcGroup.PcId)0</span>
@@ -348,11 +346,17 @@
                                             else             { <span class="badge sa-badge-status-draft">@LS.T("sessions.pendingStatus")</span> }
                                         </td>
                                         <td class="pe-4 py-1">
-                                            <button class="btn btn-sm d-flex align-items-center gap-1 @(isApproved ? "sa-btn-update" : "sa-btn-submit")"
-                                                    @onclick="() => SubmitOne(s.SessionId)" disabled="@_busy">
-                                                <i class="@(isApproved ? "ri-pencil-line" : "ri-check-line")"></i>
-                                                @(isApproved ? LS.T("common.update") : LS.T("common.submit"))
-                                            </button>
+                                            <div class="d-flex align-items-center gap-1">
+                                                <button class="btn btn-sm d-flex align-items-center gap-1 @(isApproved ? "sa-btn-update" : "sa-btn-submit")"
+                                                        @onclick="() => SubmitOne(s.SessionId)" disabled="@_busy">
+                                                    <i class="@(isApproved ? "ri-pencil-line" : "ri-check-line")"></i>
+                                                    @(isApproved ? LS.T("common.update") : LS.T("common.submit"))
+                                                </button>
+                                                <button type="button" class="sa-action-btn" title="Edit in Session Manager"
+                                                        @onclick="() => OpenInSessionManager(s.SessionId)">
+                                                    <i class="ri-database-2-line"></i>
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 }
@@ -459,7 +463,9 @@
                         <table class="table table-sm align-middle mb-0 sa-table">
                             <thead>
                                 <tr class="sa-cs-thead">
-                                    <th class="ps-4">Session Date</th>
+                                    <th class="ps-4">Date</th>
+                                    <th>Name</th>
+                                    <th style="width:92px;">ID</th>
                                     <th style="width:140px;">CS By</th>
                                     <th class="text-center">Review Duration</th>
                                     <th style="width:140px;">Wallet</th>
@@ -469,7 +475,7 @@
                                     }
                                     <th style="width:115px;">CS Salary @PcCurrSym(pcGroup.PcId)/hr</th>
                                     <th style="width:105px;">Status</th>
-                                    <th class="pe-4" style="width:90px;"></th>
+                                    <th class="pe-4" style="width:130px;"></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -477,23 +483,19 @@
                                 @foreach (var rev in pcGroup.Reviews)
                                 {
                                     bool csApproved = rev.CsStatus == "Approved";
+                                    bool rowIsFree  = rev.IsSolo && rev.Notes == "Free";
                                     var csSalary    = _csRowEdits.GetValueOrDefault(rev.CsReviewId);
-                                    <tr class="@(csApproved ? "sa-row-approved" : "sa-row-draft")">
+                                    <tr class="@(csApproved ? "sa-row-approved" : "sa-row-draft")"
+                                        @oncontextmenu="e => OpenCtxCs(e, rev.CsReviewId, rowIsFree, rev.IsSolo)"
+                                        @oncontextmenu:preventDefault="@rev.IsSolo">
                                         <td class="ps-4 py-2">
-                                            @if (_editingCsDateId == rev.CsReviewId)
-                                            {
-                                                <input type="date" class="form-control form-control-sm sa-row-input" style="width:140px;"
-                                                       value="@rev.SessionDate"
-                                                       @onchange="e => OnCsDateChanged(rev.CsReviewId, rev.SessionId, e.Value?.ToString())"
-                                                       @onblur="() => _editingCsDateId = null" />
-                                            }
-                                            else
-                                            {
-                                                <span class="fw-semibold sa-date sa-date-editable" @onclick="() => _editingCsDateId = rev.CsReviewId"
-                                                      title="Click to change date">@FormatDate(rev.SessionDate)</span>
-                                            }
+                                            <span class="fw-semibold sa-date">@FormatDate(rev.CreatedAt)</span>
                                         </td>
-                                        <td class="py-1">
+                                        <td class="py-2 sa-sess-name" title="@rev.Name">@rev.Name</td>
+                                        <td class="py-2">
+                                            <span class="sa-id-sess" title="Session ID">sess #@rev.SessionId</span>
+                                        </td>
+                                        <td class="py-1" @oncontextmenu:stopPropagation="true">
                                             @if (_editingCsPersonId == rev.CsReviewId)
                                             {
                                                 <select class="form-select form-select-sm sa-row-input"
@@ -530,7 +532,7 @@
                                                 }
                                             }
                                         </td>
-                                        <td class="py-1">
+                                        <td class="py-1" @oncontextmenu:stopPropagation="true">
                                             @{ var csPcWallets = _pcWallets.GetValueOrDefault(pcGroup.PcId) ?? new(); }
                                             @if (csPcWallets.Count <= 1)
                                             {
@@ -557,10 +559,9 @@
                                                 </select>
                                             }
                                         </td>
-                                        @{ bool rowIsFree = rev.IsSolo && rev.Notes == "Free"; }
                                         @if (_hasSoloInGroup)
                                         {
-                                            <td class="py-1">
+                                            <td class="py-1" @oncontextmenu:stopPropagation="true">
                                                 @if (rev.IsSolo)
                                                 {
                                                     @if (rowIsFree)
@@ -576,7 +577,7 @@
                                                 }
                                             </td>
                                         }
-                                        <td class="py-1">
+                                        <td class="py-1" @oncontextmenu:stopPropagation="true">
                                             @if (rowIsFree)
                                             {
                                                 <span class="sa-free-badge">FREE — @PcCurrSym(pcGroup.PcId)0</span>
@@ -593,11 +594,17 @@
                                             else             { <span class="badge sa-badge-status-draft">@LS.T("sessions.pendingStatus")</span> }
                                         </td>
                                         <td class="pe-4 py-1">
-                                            <button class="btn btn-sm d-flex align-items-center gap-1 @(csApproved ? "sa-btn-update" : "sa-btn-submit")"
-                                                    @onclick="() => SubmitOneCsReview(rev.CsReviewId)" disabled="@_busy">
-                                                <i class="@(csApproved ? "ri-pencil-line" : "ri-check-line")"></i>
-                                                @(csApproved ? LS.T("common.update") : LS.T("common.submit"))
-                                            </button>
+                                            <div class="d-flex align-items-center gap-1">
+                                                <button class="btn btn-sm d-flex align-items-center gap-1 @(csApproved ? "sa-btn-update" : "sa-btn-submit")"
+                                                        @onclick="() => SubmitOneCsReview(rev.CsReviewId)" disabled="@_busy">
+                                                    <i class="@(csApproved ? "ri-pencil-line" : "ri-check-line")"></i>
+                                                    @(csApproved ? LS.T("common.update") : LS.T("common.submit"))
+                                                </button>
+                                                <button type="button" class="sa-action-btn" title="Edit in Session Manager"
+                                                        @onclick="() => OpenInSessionManager(rev.SessionId)">
+                                                    <i class="ri-database-2-line"></i>
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 }
@@ -607,6 +614,18 @@
                 }
             </div>
         }
+    }
+
+    @* ── Right-click Free/Bill context menu ── *@
+    @if (_ctxOpen)
+    {
+        <div class="sa-ctx-overlay" @onclick="() => _ctxOpen = false"
+             @oncontextmenu="() => _ctxOpen = false" @oncontextmenu:preventDefault="true"></div>
+        <div class="sa-ctx-menu" style="@($"top:{(int)_ctxY}px;left:{(int)_ctxX}px;")">
+            <button type="button" class="sa-ctx-item" @onclick="ToggleFreeBill">
+                <i class="ri-swap-line me-2"></i>@(_ctxIsFree ? "Mark as Billable" : "Mark as Free")
+            </button>
+        </div>
     }
 
 </div>
@@ -850,6 +869,55 @@
     }
     .sa-auditor-card.sa-flash { animation: sa-highlight-flash 1.6s ease; }
 
+    /* ── Session ID chip / Name cell / Edit icon / Context menu ── */
+    .sa-id-sess {
+        display: inline-block;
+        background: #f1f5f9; color: #64748b;
+        padding: 1px 6px; border-radius: 4px;
+        font-size: .68rem; font-weight: 600;
+        font-variant-numeric: tabular-nums; letter-spacing: .2px;
+        white-space: nowrap;
+    }
+    .sa-sess-name {
+        font-size: .82rem; color: #334155;
+        max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .sa-action-btn {
+        background: rgba(249,115,22,.1);
+        border: 1px solid rgba(249,115,22,.25);
+        color: #ea580c;
+        border-radius: 6px;
+        width: 28px; height: 28px;
+        display: inline-flex; align-items: center; justify-content: center;
+        cursor: pointer; font-size: .95rem;
+        transition: background .12s, transform .12s, box-shadow .12s;
+    }
+    .sa-action-btn:hover {
+        background: #f97316; color: #fff;
+        transform: translateY(-1px);
+        box-shadow: 0 3px 8px rgba(249,115,22,.3);
+    }
+    .sa-action-btn:active { transform: translateY(0); }
+
+    .sa-ctx-overlay { position: fixed; inset: 0; z-index: 1040; background: transparent; }
+    .sa-ctx-menu {
+        position: fixed; z-index: 1041;
+        background: #fff;
+        border: 1px solid rgba(100,116,139,.25);
+        border-radius: 8px;
+        box-shadow: 0 8px 22px rgba(15,23,42,.18);
+        padding: 4px; min-width: 180px;
+    }
+    .sa-ctx-item {
+        display: flex; align-items: center;
+        width: 100%; padding: 8px 12px;
+        background: transparent; border: 0;
+        font-size: .85rem; color: #1e293b;
+        border-radius: 6px; cursor: pointer;
+        text-align: left; min-height: 36px;
+    }
+    .sa-ctx-item:hover { background: #f1f5f9; color: #0f172a; }
+
     @@media (max-width: 991.98px) {
         .sa-quick-nav         { padding: 6px 10px; }
         .sa-quick-nav-spacer  { height: 56px; }
@@ -976,8 +1044,37 @@
     private List<(int PersonId, string FullName)> _csStaffList = new();
 
     // ── Inline editing state ──────────────────────────────────────
-    private int? _editingSessionDateId;   // SessionId being date-edited
-    private int? _editingCsDateId;        // CsReviewId being date-edited
+    // ── Right-click Free/Bill context menu ──
+    bool _ctxOpen;
+    double _ctxX, _ctxY;
+    string _ctxKind = ""; // "sess" or "cs"
+    int _ctxId;
+    bool _ctxIsFree;
+
+    void OpenCtxSess(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, int sessionId, bool isFree)
+    {
+        _ctxKind = "sess"; _ctxId = sessionId; _ctxIsFree = isFree;
+        _ctxX = e.ClientX; _ctxY = e.ClientY;
+        _ctxOpen = true;
+    }
+
+    void OpenCtxCs(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, int csReviewId, bool isFree, bool isSolo)
+    {
+        if (!isSolo) return; // non-solo CS is always paid — no toggle
+        _ctxKind = "cs"; _ctxId = csReviewId; _ctxIsFree = isFree;
+        _ctxX = e.ClientX; _ctxY = e.ClientY;
+        _ctxOpen = true;
+    }
+
+    async Task ToggleFreeBill()
+    {
+        _ctxOpen = false;
+        if (_ctxKind == "sess")    DashSvc.ToggleSessionFree(_ctxId);
+        else if (_ctxKind == "cs") DashSvc.ToggleCsReviewFree(_ctxId);
+        await LoadData(silent: true);
+    }
+
+    void OpenInSessionManager(int sessionId) => SmLauncher.RequestOpen(sessionId);
     private int? _editingCsPersonId;      // CsReviewId being reassigned
 
     // ── UI state ──────────────────────────────────────────────────
@@ -1045,9 +1142,9 @@
     }
 
     // ── Data load ─────────────────────────────────────────────────
-    private async Task LoadData()
+    private async Task LoadData(bool silent = false)
     {
-        _loading = true;
+        if (!silent) _loading = true;
         StateHasChanged();
         await Task.Yield();
 
@@ -1371,28 +1468,6 @@
         try { await JS.InvokeVoidAsync("lpmSessionsJumpTo", $"sa-cs-{csId}"); }
         catch (JSDisconnectedException) { }
         catch (TaskCanceledException)   { }
-    }
-
-    // ── Inline edit: session date ─────────────────────────────────
-    private async Task OnSessionDateChanged(int sessionId, string? newVal)
-    {
-        _editingSessionDateId = null;
-        if (string.IsNullOrWhiteSpace(newVal) || !DateOnly.TryParse(newVal, out _)) return;
-        DashSvc.UpdateSessionDate(sessionId, newVal);
-        Console.WriteLine($"[Sessions] Changed session {sessionId} date to {newVal} by '{_username}'");
-        ShowMsg("Session date updated.", false);
-        await LoadData();
-    }
-
-    // ── Inline edit: CS review date (updates session date) ────────
-    private async Task OnCsDateChanged(int csReviewId, int sessionId, string? newVal)
-    {
-        _editingCsDateId = null;
-        if (string.IsNullOrWhiteSpace(newVal) || !DateOnly.TryParse(newVal, out _)) return;
-        DashSvc.UpdateSessionDate(sessionId, newVal);
-        Console.WriteLine($"[Sessions] Changed CS review {csReviewId} session {sessionId} date to {newVal} by '{_username}'");
-        ShowMsg("Session date updated.", false);
-        await LoadData();
     }
 
     // ── Inline edit: reassign CS person ───────────────────────────

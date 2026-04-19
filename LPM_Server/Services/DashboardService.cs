@@ -22,14 +22,16 @@ public record AdminSessionRow(
     int SessionId, int PcId, string PcName, string AuditorName, string SessionDate,
     int LengthSec, int AdminSec, bool IsFree,
     int ChargedRateCentsPerHour, int AuditorSalaryCentsPerHour,
-    string VerifiedStatus, int? WalletId = null);
+    string VerifiedStatus, int? WalletId = null,
+    string CreatedAt = "", string Name = "");
 public record PcSessionGroup(int PcId, string PcName, List<AdminSessionRow> Sessions);
 public record AuditorSessionGroup(int AuditorId, string AuditorName, List<PcSessionGroup> PcGroups);
 
 public record AdminCsRow(
     int CsReviewId, int SessionId, int PcId, string PcName, int CsId, string CsName,
     string SessionDate, int ReviewLengthSeconds, int CsSalaryCentsPerHour, string CsStatus,
-    bool IsSolo = false, int ChargedCentsRatePerHour = 0, string? Notes = null, int? WalletId = null);
+    bool IsSolo = false, int ChargedCentsRatePerHour = 0, string? Notes = null, int? WalletId = null,
+    string CreatedAt = "", string Name = "");
 public record PcCsGroup(int PcId, string PcName, List<AdminCsRow> Reviews);
 public record CsReviewerGroup(int CsId, string CsName, List<PcCsGroup> PcGroups);
 
@@ -1036,10 +1038,10 @@ public class DashboardService
             var pcList = string.Join(",", auditorPcIds);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT PcId, SessionDate, SUM(LengthSeconds + AdminSeconds)
+                SELECT PcId, date(CreatedAt, 'localtime'), SUM(LengthSeconds + AdminSeconds)
                 FROM sess_sessions
-                WHERE AuditorId = @uid AND PcId IN ({pcList}) AND SessionDate IN ({dateList})
-                GROUP BY PcId, SessionDate";
+                WHERE AuditorId = @uid AND PcId IN ({pcList}) AND date(CreatedAt, 'localtime') IN ({dateList})
+                GROUP BY PcId, date(CreatedAt, 'localtime')";
             cmd.Parameters.AddWithValue("@uid", userId);
             using var r = cmd.ExecuteReader();
             while (r.Read())
@@ -1059,11 +1061,11 @@ public class DashboardService
             var pcList = string.Join(",", csPcIds);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT s.PcId, s.SessionDate, SUM(cr.ReviewLengthSeconds)
+                SELECT s.PcId, date(s.CreatedAt, 'localtime'), SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
-                WHERE cr.CsId = @uid AND s.PcId IN ({pcList}) AND s.SessionDate IN ({dateList}) AND s.AuditorId IS NOT NULL
-                GROUP BY s.PcId, s.SessionDate";
+                WHERE cr.CsId = @uid AND s.PcId IN ({pcList}) AND date(s.CreatedAt, 'localtime') IN ({dateList}) AND s.AuditorId IS NOT NULL
+                GROUP BY s.PcId, date(s.CreatedAt, 'localtime')";
             cmd.Parameters.AddWithValue("@uid", userId);
             using var r = cmd.ExecuteReader();
             while (r.Read())
@@ -1080,10 +1082,10 @@ public class DashboardService
             // Also include standalone General CS work (not linked to any session)
             using var wCmd = conn.CreateCommand();
             wCmd.CommandText = $@"
-                SELECT PcId, WorkDate, SUM(LengthSeconds)
+                SELECT PcId, date(CreatedAt, 'localtime'), SUM(LengthSeconds)
                 FROM cs_work_log
-                WHERE CsId = @uid AND PcId IN ({pcList}) AND WorkDate IN ({dateList})
-                GROUP BY PcId, WorkDate";
+                WHERE CsId = @uid AND PcId IN ({pcList}) AND date(CreatedAt, 'localtime') IN ({dateList})
+                GROUP BY PcId, date(CreatedAt, 'localtime')";
             wCmd.Parameters.AddWithValue("@uid", userId);
             using var wr = wCmd.ExecuteReader();
             while (wr.Read())
@@ -1105,11 +1107,11 @@ public class DashboardService
             var pcList = string.Join(",", soloAuditorIds);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT s.PcId, s.SessionDate, SUM(cr.ReviewLengthSeconds)
+                SELECT s.PcId, date(s.CreatedAt, 'localtime'), SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
-                WHERE cr.CsId = @uid AND s.PcId IN ({pcList}) AND s.SessionDate IN ({dateList}) AND s.AuditorId IS NULL
-                GROUP BY s.PcId, s.SessionDate";
+                WHERE cr.CsId = @uid AND s.PcId IN ({pcList}) AND date(s.CreatedAt, 'localtime') IN ({dateList}) AND s.AuditorId IS NULL
+                GROUP BY s.PcId, date(s.CreatedAt, 'localtime')";
             cmd.Parameters.AddWithValue("@uid", userId);
             using var r = cmd.ExecuteReader();
             while (r.Read())
@@ -1150,7 +1152,7 @@ public class DashboardService
                        p.FirstName, s.VerifiedStatus, s.Name
                 FROM sess_sessions s
                 JOIN core_persons p ON p.PersonId = s.AuditorId
-                WHERE s.AuditorId = @uid AND s.PcId = @pcId AND s.SessionDate = @date
+                WHERE s.AuditorId = @uid AND s.PcId = @pcId AND date(s.CreatedAt, 'localtime') = @date
                 ORDER BY s.SequenceInDay";
             cmd.Parameters.AddWithValue("@uid",  userId);
             cmd.Parameters.AddWithValue("@pcId", pcId);
@@ -1180,14 +1182,14 @@ public class DashboardService
                        s.IsFreeSession, s.CreatedAt,
                        'Solo' AS AuditorName, s.VerifiedStatus, s.Name
                 FROM sess_sessions s
-                WHERE s.PcId = @pcId AND s.SessionDate = @date AND s.AuditorId IS NULL
+                WHERE s.PcId = @pcId AND date(s.CreatedAt, 'localtime') = @date AND s.AuditorId IS NULL
                 ORDER BY s.SequenceInDay"
                 : @"SELECT s.SessionId, s.LengthSeconds, s.AdminSeconds,
                        s.IsFreeSession, s.CreatedAt,
                        COALESCE(p.FirstName,'') AS AuditorName, s.VerifiedStatus, s.Name
                 FROM sess_sessions s
                 LEFT JOIN core_persons p ON p.PersonId = s.AuditorId
-                WHERE s.PcId = @pcId AND s.SessionDate = @date AND s.AuditorId IS NOT NULL
+                WHERE s.PcId = @pcId AND date(s.CreatedAt, 'localtime') = @date AND s.AuditorId IS NOT NULL
                 ORDER BY s.SequenceInDay";
             sessCmd.Parameters.AddWithValue("@pcId", pcId);
             sessCmd.Parameters.AddWithValue("@date", dateStr);
@@ -1213,7 +1215,7 @@ public class DashboardService
                        cr.Status, cr.Notes
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
-                WHERE s.PcId = @pcId AND s.SessionDate = @date";
+                WHERE s.PcId = @pcId AND date(s.CreatedAt, 'localtime') = @date";
             revCmd.Parameters.AddWithValue("@pcId", pcId);
             revCmd.Parameters.AddWithValue("@date", dateStr);
             using var rr = revCmd.ExecuteReader();
@@ -1230,7 +1232,7 @@ public class DashboardService
             workCmd.CommandText = @"
                 SELECT CsWorkLogId, LengthSeconds, Notes, CreatedAt
                 FROM cs_work_log
-                WHERE CsId = @uid AND PcId = @pcId AND WorkDate = @date
+                WHERE CsId = @uid AND PcId = @pcId AND date(CreatedAt, 'localtime') = @date
                 ORDER BY CsWorkLogId";
             workCmd.Parameters.AddWithValue("@uid",  userId);
             workCmd.Parameters.AddWithValue("@pcId", pcId);
@@ -1534,13 +1536,13 @@ public class DashboardService
             var pcList = string.Join(",", auditorPcIds);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT s.SessionDate,
+                SELECT date(s.CreatedAt, 'localtime'),
                        TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS FullName,
                        SUM(s.LengthSeconds + s.AdminSeconds)
                 FROM sess_sessions s
                 JOIN core_persons p ON p.PersonId = s.PcId
-                WHERE s.AuditorId = @uid AND s.PcId IN ({pcList}) AND s.SessionDate >= @start
-                GROUP BY s.SessionDate, s.PcId";
+                WHERE s.AuditorId = @uid AND s.PcId IN ({pcList}) AND date(s.CreatedAt, 'localtime') >= @start
+                GROUP BY date(s.CreatedAt, 'localtime'), s.PcId";
             cmd.Parameters.AddWithValue("@uid",   userId);
             cmd.Parameters.AddWithValue("@start", startStr);
             using var r = cmd.ExecuteReader();
@@ -1553,14 +1555,14 @@ public class DashboardService
             var pcList = string.Join(",", soloAuditorIds);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT s.SessionDate,
+                SELECT date(s.CreatedAt, 'localtime'),
                        TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS FullName,
                        SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
                 JOIN core_persons p ON p.PersonId = s.PcId
-                WHERE cr.CsId = @uid AND s.PcId IN ({pcList}) AND s.AuditorId IS NULL AND s.SessionDate >= @start
-                GROUP BY s.SessionDate, s.PcId";
+                WHERE cr.CsId = @uid AND s.PcId IN ({pcList}) AND s.AuditorId IS NULL AND date(s.CreatedAt, 'localtime') >= @start
+                GROUP BY date(s.CreatedAt, 'localtime'), s.PcId";
             cmd.Parameters.AddWithValue("@uid",   userId);
             cmd.Parameters.AddWithValue("@start", startStr);
             using var r = cmd.ExecuteReader();
@@ -1675,14 +1677,14 @@ public class DashboardService
             var pcList = string.Join(",", pcIds);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT s.PcId, s.SessionDate
+                SELECT s.PcId, date(s.CreatedAt, 'localtime')
                 FROM sess_sessions s
                 LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
                 WHERE s.PcId IN ({pcList})
-                  AND s.SessionDate IN ({dateList})
+                  AND date(s.CreatedAt, 'localtime') IN ({dateList})
                   AND s.AuditorId {(solo ? "IS NULL" : "IS NOT NULL")}
                   AND cr.CsReviewId IS NULL
-                GROUP BY s.PcId, s.SessionDate";
+                GROUP BY s.PcId, date(s.CreatedAt, 'localtime')";
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -1778,10 +1780,10 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $@"
-            SELECT SessionDate, SUM(LengthSeconds + AdminSeconds)
+            SELECT date(CreatedAt, 'localtime'), SUM(LengthSeconds + AdminSeconds)
             FROM sess_sessions
-            WHERE AuditorId IS NULL AND PcId = @pcId AND SessionDate IN ({dateList})
-            GROUP BY SessionDate";
+            WHERE AuditorId IS NULL AND PcId = @pcId AND date(CreatedAt, 'localtime') IN ({dateList})
+            GROUP BY date(CreatedAt, 'localtime')";
         cmd.Parameters.AddWithValue("@pcId", userId);  // userId IS the PersonId == PcId for solo
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -1809,10 +1811,10 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $@"
-            SELECT SessionDate, SUM(LengthSeconds + AdminSeconds)
+            SELECT date(CreatedAt, 'localtime'), SUM(LengthSeconds + AdminSeconds)
             FROM sess_sessions
-            WHERE AuditorId IS NULL AND PcId = @pcId AND SessionDate >= @start
-            GROUP BY SessionDate";
+            WHERE AuditorId IS NULL AND PcId = @pcId AND date(CreatedAt, 'localtime') >= @start
+            GROUP BY date(CreatedAt, 'localtime')";
         cmd.Parameters.AddWithValue("@pcId",  userId);  // userId IS the PersonId == PcId for solo
         cmd.Parameters.AddWithValue("@start", startStr);
         using var r = cmd.ExecuteReader();
@@ -1946,7 +1948,7 @@ public class DashboardService
             cmd.CommandText = $@"
             SELECT 1
             FROM sess_sessions
-            WHERE AuditorId IS NULL AND PcId = @uid AND SessionDate IN ({dateList})
+            WHERE AuditorId IS NULL AND PcId = @uid AND date(CreatedAt, 'localtime') IN ({dateList})
             LIMIT 1";
             cmd.Parameters.AddWithValue("@uid", userId);
             return cmd.ExecuteScalar() is not null;
@@ -1962,7 +1964,7 @@ public class DashboardService
             sCmd.CommandText = $@"
             SELECT 1
             FROM sess_sessions
-            WHERE AuditorId = @uid AND PcId IN ({pcList}) AND SessionDate IN ({dateList})
+            WHERE AuditorId = @uid AND PcId IN ({pcList}) AND date(CreatedAt, 'localtime') IN ({dateList})
             LIMIT 1";
             sCmd.Parameters.AddWithValue("@uid", userId);
             if (sCmd.ExecuteScalar() is not null) return true;
@@ -1992,12 +1994,12 @@ public class DashboardService
 
         if (includeApproved && from.HasValue)
         {
-            where.Append(" AND s.SessionDate >= @from");
+            where.Append(" AND SUBSTR(s.CreatedAt,1,10) >= @from");
             cmd.Parameters.AddWithValue("@from", from.Value.ToString("yyyy-MM-dd"));
         }
         if (includeApproved && to.HasValue)
         {
-            where.Append(" AND s.SessionDate <= @to");
+            where.Append(" AND SUBSTR(s.CreatedAt,1,10) <= @to");
             cmd.Parameters.AddWithValue("@to", to.Value.ToString("yyyy-MM-dd"));
         }
 
@@ -2008,12 +2010,14 @@ public class DashboardService
                    s.SessionDate, s.LengthSeconds, s.AdminSeconds, s.IsFreeSession,
                    s.ChargedRateCentsPerHour, s.AuditorSalaryCentsPerHour,
                    s.VerifiedStatus, COALESCE(s.AuditorId, -s.PcId) AS AuditorKey,
-                   s.WalletId
+                   s.WalletId,
+                   SUBSTR(s.CreatedAt,1,10) AS CreatedAtDate,
+                   COALESCE(s.Name,'') AS SessName
             FROM sess_sessions s
             LEFT JOIN core_persons pa ON pa.PersonId = s.AuditorId
             JOIN core_persons pc ON pc.PersonId = s.PcId
             WHERE {where}
-            ORDER BY pa.FirstName COLLATE NOCASE, pa.LastName COLLATE NOCASE, pc.FirstName COLLATE NOCASE, pc.LastName COLLATE NOCASE, s.SessionDate, s.SequenceInDay";
+            ORDER BY pa.FirstName COLLATE NOCASE, pa.LastName COLLATE NOCASE, pc.FirstName COLLATE NOCASE, pc.LastName COLLATE NOCASE, s.CreatedAt, s.SequenceInDay";
 
         var auditorNames = new Dictionary<int, string>();
         var pcNames      = new Dictionary<(int aud, int pc), string>();
@@ -2035,7 +2039,9 @@ public class DashboardService
                 r.GetInt32(7) == 1,
                 r.GetInt32(8), r.GetInt32(9),
                 r.IsDBNull(10) ? "Pending" : r.GetString(10),
-                WalletId: r.IsDBNull(12) ? null : r.GetInt32(12));
+                WalletId: r.IsDBNull(12) ? null : r.GetInt32(12),
+                CreatedAt: r.IsDBNull(13) ? "" : r.GetString(13),
+                Name:      r.IsDBNull(14) ? "" : r.GetString(14));
 
             auditorNames.TryAdd(auditorId, auditorName);
             pcNames.TryAdd(key, pcName);
@@ -2068,12 +2074,12 @@ public class DashboardService
 
         if (includeApproved && from.HasValue)
         {
-            where.Append(" AND s.SessionDate >= @from");
+            where.Append(" AND SUBSTR(s.CreatedAt,1,10) >= @from");
             cmd.Parameters.AddWithValue("@from", from.Value.ToString("yyyy-MM-dd"));
         }
         if (includeApproved && to.HasValue)
         {
-            where.Append(" AND s.SessionDate <= @to");
+            where.Append(" AND SUBSTR(s.CreatedAt,1,10) <= @to");
             cmd.Parameters.AddWithValue("@to", to.Value.ToString("yyyy-MM-dd"));
         }
 
@@ -2086,13 +2092,15 @@ public class DashboardService
                    CASE WHEN s.AuditorId IS NULL THEN 1 ELSE 0 END AS IsSolo,
                    COALESCE(cr.ChargedCentsRatePerHour, 0) AS ChargedCentsRatePerHour,
                    cr.Notes,
-                   cr.WalletId
+                   cr.WalletId,
+                   SUBSTR(s.CreatedAt,1,10) AS CreatedAtDate,
+                   COALESCE(s.Name,'') AS SessName
             FROM cs_reviews cr
             JOIN sess_sessions  s   ON s.SessionId   = cr.SessionId
             JOIN core_persons   pc  ON pc.PersonId   = s.PcId
             JOIN core_persons   pcs ON pcs.PersonId  = cr.CsId
             WHERE {where}
-            ORDER BY pcs.FirstName COLLATE NOCASE, pcs.LastName COLLATE NOCASE, pc.FirstName COLLATE NOCASE, pc.LastName COLLATE NOCASE, s.SessionDate, s.SequenceInDay";
+            ORDER BY pcs.FirstName COLLATE NOCASE, pcs.LastName COLLATE NOCASE, pc.FirstName COLLATE NOCASE, pc.LastName COLLATE NOCASE, s.CreatedAt, s.SequenceInDay";
 
         var csNames  = new Dictionary<int, string>();
         var pcNames  = new Dictionary<(int cs, int pc), string>();
@@ -2114,7 +2122,9 @@ public class DashboardService
                 !r.IsDBNull(10) && r.GetInt32(10) == 1,
                 r.IsDBNull(11) ? 0 : r.GetInt32(11),
                 r.IsDBNull(12) ? null : r.GetString(12),
-                WalletId: r.IsDBNull(13) ? null : r.GetInt32(13));
+                WalletId:  r.IsDBNull(13) ? null : r.GetInt32(13),
+                CreatedAt: r.IsDBNull(14) ? "" : r.GetString(14),
+                Name:      r.IsDBNull(15) ? "" : r.GetString(15));
 
             csNames.TryAdd(csId, csName);
             pcNames.TryAdd(key, pcName);

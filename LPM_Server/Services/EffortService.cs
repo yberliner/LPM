@@ -322,13 +322,13 @@ public class EffortService
         cmd.CommandText = @"
             SELECT e.PcId,
                    TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS FullName,
-                   e.EffortDate, SUM(e.LengthSeconds)
+                   date(e.CreatedAt, 'localtime'), SUM(e.LengthSeconds)
             FROM sys_effort_entries e
             JOIN core_persons p ON p.PersonId = e.PcId
             JOIN core_users   u ON u.Id       = e.PerformedByUserId
             WHERE u.PersonId = @pid
-              AND e.EffortDate BETWEEN @s AND @e
-            GROUP BY e.PcId, e.EffortDate";
+              AND date(e.CreatedAt, 'localtime') BETWEEN @s AND @e
+            GROUP BY e.PcId, date(e.CreatedAt, 'localtime')";
         cmd.Parameters.AddWithValue("@pid", personId);
         cmd.Parameters.AddWithValue("@s",   startStr);
         cmd.Parameters.AddWithValue("@e",   endStr);
