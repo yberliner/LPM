@@ -2630,9 +2630,27 @@
                                            @onchange="e => { if (DateOnly.TryParse(e.Value?.ToString(), out var d)) _ncDate = d; }" />
                                 </span>
                             </div>
-                            <div class="s3-label" style="font-size:1.35rem; margin-top:4px;">
-                                Auditor:&nbsp;<span class="s3-value">@_ncAuditorName</span>
-                            </div>
+                            @if (_isSoloUser)
+                            {
+                                <div class="s3-label" style="font-size:1.35rem; margin-top:4px;">
+                                    Auditor:&nbsp;<span class="s3-value">@_ncAuditorName</span>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="s3-label d-flex align-items-center gap-2" style="font-size:1.35rem; margin-top:4px;">
+                                    <span>Auditor:</span>
+                                    <select class="form-select form-select-sm"
+                                            style="width:auto; min-width:200px; background:#0f172a; color:#e2e8f0; border-color:#475569; font-size:.95rem;"
+                                            value="@_ncAuditorId"
+                                            @onchange="e => { if (int.TryParse(e.Value?.ToString(), out var id)) { _ncAuditorId = id; var m = _ncStaffList.FirstOrDefault(s => s.PersonId == id); if (m.PersonId != 0) _ncAuditorName = m.FullName; } }">
+                                        @foreach (var s in _ncStaffList)
+                                        {
+                                            <option value="@s.PersonId">@s.FullName</option>
+                                        }
+                                    </select>
+                                </div>
+                            }
                             <div class="mt-2">
                                 <div id="nc-top-editor"></div>
                             </div>
@@ -3287,6 +3305,14 @@
                                 <option value="@pc.PcId">@pc.FullName</option>
                             }
                         </select>
+                        <div class="d-flex align-items-center gap-1 ms-2">
+                            <input type="number" class="form-control form-control-sm sm-id-search" placeholder="session #"
+                                   @bind="_smIdSearchInput" @bind:event="oninput"
+                                   @onkeydown="SmIdSearchKeyDown" />
+                            <button class="btn btn-sm btn-outline-primary d-flex align-items-center gap-1" @onclick="SmOpenById" title="Open session by ID">
+                                <i class="ri-search-line"></i> Open
+                            </button>
+                        </div>
                         <div class="ms-auto d-flex gap-1">
                             <button class="btn btn-sm btn-outline-warning d-flex align-items-center gap-1" @onclick="SmToggleSoloMode">
                                 <i class="ri-user-voice-line"></i> Solo
@@ -3302,6 +3328,12 @@
                 {
                     <div class="alert alert-success py-1 px-3 mb-2" style="font-size:.82rem;">
                         <i class="ri-check-line me-1"></i>@_smSuccess
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(_smError))
+                {
+                    <div class="alert alert-danger py-1 px-3 mb-2" style="font-size:.82rem;">
+                        <i class="ri-error-warning-line me-1"></i>@_smError
                     </div>
                 }
 
@@ -3729,6 +3761,7 @@
     }
     .sm-pc-label { font-weight: 600; font-size: .88rem; color: var(--default-text-color); white-space: nowrap; }
     .sm-pc-select { max-width: 280px; }
+    .sm-id-search { width: 110px; font-variant-numeric: tabular-nums; }
     .sm-empty {
         text-align: center; padding: 40px 0; color: var(--text-muted); font-size: .88rem;
     }
@@ -6145,6 +6178,7 @@
     bool _smOpen;
     int _smPcId;
     string _smPcName = "";
+    string _smIdSearchInput = "";
     int _smPage;
     int _smTotal;
     List<SessionListItem> _smList = [];
@@ -6327,6 +6361,8 @@
     string _ncPcSearch = "";
     List<DashboardService.ApprovedPc> _ncPcs = [];
     string _ncAuditorName = "";
+    int    _ncAuditorId;
+    List<(int PersonId, string FullName)> _ncStaffList = [];
     string _ncTopHtml = "";
     string _ncBottomHtml = "";
     bool   _ncVisited;
@@ -8280,6 +8316,32 @@ string _actionPcSearch = "";
         _smTotal = total;
     }
 
+    void SmIdSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") SmOpenById();
+    }
+
+    void SmOpenById()
+    {
+        var input = _smIdSearchInput?.Trim() ?? "";
+        if (!int.TryParse(input, out var sid) || sid <= 0)
+        {
+            _smError = "Enter a valid session ID.";
+            return;
+        }
+        var detail = DashSvc.GetSessionDetail(sid);
+        if (detail == null)
+        {
+            _smError = $"Session #{sid} not found.";
+            return;
+        }
+        _smError = "";
+        _smPcId   = detail.PcId;
+        _smPcName = _actionAllPcs.FirstOrDefault(p => p.PcId == detail.PcId)?.FullName ?? "";
+        SmOpenDetail(sid);
+        _smIdSearchInput = "";
+    }
+
     void SmOpenDetail(int sessionId)
     {
         _smDetail = DashSvc.GetSessionDetail(sessionId);
@@ -9798,8 +9860,23 @@ string _actionPcSearch = "";
         _ncTopHtml      = "";
         _ncBottomHtml   = "";
         _ncVisited      = false;
-        _ncAuditorName  = DashSvc.GetPersonName(_msgUserId.Value);
-        if (string.IsNullOrWhiteSpace(_ncAuditorName)) _ncAuditorName = _logUsername;
+        _ncStaffList    = DashSvc.GetAuditorCsStaffList();
+        _ncAuditorId    = _msgUserId.Value;
+        var meInList    = _ncStaffList.FirstOrDefault(s => s.PersonId == _ncAuditorId);
+        if (meInList.PersonId != 0)
+        {
+            _ncAuditorName = meInList.FullName;
+        }
+        else if (_ncStaffList.Count > 0 && !_isSoloUser)
+        {
+            _ncAuditorId   = _ncStaffList[0].PersonId;
+            _ncAuditorName = _ncStaffList[0].FullName;
+        }
+        else
+        {
+            _ncAuditorName = DashSvc.GetPersonName(_msgUserId.Value);
+            if (string.IsNullOrWhiteSpace(_ncAuditorName)) _ncAuditorName = _logUsername;
+        }
         _ncDate         = DateOnly.FromDateTime(DateTime.Today);
         _showNcWizard   = true;
 
@@ -9912,7 +9989,7 @@ string _actionPcSearch = "";
 
         var capturedPcId        = _ncPcId;
         var capturedSolo        = _ncSolo || _isSoloUser;
-        var capturedAudId       = _msgUserId!.Value;
+        var capturedAudId       = _ncAuditorId > 0 ? _ncAuditorId : _msgUserId!.Value;
         var capturedPcName      = _ncPcs.FirstOrDefault(p => p.PcId == _ncPcId)?.FullName ?? "";
         var capturedDate        = _ncDate;
         var capturedDateStr     = _ncDate.ToString("dd/MM/yy");
