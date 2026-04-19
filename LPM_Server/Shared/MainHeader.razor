@@ -4595,18 +4595,6 @@
     #step3-bottom-editor .ql-editor {
         min-height: 44px !important; max-height: 116px;
         padding: 6px 10px;
-        font-size: 16px !important;
-        line-height: 1.45 !important;
-    }
-    #step3-top-editor .ql-editor p:not([style*="font-size"]),
-    #step3-top-editor .ql-editor p:not([style*="font-size"]) > *:not([style*="font-size"]),
-    #step3-bottom-editor .ql-editor p:not([style*="font-size"]),
-    #step3-bottom-editor .ql-editor p:not([style*="font-size"]) > *:not([style*="font-size"]) {
-        font-size: 16px !important;
-    }
-    #step3-top-editor .ql-editor.ql-blank::before,
-    #step3-bottom-editor .ql-editor.ql-blank::before {
-        font-size: 16px !important;
     }
     #nc-top-editor .ql-editor,
     #nc-bottom-editor .ql-editor {
@@ -7142,6 +7130,11 @@
                         ]}
                     });
                     window[key] = q;
+                    // GUI-only font-size bump (inline style — beats any CSS rule, including Quill's defaults)
+                    try {
+                        q.root.style.setProperty('font-size', '16px', 'important');
+                        q.root.style.setProperty('line-height', '1.45', 'important');
+                    } catch(e) {}
                     var defColor = _defaultColors[id];
                     if (defColor) {
                         q.format('color', defColor);
@@ -9935,6 +9928,11 @@ string _actionPcSearch = "";
                         ]}
                     });
                     window[key] = q;
+                    // GUI-only font-size bump (inline style — beats any CSS rule, including Quill's defaults)
+                    try {
+                        q.root.style.setProperty('font-size', '16px', 'important');
+                        q.root.style.setProperty('line-height', '1.45', 'important');
+                    } catch(e) {}
                     var defColor = _defaultColors[id];
                     if (defColor) {
                         q.format('color', defColor);
