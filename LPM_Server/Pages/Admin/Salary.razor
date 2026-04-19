@@ -236,6 +236,7 @@
                             var ilsTotal = totByCurrNav.GetValueOrDefault("ILS");
                             var firstName = string.IsNullOrWhiteSpace(g.FullName) ? "?" : g.FullName.Split(' ')[0];
                             <button type="button" class="sal-quick-nav-chip"
+                                    data-target="sal-user-@g.PersonId"
                                     title="Jump to @g.FullName"
                                     @onclick="() => JumpTo(g.PersonId, g.FullName)">
                                 <span class="sal-quick-nav-avatar">@(g.FullName.Length > 0 ? char.ToUpper(g.FullName[0]) : '?')</span>
@@ -962,24 +963,61 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
-        // Inline <script> in a .razor file doesn't re-execute on client-side
-        // navigation — define the helper via eval on first render instead.
         try
         {
-            await JS.InvokeVoidAsync("eval", @"
-                window.lpmSalaryJumpTo = function(id) {
-                    var el = document.getElementById(id);
-                    if (!el) return;
-                    var rect = el.getBoundingClientRect();
-                    var targetY = rect.top + window.scrollY - 140;
-                    window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
-                    el.classList.remove('sal-flash');
-                    void el.offsetWidth;
-                    el.classList.add('sal-flash');
-                    setTimeout(function(){ el.classList.remove('sal-flash'); }, 1700);
-                };
-            ");
+            if (firstRender)
+            {
+                // Inline <script> in a .razor file doesn't re-execute on client-side
+                // navigation — define the helper via eval on first render instead.
+                await JS.InvokeVoidAsync("eval", @"
+                    window.lpmSalaryJumpTo = function(id) {
+                        var el = document.getElementById(id);
+                        if (!el) return;
+                        var rect = el.getBoundingClientRect();
+                        var targetY = rect.top + window.scrollY - 140;
+                        window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+                        el.classList.remove('sal-flash');
+                        void el.offsetWidth;
+                        el.classList.add('sal-flash');
+                        setTimeout(function(){ el.classList.remove('sal-flash'); }, 1700);
+                    };
+                    window.lpmSalaryScrollSpy = function(cardIds) {
+                        if (window.__lpmSalObserver) {
+                            try { window.__lpmSalObserver.disconnect(); } catch(e) {}
+                        }
+                        if (!cardIds || cardIds.length === 0) return;
+                        var chips = document.querySelectorAll('.sal-quick-nav-chip[data-target]');
+                        var obs = new IntersectionObserver(function(entries) {
+                            // Collect currently-crossed cards, pick the topmost
+                            var crossed = entries.filter(function(e){ return e.isIntersecting; });
+                            if (crossed.length === 0) return;
+                            crossed.sort(function(a,b){ return a.boundingClientRect.top - b.boundingClientRect.top; });
+                            var activeId = crossed[0].target.id;
+                            chips.forEach(function(ch){
+                                if (ch.getAttribute('data-target') === activeId)
+                                    ch.classList.add('sal-quick-nav-chip-active');
+                                else
+                                    ch.classList.remove('sal-quick-nav-chip-active');
+                            });
+                        }, {
+                            // Detection zone: just below the fixed nav bar (~140px from top), upper 30% of viewport
+                            rootMargin: '-140px 0px -70% 0px',
+                            threshold: 0
+                        });
+                        cardIds.forEach(function(id){
+                            var el = document.getElementById(id);
+                            if (el) obs.observe(el);
+                        });
+                        window.__lpmSalObserver = obs;
+                    };
+                ");
+            }
+            // (Re-)attach the scrollspy to current group cards on every render where data exists
+            if (_groups != null && _groups.Count > 1)
+            {
+                var ids = _groups.Select(g => $"sal-user-{g.PersonId}").ToArray();
+                await JS.InvokeVoidAsync("lpmSalaryScrollSpy", (object)ids);
+            }
         }
         catch (JSDisconnectedException) { }
         catch (TaskCanceledException)   { }
@@ -1225,6 +1263,16 @@
         color: #1d4ed8;
     }
     .sal-quick-nav-chip:active { transform: translateY(0); }
+    .sal-quick-nav-chip.sal-quick-nav-chip-active {
+        border-color: #2563eb;
+        background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+        color: #1e3a8a;
+        box-shadow: 0 0 0 3px rgba(37,99,235,.25), 0 4px 10px rgba(37,99,235,.2);
+        transform: translateY(-1px);
+    }
+    .sal-quick-nav-chip.sal-quick-nav-chip-active .sal-quick-nav-avatar {
+        background: linear-gradient(135deg,#2563eb,#1d4ed8);
+    }
     .sal-quick-nav-avatar {
         width: 22px; height: 22px; border-radius: 50%;
         display: inline-flex; align-items: center; justify-content: center;

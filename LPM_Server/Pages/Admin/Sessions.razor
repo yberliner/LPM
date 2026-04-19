@@ -106,6 +106,7 @@
                     {
                         var firstName = string.IsNullOrWhiteSpace(g.AuditorName) ? "?" : g.AuditorName.Split(' ')[0];
                         <button type="button" class="sa-quick-nav-chip sa-quick-nav-chip-aud"
+                                data-target="sa-aud-@g.AuditorId"
                                 title="Jump to @g.AuditorName"
                                 @onclick="() => JumpToAuditor(g.AuditorId)">
                             <span class="sa-quick-nav-avatar sa-quick-nav-avatar-aud">@(g.AuditorName.Length > 0 ? char.ToUpper(g.AuditorName[0]) : '?')</span>
@@ -126,6 +127,7 @@
                     {
                         var firstName = string.IsNullOrWhiteSpace(c.CsName) ? "?" : c.CsName.Split(' ')[0];
                         <button type="button" class="sa-quick-nav-chip sa-quick-nav-chip-cs"
+                                data-target="sa-cs-@c.CsId"
                                 title="Jump to @c.CsName"
                                 @onclick="() => JumpToCs(c.CsId)">
                             <span class="sa-quick-nav-avatar sa-quick-nav-avatar-cs">@(c.CsName.Length > 0 ? char.ToUpper(c.CsName[0]) : '?')</span>
@@ -849,6 +851,26 @@
     .sa-quick-nav-chip-aud:hover { border-color: #3b82f6; background: #eff6ff; color: #1d4ed8; }
     .sa-quick-nav-chip-cs:hover  { border-color: #6366f1; background: #eef2ff; color: #3730a3; }
     .sa-quick-nav-chip:active { transform: translateY(0); }
+    .sa-quick-nav-chip-aud.sa-quick-nav-chip-active {
+        border-color: #2563eb;
+        background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+        color: #1e3a8a;
+        box-shadow: 0 0 0 3px rgba(37,99,235,.25), 0 4px 10px rgba(37,99,235,.2);
+        transform: translateY(-1px);
+    }
+    .sa-quick-nav-chip-aud.sa-quick-nav-chip-active .sa-quick-nav-avatar-aud {
+        background: linear-gradient(135deg,#2563eb,#1d4ed8);
+    }
+    .sa-quick-nav-chip-cs.sa-quick-nav-chip-active {
+        border-color: #4f46e5;
+        background: linear-gradient(135deg, #e0e7ff, #c7d2fe);
+        color: #312e81;
+        box-shadow: 0 0 0 3px rgba(79,70,229,.25), 0 4px 10px rgba(79,70,229,.2);
+        transform: translateY(-1px);
+    }
+    .sa-quick-nav-chip-cs.sa-quick-nav-chip-active .sa-quick-nav-avatar-cs {
+        background: linear-gradient(135deg,#4f46e5,#4338ca);
+    }
     .sa-quick-nav-avatar {
         width: 22px; height: 22px; border-radius: 50%;
         display: inline-flex; align-items: center; justify-content: center;
@@ -1425,24 +1447,60 @@
     // ── Quick-jump navigation ─────────────────────────────────────
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
-        // Inline <script> in a .razor file doesn't re-execute on client-side
-        // navigation — define the helper via eval on first render instead.
         try
         {
-            await JS.InvokeVoidAsync("eval", @"
-                window.lpmSessionsJumpTo = function(id) {
-                    var el = document.getElementById(id);
-                    if (!el) return;
-                    var rect = el.getBoundingClientRect();
-                    var targetY = rect.top + window.scrollY - 140;
-                    window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
-                    el.classList.remove('sa-flash');
-                    void el.offsetWidth;
-                    el.classList.add('sa-flash');
-                    setTimeout(function(){ el.classList.remove('sa-flash'); }, 1700);
-                };
-            ");
+            if (firstRender)
+            {
+                // Inline <script> in a .razor file doesn't re-execute on client-side
+                // navigation — define the helper via eval on first render instead.
+                await JS.InvokeVoidAsync("eval", @"
+                    window.lpmSessionsJumpTo = function(id) {
+                        var el = document.getElementById(id);
+                        if (!el) return;
+                        var rect = el.getBoundingClientRect();
+                        var targetY = rect.top + window.scrollY - 140;
+                        window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+                        el.classList.remove('sa-flash');
+                        void el.offsetWidth;
+                        el.classList.add('sa-flash');
+                        setTimeout(function(){ el.classList.remove('sa-flash'); }, 1700);
+                    };
+                    window.lpmSessionsScrollSpy = function(cardIds) {
+                        if (window.__lpmSessObserver) {
+                            try { window.__lpmSessObserver.disconnect(); } catch(e) {}
+                        }
+                        if (!cardIds || cardIds.length === 0) return;
+                        var chips = document.querySelectorAll('.sa-quick-nav-chip[data-target]');
+                        var obs = new IntersectionObserver(function(entries) {
+                            var crossed = entries.filter(function(e){ return e.isIntersecting; });
+                            if (crossed.length === 0) return;
+                            crossed.sort(function(a,b){ return a.boundingClientRect.top - b.boundingClientRect.top; });
+                            var activeId = crossed[0].target.id;
+                            chips.forEach(function(ch){
+                                if (ch.getAttribute('data-target') === activeId)
+                                    ch.classList.add('sa-quick-nav-chip-active');
+                                else
+                                    ch.classList.remove('sa-quick-nav-chip-active');
+                            });
+                        }, {
+                            rootMargin: '-140px 0px -70% 0px',
+                            threshold: 0
+                        });
+                        cardIds.forEach(function(id){
+                            var el = document.getElementById(id);
+                            if (el) obs.observe(el);
+                        });
+                        window.__lpmSessObserver = obs;
+                    };
+                ");
+            }
+            if (!_loading && (_groups.Count + _csGroups.Count) > 1)
+            {
+                var ids = _groups.Select(g => $"sa-aud-{g.AuditorId}")
+                                 .Concat(_csGroups.Select(c => $"sa-cs-{c.CsId}"))
+                                 .ToArray();
+                await JS.InvokeVoidAsync("lpmSessionsScrollSpy", (object)ids);
+            }
         }
         catch (JSDisconnectedException) { }
         catch (TaskCanceledException)   { }
