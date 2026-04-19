@@ -213,11 +213,33 @@
         }
         else
         {
-            @* Grand total banner *@
+            @* Grand total banner — split by currency *@
+            var grandByCurr = new Dictionary<string, long>();
+            foreach (var g in _groups)
+            {
+                foreach (var kv in g.TotalsByCurrency())
+                    grandByCurr[kv.Key] = grandByCurr.GetValueOrDefault(kv.Key) + kv.Value;
+            }
+            var grandCommTotal = _groups.Sum(g => g.Commissions.Sum(c => c.AmountCents));
+            if (grandCommTotal > 0)
+                grandByCurr["ILS"] = grandByCurr.GetValueOrDefault("ILS") + grandCommTotal;
             <div class="sal-grand-total">
                 <i class="ri-trophy-line me-2"></i>
                 Grand Total — @_groups.Count staff member@(_groups.Count != 1 ? "s" : ""):
-                <span class="sal-grand-amount">₪ @FormatShekel(_groups.Sum(g => g.TotalCents))</span>
+                @if (grandByCurr.Count == 0)
+                {
+                    <span class="sal-grand-amount">₪ 0</span>
+                }
+                else
+                {
+                    var first = true;
+                    foreach (var kv in grandByCurr.OrderBy(x => x.Key))
+                    {
+                        @(first ? "" : " + ")
+                        <span class="sal-grand-amount">@SalCurrSym(kv.Key) @FormatShekel(kv.Value)</span>
+                        first = false;
+                    }
+                }
             </div>
 
             @* Quick-jump nav bar — fixed below the app header so it's ALWAYS visible (Excel-freeze style) *@
@@ -258,6 +280,10 @@
                 var hasSessions = group.Sessions.Count > 0;
                 var hasCsRows   = group.CsReviews.Count > 0;
                 var hasComm     = group.Commissions.Count > 0;
+                var totByCurr = group.TotalsByCurrency();
+                var commTotal = group.Commissions.Sum(c => c.AmountCents);
+                if (commTotal > 0)
+                    totByCurr["ILS"] = totByCurr.GetValueOrDefault("ILS") + commTotal;
 
                 <div class="sal-user-card" id="sal-user-@group.PersonId">
                     @* Card header (clickable to collapse) *@
@@ -274,12 +300,6 @@
                                 @if (hasComm)     { <span>@group.Commissions.Count commission@(group.Commissions.Count != 1 ? "s" : "")</span> }
                             </div>
                         </div>
-                        @{
-                            var totByCurr = group.TotalsByCurrency();
-                            var commTotal = group.Commissions.Sum(c => c.AmountCents);
-                            // Commissions assumed ILS — add to ILS bucket
-                            if (commTotal > 0) totByCurr["ILS"] = totByCurr.GetValueOrDefault("ILS") + commTotal;
-                        }
                         <span class="sal-header-total">
                             @if (totByCurr.Count == 0)
                             {
@@ -492,7 +512,22 @@
                                     <td colspan="4" class="text-end sal-total-label">
                                         <i class="ri-money-dollar-circle-line me-1"></i>Total Salary
                                     </td>
-                                    <td class="text-end sal-total-amount">₪ @FormatShekel(group.TotalCents)</td>
+                                    <td class="text-end sal-total-amount">
+                                        @if (totByCurr.Count == 0)
+                                        {
+                                            <span>@SalCurrSym("ILS") 0</span>
+                                        }
+                                        else
+                                        {
+                                            var firstTot = true;
+                                            foreach (var t in totByCurr.OrderBy(t => t.Key))
+                                            {
+                                                @(firstTot ? "" : " + ")
+                                                <span>@SalCurrSym(t.Key) @FormatShekel(t.Value)</span>
+                                                firstTot = false;
+                                            }
+                                        }
+                                    </td>
                                     <td></td>
                                 </tr>
                             </tbody>
@@ -684,9 +719,16 @@
     @if (_hoverGroup != null)
     {
         var g = _hoverGroup;
-        var sessTotal = g.Sessions.Where(s => s.IsApproved).Sum(s => s.PaymentCents);
-        var csTotal   = g.CsReviews.Where(c => c.IsApproved).Sum(c => c.PaymentCents);
+        var sessByCurr = g.Sessions.Where(s => s.IsApproved)
+            .GroupBy(s => s.Currency)
+            .ToDictionary(grp => grp.Key, grp => grp.Sum(s => s.PaymentCents));
+        var csByCurr = g.CsReviews.Where(c => c.IsApproved)
+            .GroupBy(c => c.Currency)
+            .ToDictionary(grp => grp.Key, grp => grp.Sum(c => c.PaymentCents));
         var commTotal = g.Commissions.Sum(c => c.AmountCents);
+        var hoverTotals = g.TotalsByCurrency();
+        if (commTotal > 0)
+            hoverTotals["ILS"] = hoverTotals.GetValueOrDefault("ILS") + commTotal;
         <div class="sal-hover-card">
             <div class="sal-hc-header">
                 <span style="font-weight:700;color:#fff;font-size:.9rem;">@g.FullName — Total Breakdown</span>
@@ -703,7 +745,7 @@
                     {
                         <div class="sal-hc-row">
                             <span>@s.PcName · @FmtDur(s.DurationSec)</span>
-                            <span>₪@FormatShekel(s.PaymentCents)</span>
+                            <span>@SalCurrSym(s.Currency) @FormatShekel(s.PaymentCents)</span>
                         </div>
                     }
                     @{ var pendingSess = g.Sessions.Count(s => !s.IsApproved); }
@@ -713,7 +755,15 @@
                     }
                     <div class="sal-hc-row" style="border-top:1px solid rgba(255,255,255,.1);padding-top:4px;margin-top:4px;">
                         <span style="font-weight:600;">Sessions subtotal</span>
-                        <span style="font-weight:700;color:#4ade80;">₪@FormatShekel(sessTotal)</span>
+                        <span style="font-weight:700;color:#4ade80;">
+                            @{ var firstSs = true; }
+                            @foreach (var kv in sessByCurr.OrderBy(x => x.Key))
+                            {
+                                @(firstSs ? "" : " + ")<span>@SalCurrSym(kv.Key) @FormatShekel(kv.Value)</span>
+                                firstSs = false;
+                            }
+                            @if (sessByCurr.Count == 0) { <span>@SalCurrSym("ILS") 0</span> }
+                        </span>
                     </div>
                 </div>
             }
@@ -729,7 +779,7 @@
                     {
                         <div class="sal-hc-row" style="@(c.IsFree ? "opacity:.6;" : "")">
                             <span>@c.PcName · @FmtDur(c.DurationSec)@(c.IsFree ? " (Free)" : "")</span>
-                            <span>₪@(c.IsFree ? "0" : FormatShekel(c.PaymentCents))</span>
+                            <span>@SalCurrSym(c.Currency) @(c.IsFree ? "0" : FormatShekel(c.PaymentCents))</span>
                         </div>
                     }
                     @{ var pendingCs = g.CsReviews.Count(c => !c.IsApproved); }
@@ -739,7 +789,15 @@
                     }
                     <div class="sal-hc-row" style="border-top:1px solid rgba(255,255,255,.1);padding-top:4px;margin-top:4px;">
                         <span style="font-weight:600;">CS subtotal</span>
-                        <span style="font-weight:700;color:#4ade80;">₪@FormatShekel(csTotal)</span>
+                        <span style="font-weight:700;color:#4ade80;">
+                            @{ var firstCs = true; }
+                            @foreach (var kv in csByCurr.OrderBy(x => x.Key))
+                            {
+                                @(firstCs ? "" : " + ")<span>@SalCurrSym(kv.Key) @FormatShekel(kv.Value)</span>
+                                firstCs = false;
+                            }
+                            @if (csByCurr.Count == 0) { <span>@SalCurrSym("ILS") 0</span> }
+                        </span>
                     </div>
                 </div>
             }
@@ -766,12 +824,15 @@
             }
 
             <div class="sal-hc-result" style="margin-top:10px;padding-top:10px;border-top:2px solid rgba(74,222,128,.3);font-size:.95rem;">
-                @if (sessTotal > 0) { <span>₪@FormatShekel(sessTotal)</span> }
-                @if (sessTotal > 0 && (csTotal > 0 || commTotal > 0)) { <span> + </span> }
-                @if (csTotal > 0) { <span>₪@FormatShekel(csTotal)</span> }
-                @if (csTotal > 0 && commTotal > 0) { <span> + </span> }
-                @if (commTotal > 0) { <span>₪@FormatShekel(commTotal)</span> }
-                <span> = </span><strong>₪@FormatShekel(g.TotalCents)</strong>
+                <strong>
+                    @{ var firstTot = true; }
+                    @foreach (var kv in hoverTotals.OrderBy(x => x.Key))
+                    {
+                        @(firstTot ? "" : " + ")<span>@SalCurrSym(kv.Key) @FormatShekel(kv.Value)</span>
+                        firstTot = false;
+                    }
+                    @if (hoverTotals.Count == 0) { <span>@SalCurrSym("ILS") 0</span> }
+                </strong>
             </div>
         </div>
     }
