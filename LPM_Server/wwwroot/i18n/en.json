@@ -139,7 +139,7 @@
   "sessions.admin": "Admin",
   "sessions.free": "Free",
   "sessions.rate": "Rate",
-  "sessions.salary": "Salary ₪/hr",
+  "sessions.salary": "Salary",
   "sessions.noSessions": "No sessions to show",
   "sessions.noCSReviews": "No CS reviews to show",
   "sessions.approvedStatus": "Approved",
