@@ -67,6 +67,7 @@ public static class TestDbHelper
                 Notes       TEXT,
                 Org         INTEGER,
                 Source      INTEGER,
+                CreatedByUserId INTEGER,
                 CreatedAt   TEXT NOT NULL DEFAULT (datetime('now'))
             )");
 
@@ -161,7 +162,11 @@ public static class TestDbHelper
                 VerifiedStatus          TEXT    NOT NULL DEFAULT 'Pending',
                 VerifiedByUserId        INTEGER,
                 VerifiedAt              TEXT,
-                IsImported              INTEGER NOT NULL DEFAULT 0
+                IsImported              INTEGER NOT NULL DEFAULT 0,
+                ApprovedNotes           TEXT,
+                SummaryUpdatedAt        TEXT,
+                SummaryUpdatedByUserId  INTEGER,
+                WalletId                INTEGER
             )");
 
         Exec(conn, @"
@@ -172,10 +177,58 @@ public static class TestDbHelper
                 ReviewLengthSeconds INTEGER NOT NULL DEFAULT 0,
                 ReviewedAt          TEXT,
                 Status              TEXT    NOT NULL DEFAULT 'Draft'
-                                    CHECK(Status IN ('Draft','Approved','NeedsCorrection','Rejected','Done')),
+                                    CHECK(Status IN ('Draft','Approved','NeedsCorrection','Rejected','Done','Not_Done')),
                 Notes               TEXT,
                 CsSalaryCentsPerHour INTEGER NOT NULL DEFAULT 0,
-                ChargedCentsRatePerHour INTEGER NOT NULL DEFAULT 0
+                ChargedCentsRatePerHour INTEGER NOT NULL DEFAULT 0,
+                WalletId            INTEGER
+            )");
+
+        Exec(conn, @"
+            CREATE TABLE IF NOT EXISTS fin_wallets (
+                WalletId          INTEGER PRIMARY KEY AUTOINCREMENT,
+                PcId              INTEGER NOT NULL,
+                Currency          TEXT    NOT NULL,
+                Name              TEXT    NOT NULL,
+                Notes             TEXT,
+                IsActive          INTEGER NOT NULL DEFAULT 1,
+                CreatedByPersonId INTEGER NOT NULL,
+                CreatedAt         TEXT    NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(PcId, Name)
+            )");
+
+        Exec(conn, @"
+            CREATE TABLE IF NOT EXISTS lkp_effort_categories (
+                CategoryId  INTEGER PRIMARY KEY AUTOINCREMENT,
+                Code        TEXT    NOT NULL UNIQUE,
+                Label       TEXT    NOT NULL,
+                SortOrder   INTEGER NOT NULL DEFAULT 0,
+                IsActive    INTEGER NOT NULL DEFAULT 1
+            )");
+
+        Exec(conn, @"
+            CREATE TABLE IF NOT EXISTS sys_effort_entries (
+                EntryId           INTEGER PRIMARY KEY AUTOINCREMENT,
+                PerformedByUserId INTEGER NOT NULL,
+                PcId              INTEGER NOT NULL,
+                EffortDate        TEXT    NOT NULL,
+                LengthSeconds     INTEGER NOT NULL,
+                CategoryId        INTEGER NOT NULL,
+                Notes             TEXT,
+                CreatedByUserId   INTEGER NOT NULL,
+                CreatedAt         TEXT    NOT NULL DEFAULT (datetime('now')),
+                UpdatedAt         TEXT,
+                UpdatedByUserId   INTEGER
+            )");
+
+        Exec(conn, @"
+            CREATE TABLE IF NOT EXISTS sys_pc_history (
+                Id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                PcId      INTEGER NOT NULL,
+                Action    TEXT    NOT NULL,
+                Details   TEXT,
+                ChangedBy TEXT    NOT NULL,
+                ChangedAt TEXT    NOT NULL DEFAULT (datetime('now'))
             )");
 
         Exec(conn, @"
@@ -195,6 +248,7 @@ public static class TestDbHelper
                 PersonId     INTEGER NOT NULL,
                 VisitDate    TEXT    NOT NULL,
                 VisitsPerDay INTEGER NOT NULL DEFAULT 1,
+                Org          INTEGER,
                 UNIQUE(PersonId, VisitDate)
             )");
 
@@ -225,7 +279,8 @@ public static class TestDbHelper
                 RegistrarId        INTEGER,
                 ReferralId         INTEGER,
                 Currency           TEXT NOT NULL DEFAULT 'ILS',
-                TransferPurchaseId INTEGER NULL
+                TransferPurchaseId INTEGER NULL,
+                WalletId           INTEGER
             )");
 
         Exec(conn, @"
@@ -481,6 +536,29 @@ public static class TestDbHelper
     // Generic SQL helpers
     // -------------------------------------------------------------------------
 
+    /// <summary>
+    /// After using service-level insert methods (AddSoloSession, etc.) that hard-code
+    /// CreatedAt = datetime('now'), call this to rewrite CreatedAt to match each session's
+    /// SessionDate + midday, so queries filtering by date(CreatedAt) see the intended date.
+    /// Also aligns cs_work_log.CreatedAt to the WorkDate column for the same reason.
+    /// </summary>
+    public static void AlignSessionCreatedAtToSessionDate(SqliteConnection conn)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE sess_sessions
+            SET CreatedAt = SessionDate || ' 12:00:00'
+            WHERE SessionDate IS NOT NULL AND SessionDate != ''";
+        cmd.ExecuteNonQuery();
+
+        using var wCmd = conn.CreateCommand();
+        wCmd.CommandText = @"
+            UPDATE cs_work_log
+            SET CreatedAt = WorkDate || ' 12:00:00'
+            WHERE WorkDate IS NOT NULL AND WorkDate != ''";
+        wCmd.ExecuteNonQuery();
+    }
+
     public static void Exec(SqliteConnection conn, string sql)
     {
         using var cmd = conn.CreateCommand();
@@ -597,12 +675,16 @@ public static class TestDbHelper
     }
 
     /// <summary>Inserts a Session into sess_sessions and returns the new SessionId.</summary>
+    /// <param name="createdAt">Optional CreatedAt timestamp. If null, defaults to "{date} 12:00:00"
+    /// so GetWeekGrid / salary queries that filter by date(CreatedAt) find the session on its SessionDate.</param>
     public static int InsertSession(SqliteConnection conn,
         int pcId, int? auditorId, string date,
         int lengthSec, int adminSec = 0,
         bool isFree = false,
-        int seqInDay = 1, string verifiedStatus = "Pending")
+        int seqInDay = 1, string verifiedStatus = "Pending",
+        string? createdAt = null)
     {
+        var createdAtValue = createdAt ?? $"{date} 12:00:00";
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO sess_sessions
@@ -614,7 +696,7 @@ public static class TestDbHelper
               (@pcId, @audId, @date, @seq,
                @len, @adm, @free,
                0, 0,
-               datetime('now'), @vs)";
+               @createdAt, @vs)";
         cmd.Parameters.AddWithValue("@pcId",  pcId);
         cmd.Parameters.AddWithValue("@audId", auditorId.HasValue ? (object)auditorId.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@date",  date);
@@ -622,6 +704,7 @@ public static class TestDbHelper
         cmd.Parameters.AddWithValue("@len",   lengthSec);
         cmd.Parameters.AddWithValue("@adm",   adminSec);
         cmd.Parameters.AddWithValue("@free",  isFree ? 1 : 0);
+        cmd.Parameters.AddWithValue("@createdAt", createdAtValue);
         cmd.Parameters.AddWithValue("@vs",    verifiedStatus);
         cmd.ExecuteNonQuery();
         return (int)Scalar(conn, "SELECT last_insert_rowid()");

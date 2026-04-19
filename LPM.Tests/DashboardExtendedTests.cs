@@ -222,6 +222,7 @@ public class DashboardExtendedTests : IDisposable
 
         var date = new DateOnly(2024, 1, 15);
         _svc.AddSoloSession(audId, date, 3600, 0, false, null);
+        TestDbHelper.AlignSessionCreatedAtToSessionDate(conn);
 
         var detail = _svc.GetDayDetail(audId, audId, date, "CSSolo");
         Assert.Single(detail.Sessions);
@@ -242,6 +243,7 @@ public class DashboardExtendedTests : IDisposable
         TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-15", 7200);
         // Solo session
         _svc.AddSoloSession(audId, date, 3600, 0, false, null);
+        TestDbHelper.AlignSessionCreatedAtToSessionDate(conn);
 
         var detail = _svc.GetDayDetail(audId, audId, date, "CSSolo");
         Assert.Single(detail.Sessions);
@@ -269,6 +271,7 @@ public class DashboardExtendedTests : IDisposable
         _svc.AddCsReview(csId, sid, 1200, "Draft", null);
         // General CS work = 600 sec
         _svc.AddCsWork(csId, pcId, new DateOnly(2024, 1, 11), 600, null);
+        TestDbHelper.AlignSessionCreatedAtToSessionDate(conn);
 
         var pcs  = new List<PcInfo> { new PcInfo(pcId, "Client1", "CS") };
         var grid = _svc.GetWeekGrid(csId, week, pcs);
@@ -302,6 +305,7 @@ public class DashboardExtendedTests : IDisposable
 
         var week = new DateOnly(2024, 1, 11); // Thursday
         _svc.AddSoloSession(audId, new DateOnly(2024, 1, 11), 3600, 600, false, null);
+        TestDbHelper.AlignSessionCreatedAtToSessionDate(conn);
 
         var grid = _svc.GetWeekGridSolo(audId, week);
         Assert.True(grid.TryGetValue((audId, 0), out var secs));
@@ -318,6 +322,7 @@ public class DashboardExtendedTests : IDisposable
         var week = new DateOnly(2024, 1, 11);
         _svc.AddSoloSession(audId, new DateOnly(2024, 1, 11), 3600, 0, false, null);
         _svc.AddSoloSession(audId, new DateOnly(2024, 1, 11), 1800, 0, false, null);
+        TestDbHelper.AlignSessionCreatedAtToSessionDate(conn);
 
         var grid = _svc.GetWeekGridSolo(audId, week);
         Assert.True(grid.TryGetValue((audId, 0), out var secs));
@@ -443,6 +448,7 @@ public class DashboardExtendedTests : IDisposable
         _svc.AddSoloSession(audId, new DateOnly(2024, 1, 11), 3600, 0, false, null);
         // Regular session (PcId != AuditorId) should NOT be counted
         TestDbHelper.InsertSession(conn, pcId, audId, "2024-01-11", 7200);
+        TestDbHelper.AlignSessionCreatedAtToSessionDate(conn);
 
         var result = _svc.GetWeeklyTotalsSolo(audId, week, 1);
         Assert.Equal(3600, result.Last().TotalSeconds);
@@ -593,6 +599,7 @@ public class DashboardExtendedTests : IDisposable
 
         var week = new DateOnly(2024, 1, 11);
         _svc.AddSoloSession(audId, new DateOnly(2024, 1, 11), 3600, 0, false, null);
+        TestDbHelper.AlignSessionCreatedAtToSessionDate(conn);
 
         Assert.True(_svc.HasAnyWorkInWeek(audId, week, new List<PcInfo>(), soloMode: true));
     }
@@ -688,6 +695,7 @@ public class DashboardExtendedTests : IDisposable
 
         // 4. Add CS review
         _svc.AddCsReview(csId, sid, 1200, "Approved", "All good");
+        TestDbHelper.AlignSessionCreatedAtToSessionDate(conn);
 
         // 5. Verify DayDetail via CS role returns correct data
         var detail = _svc.GetDayDetail(csId, pcId, date, "CS");
@@ -711,7 +719,7 @@ public class DashboardExtendedTests : IDisposable
 
         // Buy 5 hours via CreatePurchase
         pcSvc.CreatePurchase(pcId, "2024-01-01", null, null, null,
-            new List<(string, int?, int?, double, int)> { ("Auditing", null, null, 5.0, 1500) });
+            new List<(string, int?, int?, double, double)> { ("Auditing", null, null, 5.0, 1500) });
 
         // Use 3600 sec (1 hour) via DashboardService
         using var conn = Open();
@@ -733,6 +741,155 @@ public class DashboardExtendedTests : IDisposable
         TestDbHelper.InsertAuditor(conn, personId, staffRole: "Auditor", isActive: true);
 
         Assert.True(_svc.IsAuditor(personId));
+    }
+
+    // =========================================================================
+    // ToggleSessionFree / ToggleCsReviewFree
+    // =========================================================================
+
+    [Fact]
+    public void ToggleSessionFree_FlipsFlag_WhenZero()
+    {
+        using var conn = Open();
+        var audId = TestDbHelper.InsertPerson(conn, "Aud1");
+        TestDbHelper.InsertAuditor(conn, audId);
+        var pcId  = TestDbHelper.InsertPerson(conn, "Pc1");
+        TestDbHelper.InsertPC(conn, pcId);
+        var sid = TestDbHelper.InsertSession(conn, pcId, audId, "2024-05-01", 3600, isFree: false);
+
+        _svc.ToggleSessionFree(sid);
+
+        Assert.Equal(1L, TestDbHelper.Scalar(conn,
+            $"SELECT IsFreeSession FROM sess_sessions WHERE SessionId = {sid}"));
+    }
+
+    [Fact]
+    public void ToggleSessionFree_FlipsFlag_WhenOne()
+    {
+        using var conn = Open();
+        var audId = TestDbHelper.InsertPerson(conn, "Aud1");
+        TestDbHelper.InsertAuditor(conn, audId);
+        var pcId  = TestDbHelper.InsertPerson(conn, "Pc1");
+        TestDbHelper.InsertPC(conn, pcId);
+        var sid = TestDbHelper.InsertSession(conn, pcId, audId, "2024-05-01", 3600, isFree: true);
+
+        _svc.ToggleSessionFree(sid);
+
+        Assert.Equal(0L, TestDbHelper.Scalar(conn,
+            $"SELECT IsFreeSession FROM sess_sessions WHERE SessionId = {sid}"));
+    }
+
+    [Fact]
+    public void ToggleSessionFree_IsIdempotent_AfterTwoFlips()
+    {
+        using var conn = Open();
+        var audId = TestDbHelper.InsertPerson(conn, "Aud1");
+        TestDbHelper.InsertAuditor(conn, audId);
+        var pcId  = TestDbHelper.InsertPerson(conn, "Pc1");
+        TestDbHelper.InsertPC(conn, pcId);
+        var sid = TestDbHelper.InsertSession(conn, pcId, audId, "2024-05-01", 3600, isFree: false);
+
+        _svc.ToggleSessionFree(sid);
+        _svc.ToggleSessionFree(sid);
+
+        Assert.Equal(0L, TestDbHelper.Scalar(conn,
+            $"SELECT IsFreeSession FROM sess_sessions WHERE SessionId = {sid}"));
+    }
+
+    [Fact]
+    public void ToggleCsReviewFree_FlipsNotes_BetweenFreeAndBill_ForSoloSession()
+    {
+        using var conn = Open();
+        // Solo: session has AuditorId=NULL. PC is an active Solo user.
+        var pcId = TestDbHelper.InsertPerson(conn, "SoloUser");
+        TestDbHelper.InsertPC(conn, pcId);
+        TestDbHelper.InsertCoreUser(conn, pcId, "solo1", "x", staffRole: "Solo");
+
+        var csId = TestDbHelper.InsertPerson(conn, "CS1");
+        TestDbHelper.InsertCS(conn, csId);
+
+        var sid = TestDbHelper.InsertSession(conn, pcId, auditorId: null, "2024-05-01", 3600);
+        // Seed cs_reviews with Notes='Bill'
+        using var ins = conn.CreateCommand();
+        ins.CommandText = @"INSERT INTO cs_reviews (SessionId, CsId, ReviewLengthSeconds, Status, Notes)
+                            VALUES (@s, @c, 600, 'Approved', 'Bill')";
+        ins.Parameters.AddWithValue("@s", sid);
+        ins.Parameters.AddWithValue("@c", csId);
+        ins.ExecuteNonQuery();
+        var crId = (int)TestDbHelper.Scalar(conn, "SELECT last_insert_rowid()");
+
+        _svc.ToggleCsReviewFree(crId);
+        using (var q = conn.CreateCommand())
+        {
+            q.CommandText = $"SELECT Notes FROM cs_reviews WHERE CsReviewId = {crId}";
+            Assert.Equal("Free", (string)q.ExecuteScalar()!);
+        }
+
+        _svc.ToggleCsReviewFree(crId);
+        using (var q = conn.CreateCommand())
+        {
+            q.CommandText = $"SELECT Notes FROM cs_reviews WHERE CsReviewId = {crId}";
+            Assert.Equal("Bill", (string)q.ExecuteScalar()!);
+        }
+    }
+
+    [Fact]
+    public void ToggleCsReviewFree_DoesNothing_ForNonSoloSession()
+    {
+        using var conn = Open();
+        // Non-solo: session has AuditorId set. Notes preserved as-is.
+        var audId = TestDbHelper.InsertPerson(conn, "Aud1");
+        TestDbHelper.InsertAuditor(conn, audId);
+        var pcId = TestDbHelper.InsertPerson(conn, "Pc1");
+        TestDbHelper.InsertPC(conn, pcId);
+        var csId = TestDbHelper.InsertPerson(conn, "CS1");
+        TestDbHelper.InsertCS(conn, csId);
+
+        var sid = TestDbHelper.InsertSession(conn, pcId, audId, "2024-05-01", 3600);
+        using var ins = conn.CreateCommand();
+        ins.CommandText = @"INSERT INTO cs_reviews (SessionId, CsId, ReviewLengthSeconds, Status, Notes)
+                            VALUES (@s, @c, 600, 'Approved', 'custom notes')";
+        ins.Parameters.AddWithValue("@s", sid);
+        ins.Parameters.AddWithValue("@c", csId);
+        ins.ExecuteNonQuery();
+        var crId = (int)TestDbHelper.Scalar(conn, "SELECT last_insert_rowid()");
+
+        _svc.ToggleCsReviewFree(crId);
+
+        using var q = conn.CreateCommand();
+        q.CommandText = $"SELECT Notes FROM cs_reviews WHERE CsReviewId = {crId}";
+        Assert.Equal("custom notes", (string)q.ExecuteScalar()!);
+    }
+
+    // =========================================================================
+    // GetSalaryReport — filter by CreatedAt (not SessionDate)
+    // =========================================================================
+
+    [Fact]
+    public void GetSalaryReport_FiltersByCreatedAt_NotSessionDate()
+    {
+        using var conn = Open();
+        var audId = TestDbHelper.InsertPerson(conn, "Aud1");
+        TestDbHelper.InsertAuditor(conn, audId);
+        var pcId = TestDbHelper.InsertPerson(conn, "Pc1");
+        TestDbHelper.InsertPC(conn, pcId);
+
+        // Session with SessionDate in Feb but CreatedAt in April → should appear in April's report
+        var sid = TestDbHelper.InsertSession(conn, pcId, audId, "2024-02-10", 3600,
+            adminSec: 0, verifiedStatus: "Approved", createdAt: "2024-04-05 10:00:00");
+        using (var u = conn.CreateCommand())
+        {
+            u.CommandText = $"UPDATE sess_sessions SET ChargedRateCentsPerHour=10000, AuditorSalaryCentsPerHour=5000, ChargeSeconds=3600 WHERE SessionId={sid}";
+            u.ExecuteNonQuery();
+        }
+
+        var febReport   = _svc.GetSalaryReport(new DateOnly(2024, 2, 1), new DateOnly(2024, 2, 28));
+        var aprilReport = _svc.GetSalaryReport(new DateOnly(2024, 4, 1), new DateOnly(2024, 4, 30));
+
+        // February (by SessionDate) must NOT include it — filter is on CreatedAt.
+        Assert.DoesNotContain(febReport.Groups, g => g.Sessions.Any(s => s.SessionId == sid));
+        // April (by CreatedAt) must include it.
+        Assert.Contains(aprilReport.Groups, g => g.Sessions.Any(s => s.SessionId == sid));
     }
 
     // =========================================================================

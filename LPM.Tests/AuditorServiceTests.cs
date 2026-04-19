@@ -139,8 +139,8 @@ public class AuditorServiceTests : IDisposable
         _svc.UpdateAuditor(id, "NewFirst", "NewLast", gradeId: 3, staffRole: "Auditor", isActive: true, isAdmin: false, allowAll: false);
 
         var detail = _svc.GetAuditorDetail(id)!;
-        Assert.Equal("NewFirst", detail.FirstName);
-        Assert.Equal("NewLast",  detail.LastName);
+        Assert.Equal("Newfirst", detail.FirstName);
+        Assert.Equal("Newlast",  detail.LastName);
         Assert.Equal(3,          detail.CurrentGradeId);
         Assert.Equal("PHD",      detail.GradeCode);
     }

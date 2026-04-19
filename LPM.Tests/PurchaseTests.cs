@@ -494,10 +494,10 @@ public class PurchaseTests : IDisposable
         return pid;
     }
 
-    private static List<(string itemType, int? courseId, int? bookId, double hoursBought, int amountPaid)>
+    private static List<(string itemType, int? courseId, int? bookId, double hoursBought, double amountPaid)>
         MakeItems(params (string type, int? courseId, int hours, int amount)[] raw)
     {
-        return raw.Select(r => ((string)r.type, (int?)r.courseId, (int?)null, (double)r.hours, (int)r.amount)).ToList();
+        return raw.Select(r => ((string)r.type, (int?)r.courseId, (int?)null, (double)r.hours, (double)r.amount)).ToList();
     }
 
     private static List<(string methodType, int amount, string? paymentDate, int installments)>
