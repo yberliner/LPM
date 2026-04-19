@@ -2092,7 +2092,7 @@
     Dictionary<int, HashSet<string>> _audAttachTypes = new();
     Dictionary<int, QuestionInfo> _sessionQuestions = new();
     bool _audStatusExpanded = true;
-    int _audStatusDays = 21;
+    int _audStatusDays = 7;
     string _pcsSortCol = "pc";   // "pc", "date", "dur"
     bool _pcsSortAsc = true;
     string _audSortCol = "pc";   // "pc", "date", "dur"
@@ -2765,7 +2765,7 @@
     async Task OnAudStatusRangeChanged(ChangeEventArgs e)
     {
         if (!_userId.HasValue) return;
-        _audStatusDays = int.TryParse(e.Value?.ToString(), out var v) ? v : 21;
+        _audStatusDays = int.TryParse(e.Value?.ToString(), out var v) ? v : 7;
         Console.WriteLine($"[Home] Changed auditor status range to {_audStatusDays} days by '{_username}'");
         _auditorStatuses = DashSvc.GetAuditorSessionStatuses(_userId.Value, _audStatusDays, isSolo: _isSolo);
         _audAttachTypes  = _auditorStatuses.ToDictionary(s => s.SessionId,

@@ -133,6 +133,9 @@ window.pcfViewer = {
             viewer._panInited = true;
             this._initPanOnViewer(viewer);
         }
+        if (!viewer._dualObserver) {
+            this._initDualResizeObserver(viewer, paneId);
+        }
         // Save active text input so it can be restored after reload (e.g., maximize/restore)
         let _textRestore = null;
         console.log('[txt-dbg] loadPdf paneId=' + paneId + ' activeState=' + JSON.stringify(this._activeTextState) + ' textInputEl=' + !!this.textInputEl);
@@ -2121,6 +2124,34 @@ window.pcfViewer = {
 
         this._applyDualVisibility(paneId);
         return [1, pane.pages.length];
+    },
+
+    _initDualResizeObserver(viewer, paneId) {
+        if (!window.ResizeObserver) return;
+        const self = this;
+        viewer._dualObserver = new ResizeObserver(() => {
+            if (viewer._dualDebounce) clearTimeout(viewer._dualDebounce);
+            viewer._dualDebounce = setTimeout(() => {
+                const pane = self.panes[paneId];
+                if (!pane || !pane.dualMode || !pane.pages || !pane.pages.length) return;
+                const page0 = pane.pages[0];
+                if (!page0 || !page0.canvas) return;
+                const zl = pane.zoomLevel || 1;
+                const renderedWidth  = (parseFloat(page0.canvas.style.width)  || (page0.canvas.width  / _pdfDpr())) * zl;
+                const renderedHeight = (parseFloat(page0.canvas.style.height) || (page0.canvas.height / _pdfDpr())) * zl;
+                if (!(renderedWidth > 0) || !(renderedHeight > 0)) return;
+                const w = viewer.clientWidth;
+                const h = viewer.clientHeight;
+                if (!(w > 0) || !(h > 0)) return;
+                const scaleByWidth  = (w / 2) / renderedWidth;
+                const scaleByHeight =  h      / renderedHeight;
+                const newScale = Math.min(scaleByWidth, scaleByHeight);
+                if (!isFinite(newScale) || newScale <= 0) return;
+                pane.dualScale = newScale;
+                self._applyDualVisibility(paneId);
+            }, 80);
+        });
+        viewer._dualObserver.observe(viewer);
     },
 
     exitDualMode(paneId) {
