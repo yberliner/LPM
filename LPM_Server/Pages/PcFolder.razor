@@ -5712,7 +5712,7 @@
                     {
                         if (pf.Name.Equals("Program Bridge.pdf", StringComparison.OrdinalIgnoreCase))
                             _presetFloatFile = pf.RelativePath;
-                        else
+                        else if (files.Count < 3)
                             files.Add((pf.RelativePath, pf.Name, "Front Cover"));
                     }
                 }
@@ -5723,12 +5723,12 @@
                     var l = Path.GetFileNameWithoutExtension(f.Name).ToLowerInvariant();
                     return l.Contains("program") || l.Contains("prog");
                 });
-                if (prog != null && !files.Any(x => x.Item2 == prog.Name))
+                if (files.Count < 3 && prog != null && !files.Any(x => x.Item2 == prog.Name))
                     files.Add((prog.RelativePath, prog.Name, "Front Cover"));
 
                 // 2. Folder Summary (skip if same file as program — e.g. "Program Summary.pdf")
                 var summary = rootFiles.FirstOrDefault(f => IsFolderSummaryFile(f.Name, f.RelativePath));
-                if (summary != null && summary.RelativePath != prog?.RelativePath)
+                if (files.Count < 3 && summary != null && summary.RelativePath != prog?.RelativePath)
                     files.Add((summary.RelativePath, summary.Name, "Front Cover"));
 
                 // 3. Previous session's Next CS (only if in CS mode)
@@ -5744,7 +5744,7 @@
                         {
                             var nextCsAtt = prevWs.Attachments.FirstOrDefault(a =>
                                 a.FileName.Contains("_att_Next CS", StringComparison.OrdinalIgnoreCase));
-                            if (nextCsAtt != null)
+                            if (nextCsAtt != null && files.Count < 3)
                             {
                                 _prevCsFile = nextCsAtt.RelativePath;
                                 files.Add((nextCsAtt.RelativePath, nextCsAtt.FileName, "WorkSheet"));
