@@ -2,6 +2,7 @@
 @using LPM.Services
 @inject DashboardService DashSvc
 @inject LPM.Services.CourseService CourseSvc
+@inject LPM.Services.SessionManagerLauncher SmLauncher
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IJSRuntime JS
@@ -187,6 +188,18 @@
         <div class="alert alert-danger mx-4 mt-3">@_error</div>
     }
 
+    @* ── Right-click Free/Bill context menu ── *@
+    @if (_ctxOpen)
+    {
+        <div class="sal-ctx-overlay" @onclick="() => _ctxOpen = false"
+             @oncontextmenu="() => _ctxOpen = false" @oncontextmenu:preventDefault="true"></div>
+        <div class="sal-ctx-menu" style="@($"top:{(int)_ctxY}px;left:{(int)_ctxX}px;")">
+            <button type="button" class="sal-ctx-item" @onclick="ToggleFreeBill">
+                <i class="ri-swap-line me-2"></i>@(_ctxIsFree ? "Mark as Billable" : "Mark as Free")
+            </button>
+        </div>
+    }
+
     @* ── Results ── *@
     @if (_groups != null)
     {
@@ -296,8 +309,9 @@
                                 <table class="table table-sm mb-0 sal-table sal-table-fixed">
                                     <colgroup>
                                         <col style="width:9%;" /><col style="width:15%;" /><col style="width:9%;" /><col />
-                                        <col style="width:10%;" /><col style="width:11%;" />
-                                        <col style="width:13%;" /><col style="width:10%;" />
+                                        <col style="width:9%;" /><col style="width:10%;" />
+                                        <col style="width:12%;" /><col style="width:9%;" />
+                                        <col style="width:5%;" />
                                     </colgroup>
                                     <thead>
                                         <tr class="sal-thead">
@@ -309,12 +323,15 @@
                                             <th class="text-end">Rate /hr</th>
                                             <th class="text-end">Payment</th>
                                             <th class="text-center">Status</th>
+                                            <th class="text-center"></th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         @foreach (var s in sessCurr)
                                         {
-                                            <tr class="@(s.IsApproved ? "" : "sal-row-pending")" style="@(s.IsFree ? "opacity:.7;" : "")">
+                                            <tr class="@(s.IsApproved ? "" : "sal-row-pending")" style="@(s.IsFree ? "opacity:.7;" : "")"
+                                                @oncontextmenu="e => OpenCtxSess(e, s.SessionId, s.IsFree)"
+                                                @oncontextmenu:preventDefault="true">
                                                 <td class="sal-date">@FormatDate(s.Date)</td>
                                                 <td class="sal-name">@s.Name</td>
                                                 <td class="sal-id">
@@ -328,11 +345,18 @@
                                                 <td class="text-end sal-rate">@if (s.IsFree) { <span style="color:#dc2626;font-weight:600;">@SalCurrSym(s.Currency) 0</span> } else if (s.IsApproved) { @($"{SalCurrSym(s.Currency)} {s.RateCentsPerHour / 100}") } else { <span class="sal-pending-dash">—</span> }</td>
                                                 <td class="text-end sal-payment">@if (s.IsFree) { <span style="color:#dc2626;font-weight:600;">@SalCurrSym(s.Currency) 0</span> } else if (s.IsApproved) { @($"{SalCurrSym(s.Currency)} {FormatShekel(s.PaymentCents)}") } else { <span class="sal-pending-dash">—</span> }</td>
                                                 <td class="text-center">@if (s.IsFree) { <span class="sal-free-tag">Free session</span> } else if (s.IsApproved) { <span class="sal-badge-approved">Approved</span> } else { <span class="sal-badge-pending">Pending</span> }</td>
+                                                <td class="text-center sal-action-cell">
+                                                    <button type="button" class="sal-action-btn" title="Edit session"
+                                                            @onclick="() => OpenInSessionManager(s.SessionId)">
+                                                        <i class="ri-database-2-line"></i>
+                                                    </button>
+                                                </td>
                                             </tr>
                                         }
                                         <tr class="sal-subtotal-row">
                                             <td colspan="6" class="text-end fw-bold">Subtotal</td>
                                             <td class="text-end fw-bold sal-payment">@SalCurrSym(sessCurr.Key) @FormatShekel(sessCurrTotal)</td>
+                                            <td></td>
                                             <td></td>
                                         </tr>
                                     </tbody>
@@ -353,9 +377,10 @@
                             <div class="table-responsive">
                                 <table class="table table-sm mb-0 sal-table sal-table-fixed">
                                     <colgroup>
-                                        <col style="width:8%;" /><col style="width:15%;" /><col style="width:15%;" /><col />
-                                        <col style="width:10%;" /><col style="width:11%;" />
-                                        <col style="width:13%;" /><col style="width:10%;" />
+                                        <col style="width:8%;" /><col style="width:15%;" /><col style="width:11%;" /><col />
+                                        <col style="width:9%;" /><col style="width:10%;" />
+                                        <col style="width:12%;" /><col style="width:9%;" />
+                                        <col style="width:5%;" />
                                     </colgroup>
                                     <thead>
                                         <tr class="sal-thead">
@@ -367,16 +392,18 @@
                                             <th class="text-end">Rate /hr</th>
                                             <th class="text-end">Payment</th>
                                             <th class="text-center">Status</th>
+                                            <th class="text-center"></th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         @foreach (var c in csCurr)
                                         {
-                                            <tr class="@(c.IsApproved ? "" : "sal-row-pending")" style="@(c.IsFree ? "opacity:.7;" : "")">
+                                            <tr class="@(c.IsApproved ? "" : "sal-row-pending")" style="@(c.IsFree ? "opacity:.7;" : "")"
+                                                @oncontextmenu="e => OpenCtxCs(e, c.CsReviewId, c.IsFree, c.IsSolo)"
+                                                @oncontextmenu:preventDefault="true">
                                                 <td class="sal-date">@FormatDate(c.Date)</td>
                                                 <td class="sal-name">@c.Name</td>
                                                 <td class="sal-id">
-                                                    <span class="sal-id-cs" title="CS Review ID">cs #@c.CsReviewId</span>
                                                     <span class="sal-id-sess" title="Session ID">sess #@c.SessionId</span>
                                                 </td>
                                                 <td class="sal-pc @(_soloPcIds.Contains(c.PcId) ? "sal-pc-solo" : "")">
@@ -387,11 +414,18 @@
                                                 <td class="text-end sal-rate">@if (c.IsFree) { <span style="color:#dc2626;font-weight:600;">@SalCurrSym(c.Currency) 0</span> } else if (c.IsApproved) { @($"{SalCurrSym(c.Currency)} {c.RateCentsPerHour / 100}") } else { <span class="sal-pending-dash">—</span> }</td>
                                                 <td class="text-end sal-payment">@if (c.IsFree) { <span style="color:#dc2626;font-weight:600;">@SalCurrSym(c.Currency) 0</span> } else if (c.IsApproved) { @($"{SalCurrSym(c.Currency)} {FormatShekel(c.PaymentCents)}") } else { <span class="sal-pending-dash">—</span> }</td>
                                                 <td class="text-center">@if (c.IsFree) { <span class="sal-free-tag">Free session</span> } else if (c.IsApproved) { <span class="sal-badge-approved">Approved</span> } else { <span class="sal-badge-pending">Pending</span> }</td>
+                                                <td class="text-center sal-action-cell">
+                                                    <button type="button" class="sal-action-btn" title="Edit session / CS review"
+                                                            @onclick="() => OpenInSessionManager(c.SessionId)">
+                                                        <i class="ri-database-2-line"></i>
+                                                    </button>
+                                                </td>
                                             </tr>
                                         }
                                         <tr class="sal-subtotal-row">
                                             <td colspan="6" class="text-end fw-bold">Subtotal</td>
                                             <td class="text-end fw-bold sal-payment">@SalCurrSym(csCurr.Key) @FormatShekel(csCurrTotal)</td>
+                                            <td></td>
                                             <td></td>
                                         </tr>
                                     </tbody>
@@ -755,6 +789,38 @@
     int _periodYear;
     int _periodMonth;
     HashSet<string> _collapsed = new();
+
+    // ── Right-click context menu (Free/Bill toggle) ──
+    bool _ctxOpen;
+    double _ctxX, _ctxY;
+    string _ctxKind = ""; // "sess" or "cs"
+    int _ctxId;
+    bool _ctxIsFree;
+
+    void OpenCtxSess(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, int sessionId, bool isFree)
+    {
+        _ctxKind = "sess"; _ctxId = sessionId; _ctxIsFree = isFree;
+        _ctxX = e.ClientX; _ctxY = e.ClientY;
+        _ctxOpen = true;
+    }
+
+    void OpenCtxCs(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, int csReviewId, bool isFree, bool isSolo)
+    {
+        if (!isSolo) return; // non-solo CS is always paid — no toggle
+        _ctxKind = "cs"; _ctxId = csReviewId; _ctxIsFree = isFree;
+        _ctxX = e.ClientX; _ctxY = e.ClientY;
+        _ctxOpen = true;
+    }
+
+    async Task ToggleFreeBill()
+    {
+        _ctxOpen = false;
+        if (_ctxKind == "sess")      DashSvc.ToggleSessionFree(_ctxId);
+        else if (_ctxKind == "cs")   DashSvc.ToggleCsReviewFree(_ctxId);
+        await Calculate();
+    }
+
+    void OpenInSessionManager(int sessionId) => SmLauncher.RequestOpen(sessionId);
 
     // ── Commission Detail modal + hover ──
     CommissionRow? _detailRow;
@@ -1443,6 +1509,51 @@
         font-size: .7rem; color: #94a3b8; font-weight: 600;
         text-transform: uppercase; letter-spacing: .3px;
     }
+
+    /* ── Action button (CS Reviews → open Session Manager) ── */
+    .sal-action-cell { width: 44px; }
+    .sal-action-btn {
+        background: rgba(249,115,22,.1);
+        border: 1px solid rgba(249,115,22,.25);
+        color: #ea580c;
+        border-radius: 6px;
+        width: 28px; height: 28px;
+        display: inline-flex; align-items: center; justify-content: center;
+        cursor: pointer; font-size: .95rem;
+        transition: background .12s, transform .12s, box-shadow .12s;
+    }
+    .sal-action-btn:hover {
+        background: #f97316; color: #fff;
+        transform: translateY(-1px);
+        box-shadow: 0 3px 8px rgba(249,115,22,.3);
+    }
+    .sal-action-btn:active { transform: translateY(0); }
+
+    /* ── Right-click Free/Bill context menu ── */
+    .sal-ctx-overlay {
+        position: fixed; inset: 0; z-index: 1040;
+        background: transparent;
+    }
+    .sal-ctx-menu {
+        position: fixed; z-index: 1041;
+        background: #fff;
+        border: 1px solid rgba(100,116,139,.25);
+        border-radius: 8px;
+        box-shadow: 0 8px 22px rgba(15,23,42,.18);
+        padding: 4px;
+        min-width: 180px;
+    }
+    .sal-ctx-item {
+        display: flex; align-items: center;
+        width: 100%; padding: 8px 12px;
+        background: transparent; border: 0;
+        font-size: .85rem; color: #1e293b;
+        border-radius: 6px;
+        cursor: pointer;
+        text-align: left;
+        min-height: 36px;
+    }
+    .sal-ctx-item:hover { background: #f1f5f9; color: #0f172a; }
 
     /* ── Responsive ── */
     @@media (max-width: 768px) {

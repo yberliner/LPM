@@ -3593,7 +3593,7 @@ public class DashboardService
             SELECT s.AuditorId,
                    s.SessionId,
                    s.PcId,
-                   s.SessionDate,
+                   SUBSTR(s.CreatedAt,1,10),
                    TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS PcName,
                    COALESCE(s.LengthSeconds,0) + COALESCE(s.AdminSeconds,0) AS DurationSec,
                    s.AuditorSalaryCentsPerHour,
@@ -3605,9 +3605,9 @@ public class DashboardService
             JOIN core_persons pc ON pc.PersonId = s.PcId
             LEFT JOIN fin_wallets w ON w.WalletId = s.WalletId
             WHERE s.AuditorId IS NOT NULL
-              AND s.SessionDate >= @from AND s.SessionDate <= @to
+              AND SUBSTR(s.CreatedAt,1,10) >= @from AND SUBSTR(s.CreatedAt,1,10) <= @to
               AND COALESCE(s.IsImported,0) = 0
-            ORDER BY s.AuditorId, s.SessionDate, s.SequenceInDay";
+            ORDER BY s.AuditorId, s.CreatedAt, s.SequenceInDay";
         sessCmd.Parameters.AddWithValue("@from", fromStr);
         sessCmd.Parameters.AddWithValue("@to",   toStr);
 
@@ -3641,7 +3641,7 @@ public class DashboardService
                    cr.CsReviewId,
                    s.SessionId,
                    s.PcId,
-                   s.SessionDate,
+                   SUBSTR(s.CreatedAt,1,10),
                    TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS PcName,
                    cr.ReviewLengthSeconds,
                    cr.CsSalaryCentsPerHour,
@@ -3654,9 +3654,9 @@ public class DashboardService
             JOIN sess_sessions s  ON s.SessionId  = cr.SessionId
             JOIN core_persons  pc ON pc.PersonId  = s.PcId
             LEFT JOIN fin_wallets w ON w.WalletId = cr.WalletId
-            WHERE s.SessionDate >= @from AND s.SessionDate <= @to
+            WHERE SUBSTR(s.CreatedAt,1,10) >= @from AND SUBSTR(s.CreatedAt,1,10) <= @to
               AND COALESCE(s.IsImported,0) = 0
-            ORDER BY cr.CsId, s.SessionDate";
+            ORDER BY cr.CsId, s.CreatedAt";
         csCmd.Parameters.AddWithValue("@from", fromStr);
         csCmd.Parameters.AddWithValue("@to",   toStr);
 
@@ -3921,6 +3921,34 @@ public class DashboardService
             r.IsDBNull(24) ? null : r.GetString(24),
             r.IsDBNull(25) ? null : (int?)r.GetInt32(25),
             r.IsDBNull(26) ? null : (int?)r.GetInt32(26));
+    }
+
+    public void ToggleSessionFree(int sessionId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE sess_sessions
+            SET IsFreeSession = CASE WHEN COALESCE(IsFreeSession,0) = 1 THEN 0 ELSE 1 END
+            WHERE SessionId = @sid";
+        cmd.Parameters.AddWithValue("@sid", sessionId);
+        cmd.ExecuteNonQuery();
+    }
+
+    public void ToggleCsReviewFree(int csReviewId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE cs_reviews
+            SET Notes = CASE WHEN Notes = 'Free' THEN 'Bill' ELSE 'Free' END
+            WHERE CsReviewId = @id
+              AND EXISTS (SELECT 1 FROM sess_sessions s
+                          WHERE s.SessionId = cs_reviews.SessionId AND s.AuditorId IS NULL)";
+        cmd.Parameters.AddWithValue("@id", csReviewId);
+        cmd.ExecuteNonQuery();
     }
 
     /// <summary>Transfer a session to a different PC: updates sess_sessions.PcId and sess_folder_summary.PcId.</summary>

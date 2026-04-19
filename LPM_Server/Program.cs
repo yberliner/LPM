@@ -152,6 +152,7 @@ builder.Services.AddSingleton<LPM.Services.CompletionService>();
 builder.Services.AddSingleton<LPM.Services.QuestionService>();
 builder.Services.AddSingleton<LPM.Services.EffortService>();
 builder.Services.AddSingleton<LPM.Services.WalletService>();
+builder.Services.AddScoped<LPM.Services.SessionManagerLauncher>();
 
 // Add session services
 builder.Services.AddDistributedMemoryCache();

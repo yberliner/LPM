@@ -14,6 +14,7 @@
 @inject LPM.Services.EffortService EffortSvc
 @inject LPM.Services.AcademyService AcademySvc
 @inject LPM.Services.StatisticsService StatSvc
+@inject LPM.Services.SessionManagerLauncher SmLauncher
 @inject PdfService PdfSvc
 @using LPM._Spk
 @using LPM.Services
@@ -8093,6 +8094,27 @@ string _actionPcSearch = "";
             // Subscribe to instant message notifications
             MsgNotifier.OnNewMessage += OnNewMessageReceived;
         }
+
+        SmLauncher.OnOpenRequested += OnOpenSessionManagerRequest;
+    }
+
+    void OnOpenSessionManagerRequest(int sessionId)
+    {
+        _ = InvokeAsync(() =>
+        {
+            // Reuse existing session manager open + detail-load flow; no duplicated logic.
+            OpenSessionManager();
+            if (!_smOpen) return; // aborted (e.g. no _msgUserId)
+
+            // Pre-select the session's PC so "Back to list" returns to the right list
+            var detail = DashSvc.GetSessionDetail(sessionId);
+            if (detail == null) { _smError = "Session not found."; StateHasChanged(); return; }
+            _smPcId   = detail.PcId;
+            _smPcName = _actionAllPcs.FirstOrDefault(p => p.PcId == detail.PcId)?.FullName ?? "";
+
+            SmOpenDetail(sessionId);
+            StateHasChanged();
+        });
     }
 
     [Parameter] public bool ShowMenuToggle { get; set; } = true;
@@ -8626,6 +8648,7 @@ string _actionPcSearch = "";
         _statCache = new();
         LS.OnLanguageChanged -= OnLanguageChanged;
         MsgNotifier.OnNewMessage -= OnNewMessageReceived;
+        SmLauncher.OnOpenRequested -= OnOpenSessionManagerRequest;
         _headerScrollRef?.Dispose();
         _step3DotNetRef?.Dispose();
         _dropRef?.Dispose();
