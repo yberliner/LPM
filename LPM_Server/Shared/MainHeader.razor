@@ -8648,6 +8648,18 @@ string _actionPcSearch = "";
         if (_smAddPcId <= 0) { _smAddError = "Please select a PC."; return; }
         if (_smAddLenMin <= 0) { _smAddError = "Session length must be greater than 0."; return; }
 
+        if (_smAddAuditorId == 0)
+        {
+            var soloPcIds = DashSvc.GetSoloPcIds();
+            if (!soloPcIds.Contains(_smAddPcId))
+            {
+                _smAddError = "This PC has not been granted Solo Access. " +
+                              "Either grant Solo Access to this PC from the PCs page, " +
+                              "or pick an auditor for this session.";
+                return;
+            }
+        }
+
         _smAddSaving = true;
         try
         {
@@ -8659,6 +8671,14 @@ string _actionPcSearch = "";
 
             await Task.Run(() =>
             {
+                if (isSolo)
+                {
+                    var soloDir = FolderSvc.GetOrCreateSoloPcFolderPath(_smAddPcId);
+                    Directory.CreateDirectory(Path.Combine(soloDir, "Front_Cover"));
+                    Directory.CreateDirectory(Path.Combine(soloDir, "Back_Cover"));
+                    Directory.CreateDirectory(Path.Combine(soloDir, "WorkSheets"));
+                }
+
                 // Pick the first index whose file doesn't yet exist AND can actually be saved.
                 // The save is attempted with overwrite=false — if it fails (file appeared between
                 // the check and the save, or couldn't be written), we advance to the next index.

@@ -5023,6 +5023,20 @@
         {
             var (username, newPassword) = UserDb.EnableSoloAuditor(_selPcId.Value, _detail.FirstName, _detail.LastName);
             Console.WriteLine($"[PCs] Solo access granted for PC {_selPcId.Value} ('{username}') by '{_username}'");
+
+            try
+            {
+                var soloDir = FolderSvc.GetOrCreateSoloPcFolderPath(_selPcId.Value);
+                Directory.CreateDirectory(Path.Combine(soloDir, "Front_Cover"));
+                Directory.CreateDirectory(Path.Combine(soloDir, "Back_Cover"));
+                Directory.CreateDirectory(Path.Combine(soloDir, "WorkSheets"));
+                Console.WriteLine($"[PCs] Solo folder ensured at '{soloDir}' for PC {_selPcId.Value}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PCs] WARN: Failed to create solo folder for PC {_selPcId.Value}: {ex.Message}");
+            }
+
             if (newPassword is not null)
             {
                 var (_, phone) = PcSvc.GetPersonContact(_selPcId.Value);

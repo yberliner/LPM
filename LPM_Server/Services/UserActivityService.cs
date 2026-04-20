@@ -180,6 +180,34 @@ public class UserActivityService
         return (DateTime.UtcNow - dt).TotalSeconds < 45;
     }
 
+    /// <summary>
+    /// Removes in-memory entries for users whose last interaction was >24h ago
+    /// and drops any circuit entries that dropped to zero but weren't cleaned via logout.
+    /// Called nightly by MaintenanceService.
+    /// Uses the key/value TryRemove overload so a fresh interaction occurring during
+    /// the sweep is not accidentally removed (compare-and-swap semantics).
+    /// </summary>
+    public int SweepStaleInteractions()
+    {
+        var cutoff = DateTime.UtcNow.AddHours(-24);
+        int removed = 0;
+        foreach (var kv in _lastInteraction)
+        {
+            if (kv.Value < cutoff &&
+                ((ICollection<KeyValuePair<string, DateTime>>)_lastInteraction).Remove(kv))
+                removed++;
+        }
+        foreach (var kv in _circuits)
+        {
+            if (kv.Value <= 0 &&
+                ((ICollection<KeyValuePair<string, int>>)_circuits).Remove(kv))
+                removed++;
+        }
+        if (removed > 0)
+            Console.WriteLine($"[ActivitySvc] Swept {removed} stale entries (interaction >24h old or zero-circuit).");
+        return removed;
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     static readonly string[] _tsFormats = { "yyyy-MM-dd HH:mm:ss.fff", "yyyy-MM-dd HH:mm:ss" };
