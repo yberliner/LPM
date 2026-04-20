@@ -2963,6 +2963,146 @@ public class PdfService
         }).GeneratePdf();
     }
 
+    // ── Purchase Receipt PDF ─────────────────────────────────────────────
+
+    public record PurchaseReceiptItem(
+        string ItemType,
+        string CourseName,
+        double HoursBought,
+        int AmountPaid,
+        string RegistrarName,
+        string ReferralName);
+
+    private static string HrsToHhMm(double h)
+    {
+        if (h <= 0) return "\u2014";
+        int hh = (int)Math.Floor(h);
+        int mm = (int)Math.Round((h - hh) * 60);
+        if (mm == 60) { hh++; mm = 0; }
+        return $"{hh}:{mm:D2}";
+    }
+
+    public byte[] GeneratePurchaseReceiptPdf(
+        string pcName,
+        string dateStr,
+        List<PurchaseReceiptItem> items,
+        string? notes,
+        byte[]? signaturePng)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+
+        double totalHrs = items.Where(i => i.ItemType == "Auditing").Sum(i => i.HoursBought);
+        int totalAmt = items.Sum(i => i.AmountPaid);
+
+        return Document.Create(doc =>
+        {
+            doc.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(20, Unit.Millimetre);
+                page.DefaultTextStyle(x => x.FontSize(12).FontColor("#1e293b").FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
+
+                page.Content().Column(col =>
+                {
+                    // Header
+                    col.Item().PaddingBottom(12).BorderBottom(2).BorderColor("#1e3a5f").Column(h =>
+                    {
+                        h.Item().AlignCenter().Text(pcName).FontSize(26).Bold().FontColor("#1e3a5f");
+                        h.Item().AlignCenter().PaddingTop(2).Text("Purchase Receipt").FontSize(12).FontColor("#64748b");
+                    });
+
+                    // Meta
+                    col.Item().PaddingTop(12).PaddingBottom(10).Text(t =>
+                    {
+                        t.Span("Date: ").Bold();
+                        t.Span(dateStr);
+                    });
+
+                    // Items table
+                    if (items.Count > 0)
+                    {
+                        col.Item().PaddingBottom(10).Table(table =>
+                        {
+                            table.ColumnsDefinition(cd =>
+                            {
+                                cd.RelativeColumn(2.0f);  // Type
+                                cd.RelativeColumn(1.0f);  // Hours
+                                cd.RelativeColumn(1.2f);  // Amount
+                                cd.RelativeColumn(1.5f);  // Registrar
+                                cd.RelativeColumn(1.5f);  // Referral
+                            });
+
+                            // Header row
+                            string[] headers = ["Type", "Hours", "Amount", "Registrar", "Referral"];
+                            foreach (var hd in headers)
+                            {
+                                table.Cell().Background("#f1f5f9").BorderBottom(2).BorderColor("#cbd5e1")
+                                    .Padding(6).Text(hd).FontSize(10).Bold().FontColor("#334155");
+                            }
+
+                            // Data rows
+                            foreach (var it in items)
+                            {
+                                string typeText = it.ItemType == "Course"
+                                    ? (string.IsNullOrEmpty(it.CourseName) ? "Course" : it.CourseName)
+                                    : "Auditing";
+                                string typeColor = it.ItemType == "Course" ? "#0369a1" : "#15803d";
+
+                                table.Cell().BorderBottom(1).BorderColor("#e2e8f0").Padding(6)
+                                    .Text(typeText).FontSize(11).Bold().FontColor(typeColor);
+                                table.Cell().BorderBottom(1).BorderColor("#e2e8f0").Padding(6).AlignCenter()
+                                    .Text(it.ItemType == "Auditing" ? HrsToHhMm(it.HoursBought) : "\u2014")
+                                    .FontSize(11).SemiBold();
+                                table.Cell().BorderBottom(1).BorderColor("#e2e8f0").Padding(6).AlignRight()
+                                    .Text(it.AmountPaid > 0 ? $"\u20AA{it.AmountPaid}" : "\u2014")
+                                    .FontSize(11).SemiBold();
+                                table.Cell().BorderBottom(1).BorderColor("#e2e8f0").Padding(6)
+                                    .Text(it.RegistrarName ?? "").FontSize(11).FontColor("#64748b");
+                                table.Cell().BorderBottom(1).BorderColor("#e2e8f0").Padding(6)
+                                    .Text(it.ReferralName ?? "").FontSize(11).FontColor("#64748b");
+                            }
+
+                            // Total row
+                            table.Cell().Background("#f8fafc").BorderTop(2).BorderColor("#1e3a5f").Padding(6)
+                                .Text("Total").FontSize(11).Bold();
+                            table.Cell().Background("#f8fafc").BorderTop(2).BorderColor("#1e3a5f").Padding(6).AlignCenter()
+                                .Text(HrsToHhMm(totalHrs)).FontSize(11).Bold();
+                            table.Cell().Background("#f8fafc").BorderTop(2).BorderColor("#1e3a5f").Padding(6).AlignRight()
+                                .Text(totalAmt > 0 ? $"\u20AA{totalAmt}" : "\u2014").FontSize(11).Bold();
+                            table.Cell().Background("#f8fafc").BorderTop(2).BorderColor("#1e3a5f").Padding(6).Text("");
+                            table.Cell().Background("#f8fafc").BorderTop(2).BorderColor("#1e3a5f").Padding(6).Text("");
+                        });
+                    }
+
+                    // Notes
+                    if (!string.IsNullOrWhiteSpace(notes))
+                    {
+                        col.Item().PaddingBottom(10).Column(n =>
+                        {
+                            n.Item().Text("NOTES").FontSize(9).Bold().FontColor("#64748b");
+                            n.Item().PaddingTop(3).Border(1).BorderColor("#e2e8f0").Background("#f8fafc")
+                                .Padding(8).Text(notes).FontSize(11).FontColor("#334155");
+                        });
+                    }
+
+                    // Signature
+                    if (signaturePng is { Length: > 0 })
+                    {
+                        col.Item().PaddingTop(12).AlignCenter().Column(s =>
+                        {
+                            s.Item().Text("BUYER SIGNATURE").FontSize(9).Bold().FontColor("#64748b");
+                            s.Item().PaddingTop(4).MaxWidth(280).MaxHeight(90).Image(signaturePng);
+                            s.Item().PaddingTop(4).Text(pcName).FontSize(10).FontColor("#64748b");
+                        });
+                    }
+                });
+
+                page.Footer().AlignCenter().PaddingTop(10).BorderTop(1).BorderColor("#e2e8f0")
+                    .Text($"Generated on {DateTime.Now:dd/MM/yyyy}").FontSize(9).FontColor("#94a3b8");
+            });
+        }).GeneratePdf();
+    }
+
     // ── Validation Report PDF ────────────────────────────────────────────
 
     public record ValidationPdfRow(string PcName, string AuditorName, int SessionCount, string MissingSections, List<(string Display, bool ExistsOnServer)> UnrecognizedFiles);

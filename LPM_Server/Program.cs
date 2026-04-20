@@ -1138,6 +1138,54 @@ app.MapPost("/api/pc-file-save", async (HttpContext ctx, LPM.Services.FolderServ
     return svc.SaveFile(pcId, path, ms.ToArray(), solo, auditUser: saveUser) ? Results.Ok() : Results.NotFound();
 }).RequireAuthorization();
 
+app.MapPost("/api/purchase-receipt/pdf", async (HttpContext ctx, PdfService pdfSvc) =>
+{
+    using var reader = new System.IO.StreamReader(ctx.Request.Body);
+    var json = await reader.ReadToEndAsync();
+    PurchaseReceiptRequest? req;
+    try
+    {
+        req = System.Text.Json.JsonSerializer.Deserialize<PurchaseReceiptRequest>(json,
+            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+    }
+    catch { return Results.BadRequest("Invalid JSON."); }
+    if (req is null) return Results.BadRequest("Missing body.");
+
+    byte[]? sig = null;
+    if (!string.IsNullOrEmpty(req.SignatureDataUrl))
+    {
+        var comma = req.SignatureDataUrl.IndexOf(',');
+        var b64 = comma > 0 ? req.SignatureDataUrl[(comma + 1)..] : req.SignatureDataUrl;
+        try { sig = Convert.FromBase64String(b64); } catch { sig = null; }
+    }
+
+    var items = (req.Items ?? new()).Select(i => new PdfService.PurchaseReceiptItem(
+        i.ItemType ?? "",
+        i.CourseName ?? "",
+        i.HoursBought,
+        i.AmountPaid,
+        i.RegistrarName ?? "",
+        i.ReferralName ?? ""
+    )).ToList();
+
+    byte[] bytes;
+    try
+    {
+        bytes = pdfSvc.GeneratePurchaseReceiptPdf(req.PcName ?? "", req.DateStr ?? "", items, req.Notes, sig);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[PurchaseReceipt] PDF generation failed: {ex.Message}");
+        return Results.Problem("Failed to generate PDF.");
+    }
+
+    var invalid = System.IO.Path.GetInvalidFileNameChars();
+    var safePc = new string((req.PcName ?? "PC").Select(c => invalid.Contains(c) ? '_' : c).ToArray());
+    var safeDate = (req.DateStr ?? "").Replace('/', '-');
+    var fileName = $"Purchase Receipt - {safePc} - {safeDate}.pdf";
+    return Results.File(bytes, "application/pdf", fileName);
+}).RequireAuthorization();
+
 app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.FolderService svc,
     LPM.Services.DashboardService dashSvc) =>
 {
@@ -2056,3 +2104,18 @@ static class PdfBgHelper
         Console.WriteLine($"[AnnSave] Appended multiply bg color={hexColor} to page (w={w:F0} h={h:F0})");
     }
 }
+
+public record PurchaseReceiptRequest(
+    string? PcName,
+    string? DateStr,
+    List<PurchaseReceiptItemDto>? Items,
+    string? Notes,
+    string? SignatureDataUrl);
+
+public record PurchaseReceiptItemDto(
+    string? ItemType,
+    string? CourseName,
+    double HoursBought,
+    int AmountPaid,
+    string? RegistrarName,
+    string? ReferralName);

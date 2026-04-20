@@ -3701,7 +3701,7 @@
             else if (_loginUsername.Equals("aviv", StringComparison.OrdinalIgnoreCase))
                 defaultPreset = 3;  // CS user "aviv" gets #3
             else
-                defaultPreset = 1;  // CS user gets #1
+                defaultPreset = 3;  // CS user gets #3 (was 1 — can revert)
             var presetFiles = ResolvePresetFiles(defaultPreset);
             if (presetFiles.Count > 0)
             {
@@ -3765,7 +3765,8 @@
                 }
             }
             // Open Program Bridge in float in parallel with panes (not after)
-            if (!string.IsNullOrEmpty(_presetFloatFile))
+            // Suppressed for preset 1 — Program Bridge stays hidden. Remove `&& defaultPreset != 1` to revert.
+            if (!string.IsNullOrEmpty(_presetFloatFile) && defaultPreset != 1)
             {
                 var floatPath = _presetFloatFile;
                 _presetFloatFile = null;
@@ -3773,6 +3774,7 @@
                     $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(floatPath)}{SoloParam}&_t={DateTime.UtcNow.Ticks}",
                     "Program Bridge").AsTask());
             }
+            _presetFloatFile = null;
 
             await Task.WhenAll(paneTasks);
 
@@ -4655,12 +4657,14 @@
         await JS.InvokeVoidAsync("pcfViewer.setActivePane", PaneIds[_activeIdx]);
 
         // Open Program Bridge template in floating read-only window
-        if (!string.IsNullOrEmpty(_presetFloatFile))
+        // Suppressed for preset 1 — Program Bridge stays hidden. Remove `&& presetNum != 1` to revert.
+        if (!string.IsNullOrEmpty(_presetFloatFile) && presetNum != 1)
         {
             var floatUrl = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_presetFloatFile)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
             await JS.InvokeVoidAsync("pcfViewer.floatFile", floatUrl, "Program Bridge");
             _presetFloatFile = null;
         }
+        _presetFloatFile = null;
 
         _presetLoading = false;
     }
