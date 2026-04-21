@@ -2263,10 +2263,16 @@ public class FolderService
         double canvasW = cw * sx;
         double canvasH = ch * sy;
 
-        // Only treat it as an inner canvas if it's meaningfully smaller than the page.
+        // Only treat it as an inner canvas if it's meaningfully smaller than the page
+        // AND actually lies within the page bounds. Some PDFs (e.g. QuestPDF output)
+        // include re+f clipping ops with coordinates far outside the page — those are
+        // not real inner canvases and rewriting the MediaBox to match them blanks the page.
         bool isSubregion = canvasW > 10 && canvasH > 10 &&
                            (canvasW < pageW * 0.97 || canvasH < pageH * 0.97);
-        if (!isSubregion) return null;
+        bool withinPage  = canvasX >= -1 && canvasY >= -1 &&
+                           canvasX + canvasW <= pageW + 1 &&
+                           canvasY + canvasH <= pageH + 1;
+        if (!isSubregion || !withinPage) return null;
 
         string detail = $"sx={sx:F4} sy={sy:F4} canvas=({canvasX:F1},{canvasY:F1},{canvasW:F1},{canvasH:F1})pt";
         return (canvasX, canvasY, canvasW, canvasH, sx, sy, detail);

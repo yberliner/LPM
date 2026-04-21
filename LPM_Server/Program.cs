@@ -999,58 +999,60 @@ app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
     catch (Exception ex) { Console.WriteLine($"[FolderSummary] PdfSharpCore CountPdfPages threw for PC {pcId}: {ex.Message}"); }
     Console.WriteLine($"[FolderSummary] originalPageCount for PC {pcId}: {originalPageCount}");
 
-    // ── Step 1: try PdfSharpCore combine ──────────────────────────────────
+    // ── Step 1: Ghostscript combine (primary — authoritative PDF impl, handles
+    // complex/older PDFs that PdfSharpCore silently damages). Returns null when
+    // Ghostscript is not configured — falls through to PdfSharpCore below.
     try
     {
-        var summaryPdf    = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
-        summaryPageCount  = pdfSvc.CountPdfPages(summaryPdf);
-        var candidate     = pdfSvc.CombinePdfs(summaryPdf, originalBytes);
-        int combinedCount = pdfSvc.CountPdfPages(candidate);
-        int expectedMin   = summaryPageCount + originalPageCount;
-        if (combinedCount >= expectedMin)
+        var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
+        summaryPageCount = pdfSvc.CountPdfPages(summaryPdf);
+        combined = folderSvc.CombinePdfsViaGhostscript(summaryPdf, originalBytes);
+
+        // If originalPageCount was 0 (PdfSharpCore couldn't read it), recover from the combined output
+        if (combined != null && originalPageCount <= 0)
         {
-            combined = candidate;
+            int combinedPages = pdfSvc.CountPdfPages(combined); // GS output is clean, PdfSharpCore can read it
+            originalPageCount = combinedPages - summaryPageCount;
+            Console.WriteLine($"[FolderSummary] Recovered originalPageCount={originalPageCount} from GS combined ({combinedPages} - {summaryPageCount})");
+            if (originalPageCount > 0)
+            {
+                // Regenerate summary with correct page numbers and recombine
+                var summaryPdf2 = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
+                combined = folderSvc.CombinePdfsViaGhostscript(summaryPdf2, originalBytes);
+            }
         }
-        else
-        {
-            Console.WriteLine($"[FolderSummary] PdfSharpCore produced corrupt output " +
-                              $"({combinedCount} pages, expected ≥{expectedMin}) for PC {pcId} — trying Ghostscript");
-        }
+
+        if (combined == null)
+            Console.WriteLine($"[FolderSummary] Ghostscript returned null for PC {pcId} path={path} — trying PdfSharpCore");
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[FolderSummary] PdfSharpCore combine failed for PC {pcId}: {ex.Message} — trying Ghostscript");
+        Console.WriteLine($"[FolderSummary] Ghostscript combine threw for PC {pcId}: {ex.Message} — trying PdfSharpCore");
     }
 
-    // ── Step 2: Ghostscript fallback ───────────────────────────────────────
+    // ── Step 2: PdfSharpCore fallback (when Ghostscript unavailable or failed) ──
     if (combined == null)
     {
         try
         {
-            var summaryPdf2 = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
-            summaryPageCount = pdfSvc.CountPdfPages(summaryPdf2);
-            combined = folderSvc.CombinePdfsViaGhostscript(summaryPdf2, originalBytes);
-
-            // If originalPageCount was 0 (PdfSharpCore couldn't read it), recover from the combined output
-            if (combined != null && originalPageCount <= 0)
+            var summaryPdf    = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
+            summaryPageCount  = pdfSvc.CountPdfPages(summaryPdf);
+            var candidate     = pdfSvc.CombinePdfs(summaryPdf, originalBytes);
+            int combinedCount = pdfSvc.CountPdfPages(candidate);
+            int expectedMin   = summaryPageCount + originalPageCount;
+            if (combinedCount >= expectedMin)
             {
-                int combinedPages = pdfSvc.CountPdfPages(combined); // GS output is clean, PdfSharpCore can read it
-                originalPageCount = combinedPages - summaryPageCount;
-                Console.WriteLine($"[FolderSummary] Recovered originalPageCount={originalPageCount} from GS combined ({combinedPages} - {summaryPageCount})");
-                if (originalPageCount > 0)
-                {
-                    // Regenerate summary with correct page numbers and recombine
-                    var summaryPdf3 = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
-                    combined = folderSvc.CombinePdfsViaGhostscript(summaryPdf3, originalBytes);
-                }
+                combined = candidate;
             }
-
-            if (combined == null)
-                Console.WriteLine($"[FolderSummary] Ghostscript returned null for PC {pcId} path={path}");
+            else
+            {
+                Console.WriteLine($"[FolderSummary] PdfSharpCore produced corrupt output " +
+                                  $"({combinedCount} pages, expected ≥{expectedMin}) for PC {pcId}");
+            }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[FolderSummary] Ghostscript combine threw for PC {pcId}: {ex.Message}");
+            Console.WriteLine($"[FolderSummary] PdfSharpCore combine failed for PC {pcId}: {ex.Message}");
         }
     }
 
