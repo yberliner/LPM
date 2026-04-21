@@ -31,6 +31,17 @@ public record PurchaseDetail(int PurchaseId, int PcId, string PcName, string Pur
 public record PurchasePaymentMethodInfo(int PaymentMethodId, string MethodType,
     int Amount, string? PaymentDate, bool IsMoneyInBank, string? MoneyInBankDate, int Installments = 1);
 
+// ── Hard-delete preview records ──
+public record PurchaseDeleteFkTable(string Table, List<string> Cols, List<List<string>> Rows);
+public record PurchaseDeletePurchaseRow(int PurchaseId, List<string> Cols, List<string> Values);
+public record PurchaseDeleteInfo(
+    int PrimaryPurchaseId,
+    int PcId,
+    List<PurchaseDeletePurchaseRow> Purchases,
+    List<PurchaseDeleteFkTable> FkTables,
+    PurchaseDeleteFkTable Enrollments,
+    int TotalRowCount);
+
 // ── Balance calculation records ──
 public record PcBalanceData(
     double PurchasedNis, decimal UsedNis, decimal BalanceNis,
@@ -1888,6 +1899,161 @@ public List<PcListItem> GetAllPcs()
 
         tx.Commit();
         Console.WriteLine($"[PcService] Restored purchase {purchaseId}");
+    }
+
+    // ── Hard-delete preview + execution ─────────────────────────────
+    public PurchaseDeleteInfo LoadPurchaseDeleteInfo(int purchaseId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        var purchaseIds = new List<int> { purchaseId };
+        int pcId = 0;
+
+        // Load primary purchase + direct pair only (match HardDeletePurchase contract — no chain traversal)
+        var purchases = new List<PurchaseDeletePurchaseRow>();
+        var toLoad = new List<int> { purchaseId };
+        bool pairResolved = false;
+        for (int idx = 0; idx < toLoad.Count; idx++)
+        {
+            var pid = toLoad[idx];
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT * FROM fin_purchases WHERE PurchaseId = @id";
+            cmd.Parameters.AddWithValue("@id", pid);
+            using var r = cmd.ExecuteReader();
+            if (!r.Read()) continue;
+            var cols = new List<string>();
+            var vals = new List<string>();
+            int? pairId = null;
+            for (int i = 0; i < r.FieldCount; i++)
+            {
+                var name = r.GetName(i);
+                cols.Add(name);
+                vals.Add(r.IsDBNull(i) ? "" : r.GetValue(i)?.ToString() ?? "");
+                if (string.Equals(name, "PcId", StringComparison.OrdinalIgnoreCase) && !r.IsDBNull(i) && pcId == 0)
+                    pcId = Convert.ToInt32(r.GetValue(i));
+                if (string.Equals(name, "TransferPurchaseId", StringComparison.OrdinalIgnoreCase) && !r.IsDBNull(i))
+                    pairId = Convert.ToInt32(r.GetValue(i));
+            }
+            purchases.Add(new PurchaseDeletePurchaseRow(pid, cols, vals));
+
+            // Resolve the pair ONLY from the primary purchase (one-level deep, matches HardDeletePurchase)
+            if (!pairResolved && pid == purchaseId && pairId.HasValue && pairId.Value != purchaseId)
+            {
+                toLoad.Add(pairId.Value);
+                purchaseIds.Add(pairId.Value);
+            }
+            pairResolved = true;
+        }
+
+        // FK tables — include rows for ALL purchases in purchaseIds
+        var fkTables = new List<PurchaseDeleteFkTable>();
+        foreach (var tbl in new[] { "fin_purchase_items", "fin_payment_methods", "fin_payments" })
+        {
+            var cols = new List<string>();
+            var rows = new List<List<string>>();
+            try
+            {
+                using var cmd = conn.CreateCommand();
+                var inClause = string.Join(",", purchaseIds);
+                cmd.CommandText = $"SELECT * FROM {tbl} WHERE PurchaseId IN ({inClause})";
+                using var r = cmd.ExecuteReader();
+                for (int i = 0; i < r.FieldCount; i++) cols.Add(r.GetName(i));
+                while (r.Read())
+                {
+                    var rr = new List<string>();
+                    for (int i = 0; i < r.FieldCount; i++)
+                        rr.Add(r.IsDBNull(i) ? "" : r.GetValue(i)?.ToString() ?? "");
+                    rows.Add(rr);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PcService] LoadPurchaseDeleteInfo — skipping {tbl}: {ex.Message}");
+            }
+            fkTables.Add(new PurchaseDeleteFkTable(tbl, cols, rows));
+        }
+
+        // Derived: acad_student_courses rows that will be removed
+        var enrollCols = new List<string>();
+        var enrollRows = new List<List<string>>();
+        try
+        {
+            using var cmd = conn.CreateCommand();
+            var inClause = string.Join(",", purchaseIds);
+            cmd.CommandText = $@"
+                SELECT sc.*
+                FROM acad_student_courses sc
+                WHERE sc.DateFinished IS NULL
+                  AND sc.PersonId IN (SELECT PcId FROM fin_purchases WHERE PurchaseId IN ({inClause}))
+                  AND sc.CourseId IN (SELECT CourseId FROM fin_purchase_items WHERE PurchaseId IN ({inClause}) AND ItemType = 'Course' AND CourseId IS NOT NULL)";
+            using var r = cmd.ExecuteReader();
+            for (int i = 0; i < r.FieldCount; i++) enrollCols.Add(r.GetName(i));
+            while (r.Read())
+            {
+                var rr = new List<string>();
+                for (int i = 0; i < r.FieldCount; i++)
+                    rr.Add(r.IsDBNull(i) ? "" : r.GetValue(i)?.ToString() ?? "");
+                enrollRows.Add(rr);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PcService] LoadPurchaseDeleteInfo — enrollments skipped: {ex.Message}");
+        }
+        var enrollments = new PurchaseDeleteFkTable("acad_student_courses (open enrollments)", enrollCols, enrollRows);
+
+        var total = purchases.Count + fkTables.Sum(f => f.Rows.Count) + enrollments.Rows.Count;
+        return new PurchaseDeleteInfo(purchaseId, pcId, purchases, fkTables, enrollments, total);
+    }
+
+    public int HardDeletePurchase(int purchaseId, string adminUser)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var tx = conn.BeginTransaction();
+
+        // Gather ids (primary + paired transfer)
+        var ids = new List<int> { purchaseId };
+        using (var q = conn.CreateCommand())
+        {
+            q.Transaction = tx;
+            q.CommandText = "SELECT TransferPurchaseId FROM fin_purchases WHERE PurchaseId = @id";
+            q.Parameters.AddWithValue("@id", purchaseId);
+            var res = q.ExecuteScalar();
+            if (res != null && res != DBNull.Value)
+            {
+                if (int.TryParse(res.ToString(), out var pairId) && pairId != purchaseId)
+                    ids.Add(pairId);
+            }
+        }
+        var inClause = string.Join(",", ids);
+        Console.WriteLine($"[HardDeletePurchase] ====== START — Admin='{adminUser}' PurchaseIds=[{inClause}] ======");
+
+        int totalDeleted = 0;
+        int Run(string sql)
+        {
+            using var c = conn.CreateCommand();
+            c.Transaction = tx;
+            c.CommandText = sql;
+            var n = c.ExecuteNonQuery();
+            Console.WriteLine($"[HardDeletePurchase]   {n} row(s) — {sql}");
+            return n;
+        }
+
+        // Children first
+        totalDeleted += Run($@"DELETE FROM acad_student_courses
+                               WHERE DateFinished IS NULL
+                                 AND PersonId IN (SELECT PcId FROM fin_purchases WHERE PurchaseId IN ({inClause}))
+                                 AND CourseId IN (SELECT CourseId FROM fin_purchase_items WHERE PurchaseId IN ({inClause}) AND ItemType = 'Course' AND CourseId IS NOT NULL)");
+        totalDeleted += Run($"DELETE FROM fin_purchase_items WHERE PurchaseId IN ({inClause})");
+        totalDeleted += Run($"DELETE FROM fin_payment_methods WHERE PurchaseId IN ({inClause})");
+        totalDeleted += Run($"DELETE FROM fin_payments WHERE PurchaseId IN ({inClause})");
+        totalDeleted += Run($"DELETE FROM fin_purchases WHERE PurchaseId IN ({inClause})");
+
+        tx.Commit();
+        Console.WriteLine($"[HardDeletePurchase] ====== END — total rows deleted: {totalDeleted} ======");
+        return totalDeleted;
     }
 
     // ── Balance explanation (per PC, for popup) ─────────────────────

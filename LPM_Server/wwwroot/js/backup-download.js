@@ -50,6 +50,8 @@ window.lpmFileBackup = (function () {
 
             current++;
             const key = entry.path;
+            const fullPath = entry.fullPath || '';
+            const pcName = entry.pcName || null;
 
             // Incremental: skip if manifest has same modified date and not alwaysDownload
             if (!entry.alwaysDownload && manifest[key] === entry.modified) {
@@ -60,6 +62,7 @@ window.lpmFileBackup = (function () {
 
             // Download with retry
             let ok = false;
+            let lastErrorDetail = '';
             for (let attempt = 0; attempt < 3 && !ok && !_cancel; attempt++) {
                 try {
                     const resp = await fetch(`/api/backup-file?phase=${phase}&path=${encodeURIComponent(key)}&token=${encodeURIComponent(token)}`);
@@ -67,6 +70,7 @@ window.lpmFileBackup = (function () {
                         if (resp.status === 404) {
                             console.warn(`[Backup] File not found (skipping): ${key}`);
                             errors++;
+                            try { dotNetRef.invokeMethodAsync('OnBackupError', 'http_404', key, fullPath, pcName, new Date().toISOString(), ''); } catch {}
                             ok = true; // don't retry 404
                             break;
                         }
@@ -94,7 +98,11 @@ window.lpmFileBackup = (function () {
                     ok = true;
                 } catch (err) {
                     console.error(`[Backup] ${phase}/${key} attempt ${attempt + 1} failed:`, err);
-                    if (attempt === 2) errors++;
+                    lastErrorDetail = (err && (err.message || err.toString())) || 'Unknown error';
+                    if (attempt === 2) {
+                        errors++;
+                        try { dotNetRef.invokeMethodAsync('OnBackupError', 'download_failed', key, fullPath, pcName, new Date().toISOString(), lastErrorDetail); } catch {}
+                    }
                 }
             }
 

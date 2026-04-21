@@ -1186,6 +1186,52 @@ app.MapPost("/api/purchase-receipt/pdf", async (HttpContext ctx, PdfService pdfS
     return Results.File(bytes, "application/pdf", fileName);
 }).RequireAuthorization();
 
+// ── Backup errors PDF (Admin only) ──
+app.MapPost("/api/backup-errors/pdf", async (HttpContext ctx, PdfService pdfSvc) =>
+{
+    if (ctx.User?.IsInRole("Admin") != true) return Results.Forbid();
+
+    using var reader = new System.IO.StreamReader(ctx.Request.Body);
+    var json = await reader.ReadToEndAsync();
+    BackupErrorsPdfRequest? req;
+    try
+    {
+        req = System.Text.Json.JsonSerializer.Deserialize<BackupErrorsPdfRequest>(json,
+            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+    }
+    catch { return Results.BadRequest("Invalid JSON."); }
+    if (req is null) return Results.BadRequest("Missing body.");
+
+    var rows = (req.Errors ?? new()).Select(e =>
+    {
+        DateTime when;
+        if (!DateTime.TryParse(e.When, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind, out when))
+            when = DateTime.Now;
+        return new PdfService.BackupErrorPdfRow(
+            e.Type ?? "",
+            e.RelPath ?? "",
+            e.FullPath ?? "",
+            string.IsNullOrWhiteSpace(e.PcName) ? null : e.PcName,
+            e.Detail ?? "",
+            when.ToLocalTime());
+    }).ToList();
+
+    byte[] bytes;
+    try
+    {
+        bytes = pdfSvc.GenerateBackupErrorsPdf(rows, req.UserName ?? (ctx.User.Identity?.Name ?? ""));
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[BackupErrorsPdf] PDF generation failed: {ex.Message}");
+        return Results.Problem("Failed to generate PDF.");
+    }
+
+    var fileName = $"LPM-BackupErrors-{DateTime.Now:yyyyMMdd-HHmm}.pdf";
+    return Results.File(bytes, "application/pdf", fileName);
+}).RequireAuthorization();
+
 app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.FolderService svc,
     LPM.Services.DashboardService dashSvc) =>
 {
@@ -1894,7 +1940,7 @@ app.MapGet("/api/backup-file-list", (HttpContext ctx, LPM.Services.FolderService
     if (File.Exists(dbPath))
     {
         var dbTarget = phase == "user" ? "db-live/lifepower.db" : "lifepower.db";
-        files.Add(new { path = dbTarget, modified = File.GetLastWriteTimeUtc(dbPath).ToString("o"), alwaysDownload = true });
+        files.Add(new { path = dbTarget, modified = File.GetLastWriteTimeUtc(dbPath).ToString("o"), alwaysDownload = true, fullPath = dbPath, pcName = (string?)null });
     }
 
     // Auto-backup DBs
@@ -1902,21 +1948,29 @@ app.MapGet("/api/backup-file-list", (HttpContext ctx, LPM.Services.FolderService
     foreach (var bf in autoBackupFiles)
     {
         var bfName = Path.GetFileName(bf);
-        files.Add(new { path = $"{backupFolderName}/{bfName}", modified = File.GetLastWriteTimeUtc(bf).ToString("o"), alwaysDownload = true });
+        files.Add(new { path = $"{backupFolderName}/{bfName}", modified = File.GetLastWriteTimeUtc(bf).ToString("o"), alwaysDownload = true, fullPath = bf, pcName = (string?)null });
     }
 
     // Server extras (config + avatars)
     if (phase == "server")
     {
-        foreach (var (zipPath, fullPath) in svc.GetServerBackupExtras())
-            files.Add(new { path = zipPath, modified = File.GetLastWriteTimeUtc(fullPath).ToString("o"), alwaysDownload = false });
+        foreach (var (zipPath, extraFull) in svc.GetServerBackupExtras())
+            files.Add(new { path = zipPath, modified = File.GetLastWriteTimeUtc(extraFull).ToString("o"), alwaysDownload = false, fullPath = extraFull, pcName = (string?)null });
     }
 
     // PC files
-    foreach (var (relPath, fullPath) in svc.EnumerateBackupFiles())
+    foreach (var (relPath, pcFullPath) in svc.EnumerateBackupFiles())
     {
         var isFolderSummary = LPM.Services.FolderService.ParseFolderSummaryBackupPath(relPath).IsSummary;
-        files.Add(new { path = relPath, modified = File.GetLastWriteTimeUtc(fullPath).ToString("o"), alwaysDownload = isFolderSummary });
+        // Extract PC name: relPath looks like "PC-Folders/<PcName>/..."
+        string? pcName = null;
+        if (relPath.StartsWith("PC-Folders/", StringComparison.Ordinal))
+        {
+            var tail = relPath.Substring("PC-Folders/".Length);
+            var slash = tail.IndexOf('/');
+            pcName = slash > 0 ? tail.Substring(0, slash) : tail;
+        }
+        files.Add(new { path = relPath, modified = File.GetLastWriteTimeUtc(pcFullPath).ToString("o"), alwaysDownload = isFolderSummary, fullPath = pcFullPath, pcName });
     }
 
     Console.WriteLine($"[BackupFileList] {phase} phase: {files.Count} files listed for '{ctx.User.Identity?.Name}'");
@@ -2119,3 +2173,15 @@ public record PurchaseReceiptItemDto(
     int AmountPaid,
     string? RegistrarName,
     string? ReferralName);
+
+public record BackupErrorsPdfRequest(
+    string? UserName,
+    List<BackupErrorDto>? Errors);
+
+public record BackupErrorDto(
+    string? Type,
+    string? RelPath,
+    string? FullPath,
+    string? PcName,
+    string? Detail,
+    string? When);

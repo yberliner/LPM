@@ -3190,5 +3190,128 @@ public class PdfService
             });
         }).GeneratePdf();
     }
+
+    // ── Backup Errors Table PDF ─────────────────────────────────────────
+
+    public record BackupErrorPdfRow(
+        string Type,          // "http_404" | "download_failed"
+        string RelPath,
+        string FullPath,
+        string? PcName,
+        string Detail,
+        DateTime When);
+
+    public byte[] GenerateBackupErrorsPdf(List<BackupErrorPdfRow> rows, string userName)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+
+        const string typeHttp404 = "http_404";
+
+        string TypeLabel(string t) => t == typeHttp404 ? "HTTP 404 — Not Found" : "Download Failed (3 attempts)";
+        string TypeBg(string t) => t == typeHttp404 ? "#f59e0b" : "#ef4444";
+        string Explanation(string t) => t == typeHttp404
+            ? "The file was in the backup list but gone from the server when the download ran. Usually means it was deleted, renamed, or moved between building the manifest and fetching the file."
+            : "The fetch → blob → disk-write sequence failed 3 times in a row. Typical causes: non-404 HTTP error (500, 502), network drop, transfer corruption, disk full, or the target folder lost write permission.";
+
+        return Document.Create(doc =>
+        {
+            doc.Page(page =>
+            {
+                page.Size(PageSizes.A4.Landscape());
+                page.Margin(24, Unit.Point);
+                page.DefaultTextStyle(x => x.FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
+
+                page.Header().Column(h =>
+                {
+                    h.Item().Row(r =>
+                    {
+                        r.RelativeItem().Text("LPM Backup Errors").FontSize(14).Bold().FontColor("#1e293b");
+                        r.ConstantItem(220).AlignRight().Text(t =>
+                        {
+                            t.Span($"User: ").FontSize(8).FontColor("#64748b");
+                            t.Span(userName).FontSize(8).Bold().FontColor("#1e293b");
+                            t.Span($"   Generated: {DateTime.Now:yyyy-MM-dd HH:mm}").FontSize(8).FontColor("#64748b");
+                        });
+                    });
+                    h.Item().PaddingTop(2).Text($"{rows.Count} error(s) recorded during the most recent file-by-file backup run.")
+                        .FontSize(8).FontColor("#64748b");
+                });
+
+                page.Content().PaddingVertical(6).Table(table =>
+                {
+                    // Column widths (6 cols): # / Type / What & Why / Full Path / PC / When
+                    table.ColumnsDefinition(cd =>
+                    {
+                        cd.RelativeColumn(0.4f);
+                        cd.RelativeColumn(1.6f);
+                        cd.RelativeColumn(3.2f);
+                        cd.RelativeColumn(4.0f);
+                        cd.RelativeColumn(1.2f);
+                        cd.RelativeColumn(1.4f);
+                    });
+
+                    // Header row
+                    table.Header(header =>
+                    {
+                        void H(string text) => header.Cell()
+                            .Background("#1e3a5f").Padding(4, Unit.Point).AlignMiddle()
+                            .Text(text).FontSize(8).Bold().FontColor("#ffffff");
+                        H("#");
+                        H("Type");
+                        H("What & Why");
+                        H("Full Server Path");
+                        H("PC Name");
+                        H("When");
+                    });
+
+                    // Data rows
+                    for (int i = 0; i < rows.Count; i++)
+                    {
+                        var row = rows[i];
+                        string bg = i % 2 == 0 ? "#ffffff" : "#f8fafc";
+
+                        table.Cell().Background(bg).Padding(4, Unit.Point).AlignMiddle()
+                            .Text((i + 1).ToString()).FontSize(7).FontColor("#334155");
+
+                        string pillBg = TypeBg(row.Type);
+                        string pillFg = row.Type == typeHttp404 ? "#1f2937" : "#ffffff";
+                        table.Cell().Background(pillBg).PaddingHorizontal(5, Unit.Point).PaddingVertical(4, Unit.Point).AlignMiddle()
+                            .Text(TypeLabel(row.Type)).FontSize(7).Bold().FontColor(pillFg);
+
+                        table.Cell().Background(bg).Padding(4, Unit.Point).Column(col =>
+                        {
+                            col.Item().Text(Explanation(row.Type)).FontSize(7).FontColor("#334155");
+                            if (!string.IsNullOrWhiteSpace(row.Detail))
+                            {
+                                col.Item().PaddingTop(3).Background("#fef3c7").Padding(4, Unit.Point)
+                                    .Text(t =>
+                                    {
+                                        t.Span("Detail: ").FontSize(6.5f).Bold().FontColor("#92400e");
+                                        t.Span(row.Detail).FontSize(6.5f).FontColor("#92400e");
+                                    });
+                            }
+                        });
+
+                        table.Cell().Background(bg).Padding(4, Unit.Point).AlignMiddle()
+                            .Text(row.FullPath).FontSize(6.5f).FontColor("#1e293b");
+
+                        table.Cell().Background(bg).Padding(4, Unit.Point).AlignMiddle()
+                            .Text(string.IsNullOrWhiteSpace(row.PcName) ? "—" : row.PcName)
+                            .FontSize(7).FontColor(string.IsNullOrWhiteSpace(row.PcName) ? "#94a3b8" : "#1e293b");
+
+                        table.Cell().Background(bg).Padding(4, Unit.Point).AlignMiddle()
+                            .Text(row.When.ToString("yyyy-MM-dd HH:mm:ss")).FontSize(6.5f).FontColor("#334155");
+                    }
+                });
+
+                page.Footer().AlignCenter().Text(t =>
+                {
+                    t.CurrentPageNumber().FontSize(7).FontColor("#94a3b8");
+                    t.Span(" / ").FontSize(7).FontColor("#94a3b8");
+                    t.TotalPages().FontSize(7).FontColor("#94a3b8");
+                });
+            });
+        }).GeneratePdf();
+    }
 }
 

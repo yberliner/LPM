@@ -305,6 +305,98 @@
             </ul>
         </div>
     }
+
+    @* ── Backup Errors Table ── *@
+    @if (_fbfHasStarted || _errors.Count > 0)
+    {
+        <div class="bk-err-card mt-3">
+            <div class="bk-err-head">
+                <div class="bk-err-title">
+                    <i class="ri-error-warning-fill"></i>
+                    Backup Errors (@_errors.Count)
+                </div>
+                <div class="bk-err-actions">
+                    @if (!string.IsNullOrEmpty(_copyToast))
+                    {
+                        <span class="bk-copy-toast">@_copyToast</span>
+                    }
+                    <button class="btn btn-sm btn-outline-light bk-err-btn" @onclick="CopyErrorsTable"
+                            disabled="@(_errors.Count == 0)" title="Copy as tab-separated text">
+                        <i class="ri-clipboard-line me-1"></i>Copy
+                    </button>
+                    <button class="btn btn-sm btn-light bk-err-btn" @onclick="DownloadErrorsPdf"
+                            disabled="@(_pdfBusy || _errors.Count == 0)">
+                        @if (_pdfBusy)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        else
+                        {
+                            <i class="ri-file-pdf-2-line me-1"></i>
+                        }
+                        Download PDF
+                    </button>
+                </div>
+            </div>
+            <div class="bk-err-scroll">
+                <table class="bk-err-table">
+                    <thead>
+                        <tr>
+                            <th style="width:14%;">Type</th>
+                            <th style="width:30%;">What &amp; Why</th>
+                            <th style="width:34%;">Full Server Path</th>
+                            <th style="width:12%;">PC Name</th>
+                            <th style="width:10%;">When</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (_errors.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="5" class="bk-err-empty">
+                                    <i class="ri-checkbox-circle-line"></i>
+                                    @(_fbfDownloading ? "No errors yet — backup in progress…" : "No errors recorded for this backup run.")
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var e in _errors)
+                            {
+                                var is404 = e.Type == "http_404";
+                                <tr class="@(is404 ? "bk-err-row-404" : "bk-err-row-fail")">
+                                    <td>
+                                        <span class="bk-err-pill @(is404 ? "bk-pill-amber" : "bk-pill-red")">
+                                            @(is404 ? "HTTP 404 — Not Found" : "Download Failed (3 attempts)")
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="bk-err-expl">@ExplanationFor(e.Type)</div>
+                                        @if (!string.IsNullOrEmpty(e.Detail))
+                                        {
+                                            <div class="bk-err-detail"><span class="bk-err-detail-k">Detail:</span> @e.Detail</div>
+                                        }
+                                    </td>
+                                    <td class="bk-err-path">@e.FullPath</td>
+                                    <td>
+                                        @if (string.IsNullOrEmpty(e.PcName))
+                                        {
+                                            <span class="bk-err-dash">—</span>
+                                        }
+                                        else
+                                        {
+                                            @e.PcName
+                                        }
+                                    </td>
+                                    <td class="bk-err-when">@e.When.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
 </div>
 
 <style>
@@ -390,6 +482,144 @@
         .bk-blocked-banner { padding: 14px 16px; gap: 12px; }
         .bk-blocked-title  { font-size: .9rem; }
     }
+
+    /* ── Backup Errors Table ─────────────────────────────────── */
+    .bk-err-card {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        max-width: 1200px;
+        overflow: hidden;
+        box-shadow: 0 4px 18px rgba(0,0,0,.35);
+    }
+    .bk-err-head {
+        display: flex; align-items: center; gap: 12px;
+        padding: 14px 18px;
+        background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%);
+        border-bottom: 1px solid #334155;
+        flex-wrap: wrap;
+    }
+    .bk-err-title {
+        font-size: 1.05rem; font-weight: 800; color: #fecaca;
+        letter-spacing: .04em; flex: 1; min-width: 180px;
+        display: flex; align-items: center; gap: 10px;
+        text-shadow: 0 1px 2px rgba(0,0,0,.3);
+    }
+    .bk-err-title i { color: #fbbf24; font-size: 1.35rem; }
+    .bk-err-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .bk-err-btn { min-height: 32px; font-weight: 600; font-size: .82rem; }
+    .bk-copy-toast {
+        background: #16a34a; color: #fff; font-size: .72rem;
+        padding: 4px 12px; border-radius: 20px; font-weight: 700;
+        box-shadow: 0 2px 8px rgba(22,163,74,.4);
+        animation: bk-copy-in .25s ease both;
+    }
+    @@keyframes bk-copy-in {
+        from { opacity: 0; transform: scale(.7); }
+        to   { opacity: 1; transform: scale(1); }
+    }
+    .bk-err-scroll {
+        max-height: 420px; overflow: auto;
+        background: #0f172a;
+    }
+    .bk-err-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+    .bk-err-scroll::-webkit-scrollbar-track { background: #0f172a; }
+    .bk-err-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 6px; }
+    .bk-err-scroll::-webkit-scrollbar-thumb:hover { background: #475569; }
+    .bk-err-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: .82rem;
+        color: #e2e8f0;
+    }
+    .bk-err-table thead th {
+        position: sticky; top: 0;
+        background: #1e3a5f; color: #fff;
+        font-weight: 700; text-align: left;
+        padding: 11px 12px;
+        font-size: .78rem;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        border-bottom: 2px solid #0f172a;
+        z-index: 2;
+    }
+    .bk-err-table tbody tr {
+        border-bottom: 1px solid #1e293b;
+        transition: background .15s ease;
+    }
+    .bk-err-table tbody tr:nth-child(even) { background: #17223a; }
+    .bk-err-table tbody tr:hover { background: #273449; }
+    .bk-err-table tbody td {
+        padding: 11px 12px;
+        vertical-align: top;
+    }
+    .bk-err-row-404 { border-left: 4px solid #f59e0b; }
+    .bk-err-row-fail { border-left: 4px solid #ef4444; }
+    .bk-err-pill {
+        display: inline-block;
+        padding: 5px 11px;
+        border-radius: 16px;
+        font-size: .72rem;
+        font-weight: 800;
+        letter-spacing: .02em;
+        white-space: nowrap;
+        box-shadow: 0 1px 4px rgba(0,0,0,.25);
+    }
+    .bk-pill-amber { background: #f59e0b; color: #1f2937; }
+    .bk-pill-red   { background: #ef4444; color: #fff; }
+    .bk-err-expl {
+        color: #cbd5e1; font-size: .78rem; line-height: 1.4;
+    }
+    .bk-err-detail {
+        margin-top: 6px;
+        font-size: .72rem;
+        color: #cbd5e1;
+        font-family: 'Consolas','Courier New',monospace;
+        background: rgba(239,68,68,.10);
+        padding: 5px 9px;
+        border-radius: 5px;
+        border-left: 2px solid #ef4444;
+        word-break: break-all;
+    }
+    .bk-err-detail-k { color: #fbbf24; font-weight: 700; margin-right: 4px; }
+    .bk-err-path {
+        font-family: 'Consolas','Courier New',monospace;
+        font-size: .74rem;
+        color: #e2e8f0;
+        word-break: break-all;
+    }
+    .bk-err-dash { color: #64748b; font-size: 1rem; }
+    .bk-err-when {
+        font-family: 'Consolas','Courier New',monospace;
+        font-size: .72rem;
+        color: #94a3b8;
+        white-space: nowrap;
+    }
+    .bk-err-empty {
+        text-align: center;
+        padding: 40px 16px !important;
+        color: #64748b;
+        font-size: .95rem;
+        font-style: italic;
+    }
+    .bk-err-empty i {
+        color: #22c55e;
+        font-size: 1.6rem;
+        margin-right: 8px;
+        vertical-align: middle;
+    }
+
+    @@media (max-width: 768px) {
+        .bk-err-head { padding: 12px; }
+        .bk-err-title { font-size: .95rem; }
+        .bk-err-scroll { overflow-x: auto; max-height: 360px; }
+        .bk-err-table { min-width: 820px; }
+        .bk-err-btn { min-height: 40px; padding: 6px 12px; }
+    }
+    @@media (max-width: 480px) {
+        .bk-err-actions { width: 100%; justify-content: flex-end; }
+        .bk-err-title { width: 100%; }
+    }
 </style>
 
 @code {
@@ -419,6 +649,13 @@
     string _fbfPhase = "";
     int _fbfCurrent, _fbfTotal, _fbfSkipped, _fbfErrors;
     string _fbfCurrentFile = "";
+
+    // Per-file error log for the errors table
+    record BackupError(string Type, string RelPath, string FullPath, string? PcName, DateTime When, string Detail);
+    List<BackupError> _errors = new();
+    string _copyToast = "";
+    bool _pdfBusy;
+    bool _fbfHasStarted;   // true once a file-by-file backup was started this session; keeps the table visible
 
     // Password modal
     bool _showPasswordModal;
@@ -734,6 +971,9 @@
         _fbfPhase = "";
         _fbfCurrent = 0; _fbfTotal = 0; _fbfSkipped = 0; _fbfErrors = 0;
         _fbfCurrentFile = "";
+        _errors = new();   // clear previous run's errors at start of a new backup
+        _fbfHasStarted = true;
+        _copyToast = "";
         _done = false;
         _error = "";
         StateHasChanged();
@@ -799,6 +1039,103 @@
         _fbfErrors = 0;
         _fbfCurrentFile = "";
         InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnBackupError(string type, string relPath, string fullPath, string? pcName, string isoTime, string detail)
+    {
+        DateTime when;
+        if (!DateTime.TryParse(isoTime, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind, out when))
+            when = DateTime.UtcNow;
+        _errors.Add(new BackupError(
+            Type: type ?? "",
+            RelPath: relPath ?? "",
+            FullPath: string.IsNullOrEmpty(fullPath) ? (relPath ?? "") : fullPath,
+            PcName: string.IsNullOrWhiteSpace(pcName) ? null : pcName,
+            When: when.ToLocalTime(),
+            Detail: detail ?? ""));
+        InvokeAsync(StateHasChanged);
+    }
+
+    static string ExplanationFor(string type) => type switch
+    {
+        "http_404"        => "The file was in the backup list but gone from the server when the download ran. Usually means it was deleted, renamed, or moved between building the manifest and fetching the file.",
+        "download_failed" => "The fetch → blob → disk-write sequence failed 3 times in a row. Typical causes: non-404 HTTP error (500, 502), network drop, transfer corruption, disk full, or the target folder lost write permission.",
+        _                 => "Unknown error type."
+    };
+
+    async Task CopyErrorsTable()
+    {
+        if (_errors.Count == 0) return;
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Type\tWhat & Why\tDetail\tFull Server Path\tPC Name\tWhen");
+        foreach (var e in _errors)
+        {
+            var typeLbl = e.Type == "http_404" ? "HTTP 404 — Not Found" : "Download Failed (3 attempts)";
+            string Tsv(string s) => (s ?? "").Replace('\t', ' ').Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' ');
+            sb.Append(Tsv(typeLbl)).Append('\t')
+              .Append(Tsv(ExplanationFor(e.Type))).Append('\t')
+              .Append(Tsv(e.Detail)).Append('\t')
+              .Append(Tsv(e.FullPath)).Append('\t')
+              .Append(Tsv(e.PcName ?? "")).Append('\t')
+              .Append(e.When.ToString("yyyy-MM-dd HH:mm:ss"))
+              .AppendLine();
+        }
+        try
+        {
+            var ok = await JS.InvokeAsync<bool>("lpmCopyText", sb.ToString());
+            _copyToast = ok ? "Copied!" : "Copy failed";
+        }
+        catch
+        {
+            _copyToast = "Copy failed";
+        }
+        StateHasChanged();
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(1800);
+                _copyToast = "";
+                await InvokeAsync(StateHasChanged);
+            }
+            catch { /* circuit disposed — ignore */ }
+        });
+    }
+
+    async Task DownloadErrorsPdf()
+    {
+        if (_errors.Count == 0 || _pdfBusy) return;
+        _pdfBusy = true;
+        StateHasChanged();
+        try
+        {
+            var payload = new
+            {
+                userName = _username,
+                errors = _errors.Select(e => new
+                {
+                    type     = e.Type,
+                    relPath  = e.RelPath,
+                    fullPath = e.FullPath,
+                    pcName   = e.PcName,
+                    detail   = e.Detail,
+                    when     = e.When.ToUniversalTime().ToString("o")
+                })
+            };
+            await JS.InvokeVoidAsync("lpmBackupErrorsPdf.download", payload);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Backup] PDF download failed: {ex.Message}");
+            _error = $"PDF download failed: {ex.Message}";
+        }
+        finally
+        {
+            _pdfBusy = false;
+            StateHasChanged();
+        }
     }
 
     public void Dispose()

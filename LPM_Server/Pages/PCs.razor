@@ -1324,6 +1324,12 @@
                             <i class="ri-pen-nib-line"></i> @LS.T("pcs.signatureReminder")
                         </div>
                     }
+                    <button class="btn btn-danger btn-sm me-auto delpurch-trigger"
+                            @onclick="OpenDeletePurchaseConfirm"
+                            disabled="@(!_editingPurchaseId.HasValue)"
+                            title="@(_editingPurchaseId.HasValue ? LS.T("pcs.delete.title") : LS.T("pcs.delete.newDisabled"))">
+                        <i class="ri-delete-bin-2-line me-1"></i>@LS.T("common.delete")
+                    </button>
                     <button class="btn btn-secondary btn-sm" @onclick="ClosePurchaseModal">@LS.T("common.cancel")</button>
                     @{
                         var canSave = HasValidPurchaseItems() && IsPaymentBalanced();
@@ -1353,6 +1359,235 @@
                 </div>
             </div>
         </div>
+    </div>
+}
+
+@* ── Delete Purchase Confirmation (hard delete) ────────────────────────── *@
+@if (_delPurchStep > 0)
+{
+    <style>
+        @@keyframes delpurch-pulse   { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.18); opacity: .78; } }
+        @@keyframes delpurch-shake   { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-6px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(4px); } }
+        @@keyframes delpurch-done    { from { opacity: 0; transform: scale(.6) rotate(-8deg); } 60% { opacity: 1; transform: scale(1.12) rotate(3deg); } to { opacity: 1; transform: scale(1) rotate(0); } }
+        @@keyframes delpurch-ring    { from { transform: scale(.4); opacity: .85; } to { transform: scale(2.6); opacity: 0; } }
+        @@keyframes delpurch-flash   { 0% { background: rgba(239,68,68,0); } 30% { background: rgba(239,68,68,.55); } 100% { background: rgba(239,68,68,0); } }
+        @@keyframes delpurch-fall    { 0% { transform: translateY(-20px) rotate(0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(320px) rotate(540deg); opacity: 0; } }
+        .delpurch-pulse     { animation: delpurch-pulse 1.1s ease-in-out infinite; display: inline-block; }
+        .delpurch-shake     { animation: delpurch-shake .6s ease-in-out both; }
+        .delpurch-done-card { animation: delpurch-done .65s cubic-bezier(.34,1.56,.64,1) both; position: relative; overflow: hidden; }
+        .delpurch-flash-ov  { position: absolute; inset: 0; pointer-events: none; animation: delpurch-flash .9s ease-out .05s both; border-radius: inherit; }
+        .delpurch-ring      { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+        .delpurch-ring::before, .delpurch-ring::after {
+            content: ""; position: absolute; width: 160px; height: 160px; border-radius: 50%;
+            border: 3px solid #22c55e; animation: delpurch-ring 1.2s ease-out both;
+        }
+        .delpurch-ring::after { animation-delay: .25s; border-color: #4ade80; }
+        .delpurch-shard      {
+            position: absolute; top: 0; width: 7px; height: 14px; border-radius: 2px;
+            animation: delpurch-fall 1.4s cubic-bezier(.55,.05,.7,.35) forwards;
+        }
+        .delpurch-fk-table   { width: 100%; border-collapse: collapse; font-size: .72rem; }
+        .delpurch-fk-table th { background: #7f1d1d; color: #fecaca; text-align: left; padding: 4px 8px; font-weight: 600; white-space: nowrap; }
+        .delpurch-fk-table td { background: #2a0a0a; color: #fecaca; padding: 4px 8px; border-top: 1px solid #450a0a; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .delpurch-fk-wrap    { overflow-x: auto; max-height: 180px; overflow-y: auto; border: 1px solid #7f1d1d; border-radius: 6px; }
+        .delpurch-empty      { font-size: .75rem; color: #991b1b; font-style: italic; padding: 4px 8px; }
+        @@media (max-width: 768px) {
+            .delpurch-card  { padding: 24px 18px !important; max-width: 94vw !important; }
+            .delpurch-title { font-size: 1.15rem !important; }
+            .delpurch-fk-table th, .delpurch-fk-table td { font-size: .68rem; padding: 3px 6px; }
+        }
+    </style>
+
+    <div style="position:fixed;inset:0;z-index:10200;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;padding:16px;overflow-y:auto;">
+
+        @* ── Step 1: preview + "are you sure?" ── *@
+        @if (_delPurchStep == 1)
+        {
+            <div class="delpurch-card" style="background:#1a0505;border:2px solid #7f1d1d;border-radius:16px;padding:32px 36px;max-width:760px;width:100%;box-shadow:0 30px 80px rgba(0,0,0,.75);color:#fecaca;">
+                <div class="text-center mb-3">
+                    <div class="delpurch-pulse" style="font-size:3.6rem;color:#ef4444;line-height:1;">
+                        <i class="ri-error-warning-fill"></i>
+                    </div>
+                    <div class="delpurch-title" style="font-size:1.35rem;font-weight:800;color:#fca5a5;margin-top:10px;">
+                        @LS.T("pcs.delete.title") #@(_delPurchInfo?.PrimaryPurchaseId)
+                    </div>
+                    <div style="font-size:.85rem;color:#ef4444;margin-top:6px;">
+                        @LS.T("pcs.delete.warning")
+                    </div>
+                </div>
+
+                @if (_delPurchInfo == null)
+                {
+                    <div class="d-flex align-items-center justify-content-center gap-2 py-3">
+                        <span class="spinner-border spinner-border-sm" style="color:#ef4444;"></span>
+                        <span style="font-size:.85rem;">@LS.T("pcs.delete.loading")</span>
+                    </div>
+                }
+                else
+                {
+                    <div style="background:#2a0a0a;border-radius:8px;padding:14px 16px;margin-bottom:16px;">
+                        <div style="font-size:.8rem;font-weight:700;color:#fca5a5;margin-bottom:8px;">
+                            <i class="ri-list-check-2 me-1"></i>@LS.T("pcs.delete.affectedRows") (@_delPurchInfo.TotalRowCount)
+                        </div>
+
+                        @* Purchase rows (primary + paired transfer) *@
+                        <div class="mb-2">
+                            <div style="font-size:.75rem;font-weight:600;color:#fca5a5;margin-bottom:4px;">
+                                <i class="ri-shopping-cart-line me-1"></i>fin_purchases
+                                <span style="font-weight:400;color:#f87171;"> — @_delPurchInfo.Purchases.Count @LS.T("pcs.delete.rows")</span>
+                            </div>
+                            <div class="delpurch-fk-wrap">
+                                <table class="delpurch-fk-table">
+                                    @if (_delPurchInfo.Purchases.Count > 0)
+                                    {
+                                        <thead><tr>@foreach (var c in _delPurchInfo.Purchases[0].Cols) { <th>@c</th> }</tr></thead>
+                                        <tbody>
+                                            @foreach (var p in _delPurchInfo.Purchases)
+                                            {
+                                                <tr>@foreach (var v in p.Values) { var disp = v.Length > 60 ? v[..60] + "…" : v; <td title="@v">@disp</td> }</tr>
+                                            }
+                                        </tbody>
+                                    }
+                                </table>
+                            </div>
+                        </div>
+
+                        @* FK tables *@
+                        @foreach (var fk in _delPurchInfo.FkTables)
+                        {
+                            <div class="mb-2">
+                                <div style="font-size:.75rem;font-weight:600;color:#fca5a5;margin-bottom:4px;">
+                                    <i class="ri-table-line me-1"></i>@fk.Table
+                                    <span style="font-weight:400;color:#f87171;"> — @fk.Rows.Count @LS.T("pcs.delete.rows")</span>
+                                </div>
+                                @if (fk.Rows.Count == 0)
+                                {
+                                    <div class="delpurch-empty">@LS.T("pcs.delete.noRows")</div>
+                                }
+                                else
+                                {
+                                    <div class="delpurch-fk-wrap">
+                                        <table class="delpurch-fk-table">
+                                            <thead><tr>@foreach (var c in fk.Cols) { <th>@c</th> }</tr></thead>
+                                            <tbody>
+                                                @foreach (var row in fk.Rows)
+                                                {
+                                                    <tr>@foreach (var v in row) { var disp = v.Length > 60 ? v[..60] + "…" : v; <td title="@v">@disp</td> }</tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                }
+                            </div>
+                        }
+
+                        @* Enrollments (derived) *@
+                        <div class="mb-0">
+                            <div style="font-size:.75rem;font-weight:600;color:#fca5a5;margin-bottom:4px;">
+                                <i class="ri-graduation-cap-line me-1"></i>@_delPurchInfo.Enrollments.Table
+                                <span style="font-weight:400;color:#f87171;"> — @_delPurchInfo.Enrollments.Rows.Count @LS.T("pcs.delete.rows")</span>
+                            </div>
+                            @if (_delPurchInfo.Enrollments.Rows.Count == 0)
+                            {
+                                <div class="delpurch-empty">@LS.T("pcs.delete.noRows")</div>
+                            }
+                            else
+                            {
+                                <div class="delpurch-fk-wrap">
+                                    <table class="delpurch-fk-table">
+                                        <thead><tr>@foreach (var c in _delPurchInfo.Enrollments.Cols) { <th>@c</th> }</tr></thead>
+                                        <tbody>
+                                            @foreach (var row in _delPurchInfo.Enrollments.Rows)
+                                            {
+                                                <tr>@foreach (var v in row) { var disp = v.Length > 60 ? v[..60] + "…" : v; <td title="@v">@disp</td> }</tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <div class="d-flex gap-2 justify-content-center flex-wrap">
+                    <button class="btn btn-secondary btn-sm px-4" @onclick="CancelDeletePurchase">@LS.T("common.cancel")</button>
+                    <button class="btn btn-danger btn-sm px-4" disabled="@(_delPurchInfo == null)" @onclick="() => _delPurchStep = 2">
+                        @LS.T("pcs.delete.yesContinue") <i class="ri-arrow-right-line ms-1"></i>
+                    </button>
+                </div>
+            </div>
+        }
+
+        @* ── Step 2: type "delete" ── *@
+        @if (_delPurchStep == 2)
+        {
+            <div class="delpurch-card" style="background:#1a0505;border:2px solid #7f1d1d;border-radius:16px;padding:36px 40px;max-width:460px;width:100%;box-shadow:0 30px 80px rgba(0,0,0,.75);text-align:center;color:#fecaca;">
+                <div style="font-size:3rem;color:#ef4444;margin-bottom:14px;">
+                    <i class="ri-skull-2-line"></i>
+                </div>
+                <div style="font-size:1.1rem;font-weight:800;color:#fca5a5;margin-bottom:16px;">
+                    @LS.T("pcs.delete.finalConfirm")
+                </div>
+                <div style="font-size:.85rem;color:#f87171;margin-bottom:18px;">
+                    @LS.T("pcs.delete.typeHint") <code style="background:#2a0a0a;padding:2px 8px;border-radius:4px;color:#fca5a5;font-weight:700;">delete</code>
+                </div>
+                <input type="text"
+                       class="form-control text-center mb-3 @(_delPurchInput.Length > 0 && _delPurchInput != "delete" ? "delpurch-shake" : "")"
+                       style="background:#2a0a0a;border:2px solid @(_delPurchInput.Length > 0 && _delPurchInput != "delete" ? "#ef4444" : "#7f1d1d");color:#fca5a5;font-size:1.05rem;font-weight:700;letter-spacing:.12em;min-height:44px;"
+                       placeholder="@LS.T("pcs.delete.inputPlaceholder")"
+                       @bind="_delPurchInput"
+                       @bind:event="oninput" />
+                @if (!string.IsNullOrEmpty(_delPurchError))
+                {
+                    <div class="alert alert-danger py-1 px-2 mb-2" style="font-size:.78rem;">@_delPurchError</div>
+                }
+                <div class="d-flex gap-2 justify-content-center flex-wrap">
+                    <button class="btn btn-secondary btn-sm px-4" disabled="@_delPurchBusy" @onclick="() => _delPurchStep = 1">@LS.T("common.back")</button>
+                    <button class="btn btn-danger btn-sm px-4"
+                            disabled="@(_delPurchInput != "delete" || _delPurchBusy)"
+                            @onclick="ExecuteHardDeletePurchase">
+                        <i class="ri-delete-bin-2-line me-1"></i>@LS.T("pcs.delete.executeBtn")
+                    </button>
+                </div>
+            </div>
+        }
+
+        @* ── Step 3: deleting ── *@
+        @if (_delPurchStep == 3)
+        {
+            <div class="delpurch-card" style="background:#1a0505;border:2px solid #7f1d1d;border-radius:16px;padding:48px 40px;max-width:400px;width:100%;box-shadow:0 30px 80px rgba(0,0,0,.75);text-align:center;color:#fecaca;">
+                <div class="spinner-border" style="width:3.2rem;height:3.2rem;border-width:4px;color:#ef4444;margin-bottom:20px;" role="status"></div>
+                <div style="font-size:1rem;font-weight:700;color:#fca5a5;">@LS.T("pcs.delete.deleting")</div>
+                <div style="font-size:.78rem;color:#991b1b;margin-top:6px;">@LS.T("pcs.delete.pleaseWait")</div>
+            </div>
+        }
+
+        @* ── Step 4: SUCCESS — amazing animation ── *@
+        @if (_delPurchStep == 4)
+        {
+            <div class="delpurch-card delpurch-done-card" style="background:linear-gradient(135deg,#031a0a 0%,#052e16 100%);border:2px solid #14532d;border-radius:16px;padding:52px 44px;max-width:460px;width:100%;box-shadow:0 30px 80px rgba(0,0,0,.75);text-align:center;color:#bbf7d0;">
+                <div class="delpurch-flash-ov"></div>
+                <div class="delpurch-ring"></div>
+                @* confetti shards *@
+                <div class="delpurch-shard" style="left:12%;background:#22c55e;animation-delay:.05s;"></div>
+                <div class="delpurch-shard" style="left:26%;background:#4ade80;animation-delay:.18s;"></div>
+                <div class="delpurch-shard" style="left:42%;background:#86efac;animation-delay:.3s;"></div>
+                <div class="delpurch-shard" style="left:58%;background:#22c55e;animation-delay:.12s;"></div>
+                <div class="delpurch-shard" style="left:74%;background:#4ade80;animation-delay:.24s;"></div>
+                <div class="delpurch-shard" style="left:88%;background:#86efac;animation-delay:.08s;"></div>
+
+                <div style="position:relative;font-size:5rem;color:#22c55e;margin-bottom:18px;line-height:1;">
+                    <i class="ri-checkbox-circle-fill"></i>
+                </div>
+                <div style="position:relative;font-size:1.35rem;font-weight:800;color:#86efac;margin-bottom:10px;letter-spacing:.02em;">
+                    @LS.T("pcs.delete.successTitle")
+                </div>
+                <div style="position:relative;font-size:.9rem;color:#4ade80;margin-bottom:6px;">
+                    @_delPurchRowsDeleted @LS.T("pcs.delete.rowsDeleted")
+                </div>
+                <div style="position:relative;font-size:.72rem;color:#166534;margin-top:12px;">@LS.T("pcs.delete.closing")</div>
+            </div>
+        }
     </div>
 }
 
@@ -4016,6 +4251,16 @@
     int? _editingPurchaseId;
     int? _confirmDeletePurchaseId;
     string _origPurchaseSnapshot = "";
+
+    // Hard-delete purchase confirmation flow (0=idle, 1=preview, 2=type-to-confirm, 3=deleting, 4=done)
+    int    _delPurchStep;
+    string _delPurchInput = "";
+    string _delPurchError = "";
+    bool   _delPurchBusy;
+    int    _delPurchRowsDeleted;
+    int    _delPurchLoadToken;
+    PurchaseDeleteInfo? _delPurchInfo;
+
     bool   _skipSignature;
     bool   _hasSigned;
     DotNetObjectReference<PCs>? _sigRef;
@@ -4602,6 +4847,122 @@
             await JS.InvokeVoidAsync("SignaturePad.dispose", "signatureCanvas");
         _sigRef?.Dispose();
         _sigRef = null;
+    }
+
+    // ── Hard-delete purchase flow ──────────────────────────────────────
+    void OpenDeletePurchaseConfirm()
+    {
+        if (!_editingPurchaseId.HasValue) return;
+        _delPurchStep        = 1;
+        _delPurchInput       = "";
+        _delPurchError       = "";
+        _delPurchBusy        = false;
+        _delPurchRowsDeleted = 0;
+        _delPurchInfo        = null;
+        var pid   = _editingPurchaseId.Value;
+        var token = ++_delPurchLoadToken;
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var info = PcSvc.LoadPurchaseDeleteInfo(pid);
+                InvokeAsync(() =>
+                {
+                    if (token == _delPurchLoadToken && _delPurchStep > 0)
+                    {
+                        _delPurchInfo = info;
+                        StateHasChanged();
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                InvokeAsync(() =>
+                {
+                    if (token == _delPurchLoadToken)
+                    {
+                        _delPurchError = ex.Message;
+                        StateHasChanged();
+                    }
+                });
+            }
+        });
+    }
+
+    void CancelDeletePurchase()
+    {
+        _delPurchStep        = 0;
+        _delPurchInput       = "";
+        _delPurchError       = "";
+        _delPurchBusy        = false;
+        _delPurchInfo        = null;
+        _delPurchRowsDeleted = 0;
+        _delPurchLoadToken++;
+    }
+
+    async Task ExecuteHardDeletePurchase()
+    {
+        if (_delPurchInput != "delete" || !_editingPurchaseId.HasValue) return;
+        _delPurchBusy  = true;
+        _delPurchError = "";
+        _delPurchStep  = 3;
+        StateHasChanged();
+
+        var pid = _editingPurchaseId.Value;
+        var actor = _username ?? "unknown";
+
+        // Audit log: dump every row we're about to delete
+        if (_delPurchInfo != null)
+        {
+            Console.WriteLine($"[PCs] HardDeletePurchase initiated by '{actor}' — PurchaseId={pid} totalRows={_delPurchInfo.TotalRowCount}");
+            foreach (var p in _delPurchInfo.Purchases)
+                Console.WriteLine($"[PCs]   fin_purchases row: {string.Join(", ", p.Cols.Zip(p.Values, (c, v) => $"{c}={v}"))}");
+            foreach (var fk in _delPurchInfo.FkTables)
+                foreach (var row in fk.Rows)
+                    Console.WriteLine($"[PCs]   {fk.Table} row: {string.Join(", ", fk.Cols.Zip(row, (c, v) => $"{c}={v}"))}");
+            foreach (var row in _delPurchInfo.Enrollments.Rows)
+                Console.WriteLine($"[PCs]   {_delPurchInfo.Enrollments.Table} row: {string.Join(", ", _delPurchInfo.Enrollments.Cols.Zip(row, (c, v) => $"{c}={v}"))}");
+        }
+
+        try
+        {
+            var deleted = await Task.Run(() => PcSvc.HardDeletePurchase(pid, actor));
+            _delPurchRowsDeleted = deleted;
+            _delPurchStep = 4;
+            StateHasChanged();
+
+            // Best-effort cleanup — failures here must NOT revert the success animation,
+            // because the delete has already committed.
+            try { await ClosePurchaseModal(); }
+            catch (Exception ex) { Console.WriteLine($"[PCs] ClosePurchaseModal after hard-delete failed (ignored): {ex.Message}"); }
+            try
+            {
+                if (_selPcId.HasValue)
+                    _pcPurchases = PcSvc.GetAllPurchasesForPc(_selPcId.Value);
+                _allPcsEx = PcSvc.GetAllPcsExtended();
+                _balances = PcSvc.GetAllPcBalances();
+                LoadWalletBalancesForAll();
+                _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
+                _mixedRates = PcSvc.GetPcsWithMixedRates();
+                LoadDetail();
+            }
+            catch (Exception ex) { Console.WriteLine($"[PCs] post-delete refresh failed (ignored): {ex.Message}"); }
+            StateHasChanged();
+
+            await Task.Delay(1800);
+            CancelDeletePurchase();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _delPurchError = ex.Message;
+            _delPurchStep  = 2;
+            Console.WriteLine($"[PCs] HardDeletePurchase failed for {pid}: {ex.Message}");
+        }
+        finally
+        {
+            _delPurchBusy = false;
+        }
     }
 
     void AddPurchaseItem()
