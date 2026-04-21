@@ -1990,9 +1990,14 @@ app.MapGet("/api/backup-file", (HttpContext ctx, LPM.Services.FolderService svc,
     if (string.IsNullOrEmpty(reqPath) || phase is not "user" and not "server")
         return Results.BadRequest("phase and path required");
 
-    // Path traversal protection
-    if (reqPath.Contains("..") || reqPath.Contains('\0'))
-        return Results.BadRequest("invalid path");
+    // Path traversal protection — reject ".." only as a full path segment
+    // (filenames like "241217..pdf" with embedded dots are legitimate)
+    if (reqPath.Contains('\0')) return Results.BadRequest("invalid path");
+    {
+        var _segs = reqPath.Split(new[] { '/', '\\' }, StringSplitOptions.None);
+        if (_segs.Any(s => s == ".." || s == "."))
+            return Results.BadRequest("invalid path");
+    }
 
     byte[]? bytes = null;
 
@@ -2013,7 +2018,7 @@ app.MapGet("/api/backup-file", (HttpContext ctx, LPM.Services.FolderService svc,
         // Auto-backup DB file
         var backupFolder = svc.GetAutoBackupFolder(cfg["Database:BackupFolder"]);
         var fileName = Path.GetFileName(reqPath);
-        if (fileName.Contains("..") || fileName.Contains('/') || fileName.Contains('\\'))
+        if (fileName == ".." || fileName == "." || fileName.Contains('/') || fileName.Contains('\\'))
             return Results.BadRequest("invalid path");
         var fullPath = Path.Combine(backupFolder, fileName);
         if (!File.Exists(fullPath)) return Results.NotFound();
