@@ -1814,22 +1814,66 @@ public class PdfService
                 return;
             }
 
-            // Mixed: split into segments by script
+            // Mixed: split into segments by script, breaking on spaces so each run is
+            // pure Hebrew OR pure non-Hebrew (spaces become their own neutral Latin segments).
+            // Only reverse Hebrew glyphs when the text has Latin letters (LTR-dominant paragraph).
+            // Without Latin letters the paragraph is effectively RTL and should be drawn as-is
+            // so the PDF viewer's BiDi handling produces natural Hebrew display.
+            bool hasLatinLetter = text.Any(c => (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'));
             var segs = new List<(string Txt, PdfSharpCore.Drawing.XFont Fnt)>();
             int p = 0;
             while (p < text.Length)
             {
-                bool heb = IsHebrewChar(text[p]);
                 int start = p;
-                p++;
-                while (p < text.Length)
+                if (text[p] == ' ')
                 {
-                    char ch = text[p];
-                    if (ch == ' ') { p++; continue; }
-                    if (IsHebrewChar(ch) != heb) break;
-                    p++;
+                    while (p < text.Length && text[p] == ' ') p++;
+                    segs.Add((text[start..p], latinFont));
+                    continue;
                 }
-                segs.Add((text[start..p], heb ? hebrewFont : latinFont));
+                bool heb = IsHebrewChar(text[p]);
+                p++;
+                while (p < text.Length && text[p] != ' ' && IsHebrewChar(text[p]) == heb)
+                    p++;
+                var segText = text[start..p];
+                if (heb && hasLatinLetter) segText = new string(segText.Reverse().ToArray());
+                segs.Add((segText, heb ? hebrewFont : latinFont));
+            }
+
+            // LTR-dominant paragraph with multiple Hebrew words: reverse the ORDER of Hebrew
+            // segments within each contiguous Hebrew run (consecutive Hebrew segs separated
+            // only by space segs). The PDF viewer's BiDi will visually flip the whole Hebrew
+            // run back, so pre-flipping word order here yields correct logical visual.
+            if (hasLatinLetter)
+            {
+                int i = 0;
+                while (i < segs.Count)
+                {
+                    if (!object.ReferenceEquals(segs[i].Fnt, hebrewFont)) { i++; continue; }
+                    int runStart = i;
+                    int runEnd   = i;
+                    int j = i + 1;
+                    while (j < segs.Count)
+                    {
+                        if (object.ReferenceEquals(segs[j].Fnt, hebrewFont))
+                        {
+                            runEnd = j; j++; continue;
+                        }
+                        if (segs[j].Txt.All(c => c == ' '))
+                        {
+                            int k = j + 1;
+                            while (k < segs.Count && segs[k].Txt.All(c => c == ' ')) k++;
+                            if (k < segs.Count && object.ReferenceEquals(segs[k].Fnt, hebrewFont))
+                            {
+                                runEnd = k; j = k + 1; continue;
+                            }
+                        }
+                        break;
+                    }
+                    if (runEnd > runStart)
+                        segs.Reverse(runStart, runEnd - runStart + 1);
+                    i = runEnd + 1;
+                }
             }
 
             double totalW = segs.Sum(s => gfx.MeasureString(s.Txt, s.Fnt).Width);
@@ -2712,8 +2756,25 @@ public class PdfService
         if (colorMatch.Success) color = colorMatch.Groups[1].Value.Trim();
         var bgMatch = Regex.Match(style, @"background-color\s*:\s*([^;""]+)");
         if (bgMatch.Success) bgColor = bgMatch.Groups[1].Value.Trim();
-        var sizeMatch = Regex.Match(style, @"font-size\s*:\s*(\d+)");
-        if (sizeMatch.Success) fontSize = float.Parse(sizeMatch.Groups[1].Value) * fontSizeMultiplier;
+        // Parse font-size value + optional unit. Decimals and rem/em/% must work —
+        // Quill emits things like "font-size: 0.82rem" which would otherwise capture
+        // only the leading "0" and pass zero to QuestPDF (ArgumentException).
+        var sizeMatch = Regex.Match(style, @"font-size\s*:\s*(\d+(?:\.\d+)?)\s*(px|pt|em|rem|%)?",
+            RegexOptions.IgnoreCase);
+        if (sizeMatch.Success &&
+            float.TryParse(sizeMatch.Groups[1].Value,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var num) && num > 0)
+        {
+            var unit = sizeMatch.Groups[2].Value.ToLowerInvariant();
+            float newSize = unit switch
+            {
+                "em" or "rem" => num * fontSize,           // relative to current/inherited
+                "%"           => (num / 100f) * fontSize,
+                _             => num * fontSizeMultiplier, // px, pt, or bare — multiplier as before
+            };
+            if (newSize > 0) fontSize = newSize;
+        }
     }
 
     private static void RenderHtmlBlock(ColumnDescriptor col, string html, float fontSizeMultiplier = 1f)

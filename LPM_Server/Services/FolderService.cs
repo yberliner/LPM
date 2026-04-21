@@ -2558,9 +2558,14 @@ public class FolderService
     /// </summary>
     public byte[]? CombinePdfsViaGhostscript(byte[] first, byte[] second, int timeoutMs = 30_000)
     {
-        if (string.IsNullOrEmpty(_ghostscriptExe) || !File.Exists(_ghostscriptExe))
+        if (string.IsNullOrEmpty(_ghostscriptExe))
         {
-            Console.WriteLine("[FolderSummary/GS] Ghostscript not configured — cannot combine");
+            Console.WriteLine("[FolderSummary/GS] GhostscriptExe not set in config — cannot combine");
+            return null;
+        }
+        if (!File.Exists(_ghostscriptExe))
+        {
+            Console.WriteLine($"[FolderSummary/GS] GhostscriptExe path does not exist: '{_ghostscriptExe}' — cannot combine. Install ghostscript or fix config path.");
             return null;
         }
 
@@ -2581,18 +2586,23 @@ public class FolderService
             proc.StartInfo.ArgumentList.Add("-sDEVICE=pdfwrite");
             proc.StartInfo.ArgumentList.Add("-dCompatibilityLevel=1.4");
             proc.StartInfo.ArgumentList.Add("-dNOPAUSE");
-            proc.StartInfo.ArgumentList.Add("-dQUIET");
             proc.StartInfo.ArgumentList.Add("-dBATCH");
             proc.StartInfo.ArgumentList.Add($"-sOutputFile={tempOut}");
             proc.StartInfo.ArgumentList.Add(tempIn1);
             proc.StartInfo.ArgumentList.Add(tempIn2);
+            var stdoutSb = new System.Text.StringBuilder();
+            var stderrSb = new System.Text.StringBuilder();
+            proc.OutputDataReceived += (_, e) => { if (e.Data != null) stdoutSb.AppendLine(e.Data); };
+            proc.ErrorDataReceived  += (_, e) => { if (e.Data != null) stderrSb.AppendLine(e.Data); };
             proc.Start();
+            proc.BeginOutputReadLine();
+            proc.BeginErrorReadLine();
             bool exited = proc.WaitForExit(timeoutMs);
             if (!exited)
             {
                 try { proc.Kill(entireProcessTree: true); } catch { }
                 proc.WaitForExit(3_000);
-                Console.WriteLine($"[FolderSummary/GS] Timed out after {timeoutMs / 1000}s");
+                Console.WriteLine($"[FolderSummary/GS] Timed out after {timeoutMs / 1000}s. stderr so far: {stderrSb.ToString().Trim()}");
                 return null;
             }
             if (proc.ExitCode == 0 && File.Exists(tempOut) && new FileInfo(tempOut).Length > 0)
@@ -2601,10 +2611,16 @@ public class FolderService
                 Console.WriteLine($"[FolderSummary/GS] Combined {first.Length / 1024}KB + {second.Length / 1024}KB → {result.Length / 1024}KB");
                 return result;
             }
-            Console.WriteLine($"[FolderSummary/GS] Exit code {proc.ExitCode}");
+            Console.WriteLine($"[FolderSummary/GS] FAILED. exit={proc.ExitCode} outputExists={File.Exists(tempOut)} " +
+                              $"outputSize={(File.Exists(tempOut) ? new FileInfo(tempOut).Length : 0)} " +
+                              $"gsPath='{_ghostscriptExe}' input1Size={first.Length} input2Size={second.Length}");
+            var stderr = stderrSb.ToString().Trim();
+            var stdout = stdoutSb.ToString().Trim();
+            if (stderr.Length > 0) Console.WriteLine($"[FolderSummary/GS] stderr: {stderr}");
+            if (stdout.Length > 0) Console.WriteLine($"[FolderSummary/GS] stdout: {stdout}");
             return null;
         }
-        catch (Exception ex) { Console.WriteLine($"[FolderSummary/GS] Error: {ex.Message}"); return null; }
+        catch (Exception ex) { Console.WriteLine($"[FolderSummary/GS] Error: {ex}"); return null; }
         finally
         {
             try { if (File.Exists(tempIn1)) File.Delete(tempIn1); } catch { }
