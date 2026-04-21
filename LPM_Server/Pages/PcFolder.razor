@@ -849,24 +849,25 @@
                 </button>
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
                 <button class="pcf-tool-btn @(_toolMode == "draw" ? "pcf-tool-active" : "")"
-                        title="Draw — click and drag on the PDF to draw freehand annotations"
+                        title="Draw — click and drag on a non-summary PDF to draw freehand (folder-summary panes are ignored)"
                         @onclick='() => SetTool("draw")'>
                     <i class="ri-pencil-line"></i>
                 </button>
                 <button class="pcf-tool-btn @(_toolMode == "brush" ? "pcf-tool-active" : "")"
-                        title="Brush — semi-transparent highlighter brush"
+                        title="Brush — semi-transparent highlighter on a non-summary PDF (folder-summary panes are ignored)"
                         @onclick='() => SetTool("brush")'>
                     <i class="ri-brush-line"></i>
                 </button>
                 <button class="pcf-tool-btn @(_toolMode == "text" ? "pcf-tool-active" : "")"
-                        title="Add Text — click anywhere on the PDF to place a text note"
+                        title="Add Text — click a non-summary PDF to place a text note (folder-summary panes are ignored)"
                         @onclick='() => SetTool("text")'>
                     <i class="ri-text"></i>
                 </button>
                 <div class="pcf-color-wrap">
                     <button class="pcf-tool-btn" title="Annotation settings — stroke width, color, text size"
                             style="border-bottom: 3px solid @_drawColor;"
-                            @onclick="() => _showAnnotSettings = !_showAnnotSettings">
+                            @onclick="() => _showAnnotSettings = !_showAnnotSettings"
+                            disabled="@IsPaneFolderSummary(_activeIdx)">
                         <i class="ri-settings-3-line"></i>
                     </button>
                     @if (_showAnnotSettings)
@@ -912,12 +913,18 @@
                         </div>
                     }
                 </div>
-                <button class="pcf-tool-btn" title="Undo — remove the last annotation on the active pane (Ctrl+Z)" @onclick="Undo">
+                <button class="pcf-tool-btn"
+                        title="@(IsPaneFolderSummary(_activeIdx) ? "Folder Summary is read-only — undo is disabled" : "Undo — remove the last annotation on the active pane (Ctrl+Z)")"
+                        @onclick="Undo"
+                        disabled="@IsPaneFolderSummary(_activeIdx)">
                     <i class="ri-arrow-go-back-line"></i>
                 </button>
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
                 <div class="pcf-addpage-wrap">
-                    <button class="pcf-tool-btn" title="Add blank page" @onclick="ToggleAddPageMenu">
+                    <button class="pcf-tool-btn"
+                            title="@(IsPaneFolderSummary(_activeIdx) ? "Folder Summary is read-only — cannot add pages" : "Add blank page")"
+                            @onclick="ToggleAddPageMenu"
+                            disabled="@IsPaneFolderSummary(_activeIdx)">
                         <i class="ri-file-add-line"></i>
                     </button>
                     @if (_showAddPageMenu)
@@ -970,9 +977,10 @@
                     }
                 </div>
                 <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
-                <button class="pcf-save-btn" title="Save — save annotations to the PDF now (also auto-saves when switching files or closing)"
+                <button class="pcf-save-btn"
+                        title="@(IsPaneFolderSummary(_activeIdx) ? "Folder Summary is read-only — save is disabled" : "Save — save annotations to the PDF now (also auto-saves when switching files or closing)")"
                         @onclick="SaveAnnotations"
-                        disabled="@(!_hasAnnotations)">
+                        disabled="@(!_hasAnnotations || IsPaneFolderSummary(_activeIdx))">
                     <i class="ri-save-line me-1"></i>Save
                 </button>
                 <button class="pcf-tool-btn" title="Download — download the currently selected file"
@@ -1129,6 +1137,13 @@
                     @* ── Floating pane button overlay ── *@
                     <div class="pcf-pane-overlay">
                         <span class="pcf-overlay-name" title="@p.FileName">@(p.FileName ?? "Empty")</span>
+                        @if (IsPaneFolderSummary(idx))
+                        {
+                            <span class="pcf-fs-ro-chip"
+                                  title="Folder Summary is read-only — use the Summary editor to change its content">
+                                <i class="ri-lock-2-line"></i>READ ONLY
+                            </span>
+                        }
                         @if (isDual)
                         {
                             <span class="pcf-overlay-counter">@di.page–@(Math.Min(di.page + 1, di.total)) / @di.total</span>
@@ -1638,6 +1653,33 @@
     @@keyframes pcf-pane-fs-glow {
         0%, 100% { opacity: .45; transform: scale(.85); text-shadow: 0 0 2px rgba(96,165,250,.2); }
         50%      { opacity: 1;   transform: scale(1.15); text-shadow: 0 0 8px rgba(96,165,250,.95), 0 0 14px rgba(96,165,250,.5); }
+    }
+    /* ── Read-only chip for Folder Summary panes ── */
+    .pcf-fs-ro-chip {
+        display: inline-flex; align-items: center; gap: 4px;
+        margin-left: 6px;
+        padding: 2px 8px;
+        font-size: .62rem;
+        font-weight: 800;
+        letter-spacing: .1em;
+        color: #fbbf24;
+        background: rgba(245, 158, 11, .14);
+        border: 1px solid rgba(245, 158, 11, .55);
+        border-radius: 999px;
+        white-space: nowrap;
+        user-select: none;
+        animation: pcf-fs-ro-glow 2s ease-in-out infinite;
+    }
+    .pcf-fs-ro-chip i { font-size: .72rem; color: #f59e0b; }
+    @@keyframes pcf-fs-ro-glow {
+        0%, 100% {
+            box-shadow: 0 0 0 0 rgba(245,158,11,.45), 0 0 6px rgba(245,158,11,.35);
+            border-color: rgba(245,158,11,.55);
+        }
+        50% {
+            box-shadow: 0 0 0 4px rgba(245,158,11,0), 0 0 18px rgba(245,158,11,.75);
+            border-color: rgba(251,191,36,1);
+        }
     }
     /* ── Prev CS floating badge ── */
     .pcf-prevcs-badge {
@@ -4053,6 +4095,13 @@
         _panes[idx].FileName = SessionDisplayName(fileName);
         _panes[idx].Section = section;
 
+        // Folder Summary is read-only — kill any live annotation tool when selecting one
+        if (idx == _activeIdx && IsPaneFolderSummary(idx) && !string.IsNullOrEmpty(_toolMode))
+        {
+            _toolMode = "";
+            _ = JS.InvokeVoidAsync("pcfViewer.setTool", "");
+        }
+
         // Check if this is an Excel file
         if (fileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
         {
@@ -4572,6 +4621,13 @@
         if (_activeIdx == idx) return;
         if (_extractMode) _ = CancelExtract();
         _activeIdx = idx;
+        // Switching active pane to a Folder Summary — cancel any live annotation tool
+        // so stray clicks on the read-only file can't register as draw/text/brush strokes.
+        if (IsPaneFolderSummary(idx) && !string.IsNullOrEmpty(_toolMode))
+        {
+            _toolMode = "";
+            _ = JS.InvokeVoidAsync("pcfViewer.setTool", "");
+        }
         var paneId = PaneIds[idx];
         _ = Task.Run(async () =>
         {
@@ -4871,6 +4927,7 @@
 
     async Task Undo()
     {
+        if (IsPaneFolderSummary(_activeIdx)) return; // read-only — nothing to undo
         Console.WriteLine($"[PcFolder] Undo annotation by '{_userName}' — file '{_panes[_activeIdx].FileName}' for PC {PcId}");
         await JS.InvokeVoidAsync("pcfViewer.undo", PaneIds[_activeIdx]);
         _hasAnnotations = await JS.InvokeAsync<bool>("pcfViewer.hasAnnotations", PaneIds[_activeIdx]);
@@ -5195,6 +5252,13 @@
     {
         var file = _panes[_activeIdx].File;
         if (string.IsNullOrEmpty(file)) return;
+        if (IsPaneFolderSummary(_activeIdx))
+        {
+            Console.WriteLine($"[PcFolder] Save IGNORED — Folder Summary is read-only (pc={PcId}, user='{_userName}', file='{_panes[_activeIdx].FileName}')");
+            _hasAnnotations = false;
+            StateHasChanged();
+            return;
+        }
         Console.WriteLine($"[PcFolder] Saved annotations on '{_panes[_activeIdx].FileName}' by '{_userName}' — for PC {PcId}");
         _saving = true;
         StateHasChanged();
@@ -5668,6 +5732,18 @@
     static bool IsFolderSummaryName(string lowerName) =>
         lowerName.Contains("folder summary") || lowerName.Contains("summary");
 
+    // Returns true when the given pane currently shows a Folder Summary file.
+    // Used to gate annotation tools, save, and context-menu items — FS files are read-only
+    // because the displayed PDF is a combined view (session summaries from DB + canvas on disk)
+    // and saving annotations would corrupt the canvas page mapping.
+    bool IsPaneFolderSummary(int idx)
+    {
+        if (idx < 0 || idx >= _panes.Length) return false;
+        var p = _panes[idx];
+        if (string.IsNullOrEmpty(p.File)) return false;
+        return IsFolderSummaryFile(p.FileName ?? Path.GetFileName(p.File), p.File);
+    }
+
     static bool IsFolderSummaryFile(string fileName, string? relativePath = null)
     {
         // Only treat as folder summary if it's in the Front_Cover section
@@ -5843,6 +5919,14 @@
 
         bool isProgram = lower.Contains("program") || lower.Contains("prog");
         bool isCover = section == "Front Cover" || section == "Back Cover";
+
+        // Folder Summary files are read-only — suppress file-modifying context-menu items
+        // (Insert Form, Insert file above, Change Background). Only "Float Page" remains.
+        if (IsPaneFolderSummary(paneIndex))
+        {
+            isProgram = false;
+            isCover = false;
+        }
 
         _showPageCtxMenu = true;
         _pageCtxIsProgram = isProgram;

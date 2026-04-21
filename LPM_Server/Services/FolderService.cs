@@ -1446,6 +1446,33 @@ public class FolderService
     }
 
     /// <summary>
+    /// Returns true when the given relative path points to a Folder Summary file
+    /// (case-insensitive "folder summary" / "summary" name, under a Front_Cover section).
+    /// Accepts both "Front_Cover/&lt;file&gt;" (save-annotated endpoint) and nested forms like
+    /// "PC-Folders/&lt;PC&gt;/Front_Cover/&lt;file&gt;". Used as a server-side read-only gate.
+    /// </summary>
+    public static bool IsFolderSummaryRelPath(string relPath)
+    {
+        if (string.IsNullOrEmpty(relPath)) return false;
+        var norm = relPath.Replace('\\', '/');
+        bool inFrontCover =
+            norm.StartsWith("Front_Cover/", StringComparison.OrdinalIgnoreCase) ||
+            norm.IndexOf("/Front_Cover/", StringComparison.OrdinalIgnoreCase) >= 0;
+        if (!inFrontCover) return false;
+        var fileName = System.IO.Path.GetFileName(norm);
+        var nameNoExt = System.IO.Path.GetFileNameWithoutExtension(fileName);
+        // Strip optional 6-digit date prefix ("250101 Folder Summary.pdf")
+        if (nameNoExt.Length >= 6 && nameNoExt.Substring(0, 6).All(char.IsDigit)
+            && nameNoExt.Length > 6 && !char.IsDigit(nameNoExt[6]))
+            nameNoExt = nameNoExt.Substring(6).TrimStart(' ', '_', '-');
+        // Strip "nn-nn-nn_" prefix
+        if (nameNoExt.Length >= 9 && nameNoExt[2] == '-' && nameNoExt[5] == '-' && nameNoExt[8] == '_')
+            nameNoExt = nameNoExt.Substring(9);
+        var lower = nameNoExt.ToLowerInvariant().Replace("_", " ").Replace("-", " ").Replace(".", " ");
+        return lower.Contains("folder summary") || lower.Contains("summary");
+    }
+
+    /// <summary>
     /// Detect whether a backup relPath refers to a Folder Summary file in Front_Cover,
     /// and extract pcId + isSolo from the directory name.
     /// relPath format: "PC-Folders/{pcId}-{name}[optional: ' Solo']/Front_Cover/{filename}.pdf"

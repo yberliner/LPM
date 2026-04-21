@@ -1113,6 +1113,12 @@ app.MapPost("/api/pc-file-save-annotations", async (HttpContext ctx,
     if (string.IsNullOrEmpty(path)) return Results.BadRequest();
     var solo = ctx.Request.Query["solo"].ToString() == "true";
     if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
+    // Folder Summary is read-only — reject sidecar writes too (defense in depth)
+    if (LPM.Services.FolderService.IsFolderSummaryRelPath(path))
+    {
+        Console.WriteLine($"[AnnSidecar] REJECTED — Folder Summary is read-only: pcId={pcId} path='{path}'");
+        return Results.BadRequest("Folder Summary is read-only.");
+    }
     using var reader = new System.IO.StreamReader(ctx.Request.Body);
     var json = await reader.ReadToEndAsync();
     if (string.IsNullOrWhiteSpace(json) || json == "null" || json == "[]")
@@ -1130,6 +1136,12 @@ app.MapPost("/api/pc-file-save", async (HttpContext ctx, LPM.Services.FolderServ
     if (string.IsNullOrEmpty(path)) return Results.BadRequest();
     var solo = ctx.Request.Query["solo"].ToString() == "true";
     if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
+    // Folder Summary is read-only — reject generic file saves too (defense in depth)
+    if (LPM.Services.FolderService.IsFolderSummaryRelPath(path))
+    {
+        Console.WriteLine($"[PcFile] REJECTED — Folder Summary is read-only: pcId={pcId} path='{path}'");
+        return Results.BadRequest("Folder Summary is read-only.");
+    }
 
     using var ms = new MemoryStream();
     await ctx.Request.Body.CopyToAsync(ms);
@@ -1242,6 +1254,15 @@ app.MapPost("/api/pc-file-save-annotated", async (HttpContext ctx, LPM.Services.
     var saveUser2 = ctx.User?.Identity?.Name ?? "unknown";
     Console.WriteLine($"[AnnSave] pcId={pcId} solo={solo} user='{saveUser2}' path='{path}' pathHex=[{string.Join(" ", System.Text.Encoding.UTF8.GetBytes(path).Select(b => b.ToString("X2")))}]");
     if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
+
+    // Folder Summary files are read-only. The pane displays a combined PDF (session
+    // summaries from sess_folder_summary DB + canvas on disk); saving client-side
+    // annotations would corrupt page mapping, so reject the write unconditionally.
+    if (LPM.Services.FolderService.IsFolderSummaryRelPath(path))
+    {
+        Console.WriteLine($"[AnnSave] REJECTED — Folder Summary is read-only: pcId={pcId} user='{saveUser2}' path='{path}'");
+        return Results.BadRequest("Folder Summary is read-only.");
+    }
 
     var sizeFeat = ctx.Features.Get<IHttpMaxRequestBodySizeFeature>();
     if (sizeFeat != null) sizeFeat.MaxRequestBodySize = null;

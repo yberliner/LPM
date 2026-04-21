@@ -731,6 +731,7 @@ window.pcfViewer = {
                 overlay.addEventListener('pointermove', onMove);
                 overlay.addEventListener('pointerup', onUp);
             } else if (self.toolMode === 'draw' || self.toolMode === 'brush') {
+                if (pane.readOnly) return; // folder summary panes are read-only
                 drawing = true;
                 overlay.setPointerCapture(e.pointerId);
                 pane.currentStroke = {
@@ -740,6 +741,7 @@ window.pcfViewer = {
                     brush: self.toolMode === 'brush'
                 };
             } else if (self.toolMode === 'text') {
+                if (pane.readOnly) return; // folder summary panes are read-only
                 const { wx, wy } = wrapperXY(e.clientX, e.clientY);
                 self._showTextInput(overlay.parentElement, pageIdx, pdX, pdY, paneId, undefined, undefined, wx, wy);
             }
@@ -749,7 +751,7 @@ window.pcfViewer = {
         overlay.addEventListener('dblclick', (e) => {
             const pane = self.panes[paneId];
             console.log('[txt-dbg] dblclick paneId=' + paneId + ' pane=' + !!pane + ' textInputEl=' + !!self.textInputEl + ' annotations=' + (pane ? pane.annotations.length : 'n/a'));
-            if (!pane || self.textInputEl) return;
+            if (!pane || pane.readOnly || self.textInputEl) return;
             const { x, y } = canvasXY(e);
             console.log('[txt-dbg] dblclick canvasXY=' + x.toFixed(1) + ',' + y.toFixed(1));
             const hit = self._hitTestText(pane, pageIdx, x, y);
@@ -767,7 +769,7 @@ window.pcfViewer = {
             if (!self._textSelectMode) return; // handled by overlay in annotation mode
             const pane = self.panes[paneId];
             console.log('[txt-dbg] wrapper-dblclick textSelectMode=true paneId=' + paneId + ' annotations=' + (pane ? pane.annotations.length : 'n/a'));
-            if (!pane || self.textInputEl) return;
+            if (!pane || pane.readOnly || self.textInputEl) return;
             const { x, y } = canvasXY(e);
             const hit = self._hitTestText(pane, pageIdx, x, y);
             console.log('[txt-dbg] wrapper-dblclick hit=' + JSON.stringify(hit ? { idx: hit.idx, text: hit.ann.text } : null));
@@ -1936,7 +1938,7 @@ window.pcfViewer = {
     // Save a specific pane synchronously (for beforeunload)
     _saveSync(paneId) {
         const pane = this.panes[paneId];
-        if (!pane || pane.annotations.length === 0 || !pane.filePath || !this._pcId) return;
+        if (!pane || pane.readOnly || pane.annotations.length === 0 || !pane.filePath || !this._pcId) return;
 
         const meta = JSON.parse(this.getAnnotationData(paneId));
         const formData = new FormData();
@@ -1991,7 +1993,7 @@ window.pcfViewer = {
     // Save text annotation sidecar (async)
     async _saveSidecar(paneId) {
         const pane = this.panes[paneId];
-        if (!pane || !pane.filePath || !this._pcId) return;
+        if (!pane || pane.readOnly || !pane.filePath || !this._pcId) return;
         const textAnns = pane.annotations.filter(a => a.type === 'text');
         const soloParam = pane.solo ? '&solo=true' : '';
         const url = `/api/pc-file-save-annotations?pcId=${this._pcId}&path=${encodeURIComponent(pane.filePath)}${soloParam}`;
@@ -2006,7 +2008,7 @@ window.pcfViewer = {
     // Save text annotation sidecar via sendBeacon (sync context / beforeunload)
     _saveSidecarBeacon(paneId) {
         const pane = this.panes[paneId];
-        if (!pane || !pane.filePath || !this._pcId) return;
+        if (!pane || pane.readOnly || !pane.filePath || !this._pcId) return;
         const textAnns = pane.annotations.filter(a => a.type === 'text');
         const soloParam = pane.solo ? '&solo=true' : '';
         const url = `/api/pc-file-save-annotations?pcId=${this._pcId}&path=${encodeURIComponent(pane.filePath)}${soloParam}`;
