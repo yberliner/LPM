@@ -1112,7 +1112,13 @@ window.pcfViewer = {
             handle.addEventListener('pointerup',   onHandleUp,   { once: true });
             function onHandleMove(e) {
                 const newW = Math.max(80, startW + (e.clientX - startX));
-                userWidth = Math.min(newW, maxAllowedWidth);
+                // Manual resize cap: how far can the right edge go given the CURRENT left.
+                // Direction-independent — the handle is at the right edge, so dragging right
+                // extends the right edge regardless of text direction. In RTL the left edge
+                // may have drifted leftward during auto-grow, so read it live.
+                const currentLeft = parseFloat(input.style.left) || posX;
+                const manualMax = Math.max(80, wrapper.offsetWidth - currentLeft - 8);
+                userWidth = Math.min(newW, manualMax);
                 if (self._activeTextState) self._activeTextState.userWidth = userWidth;
                 input.style.width  = userWidth + 'px';
                 // Reflow text immediately: reset height then remeasure scrollHeight
