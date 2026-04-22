@@ -3720,7 +3720,11 @@
                     _csFreeSession = DashSvc.GetPreviousCsFreeStatus(PcId);
                     _existingFreeSession = _csFreeSession;
                 }
-                _isAutoStopwatchSession = Solo && CsMode && !_csAlreadyDone && !_csLocked;
+                // Auto-stopwatch also fires when the CS opens a "report" session —
+                // reports are commonly written by solo auditors and are reviewed like a solo session.
+                bool isReportSession = !string.IsNullOrEmpty(_csSessionName) &&
+                                       _csSessionName.Contains("report", StringComparison.OrdinalIgnoreCase);
+                _isAutoStopwatchSession = (Solo || isReportSession) && CsMode && !_csAlreadyDone && !_csLocked;
                 if (_isAutoStopwatchSession)
                 {
                     _csReviewSeconds = 0;
