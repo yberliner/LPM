@@ -237,6 +237,7 @@
                                         var mins = totalMin % 60;
                                         var durStr = hrs > 0 ? $"{hrs}h {mins:D2}m" : $"{mins}m";
                                         var dateStr = DateOnly.TryParse(s.SessionDate, out var d2) ? d2.ToString("dd/MM/yy") : s.SessionDate;
+                                        var (audDateDisp, audCreatedDisp, audDateTip) = FormatSessionDate(s.SessionDate, s.CreatedAt);
                                         var effectiveStatus = string.IsNullOrEmpty(s.CsStatus) ? "Waiting" : s.CsStatus;
                                         var hasNoCsAssigned = effectiveStatus == "Waiting" && !_pcsWithCs.Contains(s.PcId);
                                         var statusClass = hasNoCsAssigned ? "home-aud-st-no-cs"
@@ -291,7 +292,22 @@
                                                 }
                                             </td>
                                             <td class="home-pcs-session">@s.SessionName</td>
-                                            <td class="home-pcs-date">@dateStr</td>
+                                            <td class="home-pcs-date">
+                                                @if (audCreatedDisp != null)
+                                                {
+                                                    <span class="home-pcs-date-wrap">
+                                                        @audDateDisp<span class="home-pcs-date-created"> (@audCreatedDisp)</span>
+                                                        <div class="home-pcs-date-hover">
+                                                            <div class="home-pcs-date-hover-title"><i class="ri-information-line me-1"></i>Date mismatch</div>
+                                                            <div class="home-pcs-date-hover-body">@audDateTip</div>
+                                                        </div>
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    @audDateDisp
+                                                }
+                                            </td>
                                             <td class="home-pcs-dur">
                                                 <i class="ri-time-line me-1" style="opacity:.4;"></i>@durStr
                                             </td>
@@ -1709,6 +1725,63 @@
     .home-pcs-date {
         color: #94a3b8; font-variant-numeric: tabular-nums;
     }
+    /* Session date vs. record-creation date mismatch hint */
+    .home-pcs-date-wrap {
+        position: relative;
+        display: inline-block;
+        cursor: help;
+        border-bottom: 1px dotted rgba(251, 191, 36, 0.45);
+    }
+    .home-pcs-date-created {
+        font-size: 0.68rem;
+        color: #fbbf24;
+        font-weight: 600;
+        margin-left: 2px;
+        opacity: 0.9;
+    }
+    .home-pcs-date-hover {
+        position: absolute;
+        left: 50%;
+        top: calc(100% + 8px);
+        transform: translate(-50%, 4px) scale(0.97);
+        min-width: 240px; max-width: 320px;
+        padding: 10px 12px;
+        background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+        color: #78350f;
+        border: 1px solid #fbbf24;
+        border-radius: 10px;
+        box-shadow: 0 14px 32px rgba(120, 53, 15, 0.18), 0 2px 6px rgba(120, 53, 15, 0.1);
+        font-size: 0.78rem;
+        line-height: 1.4;
+        z-index: 120;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 180ms cubic-bezier(.2,.9,.25,1.0), transform 200ms cubic-bezier(.2,.9,.25,1.0);
+        white-space: normal;
+    }
+    .home-pcs-date-hover::before {
+        content: "";
+        position: absolute;
+        top: -6px;
+        left: 50%;
+        transform: translateX(-50%) rotate(45deg);
+        width: 10px; height: 10px;
+        background: #fffbeb;
+        border-left: 1px solid #fbbf24;
+        border-top: 1px solid #fbbf24;
+    }
+    .home-pcs-date-hover-title {
+        font-weight: 700;
+        color: #92400e;
+        margin-bottom: 3px;
+        display: flex; align-items: center;
+    }
+    .home-pcs-date-hover-body { color: #78350f; }
+    .home-pcs-date-wrap:hover .home-pcs-date-hover {
+        opacity: 1;
+        transform: translate(-50%, 0) scale(1);
+    }
+
     .home-pcs-dur {
         font-weight: 600; color: #e2e8f0; font-variant-numeric: tabular-nums;
     }
@@ -2055,6 +2128,29 @@
     Dictionary<(int, int), int>         _effortGrid = new();
 
     bool   _hideEmpty = true;
+
+    // If SessionDate and the local-date of CreatedAt differ, returns the extra "(createdDate)"
+    // string plus a tooltip. Returns (display, null, null) when they match or parsing fails.
+    // CreatedAt from SQLite is UTC — convert to local (server TZ = Jerusalem) before comparing.
+    (string display, string? createdStr, string? tip) FormatSessionDate(string sessionDate, string createdAt)
+    {
+        if (!DateOnly.TryParse(sessionDate, out var sd))
+            return (sessionDate ?? "", null, null);
+        var sdDisp = sd.ToString("dd/MM/yy");
+
+        if (string.IsNullOrWhiteSpace(createdAt)) return (sdDisp, null, null);
+        if (!DateTime.TryParse(createdAt, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                out var utc))
+            return (sdDisp, null, null);
+        var cdLocal = DateOnly.FromDateTime(utc.ToLocalTime());
+        if (cdLocal == sd) return (sdDisp, null, null);
+
+        var cdStr = cdLocal.ToString("dd/MM/yy");
+        var tip = $"Session date {sdDisp} differs from the date it was entered into the system ({cdStr}). " +
+                  "The session actually happened on " + sdDisp + " but the record was created on " + cdStr + ".";
+        return (sdDisp, cdStr, tip);
+    }
 
     bool HasWeekData(PcInfo pc) => Enumerable.Range(0, 7)
         .Any(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d)) > 0
@@ -2838,6 +2934,7 @@
                         var mins = totalMin % 60;
                         var durStr = hrs > 0 ? $"{hrs}h {mins:D2}m" : $"{mins}m";
                         var dateStr = DateOnly.TryParse(s.SessionDate, out var d) ? d.ToString("dd/MM/yy") : s.SessionDate;
+                        var (csDateDisp, csCreatedDisp, csDateTip) = FormatSessionDate(s.SessionDate, s.CreatedAt);
                         var isDoneCs     = s.CsStatus is "Done" or "Approved";
                         var isApprovedCs = s.CsStatus == "Approved";
                         var hasActiveQ   = _sessionQuestions.TryGetValue(s.SessionId, out var qInfo);
@@ -2862,7 +2959,22 @@
                                 }
                             </td>
                             <td class="home-pcs-session">@s.SessionName</td>
-                            <td class="home-pcs-date">@dateStr</td>
+                            <td class="home-pcs-date">
+                                @if (csCreatedDisp != null)
+                                {
+                                    <span class="home-pcs-date-wrap">
+                                        @csDateDisp<span class="home-pcs-date-created"> (@csCreatedDisp)</span>
+                                        <div class="home-pcs-date-hover">
+                                            <div class="home-pcs-date-hover-title"><i class="ri-information-line me-1"></i>Date mismatch</div>
+                                            <div class="home-pcs-date-hover-body">@csDateTip</div>
+                                        </div>
+                                    </span>
+                                }
+                                else
+                                {
+                                    @csDateDisp
+                                }
+                            </td>
                             <td class="home-pcs-dur">
                                 <i class="ri-time-line me-1" style="opacity:.4;"></i>@durStr
                             </td>
