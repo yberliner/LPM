@@ -994,9 +994,21 @@ app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
     int summaryPageCount  = 0;
     byte[]? combined      = null;
 
-    // Count original pages via PdfSharpCore
+    // Count original pages via PdfSharpCore; fall back to Ghostscript for PDFs
+    // PdfSharpCore can't parse (e.g. malformed XRef). Getting this right up front
+    // avoids the fragile post-combine recovery path that can produce mismatched
+    // page numbers in the baked summary when page counts don't agree.
     try { originalPageCount = pdfSvc.CountPdfPages(originalBytes); }
     catch (Exception ex) { Console.WriteLine($"[FolderSummary] PdfSharpCore CountPdfPages threw for PC {pcId}: {ex.Message}"); }
+    if (originalPageCount <= 0)
+    {
+        var gsCount = folderSvc.CountPdfPagesViaGhostscript(originalBytes);
+        if (gsCount.HasValue && gsCount.Value > 0)
+        {
+            originalPageCount = gsCount.Value;
+            Console.WriteLine($"[FolderSummary] Recovered originalPageCount={originalPageCount} via Ghostscript for PC {pcId}");
+        }
+    }
     Console.WriteLine($"[FolderSummary] originalPageCount for PC {pcId}: {originalPageCount}");
 
     // ── Step 1: Ghostscript combine (primary — authoritative PDF impl, handles
@@ -1056,25 +1068,11 @@ app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
         }
     }
 
-    // ── Step 2.5: unify page sizes so the generated summary (A4) and the on-disk
-    // original render at a single canvas size in the viewer. Uses the same normalizer
-    // as the Add-Session flow (inner-canvas detection + aspect-preserving content scaling).
-    if (combined != null)
-    {
-        try
-        {
-            var normalized = folderSvc.TryNormalizePdfDirect(combined);
-            if (normalized != null && normalized.Length > 0)
-            {
-                combined = normalized;
-                Console.WriteLine($"[FolderSummary] Page-size normalized for PC {pcId}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[FolderSummary] Normalization threw for PC {pcId}: {ex.Message} — using un-normalized combined");
-        }
-    }
+    // Do NOT normalize page sizes here: the normalizer re-draws each page via
+    // PdfSharpCore XPdfForm, which rasterizes the content stream but DROPS the
+    // page's /Annots array — so user-drawn ink/pen annotations on the original
+    // disappear. The viewer can handle per-page size differences; preserving
+    // annotation content matters more than uniform canvas sizing.
 
     // ── Step 3: all attempts failed ────────────────────────────────────────
     if (combined == null)

@@ -2585,6 +2585,12 @@ public class FolderService
             };
             proc.StartInfo.ArgumentList.Add("-sDEVICE=pdfwrite");
             proc.StartInfo.ArgumentList.Add("-dCompatibilityLevel=1.4");
+            // Preserve annotations (ink/drawing strokes from the LPM viewer, highlights, etc.)
+            // and AcroForm fields. Without these, pdfwrite can flatten them out of the combined PDF.
+            proc.StartInfo.ArgumentList.Add("-dPreserveAnnots=true");
+            proc.StartInfo.ArgumentList.Add("-dPreserveMarkedContent=true");
+            proc.StartInfo.ArgumentList.Add("-dShowAnnots=true");
+            proc.StartInfo.ArgumentList.Add("-dShowAcroForm=true");
             proc.StartInfo.ArgumentList.Add("-dNOPAUSE");
             proc.StartInfo.ArgumentList.Add("-dBATCH");
             proc.StartInfo.ArgumentList.Add($"-sOutputFile={tempOut}");

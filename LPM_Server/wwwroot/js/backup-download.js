@@ -7,7 +7,15 @@ window.lpmFileBackup = (function () {
 
     // Windows-invalid filename chars
     const INVALID_CHARS = /[<>:"|?*\x00-\x1f]/g;
-    function sanitize(name) { return name.replace(INVALID_CHARS, '_').replace(/\.+$/, '').trim() || '_'; }
+    // Zero-width / BiDi format marks (U+200B..U+200F, U+202A..U+202E, U+2060,
+    // U+2066..U+2069, U+FEFF). Windows Explorer + Hebrew clipboards sometimes
+    // inject LRM (U+200E) or similar into filenames. The File System Access API
+    // rejects these with "Name is not allowed", and String.trim() does NOT strip
+    // them (they're formatting controls, not whitespace).
+    const BIDI_FORMAT = /[​-‏‪-‮⁠⁦-⁩﻿]/g;
+    function sanitize(name) {
+        return name.replace(BIDI_FORMAT, '').replace(INVALID_CHARS, '_').replace(/\.+$/, '').trim() || '_';
+    }
 
     async function getOrCreateDir(parentHandle, subPath) {
         const parts = subPath.split('/').filter(Boolean);

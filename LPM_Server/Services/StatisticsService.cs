@@ -76,10 +76,10 @@ public class StatisticsService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT AuditorId, SessionDate, SUM(LengthSeconds + AdminSeconds)
+                SELECT AuditorId, DATE(CreatedAt) AS d, SUM(LengthSeconds + AdminSeconds)
                 FROM sess_sessions
-                WHERE SessionDate >= @s AND SessionDate <= @e AND AuditorId IS NOT NULL
-                GROUP BY AuditorId, SessionDate";
+                WHERE DATE(CreatedAt) >= @s AND DATE(CreatedAt) <= @e AND AuditorId IS NOT NULL
+                GROUP BY AuditorId, DATE(CreatedAt)";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
             using var r = cmd.ExecuteReader();
@@ -98,12 +98,12 @@ public class StatisticsService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT cr.CsId, s.SessionDate, SUM(cr.ReviewLengthSeconds)
+                SELECT cr.CsId, DATE(cr.ReviewedAt) AS d, SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
-                WHERE s.SessionDate >= @s AND s.SessionDate <= @e
+                WHERE DATE(cr.ReviewedAt) >= @s AND DATE(cr.ReviewedAt) <= @e
                   AND s.AuditorId IS NULL
-                GROUP BY cr.CsId, s.SessionDate";
+                GROUP BY cr.CsId, DATE(cr.ReviewedAt)";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
             using var r = cmd.ExecuteReader();
@@ -259,10 +259,10 @@ public class StatisticsService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT SessionDate, SUM(LengthSeconds + AdminSeconds)
+                SELECT DATE(CreatedAt) AS d, SUM(LengthSeconds + AdminSeconds)
                 FROM sess_sessions
-                WHERE SessionDate >= @s AND SessionDate <= @e
-                GROUP BY SessionDate";
+                WHERE DATE(CreatedAt) >= @s AND DATE(CreatedAt) <= @e
+                GROUP BY DATE(CreatedAt)";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
             using var r = cmd.ExecuteReader();
@@ -277,12 +277,12 @@ public class StatisticsService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT s.SessionDate, SUM(cr.ReviewLengthSeconds)
+                SELECT DATE(cr.ReviewedAt) AS d, SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
-                WHERE s.SessionDate >= @s AND s.SessionDate <= @e
+                WHERE DATE(cr.ReviewedAt) >= @s AND DATE(cr.ReviewedAt) <= @e
                   AND s.AuditorId IS NULL
-                GROUP BY s.SessionDate";
+                GROUP BY DATE(cr.ReviewedAt)";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
             using var r = cmd.ExecuteReader();
@@ -379,7 +379,7 @@ public class StatisticsService
             cmd.CommandText = @"
                 SELECT COALESCE(SUM(LengthSeconds + AdminSeconds), 0)
                 FROM sess_sessions
-                WHERE SessionDate >= @s AND SessionDate <= @e";
+                WHERE DATE(CreatedAt) >= @s AND DATE(CreatedAt) <= @e";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
             totalSec = Convert.ToInt32(cmd.ExecuteScalar());
@@ -391,7 +391,7 @@ public class StatisticsService
                 SELECT COALESCE(SUM(cr.ReviewLengthSeconds), 0)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
-                WHERE s.SessionDate >= @s AND s.SessionDate <= @e
+                WHERE DATE(cr.ReviewedAt) >= @s AND DATE(cr.ReviewedAt) <= @e
                   AND s.AuditorId IS NULL";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
@@ -485,7 +485,7 @@ public class StatisticsService
                 FROM sess_sessions s
                 JOIN core_persons p ON p.PersonId = s.PcId
                 LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
-                WHERE s.SessionDate >= @s AND s.SessionDate <= @e
+                WHERE DATE(s.CreatedAt) >= @s AND DATE(s.CreatedAt) <= @e
                 GROUP BY COALESCE(og.Name, 'Unknown')
                 ORDER BY TotalSec DESC";
             cmd.Parameters.AddWithValue("@s", startStr);
@@ -545,7 +545,7 @@ public class StatisticsService
             cmd.CommandText = @"
                 SELECT AuditorId, SUM(LengthSeconds + AdminSeconds)
                 FROM sess_sessions
-                WHERE SessionDate >= @s AND SessionDate <= @e AND AuditorId IS NOT NULL
+                WHERE DATE(CreatedAt) >= @s AND DATE(CreatedAt) <= @e AND AuditorId IS NOT NULL
                 GROUP BY AuditorId";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
@@ -562,7 +562,7 @@ public class StatisticsService
                 SELECT cr.CsId, SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
-                WHERE s.SessionDate >= @s AND s.SessionDate <= @e
+                WHERE DATE(cr.ReviewedAt) >= @s AND DATE(cr.ReviewedAt) <= @e
                   AND s.AuditorId IS NULL
                 GROUP BY cr.CsId";
             cmd.Parameters.AddWithValue("@s", startStr);
@@ -644,10 +644,10 @@ public class StatisticsService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT SessionDate, SUM(LengthSeconds + AdminSeconds)
+                SELECT DATE(CreatedAt) AS d, SUM(LengthSeconds + AdminSeconds)
                 FROM sess_sessions
-                WHERE SessionDate >= @s AND SessionDate <= @e
-                GROUP BY SessionDate";
+                WHERE DATE(CreatedAt) >= @s AND DATE(CreatedAt) <= @e
+                GROUP BY DATE(CreatedAt)";
             cmd.Parameters.AddWithValue("@s", globalStart);
             cmd.Parameters.AddWithValue("@e", globalEnd);
             using var r = cmd.ExecuteReader();
@@ -658,12 +658,12 @@ public class StatisticsService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT s.SessionDate, SUM(cr.ReviewLengthSeconds)
+                SELECT DATE(cr.ReviewedAt) AS d, SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
-                WHERE s.SessionDate >= @s AND s.SessionDate <= @e
+                WHERE DATE(cr.ReviewedAt) >= @s AND DATE(cr.ReviewedAt) <= @e
                   AND s.AuditorId IS NULL
-                GROUP BY s.SessionDate";
+                GROUP BY DATE(cr.ReviewedAt)";
             cmd.Parameters.AddWithValue("@s", globalStart);
             cmd.Parameters.AddWithValue("@e", globalEnd);
             using var r = cmd.ExecuteReader();
@@ -786,7 +786,7 @@ public class StatisticsService
                 FROM sess_sessions s
                 JOIN core_persons p ON p.PersonId = s.PcId
                 LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
-                WHERE s.SessionDate >= @s AND s.SessionDate <= @e
+                WHERE DATE(s.CreatedAt) >= @s AND DATE(s.CreatedAt) <= @e
                 GROUP BY COALESCE(og.Name, 'Unknown')";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
