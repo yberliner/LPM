@@ -1084,6 +1084,26 @@ app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
     return Results.File(combined, "application/pdf", enableRangeProcessing: true);
 }).RequireAuthorization();
 
+// Per-cell breakdown for the Statistics page hover tooltip.
+// metric: "audit" | "csolo" | "effort"
+// staffId: PersonId of auditor / CS / effort-performer
+// start, end: "yyyy-MM-dd" (inclusive). For week view these are the 7-day range;
+//             month view is the full month; day view is the single day (start==end).
+app.MapGet("/api/stats-cell-detail", (string metric, int staffId, string start, string end,
+    LPM.Services.StatisticsService svc) =>
+{
+    if (!DateOnly.TryParse(start, out var s) || !DateOnly.TryParse(end, out var e))
+        return Results.BadRequest("Invalid start/end date");
+    return metric switch
+    {
+        "audit"  => Results.Json(svc.GetAuditDetail(staffId, s, e)),
+        "csolo"  => Results.Json(svc.GetSoloCsDetail(staffId, s, e)),
+        "cs"     => Results.Json(svc.GetCsDetail(staffId, s, e)),
+        "effort" => Results.Json(svc.GetEffortDetail(staffId, s, e)),
+        _        => Results.BadRequest("Unknown metric"),
+    };
+}).RequireAuthorization();
+
 app.MapGet("/api/pc-session-merged", (int pcId, string session, LPM.Services.FolderService folderSvc,
     LPM.Services.DashboardService dashSvc, HttpContext ctx, bool solo = false) =>
 {

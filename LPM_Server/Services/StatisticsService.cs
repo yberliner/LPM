@@ -4,14 +4,19 @@ using System.Globalization;
 
 namespace LPM.Services;
 
-public record StaffStatRow(int PersonId, string Name, int AuditSec, int SoloCsSec, int EffortSec = 0)
+public record StaffStatRow(int PersonId, string Name, int AuditSec, int SoloCsSec, int EffortSec = 0, int CsSec = 0)
 {
+    // Total intentionally excludes CsSec — CS (reviews on regular, non-solo sessions)
+    // is shown informationally in its own column but is not summed into the leaderboard total.
     public int TotalSec => AuditSec + SoloCsSec + EffortSec;
 }
 
 public record DayStat(DateOnly Date, List<StaffStatRow> Staff, int AcademyCount, int BodyInShop, int PcCount, int EffortSec = 0);
 
 public record OriginHours(string Origin, int Seconds);
+
+public record StatCellDetailItem(string PcName, string Date, int Seconds);
+public record StatCellDetail(List<StatCellDetailItem> Items, int TotalSec);
 
 public record WeekStatSummary(DateOnly WeekStart, int TotalAuditCsSec, int AcademyCount, int BodyInShop, int PcCount, int EffortSec = 0)
 {
@@ -76,10 +81,10 @@ public class StatisticsService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT AuditorId, DATE(CreatedAt) AS d, SUM(LengthSeconds + AdminSeconds)
+                SELECT AuditorId, DATE(CreatedAt, 'localtime') AS d, SUM(LengthSeconds + AdminSeconds)
                 FROM sess_sessions
-                WHERE DATE(CreatedAt) >= @s AND DATE(CreatedAt) <= @e AND AuditorId IS NOT NULL
-                GROUP BY AuditorId, DATE(CreatedAt)";
+                WHERE DATE(CreatedAt, 'localtime') >= @s AND DATE(CreatedAt, 'localtime') <= @e AND AuditorId IS NOT NULL
+                GROUP BY AuditorId, DATE(CreatedAt, 'localtime')";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
             using var r = cmd.ExecuteReader();
@@ -98,12 +103,12 @@ public class StatisticsService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT cr.CsId, DATE(cr.ReviewedAt) AS d, SUM(cr.ReviewLengthSeconds)
+                SELECT cr.CsId, DATE(cr.ReviewedAt, 'localtime') AS d, SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
-                WHERE DATE(cr.ReviewedAt) >= @s AND DATE(cr.ReviewedAt) <= @e
+                WHERE DATE(cr.ReviewedAt, 'localtime') >= @s AND DATE(cr.ReviewedAt, 'localtime') <= @e
                   AND s.AuditorId IS NULL
-                GROUP BY cr.CsId, DATE(cr.ReviewedAt)";
+                GROUP BY cr.CsId, DATE(cr.ReviewedAt, 'localtime')";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
             using var r = cmd.ExecuteReader();
@@ -113,6 +118,30 @@ public class StatisticsService
                 if (dayIdx < 0) continue;
                 var key = (r.GetInt32(0), dayIdx);
                 soloCsSecs[key] = soloCsSecs.GetValueOrDefault(key) + r.GetInt32(2);
+            }
+        }
+
+        // ── CS seconds per (csId, dayIndex) ──────────────────────────────────
+        // CS reviews on regular (non-solo) sessions — AuditorId IS NOT NULL
+        var csSecs = new Dictionary<(int pid, int day), int>();
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                SELECT cr.CsId, DATE(cr.ReviewedAt, 'localtime') AS d, SUM(cr.ReviewLengthSeconds)
+                FROM cs_reviews cr
+                JOIN sess_sessions s ON s.SessionId = cr.SessionId
+                WHERE DATE(cr.ReviewedAt, 'localtime') >= @s AND DATE(cr.ReviewedAt, 'localtime') <= @e
+                  AND s.AuditorId IS NOT NULL
+                GROUP BY cr.CsId, DATE(cr.ReviewedAt, 'localtime')";
+            cmd.Parameters.AddWithValue("@s", startStr);
+            cmd.Parameters.AddWithValue("@e", endStr);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                int dayIdx = dates.IndexOf(DateOnly.Parse(r.GetString(1)));
+                if (dayIdx < 0) continue;
+                var key = (r.GetInt32(0), dayIdx);
+                csSecs[key] = csSecs.GetValueOrDefault(key) + r.GetInt32(2);
             }
         }
 
@@ -212,6 +241,7 @@ public class StatisticsService
         var allPids = new HashSet<int>(auditorNames.Keys);
         foreach (var k in auditSecs.Keys)  allPids.Add(k.pid);
         foreach (var k in soloCsSecs.Keys) allPids.Add(k.pid);
+        foreach (var k in csSecs.Keys)     allPids.Add(k.pid);
         foreach (var k in effortSecs.Keys) allPids.Add(k.pid);
 
         return Enumerable.Range(0, 7).Select(dayIdx =>
@@ -221,9 +251,10 @@ public class StatisticsService
                 {
                     string name = auditorNames.TryGetValue(pid, out var n) ? n : $"Person {pid}";
                     int audit = auditSecs.GetValueOrDefault((pid, dayIdx));
-                    int cs    = soloCsSecs.GetValueOrDefault((pid, dayIdx));
+                    int solo  = soloCsSecs.GetValueOrDefault((pid, dayIdx));
+                    int cs    = csSecs.GetValueOrDefault((pid, dayIdx));
                     int eff   = effortSecs.GetValueOrDefault((pid, dayIdx));
-                    return new StaffStatRow(pid, name, audit, cs, eff);
+                    return new StaffStatRow(pid, name, audit, solo, eff, cs);
                 })
                 .Where(s => s.TotalSec > 0)
                 .OrderByDescending(s => s.TotalSec)
@@ -259,10 +290,10 @@ public class StatisticsService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT DATE(CreatedAt) AS d, SUM(LengthSeconds + AdminSeconds)
+                SELECT DATE(CreatedAt, 'localtime') AS d, SUM(LengthSeconds + AdminSeconds)
                 FROM sess_sessions
-                WHERE DATE(CreatedAt) >= @s AND DATE(CreatedAt) <= @e
-                GROUP BY DATE(CreatedAt)";
+                WHERE DATE(CreatedAt, 'localtime') >= @s AND DATE(CreatedAt, 'localtime') <= @e
+                GROUP BY DATE(CreatedAt, 'localtime')";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
             using var r = cmd.ExecuteReader();
@@ -277,12 +308,12 @@ public class StatisticsService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT DATE(cr.ReviewedAt) AS d, SUM(cr.ReviewLengthSeconds)
+                SELECT DATE(cr.ReviewedAt, 'localtime') AS d, SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
-                WHERE DATE(cr.ReviewedAt) >= @s AND DATE(cr.ReviewedAt) <= @e
+                WHERE DATE(cr.ReviewedAt, 'localtime') >= @s AND DATE(cr.ReviewedAt, 'localtime') <= @e
                   AND s.AuditorId IS NULL
-                GROUP BY DATE(cr.ReviewedAt)";
+                GROUP BY DATE(cr.ReviewedAt, 'localtime')";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
             using var r = cmd.ExecuteReader();
@@ -379,7 +410,7 @@ public class StatisticsService
             cmd.CommandText = @"
                 SELECT COALESCE(SUM(LengthSeconds + AdminSeconds), 0)
                 FROM sess_sessions
-                WHERE DATE(CreatedAt) >= @s AND DATE(CreatedAt) <= @e";
+                WHERE DATE(CreatedAt, 'localtime') >= @s AND DATE(CreatedAt, 'localtime') <= @e";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
             totalSec = Convert.ToInt32(cmd.ExecuteScalar());
@@ -391,7 +422,7 @@ public class StatisticsService
                 SELECT COALESCE(SUM(cr.ReviewLengthSeconds), 0)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
-                WHERE DATE(cr.ReviewedAt) >= @s AND DATE(cr.ReviewedAt) <= @e
+                WHERE DATE(cr.ReviewedAt, 'localtime') >= @s AND DATE(cr.ReviewedAt, 'localtime') <= @e
                   AND s.AuditorId IS NULL";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
@@ -485,7 +516,7 @@ public class StatisticsService
                 FROM sess_sessions s
                 JOIN core_persons p ON p.PersonId = s.PcId
                 LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
-                WHERE DATE(s.CreatedAt) >= @s AND DATE(s.CreatedAt) <= @e
+                WHERE DATE(s.CreatedAt, 'localtime') >= @s AND DATE(s.CreatedAt, 'localtime') <= @e
                 GROUP BY COALESCE(og.Name, 'Unknown')
                 ORDER BY TotalSec DESC";
             cmd.Parameters.AddWithValue("@s", startStr);
@@ -545,7 +576,7 @@ public class StatisticsService
             cmd.CommandText = @"
                 SELECT AuditorId, SUM(LengthSeconds + AdminSeconds)
                 FROM sess_sessions
-                WHERE DATE(CreatedAt) >= @s AND DATE(CreatedAt) <= @e AND AuditorId IS NOT NULL
+                WHERE DATE(CreatedAt, 'localtime') >= @s AND DATE(CreatedAt, 'localtime') <= @e AND AuditorId IS NOT NULL
                 GROUP BY AuditorId";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
@@ -562,7 +593,7 @@ public class StatisticsService
                 SELECT cr.CsId, SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
-                WHERE DATE(cr.ReviewedAt) >= @s AND DATE(cr.ReviewedAt) <= @e
+                WHERE DATE(cr.ReviewedAt, 'localtime') >= @s AND DATE(cr.ReviewedAt, 'localtime') <= @e
                   AND s.AuditorId IS NULL
                 GROUP BY cr.CsId";
             cmd.Parameters.AddWithValue("@s", startStr);
@@ -570,6 +601,24 @@ public class StatisticsService
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 soloCsSecs[r.GetInt32(0)] = r.GetInt32(1);
+        }
+
+        // CS seconds per csId (CS reviews on regular sessions where AuditorId IS NOT NULL)
+        var csSecs = new Dictionary<int, int>();
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT cr.CsId, SUM(cr.ReviewLengthSeconds)
+                FROM cs_reviews cr
+                JOIN sess_sessions s ON s.SessionId = cr.SessionId
+                WHERE DATE(cr.ReviewedAt, 'localtime') >= @s AND DATE(cr.ReviewedAt, 'localtime') <= @e
+                  AND s.AuditorId IS NOT NULL
+                GROUP BY cr.CsId";
+            cmd.Parameters.AddWithValue("@s", startStr);
+            cmd.Parameters.AddWithValue("@e", endStr);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                csSecs[r.GetInt32(0)] = r.GetInt32(1);
         }
 
         // Effort seconds per PersonId
@@ -592,6 +641,7 @@ public class StatisticsService
         var allPids = new HashSet<int>(auditorNames.Keys);
         foreach (var k in auditSecs.Keys)  allPids.Add(k);
         foreach (var k in soloCsSecs.Keys) allPids.Add(k);
+        foreach (var k in csSecs.Keys)     allPids.Add(k);
         foreach (var k in effortSecs.Keys) allPids.Add(k);
 
         return allPids
@@ -599,9 +649,10 @@ public class StatisticsService
             {
                 string name = auditorNames.TryGetValue(pid, out var n) ? n : $"Person {pid}";
                 int audit  = auditSecs.GetValueOrDefault(pid);
-                int cs     = soloCsSecs.GetValueOrDefault(pid);
+                int solo   = soloCsSecs.GetValueOrDefault(pid);
+                int cs     = csSecs.GetValueOrDefault(pid);
                 int effort = effortSecs.GetValueOrDefault(pid);
-                return new StaffStatRow(pid, name, audit, cs, effort);
+                return new StaffStatRow(pid, name, audit, solo, effort, cs);
             })
             .Where(s => s.TotalSec > 0)
             .OrderByDescending(s => s.TotalSec)
@@ -644,10 +695,10 @@ public class StatisticsService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT DATE(CreatedAt) AS d, SUM(LengthSeconds + AdminSeconds)
+                SELECT DATE(CreatedAt, 'localtime') AS d, SUM(LengthSeconds + AdminSeconds)
                 FROM sess_sessions
-                WHERE DATE(CreatedAt) >= @s AND DATE(CreatedAt) <= @e
-                GROUP BY DATE(CreatedAt)";
+                WHERE DATE(CreatedAt, 'localtime') >= @s AND DATE(CreatedAt, 'localtime') <= @e
+                GROUP BY DATE(CreatedAt, 'localtime')";
             cmd.Parameters.AddWithValue("@s", globalStart);
             cmd.Parameters.AddWithValue("@e", globalEnd);
             using var r = cmd.ExecuteReader();
@@ -658,12 +709,12 @@ public class StatisticsService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-                SELECT DATE(cr.ReviewedAt) AS d, SUM(cr.ReviewLengthSeconds)
+                SELECT DATE(cr.ReviewedAt, 'localtime') AS d, SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
-                WHERE DATE(cr.ReviewedAt) >= @s AND DATE(cr.ReviewedAt) <= @e
+                WHERE DATE(cr.ReviewedAt, 'localtime') >= @s AND DATE(cr.ReviewedAt, 'localtime') <= @e
                   AND s.AuditorId IS NULL
-                GROUP BY DATE(cr.ReviewedAt)";
+                GROUP BY DATE(cr.ReviewedAt, 'localtime')";
             cmd.Parameters.AddWithValue("@s", globalStart);
             cmd.Parameters.AddWithValue("@e", globalEnd);
             using var r = cmd.ExecuteReader();
@@ -786,7 +837,7 @@ public class StatisticsService
                 FROM sess_sessions s
                 JOIN core_persons p ON p.PersonId = s.PcId
                 LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
-                WHERE DATE(s.CreatedAt) >= @s AND DATE(s.CreatedAt) <= @e
+                WHERE DATE(s.CreatedAt, 'localtime') >= @s AND DATE(s.CreatedAt, 'localtime') <= @e
                 GROUP BY COALESCE(og.Name, 'Unknown')";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
@@ -810,5 +861,139 @@ public class StatisticsService
             list.Add(new OriginHours("Unassigned", effortSec));
 
         return list.OrderByDescending(o => o.Seconds).ToList();
+    }
+
+    // ── Per-cell detail breakdowns (for Statistics hover tooltip) ───────────
+    // Each method mirrors the corresponding aggregate query: audit buckets by
+    // DATE(CreatedAt, 'localtime'), csolo by DATE(ReviewedAt), effort by EffortDate — so the
+    // sum of returned items equals the cell value shown in the UI.
+
+    public StatCellDetail GetAuditDetail(int auditorId, DateOnly start, DateOnly end)
+    {
+        var startStr = start.ToString("yyyy-MM-dd");
+        var endStr   = end.ToString("yyyy-MM-dd");
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT COALESCE(TRIM(p.FirstName || ' ' || p.LastName), 'Unknown') AS pcName,
+                   DATE(s.CreatedAt, 'localtime') AS d,
+                   s.LengthSeconds + s.AdminSeconds AS sec
+            FROM sess_sessions s
+            LEFT JOIN core_persons p ON p.PersonId = s.PcId
+            WHERE s.AuditorId = @aid
+              AND DATE(s.CreatedAt, 'localtime') >= @s AND DATE(s.CreatedAt, 'localtime') <= @e
+            ORDER BY DATE(s.CreatedAt, 'localtime') DESC, s.CreatedAt DESC";
+        cmd.Parameters.AddWithValue("@aid", auditorId);
+        cmd.Parameters.AddWithValue("@s", startStr);
+        cmd.Parameters.AddWithValue("@e", endStr);
+        var items = new List<StatCellDetailItem>();
+        int total = 0;
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            int sec = r.GetInt32(2);
+            items.Add(new StatCellDetailItem(r.GetString(0), r.GetString(1), sec));
+            total += sec;
+        }
+        return new StatCellDetail(items, total);
+    }
+
+    public StatCellDetail GetSoloCsDetail(int csId, DateOnly start, DateOnly end)
+    {
+        var startStr = start.ToString("yyyy-MM-dd");
+        var endStr   = end.ToString("yyyy-MM-dd");
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT COALESCE(TRIM(p.FirstName || ' ' || p.LastName), 'Unknown') AS pcName,
+                   DATE(cr.ReviewedAt, 'localtime') AS d,
+                   cr.ReviewLengthSeconds AS sec
+            FROM cs_reviews cr
+            JOIN sess_sessions s ON s.SessionId = cr.SessionId
+            LEFT JOIN core_persons p ON p.PersonId = s.PcId
+            WHERE cr.CsId = @cid
+              AND DATE(cr.ReviewedAt, 'localtime') >= @s AND DATE(cr.ReviewedAt, 'localtime') <= @e
+              AND s.AuditorId IS NULL
+            ORDER BY DATE(cr.ReviewedAt, 'localtime') DESC, cr.ReviewedAt DESC";
+        cmd.Parameters.AddWithValue("@cid", csId);
+        cmd.Parameters.AddWithValue("@s", startStr);
+        cmd.Parameters.AddWithValue("@e", endStr);
+        var items = new List<StatCellDetailItem>();
+        int total = 0;
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            int sec = r.GetInt32(2);
+            items.Add(new StatCellDetailItem(r.GetString(0), r.GetString(1), sec));
+            total += sec;
+        }
+        return new StatCellDetail(items, total);
+    }
+
+    public StatCellDetail GetCsDetail(int csId, DateOnly start, DateOnly end)
+    {
+        var startStr = start.ToString("yyyy-MM-dd");
+        var endStr   = end.ToString("yyyy-MM-dd");
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT COALESCE(TRIM(p.FirstName || ' ' || p.LastName), 'Unknown') AS pcName,
+                   DATE(cr.ReviewedAt, 'localtime') AS d,
+                   cr.ReviewLengthSeconds AS sec
+            FROM cs_reviews cr
+            JOIN sess_sessions s ON s.SessionId = cr.SessionId
+            LEFT JOIN core_persons p ON p.PersonId = s.PcId
+            WHERE cr.CsId = @cid
+              AND DATE(cr.ReviewedAt, 'localtime') >= @s AND DATE(cr.ReviewedAt, 'localtime') <= @e
+              AND s.AuditorId IS NOT NULL
+            ORDER BY DATE(cr.ReviewedAt, 'localtime') DESC, cr.ReviewedAt DESC";
+        cmd.Parameters.AddWithValue("@cid", csId);
+        cmd.Parameters.AddWithValue("@s", startStr);
+        cmd.Parameters.AddWithValue("@e", endStr);
+        var items = new List<StatCellDetailItem>();
+        int total = 0;
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            int sec = r.GetInt32(2);
+            items.Add(new StatCellDetailItem(r.GetString(0), r.GetString(1), sec));
+            total += sec;
+        }
+        return new StatCellDetail(items, total);
+    }
+
+    public StatCellDetail GetEffortDetail(int personId, DateOnly start, DateOnly end)
+    {
+        var startStr = start.ToString("yyyy-MM-dd");
+        var endStr   = end.ToString("yyyy-MM-dd");
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT COALESCE(TRIM(p.FirstName || ' ' || p.LastName), 'Unknown') AS pcName,
+                   ee.EffortDate AS d,
+                   ee.LengthSeconds AS sec
+            FROM sys_effort_entries ee
+            JOIN core_users u ON u.Id = ee.PerformedByUserId
+            LEFT JOIN core_persons p ON p.PersonId = ee.PcId
+            WHERE u.PersonId = @pid
+              AND ee.EffortDate >= @s AND ee.EffortDate <= @e
+            ORDER BY ee.EffortDate DESC, ee.CreatedAt DESC";
+        cmd.Parameters.AddWithValue("@pid", personId);
+        cmd.Parameters.AddWithValue("@s", startStr);
+        cmd.Parameters.AddWithValue("@e", endStr);
+        var items = new List<StatCellDetailItem>();
+        int total = 0;
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            int sec = r.GetInt32(2);
+            items.Add(new StatCellDetailItem(r.GetString(0), r.GetString(1), sec));
+            total += sec;
+        }
+        return new StatCellDetail(items, total);
     }
 }

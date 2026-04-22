@@ -9,6 +9,193 @@
 @inject IJSRuntime JS
 
 <style>
+    /* ── Per-cell hover breakdown tooltip (audit / csolo / effort) ─────── */
+    .stat-cell { cursor: pointer; position: relative; transition: background 140ms ease, box-shadow 140ms ease; }
+    .stat-cell:has(.badge):hover { background: rgba(99,102,241,0.08); }
+    .stat-cell-active { background: rgba(99,102,241,0.14) !important; box-shadow: inset 0 0 0 1px rgba(99,102,241,0.35); }
+
+    .stat-tooltip {
+        position: fixed;
+        z-index: 10050;
+        width: min(520px, calc(100vw - 24px));
+        max-height: 70vh;
+        background: #ffffff;
+        border-radius: 14px;
+        box-shadow: 0 24px 60px rgba(17,24,39,0.22), 0 2px 6px rgba(17,24,39,0.08), 0 0 0 1px rgba(17,24,39,0.05);
+        opacity: 0;
+        transform: translateY(10px) scale(0.96);
+        transform-origin: 50% 0%;
+        transition: opacity 200ms cubic-bezier(.2,.9,.25,1.0), transform 220ms cubic-bezier(.2,.9,.25,1.0);
+        pointer-events: auto;
+        overflow: visible;
+        --stat-tip-arrow-x: 50%;
+    }
+    .stat-tooltip.stat-tooltip-above { transform-origin: 50% 100%; transform: translateY(-10px) scale(0.96); }
+    .stat-tooltip.stat-tooltip-show { opacity: 1; transform: translateY(0) scale(1); }
+    .stat-tooltip.stat-tooltip-hide {
+        transition: opacity 140ms ease-in, transform 140ms ease-in;
+        opacity: 0;
+        transform: translateY(4px) scale(0.985);
+        pointer-events: none;
+    }
+    /* Arrow/caret pointing at the cell */
+    .stat-tooltip::before {
+        content: "";
+        position: absolute;
+        left: var(--stat-tip-arrow-x);
+        width: 14px; height: 14px;
+        background: #fff;
+        transform: translateX(-50%) rotate(45deg);
+        box-shadow: -1px -1px 0 0 rgba(17,24,39,0.05);
+    }
+    .stat-tooltip.stat-tooltip-below::before { top: -6px; }
+    .stat-tooltip.stat-tooltip-above::before { bottom: -6px; box-shadow: 1px 1px 0 0 rgba(17,24,39,0.05); }
+
+    .stat-tooltip-inner { display: flex; flex-direction: column; max-height: 70vh; overflow: hidden; border-radius: 14px; }
+    .stat-tooltip-header {
+        padding: 14px 18px 12px;
+        color: #fff;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 14px 14px 0 0;
+    }
+    .stat-tooltip-header.stat-chip-audit  { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); }
+    .stat-tooltip-header.stat-chip-csolo  { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+    .stat-tooltip-header.stat-chip-cs     { background: linear-gradient(135deg, #ec4899 0%, #be185d 100%); }
+    .stat-tooltip-header.stat-chip-effort { background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); }
+    .stat-tooltip-header.stat-chip-total  { background: linear-gradient(135deg, #4338ca 0%, #6366f1 50%, #a855f7 100%); }
+
+    /* Total-cell formula layout */
+    .stat-formula { padding: 14px 18px 6px; display: flex; flex-direction: column; gap: 8px; }
+    .stat-formula-row {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 9px 12px; border-radius: 9px;
+        background: #f9fafb; border: 1px solid #eef2f7;
+        animation: statFormulaRowIn 320ms cubic-bezier(.2,.9,.25,1.0) both;
+    }
+    .stat-formula-row.fr-audit  { background: linear-gradient(90deg, #eff6ff 0%, #ffffff 100%); border-color: #dbeafe; }
+    .stat-formula-row.fr-csolo  { background: linear-gradient(90deg, #fff7ed 0%, #ffffff 100%); border-color: #fed7aa; }
+    .stat-formula-row.fr-cs     { background: linear-gradient(90deg, #fdf2f8 0%, #ffffff 100%); border-color: #fbcfe8; opacity: 0.88; }
+    .stat-formula-row.fr-effort { background: linear-gradient(90deg, #ecfeff 0%, #ffffff 100%); border-color: #a5f3fc; }
+    .stat-formula-row:nth-child(1) { animation-delay: 40ms; }
+    .stat-formula-row:nth-child(2) { animation-delay: 100ms; }
+    .stat-formula-row:nth-child(3) { animation-delay: 160ms; }
+    .stat-formula-row:nth-child(4) { animation-delay: 220ms; }
+    .stat-formula-label {
+        display: flex; align-items: center; gap: 8px;
+        font-weight: 600; font-size: 0.88rem; color: #111827;
+    }
+    .stat-formula-dot {
+        width: 10px; height: 10px; border-radius: 50%;
+        box-shadow: 0 0 0 2px rgba(255,255,255,0.8);
+    }
+    .stat-formula-dot.d-audit  { background: #2563eb; }
+    .stat-formula-dot.d-csolo  { background: #d97706; }
+    .stat-formula-dot.d-cs     { background: #ec4899; }
+    .stat-formula-dot.d-effort { background: #0891b2; }
+    .stat-formula-op { font-size: 0.78rem; color: #6b7280; font-weight: 700; margin-left: 4px; }
+    .stat-formula-op.op-plus { color: #16a34a; }
+    .stat-formula-op.op-excl { color: #9ca3af; font-style: italic; }
+    .stat-formula-value {
+        font-weight: 800; color: #111827; font-variant-numeric: tabular-nums;
+        font-size: 0.95rem; white-space: nowrap;
+    }
+    .stat-formula-note { font-size: 0.72rem; color: #9ca3af; margin-left: 8px; font-weight: 500; }
+    .stat-formula-row.fr-cs .stat-formula-value { color: #9ca3af; text-decoration: line-through; }
+
+    .stat-formula-divider {
+        height: 2px;
+        background: linear-gradient(90deg, transparent 0%, #e5e7eb 20%, #e5e7eb 80%, transparent 100%);
+        margin: 6px 4px 2px;
+        animation: statFormulaDividerIn 360ms cubic-bezier(.2,.9,.25,1.0) 240ms both;
+    }
+    .stat-formula-sum {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 12px 14px; margin: 0 0 10px;
+        border-radius: 11px;
+        background: linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(168,85,247,0.14) 100%);
+        border: 1.5px solid rgba(99,102,241,0.3);
+        animation: statFormulaSumIn 420ms cubic-bezier(.2,.9,.25,1.0) 320ms both;
+    }
+    .stat-formula-sum-label { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #4338ca; }
+    .stat-formula-sum-value {
+        font-size: 1.3rem; font-weight: 900; color: #312e81;
+        font-variant-numeric: tabular-nums;
+        text-shadow: 0 1px 0 rgba(255,255,255,0.6);
+    }
+    @@keyframes statFormulaRowIn {
+        from { opacity: 0; transform: translateX(-14px); }
+        to   { opacity: 1; transform: translateX(0); }
+    }
+    @@keyframes statFormulaDividerIn {
+        from { opacity: 0; transform: scaleX(0.3); }
+        to   { opacity: 1; transform: scaleX(1); }
+    }
+    @@keyframes statFormulaSumIn {
+        from { opacity: 0; transform: translateY(10px) scale(0.94); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .stat-tooltip-title { font-size: 0.95rem; font-weight: 700; letter-spacing: 0.01em; }
+    .stat-tooltip-subtitle { font-size: 0.78rem; opacity: 0.92; margin-top: 2px; }
+
+    .stat-tooltip-body { overflow-y: auto; flex: 1 1 auto; padding: 0; background: #ffffff; }
+    .stat-tooltip-loading,
+    .stat-tooltip-error,
+    .stat-tt-empty { padding: 22px 18px; text-align: center; color: #6b7280; font-size: 0.88rem; }
+    .stat-tooltip-error { color: #dc2626; }
+
+    .stat-tooltip-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .stat-tooltip-table thead th {
+        position: sticky; top: 0; z-index: 1;
+        background: #f9fafb;
+        font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase;
+        color: #6b7280; font-weight: 700;
+        padding: 9px 10px; border-bottom: 1px solid #e5e7eb; text-align: left;
+    }
+    .stat-tooltip-table tbody td {
+        padding: 9px 10px; border-bottom: 1px solid #f3f4f6; vertical-align: middle;
+    }
+    .stat-tooltip-table tbody tr {
+        animation: statTtRowIn 280ms cubic-bezier(.2,.9,.25,1.0) both;
+    }
+    .stat-tooltip-table tbody tr:nth-child(1)  { animation-delay: 20ms; }
+    .stat-tooltip-table tbody tr:nth-child(2)  { animation-delay: 40ms; }
+    .stat-tooltip-table tbody tr:nth-child(3)  { animation-delay: 60ms; }
+    .stat-tooltip-table tbody tr:nth-child(4)  { animation-delay: 80ms; }
+    .stat-tooltip-table tbody tr:nth-child(5)  { animation-delay: 100ms; }
+    .stat-tooltip-table tbody tr:nth-child(6)  { animation-delay: 120ms; }
+    .stat-tooltip-table tbody tr:nth-child(7)  { animation-delay: 140ms; }
+    .stat-tooltip-table tbody tr:nth-child(8)  { animation-delay: 160ms; }
+    .stat-tooltip-table tbody tr:nth-child(n+9) { animation-delay: 180ms; }
+    .stat-tooltip-table tbody tr:hover { background: #f9fafb; }
+    .stat-tt-idx  { width: 36px; color: #9ca3af; font-variant-numeric: tabular-nums; text-align: right; }
+    .stat-tt-pc   { font-weight: 600; color: #111827; }
+    .stat-tt-date { width: 92px; color: #6b7280; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .stat-tt-dur  {
+        width: 108px; text-align: right; font-weight: 700; color: #111827;
+        font-variant-numeric: tabular-nums; white-space: nowrap;
+    }
+    @@keyframes statTtRowIn {
+        from { opacity: 0; transform: translateY(6px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .stat-tooltip-footer {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 11px 18px;
+        border-top: 1px solid #e5e7eb;
+        background: #f9fafb;
+        border-radius: 0 0 14px 14px;
+    }
+    .stat-tt-count { font-size: 0.8rem; color: #6b7280; }
+    .stat-tt-sum   { font-size: 1rem; font-weight: 800; color: #111827; font-variant-numeric: tabular-nums; }
+
+    @@media (max-width: 540px) {
+        .stat-tooltip { width: min(520px, calc(100vw - 16px)); }
+        .stat-tooltip-header { padding: 12px 14px 10px; }
+        .stat-tooltip-footer { padding: 10px 14px; }
+        .stat-tt-date { width: 76px; font-size: 0.78rem; }
+    }
+
     .stat-card-gradient-purple { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
 
     .stat-card-gradient-dark   { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); }
@@ -32,6 +219,7 @@
     .badge-time  { background: #e8f0fe; color: #1a73e8; font-size: 0.82rem; font-weight: 600; }
     .badge-green { background: #e6f4ea; color: #1e8e3e; font-size: 0.82rem; font-weight: 600; }
     .badge-orange { background: #fff3e0; color: #e65100; font-size: 0.82rem; font-weight: 600; }
+    .badge-cs     { background: #fce7f3; color: #9d174d; font-size: 0.82rem; font-weight: 600; border: 1px solid #f9a8d4; }
     .day-tab-btn { border-radius: 20px !important; font-size: 0.82rem; padding: 5px 12px; }
     /* ── Avatar hover popup ── */
     .name-pill { transition: transform 0.18s ease, filter 0.18s ease; }
@@ -192,6 +380,7 @@
                                         <th class="ps-3 fw-semibold">@LS.T("stats.staffMember")</th>
                                         <th class="text-center fw-semibold">@LS.T("stats.auditing")</th>
                                         <th class="text-center fw-semibold">@LS.T("stats.csSolo")</th>
+                                        <th class="text-center fw-semibold">CS</th>
                                         <th class="text-center fw-semibold">Extra Effort</th>
                                         <th class="text-center fw-semibold pe-3">@LS.T("stats.total")</th>
                                     </tr>
@@ -224,22 +413,27 @@
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td class="text-center align-middle">
+                                            <td class="text-center align-middle stat-cell" data-stat-metric="audit" data-stat-staff-id="@s.PersonId" data-stat-staff-name="@s.Name" data-stat-start="@_weekStart.ToString("yyyy-MM-dd")" data-stat-end="@_weekStart.AddDays(6).ToString("yyyy-MM-dd")">
                                                 @if (s.AuditSec > 0)
                                                 { <span class="badge rounded-pill badge-time">@Fmt(s.AuditSec)</span> }
                                                 else { <span class="text-muted small">–</span> }
                                             </td>
-                                            <td class="text-center align-middle">
+                                            <td class="text-center align-middle stat-cell" data-stat-metric="csolo" data-stat-staff-id="@s.PersonId" data-stat-staff-name="@s.Name" data-stat-start="@_weekStart.ToString("yyyy-MM-dd")" data-stat-end="@_weekStart.AddDays(6).ToString("yyyy-MM-dd")">
                                                 @if (s.SoloCsSec > 0)
                                                 { <span class="badge rounded-pill badge-orange">@Fmt(s.SoloCsSec)</span> }
                                                 else { <span class="text-muted small">–</span> }
                                             </td>
-                                            <td class="text-center align-middle">
+                                            <td class="text-center align-middle stat-cell" data-stat-metric="cs" data-stat-staff-id="@s.PersonId" data-stat-staff-name="@s.Name" data-stat-start="@_weekStart.ToString("yyyy-MM-dd")" data-stat-end="@_weekStart.AddDays(6).ToString("yyyy-MM-dd")">
+                                                @if (s.CsSec > 0)
+                                                { <span class="badge rounded-pill badge-cs">@Fmt(s.CsSec)</span> }
+                                                else { <span class="text-muted small">–</span> }
+                                            </td>
+                                            <td class="text-center align-middle stat-cell" data-stat-metric="effort" data-stat-staff-id="@s.PersonId" data-stat-staff-name="@s.Name" data-stat-start="@_weekStart.ToString("yyyy-MM-dd")" data-stat-end="@_weekStart.AddDays(6).ToString("yyyy-MM-dd")">
                                                 @if (s.EffortSec > 0)
                                                 { <span class="badge rounded-pill" style="background:#cffafe;color:#0e7490;border:1px solid #06b6d4;">@Fmt(s.EffortSec)</span> }
                                                 else { <span class="text-muted small">–</span> }
                                             </td>
-                                            <td class="text-center align-middle pe-3">
+                                            <td class="text-center align-middle pe-3 stat-cell" data-stat-metric="total" data-stat-staff-name="@s.Name" data-stat-audit="@s.AuditSec" data-stat-csolo="@s.SoloCsSec" data-stat-cs="@s.CsSec" data-stat-effort="@s.EffortSec" data-stat-total="@s.TotalSec">
                                                 <span class="fw-bold">@Fmt(s.TotalSec)</span>
                                             </td>
                                         </tr>
@@ -289,6 +483,7 @@
                                         <th class="ps-3 fw-semibold">@LS.T("stats.staffMember")</th>
                                         <th class="text-center fw-semibold">@LS.T("stats.auditing")</th>
                                         <th class="text-center fw-semibold">@LS.T("stats.csSolo")</th>
+                                        <th class="text-center fw-semibold">CS</th>
                                         <th class="text-center fw-semibold">Extra Effort</th>
                                         <th class="text-center fw-semibold pe-3">@LS.T("stats.total")</th>
                                     </tr>
@@ -321,22 +516,27 @@
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td class="text-center align-middle">
+                                            <td class="text-center align-middle stat-cell" data-stat-metric="audit" data-stat-staff-id="@ms.PersonId" data-stat-staff-name="@ms.Name" data-stat-start="@_monthStart.ToString("yyyy-MM-dd")" data-stat-end="@_monthEnd.ToString("yyyy-MM-dd")">
                                                 @if (ms.AuditSec > 0)
                                                 { <span class="badge rounded-pill badge-time">@Fmt(ms.AuditSec)</span> }
                                                 else { <span class="text-muted small">–</span> }
                                             </td>
-                                            <td class="text-center align-middle">
+                                            <td class="text-center align-middle stat-cell" data-stat-metric="csolo" data-stat-staff-id="@ms.PersonId" data-stat-staff-name="@ms.Name" data-stat-start="@_monthStart.ToString("yyyy-MM-dd")" data-stat-end="@_monthEnd.ToString("yyyy-MM-dd")">
                                                 @if (ms.SoloCsSec > 0)
                                                 { <span class="badge rounded-pill badge-orange">@Fmt(ms.SoloCsSec)</span> }
                                                 else { <span class="text-muted small">–</span> }
                                             </td>
-                                            <td class="text-center align-middle">
+                                            <td class="text-center align-middle stat-cell" data-stat-metric="cs" data-stat-staff-id="@ms.PersonId" data-stat-staff-name="@ms.Name" data-stat-start="@_monthStart.ToString("yyyy-MM-dd")" data-stat-end="@_monthEnd.ToString("yyyy-MM-dd")">
+                                                @if (ms.CsSec > 0)
+                                                { <span class="badge rounded-pill badge-cs">@Fmt(ms.CsSec)</span> }
+                                                else { <span class="text-muted small">–</span> }
+                                            </td>
+                                            <td class="text-center align-middle stat-cell" data-stat-metric="effort" data-stat-staff-id="@ms.PersonId" data-stat-staff-name="@ms.Name" data-stat-start="@_monthStart.ToString("yyyy-MM-dd")" data-stat-end="@_monthEnd.ToString("yyyy-MM-dd")">
                                                 @if (ms.EffortSec > 0)
                                                 { <span class="badge rounded-pill" style="background:#cffafe;color:#0e7490;border:1px solid #06b6d4;">@Fmt(ms.EffortSec)</span> }
                                                 else { <span class="text-muted small">–</span> }
                                             </td>
-                                            <td class="text-center align-middle pe-3">
+                                            <td class="text-center align-middle pe-3 stat-cell" data-stat-metric="total" data-stat-staff-name="@ms.Name" data-stat-audit="@ms.AuditSec" data-stat-csolo="@ms.SoloCsSec" data-stat-cs="@ms.CsSec" data-stat-effort="@ms.EffortSec" data-stat-total="@ms.TotalSec">
                                                 <span class="fw-bold" style="color:#4338ca;">@Fmt(ms.TotalSec)</span>
                                             </td>
                                         </tr>
@@ -862,7 +1062,7 @@
         _dayStats
             .SelectMany(d => d.Staff)
             .GroupBy(s => s.PersonId)
-            .Select(g => new StaffStatRow(g.Key, g.First().Name, g.Sum(x => x.AuditSec), g.Sum(x => x.SoloCsSec), g.Sum(x => x.EffortSec)))
+            .Select(g => new StaffStatRow(g.Key, g.First().Name, g.Sum(x => x.AuditSec), g.Sum(x => x.SoloCsSec), g.Sum(x => x.EffortSec), g.Sum(x => x.CsSec)))
             .Where(s => s.TotalSec > 0)
             .OrderByDescending(s => s.TotalSec)
             .ToList();

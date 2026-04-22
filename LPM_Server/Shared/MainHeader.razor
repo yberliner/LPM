@@ -10327,7 +10327,7 @@ string _actionPcSearch = "";
         // Week leaderboard — aggregate dayStats by person
         var weekStaff = dayStats.SelectMany(d => d.Staff)
             .GroupBy(s => s.PersonId)
-            .Select(g => new StaffStatRow(g.Key, g.First().Name, g.Sum(x => x.AuditSec), g.Sum(x => x.SoloCsSec), g.Sum(x => x.EffortSec)))
+            .Select(g => new StaffStatRow(g.Key, g.First().Name, g.Sum(x => x.AuditSec), g.Sum(x => x.SoloCsSec), g.Sum(x => x.EffortSec), g.Sum(x => x.CsSec)))
             .Where(s => s.TotalSec > 0)
             .OrderByDescending(s => s.TotalSec)
             .ToList();
