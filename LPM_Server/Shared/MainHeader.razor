@@ -5980,7 +5980,11 @@
         transition: opacity .15s; cursor: grab;
     }
     .stat-user-btn:hover .stat-drag-grip { opacity: .7; }
-    .stat-user-btn[draggable="true"] { cursor: grab; }
+    .stat-user-btn[draggable="true"] {
+        cursor: grab;
+        -webkit-user-select: none; user-select: none;
+        -webkit-touch-callout: none;
+    }
     .stat-user-btn[draggable="true"]:active { cursor: grabbing; }
 
     .stat-viewer {
