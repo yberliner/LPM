@@ -44,11 +44,11 @@
                             @foreach (var cur in new[] { "ILS", "EUR", "USD" })
                             {
                                 var selected = _currency == cur;
-                                var disabled = _isEdit;
+                                var disabled = _isEdit && !_canChangeCurrency;
                                 <button type="button" class="wallet-cur-btn @(selected ? "wallet-cur-active" : "")"
                                         disabled="@disabled"
                                         style="--cur-color:@CurrencyColor(cur);"
-                                        @onclick="() => { if (!_isEdit) _currency = cur; }">
+                                        @onclick="() => SelectCurrency(cur)">
                                     <span class="wallet-cur-sym">@CurrencySymbol(cur)</span>
                                     <span class="wallet-cur-code">@cur</span>
                                 </button>
@@ -56,8 +56,79 @@
                         </div>
                         @if (_isEdit)
                         {
-                            <div class="text-muted" style="font-size:.72rem; margin-top:4px;">
-                                <i class="ri-lock-line me-1"></i>Currency cannot be changed after creation.
+                            var chargedCount = _references.Count(r => r.HasCharge);
+                            var zeroCount    = _references.Count - chargedCount;
+                            <div class="wallet-lock-wrap" tabindex="0">
+                                @if (_canChangeCurrency)
+                                {
+                                    <span class="wallet-lock-pill wallet-lock-ok">
+                                        <i class="ri-lock-unlock-line me-1"></i>Currency can be changed
+                                        @if (_references.Count > 0)
+                                        {
+                                            <span class="wallet-lock-sub">— @_references.Count reference@(_references.Count==1?"":"s"), none charged</span>
+                                        }
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="wallet-lock-pill wallet-lock-locked">
+                                        <i class="ri-lock-line me-1"></i>Currency locked — @chargedCount charged row@(chargedCount==1?"":"s")
+                                    </span>
+                                }
+
+                                @if (_references.Count > 0)
+                                {
+                                    <div class="wallet-lock-card">
+                                        <div class="wallet-lock-card-head">
+                                            @if (_canChangeCurrency) { <text>No monetary effect yet. These rows still block physical delete:</text> }
+                                            else                     { <text>Why this is locked</text> }
+                                        </div>
+                                        @{
+                                            var groups = _references
+                                                .GroupBy(r => r.Table)
+                                                .OrderBy(g => g.Key switch { "Purchases"=>0, "Sessions"=>1, "CsReviews"=>2, _=>3 });
+                                        }
+                                        @foreach (var g in groups)
+                                        {
+                                            var icon = g.Key switch
+                                            {
+                                                "Purchases" => "ri-shopping-bag-3-line",
+                                                "Sessions"  => "ri-time-line",
+                                                "CsReviews" => "ri-search-eye-line",
+                                                _           => "ri-file-list-line"
+                                            };
+                                            var label = g.Key switch
+                                            {
+                                                "Purchases" => "Purchases",
+                                                "Sessions"  => "Sessions",
+                                                "CsReviews" => "CS Reviews",
+                                                _           => g.Key
+                                            };
+                                            <div class="wallet-lock-group">
+                                                <div class="wallet-lock-group-title">
+                                                    <i class="@icon me-1"></i>@label (@g.Count())
+                                                </div>
+                                                @foreach (var row in g)
+                                                {
+                                                    <div class="wallet-lock-row @(row.HasCharge ? "wallet-lock-row-charged" : "")">
+                                                        <span class="wallet-lock-marker" title="@(row.HasCharge ? "Charged — blocks currency change" : "No charge — blocks delete only")">
+                                                            @(row.HasCharge ? "⚠️" : "📌")
+                                                        </span>
+                                                        <span class="wallet-lock-summary">@row.Summary</span>
+                                                        @if (!string.IsNullOrEmpty(row.DateText))
+                                                        {
+                                                            <span class="wallet-lock-date">@FmtDate(row.DateText)</span>
+                                                        }
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                        <div class="wallet-lock-legend">
+                                            <span>⚠️ charged · blocks currency change</span>
+                                            <span>📌 zero-charge · blocks delete only</span>
+                                        </div>
+                                    </div>
+                                }
                             </div>
                         }
                     </div>
@@ -191,6 +262,142 @@
         grid-column:1 / span 2; grid-row:2;
         align-self:end; font-size:.78rem; opacity:.85; font-weight:600;
     }
+
+    /* ── Currency lock/unlock label + hover card ── */
+    .wallet-lock-wrap {
+        position: relative;
+        display: inline-block;
+        margin-top: 6px;
+        outline: none;
+    }
+    .wallet-lock-pill {
+        display: inline-flex;
+        align-items: center;
+        font-size: .72rem;
+        font-weight: 600;
+        padding: 3px 9px;
+        border-radius: 999px;
+        cursor: help;
+        user-select: none;
+        letter-spacing: .01em;
+    }
+    .wallet-lock-ok {
+        background: #dcfce7;
+        color: #166534;
+        border: 1px solid #86efac;
+    }
+    .wallet-lock-locked {
+        background: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #fca5a5;
+    }
+    .wallet-lock-sub { opacity: .75; margin-left: 4px; font-weight: 500; }
+
+    .wallet-lock-card {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        min-width: 320px;
+        max-width: 440px;
+        max-height: 340px;
+        overflow-y: auto;
+        background: #1a1f33;
+        color: #e6e9f5;
+        border: 1px solid rgba(255,255,255,.08);
+        border-radius: 10px;
+        padding: 10px 12px;
+        box-shadow: 0 14px 34px rgba(0,0,0,.45), 0 3px 10px rgba(0,0,0,.25);
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(4px);
+        transition: opacity 160ms ease, transform 160ms ease, visibility 0s linear 160ms;
+        z-index: 20;
+        text-align: left;
+    }
+    .wallet-lock-wrap:hover .wallet-lock-card,
+    .wallet-lock-wrap:focus-within .wallet-lock-card,
+    .wallet-lock-card:hover {
+        opacity: 1;
+        visibility: visible;
+        transform: translateY(0);
+        transition: opacity 160ms ease, transform 160ms ease, visibility 0s linear 0s;
+    }
+    .wallet-lock-card-head {
+        font-size: .75rem;
+        font-weight: 700;
+        color: #fbbf24;
+        margin-bottom: 6px;
+    }
+    .wallet-lock-group { margin-bottom: 6px; }
+    .wallet-lock-group-title {
+        font-size: .72rem;
+        font-weight: 600;
+        color: #93c5fd;
+        margin-bottom: 3px;
+    }
+    .wallet-lock-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 6px;
+        border-radius: 6px;
+        font-size: .72rem;
+        background: #242a42;
+        border: 1px solid rgba(255,255,255,.05);
+        margin-bottom: 2px;
+    }
+    .wallet-lock-row-charged {
+        background: #3d2a22;
+        border-color: rgba(234,88,12,.5);
+    }
+    .wallet-lock-marker { flex: 0 0 auto; font-size: .85rem; }
+    .wallet-lock-summary {
+        flex: 1 1 auto;
+        color: #e6e9f5;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .wallet-lock-date {
+        flex: 0 0 auto;
+        color: #94a3b8;
+        font-size: .68rem;
+    }
+    .wallet-lock-legend {
+        margin-top: 6px;
+        padding-top: 6px;
+        border-top: 1px solid rgba(255,255,255,.08);
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-size: .66rem;
+        color: #94a3b8;
+    }
+
+    /* Light theme (in case modal inherits light palette — modal uses dark header but body is light) */
+    :root[data-theme-mode="light"] .wallet-lock-card {
+        background: #ffffff;
+        color: #1f2937;
+        border-color: rgba(0,0,0,.1);
+        box-shadow: 0 14px 30px rgba(0,0,0,.18), 0 2px 6px rgba(0,0,0,.08);
+    }
+    :root[data-theme-mode="light"] .wallet-lock-row {
+        background: #f8fafc;
+        border-color: rgba(0,0,0,.06);
+    }
+    :root[data-theme-mode="light"] .wallet-lock-row-charged {
+        background: #fef3c7;
+        border-color: #f59e0b;
+    }
+    :root[data-theme-mode="light"] .wallet-lock-summary { color: #1f2937; }
+    :root[data-theme-mode="light"] .wallet-lock-date    { color: #64748b; }
+    :root[data-theme-mode="light"] .wallet-lock-card-head { color: #b45309; }
+    :root[data-theme-mode="light"] .wallet-lock-group-title { color: #1d4ed8; }
+    :root[data-theme-mode="light"] .wallet-lock-legend {
+        color: #64748b;
+        border-top-color: rgba(0,0,0,.08);
+    }
 </style>
 
 @code {
@@ -206,6 +413,7 @@
     bool _confirmDelete;
 
     string _currency = "ILS";
+    string _originalCurrency = "ILS";
     string _name     = "";
     string _notes    = "";
     bool   _isActive = true;
@@ -213,6 +421,9 @@
     bool   _wasOpen;
     bool   _submitting;
     string? _loadError;
+
+    IReadOnlyList<WalletService.WalletReferenceRow> _references = Array.Empty<WalletService.WalletReferenceRow>();
+    bool _canChangeCurrency = true;
 
     bool CanSubmit => !string.IsNullOrWhiteSpace(_currency)
                    && !string.IsNullOrWhiteSpace(_name);
@@ -235,20 +446,64 @@
                 var w = WalletSvc.GetWallet(EditingWalletId!.Value);
                 if (w == null) { _loadError = "Wallet not found."; return; }
                 _currency = w.Currency;
+                _originalCurrency = w.Currency;
                 _name     = w.Name;
                 _notes    = w.Notes ?? "";
                 _isActive = w.IsActive;
+                _references = WalletSvc.GetWalletReferences(EditingWalletId.Value);
+                _canChangeCurrency = !_references.Any(r => r.HasCharge);
             }
             else
             {
                 _currency = "ILS";
+                _originalCurrency = "ILS";
                 _name     = "";
                 _notes    = "";
                 _isActive = true;
+                _references = Array.Empty<WalletService.WalletReferenceRow>();
+                _canChangeCurrency = true;
             }
         }
         catch (Exception ex) { _loadError = $"Failed to load: {ex.Message}"; }
         await InvokeAsync(StateHasChanged);
+    }
+
+    void SelectCurrency(string cur)
+    {
+        if (_isEdit && !_canChangeCurrency) return;
+        if (string.Equals(_currency, cur, StringComparison.Ordinal)) return;
+        var oldCur = _currency;
+        _currency = cur;
+        AutoRenameForCurrency(oldCur, cur);
+    }
+
+    /// <summary>
+    /// If the current name looks like the default `{oldCur} wallet`, retarget it.
+    /// Otherwise replace `oldCur` occurrences as a whole word; leave fully custom names alone.
+    /// </summary>
+    void AutoRenameForCurrency(string oldCur, string newCur)
+    {
+        if (string.IsNullOrWhiteSpace(_name))
+        {
+            _name = $"{newCur} wallet";
+            return;
+        }
+        var trimmed = _name.Trim();
+        if (string.Equals(trimmed, $"{oldCur} wallet", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(trimmed, $"{oldCur} Wallet", StringComparison.OrdinalIgnoreCase))
+        {
+            _name = $"{newCur} wallet";
+            return;
+        }
+        // Whole-word replace of the currency code (case-insensitive)
+        var pattern = $@"\b{System.Text.RegularExpressions.Regex.Escape(oldCur)}\b";
+        if (System.Text.RegularExpressions.Regex.IsMatch(_name, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+        {
+            _name = System.Text.RegularExpressions.Regex.Replace(
+                _name, pattern, newCur,
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        }
+        // else: custom name — don't touch
     }
 
     async Task Submit()
@@ -261,9 +516,16 @@
             int walletId;
             if (_isEdit)
             {
-                WalletSvc.UpdateWallet(EditingWalletId!.Value, _name.Trim(), notes, _isActive);
+                bool currencyChanged = !string.Equals(_currency, _originalCurrency, StringComparison.Ordinal);
+                WalletSvc.UpdateWallet(
+                    EditingWalletId!.Value, _name.Trim(), notes, _isActive,
+                    newCurrency: currencyChanged ? _currency : null);
                 walletId = EditingWalletId!.Value;
-                try { await JS.InvokeVoidAsync("lpmToast", $"Wallet updated — {_name}", "success"); } catch { }
+                var msg = currencyChanged
+                    ? $"Wallet updated — {_name} · currency → {_currency}"
+                    : $"Wallet updated — {_name}";
+                try { await JS.InvokeVoidAsync("lpmToast", msg, "success"); } catch { }
+                if (currencyChanged) _originalCurrency = _currency;
             }
             else
             {
@@ -320,4 +582,13 @@
         "USD" => "linear-gradient(135deg,#0369a1,#0ea5e9)",
         _     => "linear-gradient(135deg,#1e40af,#3b82f6)"
     };
+
+    static string FmtDate(string isoish)
+    {
+        if (string.IsNullOrWhiteSpace(isoish)) return "";
+        if (DateTime.TryParse(isoish, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeLocal, out var dt))
+            return dt.ToString("dd/MM/yy");
+        return isoish.Length >= 10 ? isoish[..10] : isoish;
+    }
 }

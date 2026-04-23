@@ -141,20 +141,215 @@ public class WalletService
         return Convert.ToInt32(cmd.ExecuteScalar());
     }
 
-    public void UpdateWallet(int walletId, string name, string? notes, bool isActive)
+    public void UpdateWallet(int walletId, string name, string? notes, bool isActive, string? newCurrency = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
+
+        // If caller wants a currency change, validate safety server-side.
+        if (!string.IsNullOrWhiteSpace(newCurrency))
+        {
+            newCurrency = newCurrency.Trim().ToUpperInvariant();
+            if (newCurrency is not ("ILS" or "EUR" or "USD"))
+                throw new InvalidOperationException($"Unsupported currency '{newCurrency}'.");
+
+            using var curCmd = conn.CreateCommand();
+            curCmd.CommandText = "SELECT Currency FROM fin_wallets WHERE WalletId = @id";
+            curCmd.Parameters.AddWithValue("@id", walletId);
+            var oldCurrency = curCmd.ExecuteScalar() as string
+                              ?? throw new InvalidOperationException("Wallet not found.");
+            if (!string.Equals(oldCurrency, newCurrency, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!CanChangeCurrency(walletId, out var reason))
+                    throw new InvalidOperationException(reason ?? "Currency cannot be changed — wallet has charges.");
+            }
+            else
+            {
+                newCurrency = null; // no-op
+            }
+        }
+
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
-            UPDATE fin_wallets
-               SET Name = @name, Notes = @notes, IsActive = @active
-             WHERE WalletId = @id";
+        cmd.CommandText = newCurrency == null
+            ? @"UPDATE fin_wallets
+                   SET Name = @name, Notes = @notes, IsActive = @active
+                 WHERE WalletId = @id"
+            : @"UPDATE fin_wallets
+                   SET Name = @name, Notes = @notes, IsActive = @active, Currency = @cur
+                 WHERE WalletId = @id";
         cmd.Parameters.AddWithValue("@id",    walletId);
         cmd.Parameters.AddWithValue("@name",  name);
         cmd.Parameters.AddWithValue("@notes", (object?)notes ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@active", isActive ? 1 : 0);
+        if (newCurrency != null) cmd.Parameters.AddWithValue("@cur", newCurrency);
         cmd.ExecuteNonQuery();
+    }
+
+    // ── References / safety checks ───────────────────────────────
+
+    /// <summary>One row that references a wallet. Used to show the user what
+    /// is blocking a currency change or a wallet delete.</summary>
+    public record WalletReferenceRow(
+        string Table,         // "Purchases" | "Sessions" | "CsReviews"
+        int    RowId,
+        string Summary,
+        bool   HasCharge,     // true = blocks currency change (non-zero money flow)
+        string DateText,      // ISO date-ish for sorting/display
+        bool   IsDeleted);    // soft-deleted rows (purchases only)
+
+    /// <summary>Enumerate every row in purchases, sessions, and cs_reviews that
+    /// references this wallet — directly (WalletId = W) and, when W is the PC's
+    /// first-active wallet, via the NULL-WalletId fallback attribution.
+    /// HasCharge flags rows that actually moved money in the wallet's currency.</summary>
+    public IReadOnlyList<WalletReferenceRow> GetWalletReferences(int walletId)
+    {
+        var wallet = GetWallet(walletId);
+        if (wallet == null) return Array.Empty<WalletReferenceRow>();
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Is this the PC's first-active wallet? If so, NULL-WalletId rows on the same PC attribute here.
+        bool isFirstActive;
+        using (var chk = conn.CreateCommand())
+        {
+            chk.CommandText = @"
+                SELECT WalletId FROM fin_wallets
+                WHERE PcId = @pc AND IsActive = 1
+                ORDER BY WalletId LIMIT 1";
+            chk.Parameters.AddWithValue("@pc", wallet.PcId);
+            var firstActive = chk.ExecuteScalar() as long?;
+            isFirstActive = firstActive.HasValue && (int)firstActive.Value == walletId;
+        }
+
+        var rows = new List<WalletReferenceRow>();
+
+        // ── Purchases ─────────────────────────────────────────────
+        // SUM(items.AmountPaid) gives the header amount; zero → no monetary effect.
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = $@"
+                SELECT p.PurchaseId, p.PurchaseDate, p.IsDeleted,
+                       COALESCE(SUM(pi.AmountPaid), 0) AS TotalAmt,
+                       COUNT(pi.PurchaseItemId)        AS NItems
+                FROM fin_purchases p
+                LEFT JOIN fin_purchase_items pi ON pi.PurchaseId = p.PurchaseId
+                WHERE p.WalletId = @w
+                   {(isFirstActive ? "OR (p.WalletId IS NULL AND p.PcId = @pc)" : "")}
+                GROUP BY p.PurchaseId, p.PurchaseDate, p.IsDeleted
+                ORDER BY p.PurchaseDate DESC, p.PurchaseId DESC";
+            cmd.Parameters.AddWithValue("@w", walletId);
+            if (isFirstActive) cmd.Parameters.AddWithValue("@pc", wallet.PcId);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                int id        = r.GetInt32(0);
+                string date   = r.IsDBNull(1) ? "" : r.GetString(1);
+                bool deleted  = r.GetInt32(2) == 1;
+                long amt      = r.GetInt64(3);
+                int nItems    = r.GetInt32(4);
+
+                // Soft-deleted purchases never count as "charged" — they blocked delete
+                // only by the existing TryDeleteWallet row-count rule; their money effect
+                // is gone from the balance aggregation.
+                bool hasCharge = !deleted && amt != 0;
+                var summary = $"#{id} · {nItems} item{(nItems == 1 ? "" : "s")} · {wallet.Currency} {amt:N0}"
+                            + (deleted ? " · deleted" : "");
+                rows.Add(new WalletReferenceRow("Purchases", id, summary, hasCharge, date, deleted));
+            }
+        }
+
+        // ── Sessions ──────────────────────────────────────────────
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = $@"
+                SELECT s.SessionId, s.SessionDate, s.ChargeSeconds, s.ChargedRateCentsPerHour
+                FROM sess_sessions s
+                WHERE s.WalletId = @w
+                   {(isFirstActive ? "OR (s.WalletId IS NULL AND s.PcId = @pc)" : "")}
+                ORDER BY s.SessionDate DESC, s.SessionId DESC";
+            cmd.Parameters.AddWithValue("@w", walletId);
+            if (isFirstActive) cmd.Parameters.AddWithValue("@pc", wallet.PcId);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                int id      = r.GetInt32(0);
+                string date = r.IsDBNull(1) ? "" : r.GetString(1);
+                int chSec   = r.GetInt32(2);
+                int rate    = r.GetInt32(3);
+                long cents  = (long)chSec * rate / 3600;
+                bool hasCharge = cents > 0;
+                string timeStr = FormatHms(chSec);
+                string rateStr = rate > 0 ? $" @ {wallet.Currency} {rate/100.0:N0}/h" : "";
+                string costStr = hasCharge ? $" = {wallet.Currency} {cents/100.0:N2}" : "";
+                rows.Add(new WalletReferenceRow(
+                    "Sessions", id, $"#{id} · {timeStr}{rateStr}{costStr}", hasCharge, date, false));
+            }
+        }
+
+        // ── CS reviews ────────────────────────────────────────────
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = $@"
+                SELECT cr.CsReviewId, cr.ReviewedAt, cr.ReviewLengthSeconds, cr.ChargedCentsRatePerHour
+                FROM cs_reviews cr
+                { (isFirstActive
+                    ? "LEFT JOIN sess_sessions s ON s.SessionId = cr.SessionId"
+                    : "") }
+                WHERE cr.WalletId = @w
+                   {(isFirstActive ? "OR (cr.WalletId IS NULL AND s.PcId = @pc)" : "")}
+                ORDER BY cr.ReviewedAt DESC, cr.CsReviewId DESC";
+            cmd.Parameters.AddWithValue("@w", walletId);
+            if (isFirstActive) cmd.Parameters.AddWithValue("@pc", wallet.PcId);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                int id      = r.GetInt32(0);
+                string date = r.IsDBNull(1) ? "" : r.GetString(1);
+                int sec     = r.GetInt32(2);
+                int rate    = r.GetInt32(3);
+                long cents  = (long)sec * rate / 3600;
+                bool hasCharge = cents > 0;
+                string timeStr = FormatHms(sec);
+                string rateStr = rate > 0 ? $" @ {wallet.Currency} {rate/100.0:N0}/h" : "";
+                string costStr = hasCharge ? $" = {wallet.Currency} {cents/100.0:N2}" : "";
+                rows.Add(new WalletReferenceRow(
+                    "CsReviews", id, $"#{id} · {timeStr}{rateStr}{costStr}", hasCharge, date, false));
+            }
+        }
+
+        // Charged first, then by date desc (SQL already ordered each group by date desc)
+        return rows
+            .OrderByDescending(x => x.HasCharge)
+            .ThenBy(x => x.Table)
+            .ThenByDescending(x => x.DateText)
+            .ToList();
+    }
+
+    /// <summary>True iff no row on this wallet has produced a non-zero monetary effect.</summary>
+    public bool CanChangeCurrency(int walletId, out string? reason)
+    {
+        var refs = GetWalletReferences(walletId);
+        var charged = refs.Where(r => r.HasCharge).ToList();
+        if (charged.Count == 0) { reason = null; return true; }
+
+        int pCount  = charged.Count(r => r.Table == "Purchases");
+        int sCount  = charged.Count(r => r.Table == "Sessions");
+        int crCount = charged.Count(r => r.Table == "CsReviews");
+        var parts = new List<string>();
+        if (pCount  > 0) parts.Add($"{pCount} purchase{(pCount==1?"":"s")}");
+        if (sCount  > 0) parts.Add($"{sCount} session{(sCount==1?"":"s")}");
+        if (crCount > 0) parts.Add($"{crCount} CS review{(crCount==1?"":"s")}");
+        reason = "Currency locked — " + string.Join(", ", parts) + " charged on this wallet.";
+        return false;
+    }
+
+    private static string FormatHms(int seconds)
+    {
+        if (seconds <= 0) return "0:00";
+        int h = seconds / 3600;
+        int m = (seconds % 3600) / 60;
+        return h > 0 ? $"{h}:{m:D2}:00" : $"0:{m:D2}";
     }
 
     /// <summary>Delete a wallet only if no purchases/sessions/reviews reference it.</summary>
