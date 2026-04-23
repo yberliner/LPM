@@ -394,7 +394,8 @@
 }
 
 <style>
-    .pu-page  { max-width: 1200px; }
+    .pu-page  { max-width: 100%; }
+    .pu-page .table-responsive { overflow-x: auto; }
     .pu-title { color: var(--default-text-color); }
 
     .pu-chevron { font-size: 1.2rem; transition: transform .25s ease; }
@@ -423,9 +424,12 @@
     .pu-btn-apply { background: #2d6a9f; color: #fff; border: none; border-radius: 7px; font-size: 0.8rem; font-weight: 600; }
     .pu-btn-apply:hover:not(:disabled) { background: #1e3a5f; color: #fff; }
 
-    .pu-table { font-size: 0.85rem; }
+    .pu-table { font-size: 0.82rem; min-width: 1700px; }
+    .pu-table td, .pu-table th { padding-left: .35rem; padding-right: .35rem; }
+    .pu-table td:first-child, .pu-table th:first-child { padding-left: 1rem; }
+    .pu-table td:last-child,  .pu-table th:last-child  { padding-right: 1rem; }
     .pu-thead tr { background: #eef1f8; color: #212529; }
-    .pu-thead th { font-size: 0.69rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6c757d; padding-top: 7px; padding-bottom: 7px; border-bottom: 1px solid #dce3f0; border-top: none; }
+    .pu-thead th { font-size: 0.68rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #6c757d; padding-top: 7px; padding-bottom: 7px; border-bottom: 1px solid #dce3f0; border-top: none; white-space: nowrap; }
 
     .pu-row-pending td  { border-bottom: 1px solid #f0f2f8; transition: background .12s; background: #fffbeb; color: #212529; }
     .pu-row-pending:hover td { background: #fef3c7; }
@@ -442,9 +446,9 @@
     .pu-row-deleted td  { border-bottom: 1px solid #fecaca; background: #fef2f2; opacity: 0.7; color: #212529; }
     .pu-row-deleted:hover td { background: #fee2e2; opacity: 1; }
 
-    .pu-btn-view { background: transparent; color: #2d6a9f; border: 1px solid #2d6a9f; border-radius: 7px; font-size: 0.78rem; padding: 3px 10px; font-weight: 600; }
+    .pu-btn-view { background: transparent; color: #2d6a9f; border: 1px solid #2d6a9f; border-radius: 7px; font-size: 0.78rem; padding: 3px 10px; font-weight: 600; white-space: nowrap; }
     .pu-btn-view:hover { background: #2d6a9f; color: #fff; }
-    .pu-btn-approve { background: #16a34a; color: #fff; border: none; border-radius: 7px; font-size: 0.78rem; padding: 3px 10px; font-weight: 600; }
+    .pu-btn-approve { background: #16a34a; color: #fff; border: none; border-radius: 7px; font-size: 0.78rem; padding: 3px 10px; font-weight: 600; white-space: nowrap; }
     .pu-btn-approve:hover:not(:disabled) { background: #15803d; color: #fff; }
 
     .pu-spin { display: inline-block; animation: pu-spin-anim 1s linear infinite; }
@@ -484,6 +488,7 @@
     private Dictionary<int, string?> _signatures = new();
     private Dictionary<int, List<PurchasePaymentMethodInfo>> _paymentMethodsCache = new();
     private Dictionary<int, List<PurchaseItemInfo>> _itemsCache = new();
+    private Dictionary<int, (string? Reg, string? Ref)> _regRefCache = new();
     private PurchaseDetail?        _viewDetail;
 
     private bool _loading = true;
@@ -559,6 +564,7 @@
         _signatures.Clear();
         _paymentMethodsCache.Clear();
         _itemsCache.Clear();
+        _regRefCache.Clear();
         foreach (var p in _purchases)
         {
             var detail = PcSvc.GetPurchaseDetail(p.PurchaseId);
@@ -566,6 +572,7 @@
             _signatures[p.PurchaseId] = detail?.SignatureData;
             _paymentMethodsCache[p.PurchaseId] = detail?.PaymentMethods ?? new();
             _itemsCache[p.PurchaseId] = detail?.Items ?? new();
+            _regRefCache[p.PurchaseId] = (detail?.RegistrarName, detail?.ReferralName);
         }
 
         SplitPurchases();
@@ -622,6 +629,11 @@
     {
         Console.WriteLine($"[Purchases] Viewed purchase {purchaseId} detail by '{_username}'");
         _viewDetail = PcSvc.GetPurchaseDetail(purchaseId);
+    }
+
+    private void OpenPurchaseInPcs(int pcId, int purchaseId)
+    {
+        Navigation.NavigateTo($"/PCs?pcId={pcId}&openPurchase={purchaseId}", forceLoad: false);
     }
 
     private int GetItemCount(int purchaseId) =>
@@ -719,6 +731,9 @@
                     @SortHeader("amount", LS.T("purchases.totalAmount"), "text-end")
                     <th>@LS.T("pcs.notes")</th>
                     @SortHeader("created", LS.T("purchases.createdBy"), "")
+                    <th>@LS.T("courses.registrar")</th>
+                    <th>@LS.T("courses.referral")</th>
+                    <th class="text-center" style="width:40px;"></th>
                     <th class="text-center" style="width:60px;">@LS.T("pcs.signature")</th>
                     <th class="text-center" style="width:80px;">@LS.T("purchases.moneyInBank")</th>
                     @SortHeader("status", LS.T("common.status"), "text-center")
@@ -777,6 +792,16 @@
                         <td class="text-end py-2 small fw-semibold" style="@(p.TotalAmount < 0 ? "color:#dc2626;" : "")">@(p.TotalAmount != 0 ? $"{(p.TotalAmount < 0 ? "-" : "")}{CurrSym(p.Currency)}{(int)Math.Round(Math.Abs(p.TotalAmount))}" : "\u2014")</td>
                         <td class="py-2 small" style="color:#6b7280;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@p.Notes">@(p.Notes ?? "\u2014")</td>
                         <td class="py-2 small" style="color:#6b7280;">@p.CreatedByName</td>
+                        @{ var rr = _regRefCache.GetValueOrDefault(pid); }
+                        <td class="py-2 small" style="color:#6b7280;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@rr.Reg">@(string.IsNullOrWhiteSpace(rr.Reg) ? "—" : rr.Reg)</td>
+                        <td class="py-2 small" style="color:#6b7280;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@rr.Ref">@(string.IsNullOrWhiteSpace(rr.Ref) ? "—" : rr.Ref)</td>
+                        <td class="text-center py-2">
+                            <button class="btn btn-sm btn-link p-0" style="color:#2d6a9f;font-size:1.05rem;line-height:1;"
+                                    title="@LS.T("purchases.openPurchase")"
+                                    @onclick="() => OpenPurchaseInPcs(p.PcId, pid)">
+                                <i class="ri-external-link-line"></i>
+                            </button>
+                        </td>
                         <td class="text-center py-2">
                             @{ var sig = _signatures.GetValueOrDefault(pid); }
                             @if (!string.IsNullOrEmpty(sig))

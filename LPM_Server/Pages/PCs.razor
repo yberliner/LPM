@@ -4124,6 +4124,10 @@
                                 OnTransferred="OnTransferred" />
 
 @code {
+    [SupplyParameterFromQuery(Name = "pcId")] public int? QueryPcId { get; set; }
+    [SupplyParameterFromQuery(Name = "openPurchase")] public int? QueryOpenPurchase { get; set; }
+    bool _autoOpenHandled;
+
     List<PcListItemEx> _allPcsEx    = [];
     HashSet<int>       _soloPcIds   = new();
     Dictionary<int, PcBalanceData> _balances = new();
@@ -4489,6 +4493,15 @@
             StateHasChanged();
             try { await JS.InvokeVoidAsync("lpmInitColResize", "pc-list-table"); }
             catch { /* non-critical: column resize unavailable */ }
+
+            if (!_autoOpenHandled && QueryPcId.HasValue)
+            {
+                _autoOpenHandled = true;
+                SelectPc(QueryPcId.Value);
+                StateHasChanged();
+                if (QueryOpenPurchase.HasValue)
+                    await OpenEditPurchase(QueryOpenPurchase.Value);
+            }
         }
     }
 

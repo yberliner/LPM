@@ -1013,6 +1013,7 @@
   "purchases.createdBy": "Created By",
   "purchases.approvedBy": "Approved By",
   "purchases.viewDetails": "View",
+  "purchases.openPurchase": "Open purchase",
   "purchases.approve": "Approve",
   "purchases.purchaseDetail": "Purchase Detail",
   "purchases.noItems": "No items",

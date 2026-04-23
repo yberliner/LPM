@@ -1,0 +1,143 @@
+@using LPM.Services
+
+@* Reusable hover-card for weekly overview cells.
+   Renders the trigger (usually the seconds text or "*") and a rich detail card
+   that animates in on hover/focus. Rows are clickable to open SessionManager. *@
+
+<span class="spk-hc @(Rows.Count > 0 || EffortRows.Count > 0 ? "spk-hc-active" : "")" tabindex="0">
+    <span class="spk-hc-trigger">@ChildContent</span>
+    @if (Rows.Count > 0 || EffortRows.Count > 0)
+    {
+        <div class="spk-hc-card spk-hc-@(RoleClass)">
+            <div class="spk-hc-inner">
+                <div class="spk-hc-head">
+                    <div class="spk-hc-head-text">
+                        <span class="spk-hc-title">@Title</span>
+                        <span class="spk-hc-sub">@Subtitle</span>
+                    </div>
+                    <span class="spk-hc-total">@TotalText</span>
+                    <span class="spk-hc-shimmer"></span>
+                </div>
+                <div class="spk-hc-body">
+                    @foreach (var row in Rows)
+                    {
+                        var clickable = row.SessionId > 0;
+                        <div class="spk-hc-row @(clickable ? "spk-hc-row-clickable" : "")"
+                             @onclick="@(() => OnRowClickAsync(row.SessionId))"
+                             @onclick:stopPropagation="true">
+                            <div class="spk-hc-row-left">
+                                @if (clickable)
+                                {
+                                    <span class="spk-hc-chip spk-hc-chip-id">#@row.SessionId</span>
+                                }
+                                else
+                                {
+                                    <span class="spk-hc-chip spk-hc-chip-gen">CS log</span>
+                                }
+                                @if (row.IsFree)
+                                {
+                                    <span class="spk-hc-chip spk-hc-chip-free" title="Free session">F</span>
+                                }
+                                @if (row.IsPendingReview && Role != "Auditor")
+                                {
+                                    <span class="spk-hc-chip spk-hc-chip-pending">pending</span>
+                                }
+                            </div>
+                            <div class="spk-hc-row-mid">
+                                <div class="spk-hc-times">
+                                    @if (Role == "Auditor")
+                                    {
+                                        <span class="spk-hc-t">@Fmt(row.LengthSec)</span>
+                                        @if (row.AdminSec > 0)
+                                        {
+                                            <span class="spk-hc-t-sep">+</span>
+                                            <span class="spk-hc-t-admin">@Fmt(row.AdminSec) admin</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="spk-hc-t">@Fmt(row.CsReviewSec ?? 0)</span>
+                                        <span class="spk-hc-t-sep">·</span>
+                                        <span class="spk-hc-t-sess">sess @Fmt(row.LengthSec)</span>
+                                    }
+                                </div>
+                                <div class="spk-hc-people">
+                                    <span class="spk-hc-person"><i class="ri-user-line"></i>@row.AuditorName</span>
+                                    @if (!string.IsNullOrWhiteSpace(row.CsName))
+                                    {
+                                        <span class="spk-hc-arrow">→</span>
+                                        <span class="spk-hc-person spk-hc-cs"><i class="ri-shield-check-line"></i>@row.CsName</span>
+                                    }
+                                    else if (Role != "Auditor")
+                                    {
+                                        <span class="spk-hc-arrow">→</span>
+                                        <span class="spk-hc-person spk-hc-cs-none">no CS</span>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(row.SessionName) && row.SessionId > 0)
+                                {
+                                    <div class="spk-hc-name">@row.SessionName</div>
+                                }
+                            </div>
+                            @if (clickable)
+                            {
+                                <div class="spk-hc-row-right">
+                                    <i class="ri-arrow-right-s-line"></i>
+                                </div>
+                            }
+                        </div>
+                    }
+                    @foreach (var er in EffortRows)
+                    {
+                        <div class="spk-hc-row">
+                            <div class="spk-hc-row-left">
+                                <span class="spk-hc-chip spk-hc-chip-effort">effort</span>
+                            </div>
+                            <div class="spk-hc-row-mid">
+                                <div class="spk-hc-times">
+                                    <span class="spk-hc-t">@Fmt(er.LengthSeconds)</span>
+                                    @if (!string.IsNullOrWhiteSpace(er.CategoryLabel))
+                                    {
+                                        <span class="spk-hc-t-sep">·</span>
+                                        <span class="spk-hc-t-sess">@er.CategoryLabel</span>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(er.Notes))
+                                {
+                                    <div class="spk-hc-name">@er.Notes</div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</span>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public IReadOnlyList<DashboardService.CellSessionInfo> Rows { get; set; } = Array.Empty<DashboardService.CellSessionInfo>();
+    [Parameter] public IReadOnlyList<EffortService.EffortCellEntry> EffortRows { get; set; } = Array.Empty<EffortService.EffortCellEntry>();
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string Subtitle { get; set; } = "";
+    [Parameter] public string TotalText { get; set; } = "";
+    [Parameter] public string Role { get; set; } = "Auditor"; // "Auditor" | "CS" | "CSSolo" | "Effort"
+    [Parameter] public EventCallback<int> OnRowClick { get; set; }
+
+    string RoleClass => Role switch
+    {
+        "CS"     => "cs",
+        "CSSolo" => "solo",
+        "Effort" => "effort",
+        _        => "aud"
+    };
+
+    static string Fmt(int seconds) => DashboardService.Fmt(seconds);
+
+    async Task OnRowClickAsync(int sessionId)
+    {
+        if (sessionId <= 0) return;
+        if (OnRowClick.HasDelegate) await OnRowClick.InvokeAsync(sessionId);
+    }
+}

@@ -350,6 +350,56 @@ public class EffortService
         return (pcs, grid);
     }
 
+    public record EffortCellEntry(int EntryId, int LengthSeconds, string CategoryLabel, string? Notes, string CreatedAt);
+
+    /// <summary>Per-(pcId, dayIdx) effort entries for the weekly overview Extra Effort table hover cards.</summary>
+    public Dictionary<(int pcId, int dayIdx), List<EffortCellEntry>>
+        GetWeekEffortEntriesByPerson(int personId, DateOnly weekStart)
+    {
+        var dates = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
+        var startStr = weekStart.ToString("yyyy-MM-dd");
+        var endStr   = weekStart.AddDays(6).ToString("yyyy-MM-dd");
+
+        var map = new Dictionary<(int pcId, int dayIdx), List<EffortCellEntry>>();
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT e.EntryId, e.PcId, date(e.CreatedAt, 'localtime') AS SDate,
+                   e.LengthSeconds, COALESCE(c.Label,'') AS CategoryLabel,
+                   e.Notes, e.CreatedAt
+            FROM sys_effort_entries e
+            JOIN core_users   u ON u.Id       = e.PerformedByUserId
+            LEFT JOIN lkp_effort_categories c ON c.CategoryId = e.CategoryId
+            WHERE u.PersonId = @pid
+              AND date(e.CreatedAt, 'localtime') BETWEEN @s AND @ed
+            ORDER BY e.CreatedAt";
+        cmd.Parameters.AddWithValue("@pid", personId);
+        cmd.Parameters.AddWithValue("@s",   startStr);
+        cmd.Parameters.AddWithValue("@ed",  endStr);
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            int pcId = r.GetInt32(1);
+            int dayIdx = dates.IndexOf(DateOnly.Parse(r.GetString(2)));
+            if (dayIdx < 0) continue;
+            var key = (pcId, dayIdx);
+            if (!map.TryGetValue(key, out var list))
+            {
+                list = new List<EffortCellEntry>();
+                map[key] = list;
+            }
+            list.Add(new EffortCellEntry(
+                r.GetInt32(0),
+                r.GetInt32(3),
+                r.GetString(4),
+                r.IsDBNull(5) ? null : r.GetString(5),
+                r.IsDBNull(6) ? "" : r.GetString(6)));
+        }
+        return map;
+    }
+
     // ── Statistics feeders ───────────────────────────────────────
 
     /// <summary>Per-user effort seconds across a date range (inclusive).</summary>

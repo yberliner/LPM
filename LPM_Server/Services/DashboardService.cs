@@ -1148,6 +1148,211 @@ public class DashboardService
     }
 
     /// <summary>
+    /// Per-session detail row for a weekly-overview cell hover card.
+    /// One row per session that contributes to a cell's displayed seconds
+    /// (or is pending CS review on that (pc, day)).
+    /// </summary>
+    public record CellSessionInfo(
+        int SessionId,
+        int PcId,
+        int DayIdx,
+        string Role,
+        int LengthSec,
+        int AdminSec,
+        int? CsReviewSec,
+        string AuditorName,
+        string? CsName,
+        bool IsPendingReview,
+        bool IsFree,
+        string? SessionName);
+
+    /// <summary>
+    /// Bulk fetch of per-cell session details for all 3 role buckets in the weekly overview.
+    /// Keyed by (pcId, dayIdx, role) where role is "Auditor" / "CS" / "CSSolo".
+    /// For CS / CSSolo cells, pending-review sessions are included even when the current
+    /// user has no review yet (so the "*" marker cell still shows its sessions on hover).
+    /// </summary>
+    public Dictionary<(int pcId, int dayIdx, string role), List<CellSessionInfo>>
+        GetWeekCellDetails(int userId, DateOnly weekStart, List<PcInfo> userPcs)
+    {
+        var result = new Dictionary<(int pcId, int dayIdx, string role), List<CellSessionInfo>>();
+        if (userPcs.Count == 0) return result;
+
+        var dates    = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
+        var dateList = string.Join(",", dates.Select(d => $"'{d:yyyy-MM-dd}'"));
+
+        var auditorPcIds   = userPcs.Where(p => StaffRoles.IsAuditorCapacity(p.WorkCapacity)).Select(p => p.PcId).ToList();
+        var csPcIds        = userPcs.Where(p => StaffRoles.IsCsCapacity(p.WorkCapacity)).Select(p => p.PcId).ToList();
+        var soloSet        = csPcIds.Count > 0 ? GetSoloPcIds() : new HashSet<int>();
+        var soloAuditorIds = csPcIds.Where(id => soloSet.Contains(id)).ToList();
+        var csOnlyIds      = csPcIds.Where(id => !soloSet.Contains(id)).ToList();
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        void AddRow(int pcId, int dayIdx, string role, CellSessionInfo info)
+        {
+            var key = (pcId, dayIdx, role);
+            if (!result.TryGetValue(key, out var list))
+            {
+                list = new List<CellSessionInfo>();
+                result[key] = list;
+            }
+            list.Add(info);
+        }
+
+        // ── Auditor bucket: sessions where AuditorId = current user ──
+        if (auditorPcIds.Count > 0)
+        {
+            var pcList = string.Join(",", auditorPcIds);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                SELECT s.SessionId, s.PcId, date(s.CreatedAt, 'localtime') AS SDate,
+                       s.LengthSeconds, s.AdminSeconds, s.IsFreeSession, s.Name,
+                       TRIM(pa.FirstName || ' ' || COALESCE(NULLIF(pa.LastName,''),'')) AS AuditorName,
+                       cr.ReviewLengthSeconds,
+                       TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''),'')) AS CsName
+                FROM sess_sessions s
+                LEFT JOIN core_persons pa ON pa.PersonId = s.AuditorId
+                LEFT JOIN cs_reviews  cr ON cr.SessionId = s.SessionId
+                LEFT JOIN core_persons pc ON pc.PersonId = cr.CsId
+                WHERE s.AuditorId = @uid
+                  AND s.PcId IN ({pcList})
+                  AND date(s.CreatedAt, 'localtime') IN ({dateList})
+                ORDER BY s.SequenceInDay";
+            cmd.Parameters.AddWithValue("@uid", userId);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var dayIdx = dates.IndexOf(DateOnly.Parse(r.GetString(2)));
+                if (dayIdx < 0) continue;
+                var pcId = r.GetInt32(1);
+                var auditorName = r.IsDBNull(7) ? "" : r.GetString(7);
+                var csName = r.IsDBNull(9) ? null : r.GetString(9);
+                var csSec = r.IsDBNull(8) ? (int?)null : r.GetInt32(8);
+                AddRow(pcId, dayIdx, "Auditor", new CellSessionInfo(
+                    r.GetInt32(0), pcId, dayIdx, "Auditor",
+                    r.GetInt32(3), r.GetInt32(4),
+                    null,                          // Auditor cell doesn't display CS seconds
+                    auditorName,
+                    csName,
+                    IsPendingReview: csSec == null,
+                    IsFree: r.GetInt32(5) == 1,
+                    SessionName: r.IsDBNull(6) ? null : r.GetString(6)));
+            }
+        }
+
+        // ── CS bucket: every session on a CS-capacity PC (non-solo), with or without the user's review ──
+        if (csOnlyIds.Count > 0)
+        {
+            var pcList = string.Join(",", csOnlyIds);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                SELECT s.SessionId, s.PcId, date(s.CreatedAt, 'localtime') AS SDate,
+                       s.LengthSeconds, s.AdminSeconds, s.IsFreeSession, s.Name,
+                       TRIM(pa.FirstName || ' ' || COALESCE(NULLIF(pa.LastName,''),'')) AS AuditorName,
+                       cr.ReviewLengthSeconds, cr.CsId,
+                       TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''),'')) AS CsName
+                FROM sess_sessions s
+                LEFT JOIN core_persons pa ON pa.PersonId = s.AuditorId
+                LEFT JOIN cs_reviews  cr ON cr.SessionId = s.SessionId
+                LEFT JOIN core_persons pc ON pc.PersonId = cr.CsId
+                WHERE s.PcId IN ({pcList})
+                  AND s.AuditorId IS NOT NULL
+                  AND date(s.CreatedAt, 'localtime') IN ({dateList})
+                ORDER BY s.SequenceInDay";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var dayIdx = dates.IndexOf(DateOnly.Parse(r.GetString(2)));
+                if (dayIdx < 0) continue;
+                var pcId = r.GetInt32(1);
+                var csSec = r.IsDBNull(8) ? (int?)null : r.GetInt32(8);
+                var csId = r.IsDBNull(9) ? (int?)null : r.GetInt32(9);
+                // Only show sessions that are either reviewed by this user OR pending
+                if (csSec != null && csId != userId) continue;
+                AddRow(pcId, dayIdx, "CS", new CellSessionInfo(
+                    r.GetInt32(0), pcId, dayIdx, "CS",
+                    r.GetInt32(3), r.GetInt32(4),
+                    csSec,
+                    r.IsDBNull(7) ? "" : r.GetString(7),
+                    r.IsDBNull(10) ? null : r.GetString(10),
+                    IsPendingReview: csSec == null,
+                    IsFree: r.GetInt32(5) == 1,
+                    SessionName: r.IsDBNull(6) ? null : r.GetString(6)));
+            }
+
+            // General CS work (no session link) — still surface it in the hover card as synthetic rows
+            using var wCmd = conn.CreateCommand();
+            wCmd.CommandText = $@"
+                SELECT CsWorkLogId, PcId, date(CreatedAt, 'localtime') AS SDate, LengthSeconds
+                FROM cs_work_log
+                WHERE CsId = @uid AND PcId IN ({pcList}) AND date(CreatedAt, 'localtime') IN ({dateList})";
+            wCmd.Parameters.AddWithValue("@uid", userId);
+            using var wr = wCmd.ExecuteReader();
+            while (wr.Read())
+            {
+                var dayIdx = dates.IndexOf(DateOnly.Parse(wr.GetString(2)));
+                if (dayIdx < 0) continue;
+                var pcId = wr.GetInt32(1);
+                AddRow(pcId, dayIdx, "CS", new CellSessionInfo(
+                    SessionId: -wr.GetInt32(0),    // negative id → "general CS work" (no session to open)
+                    PcId: pcId,
+                    DayIdx: dayIdx,
+                    Role: "CS",
+                    LengthSec: 0,
+                    AdminSec: 0,
+                    CsReviewSec: wr.GetInt32(3),
+                    AuditorName: "—",
+                    CsName: null,
+                    IsPendingReview: false,
+                    IsFree: false,
+                    SessionName: "General CS work"));
+            }
+        }
+
+        // ── CS Solo bucket ──
+        if (soloAuditorIds.Count > 0)
+        {
+            var pcList = string.Join(",", soloAuditorIds);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+                SELECT s.SessionId, s.PcId, date(s.CreatedAt, 'localtime') AS SDate,
+                       s.LengthSeconds, s.AdminSeconds, s.IsFreeSession, s.Name,
+                       cr.ReviewLengthSeconds, cr.CsId,
+                       TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''),'')) AS CsName
+                FROM sess_sessions s
+                LEFT JOIN cs_reviews  cr ON cr.SessionId = s.SessionId
+                LEFT JOIN core_persons pc ON pc.PersonId = cr.CsId
+                WHERE s.PcId IN ({pcList})
+                  AND s.AuditorId IS NULL
+                  AND date(s.CreatedAt, 'localtime') IN ({dateList})
+                ORDER BY s.SequenceInDay";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var dayIdx = dates.IndexOf(DateOnly.Parse(r.GetString(2)));
+                if (dayIdx < 0) continue;
+                var pcId = r.GetInt32(1);
+                var csSec = r.IsDBNull(7) ? (int?)null : r.GetInt32(7);
+                var csId = r.IsDBNull(8) ? (int?)null : r.GetInt32(8);
+                if (csSec != null && csId != userId) continue;
+                AddRow(pcId, dayIdx, "CSSolo", new CellSessionInfo(
+                    r.GetInt32(0), pcId, dayIdx, "CSSolo",
+                    r.GetInt32(3), r.GetInt32(4),
+                    csSec,
+                    AuditorName: "Solo",
+                    CsName: r.IsDBNull(9) ? null : r.GetString(9),
+                    IsPendingReview: csSec == null,
+                    IsFree: r.GetInt32(5) == 1,
+                    SessionName: r.IsDBNull(6) ? null : r.GetString(6)));
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Auditor role → this user's own sessions for the PC+date; no reviews.
     /// CS role → ALL sessions for the PC+date (with auditor name) + ALL reviews for those sessions.
     /// </summary>

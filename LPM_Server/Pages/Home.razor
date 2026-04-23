@@ -14,6 +14,7 @@
 @inject CompletionService CompletionSvc
 @inject QuestionService QuestionSvc
 @inject EffortService EffortSvc
+@inject LPM.Services.SessionManagerLauncher SmLauncher
 @implements IDisposable
 
 <div @onclick="DismissMenu">
@@ -584,11 +585,18 @@
                                         var secs           = _grid.Auditor.GetValueOrDefault((pc.PcId, dayIdx));
                                         var isSelected     = _selPcId == pc.PcId && _selDay == dayIdx && _selRole == pc.WorkCapacity;
                                         var isPendingApprv = _unapprovedPcIds.Contains(pc.PcId);
+                                        var audRows        = _cellDetails.GetValueOrDefault((pc.PcId, dayIdx, "Auditor")) ?? new();
                                         <td class="text-center"
                                             style="@(isPendingApprv ? "opacity:.35;" : isFuture ? "opacity:.45;" : "")">
                                             @if (secs > 0)
                                             {
-                                                <span>@DashboardService.Fmt(secs)</span>
+                                                <SpkCellHoverCard Rows="audRows" Role="Auditor"
+                                                                  Title="@($"{DayLabel(day)} · {pc.FullName}")"
+                                                                  Subtitle="Auditor"
+                                                                  TotalText="@($"Σ {DashboardService.Fmt(secs)}")"
+                                                                  OnRowClick="OpenSessionManagerForCell">
+                                                    <span>@DashboardService.Fmt(secs)</span>
+                                                </SpkCellHoverCard>
                                             }
                                             else
                                             {
@@ -707,21 +715,34 @@
                                     var isSelected = _selPcId == pc.PcId && _selDay == dayIdx && _selRole == pc.WorkCapacity;
                                     var isPendingCs = _pendingCs.Solo.Contains((pc.PcId, dayIdx));
                                     var isPendingApprv = _unapprovedPcIds.Contains(pc.PcId);
+                                    var soloRows   = _cellDetails.GetValueOrDefault((pc.PcId, dayIdx, "CSSolo")) ?? new();
+                                    var soloTitle  = $"{DayLabel(day)} · {pc.FullName}";
+                                    var soloTotal  = secs > 0 ? $"Σ {DashboardService.Fmt(secs)}" : "pending review";
                                     <td class="text-center"
                                         style="@(isPendingApprv ? "opacity:.35;" : isFuture ? "opacity:.45;" : "") color:#ce93d8; font-size:.82em;">
                                         @if (secs > 0)
                                         {
-                                            <span>
-                                                @DashboardService.Fmt(secs)
-                                                @if (isPendingCs)
-                                                {
-                                                    <span class="text-danger fw-bold ms-1" title="Pending CS review">*</span>
-                                                }
-                                            </span>
+                                            <SpkCellHoverCard Rows="soloRows" Role="CSSolo"
+                                                              Title="@soloTitle" Subtitle="CS Solo"
+                                                              TotalText="@soloTotal"
+                                                              OnRowClick="OpenSessionManagerForCell">
+                                                <span>
+                                                    @DashboardService.Fmt(secs)
+                                                    @if (isPendingCs)
+                                                    {
+                                                        <span class="text-danger fw-bold ms-1">*</span>
+                                                    }
+                                                </span>
+                                            </SpkCellHoverCard>
                                         }
                                         else if (isPendingCs)
                                         {
-                                            <span class="text-danger fw-bold" title="Pending CS review">*</span>
+                                            <SpkCellHoverCard Rows="soloRows" Role="CSSolo"
+                                                              Title="@soloTitle" Subtitle="CS Solo · pending"
+                                                              TotalText="@soloTotal"
+                                                              OnRowClick="OpenSessionManagerForCell">
+                                                <span class="text-danger fw-bold">*</span>
+                                            </SpkCellHoverCard>
                                         }
                                         else
                                         {
@@ -848,21 +869,34 @@
                                     var isSelected = _selPcId == pc.PcId && _selDay == dayIdx && _selRole == pc.WorkCapacity;
                                     var isPendingCs = _pendingCs.Regular.Contains((pc.PcId, dayIdx));
                                     var isPendingApprv = _unapprovedPcIds.Contains(pc.PcId);
+                                    var csRows     = _cellDetails.GetValueOrDefault((pc.PcId, dayIdx, "CS")) ?? new();
+                                    var csTitle    = $"{DayLabel(day)} · {pc.FullName}";
+                                    var csTotal    = secs > 0 ? $"Σ {DashboardService.Fmt(secs)}" : "pending review";
                                     <td class="text-center"
                                         style="@(isPendingApprv ? "opacity:.35;" : isFuture ? "opacity:.45;" : "") color:#adb5bd; font-size:.78em;">
                                         @if (secs > 0)
                                         {
-                                            <span>
-                                                @DashboardService.Fmt(secs)
-                                                @if (isPendingCs)
-                                                {
-                                                    <span class="text-danger fw-bold ms-1" title="Pending CS review">*</span>
-                                                }
-                                            </span>
+                                            <SpkCellHoverCard Rows="csRows" Role="CS"
+                                                              Title="@csTitle" Subtitle="CS Review"
+                                                              TotalText="@csTotal"
+                                                              OnRowClick="OpenSessionManagerForCell">
+                                                <span>
+                                                    @DashboardService.Fmt(secs)
+                                                    @if (isPendingCs)
+                                                    {
+                                                        <span class="text-danger fw-bold ms-1">*</span>
+                                                    }
+                                                </span>
+                                            </SpkCellHoverCard>
                                         }
                                         else if (isPendingCs)
                                         {
-                                            <span class="text-danger fw-bold" title="Pending CS review">*</span>
+                                            <SpkCellHoverCard Rows="csRows" Role="CS"
+                                                              Title="@csTitle" Subtitle="CS Review · pending"
+                                                              TotalText="@csTotal"
+                                                              OnRowClick="OpenSessionManagerForCell">
+                                                <span class="text-danger fw-bold">*</span>
+                                            </SpkCellHoverCard>
                                         }
                                         else
                                         {
@@ -959,11 +993,17 @@
                                 @foreach (var pc in _effortPcs)
                                 {
                                     var secs = _effortGrid.GetValueOrDefault((pc.PcId, dayIdx));
+                                    var effRows = _effortCellDetails.GetValueOrDefault((pc.PcId, dayIdx)) ?? new();
                                     <td class="text-center"
                                         style="@(isFuture ? "opacity:.45;" : "") color:#0e7490; font-size:.82em;">
                                         @if (secs > 0)
                                         {
-                                            @DashboardService.Fmt(secs)
+                                            <SpkCellHoverCard EffortRows="effRows" Role="Effort"
+                                                              Title="@($"{DayLabel(day)} · {pc.FullName}")"
+                                                              Subtitle="Extra Effort"
+                                                              TotalText="@($"Σ {DashboardService.Fmt(secs)}")">
+                                                <span>@DashboardService.Fmt(secs)</span>
+                                            </SpkCellHoverCard>
                                         }
                                         else
                                         {
@@ -1092,6 +1132,265 @@
 </div>
 
 <style>
+    /* ══════════════════════════════════════════════════════════════ */
+    /* ── Weekly-overview cell hover card (SpkCellHoverCard)        ── */
+    /* ══════════════════════════════════════════════════════════════ */
+    .spk-hc {
+        position: relative;
+        display: inline-block;
+        outline: none;
+    }
+    .spk-hc-trigger {
+        display: inline-block;
+        transition: color 140ms ease, text-shadow 140ms ease;
+    }
+    .spk-hc-active { cursor: help; }
+    .spk-hc-active:hover .spk-hc-trigger,
+    .spk-hc-active:focus-within .spk-hc-trigger {
+        color: #fff;
+        text-shadow: 0 0 10px rgba(124, 77, 255, .55),
+                     0 0 18px rgba(41, 182, 246, .35);
+    }
+
+    .spk-hc-card {
+        position: fixed;
+        top: var(--spk-hc-top, 0);
+        left: var(--spk-hc-left, 0);
+        transform: translateY(6px) scale(.96);
+        transform-origin: bottom center;
+        min-width: 280px;
+        max-width: 380px;
+        width: max-content;
+        opacity: 0;
+        pointer-events: none;
+        visibility: hidden;
+        z-index: 3000;
+        border-radius: 12px;
+        transition: opacity 180ms cubic-bezier(.2,.8,.2,1),
+                    transform 220ms cubic-bezier(.2,.8,.2,1),
+                    visibility 0s linear 220ms;
+        filter: drop-shadow(0 14px 34px rgba(0,0,0,.45))
+                drop-shadow(0 3px 10px rgba(0,0,0,.25));
+        text-align: left;
+    }
+    .spk-hc-card[data-placement="bottom"] {
+        transform: translateY(-6px) scale(.96);
+        transform-origin: top center;
+    }
+    .spk-hc-card.spk-hc-visible {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+        transform: translateY(0) scale(1);
+        transition: opacity 180ms cubic-bezier(.2,.8,.2,1),
+                    transform 220ms cubic-bezier(.2,.8,.2,1),
+                    visibility 0s linear 0s;
+    }
+
+    .spk-hc-inner {
+        position: relative;
+        border-radius: 12px;
+        background: #1a1f33;
+        border: 1px solid rgba(255,255,255,.08);
+        overflow: hidden;
+        color: #e6e9f5;
+    }
+
+    /* Aurora header band — role-coloured */
+    .spk-hc-head {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px 9px;
+        color: #fff;
+        overflow: hidden;
+    }
+    .spk-hc-aud  .spk-hc-head { background: linear-gradient(135deg, #4f46e5 0%, #0ea5e9 55%, #14b8a6 100%); }
+    .spk-hc-cs   .spk-hc-head { background: linear-gradient(135deg, #f59e0b 0%, #ef4444 55%, #ec4899 100%); }
+    .spk-hc-solo .spk-hc-head { background: linear-gradient(135deg, #7c3aed 0%, #a855f7 55%, #ec4899 100%); }
+    .spk-hc-effort .spk-hc-head { background: linear-gradient(135deg, #0891b2 0%, #14b8a6 55%, #22c55e 100%); }
+
+    .spk-hc-head-text { display: flex; flex-direction: column; line-height: 1.15; flex: 1 1 auto; min-width: 0; }
+    .spk-hc-title {
+        font-weight: 700;
+        font-size: .88rem;
+        letter-spacing: .01em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .spk-hc-sub {
+        font-size: .7rem;
+        opacity: .85;
+        font-weight: 500;
+        letter-spacing: .03em;
+        text-transform: uppercase;
+    }
+    .spk-hc-total {
+        flex: 0 0 auto;
+        font-weight: 700;
+        font-size: .92rem;
+        padding: 3px 9px;
+        border-radius: 999px;
+        background: rgba(0,0,0,.22);
+        font-variant-numeric: tabular-nums;
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,.18);
+    }
+    .spk-hc-shimmer {
+        position: absolute; inset: 0;
+        background: linear-gradient(120deg,
+            transparent 30%, rgba(255,255,255,.18) 48%,
+            rgba(255,255,255,.35) 50%, rgba(255,255,255,.18) 52%, transparent 70%);
+        transform: translateX(-100%);
+        pointer-events: none;
+    }
+    .spk-hc-card.spk-hc-visible .spk-hc-shimmer {
+        animation: spk-hc-shine 1.4s ease-out .15s 1;
+    }
+    @@keyframes spk-hc-shine {
+        0%   { transform: translateX(-100%); }
+        100% { transform: translateX(100%); }
+    }
+
+    /* Body / rows */
+    .spk-hc-body {
+        padding: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        max-height: 340px;
+        overflow-y: auto;
+    }
+    .spk-hc-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 9px;
+        border-radius: 8px;
+        background: #242a42;
+        border: 1px solid rgba(255,255,255,.06);
+        transition: transform 160ms cubic-bezier(.2,.8,.2,1),
+                    background 160ms ease,
+                    border-color 160ms ease;
+    }
+    .spk-hc-row-clickable { cursor: pointer; }
+    .spk-hc-row-clickable:hover {
+        transform: translateX(3px);
+        background: #2f375a;
+        border-color: #7c4dff;
+        box-shadow: inset 2px 0 0 0 #7c4dff;
+    }
+    .spk-hc-row-left { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+    .spk-hc-row-mid  { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .spk-hc-row-right {
+        flex: 0 0 auto;
+        color: #9aa3c4;
+        font-size: 1.1rem;
+        opacity: 0;
+        transform: translateX(-4px);
+        transition: opacity 160ms ease, transform 160ms ease, color 160ms ease;
+    }
+    .spk-hc-row-clickable:hover .spk-hc-row-right {
+        opacity: 1;
+        transform: translateX(0);
+        color: #c4b5fd;
+    }
+
+    .spk-hc-chip {
+        display: inline-flex;
+        align-items: center;
+        font-size: .68rem;
+        font-weight: 700;
+        padding: 2px 7px;
+        border-radius: 999px;
+        letter-spacing: .02em;
+        line-height: 1.2;
+    }
+    .spk-hc-chip-id      { background: #4f46e5; color: #fff; font-variant-numeric: tabular-nums; }
+    .spk-hc-chip-gen     { background: #64748b; color: #fff; }
+    .spk-hc-chip-free    { background: #16a34a; color: #fff; }
+    .spk-hc-chip-pending { background: #ea580c; color: #fff;
+                           animation: spk-hc-pulse 1.8s ease-in-out infinite; }
+    .spk-hc-chip-effort  { background: #0d9488; color: #fff; }
+    @@keyframes spk-hc-pulse {
+        0%,100% { box-shadow: 0 0 0 0 rgba(234,88,12,.55); }
+        50%     { box-shadow: 0 0 0 4px rgba(234,88,12,0);  }
+    }
+
+    .spk-hc-times {
+        font-size: .85rem;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        color: #fff;
+        display: flex;
+        align-items: baseline;
+        gap: 5px;
+        flex-wrap: wrap;
+    }
+    .spk-hc-t       { color: #fff; }
+    .spk-hc-t-sep   { color: #8892b0; font-weight: 400; }
+    .spk-hc-t-admin { color: #a5b4fc; font-weight: 500; font-size: .78rem; }
+    .spk-hc-t-sess  { color: #cbd5e1; font-weight: 500; font-size: .78rem; }
+
+    .spk-hc-people {
+        font-size: .75rem;
+        color: #cbd5e1;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex-wrap: wrap;
+    }
+    .spk-hc-person { display: inline-flex; align-items: center; gap: 3px; color: #e6e9f5; }
+    .spk-hc-person i { font-size: .85rem; opacity: .85; }
+    .spk-hc-cs      { color: #fbbf24; }
+    .spk-hc-cs-none { color: #94a3b8; font-style: italic; }
+    .spk-hc-arrow   { color: #64748b; }
+    .spk-hc-name {
+        font-size: .72rem;
+        color: #94a3b8;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-style: italic;
+    }
+
+    /* Light theme overrides — solid backgrounds so text stays readable */
+    :root[data-theme-mode="light"] .spk-hc-inner {
+        background: #ffffff;
+        border-color: rgba(0,0,0,.1);
+        color: #1f2937;
+    }
+    :root[data-theme-mode="light"] .spk-hc-row {
+        background: #f8fafc;
+        border-color: rgba(0,0,0,.08);
+    }
+    :root[data-theme-mode="light"] .spk-hc-row-clickable:hover {
+        background: #eef2ff;
+        border-color: #7c4dff;
+    }
+    :root[data-theme-mode="light"] .spk-hc-times,
+    :root[data-theme-mode="light"] .spk-hc-t      { color: #111827; }
+    :root[data-theme-mode="light"] .spk-hc-t-sep  { color: #9ca3af; }
+    :root[data-theme-mode="light"] .spk-hc-t-admin { color: #4338ca; }
+    :root[data-theme-mode="light"] .spk-hc-t-sess  { color: #475569; }
+    :root[data-theme-mode="light"] .spk-hc-people  { color: #475569; }
+    :root[data-theme-mode="light"] .spk-hc-person  { color: #1f2937; }
+    :root[data-theme-mode="light"] .spk-hc-cs      { color: #b45309; }
+    :root[data-theme-mode="light"] .spk-hc-arrow   { color: #94a3b8; }
+    :root[data-theme-mode="light"] .spk-hc-name    { color: #64748b; }
+
+    /* Responsive: shrink on mobile, flip position if near top */
+    @@media (max-width: 768px) {
+        .spk-hc-card {
+            min-width: 240px;
+            max-width: min(92vw, 340px);
+        }
+        .spk-hc-row { padding: 9px 10px; min-height: 44px; }
+        .spk-hc-row-right { opacity: 1; transform: none; }
+    }
+    /* ══════════════════════════════════════════════════════════════ */
+
     /* ── Solo hero name + badge (mobile only, tiny) ── */
     .solo-hero {
         position: relative;
@@ -2127,6 +2426,10 @@
     List<(int PcId, string FullName)>   _effortPcs  = new();
     Dictionary<(int, int), int>         _effortGrid = new();
 
+    // ── Weekly-overview cell hover details ──
+    Dictionary<(int pcId, int dayIdx, string role), List<DashboardService.CellSessionInfo>> _cellDetails = new();
+    Dictionary<(int pcId, int dayIdx), List<EffortService.EffortCellEntry>> _effortCellDetails = new();
+
     bool   _hideEmpty = true;
 
     // If SessionDate and the local-date of CreatedAt differ, returns the extra "(createdDate)"
@@ -2500,6 +2803,7 @@
             var t_totals   = Task.Run(() => DashSvc.GetWeeklyTotals(uid, chartStart, 20, myPcsSnap));
             var t_csMarks  = Task.Run(() => DashSvc.GetPendingCsMarkers(uid, weekStart, myPcsSnap));
             var t_csNames  = Task.Run(() => DashSvc.GetLastCsNamesByPc(auditorPcIds));
+            var t_cellDet  = Task.Run(() => DashSvc.GetWeekCellDetails(uid, weekStart, myPcsSnap));
 
             // Attachment types: parallel per session
             var audStatSnap  = _auditorStatuses;
@@ -2508,7 +2812,7 @@
             ).ToList();
 
             await Task.WhenAll(
-                new Task[] { t_grid, t_totals, t_csMarks, t_csNames }
+                new Task[] { t_grid, t_totals, t_csMarks, t_csNames, t_cellDet }
                     .Concat(t_attachTasks)
             );
 
@@ -2516,12 +2820,14 @@
             _weeklyTotals = t_totals.Result;
             _pendingCs    = t_csMarks.Result;
             _pcCsNames    = t_csNames.Result;
+            _cellDetails  = t_cellDet.Result;
             _audAttachTypes = t_attachTasks.ToDictionary(t => t.Result.SessionId, t => t.Result.Types);
 
             // Extra Effort grid (non-solo users only)
             var eff = EffortSvc.GetWeekEffortGridByPerson(uid, weekStart);
             _effortPcs  = eff.Pcs;
             _effortGrid = eff.Grid;
+            _effortCellDetails = EffortSvc.GetWeekEffortEntriesByPerson(uid, weekStart);
         }
 
         // Fetch question status for all visible sessions
@@ -2585,6 +2891,7 @@
         DashSvc.SetUserPcRole(_userId!.Value, pcId, role);
         _myPcs = DashSvc.GetUserPcs(_userId.Value);
         _grid  = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+        RefreshCellDetails();
 
         RefreshCsMetadata();
 
@@ -2592,6 +2899,19 @@
 
         await InvokeAsync(StateHasChanged);
     }
+
+    void RefreshCellDetails()
+    {
+        if (_userId == null) return;
+        _cellDetails = _isSolo
+            ? new Dictionary<(int, int, string), List<DashboardService.CellSessionInfo>>()
+            : DashSvc.GetWeekCellDetails(_userId.Value, _weekStart, _myPcs);
+        _effortCellDetails = _isSolo
+            ? new Dictionary<(int, int), List<EffortService.EffortCellEntry>>()
+            : EffortSvc.GetWeekEffortEntriesByPerson(_userId.Value, _weekStart);
+    }
+
+    void OpenSessionManagerForCell(int sessionId) => SmLauncher.RequestOpen(sessionId);
 
 
     HashSet<int> GetPcIdsWithPendingSoloReviews() => DashSvc.GetPcIdsWithPendingSoloReviews();
@@ -2685,6 +3005,7 @@
             ? DashSvc.GetWeekGridSolo(_userId.Value, _weekStart)
             : DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
         _pendingCs = _isSolo ? PendingCsMarkers.Empty() : DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
+        RefreshCellDetails();
         _weeklyTotals = _isSolo
             ? DashSvc.GetWeeklyTotalsSolo(_userId.Value, ChartLatestWeekStart(), 20)
             : DashSvc.GetWeeklyTotals(_userId.Value, ChartLatestWeekStart(), 20, _myPcs);
@@ -3534,6 +3855,7 @@
             ? DashSvc.GetWeekGridSolo(_userId.Value, _weekStart)
             : DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
         _pendingCs = _isSolo ? PendingCsMarkers.Empty() : DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
+        RefreshCellDetails();
         RefreshWeeklyTotals();
     }
 
@@ -3570,6 +3892,7 @@
         _detail = DashSvc.GetDayDetail(_userId!.Value, _selPcId!.Value,
             _weekStart.AddDays(_selDay ?? 0), _selRole);
         _grid = DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
+        RefreshCellDetails();
         RefreshWeeklyTotals();
     }
 
@@ -3602,6 +3925,7 @@
 
         // ✅ NEW: recompute pending markers so "*" disappears immediately when done
         _pendingCs = DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
+        RefreshCellDetails();
 
         RefreshWeeklyTotals();
         StateHasChanged();
