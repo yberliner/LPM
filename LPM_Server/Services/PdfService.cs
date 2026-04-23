@@ -2265,6 +2265,17 @@ public class PdfService
 
     // ── Next C/S Sheet PDF ──
 
+    // ── Next CS PDF font sizes (change here to restyle the whole document) ──
+    // Original values kept in comments for easy revert.
+    private const float NextCsDefaultFontSize  = 16f; // was 22
+    private const float NextCsHeaderFontSize   = 26f; // was 26 (unchanged)
+    private const float NextCsLabelFontSize    = 16f; // was 22
+    private const float NextCsValueFontSize    = 16f; // was 28
+    private const float NextCsDividerFontSize  = 16f; // was 22
+    private const float NextCsFooterFontSize   = 16f; // was 30
+    private const float NextCsHtmlBaseFontSize = 16f; // was 25 (multiplier 2.5 × 10)
+    private const float NextCsDividerPaddingTop = 350f; // was 210 (blank space above "The Next C/S:" for handwriting)
+
     public byte[] GenerateNextCsPdf(
         string pcName, string date, string auditorName,
         string? topHtml, string? bottomHtml,
@@ -2281,59 +2292,61 @@ public class PdfService
         double pageWidthPt = 595.28, double pageHeightPt = 841.89,
         string? footerName = null)
     {
+        const float htmlMultiplier = NextCsHtmlBaseFontSize / 10f;
+
         return Document.Create(container =>
         {
             container.Page(page =>
             {
                 page.Size(new PageSize((float)pageWidthPt, (float)pageHeightPt));
                 page.Margin(36);
-                page.DefaultTextStyle(x => x.FontSize(22).FontColor("#1a1a1a").FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
+                page.DefaultTextStyle(x => x.FontSize(NextCsDefaultFontSize).FontColor("#1a1a1a").FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
 
                 // Content scales to fit so everything stays on one page.
                 page.Content().ScaleToFit().Column(col =>
                 {
                     // ── Header ──
                     col.Item().AlignCenter().PaddingBottom(18)
-                        .Text("Dror Center, Haifa, Israel").FontSize(26).FontColor("#1a1a1a");
+                        .Text("Dror Center, Haifa, Israel").FontSize(NextCsHeaderFontSize).FontColor("#1a1a1a");
 
                     col.Item().PaddingBottom(4).Row(row =>
                     {
                         row.RelativeItem().Text(t =>
                         {
-                            t.Span("PC's Name: ").FontSize(22).FontColor("#1a1a1a");
-                            t.Span(pcName).FontSize(28).Bold().FontColor("#c0392b");
+                            t.Span("PC's Name: ").FontSize(NextCsLabelFontSize).FontColor("#1a1a1a");
+                            t.Span(pcName).FontSize(NextCsValueFontSize).Bold().FontColor("#c0392b");
                         });
                         row.AutoItem().Text(t =>
                         {
-                            t.Span("Date: ").FontSize(22).FontColor("#1a1a1a");
-                            t.Span(date).FontSize(28).Bold().FontColor("#c0392b");
+                            t.Span("Date: ").FontSize(NextCsLabelFontSize).FontColor("#1a1a1a");
+                            t.Span(date).FontSize(NextCsValueFontSize).Bold().FontColor("#c0392b");
                         });
                     });
 
                     col.Item().PaddingBottom(8).Text(t =>
                     {
-                        t.Span("Auditor: ").FontSize(22).FontColor("#1a1a1a");
-                        t.Span(auditorName).FontSize(28).Bold().FontColor("#c0392b");
+                        t.Span("Auditor: ").FontSize(NextCsLabelFontSize).FontColor("#1a1a1a");
+                        t.Span(auditorName).FontSize(NextCsValueFontSize).Bold().FontColor("#c0392b");
                     });
 
                     // ── Top free text ──
                     if (!string.IsNullOrWhiteSpace(topHtml))
-                        col.Item().PaddingBottom(8).Column(htmlCol => RenderHtmlBlock(htmlCol, topHtml, 2.5f));
+                        col.Item().PaddingBottom(8).Column(htmlCol => RenderHtmlBlock(htmlCol, topHtml, htmlMultiplier));
 
-                    // ── "The Next C/S:" divider (210pt top for CS handwriting) ──
-                    col.Item().PaddingTop(210).PaddingBottom(12).AlignCenter()
+                    // ── "The Next C/S:" divider (NextCsDividerPaddingTop pt top for CS handwriting) ──
+                    col.Item().PaddingTop(NextCsDividerPaddingTop).PaddingBottom(12).AlignCenter()
                         .Text("The Next C/S:")
-                        .FontSize(22).Bold().Underline().FontColor("#1a1a1a");
+                        .FontSize(NextCsDividerFontSize).Bold().Underline().FontColor("#1a1a1a");
 
                     // ── Bottom free text ──
                     if (!string.IsNullOrWhiteSpace(bottomHtml))
-                        col.Item().PaddingBottom(8).Column(inner => RenderHtmlBlock(inner, bottomHtml, 2.5f));
+                        col.Item().PaddingBottom(8).Column(inner => RenderHtmlBlock(inner, bottomHtml, htmlMultiplier));
                 });
 
                 // ── Signature — pinned to the bottom-right of the page ──
                 // For solo PCs the footer shows the CS name instead of the auditor.
                 page.Footer().AlignRight()
-                    .Text(footerName ?? auditorName).FontSize(30).Bold().FontColor("#c0392b");
+                    .Text(footerName ?? auditorName).FontSize(NextCsFooterFontSize).Bold().FontColor("#c0392b");
             });
         }).GeneratePdf();
     }
