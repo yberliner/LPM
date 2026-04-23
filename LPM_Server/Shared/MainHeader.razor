@@ -5830,19 +5830,50 @@
                     <i class="@(_statSidebarOpen ? "ri-side-bar-fill" : "ri-side-bar-line")"></i>
                 </button>
                 <div class="stat-sidebar-list">
+                    @{
+                        int? _prevOrgId = int.MinValue; // sentinel different from null
+                        bool _inRealSection = false;
+                    }
                     @foreach (var staff in _statStaffList)
                     {
                         var sid = staff.PersonId;
                         var isActive = sid == _statSelectedId;
                         var isCached = _statCache.ContainsKey(sid);
+                        var isSynthetic = sid < 0;
+                        if (!isSynthetic)
+                        {
+                            if (!_inRealSection || _prevOrgId != staff.OrgId)
+                            {
+                                var label = staff.OrgName ?? "Other";
+                                if (_statSidebarOpen)
+                                {
+                                    <div class="stat-org-header">@label</div>
+                                }
+                                else
+                                {
+                                    <div class="stat-org-divider" title="@label"></div>
+                                }
+                                _prevOrgId = staff.OrgId;
+                                _inRealSection = true;
+                            }
+                        }
                         <button class="stat-user-btn @(isActive ? "stat-user-active" : "") @(!isCached ? "stat-user-pending" : "")"
                                 disabled="@(!isCached)"
+                                draggable="@(isSynthetic ? "false" : "true")"
+                                @ondragstart="() => StatDragStart(sid)"
+                                ondragover="event.preventDefault();"
+                                @ondrop="() => StatDrop(sid)"
+                                @ondrop:preventDefault
                                 @onclick="() => SelectStatUser(sid)"
                                 title="@(isCached ? staff.FullName : staff.FullName + " (generating...)")">
                             <span class="stat-user-dot" style="background:@(isCached ? StatRoleColor(staff.StaffRole) : "#475569");" title="@staff.StaffRole"></span>
                             @if (_statSidebarOpen)
                             {
                                 <span class="stat-user-name">@staff.FullName</span>
+                                @if (!isSynthetic)
+                                {
+                                    <i class="ri-draggable stat-drag-grip" title="Drag to reorder"></i>
+                                }
                             }
                         </button>
                     }
@@ -5934,6 +5965,23 @@
     .stat-sidebar-collapsed .stat-user-btn { padding: 9px 0; justify-content: center; }
     .stat-sidebar-collapsed .stat-user-name { display: none; }
     .stat-sidebar-collapsed .stat-user-active { border-right: none; }
+
+    .stat-org-header {
+        padding: 8px 12px 4px; margin-top: 2px;
+        font-size: .66rem; font-weight: 700; letter-spacing: .08em;
+        text-transform: uppercase; color: #64748b;
+        border-top: 1px solid #334155;
+    }
+    .stat-org-header:first-child { border-top: none; }
+    .stat-org-divider { height: 1px; margin: 6px 8px; background: #334155; }
+
+    .stat-drag-grip {
+        margin-left: auto; font-size: .9rem; color: #475569; opacity: 0;
+        transition: opacity .15s; cursor: grab;
+    }
+    .stat-user-btn:hover .stat-drag-grip { opacity: .7; }
+    .stat-user-btn[draggable="true"] { cursor: grab; }
+    .stat-user-btn[draggable="true"]:active { cursor: grabbing; }
 
     .stat-viewer {
         flex: 1; display: flex; flex-direction: column;
@@ -10116,12 +10164,48 @@ string _actionPcSearch = "";
         var staff = DashSvc.GetNonSoloStaffWithRoles()
             .Where(s => !s.FullName.Equals("BBB", StringComparison.OrdinalIgnoreCase))
             .ToList();
+
+        // Load saved per-org custom ordering from localStorage.
+        List<int> savedOrder = new();
+        try
+        {
+            var raw = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", StatOrderStorageKey);
+            if (!string.IsNullOrWhiteSpace(raw))
+                savedOrder = System.Text.Json.JsonSerializer.Deserialize<List<int>>(raw) ?? new();
+        }
+        catch { /* corrupt or missing — fall back to default order */ }
+
+        // Primary sort: org (Haifa=1, Riga=2, others by OrgId, no-org last). Within each org,
+        // promote saved-order PersonIds first, then append the rest alphabetically.
+        var grouped = staff
+            .GroupBy(s => s.OrgId)
+            .OrderBy(g => g.Key.HasValue ? 0 : 1)        // no-org group last
+            .ThenBy(g => g.Key ?? int.MaxValue);
+
+        var ordered = new List<DashboardService.StaffMemberWithRole>();
+        foreach (var g in grouped)
+        {
+            var members = g.ToList();
+            var byId = members.ToDictionary(m => m.PersonId);
+            var used = new HashSet<int>();
+            foreach (var pid in savedOrder)
+            {
+                if (byId.TryGetValue(pid, out var m) && used.Add(pid))
+                    ordered.Add(m);
+            }
+            foreach (var m in members.OrderBy(m => m.FullName, StringComparer.OrdinalIgnoreCase))
+            {
+                if (used.Add(m.PersonId))
+                    ordered.Add(m);
+            }
+        }
+
         _statStaffList = new List<DashboardService.StaffMemberWithRole>
         {
             new DashboardService.StaffMemberWithRole(STAT_PID_STATISTICS, "Statistics", "Statistics"),
             new DashboardService.StaffMemberWithRole(STAT_PID_ACADEMY,    "Academy",    "Academy"),
         };
-        _statStaffList.AddRange(staff);
+        _statStaffList.AddRange(ordered);
         _statWeekStart = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today)).AddDays(-7);
         _statSelectedId = _statStaffList.FirstOrDefault()?.PersonId ?? 0;
         _statPdfBase64 = null;
@@ -10131,6 +10215,46 @@ string _actionPcSearch = "";
         _showStat = true;
         StateHasChanged();
         await GenerateAllStatPdfs();
+    }
+
+    // ── Drag-drop reordering for Show Stat sidebar ──
+    const string StatOrderStorageKey = "lpm-stat-staff-order-v1";
+    int? _statDragPersonId;
+
+    void StatDragStart(int personId)
+    {
+        // Synthetic entries (Statistics / Academy) are not draggable.
+        if (personId < 0) { _statDragPersonId = null; return; }
+        _statDragPersonId = personId;
+    }
+
+    async Task StatDrop(int targetPersonId)
+    {
+        if (!_statDragPersonId.HasValue) return;
+        var src = _statDragPersonId.Value;
+        _statDragPersonId = null;
+        if (src == targetPersonId || src < 0 || targetPersonId < 0) return;
+
+        var srcEntry = _statStaffList.FirstOrDefault(s => s.PersonId == src);
+        var tgtEntry = _statStaffList.FirstOrDefault(s => s.PersonId == targetPersonId);
+        if (srcEntry == null || tgtEntry == null) return;
+        // Only allow reordering within the same org group.
+        if (srcEntry.OrgId != tgtEntry.OrgId) return;
+
+        _statStaffList.Remove(srcEntry);
+        var newIdx = _statStaffList.IndexOf(tgtEntry);
+        if (newIdx < 0) return;
+        _statStaffList.Insert(newIdx, srcEntry);
+
+        // Persist all real-staff PersonIds (skip synthetic entries < 0).
+        var order = _statStaffList.Where(s => s.PersonId >= 0).Select(s => s.PersonId).ToList();
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(order);
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", StatOrderStorageKey, json);
+        }
+        catch { /* non-critical */ }
+        StateHasChanged();
     }
 
     async Task CloseShowStat()

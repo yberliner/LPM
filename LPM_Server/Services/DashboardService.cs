@@ -1184,8 +1184,11 @@ public class DashboardService
         var auditorPcIds   = userPcs.Where(p => StaffRoles.IsAuditorCapacity(p.WorkCapacity)).Select(p => p.PcId).ToList();
         var csPcIds        = userPcs.Where(p => StaffRoles.IsCsCapacity(p.WorkCapacity)).Select(p => p.PcId).ToList();
         var soloSet        = csPcIds.Count > 0 ? GetSoloPcIds() : new HashSet<int>();
+        // CS bucket uses the full csPcIds (incl. solo-capable PCs) to mirror GetWeekGrid,
+        // which scopes by `s.AuditorId IS NOT NULL` rather than by PC list. Excluding
+        // solo PCs here caused done-CS cells on solo-capable PCs to render without a
+        // hover card (pending `*` still worked because pending markers only cover non-solo PCs).
         var soloAuditorIds = csPcIds.Where(id => soloSet.Contains(id)).ToList();
-        var csOnlyIds      = csPcIds.Where(id => !soloSet.Contains(id)).ToList();
 
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -1242,10 +1245,10 @@ public class DashboardService
             }
         }
 
-        // ── CS bucket: every session on a CS-capacity PC (non-solo), with or without the user's review ──
-        if (csOnlyIds.Count > 0)
+        // ── CS bucket: every session on a CS-capacity PC (incl. solo-capable; filtered by AuditorId IS NOT NULL) ──
+        if (csPcIds.Count > 0)
         {
-            var pcList = string.Join(",", csOnlyIds);
+            var pcList = string.Join(",", csPcIds);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT s.SessionId, s.PcId, date(s.CreatedAt, 'localtime') AS SDate,
@@ -3278,7 +3281,7 @@ public class DashboardService
         return list;
     }
 
-    public record StaffMemberWithRole(int PersonId, string FullName, string StaffRole);
+    public record StaffMemberWithRole(int PersonId, string FullName, string StaffRole, int? OrgId = null, string? OrgName = null);
 
     public List<StaffMemberWithRole> GetNonSoloStaffWithRoles()
     {
@@ -3286,16 +3289,21 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $@"
-            SELECT DISTINCT p.PersonId, {FullNameExpr} AS FullName, COALESCE(u.StaffRole, '') AS StaffRole
+            SELECT DISTINCT p.PersonId, {FullNameExpr} AS FullName, COALESCE(u.StaffRole, '') AS StaffRole,
+                   p.Org AS OrgId, o.Name AS OrgName
             FROM core_persons p
             JOIN core_users u ON u.PersonId = p.PersonId
+            LEFT JOIN lkp_organizations o ON o.OrgId = p.Org
             WHERE u.IsActive = 1 AND u.StaffRole NOT IN ('Solo', 'None')
               AND LOWER(u.Username) != 'admin'
             ORDER BY p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
         var list = new List<StaffMemberWithRole>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add(new StaffMemberWithRole(r.GetInt32(0), r.GetString(1), r.GetString(2)));
+            list.Add(new StaffMemberWithRole(
+                r.GetInt32(0), r.GetString(1), r.GetString(2),
+                r.IsDBNull(3) ? null : r.GetInt32(3),
+                r.IsDBNull(4) ? null : r.GetString(4)));
         return list;
     }
 
