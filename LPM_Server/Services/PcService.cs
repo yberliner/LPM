@@ -2316,7 +2316,7 @@ public List<PcListItem> GetAllPcs()
         cmd.Parameters.AddWithValue("@pc", pcId);
         cmd.Parameters.AddWithValue("@rd", resetDate);
         cmd.Parameters.AddWithValue("@cb", createdBy);
-        cmd.Parameters.AddWithValue("@ca", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"));
+        cmd.Parameters.AddWithValue("@ca", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
         cmd.Parameters.AddWithValue("@n", (object?)notes ?? DBNull.Value);
         cmd.ExecuteNonQuery();
     }

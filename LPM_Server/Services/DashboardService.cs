@@ -2739,7 +2739,7 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@pcId", pcId);
         cmd.Parameters.AddWithValue("@audId", (object?)auditorId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@html", summaryHtml);
-        cmd.Parameters.AddWithValue("@createdAt", sessionDate ?? DateTime.UtcNow.AddHours(2).ToString("yyyy-MM-dd HH:mm:ss"));
+        cmd.Parameters.AddWithValue("@createdAt", sessionDate ?? DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
         cmd.Parameters.AddWithValue("@arfJson", (object?)arfJson ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@lenSec", (object?)lengthSeconds ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@admSec", (object?)adminSeconds ?? DBNull.Value);

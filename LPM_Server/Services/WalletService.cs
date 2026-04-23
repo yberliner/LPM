@@ -707,7 +707,7 @@ public class WalletService
             cmd.Transaction = tx;
             cmd.CommandText = @"
                 INSERT INTO fin_purchases (PcId, WalletId, PurchaseDate, Notes, ApprovedStatus, CreatedByPersonId, Currency)
-                VALUES (@pc, @w, date('now'), @notes, 'Approved', @by, @cur);
+                VALUES (@pc, @w, date('now', 'localtime'), @notes, 'Approved', @by, @cur);
                 SELECT last_insert_rowid();";
             cmd.Parameters.AddWithValue("@pc",    from.PcId);
             cmd.Parameters.AddWithValue("@w",     from.WalletId);
@@ -733,7 +733,7 @@ public class WalletService
             cmd.Transaction = tx;
             cmd.CommandText = @"
                 INSERT INTO fin_purchases (PcId, WalletId, PurchaseDate, Notes, ApprovedStatus, CreatedByPersonId, Currency, TransferPurchaseId)
-                VALUES (@pc, @w, date('now'), @notes, 'Approved', @by, @cur, @src);
+                VALUES (@pc, @w, date('now', 'localtime'), @notes, 'Approved', @by, @cur, @src);
                 SELECT last_insert_rowid();";
             cmd.Parameters.AddWithValue("@pc",    toPcId);
             cmd.Parameters.AddWithValue("@w",     targetWalletId);
