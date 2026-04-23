@@ -546,7 +546,7 @@ public List<PcListItem> GetAllPcs()
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        var where = days > 0 ? $"WHERE h.ChangedAt >= datetime('now', '+2 hours', '-{days} days')" : "";
+        var where = days > 0 ? $"WHERE h.ChangedAt >= datetime('now', 'localtime', '-{days} days')" : "";
         cmd.CommandText = $@"
             SELECT h.Id, h.PcId,
                    COALESCE(TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')), 'Unknown (id=' || h.PcId || ')') AS PcName,
@@ -1788,7 +1788,7 @@ public List<PcListItem> GetAllPcs()
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             UPDATE fin_payment_methods
-            SET IsMoneyInBank = @val, MoneyInBankDate = CASE WHEN @val = 1 THEN datetime('now', '+2 hours') ELSE NULL END
+            SET IsMoneyInBank = @val, MoneyInBankDate = CASE WHEN @val = 1 THEN datetime('now', 'localtime') ELSE NULL END
             WHERE PaymentMethodId = @id";
         cmd.Parameters.AddWithValue("@id", paymentMethodId);
         cmd.Parameters.AddWithValue("@val", isInBank ? 1 : 0);
@@ -1803,7 +1803,7 @@ public List<PcListItem> GetAllPcs()
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             UPDATE fin_payment_methods
-            SET MethodType = @type, PaymentDate = date('now', '+2 hours'), IsMoneyInBank = 0, MoneyInBankDate = NULL
+            SET MethodType = @type, PaymentDate = date('now', 'localtime'), IsMoneyInBank = 0, MoneyInBankDate = NULL
             WHERE PaymentMethodId = @id AND MethodType = 'ToBePaid'";
         cmd.Parameters.AddWithValue("@id", paymentMethodId);
         cmd.Parameters.AddWithValue("@type", newMethodType);
@@ -2447,7 +2447,7 @@ public List<PcListItem> GetAllPcs()
             }
 
             var date = DateTime.Now.ToString("yyyy-MM-dd");
-            var now = $"datetime('now', '+2 hours')";
+            var now = $"datetime('now', 'localtime')";
 
             // Get names for notes
             string GetName(int pcId)
@@ -2570,7 +2570,7 @@ public List<PcListItem> GetAllPcs()
         cmd.CommandText = @"
             UPDATE fin_purchases SET ApprovedStatus = 'Approved',
                                  ApprovedByPersonId = @by,
-                                 ApprovedAt = datetime('now', '+2 hours')
+                                 ApprovedAt = datetime('now', 'localtime')
             WHERE PurchaseId = @id";
         cmd.Parameters.AddWithValue("@id", purchaseId);
         cmd.Parameters.AddWithValue("@by", approvedByPersonId);

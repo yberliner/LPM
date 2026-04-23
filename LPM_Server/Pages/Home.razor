@@ -2443,10 +2443,9 @@
 
         if (string.IsNullOrWhiteSpace(createdAt)) return (sdDisp, null, null);
         if (!DateTime.TryParse(createdAt, System.Globalization.CultureInfo.InvariantCulture,
-                System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
-                out var utc))
+                System.Globalization.DateTimeStyles.None, out var cd))
             return (sdDisp, null, null);
-        var cdLocal = DateOnly.FromDateTime(utc.ToLocalTime());
+        var cdLocal = DateOnly.FromDateTime(cd);
         if (cdLocal == sd) return (sdDisp, null, null);
 
         var cdStr = cdLocal.ToString("dd/MM/yy");

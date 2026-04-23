@@ -344,7 +344,7 @@ public class DashboardService
         cmd.CommandText = @"
             INSERT INTO sess_sessions
                 (PcId, AuditorId, SessionDate, SequenceInDay, LengthSeconds, AdminSeconds, IsFreeSession, Name, CreatedByUserId, WalletId, CreatedAt)
-            VALUES (@pc, @aud, @dt, @seq, @len, @admin, @free, @name, @creator, @wallet, datetime('now', '+2 hours'));
+            VALUES (@pc, @aud, @dt, @seq, @len, @admin, @free, @name, @creator, @wallet, datetime('now', 'localtime'));
             SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("@pc", pcId);
         cmd.Parameters.AddWithValue("@aud", audParam);
@@ -1505,7 +1505,7 @@ public class DashboardService
               (@pcId, @audId, @date, @seq,
                @len, @adm, @free,
                0, 0,
-               @wallet, datetime('now', '+2 hours'))";
+               @wallet, datetime('now', 'localtime'))";
         cmd.Parameters.AddWithValue("@pcId",  pcId);
         cmd.Parameters.AddWithValue("@audId", auditorId);
         cmd.Parameters.AddWithValue("@date",  dateStr);
@@ -1552,7 +1552,7 @@ public class DashboardService
               (@pcId, @audId, @date, @seq,
                0, 0, 1,
                0, 0,
-               @name, @creator, @wallet, datetime('now', '+2 hours'))";
+               @name, @creator, @wallet, datetime('now', 'localtime'))";
         cmd.Parameters.AddWithValue("@pcId",    pcId);
         cmd.Parameters.AddWithValue("@audId",   solo ? DBNull.Value : auditorId);
         cmd.Parameters.AddWithValue("@date",    dateStr);
@@ -1594,7 +1594,7 @@ public class DashboardService
                LengthSeconds, AdminSeconds, IsFree, Summary, CreatedAt)
             VALUES
               (@audId, @pcId, @date, @seq,
-               @len, @adm, @free, @sum, datetime('now', '+2 hours'))";
+               @len, @adm, @free, @sum, datetime('now', 'localtime'))";
         cmd.Parameters.AddWithValue("@audId", auditorId);
         cmd.Parameters.AddWithValue("@pcId",  pcId);
         cmd.Parameters.AddWithValue("@date",  dateStr);
@@ -1635,7 +1635,7 @@ public class DashboardService
             INSERT INTO cs_reviews
               (SessionId, CsId, ReviewLengthSeconds, ReviewedAt, Status, Notes, WalletId)
             VALUES
-              (@sid, @csId, @rev, datetime('now', '+2 hours'), @status, @notes,
+              (@sid, @csId, @rev, datetime('now', 'localtime'), @status, @notes,
                (SELECT WalletId FROM sess_sessions WHERE SessionId = @sid))";
         cmd.Parameters.AddWithValue("@sid",    sessionId);
         cmd.Parameters.AddWithValue("@csId",   csId);
@@ -1813,7 +1813,7 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO cs_work_log (CsId, PcId, WorkDate, LengthSeconds, Notes, CreatedAt)
-            VALUES (@csId, @pcId, @date, @len, @notes, datetime('now', '+2 hours'))";
+            VALUES (@csId, @pcId, @date, @len, @notes, datetime('now', 'localtime'))";
         cmd.Parameters.AddWithValue("@csId", csId);
         cmd.Parameters.AddWithValue("@pcId", pcId);
         cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
@@ -2091,7 +2091,7 @@ public class DashboardService
               (@pcId, NULL, @date, @seq,
                @len, @adm, @free,
                0, 0,
-               @wallet, datetime('now', '+2 hours'))";
+               @wallet, datetime('now', 'localtime'))";
         cmd.Parameters.AddWithValue("@pcId", personId);
         cmd.Parameters.AddWithValue("@date", dateStr);
         cmd.Parameters.AddWithValue("@seq",  seq);
@@ -2858,7 +2858,7 @@ public class DashboardService
         using var ins = conn.CreateCommand();
         ins.CommandText = @"
             INSERT INTO sess_next_cs (SessionId, NextCS, UpdatedAt)
-            VALUES (@sid, @html, datetime('now', '+2 hours'))";
+            VALUES (@sid, @html, datetime('now', 'localtime'))";
         ins.Parameters.AddWithValue("@sid", sessionId);
         ins.Parameters.AddWithValue("@html", nextCsHtml);
         ins.ExecuteNonQuery();
@@ -3357,7 +3357,7 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
         // Ownership check: only acknowledge if the message belongs to toStaffId
-        cmd.CommandText = "UPDATE sys_staff_messages SET AcknowledgedAt = datetime('now', '+2 hours') WHERE Id = @id AND ToStaffId = @toId";
+        cmd.CommandText = "UPDATE sys_staff_messages SET AcknowledgedAt = datetime('now', 'localtime') WHERE Id = @id AND ToStaffId = @toId";
         cmd.Parameters.AddWithValue("@id", messageId);
         cmd.Parameters.AddWithValue("@toId", toStaffId);
         cmd.ExecuteNonQuery();
@@ -3384,9 +3384,9 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO sys_weekly_remarks (AuditorId, WeekDate, Remarks, SubmittedAt)
-            VALUES (@aud, @wk, @rem, datetime('now', '+2 hours'))
+            VALUES (@aud, @wk, @rem, datetime('now', 'localtime'))
             ON CONFLICT(AuditorId, WeekDate)
-            DO UPDATE SET Remarks = @rem, SubmittedAt = datetime('now', '+2 hours')";
+            DO UPDATE SET Remarks = @rem, SubmittedAt = datetime('now', 'localtime')";
         cmd.Parameters.AddWithValue("@aud", auditorId);
         cmd.Parameters.AddWithValue("@wk", weekDate);
         cmd.Parameters.AddWithValue("@rem", remarks ?? "");
@@ -4041,7 +4041,7 @@ public class DashboardService
               (@pcId, @audId, @date, @seq,
                @len, @adm, @free,
                @charge, 0,
-               @notes, @name, @creator, @wallet, datetime('now', '+2 hours'))";
+               @notes, @name, @creator, @wallet, datetime('now', 'localtime'))";
         cmd.Parameters.AddWithValue("@pcId",    pcId);
         cmd.Parameters.AddWithValue("@audId",   auditorId.HasValue ? auditorId.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@date",    sessionDate);
@@ -4064,7 +4064,7 @@ public class DashboardService
         using var crCmd = conn.CreateCommand();
         crCmd.CommandText = @"
             INSERT INTO cs_reviews (SessionId, CsId, ReviewLengthSeconds, ReviewedAt, Status, WalletId)
-            VALUES (@sid, @csId, @revLen, datetime('now', '+2 hours'), 'Done',
+            VALUES (@sid, @csId, @revLen, datetime('now', 'localtime'), 'Done',
                     (SELECT WalletId FROM sess_sessions WHERE SessionId = @sid))";
         crCmd.Parameters.AddWithValue("@sid",    sessionId);
         crCmd.Parameters.AddWithValue("@csId",   csId);
