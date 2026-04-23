@@ -537,7 +537,7 @@
                             <th style="min-width:110px;color:#212529;">@LS.T("home.day")</th>
                             @foreach (var pc in _audPcs)
                             {
-                                var hasPendingCs   = Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((DashboardService.GKey(pc), d)));
+                                var hasPendingCs   = Enumerable.Range(0, 7).Any(d => _pendingCs.Regular.Contains((pc.PcId, d)));
                                 var isPendingApprv = _unapprovedPcIds.Contains(pc.PcId);
                                 <th class="text-center user-select-none"
                                     style="@(isPendingApprv ? "cursor:not-allowed;" : "cursor:context-menu;") white-space:nowrap; min-width:90px;"
@@ -581,7 +581,7 @@
                                 {
                                     @foreach (var pc in _audPcs)
                                     {
-                                        var secs           = _grid.GetValueOrDefault((DashboardService.GKey(pc), dayIdx));
+                                        var secs           = _grid.Auditor.GetValueOrDefault((pc.PcId, dayIdx));
                                         var isSelected     = _selPcId == pc.PcId && _selDay == dayIdx && _selRole == pc.WorkCapacity;
                                         var isPendingApprv = _unapprovedPcIds.Contains(pc.PcId);
                                         <td class="text-center"
@@ -608,13 +608,13 @@
                                 @foreach (var pc in _audPcs)
                                 {
                                     var total = Enumerable.Range(0, 7)
-                                        .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d)));
+                                        .Sum(d => _grid.Auditor.GetValueOrDefault((pc.PcId, d)));
                                     <td class="text-center"><strong>@DashboardService.Fmt(total)</strong></td>
                                 }
                             </tr>
                             @{
                                 var audGrandTotal = _audPcs.Sum(pc => Enumerable.Range(0, 7)
-                                    .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
+                                    .Sum(d => _grid.Auditor.GetValueOrDefault((pc.PcId, d))));
                             }
                             <tr style="background:linear-gradient(90deg,#1a237e 0%,#283593 100%) !important; color:#fff !important;">
                                 <td class="fw-bold" style="letter-spacing:.03em;color:#fff;">Grand Total</td>
@@ -666,7 +666,7 @@
                             <th style="min-width:110px;color:#212529;">@LS.T("home.day")</th>
                             @foreach (var pc in _csSoloPcs)
                             {
-                                var hasPendingCs   = Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((DashboardService.GKey(pc), d)));
+                                var hasPendingCs   = Enumerable.Range(0, 7).Any(d => _pendingCs.Solo.Contains((pc.PcId, d)));
                                 var isPendingApprv = _unapprovedPcIds.Contains(pc.PcId);
                                 <th class="text-center user-select-none"
                                     style="@(isPendingApprv ? "cursor:not-allowed;" : "cursor:context-menu;") white-space:nowrap; min-width:90px; position:relative;"
@@ -703,9 +703,9 @@
                                 <td class="text-nowrap" style="font-size:.82em; color:#ce93d8; @(isFuture ? "opacity:.45;" : "")">@DayLabel(day)</td>
                                 @foreach (var pc in _csSoloPcs)
                                 {
-                                    var secs       = _grid.GetValueOrDefault((DashboardService.GKey(pc), dayIdx));
+                                    var secs       = _grid.CsSolo.GetValueOrDefault((pc.PcId, dayIdx));
                                     var isSelected = _selPcId == pc.PcId && _selDay == dayIdx && _selRole == pc.WorkCapacity;
-                                    var isPendingCs = _pendingCs.Contains((DashboardService.GKey(pc), dayIdx));
+                                    var isPendingCs = _pendingCs.Solo.Contains((pc.PcId, dayIdx));
                                     var isPendingApprv = _unapprovedPcIds.Contains(pc.PcId);
                                     <td class="text-center"
                                         style="@(isPendingApprv ? "opacity:.35;" : isFuture ? "opacity:.45;" : "") color:#ce93d8; font-size:.82em;">
@@ -738,7 +738,7 @@
                             @foreach (var pc in _csSoloPcs)
                             {
                                 var total = Enumerable.Range(0, 7)
-                                    .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d)));
+                                    .Sum(d => _grid.CsSolo.GetValueOrDefault((pc.PcId, d)));
                                 <td class="text-center" style="color:#ce93d8; font-size:.82em;">
                                     <strong>@DashboardService.Fmt(total)</strong>
                                 </td>
@@ -746,7 +746,7 @@
                         </tr>
                         @{
                             var csSoloGrandTotal = _csSoloPcs.Sum(pc => Enumerable.Range(0, 7)
-                                .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
+                                .Sum(d => _grid.CsSolo.GetValueOrDefault((pc.PcId, d))));
                         }
                         <tr style="background:linear-gradient(90deg,#6a1b9a 0%,#8e24aa 100%) !important; color:#fff !important;">
                             <td class="fw-bold" style="letter-spacing:.03em; font-size:.85em;color:#fff;">CS Solo Total</td>
@@ -771,9 +771,9 @@
 
             @* ══════ COMBINED GRAND TOTAL (Auditor + CS Solo) ══════ *@
             var combinedAudTotal = _audPcs.Sum(pc => Enumerable.Range(0, 7)
-                .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
+                .Sum(d => _grid.Auditor.GetValueOrDefault((pc.PcId, d))));
             var combinedSoloTotal = _csSoloPcs.Sum(pc => Enumerable.Range(0, 7)
-                .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
+                .Sum(d => _grid.CsSolo.GetValueOrDefault((pc.PcId, d))));
             var combinedTotal = combinedAudTotal + combinedSoloTotal;
             @if (combinedTotal > 0)
             {
@@ -807,7 +807,7 @@
                             <th style="min-width:110px;color:#212529;">@LS.T("home.day")</th>
                             @foreach (var pc in _csPcs)
                             {
-                                var hasPendingCs   = Enumerable.Range(0, 7).Any(d => _pendingCs.Contains((DashboardService.GKey(pc), d)));
+                                var hasPendingCs   = Enumerable.Range(0, 7).Any(d => _pendingCs.Regular.Contains((pc.PcId, d)));
                                 var isPendingApprv = _unapprovedPcIds.Contains(pc.PcId);
                                 <th class="text-center user-select-none"
                                     style="@(isPendingApprv ? "cursor:not-allowed;" : "cursor:context-menu;") white-space:nowrap; min-width:90px; position:relative;"
@@ -844,9 +844,9 @@
                                 <td class="text-nowrap" style="font-size:.82em; @(isFuture ? "opacity:.45;" : "")">@DayLabel(day)</td>
                                 @foreach (var pc in _csPcs)
                                 {
-                                    var secs       = _grid.GetValueOrDefault((DashboardService.GKey(pc), dayIdx));
+                                    var secs       = _grid.Cs.GetValueOrDefault((pc.PcId, dayIdx));
                                     var isSelected = _selPcId == pc.PcId && _selDay == dayIdx && _selRole == pc.WorkCapacity;
-                                    var isPendingCs = _pendingCs.Contains((DashboardService.GKey(pc), dayIdx));
+                                    var isPendingCs = _pendingCs.Regular.Contains((pc.PcId, dayIdx));
                                     var isPendingApprv = _unapprovedPcIds.Contains(pc.PcId);
                                     <td class="text-center"
                                         style="@(isPendingApprv ? "opacity:.35;" : isFuture ? "opacity:.45;" : "") color:#adb5bd; font-size:.78em;">
@@ -879,7 +879,7 @@
                             @foreach (var pc in _csPcs)
                             {
                                 var total = Enumerable.Range(0, 7)
-                                    .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d)));
+                                    .Sum(d => _grid.Cs.GetValueOrDefault((pc.PcId, d)));
                                 <td class="text-center" style="color:#adb5bd; font-size:.78em;">
                                     <strong>@DashboardService.Fmt(total)</strong>
                                 </td>
@@ -887,7 +887,7 @@
                         </tr>
                         @{
                             var csGrandTotal = _csPcs.Sum(pc => Enumerable.Range(0, 7)
-                                .Sum(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d))));
+                                .Sum(d => _grid.Cs.GetValueOrDefault((pc.PcId, d))));
                         }
                         <tr style="background:linear-gradient(90deg,#546e7a 0%,#78909c 100%) !important; color:#fff !important;">
                             <td class="fw-bold" style="letter-spacing:.03em; font-size:.85em;color:#fff;">CS Total</td>
@@ -2120,7 +2120,7 @@
     HashSet<int>   _unapprovedPcIds = [];
     HashSet<int>   _soloPcIds = [];
     HashSet<int>   _pcsWithCs = [];
-    Dictionary<(int, int), int> _grid = [];
+    WeekGrid _grid = WeekGrid.Empty();
     Dictionary<string, string> _csStatusLabels = [];
 
     // ── Extra Effort state ──
@@ -2152,30 +2152,31 @@
         return (sdDisp, cdStr, tip);
     }
 
-    bool HasWeekData(PcInfo pc) => Enumerable.Range(0, 7)
-        .Any(d => _grid.GetValueOrDefault((DashboardService.GKey(pc), d)) > 0
-               || _pendingCs.Contains((DashboardService.GKey(pc), d)));
+    bool HasWeekData(Dictionary<(int pcId, int dayIdx), int> slot, HashSet<(int pcId, int dayIdx)> pending, int pcId) =>
+        Enumerable.Range(0, 7).Any(d => slot.GetValueOrDefault((pcId, d)) > 0
+                                     || pending.Contains((pcId, d)));
 
     List<PcInfo> AuditorPcs => _myPcs
         .Where(pc => StaffRoles.IsAuditorCapacity(pc.WorkCapacity))
-        .Where(pc => !_hideEmpty || HasWeekData(pc))
+        .Where(pc => !_hideEmpty || HasWeekData(_grid.Auditor, _pendingCs.Regular, pc.PcId))
         .ToList();
 
-    // CS-assigned PCs that are solo auditors — shown in the CS Solo table (negative GKey)
-    // Includes: CS/AuditorAndCS capacity where PC is solo, plus CSSolo/AuditorAndCSSolo capacity always
+    // CS-assigned PCs that are solo auditors — shown in the CS Solo table.
+    // Includes: CS/AuditorAndCS capacity where PC is solo, plus CSSolo/AuditorAndCSSolo capacity always.
+    // WorkCapacity is normalized to "CSSolo" so _selRole comparisons in the CS Solo render match.
     List<PcInfo> CsSoloPcs => _myPcs
         .Where(pc => StaffRoles.IsCsSoloCapacity(pc.WorkCapacity)
             || (StaffRoles.IsCsCapacity(pc.WorkCapacity) && !StaffRoles.IsCsReviewCapacity(pc.WorkCapacity) && _soloPcIds.Contains(pc.PcId)))
         .Select(pc => pc with { WorkCapacity = "CSSolo" })
-        .Where(pc => !_hideEmpty || HasWeekData(pc))
+        .Where(pc => !_hideEmpty || HasWeekData(_grid.CsSolo, _pendingCs.Solo, pc.PcId))
         .ToList();
 
-    // All CS-assigned PCs — shown in the CS table (positive GKey)
+    // All CS-assigned PCs — shown in the CS table.
     List<PcInfo> CsPcs => _myPcs
         .Where(pc => StaffRoles.IsCsCapacity(pc.WorkCapacity))
-        .Where(pc => !_hideEmpty || HasWeekData(pc))
+        .Where(pc => !_hideEmpty || HasWeekData(_grid.Cs, _pendingCs.Regular, pc.PcId))
         .ToList();
-    HashSet<(int, int)>      _pendingCs   = [];
+    PendingCsMarkers _pendingCs = PendingCsMarkers.Empty();
     Dictionary<int, string>  _pcCsNames   = [];
     List<DashboardService.PendingCsSession> _pendingCsSessions = [];
     bool _initialized = false;
@@ -2436,7 +2437,7 @@
 
             _myPcs           = [_soloSelf];
             _auditorStatuses = audStatuses ?? [];
-            _pendingCs       = []; _pcCsNames = [];
+            _pendingCs       = PendingCsMarkers.Empty(); _pcCsNames = [];
 
             // Attachment types per session — parallel
             var t_attachTasks = _auditorStatuses.Select(s =>
@@ -2683,7 +2684,7 @@
         _grid = _isSolo
             ? DashSvc.GetWeekGridSolo(_userId.Value, _weekStart)
             : DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
-        _pendingCs = _isSolo ? [] : DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
+        _pendingCs = _isSolo ? PendingCsMarkers.Empty() : DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
         _weeklyTotals = _isSolo
             ? DashSvc.GetWeeklyTotalsSolo(_userId.Value, ChartLatestWeekStart(), 20)
             : DashSvc.GetWeeklyTotals(_userId.Value, ChartLatestWeekStart(), 20, _myPcs);
@@ -3532,7 +3533,7 @@
         _grid = _isSolo
             ? DashSvc.GetWeekGridSolo(_userId.Value, _weekStart)
             : DashSvc.GetWeekGrid(_userId.Value, _weekStart, _myPcs);
-        _pendingCs = _isSolo ? [] : DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
+        _pendingCs = _isSolo ? PendingCsMarkers.Empty() : DashSvc.GetPendingCsMarkers(_userId.Value, _weekStart, _myPcs);
         RefreshWeeklyTotals();
     }
 

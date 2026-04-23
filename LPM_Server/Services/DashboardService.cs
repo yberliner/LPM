@@ -93,6 +93,21 @@ public record SessionDeleteInfo(int SessionId, int PcId, string SessionName,
 public record ApprovedPcEntry(int Id, int PcId, string PcName, string WorkCapacity = StaffRoles.Auditor);
 public record AuditorPermGroup(int AuditorId, string AuditorName, bool AllowAll, List<ApprovedPcEntry> ApprovedPcs, string StaffRole = StaffRoles.Auditor);
 
+public sealed record WeekGrid(
+    Dictionary<(int pcId, int dayIdx), int> Auditor,
+    Dictionary<(int pcId, int dayIdx), int> Cs,
+    Dictionary<(int pcId, int dayIdx), int> CsSolo)
+{
+    public static WeekGrid Empty() => new(new(), new(), new());
+}
+
+public sealed record PendingCsMarkers(
+    HashSet<(int pcId, int dayIdx)> Regular,
+    HashSet<(int pcId, int dayIdx)> Solo)
+{
+    public static PendingCsMarkers Empty() => new(new(), new());
+}
+
 public class DashboardService
 {
     private readonly string _connectionString;
@@ -1014,14 +1029,18 @@ public class DashboardService
     }
 
     /// <summary>
-    /// Grid data keyed by (pcId, dayIndex 0=Thu).
-    /// Each PC's time is computed from Sessions (Auditor role) or CsReviews (CS role).
+    /// Grid data split per slot (Auditor / Cs / CsSolo), keyed by (pcId, dayIndex 0=Thu).
+    /// Auditor  slot: session Length+Admin where user is the auditor.
+    /// Cs       slot: CS review time + cs_work_log, for sessions with AuditorId NOT NULL.
+    /// CsSolo   slot: CS review time for self-audited (AuditorId IS NULL) sessions on solo PCs.
     /// </summary>
-    public Dictionary<(int pcId, int dayIndex), int> GetWeekGrid(
+    public WeekGrid GetWeekGrid(
         int userId, DateOnly weekStart, List<PcInfo> userPcs)
     {
-        var result = new Dictionary<(int, int), int>();
-        if (userPcs.Count == 0) return result;
+        var auditor = new Dictionary<(int pcId, int dayIdx), int>();
+        var cs      = new Dictionary<(int pcId, int dayIdx), int>();
+        var csSolo  = new Dictionary<(int pcId, int dayIdx), int>();
+        if (userPcs.Count == 0) return new WeekGrid(auditor, cs, csSolo);
 
         var dates    = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
         var dateList = string.Join(",", dates.Select(d => $"'{d:yyyy-MM-dd}'"));
@@ -1052,7 +1071,7 @@ public class DashboardService
                 var dayIdx = dates.IndexOf(date);
                 if (dayIdx < 0) continue;
                 var key = (pcId, dayIdx);
-                result[key] = result.GetValueOrDefault(key) + secs;
+                auditor[key] = auditor.GetValueOrDefault(key) + secs;
             }
         }
 
@@ -1076,7 +1095,7 @@ public class DashboardService
                 var dayIdx = dates.IndexOf(date);
                 if (dayIdx < 0) continue;
                 var key = (pcId, dayIdx);
-                result[key] = result.GetValueOrDefault(key) + secs;
+                cs[key] = cs.GetValueOrDefault(key) + secs;
             }
 
             // Also include standalone General CS work (not linked to any session)
@@ -1096,12 +1115,11 @@ public class DashboardService
                 var dayIdx = dates.IndexOf(date);
                 if (dayIdx < 0) continue;
                 var key = (pcId, dayIdx);
-                result[key] = result.GetValueOrDefault(key) + secs;
+                cs[key] = cs.GetValueOrDefault(key) + secs;
             }
         }
 
-        // CS Solo columns: reviewing sessions where AuditorId IS NULL (solo self-sessions)
-        // Grid key uses -pcId to appear in a separate CS Solo table column
+        // CS Solo slot: reviewing sessions where AuditorId IS NULL (solo self-sessions)
         if (soloAuditorIds.Count > 0)
         {
             var pcList = string.Join(",", soloAuditorIds);
@@ -1121,12 +1139,12 @@ public class DashboardService
                 var secs   = r.GetInt32(2);
                 var dayIdx = dates.IndexOf(date);
                 if (dayIdx < 0) continue;
-                var key = (-pcId, dayIdx);   // negative key for CS Solo column
-                result[key] = result.GetValueOrDefault(key) + secs;
+                var key = (pcId, dayIdx);
+                csSolo[key] = csSolo.GetValueOrDefault(key) + secs;
             }
         }
 
-        return result;
+        return new WeekGrid(auditor, cs, csSolo);
     }
 
     /// <summary>
@@ -1625,10 +1643,6 @@ public class DashboardService
         return $"{totalMin / 60}:{totalMin % 60:D2}";
     }
 
-    /// Grid-key convention: CSSolo columns use -PcId so same person can appear in both columns.
-    /// Before calling GKey, CSAndCSSolo entries must be normalized to CS or CSSolo.
-    public static int GKey(PcInfo pc) => pc.WorkCapacity == "CSSolo" ? -(pc.PcId) : pc.PcId;
-
     /// <summary>
     /// Default wallet for a new session/CS on a PC: the last-used wallet
     /// (from this PC's most recent session), falling back to the first active wallet.
@@ -1652,10 +1666,11 @@ public class DashboardService
         return Convert.ToInt32(r);
     }
 
-    public HashSet<(int pcId, int dayIndex)> GetPendingCsMarkers(
+    public PendingCsMarkers GetPendingCsMarkers(
     int csId, DateOnly weekStart, List<PcInfo> userPcs)
     {
-        var result = new HashSet<(int pcId, int dayIndex)>();
+        var regular = new HashSet<(int pcId, int dayIdx)>();
+        var solo    = new HashSet<(int pcId, int dayIdx)>();
 
         var allCsPcIds   = userPcs.Where(p => StaffRoles.IsCsCapacity(p.WorkCapacity)).Select(p => p.PcId).ToList();
         var soloSet      = allCsPcIds.Count > 0 ? GetSoloPcIds() : new HashSet<int>();
@@ -1663,7 +1678,7 @@ public class DashboardService
         var regularPcIds = allCsPcIds.Where(id => !soloSet.Contains(id)).ToList();
 
         if (regularPcIds.Count == 0 && soloPcIds.Count == 0)
-            return result;
+            return new PendingCsMarkers(regular, solo);
 
         var dates    = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
         var dateList = string.Join(",", dates.Select(d => $"'{d:yyyy-MM-dd}'"));
@@ -1671,7 +1686,7 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        void RunQuery(List<int> pcIds, bool solo)
+        void RunQuery(List<int> pcIds, bool isSolo)
         {
             if (pcIds.Count == 0) return;
             var pcList = string.Join(",", pcIds);
@@ -1682,7 +1697,7 @@ public class DashboardService
                 LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
                 WHERE s.PcId IN ({pcList})
                   AND date(s.CreatedAt, 'localtime') IN ({dateList})
-                  AND s.AuditorId {(solo ? "IS NULL" : "IS NOT NULL")}
+                  AND s.AuditorId {(isSolo ? "IS NULL" : "IS NOT NULL")}
                   AND cr.CsReviewId IS NULL
                 GROUP BY s.PcId, date(s.CreatedAt, 'localtime')";
             using var r = cmd.ExecuteReader();
@@ -1692,14 +1707,14 @@ public class DashboardService
                 var date   = DateOnly.Parse(r.GetString(1));
                 var dayIdx = dates.IndexOf(date);
                 if (dayIdx >= 0 && dayIdx < 7)
-                    result.Add((solo ? -pcId : pcId, dayIdx));  // negative key for solo columns
+                    (isSolo ? solo : regular).Add((pcId, dayIdx));
             }
         }
 
         RunQuery(regularPcIds, false);
         RunQuery(soloPcIds,    true);
 
-        return result;
+        return new PendingCsMarkers(regular, solo);
     }
 
     /// Returns PcIds that have sessions where PcId=AuditorId (solo) with no CsReview yet.
@@ -1770,9 +1785,9 @@ public class DashboardService
         return name is null ? null : new PcInfo(userId, name, "SoloAuditor");
     }
 
-    public Dictionary<(int pcId, int dayIndex), int> GetWeekGridSolo(int userId, DateOnly weekStart)
+    public WeekGrid GetWeekGridSolo(int userId, DateOnly weekStart)
     {
-        var result = new Dictionary<(int, int), int>();
+        var auditor = new Dictionary<(int pcId, int dayIdx), int>();
         var dates    = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
         var dateList = string.Join(",", dates.Select(d => $"'{d:yyyy-MM-dd}'"));
 
@@ -1793,9 +1808,9 @@ public class DashboardService
             var dayIdx = dates.IndexOf(date);
             if (dayIdx < 0) continue;
             var key = (userId, dayIdx);
-            result[key] = result.GetValueOrDefault(key) + secs;
+            auditor[key] = auditor.GetValueOrDefault(key) + secs;
         }
-        return result;
+        return new WeekGrid(auditor, new(), new());
     }
 
     public List<WeekTotal> GetWeeklyTotalsSolo(int userId, DateOnly latestWeekStart, int weekCount)
