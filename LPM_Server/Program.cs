@@ -280,14 +280,17 @@ app.Use(async (ctx, next) =>
     ctx.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
     ctx.Response.Headers["Permissions-Policy"] = "camera=(self), microphone=(), geolocation=(), payment=()";
     // CSP kept permissive on purpose: Blazor Server needs inline scripts/styles, and the UI
-    // loads Quill (cdn.quilljs.com), PDF.js (cdnjs.cloudflare.com), FullCalendar (cdn.jsdelivr.net).
+    // loads Quill (now 301-redirects from cdn.quilljs.com to cdn.jsdelivr.net), PDF.js
+    // (cdnjs.cloudflare.com), FullCalendar (cdn.jsdelivr.net). Both the original CDN and
+    // the redirect target must be listed in every affected directive — when a browser
+    // follows a 301 while fetching a stylesheet/script, the FINAL URL must also match CSP.
     // Tighten further once all inline handlers are migrated to nonces.
     ctx.Response.Headers["Content-Security-Policy"] =
         "default-src 'self'; " +
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.quilljs.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; " +
-        "style-src  'self' 'unsafe-inline' https://cdn.quilljs.com https://cdnjs.cloudflare.com; " +
+        "style-src  'self' 'unsafe-inline' https://cdn.quilljs.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; " +
         "img-src    'self' data: blob:; " +
-        "font-src   'self' data:; " +
+        "font-src   'self' data: https://cdn.jsdelivr.net https://cdn.quilljs.com; " +
         "connect-src 'self' ws: wss:; " +
         "frame-ancestors 'none'; " +
         "base-uri 'self'; " +
