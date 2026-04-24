@@ -136,6 +136,12 @@ public class StateService
     private readonly AppState _currentState;
     private readonly ILogger<AppState> _logger; // Define ILogger
 
+    // Task field lets callers await readiness (`await state.Ready`) instead of racing
+    // against a fire-and-forget init. Any exception is captured on the Task rather
+    // than lost on an unobserved thread.
+    private readonly Task _initTask;
+    public Task Ready => _initTask;
+
     // private AppState _currentState = new AppState(); // Initialize with default state
 
     public AppState GetAppState()
@@ -165,7 +171,10 @@ public class StateService
         OnChange = () => { };
         _logger = logger;
 
-        Task.Run(async () => await InitializeAppStateAsync());
+        // Store the task so consumers can `await state.Ready` rather than race.
+        // InitializeAppStateAsync already wraps its body in try/catch+logger, so
+        // any failure is observable both on the Task and in the log.
+        _initTask = Task.Run(InitializeAppStateAsync);
     }
 
     private async Task InitializeAppStateAsync()

@@ -651,7 +651,7 @@
                                     <td class="pcf-fs-td-name">@e.Name</td>
                                     <td class="pcf-fs-td-name">@e.AuditorName</td>
                                     <td class="pcf-fs-td-dur">@FsSecsToHMM(e.LengthSeconds + e.AdminSeconds)</td>
-                                    <td class="pcf-fs-td-html">@((MarkupString)(e.SummaryHtml ?? ""))</td>
+                                    <td class="pcf-fs-td-html">@((MarkupString)DashSvc.SanitizeStoredHtml(e.SummaryHtml))</td>
                                     <td class="pcf-fs-td-btn">
                                         <button class="pcf-fs-edit-btn pcf-fs-edit-btn--inline" title="Edit"
                                                 @onclick="() => _ = FsStartEdit(e.SummaryId)">

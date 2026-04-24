@@ -112,6 +112,7 @@ public class DashboardService
 {
     private readonly string _connectionString;
     private readonly MessageNotifier _messageNotifier;
+    private readonly HtmlSanitizerService _htmlSanitizer;
 
     /// <summary>Fired after any data-mutating operation in MainHeader. Subscribers should refresh their view.</summary>
     public event Action? OnDataChanged;
@@ -136,13 +137,18 @@ public class DashboardService
     private const string FullNameExpr =
         "TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), ''))";
 
-    public DashboardService(IConfiguration config, MessageNotifier messageNotifier)
+    public DashboardService(IConfiguration config, MessageNotifier messageNotifier, HtmlSanitizerService htmlSanitizer)
     {
         _messageNotifier = messageNotifier;
+        _htmlSanitizer = htmlSanitizer;
         var dbPath = config["Database:Path"] ?? "lifepower.db";
         _connectionString = $"Data Source={dbPath}";
         RunMigrations();
     }
+
+    /// <summary>Defence-in-depth: run stored HTML through the sanitizer again at render time,
+    /// in case a row was inserted before sanitization was wired in.</summary>
+    public string SanitizeStoredHtml(string? html) => _htmlSanitizer.Sanitize(html);
 
     private void RunMigrations()
     {
@@ -1618,6 +1624,9 @@ public class DashboardService
     public int AddCsReview(
         int csId, int sessionId, int reviewSec, string status, string? notes)
     {
+        // Notes is user-editable rich text rendered via MarkupString in the UI — sanitize at save.
+        notes = string.IsNullOrWhiteSpace(notes) ? notes : _htmlSanitizer.Sanitize(notes);
+
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
@@ -1673,6 +1682,7 @@ public class DashboardService
 
     public void UpdateCsReview(int csReviewId, int callerCsId, int reviewSec, string status, string? notes)
     {
+        notes = string.IsNullOrWhiteSpace(notes) ? notes : _htmlSanitizer.Sanitize(notes);
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
@@ -1811,6 +1821,7 @@ public class DashboardService
 
     public int AddCsWork(int csId, int pcId, DateOnly date, int lengthSec, string? notes)
     {
+        notes = string.IsNullOrWhiteSpace(notes) ? notes : _htmlSanitizer.Sanitize(notes);
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
@@ -2716,6 +2727,11 @@ public class DashboardService
 
     public void UpdateFolderSummary(int id, string html)
     {
+        // Sanitize user-supplied HTML (from the Quill rich-text editor) before storing —
+        // it is later rendered via MarkupString, so anything not in our allowlist would be
+        // a stored-XSS vector.
+        html = _htmlSanitizer.Sanitize(html);
+
         // Normalize: if text content is empty, store a single space so the row remains visible
         var stripped = System.Text.RegularExpressions.Regex.Replace(html ?? "", "<[^>]+>", "").Trim();
         if (string.IsNullOrEmpty(stripped)) html = " ";
@@ -2732,6 +2748,7 @@ public class DashboardService
     public void AddFolderSummary(int? sessionId, int pcId, int? auditorId, string summaryHtml, string? arfJson = null, string? sessionDate = null,
         int? lengthSeconds = null, int? adminSeconds = null, string? folderSummaryDate = null)
     {
+        summaryHtml = _htmlSanitizer.Sanitize(summaryHtml);
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
@@ -3387,6 +3404,8 @@ public class DashboardService
 
     public void SaveWeeklyRemarks(int auditorId, string weekDate, string remarks)
     {
+        // Quill HTML — sanitize before store; rendered via MarkupString in Home.razor.
+        remarks = _htmlSanitizer.Sanitize(remarks);
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
@@ -3397,7 +3416,7 @@ public class DashboardService
             DO UPDATE SET Remarks = @rem, SubmittedAt = datetime('now', 'localtime')";
         cmd.Parameters.AddWithValue("@aud", auditorId);
         cmd.Parameters.AddWithValue("@wk", weekDate);
-        cmd.Parameters.AddWithValue("@rem", remarks ?? "");
+        cmd.Parameters.AddWithValue("@rem", remarks);
         cmd.ExecuteNonQuery();
         Console.WriteLine($"[DashboardService] Saved weekly remarks for auditor {auditorId}, week {weekDate}");
     }
@@ -4255,6 +4274,9 @@ public class DashboardService
     public void UpdateCsReviewAdmin(int csReviewId, int reviewLenSec, string status,
         string? notes, int csSalaryRate, int csChargedRate)
     {
+        // Notes here is either a status flag ("Free", "Pending") or user HTML — sanitize
+        // unconditionally; the sanitizer leaves plain strings intact.
+        notes = string.IsNullOrWhiteSpace(notes) ? notes : _htmlSanitizer.Sanitize(notes);
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();

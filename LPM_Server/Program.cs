@@ -117,6 +117,7 @@ builder.Services.AddSingleton<AllScriptResServices>(sp =>
 
 // SQLite user database
 builder.Services.AddSingleton<UserDb>();
+builder.Services.AddSingleton<LPM.Services.HtmlSanitizerService>();
 builder.Services.AddSingleton<LPM.Services.DashboardService>();
 builder.Services.AddSingleton<LPM.Services.PcService>();
 builder.Services.AddSingleton<LPM.Services.AuditorService>();
@@ -868,7 +869,31 @@ app.MapPost("/api/passkey/login", async (HttpContext ctx, UserDb db, IFido2 fido
             IsUserHandleOwnerOfCredentialIdCallback = (args, ct) => Task.FromResult(db.GetPasskeyByCredentialId(args.CredentialId) != null)
         });
 
-        db.UpdatePasskeySignCount(passkey.Id, (int)result.SignCount);
+        // Signature-counter monotonic check (defence-in-depth beyond fido2-net-lib's own
+        // built-in check). Per WebAuthn spec §7.2 step 21: if both stored and new counts
+        // are > 0, new MUST be strictly greater. Counter==0 means the authenticator
+        // doesn't maintain one — spec allows that and we don't reject it.
+        int newCount = (int)result.SignCount;
+        int storedCount = passkey.SignCount;
+        if (storedCount > 0 && newCount > 0 && newCount <= storedCount)
+        {
+            Console.WriteLine($"[Auth] Passkey CLONE suspected for user={passkey.UserId} credId=#{passkey.Id} stored={storedCount} new={newCount} — rejecting");
+            var activitySvcClone = ctx.RequestServices.GetRequiredService<LPM.Services.UserActivityService>();
+            var unameClone = db.GetLoginFlagsById(passkey.UserId)?.Username ?? "(unknown)";
+            activitySvcClone.RecordActivity(unameClone,
+                $"Passkey cloned-authenticator rejection (credId #{passkey.Id}, stored {storedCount}, new {newCount})",
+                "security");
+            return Results.BadRequest("Passkey verification failed — possible cloned authenticator");
+        }
+        // Also refuse to let a previously-counting authenticator regress to 0 — that's a
+        // strong clone signal even though the spec is silent on it.
+        if (storedCount > 0 && newCount == 0)
+        {
+            Console.WriteLine($"[Auth] Passkey counter regressed to 0 for user={passkey.UserId} credId=#{passkey.Id} stored={storedCount} — rejecting");
+            return Results.BadRequest("Passkey verification failed — possible cloned authenticator");
+        }
+
+        db.UpdatePasskeySignCount(passkey.Id, newCount);
 
         var flags = db.GetLoginFlagsById(passkey.UserId);
         if (flags == null) return Results.BadRequest("User not found");

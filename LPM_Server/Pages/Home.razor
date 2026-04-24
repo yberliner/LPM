@@ -3570,7 +3570,7 @@
                                         </div>
                                         @if (!string.IsNullOrWhiteSpace(s.Summary))
                                         {
-                                            <div class="text-muted small mt-1">@((MarkupString)s.Summary)</div>
+                                            <div class="text-muted small mt-1">@((MarkupString)DashSvc.SanitizeStoredHtml(s.Summary))</div>
                                         }
                                     }
                                 </li>
@@ -3673,7 +3673,7 @@
                                         }
                                         @if (!string.IsNullOrWhiteSpace(s.Summary))
                                         {
-                                            <div class="text-muted small mt-1">@((MarkupString)s.Summary)</div>
+                                            <div class="text-muted small mt-1">@((MarkupString)DashSvc.SanitizeStoredHtml(s.Summary))</div>
                                         }
                                     </div>
                                     <div class="mt-1 mb-1">
@@ -3696,7 +3696,7 @@
                                         </div>
                                         @if (!string.IsNullOrWhiteSpace(rev.Notes))
                                         {
-                                            <div class="text-muted small mt-1">@((MarkupString)rev.Notes)</div>
+                                            <div class="text-muted small mt-1">@((MarkupString)DashSvc.SanitizeStoredHtml(rev.Notes))</div>
                                         }
                                     }
                                     else
@@ -3757,7 +3757,7 @@
                                     </span>
                                     @if (!string.IsNullOrWhiteSpace(w.Notes))
                                     {
-                                        <div class="text-muted small mt-1">@((MarkupString)w.Notes)</div>
+                                        <div class="text-muted small mt-1">@((MarkupString)DashSvc.SanitizeStoredHtml(w.Notes))</div>
                                     }
                                 </li>
                             }

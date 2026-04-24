@@ -62,6 +62,7 @@ public class ImportJobService
     private readonly object _lock = new();
 
     public ImportJobState? CurrentJob { get; private set; }
+    private CancellationTokenSource? _currentCts;
     public event Action? OnProgressChanged;
 
     private void FireProgress()
@@ -195,7 +196,26 @@ public class ImportJobService
         var userId = CurrentJob.UserId;
         var tempJobPath = Path.Combine(_tempBasePath, jobId);
 
-        _ = Task.Run(() => ProcessInBackground(jobId, tempJobPath, manifest, coverMappings, userId, overrideCoverFolders));
+        // Give the worker a fresh CTS so CancelCurrentJob can interrupt a long import.
+        _currentCts?.Dispose();
+        _currentCts = new CancellationTokenSource();
+        var ct = _currentCts.Token;
+        _ = Task.Run(() => ProcessInBackground(jobId, tempJobPath, manifest, coverMappings, userId, overrideCoverFolders, ct));
+    }
+
+    /// <summary>
+    /// Request cancellation of the currently-running job. Returns true if a matching job
+    /// was found and signalled. The worker checks the token between PCs and at startup;
+    /// it will finalize the current PC and bail cleanly with Status=Failed + a cancellation message.
+    /// </summary>
+    public bool CancelCurrentJob(string jobId)
+    {
+        if (CurrentJob == null || CurrentJob.JobId != jobId) return false;
+        var cts = _currentCts;
+        if (cts == null) return false;
+        try { cts.Cancel(); } catch (ObjectDisposedException) { return false; }
+        Console.WriteLine($"[ImportJobService] Cancellation requested for job {jobId}");
+        return true;
     }
 
     /// <summary>Read a temp file and convert to PDF if it's a doc/docx. Returns (bytes, finalFileName, skipReason).
@@ -231,7 +251,8 @@ public class ImportJobService
 
     private void ProcessInBackground(string jobId, string tempJobPath,
         List<ImportPcManifest> manifest, List<ImportCoverMapping> coverMappings, int userId,
-        bool overrideCoverFolders = false)
+        bool overrideCoverFolders = false,
+        CancellationToken ct = default)
     {
         try
         {
@@ -254,6 +275,8 @@ public class ImportJobService
 
             foreach (var pc in ordered)
             {
+                // Cooperative cancellation — finishes the current PC cleanly then bails.
+                ct.ThrowIfCancellationRequested();
                 UpdateStatus(jobId, $"Processing PC: {pc.PcName}...");
 
                 int pcId;
@@ -446,6 +469,16 @@ public class ImportJobService
                 FireProgress();
             }
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            if (CurrentJob != null && CurrentJob.JobId == jobId)
+            {
+                CurrentJob.Status = ImportStatus.Failed;
+                CurrentJob.ErrorMessage = "Cancelled by user";
+                FireProgress();
+            }
+            Console.WriteLine($"[Import] Job {jobId} cancelled by user");
+        }
         catch (Exception ex)
         {
             if (CurrentJob != null && CurrentJob.JobId == jobId)
@@ -500,6 +533,8 @@ public class ImportJobService
             if (CurrentJob != null)
                 CleanupTempFolder(CurrentJob.JobId);
             CurrentJob = null;
+            _currentCts?.Dispose();
+            _currentCts = null;
         }
     }
 
