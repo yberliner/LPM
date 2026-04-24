@@ -7,6 +7,7 @@
 @inject LPM.Services.ShortcutService ShortcutSvc
 @inject LPM.Services.UserActivityService ActivitySvc
 @inject LPM.Services.QuestionService QuestionSvc
+@inject LPM.Services.SessionDataService SdSvc
 @inject IJSRuntime JS
 @inject NavigationManager NavManager
 @inject IHttpContextAccessor HttpContextAccessor
@@ -988,6 +989,16 @@
                         disabled="@(string.IsNullOrEmpty(_panes[_activeIdx].File))">
                     <i class="ri-download-2-line"></i>
                 </button>
+                @if (!Solo && !_isSoloUser && _currentUserId > 0)
+                {
+                    <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
+                    <button class="pcf-tool-btn pcf-sd-btn"
+                            title="Session Data — Evil Purposes / Service Facsimiles / PTS Handling"
+                            @onclick="OpenSessionDataModal">
+                        <i class="ri-booklet-line"></i>
+                        <span class="pcf-sd-badge"></span>
+                    </button>
+                }
                 @* Voice button hidden — uncomment to restore
                 <button class="pcf-tool-btn pcf-voice-btn @(_voiceOn ? "pcf-voice-active" : "")"
                         title="@(_voiceOn ? "Voice commands ON — click to turn off" : "Voice commands OFF — click to turn on")"
@@ -1345,6 +1356,17 @@
         </div>
     </div>
 </div>
+
+@* ── Session Data modal (Evil Purposes / Serfacs / PTS Handling) ── *@
+<SessionDataModal
+    Show="_showSessionDataModal"
+    PcId="PcId"
+    PcName="@_pcName"
+    CurrentSessionId="@(_csSessionId > 0 ? _csSessionId : (int?)null)"
+    SessionName="@_csSessionName"
+    CurrentUserId="_currentUserId"
+    CurrentUserName="@_userName"
+    OnCloseRequested="CloseSessionDataModal" />
 
 @* ── CS Close Warning ── *@
 @if (_showCsCloseWarning)
@@ -1930,6 +1952,18 @@
     }
     .pcf-addpage-menu button:hover { background: rgba(255,255,255,.15); }
     .pcf-tool-active { background: #fff !important; color: #1e40af !important; font-weight: 700; }
+
+    /* ── Session Data button ── */
+    .pcf-sd-btn { position: relative; }
+    .pcf-sd-btn .pcf-sd-badge {
+        position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 50%;
+        background: #a78bfa; box-shadow: 0 0 0 2px rgba(139,92,246,.4);
+        animation: sdBadgePulse 2s ease-in-out infinite;
+    }
+    @@keyframes sdBadgePulse {
+        0%,100% { transform: scale(1);   opacity: 1; }
+        50%     { transform: scale(1.3); opacity: .7; }
+    }
 
     /* ── Voice mic button ── */
     .pcf-voice-btn { position: relative; }
@@ -3287,6 +3321,11 @@
     int _existingReviewSec;      // original review time in seconds (for comparison)
     bool _showCsCloseWarning;    // true when CS tries to close before marking Done
     bool _isUserCS;              // true when logged-in user's StaffRole is CS or SeniorCS
+    bool _isSoloUser;            // true when logged-in user's StaffRole is Solo
+    int  _currentUserId;         // core_users.Id for the logged-in user (0 if unknown)
+    bool _showSessionDataModal;  // true while SessionDataModal is open
+    void OpenSessionDataModal() => _showSessionDataModal = true;
+    void CloseSessionDataModal() => _showSessionDataModal = false;
     string _errorToast = "";
     int _csReviewSeconds;        // editable review time (session + admin) in seconds
 
@@ -3613,6 +3652,8 @@
         var _pcfUsername  = HttpContextAccessor.HttpContext?.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
         _loginUsername = _pcfUsername;
         _isUserCS = StaffRoles.IsCS(_pcfStaffRole);
+        _isSoloUser = _pcfStaffRole == StaffRoles.Solo;
+        _currentUserId = SdSvc.GetUserIdByUsername(_pcfUsername) ?? 0;
         if (_pcfStaffRole == StaffRoles.Solo)
         {
             // Solo user: can only open their own PC's solo folder

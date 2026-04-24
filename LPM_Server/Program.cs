@@ -119,6 +119,7 @@ builder.Services.AddSingleton<AllScriptResServices>(sp =>
 builder.Services.AddSingleton<UserDb>();
 builder.Services.AddSingleton<LPM.Services.HtmlSanitizerService>();
 builder.Services.AddSingleton<LPM.Services.DashboardService>();
+builder.Services.AddSingleton<LPM.Services.SessionDataService>();
 builder.Services.AddSingleton<LPM.Services.PcService>();
 builder.Services.AddSingleton<LPM.Services.AuditorService>();
 builder.Services.AddSingleton<LPM.Services.AcademyService>();
@@ -2095,6 +2096,7 @@ app.MapGet("/api/backup-file-list", (HttpContext ctx, LPM.Services.FolderService
     }
 
     // PC files
+    var pcDirNames = new HashSet<string>(StringComparer.Ordinal);
     foreach (var (relPath, pcFullPath) in svc.EnumerateBackupFiles())
     {
         var isFolderSummary = LPM.Services.FolderService.ParseFolderSummaryBackupPath(relPath).IsSummary;
@@ -2105,8 +2107,24 @@ app.MapGet("/api/backup-file-list", (HttpContext ctx, LPM.Services.FolderService
             var tail = relPath.Substring("PC-Folders/".Length);
             var slash = tail.IndexOf('/');
             pcName = slash > 0 ? tail.Substring(0, slash) : tail;
+            if (pcName != null) pcDirNames.Add(pcName);
         }
         files.Add(new { path = relPath, modified = File.GetLastWriteTimeUtc(pcFullPath).ToString("o"), alwaysDownload = isFolderSummary, fullPath = pcFullPath, pcName });
+    }
+
+    // User backup only: 3 synthetic Session-Data PDFs per PC folder (EvilPurposes / ServiceFacsimiles / PtsHandling).
+    // Generated on-demand from DB when the client requests them via /api/backup-file.
+    if (phase == "user")
+    {
+        var nowIso = DateTime.UtcNow.ToString("o");
+        foreach (var dirName in pcDirNames)
+        {
+            foreach (var leaf in new[] { "EvilPurposes.pdf", "ServiceFacsimiles.pdf", "PtsHandling.pdf" })
+            {
+                var synthPath = $"PC-Folders/{dirName}/Back_Cover/{leaf}";
+                files.Add(new { path = synthPath, modified = nowIso, alwaysDownload = true, fullPath = (string?)null, pcName = dirName });
+            }
+        }
     }
 
     Console.WriteLine($"[BackupFileList] {phase} phase: {files.Count} files listed for '{ctx.User.Identity?.Name}'");
@@ -2115,7 +2133,7 @@ app.MapGet("/api/backup-file-list", (HttpContext ctx, LPM.Services.FolderService
 
 // ── File-by-file backup: single file download ──
 app.MapGet("/api/backup-file", (HttpContext ctx, LPM.Services.FolderService svc, IConfiguration cfg,
-    LPM.Services.DashboardService dashSvc, PdfService pdfSvc) =>
+    LPM.Services.DashboardService dashSvc, PdfService pdfSvc, LPM.Services.SessionDataService sdSvc) =>
 {
     if (ctx.User?.IsInRole("Admin") != true) return Results.Forbid();
     var token = ctx.Request.Query["token"].ToString();
@@ -2162,6 +2180,24 @@ app.MapGet("/api/backup-file", (HttpContext ctx, LPM.Services.FolderService svc,
     }
     else if (reqPath.StartsWith("PC-Folders/"))
     {
+        // Synthetic Session-Data PDFs (user phase only) — generated on-demand from DB
+        if (phase == "user" && SessionDataBackupHelper.IsSessionDataSyntheticPath(reqPath, out var sdKind, out var sdPcId))
+        {
+            try
+            {
+                var pcName = dashSvc.GetPersonName(sdPcId) ?? $"PC {sdPcId}";
+                var generatedBy = ctx.User?.Identity?.Name ?? "backup";
+                bytes = SessionDataBackupHelper.BuildSessionDataPdfForBackup(sdKind, sdPcId, pcName, generatedBy, sdSvc, pdfSvc);
+                Console.WriteLine($"[BackupFile] Generated synthetic {sdKind} PDF for PC {sdPcId} ({bytes.Length} bytes)");
+                return Results.File(bytes, "application/pdf");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[BackupFile] Synthetic PDF generation failed for '{reqPath}': {ex.Message}");
+                return Results.StatusCode(500);
+            }
+        }
+
         // PC file — find full path via EnumerateBackupFiles match
         var match = svc.EnumerateBackupFiles().FirstOrDefault(f => f.RelativePath == reqPath);
         if (match.FullPath == null) return Results.NotFound();
@@ -2234,6 +2270,100 @@ app.Run();
 // Models for overlay-based annotation save
 record AnnPageInfo(string Action, int SrcPageIdx, int W, int H, int ImgIdx, string? Color = null, double? PdfPtW = null, double? PdfPtH = null);
 record AnnSaveMeta(int TotalPages, AnnPageInfo[] Pages);
+
+// ── Session-Data synthetic PDF path helpers (used by user-backup) ──
+static partial class SessionDataBackupHelper
+{
+    public static bool IsSessionDataSyntheticPath(string relPath, out string kind, out int pcId)
+    {
+        kind = ""; pcId = 0;
+        if (!relPath.StartsWith("PC-Folders/", StringComparison.Ordinal)) return false;
+
+        var backCoverMarker = "/Back_Cover/";
+        var bcIdx = relPath.IndexOf(backCoverMarker, StringComparison.OrdinalIgnoreCase);
+        if (bcIdx < 0) return false;
+        var leaf = relPath.Substring(bcIdx + backCoverMarker.Length);
+
+        kind = leaf switch
+        {
+            "EvilPurposes.pdf"       => "Evil",
+            "ServiceFacsimiles.pdf"  => "Serfac",
+            "PtsHandling.pdf"        => "Pts",
+            _ => ""
+        };
+        if (kind == "") return false;
+
+        // Parse pcId from the directory name "{pcId}-{name}[ Solo]"
+        const string prefix = "PC-Folders/";
+        var afterPrefix = relPath.Substring(prefix.Length);
+        var slash = afterPrefix.IndexOf('/');
+        if (slash <= 0) { kind = ""; return false; }
+        var dirName = afterPrefix.Substring(0, slash);
+        var dash = dirName.IndexOf('-');
+        if (dash <= 0 || !int.TryParse(dirName.Substring(0, dash), out pcId) || pcId <= 0)
+        {
+            kind = ""; pcId = 0; return false;
+        }
+        return true;
+    }
+
+    public static byte[] BuildSessionDataPdfForBackup(
+        string kind, int pcId, string pcName, string generatedBy,
+        LPM.Services.SessionDataService sd, PdfService pdf)
+    {
+        static string DateOnly(string? s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return "";
+            if (DateTime.TryParse(s, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.AssumeLocal, out var dt))
+                return dt.ToString("yyyy-MM-dd");
+            return s.Length >= 10 ? s.Substring(0, 10) : s;
+        }
+        static string SessLabel(int? sid) => sid is null or 0 ? "(no session)" : $"Session #{sid}";
+
+        string title;
+        string[] headers;
+        float[] weights;
+        var rows = new List<string[]>();
+        switch (kind)
+        {
+            case "Evil":
+                title = "Evil Purposes";
+                headers = new[] { "Id", "Session", "Created", "Original Wording", "Translation", "FPRD", "Other", "Inserted By" };
+                weights = new float[] { 0.6f, 2.0f, 1.6f, 3.0f, 3.0f, 1.2f, 1.4f, 1.6f };
+                foreach (var r in sd.GetEvilPurposes(pcId))
+                    rows.Add(new[] {
+                        r.Id.ToString(), SessLabel(r.SessionId), DateOnly(r.CreatedAt),
+                        r.OriginalWording ?? "", r.Translation ?? "",
+                        r.FPRD ?? "", r.Other ?? "", r.InsertedByName });
+                break;
+            case "Serfac":
+                title = "Service Facsimiles";
+                headers = new[] { "Id", "Session", "Created", "Original Wording", "Translation", "Brackets", "R3RA", "Created By" };
+                weights = new float[] { 0.6f, 2.0f, 1.6f, 3.0f, 3.0f, 1.6f, 1.6f, 1.6f };
+                foreach (var r in sd.GetSerfacs(pcId))
+                    rows.Add(new[] {
+                        r.Id.ToString(), SessLabel(r.SessionId), DateOnly(r.CreatedAt),
+                        r.OriginalWording ?? "", r.Translation ?? "",
+                        r.Brackets ?? "", r.R3RA ?? "", r.CreatedByName });
+                break;
+            default: // "Pts"
+                title = "PTS Handling";
+                headers = new[] { "Id", "Session", "Created", "Action", "Item", "Quad Ruds", "PU", "PTS RD", "Ls", "Created By" };
+                weights = new float[] { 0.6f, 2.0f, 1.6f, 1.4f, 1.8f, 1.4f, 1.4f, 1.4f, 1.2f, 1.6f };
+                foreach (var r in sd.GetPtsHandling(pcId))
+                    rows.Add(new[] {
+                        r.Id.ToString(), SessLabel(r.SessionId), DateOnly(r.CreatedAt),
+                        r.Action ?? "", r.Item ?? "", r.QuadRuds ?? "", r.PU ?? "",
+                        r.PtsRd ?? "", r.Ls ?? "", r.CreatedByName });
+                break;
+        }
+
+        return pdf.GenerateSessionDataTablePdf(
+            title, pcName, sessionName: null, generatedBy, "Sorted newest first",
+            headers, weights, rows);
+    }
+}
 
 static class PdfBgHelper
 {

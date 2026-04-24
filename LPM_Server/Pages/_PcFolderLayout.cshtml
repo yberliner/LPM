@@ -46,6 +46,28 @@
 
     <script src="/assets/libs/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 
+    <script>
+        // Same helper used by the main layout; needed here so the Session Data modal
+        // (and any other PcFolder feature) can trigger a file download.
+        window.downloadFile = (fileName, base64Data) => {
+            try {
+                const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+                const blob = new Blob([bytes], { type: "application/pdf" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = fileName;
+                a.click();
+                setTimeout(() => {
+                    try { URL.revokeObjectURL(url); } catch { }
+                    try { a.remove(); } catch { }
+                }, 0);
+            } catch (e) {
+                console.error("downloadFile failed:", e);
+            }
+        };
+    </script>
+
     <!-- PDF.js and PC Folder viewer must load before Blazor connects to avoid race condition -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>

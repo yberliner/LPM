@@ -3492,5 +3492,112 @@ public class PdfService
             });
         }).GeneratePdf();
     }
+
+    // ── Session-data table PDF (Evil Purposes / Service Facsimiles / PTS Handling) ──
+    public byte[] GenerateSessionDataTablePdf(
+        string tableTitle,
+        string pcName,
+        string? sessionName,
+        string generatedBy,
+        string sortLabel,
+        string[] columnHeaders,
+        float[] columnWeights,
+        List<string[]> rows)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+        var nowLabel = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+
+        return Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4.Landscape());
+                page.Margin(28);
+                page.DefaultTextStyle(x => x.FontSize(9).FontFamily("DejaVu Sans", "Noto Sans Hebrew").FontColor("#1a1a1a"));
+
+                page.Header().Column(col =>
+                {
+                    col.Item().AlignCenter().Text(tableTitle)
+                        .FontSize(26).Bold().FontColor("#4f46e5");
+                    col.Item().PaddingTop(4).AlignCenter().Text(t =>
+                    {
+                        t.Span("PC: ").FontSize(10).FontColor("#475569");
+                        t.Span(pcName).FontSize(11).Bold().FontColor("#0f172a");
+                        if (!string.IsNullOrWhiteSpace(sessionName))
+                        {
+                            t.Span("    Session: ").FontSize(10).FontColor("#475569");
+                            t.Span(sessionName).FontSize(10).Bold().FontColor("#0f172a");
+                        }
+                    });
+                    col.Item().AlignCenter().Text(t =>
+                    {
+                        t.Span("Generated ").FontSize(8).FontColor("#64748b");
+                        t.Span(nowLabel).FontSize(8).Bold().FontColor("#64748b");
+                        t.Span("  by ").FontSize(8).FontColor("#64748b");
+                        t.Span(generatedBy).FontSize(8).Bold().FontColor("#64748b");
+                        t.Span("   •   ").FontSize(8).FontColor("#64748b");
+                        t.Span(sortLabel).FontSize(8).Italic().FontColor("#64748b");
+                        t.Span("   •   ").FontSize(8).FontColor("#64748b");
+                        t.Span($"{rows.Count} row(s)").FontSize(8).FontColor("#64748b");
+                    });
+                    col.Item().PaddingTop(8).LineHorizontal(1).LineColor("#c7d2fe");
+                });
+
+                page.Content().PaddingVertical(6).Table(tbl =>
+                {
+                    tbl.ColumnsDefinition(cd =>
+                    {
+                        for (int i = 0; i < columnWeights.Length; i++)
+                            cd.RelativeColumn(columnWeights[i]);
+                    });
+
+                    tbl.Header(h =>
+                    {
+                        foreach (var head in columnHeaders)
+                        {
+                            h.Cell()
+                                .Background("#eef2ff")
+                                .BorderBottom(1).BorderColor("#4f46e5")
+                                .Padding(5)
+                                .Text(head).FontSize(9).Bold().FontColor("#4338ca");
+                        }
+                    });
+
+                    if (rows.Count == 0)
+                    {
+                        tbl.Cell().ColumnSpan((uint)columnHeaders.Length).Padding(24).AlignCenter()
+                            .Text("No rows to display").FontSize(11).Italic().FontColor("#94a3b8");
+                    }
+                    else
+                    {
+                        int rowIdx = 0;
+                        foreach (var r in rows)
+                        {
+                            var bg = rowIdx % 2 == 0 ? "#ffffff" : "#fafafe";
+                            for (int c = 0; c < r.Length && c < columnHeaders.Length; c++)
+                            {
+                                var v = r[c] ?? string.Empty;
+                                tbl.Cell()
+                                    .Background(bg)
+                                    .BorderBottom(0.5f).BorderColor("#e2e8f0")
+                                    .Padding(4)
+                                    .Text(string.IsNullOrEmpty(v) ? "—" : v)
+                                    .FontSize(8.5f).FontColor(string.IsNullOrEmpty(v) ? "#cbd5e1" : "#1e293b");
+                            }
+                            rowIdx++;
+                        }
+                    }
+                });
+
+                page.Footer().AlignCenter().Text(t =>
+                {
+                    t.Span("Page ").FontSize(8).FontColor("#94a3b8");
+                    t.CurrentPageNumber().FontSize(8).FontColor("#94a3b8");
+                    t.Span(" of ").FontSize(8).FontColor("#94a3b8");
+                    t.TotalPages().FontSize(8).FontColor("#94a3b8");
+                });
+            });
+        }).GeneratePdf();
+    }
 }
 

@@ -165,21 +165,49 @@
                 <div class="modal-footer py-2">
                     @if (_isEdit)
                     {
+                        @* Delete is gated on:
+                             - wallet is changeable (no charged rows), AND
+                             - PC has at least one OTHER wallet to receive the references. *@
+                        var canDelete = _canChangeCurrency && _reassignTarget != null;
+                        var deleteBlockedReason =
+                            !_canChangeCurrency      ? "Charged rows — deactivate instead"
+                          : _reassignTarget == null  ? "Can't delete the PC's only wallet"
+                          : null;
+
                         @if (!_confirmDelete)
                         {
                             <button type="button" class="btn btn-sm btn-outline-danger me-auto"
-                                    @onclick="() => _confirmDelete = true" disabled="@_submitting">
+                                    title="@(deleteBlockedReason ?? "")"
+                                    @onclick="() => _confirmDelete = true"
+                                    disabled="@(!canDelete || _submitting)">
                                 <i class="ri-delete-bin-line me-1"></i>Delete wallet
                             </button>
                         }
                         else
                         {
-                            <div class="me-auto d-flex align-items-center gap-2" style="font-size:.82rem; color:#dc2626;">
-                                <i class="ri-error-warning-line"></i>Are you sure?
-                                <button type="button" class="btn btn-sm btn-secondary py-0 px-2"
-                                        @onclick="() => _confirmDelete = false" disabled="@_submitting">No</button>
-                                <button type="button" class="btn btn-sm btn-danger py-0 px-2"
-                                        @onclick="DoDelete" disabled="@_submitting">Yes, delete</button>
+                            <div class="me-auto d-flex flex-column" style="font-size:.78rem; color:#dc2626;">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="ri-error-warning-line"></i>
+                                    @if (_references.Count == 0)
+                                    {
+                                        <text>Delete this wallet?</text>
+                                    }
+                                    else
+                                    {
+                                        int pN  = _references.Count(r => r.Table == "Purchases");
+                                        int sN  = _references.Count(r => r.Table == "Sessions");
+                                        int crN = _references.Count(r => r.Table == "CsReviews");
+                                        var parts = new List<string>();
+                                        if (pN  > 0) parts.Add($"{pN} purchase{(pN==1?"":"s")}");
+                                        if (sN  > 0) parts.Add($"{sN} session{(sN==1?"":"s")}");
+                                        if (crN > 0) parts.Add($"{crN} CS review{(crN==1?"":"s")}");
+                                        <text>Move @(string.Join(", ", parts)) to <strong>@(_reassignTarget?.Name) (@(_reassignTarget?.Currency))</strong> and delete?</text>
+                                    }
+                                    <button type="button" class="btn btn-sm btn-secondary py-0 px-2"
+                                            @onclick="() => _confirmDelete = false" disabled="@_submitting">No</button>
+                                    <button type="button" class="btn btn-sm btn-danger py-0 px-2"
+                                            @onclick="DoDelete" disabled="@_submitting">Yes, delete</button>
+                                </div>
                             </div>
                         }
                     }
@@ -424,6 +452,9 @@
 
     IReadOnlyList<WalletService.WalletReferenceRow> _references = Array.Empty<WalletService.WalletReferenceRow>();
     bool _canChangeCurrency = true;
+    // Target wallet for delete-with-reassign. Null → PC has no other wallet, so
+    // the Delete button is disabled.
+    Wallet? _reassignTarget;
 
     bool CanSubmit => !string.IsNullOrWhiteSpace(_currency)
                    && !string.IsNullOrWhiteSpace(_name);
@@ -452,6 +483,10 @@
                 _isActive = w.IsActive;
                 _references = WalletSvc.GetWalletReferences(EditingWalletId.Value);
                 _canChangeCurrency = !_references.Any(r => r.HasCharge);
+                // Pre-resolve the reassign target so the Delete button knows whether it's
+                // allowed (and can show the target name in the confirm dialog).
+                var targetId = WalletSvc.ResolveReassignTarget(EditingWalletId.Value);
+                _reassignTarget = targetId.HasValue ? WalletSvc.GetWallet(targetId.Value) : null;
             }
             else
             {
@@ -462,6 +497,7 @@
                 _isActive = true;
                 _references = Array.Empty<WalletService.WalletReferenceRow>();
                 _canChangeCurrency = true;
+                _reassignTarget = null;
             }
         }
         catch (Exception ex) { _loadError = $"Failed to load: {ex.Message}"; }
@@ -553,7 +589,30 @@
         _submitting = true;
         try
         {
-            var ok = WalletSvc.TryDeleteWallet(EditingWalletId!.Value, out var err);
+            bool ok;
+            string? err;
+            string toastMsg;
+
+            if (_references.Count == 0)
+            {
+                // Fast path — nothing pointing at this wallet, straight DELETE.
+                ok = WalletSvc.TryDeleteWallet(EditingWalletId!.Value, out err);
+                toastMsg = $"Wallet deleted — {_name}";
+            }
+            else if (_reassignTarget != null)
+            {
+                // Reassign path — move FK references to target, then delete.
+                ok = WalletSvc.TryDeleteWalletWithReassign(
+                    EditingWalletId!.Value, _reassignTarget.WalletId, CurrentUserPersonId, out err);
+                toastMsg = $"Wallet deleted — references moved to {_reassignTarget.Name}";
+            }
+            else
+            {
+                ok = false;
+                err = "Can't delete the PC's only wallet.";
+                toastMsg = "";
+            }
+
             if (!ok)
             {
                 _loadError = err ?? "Cannot delete — wallet has history. Deactivate it instead.";
@@ -561,7 +620,7 @@
                 _submitting = false;
                 return;
             }
-            try { await JS.InvokeVoidAsync("lpmToast", $"Wallet deleted — {_name}", "success"); } catch { }
+            try { await JS.InvokeVoidAsync("lpmToast", toastMsg, "success"); } catch { }
             await OnDeleted.InvokeAsync(EditingWalletId!.Value);
             await DoClose();
         }

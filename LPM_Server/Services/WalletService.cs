@@ -382,6 +382,110 @@ public class WalletService
         return true;
     }
 
+    /// <summary>
+    /// Auto-picks the target wallet for a delete-with-reassign. Prefers the PC's
+    /// lowest-WalletId active wallet (matching the "first-active" attribution rule
+    /// used by balance aggregation). Falls back to the lowest-WalletId inactive one.
+    /// Returns null if no sibling wallet exists.
+    /// </summary>
+    public int? ResolveReassignTarget(int sourceWalletId)
+    {
+        var src = GetWallet(sourceWalletId);
+        if (src == null) return null;
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT WalletId FROM fin_wallets
+            WHERE PcId = @pc AND WalletId != @id
+            ORDER BY IsActive DESC, WalletId
+            LIMIT 1";
+        cmd.Parameters.AddWithValue("@pc", src.PcId);
+        cmd.Parameters.AddWithValue("@id", sourceWalletId);
+        var r = cmd.ExecuteScalar();
+        if (r == null || r == DBNull.Value) return null;
+        return Convert.ToInt32(r);
+    }
+
+    /// <summary>
+    /// Delete a wallet after moving every FK reference to <paramref name="toWalletId"/>.
+    /// Only allowed when the source wallet has no charged rows (CanChangeCurrency),
+    /// since migrating any zero-charge row across currencies changes attribution by
+    /// exactly 0. Atomic — all UPDATEs + DELETE run inside one transaction, and
+    /// CanChangeCurrency is re-checked inside it to close the open-modal race.
+    /// </summary>
+    public bool TryDeleteWalletWithReassign(int fromWalletId, int toWalletId, int byUserId, out string? errorMessage)
+    {
+        errorMessage = null;
+
+        // Lightweight validations before taking a transaction.
+        var src = GetWallet(fromWalletId);
+        if (src == null) { errorMessage = "Wallet not found."; return false; }
+        if (fromWalletId == toWalletId) { errorMessage = "Target must be a different wallet."; return false; }
+        var dst = GetWallet(toWalletId);
+        if (dst == null)                  { errorMessage = "Target wallet not found."; return false; }
+        if (dst.PcId != src.PcId)         { errorMessage = "Target wallet belongs to a different PC."; return false; }
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        // BEGIN IMMEDIATE: take the RESERVED lock up front so the re-check below and
+        // all subsequent UPDATEs/DELETE happen atomically with respect to other writers.
+        // Without this, another connection could commit a charge between our check and
+        // our first UPDATE, and we'd delete a wallet that silently became unsafe.
+        using var tx = conn.BeginTransaction(System.Data.IsolationLevel.Serializable, deferred: false);
+
+        // Re-check "no charged rows" now that we hold the writer lock. `CanChangeCurrency`
+        // opens its own connection; that's fine — it reads the DB as-committed, and
+        // because we hold RESERVED, no other writer can commit between this check and
+        // our own writes.
+        if (!CanChangeCurrency(fromWalletId, out var why))
+        {
+            errorMessage = why ?? "Wallet has charges — cannot delete.";
+            tx.Rollback();
+            return false;
+        }
+
+        int pMoved, sMoved, crMoved;
+        using (var u1 = conn.CreateCommand())
+        {
+            u1.Transaction = tx;
+            u1.CommandText = "UPDATE fin_purchases SET WalletId = @to WHERE WalletId = @from";
+            u1.Parameters.AddWithValue("@to",   toWalletId);
+            u1.Parameters.AddWithValue("@from", fromWalletId);
+            pMoved = u1.ExecuteNonQuery();
+        }
+        using (var u2 = conn.CreateCommand())
+        {
+            u2.Transaction = tx;
+            u2.CommandText = "UPDATE sess_sessions SET WalletId = @to WHERE WalletId = @from";
+            u2.Parameters.AddWithValue("@to",   toWalletId);
+            u2.Parameters.AddWithValue("@from", fromWalletId);
+            sMoved = u2.ExecuteNonQuery();
+        }
+        using (var u3 = conn.CreateCommand())
+        {
+            u3.Transaction = tx;
+            u3.CommandText = "UPDATE cs_reviews SET WalletId = @to WHERE WalletId = @from";
+            u3.Parameters.AddWithValue("@to",   toWalletId);
+            u3.Parameters.AddWithValue("@from", fromWalletId);
+            crMoved = u3.ExecuteNonQuery();
+        }
+        using (var del = conn.CreateCommand())
+        {
+            del.Transaction = tx;
+            del.CommandText = "DELETE FROM fin_wallets WHERE WalletId = @id";
+            del.Parameters.AddWithValue("@id", fromWalletId);
+            del.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+        Console.WriteLine(
+            $"[WalletSvc] Deleted wallet {fromWalletId} (PC {src.PcId}, '{src.Currency} {src.Name}'); " +
+            $"moved {pMoved} purchases + {sMoved} sessions + {crMoved} CS reviews to wallet {toWalletId} " +
+            $"('{dst.Currency} {dst.Name}') by userId={byUserId}");
+        return true;
+    }
+
     // ── Balance ──────────────────────────────────────────────────
 
     public WalletBalance GetBalance(int walletId)
