@@ -373,7 +373,9 @@ public class PdfService
         int monthWeekCount = 0,
         DateOnly? monthStart = null,
         DateOnly? monthEnd = null,
-        List<WeekVisitCount>? weeklyTotals = null)
+        List<WeekVisitCount>? weeklyTotals = null,
+        Dictionary<string, int>? byMonthReferral = null,
+        Dictionary<string, int>? byMonthOrg = null)
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
@@ -382,11 +384,11 @@ public class PdfService
         int numCols  = count <= 25 ? 2 : count <= 55 ? 3 : count <= 100 ? 4 : 6;
         int rows     = (int)Math.Ceiling((double)count / numCols);
 
-        // Build monthly chart data by aggregating weekly totals per month
-        var monthlyChartData = new List<(string Label, int Don, int Friend, int Social, int Haifa, int Other, int Total)>();
+        // Build monthly chart data by aggregating weekly totals per month (per-org).
+        var monthlyChartData = new List<(string Label, Dictionary<string,int> ByOrg, int Total)>();
         if (weeklyTotals != null && weeklyTotals.Count > 0)
         {
-            var byMonth = new Dictionary<string, (int Don, int Friend, int Social, int Haifa, int Other, int Total)>();
+            var byMonth = new Dictionary<string, (Dictionary<string,int> ByOrg, int Total)>();
             var monthOrder = new List<string>();
             // weeklyTotals[0] = weekStart (the most recent week); each subsequent entry is 7 days earlier.
             // Derive the actual date per entry to get the correct year, including year-boundary crossings.
@@ -397,18 +399,21 @@ public class PdfService
                 var mLabel = $"{actualDate.Month:D2}/{actualDate.Year % 100:D2}"; // MM/YY
                 if (!byMonth.ContainsKey(mLabel))
                 {
-                    byMonth[mLabel] = (0, 0, 0, 0, 0, 0);
+                    byMonth[mLabel] = (new Dictionary<string,int>(StringComparer.Ordinal), 0);
                     monthOrder.Add(mLabel);
                 }
                 var cur = byMonth[mLabel];
-                byMonth[mLabel] = (cur.Don + w.DonCount, cur.Friend + w.FriendCount,
-                    cur.Social + w.SocialCount, cur.Haifa + w.HaifaCount + w.DonCount,
-                    cur.Other + w.OtherCount, cur.Total + w.TotalVisits);
+                if (w.ByOrg != null)
+                {
+                    foreach (var kv in w.ByOrg)
+                        cur.ByOrg[kv.Key] = cur.ByOrg.GetValueOrDefault(kv.Key) + kv.Value;
+                }
+                byMonth[mLabel] = (cur.ByOrg, cur.Total + w.TotalVisits);
             }
             foreach (var ml in monthOrder)
             {
                 var d = byMonth[ml];
-                monthlyChartData.Add((ml, d.Don, d.Friend, d.Social, d.Haifa, d.Other, d.Total));
+                monthlyChartData.Add((ml, d.ByOrg, d.Total));
             }
         }
 
@@ -703,6 +708,72 @@ public class PdfService
                         col.Item().PaddingTop(6).LineHorizontal(1.5f).LineColor("#4338ca");
                         col.Item().PaddingTop(6);
 
+                        // ── Monthly breakdown summary (mirrors weekly) ──
+                        bool hasMonthBreakdown = (byMonthReferral != null && byMonthReferral.Count > 0) ||
+                                                 (byMonthOrg      != null && byMonthOrg.Count > 0);
+                        if (hasMonthBreakdown)
+                        {
+                            col.Item().Background("#f5f3ff").CornerRadius(4).Padding(6).Row(br =>
+                            {
+                                if (byMonthReferral != null && byMonthReferral.Count > 0)
+                                {
+                                    br.AutoItem().Column(rc =>
+                                    {
+                                        rc.Item().Text("By Referral").FontSize(7).FontColor("#4338ca").SemiBold();
+                                        rc.Item().PaddingTop(2).Row(rr =>
+                                        {
+                                            foreach (var kv in byMonthReferral.OrderByDescending(x => x.Value))
+                                            {
+                                                var refColor = kv.Key switch
+                                                {
+                                                    "Friend"          => "#f59e0b",
+                                                    "Social Network"  => "#3b82f6",
+                                                    "Haifa"           => "#7c3aed",
+                                                    "Other"           => "#94a3b8",
+                                                    _                 => "#16a34a",
+                                                };
+                                                rr.AutoItem().PaddingRight(10).Column(bc =>
+                                                {
+                                                    bc.Item().Text(t =>
+                                                    {
+                                                        t.Span("● ").FontSize(9).FontColor(refColor);
+                                                        t.Span($"{kv.Key}: ").FontSize(8).FontColor("#374151");
+                                                        t.Span(kv.Value.ToString()).FontSize(9).Bold().FontColor("#4338ca");
+                                                    });
+                                                });
+                                            }
+                                        });
+                                    });
+                                }
+
+                                if (byMonthOrg != null && byMonthOrg.Count > 0)
+                                {
+                                    if (byMonthReferral != null && byMonthReferral.Count > 0)
+                                        br.ConstantItem(1).Background("#c4b5fd");
+                                    br.AutoItem().PaddingLeft(byMonthReferral?.Count > 0 ? 10 : 0).Column(oc =>
+                                    {
+                                        oc.Item().Text("By Organization").FontSize(7).FontColor("#4338ca").SemiBold();
+                                        oc.Item().PaddingTop(2).Row(or =>
+                                        {
+                                            foreach (var kv in byMonthOrg.OrderByDescending(x => x.Value))
+                                            {
+                                                or.AutoItem().PaddingRight(10).Column(bc =>
+                                                {
+                                                    bc.Item().Text(t =>
+                                                    {
+                                                        t.Span("■ ").FontSize(8).FontColor("#6366f1");
+                                                        t.Span($"{kv.Key}: ").FontSize(8).FontColor("#374151");
+                                                        t.Span(kv.Value.ToString()).FontSize(9).Bold().FontColor("#4338ca");
+                                                    });
+                                                });
+                                            }
+                                        });
+                                    });
+                                }
+                            });
+                            col.Item().PaddingTop(6);
+                        }
+
                         int mCount   = monthStudents.Count;
                         int mNumCols = mCount <= 25 ? 2 : mCount <= 55 ? 3 : mCount <= 100 ? 4 : 6;
                         int mRows    = (int)Math.Ceiling((double)mCount / mNumCols);
@@ -912,8 +983,12 @@ public class PdfService
         int monthWeekCount = 0,
         DateOnly? monthStart = null,
         DateOnly? monthEnd = null,
-        List<MonthStatSummary>? monthHistory = null)
+        List<MonthStatSummary>? monthHistory = null,
+        string? orgLabel = null)
     {
+        var title = string.IsNullOrWhiteSpace(orgLabel) || orgLabel == "All"
+            ? "Statistics Report"
+            : $"Statistics Report — {orgLabel}";
         QuestPDF.Settings.License = LicenseType.Community;
 
         var weekEnd = weekStart.AddDays(6);
@@ -935,7 +1010,7 @@ public class PdfService
                     {
                         r.RelativeItem().Column(c =>
                         {
-                            c.Item().Text("Statistics Report").SemiBold().FontSize(16).FontColor("#1a1a2e");
+                            c.Item().Text(title).SemiBold().FontSize(16).FontColor("#1a1a2e");
                             c.Item().Text($"Week: {weekStart:ddd dd/MM/yyyy} – {weekEnd:ddd dd/MM/yyyy}")
                                 .FontSize(9).FontColor(Colors.Grey.Darken2);
                         });
@@ -1284,6 +1359,37 @@ public class PdfService
         }).GeneratePdf();
     }
 
+    // Fixed palette + stable hash — must match Academy.razor so UI and PDF agree.
+    static readonly string[] AcademyOrgPalette = new[]
+    {
+        "#7c3aed", "#16a34a", "#f59e0b", "#3b82f6",
+        "#ec4899", "#0d9488", "#dc2626", "#0ea5e9",
+        "#a16207", "#6366f1", "#14b8a6", "#be185d",
+    };
+    static int AcademyStableHash(string s)
+    {
+        int h = 0;
+        foreach (var c in s) h = (h * 31 + c) & 0x7fffffff;
+        return h;
+    }
+    static SKColor AcademyOrgColor(string org)
+    {
+        if (org == "(none)") return SKColor.Parse("#94a3b8");
+        return SKColor.Parse(AcademyOrgPalette[AcademyStableHash(org) % AcademyOrgPalette.Length]);
+    }
+    static List<string> CollectAcademyOrgs(IEnumerable<Dictionary<string,int>?> dicts)
+    {
+        var set = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var d in dicts)
+        {
+            if (d == null) continue;
+            foreach (var k in d.Keys) set.Add(k);
+        }
+        var list = set.Where(x => x != "(none)").ToList();
+        if (set.Contains("(none)")) list.Add("(none)");
+        return list;
+    }
+
     static void DrawAcademyChart(SKCanvas canvas, SKSize size, IList<WeekVisitCount> data, DateOnly currentWeekStart)
     {
         if (data.Count == 0) return;
@@ -1296,14 +1402,8 @@ public class PdfService
         using var gridPaint = new SKPaint { Color = new SKColor(218, 222, 232), Style = SKPaintStyle.Stroke, StrokeWidth = 0.4f, PathEffect = SKPathEffect.CreateDash(new[] { 3f, 3f }, 0) };
         using var axisPaint = new SKPaint { Color = new SKColor(160, 165, 175), Style = SKPaintStyle.Stroke, StrokeWidth = 0.8f };
         using var hlPaint   = new SKPaint { Color = new SKColor(5, 150, 105, 30), Style = SKPaintStyle.Fill };
-
-        // Referral colors matching the UI chart
-        using var friendPaint = new SKPaint { Color = SKColor.Parse("#f59e0b"), Style = SKPaintStyle.Fill, IsAntialias = true };
-        using var socialPaint = new SKPaint { Color = SKColor.Parse("#3b82f6"), Style = SKPaintStyle.Fill, IsAntialias = true };
-        using var haifaPaint  = new SKPaint { Color = SKColor.Parse("#7c3aed"), Style = SKPaintStyle.Fill, IsAntialias = true };
-        using var otherPaint  = new SKPaint { Color = SKColor.Parse("#94a3b8"), Style = SKPaintStyle.Fill, IsAntialias = true };
-        using var yPaint      = new SKPaint { Color = new SKColor(90, 95, 110), TextSize = 7f, IsAntialias = true };
-        using var xPaint      = new SKPaint { Color = new SKColor(90, 95, 110), TextSize = 6.5f, IsAntialias = true };
+        using var yPaint    = new SKPaint { Color = new SKColor(90, 95, 110), TextSize = 7f, IsAntialias = true };
+        using var xPaint    = new SKPaint { Color = new SKColor(90, 95, 110), TextSize = 6.5f, IsAntialias = true };
 
         canvas.DrawRect(cX, cY, cW, cH, bgPaint);
 
@@ -1338,6 +1438,9 @@ public class PdfService
         // Find current week label for highlighting
         string curLabel = currentWeekStart.ToString("dd/MM", System.Globalization.CultureInfo.InvariantCulture);
 
+        // Per-org stacking: union of orgs across all buckets, sorted, "(none)" last.
+        var orgs = CollectAcademyOrgs(data.Select(w => w.ByOrg));
+
         for (int i = 0; i < n; i++)
         {
             var w = data[i];
@@ -1349,18 +1452,15 @@ public class PdfService
             float bx = gx + gapW;
             float cumH = 0;
 
-            void DrawStack(int val, SKPaint p)
+            foreach (var org in orgs)
             {
-                if (val <= 0) return;
+                int val = w.ByOrg?.GetValueOrDefault(org) ?? 0;
+                if (val <= 0) continue;
                 float segH = cH * val / roundedMax;
+                using var p = new SKPaint { Color = AcademyOrgColor(org), Style = SKPaintStyle.Fill, IsAntialias = true };
                 canvas.DrawRect(SKRect.Create(bx, baseY - cumH - segH, barW, segH), p);
                 cumH += segH;
             }
-
-            DrawStack(w.HaifaCount + w.DonCount, haifaPaint);
-            DrawStack(w.FriendCount, friendPaint);
-            DrawStack(w.SocialCount, socialPaint);
-            DrawStack(w.OtherCount, otherPaint);
 
             // X label
             float lx = gx + groupW / 2f;
@@ -1371,16 +1471,19 @@ public class PdfService
             canvas.Restore();
         }
 
-        // Legend
+        // Legend: dynamic per-org chips, wraps to the right of the chart area
         float legY = cY + 11f;
-        DrawLegendItem(canvas, cX + 4f,   legY, SKColor.Parse("#7c3aed"), "Haifa",   7f);
-        DrawLegendItem(canvas, cX + 44f,  legY, SKColor.Parse("#f59e0b"), "Friend",  7f);
-        DrawLegendItem(canvas, cX + 88f,  legY, SKColor.Parse("#3b82f6"), "Social",  7f);
-        DrawLegendItem(canvas, cX + 128f, legY, SKColor.Parse("#94a3b8"), "Other",   7f);
+        float legX = cX + 4f;
+        foreach (var org in orgs)
+        {
+            if (legX > cX + cW - 30f) break; // avoid overflow
+            DrawLegendItem(canvas, legX, legY, AcademyOrgColor(org), org, 7f);
+            legX += 10f + xPaint.MeasureText(org) + 10f;
+        }
     }
 
     static void DrawAcademyMonthlyChart(SKCanvas canvas, SKSize size,
-        IList<(string Label, int Don, int Friend, int Social, int Haifa, int Other, int Total)> data)
+        IList<(string Label, Dictionary<string,int> ByOrg, int Total)> data)
     {
         if (data.Count == 0) return;
 
@@ -1391,13 +1494,8 @@ public class PdfService
         using var bgPaint   = new SKPaint { Color = new SKColor(248, 250, 252), Style = SKPaintStyle.Fill };
         using var gridPaint = new SKPaint { Color = new SKColor(218, 222, 232), Style = SKPaintStyle.Stroke, StrokeWidth = 0.4f, PathEffect = SKPathEffect.CreateDash(new[] { 3f, 3f }, 0) };
         using var axisPaint = new SKPaint { Color = new SKColor(160, 165, 175), Style = SKPaintStyle.Stroke, StrokeWidth = 0.8f };
-
-        using var friendPaint = new SKPaint { Color = SKColor.Parse("#f59e0b"), Style = SKPaintStyle.Fill, IsAntialias = true };
-        using var socialPaint = new SKPaint { Color = SKColor.Parse("#3b82f6"), Style = SKPaintStyle.Fill, IsAntialias = true };
-        using var haifaPaint  = new SKPaint { Color = SKColor.Parse("#7c3aed"), Style = SKPaintStyle.Fill, IsAntialias = true };
-        using var otherPaint  = new SKPaint { Color = SKColor.Parse("#94a3b8"), Style = SKPaintStyle.Fill, IsAntialias = true };
-        using var yPaint      = new SKPaint { Color = new SKColor(90, 95, 110), TextSize = 7f, IsAntialias = true };
-        using var xPaint      = new SKPaint { Color = new SKColor(90, 95, 110), TextSize = 7f, IsAntialias = true };
+        using var yPaint    = new SKPaint { Color = new SKColor(90, 95, 110), TextSize = 7f, IsAntialias = true };
+        using var xPaint    = new SKPaint { Color = new SKColor(90, 95, 110), TextSize = 7f, IsAntialias = true };
 
         canvas.DrawRect(cX, cY, cW, cH, bgPaint);
 
@@ -1427,6 +1525,8 @@ public class PdfService
         float gapW = (groupW - barW) / 2f;
         float baseY = cY + cH;
 
+        var orgs = CollectAcademyOrgs(data.Select(d => (Dictionary<string,int>?)d.ByOrg));
+
         for (int i = 0; i < n; i++)
         {
             var m = data[i];
@@ -1434,29 +1534,29 @@ public class PdfService
             float bx = gx + gapW;
             float cumH = 0;
 
-            void DrawStack(int val, SKPaint p)
+            foreach (var org in orgs)
             {
-                if (val <= 0) return;
+                int val = m.ByOrg?.GetValueOrDefault(org) ?? 0;
+                if (val <= 0) continue;
                 float segH = cH * val / roundedMax;
+                using var p = new SKPaint { Color = AcademyOrgColor(org), Style = SKPaintStyle.Fill, IsAntialias = true };
                 canvas.DrawRect(SKRect.Create(bx, baseY - cumH - segH, barW, segH), p);
                 cumH += segH;
             }
 
-            DrawStack(m.Haifa + m.Don, haifaPaint);
-            DrawStack(m.Friend, friendPaint);
-            DrawStack(m.Social, socialPaint);
-            DrawStack(m.Other, otherPaint);
-
             float lx = gx + groupW / 2f;
-            float tw = xPaint.MeasureText(m.Label);
-            canvas.DrawText(m.Label, lx - tw / 2f, baseY + 12f, xPaint);
+            float tw2 = xPaint.MeasureText(m.Label);
+            canvas.DrawText(m.Label, lx - tw2 / 2f, baseY + 12f, xPaint);
         }
 
         float legY = cY + 11f;
-        DrawLegendItem(canvas, cX + 4f,   legY, SKColor.Parse("#7c3aed"), "Haifa",   7f);
-        DrawLegendItem(canvas, cX + 44f,  legY, SKColor.Parse("#f59e0b"), "Friend",  7f);
-        DrawLegendItem(canvas, cX + 88f,  legY, SKColor.Parse("#3b82f6"), "Social",  7f);
-        DrawLegendItem(canvas, cX + 128f, legY, SKColor.Parse("#94a3b8"), "Other",   7f);
+        float legX = cX + 4f;
+        foreach (var org in orgs)
+        {
+            if (legX > cX + cW - 30f) break;
+            DrawLegendItem(canvas, legX, legY, AcademyOrgColor(org), org, 7f);
+            legX += 10f + xPaint.MeasureText(org) + 10f;
+        }
     }
 
     static void DrawMonthlyChart(SKCanvas canvas, SKSize size, IList<MonthStatSummary> history, DateOnly currentMonthStart)

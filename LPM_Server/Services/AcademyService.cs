@@ -8,10 +8,12 @@ public record PersonItem(int PersonId, string FullName, string Source, string Or
 public record VisitRecord(int VisitId, int PersonId, string FullName, string Source, string Org, string Nick, int VisitsPerDay);
 public record TopStudent(string FullName, int VisitCount, string Org, string Nick);
 public record WeekVisitCount(string WeekLabel, int TotalVisits, List<TopStudent> TopStudents,
-    int DonCount, int FriendCount, int SocialCount, int HaifaCount, int OtherCount);
+    int DonCount, int FriendCount, int SocialCount, int HaifaCount, int OtherCount,
+    Dictionary<string, int>? ByOrg = null);
 public record MonthVisitCount(string MonthLabel, int TotalVisits, int UniqueStudents,
     int DonCount, int FriendCount, int SocialCount, int HaifaCount, int OtherCount,
-    List<TopStudent> TopStudents);
+    List<TopStudent> TopStudents,
+    Dictionary<string, int>? ByOrg = null);
 public record MemberAdminItem(int PersonId, string FullName, string Phone,
     bool IsActive, bool IsPC, bool IsAcademyStudent, bool IsStaff,
     string FirstName, string LastName, string? Nick, string? LastVisitDate);
@@ -313,6 +315,41 @@ public class AcademyService
         return (byReferral, byOrg);
     }
 
+    /// <summary>Same shape as GetWeeklyStudentBreakdown, over an arbitrary inclusive range
+    /// (used for the monthly summary card).</summary>
+    public (Dictionary<string, int> ByReferral, Dictionary<string, int> ByOrg)
+        GetStudentBreakdownForDateRange(DateOnly start, DateOnly end)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT COALESCE(rs.Name,'') AS Source,
+                   COALESCE(og.Name,'') AS Org
+            FROM acad_attendance s
+            JOIN core_persons p ON p.PersonId = s.PersonId
+            LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
+            LEFT JOIN lkp_organizations og ON og.OrgId = COALESCE(s.Org, p.Org)
+            WHERE s.VisitDate >= @start AND s.VisitDate <= @end
+            GROUP BY s.PersonId";
+        cmd.Parameters.AddWithValue("@start", start.ToString("yyyy-MM-dd"));
+        cmd.Parameters.AddWithValue("@end",   end.ToString("yyyy-MM-dd"));
+
+        var byReferral = new Dictionary<string, int>(StringComparer.Ordinal);
+        var byOrg      = new Dictionary<string, int>(StringComparer.Ordinal);
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            var refKey = r.GetString(0) is { Length: > 0 } rf ? rf : "Haifa";
+            byReferral[refKey] = byReferral.GetValueOrDefault(refKey) + 1;
+
+            var org = r.GetString(1);
+            if (org.Length > 0)
+                byOrg[org] = byOrg.GetValueOrDefault(org) + 1;
+        }
+        return (byReferral, byOrg);
+    }
+
     // ── Statistics ───────────────────────────────────────────────────────────
 
     public List<WeekVisitCount> GetWeeklyVisitCounts(DateOnly latestWeekStart, int numWeeks = 20)
@@ -350,6 +387,8 @@ public class AcademyService
         var socialCounts = weekStarts.ToDictionary(ws => ws, _ => 0);
         var haifaCounts  = weekStarts.ToDictionary(ws => ws, _ => 0);
         var otherCounts  = weekStarts.ToDictionary(ws => ws, _ => 0);
+        // Visits per org per week (empty org → "(none)")
+        var orgCounts    = weekStarts.ToDictionary(ws => ws, _ => new Dictionary<string, int>(StringComparer.Ordinal));
 
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -375,6 +414,8 @@ public class AcademyService
                         case "Other":           otherCounts[ws]++;  break;
                         default:                haifaCounts[ws]++;  break; // "Haifa" or empty → default
                     }
+                    var orgKey = string.IsNullOrWhiteSpace(org) ? "(none)" : org;
+                    orgCounts[ws][orgKey] = orgCounts[ws].GetValueOrDefault(orgKey) + 1;
                     break;
                 }
             }
@@ -395,7 +436,8 @@ public class AcademyService
                 friendCounts[ws],
                 socialCounts[ws],
                 haifaCounts[ws],
-                otherCounts[ws]))
+                otherCounts[ws],
+                orgCounts[ws]))
             .ToList();
     }
 
@@ -454,6 +496,7 @@ public class AcademyService
         var personCounts  = months.ToDictionary(m => m.firstThurs, _ => new Dictionary<string, int>());
         var personOrgs    = months.ToDictionary(m => m.firstThurs, _ => new Dictionary<string, string>());
         var personNicks   = months.ToDictionary(m => m.firstThurs, _ => new Dictionary<string, string>());
+        var orgCounts     = months.ToDictionary(m => m.firstThurs, _ => new Dictionary<string, int>(StringComparer.Ordinal));
 
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -481,6 +524,8 @@ public class AcademyService
                         case "Other":           otherCounts[m.firstThurs]++;  break;
                         default:                haifaCounts[m.firstThurs]++;  break; // "Haifa" or empty → default
                     }
+                    var orgKey = string.IsNullOrWhiteSpace(org) ? "(none)" : org;
+                    orgCounts[m.firstThurs][orgKey] = orgCounts[m.firstThurs].GetValueOrDefault(orgKey) + 1;
                     break;
                 }
             }
@@ -502,7 +547,8 @@ public class AcademyService
                     .Select(kv => new TopStudent(kv.Key, kv.Value,
                         personOrgs[m.firstThurs].GetValueOrDefault(kv.Key, ""),
                         personNicks[m.firstThurs].GetValueOrDefault(kv.Key, "")))
-                    .ToList()))
+                    .ToList(),
+                orgCounts[m.firstThurs]))
             .ToList();
     }
 

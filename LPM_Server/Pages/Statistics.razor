@@ -286,6 +286,24 @@
 
 <div class="px-3 pb-5">
 
+    @* ── Org filter pills ── *@
+    <div class="d-flex align-items-center flex-wrap gap-2 pt-2 pb-1 no-print">
+        <span class="fw-semibold me-1" style="font-size:0.85rem;color:#6b7280;">
+            <i class="ri-filter-3-line me-1"></i>Org:
+        </span>
+        <div class="btn-group" role="group" aria-label="Organization filter">
+            <button type="button"
+                    class="btn btn-sm rounded-pill me-1 @(_selOrg == 0 ? "btn-primary" : "btn-outline-primary")"
+                    @onclick="() => SelectOrg(0)">All</button>
+            <button type="button"
+                    class="btn btn-sm rounded-pill me-1 @(_selOrg == 1 ? "btn-primary" : "btn-outline-primary")"
+                    @onclick="() => SelectOrg(1)">Haifa</button>
+            <button type="button"
+                    class="btn btn-sm rounded-pill @(_selOrg == 2 ? "btn-primary" : "btn-outline-primary")"
+                    @onclick="() => SelectOrg(2)">Riga</button>
+        </div>
+    </div>
+
     @* ── Week nav ── *@
     <div class="d-flex align-items-center flex-wrap gap-2 py-2 border-bottom mb-3 no-print">
         <button class="btn btn-sm btn-outline-secondary rounded-pill" @onclick="PrevWeek">
@@ -871,6 +889,9 @@
 @code {
     private DateOnly _weekStart;
     private int      _selDay;
+    private int      _selOrg;    // 0=All, 1=Haifa, 2=Riga
+    private int?     OrgFilter => _selOrg == 0 ? (int?)null : _selOrg;
+    private string   OrgLabel  => _selOrg switch { 1 => "Haifa", 2 => "Riga", _ => "All" };
     private List<DayStat>         _dayStats     = new();
     private List<WeekStatSummary> _weekHistory  = new();
     private List<WeekStatSummary> _chartHistory = new();   // only weeks with any data
@@ -1013,10 +1034,10 @@
 
     void LoadWeek()
     {
-        _dayStats     = StatSvc.GetWeekDayStats(_weekStart);
-        _weekHistory  = StatSvc.GetWeeklySummaries(_weekStart, 20);
+        _dayStats     = StatSvc.GetWeekDayStats(_weekStart, OrgFilter);
+        _weekHistory  = StatSvc.GetWeeklySummaries(_weekStart, 20, OrgFilter);
         _chartHistory = _weekHistory.Where(w => w.TotalAuditCsSec > 0 || w.PcCount > 0 || w.AcademyCount > 0 || w.BodyInShop > 0 || w.EffortSec > 0).ToList();
-        _originHours  = StatSvc.GetWeekOriginHours(_weekStart);
+        _originHours  = StatSvc.GetWeekOriginHours(_weekStart, OrgFilter);
         _chartKey++;
         LoadMonth();
     }
@@ -1035,12 +1056,19 @@
         _monthStart = weeks[0];
         _monthEnd   = weeks[^1].AddDays(6);
         _monthLabel = _monthStart.ToString("MMMM yyyy", CultureInfo.InvariantCulture);
-        _monthSummary     = StatSvc.GetMonthSummary(_monthStart, _monthEnd);
-        _monthStaff       = StatSvc.GetMonthStaffLeaderboard(_monthStart, _monthEnd);
-        _monthOriginHours = StatSvc.GetMonthOriginHours(_monthStart, _monthEnd);
-        _monthHistory     = StatSvc.GetMonthlySummaries(_weekStart, 12);
+        _monthSummary     = StatSvc.GetMonthSummary(_monthStart, _monthEnd, OrgFilter);
+        _monthStaff       = StatSvc.GetMonthStaffLeaderboard(_monthStart, _monthEnd, OrgFilter);
+        _monthOriginHours = StatSvc.GetMonthOriginHours(_monthStart, _monthEnd, OrgFilter);
+        _monthHistory     = StatSvc.GetMonthlySummaries(_weekStart, 12, OrgFilter);
         _chartMonthHistory = _monthHistory.Where(m => m.TotalAuditCsSec > 0 || m.PcCount > 0 || m.AcademyCount > 0 || m.BodyInShop > 0 || m.EffortSec > 0).ToList();
         _monthChartKey++;
+    }
+
+    void SelectOrg(int org)
+    {
+        if (_selOrg == org) return;
+        _selOrg = org;
+        LoadWeek();
     }
 
     static List<DateOnly> GetMonthWeeks(DateOnly weekStart)
@@ -1105,8 +1133,9 @@
             monthWeekCount: _monthWeekCount,
             monthStart: _monthStart,
             monthEnd: _monthEnd,
-            monthHistory: _monthHistory);
-        await JS.InvokeVoidAsync("downloadFile", $"Statistics_{_weekStart:yyyy_MM_dd}.pdf", Convert.ToBase64String(pdfBytes));
+            monthHistory: _monthHistory,
+            orgLabel: OrgLabel);
+        await JS.InvokeVoidAsync("downloadFile", $"Statistics_{OrgLabel}_{_weekStart:yyyy_MM_dd}.pdf", Convert.ToBase64String(pdfBytes));
     }
 
     static string DayLabel(DateOnly d) =>

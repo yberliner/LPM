@@ -49,8 +49,10 @@ public class StatisticsService
     /// <summary>
     /// Returns per-day stats for each of the 7 days in the week starting at weekStart.
     /// Staff are sorted by descending total (AuditSec + SoloCsSec) per day.
+    /// If orgId is non-null, audit/CS/solo-CS/effort are filtered by staff person.Org,
+    /// and academy is filtered by student person.Org.
     /// </summary>
-    public List<DayStat> GetWeekDayStats(DateOnly weekStart)
+    public List<DayStat> GetWeekDayStats(DateOnly weekStart, int? orgId = null)
     {
         var weekEnd  = weekStart.AddDays(6);
         var dates    = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
@@ -60,7 +62,7 @@ public class StatisticsService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        // ── Active staff names ───────────────────────────────────────────────
+        // ── Active staff names (filtered by staff person.Org when orgId set) ─
         var auditorNames = new Dictionary<int, string>();
         {
             using var cmd = conn.CreateCommand();
@@ -69,7 +71,9 @@ public class StatisticsService
                        TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS Name
                 FROM core_users u
                 JOIN core_persons p ON p.PersonId = u.PersonId
-                WHERE u.IsActive = 1 AND u.StaffRole != 'None'";
+                WHERE u.IsActive = 1 AND u.StaffRole != 'None'"
+                + (orgId.HasValue ? " AND p.Org = @org" : "");
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 auditorNames[r.GetInt32(0)] = r.GetString(1);
@@ -81,12 +85,15 @@ public class StatisticsService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT AuditorId, DATE(CreatedAt, 'localtime') AS d, SUM(LengthSeconds + AdminSeconds)
-                FROM sess_sessions
-                WHERE DATE(CreatedAt, 'localtime') >= @s AND DATE(CreatedAt, 'localtime') <= @e AND AuditorId IS NOT NULL
-                GROUP BY AuditorId, DATE(CreatedAt, 'localtime')";
+                SELECT s.AuditorId, DATE(s.CreatedAt, 'localtime') AS d, SUM(s.LengthSeconds + s.AdminSeconds)
+                FROM sess_sessions s
+                { (orgId.HasValue ? "JOIN core_persons ap ON ap.PersonId = s.AuditorId" : "") }
+                WHERE DATE(s.CreatedAt, 'localtime') >= @s AND DATE(s.CreatedAt, 'localtime') <= @e AND s.AuditorId IS NOT NULL
+                { (orgId.HasValue ? "AND ap.Org = @org" : "") }
+                GROUP BY s.AuditorId, DATE(s.CreatedAt, 'localtime')";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -106,11 +113,14 @@ public class StatisticsService
                 SELECT cr.CsId, DATE(cr.ReviewedAt, 'localtime') AS d, SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
+                { (orgId.HasValue ? "JOIN core_persons cp ON cp.PersonId = cr.CsId" : "") }
                 WHERE DATE(cr.ReviewedAt, 'localtime') >= @s AND DATE(cr.ReviewedAt, 'localtime') <= @e
                   AND s.AuditorId IS NULL
+                  { (orgId.HasValue ? "AND cp.Org = @org" : "") }
                 GROUP BY cr.CsId, DATE(cr.ReviewedAt, 'localtime')";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -130,11 +140,14 @@ public class StatisticsService
                 SELECT cr.CsId, DATE(cr.ReviewedAt, 'localtime') AS d, SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
+                { (orgId.HasValue ? "JOIN core_persons cp ON cp.PersonId = cr.CsId" : "") }
                 WHERE DATE(cr.ReviewedAt, 'localtime') >= @s AND DATE(cr.ReviewedAt, 'localtime') <= @e
                   AND s.AuditorId IS NOT NULL
+                  { (orgId.HasValue ? "AND cp.Org = @org" : "") }
                 GROUP BY cr.CsId, DATE(cr.ReviewedAt, 'localtime')";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -145,17 +158,20 @@ public class StatisticsService
             }
         }
 
-        // ── Academy visit count per day ──────────────────────────────────────
+        // ── Academy visit count per day (filtered by student person.Org) ──
         var academyCounts = new int[7];
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT VisitDate, COUNT(*)
-                FROM acad_attendance
-                WHERE VisitDate >= @s AND VisitDate <= @e
-                GROUP BY VisitDate";
+                SELECT a.VisitDate, COUNT(*)
+                FROM acad_attendance a
+                { (orgId.HasValue ? "JOIN core_persons sp ON sp.PersonId = a.PersonId" : "") }
+                WHERE a.VisitDate >= @s AND a.VisitDate <= @e
+                { (orgId.HasValue ? "AND sp.Org = @org" : "") }
+                GROUP BY a.VisitDate";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -164,20 +180,25 @@ public class StatisticsService
             }
         }
 
-        // ── Distinct PC count per day (unique PcIds in Sessions ∪ Effort) ──
+        // ── Distinct PC count per day (sessions by filtered staff ∪ effort by filtered staff) ──
         var pcCounts = new int[7];
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT d, COUNT(DISTINCT pid) FROM (
-                    SELECT SessionDate AS d, PcId AS pid FROM sess_sessions
-                    WHERE  SessionDate >= @s AND SessionDate <= @e
+                    SELECT s.SessionDate AS d, s.PcId AS pid FROM sess_sessions s
+                    { (orgId.HasValue ? "LEFT JOIN core_persons ap ON ap.PersonId = s.AuditorId" : "") }
+                    WHERE  s.SessionDate >= @s AND s.SessionDate <= @e
+                    { (orgId.HasValue ? "AND (s.AuditorId IS NOT NULL AND ap.Org = @org)" : "") }
                     UNION ALL
-                    SELECT EffortDate  AS d, PcId AS pid FROM sys_effort_entries
-                    WHERE  EffortDate  >= @s AND EffortDate <= @e
+                    SELECT e.EffortDate  AS d, e.PcId AS pid FROM sys_effort_entries e
+                    { (orgId.HasValue ? "JOIN core_users eu ON eu.Id = e.PerformedByUserId JOIN core_persons ep ON ep.PersonId = eu.PersonId" : "") }
+                    WHERE  e.EffortDate  >= @s AND e.EffortDate <= @e
+                    { (orgId.HasValue ? "AND ep.Org = @org" : "") }
                 ) GROUP BY d";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -186,23 +207,30 @@ public class StatisticsService
             }
         }
 
-        // ── Body in shop per day (sessions ∪ academy ∪ effort) ──
+        // ── Body in shop per day (sessions by filtered staff ∪ academy by filtered student ∪ effort by filtered staff) ──
         var bodyInShop = new int[7];
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT d, COUNT(DISTINCT pid) FROM (
-                    SELECT SessionDate AS d, PcId     AS pid FROM sess_sessions
-                    WHERE  SessionDate >= @s AND SessionDate <= @e
+                    SELECT s.SessionDate AS d, s.PcId     AS pid FROM sess_sessions s
+                    { (orgId.HasValue ? "LEFT JOIN core_persons ap ON ap.PersonId = s.AuditorId" : "") }
+                    WHERE  s.SessionDate >= @s AND s.SessionDate <= @e
+                    { (orgId.HasValue ? "AND (s.AuditorId IS NOT NULL AND ap.Org = @org)" : "") }
                     UNION ALL
-                    SELECT VisitDate   AS d, PersonId AS pid FROM acad_attendance
-                    WHERE  VisitDate   >= @s AND VisitDate   <= @e
+                    SELECT a.VisitDate   AS d, a.PersonId AS pid FROM acad_attendance a
+                    { (orgId.HasValue ? "JOIN core_persons sp ON sp.PersonId = a.PersonId" : "") }
+                    WHERE  a.VisitDate   >= @s AND a.VisitDate   <= @e
+                    { (orgId.HasValue ? "AND sp.Org = @org" : "") }
                     UNION ALL
-                    SELECT EffortDate  AS d, PcId     AS pid FROM sys_effort_entries
-                    WHERE  EffortDate  >= @s AND EffortDate  <= @e
+                    SELECT e.EffortDate  AS d, e.PcId     AS pid FROM sys_effort_entries e
+                    { (orgId.HasValue ? "JOIN core_users eu ON eu.Id = e.PerformedByUserId JOIN core_persons ep ON ep.PersonId = eu.PersonId" : "") }
+                    WHERE  e.EffortDate  >= @s AND e.EffortDate  <= @e
+                    { (orgId.HasValue ? "AND ep.Org = @org" : "") }
                 ) GROUP BY d";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -216,14 +244,17 @@ public class StatisticsService
         var effortPerDay = new int[7];
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
+            cmd.CommandText = $@"
                 SELECT u.PersonId, e.EffortDate, SUM(e.LengthSeconds)
                 FROM sys_effort_entries e
                 JOIN core_users u ON u.Id = e.PerformedByUserId
+                { (orgId.HasValue ? "JOIN core_persons ep ON ep.PersonId = u.PersonId" : "") }
                 WHERE e.EffortDate >= @s AND e.EffortDate <= @e
+                { (orgId.HasValue ? "AND ep.Org = @org" : "") }
                 GROUP BY u.PersonId, e.EffortDate";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -269,7 +300,7 @@ public class StatisticsService
     /// Each row has: TotalAuditCsSec (all audit + solo-type CS), AcademyCount (unique persons),
     /// BodyInShop (unique persons who had a session or visited academy).
     /// </summary>
-    public List<WeekStatSummary> GetWeeklySummaries(DateOnly latestWeekStart, int numWeeks = 20)
+    public List<WeekStatSummary> GetWeeklySummaries(DateOnly latestWeekStart, int numWeeks = 20, int? orgId = null)
     {
         var weeks    = Enumerable.Range(0, numWeeks)
             .Select(i => latestWeekStart.AddDays(-(numWeeks - 1 - i) * 7))
@@ -286,16 +317,19 @@ public class StatisticsService
         var bodyPersons    = weeks.ToDictionary(w => w, _ => new HashSet<int>());
         var pcPersons      = weeks.ToDictionary(w => w, _ => new HashSet<int>());
 
-        // All session time per date
+        // Regular-session audit time per date (filtered by auditor person.Org)
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT DATE(CreatedAt, 'localtime') AS d, SUM(LengthSeconds + AdminSeconds)
-                FROM sess_sessions
-                WHERE DATE(CreatedAt, 'localtime') >= @s AND DATE(CreatedAt, 'localtime') <= @e
-                GROUP BY DATE(CreatedAt, 'localtime')";
+                SELECT DATE(s.CreatedAt, 'localtime') AS d, SUM(s.LengthSeconds + s.AdminSeconds)
+                FROM sess_sessions s
+                { (orgId.HasValue ? "JOIN core_persons ap ON ap.PersonId = s.AuditorId" : "") }
+                WHERE DATE(s.CreatedAt, 'localtime') >= @s AND DATE(s.CreatedAt, 'localtime') <= @e
+                  { (orgId.HasValue ? "AND s.AuditorId IS NOT NULL AND ap.Org = @org" : "") }
+                GROUP BY DATE(s.CreatedAt, 'localtime')";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -304,18 +338,21 @@ public class StatisticsService
             }
         }
 
-        // Solo CS time: CS reviews on solo sessions (AuditorId IS NULL) per date
+        // Solo CS time: CS reviews on solo sessions (AuditorId IS NULL) per date (filtered by CS person.Org)
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
                 SELECT DATE(cr.ReviewedAt, 'localtime') AS d, SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
+                { (orgId.HasValue ? "JOIN core_persons cp ON cp.PersonId = cr.CsId" : "") }
                 WHERE DATE(cr.ReviewedAt, 'localtime') >= @s AND DATE(cr.ReviewedAt, 'localtime') <= @e
                   AND s.AuditorId IS NULL
+                  { (orgId.HasValue ? "AND cp.Org = @org" : "") }
                 GROUP BY DATE(cr.ReviewedAt, 'localtime')";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -324,14 +361,17 @@ public class StatisticsService
             }
         }
 
-        // Academy visits → unique persons per week
+        // Academy visits → unique persons per week (filtered by student person.Org)
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT VisitDate, PersonId FROM acad_attendance
-                WHERE VisitDate >= @s AND VisitDate <= @e";
+                SELECT a.VisitDate, a.PersonId FROM acad_attendance a
+                { (orgId.HasValue ? "JOIN core_persons sp ON sp.PersonId = a.PersonId" : "") }
+                WHERE a.VisitDate >= @s AND a.VisitDate <= @e
+                { (orgId.HasValue ? "AND sp.Org = @org" : "") }";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -343,14 +383,17 @@ public class StatisticsService
             }
         }
 
-        // Session PcIds → add to body-in-shop per week
+        // Session PcIds → add to body-in-shop per week (filtered by auditor person.Org)
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT SessionDate, PcId FROM sess_sessions
-                WHERE SessionDate >= @s AND SessionDate <= @e";
+                SELECT s.SessionDate, s.PcId FROM sess_sessions s
+                { (orgId.HasValue ? "JOIN core_persons ap ON ap.PersonId = s.AuditorId" : "") }
+                WHERE s.SessionDate >= @s AND s.SessionDate <= @e
+                { (orgId.HasValue ? "AND s.AuditorId IS NOT NULL AND ap.Org = @org" : "") }";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -361,15 +404,18 @@ public class StatisticsService
             }
         }
 
-        // Effort rows: feed into BIS, PcCount, and per-week effort totals
+        // Effort rows: feed into BIS, PcCount, and per-week effort totals (filtered by performer person.Org)
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                SELECT EffortDate, PcId, LengthSeconds
-                FROM sys_effort_entries
-                WHERE EffortDate >= @s AND EffortDate <= @e";
+            cmd.CommandText = $@"
+                SELECT e.EffortDate, e.PcId, e.LengthSeconds
+                FROM sys_effort_entries e
+                { (orgId.HasValue ? "JOIN core_users eu ON eu.Id = e.PerformedByUserId JOIN core_persons ep ON ep.PersonId = eu.PersonId" : "") }
+                WHERE e.EffortDate >= @s AND e.EffortDate <= @e
+                { (orgId.HasValue ? "AND ep.Org = @org" : "") }";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -395,7 +441,7 @@ public class StatisticsService
     /// <summary>
     /// Returns a single WeekStatSummary aggregating all data in the given date range (for monthly use).
     /// </summary>
-    public WeekStatSummary GetMonthSummary(DateOnly monthStart, DateOnly monthEnd)
+    public WeekStatSummary GetMonthSummary(DateOnly monthStart, DateOnly monthEnd, int? orgId = null)
     {
         var startStr = monthStart.ToString("yyyy-MM-dd");
         var endStr   = monthEnd.ToString("yyyy-MM-dd");
@@ -403,92 +449,116 @@ public class StatisticsService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        // Total audit+CS seconds
+        // Regular-session audit seconds (filtered by auditor person.Org)
         int totalSec = 0;
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                SELECT COALESCE(SUM(LengthSeconds + AdminSeconds), 0)
-                FROM sess_sessions
-                WHERE DATE(CreatedAt, 'localtime') >= @s AND DATE(CreatedAt, 'localtime') <= @e";
+            cmd.CommandText = $@"
+                SELECT COALESCE(SUM(s.LengthSeconds + s.AdminSeconds), 0)
+                FROM sess_sessions s
+                { (orgId.HasValue ? "JOIN core_persons ap ON ap.PersonId = s.AuditorId" : "") }
+                WHERE DATE(s.CreatedAt, 'localtime') >= @s AND DATE(s.CreatedAt, 'localtime') <= @e
+                  { (orgId.HasValue ? "AND s.AuditorId IS NOT NULL AND ap.Org = @org" : "") }";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             totalSec = Convert.ToInt32(cmd.ExecuteScalar());
         }
-        // Solo CS time: CS reviews on solo sessions (AuditorId IS NULL)
+        // Solo CS time: CS reviews on solo sessions (AuditorId IS NULL), filtered by CS person.Org
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
+            cmd.CommandText = $@"
                 SELECT COALESCE(SUM(cr.ReviewLengthSeconds), 0)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
+                { (orgId.HasValue ? "JOIN core_persons cp ON cp.PersonId = cr.CsId" : "") }
                 WHERE DATE(cr.ReviewedAt, 'localtime') >= @s AND DATE(cr.ReviewedAt, 'localtime') <= @e
-                  AND s.AuditorId IS NULL";
+                  AND s.AuditorId IS NULL
+                  { (orgId.HasValue ? "AND cp.Org = @org" : "") }";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             totalSec += Convert.ToInt32(cmd.ExecuteScalar());
         }
 
-        // Unique academy persons
+        // Unique academy persons (filtered by student person.Org)
         int academyCount = 0;
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                SELECT COUNT(DISTINCT PersonId)
-                FROM acad_attendance
-                WHERE VisitDate >= @s AND VisitDate <= @e";
+            cmd.CommandText = $@"
+                SELECT COUNT(DISTINCT a.PersonId)
+                FROM acad_attendance a
+                { (orgId.HasValue ? "JOIN core_persons sp ON sp.PersonId = a.PersonId" : "") }
+                WHERE a.VisitDate >= @s AND a.VisitDate <= @e
+                { (orgId.HasValue ? "AND sp.Org = @org" : "") }";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             academyCount = Convert.ToInt32(cmd.ExecuteScalar());
         }
 
-        // Unique PCs (sessions ∪ effort)
+        // Unique PCs (sessions by filtered staff ∪ effort by filtered staff)
         int pcCount = 0;
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                SELECT COUNT(DISTINCT PcId) FROM (
-                    SELECT PcId FROM sess_sessions
-                    WHERE SessionDate >= @s AND SessionDate <= @e
+            cmd.CommandText = $@"
+                SELECT COUNT(DISTINCT pid) FROM (
+                    SELECT s.PcId AS pid FROM sess_sessions s
+                    { (orgId.HasValue ? "JOIN core_persons ap ON ap.PersonId = s.AuditorId" : "") }
+                    WHERE s.SessionDate >= @s AND s.SessionDate <= @e
+                    { (orgId.HasValue ? "AND s.AuditorId IS NOT NULL AND ap.Org = @org" : "") }
                     UNION ALL
-                    SELECT PcId FROM sys_effort_entries
-                    WHERE EffortDate >= @s AND EffortDate <= @e
+                    SELECT e.PcId AS pid FROM sys_effort_entries e
+                    { (orgId.HasValue ? "JOIN core_users eu ON eu.Id = e.PerformedByUserId JOIN core_persons ep ON ep.PersonId = eu.PersonId" : "") }
+                    WHERE e.EffortDate >= @s AND e.EffortDate <= @e
+                    { (orgId.HasValue ? "AND ep.Org = @org" : "") }
                 )";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             pcCount = Convert.ToInt32(cmd.ExecuteScalar());
         }
 
-        // Body in shop (sessions ∪ academy ∪ effort)
+        // Body in shop (sessions by filtered staff ∪ academy by filtered student ∪ effort by filtered staff)
         int bodyInShop = 0;
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
+            cmd.CommandText = $@"
                 SELECT COUNT(DISTINCT pid) FROM (
-                    SELECT PcId AS pid FROM sess_sessions
-                    WHERE SessionDate >= @s AND SessionDate <= @e
+                    SELECT s.PcId AS pid FROM sess_sessions s
+                    { (orgId.HasValue ? "JOIN core_persons ap ON ap.PersonId = s.AuditorId" : "") }
+                    WHERE s.SessionDate >= @s AND s.SessionDate <= @e
+                    { (orgId.HasValue ? "AND s.AuditorId IS NOT NULL AND ap.Org = @org" : "") }
                     UNION ALL
-                    SELECT PersonId AS pid FROM acad_attendance
-                    WHERE VisitDate >= @s AND VisitDate <= @e
+                    SELECT a.PersonId AS pid FROM acad_attendance a
+                    { (orgId.HasValue ? "JOIN core_persons sp ON sp.PersonId = a.PersonId" : "") }
+                    WHERE a.VisitDate >= @s AND a.VisitDate <= @e
+                    { (orgId.HasValue ? "AND sp.Org = @org" : "") }
                     UNION ALL
-                    SELECT PcId AS pid FROM sys_effort_entries
-                    WHERE EffortDate >= @s AND EffortDate <= @e
+                    SELECT e.PcId AS pid FROM sys_effort_entries e
+                    { (orgId.HasValue ? "JOIN core_users eu ON eu.Id = e.PerformedByUserId JOIN core_persons ep ON ep.PersonId = eu.PersonId" : "") }
+                    WHERE e.EffortDate >= @s AND e.EffortDate <= @e
+                    { (orgId.HasValue ? "AND ep.Org = @org" : "") }
                 )";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             bodyInShop = Convert.ToInt32(cmd.ExecuteScalar());
         }
 
-        // Effort total
+        // Effort total (filtered by performer person.Org)
         int effortSec = 0;
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                SELECT COALESCE(SUM(LengthSeconds), 0)
-                FROM sys_effort_entries
-                WHERE EffortDate >= @s AND EffortDate <= @e";
+            cmd.CommandText = $@"
+                SELECT COALESCE(SUM(e.LengthSeconds), 0)
+                FROM sys_effort_entries e
+                { (orgId.HasValue ? "JOIN core_users eu ON eu.Id = e.PerformedByUserId JOIN core_persons ep ON ep.PersonId = eu.PersonId" : "") }
+                WHERE e.EffortDate >= @s AND e.EffortDate <= @e
+                { (orgId.HasValue ? "AND ep.Org = @org" : "") }";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             effortSec = Convert.ToInt32(cmd.ExecuteScalar());
         }
 
@@ -499,7 +569,7 @@ public class StatisticsService
     /// Returns auditing hours grouped by PC Origin for the given date range.
     /// Adds an "Unassigned" bucket for extra effort (which has no organization).
     /// </summary>
-    public List<OriginHours> GetMonthOriginHours(DateOnly monthStart, DateOnly monthEnd)
+    public List<OriginHours> GetMonthOriginHours(DateOnly monthStart, DateOnly monthEnd, int? orgId = null)
     {
         var startStr = monthStart.ToString("yyyy-MM-dd");
         var endStr   = monthEnd.ToString("yyyy-MM-dd");
@@ -510,17 +580,20 @@ public class StatisticsService
         var list = new List<OriginHours>();
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
+            cmd.CommandText = $@"
                 SELECT COALESCE(og.Name, 'Unknown') AS Org,
                        SUM(s.LengthSeconds + s.AdminSeconds) AS TotalSec
                 FROM sess_sessions s
                 JOIN core_persons p ON p.PersonId = s.PcId
                 LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
+                { (orgId.HasValue ? "JOIN core_persons ap ON ap.PersonId = s.AuditorId" : "") }
                 WHERE DATE(s.CreatedAt, 'localtime') >= @s AND DATE(s.CreatedAt, 'localtime') <= @e
+                { (orgId.HasValue ? "AND s.AuditorId IS NOT NULL AND ap.Org = @org" : "") }
                 GROUP BY COALESCE(og.Name, 'Unknown')
                 ORDER BY TotalSec DESC";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 list.Add(new OriginHours(r.GetString(0), r.GetInt32(1)));
@@ -529,12 +602,15 @@ public class StatisticsService
         int effortSec = 0;
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                SELECT COALESCE(SUM(LengthSeconds), 0)
-                FROM sys_effort_entries
-                WHERE EffortDate >= @s AND EffortDate <= @e";
+            cmd.CommandText = $@"
+                SELECT COALESCE(SUM(e.LengthSeconds), 0)
+                FROM sys_effort_entries e
+                { (orgId.HasValue ? "JOIN core_users eu ON eu.Id = e.PerformedByUserId JOIN core_persons ep ON ep.PersonId = eu.PersonId" : "") }
+                WHERE e.EffortDate >= @s AND e.EffortDate <= @e
+                { (orgId.HasValue ? "AND ep.Org = @org" : "") }";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             effortSec = Convert.ToInt32(cmd.ExecuteScalar());
         }
         if (effortSec > 0)
@@ -546,7 +622,7 @@ public class StatisticsService
     /// <summary>
     /// Returns staff leaderboard aggregated over a date range (for monthly use).
     /// </summary>
-    public List<StaffStatRow> GetMonthStaffLeaderboard(DateOnly monthStart, DateOnly monthEnd)
+    public List<StaffStatRow> GetMonthStaffLeaderboard(DateOnly monthStart, DateOnly monthEnd, int? orgId = null)
     {
         var startStr = monthStart.ToString("yyyy-MM-dd");
         var endStr   = monthEnd.ToString("yyyy-MM-dd");
@@ -554,7 +630,7 @@ public class StatisticsService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        // Active staff names
+        // Active staff names (filtered by staff person.Org when orgId set)
         var auditorNames = new Dictionary<int, string>();
         {
             using var cmd = conn.CreateCommand();
@@ -563,7 +639,9 @@ public class StatisticsService
                        TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')) AS Name
                 FROM core_users u
                 JOIN core_persons p ON p.PersonId = u.PersonId
-                WHERE u.IsActive = 1 AND u.StaffRole != 'None'";
+                WHERE u.IsActive = 1 AND u.StaffRole != 'None'"
+                + (orgId.HasValue ? " AND p.Org = @org" : "");
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 auditorNames[r.GetInt32(0)] = r.GetString(1);
@@ -573,13 +651,16 @@ public class StatisticsService
         var auditSecs = new Dictionary<int, int>();
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                SELECT AuditorId, SUM(LengthSeconds + AdminSeconds)
-                FROM sess_sessions
-                WHERE DATE(CreatedAt, 'localtime') >= @s AND DATE(CreatedAt, 'localtime') <= @e AND AuditorId IS NOT NULL
-                GROUP BY AuditorId";
+            cmd.CommandText = $@"
+                SELECT s.AuditorId, SUM(s.LengthSeconds + s.AdminSeconds)
+                FROM sess_sessions s
+                { (orgId.HasValue ? "JOIN core_persons ap ON ap.PersonId = s.AuditorId" : "") }
+                WHERE DATE(s.CreatedAt, 'localtime') >= @s AND DATE(s.CreatedAt, 'localtime') <= @e AND s.AuditorId IS NOT NULL
+                { (orgId.HasValue ? "AND ap.Org = @org" : "") }
+                GROUP BY s.AuditorId";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 auditSecs[r.GetInt32(0)] = r.GetInt32(1);
@@ -589,15 +670,18 @@ public class StatisticsService
         var soloCsSecs = new Dictionary<int, int>();
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
+            cmd.CommandText = $@"
                 SELECT cr.CsId, SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
+                { (orgId.HasValue ? "JOIN core_persons cp ON cp.PersonId = cr.CsId" : "") }
                 WHERE DATE(cr.ReviewedAt, 'localtime') >= @s AND DATE(cr.ReviewedAt, 'localtime') <= @e
                   AND s.AuditorId IS NULL
+                  { (orgId.HasValue ? "AND cp.Org = @org" : "") }
                 GROUP BY cr.CsId";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 soloCsSecs[r.GetInt32(0)] = r.GetInt32(1);
@@ -607,32 +691,38 @@ public class StatisticsService
         var csSecs = new Dictionary<int, int>();
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
+            cmd.CommandText = $@"
                 SELECT cr.CsId, SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
+                { (orgId.HasValue ? "JOIN core_persons cp ON cp.PersonId = cr.CsId" : "") }
                 WHERE DATE(cr.ReviewedAt, 'localtime') >= @s AND DATE(cr.ReviewedAt, 'localtime') <= @e
                   AND s.AuditorId IS NOT NULL
+                  { (orgId.HasValue ? "AND cp.Org = @org" : "") }
                 GROUP BY cr.CsId";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 csSecs[r.GetInt32(0)] = r.GetInt32(1);
         }
 
-        // Effort seconds per PersonId
+        // Effort seconds per PersonId (filtered by performer person.Org)
         var effortSecs = new Dictionary<int, int>();
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
+            cmd.CommandText = $@"
                 SELECT u.PersonId, SUM(e.LengthSeconds)
                 FROM sys_effort_entries e
                 JOIN core_users u ON u.Id = e.PerformedByUserId
+                { (orgId.HasValue ? "JOIN core_persons ep ON ep.PersonId = u.PersonId" : "") }
                 WHERE e.EffortDate >= @s AND e.EffortDate <= @e
+                { (orgId.HasValue ? "AND ep.Org = @org" : "") }
                 GROUP BY u.PersonId";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 effortSecs[r.GetInt32(0)] = r.GetInt32(1);
@@ -662,7 +752,7 @@ public class StatisticsService
     /// <summary>
     /// Returns monthly summaries for the last numMonths months (each month = weeks where Thursday falls in that month).
     /// </summary>
-    public List<MonthStatSummary> GetMonthlySummaries(DateOnly currentWeekStart, int numMonths = 12)
+    public List<MonthStatSummary> GetMonthlySummaries(DateOnly currentWeekStart, int numMonths = 12, int? orgId = null)
     {
         // Build list of months going back numMonths
         var months = new List<(DateOnly start, DateOnly end, DateOnly firstThursday)>();
@@ -690,33 +780,39 @@ public class StatisticsService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        // Audit+CS time per date
+        // Regular-session audit time per date (filtered by auditor person.Org)
         var dayTotals = new Dictionary<string, int>();
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                SELECT DATE(CreatedAt, 'localtime') AS d, SUM(LengthSeconds + AdminSeconds)
-                FROM sess_sessions
-                WHERE DATE(CreatedAt, 'localtime') >= @s AND DATE(CreatedAt, 'localtime') <= @e
-                GROUP BY DATE(CreatedAt, 'localtime')";
+            cmd.CommandText = $@"
+                SELECT DATE(s.CreatedAt, 'localtime') AS d, SUM(s.LengthSeconds + s.AdminSeconds)
+                FROM sess_sessions s
+                { (orgId.HasValue ? "JOIN core_persons ap ON ap.PersonId = s.AuditorId" : "") }
+                WHERE DATE(s.CreatedAt, 'localtime') >= @s AND DATE(s.CreatedAt, 'localtime') <= @e
+                { (orgId.HasValue ? "AND s.AuditorId IS NOT NULL AND ap.Org = @org" : "") }
+                GROUP BY DATE(s.CreatedAt, 'localtime')";
             cmd.Parameters.AddWithValue("@s", globalStart);
             cmd.Parameters.AddWithValue("@e", globalEnd);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 dayTotals[r.GetString(0)] = r.GetInt32(1);
         }
-        // Solo CS time
+        // Solo CS time (filtered by CS person.Org)
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
+            cmd.CommandText = $@"
                 SELECT DATE(cr.ReviewedAt, 'localtime') AS d, SUM(cr.ReviewLengthSeconds)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
+                { (orgId.HasValue ? "JOIN core_persons cp ON cp.PersonId = cr.CsId" : "") }
                 WHERE DATE(cr.ReviewedAt, 'localtime') >= @s AND DATE(cr.ReviewedAt, 'localtime') <= @e
                   AND s.AuditorId IS NULL
+                  { (orgId.HasValue ? "AND cp.Org = @org" : "") }
                 GROUP BY DATE(cr.ReviewedAt, 'localtime')";
             cmd.Parameters.AddWithValue("@s", globalStart);
             cmd.Parameters.AddWithValue("@e", globalEnd);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -725,15 +821,18 @@ public class StatisticsService
             }
         }
 
-        // Academy visits per date+person
+        // Academy visits per date+person (filtered by student person.Org)
         var academyByDate = new Dictionary<string, HashSet<int>>();
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                SELECT VisitDate, PersonId FROM acad_attendance
-                WHERE VisitDate >= @s AND VisitDate <= @e";
+            cmd.CommandText = $@"
+                SELECT a.VisitDate, a.PersonId FROM acad_attendance a
+                { (orgId.HasValue ? "JOIN core_persons sp ON sp.PersonId = a.PersonId" : "") }
+                WHERE a.VisitDate >= @s AND a.VisitDate <= @e
+                { (orgId.HasValue ? "AND sp.Org = @org" : "") }";
             cmd.Parameters.AddWithValue("@s", globalStart);
             cmd.Parameters.AddWithValue("@e", globalEnd);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -743,15 +842,18 @@ public class StatisticsService
             }
         }
 
-        // Session PcIds per date
+        // Session PcIds per date (filtered by auditor person.Org)
         var sessionsByDate = new Dictionary<string, HashSet<int>>();
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                SELECT SessionDate, PcId FROM sess_sessions
-                WHERE SessionDate >= @s AND SessionDate <= @e";
+            cmd.CommandText = $@"
+                SELECT s.SessionDate, s.PcId FROM sess_sessions s
+                { (orgId.HasValue ? "JOIN core_persons ap ON ap.PersonId = s.AuditorId" : "") }
+                WHERE s.SessionDate >= @s AND s.SessionDate <= @e
+                { (orgId.HasValue ? "AND s.AuditorId IS NOT NULL AND ap.Org = @org" : "") }";
             cmd.Parameters.AddWithValue("@s", globalStart);
             cmd.Parameters.AddWithValue("@e", globalEnd);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -761,16 +863,19 @@ public class StatisticsService
             }
         }
 
-        // Effort per date (both total seconds and distinct PcIds for BIS/PcCount)
+        // Effort per date (filtered by performer person.Org)
         var effortByDate   = new Dictionary<string, HashSet<int>>();
         var effortTotsDate = new Dictionary<string, int>();
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                SELECT EffortDate, PcId, LengthSeconds FROM sys_effort_entries
-                WHERE EffortDate >= @s AND EffortDate <= @e";
+            cmd.CommandText = $@"
+                SELECT e.EffortDate, e.PcId, e.LengthSeconds FROM sys_effort_entries e
+                { (orgId.HasValue ? "JOIN core_users eu ON eu.Id = e.PerformedByUserId JOIN core_persons ep ON ep.PersonId = eu.PersonId" : "") }
+                WHERE e.EffortDate >= @s AND e.EffortDate <= @e
+                { (orgId.HasValue ? "AND ep.Org = @org" : "") }";
             cmd.Parameters.AddWithValue("@s", globalStart);
             cmd.Parameters.AddWithValue("@e", globalEnd);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -819,7 +924,7 @@ public class StatisticsService
     /// Returns auditing hours (LengthSeconds + AdminSeconds) grouped by PC Origin for the given week.
     /// Adds an "Unassigned" bucket for extra effort. Ordered by total descending.
     /// </summary>
-    public List<OriginHours> GetWeekOriginHours(DateOnly weekStart)
+    public List<OriginHours> GetWeekOriginHours(DateOnly weekStart, int? orgId = null)
     {
         var weekEnd  = weekStart.AddDays(6);
         var startStr = weekStart.ToString("yyyy-MM-dd");
@@ -831,16 +936,19 @@ public class StatisticsService
         var list = new List<OriginHours>();
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
+            cmd.CommandText = $@"
                 SELECT COALESCE(og.Name, 'Unknown') AS Org,
                        SUM(s.LengthSeconds + s.AdminSeconds) AS TotalSec
                 FROM sess_sessions s
                 JOIN core_persons p ON p.PersonId = s.PcId
                 LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
+                { (orgId.HasValue ? "JOIN core_persons ap ON ap.PersonId = s.AuditorId" : "") }
                 WHERE DATE(s.CreatedAt, 'localtime') >= @s AND DATE(s.CreatedAt, 'localtime') <= @e
+                { (orgId.HasValue ? "AND s.AuditorId IS NOT NULL AND ap.Org = @org" : "") }
                 GROUP BY COALESCE(og.Name, 'Unknown')";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 list.Add(new OriginHours(r.GetString(0), r.GetInt32(1)));
@@ -849,12 +957,15 @@ public class StatisticsService
         int effortSec = 0;
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                SELECT COALESCE(SUM(LengthSeconds), 0)
-                FROM sys_effort_entries
-                WHERE EffortDate >= @s AND EffortDate <= @e";
+            cmd.CommandText = $@"
+                SELECT COALESCE(SUM(e.LengthSeconds), 0)
+                FROM sys_effort_entries e
+                { (orgId.HasValue ? "JOIN core_users eu ON eu.Id = e.PerformedByUserId JOIN core_persons ep ON ep.PersonId = eu.PersonId" : "") }
+                WHERE e.EffortDate >= @s AND e.EffortDate <= @e
+                { (orgId.HasValue ? "AND ep.Org = @org" : "") }";
             cmd.Parameters.AddWithValue("@s", startStr);
             cmd.Parameters.AddWithValue("@e", endStr);
+            if (orgId.HasValue) cmd.Parameters.AddWithValue("@org", orgId.Value);
             effortSec = Convert.ToInt32(cmd.ExecuteScalar());
         }
         if (effortSec > 0)

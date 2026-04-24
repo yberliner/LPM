@@ -353,6 +353,50 @@
     </div>
 }
 
+@* ── Monthly student breakdown summary (mirror of weekly) ── *@
+@if (_monthByReferral.Count > 0 || _monthByOrg.Count > 0)
+{
+    <div class="mx-3 mb-3">
+        <div class="card shadow-sm" style="border-radius:12px;border:none;background:#f5f3ff;">
+            <div class="card-body py-2 px-3" style="color:#212529;">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="small fw-semibold" style="color:#4338ca;white-space:nowrap;">
+                        <i class="ri-bar-chart-2-line me-1"></i>Month summary:
+                    </span>
+
+                    @if (_monthByReferral.Count > 0)
+                    {
+                        <span class="small fw-semibold ms-1" style="color:#6b7280;">By referral —</span>
+                        @foreach (var kv in _monthByReferral.OrderByDescending(x => x.Value))
+                        {
+                            var dotCol = ReferralDotColor(kv.Key == "Haifa" ? "Haifa" : kv.Key);
+                            <span class="d-inline-flex align-items-center gap-1"
+                                  style="font-size:.8rem;font-weight:600;color:#1f2937;">
+                                <span style="width:8px;height:8px;border-radius:50%;background:@dotCol;display:inline-block;flex-shrink:0;"></span>
+                                @kv.Key: <strong>@kv.Value</strong>
+                            </span>
+                        }
+                    }
+
+                    @if (_monthByOrg.Count > 0)
+                    {
+                        <span class="vr mx-1"></span>
+                        <span class="small fw-semibold" style="color:#6b7280;">By org —</span>
+                        @foreach (var kv in _monthByOrg.OrderByDescending(x => x.Value))
+                        {
+                            <span class="d-inline-flex align-items-center gap-1"
+                                  style="font-size:.8rem;font-weight:600;color:#1f2937;">
+                                <i class="ri-building-2-line" style="font-size:.75rem;color:#6366f1;"></i>
+                                @kv.Key: <strong>@kv.Value</strong>
+                            </span>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @* ── Monthly student table (collapsible) ── *@
 @if (_monthStudents.Count > 0)
 {
@@ -467,27 +511,17 @@
             <i class="ri-bar-chart-box-fill" style="font-size:1.1rem;"></i>
             <strong style="font-size:.9rem;">@LS.T("academy.weeklyVisitTotals")</strong>
         </div>
-        <div class="d-flex align-items-center gap-3" style="font-size:.75rem;">
-            <span class="d-flex align-items-center gap-1">
-                <span style="width:10px;height:10px;border-radius:2px;background:#16a34a;display:inline-block;"></span>
-                <span class="opacity-80">@LS.T("academy.don")</span>
-            </span>
-            <span class="d-flex align-items-center gap-1">
-                <span style="width:10px;height:10px;border-radius:2px;background:#f59e0b;display:inline-block;"></span>
-                <span class="opacity-80">@LS.T("academy.friend")</span>
-            </span>
-            <span class="d-flex align-items-center gap-1">
-                <span style="width:10px;height:10px;border-radius:2px;background:#3b82f6;display:inline-block;"></span>
-                <span class="opacity-80">@LS.T("academy.social")</span>
-            </span>
-            <span class="d-flex align-items-center gap-1">
-                <span style="width:10px;height:10px;border-radius:2px;background:#7c3aed;display:inline-block;"></span>
-                <span class="opacity-80">Haifa</span>
-            </span>
-            <span class="d-flex align-items-center gap-1">
-                <span style="width:10px;height:10px;border-radius:2px;background:#94a3b8;display:inline-block;"></span>
-                <span class="opacity-80">@LS.T("academy.other")</span>
-            </span>
+        <div class="d-flex align-items-center gap-3 flex-wrap" style="font-size:.75rem;">
+            @{
+                var weeklyOrgs = CollectOrgs(_weeklyTotals, w => w.ByOrg);
+            }
+            @foreach (var org in weeklyOrgs)
+            {
+                <span class="d-flex align-items-center gap-1">
+                    <span style="width:10px;height:10px;border-radius:2px;background:@OrgColor(org);display:inline-block;"></span>
+                    <span class="opacity-80">@org</span>
+                </span>
+            }
             <span style="font-size:.78rem;opacity:.8;">
                 @LS.T("home.total"): @_weeklyTotals.Sum(w => w.TotalVisits) @LS.T("academy.visits").ToLower()
             </span>
@@ -498,30 +532,16 @@
                    Options="@_chartOptions"
                    Height="220"
                    @key="_chartKey">
-            <ApexPointSeries TItem="WeekVisitCount"
-                             Items="@_weeklyTotals"
-                             Name="Friend"
-                             SeriesType="SeriesType.Bar"
-                             XValue="@(w => w.WeekLabel)"
-                             YValue="@(w => (decimal)w.FriendCount)" />
-            <ApexPointSeries TItem="WeekVisitCount"
-                             Items="@_weeklyTotals"
-                             Name="Social Network"
-                             SeriesType="SeriesType.Bar"
-                             XValue="@(w => w.WeekLabel)"
-                             YValue="@(w => (decimal)w.SocialCount)" />
-            <ApexPointSeries TItem="WeekVisitCount"
-                             Items="@_weeklyTotals"
-                             Name="Haifa"
-                             SeriesType="SeriesType.Bar"
-                             XValue="@(w => w.WeekLabel)"
-                             YValue="@(w => (decimal)w.HaifaCount)" />
-            <ApexPointSeries TItem="WeekVisitCount"
-                             Items="@_weeklyTotals"
-                             Name="Other"
-                             SeriesType="SeriesType.Bar"
-                             XValue="@(w => w.WeekLabel)"
-                             YValue="@(w => (decimal)w.OtherCount)" />
+            @foreach (var org in weeklyOrgs)
+            {
+                var orgKey = org; // capture for lambda
+                <ApexPointSeries TItem="WeekVisitCount"
+                                 Items="@_weeklyTotals"
+                                 Name="@orgKey"
+                                 SeriesType="SeriesType.Bar"
+                                 XValue="@(w => w.WeekLabel)"
+                                 YValue="@(w => (decimal)(w.ByOrg?.GetValueOrDefault(orgKey) ?? 0))" />
+            }
         </ApexChart>
     </div>
 </div>
@@ -536,27 +556,17 @@
                 <i class="ri-bar-chart-box-fill" style="font-size:1.1rem;"></i>
                 <strong style="font-size:.9rem;">Monthly Visit Totals</strong>
             </div>
-            <div class="d-flex align-items-center gap-3" style="font-size:.75rem;">
-                <span class="d-flex align-items-center gap-1">
-                    <span style="width:10px;height:10px;border-radius:2px;background:#16a34a;display:inline-block;"></span>
-                    <span class="opacity-80">@LS.T("academy.don")</span>
-                </span>
-                <span class="d-flex align-items-center gap-1">
-                    <span style="width:10px;height:10px;border-radius:2px;background:#f59e0b;display:inline-block;"></span>
-                    <span class="opacity-80">@LS.T("academy.friend")</span>
-                </span>
-                <span class="d-flex align-items-center gap-1">
-                    <span style="width:10px;height:10px;border-radius:2px;background:#3b82f6;display:inline-block;"></span>
-                    <span class="opacity-80">@LS.T("academy.social")</span>
-                </span>
-                <span class="d-flex align-items-center gap-1">
-                    <span style="width:10px;height:10px;border-radius:2px;background:#7c3aed;display:inline-block;"></span>
-                    <span class="opacity-80">Haifa</span>
-                </span>
-                <span class="d-flex align-items-center gap-1">
-                    <span style="width:10px;height:10px;border-radius:2px;background:#94a3b8;display:inline-block;"></span>
-                    <span class="opacity-80">@LS.T("academy.other")</span>
-                </span>
+            <div class="d-flex align-items-center gap-3 flex-wrap" style="font-size:.75rem;">
+                @{
+                    var monthlyOrgs = CollectOrgs(_monthlyTotals, m => m.ByOrg);
+                }
+                @foreach (var org in monthlyOrgs)
+                {
+                    <span class="d-flex align-items-center gap-1">
+                        <span style="width:10px;height:10px;border-radius:2px;background:@OrgColor(org);display:inline-block;"></span>
+                        <span class="opacity-80">@org</span>
+                    </span>
+                }
                 <span style="font-size:.78rem;opacity:.8;">
                     @LS.T("home.total"): @_monthlyTotals.Sum(m => m.TotalVisits) @LS.T("academy.visits").ToLower()
                 </span>
@@ -567,30 +577,16 @@
                        Options="@_monthChartOptions"
                        Height="220"
                        @key="_monthChartKey">
-                <ApexPointSeries TItem="MonthVisitCount"
-                                 Items="@_monthlyTotals"
-                                 Name="Friend"
-                                 SeriesType="SeriesType.Bar"
-                                 XValue="@(m => m.MonthLabel)"
-                                 YValue="@(m => (decimal)m.FriendCount)" />
-                <ApexPointSeries TItem="MonthVisitCount"
-                                 Items="@_monthlyTotals"
-                                 Name="Social Network"
-                                 SeriesType="SeriesType.Bar"
-                                 XValue="@(m => m.MonthLabel)"
-                                 YValue="@(m => (decimal)m.SocialCount)" />
-                <ApexPointSeries TItem="MonthVisitCount"
-                                 Items="@_monthlyTotals"
-                                 Name="Haifa"
-                                 SeriesType="SeriesType.Bar"
-                                 XValue="@(m => m.MonthLabel)"
-                                 YValue="@(m => (decimal)m.HaifaCount)" />
-                <ApexPointSeries TItem="MonthVisitCount"
-                                 Items="@_monthlyTotals"
-                                 Name="Other"
-                                 SeriesType="SeriesType.Bar"
-                                 XValue="@(m => m.MonthLabel)"
-                                 YValue="@(m => (decimal)m.OtherCount)" />
+                @foreach (var org in monthlyOrgs)
+                {
+                    var orgKey = org;
+                    <ApexPointSeries TItem="MonthVisitCount"
+                                     Items="@_monthlyTotals"
+                                     Name="@orgKey"
+                                     SeriesType="SeriesType.Bar"
+                                     XValue="@(m => m.MonthLabel)"
+                                     YValue="@(m => (decimal)(m.ByOrg?.GetValueOrDefault(orgKey) ?? 0))" />
+                }
             </ApexChart>
         </div>
     </div>
@@ -1110,6 +1106,8 @@
     string                  _searchText      = "";
     Dictionary<string, int> _weekByReferral  = [];
     Dictionary<string, int> _weekByOrg       = [];
+    Dictionary<string, int> _monthByReferral = [];
+    Dictionary<string, int> _monthByOrg      = [];
     bool _weekTableExpanded = true;
     bool _monthTableExpanded = true;
     int _monthWeekCount;
@@ -1237,6 +1235,41 @@
         _                 => "#7c3aed",  // Haifa / default
     };
 
+    // Fixed palette for per-org chart colors. Mapping is stable across restarts
+    // (deterministic string hash, NOT GetHashCode which is per-process randomized).
+    static readonly string[] OrgPalette = new[]
+    {
+        "#7c3aed", "#16a34a", "#f59e0b", "#3b82f6",
+        "#ec4899", "#0d9488", "#dc2626", "#0ea5e9",
+        "#a16207", "#6366f1", "#14b8a6", "#be185d",
+    };
+    static int StableHash(string s)
+    {
+        int h = 0;
+        foreach (var c in s) h = (h * 31 + c) & 0x7fffffff;
+        return h;
+    }
+    static string OrgColor(string org)
+    {
+        if (org == "(none)") return "#94a3b8"; // muted gray for unset
+        return OrgPalette[StableHash(org) % OrgPalette.Length];
+    }
+    // Union of org names across all weekly/monthly buckets, sorted alphabetically with
+    // "(none)" always last so stack order is stable across re-renders.
+    static List<string> CollectOrgs<T>(IEnumerable<T> items, Func<T, Dictionary<string,int>?> pick)
+    {
+        var set = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var it in items)
+        {
+            var d = pick(it);
+            if (d == null) continue;
+            foreach (var k in d.Keys) set.Add(k);
+        }
+        var list = set.Where(x => x != "(none)").ToList();
+        if (set.Contains("(none)")) list.Add("(none)");
+        return list;
+    }
+
     protected override async Task OnInitializedAsync()
     {
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -1305,12 +1338,19 @@
         var allIds = _allPersons.Select(p => p.PersonId);
         _personOpenCourses = CourseSvc.GetOpenCoursesForPersons(allIds);
 
-        UpdateChartTooltip();
+        // Sync chart series colors with the per-org palette. Order must match the
+        // @foreach emitting ApexPointSeries so each series picks up the right color.
+        var weeklyOrgs  = CollectOrgs(_weeklyTotals,  w => w.ByOrg);
+        var monthlyOrgs = CollectOrgs(_monthlyTotals, m => m.ByOrg);
+        _chartOptions.Colors      = weeklyOrgs.Select(OrgColor).ToList();
+        _monthChartOptions.Colors = monthlyOrgs.Select(OrgColor).ToList();
+
+        UpdateChartTooltip(weeklyOrgs, monthlyOrgs);
         _chartKey++;
         _monthChartKey++;
     }
 
-    void UpdateChartTooltip()
+    void UpdateChartTooltip(List<string> weeklyOrgs, List<string> monthlyOrgs)
     {
         // Build a JS array of per-week student data: [ [[name,count,org], ...], ... ]
         var sb = new System.Text.StringBuilder("[");
@@ -1333,20 +1373,37 @@
         sb.Append(']');
         var data = sb.ToString();
 
+        // Labels + colors for the chart series — one per org in series order.
+        static string JsStringArray(IEnumerable<string> items)
+        {
+            var jsb = new System.Text.StringBuilder("[");
+            bool first = true;
+            foreach (var s in items)
+            {
+                if (!first) jsb.Append(',');
+                first = false;
+                jsb.Append('\'').Append(s.Replace("\\", "\\\\").Replace("'", "\\'")).Append('\'');
+            }
+            jsb.Append(']');
+            return jsb.ToString();
+        }
+        var weekLabelsJs = JsStringArray(weeklyOrgs);
+        var weekColorsJs = JsStringArray(weeklyOrgs.Select(OrgColor));
+
         var fn =
             "function(opts){" +
             "var d=" + data + ";" +
             "var idx=opts.dataPointIndex;" +
             // sum all series for total
             "var total=0;for(var s=0;s<opts.series.length;s++){total+=(opts.series[s][idx]||0);}" +
-            "var labels=['Don/Default','Friend','Social','Haifa','Other'];" +
-            "var colors=['#16a34a','#f59e0b','#3b82f6','#7c3aed','#94a3b8'];" +
+            "var labels=" + weekLabelsJs + ";" +
+            "var colors=" + weekColorsJs + ";" +
             "var st=d[idx]||[];" +
             "var r='<div style=\"padding:10px 14px;min-width:210px;font-family:inherit;background:#fff;" +
                     "border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.14)\">';" +
             "r+='<div style=\"font-weight:700;font-size:.93rem;color:#1b5e20;" +
                     "border-bottom:1px solid #c8e6c9;padding-bottom:5px;margin-bottom:8px\">Visit Count: '+total+'</div>';" +
-            // referral breakdown
+            // per-org breakdown
             "for(var i=0;i<labels.length;i++){" +
             "var cnt=opts.series[i]?opts.series[i][idx]||0:0;" +
             "if(cnt>0){r+='<div style=\"display:flex;align-items:center;gap:6px;padding:2px 0\">'+" +
@@ -1395,13 +1452,16 @@
         msb.Append(']');
         var mdata = msb.ToString();
 
+        var monthLabelsJs = JsStringArray(monthlyOrgs);
+        var monthColorsJs = JsStringArray(monthlyOrgs.Select(OrgColor));
+
         var mfn =
             "function(opts){" +
             "var d=" + mdata + ";" +
             "var idx=opts.dataPointIndex;" +
             "var total=0;for(var s=0;s<opts.series.length;s++){total+=(opts.series[s][idx]||0);}" +
-            "var labels=['Don/Default','Friend','Social','Haifa','Other'];" +
-            "var colors=['#16a34a','#f59e0b','#3b82f6','#7c3aed','#94a3b8'];" +
+            "var labels=" + monthLabelsJs + ";" +
+            "var colors=" + monthColorsJs + ";" +
             "var st=d[idx]||[];" +
             "var r='<div style=\"padding:10px 14px;min-width:210px;font-family:inherit;background:#fff;" +
                     "border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.14)\">';" +
@@ -1550,11 +1610,12 @@
     {
         var weeks = GetMonthWeeks(_weekStart);
         _monthWeekCount = weeks.Count;
-        if (weeks.Count == 0) { _monthStudents = []; return; }
+        if (weeks.Count == 0) { _monthStudents = []; _monthByReferral = []; _monthByOrg = []; return; }
         _monthStart = weeks[0];
         _monthEnd   = weeks[^1].AddDays(6);
         _monthLabel = _monthStart.ToString("MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture);
         _monthStudents = AcademySvc.GetStudentVisitsForDateRange(_monthStart, _monthEnd);
+        (_monthByReferral, _monthByOrg) = AcademySvc.GetStudentBreakdownForDateRange(_monthStart, _monthEnd);
     }
 
     async Task PrintWeek()
@@ -1562,12 +1623,16 @@
         Console.WriteLine($"[Academy] Print week: {_weekStart} by '{_username}'");
         var students = AcademySvc.GetStudentVisitsForWeek(_weekStart);
         var (byRef, byOrg) = AcademySvc.GetWeeklyStudentBreakdown(_weekStart);
+        // Monthly breakdown — mirrors the on-screen month summary card.
+        var (byMonthRef, byMonthOrg) = _monthStudents.Count > 0
+            ? AcademySvc.GetStudentBreakdownForDateRange(_monthStart, _monthEnd)
+            : (new Dictionary<string, int>(), new Dictionary<string, int>());
         var personIds = students.Select(s => s.PersonId);
         var coursesRaw = CourseSvc.GetOpenCoursesForPersons(personIds);
         var courses = coursesRaw.ToDictionary(
             kv => kv.Key,
             kv => string.Join(", ", kv.Value.Select(e => $"{e.Name} ({e.VisitCount})")));
-        var pdfBytes = PdfService.GenerateAcademyWeekPdf(_weekStart, students, byRef, byOrg, courses, _monthStudents, _monthLabel, _monthWeekCount, _monthStart, _monthEnd, weeklyTotals: _weeklyTotals);
+        var pdfBytes = PdfService.GenerateAcademyWeekPdf(_weekStart, students, byRef, byOrg, courses, _monthStudents, _monthLabel, _monthWeekCount, _monthStart, _monthEnd, weeklyTotals: _weeklyTotals, byMonthReferral: byMonthRef, byMonthOrg: byMonthOrg);
         var fileName = $"Academy_{_weekStart:yyyy_MM_dd}.pdf";
         await JS.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(pdfBytes));
     }
