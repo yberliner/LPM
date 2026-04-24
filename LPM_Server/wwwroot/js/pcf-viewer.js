@@ -209,8 +209,13 @@ window.pcfViewer = {
                     '<div style="font-size:.8rem;color:#94a3b8;">The PDF could not be combined</div></div>';
                 if (this.dotNetRef) this.dotNetRef.invokeMethodAsync('OnFolderSummaryFailed', paneId);
             } else {
-                const msg = e.status ? `HTTP ${e.status} — ${e.message}` : e.message;
-                viewer.innerHTML = '<div style="color:#fff;padding:40px;">Failed to load PDF: ' + msg + '</div>';
+                const msg = e.status ? `HTTP ${e.status} — ${e.message}` : (e.message || 'Unknown error');
+                // Build via DOM API — never concat untrusted strings into innerHTML
+                viewer.innerHTML = '';
+                const box = document.createElement('div');
+                box.style.cssText = 'color:#fff;padding:40px;';
+                box.textContent = 'Failed to load PDF: ' + msg;
+                viewer.appendChild(box);
             }
             console.error('[pcf-viewer] loadPdf error', url, e);
             return;

@@ -7,6 +7,7 @@
 @code {
     string _email = "your email";
     bool _invalid;
+    bool _locked;
 
     protected override void OnInitialized()
     {
@@ -14,6 +15,7 @@
         var q = System.Web.HttpUtility.ParseQueryString(uri.Query);
         var email = q["email"] ?? "";
         _invalid = q["error"] == "invalid";
+        _locked  = q["error"] == "locked";
         if (!string.IsNullOrWhiteSpace(email))
         {
             var at = email.IndexOf('@');
@@ -38,7 +40,13 @@
         </div>
 
         <div class="vd-body">
-            @if (_invalid)
+            @if (_locked)
+            {
+                <div class="vd-error">
+                    <i class="ri-lock-line me-1"></i>Too many incorrect attempts. Please try again in 15 minutes.
+                </div>
+            }
+            else if (_invalid)
             {
                 <div class="vd-error">
                     <i class="ri-error-warning-line me-1"></i>Invalid or expired code. Please try again.

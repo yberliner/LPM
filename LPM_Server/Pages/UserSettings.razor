@@ -642,6 +642,17 @@
     }
 
     private static readonly HashSet<string> AllowedMime = new() { "image/jpeg", "image/png", "image/gif", "image/webp" };
+    private static readonly HashSet<string> AllowedExt  = new() { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
+
+    // Keep only a single path segment of [a-z0-9_-] — stops path traversal and weird
+    // filename chars from leaking into avatar paths/URLs.
+    private static string SafeAvatarStem(string username)
+    {
+        if (string.IsNullOrWhiteSpace(username)) return "_unknown";
+        var cleaned = new string(username.ToLowerInvariant()
+            .Select(c => char.IsLetterOrDigit(c) || c == '_' || c == '-' ? c : '_').ToArray());
+        return string.IsNullOrWhiteSpace(cleaned) ? "_unknown" : cleaned;
+    }
 
     private async Task HandleFileUpload(InputFileChangeEventArgs e)
     {
@@ -657,21 +668,22 @@
         }
 
         var ext = Path.GetExtension(file.Name).ToLowerInvariant();
-        if (string.IsNullOrEmpty(ext)) ext = ".jpg";
+        if (!AllowedExt.Contains(ext)) ext = ".jpg";
 
+        var stem = SafeAvatarStem(_username);
         var avatarsDir = Path.Combine(Env.WebRootPath, "avatars");
         Directory.CreateDirectory(avatarsDir);
 
         // Remove any existing avatar for this user
-        foreach (var old in Directory.GetFiles(avatarsDir, $"{_username}.*"))
+        foreach (var old in Directory.GetFiles(avatarsDir, $"{stem}.*"))
             File.Delete(old);
 
-        var filePath = Path.Combine(avatarsDir, $"{_username}{ext}");
+        var filePath = Path.Combine(avatarsDir, $"{stem}{ext}");
         await using var stream = new FileStream(filePath, FileMode.Create);
         await file.OpenReadStream(2 * 1024 * 1024).CopyToAsync(stream);
 
         Console.WriteLine($"[UserSettings] Uploaded avatar by '{_username}'");
-        UserDb.SetAvatarPath(_username, $"/avatars/{_username}{ext}");
+        UserDb.SetAvatarPath(_username, $"/avatars/{stem}{ext}");
         Nav.NavigateTo("/Settings", forceLoad: true);
     }
 
@@ -679,8 +691,9 @@
     {
         if (_avatarUrl is null) return;
         Console.WriteLine($"[UserSettings] Deleted avatar by '{_username}'");
+        var stem = SafeAvatarStem(_username);
         var avatarsDir = Path.Combine(Env.WebRootPath, "avatars");
-        foreach (var old in Directory.GetFiles(avatarsDir, $"{_username}.*"))
+        foreach (var old in Directory.GetFiles(avatarsDir, $"{stem}.*"))
             File.Delete(old);
         UserDb.SetAvatarPath(_username, null);
         Nav.NavigateTo("/Settings", forceLoad: true);

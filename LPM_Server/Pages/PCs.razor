@@ -5192,22 +5192,23 @@
         }
 
         // Build success summary before closing
-        var successPcName = _detail?.FullName ?? "";
+        static string Enc(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
+        var successPcName = Enc(_detail?.FullName);
         var successItems = new List<string>();
         foreach (var pi in _purchaseItems)
         {
             if (pi.ItemType == "Auditing" && pi.HoursBought != 0)
-                successItems.Add($"{(pi.IsNegativeHours ? "-" : "")}{FormatHoursMinutes(pi.HoursBought)} Auditing — {CurrSym(_purchaseCurrency)}{FmtAmtText(pi.AmountPaid)}");
+                successItems.Add(Enc($"{(pi.IsNegativeHours ? "-" : "")}{FormatHoursMinutes(pi.HoursBought)} Auditing — {CurrSym(_purchaseCurrency)}{FmtAmtText(pi.AmountPaid)}"));
             else if (pi.ItemType == "Course" && pi.CourseId > 0)
-                successItems.Add($"Course — {CurrSym(_purchaseCurrency)}{FmtAmtText(pi.AmountPaid)}");
+                successItems.Add(Enc($"Course — {CurrSym(_purchaseCurrency)}{FmtAmtText(pi.AmountPaid)}"));
             else if (pi.ItemType == "Book" && pi.BookId > 0)
-                successItems.Add($"Book — {CurrSym(_purchaseCurrency)}{FmtAmtText(pi.AmountPaid)}");
+                successItems.Add(Enc($"Book — {CurrSym(_purchaseCurrency)}{FmtAmtText(pi.AmountPaid)}"));
         }
-        var successTotal = FmtAmtText(_purchaseItems.Sum(x => x.AmountPaid));
+        var successTotal = Enc(FmtAmtText(_purchaseItems.Sum(x => x.AmountPaid)));
         var isEdit = _editingPurchaseId.HasValue;
         _purchaseSuccessHtml = $"<div class='pcs-success-name'>{successPcName}</div>"
             + string.Join("", successItems.Select(s => $"<div class='pcs-success-item'>{s}</div>"))
-            + $"<div class='pcs-success-total'>Total: {CurrSym(_purchaseCurrency)}{successTotal}</div>"
+            + $"<div class='pcs-success-total'>Total: {Enc(CurrSym(_purchaseCurrency))}{successTotal}</div>"
             + $"<div class='pcs-success-badge'>{(isEdit ? "Updated" : "Created")}</div>";
 
         await ClosePurchaseModal();

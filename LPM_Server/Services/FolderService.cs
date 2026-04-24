@@ -51,16 +51,35 @@ public static class BackupProgress
         }
     }
 
-    // Brute-force protection: IP → (failCount, lockedUntil)
-    static readonly Dictionary<string, (int Fails, DateTime LockedUntil)> _ipLocks = new();
+    // Brute-force protection: IP → (failCount, lockedUntil, lastTouched)
+    // _lastTouched lets us evict stale entries so the dict can't grow unbounded
+    // under distributed-IP probing.
+    static readonly Dictionary<string, (int Fails, DateTime LockedUntil, DateTime LastTouched)> _ipLocks = new();
     static readonly object _lockObj = new();
     const int MaxAttempts = 5;
     static readonly TimeSpan LockDuration = TimeSpan.FromMinutes(15);
+    static readonly TimeSpan StaleAfter   = TimeSpan.FromHours(2);
+    static DateTime _lastSweep = DateTime.MinValue;
+
+    // Must be called inside _lockObj. Opportunistically evicts entries that are
+    // neither currently locked nor recently touched. Runs at most once per minute.
+    static void SweepStaleEntries()
+    {
+        var now = DateTime.UtcNow;
+        if (now - _lastSweep < TimeSpan.FromMinutes(1)) return;
+        _lastSweep = now;
+        if (_ipLocks.Count < 128) return;
+        var toRemove = _ipLocks
+            .Where(kv => kv.Value.LockedUntil <= now && now - kv.Value.LastTouched > StaleAfter)
+            .Select(kv => kv.Key).ToList();
+        foreach (var k in toRemove) _ipLocks.Remove(k);
+    }
 
     public static bool IsLockedOut(string ip)
     {
         lock (_lockObj)
         {
+            SweepStaleEntries();
             if (!_ipLocks.TryGetValue(ip, out var entry)) return false;
             if (entry.LockedUntil > DateTime.UtcNow) return true;
             if (entry.LockedUntil != default && entry.LockedUntil <= DateTime.UtcNow)
@@ -74,10 +93,12 @@ public static class BackupProgress
     {
         lock (_lockObj)
         {
+            SweepStaleEntries();
+            var now = DateTime.UtcNow;
             var entry = _ipLocks.GetValueOrDefault(ip);
             var fails = entry.Fails + 1;
-            var locked = fails >= MaxAttempts ? DateTime.UtcNow.Add(LockDuration) : default;
-            _ipLocks[ip] = (fails, locked);
+            var locked = fails >= MaxAttempts ? now.Add(LockDuration) : default;
+            _ipLocks[ip] = (fails, locked, now);
             return Math.Max(0, MaxAttempts - fails);
         }
     }
@@ -92,13 +113,30 @@ public static class LoginRateLimit
 {
     const int MaxAttempts = 10;
     static readonly TimeSpan LockDuration = TimeSpan.FromMinutes(10);
-    static readonly Dictionary<string, (int Fails, DateTime LockedUntil)> _ipLocks = new();
+    static readonly TimeSpan StaleAfter   = TimeSpan.FromHours(2);
+    // Include LastTouched so we can evict stale entries under distributed-IP attack.
+    static readonly Dictionary<string, (int Fails, DateTime LockedUntil, DateTime LastTouched)> _ipLocks = new();
     static readonly object _lockObj = new();
+    static DateTime _lastSweep = DateTime.MinValue;
+
+    // Must be called inside _lockObj. At most once per minute.
+    static void SweepStaleEntries()
+    {
+        var now = DateTime.UtcNow;
+        if (now - _lastSweep < TimeSpan.FromMinutes(1)) return;
+        _lastSweep = now;
+        if (_ipLocks.Count < 128) return;
+        var toRemove = _ipLocks
+            .Where(kv => kv.Value.LockedUntil <= now && now - kv.Value.LastTouched > StaleAfter)
+            .Select(kv => kv.Key).ToList();
+        foreach (var k in toRemove) _ipLocks.Remove(k);
+    }
 
     public static bool IsLockedOut(string ip)
     {
         lock (_lockObj)
         {
+            SweepStaleEntries();
             if (!_ipLocks.TryGetValue(ip, out var entry)) return false;
             if (entry.LockedUntil > DateTime.UtcNow) return true;
             if (entry.LockedUntil != default) _ipLocks.Remove(ip);
@@ -111,10 +149,12 @@ public static class LoginRateLimit
     {
         lock (_lockObj)
         {
+            SweepStaleEntries();
+            var now = DateTime.UtcNow;
             var entry = _ipLocks.GetValueOrDefault(ip);
             var fails = entry.Fails + 1;
-            var locked = fails >= MaxAttempts ? DateTime.UtcNow.Add(LockDuration) : default;
-            _ipLocks[ip] = (fails, locked);
+            var locked = fails >= MaxAttempts ? now.Add(LockDuration) : default;
+            _ipLocks[ip] = (fails, locked, now);
             return Math.Max(0, MaxAttempts - fails);
         }
     }
@@ -122,6 +162,68 @@ public static class LoginRateLimit
     public static void ClearFailures(string ip)
     {
         lock (_lockObj) { _ipLocks.Remove(ip); }
+    }
+}
+
+/// <summary>
+/// Per-user + per-IP rate limit for /verify-code (email magic-link) brute-force protection.
+/// The code space is only 6 digits (1M), so without this an attacker can brute-force a
+/// pending login in seconds. Keyed composite: "u:{userId}" or "ip:{ip}".
+/// </summary>
+public static class MagicLinkRateLimit
+{
+    const int MaxAttempts = 5;
+    static readonly TimeSpan LockDuration = TimeSpan.FromMinutes(15);
+    static readonly TimeSpan StaleAfter   = TimeSpan.FromHours(2);
+    static readonly Dictionary<string, (int Fails, DateTime LockedUntil, DateTime LastTouched)> _entries = new();
+    static readonly object _lockObj = new();
+    static DateTime _lastSweep = DateTime.MinValue;
+
+    static void SweepStaleEntries()
+    {
+        var now = DateTime.UtcNow;
+        if (now - _lastSweep < TimeSpan.FromMinutes(1)) return;
+        _lastSweep = now;
+        if (_entries.Count < 128) return;
+        var toRemove = _entries
+            .Where(kv => kv.Value.LockedUntil <= now && now - kv.Value.LastTouched > StaleAfter)
+            .Select(kv => kv.Key).ToList();
+        foreach (var k in toRemove) _entries.Remove(k);
+    }
+
+    public static bool IsLockedOut(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return false;
+        lock (_lockObj)
+        {
+            SweepStaleEntries();
+            if (!_entries.TryGetValue(key, out var entry)) return false;
+            if (entry.LockedUntil > DateTime.UtcNow) return true;
+            if (entry.LockedUntil != default) _entries.Remove(key);
+            return false;
+        }
+    }
+
+    /// <summary>Records a failure on the given key. Returns attempts remaining.</summary>
+    public static int RecordFailure(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return MaxAttempts;
+        lock (_lockObj)
+        {
+            SweepStaleEntries();
+            var now = DateTime.UtcNow;
+            var entry = _entries.GetValueOrDefault(key);
+            var fails = entry.Fails + 1;
+            var locked = fails >= MaxAttempts ? now.Add(LockDuration) : default;
+            _entries[key] = (fails, locked, now);
+            return Math.Max(0, MaxAttempts - fails);
+        }
+    }
+
+    public static void ClearFailures(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return;
+        lock (_lockObj) { _entries.Remove(key); }
     }
 }
 
@@ -201,7 +303,11 @@ public class FolderService
 
         try
         {
-            var inputPath = Path.Combine(tempDir, originalFileName);
+            // Strip directory components and illegal chars so a malicious filename can't
+            // escape the sandboxed tempDir or confuse LibreOffice's output naming.
+            var safeInputName = SanitizeName(Path.GetFileName(originalFileName ?? "input.doc"));
+            if (string.IsNullOrWhiteSpace(safeInputName)) safeInputName = "input.doc";
+            var inputPath = Path.Combine(tempDir, safeInputName);
             File.WriteAllBytes(inputPath, docBytes);
 
             using var process = new Process();
@@ -223,7 +329,7 @@ public class FolderService
             process.Start();
             process.WaitForExit(60_000);
 
-            var pdfName = Path.GetFileNameWithoutExtension(originalFileName) + ".pdf";
+            var pdfName = Path.GetFileNameWithoutExtension(safeInputName) + ".pdf";
             var pdfPath = Path.Combine(tempDir, pdfName);
 
             if (process.ExitCode == 0 && File.Exists(pdfPath))
@@ -3206,10 +3312,40 @@ public class FolderService
     // ── Scan Inbox (PWA share target) ──────────────────────────────────────
 
     private string GetScanInboxPath(string username)
-        => Path.Combine(Directory.GetCurrentDirectory(), "ScanInbox", username.ToLowerInvariant());
+    {
+        // Sanitize + pin to a single path segment so traversal (`..`, `/`, `\`) is impossible.
+        var safe = SanitizeName(username.ToLowerInvariant());
+        if (string.IsNullOrWhiteSpace(safe) || safe.Contains("..")) safe = "_unknown";
+        return Path.Combine(Directory.GetCurrentDirectory(), "ScanInbox", safe);
+    }
+
+    // %PDF-1.x magic bytes. PDFs sometimes have leading whitespace/BOM; scan first ~1KB.
+    private static bool LooksLikePdf(byte[] bytes)
+    {
+        if (bytes == null || bytes.Length < 5) return false;
+        int scan = Math.Min(bytes.Length, 1024);
+        for (int i = 0; i <= scan - 5; i++)
+        {
+            if (bytes[i]   == 0x25 /* % */ &&
+                bytes[i+1] == 0x50 /* P */ &&
+                bytes[i+2] == 0x44 /* D */ &&
+                bytes[i+3] == 0x46 /* F */ &&
+                bytes[i+4] == 0x2D /* - */)
+                return true;
+        }
+        return false;
+    }
 
     public void SaveToScanInbox(string username, string fileName, byte[] bytes)
     {
+        // Defense-in-depth: reject anything that isn't a PDF at the byte level, no matter
+        // what extension/MIME the browser/share target claimed.
+        if (!LooksLikePdf(bytes))
+        {
+            Console.WriteLine($"[ScanInbox] REJECTED non-PDF share from '{username}' (file='{fileName}', size={bytes?.Length ?? 0})");
+            throw new InvalidOperationException("Share target accepts PDF files only.");
+        }
+
         CleanupScanInbox(username);
         var dir = GetScanInboxPath(username);
         Console.WriteLine($"[ScanInbox] SaveToScanInbox: user='{username}' file='{fileName}' size={bytes.Length} dir='{dir}'");

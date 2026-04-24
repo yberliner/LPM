@@ -7082,11 +7082,23 @@
 
     async void ShowErrorToast(string msg)
     {
-        _errorToast = msg;
-        StateHasChanged();
-        await Task.Delay(3000);
-        _errorToast = "";
-        await InvokeAsync(StateHasChanged);
+        // async void is unavoidable for fire-and-forget, but an unhandled exception here
+        // (e.g. InvokeAsync on a disposed circuit) would crash the process. Swallow.
+        try
+        {
+            _errorToast = msg;
+            StateHasChanged();
+            await Task.Delay(3000);
+            _errorToast = "";
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException) { }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PcFolder] ShowErrorToast: {ex.GetType().Name} {ex.Message}");
+        }
     }
 
     void CancelDragMove()

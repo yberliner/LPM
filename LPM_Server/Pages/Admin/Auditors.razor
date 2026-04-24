@@ -1005,8 +1005,9 @@
         var u = AuditorSvc.GetAuditorUsages(_selId.Value);
         if (AuditorSvc.HasAuditorUsages(u))
         {
+            static string Enc(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
             var sb = new System.Text.StringBuilder();
-            sb.Append($"<p><strong>{_detail.FirstName} {_detail.LastName}</strong> is referenced in the database:</p>");
+            sb.Append($"<p><strong>{Enc(_detail.FirstName)} {Enc(_detail.LastName)}</strong> is referenced in the database:</p>");
             sb.Append("<table class='table table-sm mb-2' style='font-size:.82rem;'><tbody>");
             void Row(string label, int count) { if (count > 0) sb.Append($"<tr><td>{label}</td><td class='fw-bold text-end'>{count}</td></tr>"); }
             Row("Sessions (as auditor)", u.SessionCount);

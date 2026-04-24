@@ -162,6 +162,10 @@ builder.Services.AddSession(options =>
     options.IdleTimeout = TimeSpan.FromHours(12);
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
+    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+        ? CookieSecurePolicy.SameAsRequest
+        : CookieSecurePolicy.Always;
 });
 
 builder.Services.AddHttpContextAccessor();
@@ -271,6 +275,21 @@ app.Use(async (ctx, next) =>
 {
     ctx.Response.Headers["X-Frame-Options"] = "DENY";
     ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    ctx.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    ctx.Response.Headers["Permissions-Policy"] = "camera=(self), microphone=(), geolocation=(), payment=()";
+    // CSP kept permissive on purpose: Blazor Server needs inline scripts/styles, and the UI
+    // loads Quill (cdn.quilljs.com), PDF.js (cdnjs.cloudflare.com), FullCalendar (cdn.jsdelivr.net).
+    // Tighten further once all inline handlers are migrated to nonces.
+    ctx.Response.Headers["Content-Security-Policy"] =
+        "default-src 'self'; " +
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.quilljs.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; " +
+        "style-src  'self' 'unsafe-inline' https://cdn.quilljs.com https://cdnjs.cloudflare.com; " +
+        "img-src    'self' data: blob:; " +
+        "font-src   'self' data:; " +
+        "connect-src 'self' ws: wss:; " +
+        "frame-ancestors 'none'; " +
+        "base-uri 'self'; " +
+        "form-action 'self'";
     await next();
 });
 
@@ -376,9 +395,10 @@ app.MapRazorPages();
 
 // ── Auth helpers ──────────────────────────────────────────────────────────
 
-static CookieOptions PendingCookieOpts() => new()
+static CookieOptions PendingCookieOpts(bool secure = true) => new()
 {
     HttpOnly = true, SameSite = SameSiteMode.Strict,
+    Secure = secure,
     MaxAge = TimeSpan.FromHours(1)
 };
 
@@ -485,12 +505,18 @@ app.MapPost("/admin/impersonate", async (HttpContext ctx, UserDb db) =>
     };
     await ctx.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity), authProps);
     Console.WriteLine($"[Impersonate] yaniv → {flags.Username}");
+    // Persistent audit trail — survives restart, queryable in sys_activity_log.
+    var impersonateIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    var activitySvc2 = ctx.RequestServices.GetRequiredService<LPM.Services.UserActivityService>();
+    activitySvc2.RecordActivity("yaniv", $"Impersonated '{flags.Username}' from {impersonateIp}", "impersonate");
+    activitySvc2.RecordActivity(flags.Username, $"Session impersonated by 'yaniv' from {impersonateIp}", "impersonate");
     return Results.Redirect("/Home");
 });
 
 app.MapPost("/admin/stop-impersonate", async (HttpContext ctx, UserDb db) =>
 {
     var originalUser = ctx.User.FindFirst("OriginalUser")?.Value;
+    var impersonatedUser = ctx.User.FindFirst(ClaimTypes.Name)?.Value ?? "(unknown)";
     if (!string.Equals(originalUser, "yaniv", StringComparison.OrdinalIgnoreCase))
         return Results.Redirect("/Home");
 
@@ -500,6 +526,9 @@ app.MapPost("/admin/stop-impersonate", async (HttpContext ctx, UserDb db) =>
 
     await SignInUser(ctx, db, "yaniv", flags);
     Console.WriteLine("[Impersonate] Returned to yaniv");
+    var ipStop = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    var activitySvc3 = ctx.RequestServices.GetRequiredService<LPM.Services.UserActivityService>();
+    activitySvc3.RecordActivity("yaniv", $"Stopped impersonating '{impersonatedUser}' from {ipStop}", "impersonate");
     return Results.Redirect("/Admin/Diagnosis");
 });
 
@@ -541,7 +570,7 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db, IConfiguration conf
     // Step 1: force password change?
     if (flags.MustChangePassword)
     {
-        ctx.Response.Cookies.Append("lpm_pending", flags.UserId.ToString(), PendingCookieOpts());
+        ctx.Response.Cookies.Append("lpm_pending", flags.UserId.ToString(), PendingCookieOpts(ctx.Request.IsHttps));
         Console.WriteLine($"[Login] '{username}' must change password");
         return Results.Redirect("/ChangePassword");
     }
@@ -573,7 +602,7 @@ app.MapPost("/loginpost", async (HttpContext ctx, UserDb db, IConfiguration conf
         Console.WriteLine($"[Login] FAILED to send verification email to '{email}' for '{username}'");
         return Results.Redirect("/login?error=emailfail");
     }
-    ctx.Response.Cookies.Append("lpm_pending", flags.UserId.ToString(), PendingCookieOpts());
+    ctx.Response.Cookies.Append("lpm_pending", flags.UserId.ToString(), PendingCookieOpts(ctx.Request.IsHttps));
     Console.WriteLine($"[Login] Verification code sent to '{email}' for '{username}'");
     return Results.Redirect($"/VerifyDevice?email={Uri.EscapeDataString(email)}");
 }).DisableAntiforgery();
@@ -637,7 +666,7 @@ app.MapPost("/loginpost-changepwd", async (HttpContext ctx, UserDb db, IConfigur
     var mlSent = await emailSvc.SendVerificationCodeAsync(email, mlCode, dispName);
     if (!mlSent)
         return Results.Redirect("/login?error=emailfail");
-    ctx.Response.Cookies.Append("lpm_pending", userId.ToString(), PendingCookieOpts());
+    ctx.Response.Cookies.Append("lpm_pending", userId.ToString(), PendingCookieOpts(ctx.Request.IsHttps));
     return Results.Redirect($"/VerifyDevice?email={Uri.EscapeDataString(email)}");
 }).DisableAntiforgery();
 
@@ -647,15 +676,32 @@ app.MapPost("/verify-code", async (HttpContext ctx, UserDb db) =>
 {
     var form = await ctx.Request.ReadFormAsync();
     var code = form["code"].ToString().Trim();
+    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
     // Recover email for error redirects
     var pendingEmail = "";
+    int? pendingUserId = null;
     if (int.TryParse(ctx.Request.Cookies["lpm_pending"], out var pendingUid))
     {
         var pendingFlags = db.GetLoginFlagsById(pendingUid);
         if (pendingFlags != null)
+        {
             pendingEmail = db.GetPersonEmail(pendingFlags.PersonId) ?? "";
+            pendingUserId = pendingFlags.UserId;
+        }
     }
     var emailParam = string.IsNullOrEmpty(pendingEmail) ? "" : $"&email={Uri.EscapeDataString(pendingEmail)}";
+
+    // Rate-limit brute force: both per pending user and per IP. 6-digit code space (1M)
+    // means without this, an attacker can guess in seconds.
+    var userKey = pendingUserId.HasValue ? $"u:{pendingUserId.Value}" : "";
+    var ipKey   = $"ip:{ip}";
+    if (LPM.Services.MagicLinkRateLimit.IsLockedOut(userKey) ||
+        LPM.Services.MagicLinkRateLimit.IsLockedOut(ipKey))
+    {
+        Console.WriteLine($"[Auth] /verify-code locked out user={pendingUserId} ip={ip}");
+        return Results.Redirect($"/VerifyDevice?error=locked{emailParam}");
+    }
 
     if (string.IsNullOrEmpty(code))
         return Results.Redirect($"/VerifyDevice?error=empty{emailParam}");
@@ -663,13 +709,19 @@ app.MapPost("/verify-code", async (HttpContext ctx, UserDb db) =>
     var userId = db.ValidateMagicLink(code);
     if (userId == null)
     {
-        Console.WriteLine($"[Auth] Invalid or expired code: '{code}'");
+        var remainingUser = LPM.Services.MagicLinkRateLimit.RecordFailure(userKey);
+        var remainingIp   = LPM.Services.MagicLinkRateLimit.RecordFailure(ipKey);
+        Console.WriteLine($"[Auth] Invalid or expired code: '{code}' (user attempts left: {remainingUser}, ip: {remainingIp})");
         return Results.Redirect($"/VerifyDevice?error=invalid{emailParam}");
     }
 
     var flags = db.GetLoginFlagsById(userId.Value);
     if (flags == null)
         return Results.Redirect("/login");
+
+    // Successful verification — clear brute-force counters.
+    LPM.Services.MagicLinkRateLimit.ClearFailures(userKey);
+    LPM.Services.MagicLinkRateLimit.ClearFailures(ipKey);
 
     SetTrustCookie(ctx, db, flags.UserId);
     await SignInUser(ctx, db, flags.Username, flags);
@@ -872,13 +924,17 @@ app.Map("/logout", async (HttpContext ctx) =>
 });
 
 // Temporary debug: shows what cookies the browser is sending
-app.MapGet("/debug-cookies", (HttpContext ctx) =>
+// Debug-only cookie dump. Leaks cookie value prefixes — must NEVER be reachable in prod.
+if (app.Environment.IsDevelopment())
 {
-    var cookies = ctx.Request.Cookies.Select(c => $"{c.Key}={c.Value[..Math.Min(20, c.Value.Length)]}...");
-    var isAuth = ctx.User.Identity?.IsAuthenticated == true;
-    var user = ctx.User.Identity?.Name ?? "(none)";
-    return Results.Text($"Authenticated: {isAuth}\nUser: {user}\nCookies:\n{string.Join("\n", cookies)}");
-});
+    app.MapGet("/debug-cookies", (HttpContext ctx) =>
+    {
+        var cookies = ctx.Request.Cookies.Select(c => $"{c.Key}={c.Value[..Math.Min(20, c.Value.Length)]}...");
+        var isAuth = ctx.User.Identity?.IsAuthenticated == true;
+        var user = ctx.User.Identity?.Name ?? "(none)";
+        return Results.Text($"Authenticated: {isAuth}\nUser: {user}\nCookies:\n{string.Join("\n", cookies)}");
+    });
+}
 
 app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
@@ -918,7 +974,15 @@ app.MapPost("/share-receive", async (HttpContext ctx, LPM.Services.FolderService
 
     using var ms = new MemoryStream();
     await file.CopyToAsync(ms);
-    svc.SaveToScanInbox(username, file.FileName ?? "scan.pdf", ms.ToArray());
+    try
+    {
+        svc.SaveToScanInbox(username, file.FileName ?? "scan.pdf", ms.ToArray());
+    }
+    catch (InvalidOperationException ex)
+    {
+        Console.WriteLine($"[ShareTarget] rejected: {ex.Message}");
+        return Results.Redirect("/scan-received?status=nopdf");
+    }
 
     var savedName = file.FileName ?? "scan.pdf";
     activitySvc.RecordActivity(username, $"Shared '{savedName}' to scan inbox", "scan");
@@ -926,7 +990,7 @@ app.MapPost("/share-receive", async (HttpContext ctx, LPM.Services.FolderService
 
     Console.WriteLine($"[ShareTarget] Received '{file.FileName}' ({file.Length} bytes) from '{username}'");
     return Results.Redirect($"/scan-received?status=ok&name={Uri.EscapeDataString(savedName)}");
-});
+}).RequireAuthorization();
 
 app.MapGet("/api/pc-file", (int pcId, string path, LPM.Services.FolderService svc,
     LPM.Services.DashboardService dashSvc, HttpContext ctx, bool solo = false, bool download = false) =>
@@ -956,6 +1020,9 @@ app.MapGet("/api/pc-file", (int pcId, string path, LPM.Services.FolderService sv
         ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         _ => "application/pdf"
     };
+    // Sensitive patient/PC files must not persist in shared browser caches or proxies.
+    ctx.Response.Headers["Cache-Control"] = "private, no-store, max-age=0";
+    ctx.Response.Headers["Pragma"] = "no-cache";
     return Results.File(bytes, mime, enableRangeProcessing: true);
 }).RequireAuthorization();
 
@@ -1081,6 +1148,9 @@ app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
         return Results.Problem("Folder summary generation failed", statusCode: 500);
     }
 
+    // Don't let combined summaries (which contain session notes) linger in shared caches.
+    ctx.Response.Headers["Cache-Control"] = "private, no-store, max-age=0";
+    ctx.Response.Headers["Pragma"] = "no-cache";
     return Results.File(combined, "application/pdf", enableRangeProcessing: true);
 }).RequireAuthorization();
 

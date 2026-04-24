@@ -1,4 +1,16 @@
 // ── Wizard Reference Float Window ──
+
+// Build a red error message via DOM APIs so error strings from fetch/pdf.js
+// can never execute as HTML. Replaces the element's contents.
+function _setErr(el, text) {
+    if (!el) return;
+    el.textContent = '';
+    const span = document.createElement('span');
+    span.style.color = '#ef4444';
+    span.textContent = String(text);
+    el.appendChild(span);
+}
+
 window.wizardRef = {
     _win: null,
     _loadGen: 0,
@@ -108,7 +120,7 @@ window.wizardRef = {
             const resp = await fetch(url, { credentials: 'include' });
             const status = resp.status;
             if (!resp.ok) {
-                spinner.innerHTML = '<span style="color:#ef4444;">HTTP ' + status + '</span>';
+                _setErr(spinner, 'HTTP ' + status);
                 return 'fetch-error:status=' + status;
             }
             const arrayBuffer = await resp.arrayBuffer();
@@ -118,7 +130,7 @@ window.wizardRef = {
 
             const pdfjsLib = window['pdfjs-dist/build/pdf'];
             if (!pdfjsLib) {
-                spinner.innerHTML = '<span style="color:#ef4444;">pdf.js not loaded</span>';
+                _setErr(spinner, 'pdf.js not loaded');
                 return 'error:pdfjs-not-loaded';
             }
 
@@ -127,7 +139,7 @@ window.wizardRef = {
                 pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
             } catch(pdfErr) {
                 if (myGen !== this._loadGen) return 'cancelled';
-                spinner.innerHTML = '<span style="color:#ef4444;">PDF error: ' + pdfErr.message + '</span>';
+                _setErr(spinner, 'PDF error: ' + (pdfErr.message || 'unknown'));
                 return 'pdf-error:' + pdfErr.message;
             }
             if (myGen !== this._loadGen) return 'cancelled';
@@ -248,7 +260,7 @@ window.wizardRef = {
             return 'ok:status=' + status + ':pages=' + pdfDoc.numPages + ':bytes=' + byteLen;
         } catch(err) {
             if (body.contains(spinner)) {
-                spinner.innerHTML = '<span style="color:#ef4444;">Error: ' + err.message + '</span>';
+                _setErr(spinner, 'Error: ' + (err.message || 'unknown'));
             }
             return 'exception:' + err.message;
         }

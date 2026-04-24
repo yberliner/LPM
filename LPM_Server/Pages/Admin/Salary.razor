@@ -1,5 +1,7 @@
 @page "/Admin/Salary"
+@attribute [Authorize(Roles = "Admin")]
 @using LPM.Services
+@using Microsoft.AspNetCore.Authorization
 @inject DashboardService DashSvc
 @inject LPM.Services.CourseService CourseSvc
 @inject LPM.Services.SessionManagerLauncher SmLauncher
