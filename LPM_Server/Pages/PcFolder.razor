@@ -989,6 +989,12 @@
                         disabled="@(string.IsNullOrEmpty(_panes[_activeIdx].File))">
                     <i class="ri-download-2-line"></i>
                 </button>
+                <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
+                @* Folder Summary editor — always visible (PcId/Solo only). *@
+                <button class="pcf-tool-btn" title="Browse &amp; edit folder summary"
+                        @onclick="OpenFsModal">
+                    <i class="ri-file-list-3-line me-1"></i><span style="font-size:.72rem;">FS</span><i class="ri-pencil-line ms-1" style="font-size:.7rem;opacity:.7;"></i>
+                </button>
                 @if (!Solo && !_isSoloUser && _currentUserId > 0)
                 {
                     <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
@@ -1041,13 +1047,6 @@
                         </button>
                     }
                     <div class="vr mx-1" style="border-color:rgba(255,255,255,.3);"></div>
-                    @if (!_csDone)
-                    {
-                        <button class="pcf-tool-btn" title="Browse &amp; edit folder summary"
-                                @onclick="OpenFsModal">
-                            <i class="ri-file-list-3-line me-1"></i><span style="font-size:.72rem;">FS</span><i class="ri-pencil-line ms-1" style="font-size:.7rem;opacity:.7;"></i>
-                        </button>
-                    }
                     @if (CsMode)
                     {
                         @if (_csDone)

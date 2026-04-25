@@ -13,6 +13,7 @@
 @inject LPM.Services.CourseService CourseSvc
 @inject LPM.Services.EffortService EffortSvc
 @inject LPM.Services.AcademyService AcademySvc
+@inject LPM.Services.SessionDataService SdSvc
 @inject LPM.Services.StatisticsService StatSvc
 @inject LPM.Services.SessionManagerLauncher SmLauncher
 @inject PdfService PdfSvc
@@ -1789,6 +1790,84 @@
                                     <div id="arf-summary-editor"></div>
                                 </div>
                             </div>
+
+                            @* ── Add Session Records (Evil Purposes / Service Facsimiles / PTS Handling) ── *@
+                            <div class="mt-3 asd-section">
+                                <button type="button" class="asd-add-btn" @onclick="AddAsdRow">
+                                    <i class="ri-database-2-line"></i>
+                                    <span>+ Add Session Records</span>
+                                    <i class="ri-sparkling-2-line asd-add-btn-spark"></i>
+                                </button>
+
+                                @if (_addSessDataRows.Count > 0)
+                                {
+                                    <div class="asd-rows mt-2">
+                                        @for (int i = 0; i < _addSessDataRows.Count; i++)
+                                        {
+                                            var idx = i;
+                                            var row = _addSessDataRows[idx];
+                                            <div class="asd-row" @key="row">
+                                                <select class="asd-type" value="@row.Type"
+                                                        @onchange="e => OnAsdTypeChanged(idx, e.Value?.ToString() ?? string.Empty)">
+                                                    <option value="">— pick type —</option>
+                                                    <option value="Evil">Evil Purposes</option>
+                                                    <option value="Serfac">Service Facsimiles</option>
+                                                    <option value="Pts">PTS Handling</option>
+                                                </select>
+
+                                                <div class="asd-fields">
+                                                    @if (row.Type == "Evil")
+                                                    {
+                                                        <textarea class="asd-input asd-textarea" placeholder="Original Wording"
+                                                                  @oninput="e => row.OriginalWording = e.Value?.ToString() ?? string.Empty">@row.OriginalWording</textarea>
+                                                        <textarea class="asd-input asd-textarea" placeholder="Translation"
+                                                                  @oninput="e => row.Translation = e.Value?.ToString() ?? string.Empty">@row.Translation</textarea>
+                                                        <input class="asd-input" placeholder="FPRD" value="@row.FPRD"
+                                                               @oninput="e => row.FPRD = e.Value?.ToString() ?? string.Empty" />
+                                                        <input class="asd-input" placeholder="Other" value="@row.Other"
+                                                               @oninput="e => row.Other = e.Value?.ToString() ?? string.Empty" />
+                                                    }
+                                                    else if (row.Type == "Serfac")
+                                                    {
+                                                        <textarea class="asd-input asd-textarea" placeholder="Original Wording"
+                                                                  @oninput="e => row.OriginalWording = e.Value?.ToString() ?? string.Empty">@row.OriginalWording</textarea>
+                                                        <textarea class="asd-input asd-textarea" placeholder="Translation"
+                                                                  @oninput="e => row.Translation = e.Value?.ToString() ?? string.Empty">@row.Translation</textarea>
+                                                        <input class="asd-input" placeholder="Brackets" value="@row.Brackets"
+                                                               @oninput="e => row.Brackets = e.Value?.ToString() ?? string.Empty" />
+                                                        <input class="asd-input" placeholder="R3RA" value="@row.R3RA"
+                                                               @oninput="e => row.R3RA = e.Value?.ToString() ?? string.Empty" />
+                                                    }
+                                                    else if (row.Type == "Pts")
+                                                    {
+                                                        <input class="asd-input" placeholder="Action" value="@row.Action"
+                                                               @oninput="e => row.Action = e.Value?.ToString() ?? string.Empty" />
+                                                        <input class="asd-input" placeholder="Item" value="@row.Item"
+                                                               @oninput="e => row.Item = e.Value?.ToString() ?? string.Empty" />
+                                                        <input class="asd-input" placeholder="Quad Ruds" value="@row.QuadRuds"
+                                                               @oninput="e => row.QuadRuds = e.Value?.ToString() ?? string.Empty" />
+                                                        <input class="asd-input" placeholder="PU" value="@row.PU"
+                                                               @oninput="e => row.PU = e.Value?.ToString() ?? string.Empty" />
+                                                        <input class="asd-input" placeholder="PTS RD" value="@row.PtsRd"
+                                                               @oninput="e => row.PtsRd = e.Value?.ToString() ?? string.Empty" />
+                                                        <input class="asd-input" placeholder="Ls" value="@row.Ls"
+                                                               @oninput="e => row.Ls = e.Value?.ToString() ?? string.Empty" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="asd-hint">Pick a type to fill in fields…</span>
+                                                    }
+                                                </div>
+
+                                                <button type="button" class="asd-x" title="Remove this row"
+                                                        @onclick="() => RemoveAsdRow(idx)">
+                                                    <i class="ri-close-line"></i>
+                                                </button>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
                         </div>
                         } @* end non-solo ARF *@
                     }
@@ -2256,6 +2335,62 @@
                         @onclick="() => { _bgImportError = string.Empty; _bgSteps.Clear(); }">@LS.T("common.dismiss")</button>
             </div>
         }
+    </div>
+}
+
+@* ── Add Session Records celebration overlay ── *@
+@if (_asdShowCelebrate)
+{
+    <div class="asd-celebrate-overlay" @onclick="CloseAsdCelebrate">
+        <div class="asd-celebrate-card" @onclick:stopPropagation="true">
+            <div class="asd-confetti">
+                @{
+                    var rngSeed = (_asdCelebratePcName + _asdCelebrateSummary.Count).GetHashCode();
+                    var rng = new Random(rngSeed);
+                    var confettiColors = new[] { "#06b6d4", "#6366f1", "#a855f7", "#ec4899", "#f59e0b", "#10b981" };
+                }
+                @for (int i = 0; i < 28; i++)
+                {
+                    var left = rng.Next(0, 100);
+                    var dur  = (rng.NextDouble() * 1.6 + 1.6).ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+                    var delay = (rng.NextDouble() * 1.0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+                    var col = confettiColors[rng.Next(confettiColors.Length)];
+                    var rot = rng.Next(0, 360);
+                    <span style="left:@(left)%; background:@col; transform:rotate(@(rot)deg); animation-duration:@(dur)s; animation-delay:@(delay)s;"></span>
+                }
+            </div>
+            <button class="asd-celebrate-close" @onclick="CloseAsdCelebrate" title="Close">
+                <i class="ri-close-line"></i>
+            </button>
+            <div class="asd-celebrate-title">
+                <i class="ri-sparkling-2-fill me-2"></i>Records Saved!<i class="ri-sparkling-2-fill ms-2"></i>
+            </div>
+            <div class="asd-celebrate-pc">
+                attached to PC <strong>@_asdCelebratePcName</strong>
+            </div>
+            <div class="asd-tablecards">
+                @foreach (var entry in _asdCelebrateSummary)
+                {
+                    var icon = entry.Kind switch
+                    {
+                        "Evil Purposes"      => "ri-alert-line",
+                        "Service Facsimiles" => "ri-file-copy-line",
+                        _                     => "ri-flashlight-line",
+                    };
+                    <div class="asd-tablecard">
+                        <div class="asd-tablecard-head">
+                            <i class="@icon"></i>
+                            <span>@entry.Kind</span>
+                            <span class="badge-cnt">+@entry.RowPreviews.Count</span>
+                        </div>
+                        @foreach (var preview in entry.RowPreviews)
+                        {
+                            <div class="asd-rowpreview">@preview</div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
     </div>
 }
 
@@ -5033,6 +5168,138 @@
     :root[data-theme-mode="light"] .wiz-label { color: #64748b; }
     :root[data-theme-mode="light"] .wiz-conn { background: #e2e8f0; }
 
+    /* ── Add Session Records (Evil/Serfac/PTS quick-capture in wizard) ── */
+    .asd-section { display:flex; flex-direction:column; gap:6px; }
+    .asd-add-btn {
+        position:relative; width:100%; padding:11px 16px; border:0; border-radius:12px;
+        background: linear-gradient(135deg, #06b6d4 0%, #6366f1 50%, #a855f7 100%);
+        background-size: 200% 200%;
+        color:#fff; font-size:.95rem; font-weight:700; letter-spacing:.02em;
+        display:flex; align-items:center; justify-content:center; gap:9px;
+        cursor:pointer; transition: transform .15s;
+        animation: asd-glow 2.4s ease-in-out infinite, asd-shift 6s linear infinite;
+        box-shadow: 0 0 0 0 rgba(99,102,241,.55);
+    }
+    .asd-add-btn:hover { transform: translateY(-1px); }
+    .asd-add-btn-spark { font-size:.95rem; opacity:.85; animation: asd-spark 1.6s ease-in-out infinite alternate; }
+    @@keyframes asd-glow {
+        0%,100% { box-shadow: 0 0 0 0 rgba(99,102,241,.6), 0 0 22px rgba(168,85,247,.3); }
+        50%     { box-shadow: 0 0 0 8px rgba(99,102,241,0),  0 0 36px rgba(168,85,247,.6); }
+    }
+    @@keyframes asd-shift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+    @@keyframes asd-spark { from { transform: rotate(-12deg) scale(.9); opacity:.6; } to { transform: rotate(12deg) scale(1.1); opacity:1; } }
+
+    .asd-rows { display:flex; flex-direction:column; gap:8px; }
+    .asd-row {
+        display:flex; align-items:flex-start; gap:8px;
+        background: rgba(99,102,241,.08); border:1px solid rgba(99,102,241,.25);
+        border-radius:10px; padding:8px;
+        animation: asd-row-in .25s ease-out;
+    }
+    @@keyframes asd-row-in { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
+    .asd-row .asd-type {
+        flex: 0 0 150px; padding:6px 8px; border-radius:8px;
+        background:#0f172a; color:#e2e8f0; border:1px solid #475569;
+        font-size:.82rem; min-height:40px;
+    }
+    .asd-row .asd-fields {
+        flex:1 1 auto; display:grid; grid-template-columns: 1fr 1fr; gap:6px;
+    }
+    .asd-row .asd-input {
+        padding:6px 8px; border-radius:7px; border:1px solid #475569;
+        background:#0f172a; color:#e2e8f0; font-size:.82rem; box-sizing:border-box; width:100%;
+    }
+    .asd-row .asd-input:focus { outline:none; border-color:#a78bfa; box-shadow: 0 0 0 2px rgba(167,139,250,.25); }
+    .asd-row .asd-textarea { min-height:46px; resize:vertical; font-family:inherit; grid-column: 1 / -1; }
+    .asd-row .asd-hint { color:#64748b; font-size:.78rem; font-style:italic; align-self:center; grid-column: 1 / -1; padding:6px; }
+    .asd-row .asd-x {
+        flex:0 0 30px; width:30px; height:30px; border-radius:50%;
+        background: rgba(239,68,68,.15); color:#ef4444; border:1px solid rgba(239,68,68,.3);
+        display:flex; align-items:center; justify-content:center; cursor:pointer;
+        transition: background .15s; font-size:1rem;
+    }
+    .asd-row .asd-x:hover { background: rgba(239,68,68,.3); }
+    @@media (max-width: 768px) {
+        .asd-row { flex-wrap: wrap; }
+        .asd-row .asd-type { flex: 1 1 100%; }
+        .asd-row .asd-fields { grid-template-columns: 1fr; }
+        .asd-row .asd-x { flex: 0 0 30px; }
+    }
+
+    /* ── Post-Go celebration overlay (records inserted) ── */
+    .asd-celebrate-overlay {
+        position: fixed; inset: 0; z-index: 100001; padding:30px;
+        background: radial-gradient(ellipse at center, rgba(15,23,42,.92) 0%, rgba(2,6,23,.97) 70%);
+        backdrop-filter: blur(8px);
+        display:flex; align-items:center; justify-content:center;
+        animation: asd-fadein .25s ease both;
+    }
+    @@keyframes asd-fadein { from { opacity:0; } to { opacity:1; } }
+    @@keyframes asd-fadeout { from { opacity:1; } to { opacity:0; } }
+    .asd-celebrate-card {
+        max-width: 920px; width:100%; max-height: 90vh; overflow:auto;
+        background: linear-gradient(160deg, #1e293b 0%, #0f172a 100%);
+        border:1px solid rgba(99,102,241,.4); border-radius:20px;
+        padding:30px 28px; color:#e2e8f0;
+        box-shadow: 0 30px 90px rgba(0,0,0,.55), 0 0 0 1px rgba(168,85,247,.2);
+        animation: asd-card-in .45s cubic-bezier(.175,.885,.32,1.275) both;
+        position:relative;
+    }
+    @@keyframes asd-card-in { from { opacity:0; transform: scale(.7) translateY(20px); } to { opacity:1; transform: scale(1) translateY(0); } }
+    .asd-celebrate-close {
+        position:absolute; top:14px; right:14px; width:34px; height:34px;
+        border-radius:50%; background:rgba(255,255,255,.1); border:0; color:#e2e8f0;
+        cursor:pointer; font-size:1rem; display:flex; align-items:center; justify-content:center;
+    }
+    .asd-celebrate-close:hover { background: rgba(255,255,255,.2); }
+    .asd-celebrate-title {
+        text-align:center; font-size:1.6rem; font-weight:800;
+        background: linear-gradient(90deg, #06b6d4, #a855f7, #ec4899);
+        -webkit-background-clip:text; background-clip:text; color:transparent;
+        margin-bottom:6px;
+        animation: asd-title-pulse 2s ease-in-out infinite;
+    }
+    @@keyframes asd-title-pulse { 0%,100% { letter-spacing:0; } 50% { letter-spacing:.05em; } }
+    .asd-celebrate-pc {
+        text-align:center; font-size:1.05rem; color:#cbd5e1; margin-bottom:18px;
+    }
+    .asd-celebrate-pc strong { color:#a78bfa; font-weight:700; }
+    .asd-tablecards { display:flex; flex-direction:column; gap:14px; }
+    .asd-tablecard {
+        background: rgba(15,23,42,.6); border:1px solid rgba(99,102,241,.25);
+        border-radius:12px; padding:14px;
+        animation: asd-card-pop .4s ease-out both;
+    }
+    .asd-tablecard:nth-child(1) { animation-delay:.05s; }
+    .asd-tablecard:nth-child(2) { animation-delay:.20s; }
+    .asd-tablecard:nth-child(3) { animation-delay:.35s; }
+    @@keyframes asd-card-pop { from { opacity:0; transform:translateY(14px) scale(.96); } to { opacity:1; transform:translateY(0) scale(1); } }
+    .asd-tablecard-head {
+        display:flex; align-items:center; gap:10px;
+        font-size:1rem; font-weight:700; color:#f1f5f9; margin-bottom:8px;
+    }
+    .asd-tablecard-head .badge-cnt {
+        margin-left:auto; background: linear-gradient(135deg,#06b6d4,#6366f1);
+        color:#fff; padding:2px 10px; border-radius:999px; font-size:.78rem; font-weight:700;
+    }
+    .asd-tablecard-head i { color:#a78bfa; font-size:1.1rem; }
+    .asd-rowpreview {
+        background: rgba(2,6,23,.4); border-radius:8px; padding:8px 10px;
+        display:flex; flex-direction:column; gap:3px; margin-bottom:6px;
+        font-size:.78rem; color:#cbd5e1;
+        animation: asd-rowpreview-in .35s ease-out both;
+    }
+    .asd-rowpreview b { color:#a78bfa; font-weight:600; margin-right:4px; }
+    @@keyframes asd-rowpreview-in { from { opacity:0; transform:translateX(-8px); } to { opacity:1; transform:translateX(0); } }
+    .asd-confetti { position:absolute; inset:0; pointer-events:none; overflow:hidden; border-radius:20px; }
+    .asd-confetti span {
+        position:absolute; top:-20px; width:8px; height:8px; border-radius:2px;
+        animation: asd-confetti-fall 2.6s linear infinite;
+    }
+    @@keyframes asd-confetti-fall {
+        to { transform: translateY(120vh) rotate(720deg); opacity:0; }
+    }
+
     /* ── Add Session wizard stepper ── */
     .wiz-stepper { display:flex; align-items:center; justify-content:center; padding:4px 0 2px; }
     .wiz-step    { display:flex; flex-direction:column; align-items:center; gap:5px; flex-shrink:0; }
@@ -6379,6 +6646,138 @@
     }
     List<BgStep> _bgSteps = new();
 
+    // ── Add Session Records (Evil/Serfac/PTS) state ──
+    sealed class AddSessDataRow
+    {
+        public string Type = "";  // "", "Evil", "Serfac", "Pts"
+        public string OriginalWording = "";
+        public string Translation = "";
+        public string FPRD = "";
+        public string Other = "";
+        public string Brackets = "";
+        public string R3RA = "";
+        public string Action = "";
+        public string Item = "";
+        public string QuadRuds = "";
+        public string PU = "";
+        public string PtsRd = "";
+        public string Ls = "";
+    }
+    List<AddSessDataRow> _addSessDataRows = new();
+
+    void AddAsdRow() => _addSessDataRows.Add(new AddSessDataRow());
+    void RemoveAsdRow(int idx)
+    {
+        if (idx >= 0 && idx < _addSessDataRows.Count) _addSessDataRows.RemoveAt(idx);
+    }
+    void OnAsdTypeChanged(int idx, string newType)
+    {
+        if (idx < 0 || idx >= _addSessDataRows.Count) return;
+        var row = _addSessDataRows[idx];
+        if (row.Type == newType) return;
+        // Clear all field values when switching type so semantics aren't mixed.
+        row.Type = newType;
+        row.OriginalWording = ""; row.Translation = ""; row.FPRD = ""; row.Other = "";
+        row.Brackets = ""; row.R3RA = "";
+        row.Action = ""; row.Item = ""; row.QuadRuds = ""; row.PU = ""; row.PtsRd = ""; row.Ls = "";
+    }
+
+    // Celebration overlay state (post-Go)
+    sealed class AsdSummaryEntry
+    {
+        public string Kind = "";              // "Evil Purposes" / "Service Facsimiles" / "PTS Handling"
+        public List<string> RowPreviews = new(); // human-readable lines per inserted row
+    }
+    bool _asdShowCelebrate;
+    string _asdCelebratePcName = "";
+    List<AsdSummaryEntry> _asdCelebrateSummary = new();
+    void CloseAsdCelebrate() => _asdShowCelebrate = false;
+
+    static string AsdShort(string s, int max = 80)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        var line = s.Replace("\r", " ").Replace("\n", " ").Trim();
+        return line.Length > max ? line.Substring(0, max) + "…" : line;
+    }
+    static string AsdJoinNonEmpty(params (string Label, string Value)[] parts)
+    {
+        var bits = new List<string>();
+        foreach (var (label, value) in parts)
+            if (!string.IsNullOrWhiteSpace(value)) bits.Add($"{label}: {AsdShort(value)}");
+        return bits.Count == 0 ? "(empty row)" : string.Join("  ·  ", bits);
+    }
+
+    List<AsdSummaryEntry> InsertAsdRows(List<AddSessDataRow> rows, int pcId, int sessionId, int insertedBy)
+    {
+        var evilEntry   = new AsdSummaryEntry { Kind = "Evil Purposes" };
+        var serfacEntry = new AsdSummaryEntry { Kind = "Service Facsimiles" };
+        var ptsEntry    = new AsdSummaryEntry { Kind = "PTS Handling" };
+
+        foreach (var r in rows)
+        {
+            try
+            {
+                switch (r.Type)
+                {
+                    case "Evil":
+                    {
+                        var rec = new EvilPurposeRow(0, pcId, sessionId,
+                            DateTime.Now.ToString("yyyy-MM-dd"),
+                            r.OriginalWording, r.Translation, r.FPRD, r.Other,
+                            insertedBy, "");
+                        SdSvc.InsertEvilPurpose(rec);
+                        evilEntry.RowPreviews.Add(AsdJoinNonEmpty(
+                            ("Original", r.OriginalWording),
+                            ("Translation", r.Translation),
+                            ("FPRD", r.FPRD),
+                            ("Other", r.Other)));
+                        break;
+                    }
+                    case "Serfac":
+                    {
+                        var rec = new SerfacRow(0, pcId, sessionId,
+                            DateTime.Now.ToString("yyyy-MM-dd"),
+                            r.OriginalWording, r.Translation, r.Brackets, r.R3RA,
+                            insertedBy, "");
+                        SdSvc.InsertSerfac(rec);
+                        serfacEntry.RowPreviews.Add(AsdJoinNonEmpty(
+                            ("Original", r.OriginalWording),
+                            ("Translation", r.Translation),
+                            ("Brackets", r.Brackets),
+                            ("R3RA", r.R3RA)));
+                        break;
+                    }
+                    case "Pts":
+                    {
+                        var rec = new PtsHandlingRow(0, pcId, sessionId,
+                            DateTime.Now.ToString("yyyy-MM-dd"),
+                            r.Action, r.Item, r.QuadRuds, r.PU, r.PtsRd, r.Ls,
+                            insertedBy, "");
+                        SdSvc.InsertPtsHandling(rec);
+                        ptsEntry.RowPreviews.Add(AsdJoinNonEmpty(
+                            ("Action", r.Action),
+                            ("Item", r.Item),
+                            ("Quad Ruds", r.QuadRuds),
+                            ("PU", r.PU),
+                            ("PTS RD", r.PtsRd),
+                            ("Ls", r.Ls)));
+                        break;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Wizard] AddSessionRecords row insert failed (Type={r.Type}): {ex.Message}");
+            }
+        }
+
+        var result = new List<AsdSummaryEntry>();
+        if (evilEntry.RowPreviews.Count   > 0) result.Add(evilEntry);
+        if (serfacEntry.RowPreviews.Count > 0) result.Add(serfacEntry);
+        if (ptsEntry.RowPreviews.Count    > 0) result.Add(ptsEntry);
+        return result;
+    }
+
     // ── Add Memo state ──
     bool   _showMemoWizard;
     int    _memoStep;
@@ -7050,6 +7449,7 @@
         _step3TopHtml = ""; _step3BottomHtml = "";
         _step3Visited = false;
         _arfTables = [new ArfTable()];
+        _addSessDataRows.Clear();
         // Auto-load files from scan inbox (PWA share target)
         LoadInboxFiles();
         _showImportWizard = true;
@@ -7820,6 +8220,18 @@
         var capturedStep3Bottom = _step3BottomHtml;
         var capturedAuditorName = string.IsNullOrWhiteSpace(_importAuditorFullName) ? _logUsername : _importAuditorFullName;
         var capturedArfEmpty    = IsArfTableEmpty;
+        // Snapshot the Add-Session-Records rows (Evil/Serfac/PTS quick-capture) and clear UI state.
+        var capturedAsdRows = _addSessDataRows
+            .Where(r => r.Type == "Evil" || r.Type == "Serfac" || r.Type == "Pts")
+            .Select(r => new AddSessDataRow {
+                Type = r.Type,
+                OriginalWording = r.OriginalWording, Translation = r.Translation,
+                FPRD = r.FPRD, Other = r.Other,
+                Brackets = r.Brackets, R3RA = r.R3RA,
+                Action = r.Action, Item = r.Item, QuadRuds = r.QuadRuds,
+                PU = r.PU, PtsRd = r.PtsRd, Ls = r.Ls,
+            }).ToList();
+        _addSessDataRows.Clear();
 
         // Close reference float if open
         await JSRuntime.InvokeVoidAsync("wizardRef.closeFloat");
@@ -7932,6 +8344,44 @@
                             capturedSummary ?? "",
                             System.Text.Json.JsonSerializer.Serialize(arfData),
                             sessionDate: dbDate);
+
+                        // Add Session Records (Evil/Serfac/PTS) — link to this session, attribute to logged-in user
+                        if (capturedAsdRows.Count > 0)
+                        {
+                            try
+                            {
+                                var insertedById = SdSvc.GetUserIdByUsername(_logUsername) ?? 0;
+                                if (insertedById > 0)
+                                {
+                                    var summary = await Task.Run(() => InsertAsdRows(capturedAsdRows, capturedPcId, sessionId, insertedById));
+                                    if (summary.Sum(s => s.RowPreviews.Count) > 0)
+                                    {
+                                        await InvokeAsync(() =>
+                                        {
+                                            _asdCelebratePcName    = capturedPcName;
+                                            _asdCelebrateSummary   = summary;
+                                            _asdShowCelebrate      = true;
+                                            StateHasChanged();
+                                        });
+                                        // Auto-close after ~4s
+                                        _ = Task.Run(async () =>
+                                        {
+                                            await Task.Delay(4000);
+                                            await InvokeAsync(() => { _asdShowCelebrate = false; StateHasChanged(); });
+                                        });
+                                    }
+                                }
+                                else
+                                {
+                                    Console.WriteLine($"[Wizard] AddSessionRecords: cannot resolve core_users.Id for '{_logUsername}' — skipping {capturedAsdRows.Count} row(s)");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"[Wizard] AddSessionRecords FAILED: {ex.Message}");
+                            }
+                        }
+
                         await Advance(sCreate, 2);
                     }),
                     Task.Run(async () =>
