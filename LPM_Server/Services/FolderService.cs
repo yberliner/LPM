@@ -1190,8 +1190,12 @@ public class FolderService
 
     /// <summary>
     /// Reorder a line of RTL text to visual order for PdfSharp (which renders LTR only).
-    /// Reverses word order (RTL paragraph), then reverses chars within Hebrew/Arabic words.
-    /// Numbers and Latin words keep their original char order.
+    /// Reverses word order (RTL paragraph) and, within each Hebrew-bearing word, splits the
+    /// word into Hebrew/Arabic vs LTR sub-runs (digits, Latin, punctuation, brackets),
+    /// reverses the sub-run order, and reverses chars only inside RTL sub-runs. LTR sub-runs
+    /// keep their internal order so glued digit/Latin chunks (e.g. "דירה26", "שלוםHello")
+    /// remain readable, and bracket codepoints inside them are pre-mirrored so BiDi-aware
+    /// viewers' glyph-mirror flips them back to the correct shape (see ReorderWordForRtl).
     /// </summary>
     private static string ReorderRtlForPdf(string line)
     {
@@ -1200,15 +1204,60 @@ public class FolderService
         Array.Reverse(words);
         for (int i = 0; i < words.Length; i++)
         {
-            if (words[i].Length > 0 && IsHebrewOrArabicChar(words[i][0]))
-            {
-                var chars = words[i].ToCharArray();
-                Array.Reverse(chars);
-                words[i] = new string(chars);
-            }
+            if (words[i].Any(IsHebrewOrArabicChar))
+                words[i] = ReorderWordForRtl(words[i]);
         }
         return string.Join(" ", words);
     }
+
+    /// <summary>
+    /// Reorder a single word for RTL visual display: split into Hebrew/Arabic vs LTR
+    /// sub-runs, reverse the order of sub-runs, and reverse chars within each RTL sub-run.
+    /// LTR sub-runs (digits, Latin, punctuation, brackets) keep their internal LTR order,
+    /// but bracket codepoints inside them are pre-mirrored so that BiDi-aware PDF viewers
+    /// (pdf.js, Acrobat, Edge/Chromium) — which apply glyph-mirroring to brackets in
+    /// RTL context at render time — flip them back to the correct shape.
+    /// </summary>
+    private static string ReorderWordForRtl(string word)
+    {
+        if (word.Length == 0) return word;
+        var runs = new List<string>();
+        int p = 0;
+        while (p < word.Length)
+        {
+            bool rtl = IsHebrewOrArabicChar(word[p]);
+            int s = p;
+            p++;
+            while (p < word.Length && IsHebrewOrArabicChar(word[p]) == rtl) p++;
+            var seg = word[s..p];
+            if (rtl)
+            {
+                var chars = seg.ToCharArray();
+                Array.Reverse(chars);
+                seg = new string(chars);
+            }
+            else
+            {
+                var chars = seg.ToCharArray();
+                for (int c = 0; c < chars.Length; c++)
+                    chars[c] = MirrorBidiChar(chars[c]);
+                seg = new string(chars);
+            }
+            runs.Add(seg);
+        }
+        runs.Reverse();
+        return string.Concat(runs);
+    }
+
+    /// <summary>Mirror bidi-paired punctuation for an LTR sub-run sitting inside an RTL word.</summary>
+    private static char MirrorBidiChar(char c) => c switch
+    {
+        '(' => ')',  ')' => '(',
+        '[' => ']',  ']' => '[',
+        '{' => '}',  '}' => '{',
+        '<' => '>',  '>' => '<',
+        _ => c
+    };
 
     private static bool IsHebrewOrArabicChar(char c) =>
         (c >= '\u0590' && c <= '\u05FF') || (c >= '\u0600' && c <= '\u06FF') ||

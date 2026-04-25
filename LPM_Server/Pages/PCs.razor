@@ -11,6 +11,7 @@
 @inject LPM.Services.CompletionService CompletionSvc
 @inject LPM.Services.FolderService FolderSvc
 @inject PdfService PdfSvc
+@inject LPM.Services.SessionManagerLauncher SmLauncher
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using LPM.Services
@@ -2448,8 +2449,9 @@
                                     {
                                         var baseBg = rowIdx++ % 2 == 0 ? "#fafafa" : "#fff";
                                         var rowBg  = s.IsBeforeReset ? "#f1f5f9" : baseBg;
-                                        var rowStyle = $"background:{rowBg};" + (s.IsBeforeReset ? "opacity:.45;filter:grayscale(.6);" : "");
-                                        <tr style="@rowStyle" title="@(s.IsBeforeReset ? "Before budget reset — not counted in current balance" : null)">
+                                        var rowStyle = $"background:{rowBg};" + (s.IsBeforeReset ? "opacity:.45;filter:grayscale(.6);" : "") + "cursor:pointer;";
+                                        <tr style="@rowStyle" title="@(s.IsBeforeReset ? "Before budget reset — not counted in current balance · Click to open in Session Manager" : "Click to open in Session Manager")"
+                                            @onclick="() => OpenSessionFromBalance(s.SessionId)">
                                             <td class="small text-center text-muted">@s.SessionId</td>
                                             <td class="small">@FormatDate(s.Date)</td>
                                             <td class="small">@s.AuditorName</td>
@@ -2514,7 +2516,9 @@
                                         var baseSoloBg = soloIdx++ % 2 == 0 ? "#f5f3ff" : "#ede9fe";
                                         var soloBg = sr.IsBeforeReset ? "#e2e8f0" : baseSoloBg;
                                         var soloOpacity = sr.IsBeforeReset ? "opacity:.45;filter:grayscale(.6);" : (sr.IsFree ? "opacity:.7;" : "");
-                                        <tr style="background:@soloBg;@soloOpacity" title="@(sr.IsBeforeReset ? "Before budget reset — not counted in current balance" : null)">
+                                        <tr style="background:@soloBg;@(soloOpacity)cursor:pointer;"
+                                            title="@(sr.IsBeforeReset ? "Before budget reset — not counted in current balance · Click to open in Session Manager" : "Click to open in Session Manager")"
+                                            @onclick="() => OpenSessionFromBalance(sr.SessionId)">
                                             <td class="small text-center text-muted">@sr.SessionId</td>
                                             <td class="small">@FormatDate(sr.Date)</td>
                                             <td class="small">
@@ -4505,11 +4509,29 @@
         }
     }
 
+    Action? _onDataChanged;
+
     protected override async Task OnInitializedAsync()
     {
         _allPcsEx   = PcSvc.GetAllPcsExtended();
         _balances   = PcSvc.GetAllPcBalances();
         LoadWalletBalancesForAll();
+
+        // Refresh balances when other parts of the app mutate session/wallet/purchase data
+        // (e.g. wallet reassignment in Session Manager).
+        _onDataChanged = () => _ = InvokeAsync(() =>
+        {
+            try
+            {
+                _balances = PcSvc.GetAllPcBalances();
+                LoadWalletBalancesForAll();
+                _mixedRates = PcSvc.GetPcsWithMixedRates();
+                _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
+                StateHasChanged();
+            }
+            catch (Exception ex) { Console.WriteLine($"[PCs] Refresh on data changed failed: {ex.Message}"); }
+        });
+        DashSvc.OnDataChanged += _onDataChanged;
         _mixedRates = PcSvc.GetPcsWithMixedRates();
         _mixedCurrencyPcs = PcSvc.GetPcsWithMixedCurrencies();
         _mixedRates = PcSvc.GetPcsWithMixedRates();
@@ -5585,6 +5607,13 @@
         _balHideImported = false;
     }
 
+    void OpenSessionFromBalance(int sessionId)
+    {
+        if (sessionId <= 0) return;
+        CloseBalanceModal();
+        SmLauncher.RequestOpen(sessionId);
+    }
+
     // ── Budget Reset ──
     void OpenResetBudgetModal()
     {
@@ -5755,6 +5784,7 @@
     public void Dispose()
     {
         _sigRef?.Dispose();
+        if (_onDataChanged != null) DashSvc.OnDataChanged -= _onDataChanged;
     }
 
     // ── Wallet helpers ──────────────────────────────────────────────────────

@@ -86,7 +86,8 @@ public record SessionDetailModel(
     string? ApprovedNotes, bool IsImported, string CreatedAt, int? CreatedByUserId,
     int? CsReviewId, int? CsId, string? CsName, int? ReviewLengthSeconds,
     string? ReviewedAt, string? CsStatus, string? CsNotes,
-    int? CsSalaryCentsPerHour, int? CsChargedCentsRatePerHour);
+    int? CsSalaryCentsPerHour, int? CsChargedCentsRatePerHour,
+    int? WalletId);
 public record SessionFkTable(string Table, List<string> Cols, List<List<string>> Rows);
 public record SessionDeleteInfo(int SessionId, int PcId, string SessionName,
     List<SessionFkTable> FkTables, List<string> Files);
@@ -4151,7 +4152,8 @@ public class DashboardService
                    cr.CsReviewId, cr.CsId,
                    COALESCE(TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')), '') AS CsName,
                    cr.ReviewLengthSeconds, cr.ReviewedAt, cr.Status AS CsStatus,
-                   cr.Notes AS CsNotes, cr.CsSalaryCentsPerHour, cr.ChargedCentsRatePerHour
+                   cr.Notes AS CsNotes, cr.CsSalaryCentsPerHour, cr.ChargedCentsRatePerHour,
+                   s.WalletId
             FROM sess_sessions s
             LEFT JOIN core_persons pa ON pa.PersonId = s.AuditorId
             LEFT JOIN cs_reviews cr ON cr.SessionId = s.SessionId
@@ -4177,7 +4179,20 @@ public class DashboardService
             r.IsDBNull(23) ? null : r.GetString(23),
             r.IsDBNull(24) ? null : r.GetString(24),
             r.IsDBNull(25) ? null : (int?)r.GetInt32(25),
-            r.IsDBNull(26) ? null : (int?)r.GetInt32(26));
+            r.IsDBNull(26) ? null : (int?)r.GetInt32(26),
+            r.IsDBNull(27) ? null : (int?)r.GetInt32(27));
+    }
+
+    public void UpdateSessionWallet(int sessionId, int? walletId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE sess_sessions SET WalletId = @w WHERE SessionId = @id";
+        cmd.Parameters.AddWithValue("@w", walletId.HasValue && walletId.Value > 0 ? (object)walletId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@id", sessionId);
+        cmd.ExecuteNonQuery();
+        Console.WriteLine($"[DashboardService] UpdateSessionWallet: SessionId={sessionId} WalletId={(walletId.HasValue && walletId.Value > 0 ? walletId.Value.ToString() : "NULL")}");
     }
 
     public void ToggleSessionFree(int sessionId)

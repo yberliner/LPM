@@ -14,6 +14,7 @@
 @inject LPM.Services.EffortService EffortSvc
 @inject LPM.Services.AcademyService AcademySvc
 @inject LPM.Services.SessionDataService SdSvc
+@inject LPM.Services.WalletService WltSvc
 @inject LPM.Services.StatisticsService StatSvc
 @inject LPM.Services.SessionManagerLauncher SmLauncher
 @inject PdfService PdfSvc
@@ -3682,6 +3683,22 @@
                             </select>
                         </div>
                         <div class="sm-field">
+                            <label>Wallet</label>
+                            @if (_smPcWallets.Count > 0)
+                            {
+                                <select class="form-select form-select-sm" @bind="_smEditWalletId">
+                                    @foreach (var w in _smPcWallets)
+                                    {
+                                        <option value="@w.WalletId">@w.Name (@w.Currency)@(w.IsActive ? "" : " — inactive")</option>
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                <input class="form-control form-control-sm" value="(no wallets for this PC)" readonly />
+                            }
+                        </div>
+                        <div class="sm-field">
                             <label>Created</label>
                             <input class="form-control form-control-sm" value="@_smDetail.CreatedAt" readonly />
                         </div>
@@ -6521,6 +6538,8 @@
     int _smEditChargeSec;
     int _smEditChargedRate;
     int _smEditAudSalary;
+    int _smEditWalletId;
+    List<LPM.Services.Wallet> _smPcWallets = [];
     int _smEditCsReviewLen;
     string _smEditCsStatus = "";
     string _smEditCsNotes = "";
@@ -8858,6 +8877,7 @@ string _actionPcSearch = "";
         _smShowTransfer = false; _smTransferPcId = 0; _smTransferring = false;
         _smCsList = DashSvc.GetCsStaffList(0);
         if (_smAddAuditorList.Count == 0) _smAddAuditorList = DashSvc.GetAuditorCsStaffList();
+        _smPcWallets = WltSvc.GetWalletsForPc(_smDetail.PcId);
         SmPopulateEditFields();
     }
 
@@ -8881,6 +8901,7 @@ string _actionPcSearch = "";
         _smEditCsCharged = _smDetail.CsChargedCentsRatePerHour ?? 0;
         _smEditCsId = _smDetail.CsId ?? 0;
         _smEditAuditorId = _smDetail.AuditorId ?? 0;
+        _smEditWalletId  = _smDetail.WalletId ?? _smPcWallets.FirstOrDefault()?.WalletId ?? 0;
     }
 
     void SmBackToList()
@@ -8910,6 +8931,7 @@ string _actionPcSearch = "";
             if (_smEditChargedRate != detail.ChargedRateCentsPerHour) changes.Add("Rate");
             if (_smEditAudSalary != detail.AuditorSalaryCentsPerHour) changes.Add("Aud Salary");
             if (_smEditAuditorId != (detail.AuditorId ?? 0)) changes.Add("Auditor");
+            if (_smEditWalletId != (detail.WalletId ?? 0)) changes.Add("Wallet");
             if (detail.CsReviewId.HasValue)
             {
                 if (_smEditCsReviewLen != (detail.ReviewLengthSeconds ?? 0)) changes.Add("CS Length");
@@ -8926,6 +8948,9 @@ string _actionPcSearch = "";
                     string.IsNullOrWhiteSpace(_smEditNotes) ? null : _smEditNotes,
                     _smEditChargeSec, _smEditChargedRate, _smEditAudSalary,
                     _smEditAuditorId > 0 ? (int?)_smEditAuditorId : null);
+
+                if (_smEditWalletId != (detail.WalletId ?? 0))
+                    DashSvc.UpdateSessionWallet(detail.SessionId, _smEditWalletId > 0 ? (int?)_smEditWalletId : null);
 
                 if (detail.CsReviewId.HasValue)
                 {

@@ -121,6 +121,61 @@
 
     <script src="/_framework/blazor.server.js"></script>
     <script>
+        // Network-resilient fetch: retries on TypeError (failed-to-fetch) up to 5 attempts
+        // with exponential backoff. Does NOT retry on HTTP responses (non-OK status returned
+        // as-is so callers can react to specific codes like 422).
+        window.pcfFetchWithRetry = async function(url, options) {
+            const delays = [1000, 2000, 4000, 8000, 16000];
+            let lastError = null;
+            for (let attempt = 0; attempt < 5; attempt++) {
+                try {
+                    return await fetch(url, options);
+                } catch (err) {
+                    lastError = err;
+                    console.warn('[pcfSave] Network attempt ' + (attempt + 1) + '/5 failed: ' + (err && err.message));
+                    if (attempt < 4) await new Promise(r => setTimeout(r, delays[attempt]));
+                }
+            }
+            const e = new Error('NETWORK_FAIL: ' + (lastError && lastError.message ? lastError.message : 'Could not reach server after 5 attempts'));
+            e.code = 'NETWORK_FAIL';
+            throw e;
+        };
+
+        // Recovery scanner: list/retry/discard pending-save snapshots that survived
+        // a browser close or fatal error. dataJson in each snapshot already contains
+        // the page images (base64 dataURLs) so we can re-POST without the original DOM.
+        window.pcfRecoverySaves = {
+            list: function(pcId) {
+                const out = [];
+                const prefix = 'lpm-pending-save|' + pcId + '|';
+                for (let i = 0; i < localStorage.length; i++) {
+                    const k = localStorage.key(i);
+                    if (!k || !k.startsWith(prefix)) continue;
+                    try {
+                        const o = JSON.parse(localStorage.getItem(k));
+                        out.push({ key: k, pcId: o.pcId, filePath: o.filePath, ts: o.ts || 0 });
+                    } catch(e) {}
+                }
+                out.sort((a, b) => b.ts - a.ts);
+                return out;
+            },
+            retry: async function(key) {
+                const raw = localStorage.getItem(key);
+                if (!raw) return { ok: false, error: 'snapshot_missing' };
+                let snap;
+                try { snap = JSON.parse(raw); } catch(e) { return { ok: false, error: 'snapshot_corrupt' }; }
+                try {
+                    await window.pcfSaveAnnotatedPdf(snap.pcId, snap.filePath, snap.dataJson, !!snap.solo, null);
+                    return { ok: true };
+                } catch(e) {
+                    return { ok: false, error: (e && e.message) || 'unknown' };
+                }
+            },
+            discard: function(key) {
+                try { localStorage.removeItem(key); } catch(e) {}
+            }
+        };
+
         window.pcfSaveAnnotatedPdf = async function(pcId, filePath, dataJson, solo, paneId) {
             const meta = JSON.parse(dataJson);
             const formData = new FormData();
@@ -152,7 +207,25 @@
 
             const soloParam = solo ? '&solo=true' : '';
             const saveUrl = '/api/pc-file-save-annotated?pcId=' + pcId + '&path=' + encodeURIComponent(filePath) + soloParam;
-            const saveResp = await fetch(saveUrl, { method: 'POST', body: formData });
+
+            // Recovery snapshot: keep the data in localStorage until we successfully save.
+            // If the browser closes / app dies, the user can recover next session.
+            const recoveryKey = 'lpm-pending-save|' + pcId + '|' + filePath;
+            try {
+                localStorage.setItem(recoveryKey, JSON.stringify({
+                    ts: Date.now(), pcId, filePath, solo: !!solo, dataJson
+                }));
+            } catch (e) { /* storage full or disabled */ }
+
+            let saveResp;
+            try {
+                saveResp = await window.pcfFetchWithRetry(saveUrl, { method: 'POST', body: formData });
+            } catch (err) {
+                // All 5 retries exhausted — leave the snapshot in localStorage and rethrow
+                // so the Blazor side can show a retry dialog.
+                console.error('[pcfSave] All retries failed for ' + filePath + ': ' + (err && err.message));
+                throw err;
+            }
 
             if (saveResp.status === 422 && paneId) {
                 // Corrupt XRef — retry by rasterising ALL pages from the live canvases
@@ -177,12 +250,26 @@
                         ri++;
                     }
                     rfd.append('meta', JSON.stringify(rmeta));
-                    const retryResp = await fetch(saveUrl, { method: 'POST', body: rfd });
-                    if (retryResp.ok) { console.log('[pcfSave] Raster retry succeeded'); return; }
+                    let retryResp;
+                    try {
+                        retryResp = await window.pcfFetchWithRetry(saveUrl, { method: 'POST', body: rfd });
+                    } catch (err) {
+                        console.error('[pcfSave] 422-retry network failure: ' + (err && err.message));
+                        throw err;
+                    }
+                    if (retryResp.ok) {
+                        try { localStorage.removeItem(recoveryKey); } catch (e) {}
+                        console.log('[pcfSave] Raster retry succeeded');
+                        return;
+                    }
+                    throw new Error('Save failed (422 fallback returned ' + retryResp.status + ')');
                 }
-                return; // silently swallow — can't save this PDF
+                // 422 but pane is unavailable (e.g. recovery flow with no live DOM): surface the error
+                // so the caller can show the retry dialog. Snapshot stays in localStorage.
+                throw new Error('Save failed: 422 (corrupt PDF, no live pane to re-rasterize)');
             }
             if (!saveResp.ok) throw new Error('Save failed: ' + saveResp.status);
+            try { localStorage.removeItem(recoveryKey); } catch (e) {}
         };
 
         window.lpmNavigateTo = function(url) { window.location.href = url; };

@@ -17,6 +17,59 @@
 @implements IDisposable
 
 <UserHeartbeat />
+
+@* ── Pending-save recovery banner (annotations from a previous failed save) ── *@
+@if (_pendingRecoverySaves.Count > 0 && !_pendingRecoveryDismissed)
+{
+    <div class="pcf-recovery-banner">
+        <div class="pcf-recovery-head">
+            <i class="ri-time-line pcf-recovery-icon"></i>
+            <div class="pcf-recovery-head-text">
+                <strong>Unsaved annotations found</strong>
+                <span class="pcf-recovery-sub">@_pendingRecoverySaves.Count file(s) from a previous attempt — your edits are still safe and can be uploaded now.</span>
+            </div>
+            <button class="pcf-recovery-close" title="Hide banner" @onclick="() => _pendingRecoveryDismissed = true">
+                <i class="ri-close-line"></i>
+            </button>
+        </div>
+        <div class="pcf-recovery-list">
+            @foreach (var s in _pendingRecoverySaves.ToList())
+            {
+                var ageMin = (int)((DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - s.Ts) / 60000);
+                var ageStr = ageMin < 1 ? "just now" : ageMin < 60 ? $"{ageMin} min ago" : $"{ageMin / 60}h {ageMin % 60}m ago";
+                <div class="pcf-recovery-item">
+                    <i class="ri-file-pdf-2-line pcf-recovery-fi"></i>
+                    <div class="pcf-recovery-fname" title="@s.FilePath">
+                        @System.IO.Path.GetFileName(s.FilePath)
+                        <span class="pcf-recovery-age">@ageStr</span>
+                        @if (!string.IsNullOrEmpty(s.LastError))
+                        {
+                            <span class="pcf-recovery-err"><i class="ri-error-warning-line"></i> @s.LastError</span>
+                        }
+                    </div>
+                    <button class="pcf-recovery-btn pcf-recovery-btn-retry"
+                            disabled="@s.Retrying"
+                            @onclick="() => RecoveryRetryAsync(s)">
+                        @if (s.Retrying)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span><span>Saving…</span>
+                        }
+                        else
+                        {
+                            <i class="ri-cloud-line me-1"></i><span>Save now</span>
+                        }
+                    </button>
+                    <button class="pcf-recovery-btn pcf-recovery-btn-discard"
+                            title="Discard — these annotations will be lost forever"
+                            @onclick="() => RecoveryDiscardAsync(s)">
+                        <i class="ri-delete-bin-line"></i>
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+}
+
 <div class="pcf-container">
     @* ── Left sidebar ── *@
     <div class="pcf-sidebar @(_sidebarOpen ? "" : "pcf-sidebar-collapsed")">
@@ -1366,6 +1419,43 @@
     CurrentUserId="_currentUserId"
     CurrentUserName="@_userName"
     OnCloseRequested="CloseSessionDataModal" />
+
+@* ── Save Error / Retry Dialog (network failure during pane save) ── *@
+@if (_showSaveErrorDialog)
+{
+    <div class="pcf-savemod-overlay">
+        <div class="pcf-savemod-card">
+            <div class="pcf-savemod-icon-wrap">
+                <i class="ri-cloud-off-line pcf-savemod-icon"></i>
+            </div>
+            <h3 class="pcf-savemod-title">Couldn't Save Annotations</h3>
+            <p class="pcf-savemod-body">
+                @{ var n = _saveErrorPanes.Count; }
+                @if (n == 1) { <text>The save for <strong>1 pane</strong> failed</text> }
+                else         { <text>The save for <strong>@n panes</strong> failed</text> }
+                — likely a brief network problem. Your edits are still in the browser.
+                <br /><br />
+                <strong>Click Retry</strong> to try again. If it keeps failing, check your connection
+                or click Cancel to stay on this page; your edits remain visible.
+            </p>
+            <div class="pcf-savemod-buttons">
+                <button class="pcf-savemod-btn pcf-savemod-btn-cancel" @onclick="DismissSaveErrorDialog" disabled="@_saveRetryInFlight">
+                    <i class="ri-close-line"></i> Cancel
+                </button>
+                <button class="pcf-savemod-btn pcf-savemod-btn-retry" @onclick="RetryFailedSavesAsync" disabled="@_saveRetryInFlight">
+                    @if (_saveRetryInFlight)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span><span>Retrying…</span>
+                    }
+                    else
+                    {
+                        <i class="ri-refresh-line me-1"></i><span>Retry Save</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+}
 
 @* ── CS Close Warning ── *@
 @if (_showCsCloseWarning)
@@ -2982,6 +3072,104 @@
     }
 
     /* ── CS Close Warning ── */
+    /* ── Pending-save recovery banner ── */
+    .pcf-recovery-banner {
+        position: fixed; top: 0; left: 0; right: 0; z-index: 99000;
+        background: linear-gradient(180deg, #fef3c7, #fde68a);
+        color: #78350f; border-bottom: 2px solid #f59e0b;
+        padding: 8px 14px;
+        box-shadow: 0 4px 12px rgba(0,0,0,.15);
+        animation: pcf-recovery-in .35s ease-out;
+        max-height: 50vh; overflow-y: auto;
+    }
+    @@keyframes pcf-recovery-in {
+        from { transform: translateY(-12px); opacity: 0; }
+        to   { transform: translateY(0);     opacity: 1; }
+    }
+    .pcf-recovery-head { display:flex; align-items:center; gap:10px; margin-bottom: 4px; }
+    .pcf-recovery-icon { font-size: 1.4rem; color: #b45309; }
+    .pcf-recovery-head-text { display:flex; flex-direction:column; flex:1; min-width:0; gap:1px; }
+    .pcf-recovery-head-text strong { font-weight: 700; font-size: .92rem; }
+    .pcf-recovery-sub  { font-size: .78rem; color: #92400e; }
+    .pcf-recovery-close {
+        background: rgba(0,0,0,.06); border: 0; width: 28px; height: 28px;
+        border-radius: 50%; color: #78350f; cursor: pointer;
+        display:flex; align-items:center; justify-content:center; font-size: .9rem;
+    }
+    .pcf-recovery-close:hover { background: rgba(0,0,0,.12); }
+    .pcf-recovery-list { display:flex; flex-direction:column; gap:5px; }
+    .pcf-recovery-item {
+        display:flex; align-items:center; gap:8px; padding: 5px 8px;
+        background: rgba(255,255,255,.55); border-radius: 6px;
+    }
+    .pcf-recovery-fi { color: #b91c1c; font-size: 1.05rem; }
+    .pcf-recovery-fname { flex: 1; min-width: 0; font-size: .82rem; color: #44260a;
+                           overflow: hidden; text-overflow: ellipsis; }
+    .pcf-recovery-age { margin-left: 6px; font-size: .72rem; color: #92400e; opacity: .8; }
+    .pcf-recovery-err {
+        display:block; font-size: .72rem; color: #b91c1c; margin-top: 2px;
+    }
+    .pcf-recovery-btn {
+        border: 0; padding: 5px 12px; border-radius: 6px; font-weight: 600;
+        font-size: .78rem; cursor: pointer; min-height: 32px;
+        display: inline-flex; align-items: center;
+    }
+    .pcf-recovery-btn:disabled { opacity: .55; cursor: not-allowed; }
+    .pcf-recovery-btn-retry { background: linear-gradient(135deg, #16a34a, #15803d); color: #fff; }
+    .pcf-recovery-btn-retry:not(:disabled):hover { box-shadow: 0 4px 10px rgba(22,163,74,.35); }
+    .pcf-recovery-btn-discard {
+        background: transparent; color: #b91c1c; border: 1px solid #fca5a5;
+        width: 32px; padding: 0; justify-content: center;
+    }
+    .pcf-recovery-btn-discard:hover { background: rgba(239,68,68,.1); }
+
+    /* ── Save Error / Retry modal ── */
+    .pcf-savemod-overlay {
+        position: fixed; inset: 0; z-index: 100000;
+        background: rgba(0,0,0,.78);
+        backdrop-filter: blur(5px);
+        display: flex; align-items: center; justify-content: center;
+        animation: pcf-savemod-overlay-in .2s ease;
+    }
+    @@keyframes pcf-savemod-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+    .pcf-savemod-card {
+        background: #15172a;
+        border: 2.5px solid #ef4444;
+        border-radius: 18px;
+        padding: 36px 44px 32px;
+        max-width: 520px; width: 92%;
+        text-align: center;
+        color: #e2e8f0;
+        animation: pcf-savemod-in .35s cubic-bezier(.34,1.56,.64,1), pcf-savemod-glow 2.4s ease-in-out infinite;
+    }
+    @@keyframes pcf-savemod-in {
+        from { opacity: 0; transform: scale(.82) translateY(18px); }
+        to   { opacity: 1; transform: scale(1)  translateY(0); }
+    }
+    @@keyframes pcf-savemod-glow {
+        0%,100% { box-shadow: 0 0 36px rgba(239,68,68,.25), 0 24px 60px rgba(0,0,0,.6); }
+        50%     { box-shadow: 0 0 72px rgba(239,68,68,.55), 0 24px 60px rgba(0,0,0,.6); }
+    }
+    .pcf-savemod-icon-wrap { margin-bottom: 14px; }
+    .pcf-savemod-icon { font-size: 3.4rem; color: #ef4444; }
+    .pcf-savemod-title {
+        margin: 0 0 12px; font-size: 1.4rem; font-weight: 700; color: #fef2f2; letter-spacing: -.01em;
+    }
+    .pcf-savemod-body {
+        font-size: .92rem; line-height: 1.5; color: #cbd5e1; margin-bottom: 22px;
+    }
+    .pcf-savemod-buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .pcf-savemod-btn {
+        padding: 10px 22px; border-radius: 10px; border: 0; font-weight: 600; font-size: .92rem;
+        cursor: pointer; min-height: 44px; display: inline-flex; align-items: center; gap: 6px;
+        transition: transform .15s, box-shadow .15s;
+    }
+    .pcf-savemod-btn:disabled { opacity: .55; cursor: not-allowed; }
+    .pcf-savemod-btn-cancel { background: #334155; color: #e2e8f0; }
+    .pcf-savemod-btn-cancel:not(:disabled):hover { background: #475569; }
+    .pcf-savemod-btn-retry  { background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff; }
+    .pcf-savemod-btn-retry:not(:disabled):hover  { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(239,68,68,.45); }
+
     .pcf-cswarn-overlay {
         position: fixed; inset: 0; z-index: 20000;
         background: rgba(0,0,0,.72);
@@ -3866,6 +4054,10 @@
 
             // (context menu attachment happens for all renders below)
 
+            // Scan localStorage for any pending-save snapshots from a previous failed save
+            // (browser closed mid-failure, network lost, etc.) — show recovery banner if any.
+            await ScanPendingRecoverySavesAsync();
+
             // Load Ctrl+key shortcuts
             try
             {
@@ -4132,8 +4324,11 @@
         var gen = ++_selectGeneration;
         var paneId = PaneIds[idx];
 
-        // Await save before loading new file to prevent race with loadPdf resetting pane state
-        await JS.InvokeVoidAsync("pcfViewer.savePane", paneId);
+        // Await save before loading new file to prevent race with loadPdf resetting pane state.
+        // Wrapped: a transient network failure must NOT block the file switch; the recovery
+        // snapshot is already persisted in localStorage and the banner picks it up next visit.
+        try { await JS.InvokeVoidAsync("pcfViewer.savePane", paneId); }
+        catch (Exception _saveEx) { Console.WriteLine($"[PcFolder] Pre-switch savePane({paneId}) failed (snapshot kept in localStorage): {_saveEx.Message}"); }
 
         _panes[idx].File = relativePath;
         _panes[idx].FileName = SessionDisplayName(fileName);
@@ -4709,10 +4904,14 @@
         // Cancel extract mode
         if (_extractMode) _ = CancelExtract();
 
-        // Save open panes (preserve annotations)
+        // Save open panes (preserve annotations) — wrapped per pane: transient failures
+        // are kept in localStorage and recovered next visit.
         for (int i = 0; i < _paneCount; i++)
             if (!string.IsNullOrEmpty(_panes[i].File))
-                await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]);
+            {
+                try { await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]); }
+                catch (Exception _saveEx) { Console.WriteLine($"[PcFolder] Bulk savePane({PaneIds[i]}) failed (snapshot kept): {_saveEx.Message}"); }
+            }
 
         // Cancel in-flight loads
         for (int i = 0; i < _paneCount; i++)
@@ -4783,11 +4982,14 @@
             if (!string.IsNullOrEmpty(_panes[i].File) && IsPdfViewable(_panes[i].File))
                 await JS.InvokeVoidAsync("pcfViewer.cancelLoad", PaneIds[i]);
 
-        // Save panes being hidden in parallel (keep File/FileName — just hidden, not closed)
+        // Save panes being hidden (keep File/FileName — just hidden, not closed) — protected per pane.
         if (newCount < oldCount)
         {
-            await Task.WhenAll(Enumerable.Range(newCount, oldCount - newCount)
-                .Select(i => JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]).AsTask()));
+            for (int i = newCount; i < oldCount; i++)
+            {
+                try { await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]); }
+                catch (Exception _saveEx) { Console.WriteLine($"[PcFolder] Hide-pane savePane({PaneIds[i]}) failed (snapshot kept): {_saveEx.Message}"); }
+            }
         }
 
         // Pane count is show/hide only — do NOT clear hidden panes' state.
@@ -4882,9 +5084,12 @@
     {
         _activePreset = 0;
         Console.WriteLine($"[PcFolder] Closed pane {idx} ('{_panes[idx].FileName}') by '{_userName}' — PC {PcId}");
-        // Auto-save the pane being closed
+        // Auto-save the pane being closed — protected (snapshot in localStorage on failure).
         if (!string.IsNullOrEmpty(_panes[idx].File))
-            await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[idx]);
+        {
+            try { await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[idx]); }
+            catch (Exception _saveEx) { Console.WriteLine($"[PcFolder] Close-pane savePane({PaneIds[idx]}) failed (snapshot kept): {_saveEx.Message}"); }
+        }
 
         _dualPanes.Remove(PaneIds[idx]);
         _dualInfo.Remove(PaneIds[idx]);
@@ -5310,18 +5515,190 @@
         try
         {
             var paneId = PaneIds[_activeIdx];
-            var dataJson = await JS.InvokeAsync<string>("pcfViewer.getAnnotationData", paneId);
-            await JS.InvokeVoidAsync("pcfSaveAnnotatedPdf", PcId, file, dataJson, Solo, paneId);
+            try
+            {
+                var dataJson = await JS.InvokeAsync<string>("pcfViewer.getAnnotationData", paneId);
+                await JS.InvokeVoidAsync("pcfSaveAnnotatedPdf", PcId, file, dataJson, Solo, paneId);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PcFolder] SaveAnnotations FAILED for '{_panes[_activeIdx].FileName}' (PC {PcId}, user '{_userName}'): {ex.Message}");
+                _saveErrorPanes = new List<int> { _activeIdx };
+                _saveErrorContext = SaveErrorContext.Manual;
+                _showSaveErrorDialog = true;
+                return;
+            }
 
             _hasAnnotations = false;
             var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(file)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
-            await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId);
+            try { await JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId); }
+            catch (Exception ex) { Console.WriteLine($"[PcFolder] post-save reload failed: {ex.Message}"); }
         }
         finally
         {
             _saving = false;
             StateHasChanged();
         }
+    }
+
+    // ── Resilient pane-save (serial with retry dialog) ─────────────────
+    enum SaveErrorContext { CsDone, AlreadyDone, Manual }
+    bool _showSaveErrorDialog;
+    bool _saveRetryInFlight;
+    List<int> _saveErrorPanes = new();
+    SaveErrorContext _saveErrorContext;
+
+    // Pending-save recovery (snapshots survive page reload via localStorage)
+    public class PendingSaveSnap
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("key")]
+        public string Key { get; set; } = "";
+
+        [System.Text.Json.Serialization.JsonPropertyName("pcId")]
+        public int    PcId { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("filePath")]
+        public string FilePath { get; set; } = "";
+
+        [System.Text.Json.Serialization.JsonPropertyName("ts")]
+        public long   Ts { get; set; }
+
+        // UI-only, not from JS:
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool   Retrying { get; set; }
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string? LastError { get; set; }
+    }
+    List<PendingSaveSnap> _pendingRecoverySaves = new();
+    bool _pendingRecoveryDismissed;
+
+    async Task ScanPendingRecoverySavesAsync()
+    {
+        try
+        {
+            var arr = await JS.InvokeAsync<PendingSaveSnap[]>("pcfRecoverySaves.list", PcId);
+            _pendingRecoverySaves = arr?.ToList() ?? new();
+            if (_pendingRecoverySaves.Count > 0)
+            {
+                Console.WriteLine($"[PcFolder] Found {_pendingRecoverySaves.Count} pending recovery snapshot(s) for PC {PcId}");
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PcFolder] ScanPendingRecoverySaves failed: {ex.Message}");
+        }
+    }
+
+    async Task RecoveryRetryAsync(PendingSaveSnap snap)
+    {
+        if (snap.Retrying) return;
+        snap.Retrying = true; snap.LastError = null;
+        StateHasChanged();
+        try
+        {
+            var result = await JS.InvokeAsync<RecoveryRetryResult>("pcfRecoverySaves.retry", snap.Key);
+            if (result?.ok == true)
+            {
+                _pendingRecoverySaves.Remove(snap);
+                Console.WriteLine($"[PcFolder] Recovered pending save for '{snap.FilePath}' (PC {snap.PcId})");
+            }
+            else
+            {
+                snap.LastError = result?.error ?? "unknown";
+            }
+        }
+        catch (Exception ex)
+        {
+            snap.LastError = ex.Message;
+        }
+        finally
+        {
+            snap.Retrying = false;
+            StateHasChanged();
+        }
+    }
+
+    async Task RecoveryDiscardAsync(PendingSaveSnap snap)
+    {
+        try { await JS.InvokeVoidAsync("pcfRecoverySaves.discard", snap.Key); } catch {}
+        _pendingRecoverySaves.Remove(snap);
+        StateHasChanged();
+    }
+
+    public class RecoveryRetryResult
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("ok")]
+        public bool ok { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("error")]
+        public string? error { get; set; }
+    }
+
+    /// Save every visible pane serially. Returns true if all panes saved (or had nothing to save).
+    /// On any failure, populates _saveErrorPanes + _showSaveErrorDialog and returns false —
+    /// the JS layer has already retried 5x and persisted a recovery snapshot in localStorage.
+    async Task<bool> SavePanesSerialAsync()
+    {
+        var failed = new List<int>();
+        for (int i = 0; i < _paneCount; i++)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PcFolder] savePane({PaneIds[i]}) FAILED for PC {PcId}, user '{_userName}': {ex.Message}");
+                failed.Add(i);
+            }
+        }
+        if (failed.Count == 0) return true;
+        _saveErrorPanes = failed;
+        _saveErrorContext = _csAlreadyDone ? SaveErrorContext.AlreadyDone : SaveErrorContext.CsDone;
+        _showSaveErrorDialog = true;
+        StateHasChanged();
+        return false;
+    }
+
+    void DismissSaveErrorDialog()
+    {
+        _showSaveErrorDialog = false;
+        _saveErrorPanes.Clear();
+    }
+
+    async Task RetryFailedSavesAsync()
+    {
+        if (_saveRetryInFlight) return;
+        _saveRetryInFlight = true;
+        StateHasChanged();
+        var still = new List<int>();
+        try
+        {
+            foreach (var i in _saveErrorPanes.ToList())
+            {
+                try
+                {
+                    await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[PcFolder] Retry savePane({PaneIds[i]}) FAILED again: {ex.Message}");
+                    still.Add(i);
+                }
+            }
+        }
+        finally
+        {
+            _saveRetryInFlight = false;
+        }
+        _saveErrorPanes = still;
+        if (still.Count == 0)
+        {
+            _showSaveErrorDialog = false;
+            Console.WriteLine($"[PcFolder] All previously-failed pane saves succeeded on retry for PC {PcId}");
+        }
+        StateHasChanged();
     }
 
     async Task DownloadFile()
@@ -5332,8 +5709,9 @@
         var fileName = _panes[_activeIdx].FileName ?? System.IO.Path.GetFileName(file);
         Console.WriteLine($"[PcFolder] Downloaded file '{fileName}' by '{_userName}' — for PC {PcId}");
 
-        // Flush unsaved annotations to disk before downloading
-        await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[_activeIdx]);
+        // Flush unsaved annotations to disk before downloading — protected.
+        try { await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[_activeIdx]); }
+        catch (Exception _saveEx) { Console.WriteLine($"[PcFolder] Pre-download savePane failed (snapshot kept): {_saveEx.Message}"); }
 
         var apiEndpoint = IsFolderSummaryFile(fileName, file)
             ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(file)}{SoloParam}&_t={DateTime.UtcNow.Ticks}"
@@ -5450,8 +5828,11 @@
                 return;
             }
 
-            await Task.WhenAll(Enumerable.Range(0, _paneCount)
-                .Select(i => JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]).AsTask()));
+            if (!await SavePanesSerialAsync())
+            {
+                if (wasStopwatchRunning) _ = RunStopwatchAsync();
+                return;
+            }
             _ = FolderSvc.BurnAnnotationSidecarsForSessionAsync(PcId, _csSessionName + ".pdf", Solo);
 
             // Update notes if free flag changed (solo sessions)
@@ -5490,9 +5871,12 @@
             return;
         }
 
-        // Auto-save all visible panes in parallel
-        await Task.WhenAll(Enumerable.Range(0, _paneCount)
-            .Select(i => JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]).AsTask()));
+        // Auto-save all visible panes — serial with retry-on-failure dialog
+        if (!await SavePanesSerialAsync())
+        {
+            if (wasStopwatchRunning) _ = RunStopwatchAsync();
+            return;
+        }
         // Burn session sidecars into PDFs (fire-and-forget — doesn't block the confirm dialog)
         _ = FolderSvc.BurnAnnotationSidecarsForSessionAsync(PcId, _csSessionName + ".pdf", Solo);
 
@@ -6680,11 +7064,13 @@
         Console.WriteLine($"[PcFolder] Downloaded (ctx) '{fileName}' by '{_userName}' — PC {PcId}");
         CloseCtxMenu();
 
-        // Flush annotations for any pane that has this file open
-        var saveTasks = Enumerable.Range(0, _paneCount)
-            .Where(i => string.Equals(_panes[i].File, relPath, StringComparison.OrdinalIgnoreCase))
-            .Select(i => JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]).AsTask());
-        await Task.WhenAll(saveTasks);
+        // Flush annotations for any pane that has this file open — protected per pane.
+        for (int _i = 0; _i < _paneCount; _i++)
+        {
+            if (!string.Equals(_panes[_i].File, relPath, StringComparison.OrdinalIgnoreCase)) continue;
+            try { await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[_i]); }
+            catch (Exception _saveEx) { Console.WriteLine($"[PcFolder] Ctx-download savePane({PaneIds[_i]}) failed (snapshot kept): {_saveEx.Message}"); }
+        }
 
         var apiEndpoint = IsFolderSummaryFile(fileName, relPath)
             ? $"/api/pc-file-folder-summary?pcId={PcId}&path={Uri.EscapeDataString(relPath)}{SoloParam}&_t={DateTime.UtcNow.Ticks}"
