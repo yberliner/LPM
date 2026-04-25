@@ -2241,9 +2241,12 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
 
+        // Include-approved branch: show all statuses (Draft / Verified / Approved) within date range.
+        // The legacy IN ('Pending','Approved') filter excluded Draft/Verified because 'Pending' is not
+        // an actually-used status — matches the CS reviews filter pattern below.
         var where = new System.Text.StringBuilder(
             includeApproved
-                ? "s.AuditorId IS NOT NULL AND s.VerifiedStatus IN ('Pending','Approved') AND COALESCE(s.IsImported,0) = 0"
+                ? "s.AuditorId IS NOT NULL AND COALESCE(s.IsImported,0) = 0"
                 : "s.AuditorId IS NOT NULL AND s.VerifiedStatus != 'Approved' AND COALESCE(s.IsImported,0) = 0");
 
         if (includeApproved && from.HasValue)
