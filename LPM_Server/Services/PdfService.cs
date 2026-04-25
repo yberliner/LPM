@@ -39,10 +39,11 @@ public class PdfService
 
         var weekEnd = weekStart.AddDays(6);
 
-        int audTotal     = audPcs.Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.Auditor.GetValueOrDefault((pc.PcId, d))));
-        int csSoloTotal  = csSoloPcs.Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.CsSolo.GetValueOrDefault((pc.PcId, d))));
-        int csTotal      = csPcs.Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.Cs.GetValueOrDefault((pc.PcId, d))));
-        int combinedTotal = audTotal + csSoloTotal;
+        int audTotal       = audPcs.Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.Auditor.GetValueOrDefault((pc.PcId, d))));
+        int csSoloTotal    = csSoloPcs.Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.CsSolo.GetValueOrDefault((pc.PcId, d))));
+        int csSoloBillTot  = csSoloPcs.Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.CsSoloBill.GetValueOrDefault((pc.PcId, d))));
+        int csTotal        = csPcs.Sum(pc => Enumerable.Range(0, 7).Sum(d => grid.Cs.GetValueOrDefault((pc.PcId, d))));
+        int combinedTotal  = audTotal + csSoloTotal;
 
         return Document.Create(container =>
         {
@@ -88,14 +89,14 @@ public class PdfService
                     {
                         col.Item().PaddingTop(12).Text("CS Solo").SemiBold().FontSize(10).FontColor("#6a1b9a");
                         col.Item().PaddingTop(4);
-                        RenderPdfTable(col, csSoloPcs, grid.CsSolo, pcCsNames, weekStart, tableType: "CSSolo");
+                        RenderPdfTable(col, csSoloPcs, grid.CsSolo, pcCsNames, weekStart, tableType: "CSSolo", billGrid: grid.CsSoloBill);
 
                         col.Item().PaddingTop(6);
                         col.Item().Background("#6a1b9a").Padding(6).Row(r =>
                         {
                             r.RelativeItem().Text("CS Solo Total").SemiBold().FontSize(11).FontColor("#ffffff");
-                            r.ConstantItem(150).AlignRight()
-                                .Text(DashboardService.FmtOrBlank(csSoloTotal))
+                            r.ConstantItem(220).AlignRight()
+                                .Text(csSoloTotal <= 0 ? "" : DashboardService.FmtTotalWithBill(csSoloTotal, csSoloBillTot))
                                 .SemiBold().FontSize(14).FontColor("#ffffff");
                         });
                     }
@@ -263,7 +264,8 @@ public class PdfService
         Dictionary<(int pcId, int dayIdx), int> grid,
         Dictionary<int, string> pcCsNames,
         DateOnly weekStart,
-        string tableType)   // "Auditor", "CSSolo", or "CS"
+        string tableType,   // "Auditor", "CSSolo", or "CS"
+        Dictionary<(int pcId, int dayIdx), int>? billGrid = null) // CS Solo only: billable subtotal (Notes <> 'Free')
     {
         bool isCs     = tableType == StaffRoles.CS;
         bool isCSSolo = tableType == "CSSolo";
@@ -334,9 +336,19 @@ public class PdfService
                 foreach (var pc in pcsList)
                 {
                     int secs = grid.GetValueOrDefault((pc.PcId, d));
+                    int bill = billGrid?.GetValueOrDefault((pc.PcId, d)) ?? secs;
+                    bool isAllFree = isCSSolo && secs > 0 && bill == 0;
+                    bool isMixed   = isCSSolo && secs > 0 && bill > 0 && bill < secs;
+                    string cellColor = isAllFree ? "#10b981" : textColor;
                     if (compact)
-                        table.Cell().Element(CellStyle).AlignCenter()
-                            .Text(t => t.Span(DashboardService.FmtOrBlank(secs)).FontSize(TimeCellFontSize).FontColor(textColor));
+                    {
+                        table.Cell().Element(CellStyle).AlignCenter().Text(t =>
+                        {
+                            t.Span(DashboardService.FmtOrBlank(secs)).FontSize(TimeCellFontSize).FontColor(cellColor);
+                            if (isMixed)
+                                t.Span($" +{DashboardService.Fmt(secs - bill)}f").FontSize(TimeCellFontSize - 3).FontColor("#10b981");
+                        });
+                    }
                     else
                         table.Cell().Element(CellStyle).AlignCenter()
                             .Text(DashboardService.FmtOrBlank(secs)).FontSize(TimeCellFontSize);
@@ -353,12 +365,18 @@ public class PdfService
             {
                 int total = Enumerable.Range(0, 7)
                     .Sum(d => grid.GetValueOrDefault((pc.PcId, d)));
+                int billTotal = billGrid != null
+                    ? Enumerable.Range(0, 7).Sum(d => billGrid.GetValueOrDefault((pc.PcId, d)))
+                    : total;
+                string totalText = billGrid != null
+                    ? (total <= 0 ? "" : DashboardService.FmtTotalWithBill(total, billTotal))
+                    : DashboardService.FmtOrBlank(total);
                 if (compact)
                     table.Cell().Element(WeekTotalCell).AlignCenter()
-                        .Text(t => t.Span(DashboardService.FmtOrBlank(total)).FontSize(TimeCellFontSize).FontColor(textColor).SemiBold());
+                        .Text(t => t.Span(totalText).FontSize(TimeCellFontSize).FontColor(textColor).SemiBold());
                 else
                     table.Cell().Element(WeekTotalCell).AlignCenter()
-                        .Text(DashboardService.FmtOrBlank(total)).SemiBold().FontSize(TimeCellFontSize);
+                        .Text(totalText).SemiBold().FontSize(TimeCellFontSize);
             }
         });
     }

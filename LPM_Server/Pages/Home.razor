@@ -712,14 +712,19 @@
                                 @foreach (var pc in _csSoloPcs)
                                 {
                                     var secs       = _grid.CsSolo.GetValueOrDefault((pc.PcId, dayIdx));
+                                    var bill       = _grid.CsSoloBill.GetValueOrDefault((pc.PcId, dayIdx));
+                                    var freePart   = secs - bill;
+                                    var isAllFree  = secs > 0 && bill == 0;
+                                    var isMixed    = secs > 0 && bill > 0 && bill < secs;
+                                    var cellColor  = isAllFree ? "#10b981" : "#ce93d8";
                                     var isSelected = _selPcId == pc.PcId && _selDay == dayIdx && _selRole == pc.WorkCapacity;
                                     var isPendingCs = _pendingCs.Solo.Contains((pc.PcId, dayIdx));
                                     var isPendingApprv = _unapprovedPcIds.Contains(pc.PcId);
                                     var soloRows   = _cellDetails.GetValueOrDefault((pc.PcId, dayIdx, "CSSolo")) ?? new();
                                     var soloTitle  = $"{DayLabel(day)} · {pc.FullName}";
-                                    var soloTotal  = secs > 0 ? $"Σ {DashboardService.Fmt(secs)}" : "pending review";
+                                    var soloTotal  = secs > 0 ? $"Σ {DashboardService.FmtTotalWithBill(secs, bill)}" : "pending review";
                                     <td class="text-center"
-                                        style="@(isPendingApprv ? "opacity:.35;" : isFuture ? "opacity:.45;" : "") color:#ce93d8; font-size:.82em;">
+                                        style="@(isPendingApprv ? "opacity:.35;" : isFuture ? "opacity:.45;" : "") color:@cellColor; font-size:.82em;">
                                         @if (secs > 0)
                                         {
                                             <SpkCellHoverCard Rows="soloRows" Role="CSSolo"
@@ -728,6 +733,10 @@
                                                               OnRowClick="OpenSessionManagerForCell">
                                                 <span>
                                                     @DashboardService.Fmt(secs)
+                                                    @if (isMixed)
+                                                    {
+                                                        <span style="color:#10b981; font-size:.85em; margin-left:3px;">+@DashboardService.Fmt(freePart) free</span>
+                                                    }
                                                     @if (isPendingCs)
                                                     {
                                                         <span class="text-danger fw-bold ms-1">*</span>
@@ -760,21 +769,25 @@
                             {
                                 var total = Enumerable.Range(0, 7)
                                     .Sum(d => _grid.CsSolo.GetValueOrDefault((pc.PcId, d)));
+                                var billTotal = Enumerable.Range(0, 7)
+                                    .Sum(d => _grid.CsSoloBill.GetValueOrDefault((pc.PcId, d)));
                                 <td class="text-center" style="color:#ce93d8; font-size:.82em;">
-                                    <strong>@DashboardService.Fmt(total)</strong>
+                                    <strong>@DashboardService.FmtTotalWithBill(total, billTotal)</strong>
                                 </td>
                             }
                         </tr>
                         @{
                             var csSoloGrandTotal = _csSoloPcs.Sum(pc => Enumerable.Range(0, 7)
                                 .Sum(d => _grid.CsSolo.GetValueOrDefault((pc.PcId, d))));
+                            var csSoloGrandBill = _csSoloPcs.Sum(pc => Enumerable.Range(0, 7)
+                                .Sum(d => _grid.CsSoloBill.GetValueOrDefault((pc.PcId, d))));
                         }
                         <tr style="background:linear-gradient(90deg,#6a1b9a 0%,#8e24aa 100%) !important; color:#fff !important;">
                             <td class="fw-bold" style="letter-spacing:.03em; font-size:.85em;color:#fff;">CS Solo Total</td>
                             <td colspan="@_csSoloPcs.Count" style="color:#fff;">
                                 <div class="text-center">
                                     <span style="font-size:1rem; font-weight:700; letter-spacing:.04em;color:#fff;">
-                                        @DashboardService.Fmt(csSoloGrandTotal)
+                                        @DashboardService.FmtTotalWithBill(csSoloGrandTotal, csSoloGrandBill)
                                     </span>
                                 </div>
                             </td>

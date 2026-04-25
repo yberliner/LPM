@@ -97,9 +97,10 @@ public record AuditorPermGroup(int AuditorId, string AuditorName, bool AllowAll,
 public sealed record WeekGrid(
     Dictionary<(int pcId, int dayIdx), int> Auditor,
     Dictionary<(int pcId, int dayIdx), int> Cs,
-    Dictionary<(int pcId, int dayIdx), int> CsSolo)
+    Dictionary<(int pcId, int dayIdx), int> CsSolo,
+    Dictionary<(int pcId, int dayIdx), int> CsSoloBill)
 {
-    public static WeekGrid Empty() => new(new(), new(), new());
+    public static WeekGrid Empty() => new(new(), new(), new(), new());
 }
 
 public sealed record PendingCsMarkers(
@@ -1044,10 +1045,11 @@ public class DashboardService
     public WeekGrid GetWeekGrid(
         int userId, DateOnly weekStart, List<PcInfo> userPcs)
     {
-        var auditor = new Dictionary<(int pcId, int dayIdx), int>();
-        var cs      = new Dictionary<(int pcId, int dayIdx), int>();
-        var csSolo  = new Dictionary<(int pcId, int dayIdx), int>();
-        if (userPcs.Count == 0) return new WeekGrid(auditor, cs, csSolo);
+        var auditor    = new Dictionary<(int pcId, int dayIdx), int>();
+        var cs         = new Dictionary<(int pcId, int dayIdx), int>();
+        var csSolo     = new Dictionary<(int pcId, int dayIdx), int>();
+        var csSoloBill = new Dictionary<(int pcId, int dayIdx), int>();
+        if (userPcs.Count == 0) return new WeekGrid(auditor, cs, csSolo, csSoloBill);
 
         var dates    = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToList();
         var dateList = string.Join(",", dates.Select(d => $"'{d:yyyy-MM-dd}'"));
@@ -1126,13 +1128,16 @@ public class DashboardService
             }
         }
 
-        // CS Solo slot: reviewing sessions where AuditorId IS NULL (solo self-sessions)
+        // CS Solo slot: reviewing sessions where AuditorId IS NULL (solo self-sessions).
+        // Returns total + billable subtotal (Notes <> 'Free'); empty/NULL Notes counts as billable.
         if (soloAuditorIds.Count > 0)
         {
             var pcList = string.Join(",", soloAuditorIds);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-                SELECT s.PcId, date(s.CreatedAt, 'localtime'), SUM(cr.ReviewLengthSeconds)
+                SELECT s.PcId, date(s.CreatedAt, 'localtime'),
+                       SUM(cr.ReviewLengthSeconds),
+                       SUM(CASE WHEN COALESCE(cr.Notes,'') <> 'Free' THEN cr.ReviewLengthSeconds ELSE 0 END)
                 FROM cs_reviews cr
                 JOIN sess_sessions s ON s.SessionId = cr.SessionId
                 WHERE cr.CsId = @uid AND s.PcId IN ({pcList}) AND date(s.CreatedAt, 'localtime') IN ({dateList}) AND s.AuditorId IS NULL
@@ -1144,14 +1149,16 @@ public class DashboardService
                 var pcId   = r.GetInt32(0);
                 var date   = DateOnly.Parse(r.GetString(1));
                 var secs   = r.GetInt32(2);
+                var bill   = r.GetInt32(3);
                 var dayIdx = dates.IndexOf(date);
                 if (dayIdx < 0) continue;
                 var key = (pcId, dayIdx);
-                csSolo[key] = csSolo.GetValueOrDefault(key) + secs;
+                csSolo[key]     = csSolo.GetValueOrDefault(key) + secs;
+                csSoloBill[key] = csSoloBill.GetValueOrDefault(key) + bill;
             }
         }
 
-        return new WeekGrid(auditor, cs, csSolo);
+        return new WeekGrid(auditor, cs, csSolo, csSoloBill);
     }
 
     /// <summary>
@@ -1863,6 +1870,18 @@ public class DashboardService
         return $"{totalMin / 60}:{totalMin % 60:D2}";
     }
 
+    /// Format a CS Solo total alongside its billable subtotal:
+    ///   bill == total → "0:26"             (all bill)
+    ///   bill == 0     → "0:26 (Free)"      (all free)
+    ///   mixed         → "0:26 (0:14 Bill)"
+    public static string FmtTotalWithBill(int total, int bill)
+    {
+        if (total <= 0) return Fmt(total);
+        if (bill >= total) return Fmt(total);
+        if (bill <= 0)     return $"{Fmt(total)} (Free)";
+        return $"{Fmt(total)} ({Fmt(bill)} Bill)";
+    }
+
     /// <summary>
     /// Default wallet for a new session/CS on a PC: the last-used wallet
     /// (from this PC's most recent session), falling back to the first active wallet.
@@ -2030,7 +2049,7 @@ public class DashboardService
             var key = (userId, dayIdx);
             auditor[key] = auditor.GetValueOrDefault(key) + secs;
         }
-        return new WeekGrid(auditor, new(), new());
+        return new WeekGrid(auditor, new(), new(), new());
     }
 
     public List<WeekTotal> GetWeeklyTotalsSolo(int userId, DateOnly latestWeekStart, int weekCount)
