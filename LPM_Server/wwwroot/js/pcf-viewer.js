@@ -932,6 +932,106 @@ window.pcfViewer = {
         }
     },
 
+    /// Char-break any line whose measured width exceeds maxW. Used as a last-resort fallback
+    /// after word-wrap when an unbreakable token (e.g. a long URL or `aaaa…aaaa`) is wider than
+    /// the page. Returns a new array of lines, each ≤ maxW wide.
+    _charBreakLinesIfNeeded(ctx, lines, maxW) {
+        const out = [];
+        for (const line of lines) {
+            if (!line) { out.push(line); continue; }
+            if (ctx.measureText(line).width <= maxW) { out.push(line); continue; }
+            let cur = '';
+            for (const ch of line) {
+                const test = cur + ch;
+                if (cur && ctx.measureText(test).width > maxW) {
+                    out.push(cur);
+                    cur = ch;
+                } else {
+                    cur = test;
+                }
+            }
+            if (cur) out.push(cur);
+        }
+        return out;
+    },
+
+    /// Clamp every text annotation in `pane` so its rendered bounding box sits inside the page.
+    /// Shifts (x, y) only — never scales/crops. If text is wider/taller than the page it pins
+    /// to the top-left margin (best effort). Returns the set of pageIdx values that changed,
+    /// so callers can redraw them. Mutates pane.annotations in place.
+    _clampTextAnnotationsToPage(pane) {
+        const affected = new Set();
+        if (!pane || !pane.annotations || !pane.pages) return affected;
+        const MARGIN = 2; // CSS px inset from page edges
+        const measureCanvas = document.createElement('canvas');
+        const ctx = measureCanvas.getContext('2d');
+
+        for (const a of pane.annotations) {
+            if (a.type !== 'text') continue;
+            if (typeof a.pageIdx !== 'number' || a.pageIdx < 0 || a.pageIdx >= pane.pages.length) continue;
+            const pg = pane.pages[a.pageIdx];
+            if (!pg || !pg.vp) continue;  // page not yet rendered — bake-side will catch it
+            const pageW = pg.vp.width;
+            const pageH = pg.vp.height;
+
+            const fontSize = a.fontSize || 14;
+            ctx.font = fontSize + 'px Arial';
+            let lines = (a.lines && a.lines.length > 0)
+                ? a.lines
+                : this._wrapText(ctx, a.text || '', a.maxWidth || 0);
+            const lineHeight = fontSize * 1.3;
+
+            // Horizontal span: take MAX of textarea width and actual measured line widths.
+            // Measuring lines is essential because an unbreakable long token (no spaces)
+            // can render wider than the textarea, and we need to detect that overflow.
+            let widthSpan = (typeof a.maxWidth === 'number' && a.maxWidth > 0) ? a.maxWidth : 0;
+            for (const line of lines) {
+                const w = ctx.measureText(line).width;
+                if (w > widthSpan) widthSpan = w;
+            }
+
+            // ── Force-wrap pass: if width exceeds page, re-wrap using ann.text as source ──
+            // Word-wrap first (preserves natural line breaks); then char-break any line that's
+            // still too wide (handles unbreakable long tokens). Guarantees no line spills out.
+            const maxAllowedW = pageW - 2 * MARGIN;
+            if (widthSpan > maxAllowedW && maxAllowedW > 0) {
+                let rewrapped = this._wrapText(ctx, a.text || '', maxAllowedW);
+                rewrapped = this._charBreakLinesIfNeeded(ctx, rewrapped, maxAllowedW);
+                let newSpan = 0;
+                for (const line of rewrapped) {
+                    const w = ctx.measureText(line).width;
+                    if (w > newSpan) newSpan = w;
+                }
+                console.log('[txt-clamp] force-wrap page=' + a.pageIdx + ' oldMaxW=' + widthSpan.toFixed(1) + ' newMaxW=' + Math.min(newSpan, maxAllowedW).toFixed(1) + ' lines=' + rewrapped.length);
+                a.lines = rewrapped;
+                a.maxWidth = maxAllowedW;
+                lines = rewrapped;
+                widthSpan = Math.min(newSpan, maxAllowedW);
+                affected.add(a.pageIdx);
+            }
+
+            const lineCount = Math.max(1, lines.length);
+            const left   = a.x;
+            const right  = a.x + widthSpan;
+            const top    = a.y - fontSize;                                            // ascender
+            const bottom = a.y + (lineCount - 1) * lineHeight + fontSize * 0.3;       // descender
+
+            let dx = 0, dy = 0;
+            if (right > pageW - MARGIN)   dx = (pageW - MARGIN) - right;   // shift left
+            if (left + dx < MARGIN)       dx = MARGIN - left;              // pin to left edge
+            if (bottom > pageH - MARGIN)  dy = (pageH - MARGIN) - bottom;  // shift up
+            if (top + dy < MARGIN)        dy = MARGIN - top;               // pin to top edge
+
+            if (dx !== 0 || dy !== 0) {
+                console.log('[txt-clamp] page=' + a.pageIdx + ' shift dx=' + dx.toFixed(1) + ' dy=' + dy.toFixed(1) + ' (was x=' + a.x.toFixed(1) + ' y=' + a.y.toFixed(1) + ')');
+                a.x += dx;
+                a.y += dy;
+                affected.add(a.pageIdx);
+            }
+        }
+        return affected;
+    },
+
     _hitTestText(pane, pageIdx, x, y) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
@@ -1999,6 +2099,10 @@ window.pcfViewer = {
     async _saveSidecar(paneId) {
         const pane = this.panes[paneId];
         if (!pane || pane.readOnly || !pane.filePath || !this._pcId) return;
+        // Clamp text annotations into page boundaries before persisting; redraw any pages
+        // whose annotations actually moved so the user sees the snap.
+        const clamped = this._clampTextAnnotationsToPage(pane);
+        for (const pageIdx of clamped) this._redrawOverlay(pageIdx, paneId);
         const textAnns = pane.annotations.filter(a => a.type === 'text');
         const soloParam = pane.solo ? '&solo=true' : '';
         const url = `/api/pc-file-save-annotations?pcId=${this._pcId}&path=${encodeURIComponent(pane.filePath)}${soloParam}`;
@@ -2014,6 +2118,8 @@ window.pcfViewer = {
     _saveSidecarBeacon(paneId) {
         const pane = this.panes[paneId];
         if (!pane || pane.readOnly || !pane.filePath || !this._pcId) return;
+        // Clamp before serializing; no redraw here (sync close/unload context).
+        this._clampTextAnnotationsToPage(pane);
         const textAnns = pane.annotations.filter(a => a.type === 'text');
         const soloParam = pane.solo ? '&solo=true' : '';
         const url = `/api/pc-file-save-annotations?pcId=${this._pcId}&path=${encodeURIComponent(pane.filePath)}${soloParam}`;

@@ -337,6 +337,8 @@
     [Parameter] public int CurrentUserId { get; set; }
     [Parameter] public string CurrentUserName { get; set; } = "";
     [Parameter] public EventCallback OnCloseRequested { get; set; }
+    /// <summary>"Evil", "Serfac", or "Pts" — selects which tab is active when the modal opens. Defaults to Evil.</summary>
+    [Parameter] public string? InitialTab { get; set; }
 
     enum Tab { Evil, Serfac, Pts }
     Tab _activeTab = Tab.Evil;
@@ -376,6 +378,13 @@
     {
         if (Show && !_loaded)
         {
+            // Honor InitialTab passed by the opener (e.g. card click in PcFolder mega-button).
+            _activeTab = InitialTab switch
+            {
+                "Serfac" => Tab.Serfac,
+                "Pts"    => Tab.Pts,
+                _        => Tab.Evil,
+            };
             await LoadAllAsync();
             _loaded = true;
         }

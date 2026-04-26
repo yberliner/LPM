@@ -2063,6 +2063,151 @@
     </div>
 }
 
+@* ── By-Creator floating dropdown (rendered at root to escape sm-body overflow) ── *@
+@if (_creatorDropOpen)
+{
+    <div class="cb-drop-menu cb-drop-floating" id="cb-floating-drop" @onclick:stopPropagation="true">
+        <div class="cb-drop-header">
+            <i class="ri-team-line me-1"></i>Pick a creator
+        </div>
+        @if (_creatorList.Count == 0)
+        {
+            <div class="cb-drop-empty">No staff users found</div>
+        }
+        else
+        {
+            @foreach (var u in _creatorList)
+            {
+                var capt = u;
+                <button type="button" class="cb-drop-item" @onclick="() => OpenCreatorPopup(capt.UserId, capt.DisplayName)">
+                    <div class="cb-avatar">
+                        @if (!string.IsNullOrWhiteSpace(capt.AvatarPath))
+                        {
+                            <img src="@capt.AvatarPath" alt="" />
+                        }
+                        else
+                        {
+                            <span>@CreatorInitials(capt.DisplayName)</span>
+                        }
+                    </div>
+                    <div class="cb-info">
+                        <div class="cb-name">@capt.DisplayName</div>
+                        <div class="cb-role">@capt.StaffRole</div>
+                    </div>
+                    <span class="cb-count" title="Sessions created">@capt.SessionCount</span>
+                </button>
+            }
+        }
+    </div>
+}
+
+@* ── Sessions-by-Creator Popup ── *@
+@if (_creatorPopupOpen)
+{
+    <div class="cb-popup-overlay" @onclick="CloseCreatorPopup"></div>
+    <div class="cb-popup-modal" @onclick:stopPropagation="true">
+        <div class="cb-popup-header">
+            <div class="cb-popup-title">
+                <i class="ri-user-search-line me-2"></i>
+                Sessions created by <span class="cb-popup-name">@_creatorPopupName</span>
+                @if (!_creatorPopupLoading)
+                {
+                    <span class="cb-popup-badge">@_creatorPopupRows.Count</span>
+                }
+            </div>
+            <button type="button" class="cb-popup-close" @onclick="CloseCreatorPopup" title="Close">
+                <i class="ri-close-line"></i>
+            </button>
+        </div>
+
+        <div class="cb-popup-body">
+            @if (_creatorPopupLoading)
+            {
+                <div class="cb-popup-loading">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <div>Loading sessions…</div>
+                </div>
+            }
+            else if (_creatorPopupRows.Count == 0)
+            {
+                <div class="cb-popup-empty">
+                    <i class="ri-inbox-line"></i>
+                    <div>No sessions created by this user.</div>
+                </div>
+            }
+            else
+            {
+                <div class="cb-table-wrap">
+                    <table class="cb-table">
+                        <thead>
+                            <tr>
+                                <th style="width:80px;">Session #</th>
+                                <th>PC</th>
+                                <th style="width:110px;">Date</th>
+                                <th>Auditor</th>
+                                <th>CS</th>
+                                <th style="width:90px;">Duration</th>
+                                <th style="width:90px;">Admin</th>
+                                <th style="width:110px;">Status</th>
+                                <th style="width:140px;">Created</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _creatorPopupRows)
+                            {
+                                var capt = row;
+                                <tr class="cb-row" @onclick="() => OnCreatorRowClick(capt.SessionId)" title="Open in Session Manager">
+                                    <td class="cb-id" data-label="Session #">#@capt.SessionId</td>
+                                    <td class="cb-pc" data-label="PC">
+                                        <div class="cb-cell">
+                                            <span><i class="ri-folder-user-line me-1"></i>@(string.IsNullOrWhiteSpace(capt.PcFullName) ? "—" : capt.PcFullName)</span>
+                                            @if (!string.IsNullOrWhiteSpace(capt.SessionName))
+                                            {
+                                                <div class="cb-subtle">@capt.SessionName</div>
+                                            }
+                                        </div>
+                                    </td>
+                                    <td data-label="Date"><span class="cb-cell">@FormatCreatorDate(capt.SessionDate)</span></td>
+                                    <td data-label="Auditor"><span class="cb-cell">@(string.IsNullOrWhiteSpace(capt.AuditorName) ? "Solo" : capt.AuditorName)</span></td>
+                                    <td data-label="CS"><span class="cb-cell">@(string.IsNullOrWhiteSpace(capt.CsName) ? "—" : capt.CsName)</span></td>
+                                    <td class="cb-time" data-label="Duration"><span class="cb-cell">@FormatHms(capt.LengthSeconds)</span></td>
+                                    <td class="cb-time" data-label="Admin"><span class="cb-cell">@FormatHms(capt.AdminSeconds)</span></td>
+                                    <td data-label="Status">
+                                        <span class="cb-cell cb-cell-badges">
+                                            @if (capt.IsImported)
+                                            {
+                                                <span class="cb-badge cb-badge-imported"><i class="ri-download-cloud-line me-1"></i>Imported</span>
+                                            }
+                                            else if (string.Equals(capt.VerifiedStatus, "Verified", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <span class="cb-badge cb-badge-verified"><i class="ri-shield-check-line me-1"></i>Verified</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="cb-badge cb-badge-draft"><i class="ri-edit-line me-1"></i>@capt.VerifiedStatus</span>
+                                            }
+                                            @if (capt.IsFreeSession)
+                                            {
+                                                <span class="cb-badge cb-badge-free ms-1"><i class="ri-gift-line me-1"></i>Free</span>
+                                            }
+                                        </span>
+                                    </td>
+                                    <td class="cb-subtle" data-label="Created">@FormatCreatorDateTime(capt.CreatedAt)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <div class="cb-popup-footer">
+            <span class="cb-footer-hint"><i class="ri-information-line me-1"></i>Click any row to open in Session Manager</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CloseCreatorPopup">Close</button>
+        </div>
+    </div>
+}
+
 @* ── Transfer Balance Modal ── *@
 @if (_showTransfer)
 {
@@ -3427,6 +3572,14 @@
                             <button type="button" class="btn @(_smSoloDays == 0 ? "btn-primary" : "btn-outline-secondary")"
                                     @onclick="() => SmSoloDaysChanged(0)">ALL</button>
                         </div>
+                        <div class="cb-anchor ms-2">
+                            <button class="btn btn-sm btn-outline-info d-flex align-items-center gap-1"
+                                    @onclick="ToggleCreatorDropdown" @onclick:stopPropagation="true"
+                                    title="Browse sessions by creator">
+                                <i class="ri-user-search-line"></i> By Creator
+                                <i class="ri-arrow-down-s-line" style="font-size:.85rem;"></i>
+                            </button>
+                        </div>
                         <button class="btn btn-sm btn-outline-success ms-2 d-flex align-items-center gap-1" @onclick="SmOpenAdd">
                             <i class="ri-add-line"></i> Add
                         </button>
@@ -3450,6 +3603,14 @@
                             </button>
                         </div>
                         <div class="ms-auto d-flex gap-1">
+                            <div class="cb-anchor">
+                                <button class="btn btn-sm btn-outline-info d-flex align-items-center gap-1"
+                                        @onclick="ToggleCreatorDropdown" @onclick:stopPropagation="true"
+                                        title="Browse sessions by creator">
+                                    <i class="ri-user-search-line"></i> By Creator
+                                    <i class="ri-arrow-down-s-line" style="font-size:.85rem;"></i>
+                                </button>
+                            </div>
                             <button class="btn btn-sm btn-outline-warning d-flex align-items-center gap-1" @onclick="SmToggleSoloMode">
                                 <i class="ri-user-voice-line"></i> Solo
                             </button>
@@ -4981,6 +5142,230 @@
         .arf-cell-input { padding: 5px 3px; }
         .arf-cell-textarea { min-height: 30px; }
         .arf-row-action-btn, .arf-del-row-btn { min-width: 28px; min-height: 28px; }
+    }
+</style>
+
+<style>
+    /* ── By-Creator browser ── */
+    .cb-anchor { position: relative; display: inline-flex; }
+
+    .cb-drop-menu {
+        position: absolute; right: 0; top: calc(100% + 6px);
+        background: #0f172a; border: 1px solid #6366f1;
+        border-radius: 8px;
+        min-width: 280px; max-height: 420px; overflow-y: auto;
+        z-index: 10070;
+        box-shadow: 0 10px 30px rgba(0,0,0,.65);
+    }
+    /* Floating variant: rendered at root, positioned via JS */
+    .cb-drop-floating {
+        position: fixed;
+        right: auto; left: 0; top: 0;
+        z-index: 10090;
+        visibility: hidden;
+    }
+    .cb-drop-floating.cb-drop-positioned { visibility: visible; }
+    .cb-drop-header {
+        padding: 8px 12px; border-bottom: 1px solid #1e293b;
+        font-size: .72rem; color: #c4b5fd;
+        text-transform: uppercase; letter-spacing: .8px;
+        background: rgba(99,102,241,.1);
+    }
+    .cb-drop-empty { padding: 16px; text-align: center; color: #64748b; font-size: .82rem; }
+    .cb-drop-item {
+        display: flex; align-items: center; gap: 10px;
+        width: 100%; padding: 8px 12px;
+        background: transparent; border: none;
+        border-bottom: 1px solid #1e293b;
+        color: #e2e8f0; font-size: .82rem; text-align: left;
+        cursor: pointer; transition: background .12s ease;
+    }
+    .cb-drop-item:hover { background: rgba(99,102,241,.18); }
+    .cb-drop-item:last-child { border-bottom: none; }
+    .cb-avatar {
+        width: 32px; height: 32px; border-radius: 50%;
+        background: linear-gradient(135deg, #6366f1, #a855f7);
+        color: #fff; font-weight: 600; font-size: .75rem;
+        display: flex; align-items: center; justify-content: center;
+        overflow: hidden; flex-shrink: 0;
+    }
+    .cb-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .cb-info { flex: 1; min-width: 0; }
+    .cb-name { font-weight: 500; color: #f1f5f9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cb-role { font-size: .68rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .5px; }
+    .cb-count {
+        background: rgba(99,102,241,.25); color: #c4b5fd;
+        font-size: .72rem; font-weight: 600;
+        padding: 2px 8px; border-radius: 10px;
+        min-width: 28px; text-align: center;
+    }
+
+    /* Popup modal — z-index above Session Manager (10051) */
+    .cb-popup-overlay {
+        position: fixed; inset: 0; z-index: 10080;
+        background: rgba(0,0,0,.55);
+        backdrop-filter: blur(2px);
+    }
+    .cb-popup-modal {
+        position: fixed; top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 10081;
+        width: min(1100px, 96vw); max-height: 88vh;
+        background: linear-gradient(180deg, #1e293b 0%, #172033 100%);
+        color: #e2e8f0; border: 1px solid #334155;
+        border-radius: 14px;
+        box-shadow: 0 25px 70px rgba(0,0,0,.7);
+        display: flex; flex-direction: column;
+        overflow: hidden;
+    }
+    .cb-popup-header {
+        padding: 14px 18px;
+        background: linear-gradient(135deg, #6366f1, #a855f7);
+        display: flex; align-items: center; gap: 12px;
+        border-bottom: 1px solid #334155;
+    }
+    .cb-popup-title {
+        flex: 1; color: #fff; font-size: 1rem; font-weight: 500;
+        display: flex; align-items: center; gap: 6px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .cb-popup-name { font-weight: 700; margin-left: 4px; }
+    .cb-popup-badge {
+        background: rgba(255,255,255,.25); color: #fff;
+        font-size: .72rem; font-weight: 600;
+        padding: 2px 9px; border-radius: 10px;
+        margin-left: 8px;
+    }
+    .cb-popup-close {
+        background: rgba(255,255,255,.15); color: #fff;
+        border: 1px solid rgba(255,255,255,.25);
+        width: 32px; height: 32px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer; transition: background .15s ease;
+    }
+    .cb-popup-close:hover { background: rgba(255,255,255,.3); }
+
+    .cb-popup-body { flex: 1; overflow: auto; padding: 14px 18px; }
+    .cb-popup-loading {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 12px; padding: 50px 0; color: #94a3b8;
+    }
+    .cb-popup-empty {
+        display: flex; flex-direction: column; align-items: center; gap: 10px;
+        padding: 50px 0; color: #64748b;
+    }
+    .cb-popup-empty i { font-size: 2.5rem; color: #475569; }
+
+    .cb-table-wrap { overflow-x: auto; }
+    .cb-table {
+        width: 100%; border-collapse: separate; border-spacing: 0;
+        font-size: .82rem;
+    }
+    .cb-table thead th {
+        position: sticky; top: 0; z-index: 1;
+        background: #0f172a; color: #c4b5fd;
+        font-size: .68rem; font-weight: 600;
+        text-transform: uppercase; letter-spacing: .6px;
+        padding: 8px 10px; text-align: left;
+        border-bottom: 2px solid #6366f1;
+    }
+    .cb-table tbody td {
+        padding: 9px 10px; border-bottom: 1px solid #1e293b;
+        vertical-align: middle;
+    }
+    .cb-row { cursor: pointer; transition: background .12s ease; }
+    .cb-row:hover td { background: rgba(99,102,241,.12); }
+    .cb-row:hover .cb-id { color: #c4b5fd; }
+    .cb-id { font-weight: 600; color: #94a3b8; font-variant-numeric: tabular-nums; }
+    .cb-pc { color: #f1f5f9; font-weight: 500; }
+    .cb-time { font-variant-numeric: tabular-nums; color: #cbd5e1; }
+    .cb-subtle { font-size: .72rem; color: #64748b; }
+
+    .cb-badge {
+        display: inline-flex; align-items: center;
+        font-size: .68rem; font-weight: 600;
+        padding: 2px 8px; border-radius: 10px;
+        white-space: nowrap;
+    }
+    .cb-badge-verified { background: rgba(34,197,94,.2);  color: #4ade80; border: 1px solid rgba(34,197,94,.35); }
+    .cb-badge-draft    { background: rgba(234,179,8,.18); color: #fde68a; border: 1px solid rgba(234,179,8,.35); }
+    .cb-badge-imported { background: rgba(59,130,246,.2); color: #93c5fd; border: 1px solid rgba(59,130,246,.35); }
+    .cb-badge-free     { background: rgba(236,72,153,.18); color: #fbcfe8; border: 1px solid rgba(236,72,153,.35); }
+
+    .cb-popup-footer {
+        padding: 10px 18px; border-top: 1px solid #334155;
+        display: flex; align-items: center; justify-content: space-between;
+        background: #0f172a;
+    }
+    .cb-footer-hint { font-size: .75rem; color: #94a3b8; }
+
+    /* Light mode adjustments */
+    :root[data-theme-mode="light"] .cb-drop-menu { background: #ffffff; border-color: #c7d2fe; box-shadow: 0 10px 28px rgba(15,23,42,.18); }
+    :root[data-theme-mode="light"] .cb-drop-header { color: #6d28d9; background: #f5f3ff; border-bottom-color: #e9d5ff; }
+    :root[data-theme-mode="light"] .cb-drop-item { color: #1e293b; border-bottom-color: #f1f5f9; }
+    :root[data-theme-mode="light"] .cb-drop-item:hover { background: #f5f3ff; }
+    :root[data-theme-mode="light"] .cb-name { color: #0f172a; }
+    :root[data-theme-mode="light"] .cb-role { color: #64748b; }
+    :root[data-theme-mode="light"] .cb-count { background: #ede9fe; color: #6d28d9; }
+    :root[data-theme-mode="light"] .cb-popup-modal { background: linear-gradient(180deg,#ffffff 0%,#f8fafc 100%); color: #1e293b; border-color: #e2e8f0; }
+    :root[data-theme-mode="light"] .cb-popup-body { color: #334155; }
+    :root[data-theme-mode="light"] .cb-table thead th { background: #f1f5f9; color: #6d28d9; }
+    :root[data-theme-mode="light"] .cb-table tbody td { border-bottom-color: #e2e8f0; }
+    :root[data-theme-mode="light"] .cb-pc { color: #0f172a; }
+    :root[data-theme-mode="light"] .cb-time { color: #475569; }
+    :root[data-theme-mode="light"] .cb-id { color: #64748b; }
+    :root[data-theme-mode="light"] .cb-subtle { color: #94a3b8; }
+    :root[data-theme-mode="light"] .cb-row:hover td { background: rgba(99,102,241,.08); }
+    :root[data-theme-mode="light"] .cb-popup-footer { background: #f8fafc; border-top-color: #e2e8f0; }
+
+    /* Tablet */
+    @@media (max-width: 992px) {
+        .cb-popup-modal { width: 98vw; max-height: 94vh; }
+        .cb-table { font-size: .78rem; }
+        .cb-table thead th, .cb-table tbody td { padding: 7px 8px; }
+    }
+
+    /* Mobile — stack into cards */
+    @@media (max-width: 768px) {
+        .cb-drop-menu { min-width: 240px; max-height: 60vh; }
+        .cb-popup-header { padding: 10px 12px; }
+        .cb-popup-title { font-size: .9rem; }
+        .cb-popup-body { padding: 10px; }
+
+        .cb-table thead { display: none; }
+        .cb-table, .cb-table tbody, .cb-table tr, .cb-table td { display: block; width: 100%; }
+        .cb-row {
+            border: 1px solid #334155; border-radius: 10px;
+            margin-bottom: 10px; padding: 4px 4px 4px 4px;
+            background: rgba(15,23,42,.45);
+        }
+        .cb-row:hover td { background: transparent; }
+        .cb-table tbody td {
+            border: none; padding: 6px 12px;
+            display: flex; justify-content: space-between; align-items: center;
+            gap: 10px; min-height: 32px;
+        }
+        .cb-table tbody td::before {
+            content: attr(data-label);
+            font-size: .68rem; color: #94a3b8;
+            text-transform: uppercase; letter-spacing: .5px;
+            flex: 0 0 auto;
+        }
+        .cb-table tbody td .cb-cell {
+            flex: 1 1 auto; text-align: right;
+            display: inline-flex; flex-direction: column; align-items: flex-end;
+            gap: 2px; min-width: 0;
+        }
+        .cb-table tbody td .cb-cell-badges { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; }
+        :root[data-theme-mode="light"] .cb-row { background: #f8fafc; border-color: #e2e8f0; }
+        :root[data-theme-mode="light"] .cb-table tbody td::before { color: #64748b; }
+    }
+
+    @@media (max-width: 480px) {
+        .cb-drop-menu:not(.cb-drop-floating) { min-width: 220px; right: -40px; }
+        .cb-drop-floating { min-width: 220px; }
+        .cb-popup-footer { flex-direction: column; gap: 8px; align-items: stretch; }
+        .cb-popup-footer .btn { width: 100%; }
     }
 </style>
 
@@ -6649,6 +7034,14 @@
     bool _refBrowserOpen;
     List<(string Section, string Name, string RelPath)> _refFileList = [];
 
+    // ── By-Creator browser state ──
+    bool _creatorDropOpen;
+    List<DashboardService.CreatorUserItem> _creatorList = new();
+    bool _creatorPopupOpen;
+    int _creatorPopupUserId;
+    string _creatorPopupName = "";
+    bool _creatorPopupLoading;
+    List<DashboardService.SessionByCreatorRow> _creatorPopupRows = new();
 
     // Background import toast state
     bool   _bgImportRunning;
@@ -8202,6 +8595,102 @@
         var url = $"/api/pc-file?pcId={_importPcId}&path={Uri.EscapeDataString(relPath)}&solo={_isSoloUser.ToString().ToLower()}";
         Console.WriteLine($"[WizRef] OpenRefFile: pcId={_importPcId} solo={_isSoloUser} relPath='{relPath}' url='{url}'");
         await JSRuntime.InvokeVoidAsync("wizardRef.openFloat", url, name);
+    }
+
+    // ── By-Creator browser handlers ──
+    async Task ToggleCreatorDropdown()
+    {
+        if (!_creatorDropOpen && _creatorList.Count == 0)
+        {
+            try { _creatorList = DashSvc.GetNonSoloUsersForCreatorBrowser(); }
+            catch (Exception ex) { Console.WriteLine($"[CreatorBrowser] Failed to load users: {ex.Message}"); _creatorList = new(); }
+        }
+        _creatorDropOpen = !_creatorDropOpen;
+        if (_creatorDropOpen)
+        {
+            // Render first, then position via JS so we can read the trigger button's bounding rect.
+            StateHasChanged();
+            await Task.Yield();
+            try { await JSRuntime.InvokeVoidAsync("lpmCreatorDrop.position"); }
+            catch (Exception ex) { Console.WriteLine($"[CreatorBrowser] position JS failed: {ex.Message}"); }
+        }
+        else
+        {
+            try { await JSRuntime.InvokeVoidAsync("lpmCreatorDrop.reset"); } catch { }
+        }
+    }
+
+    async Task OpenCreatorPopup(int userId, string name)
+    {
+        _creatorDropOpen = false;
+        _creatorPopupOpen = true;
+        _creatorPopupUserId = userId;
+        _creatorPopupName = name;
+        _creatorPopupRows = new();
+        _creatorPopupLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            _creatorPopupRows = await Task.Run(() => DashSvc.GetSessionsByCreator(userId));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[CreatorBrowser] Failed to load sessions for user {userId}: {ex.Message}");
+            _creatorPopupRows = new();
+        }
+        finally
+        {
+            _creatorPopupLoading = false;
+        }
+        ActivitySvc.RecordActivity(_logUsername, $"Opened sessions popup for creator '{name}' ({_creatorPopupRows.Count} sessions)", "session");
+        StateHasChanged();
+    }
+
+    void CloseCreatorPopup()
+    {
+        _creatorPopupOpen = false;
+    }
+
+    void OnCreatorRowClick(int sessionId)
+    {
+        ActivitySvc.RecordActivity(_logUsername, $"Opened session #{sessionId} from creator popup ('{_creatorPopupName}')", "session");
+        _creatorPopupOpen = false;
+        _creatorDropOpen = false;
+        SmLauncher.RequestOpen(sessionId);
+    }
+
+    static string CreatorInitials(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 1) return parts[0][..1].ToUpperInvariant();
+        return (parts[0][..1] + parts[^1][..1]).ToUpperInvariant();
+    }
+
+    static string FormatHms(int totalSeconds)
+    {
+        if (totalSeconds <= 0) return "0:00";
+        var h = totalSeconds / 3600;
+        var m = (totalSeconds % 3600) / 60;
+        var s = totalSeconds % 60;
+        return h > 0 ? $"{h}:{m:D2}:{s:D2}" : $"{m}:{s:D2}";
+    }
+
+    static string FormatCreatorDate(string s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "—";
+        if (DateTime.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeLocal, out var dt))
+            return dt.ToString("dd MMM yyyy", System.Globalization.CultureInfo.InvariantCulture);
+        return s;
+    }
+
+    static string FormatCreatorDateTime(string s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "—";
+        if (DateTime.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeLocal, out var dt))
+            return dt.ToString("dd MMM, HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+        return s;
     }
 
     async Task ExecuteImport()

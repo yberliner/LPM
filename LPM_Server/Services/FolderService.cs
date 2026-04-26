@@ -1089,6 +1089,62 @@ public class FolderService
                         : WrapTextForPdf(gfx, mainFont, ann.Text, maxWidthPt);
                     var brush = new PdfSharpCore.Drawing.XSolidBrush(color);
 
+                    // ── Force-wrap + bbox clamp to page boundaries (safety net; the JS save also clamps) ──
+                    // Shift only — never crop, never rescale. Force-wrap first guarantees the
+                    // horizontal axis fits; vertical pin handles oversized blocks (best effort).
+                    {
+                        double pageWPt = page.Width.Point;
+                        double pageHPt = page.Height.Point;
+                        const double MARGIN_PT = 2.0;
+
+                        // Take MAX of textarea width and actual measured line widths.
+                        // An unbreakable long token (no spaces) renders wider than the textarea
+                        // and must be detected so the force-wrap pass triggers.
+                        double widthSpan = maxWidthPt;
+                        foreach (var line in lines)
+                        {
+                            var w = gfx.MeasureString(line, mainFont).Width;
+                            if (w > widthSpan) widthSpan = w;
+                        }
+
+                        // Force-wrap if anything exceeds page width: word-wrap first, then char-break
+                        // any line still too wide (handles unbreakable long tokens).
+                        double maxAllowedWPt = pageWPt - 2 * MARGIN_PT;
+                        if (widthSpan > maxAllowedWPt && maxAllowedWPt > 0)
+                        {
+                            var rewrapped = WrapTextForPdf(gfx, mainFont, ann.Text, maxAllowedWPt);
+                            rewrapped = CharBreakLinesIfNeeded(gfx, mainFont, rewrapped, maxAllowedWPt);
+                            double newSpan = 0;
+                            foreach (var line in rewrapped)
+                            {
+                                var w = gfx.MeasureString(line, mainFont).Width;
+                                if (w > newSpan) newSpan = w;
+                            }
+                            Console.WriteLine($"[BakeText] force-wrap page={i} oldMaxW={widthSpan:F1} newMaxW={Math.Min(newSpan, maxAllowedWPt):F1} lines={rewrapped.Count}");
+                            lines = rewrapped;
+                            maxWidthPt = maxAllowedWPt;       // RTL right-anchor uses this
+                            widthSpan = Math.Min(newSpan, maxAllowedWPt);
+                        }
+
+                        double left   = pdfX;
+                        double right  = pdfX + widthSpan;
+                        double top    = pdfY - fontSizePt;
+                        double bottom = pdfY + (lines.Count - 1) * lineHeightPt + fontSizePt * 0.3;
+
+                        double dx = 0, dy = 0;
+                        if (right  > pageWPt - MARGIN_PT) dx = (pageWPt - MARGIN_PT) - right;
+                        if (left + dx < MARGIN_PT)        dx = MARGIN_PT - left;
+                        if (bottom > pageHPt - MARGIN_PT) dy = (pageHPt - MARGIN_PT) - bottom;
+                        if (top  + dy < MARGIN_PT)        dy = MARGIN_PT - top;
+
+                        if (dx != 0 || dy != 0)
+                        {
+                            Console.WriteLine($"[BakeText] clamp page={i} shift dx={dx:F1} dy={dy:F1} (was x={pdfX:F1} y={pdfY:F1})");
+                            pdfX += dx;
+                            pdfY += dy;
+                        }
+                    }
+
                     // Helper: draw a single line using segment-by-segment font switching
                     void DrawLineSegmented(string line, double lx, double ly, PdfSharpCore.Drawing.XStringFormat? lfmt = null)
                     {
@@ -1186,6 +1242,34 @@ public class FolderService
             lines.Add(current);
         }
         return lines;
+    }
+
+    /// <summary>
+    /// Char-break any line whose measured width exceeds maxWidthPt. Last-resort fallback after
+    /// word-wrap when an unbreakable long token (e.g. a URL or `aaaa…`) is wider than the page.
+    /// Returns a new list where every line measures ≤ maxWidthPt.
+    /// </summary>
+    private static List<string> CharBreakLinesIfNeeded(PdfSharpCore.Drawing.XGraphics gfx, PdfSharpCore.Drawing.XFont font, List<string> lines, double maxWidthPt)
+    {
+        var result = new List<string>(lines.Count);
+        foreach (var line in lines)
+        {
+            if (string.IsNullOrEmpty(line)) { result.Add(line); continue; }
+            if (gfx.MeasureString(line, font).Width <= maxWidthPt) { result.Add(line); continue; }
+            var cur = "";
+            foreach (var ch in line)
+            {
+                var test = cur + ch;
+                if (cur.Length > 0 && gfx.MeasureString(test, font).Width > maxWidthPt)
+                {
+                    result.Add(cur);
+                    cur = ch.ToString();
+                }
+                else cur = test;
+            }
+            if (cur.Length > 0) result.Add(cur);
+        }
+        return result;
     }
 
     /// <summary>

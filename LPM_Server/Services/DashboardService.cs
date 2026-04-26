@@ -3347,6 +3347,74 @@ public class DashboardService
         return list;
     }
 
+    public record CreatorUserItem(int UserId, string Username, string DisplayName, string StaffRole, string? AvatarPath, int SessionCount);
+
+    public List<CreatorUserItem> GetNonSoloUsersForCreatorBrowser()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT u.Id, u.Username, u.StaffRole, u.AvatarPath,
+                   COALESCE(NULLIF(TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')), ''), u.Username) AS DisplayName,
+                   (SELECT COUNT(*) FROM sess_sessions s WHERE s.CreatedByUserId = u.Id) AS SessionCount
+            FROM core_users u
+            LEFT JOIN core_persons p ON p.PersonId = u.PersonId
+            WHERE u.IsActive = 1 AND u.StaffRole NOT IN ('Solo', 'None')
+            ORDER BY DisplayName COLLATE NOCASE";
+        var list = new List<CreatorUserItem>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new CreatorUserItem(
+                r.GetInt32(0), r.GetString(1), r.GetString(4), r.GetString(2),
+                r.IsDBNull(3) ? null : r.GetString(3),
+                r.GetInt32(5)));
+        return list;
+    }
+
+    public record SessionByCreatorRow(
+        int SessionId, string SessionDate, string CreatedAt,
+        int PcId, string PcFullName, string AuditorName, string CsName,
+        int LengthSeconds, int AdminSeconds,
+        bool IsFreeSession, bool IsImported, string VerifiedStatus, string SessionName);
+
+    public List<SessionByCreatorRow> GetSessionsByCreator(int userId, int limit = 200)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT s.SessionId, s.SessionDate, s.CreatedAt, s.PcId,
+                   COALESCE(TRIM(pp.FirstName || ' ' || COALESCE(NULLIF(pp.LastName,''),'')), '') AS PcFullName,
+                   COALESCE(TRIM(pa.FirstName || ' ' || COALESCE(NULLIF(pa.LastName,''),'')), '') AS AuditorName,
+                   COALESCE((SELECT COALESCE(TRIM(p2.FirstName || ' ' || COALESCE(NULLIF(p2.LastName,''),'')), '')
+                             FROM cs_reviews cr
+                             LEFT JOIN core_persons p2 ON p2.PersonId = cr.CsId
+                             WHERE cr.SessionId = s.SessionId
+                             ORDER BY cr.CsReviewId LIMIT 1), '') AS CsName,
+                   s.LengthSeconds, s.AdminSeconds,
+                   s.IsFreeSession, s.IsImported, s.VerifiedStatus,
+                   COALESCE(s.Name, '') AS SessionName
+            FROM sess_sessions s
+            LEFT JOIN core_persons pp ON pp.PersonId = s.PcId
+            LEFT JOIN core_persons pa ON pa.PersonId = s.AuditorId
+            WHERE s.CreatedByUserId = @uid
+            ORDER BY s.CreatedAt DESC, s.SessionId DESC
+            LIMIT @lim";
+        cmd.Parameters.AddWithValue("@uid", userId);
+        cmd.Parameters.AddWithValue("@lim", limit);
+        var list = new List<SessionByCreatorRow>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new SessionByCreatorRow(
+                r.GetInt32(0), r.GetString(1), r.GetString(2),
+                r.GetInt32(3), r.GetString(4), r.GetString(5), r.GetString(6),
+                r.GetInt32(7), r.GetInt32(8),
+                r.GetInt32(9) != 0, r.GetInt32(10) != 0, r.GetString(11),
+                r.GetString(12)));
+        return list;
+    }
+
     public void SendMessage(int fromStaffId, int toStaffId, string msgText)
     {
         using var conn = new SqliteConnection(_connectionString);
