@@ -1424,31 +1424,47 @@ public class FolderService
         }
     }
 
+    // Per-file lock map to prevent concurrent bakes from doubling baked text.
+    // The CS-Done flow fires BurnAnnotationSidecarsForSessionAsync (fire-and-forget) and
+    // then DoCloseToHome fires BurnAllAnnotationSidecarsAsync — both can target the same
+    // sidecar. Without serialisation, both tasks can read the (clean) PDF + sidecar in parallel,
+    // bake separately, and write each other's output, producing visibly doubled text.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> _bakeLocks = new();
+
     private void BurnSidecarForFile(string pdfPath, string? sidecarPath = null, int? auditPcId = null, bool auditSolo = false)
     {
         sidecarPath ??= pdfPath + ".ann.json";
-        if (!File.Exists(sidecarPath)) return;
-        if (!File.Exists(pdfPath)) { File.Delete(sidecarPath); return; }
+        if (!File.Exists(sidecarPath)) return;       // fast-path: nothing to bake
 
-        try
+        var lockKey = pdfPath.ToLowerInvariant();
+        var lockObj = _bakeLocks.GetOrAdd(lockKey, _ => new object());
+        lock (lockObj)
         {
-            var pdfBytes = ReadAndCache(pdfPath);
-            var annJson  = File.ReadAllText(sidecarPath);
-            var baked    = BakeTextAnnotations(pdfBytes, annJson);
-            File.WriteAllBytes(pdfPath, EncryptBytes(baked));
-            StoreInCache(pdfPath, baked);
-            File.Delete(sidecarPath);
-            if (auditPcId.HasValue)
+            // Re-check inside the lock — a parallel bake task may have just deleted the sidecar
+            // and stored a baked PDF in the cache. If we proceed we'd bake on top of baked text.
+            if (!File.Exists(sidecarPath)) return;
+            if (!File.Exists(pdfPath)) { File.Delete(sidecarPath); return; }
+
+            try
             {
-                var relPath = ExtractRelativePath(pdfPath);
-                _audit.Log(auditPcId.Value, auditSolo, relPath, "overwrite", baked.Length, null, null, "AnnotationBurn");
+                var pdfBytes = ReadAndCache(pdfPath);
+                var annJson  = File.ReadAllText(sidecarPath);
+                var baked    = BakeTextAnnotations(pdfBytes, annJson);
+                File.WriteAllBytes(pdfPath, EncryptBytes(baked));
+                StoreInCache(pdfPath, baked);
+                File.Delete(sidecarPath);
+                if (auditPcId.HasValue)
+                {
+                    var relPath = ExtractRelativePath(pdfPath);
+                    _audit.Log(auditPcId.Value, auditSolo, relPath, "overwrite", baked.Length, null, null, "AnnotationBurn");
+                }
+                Console.WriteLine($"[FolderService] Burned annotation sidecar into '{Path.GetFileName(pdfPath)}'");
             }
-            Console.WriteLine($"[FolderService] Burned annotation sidecar into '{Path.GetFileName(pdfPath)}'");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[FolderService] BurnSidecarForFile failed for '{Path.GetFileName(pdfPath)}': {ex.Message}");
-            // Keep sidecar on failure — do not delete
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[FolderService] BurnSidecarForFile failed for '{Path.GetFileName(pdfPath)}': {ex.Message}");
+                // Keep sidecar on failure — do not delete
+            }
         }
     }
 

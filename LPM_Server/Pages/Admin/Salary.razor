@@ -13,6 +13,14 @@
 
 <div class="sal-page">
 
+    @* Top offset — pushes the page header (Calculate button + dates) DOWN so the fixed
+       quick-nav bar (rendered below at top:4.25rem) doesn't overlay it. Only needed
+       when the bar is actually shown. *@
+    @if (_groups != null && _groups.Count > 1)
+    {
+        <div class="sal-page-bar-offset" aria-hidden="true"></div>
+    }
+
     @* ── Header ── *@
     <div class="sal-header">
         <div class="sal-header-left">
@@ -940,25 +948,18 @@
         await Calculate();
     }
 
+    // Salary period for month M = all Thursday→Wednesday weeks whose Wednesday falls in M.
+    // From = Thursday 6 days before the first Wednesday of M; To = last Wednesday of M.
     (DateOnly From, DateOnly To) ComputePeriod(int year, int month)
     {
-        var first = new DateOnly(year, month, 1);
-        var daysToThu = ((int)DayOfWeek.Thursday - (int)first.DayOfWeek + 7) % 7;
-        var from = first.AddDays(daysToThu);
+        var firstDay = new DateOnly(year, month, 1);
+        var daysToWed = ((int)DayOfWeek.Wednesday - (int)firstDay.DayOfWeek + 7) % 7;
+        var firstWed = firstDay.AddDays(daysToWed);
+        var from = firstWed.AddDays(-6);
 
         var lastDay = new DateOnly(year, month, DateTime.DaysInMonth(year, month));
-        DateOnly to;
-        if (lastDay.DayOfWeek == DayOfWeek.Wednesday)
-            to = lastDay;
-        else
-        {
-            var nextMonth = lastDay.AddDays(1);
-            var daysToWed = ((int)DayOfWeek.Wednesday - (int)nextMonth.DayOfWeek + 7) % 7;
-            to = nextMonth.AddDays(daysToWed);
-        }
-
-        var today = DateOnly.FromDateTime(DateTime.Today);
-        if (to > today) to = today;
+        var daysBackToWed = ((int)lastDay.DayOfWeek - (int)DayOfWeek.Wednesday + 7) % 7;
+        var to = lastDay.AddDays(-daysBackToWed);
 
         return (from, to);
     }
@@ -966,19 +967,27 @@
     void InitPeriod()
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
-        var year = today.Year;
-        var month = today.Month;
-
-        var first = new DateOnly(year, month, 1);
-        var daysToThu = ((int)DayOfWeek.Thursday - (int)first.DayOfWeek + 7) % 7;
-        if (today < first.AddDays(daysToThu))
-        {
-            month--;
-            if (month < 1) { month = 12; year--; }
-        }
+        var (year, month) = ResolveCurrentPeriodMonth(today);
         _periodYear = year;
         _periodMonth = month;
         ApplyPeriod();
+    }
+
+    // Maps a calendar date to its salary-period month: still inside M while today ≤ last Wed of M;
+    // once today > that Wed, we're already in (M+1)'s period (which begins the very next Thursday).
+    (int Year, int Month) ResolveCurrentPeriodMonth(DateOnly today)
+    {
+        var year = today.Year;
+        var month = today.Month;
+        var lastDay = new DateOnly(year, month, DateTime.DaysInMonth(year, month));
+        var daysBackToWed = ((int)lastDay.DayOfWeek - (int)DayOfWeek.Wednesday + 7) % 7;
+        var lastWed = lastDay.AddDays(-daysBackToWed);
+        if (today > lastWed)
+        {
+            month++;
+            if (month > 12) { month = 1; year++; }
+        }
+        return (year, month);
     }
 
     void ApplyPeriod()
@@ -1009,12 +1018,7 @@
     {
         get
         {
-            var today = DateOnly.FromDateTime(DateTime.Today);
-            var first = new DateOnly(today.Year, today.Month, 1);
-            var daysToThu = ((int)DayOfWeek.Thursday - (int)first.DayOfWeek + 7) % 7;
-            int curMonth = today.Month, curYear = today.Year;
-            if (today < first.AddDays(daysToThu))
-            { curMonth--; if (curMonth < 1) { curMonth = 12; curYear--; } }
+            var (curYear, curMonth) = ResolveCurrentPeriodMonth(DateOnly.FromDateTime(DateTime.Today));
             return _periodYear == curYear && _periodMonth == curMonth;
         }
     }
@@ -1222,15 +1226,23 @@
         background: var(--custom-white); outline: none; min-height: 44px; width: 100%;
     }
     .sal-date-input:focus { border-color: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,.12); }
+    /* Month-navigation arrows in the page header (Prev/Next month).
+       Were styled white-on-white and invisible on the light page bg; now use slate
+       palette so they're clearly visible. Bumped to 40x40 so they read as primary nav. */
     .sal-nav-btn {
-        background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.25);
-        color: #fff; border-radius: 8px; width: 34px; height: 34px;
+        background: #f1f5f9; border: 1px solid #cbd5e1;
+        color: #475569; border-radius: 8px; width: 40px; height: 40px;
         display: flex; align-items: center; justify-content: center;
-        cursor: pointer; font-size: 1.1rem; transition: background .15s;
+        cursor: pointer; font-size: 1.4rem; line-height: 1;
+        transition: background .15s, border-color .15s, color .15s, transform .12s;
         flex-shrink: 0;
     }
-    .sal-nav-btn:hover:not(:disabled) { background: rgba(255,255,255,.3); }
-    .sal-nav-btn:disabled { opacity: .3; cursor: default; }
+    .sal-nav-btn:hover:not(:disabled) {
+        background: #dbeafe; border-color: #60a5fa; color: #1d4ed8;
+        transform: translateY(-1px);
+    }
+    .sal-nav-btn:active:not(:disabled) { transform: translateY(0); }
+    .sal-nav-btn:disabled { opacity: .35; cursor: default; }
     .sal-chevron { transition: transform .2s; font-size: 1.1rem; margin-right: 4px; flex-shrink: 0; }
     .sal-chevron-collapsed { transform: rotate(-90deg); }
     .sal-header-total {
@@ -1282,10 +1294,17 @@
     @@media (min-width: 992px) {
         .sal-quick-nav { left: 15rem; }
     }
-    /* Pushes content down by the bar's height so nothing slides under it */
+    /* Pushes the user-cards loop down by the bar's height so the first card doesn't
+       slide under the fixed bar when scrolling from the top of the user-cards section. */
     .sal-quick-nav-spacer {
-        height: 60px;                /* approx. bar height; matches padding + chip min-height */
+        height: 60px;
         margin: 6px 0 4px;
+    }
+    /* Pushes the entire page header (.sal-header with Calculate button + From/To dates)
+       DOWN by the bar's height when the bar is rendered. Without this, the fixed bar
+       at top:4.25rem completely overlays the page header which sits at the same y. */
+    .sal-page-bar-offset {
+        height: 80px;
     }
     .sal-quick-nav-label {
         flex: 0 0 auto;

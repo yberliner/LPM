@@ -14,6 +14,13 @@
 
 <div class="sa-page p-3 p-md-4">
 
+    @* Top offset — pushes the page header DOWN so the fixed quick-nav bar
+       (rendered below at top:4.25rem) doesn't overlay it. Only needed when the bar is shown. *@
+    @if (!_loading && (_groups.Count + _csGroups.Count) > 1)
+    {
+        <div class="sa-page-bar-offset" aria-hidden="true"></div>
+    }
+
     @* ── Page Header ── *@
     <div class="d-flex align-items-center mb-3 gap-3 flex-wrap">
         <div>
@@ -803,8 +810,13 @@
         .sa-quick-nav { left: 15rem; }
     }
     .sa-quick-nav-spacer {
-        height: 60px;                /* matches bar height */
+        height: 60px;                /* matches bar height — pushes user cards loop below the bar */
         margin: 6px 0 4px;
+    }
+    /* Pushes the page header DOWN by the bar's height when the bar is rendered.
+       Without this, the fixed bar at top:4.25rem overlays the page title + filter row. */
+    .sa-page-bar-offset {
+        height: 80px;
     }
     .sa-quick-nav-strip {
         flex: 1 1 auto;

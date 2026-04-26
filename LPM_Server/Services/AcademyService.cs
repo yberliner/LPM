@@ -137,7 +137,7 @@ public class AcademyService
 
     // ── Visits ───────────────────────────────────────────────────────────────
 
-    public List<VisitRecord> GetVisitsForDay(DateOnly date)
+    public List<VisitRecord> GetVisitsForDay(DateOnly date, int? orgId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -153,9 +153,12 @@ public class AcademyService
             JOIN core_persons p ON p.PersonId = s.PersonId
             LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
             LEFT JOIN lkp_organizations og ON og.OrgId = COALESCE(s.Org, p.Org)
-            WHERE s.VisitDate = @date AND COALESCE(p.IsActive, 1) = 1
+            WHERE s.VisitDate = @date
+              AND COALESCE(p.IsActive, 1) = 1
+              AND (@orgId IS NULL OR COALESCE(s.Org, p.Org) = @orgId)
             ORDER BY p.FirstName COLLATE NOCASE, p.LastName COLLATE NOCASE";
         cmd.Parameters.AddWithValue("@date", date.ToString("yyyy-MM-dd"));
+        cmd.Parameters.AddWithValue("@orgId", orgId.HasValue ? (object)orgId.Value : DBNull.Value);
         var list = new List<VisitRecord>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -242,10 +245,10 @@ public class AcademyService
     }
 
     /// <summary>Returns all students who visited during the week, with visit count (days), total sessions (sum of VisitsPerDay), referral, and org.</summary>
-    public List<(int PersonId, string FullName, int VisitCount, int TotalSessions, string Source, string Org, string Nick)> GetStudentVisitsForWeek(DateOnly weekStart)
-        => GetStudentVisitsForDateRange(weekStart, weekStart.AddDays(6));
+    public List<(int PersonId, string FullName, int VisitCount, int TotalSessions, string Source, string Org, string Nick)> GetStudentVisitsForWeek(DateOnly weekStart, int? orgId = null)
+        => GetStudentVisitsForDateRange(weekStart, weekStart.AddDays(6), orgId);
 
-    public List<(int PersonId, string FullName, int VisitCount, int TotalSessions, string Source, string Org, string Nick)> GetStudentVisitsForDateRange(DateOnly rangeStart, DateOnly rangeEnd)
+    public List<(int PersonId, string FullName, int VisitCount, int TotalSessions, string Source, string Org, string Nick)> GetStudentVisitsForDateRange(DateOnly rangeStart, DateOnly rangeEnd, int? orgId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -264,10 +267,12 @@ public class AcademyService
             LEFT JOIN lkp_organizations og ON og.OrgId = COALESCE(s.Org, p.Org)
             WHERE s.VisitDate >= @start AND s.VisitDate <= @end
               AND COALESCE(p.IsActive, 1) = 1
+              AND (@orgId IS NULL OR COALESCE(s.Org, p.Org) = @orgId)
             GROUP BY s.PersonId
             ORDER BY TotalSessions DESC, FullName COLLATE NOCASE ASC";
         cmd.Parameters.AddWithValue("@start", rangeStart.ToString("yyyy-MM-dd"));
         cmd.Parameters.AddWithValue("@end",   rangeEnd.ToString("yyyy-MM-dd"));
+        cmd.Parameters.AddWithValue("@orgId", orgId.HasValue ? (object)orgId.Value : DBNull.Value);
         var list = new List<(int, string, int, int, string, string, string)>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -282,7 +287,7 @@ public class AcademyService
     /// Empty/null Referral is grouped as "Haifa"; empty/null Org is omitted.
     /// </summary>
     public (Dictionary<string, int> ByReferral, Dictionary<string, int> ByOrg)
-        GetWeeklyStudentBreakdown(DateOnly weekStart)
+        GetWeeklyStudentBreakdown(DateOnly weekStart, int? orgId = null)
     {
         var weekEnd = weekStart.AddDays(6);
         using var conn = new SqliteConnection(_connectionString);
@@ -296,9 +301,11 @@ public class AcademyService
             LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
             LEFT JOIN lkp_organizations og ON og.OrgId = COALESCE(s.Org, p.Org)
             WHERE s.VisitDate >= @start AND s.VisitDate <= @end
+              AND (@orgId IS NULL OR COALESCE(s.Org, p.Org) = @orgId)
             GROUP BY s.PersonId";
         cmd.Parameters.AddWithValue("@start", weekStart.ToString("yyyy-MM-dd"));
         cmd.Parameters.AddWithValue("@end",   weekEnd.ToString("yyyy-MM-dd"));
+        cmd.Parameters.AddWithValue("@orgId", orgId.HasValue ? (object)orgId.Value : DBNull.Value);
 
         var byReferral = new Dictionary<string, int>(StringComparer.Ordinal);
         var byOrg      = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -318,7 +325,7 @@ public class AcademyService
     /// <summary>Same shape as GetWeeklyStudentBreakdown, over an arbitrary inclusive range
     /// (used for the monthly summary card).</summary>
     public (Dictionary<string, int> ByReferral, Dictionary<string, int> ByOrg)
-        GetStudentBreakdownForDateRange(DateOnly start, DateOnly end)
+        GetStudentBreakdownForDateRange(DateOnly start, DateOnly end, int? orgId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -331,9 +338,11 @@ public class AcademyService
             LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
             LEFT JOIN lkp_organizations og ON og.OrgId = COALESCE(s.Org, p.Org)
             WHERE s.VisitDate >= @start AND s.VisitDate <= @end
+              AND (@orgId IS NULL OR COALESCE(s.Org, p.Org) = @orgId)
             GROUP BY s.PersonId";
         cmd.Parameters.AddWithValue("@start", start.ToString("yyyy-MM-dd"));
         cmd.Parameters.AddWithValue("@end",   end.ToString("yyyy-MM-dd"));
+        cmd.Parameters.AddWithValue("@orgId", orgId.HasValue ? (object)orgId.Value : DBNull.Value);
 
         var byReferral = new Dictionary<string, int>(StringComparer.Ordinal);
         var byOrg      = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -352,7 +361,7 @@ public class AcademyService
 
     // ── Statistics ───────────────────────────────────────────────────────────
 
-    public List<WeekVisitCount> GetWeeklyVisitCounts(DateOnly latestWeekStart, int numWeeks = 20)
+    public List<WeekVisitCount> GetWeeklyVisitCounts(DateOnly latestWeekStart, int numWeeks = 20, int? orgId = null)
     {
         var weekStarts = new List<DateOnly>(numWeeks);
         for (int i = numWeeks - 1; i >= 0; i--)
@@ -375,9 +384,11 @@ public class AcademyService
             LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
             LEFT JOIN lkp_organizations og ON og.OrgId = COALESCE(s.Org, p.Org)
             WHERE s.VisitDate >= @start AND s.VisitDate < @end
-              AND COALESCE(p.IsActive, 1) = 1";
+              AND COALESCE(p.IsActive, 1) = 1
+              AND (@orgId IS NULL OR COALESCE(s.Org, p.Org) = @orgId)";
         cmd.Parameters.AddWithValue("@start", rangeStart.ToString("yyyy-MM-dd"));
         cmd.Parameters.AddWithValue("@end",   rangeEnd.ToString("yyyy-MM-dd"));
+        cmd.Parameters.AddWithValue("@orgId", orgId.HasValue ? (object)orgId.Value : DBNull.Value);
 
         var totalCounts  = weekStarts.ToDictionary(ws => ws, _ => 0);
         var personCounts = weekStarts.ToDictionary(ws => ws, _ => new Dictionary<string, int>());
@@ -442,7 +453,7 @@ public class AcademyService
     }
 
     /// <summary>Monthly visit counts using Thursday-based months.</summary>
-    public List<MonthVisitCount> GetMonthlyVisitCounts(DateOnly currentWeekStart, int numMonths = 12)
+    public List<MonthVisitCount> GetMonthlyVisitCounts(DateOnly currentWeekStart, int numMonths = 12, int? orgId = null)
     {
         var months = new List<(DateOnly firstThurs, string label, DateOnly rangeStart, DateOnly rangeEnd)>();
         var seen = new HashSet<(int y, int m)>();
@@ -483,9 +494,11 @@ public class AcademyService
             LEFT JOIN lkp_referral_sources rs ON rs.ReferralId = p.Source
             LEFT JOIN lkp_organizations og ON og.OrgId = COALESCE(s.Org, p.Org)
             WHERE s.VisitDate >= @start AND s.VisitDate < @end
-              AND COALESCE(p.IsActive, 1) = 1";
+              AND COALESCE(p.IsActive, 1) = 1
+              AND (@orgId IS NULL OR COALESCE(s.Org, p.Org) = @orgId)";
         cmd.Parameters.AddWithValue("@start", rangeStart.ToString("yyyy-MM-dd"));
         cmd.Parameters.AddWithValue("@end",   rangeEnd.ToString("yyyy-MM-dd"));
+        cmd.Parameters.AddWithValue("@orgId", orgId.HasValue ? (object)orgId.Value : DBNull.Value);
 
         var totalCounts   = months.ToDictionary(m => m.firstThurs, _ => 0);
         var uniquePersons = months.ToDictionary(m => m.firstThurs, _ => new HashSet<int>());

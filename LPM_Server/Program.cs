@@ -129,6 +129,7 @@ builder.Services.AddSingleton<LPM.Services.MessageNotifier>();
 builder.Services.AddSingleton<LPM.Services.FileAuditService>();
 builder.Services.AddSingleton<LPM.Services.FolderService>();
 builder.Services.AddSingleton<LPM.Services.TextAnnotationService>();
+builder.Services.AddHostedService<LPM.Services.MemoryWatchdogService>();
 builder.Services.AddSingleton<LPM.Services.MeetingService>();
 builder.Services.AddHostedService<LPM.Services.DbBackupService>();
 builder.Services.AddSingleton<LPM.Services.PdfShrinkService>();

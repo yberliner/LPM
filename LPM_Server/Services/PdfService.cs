@@ -393,7 +393,8 @@ public class PdfService
         DateOnly? monthEnd = null,
         List<WeekVisitCount>? weeklyTotals = null,
         Dictionary<string, int>? byMonthReferral = null,
-        Dictionary<string, int>? byMonthOrg = null)
+        Dictionary<string, int>? byMonthOrg = null,
+        string? orgLabel = null)
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
@@ -450,7 +451,9 @@ public class PdfService
                     col.Item().Row(r =>
                     {
                         r.RelativeItem()
-                            .Text("Academy")
+                            .Text(string.IsNullOrWhiteSpace(orgLabel) || orgLabel == "All"
+                                ? "Academy"
+                                : $"Academy — {orgLabel}")
                             .SemiBold().FontSize(20).FontColor("#1b5e20");
 
                         r.RelativeItem().AlignCenter()

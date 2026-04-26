@@ -11,6 +11,24 @@
 @using ApexCharts
 
 @* ── Week navigation bar ── *@
+@* ── Org filter pills ── *@
+<div class="d-flex align-items-center flex-wrap gap-2 px-3 pt-2 pb-1 no-print">
+    <span class="fw-semibold me-1" style="font-size:0.85rem;color:#6b7280;">
+        <i class="ri-filter-3-line me-1"></i>Org:
+    </span>
+    <div class="btn-group" role="group" aria-label="Organization filter">
+        <button type="button"
+                class="btn btn-sm rounded-pill me-1 @(_selOrg == 0 ? "btn-primary" : "btn-outline-primary")"
+                @onclick="() => SelectOrg(0)">All</button>
+        <button type="button"
+                class="btn btn-sm rounded-pill me-1 @(_selOrg == 1 ? "btn-primary" : "btn-outline-primary")"
+                @onclick="() => SelectOrg(1)">Haifa</button>
+        <button type="button"
+                class="btn btn-sm rounded-pill @(_selOrg == 2 ? "btn-primary" : "btn-outline-primary")"
+                @onclick="() => SelectOrg(2)">Riga</button>
+    </div>
+</div>
+
 <div class="acad-nav-bar">
     <div class="d-flex align-items-center gap-2 flex-shrink-0">
         <button class="btn btn-sm acad-nav-btn" @onclick="PrevWeek">
@@ -1115,6 +1133,16 @@
     DateOnly _monthEnd;
     string _monthLabel = "";
 
+    private int    _selOrg;                                                        // 0=All, 1=Haifa, 2=Riga
+    private int?   OrgFilter => _selOrg == 0 ? (int?)null : _selOrg;
+    private string OrgLabel  => _selOrg switch { 1 => "Haifa", 2 => "Riga", _ => "All" };
+    void SelectOrg(int org)
+    {
+        if (_selOrg == org) return;
+        _selOrg = org;
+        LoadWeek();
+    }
+
     List<(int PersonId, string FullName, int VisitCount, int TotalSessions, string Source, string Org, string Nick)> _weekStudents = [];
     List<(int PersonId, string FullName, int VisitCount, int TotalSessions, string Source, string Org, string Nick)> _monthStudents = [];
     Dictionary<int, List<OpenCourseEntry>> _personOpenCourses = [];
@@ -1320,18 +1348,18 @@
     {
         _dayCounts = [];
         for (int i = 0; i < 7; i++)
-            _dayCounts[i] = AcademySvc.GetVisitsForDay(_weekStart.AddDays(i)).Count;
+            _dayCounts[i] = AcademySvc.GetVisitsForDay(_weekStart.AddDays(i), OrgFilter).Count;
     }
 
-    void LoadVisits() => _visits = AcademySvc.GetVisitsForDay(SelectedDate);
+    void LoadVisits() => _visits = AcademySvc.GetVisitsForDay(SelectedDate, OrgFilter);
 
     void RefreshChart()
     {
         var latestWeekStart = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
-        _weeklyTotals  = AcademySvc.GetWeeklyVisitCounts(latestWeekStart, 20);
-        _monthlyTotals = AcademySvc.GetMonthlyVisitCounts(latestWeekStart, 12);
-        _weekStudents  = AcademySvc.GetStudentVisitsForWeek(_weekStart);
-        (_weekByReferral, _weekByOrg) = AcademySvc.GetWeeklyStudentBreakdown(_weekStart);
+        _weeklyTotals  = AcademySvc.GetWeeklyVisitCounts(latestWeekStart, 20, OrgFilter);
+        _monthlyTotals = AcademySvc.GetMonthlyVisitCounts(latestWeekStart, 12, OrgFilter);
+        _weekStudents  = AcademySvc.GetStudentVisitsForWeek(_weekStart, OrgFilter);
+        (_weekByReferral, _weekByOrg) = AcademySvc.GetWeeklyStudentBreakdown(_weekStart, OrgFilter);
         LoadMonthStudents();
 
         // Batch-load open courses for all persons
@@ -1558,7 +1586,7 @@
         Console.WriteLine($"[Academy] Add visit: person='{p.FullName}' (id={p.PersonId}) date={SelectedDate} by '{_username}'");
         _lastAddedPersonId = p.PersonId;
         AcademySvc.AddVisit(p.PersonId, SelectedDate);
-        _dayCounts[_selDay] = AcademySvc.GetVisitsForDay(SelectedDate).Count;
+        _dayCounts[_selDay] = AcademySvc.GetVisitsForDay(SelectedDate, OrgFilter).Count;
         LoadVisits();
         RefreshChart();
     }
@@ -1568,7 +1596,7 @@
         var v = _visits.FirstOrDefault(x => x.VisitId == visitId);
         Console.WriteLine($"[Academy] Remove visit: visitId={visitId} person='{v?.FullName}' (id={v?.PersonId}) date={SelectedDate} by '{_username}'");
         AcademySvc.RemoveVisit(visitId);
-        _dayCounts[_selDay] = AcademySvc.GetVisitsForDay(SelectedDate).Count;
+        _dayCounts[_selDay] = AcademySvc.GetVisitsForDay(SelectedDate, OrgFilter).Count;
         LoadVisits();
         RefreshChart();
     }
@@ -1614,26 +1642,26 @@
         _monthStart = weeks[0];
         _monthEnd   = weeks[^1].AddDays(6);
         _monthLabel = _monthStart.ToString("MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture);
-        _monthStudents = AcademySvc.GetStudentVisitsForDateRange(_monthStart, _monthEnd);
-        (_monthByReferral, _monthByOrg) = AcademySvc.GetStudentBreakdownForDateRange(_monthStart, _monthEnd);
+        _monthStudents = AcademySvc.GetStudentVisitsForDateRange(_monthStart, _monthEnd, OrgFilter);
+        (_monthByReferral, _monthByOrg) = AcademySvc.GetStudentBreakdownForDateRange(_monthStart, _monthEnd, OrgFilter);
     }
 
     async Task PrintWeek()
     {
-        Console.WriteLine($"[Academy] Print week: {_weekStart} by '{_username}'");
-        var students = AcademySvc.GetStudentVisitsForWeek(_weekStart);
-        var (byRef, byOrg) = AcademySvc.GetWeeklyStudentBreakdown(_weekStart);
+        Console.WriteLine($"[Academy] Print week: {_weekStart} ({OrgLabel}) by '{_username}'");
+        var students = AcademySvc.GetStudentVisitsForWeek(_weekStart, OrgFilter);
+        var (byRef, byOrg) = AcademySvc.GetWeeklyStudentBreakdown(_weekStart, OrgFilter);
         // Monthly breakdown — mirrors the on-screen month summary card.
         var (byMonthRef, byMonthOrg) = _monthStudents.Count > 0
-            ? AcademySvc.GetStudentBreakdownForDateRange(_monthStart, _monthEnd)
+            ? AcademySvc.GetStudentBreakdownForDateRange(_monthStart, _monthEnd, OrgFilter)
             : (new Dictionary<string, int>(), new Dictionary<string, int>());
         var personIds = students.Select(s => s.PersonId);
         var coursesRaw = CourseSvc.GetOpenCoursesForPersons(personIds);
         var courses = coursesRaw.ToDictionary(
             kv => kv.Key,
             kv => string.Join(", ", kv.Value.Select(e => $"{e.Name} ({e.VisitCount})")));
-        var pdfBytes = PdfService.GenerateAcademyWeekPdf(_weekStart, students, byRef, byOrg, courses, _monthStudents, _monthLabel, _monthWeekCount, _monthStart, _monthEnd, weeklyTotals: _weeklyTotals, byMonthReferral: byMonthRef, byMonthOrg: byMonthOrg);
-        var fileName = $"Academy_{_weekStart:yyyy_MM_dd}.pdf";
+        var pdfBytes = PdfService.GenerateAcademyWeekPdf(_weekStart, students, byRef, byOrg, courses, _monthStudents, _monthLabel, _monthWeekCount, _monthStart, _monthEnd, weeklyTotals: _weeklyTotals, byMonthReferral: byMonthRef, byMonthOrg: byMonthOrg, orgLabel: OrgLabel);
+        var fileName = $"Academy_{OrgLabel}_{_weekStart:yyyy_MM_dd}.pdf";
         await JS.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(pdfBytes));
     }
 

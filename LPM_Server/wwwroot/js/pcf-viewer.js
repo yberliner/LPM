@@ -2819,8 +2819,16 @@ document.addEventListener('keydown', function (e) {
 
 // Trigger a hidden file-input element by ElementReference — bypasses global-function lookup
 // ── Folder Summary two-phase loading ────────────────────────────────
+// IMPORTANT: prefetchAndLoad fetches a potentially-large PDF (10–20 MB) in the
+// background. If the user changes panes / preset before it finishes, the stale
+// fetch must be aborted — otherwise the late write clobbers the new pane content.
+// We track an AbortController per paneId and check signal.aborted before swapping.
 window.pcfFsOverlay = {
+    _abortByPane: {},   // paneId → AbortController for an in-flight phase-2 fetch
     show(paneId) {
+        // Replace any existing controller (also aborts any in-flight prefetch for this pane)
+        this.cancel(paneId);
+        this._abortByPane[paneId] = new AbortController();
         var viewer = document.getElementById('pcf-viewer-' + paneId);
         if (!viewer) return;
         var parent = viewer.parentElement;
@@ -2837,6 +2845,7 @@ window.pcfFsOverlay = {
         parent.appendChild(overlay);
     },
     hide(paneId) {
+        this.cancel(paneId);
         var viewer = document.getElementById('pcf-viewer-' + paneId);
         if (!viewer) return;
         var parent = viewer.parentElement;
@@ -2844,16 +2853,42 @@ window.pcfFsOverlay = {
         var overlay = parent.querySelector('.pcf-fs-loading-overlay');
         if (overlay) overlay.remove();
     },
-    // Pre-fetch full PDF bytes in background, then load via data buffer (no blank flash)
+    /// Abort an in-flight phase-2 prefetch for paneId without removing the overlay.
+    /// Called by C# before starting a new pane-changing operation (preset switch, pane resize, etc.).
+    cancel(paneId) {
+        var ctrl = this._abortByPane[paneId];
+        if (ctrl) {
+            try { ctrl.abort(); } catch (e) {}
+            delete this._abortByPane[paneId];
+        }
+    },
+    /// Cancel for ALL panes — useful right before a global pane-layout change.
+    cancelAll() {
+        for (var p in this._abortByPane) {
+            try { this._abortByPane[p].abort(); } catch (e) {}
+        }
+        this._abortByPane = {};
+    },
+    // Pre-fetch full PDF bytes in background, then load via data buffer (no blank flash).
+    // Honors the AbortController from show() — bails before swap if pane was reassigned.
     async prefetchAndLoad(url, paneId) {
+        var ctrl = this._abortByPane[paneId];
+        var signal = ctrl ? ctrl.signal : undefined;
         try {
-            var resp = await fetch(url, { credentials: 'include' });
+            var resp = await fetch(url, { credentials: 'include', signal });
+            if (signal && signal.aborted) { console.log('[pcfFsOverlay] aborted before parse: ' + paneId); return; }
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             var buf = await resp.arrayBuffer();
-            // Load from pre-fetched data — pdf.js parses from memory (instant, no network wait)
+            if (signal && signal.aborted) { console.log('[pcfFsOverlay] aborted before swap: ' + paneId); return; }
+            // Final guard: only swap if THIS controller is still the active one for this pane.
+            // (A new show() between fetch start and now would have replaced it — don't clobber the new content.)
+            if (this._abortByPane[paneId] !== ctrl) { console.log('[pcfFsOverlay] superseded by newer load: ' + paneId); return; }
             await window.pcfViewer.loadPdf(url + '&_prefetched=1', paneId, 0, new Uint8Array(buf));
         } catch (e) {
+            if (e && e.name === 'AbortError') { console.log('[pcfFsOverlay] fetch aborted: ' + paneId); return; }
             console.error('[pcfFsOverlay] prefetch failed, falling back to direct load', e);
+            // Even the fallback must respect cancellation
+            if (this._abortByPane[paneId] !== ctrl) return;
             await window.pcfViewer.loadPdf(url, paneId);
         }
     }

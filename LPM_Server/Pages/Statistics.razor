@@ -209,6 +209,9 @@
     .stat-metric-box .sub-lbl   { font-size: 0.67rem; color: #6b7280; margin-top: 1px; }
     .leaderboard-row { transition: background 0.1s; }
     .leaderboard-row:hover { background: rgba(99,102,241,0.05) !important; }
+    .sort-th { transition: background 0.1s; }
+    .sort-th:hover { background: rgba(99,102,241,0.08); }
+    .sort-th span { font-size: 0.65rem; margin-left: 4px; display: inline-block; }
     .name-pill {
         display: inline-flex; align-items: center; justify-content: center;
         border-radius: 20px; padding: 3px 9px; font-size: 0.78rem; font-weight: 700;
@@ -379,7 +382,10 @@
                 {
                 <div class="card-body p-0">
                     @{
-                        var weekMax = weekStaffList.Count > 0 ? weekStaffList[0].TotalSec : 1;
+                        // Compute weekMax from the WHOLE list (not [0]) so the progress bar always
+                        // scales against the true max regardless of current sort column.
+                        var weekMax = weekStaffList.Count > 0 ? weekStaffList.Max(s => s.TotalSec) : 1;
+                        var wkSorted = SortStaff(weekStaffList, _wkSort, _wkSortDesc);
                         int wRank  = 1;
                     }
                     @if (weekStaffList.Count == 0)
@@ -395,19 +401,31 @@
                             <table class="table mb-0" style="font-size:0.9rem;">
                                 <thead style="background:#f8f9fa;">
                                     <tr class="text-muted" style="font-size:0.75rem;letter-spacing:0.04em;text-transform:uppercase;">
-                                        <th class="ps-3 fw-semibold">@LS.T("stats.staffMember")</th>
-                                        <th class="text-center fw-semibold">@LS.T("stats.auditing")</th>
-                                        <th class="text-center fw-semibold">@LS.T("stats.csSolo")</th>
-                                        <th class="text-center fw-semibold">CS</th>
-                                        <th class="text-center fw-semibold">Extra Effort</th>
-                                        <th class="text-center fw-semibold pe-3">@LS.T("stats.total")</th>
+                                        <th class="ps-3 fw-semibold sort-th" style="cursor:pointer;user-select:none;" @onclick='() => OnWkSort("name")'>
+                                            @LS.T("stats.staffMember") <span style="@SortArrowStyle(_wkSort,"name")">@SortArrow(_wkSort,_wkSortDesc,"name")</span>
+                                        </th>
+                                        <th class="text-center fw-semibold sort-th" style="cursor:pointer;user-select:none;" @onclick='() => OnWkSort("audit")'>
+                                            @LS.T("stats.auditing") <span style="@SortArrowStyle(_wkSort,"audit")">@SortArrow(_wkSort,_wkSortDesc,"audit")</span>
+                                        </th>
+                                        <th class="text-center fw-semibold sort-th" style="cursor:pointer;user-select:none;" @onclick='() => OnWkSort("csolo")'>
+                                            @LS.T("stats.csSolo") <span style="@SortArrowStyle(_wkSort,"csolo")">@SortArrow(_wkSort,_wkSortDesc,"csolo")</span>
+                                        </th>
+                                        <th class="text-center fw-semibold sort-th" style="cursor:pointer;user-select:none;" @onclick='() => OnWkSort("cs")'>
+                                            CS <span style="@SortArrowStyle(_wkSort,"cs")">@SortArrow(_wkSort,_wkSortDesc,"cs")</span>
+                                        </th>
+                                        <th class="text-center fw-semibold sort-th" style="cursor:pointer;user-select:none;" @onclick='() => OnWkSort("effort")'>
+                                            Extra Effort <span style="@SortArrowStyle(_wkSort,"effort")">@SortArrow(_wkSort,_wkSortDesc,"effort")</span>
+                                        </th>
+                                        <th class="text-center fw-semibold pe-3 sort-th" style="cursor:pointer;user-select:none;" @onclick='() => OnWkSort("total")'>
+                                            @LS.T("stats.total") <span style="@SortArrowStyle(_wkSort,"total")">@SortArrow(_wkSort,_wkSortDesc,"total")</span>
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var s in weekStaffList)
+                                    @foreach (var s in wkSorted)
                                     {
                                         var pct       = weekMax > 0 ? (int)(s.TotalSec * 100.0 / weekMax) : 0;
-                                        var avColor   = AvatarColor(wRank);
+                                        var avColor   = ColorForStaff(s.PersonId);
                                         var firstName = s.Name.Split(' ')[0];
                                         <tr class="leaderboard-row border-bottom">
                                             <td class="ps-3 align-middle">
@@ -491,26 +509,40 @@
                     {
                     <div class="card-body p-0">
                         @{
-                            int mMax  = _monthStaff[0].TotalSec;
-                            int mRank = 1;
+                            // Compute mMax from the WHOLE list — bar should reflect true max regardless of sort
+                            int mMax    = _monthStaff.Max(s => s.TotalSec);
+                            var moSorted = SortStaff(_monthStaff, _moSort, _moSortDesc);
+                            int mRank   = 1;
                         }
                         <div class="table-responsive">
                             <table class="table mb-0" style="font-size:0.9rem;">
                                 <thead style="background:#f5f3ff;">
                                     <tr style="font-size:0.75rem;letter-spacing:0.04em;text-transform:uppercase;color:#6b7280;">
-                                        <th class="ps-3 fw-semibold">@LS.T("stats.staffMember")</th>
-                                        <th class="text-center fw-semibold">@LS.T("stats.auditing")</th>
-                                        <th class="text-center fw-semibold">@LS.T("stats.csSolo")</th>
-                                        <th class="text-center fw-semibold">CS</th>
-                                        <th class="text-center fw-semibold">Extra Effort</th>
-                                        <th class="text-center fw-semibold pe-3">@LS.T("stats.total")</th>
+                                        <th class="ps-3 fw-semibold sort-th" style="cursor:pointer;user-select:none;" @onclick='() => OnMoSort("name")'>
+                                            @LS.T("stats.staffMember") <span style="@SortArrowStyle(_moSort,"name")">@SortArrow(_moSort,_moSortDesc,"name")</span>
+                                        </th>
+                                        <th class="text-center fw-semibold sort-th" style="cursor:pointer;user-select:none;" @onclick='() => OnMoSort("audit")'>
+                                            @LS.T("stats.auditing") <span style="@SortArrowStyle(_moSort,"audit")">@SortArrow(_moSort,_moSortDesc,"audit")</span>
+                                        </th>
+                                        <th class="text-center fw-semibold sort-th" style="cursor:pointer;user-select:none;" @onclick='() => OnMoSort("csolo")'>
+                                            @LS.T("stats.csSolo") <span style="@SortArrowStyle(_moSort,"csolo")">@SortArrow(_moSort,_moSortDesc,"csolo")</span>
+                                        </th>
+                                        <th class="text-center fw-semibold sort-th" style="cursor:pointer;user-select:none;" @onclick='() => OnMoSort("cs")'>
+                                            CS <span style="@SortArrowStyle(_moSort,"cs")">@SortArrow(_moSort,_moSortDesc,"cs")</span>
+                                        </th>
+                                        <th class="text-center fw-semibold sort-th" style="cursor:pointer;user-select:none;" @onclick='() => OnMoSort("effort")'>
+                                            Extra Effort <span style="@SortArrowStyle(_moSort,"effort")">@SortArrow(_moSort,_moSortDesc,"effort")</span>
+                                        </th>
+                                        <th class="text-center fw-semibold pe-3 sort-th" style="cursor:pointer;user-select:none;" @onclick='() => OnMoSort("total")'>
+                                            @LS.T("stats.total") <span style="@SortArrowStyle(_moSort,"total")">@SortArrow(_moSort,_moSortDesc,"total")</span>
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var ms in _monthStaff)
+                                    @foreach (var ms in moSorted)
                                     {
                                         var mPct      = mMax > 0 ? (int)(ms.TotalSec * 100.0 / mMax) : 0;
-                                        var mColor    = AvatarColor(mRank);
+                                        var mColor    = ColorForStaff(ms.PersonId);
                                         var firstName = ms.Name.Split(' ')[0];
                                         <tr class="leaderboard-row border-bottom">
                                             <td class="ps-3 align-middle">
@@ -1144,13 +1176,106 @@
     static string Fmt(int s) =>
         s <= 0 ? "0:00" : $"{s / 3600}:{(s % 3600) / 60:D2}";
 
-    static string AvatarColor(int rank) => rank switch
-    {
-        1 => "#f59e0b",
-        2 => "#6366f1",
-        3 => "#22c55e",
-        4 => "#ec4899",
-        5 => "#14b8a6",
-        _ => "#94a3b8"
+    // ── Per-staff deterministic color (cross-page consistent with MainHeader) ──
+    // 30 distinct colors. First 10 are identical to the original MainHeader palette
+    // so existing staff (PersonId 1-10) keep their current colors.
+    static readonly string[] _staffPalette = new[] {
+        // 1-10 (matches MainHeader)
+        "#6366f1", "#ec4899", "#f59e0b", "#10b981", "#3b82f6",
+        "#8b5cf6", "#ef4444", "#14b8a6", "#f97316", "#06b6d4",
+        // 11-20 — saturation/hue siblings
+        "#84cc16", "#a855f7", "#0ea5e9", "#22c55e", "#eab308",
+        "#d946ef", "#dc2626", "#0d9488", "#ea580c", "#0891b2",
+        // 21-30 — darker variants
+        "#4f46e5", "#db2777", "#d97706", "#059669", "#2563eb",
+        "#7c3aed", "#b91c1c", "#9333ea", "#16a34a", "#ca8a04",
     };
+    static string ColorForStaff(int personId) =>
+        _staffPalette[Math.Abs(personId) % _staffPalette.Length];
+
+    // ── Sort state per leaderboard table (persisted in localStorage) ──
+    string _wkSort = "total"; bool _wkSortDesc = true;
+    string _moSort = "total"; bool _moSortDesc = true;
+    bool   _sortPrefsLoaded;
+
+    // Known column keys; anything else falls back to "total"
+    static readonly HashSet<string> _validSortCols = new(StringComparer.Ordinal) {
+        "name", "audit", "csolo", "cs", "effort", "total"
+    };
+
+    void ApplySortPref(string? raw, ref string col, ref bool desc)
+    {
+        col = "total"; desc = true;
+        if (string.IsNullOrEmpty(raw)) return;
+        var parts = raw.Split(':');
+        if (parts.Length != 2) return;
+        if (!_validSortCols.Contains(parts[0])) return;
+        col  = parts[0];
+        desc = parts[1] == "desc";
+    }
+
+    string SortPrefString(string col, bool desc) => $"{col}:{(desc ? "desc" : "asc")}";
+
+    async Task SaveWkSortAsync()
+    {
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "lpm-stats-sort-wk", SortPrefString(_wkSort, _wkSortDesc)); }
+        catch { /* private mode / disabled storage */ }
+    }
+    async Task SaveMoSortAsync()
+    {
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "lpm-stats-sort-mo", SortPrefString(_moSort, _moSortDesc)); }
+        catch { }
+    }
+
+    void OnWkSort(string col)
+    {
+        if (_wkSort == col) _wkSortDesc = !_wkSortDesc;
+        else { _wkSort = col; _wkSortDesc = (col != "name"); }   // numeric defaults DESC, name defaults ASC
+        _ = SaveWkSortAsync();
+    }
+    void OnMoSort(string col)
+    {
+        if (_moSort == col) _moSortDesc = !_moSortDesc;
+        else { _moSort = col; _moSortDesc = (col != "name"); }
+        _ = SaveMoSortAsync();
+    }
+
+    // Sort helper — returns sorted list (does not mutate input)
+    List<StaffStatRow> SortStaff(List<StaffStatRow> list, string col, bool desc)
+    {
+        IOrderedEnumerable<StaffStatRow> q = col switch {
+            "name"   => desc ? list.OrderByDescending(s => s.Name, StringComparer.OrdinalIgnoreCase)
+                             : list.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase),
+            "audit"  => desc ? list.OrderByDescending(s => s.AuditSec)  : list.OrderBy(s => s.AuditSec),
+            "csolo"  => desc ? list.OrderByDescending(s => s.SoloCsSec) : list.OrderBy(s => s.SoloCsSec),
+            "cs"     => desc ? list.OrderByDescending(s => s.CsSec)     : list.OrderBy(s => s.CsSec),
+            "effort" => desc ? list.OrderByDescending(s => s.EffortSec) : list.OrderBy(s => s.EffortSec),
+            _        => desc ? list.OrderByDescending(s => s.TotalSec)  : list.OrderBy(s => s.TotalSec),
+        };
+        return q.ToList();
+    }
+
+    // Arrow indicator HTML char per column — active gets ▲/▼, inactive gets faded ↕
+    string SortArrow(string activeCol, bool activeDesc, string thisCol)
+    {
+        if (activeCol != thisCol) return "↕";
+        return activeDesc ? "▼" : "▲";
+    }
+    string SortArrowStyle(string activeCol, string thisCol) =>
+        activeCol == thisCol ? "opacity:1;" : "opacity:.35;";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _sortPrefsLoaded) return;
+        _sortPrefsLoaded = true;
+        try
+        {
+            var wk = await JS.InvokeAsync<string?>("localStorage.getItem", "lpm-stats-sort-wk");
+            var mo = await JS.InvokeAsync<string?>("localStorage.getItem", "lpm-stats-sort-mo");
+            ApplySortPref(wk, ref _wkSort, ref _wkSortDesc);
+            ApplySortPref(mo, ref _moSort, ref _moSortDesc);
+            StateHasChanged();
+        }
+        catch { /* localStorage unavailable — keep defaults */ }
+    }
 }

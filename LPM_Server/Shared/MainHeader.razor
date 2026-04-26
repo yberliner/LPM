@@ -11133,9 +11133,11 @@ string _actionPcSearch = "";
 
     // Sentinel PersonIds for synthetic Show Stat / Staff Report entries
     private const int STAT_PID_STATISTICS       = -1;  // "Statistics All"
-    private const int STAT_PID_ACADEMY          = -2;
+    private const int STAT_PID_ACADEMY          = -2;  // "Academy All"
     private const int STAT_PID_STATISTICS_HAIFA = -3;
     private const int STAT_PID_STATISTICS_RIGA  = -4;
+    private const int STAT_PID_ACADEMY_HAIFA    = -5;
+    private const int STAT_PID_ACADEMY_RIGA     = -6;
 
     // ── Show Stat ────────────────────────────────────────────────────────────
 
@@ -11185,7 +11187,9 @@ string _actionPcSearch = "";
             new DashboardService.StaffMemberWithRole(STAT_PID_STATISTICS,       "Statistics All",   "Statistics"),
             new DashboardService.StaffMemberWithRole(STAT_PID_STATISTICS_HAIFA, "Statistics Haifa", "Statistics"),
             new DashboardService.StaffMemberWithRole(STAT_PID_STATISTICS_RIGA,  "Statistics Riga",  "Statistics"),
-            new DashboardService.StaffMemberWithRole(STAT_PID_ACADEMY,          "Academy",          "Academy"),
+            new DashboardService.StaffMemberWithRole(STAT_PID_ACADEMY,          "Academy All",      "Academy"),
+            new DashboardService.StaffMemberWithRole(STAT_PID_ACADEMY_HAIFA,    "Academy Haifa",    "Academy"),
+            new DashboardService.StaffMemberWithRole(STAT_PID_ACADEMY_RIGA,     "Academy Riga",     "Academy"),
         };
         _statStaffList.AddRange(ordered);
         _statWeekStart = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today)).AddDays(-7);
@@ -11323,7 +11327,15 @@ string _actionPcSearch = "";
             byte[] pdfBytes;
             if (sid == STAT_PID_ACADEMY)
             {
-                pdfBytes = BuildAcademyPdf(weekStart);
+                pdfBytes = BuildAcademyPdf(weekStart, null, "All");
+            }
+            else if (sid == STAT_PID_ACADEMY_HAIFA)
+            {
+                pdfBytes = BuildAcademyPdf(weekStart, 1, "Haifa");
+            }
+            else if (sid == STAT_PID_ACADEMY_RIGA)
+            {
+                pdfBytes = BuildAcademyPdf(weekStart, 2, "Riga");
             }
             else if (sid == STAT_PID_STATISTICS)
             {
@@ -11396,10 +11408,10 @@ string _actionPcSearch = "";
 
     // ── Academy / Statistics PDF helpers (used by Show Stat & Print Staff Reports) ──
 
-    byte[] BuildAcademyPdf(DateOnly weekStart)
+    byte[] BuildAcademyPdf(DateOnly weekStart, int? orgId = null, string? orgLabel = null)
     {
-        var students = AcademySvc.GetStudentVisitsForWeek(weekStart);
-        var (byRef, byOrg) = AcademySvc.GetWeeklyStudentBreakdown(weekStart);
+        var students = AcademySvc.GetStudentVisitsForWeek(weekStart, orgId);
+        var (byRef, byOrg) = AcademySvc.GetWeeklyStudentBreakdown(weekStart, orgId);
         var personIds = students.Select(s => s.PersonId);
         var coursesRaw = CourseSvc.GetOpenCoursesForPersons(personIds);
         var courses = coursesRaw.ToDictionary(
@@ -11417,18 +11429,21 @@ string _actionPcSearch = "";
         string monthLabel = "";
         int monthWeekCount = weeks.Count;
         var monthStudents = new List<(int PersonId, string FullName, int VisitCount, int TotalSessions, string Source, string Org, string Nick)>();
+        Dictionary<string, int> byMonthRef = new(), byMonthOrg = new();
         if (weeks.Count > 0)
         {
             monthStart     = weeks[0];
             monthEnd       = weeks[^1].AddDays(6);
             monthLabel     = monthStart.Value.ToString("MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture);
-            monthStudents  = AcademySvc.GetStudentVisitsForDateRange(monthStart.Value, monthEnd.Value);
+            monthStudents  = AcademySvc.GetStudentVisitsForDateRange(monthStart.Value, monthEnd.Value, orgId);
+            (byMonthRef, byMonthOrg) = AcademySvc.GetStudentBreakdownForDateRange(monthStart.Value, monthEnd.Value, orgId);
         }
 
-        var weeklyTotals = AcademySvc.GetWeeklyVisitCounts(weekStart, 20);
+        var weeklyTotals = AcademySvc.GetWeeklyVisitCounts(weekStart, 20, orgId);
 
         return PdfSvc.GenerateAcademyWeekPdf(weekStart, students, byRef, byOrg, courses,
-            monthStudents, monthLabel, monthWeekCount, monthStart, monthEnd, weeklyTotals: weeklyTotals);
+            monthStudents, monthLabel, monthWeekCount, monthStart, monthEnd,
+            weeklyTotals: weeklyTotals, byMonthReferral: byMonthRef, byMonthOrg: byMonthOrg, orgLabel: orgLabel);
     }
 
     byte[] BuildStatisticsPdf(DateOnly weekStart, int? orgId = null, string? orgLabel = null)
@@ -11513,7 +11528,9 @@ string _actionPcSearch = "";
             new PsaEntry(new StaffMember(STAT_PID_STATISTICS,       "Statistics All"),   true),
             new PsaEntry(new StaffMember(STAT_PID_STATISTICS_HAIFA, "Statistics Haifa"), true),
             new PsaEntry(new StaffMember(STAT_PID_STATISTICS_RIGA,  "Statistics Riga"),  true),
-            new PsaEntry(new StaffMember(STAT_PID_ACADEMY,          "Academy"),          true),
+            new PsaEntry(new StaffMember(STAT_PID_ACADEMY,          "Academy All"),      true),
+            new PsaEntry(new StaffMember(STAT_PID_ACADEMY_HAIFA,    "Academy Haifa"),    true),
+            new PsaEntry(new StaffMember(STAT_PID_ACADEMY_RIGA,     "Academy Riga"),     true),
         };
         _psaList.AddRange(allStaff.Select(s => new PsaEntry(s, true)));
         _psaBusy = false;
@@ -11541,11 +11558,20 @@ string _actionPcSearch = "";
         _psaList = _psaList.Select(s => s with { Selected = !allSelected }).ToList();
     }
 
-    static string AvatarColor(int id)
-    {
-        var colors = new[] { "#6366f1", "#ec4899", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ef4444", "#14b8a6", "#f97316", "#06b6d4" };
-        return colors[Math.Abs(id) % colors.Length];
-    }
+    // Per-staff deterministic color palette (cross-page consistent with Statistics).
+    // 30 distinct colors. First 10 are unchanged so existing staff keep their colors.
+    static readonly string[] _staffColors = new[] {
+        // 1-10 (original)
+        "#6366f1", "#ec4899", "#f59e0b", "#10b981", "#3b82f6",
+        "#8b5cf6", "#ef4444", "#14b8a6", "#f97316", "#06b6d4",
+        // 11-20
+        "#84cc16", "#a855f7", "#0ea5e9", "#22c55e", "#eab308",
+        "#d946ef", "#dc2626", "#0d9488", "#ea580c", "#0891b2",
+        // 21-30
+        "#4f46e5", "#db2777", "#d97706", "#059669", "#2563eb",
+        "#7c3aed", "#b91c1c", "#9333ea", "#16a34a", "#ca8a04",
+    };
+    static string AvatarColor(int id) => _staffColors[Math.Abs(id) % _staffColors.Length];
 
     async Task GenerateAllStaffPdf()
     {
@@ -11575,7 +11601,15 @@ string _actionPcSearch = "";
             byte[] pdfBytes;
             if (staff.PersonId == STAT_PID_ACADEMY)
             {
-                pdfBytes = BuildAcademyPdf(weekStart);
+                pdfBytes = BuildAcademyPdf(weekStart, null, "All");
+            }
+            else if (staff.PersonId == STAT_PID_ACADEMY_HAIFA)
+            {
+                pdfBytes = BuildAcademyPdf(weekStart, 1, "Haifa");
+            }
+            else if (staff.PersonId == STAT_PID_ACADEMY_RIGA)
+            {
+                pdfBytes = BuildAcademyPdf(weekStart, 2, "Riga");
             }
             else if (staff.PersonId == STAT_PID_STATISTICS)
             {
