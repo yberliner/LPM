@@ -1177,21 +1177,34 @@
         s <= 0 ? "0:00" : $"{s / 3600}:{(s % 3600) / 60:D2}";
 
     // ── Per-staff deterministic color (cross-page consistent with MainHeader) ──
-    // 30 distinct colors. First 10 are identical to the original MainHeader palette
-    // so existing staff (PersonId 1-10) keep their current colors.
-    static readonly string[] _staffPalette = new[] {
-        // 1-10 (matches MainHeader)
-        "#6366f1", "#ec4899", "#f59e0b", "#10b981", "#3b82f6",
-        "#8b5cf6", "#ef4444", "#14b8a6", "#f97316", "#06b6d4",
-        // 11-20 — saturation/hue siblings
-        "#84cc16", "#a855f7", "#0ea5e9", "#22c55e", "#eab308",
-        "#d946ef", "#dc2626", "#0d9488", "#ea580c", "#0891b2",
-        // 21-30 — darker variants
-        "#4f46e5", "#db2777", "#d97706", "#059669", "#2563eb",
-        "#7c3aed", "#b91c1c", "#9333ea", "#16a34a", "#ca8a04",
-    };
-    static string ColorForStaff(int personId) =>
-        _staffPalette[Math.Abs(personId) % _staffPalette.Length];
+    // Deterministic per-staff color: golden-angle hue rotation guarantees a stable, unique
+    // hue for every PersonId (no fixed-palette modulo collisions like tami=104 vs carmela=14
+    // both landing on slot 14). Same input → same output forever, across pages and sessions.
+    static string ColorForStaff(int personId)
+    {
+        const double GOLDEN_ANGLE = 137.50776405003785;
+        var idx = Math.Abs((long)personId);
+        var hue = ((idx * GOLDEN_ANGLE) % 360.0 + 360.0) % 360.0;
+        return HslToHex(hue, 0.65, 0.50);
+    }
+
+    static string HslToHex(double h, double s, double l)
+    {
+        var c = (1 - Math.Abs(2 * l - 1)) * s;
+        var x = c * (1 - Math.Abs(((h / 60.0) % 2) - 1));
+        var m = l - c / 2;
+        double r, g, b;
+        if      (h <  60) { r = c; g = x; b = 0; }
+        else if (h < 120) { r = x; g = c; b = 0; }
+        else if (h < 180) { r = 0; g = c; b = x; }
+        else if (h < 240) { r = 0; g = x; b = c; }
+        else if (h < 300) { r = x; g = 0; b = c; }
+        else              { r = c; g = 0; b = x; }
+        int R = (int)Math.Round((r + m) * 255);
+        int G = (int)Math.Round((g + m) * 255);
+        int B = (int)Math.Round((b + m) * 255);
+        return $"#{R:X2}{G:X2}{B:X2}";
+    }
 
     // ── Sort state per leaderboard table (persisted in localStorage) ──
     string _wkSort = "total"; bool _wkSortDesc = true;
