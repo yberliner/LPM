@@ -128,6 +128,7 @@ builder.Services.AddSingleton<LPM.Services.CourseService>();
 builder.Services.AddSingleton<LPM.Services.MessageNotifier>();
 builder.Services.AddSingleton<LPM.Services.FileAuditService>();
 builder.Services.AddSingleton<LPM.Services.FolderService>();
+builder.Services.AddSingleton<LPM.Services.TextAnnotationService>();
 builder.Services.AddSingleton<LPM.Services.MeetingService>();
 builder.Services.AddHostedService<LPM.Services.DbBackupService>();
 builder.Services.AddSingleton<LPM.Services.PdfShrinkService>();
@@ -1245,6 +1246,62 @@ app.MapPost("/api/pc-file-save-annotations", async (HttpContext ctx,
     else
         folderSvc.WriteAnnotationSidecar(pcId, path, solo, json);
     return Results.Ok();
+}).RequireAuthorization();
+
+// ── Persistent text-annotation audit log (sys_text_annotations table) ──────────
+// These endpoints DO NOT depend on file-system existence; the audit log lives
+// independently of the .ann.json sidecar and survives bake-and-burn.
+
+app.MapPost("/api/text-ann/upsert", async (HttpContext ctx,
+    LPM.Services.TextAnnotationService taSvc, LPM.Services.DashboardService dashSvc) =>
+{
+    if (!int.TryParse(ctx.Request.Query["pcId"], out var pcId)) return Results.BadRequest();
+    var path = ctx.Request.Query["path"].ToString();
+    if (string.IsNullOrEmpty(path)) return Results.BadRequest();
+    var solo = ctx.Request.Query["solo"].ToString() == "true";
+    if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
+    if (!int.TryParse(ctx.User.FindFirst("UserId")?.Value, out var userId) || userId <= 0)
+        return Results.Unauthorized();
+
+    using var reader = new System.IO.StreamReader(ctx.Request.Body);
+    var json = await reader.ReadToEndAsync();
+    var doc = System.Text.Json.JsonDocument.Parse(json);
+    var root = doc.RootElement;
+    var guid = root.TryGetProperty("guid", out var g) ? g.GetString() ?? "" : "";
+    var pageIdx = root.TryGetProperty("pageIdx", out var p) && p.ValueKind == System.Text.Json.JsonValueKind.Number ? p.GetInt32() : 0;
+    var text = root.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
+    if (string.IsNullOrEmpty(guid)) return Results.BadRequest("guid required");
+    taSvc.Upsert(pcId, path, guid, pageIdx, text, userId);
+    return Results.Ok();
+}).RequireAuthorization();
+
+app.MapPost("/api/text-ann/delete", async (HttpContext ctx,
+    LPM.Services.TextAnnotationService taSvc, LPM.Services.DashboardService dashSvc) =>
+{
+    if (!int.TryParse(ctx.Request.Query["pcId"], out var pcId)) return Results.BadRequest();
+    var path = ctx.Request.Query["path"].ToString();
+    if (string.IsNullOrEmpty(path)) return Results.BadRequest();
+    var solo = ctx.Request.Query["solo"].ToString() == "true";
+    if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
+    if (!int.TryParse(ctx.User.FindFirst("UserId")?.Value, out var userId) || userId <= 0)
+        return Results.Unauthorized();
+
+    using var reader = new System.IO.StreamReader(ctx.Request.Body);
+    var json = await reader.ReadToEndAsync();
+    var doc = System.Text.Json.JsonDocument.Parse(json);
+    var guid = doc.RootElement.TryGetProperty("guid", out var g) ? g.GetString() ?? "" : "";
+    if (string.IsNullOrEmpty(guid)) return Results.BadRequest("guid required");
+    taSvc.SoftDelete(pcId, path, guid, userId);
+    return Results.Ok();
+}).RequireAuthorization();
+
+app.MapGet("/api/text-ann/list", (int pcId, string path,
+    LPM.Services.TextAnnotationService taSvc, LPM.Services.DashboardService dashSvc,
+    HttpContext ctx, bool solo = false) =>
+{
+    if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
+    var rows = taSvc.List(pcId, path);
+    return Results.Json(rows);
 }).RequireAuthorization();
 
 app.MapPost("/api/pc-file-save", async (HttpContext ctx, LPM.Services.FolderService svc,

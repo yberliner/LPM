@@ -18,7 +18,8 @@ public record SkippedFileRecord(string PcName, string FileName, string Section, 
 public class ImportJobState
 {
     public string JobId { get; init; } = "";
-    public int UserId { get; init; }
+    public int UserId { get; init; }            // misnamed: actually a core_persons.PersonId
+    public int? CoreUserId { get; init; }       // real core_users.Id (used as CreatedByUserId on inserted sessions)
     public ImportStatus Status { get; set; }
     public int TotalFiles { get; set; }
     public int UploadedFiles { get; set; }
@@ -117,7 +118,7 @@ public class ImportJobService
     }
 
     /// <summary>Start a new upload job. Returns jobId or null if a job is already running.</summary>
-    public string? TryStartUpload(int userId, int totalFiles)
+    public string? TryStartUpload(int userId, int totalFiles, int? coreUserId = null)
     {
         lock (_lock)
         {
@@ -137,6 +138,7 @@ public class ImportJobService
             {
                 JobId = jobId,
                 UserId = userId,
+                CoreUserId = coreUserId,
                 Status = ImportStatus.Uploading,
                 TotalFiles = totalFiles,
                 StartedAt = DateTime.UtcNow,
@@ -194,13 +196,14 @@ public class ImportJobService
 
         Console.WriteLine($"[ImportJobService] Started processing job {jobId}, {manifest.Count} PCs");
         var userId = CurrentJob.UserId;
+        var coreUserId = CurrentJob.CoreUserId;
         var tempJobPath = Path.Combine(_tempBasePath, jobId);
 
         // Give the worker a fresh CTS so CancelCurrentJob can interrupt a long import.
         _currentCts?.Dispose();
         _currentCts = new CancellationTokenSource();
         var ct = _currentCts.Token;
-        _ = Task.Run(() => ProcessInBackground(jobId, tempJobPath, manifest, coverMappings, userId, overrideCoverFolders, ct));
+        _ = Task.Run(() => ProcessInBackground(jobId, tempJobPath, manifest, coverMappings, userId, coreUserId, overrideCoverFolders, ct));
     }
 
     /// <summary>
@@ -251,6 +254,7 @@ public class ImportJobService
 
     private void ProcessInBackground(string jobId, string tempJobPath,
         List<ImportPcManifest> manifest, List<ImportCoverMapping> coverMappings, int userId,
+        int? coreUserId = null,
         bool overrideCoverFolders = false,
         CancellationToken ct = default)
     {
@@ -358,9 +362,9 @@ public class ImportJobService
                         var sessionName = Path.GetFileNameWithoutExtension(finalName);
                         var sessionDate = ParseSessionDate(file);
                         var createdAt = ParseCreatedAt(file);
-                        _dashSvc.CreateImportedSessionWithDate(pcId, userId, sessionName, sessionDate, createdAt, userId, isSolo: true);
+                        _dashSvc.CreateImportedSessionWithDate(pcId, userId, sessionName, sessionDate, createdAt, coreUserId ?? userId, isSolo: true);
                         if (CurrentJob != null) CurrentJob.SessionsCreated++;
-                        Console.WriteLine($"[ImportJobService] Created solo session for PC {pcId}: '{sessionName}'");
+                        Console.WriteLine($"[ImportJobService] Created solo session for PC {pcId}: '{sessionName}' (createdBy user {coreUserId ?? userId})");
                         IncrementProcessed(jobId);
                     }
 
@@ -428,9 +432,9 @@ public class ImportJobService
                         var sessionName = Path.GetFileNameWithoutExtension(finalName);
                         var sessionDate = ParseSessionDate(file);
                         var createdAt = ParseCreatedAt(file);
-                        _dashSvc.CreateImportedSessionWithDate(pcId, userId, sessionName, sessionDate, createdAt, userId, isSolo: false);
+                        _dashSvc.CreateImportedSessionWithDate(pcId, userId, sessionName, sessionDate, createdAt, coreUserId ?? userId, isSolo: false);
                         if (CurrentJob != null) CurrentJob.SessionsCreated++;
-                        Console.WriteLine($"[ImportJobService] Created session for PC {pcId}: '{sessionName}'");
+                        Console.WriteLine($"[ImportJobService] Created session for PC {pcId}: '{sessionName}' (createdBy user {coreUserId ?? userId})");
                         IncrementProcessed(jobId);
                     }
 

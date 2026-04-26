@@ -932,6 +932,41 @@ window.pcfViewer = {
         }
     },
 
+    /// Generate a fresh GUID for a new text annotation. Falls back to a manual UUID
+    /// implementation when crypto.randomUUID is unavailable (older browsers / non-https).
+    _newGuid() {
+        try {
+            if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+        } catch (e) {}
+        // RFC4122-ish v4 fallback
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+            const r = (Math.random() * 16) | 0;
+            const v = c === 'x' ? r : (r & 0x3) | 0x8;
+            return v.toString(16);
+        });
+    },
+
+    /// Fire-and-forget POST to the persistent annotation audit log
+    /// (sys_text_annotations table). Independent of bake/sidecar — the row survives
+    /// burn-and-bake. Failures are logged but never block the UI.
+    async _postAnnEvent(action, ann, paneId) {
+        const pane = this.panes[paneId || this.activePane];
+        if (!pane || !pane.filePath || !this._pcId || !ann || !ann.guid) return;
+        const soloParam = pane.solo ? '&solo=true' : '';
+        const url = (action === 'delete')
+            ? `/api/text-ann/delete?pcId=${this._pcId}&path=${encodeURIComponent(pane.filePath)}${soloParam}`
+            : `/api/text-ann/upsert?pcId=${this._pcId}&path=${encodeURIComponent(pane.filePath)}${soloParam}`;
+        const body = (action === 'delete')
+            ? JSON.stringify({ guid: ann.guid })
+            : JSON.stringify({ guid: ann.guid, pageIdx: ann.pageIdx ?? 0, text: ann.text || '' });
+        try {
+            await fetch(url, { method: 'POST', credentials: 'include',
+                body, headers: { 'Content-Type': 'application/json' } });
+        } catch (e) {
+            console.warn('[text-ann] ' + action + ' failed for guid=' + ann.guid + ': ' + (e && e.message));
+        }
+    },
+
     /// Char-break any line whose measured width exceeds maxW. Used as a last-resort fallback
     /// after word-wrap when an unbreakable token (e.g. a long URL or `aaaa…aaaa`) is wider than
     /// the page. Returns a new array of lines, each ≤ maxW wide.
@@ -1357,22 +1392,29 @@ window.pcfViewer = {
                 if (isEditing && existingIdx >= 0) {
                     if (text) {
                         // Update existing annotation — apply current color/fontSize/position from toolbar + drag
-                        pane.annotations[existingIdx].text = text;
-                        pane.annotations[existingIdx].lines = lines;
-                        pane.annotations[existingIdx].color = self.drawColor;
-                        pane.annotations[existingIdx].fontSize = self.fontSize;
-                        pane.annotations[existingIdx].maxWidth = input.offsetWidth;
-                        pane.annotations[existingIdx].x = x;
-                        pane.annotations[existingIdx].y = y;
-                        pane.annotations[existingIdx].rtl = rtl;
+                        const cur = pane.annotations[existingIdx];
+                        if (!cur.guid) cur.guid = self._newGuid(); // backfill for old sidecars
+                        cur.text = text;
+                        cur.lines = lines;
+                        cur.color = self.drawColor;
+                        cur.fontSize = self.fontSize;
+                        cur.maxWidth = input.offsetWidth;
+                        cur.x = x;
+                        cur.y = y;
+                        cur.rtl = rtl;
+                        self._postAnnEvent('upsert', cur, paneId);
                     } else {
                         // Empty text = delete annotation
+                        const removed = pane.annotations[existingIdx];
                         pane.annotations.splice(existingIdx, 1);
+                        if (removed && removed.guid) self._postAnnEvent('delete', removed, paneId);
                     }
                 } else if (text) {
                     // New annotation (also handles restore-as-new when existingIdx = -1)
-                    pane.annotations.push({ pageIdx, type: 'text', text, lines, x, y, color, fontSize, maxWidth: input.offsetWidth, rtl });
+                    const newAnn = { pageIdx, type: 'text', text, lines, x, y, color, fontSize, maxWidth: input.offsetWidth, rtl, guid: self._newGuid() };
+                    pane.annotations.push(newAnn);
                     console.log('[txt-dbg] pushed annotation: pageIdx=' + pageIdx + ' x=' + x.toFixed(1) + ' y=' + y.toFixed(1) + ' maxWidth=' + input.offsetWidth + ' lines=' + (lines?.length ?? 0) + ' text="' + text + '" total=' + pane.annotations.length);
+                    self._postAnnEvent('upsert', newAnn, paneId);
                 }
                 self._redrawOverlay(pageIdx, paneId);
                 self._notifyChange();

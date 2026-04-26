@@ -5,6 +5,7 @@
 @inject PcService PcSvc
 @inject DashboardService DashSvc
 @inject ImportJobService ImportJob
+@inject EffortService EffortSvc
 @inject LPM.Auth.UserDb UserDb
 @inject LPM.Services.SmsService SmsSvc
 @inject AuthenticationStateProvider AuthStateProvider
@@ -1011,7 +1012,8 @@
     bool _uploading;
     string _errorMessage = "";
     int _uploadedCount, _totalFileCount;
-    int? _userId;
+    int? _userId;       // misnamed: actually a core_persons.PersonId
+    int? _coreUserId;   // real core_users.Id (used as CreatedByUserId on import)
     string _logUsername = "";
     long _totalSizeBytes;
     long _freeSpaceBytes;
@@ -1125,6 +1127,7 @@
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         _logUsername = auth.User.Identity?.Name ?? "";
         _userId = DashSvc.GetUserIdByUsername(_logUsername);
+        _coreUserId = EffortSvc.GetCoreUserIdByUsername(_logUsername);
         ImportJob.OnProgressChanged += OnJobProgress;
     }
 
@@ -1859,7 +1862,7 @@
 
         _totalFileCount = includedFiles.Count;
         Console.WriteLine($"[Import] Started import: {_manifest.Count} PCs, {includedFiles.Count} files by '{_logUsername}'");
-        var jobId = ImportJob.TryStartUpload(_userId.Value, _totalFileCount);
+        var jobId = ImportJob.TryStartUpload(_userId.Value, _totalFileCount, coreUserId: _coreUserId);
         if (jobId == null) { _errorMessage = "An import is already in progress."; return; }
 
         _uploading = true;

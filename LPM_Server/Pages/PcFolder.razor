@@ -393,6 +393,18 @@
             <button class="pcf-ctx-item" @onclick="FloatPage">
                 <i class="ri-lock-line me-2"></i>Float Page
             </button>
+            @{
+                var activeFile = _activeIdx >= 0 && _activeIdx < _panes.Length ? _panes[_activeIdx].File : null;
+                var activeName = _activeIdx >= 0 && _activeIdx < _panes.Length ? _panes[_activeIdx].FileName : null;
+                var canShowAnnHist = !string.IsNullOrEmpty(activeFile) && activeFile.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+            }
+            @if (canShowAnnHist)
+            {
+                <div class="pcf-ctx-divider"></div>
+                <button class="pcf-ctx-item" @onclick="() => { _showPageCtxMenu = false; OpenAnnotationHistory(activeFile!, activeName ?? activeFile!); }">
+                    <i class="ri-edit-2-line me-2"></i>Text annotations…
+                </button>
+            }
         </div>
     }
 
@@ -564,6 +576,10 @@
                 <button class="pcf-ctx-danger" @onclick="CtxDelete"><i class="ri-delete-bin-line me-2"></i>@LS.T("common.delete")</button>
                 <div class="pcf-ctx-divider"></div>
                 <button @onclick="CtxDownload"><i class="ri-download-2-line me-2"></i>Download</button>
+                @if (_ctxNode.Name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                {
+                    <button @onclick="CtxAnnHistory"><i class="ri-edit-2-line me-2"></i>Text annotations…</button>
+                }
             }
         </div>
     }
@@ -1437,6 +1453,15 @@
     CurrentUserName="@_userName"
     InitialTab="@_sdInitialTab"
     OnCloseRequested="CloseSessionDataModal" />
+
+@* ── Text annotations history (right-click on a PDF in the tree or in the pane) ── *@
+<TextAnnotationsModal
+    Show="_showAnnHistoryModal"
+    PcId="PcId"
+    Solo="Solo"
+    FilePath="@_annHistoryFilePath"
+    FileName="@_annHistoryFileName"
+    OnCloseRequested="CloseAnnotationHistoryModal" />
 
 @* ── Save Error / Retry Dialog (network failure during pane save) ── *@
 @if (_showSaveErrorDialog)
@@ -3666,6 +3691,18 @@
     void OpenSessionDataModal()                  { _sdInitialTab = "Evil";  _showSessionDataModal = true; }
     void OpenSessionDataModalTab(string tab)     { _sdInitialTab = tab;     _showSessionDataModal = true; }
     void CloseSessionDataModal() => _showSessionDataModal = false;
+
+    // ── Text annotation history popup (right-click on a PDF) ──
+    bool    _showAnnHistoryModal;
+    string? _annHistoryFilePath;
+    string? _annHistoryFileName;
+    void OpenAnnotationHistory(string relPath, string fileName)
+    {
+        _annHistoryFilePath = relPath;
+        _annHistoryFileName = fileName;
+        _showAnnHistoryModal = true;
+    }
+    void CloseAnnotationHistoryModal() => _showAnnHistoryModal = false;
     string _errorToast = "";
     int _csReviewSeconds;        // editable review time (session + admin) in seconds
 
@@ -7206,6 +7243,13 @@
         _moveNewFolderMode = false;
         _moveNewFolderName = "";
         _showMoveModal = true;
+        CloseCtxMenu();
+    }
+
+    void CtxAnnHistory()
+    {
+        if (_ctxNode == null || _ctxNode.IsFolder) return;
+        OpenAnnotationHistory(_ctxNode.RelativePath, _ctxNode.Name);
         CloseCtxMenu();
     }
 

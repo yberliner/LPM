@@ -236,8 +236,9 @@ public class FolderService
     private readonly byte[]? _encKey;
     private readonly IMemoryCache _cache;
     private readonly FileAuditService _audit;
+    private readonly TextAnnotationService _textAnn;
 
-    public FolderService(IConfiguration config, IMemoryCache cache, FileAuditService audit)
+    public FolderService(IConfiguration config, IMemoryCache cache, FileAuditService audit, TextAnnotationService textAnn)
     {
         _basePath = Path.Combine(Directory.GetCurrentDirectory(), "PC-Folders");
         var dbPath = config["Database:Path"] ?? "lifepower.db";
@@ -249,6 +250,7 @@ public class FolderService
             _encKey = Convert.FromBase64String(keyStr);
         _cache = cache;
         _audit = audit;
+        _textAnn = textAnn;
     }
 
     // ── Decrypted-file cache helpers ──────────────────────────────────────────
@@ -3248,6 +3250,7 @@ public class FolderService
         File.Move(srcPath, destPath);
         InvalidateCache(srcPath);
         var destRelPath = $"{destFolderRelativePath}/{fileName}";
+        _textAnn.RenamePath(pcId, sourceRelativePath, destRelPath);
         _audit.Log(pcId, solo, destRelPath, "move", null, null, null, "ContextMenu", $"Moved from {sourceRelativePath}");
         Console.WriteLine($"[FolderService] Moved '{sourceRelativePath}' → '{destFolderRelativePath}/{fileName}' for PC {pcId}");
         return true;
@@ -3270,6 +3273,7 @@ public class FolderService
         InvalidateCache(fullPath);
         var parentRel = Path.GetDirectoryName(relativePath)?.Replace('\\', '/') ?? "";
         var newRelPath = string.IsNullOrEmpty(parentRel) ? sanitized : $"{parentRel}/{sanitized}";
+        _textAnn.RenamePath(pcId, relativePath, newRelPath);
         _audit.Log(pcId, solo, newRelPath, "rename", null, null, null, "ContextMenu", $"Renamed from {Path.GetFileName(relativePath)}");
         Console.WriteLine($"[FolderService] Renamed '{relativePath}' → '{sanitized}' for PC {pcId}");
         return true;

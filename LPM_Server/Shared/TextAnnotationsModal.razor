@@ -1,0 +1,341 @@
+@using System.Globalization
+@inject LPM.Services.TextAnnotationService TaSvc
+
+@* ────────────────────────────────────────────────────────────────────────────
+   Annotation history popup. Shows all text annotations ever added to a PDF
+   file (active + edited + soft-deleted) with author + timestamp.
+   Backed by sys_text_annotations table; survives bake/burn.
+   ──────────────────────────────────────────────────────────────────────────── *@
+
+@if (Show)
+{
+    <div class="tah-overlay" @onclick="OnClose">
+        <div class="tah-card" @onclick:stopPropagation="true">
+            <div class="tah-head">
+                <i class="ri-edit-2-line tah-head-icon"></i>
+                <div class="tah-head-text">
+                    <strong>Text annotations</strong>
+                    <span class="tah-head-sub" title="@FilePath">@FileName</span>
+                </div>
+                <button class="tah-close" @onclick="OnClose" title="Close"><i class="ri-close-line"></i></button>
+            </div>
+
+            @if (_loading)
+            {
+                <div class="tah-empty"><div class="spinner-border spinner-border-sm me-2"></div>Loading…</div>
+            }
+            else if (_error != null)
+            {
+                <div class="tah-empty tah-error"><i class="ri-error-warning-line me-1"></i>@_error</div>
+            }
+            else if (_rows.Count == 0)
+            {
+                <div class="tah-empty">
+                    <i class="ri-inbox-line"></i><br/>
+                    No text annotations recorded for this file.
+                </div>
+            }
+            else
+            {
+                <div class="tah-toolbar">
+                    @foreach (var f in new[] { ("All", "all"), ("Active", "active"), ("Edited", "edited"), ("Deleted", "deleted") })
+                    {
+                        <button class="tah-pill @(_filter == f.Item2 ? "tah-pill-on" : "")"
+                                @onclick="() => _filter = f.Item2">@f.Item1
+                            <span class="tah-pill-count">@CountFor(f.Item2)</span>
+                        </button>
+                    }
+                    <input class="tah-search form-control form-control-sm" placeholder="Search text…"
+                           @bind="_search" @bind:event="oninput" />
+                </div>
+
+                <div class="tah-body">
+                    @{ var visible = FilteredRows(); }
+                    @if (visible.Count == 0)
+                    {
+                        <div class="tah-empty"><i class="ri-search-line"></i> No matches</div>
+                    }
+                    else
+                    {
+                        @foreach (var row in visible)
+                        {
+                            var rowClass = row.IsDeleted ? "tah-row tah-row-deleted"
+                                         : row.ModifiedAt != null ? "tah-row tah-row-edited"
+                                         : "tah-row tah-row-active";
+                            <div class="@rowClass">
+                                <div class="tah-avatar">@AvatarLetter(row.CreatedByName)</div>
+                                <div class="tah-row-main">
+                                    <div class="tah-row-meta">
+                                        <span class="tah-author">@row.CreatedByName</span>
+                                        <span class="tah-date" title="@row.CreatedAt">@FormatTs(row.CreatedAt)</span>
+                                        @if (row.IsDeleted)
+                                        {
+                                            <span class="tah-badge tah-badge-deleted">deleted</span>
+                                        }
+                                        else if (row.ModifiedAt != null)
+                                        {
+                                            <span class="tah-badge tah-badge-edited">edited</span>
+                                        }
+                                        @if (row.PageIdx > 0)
+                                        {
+                                            <span class="tah-badge tah-badge-page">p@(row.PageIdx + 1)</span>
+                                        }
+                                    </div>
+                                    <div class="tah-text">@row.Text</div>
+                                    @if (row.IsDeleted && row.DeletedByName != null)
+                                    {
+                                        <div class="tah-foot tah-foot-deleted">
+                                            <i class="ri-delete-bin-line"></i>
+                                            deleted by <strong>@row.DeletedByName</strong> at @FormatTs(row.DeletedAt)
+                                        </div>
+                                    }
+                                    else if (row.ModifiedByName != null)
+                                    {
+                                        <div class="tah-foot tah-foot-edited">
+                                            <i class="ri-pencil-line"></i>
+                                            edited by <strong>@row.ModifiedByName</strong> at @FormatTs(row.ModifiedAt)
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<style>
+    .tah-overlay {
+        position: fixed; inset: 0; z-index: 99500;
+        background: rgba(15, 23, 42, .65);
+        backdrop-filter: blur(4px);
+        display: flex; align-items: center; justify-content: center;
+        animation: tah-fade .15s ease;
+    }
+    @@keyframes tah-fade { from { opacity: 0; } to { opacity: 1; } }
+    .tah-card {
+        background: #0f172a;
+        color: #e2e8f0;
+        width: 92%; max-width: 720px; max-height: 86vh;
+        border-radius: 16px;
+        border: 1px solid rgba(99,102,241,.35);
+        box-shadow: 0 30px 80px rgba(0,0,0,.55);
+        display: flex; flex-direction: column;
+        overflow: hidden;
+    }
+    .tah-head {
+        display: flex; align-items: center; gap: 12px;
+        padding: 14px 18px;
+        background: linear-gradient(135deg, #312e81 0%, #6366f1 60%, #06b6d4 100%);
+    }
+    .tah-head-icon { font-size: 1.4rem; color: #fff; opacity: .9; }
+    .tah-head-text { flex: 1; min-width: 0; }
+    .tah-head-text strong { display: block; color: #fff; font-size: 1rem; letter-spacing: .02em; }
+    .tah-head-sub {
+        display: block; color: rgba(255,255,255,.78); font-size: .78rem;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tah-close {
+        background: rgba(255,255,255,.18); color: #fff; border: 0;
+        width: 30px; height: 30px; border-radius: 8px; cursor: pointer;
+        display: flex; align-items: center; justify-content: center; font-size: 1rem;
+    }
+    .tah-close:hover { background: rgba(255,255,255,.32); }
+
+    .tah-toolbar {
+        display: flex; align-items: center; gap: 6px;
+        padding: 10px 14px;
+        background: #111827;
+        border-bottom: 1px solid rgba(255,255,255,.06);
+        flex-wrap: wrap;
+    }
+    .tah-pill {
+        background: rgba(255,255,255,.06); color: #cbd5e1;
+        border: 1px solid rgba(255,255,255,.08);
+        border-radius: 999px;
+        padding: 4px 10px; font-size: .75rem; font-weight: 600;
+        cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+        min-height: 28px;
+    }
+    .tah-pill:hover { background: rgba(255,255,255,.12); }
+    .tah-pill-on { background: linear-gradient(90deg, #6366f1, #8b5cf6); color: #fff; border-color: transparent; }
+    .tah-pill-count {
+        background: rgba(0,0,0,.25); border-radius: 999px;
+        padding: 1px 6px; font-size: .68rem;
+    }
+    .tah-search {
+        flex: 1; min-width: 140px; background: #1f2937; color: #e5e7eb;
+        border: 1px solid rgba(255,255,255,.08); border-radius: 8px;
+        padding: 4px 10px; font-size: .8rem; min-height: 28px;
+    }
+    .tah-search::placeholder { color: #6b7280; }
+
+    .tah-body {
+        overflow-y: auto;
+        padding: 12px 14px 16px;
+        flex: 1;
+        display: flex; flex-direction: column; gap: 10px;
+    }
+
+    .tah-row {
+        display: flex; gap: 12px;
+        padding: 12px 14px;
+        background: #1f2937;
+        border-left: 3px solid #6366f1;
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(0,0,0,.18);
+        transition: transform .12s ease, box-shadow .12s ease;
+    }
+    .tah-row:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(0,0,0,.32); }
+    .tah-row-active  { border-left-color: #6366f1; }
+    .tah-row-edited  { border-left-color: #f59e0b; background: #2a2517; }
+    .tah-row-deleted { border-left-color: #ef4444; background: #2a1818; opacity: .82; }
+
+    .tah-avatar {
+        width: 36px; height: 36px; border-radius: 50%;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        color: #fff; font-weight: 700; font-size: .9rem;
+        display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+        text-transform: uppercase;
+    }
+    .tah-row-edited .tah-avatar  { background: linear-gradient(135deg, #f59e0b, #f97316); }
+    .tah-row-deleted .tah-avatar { background: linear-gradient(135deg, #ef4444, #b91c1c); }
+
+    .tah-row-main { flex: 1; min-width: 0; }
+    .tah-row-meta {
+        display: flex; align-items: center; gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 6px;
+    }
+    .tah-author { font-weight: 700; color: #e5e7eb; font-size: .9rem; }
+    .tah-date   { color: #94a3b8; font-size: .75rem; }
+    .tah-badge {
+        font-size: .65rem; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+        letter-spacing: .04em; text-transform: uppercase;
+    }
+    .tah-badge-edited  { background: rgba(245,158,11,.2); color: #fcd34d; }
+    .tah-badge-deleted { background: rgba(239,68,68,.2);  color: #fca5a5; }
+    .tah-badge-page    { background: rgba(99,102,241,.2); color: #a5b4fc; }
+
+    .tah-text {
+        color: #e5e7eb; font-size: .9rem; line-height: 1.45;
+        white-space: pre-wrap; word-break: break-word;
+    }
+    .tah-row-deleted .tah-text { text-decoration: line-through; color: #94a3b8; }
+
+    .tah-foot {
+        margin-top: 6px; font-size: .72rem;
+        display: flex; align-items: center; gap: 4px;
+    }
+    .tah-foot-edited  { color: #fbbf24; }
+    .tah-foot-deleted { color: #fca5a5; }
+
+    .tah-empty {
+        padding: 28px 12px; text-align: center;
+        color: #94a3b8; font-size: .9rem;
+    }
+    .tah-empty .ri-inbox-line, .tah-empty .ri-search-line, .tah-empty .ri-error-warning-line {
+        font-size: 1.6rem; opacity: .7; display: inline-block; margin-bottom: 6px;
+    }
+    .tah-error { color: #fca5a5; }
+
+    /* Tablet/mobile */
+    @@media (max-width: 480px) {
+        .tah-card { width: 96%; max-height: 92vh; border-radius: 12px; }
+        .tah-head { padding: 12px 14px; }
+        .tah-toolbar { padding: 8px 10px; }
+        .tah-body { padding: 10px; }
+        .tah-row { padding: 10px; gap: 10px; }
+        .tah-avatar { width: 30px; height: 30px; font-size: .8rem; }
+        .tah-text { font-size: .85rem; }
+    }
+</style>
+
+@code {
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public int PcId { get; set; }
+    [Parameter] public string? FilePath { get; set; }
+    [Parameter] public string? FileName { get; set; }
+    [Parameter] public bool Solo { get; set; }
+    [Parameter] public EventCallback OnCloseRequested { get; set; }
+
+    List<LPM.Services.TextAnnRow> _rows = new();
+    bool _loading;
+    string? _error;
+    string _filter = "all";   // all | active | edited | deleted
+    string _search = "";
+
+    bool _wasShown;
+
+    protected override void OnParametersSet()
+    {
+        if (Show && !_wasShown)
+        {
+            _wasShown = true;
+            Load();
+        }
+        else if (!Show && _wasShown)
+        {
+            _wasShown = false;
+            _rows.Clear(); _filter = "all"; _search = ""; _error = null;
+        }
+    }
+
+    void Load()
+    {
+        if (string.IsNullOrEmpty(FilePath) || PcId <= 0) return;
+        _loading = true; _error = null;
+        try
+        {
+            _rows = TaSvc.List(PcId, FilePath);
+        }
+        catch (Exception ex)
+        {
+            _error = "Failed to load: " + ex.Message;
+        }
+        finally { _loading = false; }
+    }
+
+    Task OnClose() => OnCloseRequested.InvokeAsync();
+
+    int CountFor(string f) => f switch {
+        "active"  => _rows.Count(r => !r.IsDeleted && r.ModifiedAt == null),
+        "edited"  => _rows.Count(r => !r.IsDeleted && r.ModifiedAt != null),
+        "deleted" => _rows.Count(r => r.IsDeleted),
+        _         => _rows.Count
+    };
+
+    List<LPM.Services.TextAnnRow> FilteredRows()
+    {
+        IEnumerable<LPM.Services.TextAnnRow> q = _rows;
+        q = _filter switch
+        {
+            "active"  => q.Where(r => !r.IsDeleted && r.ModifiedAt == null),
+            "edited"  => q.Where(r => !r.IsDeleted && r.ModifiedAt != null),
+            "deleted" => q.Where(r => r.IsDeleted),
+            _         => q
+        };
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var s = _search.Trim();
+            q = q.Where(r => (r.Text ?? "").Contains(s, StringComparison.OrdinalIgnoreCase)
+                          || (r.CreatedByName ?? "").Contains(s, StringComparison.OrdinalIgnoreCase));
+        }
+        return q.ToList();
+    }
+
+    static string FormatTs(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return "";
+        if (DateTime.TryParse(raw, CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var u))
+            return u.ToLocalTime().ToString("dd/MM HH:mm", CultureInfo.InvariantCulture);
+        return raw;
+    }
+
+    static string AvatarLetter(string? name) =>
+        string.IsNullOrEmpty(name) ? "?" : name.Trim().Substring(0, 1);
+}

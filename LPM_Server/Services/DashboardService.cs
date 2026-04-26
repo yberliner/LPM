@@ -318,7 +318,7 @@ public class DashboardService
 
     public int CreateImportedSession(int pcId, int auditorId, string sessionName,
         int lengthSeconds = 0, int adminSeconds = 0, bool isFreeSession = false, bool isSolo = false,
-        string? sessionDate = null, int? walletId = null)
+        string? sessionDate = null, int? walletId = null, int? createdByUserId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -362,10 +362,10 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@admin", adminSeconds);
         cmd.Parameters.AddWithValue("@free", isFreeSession ? 1 : 0);
         cmd.Parameters.AddWithValue("@name", sessionName);
-        cmd.Parameters.AddWithValue("@creator", auditorId);
+        cmd.Parameters.AddWithValue("@creator", createdByUserId.HasValue ? (object)createdByUserId.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@wallet", walletId.HasValue ? (object)walletId.Value : DBNull.Value);
         var sessionId = Convert.ToInt32(cmd.ExecuteScalar());
-        Console.WriteLine($"[DashboardService] Created session for PC {pcId}, name: '{sessionName}', length: {lengthSeconds}s, solo: {isSolo}, wallet: {walletId}");
+        Console.WriteLine($"[DashboardService] Created session for PC {pcId}, name: '{sessionName}', length: {lengthSeconds}s, solo: {isSolo}, wallet: {walletId}, createdBy: {createdByUserId}");
         return sessionId;
     }
 
@@ -1541,7 +1541,7 @@ public class DashboardService
     }
 
     /// <summary>Insert a free-session memo row into sess_sessions. Returns the new SessionId.</summary>
-    public int AddMemoSession(int auditorId, int pcId, string name, DateOnly date, bool solo = false)
+    public int AddMemoSession(int auditorId, int pcId, string name, DateOnly date, bool solo = false, int? createdByUserId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -1575,14 +1575,14 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@date",    dateStr);
         cmd.Parameters.AddWithValue("@seq",     seq);
         cmd.Parameters.AddWithValue("@name",    name);
-        cmd.Parameters.AddWithValue("@creator", auditorId);
+        cmd.Parameters.AddWithValue("@creator", createdByUserId.HasValue ? (object)createdByUserId.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@wallet",  walletId.HasValue ? (object)walletId.Value : DBNull.Value);
         cmd.ExecuteNonQuery();
 
         using var rowIdCmd2 = conn.CreateCommand();
         rowIdCmd2.CommandText = "SELECT last_insert_rowid()";
         var newId = (int)(long)rowIdCmd2.ExecuteScalar()!;
-        Console.WriteLine($"[DashboardService] Added memo session {newId} for PC {pcId}, auditor {auditorId}, name='{name}'");
+        Console.WriteLine($"[DashboardService] Added memo session {newId} for PC {pcId}, auditor {auditorId}, name='{name}', createdBy: {createdByUserId}");
         return newId;
     }
 
@@ -3354,10 +3354,13 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
+        // Tolerant match: legacy data sometimes stored a PersonId in CreatedByUserId
+        // (a long-standing bug in two insert paths). Match either UserId or PersonId.
         cmd.CommandText = @"
             SELECT u.Id, u.Username, u.StaffRole, u.AvatarPath,
                    COALESCE(NULLIF(TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''),'')), ''), u.Username) AS DisplayName,
-                   (SELECT COUNT(*) FROM sess_sessions s WHERE s.CreatedByUserId = u.Id) AS SessionCount
+                   (SELECT COUNT(*) FROM sess_sessions s
+                    WHERE s.CreatedByUserId = u.Id OR s.CreatedByUserId = u.PersonId) AS SessionCount
             FROM core_users u
             LEFT JOIN core_persons p ON p.PersonId = u.PersonId
             WHERE u.IsActive = 1 AND u.StaffRole NOT IN ('Solo', 'None')
@@ -3399,6 +3402,7 @@ public class DashboardService
             LEFT JOIN core_persons pp ON pp.PersonId = s.PcId
             LEFT JOIN core_persons pa ON pa.PersonId = s.AuditorId
             WHERE s.CreatedByUserId = @uid
+               OR s.CreatedByUserId = (SELECT PersonId FROM core_users WHERE Id = @uid)
             ORDER BY s.CreatedAt DESC, s.SessionId DESC
             LIMIT @lim";
         cmd.Parameters.AddWithValue("@uid", userId);
@@ -4131,7 +4135,7 @@ public class DashboardService
     }
 
     public int AddSessionFromManager(int pcId, int? auditorId, int csId, string sessionDate,
-        int lengthSec, int adminSec, bool isFree, string? notes, int createdByUserId, string? name = null)
+        int lengthSec, int adminSec, bool isFree, string? notes, int? createdByUserId, string? name = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -4170,7 +4174,7 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@charge",  chargeSec);
         cmd.Parameters.AddWithValue("@notes",   (object?)notes ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@name",    (object?)name ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@creator", createdByUserId);
+        cmd.Parameters.AddWithValue("@creator", createdByUserId.HasValue ? (object)createdByUserId.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@wallet",  walletId.HasValue ? (object)walletId.Value : DBNull.Value);
         cmd.ExecuteNonQuery();
 
