@@ -207,11 +207,13 @@ public class StatisticsServiceTests : IDisposable
         // Solo session on Thursday — AuditorId IS NULL (that's what makes it "solo" in the DB)
         var sid = TestDbHelper.InsertSession(conn, pcId, (int?)null, "2024-01-11", 3600);
 
-        // CS review by the solo-type auditor on that session
+        // CS review by the solo-type auditor on that session.
+        // ReviewedAt MUST be set — production GetWeekDayStats filters cs_reviews
+        // by DATE(cr.ReviewedAt, 'localtime'); a NULL ReviewedAt would exclude the row.
         using var csReviewCmd = conn.CreateCommand();
         csReviewCmd.CommandText = @"
-            INSERT INTO cs_reviews (SessionId, CsId, ReviewLengthSeconds, Status)
-            VALUES (@sid, @csId, 1800, 'Draft')";
+            INSERT INTO cs_reviews (SessionId, CsId, ReviewLengthSeconds, Status, ReviewedAt)
+            VALUES (@sid, @csId, 1800, 'Draft', '2024-01-11 12:00:00')";
         csReviewCmd.Parameters.AddWithValue("@sid",  sid);
         csReviewCmd.Parameters.AddWithValue("@csId", csAudId);
         csReviewCmd.ExecuteNonQuery();

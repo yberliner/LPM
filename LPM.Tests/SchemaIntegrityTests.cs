@@ -385,8 +385,8 @@ public class SchemaIntegrityTests : IDisposable
         // Two instantiations should not throw (migrations check-before-alter)
         var ex = Record.Exception(() =>
         {
-            _ = new DashboardService(TestConfig.For(_dbPath), new LPM.Services.MessageNotifier());
-            _ = new DashboardService(TestConfig.For(_dbPath), new LPM.Services.MessageNotifier());
+            _ = new DashboardService(TestConfig.For(_dbPath), new LPM.Services.MessageNotifier(), new LPM.Services.HtmlSanitizerService());
+            _ = new DashboardService(TestConfig.For(_dbPath), new LPM.Services.MessageNotifier(), new LPM.Services.HtmlSanitizerService());
         });
         Assert.Null(ex);
     }
@@ -429,7 +429,7 @@ public class SchemaIntegrityTests : IDisposable
     {
         var ex = Record.Exception(() =>
         {
-            _ = new DashboardService(TestConfig.For(_dbPath), new LPM.Services.MessageNotifier());
+            _ = new DashboardService(TestConfig.For(_dbPath), new LPM.Services.MessageNotifier(), new LPM.Services.HtmlSanitizerService());
             _ = new PcService(TestConfig.For(_dbPath));
             _ = new AuditorService(TestConfig.For(_dbPath), new LPM.Auth.UserDb(TestConfig.For(_dbPath)));
             _ = new AcademyService(TestConfig.For(_dbPath));

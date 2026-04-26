@@ -431,7 +431,7 @@ public class AcademyServiceTests : IDisposable
         // GetUserIdByUsername queries core_users.Username (not core_persons.FirstName).
         // AddPersonForAcademy only creates a core_persons row; we must also create a core_users entry.
         var id  = _svc.AddPersonForAcademy("Miriam", "Katz", "", "", "", "");
-        var svc = new DashboardService(TestConfig.For(_dbPath), new LPM.Services.MessageNotifier());
+        var svc = new DashboardService(TestConfig.For(_dbPath), new LPM.Services.MessageNotifier(), new LPM.Services.HtmlSanitizerService());
 
         using var conn = Open();
         TestDbHelper.InsertCoreUser(conn, id, "miriam", "pass1234");

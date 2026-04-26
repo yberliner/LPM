@@ -19,7 +19,7 @@ public class DashboardServiceTests : IDisposable
     public DashboardServiceTests()
     {
         _dbPath = TestDbHelper.CreateTempDb();
-        _svc    = new DashboardService(TestConfig.For(_dbPath), new LPM.Services.MessageNotifier());
+        _svc    = new DashboardService(TestConfig.For(_dbPath), new LPM.Services.MessageNotifier(), new LPM.Services.HtmlSanitizerService());
     }
 
     public void Dispose() => TestDbHelper.Cleanup(_dbPath);
@@ -665,7 +665,10 @@ public class DashboardServiceTests : IDisposable
         var week  = new DateOnly(2024, 1, 11);   // Thursday
 
         var grid = _svc.GetWeekGrid(audId, week, new List<PcInfo>());
-        Assert.Empty(grid);
+        Assert.Empty(grid.Auditor);
+        Assert.Empty(grid.Cs);
+        Assert.Empty(grid.CsSolo);
+        Assert.Empty(grid.CsSoloBill);
     }
 
     [Fact]
@@ -684,7 +687,7 @@ public class DashboardServiceTests : IDisposable
         var pcs  = new List<PcInfo> { new PcInfo(pcId, "Client1", "Auditor") };
         var grid = _svc.GetWeekGrid(audId, week, pcs);
 
-        Assert.True(grid.TryGetValue((pcId, 0), out var secs));
+        Assert.True(grid.Auditor.TryGetValue((pcId, 0), out var secs));
         Assert.Equal(3600 + 600, secs);
     }
 
@@ -706,7 +709,7 @@ public class DashboardServiceTests : IDisposable
         var pcs  = new List<PcInfo> { new PcInfo(pcId, "Client1", "CS") };
         var grid = _svc.GetWeekGrid(csId, week, pcs);
 
-        Assert.True(grid.TryGetValue((pcId, 0), out var secs));
+        Assert.True(grid.Cs.TryGetValue((pcId, 0), out var secs));
         Assert.Equal(1200, secs);
     }
 

@@ -19,7 +19,7 @@ public class DashboardExtendedTests : IDisposable
     public DashboardExtendedTests()
     {
         _dbPath = TestDbHelper.CreateTempDb();
-        _svc    = new DashboardService(TestConfig.For(_dbPath), new LPM.Services.MessageNotifier());
+        _svc    = new DashboardService(TestConfig.For(_dbPath), new LPM.Services.MessageNotifier(), new LPM.Services.HtmlSanitizerService());
     }
 
     public void Dispose() => TestDbHelper.Cleanup(_dbPath);
@@ -277,7 +277,7 @@ public class DashboardExtendedTests : IDisposable
         var grid = _svc.GetWeekGrid(csId, week, pcs);
 
         // Grid should contain review + general work = 1800
-        Assert.True(grid.TryGetValue((pcId, 0), out var secs));
+        Assert.True(grid.Cs.TryGetValue((pcId, 0), out var secs));
         Assert.Equal(1200 + 600, secs);
     }
 
@@ -293,7 +293,7 @@ public class DashboardExtendedTests : IDisposable
         TestDbHelper.InsertAuditor(conn, audId, staffRole: "Solo");
 
         var grid = _svc.GetWeekGridSolo(audId, new DateOnly(2024, 1, 11));
-        Assert.Empty(grid);
+        Assert.Empty(grid.Auditor);
     }
 
     [Fact]
@@ -308,7 +308,7 @@ public class DashboardExtendedTests : IDisposable
         TestDbHelper.AlignSessionCreatedAtToSessionDate(conn);
 
         var grid = _svc.GetWeekGridSolo(audId, week);
-        Assert.True(grid.TryGetValue((audId, 0), out var secs));
+        Assert.True(grid.Auditor.TryGetValue((audId, 0), out var secs));
         Assert.Equal(3600 + 600, secs);
     }
 
@@ -325,7 +325,7 @@ public class DashboardExtendedTests : IDisposable
         TestDbHelper.AlignSessionCreatedAtToSessionDate(conn);
 
         var grid = _svc.GetWeekGridSolo(audId, week);
-        Assert.True(grid.TryGetValue((audId, 0), out var secs));
+        Assert.True(grid.Auditor.TryGetValue((audId, 0), out var secs));
         Assert.Equal(5400, secs);
     }
 
@@ -641,7 +641,8 @@ public class DashboardExtendedTests : IDisposable
 
         var pcs = new List<PcInfo> { new PcInfo(pcId, "Client1", "CS") };
         var markers = _svc.GetPendingCsMarkers(csId, week, pcs);
-        Assert.Empty(markers);
+        Assert.Empty(markers.Regular);
+        Assert.Empty(markers.Solo);
     }
 
     [Fact]
@@ -660,7 +661,7 @@ public class DashboardExtendedTests : IDisposable
 
         var pcs     = new List<PcInfo> { new PcInfo(pcId, "Client1", "CS") };
         var markers = _svc.GetPendingCsMarkers(csId, week, pcs);
-        Assert.Contains((pcId, 0), markers);
+        Assert.Contains((pcId, 0), markers.Regular);
     }
 
     [Fact]
@@ -668,7 +669,8 @@ public class DashboardExtendedTests : IDisposable
     {
         var week    = new DateOnly(2024, 1, 11);
         var markers = _svc.GetPendingCsMarkers(1, week, new List<PcInfo>());
-        Assert.Empty(markers);
+        Assert.Empty(markers.Regular);
+        Assert.Empty(markers.Solo);
     }
 
     // =========================================================================

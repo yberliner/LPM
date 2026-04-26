@@ -16,7 +16,7 @@ public class DashboardMessagingTests : IDisposable
     public DashboardMessagingTests()
     {
         _dbPath = TestDbHelper.CreateTempDb();
-        _svc    = new DashboardService(TestConfig.For(_dbPath), new MessageNotifier());
+        _svc    = new DashboardService(TestConfig.For(_dbPath), new MessageNotifier(), new LPM.Services.HtmlSanitizerService());
     }
 
     public void Dispose() => TestDbHelper.Cleanup(_dbPath);
