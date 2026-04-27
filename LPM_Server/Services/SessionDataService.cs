@@ -41,6 +41,15 @@ public record PtsHandlingRow(
     int CreatedBy,
     string CreatedByName);
 
+public record CaseDataRow(
+    int Id,
+    int PcId,
+    int? SessionId,
+    string CreatedAt,
+    string? Text,
+    int CreatedBy,
+    string CreatedByName);
+
 public record SessionLite(int SessionId, string Label);
 public record UserLite(int Id, string DisplayName);
 
@@ -390,6 +399,84 @@ public class SessionDataService
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "DELETE FROM sess_pts_handling WHERE Id = @id";
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.ExecuteNonQuery();
+    }
+
+    // ── Case Data ────────────────────────────────────────────────
+
+    public List<CaseDataRow> GetCaseData(int pcId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $@"
+            SELECT c.Id, c.PcId, c.SessionId, c.CreatedAt, c.Text,
+                   c.CreatedBy, {ByNameExpr} AS ByName
+            FROM sess_case_data c
+            LEFT JOIN core_users u   ON u.Id = c.CreatedBy
+            LEFT JOIN core_persons p ON p.PersonId = u.PersonId
+            WHERE c.PcId = @pc
+            ORDER BY c.CreatedAt DESC, c.Id DESC";
+        cmd.Parameters.AddWithValue("@pc", pcId);
+        var list = new List<CaseDataRow>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            list.Add(new CaseDataRow(
+                r.GetInt32(0), r.GetInt32(1), ReadNullableInt(r, 2), r.GetString(3),
+                ReadNullableString(r, 4),
+                r.GetInt32(5), r.IsDBNull(6) ? "" : r.GetString(6)));
+        }
+        return list;
+    }
+
+    public int InsertCaseData(CaseDataRow row)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO sess_case_data
+                (PcId, SessionId, CreatedAt, Text, CreatedBy)
+            VALUES
+                (@pc, @sid, COALESCE(@ca, datetime('now')), @tx, @cb)
+            RETURNING Id";
+        cmd.Parameters.AddWithValue("@pc", row.PcId);
+        cmd.Parameters.AddWithValue("@sid", Nullable(row.SessionId));
+        cmd.Parameters.AddWithValue("@ca", string.IsNullOrWhiteSpace(row.CreatedAt) ? (object)DBNull.Value : row.CreatedAt);
+        cmd.Parameters.AddWithValue("@tx", Nullable(row.Text));
+        cmd.Parameters.AddWithValue("@cb", row.CreatedBy);
+        var v = cmd.ExecuteScalar();
+        return v is long l ? (int)l : Convert.ToInt32(v);
+    }
+
+    public void UpdateCaseData(CaseDataRow row)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE sess_case_data SET
+                SessionId = @sid,
+                CreatedAt = COALESCE(@ca, CreatedAt),
+                Text      = @tx,
+                CreatedBy = @cb
+            WHERE Id = @id";
+        cmd.Parameters.AddWithValue("@id", row.Id);
+        cmd.Parameters.AddWithValue("@sid", Nullable(row.SessionId));
+        cmd.Parameters.AddWithValue("@ca", string.IsNullOrWhiteSpace(row.CreatedAt) ? (object)DBNull.Value : row.CreatedAt);
+        cmd.Parameters.AddWithValue("@tx", Nullable(row.Text));
+        cmd.Parameters.AddWithValue("@cb", row.CreatedBy);
+        cmd.ExecuteNonQuery();
+    }
+
+    public void DeleteCaseData(int id)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM sess_case_data WHERE Id = @id";
         cmd.Parameters.AddWithValue("@id", id);
         cmd.ExecuteNonQuery();
     }

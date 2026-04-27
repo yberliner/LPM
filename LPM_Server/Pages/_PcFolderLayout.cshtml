@@ -121,6 +121,19 @@
 
     <script src="/_framework/blazor.server.js"></script>
     <script>
+        // CSP-safe base64 dataURL → Blob (no fetch on data: URLs — connect-src blocks them).
+        window.pcfDataUrlToBlob = function(dataUrl) {
+            const comma = dataUrl.indexOf(',');
+            const meta  = dataUrl.substring(0, comma);
+            const b64   = dataUrl.substring(comma + 1);
+            const m     = meta.match(/^data:([^;]+)(;base64)?$/);
+            const mime  = (m && m[1]) ? m[1] : 'application/octet-stream';
+            const bin   = atob(b64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            return new Blob([bytes], { type: mime });
+        };
+
         // Network-resilient fetch: retries on TypeError (failed-to-fetch) up to 5 attempts
         // with exponential backoff. Does NOT retry on HTTP responses (non-OK status returned
         // as-is so callers can react to specific codes like 422).
@@ -188,14 +201,12 @@
                 } else if (p.action === 'bg_color') {
                     metaForSend.pages.push({ action: 'bg_color', srcPageIdx: p.srcPageIdx, color: p.color });
                 } else if (p.action === 'bg_color_overlay') {
-                    const resp = await fetch(p.dataUrl);
-                    const blob = await resp.blob();
+                    const blob = window.pcfDataUrlToBlob(p.dataUrl);
                     formData.append('img_' + imgIdx, blob, 'img_' + imgIdx + '.png');
                     metaForSend.pages.push({ action: 'bg_color_overlay', srcPageIdx: p.srcPageIdx, color: p.color, w: p.w, h: p.h, imgIdx });
                     imgIdx++;
                 } else {
-                    const resp = await fetch(p.dataUrl);
-                    const blob = await resp.blob();
+                    const blob = window.pcfDataUrlToBlob(p.dataUrl);
                     formData.append('img_' + imgIdx, blob, 'img_' + imgIdx + '.png');
                     const entry = { action: p.action, srcPageIdx: p.srcPageIdx ?? -1, w: p.w, h: p.h, imgIdx };
                     if (p.pdfPtW > 0 && p.pdfPtH > 0) { entry.pdfPtW = p.pdfPtW; entry.pdfPtH = p.pdfPtH; }

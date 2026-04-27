@@ -6,7 +6,9 @@
 @inject StatisticsService StatSvc
 @inject DashboardService DashSvc
 @inject PdfService PdfService
+@inject SessionManagerLauncher SmLauncher
 @inject IJSRuntime JS
+@implements IDisposable
 
 <style>
     /* ── Per-cell hover breakdown tooltip (audit / csolo / effort) ─────── */
@@ -57,6 +59,7 @@
         color: #fff;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         border-radius: 14px 14px 0 0;
+        flex-shrink: 0;
     }
     .stat-tooltip-header.stat-chip-audit  { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); }
     .stat-tooltip-header.stat-chip-csolo  { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
@@ -137,7 +140,18 @@
     .stat-tooltip-title { font-size: 0.95rem; font-weight: 700; letter-spacing: 0.01em; }
     .stat-tooltip-subtitle { font-size: 0.78rem; opacity: 0.92; margin-top: 2px; }
 
-    .stat-tooltip-body { overflow-y: auto; flex: 1 1 auto; padding: 0; background: #ffffff; }
+    .stat-tooltip-body {
+        overflow-y: auto; overflow-x: hidden; flex: 1 1 auto; min-height: 0;
+        padding: 0; background: #ffffff;
+        scrollbar-width: thin; scrollbar-color: #c7d2fe transparent;
+        overscroll-behavior: contain;
+    }
+    .stat-tooltip-body::-webkit-scrollbar { width: 10px; }
+    .stat-tooltip-body::-webkit-scrollbar-thumb {
+        background: #c7d2fe; border-radius: 5px; border: 2px solid #ffffff;
+    }
+    .stat-tooltip-body::-webkit-scrollbar-thumb:hover { background: #a5b4fc; }
+    .stat-tooltip-body::-webkit-scrollbar-track { background: transparent; }
     .stat-tooltip-loading,
     .stat-tooltip-error,
     .stat-tt-empty { padding: 22px 18px; text-align: center; color: #6b7280; font-size: 0.88rem; }
@@ -185,7 +199,11 @@
         border-top: 1px solid #e5e7eb;
         background: #f9fafb;
         border-radius: 0 0 14px 14px;
+        flex-shrink: 0;
     }
+    .stat-tooltip-table tbody tr.stat-tt-clickable { cursor: pointer; }
+    .stat-tooltip-table tbody tr.stat-tt-clickable:hover { background: #eef2ff; }
+    .stat-tooltip-table tbody tr.stat-tt-clickable:active { background: #e0e7ff; }
     .stat-tt-count { font-size: 0.8rem; color: #6b7280; }
     .stat-tt-sum   { font-size: 1rem; font-weight: 800; color: #111827; font-variant-numeric: tabular-nums; }
 
@@ -1277,8 +1295,17 @@
     string SortArrowStyle(string activeCol, string thisCol) =>
         activeCol == thisCol ? "opacity:1;" : "opacity:.35;";
 
+    DotNetObjectReference<Statistics>? _dotNetRef;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            try { await JS.InvokeVoidAsync("lpmStatsTooltip.register", _dotNetRef); }
+            catch { /* JS module not yet loaded — ignore, click-to-open won't work */ }
+        }
+
         if (!firstRender || _sortPrefsLoaded) return;
         _sortPrefsLoaded = true;
         try
@@ -1290,5 +1317,19 @@
             StateHasChanged();
         }
         catch { /* localStorage unavailable — keep defaults */ }
+    }
+
+    [JSInvokable]
+    public void OpenSession(int sessionId)
+    {
+        if (sessionId <= 0) return;
+        SmLauncher.RequestOpen(sessionId);
+    }
+
+    public void Dispose()
+    {
+        try { _ = JS.InvokeVoidAsync("lpmStatsTooltip.unregister"); } catch { /* circuit closing */ }
+        _dotNetRef?.Dispose();
+        _dotNetRef = null;
     }
 }

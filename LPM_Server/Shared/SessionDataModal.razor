@@ -52,6 +52,11 @@
                 <i class="ri-flashlight-line"></i>PTS Handling
                 <span class="sdm-tab-count">@_pts.Count</span>
             </button>
+            <button class="sdm-tab @(_activeTab == Tab.CaseData ? "sdm-tab-active" : "")"
+                    @onclick="() => SwitchTab(Tab.CaseData)">
+                <i class="ri-calendar-line"></i>Case Data
+                <span class="sdm-tab-count">@_caseData.Count</span>
+            </button>
         </div>
 
         @* ── Toolbar ────────────────────────────────────────────── *@
@@ -81,9 +86,10 @@
 
         @* ── Body (active tab table) ────────────────────────────── *@
         <div class="sdm-body">
-            @if (_activeTab == Tab.Evil)        { @RenderEvilTable }
-            else if (_activeTab == Tab.Serfac)  { @RenderSerfacTable }
-            else                                { @RenderPtsTable }
+            @if (_activeTab == Tab.Evil)         { @RenderEvilTable }
+            else if (_activeTab == Tab.Serfac)   { @RenderSerfacTable }
+            else if (_activeTab == Tab.Pts)      { @RenderPtsTable }
+            else                                 { @RenderCaseDataTable }
         </div>
 
         @* ── Delete confirmation dialog ─────────────────────────── *@
@@ -340,16 +346,17 @@
     /// <summary>"Evil", "Serfac", or "Pts" — selects which tab is active when the modal opens. Defaults to Evil.</summary>
     [Parameter] public string? InitialTab { get; set; }
 
-    enum Tab { Evil, Serfac, Pts }
+    enum Tab { Evil, Serfac, Pts, CaseData }
     Tab _activeTab = Tab.Evil;
     bool _sortDesc = true;
 
     // Data
-    List<EvilPurposeRow>  _evil   = new();
-    List<SerfacRow>       _serfac = new();
-    List<PtsHandlingRow>  _pts    = new();
-    List<SessionLite>     _sessions = new();
-    List<UserLite>        _users    = new();
+    List<EvilPurposeRow>  _evil      = new();
+    List<SerfacRow>       _serfac    = new();
+    List<PtsHandlingRow>  _pts       = new();
+    List<CaseDataRow>     _caseData = new();
+    List<SessionLite>     _sessions  = new();
+    List<UserLite>        _users     = new();
 
     // Edit/add state (one row at a time per modal)
     int _editingId = 0;  // > 0 when editing an existing row
@@ -357,6 +364,7 @@
     EvilPurposeRow?  _editEvil;
     SerfacRow?       _editSerfac;
     PtsHandlingRow?  _editPts;
+    CaseDataRow?     _editCaseData;
 
     // Delete state
     sealed record DeleteTarget(Tab Kind, int Id, string Title, string Content);
@@ -381,9 +389,10 @@
             // Honor InitialTab passed by the opener (e.g. card click in PcFolder mega-button).
             _activeTab = InitialTab switch
             {
-                "Serfac" => Tab.Serfac,
-                "Pts"    => Tab.Pts,
-                _        => Tab.Evil,
+                "Serfac"   => Tab.Serfac,
+                "Pts"      => Tab.Pts,
+                "CaseData" => Tab.CaseData,
+                _          => Tab.Evil,
             };
             await LoadAllAsync();
             _loaded = true;
@@ -402,13 +411,13 @@
         _sortDesc = true;
         _editingId = 0;
         _isAdding = false;
-        _editEvil = null; _editSerfac = null; _editPts = null;
+        _editEvil = null; _editSerfac = null; _editPts = null; _editCaseData = null;
         _deleting = null;
         _deleteInput = "";
         _toast = "";
         _toastCts?.Cancel();
         _toastCts = null;
-        _evil.Clear(); _serfac.Clear(); _pts.Clear();
+        _evil.Clear(); _serfac.Clear(); _pts.Clear(); _caseData.Clear();
     }
 
     async Task LoadAllAsync()
@@ -417,11 +426,12 @@
         {
             await Task.Run(() =>
             {
-                _evil     = SdSvc.GetEvilPurposes(PcId);
-                _serfac   = SdSvc.GetSerfacs(PcId);
-                _pts      = SdSvc.GetPtsHandling(PcId);
-                _sessions = SdSvc.GetSessionsForPc(PcId);
-                _users    = SdSvc.GetActiveUsers();
+                _evil      = SdSvc.GetEvilPurposes(PcId);
+                _serfac    = SdSvc.GetSerfacs(PcId);
+                _pts       = SdSvc.GetPtsHandling(PcId);
+                _caseData = SdSvc.GetCaseData(PcId);
+                _sessions  = SdSvc.GetSessionsForPc(PcId);
+                _users     = SdSvc.GetActiveUsers();
             });
         }
         catch (Exception ex)
@@ -446,9 +456,10 @@
     }
 
     // ── Sorting ─────────────────────────────────────────────
-    IEnumerable<EvilPurposeRow>  SortedEvil   => _sortDesc ? _evil   : _evil.AsEnumerable().Reverse();
-    IEnumerable<SerfacRow>       SortedSerfac => _sortDesc ? _serfac : _serfac.AsEnumerable().Reverse();
-    IEnumerable<PtsHandlingRow>  SortedPts    => _sortDesc ? _pts    : _pts.AsEnumerable().Reverse();
+    IEnumerable<EvilPurposeRow>  SortedEvil      => _sortDesc ? _evil      : _evil.AsEnumerable().Reverse();
+    IEnumerable<SerfacRow>       SortedSerfac    => _sortDesc ? _serfac    : _serfac.AsEnumerable().Reverse();
+    IEnumerable<PtsHandlingRow>  SortedPts       => _sortDesc ? _pts       : _pts.AsEnumerable().Reverse();
+    IEnumerable<CaseDataRow>     SortedCaseData => _sortDesc ? _caseData : _caseData.AsEnumerable().Reverse();
 
     // ── Add / Edit / Cancel / Save ──────────────────────────
     void AddRow()
@@ -467,18 +478,22 @@
             case Tab.Pts:
                 _editPts = new PtsHandlingRow(0, PcId, CurrentSessionId, now, "", "", "", "", "", "", CurrentUserId, CurrentUserName);
                 break;
+            case Tab.CaseData:
+                _editCaseData = new CaseDataRow(0, PcId, CurrentSessionId, now, "", CurrentUserId, CurrentUserName);
+                break;
         }
     }
 
-    void StartEditEvil(EvilPurposeRow r)   { CancelEdit(); _editingId = r.Id; _editEvil   = r with { }; }
-    void StartEditSerfac(SerfacRow r)      { CancelEdit(); _editingId = r.Id; _editSerfac = r with { }; }
-    void StartEditPts(PtsHandlingRow r)    { CancelEdit(); _editingId = r.Id; _editPts    = r with { }; }
+    void StartEditEvil(EvilPurposeRow r)     { CancelEdit(); _editingId = r.Id; _editEvil     = r with { }; }
+    void StartEditSerfac(SerfacRow r)        { CancelEdit(); _editingId = r.Id; _editSerfac   = r with { }; }
+    void StartEditPts(PtsHandlingRow r)      { CancelEdit(); _editingId = r.Id; _editPts      = r with { }; }
+    void StartEditCaseData(CaseDataRow r)    { CancelEdit(); _editingId = r.Id; _editCaseData = r with { }; }
 
     void CancelEdit()
     {
         _editingId = 0;
         _isAdding = false;
-        _editEvil = null; _editSerfac = null; _editPts = null;
+        _editEvil = null; _editSerfac = null; _editPts = null; _editCaseData = null;
     }
 
     async Task SaveEditAsync()
@@ -531,6 +546,21 @@
                         if (idx >= 0) _pts[idx] = _editPts with { CreatedByName = ResolveUserName(_editPts.CreatedBy) };
                     }
                     break;
+
+                case Tab.CaseData:
+                    if (_editCaseData == null) return;
+                    if (_isAdding)
+                    {
+                        var id = SdSvc.InsertCaseData(_editCaseData);
+                        _caseData.Insert(0, _editCaseData with { Id = id, CreatedByName = ResolveUserName(_editCaseData.CreatedBy) });
+                    }
+                    else
+                    {
+                        SdSvc.UpdateCaseData(_editCaseData);
+                        var idx = _caseData.FindIndex(x => x.Id == _editCaseData.Id);
+                        if (idx >= 0) _caseData[idx] = _editCaseData with { CreatedByName = ResolveUserName(_editCaseData.CreatedBy) };
+                    }
+                    break;
             }
             CancelEdit();
             ShowToast("Saved", false);
@@ -567,6 +597,12 @@
         _deleting = new DeleteTarget(Tab.Pts, r.Id, "PTS Handling", preview);
         _deleteInput = "";
     }
+    void RequestDeleteCaseData(CaseDataRow r)
+    {
+        var preview = $"Id: {r.Id}\nCreated By: {r.CreatedByName}\nDate: {FmtDate(r.CreatedAt)}\nText: {Short(r.Text)}";
+        _deleting = new DeleteTarget(Tab.CaseData, r.Id, "Case Data", preview);
+        _deleteInput = "";
+    }
 
     static string Short(string? s)
     {
@@ -599,6 +635,10 @@
                 case Tab.Pts:
                     SdSvc.DeletePtsHandling(d.Id);
                     _pts.RemoveAll(x => x.Id == d.Id);
+                    break;
+                case Tab.CaseData:
+                    SdSvc.DeleteCaseData(d.Id);
+                    _caseData.RemoveAll(x => x.Id == d.Id);
                     break;
             }
             CancelDelete();
@@ -1010,6 +1050,71 @@
         </div>
     };
 
+    RenderFragment RenderCaseDataTable => __builder =>
+    {
+        var list = SortedCaseData.ToList();
+        if (!_isAdding && list.Count == 0)
+        {
+            <div class="sdm-empty"><i class="ri-inbox-line"></i>No Case Data yet. Click <strong>Add row</strong> to create the first one.</div>
+            return;
+        }
+        <div class="sdm-table-wrap">
+        <table class="sdm-table">
+            <thead>
+                <tr>
+                    <th>Created By</th>
+                    <th>Date</th>
+                    <th>Text</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (_isAdding && _editCaseData != null)
+                {
+                    <tr class="sdm-row-new">
+                        <td class="sdm-cell-by">@ResolveUserName(_editCaseData.CreatedBy)</td>
+                        <td><input type="date" class="sdm-input sdm-input-sm" value="@FmtDate(_editCaseData.CreatedAt)"
+                                   @oninput="e => _editCaseData = _editCaseData with { CreatedAt = e.Value?.ToString() ?? string.Empty }" /></td>
+                        <td><textarea class="sdm-textarea" @oninput="e => _editCaseData = _editCaseData with { Text = e.Value?.ToString() }">@_editCaseData.Text</textarea></td>
+                        <td class="sdm-cell-actions">
+                            <button class="sdm-btn sdm-btn-save" @onclick="SaveEditAsync"><i class="ri-save-line"></i>Save</button>
+                            <button class="sdm-btn sdm-btn-cancel" @onclick="CancelEdit"><i class="ri-close-line"></i></button>
+                        </td>
+                    </tr>
+                }
+                @foreach (var r in list)
+                {
+                    if (_editingId == r.Id && _editCaseData != null)
+                    {
+                        <tr class="sdm-row-editing">
+                            <td class="sdm-cell-by">@ResolveUserName(_editCaseData.CreatedBy)</td>
+                            <td><input type="date" class="sdm-input sdm-input-sm" value="@FmtDate(_editCaseData.CreatedAt)"
+                                       @oninput="e => _editCaseData = _editCaseData with { CreatedAt = e.Value?.ToString() ?? string.Empty }" /></td>
+                            <td><textarea class="sdm-textarea" @oninput="e => _editCaseData = _editCaseData with { Text = e.Value?.ToString() }">@_editCaseData.Text</textarea></td>
+                            <td class="sdm-cell-actions">
+                                <button class="sdm-btn sdm-btn-save" @onclick="SaveEditAsync"><i class="ri-save-line"></i>Save</button>
+                                <button class="sdm-btn sdm-btn-cancel" @onclick="CancelEdit"><i class="ri-close-line"></i></button>
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        <tr>
+                            <td class="sdm-cell-by">@r.CreatedByName</td>
+                            <td class="sdm-cell-ca">@FmtDate(r.CreatedAt)</td>
+                            <td><div class="sdm-pretext @(string.IsNullOrEmpty(r.Text) ? "sdm-muted" : "")">@(string.IsNullOrEmpty(r.Text) ? "(empty)" : r.Text)</div></td>
+                            <td class="sdm-cell-actions">
+                                <button class="sdm-btn sdm-btn-edit" title="Edit row" @onclick="() => StartEditCaseData(r)"><i class="ri-pencil-line"></i></button>
+                                <button class="sdm-btn sdm-btn-delete" title="Delete row" @onclick="() => RequestDeleteCaseData(r)"><i class="ri-delete-bin-line"></i></button>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+        </div>
+    };
+
     static int? ParseNullableInt(object? v)
     {
         var s = v?.ToString();
@@ -1084,7 +1189,7 @@
                     }).ToList();
                     break;
 
-                default: // Tab.Pts
+                case Tab.Pts:
                     title = "PTS Handling";
                     fileStem = "PtsHandling";
                     headers = new[] { "Id", "Session", "Created", "Action", "Item", "Quad Ruds", "PU", "PTS RD", "Ls", "Created By" };
@@ -1101,6 +1206,19 @@
                         r.PtsRd ?? "",
                         r.Ls ?? "",
                         r.CreatedByName
+                    }).ToList();
+                    break;
+
+                default: // Tab.CaseData
+                    title = "Case Data";
+                    fileStem = "CaseData";
+                    headers = new[] { "Created By", "Date", "Text" };
+                    weights = new float[] { 1.4f, 1.4f, 4.0f };
+                    rows = SortedCaseData.Select(r => new[]
+                    {
+                        r.CreatedByName,
+                        FmtDate(r.CreatedAt),
+                        r.Text ?? ""
                     }).ToList();
                     break;
             }

@@ -278,7 +278,7 @@
         <script src="js/forsight.js"></script>
         <script src="js/javaScriptInterop.js?v=6"></script>
         <script src="js/backup-download.js?v=3"></script>
-        <script src="js/stats-tooltip.js?v=3"></script>
+        <script src="js/stats-tooltip.js?v=5"></script>
         <script src="js/backup-errors-pdf.js?v=1"></script>
         <script src="js/resizeInterop.js"></script>
         <script src="js/signature-pad.js?v=2"></script>
@@ -592,8 +592,17 @@
                 // For now: flatten each page (PDF + annotations) into images, send to server to rebuild PDF
                 const formData = new FormData();
                 for (let i = 0; i < pages.length; i++) {
-                    const resp = await fetch(pages[i].dataUrl);
-                    const blob = await resp.blob();
+                    // CSP-safe: parse base64 dataURL directly instead of fetch() (connect-src blocks data:)
+                    const du = pages[i].dataUrl;
+                    const comma = du.indexOf(',');
+                    const meta  = du.substring(0, comma);
+                    const b64   = du.substring(comma + 1);
+                    const m     = meta.match(/^data:([^;]+)(;base64)?$/);
+                    const mime  = (m && m[1]) ? m[1] : 'image/png';
+                    const bin   = atob(b64);
+                    const bytes = new Uint8Array(bin.length);
+                    for (let k = 0; k < bin.length; k++) bytes[k] = bin.charCodeAt(k);
+                    const blob  = new Blob([bytes], { type: mime });
                     formData.append('page_' + i, blob, 'page_' + i + '.png');
                 }
                 formData.append('pageCount', pages.length.toString());

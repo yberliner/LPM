@@ -1814,6 +1814,7 @@
                                                     <option value="Evil">Evil Purposes</option>
                                                     <option value="Serfac">Service Facsimiles</option>
                                                     <option value="Pts">PTS Handling</option>
+                                                    <option value="CaseData">Case Data</option>
                                                 </select>
 
                                                 <div class="asd-fields">
@@ -1853,6 +1854,13 @@
                                                                @oninput="e => row.PtsRd = e.Value?.ToString() ?? string.Empty" />
                                                         <input class="asd-input" placeholder="Ls" value="@row.Ls"
                                                                @oninput="e => row.Ls = e.Value?.ToString() ?? string.Empty" />
+                                                    }
+                                                    else if (row.Type == "CaseData")
+                                                    {
+                                                        <input type="date" class="asd-input" value="@row.CaseDataOn"
+                                                               @oninput="e => row.CaseDataOn = e.Value?.ToString() ?? string.Empty" />
+                                                        <textarea class="asd-input asd-textarea" placeholder="Text"
+                                                                  @oninput="e => row.CaseDataText = e.Value?.ToString() ?? string.Empty">@row.CaseDataText</textarea>
                                                     }
                                                     else
                                                     {
@@ -2746,6 +2754,36 @@
                             <i class="ri-information-line me-1"></i>
                             @LS.T("actions.memoSaveNote")
                         </div>
+
+                        @* ── Also write to Folder Summary ── *@
+                        <div class="form-check d-flex align-items-center gap-2 mt-3"
+                             style="padding-left:0; min-height:44px;">
+                            <input class="form-check-input m-0" type="checkbox" id="memo-also-summary"
+                                   @bind="_memoAlsoWriteSummary"
+                                   @bind:after="OnMemoAlsoWriteSummaryToggled"
+                                   style="cursor:pointer; width:20px; height:20px; min-width:20px; min-height:20px;
+                                          accent-color:#8b5cf6;" />
+                            <label class="form-check-label" for="memo-also-summary"
+                                   style="font-size:.9rem; color:#e2e8f0; cursor:pointer; user-select:none;">
+                                <i class="ri-file-edit-line me-1" style="color:#8b5cf6;"></i>@LS.T("actions.alsoWriteSummary")
+                            </label>
+                        </div>
+                        @if (_memoAlsoWriteSummary)
+                        {
+                            <div class="mb-1 mt-2" id="memo-summary-quill-wrap">
+                                <label class="form-label" style="font-size:.82rem; color:#94a3b8;">@LS.T("actions.writeToSummary")</label>
+                                <div id="memo-summary-editor"
+                                     style="background:#fff; color:#000; min-height:160px; border-radius:0 0 4px 4px;">
+                                </div>
+                            </div>
+                            @if (!string.IsNullOrEmpty(_memoSummaryError))
+                            {
+                                <div class="alert alert-warning d-flex align-items-center gap-2 mt-2 mb-0 py-2" style="font-size:.82rem;">
+                                    <i class="ri-error-warning-line"></i>@_memoSummaryError
+                                </div>
+                            }
+                        }
+
                         @if (!string.IsNullOrEmpty(_memoScanBoxError))
                         {
                             <div class="alert alert-warning d-flex align-items-center gap-2 mt-2 mb-0 py-2" style="font-size:.82rem;">
@@ -3047,8 +3085,8 @@
     </div>
 }
 
-@* ── Memo Toast ── *@
-@if (_memoRunning || _memoDone || !string.IsNullOrEmpty(_memoError))
+@* ── Memo Toast (progress + error only — success state shown in big modal below) ── *@
+@if (_memoRunning || !string.IsNullOrEmpty(_memoError))
 {
     var _memoDoneCount  = _memoSteps.Count(s => s.Status == 2);
     var _memoTotalCount = _memoSteps.Count;
@@ -3137,6 +3175,87 @@
                         @onclick="() => { _memoError = string.Empty; _memoSteps.Clear(); }">@LS.T("common.dismiss")</button>
             </div>
         }
+    </div>
+}
+
+@* ── Big Memo Success Modal (shown after Submit completes) ── *@
+@if (_memoDone)
+{
+    <div class="memo-success-overlay" @onclick="() => { _memoDone = false; }">
+        <div class="memo-success-card" @onclick:stopPropagation="true">
+            <button class="memo-success-close" @onclick="() => { _memoDone = false; }" aria-label="Close">
+                <i class="ri-close-line"></i>
+            </button>
+
+            <div class="memo-success-ring"></div>
+            <div class="memo-success-check">
+                <i class="ri-check-line"></i>
+            </div>
+
+            <div class="memo-success-title">
+                @if (_memoSuccessAlsoSummary)
+                {
+                    <text>Report &amp; Folder Summary Saved!</text>
+                }
+                else
+                {
+                    <text>Report Saved!</text>
+                }
+            </div>
+            <div class="memo-success-pc">
+                <i class="ri-user-line"></i>
+                <span>@_memoSuccessPcName</span>
+                @if (_memoSuccessIsSolo)
+                {
+                    <span class="memo-success-solo-badge">Solo</span>
+                }
+            </div>
+
+            <div class="memo-success-list">
+                <div class="memo-success-item">
+                    <i class="ri-checkbox-circle-fill" style="color:#22c55e; font-size:1.15rem;"></i>
+                    <div>
+                        <div style="font-weight:700; color:#0f172a;">Report PDF saved</div>
+                        <div class="memo-success-item-sub">@(_memoSuccessFileName).pdf</div>
+                    </div>
+                </div>
+                <div class="memo-success-item">
+                    <i class="ri-checkbox-circle-fill" style="color:#22c55e; font-size:1.15rem;"></i>
+                    <div>
+                        <div style="font-weight:700; color:#0f172a;">Session entry recorded</div>
+                        <div class="memo-success-item-sub">Date: @_memoSuccessDate.ToString("dd/MM/yyyy")</div>
+                    </div>
+                </div>
+                @if (_memoSuccessAlsoSummary)
+                {
+                    <div class="memo-success-item memo-success-item-highlight">
+                        <i class="ri-file-edit-fill" style="color:#8b5cf6; font-size:1.2rem;"></i>
+                        <div style="flex:1;">
+                            <div style="font-weight:800; color:#6d28d9; font-size:1rem;">Folder Summary added</div>
+                            <div class="memo-success-item-sub">Saved to <strong>@_memoSuccessPcName</strong>'s folder</div>
+                        </div>
+                    </div>
+                    <div class="memo-success-summary-preview">
+                        @((MarkupString)_memoSuccessSummaryHtml)
+                    </div>
+                }
+            </div>
+
+            <div class="memo-success-sparkles">
+                <span class="memo-spark" style="--d:0; --x:-60px; --y:-50px;"></span>
+                <span class="memo-spark" style="--d:1; --x:65px; --y:-45px;"></span>
+                <span class="memo-spark" style="--d:2; --x:-55px; --y:45px;"></span>
+                <span class="memo-spark" style="--d:3; --x:60px; --y:50px;"></span>
+                <span class="memo-spark" style="--d:4; --x:0; --y:-70px;"></span>
+                <span class="memo-spark" style="--d:5; --x:-75px; --y:0;"></span>
+                <span class="memo-spark" style="--d:6; --x:75px; --y:0;"></span>
+                <span class="memo-spark" style="--d:7; --x:0; --y:75px;"></span>
+            </div>
+
+            <button class="memo-success-ok-btn" @onclick="() => { _memoDone = false; }">
+                <i class="ri-thumb-up-line me-2"></i>Great!
+            </button>
+        </div>
     </div>
 }
 
@@ -4337,6 +4456,195 @@
     #act-summary-editor-wrap .ql-toolbar.ql-snow .ql-stroke { stroke: #334155 !important; }
     #act-summary-editor-wrap .ql-toolbar.ql-snow .ql-fill { fill: #334155 !important; }
     #act-summary-editor-wrap .ql-toolbar.ql-snow .ql-picker-label { color: #334155 !important; }
+
+    /* ── Memo Success Modal (big celebratory) ── */
+    .memo-success-overlay {
+        position: fixed; inset: 0; z-index: 99998;
+        background: radial-gradient(ellipse at center, rgba(15,23,42,0.7), rgba(15,23,42,0.92));
+        display: flex; align-items: center; justify-content: center;
+        animation: memoSuccessFade 0.35s ease;
+        padding: 16px;
+    }
+    @@keyframes memoSuccessFade { from { opacity: 0; } to { opacity: 1; } }
+
+    .memo-success-card {
+        position: relative;
+        background: linear-gradient(135deg, #ffffff 0%, #f0f4ff 100%);
+        border-radius: 24px;
+        padding: 48px 36px 28px;
+        box-shadow: 0 25px 80px rgba(0,0,0,0.55), 0 0 100px rgba(34,197,94,0.25);
+        max-width: 560px; width: 100%;
+        text-align: center;
+        animation: memoSuccessPop 0.55s cubic-bezier(.175,.885,.32,1.275);
+        overflow: hidden;
+    }
+    @@keyframes memoSuccessPop {
+        0%   { transform: scale(0.65); opacity: 0; }
+        100% { transform: scale(1);    opacity: 1; }
+    }
+
+    .memo-success-close {
+        position: absolute; top: 12px; right: 12px;
+        width: 36px; height: 36px;
+        background: rgba(15,23,42,0.07);
+        border: none; border-radius: 50%;
+        color: #64748b; font-size: 1.4rem;
+        cursor: pointer; transition: all 0.25s;
+        display: flex; align-items: center; justify-content: center;
+        z-index: 5;
+    }
+    .memo-success-close:hover { background: rgba(15,23,42,0.18); color: #0f172a; transform: rotate(90deg); }
+
+    .memo-success-ring {
+        position: absolute;
+        top: 4px; left: 50%;
+        transform: translateX(-50%);
+        width: 130px; height: 130px;
+        border: 3px solid rgba(34,197,94,0.35);
+        border-radius: 50%;
+        animation: memoRingPulse 2s ease-in-out infinite;
+        pointer-events: none;
+    }
+    @@keyframes memoRingPulse {
+        0%, 100% { transform: translateX(-50%) scale(1);    opacity: 0.55; }
+        50%      { transform: translateX(-50%) scale(1.18); opacity: 0.15; }
+    }
+
+    .memo-success-check {
+        position: relative; z-index: 2;
+        margin: 0 auto 18px;
+        width: 92px; height: 92px;
+        background: linear-gradient(135deg, #22c55e 0%, #15803d 100%);
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 10px 36px rgba(34,197,94,0.55);
+        animation: memoCheckBounce 0.65s cubic-bezier(.175,.885,.32,1.275);
+    }
+    .memo-success-check i {
+        color: #fff; font-size: 3.2rem; font-weight: 900;
+        animation: memoCheckDraw 0.45s ease 0.22s both;
+    }
+    @@keyframes memoCheckBounce {
+        0%   { transform: scale(0); }
+        60%  { transform: scale(1.18); }
+        100% { transform: scale(1); }
+    }
+    @@keyframes memoCheckDraw {
+        from { opacity: 0; transform: scale(0) rotate(-50deg); }
+        to   { opacity: 1; transform: scale(1) rotate(0); }
+    }
+
+    .memo-success-title {
+        font-size: 1.7rem; font-weight: 800; color: #0f172a;
+        margin-bottom: 8px; letter-spacing: -0.02em; line-height: 1.2;
+    }
+
+    .memo-success-pc {
+        display: flex; align-items: center; justify-content: center; gap: 8px;
+        font-size: 1.05rem; color: #475569; margin-bottom: 20px; font-weight: 600;
+    }
+    .memo-success-pc i { color: #8b5cf6; }
+    .memo-success-solo-badge {
+        font-size: 0.62rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+        color: #fff; background: linear-gradient(135deg, #ef4444, #b91c1c);
+        border-radius: 999px; padding: 3px 10px;
+        box-shadow: 0 0 10px rgba(239,68,68,0.55);
+    }
+
+    .memo-success-list {
+        text-align: left;
+        margin: 16px auto 8px;
+        max-width: 480px;
+        background: rgba(241,245,249,0.65);
+        border: 1px solid rgba(226,232,240,0.8);
+        border-radius: 14px;
+        padding: 14px 16px;
+    }
+    .memo-success-item {
+        display: flex; align-items: flex-start; gap: 12px;
+        padding: 8px 0; color: #334155;
+        font-size: .92rem;
+        animation: memoItemSlideIn 0.45s ease both;
+    }
+    .memo-success-item:nth-child(1) { animation-delay: 0.30s; }
+    .memo-success-item:nth-child(2) { animation-delay: 0.45s; }
+    .memo-success-item:nth-child(3) { animation-delay: 0.60s; }
+    .memo-success-item:nth-child(4) { animation-delay: 0.75s; }
+    @@keyframes memoItemSlideIn {
+        from { opacity: 0; transform: translateX(-14px); }
+        to   { opacity: 1; transform: translateX(0); }
+    }
+    .memo-success-item-sub { font-size: .82rem; color: #64748b; margin-top: 2px; word-break: break-all; }
+    .memo-success-item-highlight {
+        background: linear-gradient(90deg, rgba(139,92,246,0.14), rgba(139,92,246,0.02));
+        border-left: 3px solid #8b5cf6;
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin: 6px 0;
+    }
+    .memo-success-summary-preview {
+        margin: 8px 0 0;
+        padding: 14px 16px;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-left: 4px solid #8b5cf6;
+        border-radius: 10px;
+        font-size: 0.9rem;
+        color: #334155;
+        max-height: 180px;
+        overflow-y: auto;
+        animation: memoItemSlideIn 0.5s ease 0.85s both;
+        text-align: left;
+    }
+    .memo-success-summary-preview p { margin: 0 0 6px; }
+    .memo-success-summary-preview p:last-child { margin-bottom: 0; }
+
+    .memo-success-sparkles {
+        position: absolute; top: 80px; left: 50%;
+        width: 0; height: 0;
+        pointer-events: none; z-index: 3;
+    }
+    .memo-spark {
+        position: absolute;
+        top: 0; left: 0;
+        width: 10px; height: 10px;
+        background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        border-radius: 50%;
+        box-shadow: 0 0 14px rgba(251,191,36,0.9), 0 0 28px rgba(251,191,36,0.5);
+        animation-name: memoSparkFly;
+        animation-duration: 1.6s;
+        animation-timing-function: ease-out;
+        animation-iteration-count: infinite;
+        animation-delay: calc(var(--d, 0) * 0.12s);
+    }
+    @@keyframes memoSparkFly {
+        0%   { transform: translate(-50%, -50%) scale(0);     opacity: 1; }
+        50%  { transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) scale(1); opacity: 0.85; }
+        100% { transform: translate(calc(-50% + var(--x) * 1.6), calc(-50% + var(--y) * 1.6)) scale(0); opacity: 0; }
+    }
+
+    .memo-success-ok-btn {
+        margin-top: 20px;
+        background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+        color: #fff; border: none;
+        font-weight: 700; font-size: 1rem; letter-spacing: 0.02em;
+        padding: 12px 32px; border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(34,197,94,0.4);
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+        display: inline-flex; align-items: center;
+        min-height: 44px;
+    }
+    .memo-success-ok-btn:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(34,197,94,0.55); }
+    .memo-success-ok-btn:active { transform: translateY(0); }
+
+    @@media (max-width: 480px) {
+        .memo-success-card { padding: 40px 20px 24px; border-radius: 18px; }
+        .memo-success-title { font-size: 1.35rem; }
+        .memo-success-check { width: 78px; height: 78px; }
+        .memo-success-check i { font-size: 2.6rem; }
+        .memo-success-ring { width: 110px; height: 110px; }
+    }
 
     /* ── Memo modal ── */
     .memo-modal-content {
@@ -7062,7 +7370,7 @@
     // ── Add Session Records (Evil/Serfac/PTS) state ──
     sealed class AddSessDataRow
     {
-        public string Type = "";  // "", "Evil", "Serfac", "Pts"
+        public string Type = "";  // "", "Evil", "Serfac", "Pts", "CaseData"
         public string OriginalWording = "";
         public string Translation = "";
         public string FPRD = "";
@@ -7075,6 +7383,8 @@
         public string PU = "";
         public string PtsRd = "";
         public string Ls = "";
+        public string CaseDataOn = DateTime.Now.ToString("yyyy-MM-dd");
+        public string CaseDataText = "";
     }
     List<AddSessDataRow> _addSessDataRows = new();
 
@@ -7093,6 +7403,7 @@
         row.OriginalWording = ""; row.Translation = ""; row.FPRD = ""; row.Other = "";
         row.Brackets = ""; row.R3RA = "";
         row.Action = ""; row.Item = ""; row.QuadRuds = ""; row.PU = ""; row.PtsRd = ""; row.Ls = "";
+        row.CaseDataOn = DateTime.Now.ToString("yyyy-MM-dd"); row.CaseDataText = "";
     }
 
     // Celebration overlay state (post-Go)
@@ -7122,9 +7433,10 @@
 
     List<AsdSummaryEntry> InsertAsdRows(List<AddSessDataRow> rows, int pcId, int sessionId, int insertedBy)
     {
-        var evilEntry   = new AsdSummaryEntry { Kind = "Evil Purposes" };
-        var serfacEntry = new AsdSummaryEntry { Kind = "Service Facsimiles" };
-        var ptsEntry    = new AsdSummaryEntry { Kind = "PTS Handling" };
+        var evilEntry     = new AsdSummaryEntry { Kind = "Evil Purposes" };
+        var serfacEntry   = new AsdSummaryEntry { Kind = "Service Facsimiles" };
+        var ptsEntry      = new AsdSummaryEntry { Kind = "PTS Handling" };
+        var caseDataEntry = new AsdSummaryEntry { Kind = "Case Data" };
 
         foreach (var r in rows)
         {
@@ -7176,6 +7488,19 @@
                             ("Ls", r.Ls)));
                         break;
                     }
+                    case "CaseData":
+                    {
+                        var dateStr = string.IsNullOrWhiteSpace(r.CaseDataOn)
+                            ? DateTime.Now.ToString("yyyy-MM-dd")
+                            : r.CaseDataOn;
+                        var rec = new CaseDataRow(0, pcId, sessionId, dateStr,
+                            r.CaseDataText, insertedBy, "");
+                        SdSvc.InsertCaseData(rec);
+                        caseDataEntry.RowPreviews.Add(AsdJoinNonEmpty(
+                            ("Date", dateStr),
+                            ("Text", r.CaseDataText)));
+                        break;
+                    }
                 }
             }
             catch (Exception ex)
@@ -7185,9 +7510,10 @@
         }
 
         var result = new List<AsdSummaryEntry>();
-        if (evilEntry.RowPreviews.Count   > 0) result.Add(evilEntry);
-        if (serfacEntry.RowPreviews.Count > 0) result.Add(serfacEntry);
-        if (ptsEntry.RowPreviews.Count    > 0) result.Add(ptsEntry);
+        if (evilEntry.RowPreviews.Count     > 0) result.Add(evilEntry);
+        if (serfacEntry.RowPreviews.Count   > 0) result.Add(serfacEntry);
+        if (ptsEntry.RowPreviews.Count      > 0) result.Add(ptsEntry);
+        if (caseDataEntry.RowPreviews.Count > 0) result.Add(caseDataEntry);
         return result;
     }
 
@@ -7208,6 +7534,18 @@
     string _memoScanBoxError = "";
     DateOnly _memoDate = DateOnly.FromDateTime(DateTime.Today);
     string _memoFileName = "";
+
+    // Also-write-to-Folder-Summary checkbox + inline editor
+    bool   _memoAlsoWriteSummary;
+    string _memoSummaryError = "";
+
+    // Big celebratory success-modal state (shown after Submit completes)
+    string _memoSuccessPcName       = "";
+    string _memoSuccessFileName     = "";
+    DateOnly _memoSuccessDate;
+    bool     _memoSuccessIsSolo;
+    bool     _memoSuccessAlsoSummary;
+    string   _memoSuccessSummaryHtml = "";
 
     // Upload-existing-PDF state (alternative to Quill editor)
     byte[]? _memoUploadedPdfBytes;
@@ -8734,7 +9072,7 @@
         var capturedArfEmpty    = IsArfTableEmpty;
         // Snapshot the Add-Session-Records rows (Evil/Serfac/PTS quick-capture) and clear UI state.
         var capturedAsdRows = _addSessDataRows
-            .Where(r => r.Type == "Evil" || r.Type == "Serfac" || r.Type == "Pts")
+            .Where(r => r.Type == "Evil" || r.Type == "Serfac" || r.Type == "Pts" || r.Type == "CaseData")
             .Select(r => new AddSessDataRow {
                 Type = r.Type,
                 OriginalWording = r.OriginalWording, Translation = r.Translation,
@@ -8742,6 +9080,7 @@
                 Brackets = r.Brackets, R3RA = r.R3RA,
                 Action = r.Action, Item = r.Item, QuadRuds = r.QuadRuds,
                 PU = r.PU, PtsRd = r.PtsRd, Ls = r.Ls,
+                CaseDataOn = r.CaseDataOn, CaseDataText = r.CaseDataText,
             }).ToList();
         _addSessDataRows.Clear();
 
@@ -10480,6 +10819,8 @@ string _actionPcSearch = "";
         _memoUploadedPdfName  = "";
         _memoUploadedPdfSize  = 0;
         _memoUploadedPdfError = "";
+        _memoAlsoWriteSummary = false;
+        _memoSummaryError     = "";
         _showMemoWizard      = true;
 
         // Solo users have a pre-set PC — skip step 1 and go directly to step 2
@@ -10595,6 +10936,39 @@ string _actionPcSearch = "";
         });
     }
 
+    async Task OnMemoAlsoWriteSummaryToggled()
+    {
+        // _memoAlsoWriteSummary already updated by @bind before @bind:after fires
+        _memoSummaryError = "";
+        if (!_memoAlsoWriteSummary) return;
+
+        await Task.Delay(100);
+        await JSRuntime.InvokeVoidAsync("eval", @"
+            if (window._memoSummaryQuill) {
+                try {
+                    window._memoSummaryQuill.container.parentElement.removeChild(window._memoSummaryQuill.container.previousSibling);
+                    window._memoSummaryQuill.container.remove();
+                } catch(e) {}
+                window._memoSummaryQuill = null;
+            }
+            var el = document.getElementById('memo-summary-editor');
+            if (el) {
+                window._memoSummaryQuill = new Quill(el, {
+                    theme: 'snow',
+                    placeholder: 'Write your folder summary here...',
+                    modules: { toolbar: [
+                        ['bold', 'italic', 'underline'],
+                        [{ 'color': [] }],
+                        [{ 'size': ['10px', '14px', '18px', '24px'] }],
+                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                        [{ 'direction': 'rtl' }, { 'align': [] }],
+                        ['clean']
+                    ]}
+                });
+            }
+        ");
+    }
+
     async Task OnMemoPdfUploaded(InputFileChangeEventArgs e)
     {
         _memoUploadedPdfError = "";
@@ -10684,6 +11058,21 @@ string _actionPcSearch = "";
             : await JSRuntime.InvokeAsync<string>("eval",
                 "window._memoQuill ? window._memoQuill.root.innerHTML : ''");
 
+        // Read folder summary HTML while modal is still open (if checkbox is checked)
+        var alsoSummary = _memoAlsoWriteSummary;
+        var summaryHtml = "";
+        if (alsoSummary)
+        {
+            summaryHtml = await JSRuntime.InvokeAsync<string>("eval",
+                "window._memoSummaryQuill ? window._memoSummaryQuill.root.innerHTML : ''");
+            if (string.IsNullOrWhiteSpace(summaryHtml) || summaryHtml == "<p><br></p>")
+            {
+                _memoSummaryError = "Please write the folder summary or uncheck the box.";
+                StateHasChanged();
+                return;
+            }
+        }
+
         var capturedPcId     = _memoPcId;
         var capturedSolo     = _memoSolo || _isSoloUser;
         var capturedAudId    = _msgUserId!.Value;
@@ -10691,11 +11080,15 @@ string _actionPcSearch = "";
         var capturedPcName   = _memoPcs.FirstOrDefault(p => p.PcId == _memoPcId)?.FullName ?? "";
         var capturedDate     = _memoDate;
         var capturedMemoName = BuildMemoFileName(_memoDate, _memoFileName);
+        var capturedAlsoSummary = alsoSummary;
+        var capturedSummaryHtml = summaryHtml;
 
         if (uploadedPdf != null)
             Console.WriteLine($"[Memo] Using uploaded PDF: {_memoUploadedPdfName} ({uploadedPdf.Length} bytes)");
         else
             Console.WriteLine($"[Memo] Quill HTML: {html}");
+        if (capturedAlsoSummary)
+            Console.WriteLine($"[Memo] Also writing folder summary ({capturedSummaryHtml.Length} chars)");
 
         // Close modal immediately, start toast
         _showMemoWizard = false;
@@ -10715,6 +11108,7 @@ string _actionPcSearch = "";
                 new("Saving to WorkSheets"),
                 new("Adding session entry"),
             };
+        if (capturedAlsoSummary) _memoSteps.Add(new BgStep("Saving folder summary"));
         StateHasChanged();
 
         _ = Task.Run(async () =>
@@ -10760,14 +11154,33 @@ string _actionPcSearch = "";
                 sDb.Status = 2;
                 await InvokeAsync(StateHasChanged);
 
+                // Save folder summary (if requested)
+                if (capturedAlsoSummary)
+                {
+                    var sSummary = _memoSteps[^1];
+                    sSummary.Status = 1;
+                    await InvokeAsync(StateHasChanged);
+                    DashSvc.AddFolderSummary(null, capturedPcId, capturedSolo ? null : capturedAudId, capturedSummaryHtml);
+                    DashSvc.NotifyDataChanged();
+                    sSummary.Status = 2;
+                    await InvokeAsync(StateHasChanged);
+                }
+
                 await InvokeAsync(() =>
                 {
+                    _memoSuccessPcName        = capturedPcName;
+                    _memoSuccessFileName      = savedName;
+                    _memoSuccessDate          = capturedDate;
+                    _memoSuccessIsSolo        = capturedSolo;
+                    _memoSuccessAlsoSummary   = capturedAlsoSummary;
+                    _memoSuccessSummaryHtml   = capturedSummaryHtml;
                     _memoRunning = false;
                     _memoDone    = true;
                     StateHasChanged();
                 });
 
-                await Task.Delay(3000);
+                // Auto-dismiss after a short delay (user can dismiss earlier with "Great!" or X)
+                await Task.Delay(capturedAlsoSummary ? 5000 : 3000);
                 await InvokeAsync(() =>
                 {
                     _memoDone = false;
@@ -10805,6 +11218,21 @@ string _actionPcSearch = "";
         var picked = inboxFiles.FirstOrDefault(f => !f.IsAttachment);
         if (picked.Data == null) picked = inboxFiles[0];
 
+        // Read folder summary HTML BEFORE the success animation hides the editor
+        var alsoSummary = _memoAlsoWriteSummary;
+        var summaryHtml = "";
+        if (alsoSummary)
+        {
+            summaryHtml = await JSRuntime.InvokeAsync<string>("eval",
+                "window._memoSummaryQuill ? window._memoSummaryQuill.root.innerHTML : ''");
+            if (string.IsNullOrWhiteSpace(summaryHtml) || summaryHtml == "<p><br></p>")
+            {
+                _memoSummaryError = "Please write the folder summary or uncheck the box.";
+                StateHasChanged();
+                return;
+            }
+        }
+
         _memoScanBoxFileName = picked.FileName;
         _memoScanBoxAnim = true;
         StateHasChanged();
@@ -10820,6 +11248,8 @@ string _actionPcSearch = "";
         var capturedDate   = _memoDate;
         var capturedName   = BuildMemoFileName(_memoDate, _memoFileName);
         var capturedBytes  = picked.Data;
+        var capturedAlsoSummary = alsoSummary;
+        var capturedSummaryHtml = summaryHtml;
 
         // Close modal, start background toast
         _showMemoWizard    = false;
@@ -10834,6 +11264,7 @@ string _actionPcSearch = "";
             new("Adding session entry"),
             new("Clearing ScanBox"),
         };
+        if (capturedAlsoSummary) _memoSteps.Add(new BgStep("Saving folder summary"));
         StateHasChanged();
 
         _ = Task.Run(async () =>
@@ -10867,14 +11298,33 @@ string _actionPcSearch = "";
                 sClr.Status = 2;
                 await InvokeAsync(StateHasChanged);
 
+                // Step 4: Save folder summary (if requested)
+                if (capturedAlsoSummary)
+                {
+                    var sSummary = _memoSteps[^1];
+                    sSummary.Status = 1;
+                    await InvokeAsync(StateHasChanged);
+                    DashSvc.AddFolderSummary(null, capturedPcId, capturedSolo ? null : capturedAudId, capturedSummaryHtml);
+                    DashSvc.NotifyDataChanged();
+                    sSummary.Status = 2;
+                    await InvokeAsync(StateHasChanged);
+                }
+
                 await InvokeAsync(() =>
                 {
+                    _memoSuccessPcName        = capturedPcName;
+                    _memoSuccessFileName      = savedName;
+                    _memoSuccessDate          = capturedDate;
+                    _memoSuccessIsSolo        = capturedSolo;
+                    _memoSuccessAlsoSummary   = capturedAlsoSummary;
+                    _memoSuccessSummaryHtml   = capturedSummaryHtml;
                     _memoRunning = false;
                     _memoDone    = true;
                     StateHasChanged();
                 });
 
-                await Task.Delay(3000);
+                // Auto-dismiss after a short delay (user can dismiss earlier with "Great!" or X)
+                await Task.Delay(capturedAlsoSummary ? 5000 : 3000);
                 await InvokeAsync(() =>
                 {
                     _memoDone = false;

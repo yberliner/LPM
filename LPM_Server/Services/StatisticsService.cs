@@ -15,7 +15,7 @@ public record DayStat(DateOnly Date, List<StaffStatRow> Staff, int AcademyCount,
 
 public record OriginHours(string Origin, int Seconds);
 
-public record StatCellDetailItem(string PcName, string Date, int Seconds);
+public record StatCellDetailItem(string PcName, string Date, int Seconds, int? SessionId);
 public record StatCellDetail(List<StatCellDetailItem> Items, int TotalSec);
 
 public record WeekStatSummary(DateOnly WeekStart, int TotalAuditCsSec, int AcademyCount, int BodyInShop, int PcCount, int EffortSec = 0)
@@ -989,7 +989,8 @@ public class StatisticsService
         cmd.CommandText = @"
             SELECT COALESCE(TRIM(p.FirstName || ' ' || p.LastName), 'Unknown') AS pcName,
                    DATE(s.CreatedAt, 'localtime') AS d,
-                   s.LengthSeconds + s.AdminSeconds AS sec
+                   s.LengthSeconds + s.AdminSeconds AS sec,
+                   s.SessionId
             FROM sess_sessions s
             LEFT JOIN core_persons p ON p.PersonId = s.PcId
             WHERE s.AuditorId = @aid
@@ -1004,7 +1005,7 @@ public class StatisticsService
         while (r.Read())
         {
             int sec = r.GetInt32(2);
-            items.Add(new StatCellDetailItem(r.GetString(0), r.GetString(1), sec));
+            items.Add(new StatCellDetailItem(r.GetString(0), r.GetString(1), sec, r.IsDBNull(3) ? null : r.GetInt32(3)));
             total += sec;
         }
         return new StatCellDetail(items, total);
@@ -1020,7 +1021,8 @@ public class StatisticsService
         cmd.CommandText = @"
             SELECT COALESCE(TRIM(p.FirstName || ' ' || p.LastName), 'Unknown') AS pcName,
                    DATE(cr.ReviewedAt, 'localtime') AS d,
-                   cr.ReviewLengthSeconds AS sec
+                   cr.ReviewLengthSeconds AS sec,
+                   cr.SessionId
             FROM cs_reviews cr
             JOIN sess_sessions s ON s.SessionId = cr.SessionId
             LEFT JOIN core_persons p ON p.PersonId = s.PcId
@@ -1037,7 +1039,7 @@ public class StatisticsService
         while (r.Read())
         {
             int sec = r.GetInt32(2);
-            items.Add(new StatCellDetailItem(r.GetString(0), r.GetString(1), sec));
+            items.Add(new StatCellDetailItem(r.GetString(0), r.GetString(1), sec, r.IsDBNull(3) ? null : r.GetInt32(3)));
             total += sec;
         }
         return new StatCellDetail(items, total);
@@ -1053,7 +1055,8 @@ public class StatisticsService
         cmd.CommandText = @"
             SELECT COALESCE(TRIM(p.FirstName || ' ' || p.LastName), 'Unknown') AS pcName,
                    DATE(cr.ReviewedAt, 'localtime') AS d,
-                   cr.ReviewLengthSeconds AS sec
+                   cr.ReviewLengthSeconds AS sec,
+                   cr.SessionId
             FROM cs_reviews cr
             JOIN sess_sessions s ON s.SessionId = cr.SessionId
             LEFT JOIN core_persons p ON p.PersonId = s.PcId
@@ -1070,7 +1073,7 @@ public class StatisticsService
         while (r.Read())
         {
             int sec = r.GetInt32(2);
-            items.Add(new StatCellDetailItem(r.GetString(0), r.GetString(1), sec));
+            items.Add(new StatCellDetailItem(r.GetString(0), r.GetString(1), sec, r.IsDBNull(3) ? null : r.GetInt32(3)));
             total += sec;
         }
         return new StatCellDetail(items, total);
@@ -1102,7 +1105,7 @@ public class StatisticsService
         while (r.Read())
         {
             int sec = r.GetInt32(2);
-            items.Add(new StatCellDetailItem(r.GetString(0), r.GetString(1), sec));
+            items.Add(new StatCellDetailItem(r.GetString(0), r.GetString(1), sec, null));
             total += sec;
         }
         return new StatCellDetail(items, total);

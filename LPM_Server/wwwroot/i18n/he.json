@@ -837,6 +837,7 @@
   "actions.openFolder": "פתח תיקייה",
   "actions.writeToSummary": "כתוב לסיכום תיקייה",
   "actions.addMemo": "הוסף דוח לתיקייה",
+  "actions.alsoWriteSummary": "כתוב גם לסיכום תיקייה",
   "actions.scheduleMeeting": "קבע פגישה",
   "actions.uploadFrontCover": "העלה לכריכה קדמית",
   "actions.finishGrade": "סיים ציון אודיטינג",

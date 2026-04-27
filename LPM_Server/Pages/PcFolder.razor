@@ -179,23 +179,26 @@
             {
                 <div class="pcf-sd-mega-wrap">
                     <button class="pcf-sd-mega-btn" @onclick="OpenSessionDataModal"
-                            title="Open Session Data — Evil Purposes / Service Facsimiles / PTS Handling">
+                            title="Open Session Data — Evil Purposes / Service Facsimiles / PTS Handling / Case Data">
                         <div class="pcf-sd-mega-icon"><i class="ri-booklet-line"></i></div>
                         <div class="pcf-sd-mega-text">
                             <span class="pcf-sd-mega-title">Session Data</span>
-                            <span class="pcf-sd-mega-sub">Evil Purposes · Service Facsimiles · PTS Handling</span>
+                            <span class="pcf-sd-mega-sub">Evil Purposes · Service Facsimiles · PTS Handling · Case Data</span>
                         </div>
                         <i class="ri-arrow-right-s-line pcf-sd-mega-arrow"></i>
                     </button>
                     <div class="pcf-sd-mega-cards">
-                        <div class="pcf-sd-mega-card pcf-sd-card-evil"   @onclick='() => OpenSessionDataModalTab("Evil")'>
+                        <div class="pcf-sd-mega-card pcf-sd-card-evil"     @onclick='() => OpenSessionDataModalTab("Evil")'>
                             <i class="ri-alert-line"></i><span>Evil Purposes</span>
                         </div>
-                        <div class="pcf-sd-mega-card pcf-sd-card-serfac" @onclick='() => OpenSessionDataModalTab("Serfac")'>
+                        <div class="pcf-sd-mega-card pcf-sd-card-serfac"   @onclick='() => OpenSessionDataModalTab("Serfac")'>
                             <i class="ri-file-copy-line"></i><span>Service Facsimiles</span>
                         </div>
-                        <div class="pcf-sd-mega-card pcf-sd-card-pts"    @onclick='() => OpenSessionDataModalTab("Pts")'>
+                        <div class="pcf-sd-mega-card pcf-sd-card-pts"      @onclick='() => OpenSessionDataModalTab("Pts")'>
                             <i class="ri-flashlight-line"></i><span>PTS Handling</span>
+                        </div>
+                        <div class="pcf-sd-mega-card pcf-sd-card-casedata" @onclick='() => OpenSessionDataModalTab("CaseData")'>
+                            <i class="ri-calendar-line"></i><span>Case Data</span>
                         </div>
                     </div>
                 </div>
@@ -1463,25 +1466,38 @@
     FileName="@_annHistoryFileName"
     OnCloseRequested="CloseAnnotationHistoryModal" />
 
-@* ── Save Error / Retry Dialog (network failure during pane save) ── *@
+@* ── Save Error / Retry Dialog ── *@
 @if (_showSaveErrorDialog)
 {
     <div class="pcf-savemod-overlay">
-        <div class="pcf-savemod-card">
+        <div class="pcf-savemod-card" style="max-width: 720px;">
             <div class="pcf-savemod-icon-wrap">
                 <i class="ri-cloud-off-line pcf-savemod-icon"></i>
             </div>
             <h3 class="pcf-savemod-title">Couldn't Save Annotations</h3>
             <p class="pcf-savemod-body">
                 @{ var n = _saveErrorPanes.Count; }
-                @if (n == 1) { <text>The save for <strong>1 pane</strong> failed</text> }
-                else         { <text>The save for <strong>@n panes</strong> failed</text> }
-                — likely a brief network problem. Your edits are still in the browser.
-                <br /><br />
-                <strong>Click Retry</strong> to try again. If it keeps failing, check your connection
-                or click Cancel to stay on this page; your edits remain visible.
+                @if (n == 1) { <text>The save for <strong>1 pane</strong> failed.</text> }
+                else         { <text>The save for <strong>@n panes</strong> failed.</text> }
+                Your edits are still in the browser. Click Retry to try again, or Cancel to stay on this page.
             </p>
+            <div class="pcf-savemod-details" style="text-align:left; max-height: 320px; overflow:auto; background:#0f172a; color:#e2e8f0; border-radius:8px; padding:12px 14px; margin: 8px 0 14px; font-family: ui-monospace, Consolas, 'Courier New', monospace; font-size: 12.5px; line-height: 1.5;">
+                @foreach (var d in _saveErrorPanes)
+                {
+                    <div style="margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #1e293b;">
+                        <div><span style="color:#94a3b8;">Pane:</span> @d.PaneIdx (@d.PaneId)<span style="color:#94a3b8;"> · Context:</span> @d.Context</div>
+                        <div><span style="color:#94a3b8;">File:</span> @d.FileName</div>
+                        <div><span style="color:#94a3b8;">Path:</span> @d.FilePath</div>
+                        <div><span style="color:#94a3b8;">PcId:</span> @d.PcId<span style="color:#94a3b8;"> · Solo:</span> @d.Solo<span style="color:#94a3b8;"> · User:</span> @d.UserName</div>
+                        <div><span style="color:#94a3b8;">Time:</span> @d.At.ToString("yyyy-MM-dd HH:mm:ss")</div>
+                        <div style="color:#fca5a5; word-break:break-word;"><span style="color:#94a3b8;">Error:</span> @d.ErrorMessage</div>
+                    </div>
+                }
+            </div>
             <div class="pcf-savemod-buttons">
+                <button class="pcf-savemod-btn pcf-savemod-btn-cancel" @onclick="CopySaveErrorDetailsAsync" disabled="@_saveRetryInFlight" title="Copy all details to clipboard">
+                    <i class="ri-clipboard-line"></i> @(_saveErrorCopied ? "Copied!" : (_saveErrorCopyFailed ? "Copy failed" : "Copy details"))
+                </button>
                 <button class="pcf-savemod-btn pcf-savemod-btn-cancel" @onclick="DismissSaveErrorDialog" disabled="@_saveRetryInFlight">
                     <i class="ri-close-line"></i> Cancel
                 </button>
@@ -2168,7 +2184,7 @@
     }
     .pcf-sd-mega-wrap:hover .pcf-sd-mega-cards,
     .pcf-sd-mega-wrap:focus-within .pcf-sd-mega-cards {
-        max-height: 260px;
+        max-height: 340px;
         opacity: 1;
         margin-top: 8px;
     }
@@ -2198,6 +2214,7 @@
     .pcf-sd-mega-wrap:hover .pcf-sd-mega-card:nth-child(1) { transition-delay: 0ms; }
     .pcf-sd-mega-wrap:hover .pcf-sd-mega-card:nth-child(2) { transition-delay: 60ms; }
     .pcf-sd-mega-wrap:hover .pcf-sd-mega-card:nth-child(3) { transition-delay: 120ms; }
+    .pcf-sd-mega-wrap:hover .pcf-sd-mega-card:nth-child(4) { transition-delay: 180ms; }
     .pcf-sd-mega-card:hover { background: #273449; }
     .pcf-sd-mega-card i {
         font-size: 1.05rem;
@@ -2212,6 +2229,8 @@
     .pcf-sd-card-serfac i{ background: rgba(59,130,246,.18); color: #93c5fd; }
     .pcf-sd-card-pts     { border-left-color: #f59e0b; }
     .pcf-sd-card-pts i   { background: rgba(245,158,11,.18); color: #fcd34d; }
+    .pcf-sd-card-casedata    { border-left-color: #10b981; }
+    .pcf-sd-card-casedata i  { background: rgba(16,185,129,.18); color: #6ee7b7; }
 
     /* Touch / no-hover devices: always show cards so users can read what the button opens */
     @@media (hover: none) {
@@ -5729,8 +5748,10 @@
             catch (Exception ex)
             {
                 Console.WriteLine($"[PcFolder] SaveAnnotations FAILED for '{_panes[_activeIdx].FileName}' (PC {PcId}, user '{_userName}'): {ex.Message}");
-                _saveErrorPanes = new List<int> { _activeIdx };
+                _saveErrorPanes = new List<SaveErrorDetail> { BuildSaveErrorDetail(_activeIdx, "Manual", ex.Message) };
                 _saveErrorContext = SaveErrorContext.Manual;
+                _saveErrorCopied = false;
+                _saveErrorCopyFailed = false;
                 _showSaveErrorDialog = true;
                 return;
             }
@@ -5751,8 +5772,80 @@
     enum SaveErrorContext { CsDone, AlreadyDone, Manual }
     bool _showSaveErrorDialog;
     bool _saveRetryInFlight;
-    List<int> _saveErrorPanes = new();
+    bool _saveErrorCopied;
+    bool _saveErrorCopyFailed;
     SaveErrorContext _saveErrorContext;
+
+    public class SaveErrorDetail
+    {
+        public int      PaneIdx     { get; set; }
+        public string   PaneId      { get; set; } = "";
+        public string   FileName    { get; set; } = "";
+        public string   FilePath    { get; set; } = "";
+        public int      PcId        { get; set; }
+        public bool     Solo        { get; set; }
+        public string   UserName    { get; set; } = "";
+        public string   Context     { get; set; } = "";
+        public string   ErrorMessage{ get; set; } = "";
+        public DateTime At          { get; set; } = DateTime.Now;
+    }
+    List<SaveErrorDetail> _saveErrorPanes = new();
+
+    SaveErrorDetail BuildSaveErrorDetail(int paneIdx, string ctx, string errMsg)
+    {
+        var pane = (paneIdx >= 0 && paneIdx < _panes.Length) ? _panes[paneIdx] : null;
+        return new SaveErrorDetail
+        {
+            PaneIdx      = paneIdx,
+            PaneId       = (paneIdx >= 0 && paneIdx < PaneIds.Length) ? PaneIds[paneIdx] : "",
+            FileName     = pane?.FileName ?? "",
+            FilePath     = pane?.File ?? "",
+            PcId         = PcId,
+            Solo         = Solo,
+            UserName     = _userName ?? "",
+            Context      = ctx,
+            ErrorMessage = errMsg ?? "",
+            At           = DateTime.Now
+        };
+    }
+
+    async Task CopySaveErrorDetailsAsync()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"=== LPM Save-Annotations Failure Report ({DateTime.Now:yyyy-MM-dd HH:mm:ss}) ===");
+        sb.AppendLine($"Panes failed: {_saveErrorPanes.Count}");
+        foreach (var d in _saveErrorPanes)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"Pane:    {d.PaneIdx} ({d.PaneId})");
+            sb.AppendLine($"Context: {d.Context}");
+            sb.AppendLine($"File:    {d.FileName}");
+            sb.AppendLine($"Path:    {d.FilePath}");
+            sb.AppendLine($"PcId:    {d.PcId}   Solo: {d.Solo}   User: {d.UserName}");
+            sb.AppendLine($"Time:    {d.At:yyyy-MM-dd HH:mm:ss}");
+            sb.AppendLine($"Error:   {d.ErrorMessage}");
+        }
+        bool ok = false;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", sb.ToString());
+            ok = true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PcFolder] CopySaveErrorDetails clipboard failed: {ex.Message}");
+        }
+        _saveErrorCopied     = ok;
+        _saveErrorCopyFailed = !ok;
+        StateHasChanged();
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(1500);
+            try { await InvokeAsync(() => { _saveErrorCopied = false; _saveErrorCopyFailed = false; StateHasChanged(); }); }
+            catch (ObjectDisposedException) { /* component gone — nothing to update */ }
+            catch (Exception ex) { Console.WriteLine($"[PcFolder] CopySaveErrorDetails reset timer: {ex.Message}"); }
+        });
+    }
 
     // Pending-save recovery (snapshots survive page reload via localStorage)
     public class PendingSaveSnap
@@ -5846,7 +5939,8 @@
     /// the JS layer has already retried 5x and persisted a recovery snapshot in localStorage.
     async Task<bool> SavePanesSerialAsync()
     {
-        var failed = new List<int>();
+        var ctxName = _csAlreadyDone ? "AlreadyDone" : "CsDone";
+        var failed = new List<SaveErrorDetail>();
         for (int i = 0; i < _paneCount; i++)
         {
             try
@@ -5856,12 +5950,14 @@
             catch (Exception ex)
             {
                 Console.WriteLine($"[PcFolder] savePane({PaneIds[i]}) FAILED for PC {PcId}, user '{_userName}': {ex.Message}");
-                failed.Add(i);
+                failed.Add(BuildSaveErrorDetail(i, ctxName, ex.Message));
             }
         }
         if (failed.Count == 0) return true;
         _saveErrorPanes = failed;
         _saveErrorContext = _csAlreadyDone ? SaveErrorContext.AlreadyDone : SaveErrorContext.CsDone;
+        _saveErrorCopied = false;
+        _saveErrorCopyFailed = false;
         _showSaveErrorDialog = true;
         StateHasChanged();
         return false;
@@ -5871,6 +5967,8 @@
     {
         _showSaveErrorDialog = false;
         _saveErrorPanes.Clear();
+        _saveErrorCopied = false;
+        _saveErrorCopyFailed = false;
     }
 
     async Task RetryFailedSavesAsync()
@@ -5878,19 +5976,19 @@
         if (_saveRetryInFlight) return;
         _saveRetryInFlight = true;
         StateHasChanged();
-        var still = new List<int>();
+        var still = new List<SaveErrorDetail>();
         try
         {
-            foreach (var i in _saveErrorPanes.ToList())
+            foreach (var entry in _saveErrorPanes.ToList())
             {
                 try
                 {
-                    await JS.InvokeVoidAsync("pcfViewer.savePane", PaneIds[i]);
+                    await JS.InvokeVoidAsync("pcfViewer.savePane", entry.PaneId);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[PcFolder] Retry savePane({PaneIds[i]}) FAILED again: {ex.Message}");
-                    still.Add(i);
+                    Console.WriteLine($"[PcFolder] Retry savePane({entry.PaneId}) FAILED again: {ex.Message}");
+                    still.Add(BuildSaveErrorDetail(entry.PaneIdx, entry.Context + " (retry)", ex.Message));
                 }
             }
         }
@@ -5899,6 +5997,8 @@
             _saveRetryInFlight = false;
         }
         _saveErrorPanes = still;
+        _saveErrorCopied = false;
+        _saveErrorCopyFailed = false;
         if (still.Count == 0)
         {
             _showSaveErrorDialog = false;

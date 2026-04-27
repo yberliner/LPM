@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PcFolder Save — CSP / dataURL → Blob test</title>
+<style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width: 980px; margin: 28px auto; padding: 0 20px; color: #1f2937; background: #f8fafc; }
+    h1 { font-size: 1.4rem; margin-bottom: 4px; }
+    .sub { color: #64748b; margin-bottom: 22px; font-size: .95rem; }
+    .test { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 18px; margin-bottom: 14px; }
+    .test h3 { margin: 0 0 8px; font-size: 1rem; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .pass { background: #dcfce7; color: #166534; }
+    .fail { background: #fee2e2; color: #991b1b; }
+    .skip { background: #fef9c3; color: #854d0e; }
+    pre  { background: #0f172a; color: #e2e8f0; padding: 10px 12px; border-radius: 6px; overflow:auto; font-size: 12.5px; margin: 6px 0 0; }
+    .muted { color: #64748b; font-size: 12.5px; margin-top: 4px; }
+    button { background: #2563eb; color: #fff; border: 0; padding: 10px 20px; border-radius: 8px; font-size: 14px; cursor: pointer; }
+    button:hover { background: #1d4ed8; }
+    .summary { margin: 18px 0 8px; padding: 12px 16px; border-radius: 10px; font-weight: 600; }
+    .summary.ok { background: #dcfce7; color: #166534; }
+    .summary.bad { background: #fee2e2; color: #991b1b; }
+</style>
+</head>
+<body>
+<h1>PcFolder Save — CSP / dataURL → Blob test</h1>
+<div class="sub">
+    Reproduces the "add blank page → save fails under CSP <code>connect-src 'self' ws: wss:</code>" scenario and
+    verifies that <code>pcfDataUrlToBlob</code> is a correct CSP-safe replacement for <code>fetch(dataUrl).blob()</code>.
+</div>
+
+<button id="run">Run all tests</button>
+
+<div id="results" style="margin-top: 18px;"></div>
+<div id="summary"></div>
+
+<script>
+    // ── Helper under test (must mirror window.pcfDataUrlToBlob in _PcFolderLayout.cshtml) ──
+    function pcfDataUrlToBlob(dataUrl) {
+        const comma = dataUrl.indexOf(',');
+        const meta  = dataUrl.substring(0, comma);
+        const b64   = dataUrl.substring(comma + 1);
+        const m     = meta.match(/^data:([^;]+)(;base64)?$/);
+        const mime  = (m && m[1]) ? m[1] : 'application/octet-stream';
+        const bin   = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return new Blob([bytes], { type: mime });
+    }
+
+    // ── Test framework (lightweight) ──
+    const results = [];
+    function record(name, passed, info) {
+        results.push({ name, passed, info });
+        const div = document.createElement('div');
+        div.className = 'test';
+        div.innerHTML = `
+            <h3>${escapeHtml(name)} <span class="pill ${passed === true ? 'pass' : passed === false ? 'fail' : 'skip'}">${passed === true ? 'PASS' : passed === false ? 'FAIL' : 'SKIP'}</span></h3>
+            ${info ? `<pre>${escapeHtml(info)}</pre>` : ''}`;
+        document.getElementById('results').appendChild(div);
+    }
+    function escapeHtml(s) { return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+    async function blobToBytes(blob) {
+        const buf = await blob.arrayBuffer();
+        return new Uint8Array(buf);
+    }
+    function bytesEqual(a, b) {
+        if (a.length !== b.length) return false;
+        for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+        return true;
+    }
+
+    // ── Test 1: 1×1 transparent PNG ──
+    async function testTinyPng() {
+        // Minimal valid 1×1 transparent PNG (well-known base64)
+        const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+        const blob = pcfDataUrlToBlob(dataUrl);
+        const bytes = await blobToBytes(blob);
+        const okMime  = blob.type === 'image/png';
+        const okMagic = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47;
+        const okLen   = bytes.length > 60 && bytes.length < 200;
+        const passed  = okMime && okMagic && okLen;
+        record('1×1 PNG: mime + magic bytes + size sane',
+               passed,
+               `mime=${blob.type} length=${bytes.length} magic=[${bytes[0].toString(16)} ${bytes[1].toString(16)} ${bytes[2].toString(16)} ${bytes[3].toString(16)}]`);
+    }
+
+    // ── Test 2: Canvas-generated PNG (mimics blank-page in addBlankPage) ──
+    async function testCanvasBlankPage() {
+        // Mimic addBlankPage: white HiDPI canvas, then toDataURL('image/png')
+        const dpr = 2;
+        const cssW = 612, cssH = 792; // ~Letter
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(cssW * dpr);
+        canvas.height = Math.round(cssH * dpr);
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/png');
+
+        const blob = pcfDataUrlToBlob(dataUrl);
+        const bytes = await blobToBytes(blob);
+        const okMime  = blob.type === 'image/png';
+        const okMagic = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47;
+        const passed  = okMime && okMagic && bytes.length > 100;
+        record('Canvas-generated blank page PNG (full_new payload)',
+               passed,
+               `dataUrl chars=${dataUrl.length} blob mime=${blob.type} bytes=${bytes.length} magic=PNG?${okMagic}`);
+    }
+
+    // ── Test 3: JPEG mime ──
+    async function testJpegMime() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 8; canvas.height = 8;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ff0000'; ctx.fillRect(0, 0, 8, 8);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        const blob = pcfDataUrlToBlob(dataUrl);
+        const bytes = await blobToBytes(blob);
+        // JPEG SOI marker
+        const okMagic = bytes[0] === 0xFF && bytes[1] === 0xD8;
+        const passed  = blob.type === 'image/jpeg' && okMagic;
+        record('JPEG dataURL → mime + SOI marker', passed,
+               `mime=${blob.type} bytes=${bytes.length} magic=[${bytes[0].toString(16)} ${bytes[1].toString(16)}]`);
+    }
+
+    // ── Test 4: Round-trip (helper output identical to a known reference)
+    //    We can't compare to fetch(dataUrl) because CSP blocks it. Instead, decode the
+    //    base64 a second time using a different code path (Uint8Array.from + map) and
+    //    assert the byte arrays match. ──
+    async function testRoundTrip() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 200; canvas.height = 200;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#3b82f6'; ctx.fillRect(0, 0, 200, 200);
+        ctx.fillStyle = '#fff'; ctx.font = '30px sans-serif'; ctx.fillText('LPM', 50, 110);
+        const dataUrl = canvas.toDataURL('image/png');
+
+        const blob1 = pcfDataUrlToBlob(dataUrl);
+        const got = await blobToBytes(blob1);
+
+        // Independent decode path
+        const b64 = dataUrl.split(',')[1];
+        const expected = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+
+        const passed = bytesEqual(got, expected);
+        record('Helper output ≡ independent atob decode (byte-exact)',
+               passed,
+               `length got=${got.length} expected=${expected.length}`);
+    }
+
+    // ── Test 5: Demonstrate CSP blocks fetch(dataUrl) — proves the fix matters ──
+    async function testCspBlocksFetch() {
+        const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+        let threw = false, msg = '';
+        try {
+            await fetch(dataUrl);
+        } catch (e) {
+            threw = true;
+            msg = e && e.message ? e.message : String(e);
+        }
+        // Under CSP `connect-src 'self' ws: wss:` (no `data:`), browsers throw a TypeError.
+        // If CSP has been relaxed to allow data:, fetch will succeed — note as SKIP rather than FAIL.
+        if (threw) {
+            record('fetch(dataUrl) is blocked by CSP (regression guard)', true,
+                   'fetch threw as expected: ' + msg);
+        } else {
+            record('fetch(dataUrl) is blocked by CSP (regression guard)', 'skip',
+                   'fetch did NOT throw — your CSP allows data: in connect-src. Helper still works, but the original bug would not reproduce here.');
+        }
+    }
+
+    // ── Test 6: End-to-end save-payload assembly (no network) ──
+    //   Mirrors the loop in pcfSaveAnnotatedPdf for a fake meta with one full_new page.
+    async function testSavePayloadAssembly() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 100; canvas.height = 140;
+        canvas.getContext('2d').fillStyle = '#fff';
+        canvas.getContext('2d').fillRect(0, 0, 100, 140);
+        const dataUrl = canvas.toDataURL('image/png');
+
+        const meta = {
+            totalPages: 2,
+            pages: [
+                { action: 'original', srcPageIdx: 0 },
+                { action: 'full_new', srcPageIdx: -1, w: 100, h: 140, dataUrl, pdfPtW: 100, pdfPtH: 140 }
+            ]
+        };
+
+        let imgIdx = 0;
+        const formData = new FormData();
+        const metaForSend = { totalPages: meta.totalPages, pages: [] };
+        let assemblyError = null;
+        try {
+            for (const p of meta.pages) {
+                if (p.action === 'original') {
+                    metaForSend.pages.push({ action: 'original', srcPageIdx: p.srcPageIdx });
+                } else {
+                    const blob = pcfDataUrlToBlob(p.dataUrl);
+                    formData.append('img_' + imgIdx, blob, 'img_' + imgIdx + '.png');
+                    metaForSend.pages.push({ action: p.action, srcPageIdx: -1, w: p.w, h: p.h, imgIdx, pdfPtW: p.pdfPtW, pdfPtH: p.pdfPtH });
+                    imgIdx++;
+                }
+            }
+            formData.append('meta', JSON.stringify(metaForSend));
+        } catch (e) {
+            assemblyError = e && e.message ? e.message : String(e);
+        }
+
+        const file = formData.get('img_0');
+        const passed = !assemblyError
+                    && file instanceof Blob
+                    && file.type === 'image/png'
+                    && metaForSend.pages.length === 2
+                    && metaForSend.pages[1].action === 'full_new'
+                    && metaForSend.pages[1].imgIdx === 0;
+        record('End-to-end save payload assembly (1 original + 1 full_new blank page)',
+               passed,
+               assemblyError
+                   ? ('threw: ' + assemblyError)
+                   : `imgFile=Blob(${file.size}B,${file.type}) meta.pages.length=${metaForSend.pages.length} full_new.imgIdx=${metaForSend.pages[1].imgIdx}`);
+    }
+
+    // ── Test 7: Helper handles dataURL without explicit ;base64 token gracefully ──
+    async function testMimeFallback() {
+        // Synthetic: data:application/octet-stream;base64,...
+        const dataUrl = 'data:application/octet-stream;base64,SGVsbG8='; // "Hello"
+        const blob = pcfDataUrlToBlob(dataUrl);
+        const bytes = await blobToBytes(blob);
+        const txt = new TextDecoder().decode(bytes);
+        const passed = blob.type === 'application/octet-stream' && txt === 'Hello';
+        record('Custom mime (application/octet-stream) parses correctly',
+               passed,
+               `mime=${blob.type} text="${txt}"`);
+    }
+
+    async function runAll() {
+        document.getElementById('results').innerHTML = '';
+        document.getElementById('summary').innerHTML = '';
+        await testTinyPng();
+        await testCanvasBlankPage();
+        await testJpegMime();
+        await testRoundTrip();
+        await testCspBlocksFetch();
+        await testSavePayloadAssembly();
+        await testMimeFallback();
+
+        const failed = results.filter(r => r.passed === false).length;
+        const passed = results.filter(r => r.passed === true).length;
+        const skipped = results.filter(r => r.passed === 'skip').length;
+        const summary = document.getElementById('summary');
+        summary.className = 'summary ' + (failed === 0 ? 'ok' : 'bad');
+        summary.textContent = `${passed} passed · ${failed} failed · ${skipped} skipped`;
+    }
+
+    document.getElementById('run').addEventListener('click', runAll);
+    runAll();
+</script>
+</body>
+</html>

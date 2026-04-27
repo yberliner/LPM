@@ -12,6 +12,13 @@
     let showTimer = null;
     let hideTimer = null;
     let tipHover = false;
+    let dotNetRef = null;  // DotNetObjectReference<Statistics> from Blazor — set by register()
+
+    // Public API for Blazor to register / unregister the .NET callback target.
+    window.lpmStatsTooltip = {
+        register(ref) { dotNetRef = ref; },
+        unregister() { dotNetRef = null; }
+    };
 
     const LABEL = {
         audit:  { title: 'Auditing breakdown',     badgeClass: 'stat-chip-audit'  },
@@ -21,12 +28,15 @@
         total:  { title: 'Total time calculation', badgeClass: 'stat-chip-total'  },
     };
 
+    function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+
+    // Format seconds as h:mm — hour is NOT zero-padded, minutes are. Seconds intentionally dropped.
     function fmt(sec) {
         sec = sec | 0;
+        if (sec < 0) sec = 0;
         const h = (sec / 3600) | 0;
         const m = ((sec % 3600) / 60) | 0;
-        const s = sec % 60;
-        return (h > 0 ? h + 'h ' : '') + (m < 10 && h > 0 ? '0' : '') + m + 'm ' + (s < 10 ? '0' : '') + s + 's';
+        return h + ':' + pad2(m);
     }
 
     function fmtDate(iso) {
@@ -97,14 +107,19 @@
 
     function buildTipHtml(metric, staffName, rangeLabel, data) {
         const meta = LABEL[metric] || { title: 'Breakdown', badgeClass: '' };
-        const rows = (data.items || []).map((it, i) => `
-            <tr>
+        const rows = (data.items || []).map((it, i) => {
+            const sid = (it.sessionId != null && it.sessionId > 0) ? it.sessionId : 0;
+            const clickAttrs = sid > 0
+                ? ` class="stat-tt-clickable" data-session-id="${sid}" title="Open session ${sid} in Session Manager"`
+                : '';
+            return `
+            <tr${clickAttrs}>
                 <td class="stat-tt-idx">${i + 1}</td>
                 <td class="stat-tt-pc">${esc(it.pcName)}</td>
                 <td class="stat-tt-date">${fmtDate(it.date)}</td>
                 <td class="stat-tt-dur">${fmt(it.seconds)}</td>
-            </tr>
-        `).join('');
+            </tr>`;
+        }).join('');
         const empty = (data.items && data.items.length)
             ? ''
             : `<tr><td colspan="4" class="stat-tt-empty">No matching records in this range.</td></tr>`;
@@ -235,6 +250,17 @@
             tipHover = false;
             scheduleHide();
         });
+        // Delegated click on a row → open that session in Session Manager via Blazor.
+        tip.addEventListener('click', (e) => {
+            const row = e.target.closest && e.target.closest('tr.stat-tt-clickable');
+            if (!row) return;
+            const sid = parseInt(row.getAttribute('data-session-id') || '0', 10);
+            if (!sid) return;
+            if (dotNetRef) {
+                try { dotNetRef.invokeMethodAsync('OpenSession', sid); } catch (_) { /* circuit gone */ }
+            }
+            hideCurrent();
+        });
         document.body.appendChild(tip);
         currentTip = tip;
         currentCell = cell;
@@ -299,8 +325,15 @@
         }
     });
 
-    // Hide on scroll / resize to avoid floating in wrong spot.
-    window.addEventListener('scroll', hideCurrent, true);
+    // Hide on page scroll / resize to avoid floating in wrong spot.
+    // Use capture so we see scrolls from any element, but ignore scrolls that
+    // originate inside the tooltip itself — otherwise scrolling the tooltip's
+    // own list closes it before the user can reach the bottom.
+    window.addEventListener('scroll', (e) => {
+        const t = e.target;
+        if (t instanceof Element && t.closest && t.closest('.stat-tooltip')) return;
+        hideCurrent();
+    }, true);
     window.addEventListener('resize', hideCurrent);
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideCurrent(); });
 })();
