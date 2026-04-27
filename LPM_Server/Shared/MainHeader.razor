@@ -2755,19 +2755,20 @@
                             @LS.T("actions.memoSaveNote")
                         </div>
 
-                        @* ── Also write to Folder Summary ── *@
-                        <div class="form-check d-flex align-items-center gap-2 mt-3"
-                             style="padding-left:0; min-height:44px;">
-                            <input class="form-check-input m-0" type="checkbox" id="memo-also-summary"
-                                   @bind="_memoAlsoWriteSummary"
-                                   @bind:after="OnMemoAlsoWriteSummaryToggled"
-                                   style="cursor:pointer; width:20px; height:20px; min-width:20px; min-height:20px;
-                                          accent-color:#8b5cf6;" />
-                            <label class="form-check-label" for="memo-also-summary"
-                                   style="font-size:.9rem; color:#e2e8f0; cursor:pointer; user-select:none;">
+                        @* ── Also write to Folder Summary (custom-rendered toggle) ── *@
+                        <button type="button"
+                                class="memo-also-summary-toggle d-flex align-items-center gap-2 mt-3"
+                                @onclick="ToggleMemoAlsoSummary">
+                            <span class="memo-also-summary-box @( _memoAlsoWriteSummary ? "memo-also-summary-box-on" : "")">
+                                @if (_memoAlsoWriteSummary)
+                                {
+                                    <i class="ri-check-line"></i>
+                                }
+                            </span>
+                            <span class="memo-also-summary-text">
                                 <i class="ri-file-edit-line me-1" style="color:#8b5cf6;"></i>@LS.T("actions.alsoWriteSummary")
-                            </label>
-                        </div>
+                            </span>
+                        </button>
                         @if (_memoAlsoWriteSummary)
                         {
                             <div class="mb-1 mt-2" id="memo-summary-quill-wrap">
@@ -4646,6 +4647,51 @@
         .memo-success-ring { width: 110px; height: 110px; }
     }
 
+    /* ── Memo modal: "Also write to Folder Summary" custom toggle ── */
+    .memo-also-summary-toggle {
+        background: transparent !important;
+        border: none !important;
+        padding: 6px 4px !important;
+        min-height: 44px;
+        cursor: pointer;
+        outline: none;
+        text-align: left;
+    }
+    .memo-also-summary-toggle:focus-visible {
+        outline: 2px solid #8b5cf6;
+        outline-offset: 2px;
+        border-radius: 6px;
+    }
+    .memo-also-summary-box {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px; height: 22px;
+        min-width: 22px; min-height: 22px;
+        border-radius: 5px;
+        background: transparent;
+        border: 2px solid #94a3b8;
+        transition: background 0.15s ease, border-color 0.15s ease;
+        flex-shrink: 0;
+    }
+    .memo-also-summary-box-on {
+        background: #8b5cf6;
+        border-color: #8b5cf6;
+    }
+    .memo-also-summary-box i {
+        color: #ffffff;
+        font-size: 1rem;
+        font-weight: 900;
+        line-height: 1;
+    }
+    .memo-also-summary-text {
+        font-size: 0.9rem;
+        color: #e2e8f0;
+        user-select: none;
+    }
+    :root[data-theme-mode="light"] .memo-also-summary-text { color: #1e293b; }
+    :root[data-theme-mode="light"] .memo-also-summary-box { border-color: #64748b; }
+
     /* ── Memo modal ── */
     .memo-modal-content {
         background: #1e293b; color: #e2e8f0; border: 1px solid #334155;
@@ -4653,7 +4699,7 @@
     :root[data-theme-mode="light"] .memo-modal-content {
         background: #ffffff; color: #1e293b; border: 1px solid #cbd5e1;
     }
-    :root[data-theme-mode="light"] .memo-modal-content input,
+    :root[data-theme-mode="light"] .memo-modal-content input:not([type="checkbox"]):not([type="radio"]),
     :root[data-theme-mode="light"] .memo-modal-content select,
     :root[data-theme-mode="light"] .memo-modal-content textarea,
     :root[data-theme-mode="light"] .memo-modal-content .form-control,
@@ -10936,9 +10982,9 @@ string _actionPcSearch = "";
         });
     }
 
-    async Task OnMemoAlsoWriteSummaryToggled()
+    async Task ToggleMemoAlsoSummary()
     {
-        // _memoAlsoWriteSummary already updated by @bind before @bind:after fires
+        _memoAlsoWriteSummary = !_memoAlsoWriteSummary;
         _memoSummaryError = "";
         if (!_memoAlsoWriteSummary) return;
 
