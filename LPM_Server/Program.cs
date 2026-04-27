@@ -1198,6 +1198,15 @@ app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
 // staffId: PersonId of auditor / CS / effort-performer
 // start, end: "yyyy-MM-dd" (inclusive). For week view these are the 7-day range;
 //             month view is the full month; day view is the single day (start==end).
+// Diagnosis → Deleted Files tab: download a single backup file by its flat filename.
+// Uses the same DiagnosisAccess policy as the page itself.
+app.MapGet("/api/admin/deleted-file", (string name, LPM.Services.FolderService folderSvc) =>
+{
+    var data = folderSvc.GetBackupFileBytes(name);
+    if (data == null) return Results.NotFound();
+    return Results.File(data.Value.Bytes, data.Value.ContentType, name);
+}).RequireAuthorization("DiagnosisAccess");
+
 app.MapGet("/api/stats-cell-detail", (string metric, int staffId, string start, string end,
     LPM.Services.StatisticsService svc) =>
 {

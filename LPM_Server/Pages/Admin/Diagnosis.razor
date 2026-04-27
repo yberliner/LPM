@@ -1871,15 +1871,16 @@
                     <table class="table table-sm align-middle" style="font-size:.85rem;">
                         <thead style="background:#f1f5f9;">
                             <tr>
-                                <th>PC</th>
-                                <th>Original Filename</th>
-                                <th>Deleted At</th>
-                                <th>Time Until Purge</th>
-                                <th class="text-end">Size</th>
+                                <th class="diag-del-sort" @onclick='() => ToggleDeletedSort("pc")'>PC @SortArrow("pc")</th>
+                                <th class="diag-del-sort" @onclick='() => ToggleDeletedSort("name")'>Original Filename @SortArrow("name")</th>
+                                <th class="diag-del-sort" @onclick='() => ToggleDeletedSort("deleted")'>Deleted At @SortArrow("deleted")</th>
+                                <th class="diag-del-sort" @onclick='() => ToggleDeletedSort("purge")'>Time Until Purge @SortArrow("purge")</th>
+                                <th class="diag-del-sort text-end" @onclick='() => ToggleDeletedSort("size")'>Size @SortArrow("size")</th>
+                                <th class="text-end">Download</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var f in _deletedFiles)
+                            @foreach (var f in SortedDeletedFiles())
                             {
                                 var remaining = f.PurgeAt - DateTime.Now;
                                 <tr>
@@ -1921,6 +1922,15 @@
                                     <td class="text-end" style="white-space:nowrap;font-variant-numeric:tabular-nums;">
                                         @FormatBytes(f.SizeBytes)
                                     </td>
+                                    <td class="text-end" style="white-space:nowrap;">
+                                        <a class="btn btn-sm btn-outline-primary"
+                                           href="/api/admin/deleted-file?name=@Uri.EscapeDataString(f.BackupFileName)"
+                                           target="_blank"
+                                           download="@f.OriginalFileName"
+                                           title="Download @f.BackupFileName">
+                                            <i class="ri-download-line"></i>
+                                        </a>
+                                    </td>
                                 </tr>
                             }
                         </tbody>
@@ -1961,6 +1971,9 @@
         font-size: .82rem; font-weight: 600;
     }
     .diag-del-stat strong { font-variant-numeric: tabular-nums; }
+
+    .diag-del-sort { cursor: pointer; user-select: none; }
+    .diag-del-sort:hover { background: #e0e7ff; color: #3730a3; }
 </style>
 
 @code {
@@ -1968,6 +1981,34 @@
     List<FolderService.DeletedFileInfo>? _deletedFiles;
     long _deletedTotalBytes;
     bool _deletedLoading;
+    string _deletedSort = "deleted"; // pc | name | deleted | purge | size
+    bool _deletedSortDesc = true;    // newest-first by default
+
+    void ToggleDeletedSort(string col)
+    {
+        if (_deletedSort == col) _deletedSortDesc = !_deletedSortDesc;
+        else { _deletedSort = col; _deletedSortDesc = col == "deleted" || col == "size"; }
+    }
+
+    string SortArrow(string col)
+    {
+        if (_deletedSort != col) return "";
+        return _deletedSortDesc ? " ▼" : " ▲";
+    }
+
+    IEnumerable<FolderService.DeletedFileInfo> SortedDeletedFiles()
+    {
+        if (_deletedFiles == null) return Enumerable.Empty<FolderService.DeletedFileInfo>();
+        IEnumerable<FolderService.DeletedFileInfo> q = _deletedSort switch
+        {
+            "pc"      => _deletedFiles.OrderBy(f => f.PcName ?? "").ThenBy(f => f.PcId ?? 0),
+            "name"    => _deletedFiles.OrderBy(f => f.OriginalFileName, StringComparer.OrdinalIgnoreCase),
+            "purge"   => _deletedFiles.OrderBy(f => f.PurgeAt),
+            "size"    => _deletedFiles.OrderBy(f => f.SizeBytes),
+            _         => _deletedFiles.OrderBy(f => f.DeletedAt),
+        };
+        return _deletedSortDesc ? q.Reverse() : q;
+    }
 
     void SwitchToDeletedTab()
     {

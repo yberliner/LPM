@@ -1740,6 +1740,39 @@ public class FolderService
     /// <summary>10-day retention used by the BackupFromFolder/BackupBytes prune sweep.</summary>
     public static readonly TimeSpan DeletedRetention = TimeSpan.FromDays(10);
 
+    /// <summary>
+    /// Read raw bytes for a single backup file. The name MUST be a flat filename
+    /// inside <c>_backups/</c> — no path separators or "..", or this returns null.
+    /// Used by the Diagnosis "Deleted Files" download button.
+    /// </summary>
+    public (byte[] Bytes, string ContentType)? GetBackupFileBytes(string backupFileName)
+    {
+        if (string.IsNullOrWhiteSpace(backupFileName)) return null;
+        if (backupFileName.IndexOfAny(new[] { '/', '\\' }) >= 0) return null;
+        if (backupFileName.Contains("..")) return null;
+
+        var fullPath = Path.Combine(_basePath, "_backups", backupFileName);
+        if (!File.Exists(fullPath)) return null;
+
+        // Backups copied from PC-Folders are encrypted on disk; DecryptBytes is a no-op
+        // for unencrypted backups (matched via PDF/ZIP/JPG/PNG magic bytes), so calling
+        // it unconditionally is safe and correct for both flavours.
+        var bytes = DecryptBytes(File.ReadAllBytes(fullPath));
+        var ext   = Path.GetExtension(backupFileName).ToLowerInvariant();
+        var contentType = ext switch
+        {
+            ".pdf"  => "application/pdf",
+            ".doc"  => "application/msword",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".xls"  => "application/vnd.ms-excel",
+            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".png"  => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            _ => "application/octet-stream",
+        };
+        return (bytes, contentType);
+    }
+
     /// <summary>List all soft-deleted files currently sitting in <c>_backups/</c>, newest first.</summary>
     public List<DeletedFileInfo> GetDeletedFiles()
     {
@@ -1753,11 +1786,15 @@ public class FolderService
             {
                 var fi      = new FileInfo(fullPath);
                 var name    = fi.Name;
-                // Creation time is what BackupFromFolder's prune sweep uses, so match that here.
+                // CreationTime IS the actual delete moment: File.Copy stamps the new
+                // file's creation time when the copy runs (= when the user clicked delete /
+                // normalize). LastWriteTime is preserved from the source and would point
+                // to when the original PDF was uploaded — wrong as a "deleted at" value.
+                // Match the prune sweep in BackupFromFolder which uses GetCreationTime.
                 var deleted = fi.CreationTime;
-                // If creation time looks broken (epoch / earlier than write), fall back.
-                if (deleted < new DateTime(2000, 1, 1) || deleted > fi.LastWriteTime)
-                    deleted = fi.LastWriteTime;
+                // Only fall back if CreationTime looks broken (e.g. epoch on some
+                // Linux filesystems that don't track btime).
+                if (deleted < new DateTime(2000, 1, 1)) deleted = fi.LastWriteTime;
 
                 // Parse "{pcId}_{pcName}_{originalFileName}".
                 int? pcId = null;
