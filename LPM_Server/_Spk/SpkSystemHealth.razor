@@ -2,6 +2,8 @@
 @using System.Diagnostics
 @using System.IO
 @using System.Runtime.InteropServices
+@using LPM.Services
+@inject MemoryWatchdogService MemSvc
 
 <div class="shg-row">
     @* CPU *@
@@ -57,6 +59,153 @@
             <div class="shg-sub">@FormatGB(_diskUsedBytes) / @FormatGB(_diskTotalBytes) used</div>
         </div>
     </div>
+
+    @* PDF Cache *@
+    <div class="shg-card">
+        <svg class="shg-ring" viewBox="0 0 120 120">
+            <circle class="shg-track" cx="60" cy="60" r="52" />
+            <circle class="shg-fill" cx="60" cy="60" r="52"
+                    stroke="@GaugeColor(_cachePercent)"
+                    stroke-dasharray="@DashArray(_cachePercent)"
+                    style="transition: stroke-dasharray .8s ease, stroke .5s;" />
+        </svg>
+        <div class="shg-label-wrap">
+            <div class="shg-value" style="color:@GaugeColor(_cachePercent)">@FormatMB(_cacheBytes)</div>
+            <div class="shg-label"><i class="ri-database-2-line"></i> PDF Cache</div>
+            <div class="shg-sub">of @FormatMB(_cacheLimitBytes) · @_cacheEntries entr@(_cacheEntries == 1 ? "y" : "ies")</div>
+            @if (_cacheHits + _cacheMisses > 0)
+            {
+                <div class="shg-sub">@HitRatePct% hits</div>
+            }
+        </div>
+    </div>
+</div>
+
+@* ── Server uptime strip ──────────────────────────────────────── *@
+<div class="shg-uptime">
+    <div class="shg-up-cell">
+        <i class="ri-rocket-line"></i>
+        <div>
+            <div class="shg-up-label">Server started</div>
+            <div class="shg-up-value">@_serverStarted.ToString("yyyy-MM-dd HH:mm:ss")</div>
+        </div>
+    </div>
+    <div class="shg-up-cell">
+        <i class="ri-time-line"></i>
+        <div>
+            <div class="shg-up-label">Uptime</div>
+            <div class="shg-up-value">@FormatUptime(_uptime)</div>
+        </div>
+    </div>
+</div>
+
+@* ── History: System memory % over time ──────────────────────── *@
+<div class="shg-chart-card">
+    <div class="shg-chart-head">
+        <div class="shg-chart-title"><i class="ri-pulse-line"></i> System memory · history</div>
+        <div class="shg-chart-meta">
+            @if (_memHistory.Count == 0)
+            {
+                <span class="shg-chip shg-chip-info">Collecting first sample…</span>
+            }
+            else
+            {
+                <span class="shg-chip shg-chip-min" title="Minimum recorded">Min @FormatPct(_memMinPct) <small>@_memMinAt.ToLocalTime().ToString("HH:mm")</small></span>
+                <span class="shg-chip shg-chip-now" title="Latest sample">Now @FormatPct(_memNowPct)</span>
+                <span class="shg-chip shg-chip-max" title="Maximum recorded">Max @FormatPct(_memMaxPct) <small>@_memMaxAt.ToLocalTime().ToString("HH:mm")</small></span>
+            }
+        </div>
+    </div>
+    @if (_memHistory.Count > 0)
+    {
+        <svg class="shg-chart" viewBox="0 0 800 200" preserveAspectRatio="none">
+            @* gridlines + Y labels *@
+            @foreach (var pct in new[] { 0, 25, 50, 75, 100 })
+            {
+                var y = 190 - (pct / 100.0) * 170;
+                <g>
+                    <line class="shg-grid" x1="40" x2="780" y1="@y.ToString("F1")" y2="@y.ToString("F1")" />
+                    <text class="shg-grid-lbl" x="34" y="@(y + 4).ToString("F1")" text-anchor="end">@pct%</text>
+                </g>
+            }
+            @* X-axis time labels *@
+            @{
+                var firstT = _memHistory[0].Utc.ToLocalTime();
+                var lastT  = _memHistory[^1].Utc.ToLocalTime();
+            }
+            <g>
+                <text class="shg-grid-lbl" x="40"  y="198" text-anchor="start">@firstT.ToString("MM-dd HH:mm")</text>
+                <text class="shg-grid-lbl" x="780" y="198" text-anchor="end">@lastT.ToString("MM-dd HH:mm")</text>
+            </g>
+            @* Polyline of samples *@
+            <polyline class="shg-line shg-line-mem" points="@_memPolyline" />
+            @* Min / Max dots *@
+            <circle class="shg-dot shg-dot-max" cx="@_memMaxX.ToString("F1")" cy="@_memMaxY.ToString("F1")" r="4" />
+            <circle class="shg-dot shg-dot-min" cx="@_memMinX.ToString("F1")" cy="@_memMinY.ToString("F1")" r="4" />
+        </svg>
+    }
+    else
+    {
+        <div class="shg-chart-empty">
+            <i class="ri-line-chart-line"></i>
+            <div>Waiting for the first 15-minute sample. The watchdog ignores the first 2 minutes after startup to avoid JIT-inflated readings.</div>
+        </div>
+    }
+</div>
+
+@* ── History: PDF cache MB over time ─────────────────────────── *@
+<div class="shg-chart-card">
+    <div class="shg-chart-head">
+        <div class="shg-chart-title"><i class="ri-database-2-line"></i> PDF cache · history</div>
+        <div class="shg-chart-meta">
+            @if (_cacheHistory.Count == 0)
+            {
+                <span class="shg-chip shg-chip-info">Collecting first sample…</span>
+            }
+            else
+            {
+                <span class="shg-chip shg-chip-min" title="Minimum recorded">Min @FormatMB(_cacheMinBytes) <small>@_cacheMinAt.ToLocalTime().ToString("HH:mm")</small></span>
+                <span class="shg-chip shg-chip-now" title="Latest sample">Now @FormatMB(_cacheNowBytes)</span>
+                <span class="shg-chip shg-chip-max" title="Maximum recorded">Max @FormatMB(_cacheMaxBytes) <small>@_cacheMaxAt.ToLocalTime().ToString("HH:mm")</small></span>
+            }
+        </div>
+    </div>
+    @if (_cacheHistory.Count > 0)
+    {
+        <svg class="shg-chart" viewBox="0 0 800 200" preserveAspectRatio="none">
+            @{
+                // Y scale = cache limit (200 MB) so users can see headroom.
+                var yMax = Math.Max(_cacheLimitBytes, 1L);
+            }
+            @foreach (var frac in new[] { 0.0, 0.25, 0.5, 0.75, 1.0 })
+            {
+                var y     = 190 - frac * 170;
+                var label = FormatMB((long)(yMax * frac));
+                <g>
+                    <line class="shg-grid" x1="60" x2="780" y1="@y.ToString("F1")" y2="@y.ToString("F1")" />
+                    <text class="shg-grid-lbl" x="54" y="@(y + 4).ToString("F1")" text-anchor="end">@label</text>
+                </g>
+            }
+            @{
+                var firstT = _cacheHistory[0].Utc.ToLocalTime();
+                var lastT  = _cacheHistory[^1].Utc.ToLocalTime();
+            }
+            <g>
+                <text class="shg-grid-lbl" x="60"  y="198" text-anchor="start">@firstT.ToString("MM-dd HH:mm")</text>
+                <text class="shg-grid-lbl" x="780" y="198" text-anchor="end">@lastT.ToString("MM-dd HH:mm")</text>
+            </g>
+            <polyline class="shg-line shg-line-cache" points="@_cachePolyline" />
+            <circle class="shg-dot shg-dot-max" cx="@_cacheMaxX.ToString("F1")" cy="@_cacheMaxY.ToString("F1")" r="4" />
+            <circle class="shg-dot shg-dot-min" cx="@_cacheMinX.ToString("F1")" cy="@_cacheMinY.ToString("F1")" r="4" />
+        </svg>
+    }
+    else
+    {
+        <div class="shg-chart-empty">
+            <i class="ri-line-chart-line"></i>
+            <div>Waiting for the first 15-minute sample.</div>
+        </div>
+    }
 </div>
 
 <style>
@@ -119,6 +268,82 @@
         .shg-row { flex-direction: column; align-items: stretch; }
         .shg-card { max-width: none; }
     }
+
+    /* ── Uptime strip ───────────────────────────────────────────── */
+    .shg-uptime {
+        display: flex; gap: 12px; flex-wrap: wrap; margin: 8px 0 16px;
+    }
+    .shg-up-cell {
+        flex: 1 1 240px; min-width: 240px;
+        display: flex; align-items: center; gap: 12px;
+        padding: 12px 16px;
+        background: #1e293b; border: 1px solid #334155; border-radius: 12px;
+    }
+    .shg-up-cell i { font-size: 1.4rem; color: #93c5fd; flex-shrink: 0; }
+    .shg-up-label { font-size: .7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+    .shg-up-value { font-size: .98rem; color: #e2e8f0; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; }
+
+    :root[data-theme-mode="light"] .shg-up-cell { background: #f8fafc; border-color: #e2e8f0; }
+    :root[data-theme-mode="light"] .shg-up-label { color: #64748b; }
+    :root[data-theme-mode="light"] .shg-up-value { color: #0f172a; }
+
+    /* ── History chart card ─────────────────────────────────────── */
+    .shg-chart-card {
+        background: #1e293b; border: 1px solid #334155; border-radius: 14px;
+        padding: 14px 16px 8px; margin-bottom: 16px;
+    }
+    :root[data-theme-mode="light"] .shg-chart-card { background: #f8fafc; border-color: #e2e8f0; }
+    .shg-chart-head {
+        display: flex; align-items: center; justify-content: space-between;
+        flex-wrap: wrap; gap: 8px; margin-bottom: 8px;
+    }
+    .shg-chart-title {
+        font-size: .95rem; font-weight: 700; color: #e2e8f0;
+        display: flex; align-items: center; gap: 8px;
+    }
+    .shg-chart-title i { color: #93c5fd; }
+    :root[data-theme-mode="light"] .shg-chart-title { color: #0f172a; }
+    .shg-chart-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+    .shg-chip {
+        font-size: .76rem; font-weight: 600;
+        padding: 4px 10px; border-radius: 999px;
+        display: inline-flex; align-items: center; gap: 6px;
+        font-variant-numeric: tabular-nums;
+    }
+    .shg-chip small { font-weight: 500; opacity: .75; font-size: .68rem; }
+    .shg-chip-min  { background: rgba(34,197,94,.18);  color: #86efac; }
+    .shg-chip-max  { background: rgba(239,68,68,.18);  color: #fca5a5; }
+    .shg-chip-now  { background: rgba(99,102,241,.22); color: #a5b4fc; }
+    .shg-chip-info { background: rgba(148,163,184,.18); color: #cbd5e1; }
+    :root[data-theme-mode="light"] .shg-chip-min  { background: #dcfce7; color: #166534; }
+    :root[data-theme-mode="light"] .shg-chip-max  { background: #fee2e2; color: #991b1b; }
+    :root[data-theme-mode="light"] .shg-chip-now  { background: #e0e7ff; color: #3730a3; }
+    :root[data-theme-mode="light"] .shg-chip-info { background: #f1f5f9; color: #475569; }
+
+    .shg-chart {
+        width: 100%; height: 200px; display: block;
+    }
+    .shg-grid     { stroke: rgba(255,255,255,.08); stroke-width: 1; stroke-dasharray: 2 4; }
+    .shg-grid-lbl { fill: #94a3b8; font-size: 10px; font-family: ui-monospace, monospace; }
+    :root[data-theme-mode="light"] .shg-grid     { stroke: rgba(15,23,42,.10); }
+    :root[data-theme-mode="light"] .shg-grid-lbl { fill: #64748b; }
+    .shg-line {
+        fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+        vector-effect: non-scaling-stroke;
+    }
+    .shg-line-mem   { stroke: #6366f1; }
+    .shg-line-cache { stroke: #06b6d4; }
+    .shg-dot         { stroke: #fff; stroke-width: 2; }
+    .shg-dot-max     { fill: #ef4444; }
+    .shg-dot-min     { fill: #22c55e; }
+    :root[data-theme-mode="light"] .shg-dot { stroke: #0f172a; }
+
+    .shg-chart-empty {
+        padding: 28px 14px; color: #94a3b8; font-size: .85rem;
+        text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px;
+    }
+    .shg-chart-empty i { font-size: 1.6rem; opacity: .4; }
+    :root[data-theme-mode="light"] .shg-chart-empty { color: #64748b; }
 </style>
 
 @code {
@@ -143,14 +368,47 @@
 
     const double Circumference = 2 * Math.PI * 52; // r=52
 
+    // ── PDF cache live stats (refreshed every tick) ──────────────────
+    long _cacheBytes;
+    long _cacheLimitBytes = 200L * 1024 * 1024;
+    int  _cacheEntries;
+    long _cacheHits;
+    long _cacheMisses;
+    double _cachePercent;
+    int HitRatePct => (_cacheHits + _cacheMisses) <= 0 ? 0
+                       : (int)Math.Round(_cacheHits * 100.0 / (_cacheHits + _cacheMisses));
+
+    // ── Uptime ───────────────────────────────────────────────────────
+    DateTime _serverStarted;
+    TimeSpan _uptime;
+
+    // ── History (system memory %) ────────────────────────────────────
+    List<MemorySample> _memHistory = new();
+    string _memPolyline = "";
+    double _memMinPct, _memMaxPct, _memNowPct;
+    DateTime _memMinAt, _memMaxAt;
+    double _memMinX, _memMinY, _memMaxX, _memMaxY;
+
+    // ── History (PDF cache bytes) ────────────────────────────────────
+    List<MemorySample> _cacheHistory = new();
+    string _cachePolyline = "";
+    long _cacheMinBytes, _cacheMaxBytes, _cacheNowBytes;
+    DateTime _cacheMinAt, _cacheMaxAt;
+    double _cacheMinX, _cacheMinY, _cacheMaxX, _cacheMaxY;
+
     protected override void OnInitialized()
     {
+        _serverStarted = MemSvc.ProcessStartedAt;
         ReadMetrics();
         _lastUpdate = DateTime.Now;
-        // Tick every 1s for countdown; read metrics every RefreshIntervalSec
+        // Tick every 1s for countdown + uptime; read full metrics every RefreshIntervalSec
         _timer = new System.Threading.Timer(async _ =>
         {
             _countdown--;
+            // Cheap per-second updates so uptime ticks live.
+            var up = DateTime.Now - _serverStarted;
+            _uptime = up < TimeSpan.Zero ? TimeSpan.Zero : up;
+
             if (_countdown <= 0)
             {
                 ReadMetrics();
@@ -171,6 +429,127 @@
         ReadCpu();
         ReadMemory();
         ReadDisk();
+        ReadCacheStats();
+        ReadHistory();
+        _serverStarted = MemSvc.ProcessStartedAt;
+        _uptime        = DateTime.Now - _serverStarted;
+        if (_uptime < TimeSpan.Zero) _uptime = TimeSpan.Zero;
+    }
+
+    void ReadCacheStats()
+    {
+        try
+        {
+            var (bytes, limit, count, hits, misses) = MemSvc.GetCacheStats();
+            _cacheBytes      = bytes;
+            _cacheLimitBytes = Math.Max(limit, 1);
+            _cacheEntries    = count;
+            _cacheHits       = hits;
+            _cacheMisses     = misses;
+            _cachePercent    = (double)bytes / _cacheLimitBytes * 100.0;
+            if (_cachePercent < 0) _cachePercent = 0;
+            if (_cachePercent > 100) _cachePercent = 100;
+        }
+        catch { /* stats may briefly fail during shutdown */ }
+    }
+
+    void ReadHistory()
+    {
+        var snap = MemSvc.GetSnapshot();
+        // Only rebuild when sample count changed — avoids redundant string-builds on every 1s tick.
+        if (snap.Samples.Count == _memHistory.Count && snap.Samples.Count == _cacheHistory.Count)
+        {
+            // Still pull "Now" for live cache card even if no new sample yet.
+            return;
+        }
+
+        _memHistory   = snap.Samples.ToList();
+        _cacheHistory = snap.Samples.ToList(); // same list, two charts derive their own polyline
+
+        if (_memHistory.Count == 0)
+        {
+            _memPolyline = ""; _cachePolyline = "";
+            return;
+        }
+
+        // Plot area: x [40..780] for mem (label gutter 40), [60..780] for cache (label gutter 60).
+        // y [20..190]  → 0..100 mapped to 190..20.
+        BuildMemPolyline();
+        BuildCachePolyline(snap.CacheLimitBytes);
+    }
+
+    void BuildMemPolyline()
+    {
+        const double x0 = 40, x1 = 780, yTop = 20, yBot = 190;
+        var n = _memHistory.Count;
+        if (n == 0) { _memPolyline = ""; return; }
+
+        // Min / Max
+        _memMinPct = double.MaxValue; _memMaxPct = double.MinValue;
+        int minIdx = 0, maxIdx = 0;
+        for (int i = 0; i < n; i++)
+        {
+            var s = _memHistory[i];
+            if (s.UsedPct < _memMinPct) { _memMinPct = s.UsedPct; minIdx = i; }
+            if (s.UsedPct > _memMaxPct) { _memMaxPct = s.UsedPct; maxIdx = i; }
+        }
+        _memMinAt = _memHistory[minIdx].Utc;
+        _memMaxAt = _memHistory[maxIdx].Utc;
+        _memNowPct = _memHistory[^1].UsedPct;
+
+        var sb = new System.Text.StringBuilder(n * 12);
+        for (int i = 0; i < n; i++)
+        {
+            var s = _memHistory[i];
+            // x progresses linearly across samples; for n=1 anchor to x0.
+            double x = n == 1 ? x0 : x0 + (x1 - x0) * i / (double)(n - 1);
+            double y = yBot - (s.UsedPct / 100.0) * (yBot - yTop);
+            if (i > 0) sb.Append(' ');
+            sb.Append(x.ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
+            sb.Append(',');
+            sb.Append(y.ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
+
+            if (i == minIdx) { _memMinX = x; _memMinY = y; }
+            if (i == maxIdx) { _memMaxX = x; _memMaxY = y; }
+        }
+        _memPolyline = sb.ToString();
+    }
+
+    void BuildCachePolyline(long yMaxBytes)
+    {
+        const double x0 = 60, x1 = 780, yTop = 20, yBot = 190;
+        var n = _cacheHistory.Count;
+        if (n == 0) { _cachePolyline = ""; return; }
+        if (yMaxBytes <= 0) yMaxBytes = 1;
+
+        _cacheMinBytes = long.MaxValue; _cacheMaxBytes = long.MinValue;
+        int minIdx = 0, maxIdx = 0;
+        for (int i = 0; i < n; i++)
+        {
+            var s = _cacheHistory[i];
+            if (s.CacheBytes < _cacheMinBytes) { _cacheMinBytes = s.CacheBytes; minIdx = i; }
+            if (s.CacheBytes > _cacheMaxBytes) { _cacheMaxBytes = s.CacheBytes; maxIdx = i; }
+        }
+        _cacheMinAt = _cacheHistory[minIdx].Utc;
+        _cacheMaxAt = _cacheHistory[maxIdx].Utc;
+        _cacheNowBytes = _cacheHistory[^1].CacheBytes;
+
+        var sb = new System.Text.StringBuilder(n * 12);
+        for (int i = 0; i < n; i++)
+        {
+            var s = _cacheHistory[i];
+            double x = n == 1 ? x0 : x0 + (x1 - x0) * i / (double)(n - 1);
+            double frac = (double)s.CacheBytes / yMaxBytes;
+            if (frac < 0) frac = 0; if (frac > 1) frac = 1;
+            double y = yBot - frac * (yBot - yTop);
+            if (i > 0) sb.Append(' ');
+            sb.Append(x.ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
+            sb.Append(',');
+            sb.Append(y.ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
+            if (i == minIdx) { _cacheMinX = x; _cacheMinY = y; }
+            if (i == maxIdx) { _cacheMaxX = x; _cacheMaxY = y; }
+        }
+        _cachePolyline = sb.ToString();
     }
 
     // ── CPU ──────────────────────────────────────────────────────────
@@ -310,6 +689,25 @@
         return gb >= 100 ? $"{gb:F0} GB"
              : gb >= 10  ? $"{gb:F1} GB"
                          : $"{gb:F2} GB";
+    }
+
+    static string FormatMB(long bytes)
+    {
+        if (bytes <= 0) return "0 MB";
+        double mb = bytes / (1024.0 * 1024.0);
+        return mb >= 100 ? $"{mb:F0} MB"
+             : mb >= 10  ? $"{mb:F1} MB"
+                         : $"{mb:F2} MB";
+    }
+
+    static string FormatPct(double pct) => $"{pct:F1}%";
+
+    static string FormatUptime(TimeSpan ts)
+    {
+        if (ts.TotalSeconds < 1) return "0:00:00";
+        if (ts.TotalDays >= 1)
+            return $"{(int)ts.TotalDays}d {ts.Hours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2}";
+        return $"{(int)ts.TotalHours}:{ts.Minutes:D2}:{ts.Seconds:D2}";
     }
 
     public void Dispose()

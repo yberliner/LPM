@@ -64,6 +64,16 @@ window.pcfViewer = {
         if (pane._currentRenderTask) { try { pane._currentRenderTask.cancel(); } catch(_){} pane._currentRenderTask = null; }
     },
 
+    // Force a full re-fetch + re-render of a pane, bypassing the same-file fast path.
+    // Use this after the underlying file's bytes have changed on disk (e.g. normalize, extract).
+    async forceReloadPdf(url, paneId, targetPage) {
+        const pane = this._initPane(paneId);
+        pane.filePath = null;     // make isSameFile = false in loadPdf
+        pane.pages = [];          // ensure fast-path's "pages.length > 0" guard fails too
+        pane.pdfPages = null;
+        return this.loadPdf(url, paneId, targetPage);
+    },
+
     async loadPdf(url, paneId, targetPage, prefetchedData) {
         paneId = paneId || this.activePane;
         const pane = this._initPane(paneId);

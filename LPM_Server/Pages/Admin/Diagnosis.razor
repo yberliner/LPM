@@ -116,6 +116,15 @@
                 <i class="ri-merge-cells-horizontal me-1"></i>Combine PCs
             </a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link @(_diagTab == "deleted" ? "active" : "")" @onclick="SwitchToDeletedTab" href="javascript:void(0)">
+                <i class="ri-delete-bin-line me-1"></i>Deleted Files
+                @if (_deletedFiles?.Count > 0)
+                {
+                    <span class="badge bg-secondary ms-1" style="font-size:.65rem;">@_deletedFiles.Count</span>
+                }
+            </a>
+        </li>
     </ul>
 
     @if (_diagTab == "health")
@@ -1805,6 +1814,123 @@
     </div>
 }
 
+@* ── Deleted Files Tab ── *@
+@if (_diagTab == "deleted")
+{
+    <div class="diag-editor-card mb-4">
+        <div class="diag-editor-header">
+            <i class="ri-delete-bin-line me-2"></i>Deleted Files
+            <span class="diag-editor-sub">Files in <code>_backups/</code> awaiting purge (10-day retention)</span>
+        </div>
+        <div class="diag-editor-body">
+
+            <div class="d-flex flex-wrap gap-2 mb-3" style="align-items:center;">
+                <span class="diag-del-stat">
+                    <i class="ri-file-list-3-line me-1"></i>
+                    <strong>@(_deletedFiles?.Count ?? 0)</strong> file@((_deletedFiles?.Count ?? 0) == 1 ? "" : "s")
+                </span>
+                <span class="diag-del-stat">
+                    <i class="ri-database-line me-1"></i>
+                    <strong>@FormatBytes(_deletedTotalBytes)</strong> total
+                </span>
+                @if ((_deletedFiles?.Count(f => f.IsPastDue) ?? 0) > 0)
+                {
+                    <span class="diag-del-stat" style="background:rgba(245,158,11,.12);color:#d97706;border-color:rgba(245,158,11,.3);">
+                        <i class="ri-alarm-warning-line me-1"></i>
+                        <strong>@_deletedFiles!.Count(f => f.IsPastDue)</strong> past-due (will purge on next delete)
+                    </span>
+                }
+                <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="LoadDeletedFiles" disabled="@_deletedLoading">
+                    @if (_deletedLoading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                    }
+                    else
+                    {
+                        <i class="ri-refresh-line me-1"></i>
+                    }
+                    Refresh
+                </button>
+            </div>
+
+            <div style="font-size:.8rem;color:#64748b;margin-bottom:10px;">
+                <i class="ri-information-line me-1"></i>
+                Pruning is opportunistic — files older than 10 days are deleted only when a new delete operation triggers a backup. Past-due rows stay visible until the next delete.
+            </div>
+
+            @if (_deletedFiles == null || _deletedFiles.Count == 0)
+            {
+                <div class="text-center py-5" style="color:#94a3b8;font-size:.9rem;">
+                    <i class="ri-inbox-line" style="font-size:2.5rem;opacity:.4;display:block;margin-bottom:8px;"></i>
+                    No deleted files in the backup directory.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle" style="font-size:.85rem;">
+                        <thead style="background:#f1f5f9;">
+                            <tr>
+                                <th>PC</th>
+                                <th>Original Filename</th>
+                                <th>Deleted At</th>
+                                <th>Time Until Purge</th>
+                                <th class="text-end">Size</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var f in _deletedFiles)
+                            {
+                                var remaining = f.PurgeAt - DateTime.Now;
+                                <tr>
+                                    <td>
+                                        @if (f.PcId.HasValue)
+                                        {
+                                            <div style="font-weight:600;">@(f.PcName ?? $"PC {f.PcId}")</div>
+                                            <div style="font-size:.72rem;color:#94a3b8;">#@f.PcId</div>
+                                        }
+                                        else
+                                        {
+                                            <span style="color:#94a3b8;font-style:italic;">unknown</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div style="font-family:ui-monospace,monospace;font-size:.8rem;color:#0f172a;">@f.OriginalFileName</div>
+                                        @if (f.OriginalFileName != f.BackupFileName)
+                                        {
+                                            <div style="font-size:.7rem;color:#94a3b8;">backup: @f.BackupFileName</div>
+                                        }
+                                    </td>
+                                    <td style="white-space:nowrap;font-variant-numeric:tabular-nums;">
+                                        @f.DeletedAt.ToString("yyyy-MM-dd HH:mm")
+                                    </td>
+                                    <td style="white-space:nowrap;font-variant-numeric:tabular-nums;">
+                                        @if (f.IsPastDue)
+                                        {
+                                            <span class="badge" style="background:rgba(245,158,11,.18);color:#b45309;font-weight:600;">
+                                                Past due
+                                            </span>
+                                            <div style="font-size:.7rem;color:#94a3b8;">overdue by @FormatRelative(-remaining)</div>
+                                        }
+                                        else
+                                        {
+                                            <span style="color:@RemainingColor(remaining);font-weight:600;">in @FormatRelative(remaining)</span>
+                                            <div style="font-size:.7rem;color:#94a3b8;">@f.PurgeAt.ToString("yyyy-MM-dd HH:mm")</div>
+                                        }
+                                    </td>
+                                    <td class="text-end" style="white-space:nowrap;font-variant-numeric:tabular-nums;">
+                                        @FormatBytes(f.SizeBytes)
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+}
+
 <style>
     .merge-danger-banner {
         background: linear-gradient(135deg, #7f1d1d, #dc2626, #7f1d1d);
@@ -1825,9 +1951,79 @@
         0%, 100% { opacity: 1; transform: scale(1); }
         50%      { opacity: 0.3; transform: scale(1.2); }
     }
+
+    /* ── Deleted Files Tab ─────────────────────────────────────────── */
+    .diag-del-stat {
+        display: inline-flex; align-items: center;
+        padding: 6px 12px; border-radius: 999px;
+        background: rgba(99,102,241,.08); color: #3730a3;
+        border: 1px solid rgba(99,102,241,.18);
+        font-size: .82rem; font-weight: 600;
+    }
+    .diag-del-stat strong { font-variant-numeric: tabular-nums; }
 </style>
 
 @code {
+    // ── Deleted Files tab ──────────────────────────────────────────────────
+    List<FolderService.DeletedFileInfo>? _deletedFiles;
+    long _deletedTotalBytes;
+    bool _deletedLoading;
+
+    void SwitchToDeletedTab()
+    {
+        _diagTab = "deleted";
+        _ = LoadDeletedFiles();
+    }
+
+    async Task LoadDeletedFiles()
+    {
+        if (_deletedLoading) return;
+        _deletedLoading = true;
+        StateHasChanged();
+        try
+        {
+            var list = await Task.Run(() => FolderSvc.GetDeletedFiles());
+            _deletedFiles = list;
+            _deletedTotalBytes = list.Sum(f => f.SizeBytes);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Diagnosis] LoadDeletedFiles failed: {ex.Message}");
+            _deletedFiles = new List<FolderService.DeletedFileInfo>();
+            _deletedTotalBytes = 0;
+        }
+        finally
+        {
+            _deletedLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    static string FormatBytes(long bytes)
+    {
+        if (bytes <= 0) return "0 B";
+        if (bytes >= 1024L * 1024 * 1024) return $"{bytes / (1024.0 * 1024 * 1024):F2} GB";
+        if (bytes >= 1024L * 1024)        return $"{bytes / (1024.0 * 1024):F1} MB";
+        if (bytes >= 1024)                return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes} B";
+    }
+
+    static string FormatRelative(TimeSpan ts)
+    {
+        if (ts.TotalSeconds < 0) ts = ts.Negate();
+        if (ts.TotalDays >= 1)   return $"{(int)ts.TotalDays}d {ts.Hours}h";
+        if (ts.TotalHours >= 1)  return $"{(int)ts.TotalHours}h {ts.Minutes}m";
+        if (ts.TotalMinutes >= 1) return $"{(int)ts.TotalMinutes}m";
+        return $"{(int)ts.TotalSeconds}s";
+    }
+
+    static string RemainingColor(TimeSpan remaining)
+    {
+        if (remaining.TotalDays > 3) return "#16a34a";
+        if (remaining.TotalDays > 1) return "#d97706";
+        return "#dc2626";
+    }
+
     // ── Read-only table display ────────────────────────────────────────────
     record TableData(string Name, string Icon, List<string> Columns, List<List<string>> Rows);
 

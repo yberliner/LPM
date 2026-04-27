@@ -400,6 +400,13 @@
                 var activeFile = _activeIdx >= 0 && _activeIdx < _panes.Length ? _panes[_activeIdx].File : null;
                 var activeName = _activeIdx >= 0 && _activeIdx < _panes.Length ? _panes[_activeIdx].FileName : null;
                 var canShowAnnHist = !string.IsNullOrEmpty(activeFile) && activeFile.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+                var canNormalize = canShowAnnHist && _activeIdx >= 0 && !IsPaneFolderSummary(_activeIdx);
+            }
+            @if (canNormalize)
+            {
+                <button class="pcf-ctx-item" @onclick="() => { _showPageCtxMenu = false; _ = NormalizeDocument(activeFile!, activeName ?? activeFile!); }">
+                    <i class="ri-equalizer-2-line me-2"></i>Normalize current document
+                </button>
             }
             @if (canShowAnnHist)
             {
@@ -408,6 +415,180 @@
                     <i class="ri-edit-2-line me-2"></i>Text annotations…
                 </button>
             }
+        </div>
+    }
+
+    @* ── Normalize: progress toast (running + error) ── *@
+    @if (_normRunning || _normError)
+    {
+        <div class="norm-toast">
+            <div class="norm-toast-header">
+                @if (_normRunning)
+                {
+                    <span class="spinner-border spinner-border-sm" style="color:#06b6d4; width:15px; height:15px; border-width:2px;"></span>
+                }
+                else
+                {
+                    <i class="ri-error-warning-fill" style="font-size:1.15rem; color:#f87171;"></i>
+                }
+                <div style="flex:1; min-width:0;">
+                    <div style="font-weight:700; font-size:.875rem; line-height:1.3;">
+                        @if (_normRunning) { <text>Normalizing&hellip;</text> }
+                        else { <span style="color:#f87171;">Normalize Failed</span> }
+                    </div>
+                    <div style="font-size:.71rem; color:#94a3b8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="@_normLabel">
+                        @_normLabel
+                    </div>
+                </div>
+            </div>
+            @if (_normRunning)
+            {
+                <div class="norm-toast-steps">
+                    @foreach (var s in _normSteps)
+                    {
+                        var col = s.Status switch { 1 => "#e2e8f0", 2 => "#22c55e", 3 => "#f87171", _ => "#475569" };
+                        <div style="display:flex; align-items:flex-start; gap:8px; font-size:.78rem; color:@col;">
+                            <span style="width:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center;">
+                                @if (s.Status == 1) { <span class="spinner-border" style="width:10px; height:10px; border-width:1.5px; color:#06b6d4;"></span> }
+                                else if (s.Status == 2) { <i class="ri-check-line" style="color:#22c55e; font-size:.85rem;"></i> }
+                                else if (s.Status == 3) { <i class="ri-close-line" style="color:#f87171; font-size:.85rem;"></i> }
+                                else { <span style="width:5px; height:5px; border-radius:50%; background:#1e293b; display:inline-block;"></span> }
+                            </span>
+                            <div style="flex:1;">
+                                <div style="@(s.Status == 1 ? "font-weight:600;" : "")">@s.Label</div>
+                                @if (!string.IsNullOrEmpty(s.SubLabel))
+                                {
+                                    <div style="font-size:.7rem; color:#64748b;">@s.SubLabel</div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div style="padding:10px 16px 14px;">
+                    <div style="font-size:.75rem; color:#94a3b8; word-break:break-word;">@_normErrorMsg</div>
+                    <button class="btn btn-sm btn-outline-secondary mt-2" style="font-size:.72rem; padding:2px 10px;"
+                            @onclick="() => { _normError = false; _normErrorMsg = string.Empty; }">Dismiss</button>
+                </div>
+            }
+        </div>
+    }
+
+    @* ── Normalize: "Already Normalized" celebratory modal ── *@
+    @if (_normShowAlreadyUniform)
+    {
+        <div class="norm-success-overlay" @onclick="() => _normShowAlreadyUniform = false">
+            <div class="norm-success-card" @onclick:stopPropagation="true">
+                <button class="norm-success-close" @onclick="() => _normShowAlreadyUniform = false" aria-label="Close">
+                    <i class="ri-close-line"></i>
+                </button>
+
+                <div class="norm-success-ring norm-success-ring-info"></div>
+                <div class="norm-success-check norm-success-check-info">
+                    <i class="ri-equalizer-2-line"></i>
+                </div>
+
+                <div class="norm-success-title">Already Normalized!</div>
+                <div class="norm-success-pc">
+                    <i class="ri-file-pdf-2-line" style="color:#3b82f6;"></i>
+                    <span>@_normSuccessFileName</span>
+                </div>
+
+                <div class="norm-success-list">
+                    <div class="norm-success-item">
+                        <i class="ri-checkbox-circle-fill" style="color:#22c55e; font-size:1.15rem;"></i>
+                        <div>
+                            <div style="font-weight:700; color:#0f172a;">All pages share the same canvas size</div>
+                            <div class="norm-success-item-sub">@_normSuccessPageCount page@(_normSuccessPageCount == 1 ? "" : "s") · @($"{_normSuccessMaxW:F0}×{_normSuccessMaxH:F0} pt")</div>
+                        </div>
+                    </div>
+                    <div class="norm-success-item">
+                        <i class="ri-information-fill" style="color:#3b82f6; font-size:1.15rem;"></i>
+                        <div>
+                            <div style="font-weight:700; color:#0f172a;">No backup created</div>
+                            <div class="norm-success-item-sub">Nothing was changed — the file is unmodified.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="norm-success-sparkles">
+                    <span class="norm-spark" style="--d:0; --x:-55px; --y:-45px;"></span>
+                    <span class="norm-spark" style="--d:1; --x:60px; --y:-40px;"></span>
+                    <span class="norm-spark" style="--d:2; --x:-50px; --y:40px;"></span>
+                    <span class="norm-spark" style="--d:3; --x:55px; --y:45px;"></span>
+                    <span class="norm-spark" style="--d:4; --x:0; --y:-65px;"></span>
+                    <span class="norm-spark" style="--d:5; --x:-70px; --y:0;"></span>
+                    <span class="norm-spark" style="--d:6; --x:70px; --y:0;"></span>
+                </div>
+
+                <button class="norm-success-ok-btn norm-success-ok-btn-info" @onclick="() => _normShowAlreadyUniform = false">
+                    <i class="ri-thumb-up-line me-2"></i>Got it
+                </button>
+            </div>
+        </div>
+    }
+
+    @* ── Normalize: success celebratory modal ── *@
+    @if (_normShowSuccess)
+    {
+        <div class="norm-success-overlay" @onclick="() => _normShowSuccess = false">
+            <div class="norm-success-card" @onclick:stopPropagation="true">
+                <button class="norm-success-close" @onclick="() => _normShowSuccess = false" aria-label="Close">
+                    <i class="ri-close-line"></i>
+                </button>
+
+                <div class="norm-success-ring"></div>
+                <div class="norm-success-check">
+                    <i class="ri-check-line"></i>
+                </div>
+
+                <div class="norm-success-title">Document Normalized!</div>
+                <div class="norm-success-pc">
+                    <i class="ri-file-pdf-2-line" style="color:#22c55e;"></i>
+                    <span>@_normSuccessFileName</span>
+                </div>
+
+                <div class="norm-success-list">
+                    <div class="norm-success-item">
+                        <i class="ri-checkbox-circle-fill" style="color:#22c55e; font-size:1.15rem;"></i>
+                        <div>
+                            <div style="font-weight:700; color:#0f172a;">Backup saved</div>
+                            <div class="norm-success-item-sub">10-day retention · stored in _backups/</div>
+                        </div>
+                    </div>
+                    <div class="norm-success-item">
+                        <i class="ri-checkbox-circle-fill" style="color:#22c55e; font-size:1.15rem;"></i>
+                        <div>
+                            <div style="font-weight:700; color:#0f172a;">Normalized via @_normSuccessEngine</div>
+                            <div class="norm-success-item-sub">@_normSuccessPageCount page@(_normSuccessPageCount == 1 ? "" : "s") · @($"{_normSuccessMaxW:F0}×{_normSuccessMaxH:F0} pt")</div>
+                        </div>
+                    </div>
+                    <div class="norm-success-item">
+                        <i class="ri-checkbox-circle-fill" style="color:#22c55e; font-size:1.15rem;"></i>
+                        <div>
+                            <div style="font-weight:700; color:#0f172a;">Pane reloaded</div>
+                            <div class="norm-success-item-sub">Showing the normalized document.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="norm-success-sparkles">
+                    <span class="norm-spark" style="--d:0; --x:-60px; --y:-50px;"></span>
+                    <span class="norm-spark" style="--d:1; --x:65px; --y:-45px;"></span>
+                    <span class="norm-spark" style="--d:2; --x:-55px; --y:45px;"></span>
+                    <span class="norm-spark" style="--d:3; --x:60px; --y:50px;"></span>
+                    <span class="norm-spark" style="--d:4; --x:0; --y:-70px;"></span>
+                    <span class="norm-spark" style="--d:5; --x:-75px; --y:0;"></span>
+                    <span class="norm-spark" style="--d:6; --x:75px; --y:0;"></span>
+                    <span class="norm-spark" style="--d:7; --x:0; --y:75px;"></span>
+                </div>
+
+                <button class="norm-success-ok-btn" @onclick="() => _normShowSuccess = false">
+                    <i class="ri-thumb-up-line me-2"></i>Great!
+                </button>
+            </div>
         </div>
     }
 
@@ -2850,6 +3031,162 @@
     }
     .pcf-new-btn:hover { color: #e2e8f0; background: rgba(255,255,255,.04); }
 
+    /* ── Normalize: progress toast + celebratory modals ── */
+    .norm-toast {
+        position: fixed; bottom: 24px; right: 24px; z-index: 99999;
+        min-width: 320px; max-width: 400px;
+        border-radius: 14px;
+        box-shadow: 0 16px 48px rgba(0,0,0,.45);
+        background: #0f172a; color: #f1f5f9; overflow: hidden;
+        animation: norm-toast-in .3s cubic-bezier(.175,.885,.32,1.275) both;
+    }
+    @@keyframes norm-toast-in { from{opacity:0;transform:translateY(24px) scale(.97)} to{opacity:1;transform:translateY(0) scale(1)} }
+    .norm-toast-header {
+        padding: 13px 16px 11px; border-bottom: 1px solid #1e293b;
+        display: flex; align-items: center; gap: 10px;
+    }
+    .norm-toast-steps {
+        padding: 10px 16px 14px;
+        display: flex; flex-direction: column; gap: 6px;
+    }
+
+    .norm-success-overlay {
+        position: fixed; inset: 0; z-index: 99998;
+        background: radial-gradient(ellipse at center, rgba(15,23,42,0.7), rgba(15,23,42,0.92));
+        display: flex; align-items: center; justify-content: center;
+        animation: norm-fade .35s ease;
+        padding: 16px;
+    }
+    @@keyframes norm-fade { from{opacity:0} to{opacity:1} }
+
+    .norm-success-card {
+        position: relative;
+        background: linear-gradient(135deg,#fff 0%,#f0f4ff 100%);
+        border-radius: 24px;
+        padding: 48px 36px 28px;
+        box-shadow: 0 25px 80px rgba(0,0,0,.55), 0 0 100px rgba(34,197,94,.25);
+        max-width: 560px; width: 100%; text-align: center;
+        animation: norm-pop .55s cubic-bezier(.175,.885,.32,1.275);
+        overflow: hidden;
+    }
+    @@keyframes norm-pop { 0%{transform:scale(.65);opacity:0} 100%{transform:scale(1);opacity:1} }
+
+    .norm-success-close {
+        position: absolute; top: 12px; right: 12px;
+        width: 36px; height: 36px;
+        background: rgba(15,23,42,.07); border: none; border-radius: 50%;
+        color: #64748b; font-size: 1.4rem; cursor: pointer;
+        transition: all .25s;
+        display: flex; align-items: center; justify-content: center; z-index: 5;
+    }
+    .norm-success-close:hover { background: rgba(15,23,42,.18); color: #0f172a; transform: rotate(90deg); }
+
+    .norm-success-ring {
+        position: absolute; top: 4px; left: 50%;
+        transform: translateX(-50%);
+        width: 130px; height: 130px;
+        border: 3px solid rgba(34,197,94,.35);
+        border-radius: 50%;
+        animation: norm-ring 2s ease-in-out infinite;
+        pointer-events: none;
+    }
+    .norm-success-ring-info { border-color: rgba(59,130,246,.35); }
+    @@keyframes norm-ring {
+        0%,100% { transform: translateX(-50%) scale(1); opacity: .55; }
+        50%     { transform: translateX(-50%) scale(1.18); opacity: .15; }
+    }
+
+    .norm-success-check {
+        position: relative; z-index: 2;
+        margin: 0 auto 18px;
+        width: 92px; height: 92px;
+        background: linear-gradient(135deg,#22c55e 0%,#15803d 100%);
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 10px 36px rgba(34,197,94,.55);
+        animation: norm-bounce .65s cubic-bezier(.175,.885,.32,1.275);
+    }
+    .norm-success-check-info {
+        background: linear-gradient(135deg,#3b82f6 0%,#1d4ed8 100%);
+        box-shadow: 0 10px 36px rgba(59,130,246,.55);
+    }
+    .norm-success-check i { color: #fff; font-size: 3.2rem; font-weight: 900; animation: norm-draw .45s ease .22s both; }
+    @@keyframes norm-bounce { 0%{transform:scale(0)} 60%{transform:scale(1.18)} 100%{transform:scale(1)} }
+    @@keyframes norm-draw   { from{opacity:0;transform:scale(0) rotate(-50deg)} to{opacity:1;transform:scale(1) rotate(0)} }
+
+    .norm-success-title {
+        font-size: 1.7rem; font-weight: 800; color: #0f172a;
+        margin-bottom: 8px; letter-spacing: -.02em; line-height: 1.2;
+    }
+    .norm-success-pc {
+        display: flex; align-items: center; justify-content: center; gap: 8px;
+        font-size: 1.05rem; color: #475569; margin-bottom: 20px; font-weight: 600;
+        word-break: break-all;
+    }
+
+    .norm-success-list {
+        text-align: left;
+        margin: 16px auto 8px;
+        max-width: 480px;
+        background: rgba(241,245,249,.65);
+        border: 1px solid rgba(226,232,240,.8);
+        border-radius: 14px;
+        padding: 14px 16px;
+    }
+    .norm-success-item {
+        display: flex; align-items: flex-start; gap: 12px;
+        padding: 8px 0; color: #334155; font-size: .92rem;
+        animation: norm-slide .45s ease both;
+    }
+    .norm-success-item:nth-child(1) { animation-delay: .30s; }
+    .norm-success-item:nth-child(2) { animation-delay: .45s; }
+    .norm-success-item:nth-child(3) { animation-delay: .60s; }
+    @@keyframes norm-slide { from{opacity:0;transform:translateX(-14px)} to{opacity:1;transform:translateX(0)} }
+    .norm-success-item-sub { font-size: .82rem; color: #64748b; margin-top: 2px; word-break: break-all; }
+
+    .norm-success-sparkles { position: absolute; top: 80px; left: 50%; width: 0; height: 0; pointer-events: none; z-index: 3; }
+    .norm-spark {
+        position: absolute; top: 0; left: 0;
+        width: 10px; height: 10px;
+        background: linear-gradient(135deg,#fbbf24,#f59e0b);
+        border-radius: 50%;
+        box-shadow: 0 0 14px rgba(251,191,36,.9), 0 0 28px rgba(251,191,36,.5);
+        animation-name: norm-spark;
+        animation-duration: 1.6s;
+        animation-timing-function: ease-out;
+        animation-iteration-count: infinite;
+        animation-delay: calc(var(--d, 0) * 0.12s);
+    }
+    @@keyframes norm-spark {
+        0%   { transform: translate(-50%,-50%) scale(0); opacity: 1; }
+        50%  { transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) scale(1); opacity: .85; }
+        100% { transform: translate(calc(-50% + var(--x) * 1.6), calc(-50% + var(--y) * 1.6)) scale(0); opacity: 0; }
+    }
+
+    .norm-success-ok-btn {
+        margin-top: 20px;
+        background: linear-gradient(135deg,#22c55e 0%,#16a34a 100%);
+        color: #fff; border: none;
+        font-weight: 700; font-size: 1rem; letter-spacing: .02em;
+        padding: 12px 32px; border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(34,197,94,.4);
+        cursor: pointer; transition: transform .2s, box-shadow .2s;
+        display: inline-flex; align-items: center; min-height: 44px;
+    }
+    .norm-success-ok-btn:hover  { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(34,197,94,.55); }
+    .norm-success-ok-btn:active { transform: translateY(0); }
+    .norm-success-ok-btn-info { background: linear-gradient(135deg,#3b82f6 0%,#1d4ed8 100%); box-shadow: 0 8px 24px rgba(59,130,246,.4); }
+    .norm-success-ok-btn-info:hover { box-shadow: 0 12px 32px rgba(59,130,246,.55); }
+
+    @@media (max-width: 480px) {
+        .norm-success-card { padding: 40px 20px 24px; border-radius: 18px; }
+        .norm-success-title { font-size: 1.35rem; }
+        .norm-success-check { width: 78px; height: 78px; }
+        .norm-success-check i { font-size: 2.6rem; }
+        .norm-success-ring { width: 110px; height: 110px; }
+        .norm-toast { right: 12px; left: 12px; bottom: 16px; min-width: 0; max-width: none; }
+    }
+
     /* ── Context menu ── */
     .pcf-ctx-backdrop { position: fixed; top:0; left:0; right:0; bottom:0; z-index: 10005; }
     .pcf-ctx-menu {
@@ -3908,6 +4245,20 @@
     string _pageBgPaneId = "";
     int _pageBgPageIdx;
     List<string> _programInsertFiles = new();
+
+    // ── Normalize Document state ──
+    sealed class NormStep { public string Label = ""; public string SubLabel = ""; public int Status; /* 0=pending,1=running,2=done,3=fail */ }
+    bool _normRunning;
+    bool _normError;
+    string _normErrorMsg = "";
+    string _normLabel = "";
+    List<NormStep> _normSteps = new();
+    bool _normShowAlreadyUniform;
+    bool _normShowSuccess;
+    string _normSuccessFileName = "";
+    string _normSuccessEngine = "";
+    int _normSuccessPageCount;
+    double _normSuccessMaxW, _normSuccessMinW, _normSuccessMaxH, _normSuccessMinH;
 
     static readonly string[] _pageBgColors = [
         "", "#dbeafe", "#bfdbfe", "#93c5fd", "#60a5fa",
@@ -6710,6 +7061,207 @@
     {
         _showPageCtxMenu = false;
         await JS.InvokeVoidAsync("pcfViewer.floatPage", _pageBgPaneId, _pageBgPageIdx);
+    }
+
+    // ── Normalize current document ──────────────────────────────────────────
+    Task NormalizeDocument(string relPath, string displayName)
+    {
+        // Guard against concurrent normalize on the same component
+        if (_normRunning) return Task.CompletedTask;
+
+        var capturedPaneId = _pageBgPaneId;
+        var capturedSolo = Solo;
+        var capturedPcId = PcId;
+
+        // Read the current file bytes (decrypted)
+        var fileBytes = FolderSvc.ReadFileBytes(capturedPcId, relPath, capturedSolo);
+        if (fileBytes == null || fileBytes.Length == 0)
+        {
+            Console.WriteLine($"[Normalize] Cannot read file '{relPath}' for PC {capturedPcId}");
+            _normError = true;
+            _normErrorMsg = "Could not read the document.";
+            StateHasChanged();
+            return Task.CompletedTask;
+        }
+
+        // ── Pre-flight: page-size analysis ──
+        var range = FolderSvc.GetPdfPageSizeRange(fileBytes);
+        if (range.PageCount > 0)
+        {
+            var dW = range.MaxW - range.MinW;
+            var dH = range.MaxH - range.MinH;
+            const double THRESHOLD = 2.0; // points
+            if (range.PageCount <= 1 || (dW <= THRESHOLD && dH <= THRESHOLD))
+            {
+                Console.WriteLine($"[Normalize] '{displayName}' already uniform (pages={range.PageCount}, dW={dW:F2}pt, dH={dH:F2}pt) — skipping");
+                _normSuccessFileName = displayName;
+                _normSuccessPageCount = range.PageCount;
+                _normSuccessMaxW = range.MaxW;
+                _normSuccessMinW = range.MinW;
+                _normSuccessMaxH = range.MaxH;
+                _normSuccessMinH = range.MinH;
+                _normShowAlreadyUniform = true;
+                StateHasChanged();
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(5000);
+                    await InvokeAsync(() => { _normShowAlreadyUniform = false; StateHasChanged(); });
+                });
+                return Task.CompletedTask;
+            }
+        }
+
+        // ── Run normalize (parallel race, same as Add-Session) ──
+        _normRunning = true;
+        _normError = false;
+        _normErrorMsg = "";
+        _normLabel = displayName;
+        _normSteps = new List<NormStep>
+        {
+            new() { Label = "Backing up original" },
+            new() { Label = "Normalizing (Ghostscript + LibreOffice)" },
+            new() { Label = "Saving normalized document" },
+            new() { Label = "Reloading pane" },
+        };
+        StateHasChanged();
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var sBackup = _normSteps[0];
+                var sNorm   = _normSteps[1];
+                var sSave   = _normSteps[2];
+                var sLoad   = _normSteps[3];
+
+                // Step 1: backup. SaveSectionFileToPath(overwrite:true) backs up automatically,
+                // but we want the backup to occur BEFORE normalize even if save later fails.
+                sBackup.Status = 1;
+                await InvokeAsync(StateHasChanged);
+                FolderSvc.BackupFile(capturedPcId, relPath, capturedSolo);
+                sBackup.Status = 2;
+                await InvokeAsync(StateHasChanged);
+
+                // Step 2: race Ghostscript + LibreOffice (20s each), first non-null wins
+                sNorm.Status = 1;
+                int secsLeft = 20;
+                using var tickerCts = new System.Threading.CancellationTokenSource();
+                _ = Task.Run(async () =>
+                {
+                    while (!tickerCts.Token.IsCancellationRequested && secsLeft > 0)
+                    {
+                        await Task.Delay(1000);
+                        if (tickerCts.Token.IsCancellationRequested) break;
+                        secsLeft = Math.Max(0, secsLeft - 1);
+                        sNorm.SubLabel = secsLeft > 0
+                            ? $"Ghostscript + LibreOffice: {secsLeft}s"
+                            : "Ghostscript + LibreOffice: finishing…";
+                        await InvokeAsync(StateHasChanged);
+                    }
+                });
+
+                var (result, winner) = await FolderSvc.RaceNormalizeAsync(fileBytes, 20_000);
+                tickerCts.Cancel();
+
+                if (result == null)
+                {
+                    sNorm.Status = 3;
+                    sNorm.SubLabel = "GS and LibreOffice both failed";
+                    await InvokeAsync(() =>
+                    {
+                        _normRunning = false;
+                        _normError = true;
+                        _normErrorMsg = "Normalization failed (Ghostscript and LibreOffice both errored or timed out).";
+                        StateHasChanged();
+                    });
+                    return;
+                }
+
+                sNorm.SubLabel = $"via {winner}";
+                sNorm.Status = 2;
+                await InvokeAsync(StateHasChanged);
+
+                // Step 3: save (overwrite). SaveSectionFileToPath will create another backup —
+                // safe because both share the same prefix and the counter-suffix dedupes.
+                sSave.Status = 1;
+                await InvokeAsync(StateHasChanged);
+                var relFolder = Path.GetDirectoryName(relPath)?.Replace('\\', '/') ?? "";
+                var fileNameOnly = Path.GetFileName(relPath);
+                var saved = FolderSvc.SaveSectionFileToPath(
+                    capturedPcId, relFolder, fileNameOnly, result,
+                    overwrite: true, solo: capturedSolo, enforcePdf: true);
+                if (!saved)
+                {
+                    sSave.Status = 3;
+                    await InvokeAsync(() =>
+                    {
+                        _normRunning = false;
+                        _normError = true;
+                        _normErrorMsg = "Failed to save the normalized document.";
+                        StateHasChanged();
+                    });
+                    return;
+                }
+                sSave.Status = 2;
+                await InvokeAsync(StateHasChanged);
+
+                // Step 4: reload the pane.
+                // forceReloadPdf bypasses the same-file fast path so the now-modified
+                // bytes are actually re-fetched and re-rendered (loadPdf alone would
+                // see isSameFile=true and just rescale the stale rendered pages).
+                // It also resets pane.zoomLevel = 1.0 inside loadPdf — sync the Blazor-side
+                // _zoomPercent / _fitMode fields so the toolbar indicator matches.
+                sLoad.Status = 1;
+                await InvokeAsync(StateHasChanged);
+                var soloParam = capturedSolo ? "&solo=true" : "";
+                var reloadUrl = $"/api/pc-file?pcId={capturedPcId}&path={Uri.EscapeDataString(relPath)}{soloParam}&_t={DateTime.UtcNow.Ticks}";
+                await InvokeAsync(async () =>
+                {
+                    await JS.InvokeVoidAsync("pcfViewer.forceReloadPdf", reloadUrl, capturedPaneId);
+                });
+                await InvokeAsync(() =>
+                {
+                    _zoomPercent = 100;
+                    _fitMode = false;
+                    StateHasChanged();
+                });
+                sLoad.Status = 2;
+                await InvokeAsync(StateHasChanged);
+
+                // Show success modal
+                var resultRange = FolderSvc.GetPdfPageSizeRange(result);
+                await InvokeAsync(() =>
+                {
+                    _normRunning = false;
+                    _normSuccessFileName = displayName;
+                    _normSuccessEngine = winner;
+                    _normSuccessPageCount = resultRange.PageCount;
+                    _normSuccessMaxW = resultRange.MaxW;
+                    _normSuccessMinW = resultRange.MinW;
+                    _normSuccessMaxH = resultRange.MaxH;
+                    _normSuccessMinH = resultRange.MinH;
+                    _normShowSuccess = true;
+                    StateHasChanged();
+                });
+                Console.WriteLine($"[Normalize] '{displayName}' for PC {capturedPcId} normalized via {winner}");
+
+                await Task.Delay(5000);
+                await InvokeAsync(() => { _normShowSuccess = false; StateHasChanged(); });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Normalize] failed: {ex}");
+                foreach (var s in _normSteps.Where(s => s.Status == 1)) s.Status = 3;
+                await InvokeAsync(() =>
+                {
+                    _normRunning = false;
+                    _normError = true;
+                    _normErrorMsg = ex.Message;
+                    StateHasChanged();
+                });
+            }
+        });
+        return Task.CompletedTask;
     }
 
     async Task OnInsertFileSelected(InputFileChangeEventArgs e)

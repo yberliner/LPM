@@ -9330,24 +9330,7 @@
                             }
                         });
 
-                        var gsTask    = Task.Run(() => FolderSvc.RepairAndNormalizeViaGhostscript(capturedBytes, repairSec * 1000));
-                        var libreTask = Task.Run(() => FolderSvc.RepairAndNormalizeViaLibreOffice(capturedBytes, repairSec * 1000));
-
-                        byte[]? result = null;
-                        string  winner = "";
-                        var pending = new List<Task<byte[]?>> { gsTask, libreTask };
-                        while (result == null && pending.Count > 0)
-                        {
-                            var done = await Task.WhenAny(pending);
-                            pending.Remove(done);
-                            var val = done.Result;
-                            if (val != null)
-                            {
-                                result = val;
-                                winner = done == gsTask ? "Ghostscript" : "LibreOffice";
-                            }
-                        }
-                        if (pending.Count > 0) _ = Task.WhenAll(pending);
+                        var (result, winner) = await FolderSvc.RaceNormalizeAsync(capturedBytes, repairSec * 1000);
                         tickerCts.Cancel();
 
                         if (result != null)

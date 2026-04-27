@@ -66,7 +66,11 @@ builder.Services.AddServerSideBlazor()
         options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromHours(12);
     });
 // 200 MB decrypted-file cache — shared across all users, keyed by absolute disk path
-builder.Services.AddMemoryCache(o => o.SizeLimit = 200L * 1024 * 1024);
+builder.Services.AddMemoryCache(o =>
+{
+    o.SizeLimit = 200L * 1024 * 1024;
+    o.TrackStatistics = true;  // exposed via SpkSystemHealth (PDF cache card + history)
+});
 
 // Brotli + Gzip compression for HTML/JS/CSS/JSON (PDFs are already compressed — excluded by default)
 builder.Services.AddResponseCompression(o =>
@@ -129,7 +133,11 @@ builder.Services.AddSingleton<LPM.Services.MessageNotifier>();
 builder.Services.AddSingleton<LPM.Services.FileAuditService>();
 builder.Services.AddSingleton<LPM.Services.FolderService>();
 builder.Services.AddSingleton<LPM.Services.TextAnnotationService>();
-builder.Services.AddHostedService<LPM.Services.MemoryWatchdogService>();
+// Singleton AND hosted — register the singleton first, then hand the same instance
+// to the hosted-service runtime so SpkSystemHealth can inject the SAME instance and
+// read its in-memory sample buffer.
+builder.Services.AddSingleton<LPM.Services.MemoryWatchdogService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<LPM.Services.MemoryWatchdogService>());
 builder.Services.AddSingleton<LPM.Services.MeetingService>();
 builder.Services.AddHostedService<LPM.Services.DbBackupService>();
 builder.Services.AddSingleton<LPM.Services.PdfShrinkService>();

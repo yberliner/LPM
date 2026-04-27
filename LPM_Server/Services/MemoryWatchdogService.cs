@@ -1,7 +1,27 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace LPM.Services;
+
+/// <summary>
+/// One sample of memory state captured every ~15 minutes. UsedPct is system memory
+/// pressure (Linux: from /proc/meminfo; Windows dev: process working set / GC total).
+/// CacheBytes is the IMemoryCache (PDF cache) current estimated size in bytes.
+/// </summary>
+public sealed record MemorySample(
+    DateTime Utc,
+    double UsedPct,
+    long UsedMB,
+    long TotalMB,
+    long CacheBytes,
+    int CacheEntries);
+
+/// <summary>Snapshot returned to the UI — copy-on-read, safe to enumerate.</summary>
+public sealed record MemorySnapshot(
+    DateTime ProcessStartedAt,
+    IReadOnlyList<MemorySample> Samples,
+    long CacheLimitBytes);
 
 /// <summary>
 /// Background watchdog that polls system-wide memory pressure every 15 minutes and
@@ -25,13 +45,57 @@ public sealed class MemoryWatchdogService : BackgroundService
     private static readonly TimeSpan _initialDelay = TimeSpan.FromMinutes(2);
 
     private readonly IMemoryCache _cache;
+    private readonly long _cacheLimitBytes;
 
     // Tracked across wake-ups so we can compute LPM process CPU% as a delta.
     private TimeSpan _prevCpuTime;
     private DateTime _prevWallUtc;
     private bool _haveCpuBaseline;
 
-    public MemoryWatchdogService(IMemoryCache cache) { _cache = cache; }
+    // Sample ring — capped so memory stays small even on long uptimes.
+    // 7 days × 4 samples/hour × 24h = 672 entries → ~30 KB.
+    private const int MaxSamples = 672;
+    private readonly ConcurrentQueue<MemorySample> _samples = new();
+
+    public MemoryWatchdogService(IMemoryCache cache)
+    {
+        _cache = cache;
+        // Mirror the configured SizeLimit so the UI can show "X / Y MB".
+        // SizeLimit isn't surfaced via IMemoryCache, so we hardcode the same
+        // value as Program.cs's AddMemoryCache(o => o.SizeLimit = ...).
+        _cacheLimitBytes = 200L * 1024 * 1024;
+    }
+
+    /// <summary>Process start time — stable for the lifetime of this app instance.</summary>
+    public DateTime ProcessStartedAt => Process.GetCurrentProcess().StartTime;
+
+    /// <summary>Returns a copy of all samples plus metadata. Safe to call from any thread.</summary>
+    public MemorySnapshot GetSnapshot()
+    {
+        // ToArray on ConcurrentQueue is atomic.
+        var arr = _samples.ToArray();
+        return new MemorySnapshot(ProcessStartedAt, arr, _cacheLimitBytes);
+    }
+
+    /// <summary>Live cache stats (current count + size). For the always-up-to-date card on System Health.</summary>
+    public (long CurrentBytes, long Limit, int EntryCount, long Hits, long Misses) GetCacheStats()
+    {
+        if (_cache is MemoryCache mc)
+        {
+            var s = mc.GetCurrentStatistics();
+            if (s != null)
+                return (s.CurrentEstimatedSize ?? 0, _cacheLimitBytes, (int)s.CurrentEntryCount, s.TotalHits, s.TotalMisses);
+        }
+        return (0, _cacheLimitBytes, 0, 0, 0);
+    }
+
+    private void RecordSample(double usedPct, long usedMB, long totalMB)
+    {
+        var (cacheBytes, _, cacheEntries, _, _) = GetCacheStats();
+        _samples.Enqueue(new MemorySample(DateTime.UtcNow, usedPct, usedMB, totalMB, cacheBytes, cacheEntries));
+        // Trim oldest if over cap. Lock-free; one producer (Check) so the loop terminates fast.
+        while (_samples.Count > MaxSamples) _samples.TryDequeue(out _);
+    }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
@@ -92,8 +156,11 @@ public sealed class MemoryWatchdogService : BackgroundService
             double pctUsed  = (totalKB - availKB) * 100.0 / totalKB;
             long   availMB  = availKB / 1024;
             long   totalMB  = totalKB / 1024;
+            long   usedMB   = totalMB - availMB;
             string loadStr  = gotLoad ? $"{load1:F2}/{load5:F2}/{load15:F2}" : "n/a";
             int    cores    = Environment.ProcessorCount;
+
+            RecordSample(pctUsed, usedMB, totalMB);
 
             Console.WriteLine(
                 $"[MemWatch] {stamp} | sysMem used={pctUsed:F1}% (avail={availMB}MB/total={totalMB}MB) " +
@@ -112,7 +179,20 @@ public sealed class MemoryWatchdogService : BackgroundService
         }
         else
         {
-            // Non-Linux dev box — still log so we can see the watchdog is alive
+            // Non-Linux dev box — record using process working set as a stand-in so the
+            // history chart still has something to show on Windows/macOS development.
+            try
+            {
+                var gcInfo  = GC.GetGCMemoryInfo();
+                long totalB = gcInfo.TotalAvailableMemoryBytes;
+                long usedB  = proc.WorkingSet64;
+                long totalMB = Math.Max(1, totalB / (1024 * 1024));
+                long usedMB  = usedB / (1024 * 1024);
+                double pct   = totalB > 0 ? (double)usedB / totalB * 100 : 0;
+                RecordSample(pct, usedMB, totalMB);
+            }
+            catch { /* best-effort on dev */ }
+
             Console.WriteLine(
                 $"[MemWatch] {stamp} | sysMem n/a (non-Linux) " +
                 $"| lpmRSS={procRssMB}MB priv={procPrivMB}MB gcHeap={gcHeapMB}MB " +

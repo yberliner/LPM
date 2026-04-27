@@ -1494,6 +1494,20 @@ public class FolderService
         BackupFromFolder(pcId, folder, relativePath);
     }
 
+    private static string SanitizePcNameForFile(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "";
+        var invalid = Path.GetInvalidFileNameChars().Concat(new[] { ' ' }).ToHashSet();
+        var sb = new System.Text.StringBuilder();
+        foreach (var ch in name.Trim())
+        {
+            sb.Append(invalid.Contains(ch) ? '_' : ch);
+        }
+        var s = sb.ToString().Trim('_');
+        if (s.Length > 50) s = s[..50];
+        return s;
+    }
+
     private void BackupFromFolder(int pcId, string folder, string relativePath)
     {
 
@@ -1510,9 +1524,11 @@ public class FolderService
                 try { File.Delete(old); } catch { }
         }
 
-        // Build backup filename: pcId_filename
+        // Build backup filename: pcId_pcName_filename
         var fileName = Path.GetFileName(fullPath);
-        var backupName = $"{pcId}_{fileName}";
+        var pcNamePart = SanitizePcNameForFile(GetPcName(pcId));
+        var prefix = string.IsNullOrEmpty(pcNamePart) ? $"{pcId}" : $"{pcId}_{pcNamePart}";
+        var backupName = $"{prefix}_{fileName}";
         var backupPath = Path.Combine(backupDir, backupName);
 
         // Add postfix if already exists
@@ -1529,7 +1545,7 @@ public class FolderService
         }
 
         File.Copy(fullPath, backupPath);
-        Console.WriteLine($"[FolderService] Backed up file PC {pcId}: {relativePath}");
+        Console.WriteLine($"[FolderService] Backed up file PC {pcId}: {relativePath} -> {Path.GetFileName(backupPath)}");
     }
 
     /// <summary>Backup raw bytes (e.g. original upload before shrink/encrypt) to _backups/.</summary>
@@ -1545,7 +1561,9 @@ public class FolderService
                 try { File.Delete(old); } catch { }
         }
 
-        var backupName = $"{pcId}_{fileName}";
+        var pcNamePart = SanitizePcNameForFile(GetPcName(pcId));
+        var prefix = string.IsNullOrEmpty(pcNamePart) ? $"{pcId}" : $"{pcId}_{pcNamePart}";
+        var backupName = $"{prefix}_{fileName}";
         var backupPath = Path.Combine(backupDir, backupName);
 
         if (File.Exists(backupPath))
@@ -1561,7 +1579,7 @@ public class FolderService
         }
 
         File.WriteAllBytes(backupPath, bytes);
-        Console.WriteLine($"[FolderService] Backed up bytes '{fileName}' for PC {pcId}");
+        Console.WriteLine($"[FolderService] Backed up bytes '{fileName}' for PC {pcId} -> {Path.GetFileName(backupPath)}");
     }
 
     // ── DB health ─────────────────────────────────────────────
@@ -1700,6 +1718,81 @@ public class FolderService
             var rel = Path.GetRelativePath(_basePath, f).Replace('\\', '/');
             yield return ($"PC-Folders/{rel}", f);
         }
+    }
+
+    /// <summary>
+    /// Per-row info about a soft-deleted file sitting in <c>_backups/</c>.
+    /// Pruning is opportunistic — files older than 10 days are deleted only when a
+    /// new backup gets created (see <see cref="BackupFromFolder"/>), so a row can
+    /// remain visible past its <see cref="PurgeAt"/> until the next delete operation
+    /// triggers cleanup. <see cref="IsPastDue"/> flags those.
+    /// </summary>
+    public sealed record DeletedFileInfo(
+        string BackupFileName,         // raw name in _backups/ (e.g. "12_Yaniv_Berliner_session_2.pdf")
+        int? PcId,                     // parsed numeric prefix, or null if unparseable
+        string? PcName,                // resolved via GetPcName(PcId), or null
+        string OriginalFileName,       // best-effort: backup name minus the "{pcId}_{pcName}_" prefix
+        DateTime DeletedAt,            // = file creation time on the backup copy
+        DateTime PurgeAt,              // = DeletedAt + 10 days (the prune policy)
+        bool IsPastDue,                // true when DateTime.Now > PurgeAt
+        long SizeBytes);
+
+    /// <summary>10-day retention used by the BackupFromFolder/BackupBytes prune sweep.</summary>
+    public static readonly TimeSpan DeletedRetention = TimeSpan.FromDays(10);
+
+    /// <summary>List all soft-deleted files currently sitting in <c>_backups/</c>, newest first.</summary>
+    public List<DeletedFileInfo> GetDeletedFiles()
+    {
+        var list = new List<DeletedFileInfo>();
+        var backupDir = Path.Combine(_basePath, "_backups");
+        if (!Directory.Exists(backupDir)) return list;
+
+        foreach (var fullPath in Directory.GetFiles(backupDir))
+        {
+            try
+            {
+                var fi      = new FileInfo(fullPath);
+                var name    = fi.Name;
+                // Creation time is what BackupFromFolder's prune sweep uses, so match that here.
+                var deleted = fi.CreationTime;
+                // If creation time looks broken (epoch / earlier than write), fall back.
+                if (deleted < new DateTime(2000, 1, 1) || deleted > fi.LastWriteTime)
+                    deleted = fi.LastWriteTime;
+
+                // Parse "{pcId}_{pcName}_{originalFileName}".
+                int? pcId = null;
+                string? pcName = null;
+                string originalName = name;
+                var underscoreIdx = name.IndexOf('_');
+                if (underscoreIdx > 0 && int.TryParse(name.AsSpan(0, underscoreIdx), out var parsedId))
+                {
+                    pcId   = parsedId;
+                    pcName = GetPcName(parsedId);
+                    if (!string.IsNullOrEmpty(pcName))
+                    {
+                        var sanitized = SanitizePcNameForFile(pcName);
+                        var prefix    = $"{parsedId}_{sanitized}_";
+                        if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                            originalName = name.Substring(prefix.Length);
+                        else
+                            originalName = name.Substring(underscoreIdx + 1); // best effort
+                    }
+                    else
+                    {
+                        originalName = name.Substring(underscoreIdx + 1);
+                    }
+                }
+
+                var purgeAt   = deleted.Add(DeletedRetention);
+                var isPastDue = DateTime.Now > purgeAt;
+
+                list.Add(new DeletedFileInfo(name, pcId, pcName, originalName, deleted, purgeAt, isPastDue, fi.Length));
+            }
+            catch { /* skip unreadable file, keep going */ }
+        }
+
+        list.Sort((a, b) => b.DeletedAt.CompareTo(a.DeletedAt)); // newest first
+        return list;
     }
 
     /// <summary>
@@ -2406,6 +2499,38 @@ public class FolderService
     public byte[]? TryNormalizePdfDirect(byte[] pdfBytes) => TryNormalizeWithPdfSharp(pdfBytes);
 
     /// <summary>
+    /// Inspects the PDF's pages (using EffectiveDisplaySize: CropBox > MediaBox) and
+    /// returns the page count plus the min/max width and height observed across all pages.
+    /// Returns (0,0,0,0,0) if the PDF can't be opened.
+    /// </summary>
+    public (int PageCount, double MaxW, double MinW, double MaxH, double MinH) GetPdfPageSizeRange(byte[] pdfBytes)
+    {
+        try
+        {
+            using var ms = new MemoryStream(pdfBytes);
+            using var doc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
+            int n = doc.PageCount;
+            if (n == 0) return (0, 0, 0, 0, 0);
+            double maxW = double.MinValue, minW = double.MaxValue;
+            double maxH = double.MinValue, minH = double.MaxValue;
+            for (int i = 0; i < n; i++)
+            {
+                var (w, h) = EffectiveDisplaySize(doc.Pages[i]);
+                if (w > maxW) maxW = w;
+                if (w < minW) minW = w;
+                if (h > maxH) maxH = h;
+                if (h < minH) minH = h;
+            }
+            return (n, maxW, minW, maxH, minH);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Norm] GetPdfPageSizeRange failed: {ex.Message}");
+            return (0, 0, 0, 0, 0);
+        }
+    }
+
+    /// <summary>
     /// Repair via Ghostscript (timeoutMs), then normalise. Returns null on failure/timeout.
     /// </summary>
     public byte[]? RepairAndNormalizeViaGhostscript(byte[] pdfBytes, int timeoutMs = 20_000)
@@ -2423,6 +2548,37 @@ public class FolderService
         var repaired = RepairViaLibreOffice(pdfBytes, timeoutMs);
         if (repaired == null) return null;
         return TryNormalizeWithPdfSharp(repaired) ?? repaired;
+    }
+
+    /// <summary>
+    /// Runs Ghostscript and LibreOffice repair+normalize in parallel, returns the first
+    /// non-null result. Used by Add-Session and PcFolder's "Normalize current document"
+    /// to keep their behaviour identical.
+    /// </summary>
+    /// <param name="pdfBytes">Source PDF bytes.</param>
+    /// <param name="timeoutMs">Per-engine timeout in ms (default 20s).</param>
+    /// <returns>(Bytes, Engine) — Bytes is null if both engines failed; Engine is "Ghostscript", "LibreOffice", or empty.</returns>
+    public async Task<(byte[]? Bytes, string Engine)> RaceNormalizeAsync(byte[] pdfBytes, int timeoutMs = 20_000)
+    {
+        var gsTask    = Task.Run(() => RepairAndNormalizeViaGhostscript(pdfBytes, timeoutMs));
+        var libreTask = Task.Run(() => RepairAndNormalizeViaLibreOffice(pdfBytes, timeoutMs));
+
+        byte[]? result = null;
+        string winner = "";
+        var pending = new List<Task<byte[]?>> { gsTask, libreTask };
+        while (result == null && pending.Count > 0)
+        {
+            var done = await Task.WhenAny(pending);
+            pending.Remove(done);
+            var val = done.Result;
+            if (val != null)
+            {
+                result = val;
+                winner = done == gsTask ? "Ghostscript" : "LibreOffice";
+            }
+        }
+        if (pending.Count > 0) _ = Task.WhenAll(pending);
+        return (result, winner);
     }
 
     /// <summary>
@@ -3629,6 +3785,7 @@ public class FolderService
         }
         File.WriteAllBytes(fullPath, fileBytes);
         EncryptFileInPlace(fullPath);
+        InvalidateCache(fullPath);
         var auditRelPath = $"{relativeFolder}/{safeName}".Replace('\\', '/');
         _audit.Log(pcId, solo, auditRelPath, overwrite ? "overwrite" : "create", fileBytes.Length, null, null, "Upload");
         Console.WriteLine($"[FolderService] Saved '{safeName}' to {relativeFolder} for PC {pcId}{(overwrite ? " (overwrite)" : "")}");
