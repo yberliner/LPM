@@ -554,8 +554,8 @@
                     <div class="norm-success-item">
                         <i class="ri-checkbox-circle-fill" style="color:#22c55e; font-size:1.15rem;"></i>
                         <div>
-                            <div style="font-weight:700; color:#0f172a;">Backup saved</div>
-                            <div class="norm-success-item-sub">10-day retention · stored in _backups/</div>
+                            <div style="font-weight:700; color:#0f172a;">Saved as new file</div>
+                            <div class="norm-success-item-sub">@_normSuccessFileName · source file unchanged</div>
                         </div>
                     </div>
                     <div class="norm-success-item">
@@ -568,8 +568,8 @@
                     <div class="norm-success-item">
                         <i class="ri-checkbox-circle-fill" style="color:#22c55e; font-size:1.15rem;"></i>
                         <div>
-                            <div style="font-weight:700; color:#0f172a;">Pane reloaded</div>
-                            <div class="norm-success-item-sub">Showing the normalized document.</div>
+                            <div style="font-weight:700; color:#0f172a;">Pane updated</div>
+                            <div class="norm-success-item-sub">Now showing the normalized file.</div>
                         </div>
                     </div>
                 </div>
@@ -7111,6 +7111,13 @@
             }
         }
 
+        // ── Build the destination path: same folder, "{stem}_Norm.pdf" ──
+        var srcFolder      = Path.GetDirectoryName(relPath)?.Replace('\\', '/') ?? "";
+        var srcStem        = Path.GetFileNameWithoutExtension(relPath);
+        var newFileName    = $"{srcStem}_Norm.pdf";
+        var newRelPath     = string.IsNullOrEmpty(srcFolder) ? newFileName : $"{srcFolder}/{newFileName}";
+        var capturedSection = (_activeIdx >= 0 && _activeIdx < _panes.Length) ? (_panes[_activeIdx].Section ?? "") : "";
+
         // ── Run normalize (parallel race, same as Add-Session) ──
         _normRunning = true;
         _normError = false;
@@ -7118,10 +7125,9 @@
         _normLabel = displayName;
         _normSteps = new List<NormStep>
         {
-            new() { Label = "Backing up original" },
             new() { Label = "Normalizing (Ghostscript + LibreOffice)" },
-            new() { Label = "Saving normalized document" },
-            new() { Label = "Reloading pane" },
+            new() { Label = $"Saving as {newFileName}" },
+            new() { Label = "Loading normalized file" },
         };
         StateHasChanged();
 
@@ -7129,20 +7135,11 @@
         {
             try
             {
-                var sBackup = _normSteps[0];
-                var sNorm   = _normSteps[1];
-                var sSave   = _normSteps[2];
-                var sLoad   = _normSteps[3];
+                var sNorm = _normSteps[0];
+                var sSave = _normSteps[1];
+                var sLoad = _normSteps[2];
 
-                // Step 1: backup. SaveSectionFileToPath(overwrite:true) backs up automatically,
-                // but we want the backup to occur BEFORE normalize even if save later fails.
-                sBackup.Status = 1;
-                await InvokeAsync(StateHasChanged);
-                FolderSvc.BackupFile(capturedPcId, relPath, capturedSolo);
-                sBackup.Status = 2;
-                await InvokeAsync(StateHasChanged);
-
-                // Step 2: race Ghostscript + LibreOffice (20s each), first non-null wins
+                // Step 1: race Ghostscript + LibreOffice (20s each), first non-null wins
                 sNorm.Status = 1;
                 int secsLeft = 20;
                 using var tickerCts = new System.Threading.CancellationTokenSource();
@@ -7181,14 +7178,14 @@
                 sNorm.Status = 2;
                 await InvokeAsync(StateHasChanged);
 
-                // Step 3: save (overwrite). SaveSectionFileToPath will create another backup —
-                // safe because both share the same prefix and the counter-suffix dedupes.
+                // Step 2: save the normalized output as a NEW file alongside the source.
+                // overwrite:true → re-running normalize replaces a previous "_Norm" output
+                // (SaveSectionFileToPath auto-backs up the previous "_Norm" copy in _backups/).
+                // The original source is untouched.
                 sSave.Status = 1;
                 await InvokeAsync(StateHasChanged);
-                var relFolder = Path.GetDirectoryName(relPath)?.Replace('\\', '/') ?? "";
-                var fileNameOnly = Path.GetFileName(relPath);
                 var saved = FolderSvc.SaveSectionFileToPath(
-                    capturedPcId, relFolder, fileNameOnly, result,
+                    capturedPcId, srcFolder, newFileName, result,
                     overwrite: true, solo: capturedSolo, enforcePdf: true);
                 if (!saved)
                 {
@@ -7197,7 +7194,7 @@
                     {
                         _normRunning = false;
                         _normError = true;
-                        _normErrorMsg = "Failed to save the normalized document.";
+                        _normErrorMsg = $"Failed to save '{newFileName}'.";
                         StateHasChanged();
                     });
                     return;
@@ -7205,25 +7202,27 @@
                 sSave.Status = 2;
                 await InvokeAsync(StateHasChanged);
 
-                // Step 4: reload the pane.
-                // forceReloadPdf bypasses the same-file fast path so the now-modified
-                // bytes are actually re-fetched and re-rendered (loadPdf alone would
-                // see isSameFile=true and just rescale the stale rendered pages).
-                // It also resets pane.zoomLevel = 1.0 inside loadPdf — sync the Blazor-side
-                // _zoomPercent / _fitMode fields so the toolbar indicator matches.
+                // Step 3: refresh sidebar so the new file appears, point the pane at the new
+                // file, and load it via forceReloadPdf (bypasses the same-file fast path,
+                // and loadPdf internally resets pane.zoomLevel = 1.0 — sync _zoomPercent too).
                 sLoad.Status = 1;
                 await InvokeAsync(StateHasChanged);
                 var soloParam = capturedSolo ? "&solo=true" : "";
-                var reloadUrl = $"/api/pc-file?pcId={capturedPcId}&path={Uri.EscapeDataString(relPath)}{soloParam}&_t={DateTime.UtcNow.Ticks}";
+                var reloadUrl = $"/api/pc-file?pcId={capturedPcId}&path={Uri.EscapeDataString(newRelPath)}{soloParam}&_t={DateTime.UtcNow.Ticks}";
                 await InvokeAsync(async () =>
                 {
-                    await JS.InvokeVoidAsync("pcfViewer.forceReloadPdf", reloadUrl, capturedPaneId);
-                });
-                await InvokeAsync(() =>
-                {
+                    RefreshFolder();
+                    var paneIdx = Array.IndexOf(PaneIds, capturedPaneId);
+                    if (paneIdx >= 0 && paneIdx < _panes.Length)
+                    {
+                        _panes[paneIdx].File     = newRelPath;
+                        _panes[paneIdx].FileName = newFileName;
+                        _panes[paneIdx].Section  = capturedSection;
+                    }
                     _zoomPercent = 100;
                     _fitMode = false;
                     StateHasChanged();
+                    await JS.InvokeVoidAsync("pcfViewer.forceReloadPdf", reloadUrl, capturedPaneId);
                 });
                 sLoad.Status = 2;
                 await InvokeAsync(StateHasChanged);
@@ -7233,7 +7232,7 @@
                 await InvokeAsync(() =>
                 {
                     _normRunning = false;
-                    _normSuccessFileName = displayName;
+                    _normSuccessFileName = newFileName;
                     _normSuccessEngine = winner;
                     _normSuccessPageCount = resultRange.PageCount;
                     _normSuccessMaxW = resultRange.MaxW;
@@ -7243,7 +7242,7 @@
                     _normShowSuccess = true;
                     StateHasChanged();
                 });
-                Console.WriteLine($"[Normalize] '{displayName}' for PC {capturedPcId} normalized via {winner}");
+                Console.WriteLine($"[Normalize] '{displayName}' → '{newFileName}' for PC {capturedPcId} via {winner} (source untouched)");
 
                 await Task.Delay(5000);
                 await InvokeAsync(() => { _normShowSuccess = false; StateHasChanged(); });

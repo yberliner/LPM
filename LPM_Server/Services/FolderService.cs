@@ -2569,9 +2569,19 @@ public class FolderService
 
     /// <summary>
     /// Repair via Ghostscript (timeoutMs), then normalise. Returns null on failure/timeout.
+    /// Prefers a single-pass GS repair+resize (FitPage) since PdfSharpCore's XPdfForm
+    /// can silently render blank pages for image/transparency-heavy content.
     /// </summary>
     public byte[]? RepairAndNormalizeViaGhostscript(byte[] pdfBytes, int timeoutMs = 20_000)
     {
+        // One-shot: GS repair + GS resize-to-fit. Robust for any PDF GS can read.
+        var range = GetPdfPageSizeRange(pdfBytes);
+        if (range.PageCount > 0 && range.MaxW > 1 && range.MaxH > 1)
+        {
+            var fit = NormalizeViaGhostscriptFitPage(pdfBytes, range.MaxW, range.MaxH, timeoutMs);
+            if (fit != null) return fit;
+        }
+        // Fallback: legacy two-step (GS repair → PdfSharp resize). Last resort if GS-fit fails.
         var repaired = RepairViaGhostscript(pdfBytes, timeoutMs);
         if (repaired == null) return null;
         return TryNormalizeWithPdfSharp(repaired) ?? repaired;
@@ -2579,11 +2589,21 @@ public class FolderService
 
     /// <summary>
     /// Repair via LibreOffice (timeoutMs), then normalise. Returns null on failure/timeout.
+    /// After LibreOffice repair, prefers GS fit-page resize over PdfSharpCore re-rendering
+    /// to avoid the same blank-page failure mode.
     /// </summary>
     public byte[]? RepairAndNormalizeViaLibreOffice(byte[] pdfBytes, int timeoutMs = 20_000)
     {
         var repaired = RepairViaLibreOffice(pdfBytes, timeoutMs);
         if (repaired == null) return null;
+
+        // Prefer GS fit-page on the LO-repaired bytes
+        var range = GetPdfPageSizeRange(repaired);
+        if (range.PageCount > 0 && range.MaxW > 1 && range.MaxH > 1)
+        {
+            var fit = NormalizeViaGhostscriptFitPage(repaired, range.MaxW, range.MaxH, timeoutMs);
+            if (fit != null) return fit;
+        }
         return TryNormalizeWithPdfSharp(repaired) ?? repaired;
     }
 
@@ -2949,6 +2969,69 @@ public class FolderService
     /// <summary>
     /// Repair via Ghostscript re-encode. Returns repaired bytes, or null on failure/timeout/unavailable.
     /// </summary>
+    /// <summary>
+    /// Uses Ghostscript to repair AND resize all pages to (targetW × targetH) points in a single pass.
+    /// Each source page is fit (uniform-scale, aspect-preserving) into the target box with letterboxing.
+    /// More robust than PdfSharpCore's XPdfForm rendering, which can silently produce blank pages on
+    /// PDFs with heavy image/transparency/XObject content. Returns null on timeout/failure.
+    /// </summary>
+    private byte[]? NormalizeViaGhostscriptFitPage(byte[] pdfBytes, double targetW, double targetH, int timeoutMs)
+    {
+        if (string.IsNullOrEmpty(_ghostscriptExe) || !File.Exists(_ghostscriptExe))
+        {
+            Console.WriteLine("[Norm/GS-Fit] Ghostscript not configured");
+            return null;
+        }
+
+        var tempIn  = Path.Combine(Path.GetTempPath(), $"lpm_gsfit_in_{Guid.NewGuid():N}.pdf");
+        var tempOut = Path.Combine(Path.GetTempPath(), $"lpm_gsfit_out_{Guid.NewGuid():N}.pdf");
+        try
+        {
+            File.WriteAllBytes(tempIn, pdfBytes);
+            using var proc = new Process();
+            proc.StartInfo = new ProcessStartInfo
+            {
+                FileName = _ghostscriptExe,
+                UseShellExecute = false, CreateNoWindow = true,
+                RedirectStandardOutput = true, RedirectStandardError = true
+            };
+            proc.StartInfo.ArgumentList.Add("-sDEVICE=pdfwrite");
+            proc.StartInfo.ArgumentList.Add("-dCompatibilityLevel=1.4");
+            proc.StartInfo.ArgumentList.Add("-dNOPAUSE");
+            proc.StartInfo.ArgumentList.Add("-dQUIET");
+            proc.StartInfo.ArgumentList.Add("-dBATCH");
+            proc.StartInfo.ArgumentList.Add($"-dDEVICEWIDTHPOINTS={targetW.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}");
+            proc.StartInfo.ArgumentList.Add($"-dDEVICEHEIGHTPOINTS={targetH.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}");
+            proc.StartInfo.ArgumentList.Add("-dFIXEDMEDIA");           // every page uses the device size
+            proc.StartInfo.ArgumentList.Add("-dPDFFitPage");           // scale-to-fit (preserves aspect)
+            proc.StartInfo.ArgumentList.Add($"-sOutputFile={tempOut}");
+            proc.StartInfo.ArgumentList.Add(tempIn);
+            proc.Start();
+            bool exited = proc.WaitForExit(timeoutMs);
+            if (!exited)
+            {
+                try { proc.Kill(entireProcessTree: true); } catch { }
+                proc.WaitForExit(3_000);
+                Console.WriteLine($"[Norm/GS-Fit] Timed out after {timeoutMs / 1000}s");
+                return null;
+            }
+            if (proc.ExitCode == 0 && File.Exists(tempOut) && new FileInfo(tempOut).Length > 0)
+            {
+                var result = File.ReadAllBytes(tempOut);
+                Console.WriteLine($"[Norm/GS-Fit] Resized to {targetW:F0}×{targetH:F0}pt: {pdfBytes.Length / 1024}KB → {result.Length / 1024}KB");
+                return result;
+            }
+            Console.WriteLine($"[Norm/GS-Fit] Exit code {proc.ExitCode}");
+            return null;
+        }
+        catch (Exception ex) { Console.WriteLine($"[Norm/GS-Fit] Error: {ex.Message}"); return null; }
+        finally
+        {
+            try { if (File.Exists(tempIn))  File.Delete(tempIn);  } catch { }
+            try { if (File.Exists(tempOut)) File.Delete(tempOut); } catch { }
+        }
+    }
+
     private byte[]? RepairViaGhostscript(byte[] pdfBytes, int timeoutMs)
     {
         if (string.IsNullOrEmpty(_ghostscriptExe) || !File.Exists(_ghostscriptExe))
