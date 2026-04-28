@@ -1017,6 +1017,62 @@ public List<PcListItem> GetAllPcs()
     // ── Rate-change detection (last 365 days) ─────────────────────
 
     public record PurchaseRateEntry(string Date, double Hours, int RatePerHour);
+    public record SessionRateEntry(int SessionId, string Date, int LengthSec, int AdminSec, int RateCentsPerHour, string Currency, string AuditorName);
+
+    /// <summary>
+    /// Returns PCs that had 2+ approved sessions in the last 30 days at different per-hour rates
+    /// WITHIN THE SAME CURRENCY. Free / pending (no rate set) sessions are excluded.
+    /// Each flagged PC's full session list (in date desc order) is included so the caller can
+    /// render a per-rate-color hover panel and let the user click into Session Manager.
+    /// </summary>
+    public Dictionary<int, List<SessionRateEntry>> GetPcsWithMixedSessionRatesIn30Days()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        var cutoff = DateTime.Today.AddDays(-30).ToString("yyyy-MM-dd");
+        cmd.CommandText = @"
+            SELECT s.PcId, s.SessionId, s.SessionDate, s.LengthSeconds, s.AdminSeconds,
+                   s.ChargedRateCentsPerHour,
+                   COALESCE(w.Currency, 'ILS') AS Currency,
+                   COALESCE(TRIM(pa.FirstName || ' ' || COALESCE(NULLIF(pa.LastName,''), '')), 'Solo') AS AuditorName
+            FROM sess_sessions s
+            LEFT JOIN core_persons pa ON pa.PersonId = s.AuditorId
+            LEFT JOIN fin_wallets   w  ON w.WalletId  = s.WalletId
+            WHERE s.SessionDate >= @cutoff
+              AND s.IsFreeSession = 0
+              AND s.ChargedRateCentsPerHour > 0
+            ORDER BY s.PcId, s.SessionDate DESC, s.SessionId DESC";
+        cmd.Parameters.AddWithValue("@cutoff", cutoff);
+
+        var all = new Dictionary<int, List<SessionRateEntry>>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            int pcId      = r.GetInt32(0);
+            int sessId    = r.GetInt32(1);
+            string date   = r.GetString(2);
+            int lenSec    = r.IsDBNull(3) ? 0 : r.GetInt32(3);
+            int adminSec  = r.IsDBNull(4) ? 0 : r.GetInt32(4);
+            int rate      = r.GetInt32(5);
+            string curr   = r.GetString(6);
+            string aud    = r.GetString(7);
+            if (!all.ContainsKey(pcId)) all[pcId] = new();
+            all[pcId].Add(new SessionRateEntry(sessId, date, lenSec, adminSec, rate, curr, aud));
+        }
+
+        // Keep only PCs with 2+ distinct rates *within the same currency*.
+        // (Cross-currency rate differences in raw cents aren't a meaningful "mixed rate" signal.)
+        var result = new Dictionary<int, List<SessionRateEntry>>();
+        foreach (var (pcId, entries) in all)
+        {
+            bool flag = entries
+                .GroupBy(e => e.Currency)
+                .Any(g => g.Select(e => e.RateCentsPerHour).Distinct().Count() >= 2);
+            if (flag) result[pcId] = entries;
+        }
+        return result;
+    }
 
     /// Returns PCs that have 2+ auditing items with different per-hour rates in the last 365 days.
     public Dictionary<int, List<PurchaseRateEntry>> GetPcsWithMixedRates()
