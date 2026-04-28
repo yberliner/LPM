@@ -783,8 +783,15 @@ public class DashboardService
         Console.WriteLine($"[DashboardService] Removed permission {id}");
     }
 
+    // IDENTITY-MODEL — see Auth/UserDb.cs for the full design note.
+    // ⚠ Method name LIES. This actually returns core_users.PersonId, NOT core_users.Id.
+    // All ~9 callers store the result in variables named _userId / _currentUserId /
+    // auditorId / insertedById that ALSO hold PersonId despite their names.
+    // For per-login decisions (role, permissions) prefer the cookie StaffRole/UserId
+    // claims, not the value returned here.
     /// <summary>
-    /// Returns the PersonId for the given username (matches Persons.FirstName case-insensitively).
+    /// Returns the PersonId (NOT core_users.Id) for the given username.
+    /// Misnamed for historical reasons — see IDENTITY-MODEL note in Auth/UserDb.cs.
     /// </summary>
     public int? GetUserIdByUsername(string username)
     {
@@ -800,9 +807,20 @@ public class DashboardService
 
     /// <summary>Check if a user (by PersonId) can access a PC's folder.
     /// Admins always can. Otherwise requires approved permission or AllowAll.</summary>
+    // IDENTITY-MODEL — see Auth/UserDb.cs for the full design note.
+    // The "userId" parameter actually holds PersonId (callers pass the result of
+    // GetUserIdByUsername which returns PersonId). The two SQL statements below
+    // both treat their @uid as PersonId:
+    //   • core_users WHERE PersonId = @uid    — explicit, correct.
+    //   • sys_staff_pc_list WHERE UserId = @uid — the column is NAMED UserId but
+    //     actually stores PersonId (verified empirically). The "StaffRole IN
+    //     ('Auditor','CS','SeniorCS')" filter on the AllowAll lookup naturally
+    //     excludes the Solo sibling row, so dual-account persons resolve to the
+    //     staff one unambiguously.
     /// <summary>
     /// Returns true if the user has this PC on their dashboard AND has approved permission for it.
     /// Used by CsNotificationService to decide whether to refresh a user's Home screen.
+    /// NOTE: <paramref name="userId"/> is actually a PersonId — see IDENTITY-MODEL.
     /// </summary>
     public bool UserHasApprovedPcOnDashboard(int userId, int pcId)
     {
@@ -848,6 +866,19 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@pid", pcId);
         return cmd.ExecuteScalar() is not null;
     }
+
+    // ╔══════════════════════════════════════════════════════════════════════╗
+    // ║  IDENTITY-MODEL — DEAD CODE WARNING — DO NOT CALL THESE              ║
+    // ║                                                                      ║
+    // ║  IsAuditor / IsCS / IsSeniorCS / IsSoloAuditor (below) all key on    ║
+    // ║  core_users.PersonId, so they return TRUE if ANY of a person's       ║
+    // ║  accounts has the role — leaking the dual-account sibling identity.  ║
+    // ║  As of today no caller exists in the codebase (verified by grep).    ║
+    // ║  Kept as a cautionary tale. For per-login role decisions, use the    ║
+    // ║  cookie's "StaffRole" claim with StaffRoles.IsCS(string) etc. — see  ║
+    // ║  PcFolder.razor around line 4400 for the canonical pattern.          ║
+    // ║  Full design note: Auth/UserDb.cs — search for IDENTITY-MODEL.       ║
+    // ╚══════════════════════════════════════════════════════════════════════╝
 
     public bool IsAuditor(int userId)
     {
@@ -1992,6 +2023,11 @@ public class DashboardService
 
     // ── Solo Auditor methods ──
 
+    // IDENTITY-MODEL — DEAD CODE. Returns TRUE for "person has any Solo account",
+    // not "logged-in user is Solo". For dual-account persons it always returns
+    // TRUE regardless of which login is active. Use cookie StaffRole instead
+    // (the convention is documented at PcFolder.razor around line 4400).
+    // Full design note: Auth/UserDb.cs — search for IDENTITY-MODEL.
     public bool IsSoloAuditor(int userId)
     {
         using var conn = new SqliteConnection(_connectionString);

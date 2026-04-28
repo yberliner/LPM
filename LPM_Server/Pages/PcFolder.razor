@@ -1103,7 +1103,7 @@
                             <i class="ri-error-warning-line pcf-timer-warn" title="Review time is 0 — update before marking done"></i>
                         }
                     </div>
-                    @if (Solo)
+                    @if (Solo && !_isSoloUser)
                     {
                         <div class="pcf-free-cs-wrap" title="@(_csFreeSession ? "This session will NOT be charged" : "This session WILL be charged to balance")">
                             <label class="pcf-free-cs-toggle">
@@ -4395,6 +4395,14 @@
 
     protected override void OnInitialized()
     {
+        // IDENTITY-MODEL — see Auth/UserDb.cs for the full design note.
+        // This block is THE SAFETY NET that keeps the schema-misnaming harmless:
+        // a Solo login is hard-redirected to its own folder before any
+        // sys_staff_pc_list permission query runs. Without this redirect, the
+        // fact that sys_staff_pc_list.UserId actually stores PersonId would let
+        // a dual-account person's Solo login see all the PCs their staff
+        // sibling has been granted access to.
+        //
         // Guard: enforce folder access rules — use cookie StaffRole claim (unique per login)
         // NOT IsSoloAuditor(PersonId) which returns true for dual-role users (Auditor + Solo)
         var _pcfStaffRole = HttpContextAccessor.HttpContext?.User.FindFirst("StaffRole")?.Value ?? "";

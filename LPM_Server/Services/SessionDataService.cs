@@ -108,6 +108,13 @@ public class SessionDataService
         return list;
     }
 
+    // IDENTITY-MODEL — see Auth/UserDb.cs for the full design note.
+    // ✅ This one is HONEST — returns the real core_users.Id (per-login user id),
+    // unlike its same-named twin in DashboardService which returns PersonId.
+    // The result is used by MainHeader.razor as the "InsertedBy" / "CreatedBy"
+    // value on sess_evil_purposes / sess_serfacs / sess_pts_handling /
+    // sess_case_data inserts — those columns FK to core_users(Id), so per-login
+    // audit attribution works correctly there.
     public int? GetUserIdByUsername(string username)
     {
         if (string.IsNullOrWhiteSpace(username)) return null;

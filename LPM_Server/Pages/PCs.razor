@@ -5589,10 +5589,13 @@
     {
         _balancePcId = pcId;
         _balancePcName = pcName;
-        _balSessionDetails = null;
-        _balSoloDetails = null;
-        _balShowSessions = false;
-        _balHideImported = false;
+        // Default: sessions expanded with imported sessions hidden — matches the
+        // common case where users want to see "real" recent activity right away
+        // without first clicking Show all sessions and then unchecking imports.
+        _balSessionDetails = PcSvc.GetPcSessionCostDetails(pcId);
+        _balSoloDetails    = PcSvc.GetSoloCsReviewCostDetails(pcId);
+        _balShowSessions   = true;
+        _balHideImported   = true;
         _balanceExplanation = PcSvc.GetPcBalanceExplanation(pcId);
         _showBalanceModal = true;
     }

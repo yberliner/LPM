@@ -459,6 +459,14 @@ static int ResolveUserId(HttpContext ctx, UserDb db)
 static async Task SignInUser(HttpContext ctx, UserDb db, string username,
     LPM.Auth.UserDb.LoginFlags flags)
 {
+    // IDENTITY-MODEL — see Auth/UserDb.cs for the full design note.
+    // These four claims are the SOURCE OF TRUTH for per-login decisions
+    // throughout the app:
+    //   • Name + StaffRole + UserId are PER-LOGIN (different for yaniv.berliner
+    //     vs yaniv even though both belong to PersonId 94).
+    //   • PersonId is shared between dual-account siblings.
+    // ALWAYS prefer the cookie's StaffRole / UserId claim over a DB lookup
+    // keyed by PersonId for authorization or role-branching decisions.
     var claims = new List<Claim>
     {
         new(ClaimTypes.Name, username),

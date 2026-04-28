@@ -4,6 +4,121 @@ using OtpNet;
 
 namespace LPM.Auth;
 
+// ╔════════════════════════════════════════════════════════════════════════╗
+// ║                IDENTITY-MODEL — READ THIS, IT'S IMPORTANT              ║
+// ║   To find every code site that participates in this design, run:       ║
+// ║       grep -r IDENTITY-MODEL                                           ║
+// ╚════════════════════════════════════════════════════════════════════════╝
+//
+// THE TWO IDENTITY TABLES
+// -----------------------
+//   core_persons.PersonId  — a human being. One row per real person (auditor,
+//                            case-supervisor, PC, etc.).
+//   core_users.Id          — a LOGIN ACCOUNT. Has FK PersonId -> core_persons.
+//                            Each account has its own Username, PasswordHash,
+//                            StaffRole, AllowAll, etc. Multiple core_users rows
+//                            can share the same PersonId.
+//
+// THE BUSINESS RULE (enforced manually today, NOT by DB constraint)
+// -----------------------------------------------------------------
+//   A person may have AT MOST two active core_users rows:
+//     • exactly one Solo account              (StaffRole = 'Solo'), AND
+//     • at most one staff account             (StaffRole IN 'Auditor','CS','SeniorCS').
+//   No-one has two staff accounts. No-one has two Solo accounts.
+//
+//   Real example (PersonId 94 = Yaniv):
+//     core_users.Id=18  Username=yaniv.berliner  StaffRole=Solo
+//     core_users.Id=32  Username=yaniv           StaffRole=SeniorCS / CS
+//
+// THE COOKIE — set at login in Program.cs around line 460
+// -------------------------------------------------------
+//   Login writes 4 claims, all tied to the SPECIFIC core_users row that
+//   authenticated (so they differ between yaniv.berliner and yaniv):
+//     ClaimTypes.Name = Username           ← per-login ("yaniv" vs "yaniv.berliner")
+//     "StaffRole"     = StaffRole          ← per-login ("CS"    vs "Solo")
+//     "PersonId"      = PersonId           ← shared between dual accounts
+//     "UserId"        = core_users.Id      ← per-login, the REAL account id
+//   ⇒ For per-login decisions ALWAYS prefer the cookie's StaffRole or UserId,
+//     never a DB lookup keyed by PersonId.
+//
+// THE LIES IN THE CODE — known, accepted, not fixed today
+// -------------------------------------------------------
+//   1. ⚠ TWO METHODS NAMED GetUserIdByUsername DO DIFFERENT THINGS:
+//        a) DashboardService.GetUserIdByUsername()    actually returns PersonId
+//           (SELECT PersonId ...). Variables that store this result
+//           (_userId, _currentUserId, auditorId in DashboardService.* signatures)
+//           hold PersonId despite their misleading names.
+//        b) SessionDataService.GetUserIdByUsername()  honestly returns core_users.Id
+//           (SELECT Id ...). Used by MainHeader.razor when stamping InsertedBy /
+//           CreatedBy on sess_evil_purposes / sess_serfacs / sess_pts_handling /
+//           sess_case_data — those FK columns reference core_users(Id) and
+//           the values stored are the real per-login user id (good).
+//
+//   2. sys_staff_pc_list.UserId column              actually stores PersonId.
+//      Verified empirically: of 11 distinct values in production, all 11 match
+//      core_users.PersonId; only 4 coincidentally also exist as core_users.Id.
+//
+//   3. DashboardService.IsAuditor(int) / IsCS(int) / IsSeniorCS(int) /
+//      IsSoloAuditor(int) — these query core_users WHERE PersonId = @id, so
+//      they return TRUE for "any of this person's accounts has the role".
+//      They are CURRENTLY DEAD CODE — no callers anywhere. They were kept as
+//      a cautionary tale. DO NOT call them. Use the cookie's StaffRole claim
+//      with StaffRoles.IsCS(string) etc. instead.
+//
+// WHY NOTHING BREAKS TODAY
+// ------------------------
+//   A. PcFolder.razor around line 4406 hard-redirects every Solo login to
+//      "/PcFolder/{UserPersonId}?solo=true". A Solo user therefore NEVER
+//      reaches the sys_staff_pc_list permission queries. The schema lie is
+//      irrelevant for them.
+//   B. The staff-permission queries in DashboardService include
+//      "AND StaffRole IN ('Auditor','CS','SeniorCS')" — this filter naturally
+//      excludes the Solo row, so even though both rows share PersonId, the
+//      query unambiguously matches the staff one. (Search the codebase for
+//      StaffRoles.SqlInAuditorCS() to find each filter.)
+//   C. All in-flight role checks in the UI use string comparisons against the
+//      cookie's StaffRole claim — see StaffRoles.IsCS(string) used in
+//      Home.razor, PcFolder.razor, MainHeader.razor, StaffPermissions.razor.
+//   D. Audit-log columns on the sess_* tables (sess_evil_purposes.InsertedBy,
+//      sess_serfacs.CreatedBy, sess_pts_handling.CreatedBy, sess_case_data.CreatedBy)
+//      have FK -> core_users(Id) and store the REAL per-login user id, because
+//      they're populated via SessionDataService.GetUserIdByUsername which
+//      honestly returns core_users.Id. Per-login audit works correctly here.
+//      (Other PersonId-keyed log paths attribute per-person, which is fine for
+//      "who did this" since "Yaniv" is the right answer either way.)
+//
+// WHAT WOULD BREAK IT
+// -------------------
+//   Loosening the "max one staff account per person" rule. Two staff accounts
+//   for the same person (e.g. Auditor + SeniorCS at different orgs) means the
+//   StaffRole-IN filter no longer disambiguates, and LIMIT-1 queries would pick
+//   whichever row SQLite returns first.
+//
+// THE PROPER FIX (not done — high churn, no current bug to fix)
+// -------------------------------------------------------------
+//   1. Change GetUserIdByUsername() to return core_users.Id (not PersonId).
+//   2. Migrate sys_staff_pc_list.UserId data: replace each value with the
+//      matching core_users.Id, resolving dual-account persons by joining to
+//      the Auditor/CS/SeniorCS row (Solo accounts don't appear in the table
+//      because of the redirect described in (A) above).
+//   3. Update permission queries to match on core_users.Id.
+//   4. Rename receiving variables (_userId, _currentUserId, auditorId, etc.).
+//
+// EVERY KNOWN PARTICIPATING SITE  (find via grep -r IDENTITY-MODEL)
+// -----------------------------------------------------------------
+//   • DashboardService.cs   — GetUserIdByUsername, IsAuditor/IsCS/IsSeniorCS
+//                             /IsSoloAuditor, UserHasApprovedPcOnDashboard,
+//                             CanAccessPcFolder, CheckOrRequestPermission.
+//   • SessionDataService.cs — GetUserIdByUsername (duplicate of above).
+//   • Program.cs            — cookie claims setup (Login flow).
+//   • PcFolder.razor        — Solo redirect (the safety net).
+//   • Home.razor            — _userId field actually holds PersonId.
+//   • Import.razor          — same.
+//   • Admin/Sessions.razor  — same.
+//   • PcFolderHost.cshtml   — already correctly named userPersonId.
+//   • PCs.razor             — already correctly named _currentUserPersonId.
+//
+
 public record UserListItem(int Id, int PersonId, string Username, string FullName,
     string StaffRole, string UserType, bool IsActive, string? GradeCode, bool AllowAll);
 
