@@ -1050,8 +1050,43 @@ public class FolderService
 
                 if (!byPage.TryGetValue(i, out var anns)) continue;
 
+                // ── Diagnostic: per-page metadata so position bugs are debuggable ──
+                Console.WriteLine($"[BakeText] page={i} W={page.Width.Point:F2} H={page.Height.Point:F2} " +
+                    $"Rotate={(int)page.Rotate} " +
+                    $"MediaBox={(page.Elements.GetObject("/MediaBox") is PdfSharpCore.Pdf.PdfArray mbArr && mbArr.Elements.Count == 4 ? $"[{mbArr.Elements[0]},{mbArr.Elements[1]},{mbArr.Elements[2]},{mbArr.Elements[3]}]" : "(default)")} " +
+                    $"CropBox={(page.Elements.GetObject("/CropBox") is PdfSharpCore.Pdf.PdfArray cbArr && cbArr.Elements.Count == 4 ? $"[{cbArr.Elements[0]},{cbArr.Elements[1]},{cbArr.Elements[2]},{cbArr.Elements[3]}]" : "(none)")} " +
+                    $"sidecarScale={scale:F4} annCount={anns.Count}");
+
                 // Append text annotations on top of this page
                 using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page, PdfSharpCore.Drawing.XGraphicsPdfPageOptions.Append);
+
+                // ── C1: rotation handling ──
+                // If the page has /Rotate, PDF.js displays it rotated, so the user's canvas
+                // coordinates are in the rotated visual frame. Apply the matching rotation to
+                // the drawing transform so the text lands where the user clicked, not on the
+                // unrotated page.
+                int rot = (int)page.Rotate;
+                if (rot != 0)
+                {
+                    double w = page.Width.Point, h = page.Height.Point;
+                    // PDF /Rotate is clockwise. PdfSharp's RotateTransform is also clockwise (top-left origin).
+                    // Translate so the rotated origin lands at top-left of the rotated visual.
+                    switch (((rot % 360) + 360) % 360)
+                    {
+                        case 90:
+                            gfx.TranslateTransform(w, 0);
+                            gfx.RotateTransform(90);
+                            break;
+                        case 180:
+                            gfx.TranslateTransform(w, h);
+                            gfx.RotateTransform(180);
+                            break;
+                        case 270:
+                            gfx.TranslateTransform(0, h);
+                            gfx.RotateTransform(270);
+                            break;
+                    }
+                }
 
                 foreach (var ann in anns)
                 {
@@ -1061,6 +1096,8 @@ public class FolderService
                     // No Y-axis flip needed; just divide by scale to go from canvas px → PDF points.
                     double pdfX = ann.X / scale;
                     double pdfY = ann.Y / scale;
+                    double origPdfY = pdfY;
+                    double origPdfX = pdfX;
 
                     double fontSizePx = ann.FontSize ?? 14.0;
                     double fontSizePt = fontSizePx / scale;
@@ -1132,16 +1169,30 @@ public class FolderService
                         double right  = pdfX + widthSpan;
                         double top    = pdfY - fontSizePt;
                         double bottom = pdfY + (lines.Count - 1) * lineHeightPt + fontSizePt * 0.3;
+                        double blockH = bottom - top;
 
+                        // ── Diagnostic: per-annotation values going INTO the clamp ──
+                        Console.WriteLine($"[BakeText] page={i} ann.X={ann.X:F1} ann.Y={ann.Y:F1} " +
+                            $"scale={scale:F4} → pdfX={origPdfX:F2} pdfY={origPdfY:F2} " +
+                            $"font={fontSizePt:F1}pt lines={lines.Count} blockH={blockH:F1} " +
+                            $"page=({pageWPt:F1}×{pageHPt:F1}) text={(ann.Text.Length > 40 ? ann.Text[..40] + "…" : ann.Text)}");
+
+                        // ── C2: safer clamp ──
+                        // Old logic overwrote dy in the second branch, which could teleport
+                        // a fitting block to the page top in pathological cases. New logic
+                        // is strictly additive (each branch fills the remaining gap, never
+                        // undoes the prior shift). For a block taller than the page, we
+                        // prefer keeping the user-meaningful TOP visible (overflow at bottom).
                         double dx = 0, dy = 0;
-                        if (right  > pageWPt - MARGIN_PT) dx = (pageWPt - MARGIN_PT) - right;
-                        if (left + dx < MARGIN_PT)        dx = MARGIN_PT - left;
-                        if (bottom > pageHPt - MARGIN_PT) dy = (pageHPt - MARGIN_PT) - bottom;
-                        if (top  + dy < MARGIN_PT)        dy = MARGIN_PT - top;
+                        if (right  > pageWPt - MARGIN_PT) dx += (pageWPt - MARGIN_PT) - right;
+                        if (left + dx < MARGIN_PT)        dx += MARGIN_PT - (left + dx);
+                        if (bottom > pageHPt - MARGIN_PT) dy += (pageHPt - MARGIN_PT) - bottom;
+                        if (top  + dy < MARGIN_PT)        dy += MARGIN_PT - (top  + dy);
 
                         if (dx != 0 || dy != 0)
                         {
-                            Console.WriteLine($"[BakeText] clamp page={i} shift dx={dx:F1} dy={dy:F1} (was x={pdfX:F1} y={pdfY:F1})");
+                            Console.WriteLine($"[BakeText] clamp page={i} shift dx={dx:F1} dy={dy:F1} " +
+                                $"(was x={pdfX:F1} y={pdfY:F1}, now x={pdfX + dx:F1} y={pdfY + dy:F1})");
                             pdfX += dx;
                             pdfY += dy;
                         }
@@ -1431,6 +1482,29 @@ public class FolderService
     // bake separately, and write each other's output, producing visibly doubled text.
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> _bakeLocks = new();
 
+    /// <summary>
+    /// Pre-bake forensic backup: stash the (decrypted) PDF + sidecar JSON in _backups/
+    /// with a "pre-bake-{yyyyMMdd-HHmmss}" prefix. These two together are sufficient to
+    /// reproduce the bake offline — page dimensions, rotation, MediaBox and CropBox are
+    /// read from the PDF inside BakeTextAnnotations itself, so no separate diag file is
+    /// needed. Both files are subject to the existing 10-day retention sweep run by
+    /// BackupBytes at every backup write.
+    /// </summary>
+    private void BackupBakePair(int? pcId, string pdfFileName, byte[] pdfBytes, string annJson)
+    {
+        try
+        {
+            var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            var key   = pcId ?? 0;
+            BackupBytes(key, $"pre-bake-{stamp}-{pdfFileName}",           pdfBytes);
+            BackupBytes(key, $"pre-bake-{stamp}-{pdfFileName}.ann.json",  System.Text.Encoding.UTF8.GetBytes(annJson));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FolderService] BackupBakePair failed (non-fatal): {ex.Message}");
+        }
+    }
+
     private void BurnSidecarForFile(string pdfPath, string? sidecarPath = null, int? auditPcId = null, bool auditSolo = false)
     {
         sidecarPath ??= pdfPath + ".ann.json";
@@ -1449,6 +1523,8 @@ public class FolderService
             {
                 var pdfBytes = ReadAndCache(pdfPath);
                 var annJson  = File.ReadAllText(sidecarPath);
+                // Forensic snapshot — keep the input to the bake so position bugs are reproducible
+                BackupBakePair(auditPcId, Path.GetFileName(pdfPath), pdfBytes, annJson);
                 var baked    = BakeTextAnnotations(pdfBytes, annJson);
                 File.WriteAllBytes(pdfPath, EncryptBytes(baked));
                 StoreInCache(pdfPath, baked);

@@ -255,6 +255,63 @@
                                             <div class="pc-srm-footer-hint">Click a row to open in Session Manager</div>
                                         </div>
                                     }
+                                    else if (hasMixed)
+                                    {
+                                        @* ── Mixed-rate PURCHASES hover panel (yellow background) ── *@
+                                        var mixEntries  = _mixedRates[pc.PcId];
+                                        var mixColorMap = BuildPurchaseRateColorMap(mixEntries);
+                                        var mixDistinct = mixColorMap.Count;
+                                        var mixBreakdown = mixEntries
+                                            .GroupBy(e => $"{e.Currency}:{e.RatePerHour}")
+                                            .OrderBy(g => g.First().Currency).ThenBy(g => g.First().RatePerHour)
+                                            .Select(g => new { g.First().Currency, g.First().RatePerHour, Count = g.Count() })
+                                            .ToList();
+                                        <div class="pc-mix-panel" @onclick:stopPropagation="true">
+                                            <div class="pc-mix-glow"></div>
+                                            <div class="pc-mix-header">
+                                                <i class="ri-money-dollar-circle-line me-1" style="color:#ca8a04;"></i>
+                                                <span>Mixed purchase rates &mdash; last 365 days</span>
+                                                <span class="pc-mix-count-badge">@mixDistinct rates</span>
+                                            </div>
+                                            <div class="pc-mix-list">
+                                                @{ var mixIdx = 0; }
+                                                @foreach (var pe in mixEntries)
+                                                {
+                                                    var rowColor = PurchaseRateColor(mixColorMap, pe);
+                                                    var pid      = pe.PurchaseId;
+                                                    var amt      = (int)Math.Round(Math.Abs(pe.Hours * pe.RatePerHour));
+                                                    var label    = !string.IsNullOrEmpty(pe.CourseName) ? pe.CourseName : "Auditing";
+                                                    var delay    = $"{mixIdx * 40}ms";
+                                                    mixIdx++;
+                                                    <div class="pc-mix-row" style="--row-color:@rowColor; animation-delay:@delay;"
+                                                         @onclick="() => OpenEditPurchase(pid)" @onclick:stopPropagation="true">
+                                                        <div class="pc-mix-row-rail"></div>
+                                                        <div class="pc-mix-row-main">
+                                                            <div class="pc-mix-row-top">
+                                                                <span class="pc-mix-row-date">@FormatDate(pe.Date)</span>
+                                                                <span class="pc-mix-row-hours">@FormatHoursMinutes(pe.Hours) &middot; @CurrSym(pe.Currency)@amt</span>
+                                                            </div>
+                                                            <div class="pc-mix-row-label">@label</div>
+                                                        </div>
+                                                        <span class="pc-mix-rate-badge" style="background:@rowColor;">
+                                                            @CurrSym(pe.Currency)@pe.RatePerHour<span class="pc-mix-per-hr">/hr</span>
+                                                        </span>
+                                                        <i class="ri-external-link-line pc-mix-row-arrow"></i>
+                                                    </div>
+                                                }
+                                            </div>
+                                            <div class="pc-mix-footer">
+                                                @foreach (var b in mixBreakdown)
+                                                {
+                                                    var c = mixColorMap.TryGetValue($"{b.Currency}:{b.RatePerHour}", out var cc) ? cc : "#64748b";
+                                                    <span class="pc-mix-chip" style="background:@c;">
+                                                        @CurrSym(b.Currency)@b.RatePerHour<span style="opacity:.85;">/hr</span> &times; @b.Count
+                                                    </span>
+                                                }
+                                            </div>
+                                            <div class="pc-mix-footer-hint">Click a row to open the purchase</div>
+                                        </div>
+                                    }
                                 }
                                 else
                                 {
@@ -3782,10 +3839,12 @@
     /* ── Mixed-rate highlight on PC name ── */
     .pc-mixed-rate {
         position: relative;
-        cursor: help;
+        cursor: pointer;
         background: #fef9c3 !important;
         overflow: visible !important;
+        outline: none;
     }
+    .pc-mixed-rate:focus-visible { box-shadow: inset 0 0 0 2px #ca8a04; }
 
     /* ── Session-mixed-rate (last 30 days) ── peach + diagonal-gradient when combined ── */
     .pc-srm-cell {
@@ -3962,6 +4021,159 @@
     @@media (max-width: 480px) {
         .pc-srm-panel { width: calc(100vw - 24px); left: -8px; max-height: 70vh; }
         .pc-srm-list  { max-height: 50vh; }
+    }
+
+    /* ── Yellow "mixed-rate purchases" hover panel — same shape as pc-srm-panel
+       but yellow-themed accents (count-badge, header icon, glow). Shown when the
+       PC name has a yellow background (pc-mixed-rate) and there's NO peach
+       overlay (pc-srm-cell takes priority for combined cases). ── */
+    .pc-mix-panel {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        z-index: 50;
+        width: 360px;
+        max-width: calc(100vw - 32px);
+        background: rgba(15, 23, 42, 0.97);
+        color: #f1f5f9;
+        border: 1px solid rgba(202, 138, 4, 0.30);
+        border-radius: 14px;
+        padding: 12px 12px 10px;
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(202, 138, 4, 0.10);
+        opacity: 0;
+        transform: translateY(8px) scale(0.985);
+        transition: opacity 0.18s ease, transform 0.22s cubic-bezier(.175,.885,.32,1.275);
+        pointer-events: none;
+        cursor: default;
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+    }
+    .pc-mix-panel::before {
+        content: '';
+        position: absolute;
+        top: -7px; left: 18px;
+        width: 14px; height: 14px;
+        background: rgba(15, 23, 42, 0.97);
+        border-top: 1px solid rgba(202, 138, 4, 0.30);
+        border-left: 1px solid rgba(202, 138, 4, 0.30);
+        transform: rotate(45deg);
+    }
+    .pc-mixed-rate:hover .pc-mix-panel,
+    .pc-mixed-rate:focus-within .pc-mix-panel {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        pointer-events: auto;
+    }
+    .pc-mix-glow {
+        position: absolute; inset: -1px;
+        border-radius: 14px;
+        pointer-events: none;
+        background: radial-gradient(120% 60% at 0% 0%, rgba(250, 204, 21, 0.28), transparent 60%),
+                    radial-gradient(80% 50% at 100% 100%, rgba(180, 83, 9, 0.18), transparent 65%);
+        opacity: 0; transition: opacity .25s ease;
+    }
+    .pc-mixed-rate:hover .pc-mix-glow,
+    .pc-mixed-rate:focus-within .pc-mix-glow { opacity: 1; }
+
+    .pc-mix-header {
+        display: flex; align-items: center; gap: 6px;
+        font-size: 0.78rem; font-weight: 700; letter-spacing: 0.01em;
+        color: #f8fafc; padding: 2px 4px 8px;
+        border-bottom: 1px solid rgba(202, 138, 4, 0.18);
+        margin-bottom: 6px;
+    }
+    .pc-mix-header > span:first-of-type { flex: 1; }
+    .pc-mix-count-badge {
+        font-size: 0.62rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em;
+        background: linear-gradient(135deg, #facc15, #ca8a04);
+        color: #422006; border-radius: 999px;
+        padding: 2px 8px;
+        box-shadow: 0 2px 8px rgba(202, 138, 4, 0.40);
+    }
+
+    .pc-mix-list {
+        display: flex; flex-direction: column; gap: 4px;
+        max-height: 280px;
+        overflow-y: auto;
+        padding: 2px 2px 4px;
+        margin: 0 -2px;
+    }
+    .pc-mix-list::-webkit-scrollbar { width: 6px; }
+    .pc-mix-list::-webkit-scrollbar-thumb { background: rgba(202, 138, 4, 0.35); border-radius: 3px; }
+
+    .pc-mix-row {
+        position: relative;
+        display: flex; align-items: center; gap: 10px;
+        padding: 7px 8px 7px 10px;
+        border-radius: 9px;
+        background: rgba(30, 41, 59, 0.55);
+        border: 1px solid transparent;
+        cursor: pointer;
+        opacity: 0; transform: translateX(-12px);
+        animation: srmRowIn 0.32s cubic-bezier(.175,.885,.32,1.275) forwards;
+        transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+        overflow: hidden;
+    }
+    .pc-mix-row:hover {
+        background: rgba(30, 41, 59, 0.85);
+        border-color: var(--row-color, #ca8a04);
+        transform: translateX(2px);
+    }
+    .pc-mix-row:active { transform: translateX(2px) scale(0.985); }
+    .pc-mix-row-rail {
+        flex-shrink: 0;
+        width: 4px; height: 38px;
+        border-radius: 2px;
+        background: var(--row-color, #ca8a04);
+        box-shadow: 0 0 8px var(--row-color, transparent);
+    }
+    .pc-mix-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .pc-mix-row-top {
+        display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        font-size: 0.75rem;
+    }
+    .pc-mix-row-date  { color: #cbd5e1; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .pc-mix-row-hours { color: #94a3b8; font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+    .pc-mix-row-label {
+        font-size: 0.7rem; color: #94a3b8;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .pc-mix-rate-badge {
+        flex-shrink: 0;
+        font-size: 0.72rem; font-weight: 800; color: #1e1e1e;
+        padding: 4px 8px; border-radius: 8px; line-height: 1;
+        font-variant-numeric: tabular-nums;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    }
+    .pc-mix-per-hr { font-size: 0.55rem; opacity: 0.75; margin-left: 1px; }
+    .pc-mix-row-arrow {
+        flex-shrink: 0; color: #64748b; font-size: 0.85rem;
+        transition: color 0.15s ease, transform 0.15s ease;
+    }
+    .pc-mix-row:hover .pc-mix-row-arrow { color: #f1f5f9; transform: translateX(2px); }
+
+    .pc-mix-footer {
+        display: flex; flex-wrap: wrap; gap: 4px;
+        padding: 8px 4px 0;
+        border-top: 1px solid rgba(202, 138, 4, 0.12);
+        margin-top: 6px;
+    }
+    .pc-mix-chip {
+        font-size: 0.62rem; font-weight: 700; color: #422006;
+        padding: 2px 8px; border-radius: 999px;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    }
+    .pc-mix-footer-hint {
+        margin-top: 6px; padding: 0 4px;
+        font-size: 0.65rem; color: #64748b; font-style: italic; text-align: right;
+    }
+
+    @@media (max-width: 768px) {
+        .pc-mix-panel { width: 320px; left: -8px; }
+    }
+    @@media (max-width: 480px) {
+        .pc-mix-panel { width: calc(100vw - 24px); left: -8px; max-height: 70vh; }
+        .pc-mix-list  { max-height: 50vh; }
     }
     .pc-mixed-tip {
         display: none;
@@ -4620,6 +4832,25 @@
 
     static string SrmColor(Dictionary<string, string> map, PcService.SessionRateEntry e)
         => map.TryGetValue($"{e.Currency}:{e.RateCentsPerHour}", out var c) ? c : "#64748b";
+
+    /// Build a stable rate→color map for a flagged PC's PURCHASE list (mixed-rate / yellow).
+    /// Keyed by "currency:rate" so two currencies don't clash.
+    static Dictionary<string, string> BuildPurchaseRateColorMap(List<PcService.PurchaseRateEntry> entries)
+    {
+        var map = new Dictionary<string, string>();
+        var ordered = entries
+            .Select(e => (Key: $"{e.Currency}:{e.RatePerHour}", e.Currency, e.RatePerHour))
+            .DistinctBy(t => t.Key)
+            .OrderBy(t => t.Currency)
+            .ThenBy(t => t.RatePerHour)
+            .ToList();
+        for (int i = 0; i < ordered.Count; i++)
+            map[ordered[i].Key] = _srmPalette[i % _srmPalette.Length];
+        return map;
+    }
+
+    static string PurchaseRateColor(Dictionary<string, string> map, PcService.PurchaseRateEntry e)
+        => map.TryGetValue($"{e.Currency}:{e.RatePerHour}", out var c) ? c : "#64748b";
 
     static string FormatRatePerHour(int cents)
     {

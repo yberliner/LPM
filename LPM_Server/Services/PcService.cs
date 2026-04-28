@@ -1016,7 +1016,14 @@ public List<PcListItem> GetAllPcs()
 
     // ── Rate-change detection (last 365 days) ─────────────────────
 
-    public record PurchaseRateEntry(string Date, double Hours, int RatePerHour);
+    public record PurchaseRateEntry(
+        int PurchaseId,
+        string Date,
+        double Hours,
+        int RatePerHour,
+        string Currency,
+        int? CourseId,
+        string? CourseName);
     public record SessionRateEntry(int SessionId, string Date, int LengthSec, int AdminSec, int RateCentsPerHour, string Currency, string AuditorName);
 
     /// <summary>
@@ -1082,28 +1089,35 @@ public List<PcListItem> GetAllPcs()
         using var cmd = conn.CreateCommand();
         var cutoff = DateTime.Today.AddDays(-365).ToString("yyyy-MM-dd");
         cmd.CommandText = @"
-            SELECT pu.PcId, pu.PurchaseDate, pi.HoursBought, pi.AmountPaid
+            SELECT pu.PcId, pu.PurchaseDate, pi.HoursBought, pi.AmountPaid,
+                   pu.PurchaseId, COALESCE(pu.Currency, 'ILS') AS Currency,
+                   pi.CourseId, c.Name AS CourseName
             FROM fin_purchase_items pi
             JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
+            LEFT JOIN lkp_courses c ON c.CourseId = pi.CourseId
             LEFT JOIN (SELECT PcId, MAX(ResetDate) AS ResetDate FROM fin_budget_reset WHERE IsActive=1 GROUP BY PcId) br ON br.PcId = pu.PcId
             WHERE pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
               AND pu.PurchaseDate >= @cutoff
               AND (br.ResetDate IS NULL OR pu.PurchaseDate >= br.ResetDate)
               AND pi.AmountPaid <> 0 AND ABS(pi.HoursBought) > 0
-            ORDER BY pu.PcId, pu.PurchaseId, pi.PurchaseItemId";
+            ORDER BY pu.PcId, pu.PurchaseDate DESC, pu.PurchaseId DESC, pi.PurchaseItemId";
         cmd.Parameters.AddWithValue("@cutoff", cutoff);
 
         var all = new Dictionary<int, List<PurchaseRateEntry>>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
         {
-            int pcId = r.GetInt32(0);
-            string date = r.GetString(1);
-            double hrs = r.GetDouble(2);
-            double amt = r.GetDouble(3);
-            int rate = (int)Math.Round(Math.Abs(amt / hrs));
+            int pcId       = r.GetInt32(0);
+            string date    = r.GetString(1);
+            double hrs     = r.GetDouble(2);
+            double amt     = r.GetDouble(3);
+            int rate       = (int)Math.Round(Math.Abs(amt / hrs));
+            int purchaseId = r.GetInt32(4);
+            string curr    = r.GetString(5);
+            int? courseId  = r.IsDBNull(6) ? null : r.GetInt32(6);
+            string? cname  = r.IsDBNull(7) ? null : r.GetString(7);
             if (!all.ContainsKey(pcId)) all[pcId] = new();
-            all[pcId].Add(new PurchaseRateEntry(date, hrs, rate));
+            all[pcId].Add(new PurchaseRateEntry(purchaseId, date, hrs, rate, curr, courseId, cname));
         }
 
         // Keep only PCs with 2+ distinct rates
